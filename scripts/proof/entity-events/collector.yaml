@@ -23,9 +23,8 @@ processors:
 exporters:
   otlp/tumultd:
     endpoint: 127.0.0.1:${env:PROOF_GRPC_PORT}
-    # The daemon's OTLP/gRPC services take uncompressed messages only; the
-    # exporter default (gzip) is refused with UNIMPLEMENTED.
-    compression: none
+    # No `compression` key: the exporter default (gzip) is what the daemon
+    # is proven with.
     tls:
       insecure: true
     headers:

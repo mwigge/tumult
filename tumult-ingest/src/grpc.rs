@@ -33,6 +33,8 @@ use opentelemetry_proto::tonic::collector::trace::v1::{
     ExportTraceServiceRequest, ExportTraceServiceResponse,
 };
 use std::time::Duration;
+use tonic::codec::CompressionEncoding;
+use tonic::service::interceptor::InterceptedService;
 use tonic::transport::server::Router;
 use tonic::{Request, Response, Status};
 
@@ -107,16 +109,22 @@ fn build(
         ingest,
         ingest_token: token.clone(),
     };
+    // The Collector's `otlp` exporter compresses with gzip unless told
+    // otherwise and offers zstd; both are taken, as on the OTel-Arrow
+    // services. The message size limit is on what a message expands to.
+    let traces = TraceServiceServer::new(otlp.clone())
+        .accept_compressed(CompressionEncoding::Gzip)
+        .accept_compressed(CompressionEncoding::Zstd);
+    let metrics = MetricsServiceServer::new(otlp.clone())
+        .accept_compressed(CompressionEncoding::Gzip)
+        .accept_compressed(CompressionEncoding::Zstd);
+    let logs = LogsServiceServer::new(otlp)
+        .accept_compressed(CompressionEncoding::Gzip)
+        .accept_compressed(CompressionEncoding::Zstd);
     builder
-        .add_service(TraceServiceServer::with_interceptor(
-            otlp.clone(),
-            bearer(token.clone()),
-        ))
-        .add_service(MetricsServiceServer::with_interceptor(
-            otlp.clone(),
-            bearer(token.clone()),
-        ))
-        .add_service(LogsServiceServer::with_interceptor(otlp, bearer(token)))
+        .add_service(InterceptedService::new(traces, bearer(token.clone())))
+        .add_service(InterceptedService::new(metrics, bearer(token.clone())))
+        .add_service(InterceptedService::new(logs, bearer(token)))
         // OTel-Arrow: same listener, same token, same writer channel.
         .add_service(otap.clone().traces())
         .add_service(otap.clone().logs())

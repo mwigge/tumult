@@ -68,7 +68,6 @@ processors:
 exporters:
   otlp/tumultd:                      # otelarrow/tumultd works the same way
     endpoint: ${env:TUMULTD_OTLP_ENDPOINT:-tumultd.host:14317}
-    compression: none                # the daemon refuses gzip on OTLP/gRPC
     tls:
       insecure: true
     headers:
@@ -86,11 +85,10 @@ This configuration passes `otelcol-contrib validate` in
 runs its `host_metrics` part against a daemon. The `k8s_cluster` receiver
 needs its usual RBAC and was not run against a cluster.
 
-`compression: none` is needed on the `otlp` exporter. The daemon's
-OTLP/gRPC services take uncompressed messages only, and the exporter
-default (gzip) is refused with `UNIMPLEMENTED`, which the Collector treats
-as a permanent error and drops the data. The `otelarrow` exporter works
-with its default compression.
+The `otlp` exporter needs no `compression` setting: the daemon's OTLP/gRPC
+services take its default (gzip), `zstd` and `none`. A message is bounded
+by what it expands to (4 MiB), whatever its size on the wire. The
+`otelarrow` exporter works with its default compression too.
 
 `resourcedetection` matters for the `host` entity: `host_metrics` sends its
 event without an id, and the daemon takes the identity from the resource
