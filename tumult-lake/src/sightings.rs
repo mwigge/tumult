@@ -585,11 +585,15 @@ fn backfill_step(
     let day_end = next.saturating_add(BACKFILL_STEP_NS);
     let mut from = cursor;
     let mut upto = next;
-    while upto < day_end {
+    // At least one slice is read, so the cursor always moves on to `next`
+    // or past it: a day that begins at the last instant there is cannot
+    // end after it, and a step that read nothing of it would find the
+    // same span again for ever.
+    loop {
         upto = upto.saturating_add(BACKFILL_SLICE_NS).min(day_end);
         backfill_slice(conn, from, upto, now_ns)?;
         from = upto;
-        if until.is_some_and(|until| Instant::now() >= until) {
+        if upto >= day_end || until.is_some_and(|until| Instant::now() >= until) {
             break;
         }
     }

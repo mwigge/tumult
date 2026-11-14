@@ -910,3 +910,29 @@ fn a_row_held_within_the_skew_of_the_clock_keeps_its_anchor() {
     drop(writer);
     assert_eq!(seen(&store, "checkout"), [demo("2.0.0", 21_550, 21_550)]);
 }
+
+#[test]
+fn a_backfill_ends_past_a_span_stamped_at_the_end_of_time() {
+    let (_dir, store) = lake();
+    let writer = store.writer().unwrap();
+    writer
+        .insert_spans(&[
+            demo_span("1.0.0", 10_000),
+            span("checkout", Some("9.9.9"), Some("demo"), i64::MAX),
+        ])
+        .unwrap();
+    assert_eq!(spans_stored(&writer), 2);
+    in_tx(&writer.conn, || backfill_restart(&writer.conn)).unwrap();
+    // The day that holds the last instant there is cannot end after it:
+    // the step reads it all the same and moves the cursor there.
+    let steps = (0..4)
+        .position(|_| in_tx(&writer.conn, || backfill_step(&writer.conn, None, NOW)).unwrap());
+    assert_eq!(steps, Some(2), "two days of spans, then nothing left");
+    assert_eq!(
+        backfill_state(&writer.conn).unwrap(),
+        Backfill::Done,
+        "the backfill is over"
+    );
+    drop(writer);
+    assert_eq!(seen(&store, "checkout"), [demo("1.0.0", 10_000, 10_000)]);
+}
