@@ -311,17 +311,21 @@ tumult report <journal.toon> [OPTIONS]
 
 ## tumult import
 
-Import the legacy two-table Parquet analytics export, and with it the load
+Import the Parquet directory `tumult store export` writes: the experiments
+and activities, and with them, when the directory holds them, the load
 evidence (`load_results.parquet` and `probe_samples.parquet`, both or
-neither) when the directory holds it, so that a performance verdict can be
-computed from the imported runs. This does not restore a complete
-operational backup; use `tumult store restore` for that.
+neither) and the run roots with the version history (`run_roots.parquet`
+and `version_sightings.parquet`, both or neither), so that a performance
+verdict can be computed from the imported runs. Rows the store already
+holds are left as they are; importing a directory twice adds nothing. This
+does not restore a complete operational backup; use `tumult store restore`
+for that.
 
 ```
 tumult import <parquet-dir>
 ```
 
-Transactional import — data is committed only if all files load successfully.
+Transactional import — each pair of files is committed only if both load successfully.
 
 ## tumult store
 
@@ -335,6 +339,7 @@ tumult store <subcommand>
 |------------|-------------|
 | `stats` | Show experiment/activity counts and store file size |
 | `backup [--output <dir>]` | Copy the complete database and checksum manifest; stop writers first, protect credentials in backup |
+| `export [--output <dir>]` | Write the Parquet directory `tumult import` reads (experiments, activities, load results, probe samples, run roots, version history); refuses a directory that already holds one |
 | `restore --input <dir> --output <new-db>` | Verify a complete backup and restore into a new database; never overwrite an existing destination |
 | `purge --older-than-days <N>` | Delete experiments older than N days |
 | `path` | Print the store file path |

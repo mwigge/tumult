@@ -467,17 +467,34 @@ definition) is the reliable path in every setup.
 
 ### Backups
 
-The lake's Parquet export (`export_tables` and `export_load_tables` of
-`tumult-lake`) writes the tables a verdict is computed from —
-`experiments` with `target_version` and `version_source`, `load_results`
-with how the load was executed and what became of its requests, and
-`probe_samples` with each window's counts and censoring — and `tumult
-import <dir>` reads `load_results.parquet` and `probe_samples.parquet`
-back when the directory holds them (both or neither). The same runs give
-the same verdict after an export and an import. No CLI command writes
-such a directory yet; the export is a library call. Spans are not part of
-it: the deployment order of an imported lake comes from the versions the
-runs recorded, so name the versions when the runs recorded none.
+`tumult store export --output <dir>` writes the tables a verdict is
+computed from as Parquet files, and `tumult import <dir>` reads them into
+another lake:
+
+| File | What it holds |
+|---|---|
+| `experiments.parquet`, `activities.parquet` | the runs, with `target_version` and `version_source` |
+| `load_results.parquet` | how each load was executed and what became of its requests |
+| `probe_samples.parquet` | each window's values, counts and censoring |
+| `run_roots.parquet` | the root span of each run: target, environment, time, and the version recorded there |
+| `version_sightings.parquet` | the version history of every service: first and last sight, latest deployment, number of deployments |
+
+An export imported into an empty lake gives the verdict the first lake
+gave. The files come in pairs (`load_results` with `probe_samples`,
+`run_roots` with `version_sightings`): a directory with one of a pair is
+refused, one with neither imports what it has. An import is one
+transaction per pair and adds each row once: importing a directory twice,
+or into a lake that already holds some of its runs, leaves what the lake
+holds as it is. A version both lakes know keeps the wider history (the
+earlier first sight, the later last sight and deployment).
+
+The target's own spans are telemetry and are not exported. Two things
+read them and so do not survive a restore: a run that recorded no version
+stays unattributed, and a version that came back cannot be shown to rest
+on enough requests, so the order of such a pair is `unorderable` until
+new telemetry arrives. Name the versions (`--baseline`, `--candidate`)
+in both cases. `tumult store backup` copies the whole database, spans
+included, and is the operational backup.
 
 ## A pipeline shape that works
 
