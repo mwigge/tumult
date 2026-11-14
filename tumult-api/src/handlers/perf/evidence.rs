@@ -213,32 +213,53 @@ fn load_runs(reader: &Reader, asked: &Asked) -> Result<Vec<Run>, String> {
 }
 
 /// Per run without a recorded version, how many requests each version of
-/// the target served inside the run's window, widened by the clock skew
-/// a runner allows for: at most runs × versions rows.
+/// the target served inside the run's own window; for a run whose own
+/// window names no version, inside the window widened by the clock skew
+/// a runner allows for (the rule the runner follows when it records a
+/// version itself). At most runs × versions rows.
 fn load_inside(
     reader: &Reader,
     asked: &Asked,
 ) -> Result<HashMap<String, Vec<(String, u64)>>, String> {
     let skew_ns = i64::try_from(VERSION_WINDOW_SKEW.as_nanos()).unwrap_or(i64::MAX);
     let sql = format!(
-        "{} SELECT u.id AS id, s.service_version AS v, count(*) AS n {UNRECORDED_JOIN} \
+        "{} SELECT u.id AS id, s.service_version AS v, count(*) AS n, \
+         count(*) FILTER (WHERE s.ts_ns >= u.started AND s.ts_ns <= u.ended) AS own \
+         {UNRECORDED_JOIN} \
          AND s.ts_ns >= u.started - {skew_ns} AND s.ts_ns <= u.ended + {skew_ns} \
          AND {IS_REQUEST} \
          GROUP BY u.id, s.service_version ORDER BY u.id, s.service_version",
         runs_cte()
     );
-    let mut inside: HashMap<String, BTreeMap<String, u64>> = HashMap::new();
+    // Per run and version: requests in the padded window, and in its own.
+    let mut inside: HashMap<String, BTreeMap<String, (u64, u64)>> = HashMap::new();
     for row in &rows(reader, &sql, &asked.spans())? {
-        let (Some(id), Some(v), Some(n)) = (text(row, "id"), version_of(row, "v"), count(row, "n"))
-        else {
+        let (Some(id), Some(v), Some(n), Some(own)) = (
+            text(row, "id"),
+            version_of(row, "v"),
+            count(row, "n"),
+            count(row, "own"),
+        ) else {
             continue;
         };
-        *inside.entry(id).or_default().entry(v).or_default() += n;
+        let served = inside.entry(id).or_default().entry(v).or_default();
+        *served = (served.0 + n, served.1 + own);
     }
     Ok(inside
         .into_iter()
-        .map(|(id, served)| (id, served.into_iter().collect()))
+        .map(|(id, served)| (id, own_or_padded(&served)))
         .collect())
+}
+
+/// The requests each version served in a run's own window; those of the
+/// padded window when its own names no version.
+fn own_or_padded(served: &BTreeMap<String, (u64, u64)>) -> Vec<(String, u64)> {
+    let spoke = served.values().any(|(_, own)| *own > 0);
+    served
+        .iter()
+        .map(|(version, (padded, own))| (version.clone(), if spoke { *own } else { *padded }))
+        .filter(|(_, requests)| *requests > 0)
+        .collect()
 }
 
 /// Per run without a recorded version, each version's last span before

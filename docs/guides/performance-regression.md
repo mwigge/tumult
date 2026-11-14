@@ -54,13 +54,24 @@ gate by default.
    the service received or began (server and root spans), so a build that
    emits ten spans a request weighs no more than one that emits two.
 
-   **The window and clock skew.** The window is read two seconds wider at
-   both ends, the tolerance for clocks that disagree between the runner
-   and the service. The price: a build that first speaks within two
-   seconds of the end of a run it did not serve counts into that run's
-   window. A run that recorded its version is not affected. Mind that the
-   root span ends when the runner has finished asking for the version,
-   which can be up to five seconds after the load stopped.
+   **The window and clock skew.** The run's own window is read first.
+   Only when the telemetry names no version inside it is the window read
+   two seconds wider at both ends, the tolerance for clocks that disagree
+   between the runner and the service; read always, the padding let one
+   request of the build before, a second ahead of the run, make the run
+   mixed. The price that remains: when a run's own window is silent, a
+   build that first speaks within two seconds of its end counts into it.
+   Mind that the root span ends when the runner has finished asking for
+   the version, which can be up to five seconds after the load stopped.
+
+   **Enough requests to speak for the load.** A run with a load records
+   an observed version only when the telemetry counted at least 1 % of
+   the requests the load sent (`OBSERVED_MIN_LOAD_SHARE`); one request of
+   an old build in a window whose other telemetry has not arrived says
+   nothing of what served the load. Below that the run records no version
+   and logs `experiment.target_version_thin`. The floor is low because
+   telemetry may be sampled; a target sampled below 1 % must declare its
+   version (`target.version`).
 
    **Asking until it settles.** Telemetry arrives late. The runner (the
    CLI and the daemon alike) asks which version served the window, waits

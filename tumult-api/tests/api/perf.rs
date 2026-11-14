@@ -771,6 +771,42 @@ async fn perf_leaves_a_run_two_versions_served_unattributed() {
     );
 }
 
+/// The clock-skew padding is read only for a run whose own window is
+/// silent: one request of the build before, a second ahead of the run,
+/// does not make the run mixed.
+#[tokio::test]
+async fn perf_does_not_mix_a_run_by_a_request_in_the_padding() {
+    let srv = spawn_server().await;
+    let now = now_ns();
+    let mut spans = stream("demo", "1.0.0", now - 3000 * NS, now - 2000 * NS);
+    spans.push(span_in("demo", "last-old", "1.0.0", now - 1001 * NS));
+    for i in 0..10 {
+        let at = now - 990 * NS + i * NS;
+        spans.push(span_in("demo", &format!("in-new-{i}"), "1.1.0", at));
+    }
+    // A run whose own window is silent is still read with the padding.
+    spans.push(span_in("demo", "late-new", "1.1.0", now - 739 * NS));
+    spans.push(root_span("old", now - 2500 * NS));
+    spans.push(root_span("new", now - 1000 * NS));
+    spans.push(root_span("quiet", now - 800 * NS));
+    seed(
+        &srv,
+        spans,
+        vec![
+            ("old", now - 2500 * NS, 100.0),
+            ("new", now - 1000 * NS, 150.0),
+            ("quiet", now - 800 * NS, 150.0),
+        ],
+    )
+    .await;
+
+    let (status, body) = get(&srv.base, "/api/perf/checkout?min_runs=1").await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["unattributed_runs"]["count"], 0, "{body}");
+    assert_eq!(runs_of(&body["candidate"]), vec!["new", "quiet"], "{body}");
+    assert_eq!(runs_of(&body["baseline"]), vec!["old"], "{body}");
+}
+
 /// The candidate build got no traffic until the load began, so its first
 /// span is later than the run's start, where the old build spoke last.
 #[tokio::test]
