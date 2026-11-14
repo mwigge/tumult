@@ -3,3 +3,4 @@ too-many-lines-threshold = 150
 # Tests may print diagnostics; production code must log structured events
 # (see docs/guides/logging.md and the print_stdout/print_stderr lints).
 allow-print-in-tests = true
+allow-dbg-in-tests = true
