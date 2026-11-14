@@ -146,7 +146,9 @@ gate by default.
    `inconclusive` (exit 4). With `candidate` named the question does not
    arise: the candidate is compared against the version it replaced,
    whichever reported last. **A CI gate knows which build it tests and
-   should always pass `--candidate`.**
+   should always pass `--candidate`.** `tumult perf` says so on stderr
+   when `--fail-on` is given without `--candidate`; a run that leaves
+   `--fail-on` out is not warned, though the default exit codes apply.
 
    A span that arrives late moves a version's first sight back by at most
    ten minutes from where the lake first saw the version begin

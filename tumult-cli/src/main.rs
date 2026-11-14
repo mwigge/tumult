@@ -542,7 +542,11 @@ async fn dispatch(command: Commands) -> anyhow::Result<()> {
                     PerfFailOnArg::Never => commands::PerfFailOn::Never,
                 })
                 .collect();
-            let fail_on = commands::PerfFailOn::of(&listed).map_err(|e| anyhow::anyhow!(e))?;
+            let fail_on = if listed.is_empty() {
+                None
+            } else {
+                Some(commands::PerfFailOn::of(&listed).map_err(|e| anyhow::anyhow!(e))?)
+            };
             commands::cmd_perf(&commands::PerfArgs {
                 target,
                 probe,
