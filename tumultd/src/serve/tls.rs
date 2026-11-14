@@ -6,10 +6,11 @@ use anyhow::{Context, Result};
 use tumult_ingest::Config;
 
 /// Validated TLS materials for both servers: the rustls config for the
-/// HTTPS (axum) listener and the PEM identity for the tonic gRPC server.
+/// HTTPS (axum) listener and the one for the gRPC listener, which does
+/// the handshake itself.
 pub(super) struct TlsMaterials {
     pub http: axum_server::tls_rustls::RustlsConfig,
-    pub grpc_identity: tonic::transport::Identity,
+    pub grpc: std::sync::Arc<tumult_ingest::listener::TlsConfig>,
 }
 
 /// Load the optional TLS configuration (`KRONIKA_TLS_CERT` /
@@ -38,16 +39,20 @@ pub(super) async fn load_tls(config: &Config) -> Result<Option<TlsMaterials>> {
         .with_context(|| format!("read KRONIKA_TLS_CERT ({})", cert.display()))?;
     let key_pem =
         std::fs::read(key).with_context(|| format!("read KRONIKA_TLS_KEY ({})", key.display()))?;
-    let grpc_identity = tonic::transport::Identity::from_pem(cert_pem, key_pem);
+    let grpc = tumult_ingest::listener::tls_config(&cert_pem, &key_pem).with_context(|| {
+        format!(
+            "invalid TLS certificate chain or key for the gRPC server (KRONIKA_TLS_CERT {}, \
+             KRONIKA_TLS_KEY {})",
+            cert.display(),
+            key.display()
+        )
+    })?;
     tracing::info!(
         name: "daemon.tls.enabled",
         { file.path = %cert.display() },
         "TLS enabled for the HTTP and gRPC servers"
     );
-    Ok(Some(TlsMaterials {
-        http,
-        grpc_identity,
-    }))
+    Ok(Some(TlsMaterials { http, grpc }))
 }
 
 /// Loud startup warning when a network-exposed listener serves plaintext:

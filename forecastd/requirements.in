@@ -1,0 +1,19 @@
+# The runtime of the tumult-forecastd image, pinned to the versions the
+# service is tested against. requirements.lock is generated from this file
+# with hashes; regenerate it inside the image's Python (see the README):
+#
+#   pip-compile --generate-hashes --allow-unsafe --strip-extras \
+#     --extra-index-url https://download.pytorch.org/whl/cpu \
+#     --output-file requirements.lock requirements.in
+#
+# timestral itself is not on PyPI; the Dockerfile builds it from its pinned
+# git commit with --no-deps, against the packages locked here.
+numpy==2.5.4
+fastapi==0.162.6
+uvicorn==0.54.0
+# CPU-only build from the PyTorch wheel index.
+torch==2.15.0+cpu
+safetensors==0.8.0
+huggingface_hub==2.4.0
+# Build backend for timestral (built without build isolation).
+setuptools==78.1.0

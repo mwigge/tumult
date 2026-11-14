@@ -125,6 +125,20 @@ jobs:
       # [package.metadata.cargo-machete] ignore lists).
       - run: cargo machete --with-metadata
       - run: cargo nextest run --all-features
+      # The checked-in OTel-Arrow gRPC code must be what arrow_service.proto
+      # generates (the only step that needs protoc). protoc is the pinned
+      # upstream release, checked against its SHA-256, not the runner's.
+      - name: OTel-Arrow generated code is in sync with its proto
+        env:
+          PROTOC_VERSION: "36.1"
+          PROTOC_SHA256: c4bc672d9d49214dc8cafdceadf4df92182d6ca8e3ec65a56b2d7de5602669b4
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/protoc.zip" \
+            "https://github.com/protocolbuffers/protobuf/releases/download/v${PROTOC_VERSION}/protoc-${PROTOC_VERSION}-linux-x86_64.zip"
+          echo "${PROTOC_SHA256}  $RUNNER_TEMP/protoc.zip" | sha256sum -c -
+          unzip -q "$RUNNER_TEMP/protoc.zip" -d "$RUNNER_TEMP/protoc"
+          PROTOC="$RUNNER_TEMP/protoc/bin/protoc" PROTOC_INCLUDE="$RUNNER_TEMP/protoc/include" \
+            cargo test -p tumult-ingest --test otap_proto_drift -- --ignored
 
   doc:
     name: Documentation
@@ -163,6 +177,33 @@ jobs:
       # that does not exist, a retention period DORA does not set) must not
       # come back in docs, seeds or fixtures.
       - run: python3 scripts/check-citations.py
+
+  forecastd:
+    name: Forecast sidecar (stub model)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      # The minor version the image runs (forecastd/Dockerfile) and the lock
+      # was compiled for; the runner's own python3 moves with the runner.
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
+        with:
+          python-version: "3.12"
+      - run: python -m venv .forecastd-venv
+      # Exactly what the image installs: every package of the lock, each
+      # checked against its hash. The Timestral code is not in the lock (it
+      # is built from git in the image) and the weights are not here, so the
+      # real-model suite skips; the rest runs against the stub model, the
+      # ASGI app and the load order of the weights (a fake loader) included.
+      - run: .forecastd-venv/bin/pip install --require-hashes --no-deps -r forecastd/requirements.lock
+      - run: .forecastd-venv/bin/pip check
+      # The linter is not part of the runtime, so it is not in the lock.
+      - run: .forecastd-venv/bin/pip install --no-deps ruff==0.16.10
+      - run: .forecastd-venv/bin/ruff check forecastd
+      - name: Unit tests
+        working-directory: forecastd
+        run: ../.forecastd-venv/bin/python -m unittest discover -s tests -t . -v
+      - run: bash -n scripts/proof/rip-phase3-forecast/proof.sh
 
   scripts-quality:
     name: Python, SQL and distribution checks

@@ -9,7 +9,21 @@ OTLP/gRPC and OTLP/HTTP, the gRPC listener also speaks OTel-Arrow (OTAP,
 the Collector's `otelarrow` exporter): `tumult-ingest::otap` decodes the
 Arrow IPC tables back into the OTLP request types, so the same
 `tumult-otlp` conversion and the same single-writer channel serve both
-carriers and the rows are identical whichever one delivered them.
+carriers and the rows are identical whichever one delivered them. The Arrow
+receiver treats every declared size as hostile: rows, attributes, decoded
+bytes, message size, retained dictionary bytes, open streams, stream age
+and decode time are bounded by the `KRONIKA_OTAP_*` limits
+(`tumult-ingest::otap::limits`), connections, their handshake time and
+their age by the `KRONIKA_GRPC_*` limits (`tumult-ingest::listener`). The
+listener does the TLS handshake itself and, when an ingest token is set,
+knows which connections have made an authorised call: one that has not
+is closed after `KRONIKA_GRPC_AUTH_TIMEOUT_SECS` and gives its place to a
+newcomer when there is no room. One
+connection or peer (an IPv4 address or an IPv6 /64) gets only a share of
+the streams and of the retained bytes, and waiting batches are decoded
+peer by peer in turn. Because release builds abort on panic, Arrow
+IPC is decoded by a checked reader of its own (`tumult-ingest::otap::ipc`)
+that accepts only the column types OTAP uses.
 Everything lives in this repository as first-class `tumult-*` crates.
 
 The daemon's configuration surface keeps `KRONIKA_*` environment variable
@@ -124,7 +138,12 @@ not being renamed.
    the continuous posture score; `POST /api/risks/{id}/suppress` accepts a
    finding for a while; `POST /api/risks/{id}/recommend` turns one into a
    registered experiment and an autopilot candidate with a `risk`
-   trigger, gated and recorded when a policy is loaded). Mutating routes exist but
+   trigger, gated and recorded when a policy is loaded), and
+   `/api/forecast` + `/api/runs/{id}/impact` (forecast bands for semantic
+   metrics and the counterfactual impact and recovery time of a run's
+   probes; the provider is the built-in Holt-Winters in `tumult-forecast`,
+   or the `tumult-forecastd` Timestral sidecar when `TUMULTD_FORECAST_URL`
+   is set, with the model named in every response). Mutating routes exist but
    stay read-only in spirit: they ride the single-writer channel (run
    control below, manual-evidence lifecycle, approval decisions). Ad-hoc
    digests come from `tumultd report` / `GET /report`; with
@@ -299,6 +318,15 @@ while, hash-chained per risk id (`prev_hash → new_hash`, the `run_audit` link
 function) so an auditor can verify nothing was silenced off the record.
 Suppressions carry an optional expiry; the scanner applies the latest active
 row per finding at read time.
+
+v19 adds `forecasts`: the cache behind `/api/forecast`, one row per computed
+forecast keyed by series, model, step, horizon bucket and context window, with
+the quantile levels and the `quantiles[step][level]` matrix as DuckDB lists and
+the provenance (model, version, weights hash) alongside. Forecasting itself is pure
+(`tumult-forecast` opens no database): the API handler resamples on a
+read-only reader, asks the provider, and writes the cache row through the
+single-writer channel, which also caps the rows per series and prunes expired
+ones a batch at a time. Rows are derived data and can be deleted at any time.
 
 ## Roadmap: external tooling on the lake
 
