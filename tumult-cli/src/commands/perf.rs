@@ -8,7 +8,10 @@
 //! Exit codes: 0 the verdict passes; 1 an error (no daemon, a refusal, a
 //! verdict that was not stored); 2 a usage error; 3 `regressed`; 4
 //! `inconclusive`. By default both `regressed` and `inconclusive` fail:
-//! a release is not passed on evidence that cannot tell.
+//! a release is not passed on evidence that cannot tell. A pair the
+//! daemon cannot put in deployment order (its 400 with
+//! `reason: unorderable`) is inconclusive too: a gate names what it
+//! tests with `--candidate`.
 
 use anyhow::{bail, Context, Result};
 use serde_json::Value;
@@ -455,6 +458,41 @@ pub fn query_params(args: &PerfArgs) -> Vec<(&'static str, String)> {
     query
 }
 
+/// The daemon's reason when it refused because it cannot tell which of
+/// two versions was deployed latest (HTTP 400, `reason: unorderable`).
+/// Pure.
+#[must_use]
+pub fn unorderable(status: u16, body: &Value) -> Option<String> {
+    let reason = body.get("reason").and_then(Value::as_str);
+    if status != 400 || reason != Some("unorderable") {
+        return None;
+    }
+    let why = body.get("error").and_then(Value::as_str);
+    Some(why.unwrap_or("the deployment order cannot be told").to_owned())
+}
+
+/// What is printed for a pair the daemon cannot order.
+#[must_use]
+pub fn render_unorderable(target: &str, why: &str) -> String {
+    format!(
+        "perf {target}: INCONCLUSIVE (which version was deployed latest cannot be told)\n  \
+         - {why}\n  name the version under test with --candidate\n"
+    )
+}
+
+/// A gate that could not be judged: inconclusive under `fail_on`.
+fn inconclusive(target: &str, fail_on: PerfFailOn) -> Result<()> {
+    let Some(code) = exit_code("inconclusive", fail_on) else {
+        return Ok(());
+    };
+    Err(PerfDidNotPass {
+        target: target.to_owned(),
+        verdict: "inconclusive".to_owned(),
+        code,
+    }
+    .into())
+}
+
 /// Query the daemon and print the verdict.
 ///
 /// # Errors
@@ -492,6 +530,14 @@ pub async fn cmd_perf(args: &PerfArgs) -> Result<()> {
         .json()
         .await
         .with_context(|| format!("perf answered HTTP {status} with an unreadable body"))?;
+    if let Some(why) = unorderable(status.as_u16(), &body) {
+        if args.json {
+            println!("{}", serde_json::to_string_pretty(&body)?);
+        } else {
+            print!("{}", render_unorderable(&args.target, &why));
+        }
+        return inconclusive(&args.target, args.fail_on);
+    }
     if !status.is_success() {
         let msg = body
             .get("error")
@@ -568,6 +614,24 @@ mod tests {
             "performance verdict for target checkout is inconclusive"
         );
         assert_eq!(exit_code_of(&anyhow::anyhow!("daemon unreachable")), None);
+    }
+
+    #[test]
+    fn an_order_the_daemon_cannot_tell_is_inconclusive_at_the_gate() {
+        let refused = serde_json::json!({
+            "error": "version 1.4.0 of checkout reported again after 1.5.0 had taken over",
+            "reason": "unorderable"
+        });
+        let why = unorderable(400, &refused).expect("an unorderable pair");
+        assert!(why.contains("1.4.0") && why.contains("1.5.0"), "{why}");
+        let text = render_unorderable("checkout", &why);
+        assert!(text.starts_with("perf checkout: INCONCLUSIVE"), "{text}");
+        assert!(text.contains("  - version 1.4.0 of checkout"), "{text}");
+        assert!(text.contains("--candidate"), "{text}");
+        // Any other refusal stays an error.
+        let other = serde_json::json!({"error": "quantile must be p50, p95 or p99"});
+        assert_eq!(unorderable(400, &other), None);
+        assert_eq!(unorderable(404, &refused), None);
     }
 
     fn answer() -> Value {
