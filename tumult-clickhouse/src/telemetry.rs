@@ -2,51 +2,39 @@
 
 use opentelemetry::trace::{SpanKind, TraceContextExt, Tracer};
 use opentelemetry::{global, KeyValue};
+use tumult_otel::logging::{sanitize_url, server_address};
 use tumult_otel::SpanGuard;
 
 const TRACER: &str = "tumult-clickhouse";
 
-/// Sanitize a `ClickHouse` URL by stripping credentials (user:pass@) before
-/// recording it as a telemetry attribute.
-///
-/// Parses the authority portion `[user:pass@]host[:port]` and replaces
-/// any embedded credentials with `****:****@` so the resulting string
-/// is safe to export to an OTLP backend.
-fn sanitize_connection_url(url: &str) -> String {
-    // Strip the scheme if present (e.g. "http://", "https://", "clickhouse://").
-    let after_scheme = url.find("://").map_or(url, |i| &url[i + 3..]);
-
-    // Locate userinfo in the authority (ends at first '/' or end of string).
-    let authority_end = after_scheme.find('/').unwrap_or(after_scheme.len());
-    let authority = &after_scheme[..authority_end];
-
-    if let Some(at_pos) = authority.rfind('@') {
-        // Credentials present — replace them.
-        let scheme_prefix = url.find("://").map_or("", |i| &url[..i + 3]);
-        let host_part = &after_scheme[at_pos + 1..];
-        format!("{scheme_prefix}****:****@{host_part}")
-    } else {
-        url.to_string()
-    }
-}
 
 /// Span for `ClickHouse` connection + schema init.
 pub(crate) fn begin_connect(url: &str, database: &str) -> SpanGuard {
     let tracer = global::tracer(TRACER);
-    let safe_url = sanitize_connection_url(url);
     let span = tracer
         .span_builder("clickhouse.connect")
         .with_kind(SpanKind::Client)
-        .with_attributes(vec![
-            KeyValue::new("db.system", "clickhouse"),
-            KeyValue::new("db.name", database.to_string()),
-            KeyValue::new("server.address", url.to_string()),
-            // OTel semantic convention: sanitized connection string.
-            KeyValue::new("db.connection_string", safe_url),
-        ])
+        .with_attributes(connect_attributes(url, database))
         .start(&tracer);
     let cx = opentelemetry::Context::current_with_span(span);
     SpanGuard::new(cx.attach())
+}
+
+/// The attributes of the connect span. `url` is configuration and may carry
+/// credentials, so it is never recorded as given.
+fn connect_attributes(url: &str, database: &str) -> Vec<KeyValue> {
+    let server = server_address(url);
+    let mut attributes = vec![
+        KeyValue::new("db.system", "clickhouse"),
+        KeyValue::new("db.name", database.to_string()),
+        KeyValue::new("server.address", server.host),
+        // The connection string without userinfo, query and fragment.
+        KeyValue::new("db.connection_string", sanitize_url(url)),
+    ];
+    if let Some(port) = server.port {
+        attributes.push(KeyValue::new("server.port", i64::from(port)));
+    }
+    attributes
 }
 
 /// Event: schema initialized.
@@ -90,6 +78,73 @@ pub(crate) fn record_store_gauges(experiment_count: usize, activity_count: usize
 mod tests {
     use super::*;
 
+    fn attribute(attributes: &[KeyValue], key: &str) -> Option<String> {
+        attributes
+            .iter()
+            .find(|attribute| attribute.key.as_str() == key)
+            .map(|attribute| attribute.value.to_string())
+    }
+
+    #[test]
+    fn the_connect_span_names_the_host_and_port_and_no_credentials() {
+        // (configured URL, server.address, server.port, db.connection_string)
+        let cases = [
+            (
+                "http://admin:secret@clickhouse.internal:8123/db?password=secret",
+                "clickhouse.internal",
+                Some("8123"),
+                "http://clickhouse.internal:8123/db",
+            ),
+            (
+                "http://admin:se/cret@clickhouse.internal",
+                "clickhouse.internal",
+                None,
+                "http://clickhouse.internal",
+            ),
+            (
+                "clickhouse://admin:secret@ch.prod:9000/tumult",
+                "ch.prod",
+                Some("9000"),
+                "clickhouse://ch.prod:9000/tumult",
+            ),
+            ("https://[::1]:8443", "::1", Some("8443"), "https://[::1]:8443"),
+            (
+                "http://localhost:8123",
+                "localhost",
+                Some("8123"),
+                "http://localhost:8123",
+            ),
+        ];
+        for (url, host, port, connection) in cases {
+            let attributes = connect_attributes(url, "tumult");
+            assert_eq!(
+                attribute(&attributes, "server.address").as_deref(),
+                Some(host),
+                "{url}"
+            );
+            assert_eq!(
+                attribute(&attributes, "server.port").as_deref(),
+                port,
+                "{url}"
+            );
+            assert_eq!(
+                attribute(&attributes, "db.connection_string").as_deref(),
+                Some(connection),
+                "{url}"
+            );
+            for recorded in &attributes {
+                let value = recorded.value.to_string();
+                for secret in ["admin", "cret"] {
+                    assert!(
+                        !value.contains(secret),
+                        "{} leaks {secret} from {url}: {value}",
+                        recorded.key
+                    );
+                }
+            }
+        }
+    }
+
     #[test]
     fn connect_span_does_not_panic() {
         let _g = begin_connect("http://localhost:8123", "tumult");
@@ -100,30 +155,6 @@ mod tests {
     fn connect_span_with_credentials_sanitizes_url() {
         // Must not panic; sanitized URL replaces credentials.
         let _g = begin_connect("http://admin:secret@clickhouse.internal:8123", "tumult");
-    }
-
-    #[test]
-    fn sanitize_strips_user_and_password() {
-        let result = sanitize_connection_url("http://user:pass@host:8123/db");
-        assert_eq!(result, "http://****:****@host:8123/db");
-    }
-
-    #[test]
-    fn sanitize_no_credentials_unchanged() {
-        let result = sanitize_connection_url("http://host:8123/db");
-        assert_eq!(result, "http://host:8123/db");
-    }
-
-    #[test]
-    fn sanitize_bare_host_unchanged() {
-        let result = sanitize_connection_url("http://localhost:8123");
-        assert_eq!(result, "http://localhost:8123");
-    }
-
-    #[test]
-    fn sanitize_preserves_path_and_port() {
-        let result = sanitize_connection_url("clickhouse://admin:password@ch.prod:9000/tumult");
-        assert_eq!(result, "clickhouse://****:****@ch.prod:9000/tumult");
     }
 
     #[test]
