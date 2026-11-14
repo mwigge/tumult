@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 
 use opentelemetry_proto::tonic::collector::logs::v1::ExportLogsServiceRequest;
 use tokio::sync::{mpsc, oneshot};
-use tumult_lake::{EntityEventRow, LogRow, SpanRow, Store, Writer};
+use tumult_lake::{EntityEventRow, EntityLimits, LogRow, SpanRow, Store, Writer};
 use tumult_otlp::MetricRows;
 
 use crate::entity_events::{self, EntityEvents};
@@ -26,6 +26,8 @@ pub enum Batch {
     LogsAndEntities {
         logs: Vec<LogRow>,
         entities: Vec<EntityEventRow>,
+        /// How far the entity table may grow.
+        limits: EntityLimits,
     },
     Metrics(MetricRows),
     /// See `ExecFn`.
@@ -208,9 +210,13 @@ fn apply(writer: &Writer, batch: Batch) -> Result<(), IngestError> {
     match batch {
         Batch::Spans(rows) => writer.insert_spans(&rows)?,
         Batch::Logs(rows) => writer.insert_logs(&rows)?,
-        Batch::LogsAndEntities { logs, entities } => {
-            let outcomes = writer.insert_logs_and_entity_events(&logs, &entities)?;
-            entity_events::note_outcomes(&outcomes);
+        Batch::LogsAndEntities {
+            logs,
+            entities,
+            limits,
+        } => {
+            let applied = writer.insert_logs_and_entity_events(&logs, &entities, &limits)?;
+            entity_events::after_write(writer, &applied);
         }
         Batch::Metrics(rows) => {
             writer.insert_metrics(&rows.sums, &rows.gauges, &rows.histograms)?;

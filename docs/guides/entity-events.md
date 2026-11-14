@@ -22,6 +22,7 @@ Map, the maturity roll-up and the web UI do not read entities yet.
 | `KRONIKA_ENTITY_EVENTS` | unset (off) | `1`, `true`, `yes` or `on` (in any case) stores entity events as entities; unset, empty, `0`, `false`, `no` or `off` leaves them off. Any other value also leaves them off and is logged at start as the warning `ingest.entity_events.flag_unrecognised`. Read once, when the daemon starts. |
 | `KRONIKA_ENTITY_LABEL_ALLOW` | empty | Comma-separated label names that are kept from `k8s.<kind>.label.<name>` attributes, for example `team,app.kubernetes.io/name`. See section 5. |
 | `KRONIKA_ENTITY_ATTRIBUTE_ALLOW` | empty | Comma-separated description keys that are kept whatever they are: a whole key (`k8s.service.annotation.owner`) or the start of one followed by `*` (`k8s.service.selector.*`). See section 5. |
+| `KRONIKA_ENTITY_MAX_PER_ENVIRONMENT` | `50000` | The most entities one environment may hold, a positive integer. The lake as a whole holds four times as many. Anything else keeps the default and is logged at start as the warning `ingest.entity_events.limit_unrecognised`. See section 6. |
 
 With the flag on the daemon logs `daemon.entity_events.enabled` at
 startup. The flag applies to all three log carriers: OTLP/gRPC, OTLP/HTTP
@@ -188,7 +189,9 @@ daemon's own time of receipt, and not from the event time: a Collector
 whose clock runs behind, or one that delivers from a retry queue, does not
 make a reporting entity look expired. Every repeated state moves
 `last_received_ns`, also a delayed copy that is too old to move
-`last_seen_ns`. Deleted rows are kept; nothing removes them.
+`last_seen_ns`. An entity that is gone or expired is kept for 30 days
+after the daemon last heard of it and is then removed with all its rows
+(section 6).
 
 An entity event that is stored as an entity is not written to `logs`. One
 that is dropped (section 6) is not written to `logs` either.
@@ -305,8 +308,34 @@ bytes.
 
 `tumultd_entity_events_total` counts what the store did with the events it
 accepted, by `outcome`: `opened`, `refreshed`, `tombstoned`,
-`stale_state`, `delete_unknown`, `delete_repeated` and
-`delete_out_of_order`. Both counters are on `GET /metrics`.
+`stale_state`, `delete_unknown`, `delete_repeated`,
+`delete_out_of_order` and `entity_limit`. Both counters are on
+`GET /metrics`.
+
+### How far the table can grow
+
+A sender chooses the type, the id and the environment of an entity and can
+change its description as often as it likes, so `entity_versions` is
+bounded on every side:
+
+| Bound | Value | What happens beyond it |
+|---|---|---|
+| Rows per entity and environment | 100 | When a new row takes an entity past the bound its oldest rows are removed. The latest row always stays. Counted in `tumultd_entity_versions_pruned_total{reason="version_cap"}`. |
+| Entities per environment | 50 000, or `KRONIKA_ENTITY_MAX_PER_ENVIRONMENT` | A state event for an entity that has no row is refused: outcome `entity_limit`, and the warning `ingest.entity_events.limit_reached` at a bounded rate. The rest of the export, its log records included, is stored. Events for entities that have a row are applied as usual. |
+| Entities in the lake | four times the bound per environment | The same. The environment is named by the sender, so a bound per environment alone would bound nothing. |
+| Retention of entities that are not live | 30 days since the daemon last received anything for them | The entity is removed with all its rows. Counted in `tumultd_entity_versions_pruned_total{reason="retention"}`. |
+
+An entity that is gone or expired holds its place under the two entity
+bounds until it is removed. A live entity is never removed, however old:
+one that reports once and never again (`interval_s = 0`) stays until a
+delete event arrives. Removal runs on the writer when entity events
+arrive, at most every ten minutes and at most 5 000 entities at a time, so
+a daemon that receives no entity events removes nothing. A state event for
+an entity that was removed opens it again as a new entity, without its
+earlier history.
+
+`tumultd_entity_versions` is the number of rows in the table after the
+last export that carried entity events.
 
 ## 7. Reading entities
 

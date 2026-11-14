@@ -4,8 +4,9 @@
 
 use serde_json::{json, Value};
 use tumult_lake::{
-    entity_key, EntityEventKind, EntityEventRow, EntityOutcome, LogRow, Store, WireForm,
-    CURRENT_SCHEMA_VERSION, ENTITY_INTERVAL_MAX_S,
+    entity_key, EntityApplied, EntityEventKind, EntityEventRow, EntityLimits, EntityOutcome,
+    LogRow, Store, WireForm, CURRENT_SCHEMA_VERSION, ENTITIES_PER_ENVIRONMENT,
+    ENTITY_INTERVAL_MAX_S, ENTITY_VERSIONS_PER_ENTITY,
 };
 
 /// 2026-01-01T00:00:00Z: long past for the view's clock, so a row last seen
@@ -54,7 +55,23 @@ fn delete(ts_ns: i64) -> EntityEventRow {
 }
 
 fn apply(store: &Store, events: &[EntityEventRow]) -> Vec<EntityOutcome> {
-    store.writer().unwrap().apply_entity_events(events).unwrap()
+    apply_within(store, events, &EntityLimits::default()).outcomes
+}
+
+fn apply_within(store: &Store, events: &[EntityEventRow], limits: &EntityLimits) -> EntityApplied {
+    store
+        .writer()
+        .unwrap()
+        .apply_entity_events(events, limits)
+        .unwrap()
+}
+
+/// The state of the host `id`, with `n` in its description.
+fn host(id: &str, ts_ns: i64, n: i64) -> EntityEventRow {
+    EntityEventRow {
+        entity_id: vec![("host.id".into(), id.into())],
+        ..state(ts_ns, json!({"n": n}))
+    }
 }
 
 fn versions(store: &Store) -> Vec<Value> {
@@ -784,8 +801,9 @@ fn logs_and_entity_events_of_one_export_are_stored_together() {
     let outcomes = store
         .writer()
         .unwrap()
-        .insert_logs_and_entity_events(&[log], &[state(PAST, json!({}))])
-        .unwrap();
+        .insert_logs_and_entity_events(&[log], &[state(PAST, json!({}))], &EntityLimits::default())
+        .unwrap()
+        .outcomes;
     assert_eq!(outcomes, vec![EntityOutcome::Opened]);
     assert_eq!(versions(&store).len(), 1);
     let logs = store
@@ -858,4 +876,292 @@ fn a_v20_lake_gains_the_entity_table_and_the_view_and_reopens_cleanly() {
         CURRENT_SCHEMA_VERSION
     );
     assert_eq!(versions(&again).len(), 1);
+}
+
+#[test]
+fn the_default_limits_are_the_documented_ones() {
+    let limits = EntityLimits::default();
+    assert_eq!(ENTITY_VERSIONS_PER_ENTITY, 100);
+    assert_eq!(ENTITIES_PER_ENVIRONMENT, 50_000);
+    assert_eq!(limits.versions_per_entity, 100);
+    assert_eq!(limits.entities_per_environment, 50_000);
+    assert_eq!(limits.entities_total, 200_000);
+    assert_eq!(EntityLimits::per_environment(7).entities_total, 28);
+    assert_eq!(
+        EntityLimits::per_environment(usize::MAX).entities_total,
+        usize::MAX
+    );
+}
+
+fn keep(versions_per_entity: usize) -> EntityLimits {
+    EntityLimits {
+        versions_per_entity,
+        ..EntityLimits::default()
+    }
+}
+
+fn starts(store: &Store) -> Vec<i64> {
+    versions(store)
+        .iter()
+        .map(|row| row["valid_from_ns"].as_i64().unwrap())
+        .collect()
+}
+
+/// A sender that changes the description with every report gets a bounded
+/// history, not a table that grows with time.
+#[test]
+fn an_entity_keeps_only_its_newest_versions() {
+    let (_d, store) = fixture();
+    let mut pruned = 0;
+    for n in 0..5 {
+        let applied = apply_within(&store, &[host("a", PAST + n * SECOND, n)], &keep(3));
+        assert_eq!(applied.outcomes, vec![EntityOutcome::Opened]);
+        pruned += applied.versions_pruned;
+    }
+    assert_eq!(pruned, 2);
+    assert_eq!(
+        starts(&store),
+        vec![PAST + 2 * SECOND, PAST + 3 * SECOND, PAST + 4 * SECOND]
+    );
+    assert_eq!(current(&store).len(), 1);
+}
+
+#[test]
+fn the_version_cap_holds_within_one_batch_and_per_environment() {
+    let (_d, store) = fixture();
+    let mut batch: Vec<EntityEventRow> = (0..5).map(|n| host("a", PAST + n * SECOND, n)).collect();
+    // Another entity and the same entity elsewhere have histories of their
+    // own.
+    batch.push(host("b", PAST, 0));
+    batch.push(EntityEventRow {
+        environment: "dev".into(),
+        ..host("a", PAST, 0)
+    });
+    let applied = apply_within(&store, &batch, &keep(2));
+    assert_eq!(applied.versions_pruned, 3);
+    let rows = versions(&store);
+    let kept: Vec<(&str, &str, i64)> = rows
+        .iter()
+        .map(|row| {
+            (
+                row["environment"].as_str().unwrap(),
+                row["host_id"].as_str().unwrap(),
+                row["valid_from_ns"].as_i64().unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        kept,
+        vec![
+            ("dev", "a", PAST),
+            ("prod", "a", PAST + 3 * SECOND),
+            ("prod", "a", PAST + 4 * SECOND),
+            ("prod", "b", PAST),
+        ]
+    );
+}
+
+#[test]
+fn a_version_cap_of_zero_still_keeps_the_latest_row() {
+    let (_d, store) = fixture();
+    for n in 0..3 {
+        apply_within(&store, &[host("a", PAST + n * SECOND, n)], &keep(0));
+    }
+    assert_eq!(starts(&store), vec![PAST + 2 * SECOND]);
+}
+
+/// The cap counts entities, not events: what has a row is served as before,
+/// and only an entity without one is refused.
+#[test]
+fn a_new_entity_beyond_the_environment_cap_is_refused() {
+    let (_d, store) = fixture();
+    let limits = EntityLimits::per_environment(2);
+    assert_eq!(
+        apply_within(
+            &store,
+            &[host("a", PAST, 0), host("b", PAST, 0), host("c", PAST, 0)],
+            &limits
+        )
+        .outcomes,
+        vec![
+            EntityOutcome::Opened,
+            EntityOutcome::Opened,
+            EntityOutcome::EntityLimit,
+        ]
+    );
+    assert!(EntityOutcome::EntityLimit.is_ignored());
+    let later = PAST + SECOND;
+    let dev = EntityEventRow {
+        environment: "dev".into(),
+        ..host("c", later, 0)
+    };
+    let gone = EntityEventRow {
+        kind: EntityEventKind::Delete,
+        ..host("b", later, 0)
+    };
+    assert_eq!(
+        apply_within(
+            &store,
+            &[
+                host("c", later, 0),
+                host("a", later, 0),
+                host("a", later + 1, 1),
+                dev,
+                gone,
+                host("b", later + SECOND, 0),
+            ],
+            &limits
+        )
+        .outcomes,
+        vec![
+            EntityOutcome::EntityLimit,
+            EntityOutcome::Refreshed,
+            EntityOutcome::Opened,
+            EntityOutcome::Opened,
+            EntityOutcome::Tombstoned,
+            EntityOutcome::Opened,
+        ],
+        "refused, heartbeat, changed state, another environment, delete, back again"
+    );
+    let entities: Vec<(String, String)> = current(&store)
+        .iter()
+        .map(|row| {
+            (
+                row["environment"].as_str().unwrap().to_owned(),
+                row["entity_key"].as_str().unwrap().to_owned(),
+            )
+        })
+        .collect();
+    assert_eq!(entities.len(), 3, "{entities:?}");
+    assert!(!entities.contains(&("prod".into(), "host|host.id=c".into())));
+}
+
+#[test]
+fn an_entity_named_twice_in_one_batch_takes_one_place() {
+    let (_d, store) = fixture();
+    assert_eq!(
+        apply_within(
+            &store,
+            &[
+                host("a", PAST, 0),
+                host("a", PAST + 1, 0),
+                host("a", PAST + 2, 1),
+                host("b", PAST, 0),
+                host("c", PAST, 0),
+            ],
+            &EntityLimits::per_environment(2)
+        )
+        .outcomes,
+        vec![
+            EntityOutcome::Opened,
+            EntityOutcome::Refreshed,
+            EntityOutcome::Opened,
+            EntityOutcome::Opened,
+            EntityOutcome::EntityLimit,
+        ]
+    );
+}
+
+/// The environment is the sender's to name, so the environments together
+/// are bounded too.
+#[test]
+fn a_new_entity_beyond_the_total_cap_is_refused_in_any_environment() {
+    let (_d, store) = fixture();
+    let limits = EntityLimits {
+        entities_per_environment: 1,
+        entities_total: 2,
+        ..EntityLimits::default()
+    };
+    let in_env = |environment: &str| EntityEventRow {
+        environment: environment.into(),
+        ..host("a", PAST, 0)
+    };
+    assert_eq!(
+        apply_within(&store, &[in_env("one"), in_env("two")], &limits).outcomes,
+        vec![EntityOutcome::Opened, EntityOutcome::Opened]
+    );
+    assert_eq!(
+        apply_within(&store, &[in_env("three"), in_env("one")], &limits).outcomes,
+        vec![EntityOutcome::EntityLimit, EntityOutcome::Refreshed]
+    );
+}
+
+fn gone_host(id: &str, ts_ns: i64) -> [EntityEventRow; 2] {
+    [
+        host(id, ts_ns, 0),
+        EntityEventRow {
+            kind: EntityEventKind::Delete,
+            ..host(id, ts_ns + 1, 0)
+        },
+    ]
+}
+
+fn host_ids(store: &Store) -> Vec<String> {
+    let mut ids: Vec<String> = versions(store)
+        .iter()
+        .map(|row| row["host_id"].as_str().unwrap().to_owned())
+        .collect();
+    ids.dedup();
+    ids
+}
+
+/// Entities that are gone or expired leave, with every row, once the daemon
+/// has not heard of them since the cutoff. A live entity stays whatever its
+/// age.
+#[test]
+fn pruning_removes_entities_that_are_not_live_and_left_the_window() {
+    let (_d, store) = fixture();
+    let once = |id: &str, ts_ns: i64| EntityEventRow {
+        interval_s: 0,
+        ..host(id, ts_ns, 0)
+    };
+    let mut events = Vec::new();
+    events.extend(gone_host("gone-old", PAST));
+    // Two rows, the second one expired.
+    events.push(host("expired-old", PAST, 0));
+    events.push(host("expired-old", PAST + SECOND, 1));
+    events.push(once("live-old", PAST));
+    events.extend(gone_host("gone-recent", PAST + 100 * SECOND));
+    apply(&store, &events);
+    assert_eq!(versions(&store).len(), 5);
+
+    let writer = store.writer().unwrap();
+    assert_eq!(writer.entity_version_count().unwrap(), 5);
+    assert_eq!(writer.prune_entities(PAST, 100).unwrap(), 0, "none older");
+    assert_eq!(writer.prune_entities(PAST + 50 * SECOND, 100).unwrap(), 3);
+    assert_eq!(writer.entity_version_count().unwrap(), 2);
+    drop(writer);
+    assert_eq!(host_ids(&store), vec!["gone-recent", "live-old"]);
+}
+
+#[test]
+fn pruning_takes_the_longest_silent_entities_first_and_no_more_than_asked() {
+    let (_d, store) = fixture();
+    let mut events = Vec::new();
+    for (n, id) in ["c", "a", "b"].into_iter().enumerate() {
+        events.extend(gone_host(id, PAST + i64::try_from(n).unwrap() * SECOND));
+    }
+    apply(&store, &events);
+    let writer = store.writer().unwrap();
+    assert_eq!(writer.prune_entities(FUTURE, 2).unwrap(), 2);
+    drop(writer);
+    assert_eq!(host_ids(&store), vec!["b"]);
+}
+
+/// A removed entity takes no place: the cap counts what is stored.
+#[test]
+fn a_pruned_entity_frees_its_place_under_the_cap() {
+    let (_d, store) = fixture();
+    let limits = EntityLimits::per_environment(1);
+    apply_within(&store, &gone_host("a", PAST), &limits);
+    assert_eq!(
+        apply_within(&store, &[host("b", PAST, 0)], &limits).outcomes,
+        vec![EntityOutcome::EntityLimit],
+        "a gone entity holds its place until it is pruned"
+    );
+    store.writer().unwrap().prune_entities(FUTURE, 10).unwrap();
+    assert_eq!(
+        apply_within(&store, &[host("b", PAST, 0)], &limits).outcomes,
+        vec![EntityOutcome::Opened]
+    );
 }

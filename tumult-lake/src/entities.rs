@@ -28,6 +28,10 @@
 //! earlier batch stored, an equal time stays "not newer": it cannot be told
 //! from a delayed copy.
 //!
+//! The table is bounded (see [`caps`]): an entity keeps a limited number
+//! of rows, an environment and the lake hold a limited number of entities,
+//! and entities that are gone or expired leave after a retention window.
+//!
 //! Rows are tracked per `(entity_key, environment)`. The table has no
 //! primary key or index (the v5 rule for tables that receive UPDATEs);
 //! `valid_from_ns` is strictly increasing per entity by construction (a
@@ -44,6 +48,11 @@ use sha2::{Digest, Sha256};
 use crate::error::StoreError;
 use crate::store::{attrs_json, with_tx};
 use crate::{LogRow, Writer};
+
+mod caps;
+
+use caps::Census;
+pub use caps::{EntityLimits, ENTITIES_PER_ENVIRONMENT, ENTITY_VERSIONS_PER_ENTITY};
 
 /// Upper bound on a stored report interval (30 days). It keeps the
 /// `entities_current` expiry arithmetic inside `BIGINT` whatever a sender
@@ -126,6 +135,20 @@ pub enum EntityOutcome {
     DeleteRepeated,
     /// A delete older than the last state seen.
     DeleteOutOfOrder,
+    /// A state for an entity that has no row, refused because the
+    /// environment or the lake holds as many entities as
+    /// [`EntityLimits`] allows.
+    EntityLimit,
+}
+
+/// What applying a batch of entity events did.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct EntityApplied {
+    /// One outcome per event, in the order given.
+    pub outcomes: Vec<EntityOutcome>,
+    /// Rows removed because an entity had more than
+    /// [`EntityLimits::versions_per_entity`].
+    pub versions_pruned: usize,
 }
 
 impl EntityOutcome {
@@ -392,6 +415,17 @@ fn apply_delete(latest: Option<&mut Latest>, event: &EntityEventRow) -> EntityOu
 /// `(entity_key, environment)`.
 type Slot = (String, String);
 
+/// A batch while it is applied.
+struct Fold<'a> {
+    limits: &'a EntityLimits,
+    latest: HashMap<Slot, Latest>,
+    /// The entities stored before the batch plus those it added; read when
+    /// the batch first names an entity without a row.
+    census: Option<Census>,
+    /// The keys of the entities that gained a row.
+    grown: Vec<String>,
+}
+
 const LOAD_LATEST: &str = "
 SELECT entity_key, environment, valid_from_ns, last_seen_ns, interval_s,
        wire_form, state_hash, deleted_at_ns, delete_reason, observer,
@@ -419,15 +453,16 @@ WHERE entity_key = ? AND environment = ? AND valid_from_ns = ?";
 
 impl Writer {
     /// Fold `events` into `entity_versions` in one transaction, in the order
-    /// given, and report what each event did.
+    /// given, within `limits`, and report what each event did.
     ///
     /// # Errors
     /// Returns an error if a statement fails (nothing is stored).
     pub fn apply_entity_events(
         &self,
         events: &[EntityEventRow],
-    ) -> Result<Vec<EntityOutcome>, StoreError> {
-        with_tx(&self.conn, || self.put_entity_events(events))
+        limits: &EntityLimits,
+    ) -> Result<EntityApplied, StoreError> {
+        with_tx(&self.conn, || self.put_entity_events(events, limits))
     }
 
     /// Store the log rows and the entity events of one export in a single
@@ -440,10 +475,11 @@ impl Writer {
         &self,
         logs: &[LogRow],
         events: &[EntityEventRow],
-    ) -> Result<Vec<EntityOutcome>, StoreError> {
+        limits: &EntityLimits,
+    ) -> Result<EntityApplied, StoreError> {
         with_tx(&self.conn, || {
             self.put_logs(logs)?;
-            self.put_entity_events(events)
+            self.put_entity_events(events, limits)
         })
     }
 
@@ -452,51 +488,75 @@ impl Writer {
     fn put_entity_events(
         &self,
         events: &[EntityEventRow],
-    ) -> Result<Vec<EntityOutcome>, StoreError> {
+        limits: &EntityLimits,
+    ) -> Result<EntityApplied, StoreError> {
         if events.is_empty() {
-            return Ok(Vec::new());
+            return Ok(EntityApplied::default());
         }
         let prepared: Vec<Prepared<'_>> = events.iter().map(Prepared::new).collect();
-        let mut latest = self.load_latest(&prepared)?;
+        let mut fold = Fold {
+            limits,
+            latest: self.load_latest(&prepared)?,
+            census: None,
+            grown: Vec::new(),
+        };
         let mut outcomes = Vec::with_capacity(events.len());
         for item in &prepared {
             let slot = (item.key.clone(), item.event.environment.clone());
             let outcome = match item.event.kind {
-                EntityEventKind::Delete => apply_delete(latest.get_mut(&slot), item.event),
-                EntityEventKind::State => self.apply_state(&mut latest, slot, item)?,
+                EntityEventKind::Delete => apply_delete(fold.latest.get_mut(&slot), item.event),
+                EntityEventKind::State => self.apply_state(&mut fold, slot, item)?,
             };
             outcomes.push(outcome);
         }
-        for (slot, row) in &latest {
+        for (slot, row) in &fold.latest {
             self.write_version(slot, row)?;
         }
-        Ok(outcomes)
+        let versions_pruned = self.cap_entity_versions(&fold.grown, limits.versions_per_entity)?;
+        Ok(EntityApplied {
+            outcomes,
+            versions_pruned,
+        })
     }
 
     fn apply_state(
         &self,
-        latest: &mut HashMap<Slot, Latest>,
+        fold: &mut Fold<'_>,
         slot: Slot,
         state: &Prepared<'_>,
     ) -> Result<EntityOutcome, StoreError> {
-        match state_step(latest.get(&slot), state) {
+        match state_step(fold.latest.get(&slot), state) {
             StateStep::Stale => Ok(EntityOutcome::StaleState),
             StateStep::Refresh => {
-                if let Some(row) = latest.get_mut(&slot) {
+                if let Some(row) = fold.latest.get_mut(&slot) {
                     refresh(row, state);
                 }
                 Ok(EntityOutcome::Refreshed)
             }
             StateStep::Open => {
+                if !fold.latest.contains_key(&slot) && !self.admit(fold, &slot.1)? {
+                    return Ok(EntityOutcome::EntityLimit);
+                }
                 // The row this one supersedes leaves the map: write it now.
-                if let Some(closed) = latest.get(&slot) {
+                if let Some(closed) = fold.latest.get(&slot) {
                     self.write_version(&slot, closed)?;
                 }
-                let opened = state.open(latest.get(&slot))?;
-                latest.insert(slot, opened);
+                let opened = state.open(fold.latest.get(&slot))?;
+                fold.grown.push(slot.0.clone());
+                fold.latest.insert(slot, opened);
                 Ok(EntityOutcome::Opened)
             }
         }
+    }
+
+    /// Whether the limits leave room for one more entity in `environment`,
+    /// counting it when they do.
+    fn admit(&self, fold: &mut Fold<'_>, environment: &str) -> Result<bool, StoreError> {
+        let census = match fold.census.take() {
+            Some(census) => census,
+            None => self.entity_census()?,
+        };
+        Ok(fold.census.insert(census).admit(environment, fold.limits))
     }
 
     /// The latest stored row of every entity the batch names.

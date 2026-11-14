@@ -38,7 +38,7 @@ fn delete(mut of: EntityEventRow, ts_ns: i64, reason: &str) -> EntityEventRow {
 
 async fn store(srv: &TestServer, events: Vec<EntityEventRow>) {
     exec_write(srv, move |w| {
-        w.apply_entity_events(&events)
+        w.apply_entity_events(&events, &tumult_lake::EntityLimits::default())
             .map(|_| ())
             .map_err(|e| e.to_string())
     })

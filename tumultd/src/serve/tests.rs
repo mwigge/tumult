@@ -1009,7 +1009,8 @@ fn entity_events_follow_the_environment_flag() {
     let mut env = tumult_test_utils::EnvGuard::lock();
     env.remove("KRONIKA_ENTITY_EVENTS")
         .remove("KRONIKA_ENTITY_LABEL_ALLOW")
-        .remove("KRONIKA_ENTITY_ATTRIBUTE_ALLOW");
+        .remove("KRONIKA_ENTITY_ATTRIBUTE_ALLOW")
+        .remove("KRONIKA_ENTITY_MAX_PER_ENVIRONMENT");
     assert!(super::entity_events(&config).is_none(), "off by default");
     env.set("KRONIKA_ENTITY_EVENTS", "0");
     assert!(super::entity_events(&config).is_none());
@@ -1020,6 +1021,10 @@ fn entity_events_follow_the_environment_flag() {
             "k8s.service.annotation.owner",
         );
     let on = super::entity_events(&config).expect("the flag switches entity events on");
+    assert_eq!(on.limits().entities_per_environment, 50_000);
+    env.set("KRONIKA_ENTITY_MAX_PER_ENVIRONMENT", "120");
+    let capped = super::entity_events(&config).expect("still on");
+    assert_eq!(capped.limits().entities_per_environment, 120);
     assert_eq!(
         on.options().label_allow,
         vec!["team", "app.kubernetes.io/name"]

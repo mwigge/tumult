@@ -96,7 +96,8 @@ pub use auth::{SessionRow, TokenRow, UserRow};
 pub use backend::{AnalyticsBackend, StoreStats};
 #[cfg(feature = "duckdb")]
 pub use entities::{
-    entity_key, EntityEventKind, EntityEventRow, EntityOutcome, WireForm, ENTITY_INTERVAL_MAX_S,
+    entity_key, EntityApplied, EntityEventKind, EntityEventRow, EntityLimits, EntityOutcome,
+    WireForm, ENTITIES_PER_ENVIRONMENT, ENTITY_INTERVAL_MAX_S, ENTITY_VERSIONS_PER_ENTITY,
 };
 pub use error::AnalyticsError;
 #[cfg(feature = "duckdb")]

@@ -9,13 +9,19 @@ use opentelemetry_proto::tonic::common::v1::{
 use opentelemetry_proto::tonic::logs::v1::{LogRecord, ResourceLogs, ScopeLogs};
 use opentelemetry_proto::tonic::resource::v1::Resource;
 use serde_json::json;
-use tumult_lake::{EntityOutcome, Store};
+use tumult_lake::{
+    EntityEventKind, EntityEventRow, EntityLimits, EntityOutcome, Store, WireForm,
+    ENTITIES_PER_ENVIRONMENT,
+};
 
 use super::*;
 use crate::writer::{Batch, IngestWriter};
 
 pub(crate) const TS: u64 = 1_774_980_000_000_000_000;
-const RECEIVED: i64 = 1_774_980_000_500_000_000;
+/// The time of receipt given to conversions: 2100-01-01, ahead of the
+/// clock, so that what a test stores is neither expired nor past the
+/// retention window whenever the test runs.
+const RECEIVED: i64 = 4_102_444_800_000_000_000;
 
 fn kv(key: &str, value: Value) -> KeyValue {
     KeyValue {
@@ -393,7 +399,8 @@ async fn with_the_flag_an_export_without_entity_events_is_still_a_logs_batch() {
 #[tokio::test]
 async fn with_the_flag_entity_events_leave_the_logs_batch() {
     let (_dir, _store, ingest) = ingest_with(enabled());
-    let Batch::LogsAndEntities { logs, entities } = ingest.logs_batch(&host_export(true), RECEIVED)
+    let Batch::LogsAndEntities { logs, entities, .. } =
+        ingest.logs_batch(&host_export(true), RECEIVED)
     else {
         panic!("not a logs-and-entities batch");
     };
@@ -469,6 +476,11 @@ fn every_outcome_is_counted_under_its_own_name() {
         "tumultd_entity_events_total{outcome=\"delete_unknown\"} ",
         "tumultd_entity_events_total{outcome=\"delete_repeated\"} ",
         "tumultd_entity_events_total{outcome=\"delete_out_of_order\"} ",
+        "tumultd_entity_events_total{outcome=\"entity_limit\"} ",
+        "tumultd_entity_versions_pruned_total{reason=\"version_cap\"} ",
+        "tumultd_entity_versions_pruned_total{reason=\"retention\"} ",
+        "# TYPE tumultd_entity_versions gauge",
+        "\ntumultd_entity_versions ",
         "tumultd_entity_events_dropped_total{reason=\"no_identity\"} ",
         "tumultd_entity_events_dropped_total{reason=\"malformed\"} ",
     ] {
@@ -502,4 +514,192 @@ async fn an_event_without_identity_is_dropped_counted_and_not_logged_as_a_record
     let logs = rows(&store, LOGS);
     assert_eq!(logs.len(), 1, "{logs:?}");
     assert_eq!(logs[0]["body"], "experiment started");
+}
+
+fn limits_for(max_per_environment: Option<&str>) -> EntityLimits {
+    EntityEvents::from_settings(&EntitySettings {
+        max_per_environment,
+        ..on()
+    })
+    .unwrap()
+    .limits()
+}
+
+#[test]
+fn the_entity_cap_is_a_positive_integer() {
+    for unset in [None, Some(""), Some("  ")] {
+        assert_eq!(limits_for(unset), EntityLimits::default(), "{unset:?}");
+    }
+    assert_eq!(
+        EntityLimits::default().entities_per_environment,
+        ENTITIES_PER_ENVIRONMENT
+    );
+    let three = limits_for(Some(" 3 "));
+    assert_eq!(three.entities_per_environment, 3);
+    assert_eq!(
+        three.entities_total, 12,
+        "the lake holds four times as many"
+    );
+    assert_eq!(
+        three.versions_per_entity,
+        EntityLimits::default().versions_per_entity
+    );
+}
+
+#[test]
+fn an_unusable_entity_cap_keeps_the_default_and_is_logged() {
+    let (logs, _guard) = crate::test_logs::capture();
+    assert_eq!(limits_for(Some("12")).entities_per_environment, 12);
+    assert_eq!(logs.text(), "", "a usable value is not worth a line");
+    for unusable in ["0", "-1", "many", "1e3"] {
+        assert_eq!(
+            limits_for(Some(unusable)),
+            EntityLimits::default(),
+            "{unusable:?}"
+        );
+    }
+    let text = logs.text();
+    assert_eq!(text.matches("WARN").count(), 4, "{text}");
+    assert!(
+        text.contains("config.key=\"KRONIKA_ENTITY_MAX_PER_ENVIRONMENT\""),
+        "{text}"
+    );
+    assert!(text.contains("config.value=\"many\""), "{text}");
+}
+
+/// An entity beyond the cap is refused and counted; the export that named
+/// it is accepted and its other records are stored.
+#[tokio::test]
+async fn an_entity_beyond_the_cap_is_refused_and_the_rest_of_the_export_is_stored() {
+    let capped = EntityEvents::from_settings(&EntitySettings {
+        max_per_environment: Some("1"),
+        ..on()
+    });
+    let (_dir, store, ingest) = ingest_with(capped);
+    let batch = ingest.logs_batch(&host_export(false), RECEIVED);
+    ingest.write(batch).await.unwrap();
+
+    let mut other = host_export(false);
+    other.resource_logs[0].resource.as_mut().unwrap().attributes[0] = text("host.id", "another");
+    let before = outcome_count(EntityOutcome::EntityLimit);
+    let batch = ingest.logs_batch(&other, RECEIVED);
+    ingest.write(batch).await.unwrap();
+
+    assert!(outcome_count(EntityOutcome::EntityLimit) > before);
+    let entities = rows(&store, ENTITIES);
+    assert_eq!(entities.len(), 1, "{entities:?}");
+    assert_eq!(entities[0]["host_id"], "9f2c");
+    assert_eq!(rows(&store, LOGS).len(), 2);
+}
+
+#[test]
+fn refused_entities_are_logged_at_a_bounded_rate() {
+    let (logs, _guard) = crate::test_logs::capture();
+    let limiter = LogLimiter::new(1, std::time::Duration::from_secs(600));
+    warn_refused(&limiter, 0);
+    assert_eq!(logs.text(), "", "nothing refused, nothing said");
+    for _ in 0..5 {
+        warn_refused(&limiter, 3);
+    }
+    let text = logs.text();
+    assert_eq!(text.matches("WARN").count(), 1, "{text}");
+    assert!(text.contains("entity.event.refused=3"), "{text}");
+    assert!(
+        text.contains("config.key=\"KRONIKA_ENTITY_MAX_PER_ENVIRONMENT\""),
+        "{text}"
+    );
+}
+
+#[test]
+fn entities_past_the_window_are_looked_for_once_per_interval() {
+    let last = AtomicI64::new(0);
+    let now = 1_774_980_000_000_000_000;
+    assert!(prune_due(&last, now), "never looked");
+    assert!(!prune_due(&last, now + 1));
+    assert!(!prune_due(&last, now + PRUNE_EVERY_NS - 1));
+    assert!(prune_due(&last, now + PRUNE_EVERY_NS));
+    assert!(!prune_due(&last, now + PRUNE_EVERY_NS + 1));
+}
+
+fn host_event(kind: EntityEventKind, id: &str, at_ns: i64) -> EntityEventRow {
+    EntityEventRow {
+        kind,
+        ts_ns: at_ns,
+        received_at_ns: at_ns,
+        entity_type: "host".into(),
+        entity_id: vec![("host.id".into(), id.into())],
+        description: json!({}),
+        relationships: json!([]),
+        interval_s: 0,
+        delete_reason: None,
+        wire_form: WireForm::Spec,
+        observer: "anonymous".into(),
+        schema_url: None,
+        environment: String::new(),
+    }
+}
+
+fn gone(id: &str, at_ns: i64) -> [EntityEventRow; 2] {
+    [
+        host_event(EntityEventKind::State, id, at_ns),
+        host_event(EntityEventKind::Delete, id, at_ns + 1),
+    ]
+}
+
+#[test]
+fn housekeeping_removes_entities_that_left_the_retention_window() {
+    assert_eq!(RETENTION_DAYS, 30);
+    let dir = tempfile::TempDir::new().unwrap();
+    let store = Store::open(&dir.path().join("k.duckdb")).unwrap();
+    let writer = store.writer().unwrap();
+    let now = crate::now_ns();
+    let day = 86_400_000_000_000;
+    let mut events = Vec::new();
+    events.extend(gone("left-31-days-ago", now - 31 * day));
+    events.extend(gone("left-29-days-ago", now - 29 * day));
+    events.push(host_event(
+        EntityEventKind::State,
+        "old-and-live",
+        now - 400 * day,
+    ));
+    let limits = EntityLimits::default();
+    writer.apply_entity_events(&events, &limits).unwrap();
+
+    let before = versions_pruned(Pruned::Retention);
+    let last = AtomicI64::new(0);
+    housekeeping(&writer, &last, now);
+    assert!(versions_pruned(Pruned::Retention) > before);
+    assert_eq!(writer.entity_version_count().unwrap(), 2);
+
+    // Not due again yet: what leaves the window now waits.
+    writer
+        .apply_entity_events(&gone("left-40-days-ago", now - 40 * day), &limits)
+        .unwrap();
+    housekeeping(&writer, &last, now + 1);
+    assert_eq!(writer.entity_version_count().unwrap(), 3);
+    housekeeping(&writer, &last, now + PRUNE_EVERY_NS);
+    assert_eq!(writer.entity_version_count().unwrap(), 2);
+    drop(writer);
+    let left = rows(
+        &store,
+        "SELECT entity_id['host.id'] AS id FROM entity_versions ORDER BY id",
+    );
+    assert_eq!(left[0]["id"], "left-29-days-ago");
+    assert_eq!(left[1]["id"], "old-and-live");
+}
+
+#[test]
+fn rows_pruned_for_the_version_cap_are_counted() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let store = Store::open(&dir.path().join("k.duckdb")).unwrap();
+    let writer = store.writer().unwrap();
+    let before = versions_pruned(Pruned::VersionCap);
+    after_write(
+        &writer,
+        &tumult_lake::EntityApplied {
+            outcomes: vec![EntityOutcome::Opened],
+            versions_pruned: 4,
+        },
+    );
+    assert!(versions_pruned(Pruned::VersionCap) >= before + 4);
 }
