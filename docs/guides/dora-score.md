@@ -237,7 +237,7 @@ score:
 | `rollup.unassigned_weight` | 1.0 | Weight of a service with no function, and of an org unit with no function |
 | `rollup.critical_inheritance` | true | A node that supports a critical function is critical |
 | `conformance` | window_days 90; level1 … level4 key lists | Attribute keys each conformance level needs on every span |
-| `expected_status` | empty | Per-row override of the expected status |
+| `expected_status` | empty | Per-row override of the expected status: 2 (existing) or 3 (operating). A row that is only designed never meets an expectation |
 | `simplified_test_row` | `rts1774.art40` | The row T reads under the simplified profile |
 | `management_report_rows` | Art. 13(5), 6(5) and 16(2) rows | Records that satisfy the level-4 management report condition |
 | `tlpt_row` | `dora.art26.1` | The attestation level 5 needs for a designated entity |

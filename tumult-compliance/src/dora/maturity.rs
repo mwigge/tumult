@@ -1113,6 +1113,42 @@ mod tests {
         assert_eq!(round2(portfolio.coverage.unwrap()), 0.96);
     }
 
+    /// A plan in the org file makes a row Designed. Lowering what the
+    /// house expects of such rows must not turn the plan into a pass:
+    /// the bank that lost a restore test stays below level 4.
+    #[test]
+    fn a_plan_alone_never_meets_an_expectation_however_low_it_is_set() {
+        let mut inputs = bank_a();
+        inputs.evidence.retain(|e| e.id != "ops-0021-dr");
+        let mut params = HouseParams::default();
+        let designed: Vec<&str> = {
+            let matrix = Matrix::build(&inputs, &params);
+            let m = assess(&matrix, Scope::Entity);
+            assert_eq!(m.level, 3, "{:?}", m.blocked);
+            let reason = m.reason().unwrap_or_default();
+            assert!(reason.contains("evidence gap on"), "{reason}");
+            status::report(&matrix, None)
+                .rows
+                .iter()
+                .filter(|row| row.status == Status::Designed)
+                .map(|row| row.req.id)
+                .collect()
+        };
+        assert!(designed.len() > 1, "{designed:?}");
+        for id in &designed {
+            params.expected_status.insert((*id).to_string(), 1);
+        }
+        let matrix = Matrix::build(&inputs, &params);
+        let m = assess(&matrix, Scope::Entity);
+        assert_eq!(m.level, 3, "a plan passed the level-4 gate");
+        let report = status::report(&matrix, None);
+        for id in designed {
+            let row = report.row(id).unwrap();
+            assert_eq!((row.standing, row.expected), (Standing::Gap, 2), "{id}");
+            assert_eq!(row.gap, 1, "{id}");
+        }
+    }
+
     #[test]
     fn worked_example_b_is_level_2_with_index_3_60() {
         let inputs = firm_b();

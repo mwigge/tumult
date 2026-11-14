@@ -376,8 +376,9 @@ pub struct HouseParams {
     pub gates: GateThresholds,
     pub rollup: RollupParams,
     pub conformance: ConformanceParams,
-    /// Expected evidence status per requirement id (1–3), overriding the
-    /// registry default.
+    /// Expected evidence status per requirement id, overriding the
+    /// registry default: 2 (existing) or 3 (operating). Designed is a
+    /// declaration and is never an expectation.
     pub expected_status: BTreeMap<String, u8>,
     /// The row that stands for "yearly continuity or restore test" in the
     /// simplified coverage pillar.
@@ -681,9 +682,10 @@ impl HouseParams {
         }
         self.check_unknown_floor()?;
         for (id, status) in &self.expected_status {
-            if !(1..=3).contains(status) {
+            if !(2..=3).contains(status) {
                 return Err(format!(
-                    "score.expected_status.{id} must be 1, 2 or 3, got {status}"
+                    "score.expected_status.{id} must be 2 (existing) or 3 (operating): a \
+                     declaration alone meets no expectation, got {status}"
                 ));
             }
         }
@@ -1042,6 +1044,24 @@ mod tests {
             let error = refused(&format!("rollup: {{unknown_floor: {value}}}\n"));
             assert!(
                 error.contains("score.rollup.unknown_floor is fixed at 1"),
+                "{value} gave: {error}"
+            );
+        }
+    }
+
+    /// Designed is a declaration in the org file: it is never what the
+    /// house expects of a row.
+    #[test]
+    fn an_expected_status_is_existing_or_operating() {
+        for accepted in ["2", "3"] {
+            let yaml = format!("expected_status: {{dora.art12.2: {accepted}}}\n");
+            let params: HouseParams = serde_yaml::from_str(&yaml).unwrap();
+            params.validate().unwrap();
+        }
+        for value in ["0", "1", "4"] {
+            let error = refused(&format!("expected_status: {{dora.art12.2: {value}}}\n"));
+            assert!(
+                error.contains("score.expected_status.dora.art12.2 must be 2 (existing) or 3"),
                 "{value} gave: {error}"
             );
         }

@@ -16,7 +16,7 @@
 //! A status is a statement about evidence held against a house
 //! expectation. It is never a statement about compliance.
 
-use tumult_core::compliance::{Requirement, ARTICLES};
+use tumult_core::compliance::{Requirement, ARTICLES, EXPECTED_STATUS_EXISTING};
 
 use super::coverage::{CellState, Matrix, MatrixCell, MatrixRow, RowState};
 use super::params::{reaches, HouseParams};
@@ -154,7 +154,9 @@ pub fn row_status(matrix: &Matrix<'_>, row: &MatrixRow<'_>, scope: Option<usize>
 }
 
 /// The status the house expects of a row: the configured override, else
-/// the registry default for the entity's profile.
+/// the registry default for the entity's profile. Never below Existing:
+/// Designed is what the org file declares, and a declaration is not
+/// what an expectation is met with.
 #[must_use]
 pub fn expected_rank(req: &Requirement, matrix: &Matrix<'_>) -> u8 {
     matrix
@@ -164,6 +166,7 @@ pub fn expected_rank(req: &Requirement, matrix: &Matrix<'_>) -> u8 {
         .get(req.id)
         .copied()
         .unwrap_or_else(|| req.expected_status(&matrix.ctx.inputs.entity))
+        .max(EXPECTED_STATUS_EXISTING)
 }
 
 /// Name of an expected-status rank.
@@ -258,7 +261,10 @@ impl StatusReport {
     }
 }
 
+/// A row meets its expectation on evidence only: below Existing it is
+/// a gap whatever is expected of it.
 fn standing(status: Status, expected: u8) -> (Standing, u8) {
+    let expected = expected.max(EXPECTED_STATUS_EXISTING);
     match status {
         Status::Na => (Standing::Na, 0),
         Status::Unknown => (Standing::Unknown, 0),
@@ -585,6 +591,19 @@ mod tests {
         let matrix = Matrix::build(&inputs, &params);
         let row = row_report(&matrix, matrix.row("dora.art12.2").unwrap(), None);
         assert_eq!((row.standing, row.gap), (Standing::Meets, 0));
+    }
+
+    #[test]
+    fn nothing_below_existing_meets_any_expectation() {
+        for expected in 0..=3 {
+            assert_eq!(standing(Status::None, expected).0, Standing::Gap);
+            assert_eq!(standing(Status::Designed, expected).0, Standing::Gap);
+            assert!(standing(Status::Designed, expected).1 >= 1);
+        }
+        assert_eq!(standing(Status::Existing, 1), (Standing::Meets, 0));
+        assert_eq!(standing(Status::Existing, 2), (Standing::Meets, 0));
+        assert_eq!(standing(Status::Existing, 3), (Standing::Gap, 1));
+        assert_eq!(standing(Status::Operating, 3), (Standing::Meets, 0));
     }
 
     #[test]
