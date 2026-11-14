@@ -10,16 +10,17 @@ use std::process::ExitCode;
 
 use tumult_net::config::ProxySpec;
 use tumult_net::proxy::Proxy;
-use tumult_otel::logging::{self, err, LogOptions};
+use tumult_otel::logging::{self, err};
 
 /// `service.name` of the daemon's log events.
 const SERVICE_NAME: &str = "tumult-net-proxyd";
 
 #[tokio::main]
 async fn main() -> ExitCode {
-    // stderr is the startup log the spawning action reads back when the
-    // daemon dies on arrival, so failures must be events on it.
-    if let Err(error) = logging::init(LogOptions::new(SERVICE_NAME)) {
+    // stderr is the log file the spawning action reads back when the daemon
+    // dies on arrival, so failures must be events on it. Nothing rotates
+    // that file, so what goes to it is limited.
+    if let Err(error) = logging::init(tumult_net::daemon_log_options(SERVICE_NAME)) {
         logging::report_init_failure(SERVICE_NAME, &error);
         return ExitCode::FAILURE;
     }

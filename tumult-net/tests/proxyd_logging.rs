@@ -48,12 +48,16 @@ async fn the_daemon_log_outlives_readiness_and_is_removed_by_the_rollback() {
         .chars()
         .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
         .collect();
-    let log = std::env::temp_dir().join(format!("tumult-net-{key}.stderr.log"));
+    let dir = std::env::temp_dir().join(format!("tumult-net-{key}.log.d"));
+    let log = dir.join("stderr.log");
 
     start_proxy(listen, free_addr(), tumult_net::FaultProfile::default())
         .await
         .expect("the proxy starts");
-    let kept = log.exists();
+    // Looked at before the proxy is stopped, asserted after: a failed
+    // assertion must not leave the daemon running.
+    let kept = log.is_file();
+    let modes = (mode_of(&dir), mode_of(&log));
     let stopped = stop_proxy(listen).await;
 
     assert!(
@@ -61,6 +65,29 @@ async fn the_daemon_log_outlives_readiness_and_is_removed_by_the_rollback() {
         "a running daemon keeps its log file: {}",
         log.display()
     );
+    #[cfg(unix)]
+    assert_eq!(
+        modes,
+        (Some(0o700), Some(0o600)),
+        "the log is its owner's alone"
+    );
     stopped.expect("the proxy stops");
-    assert!(!log.exists(), "the rollback removes the daemon's log file");
+    assert!(!dir.exists(), "the rollback removes the daemon's log");
+}
+
+/// The permission bits of `path`; `None` when it does not exist or the
+/// platform has none.
+fn mode_of(path: &std::path::Path) -> Option<u32> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let metadata = std::fs::symlink_metadata(path).ok()?;
+        Some(metadata.permissions().mode() & 0o777)
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = path;
+        None
+    }
 }
