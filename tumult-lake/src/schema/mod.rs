@@ -146,6 +146,11 @@ pub const CREATE_TABLES: &[&str] = &[
 /// CREATE OR REPLACE so existing databases pick up view changes on startup.
 pub const CREATE_VIEWS: &[&str] = &[EXPERIMENT_RUNS_VIEW, entities::VIEW];
 
+/// Additive changes to tables of this version that an earlier build of the
+/// same version may have created without them. Run after
+/// [`CREATE_TABLES`] and before [`CREATE_VIEWS`].
+pub const AMEND_TABLES: &[&str] = &[entities::ADD_RECEIPT_COLUMN];
+
 const EXPERIMENT_RUNS_VIEW: &str = "
 CREATE OR REPLACE VIEW experiment_runs AS
 SELECT

@@ -1269,6 +1269,58 @@ fn the_entity_table_has_no_index() {
     assert!(indexes.is_empty(), "{indexes:?}");
 }
 
+/// The table as the first development builds of v21 created it: without
+/// `last_received_ns`. `CREATE TABLE IF NOT EXISTS` leaves such a table as
+/// it is, so the column is added and filled from `last_seen_ns`, the best
+/// record there is of when the daemon last heard of the entity.
+#[test]
+fn a_lake_from_before_the_receipt_column_opens_and_is_backfilled() {
+    let (_d, store) = fixture();
+    let writer = store.writer().unwrap();
+    for statement in [
+        "DROP VIEW entities_current",
+        "DROP TABLE entity_versions",
+        "CREATE TABLE entity_versions (
+            entity_key VARCHAR NOT NULL,
+            environment VARCHAR NOT NULL DEFAULT '',
+            entity_type VARCHAR NOT NULL,
+            entity_id MAP (VARCHAR, VARCHAR) NOT NULL,
+            state_hash VARCHAR NOT NULL,
+            description JSON,
+            relationships JSON,
+            valid_from_ns BIGINT NOT NULL,
+            last_seen_ns BIGINT NOT NULL,
+            interval_s BIGINT NOT NULL DEFAULT 0,
+            deleted_at_ns BIGINT,
+            delete_reason VARCHAR,
+            wire_form VARCHAR NOT NULL,
+            observer VARCHAR NOT NULL,
+            schema_url VARCHAR
+        )",
+        "INSERT INTO entity_versions VALUES (
+            'host|host.id=old', 'prod', 'host', MAP {'host.id': 'old'}, 'h',
+            '{}', '[]', 1000, 2000, 10, NULL, NULL, 'spec', 'tok:a', NULL
+        )",
+    ] {
+        writer.execute(statement, []).unwrap();
+    }
+    drop(writer);
+    let reopened = Store::open(store.path()).unwrap();
+    let rows = versions(&reopened);
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["last_received_ns"], 2000);
+    assert_eq!(current(&reopened)[0]["liveness"], "expired");
+    // The table takes events as one created by this build does.
+    assert_eq!(
+        apply(&reopened, &[host("new", FUTURE, 1), host("old", FUTURE, 1)]),
+        vec![EntityOutcome::Opened; 2]
+    );
+    assert_eq!(versions(&reopened).len(), 3);
+    // Opening again finds the column and changes nothing.
+    let before = versions(&reopened);
+    assert_eq!(versions(&Store::open(store.path()).unwrap()), before);
+}
+
 /// The largest batch a careful sender makes is a few thousand events. The
 /// single writer serves all telemetry, so such a batch has to be folded
 /// well within the second, whatever it does to the rows: open them,

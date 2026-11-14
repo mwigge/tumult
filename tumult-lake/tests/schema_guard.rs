@@ -113,3 +113,32 @@ fn a_lake_of_this_build_or_an_older_one_opens() {
     let dir = tempfile::TempDir::new().unwrap();
     Store::open(&dir.path().join("fresh.duckdb")).unwrap();
 }
+
+/// A writer is also opened without a migration: the ingest task rebuilds
+/// its connection that way after a fatal error. It is refused like the
+/// open, so a daemon cannot come to write a lake that a newer build took
+/// over in the meantime.
+#[test]
+fn a_writer_on_a_newer_lake_is_refused_without_a_migration() {
+    let (_dir, path) = lake_at(NEWER);
+    let refused = Store::at(&path).writer().err().expect("refused");
+    assert!(
+        matches!(
+            refused,
+            StoreError::SchemaTooNew { stored, supported }
+                if stored == NEWER && supported == CURRENT_SCHEMA_VERSION
+        ),
+        "{refused:?}"
+    );
+    assert_eq!(stored_version(&path), NEWER);
+}
+
+/// A file that holds no lake yet has no version: the writer that creates
+/// it is not refused.
+#[test]
+fn a_writer_on_a_new_file_is_not_refused() {
+    let dir = tempfile::TempDir::new().unwrap();
+    Store::at(&dir.path().join("fresh.duckdb"))
+        .writer()
+        .unwrap();
+}

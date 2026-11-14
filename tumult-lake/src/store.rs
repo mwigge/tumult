@@ -116,8 +116,18 @@ impl Store {
     /// read-write connection to the same file. (Within one process,
     /// `duckdb-rs` shares a single instance per path, so the daemon keeps
     /// exactly one `Writer` by construction — one channel, one task.)
+    /// Returns [`StoreError::SchemaTooNew`] for a lake that a later build
+    /// wrote.
     pub fn writer(&self) -> Result<Writer, StoreError> {
         let conn = open_with_retry(&self.path, || Connection::open(&self.path))?;
+        // Also for a writer that is opened without a migration, as the
+        // ingest task does when it rebuilds its connection.
+        if let Some(stored) = newer_schema(&conn)? {
+            return Err(StoreError::SchemaTooNew {
+                stored,
+                supported: schema::CURRENT_SCHEMA_VERSION,
+            });
+        }
         Ok(Writer {
             conn,
             clock: crate::lake::now_ns,
@@ -235,6 +245,9 @@ pub(crate) fn migrate(conn: &Connection) -> Result<(), duckdb::Error> {
     // pre-existing databases.
     conn.execute_batch(tumult_graph::sql::CREATE_TABLES)?;
     conn.execute_batch(tumult_graph::sql::MIGRATE_EDGES_ADD_ATTRS)?;
+    for amendment in schema::AMEND_TABLES {
+        conn.execute_batch(amendment)?;
+    }
     for view in schema::CREATE_VIEWS {
         conn.execute_batch(view)?;
     }

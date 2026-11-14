@@ -26,6 +26,18 @@ CREATE TABLE IF NOT EXISTS entity_versions (
 );
 ";
 
+/// For a table that a development build of v21 created before the column
+/// existed: `CREATE TABLE IF NOT EXISTS` leaves such a table as it is. The
+/// column is added and filled from `last_seen_ns`, the best record such a
+/// lake has of when the daemon last heard of an entity. An added column
+/// cannot be declared `NOT NULL`; every statement of `crate::entities`
+/// writes it. Run before [`VIEW`], which reads the column.
+pub(super) const ADD_RECEIPT_COLUMN: &str = "
+ALTER TABLE entity_versions ADD COLUMN IF NOT EXISTS last_received_ns BIGINT;
+UPDATE entity_versions SET last_received_ns = last_seen_ns
+WHERE last_received_ns IS NULL;
+";
+
 /// The latest row of each entity per environment, with its liveness:
 /// `gone` once deleted, `expired` after three missed report intervals,
 /// `live` otherwise. An entity with `interval_s = 0` sends no periodic
