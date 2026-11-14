@@ -25,7 +25,6 @@ tumult-api/tests/env_parts.rs::lake_status_reports_watermarks_and_policy::raw-en
 tumult-api/tests/env_parts.rs::retention_export_fails_closed_even_with_ingest_handle::raw-env  # deferred: move to tumult_test_utils::EnvGuard
 
 # tumult-cli: deferred, the crate is being changed elsewhere
-tumult-cli/src/commands/tests/executor.rs::sync_executor_timeout_kills_process_group::bare-sleep  # deferred: sleep without a stated reason
 tumult-cli/src/dispatch_tests.rs::dispatch_agents_lists_adapters::no-assert  # deferred: asserts nothing yet
 tumult-cli/src/dispatch_tests.rs::dispatch_compliance_report_and_sources::no-assert  # deferred: asserts nothing yet
 tumult-cli/src/dispatch_tests.rs::dispatch_recommend_against_populated_store::no-assert  # deferred: asserts nothing yet

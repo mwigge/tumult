@@ -212,12 +212,12 @@ fn sync_executor_truncates_output_beyond_cap() {
 #[cfg(unix)]
 #[test]
 fn sync_executor_timeout_kills_process_group() {
-    let marker_dir = tempfile::tempdir().expect("tempdir");
-    let marker = marker_dir.path().join("grandchild-ran");
-    // The grandchild creates the marker file 2s in; the wrapper is killed at
-    // 0.5s. If only the direct child were killed, the grandchild would
-    // survive and create the marker.
-    let script = format!("(sleep 2; touch {}) & wait", marker.display());
+    let dir = tempfile::tempdir().expect("tempdir");
+    let pid_file = dir.path().join("grandchild.pid");
+    // The wrapper starts a grandchild that would outlive it by far, and is
+    // killed at 0.5s. If only the direct child were killed, the grandchild
+    // would still be running afterwards.
+    let script = format!("sleep 30 & echo $! > {}; wait", pid_file.display());
     let activity = process_activity("sh", vec!["-c".into(), script], Some(0.5));
 
     let outcome = ProviderExecutor::new().execute(&activity);
@@ -226,10 +226,27 @@ fn sync_executor_timeout_kills_process_group() {
     let error = outcome.error.expect("timeout must be reported");
     assert!(error.contains("timed out"), "unexpected error: {error}");
 
-    // Give the grandchild ample time to (wrongly) create the marker.
-    std::thread::sleep(std::time::Duration::from_secs(3));
-    assert!(
-        !marker.exists(),
-        "grandchild survived the timeout — process group was not killed"
-    );
+    let pid = std::fs::read_to_string(&pid_file).expect("the wrapper started its grandchild");
+    let pid = pid.trim();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while is_running(pid) {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "grandchild {pid} survived the timeout: the process group was not killed"
+        );
+        // sleep: interval of the bounded poll for the grandchild's end
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+}
+
+/// Whether process `pid` exists and has not exited (a zombie has).
+#[cfg(unix)]
+fn is_running(pid: &str) -> bool {
+    let ps = std::process::Command::new("ps")
+        .args(["-o", "stat=", "-p", pid])
+        .output()
+        .expect("run ps");
+    let state = String::from_utf8_lossy(&ps.stdout);
+    let state = state.trim();
+    ps.status.success() && !state.is_empty() && !state.starts_with('Z')
 }
