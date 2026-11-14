@@ -164,6 +164,24 @@ const MAX_VERSION_WINDOW_NS: i64 = 24 * 3_600 * NS_PER_S;
 /// The longest `service.namespace` a request may name, in bytes.
 const MAX_NAMESPACE_LEN: usize = 128;
 
+/// The longest target or probe name a request may carry, in bytes.
+const MAX_NAME_LEN: usize = 256;
+/// The most `min_samples` and `min_runs` a request may ask for: far above
+/// what a lake holds for one comparison, and a bound all the same.
+const MAX_MIN_SAMPLES: usize = 100_000;
+const MAX_MIN_RUNS: usize = 1000;
+
+/// A target or a probe as a request names it: bounded, and free of
+/// control characters.
+fn check_name(what: &str, value: &str) -> Result<(), ApiError> {
+    if value.len() <= MAX_NAME_LEN && !value.chars().any(char::is_control) {
+        return Ok(());
+    }
+    Err(bad_request(format!(
+        "{what} must be at most {MAX_NAME_LEN} bytes without control characters"
+    )))
+}
+
 /// The `reason` of the 400 that says the deployment order of two
 /// versions cannot be told.
 pub(crate) const UNORDERABLE: &str = "unorderable";
@@ -207,12 +225,16 @@ fn options_from_query(q: &PerfQuery) -> Result<CompareOptions, ApiError> {
         return Err(bad_request("margin_pct must be a non-negative number"));
     }
     let min_samples = q.min_samples.unwrap_or(defaults.min_samples);
-    if min_samples < 2 {
-        return Err(bad_request("min_samples must be at least 2"));
+    if !(2..=MAX_MIN_SAMPLES).contains(&min_samples) {
+        return Err(bad_request(format!(
+            "min_samples must be between 2 and {MAX_MIN_SAMPLES}"
+        )));
     }
     let min_runs = q.min_runs.unwrap_or(defaults.min_runs);
-    if min_runs < 1 {
-        return Err(bad_request("min_runs must be at least 1"));
+    if !(1..=MAX_MIN_RUNS).contains(&min_runs) {
+        return Err(bad_request(format!(
+            "min_runs must be between 1 and {MAX_MIN_RUNS}"
+        )));
     }
     Ok(CompareOptions {
         quantile,
@@ -334,6 +356,7 @@ struct Request {
 
 impl Request {
     fn new(principal: &Principal, target: String, q: &PerfQuery) -> Result<Self, ApiError> {
+        check_name("target", &target)?;
         if q.store.is_some() {
             return Err(bad_request(format!(
                 "store is not a parameter: GET /api/perf/{target} never stores and \
@@ -356,6 +379,7 @@ impl Request {
             .clone()
             .filter(|p| !p.trim().is_empty())
             .unwrap_or_else(|| DEFAULT_PROBE.to_string());
+        check_name("probe", &probe)?;
         Ok(Self {
             env: requested_env(principal, q.env.as_deref())?,
             scopes: principal.env_scopes.clone(),
@@ -1116,6 +1140,7 @@ pub(crate) async fn version(
     Path(target): Path<String>,
     Query(q): Query<VersionQuery>,
 ) -> Result<Json<Value>, ApiError> {
+    check_name("target", &target)?;
     let (from_ns, to_ns) = version_window(q.from_ns, q.to_ns).map_err(bad_request)?;
     let namespace = named_namespace(q.namespace.as_deref())?;
     let env = requested_env(&principal, q.env.as_deref())?;
@@ -1220,6 +1245,11 @@ mod tests {
         let opts = options_from_query(&runs(1, Some(7))).expect("one run, seeded");
         assert_eq!((opts.min_runs, opts.seed), (1, 7));
         assert!(options_from_query(&runs(0, None)).is_err());
+        // Bounded above too: nobody has a thousand and one runs a side.
+        assert!(options_from_query(&runs(1000, None)).is_ok());
+        assert!(options_from_query(&runs(1001, None)).is_err());
+        assert!(options_from_query(&q(None, None, None, Some(100_000))).is_ok());
+        assert!(options_from_query(&q(None, None, None, Some(100_001))).is_err());
         let opts =
             options_from_query(&q(Some("p99"), Some(0.9), Some(10.0), Some(5))).expect("custom");
         assert_eq!(opts.quantile, Quantile::P99);

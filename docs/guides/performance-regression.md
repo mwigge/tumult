@@ -317,8 +317,8 @@ GET  /api/perf/{target}/version?env=&namespace=&from_ns=&to_ns=
 | `probe` | `load.latency_p95_ms` | The `probe_samples` series compared |
 | `quantile` | `p95` | `p50`, `p95` or `p99` |
 | `confidence` | `0.95` | Bootstrap interval level, in (0, 1) |
-| `min_samples` | `20` | Fewer windows on either side is inconclusive |
-| `min_runs` | `3` | Fewer runs with samples on either side is inconclusive (at least 1) |
+| `min_samples` | `20` | Fewer windows on either side is inconclusive (2 to 100000) |
+| `min_runs` | `3` | Fewer runs with samples on either side is inconclusive (1 to 1000) |
 | `seed` | fixed | Seed of the bootstrap generator; the answer carries the one used |
 | `margin_pct` | `5` | Noise margin as a percentage of the baseline quantile |
 | `env` | the only environment that can answer | The environment the answer is for (403 outside a scoped token's environments, 400 when empty) |

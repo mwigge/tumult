@@ -473,6 +473,24 @@ async fn perf_unknown_target_is_404_and_bad_options_are_400() {
     assert_eq!(status, 400, "{body}");
     let (status, body) = post(&srv.base, "/api/perf/no-such-service/verdicts").await;
     assert_eq!(status, 404, "{body}");
+
+    // A target and a probe are names: bounded, without control characters.
+    let long = "x".repeat(257);
+    for path in [
+        format!("/api/perf/{long}"),
+        format!("/api/perf/checkout?probe={long}"),
+        "/api/perf/check%07out".to_string(),
+        "/api/perf/checkout?probe=load%0Ap95".to_string(),
+        format!("/api/perf/{long}/version?from_ns=1&to_ns=2"),
+    ] {
+        let (status, body) = get(&srv.base, &path).await;
+        assert_eq!(status, 400, "{path}: {body}");
+        assert!(error_of(&body).contains("at most 256 bytes"), "{body}");
+    }
+    let (status, body) = post(&srv.base, &format!("/api/perf/{long}/verdicts")).await;
+    assert_eq!(status, 400, "{body}");
+    let (status, _) = get(&srv.base, &format!("/api/perf/{}", "x".repeat(256))).await;
+    assert_eq!(status, 404);
 }
 
 /// A service whose spans carry no environment is an environment of its
