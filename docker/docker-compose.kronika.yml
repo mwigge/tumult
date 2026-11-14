@@ -82,6 +82,15 @@ services:
       # TUMULT_PLUGIN_PATH. The image ships plugins and Docker CLI, but this
       # demo does not mount a host Docker socket or grant target credentials.
       TUMULT_PLUGIN_PATH: /opt/tumult/plugins
+      # Forecast provider for /api/forecast and /api/runs/{id}/impact. Empty
+      # (the default) = the built-in Holt-Winters provider. To use the
+      # Timestral sidecar below, start with the `forecast` profile:
+      #   TUMULTD_FORECAST_URL=http://forecastd:8700 \
+      #     docker compose -f docker/docker-compose.kronika.yml --profile forecast up
+      TUMULTD_FORECAST_URL: ${TUMULTD_FORECAST_URL:-}
+      # Seconds a failing sidecar is skipped before it is tried again
+      # (the Holt-Winters fallback answers meanwhile); 0 disables the breaker.
+      TUMULTD_FORECAST_COOLDOWN_S: ${TUMULTD_FORECAST_COOLDOWN_S:-30}
     volumes:
       - tumult-kronika-data:/data
       - ../demo/kronika/org.yaml:/data/org.yaml:ro
@@ -221,5 +230,53 @@ services:
         condition: service_completed_successfully
     restart: "no"
 
+  forecastd:
+    # Optional Timestral forecasting sidecar (see ../forecastd/README.md).
+    # Not started by a plain `up`; enable with `--profile forecast` and set
+    # TUMULTD_FORECAST_URL=http://forecastd:8700 for the tumultd service.
+    # The image bundles no weights: mount a local snapshot at /weights
+    # (FORECASTD_WEIGHTS_DIR on the host) for offline use, or leave the
+    # default and let the first start download them into the hf-cache volume.
+    # The profile runs the real model, pinned: the hub revision and the
+    # SHA-256 of the weight files below are the tested ones, and the service
+    # refuses to start on any other bytes. Change both together, and only
+    # after checking where the new files came from.
+    # FORECASTD_MODEL=stub is the offline mode: a linear stand-in with no
+    # weights, which names itself `stub` in every forecast's provenance.
+    profiles: ["forecast"]
+    build:
+      context: ../forecastd
+    image: tumult-forecastd:0.1.0
+    container_name: tumult-kronika-forecastd
+    environment:
+      FORECASTD_BIND: 0.0.0.0:8700
+      FORECASTD_MODEL: ${FORECASTD_MODEL:-timestral}
+      FORECASTD_MODEL_SIZE: ${FORECASTD_MODEL_SIZE:-5M}
+      FORECASTD_MODEL_REVISION: ${FORECASTD_MODEL_REVISION:-bdd20cfc15a3fea0e4cb5ccef37f8d3ca7aa335f}
+      FORECASTD_WEIGHTS_SHA256: ${FORECASTD_WEIGHTS_SHA256:-577236a804ccb3c2b02638c94b6b433920acf8edd248c9f7a6a32eb50104d63e}
+      FORECASTD_WEIGHTS_PATH: ${FORECASTD_WEIGHTS_PATH:-}
+      FORECASTD_THREADS: ${FORECASTD_THREADS:-4}
+      HF_HOME: /cache/hf
+    volumes:
+      - tumult-kronika-hf-cache:/cache/hf
+      # - ${FORECASTD_WEIGHTS_DIR}:/weights:ro   # with FORECASTD_WEIGHTS_PATH=/weights
+    # Nothing is written outside the hub cache volume and /tmp.
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8700/healthz', timeout=3)"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+    # The 5M model holds about 0.35 GB resident on CPU.
+    mem_limit: 2g
+    restart: unless-stopped
+
 volumes:
   tumult-kronika-data:
+  tumult-kronika-hf-cache:

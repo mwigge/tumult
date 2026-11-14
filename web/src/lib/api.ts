@@ -19,6 +19,7 @@ import type {
     GameDayEntry,
     ExperimentRow,
     ExperimentWindow,
+    ForecastResponse,
     LogEntry,
     LoginResponse,
     LogVolume,
@@ -41,6 +42,7 @@ import type {
     ReportTemplate,
     RunDetail,
     RunEvent,
+    RunImpact,
     RunRow,
     ScaffoldRequest,
     ScaffoldResponse,
@@ -82,12 +84,24 @@ function perfQuery(params: { probe?: string; quantile?: string; env?: string }):
     return qs ? `?${qs}` : '';
 }
 
+/** A request the API answered with an error status. `status` lets a caller
+    tell "nothing there" (404) from "not allowed" (403) and "it broke" (5xx). */
+export class ApiError extends Error {
+    readonly status: number;
+
+    constructor(message: string, status: number) {
+        super(message);
+        this.name = 'ApiError';
+        this.status = status;
+    }
+}
+
 async function get<T>(path: string): Promise<T> {
     const resp = await fetch(path);
     const body = await resp.json().catch(() => ({}));
     if (!resp.ok) {
         redirectOnUnauthorized(resp, path);
-        throw new Error(body.error ?? `HTTP ${resp.status}`);
+        throw new ApiError(body.error ?? `HTTP ${resp.status}`, resp.status);
     }
     return body as T;
 }
@@ -101,7 +115,7 @@ async function send<T>(method: string, path: string, payload: unknown): Promise<
     const body = await resp.json().catch(() => ({}));
     if (!resp.ok) {
         redirectOnUnauthorized(resp, path);
-        throw new Error(body.error ?? `HTTP ${resp.status}`);
+        throw new ApiError(body.error ?? `HTTP ${resp.status}`, resp.status);
     }
     return body as T;
 }
@@ -358,6 +372,21 @@ export const api = {
     },
 
     run: (id: string) => get<RunDetail>(`/api/runs/${encodeURIComponent(id)}`),
+
+    // Counterfactual impact of a run; rejects (404) when it has no samples.
+    runImpact: (id: string) => get<RunImpact>(`/api/runs/${encodeURIComponent(id)}/impact`),
+
+    forecast: (
+        metric: string,
+        opts: { target?: string; env?: string; range?: string; horizon?: number } = {},
+    ) => {
+        const qs = new URLSearchParams({ metric });
+        if (opts.target) qs.set('target', opts.target);
+        if (opts.env) qs.set('env', opts.env);
+        if (opts.range) qs.set('range', opts.range);
+        if (opts.horizon) qs.set('horizon', String(opts.horizon));
+        return get<ForecastResponse>(`/api/forecast?${qs}`);
+    },
 
     stopRun: (id: string) =>
         send<{ run_id: string; stop: string }>(

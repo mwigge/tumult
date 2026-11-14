@@ -8019,6 +8019,8 @@ version = "0.7.0"
 dependencies = [
  "async-trait",
  "axum",
+ "opentelemetry",
+ "opentelemetry_sdk",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
@@ -8032,6 +8034,7 @@ dependencies = [
  "tumult-autopilot",
  "tumult-compliance",
  "tumult-core",
+ "tumult-forecast",
  "tumult-graph",
  "tumult-ingest",
  "tumult-intelligence",
@@ -8222,6 +8225,13 @@ dependencies = [
  "tumult-plugin",
  "tumult-ssh",
  "tumult-windows",
+]
+
+[[package]]
+name = "tumult-forecast"
+version = "2.22.0"
+dependencies = [
+ "serde",
 ]
 
 [[package]]

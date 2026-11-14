@@ -138,7 +138,12 @@ not being renamed.
    the continuous posture score; `POST /api/risks/{id}/suppress` accepts a
    finding for a while; `POST /api/risks/{id}/recommend` turns one into a
    registered experiment and an autopilot candidate with a `risk`
-   trigger, gated and recorded when a policy is loaded). Mutating routes exist but
+   trigger, gated and recorded when a policy is loaded), and
+   `/api/forecast` + `/api/runs/{id}/impact` (forecast bands for semantic
+   metrics and the counterfactual impact and recovery time of a run's
+   probes; the provider is the built-in Holt-Winters in `tumult-forecast`,
+   or the `tumult-forecastd` Timestral sidecar when `TUMULTD_FORECAST_URL`
+   is set, with the model named in every response). Mutating routes exist but
    stay read-only in spirit: they ride the single-writer channel (run
    control below, manual-evidence lifecycle, approval decisions). Ad-hoc
    digests come from `tumultd report` / `GET /report`; with
@@ -313,6 +318,15 @@ while, hash-chained per risk id (`prev_hash → new_hash`, the `run_audit` link
 function) so an auditor can verify nothing was silenced off the record.
 Suppressions carry an optional expiry; the scanner applies the latest active
 row per finding at read time.
+
+v19 adds `forecasts`: the cache behind `/api/forecast`, one row per computed
+forecast keyed by series, model, step, horizon bucket and context window, with
+the quantile levels and the `quantiles[step][level]` matrix as DuckDB lists and
+the provenance (model, version, weights hash) alongside. Forecasting itself is pure
+(`tumult-forecast` opens no database): the API handler resamples on a
+read-only reader, asks the provider, and writes the cache row through the
+single-writer channel, which also caps the rows per series and prunes expired
+ones a batch at a time. Rows are derived data and can be deleted at any time.
 
 ## Roadmap: external tooling on the lake
 
