@@ -21,7 +21,7 @@ Map, the maturity roll-up and the web UI do not read entities yet.
 |---|---|---|
 | `KRONIKA_ENTITY_EVENTS` | unset (off) | `1`, `true`, `yes` or `on` (in any case) stores entity events as entities; unset, empty, `0`, `false`, `no` or `off` leaves them off. Any other value also leaves them off and is logged at start as the warning `ingest.entity_events.flag_unrecognised`. Read once, when the daemon starts. |
 | `KRONIKA_ENTITY_LABEL_ALLOW` | empty | Comma-separated label names that are kept from `k8s.<kind>.label.<name>` attributes, for example `team,app.kubernetes.io/name`. See section 5. |
-| `KRONIKA_ENTITY_ATTRIBUTE_ALLOW` | empty | Comma-separated description keys that are kept whatever they are: a whole key (`k8s.service.annotation.owner`) or the start of one followed by `*` (`k8s.service.selector.*`). See section 5. |
+| `KRONIKA_ENTITY_ATTRIBUTE_ALLOW` | empty | Comma-separated description keys that are kept whatever they are: a whole key (`k8s.service.annotation.owner`) or the start of one followed by `*` (`k8s.service.selector.*`). An entry that names no namespace (`*` alone, or a start without a dot such as `k8s*`) is honoured and logged at start as the warning `ingest.entity_events.attribute_allow_broad`. See section 5. |
 | `KRONIKA_ENTITY_MAX_PER_ENVIRONMENT` | `50000` | The most entities one environment may hold, a positive integer. The lake as a whole holds four times as many. Anything else keeps the default and is logged at start as the warning `ingest.entity_events.limit_unrecognised`. See section 6. |
 
 With the flag on the daemon logs `daemon.entity_events.enabled` at

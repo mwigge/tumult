@@ -239,6 +239,62 @@ fn a_long_unrecognised_flag_value_is_cut_in_the_log() {
     assert!(!text.contains(&"x".repeat(65)), "{text}");
 }
 
+fn with_attribute_allow(list: &str) -> Vec<String> {
+    EntityEvents::from_settings(&EntitySettings {
+        attribute_allow: Some(list),
+        ..on()
+    })
+    .unwrap()
+    .options()
+    .attribute_allow
+    .clone()
+}
+
+/// `*` alone, or the start of a key that names no whole namespace, keeps
+/// far more than an operator who typed it may have meant: annotations and
+/// selectors of every kind. It is honoured, and said at start.
+#[test]
+fn an_attribute_pattern_without_a_namespace_is_honoured_and_logged() {
+    for broad in ["*", "k8s*", "h*", " * "] {
+        let (logs, _guard) = crate::test_logs::capture();
+        let kept = with_attribute_allow(&format!("k8s.service.selector.*,{broad}"));
+        assert_eq!(kept, vec!["k8s.service.selector.*", broad.trim()]);
+        let text = logs.text();
+        assert_eq!(text.lines().count(), 1, "{text}");
+        assert!(text.contains("WARN"), "{text}");
+        assert!(text.contains("names no namespace"), "{text}");
+        assert!(
+            text.contains("config.key=\"KRONIKA_ENTITY_ATTRIBUTE_ALLOW\""),
+            "{text}"
+        );
+        assert!(
+            text.contains(&format!("config.value=\"{}\"", broad.trim())),
+            "{text}"
+        );
+    }
+}
+
+/// A whole key, and the start of one that ends inside a namespace, are
+/// what the variable is for.
+#[test]
+fn an_attribute_pattern_within_a_namespace_is_not_worth_a_line() {
+    let (logs, _guard) = crate::test_logs::capture();
+    with_attribute_allow("k8s.service.selector.*,k8s.*,schedule,host.labels_json");
+    assert_eq!(logs.text(), "");
+}
+
+/// With the flag off the list is not read, so nothing is said about it.
+#[test]
+fn a_broad_attribute_pattern_is_not_logged_with_the_flag_off() {
+    let (logs, _guard) = crate::test_logs::capture();
+    let off = EntityEvents::from_settings(&EntitySettings {
+        attribute_allow: Some("*"),
+        ..EntitySettings::default()
+    });
+    assert!(off.is_none());
+    assert_eq!(logs.text(), "");
+}
+
 #[test]
 fn the_label_allow_list_is_a_comma_separated_list_of_names() {
     let labels = |list: Option<&str>| {

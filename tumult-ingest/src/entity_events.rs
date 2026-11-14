@@ -112,11 +112,16 @@ impl EntityEvents {
             Some(_) => TOKEN_OBSERVER,
             None => ANONYMOUS_OBSERVER,
         };
+        let attribute_allow = comma_separated(settings.attribute_allow);
+        attribute_allow
+            .iter()
+            .filter(|entry| is_broad_pattern(entry))
+            .for_each(|entry| warn_broad_pattern(entry));
         Some(Self {
             options: Arc::new(EntityOptions {
                 observer: observer.to_string(),
                 label_allow,
-                attribute_allow: comma_separated(settings.attribute_allow),
+                attribute_allow,
             }),
             limits: entity_limits(settings.max_per_environment),
         })
@@ -199,6 +204,30 @@ fn warn_unusable_limit(value: &str) {
             config.value = ?tumult_core::compliance::truncated(value, FLAG_LOGGED_LEN),
         },
         "the entity limit is not a positive integer: the default applies"
+    );
+}
+
+/// Whether an entry of `KRONIKA_ENTITY_ATTRIBUTE_ALLOW` keeps keys of more
+/// than one namespace: `*` alone, or the start of a key that ends before
+/// its first dot (`k8s*`, `h*`).
+fn is_broad_pattern(entry: &str) -> bool {
+    entry
+        .strip_suffix('*')
+        .is_some_and(|start| !start.contains('.'))
+}
+
+/// A pattern without a namespace keeps the labels, the selectors and the
+/// annotations of every kind, manifests included. It is the operator's to
+/// set and is honoured; it is said once, at start, so that it is not set
+/// without being seen.
+fn warn_broad_pattern(entry: &str) {
+    tracing::warn!(
+        name: "ingest.entity_events.attribute_allow_broad",
+        {
+            config.key = ATTRIBUTE_ALLOW_ENV,
+            config.value = ?tumult_core::compliance::truncated(entry, FLAG_LOGGED_LEN),
+        },
+        "an attribute pattern names no namespace: every key that starts so is stored"
     );
 }
 
