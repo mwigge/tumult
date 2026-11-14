@@ -23,6 +23,8 @@ prost.workspace = true
 arrow = { workspace = true, features = ["ipc_compression"] }
 ciborium.workspace = true
 zstd.workspace = true
+# gzip bodies on OTLP/HTTP; the crate tonic already brings for gzip on gRPC.
+flate2 = "1"
 # The gRPC listener does the TLS handshake itself, to know when it is done.
 tokio-rustls = { version = "0.26", default-features = false, features = ["aws-lc-rs", "tls12"] }
 # Keepalive on accepted sockets: tonic sets it only on its own listener.

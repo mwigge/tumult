@@ -8269,6 +8269,7 @@ dependencies = [
  "csv",
  "dirs-next",
  "flatbuffers",
+ "flate2",
  "hmac 0.12.1",
  "hyper-util",
  "opentelemetry-proto",

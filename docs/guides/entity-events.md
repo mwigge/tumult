@@ -90,6 +90,16 @@ services take its default (gzip), `zstd` and `none`. A message is bounded
 by what it expands to (4 MiB), whatever its size on the wire. The
 `otelarrow` exporter works with its default compression too.
 
+The `otlphttp` exporter needs none either: the daemon's OTLP/HTTP routes
+(`/v1/traces`, `/v1/metrics`, `/v1/logs`) take its default,
+`Content-Encoding: gzip`, and a body sent as it is (`compression: none`).
+A gzip body may expand to 4 MiB; one that expands to more is answered
+`413` and nothing of it is stored. Any other encoding (`zstd`, `snappy`,
+`deflate`, several at once) is answered `415 Unsupported Media Type` with
+`Accept-Encoding: gzip`, never accepted and never called malformed; a
+body that says gzip and is not is `400`. The body on the wire is bounded
+at 2 MiB, compressed or not, as before.
+
 `resourcedetection` matters for the `host` entity: `host_metrics` sends its
 event without an id, and the daemon takes the identity from the resource
 attribute `host.id`. A `host` event whose resource has no `host.id` is
