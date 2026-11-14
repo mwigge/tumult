@@ -226,7 +226,10 @@ fn a_span_with_an_early_timestamp_moves_a_deployment_start_only_so_far() {
 
     assert_eq!(
         deployments(&store),
-        [("1.4.0".to_string(), 10_000, 1), ("1.5.0".to_string(), 19_700, 1)]
+        [
+            ("1.4.0".to_string(), 10_000, 1),
+            ("1.5.0".to_string(), 19_700, 1)
+        ]
     );
     assert_eq!(
         seen(&store, "checkout"),

@@ -9,7 +9,9 @@ use arrow::record_batch::RecordBatch;
 
 use duckdb::params;
 
-use crate::arrow_convert::{experiments_schema, journal_probe_samples_schema, load_results_schema};
+use crate::arrow_convert::{
+    activity_results_schema, experiments_schema, journal_probe_samples_schema, load_results_schema,
+};
 use crate::error::AnalyticsError;
 use crate::export::{export_parquet, import_parquet};
 use crate::telemetry;
@@ -124,7 +126,10 @@ impl AnalyticsStore {
 
     /// Import what [`AnalyticsStore::export_load_tables`] wrote, in one
     /// transaction. A file written before a column existed imports with
-    /// that column unknown.
+    /// that column unknown. Rows the lake already holds (by
+    /// [`LOAD_RESULTS`] and [`PROBE_SAMPLES`]) are left as they are, so
+    /// importing a backup twice, or into a lake that has some of its
+    /// runs, adds each row once.
     ///
     /// # Errors
     ///
@@ -136,17 +141,24 @@ impl AnalyticsStore {
         load_results_path: &Path,
         probe_samples_path: &Path,
     ) -> Result<(), AnalyticsError> {
+        self.in_transaction(|| {
+            self.import_new(&LOAD_RESULTS, &load_results_schema(), load_results_path)?;
+            self.import_new(
+                &PROBE_SAMPLES,
+                &journal_probe_samples_schema(),
+                probe_samples_path,
+            )
+        })
+    }
+
+    /// Run `work` in one transaction: kept when it succeeds, undone when
+    /// it fails.
+    fn in_transaction(
+        &self,
+        work: impl FnOnce() -> Result<(), AnalyticsError>,
+    ) -> Result<(), AnalyticsError> {
         self.conn.execute_batch("BEGIN TRANSACTION")?;
-        let imported = self
-            .import_padded("load_results", &load_results_schema(), load_results_path)
-            .and_then(|()| {
-                self.import_padded(
-                    "probe_samples",
-                    &journal_probe_samples_schema(),
-                    probe_samples_path,
-                )
-            });
-        if let Err(e) = imported {
+        if let Err(e) = work() {
             if let Err(rollback) = self.conn.execute_batch("ROLLBACK") {
                 tracing::warn!(error.message = %rollback, "lake.import.rollback_failed");
             }
@@ -156,19 +168,35 @@ impl AnalyticsStore {
         Ok(())
     }
 
-    fn import_padded(
+    /// Import the rows of `path` the table does not hold yet: the file is
+    /// read into a staging table of the same layout, and the rows whose
+    /// natural key the table lacks are inserted from it. Rows that share
+    /// a key inside one file are all kept.
+    fn import_new(
         &self,
-        table: &str,
+        into: &Imported,
         schema: &Schema,
         path: &Path,
     ) -> Result<(), AnalyticsError> {
+        let table = into.table;
+        self.conn.execute_batch(&format!(
+            "CREATE OR REPLACE TEMP TABLE {STAGE} AS SELECT * FROM {table} LIMIT 0"
+        ))?;
         for batch in &import_parquet(path)? {
-            self.insert_batch(table, &pad_batch(batch, schema)?)?;
+            self.insert_batch(STAGE, &pad_batch(batch, schema)?)?;
         }
+        self.conn.execute_batch(&format!(
+            "INSERT INTO {table} SELECT * FROM {STAGE} AS s WHERE NOT EXISTS (\
+             SELECT 1 FROM {table} AS t WHERE {}); DROP TABLE {STAGE}",
+            into.same_row()
+        ))?;
         Ok(())
     }
 
-    /// Import from Parquet backup files. Wrapped in a transaction for atomicity.
+    /// Import from Parquet backup files. Wrapped in a transaction for
+    /// atomicity. Experiments and activities the lake already holds are
+    /// left as they are, so a second import of the same backup adds
+    /// nothing.
     ///
     /// # Errors
     ///
@@ -187,35 +215,64 @@ impl AnalyticsStore {
                 .to_string(),
         );
 
-        self.conn.execute_batch("BEGIN TRANSACTION")?;
-        match self.import_tables_inner(experiments_path, activities_path) {
-            Ok(()) => {
-                self.conn.execute_batch("COMMIT")?;
-                let stats = self.stats().unwrap_or(StoreStats {
-                    experiment_count: 0,
-                    activity_count: 0,
-                });
-                telemetry::event_import_completed(stats.experiment_count, stats.activity_count);
-                Ok(())
-            }
-            Err(e) => {
-                let _ = self.conn.execute_batch("ROLLBACK");
-                Err(e)
-            }
-        }
-    }
-
-    fn import_tables_inner(
-        &self,
-        experiments_path: &Path,
-        activities_path: &Path,
-    ) -> Result<(), AnalyticsError> {
-        self.import_padded("experiments", &experiments_schema(), experiments_path)?;
-        let act_batches = import_parquet(activities_path)?;
-        for batch in &act_batches {
-            self.insert_batch("activity_results", batch)?;
-        }
+        self.in_transaction(|| {
+            self.import_new(&EXPERIMENTS, &experiments_schema(), experiments_path)?;
+            self.import_new(&ACTIVITIES, &activity_results_schema(), activities_path)
+        })?;
+        let stats = self.stats().unwrap_or(StoreStats {
+            experiment_count: 0,
+            activity_count: 0,
+        });
+        telemetry::event_import_completed(stats.experiment_count, stats.activity_count);
         Ok(())
+    }
+}
+
+/// The staging table an import reads a file into.
+const STAGE: &str = "import_stage";
+
+/// A table an import adds rows to, and the columns that say two rows are
+/// the same row: its natural key.
+struct Imported {
+    table: &'static str,
+    key: &'static [&'static str],
+}
+
+const EXPERIMENTS: Imported = Imported {
+    table: "experiments",
+    key: &["experiment_id"],
+};
+const ACTIVITIES: Imported = Imported {
+    table: "activity_results",
+    key: &[
+        "experiment_id",
+        "name",
+        "activity_type",
+        "phase",
+        "started_at_ns",
+    ],
+};
+/// A run has one load result.
+const LOAD_RESULTS: Imported = Imported {
+    table: "load_results",
+    key: &["experiment_id"],
+};
+/// One value of one series of one run at one instant.
+const PROBE_SAMPLES: Imported = Imported {
+    table: "probe_samples",
+    key: &["experiment_id", "probe_name", "phase", "ts_ns"],
+};
+
+impl Imported {
+    /// The predicate that row `s` of the staging table is row `t` of the
+    /// table.
+    fn same_row(&self) -> String {
+        let same: Vec<String> = self
+            .key
+            .iter()
+            .map(|column| format!("t.{column} IS NOT DISTINCT FROM s.{column}"))
+            .collect();
+        same.join(" AND ")
     }
 }
 
@@ -509,6 +566,80 @@ mod tests {
         );
         assert_eq!(before[2].len(), 2 * 2 * 10);
         assert_eq!(evidence(&imported), before);
+    }
+
+    /// Export everything `store` holds into `dir`.
+    fn export_all(store: &AnalyticsStore, dir: &std::path::Path) {
+        let path = |name: &str| dir.join(name);
+        store
+            .export_tables(&path("experiments.parquet"), &path("activities.parquet"))
+            .unwrap();
+        store
+            .export_load_tables(
+                &path("load_results.parquet"),
+                &path("probe_samples.parquet"),
+            )
+            .unwrap();
+    }
+
+    fn import_all(store: &AnalyticsStore, dir: &std::path::Path) {
+        let path = |name: &str| dir.join(name);
+        store
+            .import_tables(&path("experiments.parquet"), &path("activities.parquet"))
+            .unwrap();
+        store
+            .import_load_tables(
+                &path("load_results.parquet"),
+                &path("probe_samples.parquet"),
+            )
+            .unwrap();
+    }
+
+    const COUNTS: &str = "SELECT (SELECT count(*) FROM experiments), \
+         (SELECT count(*) FROM activity_results), (SELECT count(*) FROM load_results), \
+         (SELECT count(*) FROM probe_samples)";
+
+    fn counts(store: &AnalyticsStore) -> String {
+        store.query(COUNTS).unwrap()[0].join("|")
+    }
+
+    #[test]
+    fn importing_a_backup_twice_adds_nothing_the_second_time() {
+        let d = tempfile::TempDir::new().unwrap();
+        let exported = AnalyticsStore::in_memory().unwrap();
+        exported
+            .ingest_journals(&[load_run("r1"), load_run("r2")])
+            .unwrap();
+        export_all(&exported, d.path());
+
+        let imported = AnalyticsStore::in_memory().unwrap();
+        import_all(&imported, d.path());
+        let once = evidence(&imported);
+        import_all(&imported, d.path());
+        assert_eq!(counts(&imported), counts(&exported));
+        assert_eq!(evidence(&imported), once);
+    }
+
+    #[test]
+    fn importing_into_a_lake_that_holds_some_of_the_runs_adds_the_others() {
+        let d = tempfile::TempDir::new().unwrap();
+        let exported = AnalyticsStore::in_memory().unwrap();
+        exported
+            .ingest_journals(&[load_run("r1"), load_run("r2")])
+            .unwrap();
+        export_all(&exported, d.path());
+
+        // The lake already holds r1, and a run the backup knows nothing of.
+        let lake = AnalyticsStore::in_memory().unwrap();
+        lake.ingest_journals(&[load_run("r1"), load_run("r3")])
+            .unwrap();
+        import_all(&lake, d.path());
+
+        let all = AnalyticsStore::in_memory().unwrap();
+        all.ingest_journals(&[load_run("r1"), load_run("r2"), load_run("r3")])
+            .unwrap();
+        assert_eq!(counts(&lake), counts(&all));
+        assert_eq!(evidence(&lake), evidence(&all));
     }
 
     #[test]
