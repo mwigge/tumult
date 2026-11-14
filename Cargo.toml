@@ -114,14 +114,13 @@ anyhow = "1"
 chrono = { version = "0.4", features = ["serde"] }
 
 # Analytics (Phase 2) — Arrow columnar format + Parquet + DuckDB
-# NOTE: arrow/parquet are held at 58 because duckdb-rs (incl. 1.10505) pins
-# arrow 58 for its appender-arrow/vtab-arrow interop; mixing arrow 58 and 59
-# RecordBatch types does not compile. Bump arrow/parquet once duckdb-rs
-# supports arrow 59.
-arrow = { version = "58", features = ["json", "ipc", "ffi"] }
-parquet = { version = "58", features = ["arrow", "snap", "zstd"] }
+# NOTE: arrow/parquet track the arrow major that duckdb-rs pins (arrow 60 for
+# 1.20000) for its appender-arrow/vtab-arrow interop; mixing RecordBatch types
+# from two arrow majors does not compile. Bump the three together.
+arrow = { version = "60", features = ["json", "ipc", "ffi"] }
+parquet = { version = "60", features = ["arrow", "snap", "zstd"] }
 # Schema/query JSON and Parquet archives must work without extension downloads.
-duckdb = { version = "1.10505", features = ["bundled", "appender-arrow", "vtab-arrow", "json", "parquet"] }
+duckdb = { version = "1.20000", features = ["bundled", "appender-arrow", "vtab-arrow", "json", "parquet"] }
 
 # UUID
 uuid = { version = "1", features = ["v4", "serde"] }
