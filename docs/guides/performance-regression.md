@@ -12,6 +12,12 @@ latency samples the lake already holds, with a statistical verdict rather
 than a mean-and-sigma guess, and keeps one row per build so the answer is
 auditable later.
 
+One principle orders everything below: **the verdict is never better than
+the evidence**. A build that fails to answer is worse, not unknown; a
+latency nobody waited for is at least the timeout, not missing; and
+evidence too thin to tell is `inconclusive`, which fails the pipeline
+gate by default.
+
 ## How a verdict is computed
 
 1. **Runs and the version each measured.** A run is an experiment against
@@ -23,22 +29,55 @@ auditable later.
    1. **the version the run recorded** — `declared` when the experiment's
       `target.version` or `tumult run --target-version` named it,
       `observed` when the runner read it at the end of the run from the
-      target's own spans inside the run's window in the run's environment
-      and froze it in the journal (`target_version` with
-      `version_source`). The lake keeps it per run;
+      target's own telemetry inside the run's window in the run's
+      environment and froze it in the journal (`target_version` with
+      `version_source`). The lake keeps it per run. A version is
+      `observed` only when it served at least 95 % of the target's
+      requests inside the window; when two versions shared it (a rollout
+      in the middle of the run) the journal records `version_source:
+      mixed` with each version's share and the run has no version;
    2. **`inferred`**, for a run that recorded none (older journals, or a
-      target that was silent when the run ended): the version carried by
-      most of the target's spans (`service.name` is the target) inside the
-      run's window; on a tie the version first seen latest in that
-      environment, then the greater version number (`1.10.0` is above
-      `1.9.0`; plain string order only when a version is not a number).
-      With no span inside the window, the version of the target's last
-      span before the run's start, when that span is at most one hour old;
+      target that was silent when the run ended): the version that served
+      at least 95 % of the target's requests (`service.name` is the
+      target) inside the run's window; below that the run has no version
+      (`mixed_versions`). With no request inside the window, the version
+      of the target's last span before the run's start, when that span is
+      at most one hour old;
    3. otherwise **none**. The run is not dropped quietly: it is counted in
       `unattributed_runs` with its reason
       (`no_target_telemetry_in_environment` when the target never reported
       a version in the run's environment, `no_target_spans_near_run` when
-      it did but not near this run) and takes part in nothing.
+      it did but not near this run, `mixed_versions` when no version
+      served 95 % of its window) and takes part in nothing.
+
+   **Requests, not spans.** A version's share is counted in the requests
+   the service received or began (server and root spans), so a build that
+   emits ten spans a request weighs no more than one that emits two.
+
+   **The window and clock skew.** The window is read two seconds wider at
+   both ends, the tolerance for clocks that disagree between the runner
+   and the service. The price: a build that first speaks within two
+   seconds of the end of a run it did not serve counts into that run's
+   window. A run that recorded its version is not affected. Mind that the
+   root span ends when the runner has finished asking for the version,
+   which can be up to five seconds after the load stopped.
+
+   **Asking until it settles.** Telemetry arrives late. The runner (the
+   CLI and the daemon alike) asks which version served the window, waits
+   a second and asks again until the request count no longer grows, for
+   at most five seconds; then it records what the last answer said.
+
+   **`service.namespace`.** A target is identified by its service name
+   and its environment, and by `service.namespace` when the run's target
+   names one: two services with one name in two namespaces are then not
+   read as one.
+
+   **Bounds.** A version is at most 128 characters and carries no control
+   characters. `--target-version`, `target.version` and the `baseline` /
+   `candidate` parameters are refused beyond that (an error before the
+   run starts; a 400); a version from a span is stored cut to the bound,
+   flagged in the rollup (`sanitized`) and logged
+   (`lake.span.version_sanitized`), never dropped.
 
    Only spans of exactly the run's environment are read for a run. A run
    that names no environment is read from the spans that name none, never
@@ -57,15 +96,49 @@ auditable later.
    baseline is never compared with another's candidate.
 
    Inside that environment the versions are put in **deployment order**:
-   by first sight, latest first, then by the greater version number. A
-   version a run recorded counts as seen from that run's start. The
-   *candidate* is the version deployed last and the *baseline* the one
-   deployed just before it, unless `candidate` and `baseline` name them;
-   `selection` in the answer says which (`deployment_order` or
-   `explicit`). The order does not depend on which version reported last:
-   an old build that keeps emitting spans, or resumes after a rollback,
-   changes nothing, and two identical requests with no new run in between
-   return the same verdict. To judge a rollback, name the versions.
+   by the start of their latest deployment, latest first, then by the
+   greater version number. A version a run recorded counts as seen from
+   that run's start. The *candidate* is the version deployed latest and
+   the *baseline* the one deployed just before it, unless `candidate` and
+   `baseline` name them; `selection` in the answer says which
+   (`latest_deployment` or `explicit`) and `selection_rule` says it in
+   words.
+
+   **The order does not depend on `range`.** The versions and their order
+   come from everything the lake has ever seen of the target in that
+   environment; `range` bounds the runs and samples and nothing else. A
+   request for 30 days and one for 60 days compare the same pair.
+
+   **Rollback and redeploy.** A version's latest deployment is its first
+   sight, or, when it came back after another version had taken over, the
+   start of its latest return: the rollup keeps sightings by the minute,
+   and a version that reports again after at least ten minutes of silence
+   during which a later version reported was deployed again. Such a
+   version is `redeployed: true` in `versions_seen`, with its
+   `first_seen_ns` and its `last_deployed_ns`, and becomes the candidate
+   again. Silence alone, or two versions reporting side by side without a
+   gap, is no redeploy. When the candidate came back and the version
+   before it kept reporting beside it, a redeploy cannot be told from two
+   builds running side by side: the answer is a 400 that asks for both
+   `baseline` and `candidate`. Versions known only from what runs
+   recorded (a target that exports no telemetry) have no sightings to
+   find a redeploy in; name the versions there.
+
+   **Version numbers.** Where two versions tie, the greater number wins,
+   in one total order: versions that parse as numbers (`1.10.0`, `v2.1`,
+   `1.4.0-rc.1+build.7`) sort among themselves by semver precedence — a
+   pre-release below its release, build metadata ignored and then
+   compared as text so the order stays total, numbers of any length
+   compared digit by digit — and everything else (git hashes, dates,
+   names) sorts after them as text.
+
+   **Old lakes.** A lake written before the rollup existed has its version
+   history read back from its spans once, a day of spans at a step. A
+   small lake is done when the daemon has opened it; for a large one the
+   daemon spends two seconds on it at startup and carries on in the
+   background. Until it is done the answer says `backfill: running`, and
+   a pair the request did not name in full is `inconclusive`
+   (`history_incomplete`): the order is not final yet.
 
    **What a read costs.** Versions come from a rollup the writer keeps
    while it inserts spans (`service_version_sightings`: one row per
@@ -90,39 +163,104 @@ auditable later.
 
    **Partial runs.** A run whose load was aborted or truncated (windows
    skipped because earlier ones overran) is counted per side in `partial`
-   and its samples are left out; `include=partial` keeps them. Halted and
-   deviated runs are counted too and stay in. A load window in which
-   nothing answered leaves no latency sample, so it could flatter a build
-   that stopped answering: each side reports its `windows` (`planned`,
-   `completed`, `unanswered`, `unanswered_share`), and a side that lost
-   more than a tenth of its windows that way is not comparable — the
-   verdict is `inconclusive` with that reason first, never `unchanged`.
-4. **Statistics** (`tumult-perf`). Nearest-rank p50/p95/p99 of each side, the
-   candidate − baseline difference at the chosen quantile (p95 by default),
-   and a percentile-bootstrap confidence interval on that difference: 2000
-   resamples with replacement from a seeded generator, so the same inputs
-   always give the same interval.
-5. **Verdict** against a noise margin (5 % of the baseline quantile by
-   default):
+   and its latency samples are left out; `include=partial` keeps them.
+   Halted and deviated runs are counted too and stay in. `run_details`
+   lists every run of a side with how its version is known, its status,
+   whether it was truncated or aborted and whether its samples are in.
+4. **What became of the requests** is judged before any latency, because
+   latency is measured on the requests that were answered and the
+   survivors of a build that hangs are fast.
+
+   **Unanswered windows.** A load window in which nothing answered leaves
+   no latency sample. Each side reports its `windows` (`planned`,
+   `completed`, `unanswered`, `lost` — skipped behind an unanswered one —
+   `unanswered_share` and `censored`). The rule is asymmetric, with a
+   limit of a tenth of a side's windows:
+
+   | Baseline | Candidate | Verdict | `reason` |
+   |---|---|---|---|
+   | within the limit | over it | `regressed` | `candidate_unanswered` |
+   | over it | within the limit | `inconclusive` | `baseline_unanswered` |
+   | over it | over it | `inconclusive` | `both_unanswered` |
+
+   A candidate that stopped answering is a regression however few samples
+   it left; a baseline that did is no yardstick.
+
+   **Failure share.** Each side reports its `requests`: `sent`, `failed`
+   (sent and not answered well: timed out, refused, or answered outside
+   2xx/3xx), the `failure_share` and `runs_without_counts`. The requests
+   of every run of the side are counted, those of the runs left out as
+   partial too — requests that hang are exactly what makes a plan fall
+   short, and a request that failed did fail. A candidate whose failure
+   share is above the baseline's by more than **one percentage point**
+   (absolute; the margin) and by more than chance (a one-sided
+   two-proportion test at z ≥ 1.645, the 5 % level) is `regressed` with
+   reason `failure_share`, whatever its latencies. Equal shares, or a
+   difference inside the margin, decide nothing. `comparison.failure_share`
+   carries both shares, the delta and the margin. A run recorded before
+   request counts existed, or by a tool whose summary has none, is
+   counted in `runs_without_counts` and the answer adds
+   `failure_data_missing`: its silence is not read as zero failures. k6
+   contributes `http_reqs` and its `http_req_failed` rate; it keeps one
+   end-of-run summary, so it has no per-window counts and no censoring.
+
+   **Censored samples.** With oha a request given up on at its timeout
+   counts into the window's percentiles at the timeout: a window whose
+   p95 falls among the timed-out requests reports the timeout — the true
+   value is that or more — and is marked censored. A verdict that would
+   need a censored value to be no more than it reads (a candidate called
+   improved or unchanged, a baseline the candidate is slower than or
+   level with) is `inconclusive` with reason `censored`. A candidate that
+   is slower even when its censored windows are read at the timeout is
+   still `regressed`.
+5. **Statistics** (`tumult-perf`), on what is left. Windows of one run
+   are not independent — a slow minute is followed by a slow minute — so
+   the unit of evidence is the run:
+
+   - **Percentiles** (p50/p95/p99 of each side) weigh a window by the
+     seconds of load it really sampled: a window cut short has less say
+     than a whole one.
+   - **The interval** on the candidate − baseline difference at the
+     chosen quantile (p95 by default) is a percentile bootstrap that
+     resamples **whole runs** with replacement and keeps each run's
+     windows together (a cluster bootstrap), 2000 times. Autocorrelated
+     windows therefore give a wider interval than treating every window
+     as an independent draw would, and one slow run among several is not
+     called a regression.
+   - **Minimum evidence.** Each side needs at least `min_runs` runs with
+     samples (3) and `min_samples` windows (20); below either the verdict
+     is `inconclusive` (`insufficient_evidence`) and says which is short.
+     One or two runs give a bootstrap over runs nothing to draw from.
+   - **Reproducible.** The resampling uses a seeded generator
+     (`comparison.seed`; `seed=` overrides it), so the same runs and the
+     same seed give the same interval, bit for bit.
+6. **Verdict** on the latencies against a noise margin (5 % of the
+   baseline quantile by default):
 
    | Verdict | Rule |
    |---|---|
    | `regressed` | the whole interval lies above `+margin` |
    | `improved` | the whole interval lies below `−margin` |
    | `unchanged` | the interval is inside the margin, or includes zero and reaches past the margin on at most one side |
-   | `inconclusive` | either side has no samples or fewer than `min_samples` (20), only one version seen, an interval so wide it reaches past the margin in both directions, or an interval that excludes zero but straddles the margin (for example `[4, 12]` against a margin of 5: the shift is significant, its size against the margin is not resolved) |
+   | `inconclusive` | either side has fewer than `min_runs` runs or `min_samples` samples, only one version seen, an interval so wide it reaches past the margin in both directions, or an interval that excludes zero but straddles the margin (for example `[4, 12]` against a margin of 5: the shift is significant, its size against the margin is not resolved) |
 
    A tiny but statistically significant shift inside the margin is
    `unchanged` on purpose: the margin is where you say what you do not care
    about.
 
+   `reason_codes` lists what the verdict rests on, the deciding one first
+   (also as `reason`): `candidate_unanswered`, `baseline_unanswered`,
+   `both_unanswered`, `failure_share`, `censored`, `latency`,
+   `insufficient_evidence`, `no_baseline`, `history_incomplete`, and
+   `failure_data_missing` as a note beside any of them. `reasons` says the same in sentences.
+
 ## The endpoints
 
 ```
-GET  /api/perf/{target}?probe=&quantile=&confidence=&min_samples=&margin_pct=&env=&baseline=&candidate=&range=&include=
+GET  /api/perf/{target}?probe=&quantile=&confidence=&min_samples=&min_runs=&seed=&margin_pct=&env=&baseline=&candidate=&range=&include=
 POST /api/perf/{target}/verdicts   (same query string)
 GET  /api/perf?range=
-GET  /api/perf/{target}/version?env=&from_ns=&to_ns=
+GET  /api/perf/{target}/version?env=&namespace=&from_ns=&to_ns=
 ```
 
 | Parameter | Default | Meaning |
@@ -130,27 +268,33 @@ GET  /api/perf/{target}/version?env=&from_ns=&to_ns=
 | `probe` | `load.latency_p95_ms` | The `probe_samples` series compared |
 | `quantile` | `p95` | `p50`, `p95` or `p99` |
 | `confidence` | `0.95` | Bootstrap interval level, in (0, 1) |
-| `min_samples` | `20` | Fewer on either side is inconclusive |
+| `min_samples` | `20` | Fewer windows on either side is inconclusive |
+| `min_runs` | `3` | Fewer runs with samples on either side is inconclusive (at least 1) |
+| `seed` | fixed | Seed of the bootstrap generator; the answer carries the one used |
 | `margin_pct` | `5` | Noise margin as a percentage of the baseline quantile |
 | `env` | the only environment that can answer | The environment the answer is for (403 outside a scoped token's environments, 400 when empty) |
-| `candidate` | the version deployed last | The version judged; alone, its baseline is the version deployed just before it |
-| `baseline` | the version deployed before the candidate | The version compared against; alone, its candidate is the latest other version |
-| `range` | `30d` | Lookback for runs and versions: a number followed by `s`, `m`, `h`, `d` or `w` |
-| `include` | — | `partial` keeps the samples of aborted and truncated runs |
+| `candidate` | the version deployed latest | The version judged; alone, its baseline is the version deployed just before it. At most 128 characters, no control characters |
+| `baseline` | the version deployed before the candidate | The version compared against; alone, its candidate is the latest other version. Same bounds |
+| `range` | `30d` | Lookback for runs and samples: a number followed by `s`, `m`, `h`, `d` or `w`. The versions and their order do not depend on it |
+| `include` | — | `partial` keeps the latency samples of aborted and truncated runs |
 
 The answer carries the `environment` it is for (and `environments_seen`),
 the `range` and `since_ns`, `selection` (`explicit` or
-`deployment_order`), both sides, the `comparison` (`delta`, `delta_pct`,
-`ci_low`, `ci_high`, `margin`, `iterations`, `seed`), `verdict`,
-`reasons`, the environment's `versions_seen` in deployment order with
-their first and last timestamps, `unattributed_runs` (`count`, `reasons`,
-`runs`), `stored`, `duplicate`, and `history` — the last ten verdicts
-stored for the target in that environment. Each side has `version`,
-`runs`, `samples`, `p50`/`p95`/`p99`, `attribution` (how many of its runs
-were `declared`, `observed`, `inferred`), `run_details` (per run: the
-attribution, the status, whether it was truncated or aborted, whether its
-samples are included), `partial` (`truncated`, `aborted`, `halted`,
-`deviated`, `excluded`), `windows` and the `distribution` of its samples.
+`latest_deployment`) with its `selection_rule`, `backfill` (`done` or
+`running`), both sides, the `comparison` (`delta`, `delta_pct`, `ci_low`,
+`ci_high`, `margin`, `iterations`, `seed`, `min_samples`, `min_runs` and
+`failure_share` with `baseline`, `candidate`, `delta` and `margin`, null
+when a side counted no requests), `verdict`, `reason`, `reason_codes`,
+`reasons`, the environment's `versions_seen` in deployment order
+(`first_seen_ns`, `last_seen_ns`, `last_deployed_ns`, `redeployed`),
+`unattributed_runs` (`count`, `reasons`, `runs`), `stored`, `duplicate`,
+and `history` — the last ten verdicts stored for the target in that
+environment. Each side has `version`, `runs`, `samples`, `dropped`,
+`p50`/`p95`/`p99`, `attribution` (how many of its runs were `declared`,
+`observed`, `inferred`), `run_details` (per run: the attribution, the
+status, whether it was truncated or aborted, whether its samples are
+included), `partial` (`truncated`, `aborted`, `halted`, `deviated`,
+`excluded`), `windows`, `requests` and the `distribution` of its samples.
 
 An unknown target (no `service.version` seen in the environments asked
 for) is a 404 that names those environments; a target with one version is
@@ -161,10 +305,15 @@ them.
 
 `GET /api/perf` lists the targets experiments ran against inside the
 range, with the environments of those runs, within the caller's scopes.
-`GET /api/perf/{target}/version` answers which version most of the
-target's spans carried between two instants in exactly one environment
-(`null` when it reported none); it is what `tumult run` asks once at the
-end of a run to record an `observed` version.
+`GET /api/perf/{target}/version` answers what served a window: the
+requests each version of the target served between two instants in
+exactly one environment (`versions`, with `requests` and `share`), and
+the `version` that served at least 95 % of them (`version_source:
+observed`); `null` with `version_source: mixed` when none did, and both
+`null` when the target reported nothing there then. `namespace` narrows
+it to one `service.namespace` (at most 128 bytes). The window is at most
+24 hours wide; a wider one is a 400. It is what a runner asks at the end
+of a run, until the count has settled.
 
 `GET` is a pure read (viewer role): dashboards can ask as often as they
 like without growing the lake. A `store` parameter, with any value, is refused with 400 on both routes:
@@ -223,9 +372,9 @@ tumult perf checkout --quantile p95 --margin-pct 5 --env staging --store
 
 ```
 perf checkout: REGRESSED (p95 of load.latency_p95_ms)
-  versions: the two deployed last, in environment staging
-  baseline  1.4.0: 100.0 ms over 40 sample(s) in 2 run(s)
-  candidate 1.5.0: 150.0 ms over 40 sample(s) in 2 run(s)
+  versions: 1.5.0 is the version deployed latest in environment staging
+  baseline  1.4.0: 100.0 ms over 72 sample(s) in 3 run(s)
+  candidate 1.5.0: 150.0 ms over 72 sample(s) in 3 run(s)
       1 run(s) attributed from spans; 1 partial run(s) left out
   delta +50.0 ms (+50.0%), CI [31.0, 70.0], margin ±5.0
   - p95 difference interval [31.00, 70.00] against a noise margin of ±5.00 lies entirely above the margin
@@ -233,14 +382,30 @@ perf checkout: REGRESSED (p95 of load.latency_p95_ms)
 ```
 
 `--baseline <version>` and `--candidate <version>` name the versions
-instead of taking the two deployed last (the `versions:` line then reads
-`named on the request`). A side that lost load windows to silence adds
-`N of M load window(s) went unanswered`, and runs without a version add
-`N run(s) could not be attributed to a version`.
+instead of taking the two deployed latest (the `versions:` line then
+reads `named on the request`; otherwise it is the daemon's
+`selection_rule`). `--range 12h` shortens or lengthens the lookback for
+runs and samples, and `--include partial` keeps the latency samples of
+aborted and truncated runs. A side that lost load windows to silence adds
+`N of M load window(s) went unanswered`, one with failed requests or
+censored windows says so, and runs without a version add `N run(s) could
+not be attributed to a version`.
 
-`--fail-on regressed` (default) exits non-zero on a regression;
-`--fail-on inconclusive` also fails when there is not enough evidence to
-say; `--fail-on never` only prints. `--json` prints the daemon's answer.
+**Exit codes.** By default the command fails on a regression *and* on a
+verdict that could not be reached (`--fail-on regressed,inconclusive`): a
+gate that passes because nothing could be measured is not a gate.
+
+| Exit | Meaning |
+|---|---|
+| `0` | `improved` or `unchanged`, or a verdict `--fail-on` lets pass |
+| `1` | the command failed: daemon unreachable, an HTTP error, `--store` that did not store, a verdict this build does not know |
+| `2` | usage error (an unknown flag or value) |
+| `3` | `regressed` |
+| `4` | `inconclusive` |
+
+`--fail-on regressed` lets `inconclusive` pass (the behaviour before this
+default changed); `--fail-on never` only prints. `--json` prints the
+daemon's answer.
 Without `--store` the command only reads (`GET`); with it the command
 `POST`s to `/api/perf/{target}/verdicts` and the daemon appends the verdict
 to `perf_verdicts`, which is what the pipeline step should do. `--store`
@@ -248,6 +413,41 @@ exits non-zero whenever the daemon did not store — a viewer token (403), a
 single version (409), or an answer without `stored: true` — whatever
 `--fail-on` says. It slots into a pipeline next to `tumult gate` (see
 `deploy/ci/`).
+
+### `tumult run`, `--no-ingest` and the observed version
+
+A run that does not declare its version asks for it when it ends. Whom it
+asks:
+
+| Setup | Who is asked |
+|---|---|
+| `TUMULT_DAEMON_URL` set, with or without `--no-ingest` | the daemon: it holds the target's telemetry whether or not this run's journal is sent to it |
+| no daemon URL, run ingested into the local store | the local store |
+| no daemon URL and `--no-ingest`, or no local store | nobody |
+
+In the last case the run prints a notice on stderr and records no
+version:
+
+```
+notice: the version of checkout this run measures is not declared and nobody is asked for it (no TUMULT_DAEMON_URL, and no local store the run reports to); declare it with --target-version or the run is attributed from the target's spans later, if at all
+```
+
+Declaring the version (`--target-version`, or `target.version` in the
+definition) is the reliable path in every setup.
+
+### Backups
+
+The lake's Parquet export (`export_tables` and `export_load_tables` of
+`tumult-lake`) writes the tables a verdict is computed from —
+`experiments` with `target_version` and `version_source`, `load_results`
+with how the load was executed and what became of its requests, and
+`probe_samples` with each window's counts and censoring — and `tumult
+import <dir>` reads `load_results.parquet` and `probe_samples.parquet`
+back when the directory holds them (both or neither). The same runs give
+the same verdict after an export and an import. No CLI command writes
+such a directory yet; the export is a library call. Spans are not part of
+it: the deployment order of an imported lake comes from the versions the
+runs recorded, so name the versions when the runs recorded none.
 
 ## A pipeline shape that works
 
@@ -261,9 +461,11 @@ single version (409), or an answer without `stored: true` — whatever
    default series (`load.latency_p95_ms`) exists only for oha runs; with
    k6, pass `--probe` a series the run does write, such as a hypothesis
    probe's name.
-3. `tumult perf checkout --env staging --store` compares *N* against the
+3. Repeat step 2 until the build has at least three runs; one run, or
+   two, is `inconclusive` whatever it measured.
+4. `tumult perf checkout --env staging --store` compares *N* against the
    build deployed before it, records the verdict and fails the job on
-   `regressed`.
+   `regressed` (exit 3) and on `inconclusive` (exit 4).
 
 ## Error rates: oha and k6 differ
 
@@ -292,8 +494,8 @@ threshold such as `error_rate` (see the
 one before it went unanswered is counted with the unanswered ones
 (`execution.lost_to_unanswered`), not as truncation, so a blackout alone
 does not make the run deviate. The verdict still sees it: unanswered
-windows are reported per side and too many of them make the comparison
-inconclusive.
+windows are reported per side, too many of them on the candidate alone is
+a regression, and on the baseline the comparison is inconclusive.
 
 ## What is deferred
 
