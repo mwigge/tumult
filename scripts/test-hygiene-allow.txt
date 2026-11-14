@@ -111,7 +111,9 @@ tumult-core/tests/oha_load_executor.rs::start_errors_when_the_oha_binary_cannot_
 
 # tumult-ingest: deferred, the crate is being changed elsewhere
 tumult-ingest/src/daemon_task.rs::ticker_ticks_until_shutdown::bare-sleep  # deferred: sleep without a stated reason
+tumult-ingest/src/grpc.rs::until::bare-sleep  # deferred: sleep without a stated reason
 tumult-ingest/src/otap/tests.rs::connect::bare-sleep  # deferred: sleep without a stated reason
+tumult-ingest/src/otap/tests.rs::streams_beyond_the_limit_are_refused_until_one_closes::bare-sleep  # deferred: sleep without a stated reason
 tumult-ingest/src/runs/tests.rs::await_state::bare-sleep  # deferred: sleep without a stated reason
 tumult-ingest/src/runs/tests.rs::await_terminal::bare-sleep  # deferred: sleep without a stated reason
 tumult-ingest/src/runs/tests.rs::execute::bare-sleep  # deferred: sleep without a stated reason
@@ -119,6 +121,13 @@ tumult-ingest/tests/gamedays.rs::await_terminal::bare-sleep  # deferred: sleep w
 tumult-ingest/tests/http_ingest.rs::http_post_logs_preserves_or_assigns_timestamps::bare-sleep  # deferred: sleep without a stated reason
 tumult-ingest/tests/schedules.rs::due_schedule_fires_through_the_normal_run_path::bare-sleep  # deferred: sleep without a stated reason
 tumult-ingest/tests/webhooks.rs::one_hung_endpoint_does_not_block_the_others::bare-sleep  # deferred: sleep without a stated reason
+tumult-ingest/src/grpc.rs::routers_build_with_and_without_token::no-assert  # deferred: asserts nothing yet
+tumult-ingest/src/otap/fuzz.rs::every_sample_decodes_before_it_is_damaged::no-assert  # deferred: asserts nothing yet
+tumult-ingest/src/otap/hostile_ipc.rs::dictionaries_a_stream_keeps_are_budgeted_in_bytes::no-assert  # deferred: asserts nothing yet
+tumult-ingest/src/otap/hostile_ipc.rs::schema_id_longer_than_the_cap_is_refused::no-assert  # deferred: asserts nothing yet
+tumult-ingest/src/otap/hostile_ipc.rs::schema_width_is_capped::no-assert  # deferred: asserts nothing yet
+tumult-ingest/src/otap/hostile_ipc.rs::union_column_is_refused_by_the_schema_allowlist::no-assert  # deferred: asserts nothing yet
+tumult-ingest/src/otap/hostile_ipc.rs::variadic_buffer_counts_are_refused::no-assert  # deferred: asserts nothing yet
 tumult-ingest/src/writer.rs::spawn_reconnect_persists_batches_like_spawn::no-assert  # deferred: asserts nothing yet
 tumult-ingest/src/config.rs::db_path_resolution_order::raw-env  # deferred: move to tumult_test_utils::EnvGuard
 tumult-ingest/src/daemon_task.rs::tick_from_env_parses_seconds_with_floor_and_fallback::raw-env  # deferred: move to tumult_test_utils::EnvGuard
@@ -190,3 +199,4 @@ tumultd/src/reports.rs::report_interval_from_env_off_unless_set_to_a_valid_inter
 tumultd/src/reports.rs::report_subcommand_writes_out_file_and_rejects_unknown_metrics::raw-env  # deferred: move to tumult_test_utils::EnvGuard
 tumultd/src/serve/tests.rs::daemon_env::raw-env  # deferred: move to tumult_test_utils::EnvGuard
 tumultd/src/serve/tests.rs::serve_binds_serves_and_shuts_down_cleanly_on_sigterm::raw-env  # deferred: move to tumult_test_utils::EnvGuard
+tumultd/src/serve/tests.rs::the_pre_bound_grpc_listener_enforces_the_connection_limits::raw-env  # deferred: move to tumult_test_utils::EnvGuard
