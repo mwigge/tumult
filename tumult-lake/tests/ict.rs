@@ -158,6 +158,55 @@ fn a_v19_lake_opens_keeps_its_forecasts_and_gains_the_v20_tables() {
     assert!(rows.is_empty());
 }
 
+/// A lake two versions back has neither the forecasts nor the register
+/// tables: opening it runs both steps and leaves what it held alone.
+#[test]
+fn a_v18_lake_opens_and_gains_the_v19_and_the_v20_tables() {
+    let d = tempfile::TempDir::new().unwrap();
+    let path = d.path().join("kronika.duckdb");
+    {
+        let store = Store::open(&path).unwrap();
+        let writer = store.writer().unwrap();
+        for table in V20_TABLES.iter().chain(&V19_TABLES) {
+            writer.execute(&format!("DROP TABLE {table}"), []).unwrap();
+        }
+        writer
+            .execute(
+                "UPDATE schema_meta SET value = 18 WHERE key = 'version'",
+                [],
+            )
+            .unwrap();
+        assert_eq!(writer.schema_version().unwrap(), 18);
+        drop(writer);
+        assert!(
+            tables_present(&store, &V20_TABLES).is_empty()
+                && tables_present(&store, &V19_TABLES).is_empty(),
+            "the seeded lake is v18-shaped"
+        );
+    }
+    let store = Store::open(&path).unwrap();
+    let writer = store.writer().unwrap();
+    assert_eq!(writer.schema_version().unwrap(), 20);
+    writer.sync_ict_register(&register(), 1_000).unwrap();
+    drop(writer);
+    assert_eq!(tables_present(&store, &V19_TABLES).len(), V19_TABLES.len());
+    assert_eq!(tables_present(&store, &V20_TABLES).len(), V20_TABLES.len());
+    let reader = store.read_only().unwrap();
+    let forecasts = reader
+        .query_json_rows("SELECT count(*) AS c FROM forecasts")
+        .unwrap();
+    assert_eq!(forecasts[0]["c"], 0);
+    let functions = reader
+        .query_json_rows("SELECT count(*) AS c FROM ict_functions")
+        .unwrap();
+    assert!(functions[0]["c"].as_u64().unwrap() > 0);
+    // Opening it again changes nothing.
+    drop(reader);
+    drop(store);
+    let again = Store::open(&path).unwrap();
+    assert_eq!(again.writer().unwrap().schema_version().unwrap(), 20);
+}
+
 #[test]
 fn register_round_trips_through_the_tables() {
     let (_d, store) = fixture();
