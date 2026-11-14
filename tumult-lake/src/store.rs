@@ -252,9 +252,22 @@ pub(crate) fn query_json_rows(
     conn: &Connection,
     sql: &str,
 ) -> Result<Vec<serde_json::Value>, StoreError> {
+    query_json_rows_bound(conn, sql, &[])
+}
+
+/// [`query_json_rows`] with one text value bound to each `?` of `sql`,
+/// in order. A value from a request or a file goes here, never into the
+/// statement text.
+pub(crate) fn query_json_rows_bound(
+    conn: &Connection,
+    sql: &str,
+    binds: &[&str],
+) -> Result<Vec<serde_json::Value>, StoreError> {
     let wrapped = format!("SELECT row_to_json(t) AS j FROM ({sql}) AS t");
     let mut stmt = conn.prepare(&wrapped)?;
-    let rows = stmt.query_map([], |r| r.get::<usize, String>(0))?;
+    let rows = stmt.query_map(duckdb::params_from_iter(binds.iter()), |r| {
+        r.get::<usize, String>(0)
+    })?;
     let mut out = Vec::new();
     for row in rows {
         out.push(serde_json::from_str(&row?)?);
@@ -313,6 +326,27 @@ mod tests {
         let rows = query_json_rows(&conn, "SELECT 1 AS v, 'x' AS s").unwrap();
         assert_eq!(rows, vec![serde_json::json!({"v": 1, "s": "x"})]);
         assert!(query_json_rows(&conn, "SELECT FROM nonsense").is_err());
+    }
+
+    /// A bound value is data whatever it holds: a quote or a statement
+    /// in it is compared, not run.
+    #[test]
+    fn a_bound_value_is_compared_as_text_and_never_parsed() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch("CREATE TABLE t (name VARCHAR); INSERT INTO t VALUES ('a'), ('o''b')")
+            .unwrap();
+        let named = |name: &str| {
+            query_json_rows_bound(&conn, "SELECT name FROM t WHERE name = ?", &[name]).unwrap()
+        };
+        assert_eq!(named("o'b"), vec![serde_json::json!({"name": "o'b"})]);
+        assert_eq!(named("x' OR '1'='1"), Vec::<serde_json::Value>::new());
+        let both = query_json_rows_bound(
+            &conn,
+            "SELECT name FROM t WHERE name IN (?, ?) ORDER BY 1",
+            &["o'b", "a"],
+        )
+        .unwrap();
+        assert_eq!(both.len(), 2);
     }
 
     #[test]

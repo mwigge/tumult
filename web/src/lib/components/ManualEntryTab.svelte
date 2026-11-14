@@ -144,7 +144,7 @@
                 <label
                     >Exercise type
                     <select bind:value={form.exercise_type}>
-                        {#each ['gameday', 'tabletop', 'failover', 'pentest', 'drill', 'other'] as t (t)}
+                        {#each ['gameday', 'tabletop', 'failover', 'pentest', 'tlpt', 'drill', 'other'] as t (t)}
                             <option value={t}>{t}</option>
                         {/each}
                     </select>

@@ -9,6 +9,7 @@ mod ask_llm;
 mod auth_approvals;
 mod authoring;
 mod common;
+mod dora;
 mod endpoints;
 mod events;
 mod forecast;

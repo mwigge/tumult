@@ -12,6 +12,7 @@
 //! `GET /api/scores`.
 
 pub mod builders;
+pub mod dora;
 pub mod html;
 pub mod markup;
 pub mod model;

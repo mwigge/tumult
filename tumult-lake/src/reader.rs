@@ -4,7 +4,7 @@ use duckdb::Connection;
 
 use crate::error::StoreError;
 use crate::rows::ExperimentRun;
-use crate::store::query_json_rows;
+use crate::store::{query_json_rows, query_json_rows_bound};
 
 /// The read side of the store (read-only `DuckDB` connection).
 pub struct Reader {
@@ -48,6 +48,20 @@ impl Reader {
     /// Returns an error if the query fails to prepare or execute.
     pub fn query_json_rows(&self, sql: &str) -> Result<Vec<serde_json::Value>, StoreError> {
         query_json_rows(&self.conn, sql)
+    }
+
+    /// [`Self::query_json_rows`] with one text value bound to each `?`
+    /// of `sql`, in order. Values from a request or a file are bound,
+    /// not written into the statement.
+    ///
+    /// # Errors
+    /// Returns an error if the query fails to prepare or execute.
+    pub fn query_json_rows_bound(
+        &self,
+        sql: &str,
+        binds: &[&str],
+    ) -> Result<Vec<serde_json::Value>, StoreError> {
+        query_json_rows_bound(&self.conn, sql, binds)
     }
 
     /// Raw batch execution on the read connection — crate-internal, used by

@@ -139,6 +139,9 @@ code,
     flex: 1 1 auto;
     min-height: 0;
     overflow-y: auto;
+    /* Rows and the height left are not whole pixels while a scroll position
+       is: the spare pixel keeps the last entry whole at the end. */
+    padding-bottom: 1px;
 }
 .side > :not(.nav) {
     flex: 0 0 auto;

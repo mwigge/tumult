@@ -1,6 +1,7 @@
 //! HTTP handlers for the read-only query API, one module per domain.
 
 pub mod conformance;
+pub mod dora;
 pub mod experiments;
 pub mod gate;
 pub mod logs;

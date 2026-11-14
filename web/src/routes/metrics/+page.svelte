@@ -207,6 +207,7 @@
         <div class="state">No points for this metric in the selected window.</div>
     {:else}
         <EChart
+            id="metric"
             option={chartOption}
             height={360}
             onclick={onChartClick}

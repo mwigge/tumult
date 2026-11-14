@@ -32,6 +32,9 @@ import type {
     MetricQueryResult,
     Overview,
     ConformanceReport,
+    DoraArticleReport,
+    DoraReport,
+    MaturityReport,
     PostureResponse,
     RiskReport,
     SuppressionRow,
@@ -174,6 +177,21 @@ export const api = {
     otelConformance: (range = '24h', env = '') =>
         get<ConformanceReport>(
             `/api/otel/conformance?range=${range}${env ? `&env=${encodeURIComponent(env)}` : ''}`,
+        ),
+
+    // --- DORA coverage and the internal maturity level -----------------------
+
+    dora: (lei = '', by: 'entity' | 'org' = 'entity') =>
+        get<DoraReport>(`/api/dora?by=${by}${lei ? `&lei=${encodeURIComponent(lei)}` : ''}`),
+
+    doraArticle: (article: string, lei = '') =>
+        get<DoraArticleReport>(
+            `/api/dora/${encodeURIComponent(article)}${lei ? `?lei=${encodeURIComponent(lei)}` : ''}`,
+        ),
+
+    maturity: (lei = '', by: 'node' | 'entity' | 'org' = 'node') =>
+        get<MaturityReport>(
+            `/api/maturity?by=${by}${lei ? `&lei=${encodeURIComponent(lei)}` : ''}`,
         ),
 
     suppressRisk: (id: string, reason: string, expiresInDays?: number, actor?: string) =>

@@ -7,6 +7,7 @@
     import RangeSwitch from '#lib/components/RangeSwitch.svelte';
     import EChart from '#lib/components/EChart.svelte';
     import { CHART } from '#lib/echarts.js';
+    import { strong, tip, tipFormatter } from '#lib/tooltip.js';
     import type { EChartsCoreOption } from '#lib/echarts.js';
 
     const filters = $derived({
@@ -74,11 +75,15 @@
             grid: { left: 64, right: 24, top: 20, bottom: 24 },
             tooltip: {
                 ...CHART.tooltip,
-                formatter: (p: { data?: [number, number, string] }) => {
+                formatter: tipFormatter((p: { data?: [number, number, string] }) => {
                     const d = p.data;
-                    if (!d) return '';
-                    return `${d[2]}<br/>${new Date(d[0]).toLocaleString()}<br/><b>${d[1].toFixed(0)}ms</b>`;
-                },
+                    if (!d) return null;
+                    return tip(
+                        d[2],
+                        new Date(d[0]).toLocaleString(),
+                        strong(`${d[1].toFixed(0)}ms`),
+                    );
+                }),
             },
             xAxis: {
                 type: 'time',
@@ -172,6 +177,7 @@
 <div class="panel">
     {#if durations && durations.points.length > 0}
         <EChart
+            id="trace-durations"
             option={scatterOption}
             height={220}
             onclick={onPoint}

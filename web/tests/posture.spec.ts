@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test';
 
+import { installChartHooks } from './charts';
+
 // The API is mocked; charts render to canvas, so the coverage heatmap is
 // asserted through the option mirrored at window.__tumultCharts.
 
@@ -63,9 +65,7 @@ const risks = [
 
 test.beforeEach(async ({ page }) => {
     // Charts mirror their option only where a test installed the registry.
-    await page.addInitScript(() => {
-        (window as Window & { __tumultCharts?: Record<string, unknown> }).__tumultCharts = {};
-    });
+    await installChartHooks(page);
 });
 
 test('posture opens with ranked risks, coverage gaps and the score', async ({ page }) => {
@@ -147,7 +147,18 @@ test('posture opens with ranked risks, coverage gaps and the score', async ({ pa
                     ],
                     recommended: ['resilience.target.component', 'service.version'],
                 },
-                summary: { services: 2, spine: 1, target: 0, none: 1 },
+                summary: { services: 2, spine: 1, target: 0, none: 1, malformed_entity_ids: 1 },
+                entity_id_pattern: '^[a-z][a-z0-9]*(-[a-z0-9]+)+$',
+                malformed_entity_ids: [
+                    {
+                        service: 'legacy-batch',
+                        entity_id: 'CF-0042',
+                        spans: 12,
+                        last_seen_ns: 1,
+                        flagged_at_ingest: true,
+                        reason: 'must start with a lower-case letter',
+                    },
+                ],
                 services: [
                     {
                         service: 'checkout',
@@ -258,6 +269,23 @@ test('posture opens with ranked risks, coverage gaps and the score', async ({ pa
     });
     expect(cells).toEqual({ count: 14, rows: ['database (demo)', 'database (staging)'] });
 
+    // The radar draws one value per discipline on one axis each.
+    const radar = await page.evaluate(() => {
+        const w = window as Window & { __tumultCharts?: Record<string, unknown> };
+        const opt = w.__tumultCharts?.['coverage-radar'] as
+            | {
+                  series?: { type?: string; data?: { value?: number[] }[] }[];
+                  radar?: { indicator?: unknown[] }[];
+              }
+            | undefined;
+        return {
+            type: opt?.series?.[0]?.type,
+            values: opt?.series?.[0]?.data?.[0]?.value?.length ?? -1,
+            axes: opt?.radar?.[0]?.indicator?.length ?? -1,
+        };
+    });
+    expect(radar).toEqual({ type: 'radar', values: 7, axes: 7 });
+
     // The NFR heatmap has one cell per verdict; the trend carries the sparkline.
     const charts = await page.evaluate(() => {
         const w = window as Window & { __tumultCharts?: Record<string, unknown> };
@@ -277,6 +305,11 @@ test('posture opens with ranked risks, coverage gaps and the score', async ({ pa
     await expect(contract).toContainText('legacy-batch');
     await expect(contract).toContainText('resilience.target.system, ict.entity.id');
     await expect(contract.locator('tbody tr').nth(0)).toContainText('spine');
+    // A malformed ict.entity.id is listed as received, never repaired.
+    const malformed = page.getByTestId('malformed-ids');
+    await expect(malformed).toContainText('1 malformed ict.entity.id');
+    await expect(malformed).toContainText('CF-0042');
+    await expect(malformed).toContainText('must start with a lower-case letter');
 
     // Accepting a finding posts the reason and the list refreshes.
     await list.nth(0).getByRole('button', { name: 'accept' }).click();
