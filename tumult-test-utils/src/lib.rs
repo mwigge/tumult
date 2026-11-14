@@ -8,7 +8,7 @@
 //! |---|---|---|
 //! | [`EnvGuard`] | always | change environment variables under a process-wide lock, restored on drop |
 //! | [`capture_spans`], [`capture_spans_async`] | `otel` | the spans a piece of code finished, isolated per test |
-//! | [`MetricCapture`] | `otel` | a private meter provider whose counters and gauges can be read back |
+//! | [`MetricCapture`] | `otel` | a private meter provider whose counters, gauges and histograms can be read back |
 //! | [`action`], [`background_action`], [`minimal_experiment`] | `builders` (default) | experiment fixtures for runner tests |
 //!
 //! `builders` depends on `tumult-core`. Crates below `tumult-core` in the
@@ -26,5 +26,5 @@ pub use env::EnvGuard;
 #[cfg(feature = "otel")]
 pub use otel::{
     attribute, capture_spans, capture_spans_async, install_recording_tracer, span_attribute,
-    MetricCapture, MetricPoint,
+    HistogramPoint, MetricCapture, MetricPoint,
 };

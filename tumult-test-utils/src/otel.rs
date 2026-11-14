@@ -19,6 +19,12 @@ const CAPTURE_ROOT: &str = "tumult-test-utils.capture";
 /// The global provider is never swapped back: tests in one binary run on
 /// several threads, and a provider that changes under them is what this
 /// helper exists to avoid.
+///
+/// Limit: the provider is global to the test binary. A test in the same
+/// binary that calls `global::set_tracer_provider` itself replaces it, and
+/// from then on every capture in that binary returns no spans. Such a test
+/// belongs in a binary of its own (a separate file under `tests/`), or uses
+/// this helper instead.
 fn exporter() -> &'static InMemorySpanExporter {
     static EXPORTER: OnceLock<InMemorySpanExporter> = OnceLock::new();
     EXPORTER.get_or_init(|| {
@@ -33,6 +39,10 @@ fn exporter() -> &'static InMemorySpanExporter {
 }
 
 /// Makes the global tracer record spans and propagate W3C trace context.
+///
+/// The provider is installed once per test binary and never replaced. A test
+/// in the same binary that calls `global::set_tracer_provider` itself breaks
+/// every span capture in that binary; keep such a test in a binary of its own.
 ///
 /// For tests that need valid span contexts but assert on something else, for
 /// example a `traceparent` header seen by a fake server. Tests that assert on
@@ -65,6 +75,9 @@ fn finished(root: &Context, trace_id: TraceId) -> Vec<SpanData> {
 /// so tests running in parallel in the same process never see each other's
 /// spans. A span is returned once it has ended; code under test that starts a
 /// new root with an explicit empty parent context is not captured.
+///
+/// Nothing is captured in a test binary where another test installs its own
+/// global tracer provider; see [`install_recording_tracer`].
 pub fn capture_spans<T>(f: impl FnOnce() -> T) -> (T, Vec<SpanData>) {
     let (root, trace_id) = capture_root();
     let out = {
@@ -114,6 +127,17 @@ pub struct MetricPoint {
     pub attributes: Vec<KeyValue>,
 }
 
+/// One data point of a histogram: everything recorded with one attribute set.
+#[derive(Debug, Clone, PartialEq)]
+pub struct HistogramPoint {
+    /// How many values were recorded.
+    pub count: u64,
+    /// Their sum. Integer instruments are widened to `f64`.
+    pub sum: f64,
+    /// The attributes the values were recorded with.
+    pub attributes: Vec<KeyValue>,
+}
+
 /// A private meter provider whose recorded values can be read back.
 ///
 /// Nothing is installed globally: the code under test records on a
@@ -146,15 +170,52 @@ impl MetricCapture {
         self.provider.meter(name)
     }
 
-    /// The current data points of the counter or gauge called `name`; empty
-    /// when nothing was recorded under that name.
+    /// The current data points of the counter or gauge called `name`, from
+    /// every meter that has an instrument of that name; empty when nothing
+    /// was recorded under it.
     ///
     /// # Panics
     ///
     /// Panics if the in-memory pipeline cannot be flushed or read, or if
-    /// `name` is a histogram.
+    /// `name` is a histogram: those are read with
+    /// [`MetricCapture::histogram_points`].
     #[must_use]
     pub fn points(&self, name: &str) -> Vec<MetricPoint> {
+        self.series(name)
+            .into_iter()
+            .flat_map(|series| match series {
+                Series::Values(points) => points,
+                Series::Histogram(_) => {
+                    panic!("`{name}` is a histogram: read it with MetricCapture::histogram_points")
+                }
+            })
+            .collect()
+    }
+
+    /// The current data points of the histogram called `name`, one per
+    /// attribute set, from every meter that has an instrument of that name;
+    /// empty when nothing was recorded under it.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the in-memory pipeline cannot be flushed or read, or if
+    /// `name` is a counter or gauge: those are read with
+    /// [`MetricCapture::points`].
+    #[must_use]
+    pub fn histogram_points(&self, name: &str) -> Vec<HistogramPoint> {
+        self.series(name)
+            .into_iter()
+            .flat_map(|series| match series {
+                Series::Histogram(points) => points,
+                Series::Values(_) => {
+                    panic!("`{name}` is not a histogram: read it with MetricCapture::points")
+                }
+            })
+            .collect()
+    }
+
+    /// Every metric called `name` in the newest export that has one.
+    fn series(&self, name: &str) -> Vec<Series> {
         self.provider
             .force_flush()
             .expect("in-memory metric pipeline flushes");
@@ -162,44 +223,75 @@ impl MetricCapture {
             .exporter
             .get_finished_metrics()
             .expect("in-memory metric exporter is readable");
-        // Sums are cumulative, so the newest export holds the current state.
-        let points = exports
+        // Aggregation is cumulative, so the newest export holds the current
+        // state. Two meters may each have an instrument of the same name.
+        exports
             .iter()
             .rev()
-            .flat_map(|export| export.scope_metrics())
-            .flat_map(|scope| scope.metrics())
-            .find(|metric| metric.name() == name)
-            .map(|metric| match metric.data() {
-                AggregatedMetrics::F64(data) => points_of(data, |v| v),
-                #[allow(clippy::cast_precision_loss)] // test values are small
-                AggregatedMetrics::U64(data) => points_of(data, |v| v as f64),
-                #[allow(clippy::cast_precision_loss)] // test values are small
-                AggregatedMetrics::I64(data) => points_of(data, |v| v as f64),
+            .map(|export| {
+                export
+                    .scope_metrics()
+                    .flat_map(|scope| scope.metrics())
+                    .filter(|metric| metric.name() == name)
+                    .map(|metric| match metric.data() {
+                        AggregatedMetrics::F64(data) => series_of(data, |v| v),
+                        #[allow(clippy::cast_precision_loss)] // test values are small
+                        AggregatedMetrics::U64(data) => series_of(data, |v| v as f64),
+                        #[allow(clippy::cast_precision_loss)] // test values are small
+                        AggregatedMetrics::I64(data) => series_of(data, |v| v as f64),
+                    })
+                    .collect::<Vec<_>>()
             })
-            .unwrap_or_default();
-        points
+            .find(|found| !found.is_empty())
+            .unwrap_or_default()
     }
 }
 
-fn points_of<T: Copy>(data: &MetricData<T>, widen: impl Fn(T) -> f64) -> Vec<MetricPoint> {
+/// The data points of one metric, by instrument kind.
+enum Series {
+    Values(Vec<MetricPoint>),
+    Histogram(Vec<HistogramPoint>),
+}
+
+fn series_of<T: Copy>(data: &MetricData<T>, widen: impl Fn(T) -> f64) -> Series {
     match data {
-        MetricData::Gauge(gauge) => gauge
-            .data_points()
-            .map(|point| MetricPoint {
-                value: widen(point.value()),
-                attributes: point.attributes().cloned().collect(),
-            })
-            .collect(),
-        MetricData::Sum(sum) => sum
-            .data_points()
-            .map(|point| MetricPoint {
-                value: widen(point.value()),
-                attributes: point.attributes().cloned().collect(),
-            })
-            .collect(),
-        MetricData::Histogram(_) | MetricData::ExponentialHistogram(_) => {
-            panic!("MetricCapture::points reads counters and gauges, not histograms")
-        }
+        MetricData::Gauge(gauge) => Series::Values(
+            gauge
+                .data_points()
+                .map(|point| MetricPoint {
+                    value: widen(point.value()),
+                    attributes: point.attributes().cloned().collect(),
+                })
+                .collect(),
+        ),
+        MetricData::Sum(sum) => Series::Values(
+            sum.data_points()
+                .map(|point| MetricPoint {
+                    value: widen(point.value()),
+                    attributes: point.attributes().cloned().collect(),
+                })
+                .collect(),
+        ),
+        MetricData::Histogram(histogram) => Series::Histogram(
+            histogram
+                .data_points()
+                .map(|point| HistogramPoint {
+                    count: point.count(),
+                    sum: widen(point.sum()),
+                    attributes: point.attributes().cloned().collect(),
+                })
+                .collect(),
+        ),
+        MetricData::ExponentialHistogram(histogram) => Series::Histogram(
+            histogram
+                .data_points()
+                .map(|point| HistogramPoint {
+                    count: point.count() as u64,
+                    sum: widen(point.sum()),
+                    attributes: point.attributes().cloned().collect(),
+                })
+                .collect(),
+        ),
     }
 }
 
@@ -365,5 +457,82 @@ mod tests {
         assert_eq!(capture.points("hits")[0].value, 1.0);
         counter.add(4, &[]);
         assert_eq!(capture.points("hits")[0].value, 5.0);
+    }
+
+    #[test]
+    fn metric_capture_returns_the_points_of_every_meter_that_uses_the_name() {
+        let capture = MetricCapture::new();
+        capture
+            .meter("first")
+            .u64_counter("hits")
+            .build()
+            .add(2, &[]);
+        capture
+            .meter("second")
+            .u64_counter("hits")
+            .build()
+            .add(5, &[]);
+
+        let mut values: Vec<f64> = capture.points("hits").iter().map(|p| p.value).collect();
+        values.sort_by(f64::total_cmp);
+
+        assert_eq!(values, [2.0, 5.0]);
+    }
+
+    #[test]
+    fn metric_capture_reads_histograms_as_count_and_sum_per_attribute_set() {
+        let capture = MetricCapture::new();
+        let histogram = capture.meter("unit").f64_histogram("latency").build();
+        histogram.record(1.5, &[KeyValue::new("route", "a")]);
+        histogram.record(2.5, &[KeyValue::new("route", "a")]);
+        histogram.record(10.0, &[KeyValue::new("route", "b")]);
+
+        let mut points = capture.histogram_points("latency");
+        points.sort_by(|a, b| a.sum.total_cmp(&b.sum));
+
+        assert_eq!(
+            points,
+            [
+                HistogramPoint {
+                    count: 2,
+                    sum: 4.0,
+                    attributes: vec![KeyValue::new("route", "a")],
+                },
+                HistogramPoint {
+                    count: 1,
+                    sum: 10.0,
+                    attributes: vec![KeyValue::new("route", "b")],
+                },
+            ]
+        );
+        assert_eq!(capture.histogram_points("never-recorded"), []);
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "`latency` is a histogram: read it with MetricCapture::histogram_points"
+    )]
+    fn reading_a_histogram_as_points_says_which_method_to_use() {
+        let capture = MetricCapture::new();
+        capture
+            .meter("unit")
+            .u64_histogram("latency")
+            .build()
+            .record(3, &[]);
+
+        let _ = capture.points("latency");
+    }
+
+    #[test]
+    #[should_panic(expected = "`hits` is not a histogram: read it with MetricCapture::points")]
+    fn reading_a_counter_as_a_histogram_says_which_method_to_use() {
+        let capture = MetricCapture::new();
+        capture
+            .meter("unit")
+            .u64_counter("hits")
+            .build()
+            .add(1, &[]);
+
+        let _ = capture.histogram_points("hits");
     }
 }

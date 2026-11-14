@@ -22,6 +22,11 @@ pub struct EnvGuard {
 impl EnvGuard {
     /// Waits for exclusive access to the environment.
     ///
+    /// The lock is not re-entrant: a thread that already holds a guard and
+    /// asks for a second one waits for itself and never returns. Take one
+    /// guard per test and pass `&mut EnvGuard` to helpers that change more
+    /// variables.
+    ///
     /// A test that panicked while holding the guard has already restored its
     /// changes on unwind, so a poisoned lock is safe to take over.
     pub fn lock() -> Self {
