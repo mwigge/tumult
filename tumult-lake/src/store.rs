@@ -166,6 +166,27 @@ pub(crate) fn with_tx<T, E: From<StoreError>>(
     }
 }
 
+/// The schema version the lake records when it is later than the one this
+/// build writes, `None` otherwise. A lake without `schema_meta` is a new
+/// one and has no version to compare.
+///
+/// Tables gain columns with a version and most inserts name no columns, so
+/// an older build would fail on every write to a newer lake. The callers
+/// refuse to open one before [`migrate`] changes anything.
+pub(crate) fn newer_schema(conn: &Connection) -> Result<Option<i64>, duckdb::Error> {
+    let has_meta: bool = conn.query_row(
+        "SELECT count(*) > 0 FROM information_schema.tables WHERE table_name = 'schema_meta'",
+        params![],
+        |row| row.get(0),
+    )?;
+    if !has_meta {
+        return Ok(None);
+    }
+    let mut stmt = conn.prepare("SELECT max(value) FROM schema_meta WHERE key = 'version'")?;
+    let stored: Option<i64> = stmt.query_row(params![], |row| row.get(0))?;
+    Ok(stored.filter(|version| *version > schema::CURRENT_SCHEMA_VERSION))
+}
+
 /// Shared schema migration: the full v3 DDL (telemetry + manual-evidence +
 /// analytics families), the ChaosGraph tables, the `experiment_runs` view,
 /// the static compliance-article seed, and the `schema_meta` version.

@@ -340,6 +340,17 @@ stored as log records again from then on. The rows already in
 `entity_versions` stay and are still returned by the two endpoints; their
 `liveness` turns `expired` as their intervals pass.
 
+### Rolling back to an older build
+
+Entity events arrive with lake schema v21. A build from before v21 does
+not know the table or the two new `logs` columns, and a v21 lake is not
+readable by it. To be able to go back, stop the daemon and run
+`tumult store backup --output <dir>` before the upgrade, and restore that
+backup with the older build. From v21 on a build that finds a later
+schema version in the lake than its own refuses to open it for writing
+and says `lake schema vN is newer than this build supports (vM)`; nothing
+in the lake is changed by the attempt.
+
 ## 9. Proof
 
 `scripts/proof/entity-events/proof.sh` starts a Collector container

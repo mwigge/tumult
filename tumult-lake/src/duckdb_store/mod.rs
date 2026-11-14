@@ -252,6 +252,13 @@ impl AnalyticsStore {
         // ChaosGraph tables, experiment_runs view, compliance-article seed,
         // schema_meta version) — identical to what `Store::open` runs, so a
         // database opened through either write path has the same schema.
+        // A lake that a later build wrote is refused the same way too.
+        if let Some(stored) = crate::store::newer_schema(&self.conn)? {
+            return Err(AnalyticsError::SchemaTooNew {
+                stored,
+                supported: crate::CURRENT_SCHEMA_VERSION,
+            });
+        }
         crate::migrate(&self.conn)?;
         Ok(())
     }

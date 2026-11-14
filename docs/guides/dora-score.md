@@ -254,7 +254,7 @@ Outside the org file: `KRONIKA_ORG_FILE` (where the register is read from), `KRO
 
 ## Upgrading and rolling back
 
-The score tables arrive with lake schema v20 (`ict_legal_entities`, `ict_functions`, `ict_function_services`, `requirement_status_daily`, `maturity_daily`). The change is additive, and the first start of a new binary migrates the lake in place. There is no downgrade: treat a lake that a v20 binary has opened as not readable by an older binary. The older binary has no check that refuses it; it does not know the new tables, and it fails on rows it can not parse, such as a manual record of type `tlpt`.
+The score tables arrive with lake schema v20 (`ict_legal_entities`, `ict_functions`, `ict_function_services`, `requirement_status_daily`, `maturity_daily`). The change is additive, and the first start of a new binary migrates the lake in place. There is no downgrade: treat a lake that a v20 binary has opened as not readable by an older binary. A binary from before schema v21 has no check that refuses it (later ones refuse a newer lake at open); it does not know the new tables, and it fails on rows it can not parse, such as a manual record of type `tlpt`.
 
 To be able to go back:
 

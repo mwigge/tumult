@@ -4,7 +4,7 @@ use duckdb::{params, Connection};
 
 use crate::error::StoreError;
 use crate::rows::{ImportBatch, LogRow, MetricGaugeRow, MetricHistogramRow, MetricSumRow, SpanRow};
-use crate::store::{attrs_json, migrate, query_json_rows, with_tx};
+use crate::store::{attrs_json, migrate, newer_schema, query_json_rows, with_tx};
 
 /// The write side of the store. Hold at most one per process (the ingest
 /// daemon funnels every write through a channel onto a single `Writer`).
@@ -15,7 +15,15 @@ pub struct Writer {
 }
 
 impl Writer {
+    /// Bring the schema up to this build's version, or refuse a lake that
+    /// a later build wrote.
     pub(crate) fn migrate(&self) -> Result<(), StoreError> {
+        if let Some(stored) = newer_schema(&self.conn)? {
+            return Err(StoreError::SchemaTooNew {
+                stored,
+                supported: crate::CURRENT_SCHEMA_VERSION,
+            });
+        }
         migrate(&self.conn).map_err(StoreError::from)
     }
 
