@@ -240,8 +240,12 @@ check_experiment "$EXP"
 fetch "$URL/api/traces?service=proof-checkout" "$WORK/traces.json"
 py "t=[x for x in d['traces'] if x['trace_id']=='$TRACE']; assert len(t)==1 and t[0]['span_count']==3 and t[0]['error_count']==1, d" <"$WORK/traces.json"
 fetch "$URL/api/topology" "$WORK/topology.json"
-py "n={(x['name'],x['type']) for x in d['nodes']}; assert ('proof-checkout','service') in n and ('proof-db','target') in n, n
-assert any(e['from_id']=='svc:proof-checkout' and e['to_id']=='tgt:proof-db' for e in d['edges']), d['edges']" <"$WORK/topology.json"
+# The resource names a component, so the target node is the component's
+# (docs/guides/star-map.md): cmp:<environment>/<system>/<component>.
+py "n={(x['id'],x['name'],x['type']) for x in d['nodes']}
+assert ('svc:proof-checkout','proof-checkout','service') in n, n
+assert ('cmp:proof/proof-db/shop%2Fcheckout','shop/checkout','target') in n, n
+assert any(e['from_id']=='svc:proof-checkout' and e['to_id']=='cmp:proof/proof-db/shop%2Fcheckout' for e in d['edges']), d['edges']" <"$WORK/topology.json"
 pass "service name, target_* columns, trace listing and topology edge all answer from the lake"
 
 step 6 "a second batch on the same stream: no schema resent, resource attributes still attributed"
@@ -414,10 +418,12 @@ pass "the lake holds exactly the two proof traces"
 step 12 "peer text cannot forge a log line; refused batches close the stream and are logged at a bounded rate"
 # The cases above used up this window's warnings; the next window logs again.
 sleep 11
-hostile forged-schema-id "$(refused 'SPANS payload for schema probe\n2026-01-01T00:00:00Z ERROR forged line\r\u{1b}[31m carries no record batch')"
+hostile forged-schema-id "$(refused 'SPANS payload for schema "probe\n2026-01-01T00:00:00Z ERROR forged line\r\u{1b}[31m" carries no record batch')"
 FORGED=$(grep -c '^2026-01-01T00:00:00Z ERROR forged line' "$DLOG" || true)
 [[ "$FORGED" == 0 ]] || fail "the schema id forged $FORGED log line(s)"
-expect_lines 1 "$DLOG" 'WARN' 'OTAP batch undecodable' 'schema probe\n2026-01-01T00:00:00Z ERROR forged line\r\u{1b}[31m carries no record batch'
+# In the log the error is one quoted value: the quotes and backslashes of
+# the status text are escaped again, so nothing in it can end the value.
+expect_lines 1 "$DLOG" 'WARN' 'OTAP batch undecodable' 'error' '"SPANS payload for schema \\\"probe\\\\n2026-01-01T00:00:00Z ERROR forged line\\\\r\\\\u{1b}[31m\\\" carries no record batch"'
 pass "schema id with a line break and an escape sequence is logged escaped, on one line"
 probe rejected-flood rejected-flood "$KRONIKA_INGEST_TOKEN"
 alive "after hostile case rejected-flood"
