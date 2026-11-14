@@ -258,7 +258,9 @@ zero or unparsable one by the default, each with a warning at startup.
 | `KRONIKA_OTAP_MAX_REJECTED_BATCHES` | 8 | 1000000 | refused batches before the stream is closed |
 | `KRONIKA_GRPC_MAX_CONNECTIONS` | 1024 | 65536 | TCP connections open on the gRPC listener |
 | `KRONIKA_GRPC_MAX_CONNECTIONS_PER_PEER` | 64 | `MAX_CONNECTIONS` | TCP connections open from one peer |
+| `KRONIKA_GRPC_MAX_CONNECTIONS_PER_IPV6_SITE` | four times `PER_PEER` (256) | `MAX_CONNECTIONS` | TCP connections open from one IPv6 /48 |
 | `KRONIKA_GRPC_HANDSHAKE_TIMEOUT_SECS` | 10 | 300 | time a new connection has to finish the TLS handshake and send the HTTP/2 preface |
+| `KRONIKA_GRPC_AUTH_TIMEOUT_SECS` | 10 | 300 | with an ingest token: time a new connection has, from accept, to make its first call that carries the token |
 | `KRONIKA_GRPC_MAX_CONNECTION_AGE_SECS` | 1800 | 604800 | age a connection may reach |
 | `KRONIKA_GRPC_MAX_CONNECTION_AGE_GRACE_SECS` | 600 | 3600 | time after that age at which the connection is cut, whatever is in flight |
 
@@ -273,7 +275,9 @@ soon as it is accepted. A connection that has not finished the TLS
 handshake and sent the HTTP/2 preface within
 `KRONIKA_GRPC_HANDSHAKE_TIMEOUT_SECS` is closed and its place given back,
 so silent connections cannot use up the limit; a slow client that keeps
-making progress has the whole time. No connection lives longer than the
+making progress has the whole time. The listener does the TLS handshake
+itself, and the handshake counts as finished when the TLS library says
+so, not when bytes have arrived. No connection lives longer than the
 connection age plus its grace (40 minutes by default): it is cut then and
 the client reconnects, so keep the exporter's `max_stream_lifetime` well
 below it. The listener also allows 64 concurrent HTTP/2 streams and 64
@@ -281,8 +285,54 @@ in-flight requests per connection, switches TCP keepalive on for every
 accepted socket, pings every 30 s and drops a connection whose ping goes
 unanswered for 20 s.
 
+**Connections that never authenticate.** With `KRONIKA_INGEST_TOKEN` set,
+a connection is a client's once it has made one call that carries the
+token, a unary export or an Arrow stream. Until then:
+
+- it has `KRONIKA_GRPC_AUTH_TIMEOUT_SECS` from the moment it is accepted
+  (the TLS handshake included) and is closed when the time is up, whether
+  or not it answers pings. A client that connects before it has anything
+  to send is closed as well; it reconnects when it has, which gRPC clients
+  do on their own;
+- it is the one that goes when there is no room. When the listener, a
+  peer or an IPv6 site is at its limit, a new connection takes the place
+  of the oldest connection in it that has not authenticated yet, which is
+  closed. A connection that has authenticated is never closed for one
+  that has not; when every place is held by an authenticated connection
+  the newcomer is refused.
+
+So connections without the token can no longer keep clients with the
+token out: whatever they hold is handed over on demand and lost after ten
+seconds anyway.
+
+**Without an ingest token the listener cannot tell clients apart**, and
+none of the above applies: no connection is asked to authenticate, none is
+closed for a newcomer, and a newcomer that finds no room is refused. The
+arithmetic is then plain. With the defaults one peer may hold 64 of 1024
+connections and one IPv6 /48 may hold 256, so 16 IPv4 addresses or four
+IPv6 /48s that complete the handshake and answer pings hold every place
+for the connection age plus its grace, 40 minutes, and can take them
+again when they are cut. Only run without a token where
+everyone who can reach the gRPC port is trusted; anywhere else set
+`KRONIKA_INGEST_TOKEN`, or put the limit in front of the daemon.
+
+**File descriptors.** Every connection is a file descriptor, and the
+default of 1024 connections equals the usual soft `nofile` limit of a
+process, which the daemon also needs for its HTTP listener, the lake and
+its own files. Raise the limit (`LimitNOFILE=` in a systemd unit,
+`ulimit -n` in a shell) or lower `KRONIKA_GRPC_MAX_CONNECTIONS` so the
+listener's limit is the one that is reached. When the process does run
+out, accepting fails; the listener then waits 200 ms before it tries
+again and logs `gRPC listener cannot accept connections, backing off`
+(rate-limited) instead of spinning.
+
 **Peers and proxies.** A peer is an IPv4 address or an IPv6 /64 (one host
-usually has a whole /64 to pick source addresses from). The per-peer
+usually has a whole /64 to pick source addresses from). On top of that
+all /64s of one IPv6 /48, the block a provider usually gives one customer,
+share `KRONIKA_GRPC_MAX_CONNECTIONS_PER_IPV6_SITE`; without it a /56 would
+be 256 peers. A link-local IPv6 address (`fe80::/10`) is a peer by itself
+together with the interface it arrived on, so the hosts of one link do not
+share an allowance, and one link is one site. The per-peer
 limits, `KRONIKA_GRPC_MAX_CONNECTIONS_PER_PEER`,
 `KRONIKA_OTAP_MAX_STREAMS_PER_PEER` and
 `KRONIKA_OTAP_MAX_PEER_RETAINED_BYTES`, keep one peer from taking every
@@ -299,9 +349,14 @@ Only zstd is accepted for Arrow IPC buffer compression (what the exporter
 uses); LZ4 payloads are refused. Before memory is allocated for a
 compressed buffer its zstd frame headers are read: the content sizes they
 carry must add up to the declared size, and the declared size must not be
-more than the compressed bytes can hold. Within
-`KRONIKA_OTAP_MAX_DECODED_BYTES` a small compressed message may still
-expand a lot; the budget bounds the result, not the ratio.
+more than the compressed bytes can hold. That check is a coarse filter
+for sizes that cannot be true; the limit is
+`KRONIKA_OTAP_MAX_DECODED_BYTES`, which every decoded buffer and every
+expanded dictionary column (its values and its keys) is charged to.
+Within it a small compressed message may still expand a lot; the budget
+bounds the result, not the ratio. A dictionary column of strings or
+bytes that would expand past 2 GiB is refused whatever the budget: its
+offsets are 32-bit.
 
 The ingest token is checked before a request body is read: a unary
 OTLP/gRPC export without it is refused before its message is decoded.

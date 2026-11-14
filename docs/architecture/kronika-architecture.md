@@ -14,7 +14,11 @@ receiver treats every declared size as hostile: rows, attributes, decoded
 bytes, message size, retained dictionary bytes, open streams, stream age
 and decode time are bounded by the `KRONIKA_OTAP_*` limits
 (`tumult-ingest::otap::limits`), connections, their handshake time and
-their age by the `KRONIKA_GRPC_*` limits (`tumult-ingest::listener`). One
+their age by the `KRONIKA_GRPC_*` limits (`tumult-ingest::listener`). The
+listener does the TLS handshake itself and, when an ingest token is set,
+knows which connections have made an authorised call: one that has not
+is closed after `KRONIKA_GRPC_AUTH_TIMEOUT_SECS` and gives its place to a
+newcomer when there is no room. One
 connection or peer (an IPv4 address or an IPv6 /64) gets only a share of
 the streams and of the retained bytes, and waiting batches are decoded
 peer by peer in turn. Because release builds abort on panic, Arrow
