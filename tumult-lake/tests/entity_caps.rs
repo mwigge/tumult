@@ -17,6 +17,9 @@ const PAST: i64 = 1_767_225_600_000_000_000;
 const FUTURE: i64 = 4_102_444_800_000_000_000;
 const SECOND: i64 = 1_000_000_000;
 
+/// What a writer reads the time from.
+type Clock = fn() -> i64;
+
 /// The wall clock `S` seconds on. A writer searches a bound for something
 /// to evict at most once in a few seconds; a test that makes it search
 /// again moves its clock on instead of waiting.
@@ -251,8 +254,7 @@ fn at_the_bound_the_silent_entities_make_room_before_anything_is_refused() {
         &limits,
     );
     let mut evictions = Vec::new();
-    let later: [(&str, fn() -> i64); 3] =
-        [("n1", ahead::<0>), ("n2", ahead::<10>), ("n3", ahead::<20>)];
+    let later: [(&str, Clock); 3] = [("n1", ahead::<0>), ("n2", ahead::<10>), ("n3", ahead::<20>)];
     for (id, clock) in later {
         writer.set_clock(clock);
         let applied = apply(&writer, &[live(id)], &limits);
