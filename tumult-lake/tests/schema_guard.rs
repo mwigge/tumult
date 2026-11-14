@@ -138,7 +138,6 @@ fn a_writer_on_a_newer_lake_is_refused_without_a_migration() {
 #[test]
 fn a_writer_on_a_new_file_is_not_refused() {
     let dir = tempfile::TempDir::new().unwrap();
-    Store::at(&dir.path().join("fresh.duckdb"))
-        .writer()
-        .unwrap();
+    let opened = Store::at(&dir.path().join("fresh.duckdb")).writer();
+    assert!(opened.is_ok(), "{:?}", opened.err());
 }
