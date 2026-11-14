@@ -47,6 +47,13 @@ pub const MAX_DEPTH: usize = 8;
 pub const MAX_REASON_LEN: usize = 256;
 /// Most relationships of one event.
 pub const MAX_RELATIONSHIPS: usize = 64;
+/// Longest environment name kept, in bytes.
+pub const MAX_ENVIRONMENT_LEN: usize = 256;
+/// Longest schema URL kept, in bytes.
+pub const MAX_SCHEMA_URL_LEN: usize = 2048;
+/// Most values in the description and the relationships of one event,
+/// counting every entry of a map or a list at any depth.
+pub const MAX_STATE_ELEMENTS: usize = 4096;
 
 /// Seconds between two warnings about dropped entity events.
 const DROP_WARN_INTERVAL_S: u64 = 60;
@@ -451,6 +458,7 @@ fn normalise(
     options: &EntityOptions,
 ) -> Result<(EntityEventRow, u64), EntityDrop> {
     let (kind, keys) = kind_and_keys(record)?;
+    check_source(source)?;
     let attrs = record.attributes.as_slice();
     let entity_type = entity_type(attrs, keys)?;
     let entity_id = identity(attrs, keys, entity_type, source.resource)?;
@@ -499,8 +507,9 @@ impl State {
 
 fn state_of(attrs: &[KeyValue], keys: &Keys, options: &EntityOptions) -> Result<State, EntityDrop> {
     let mut filtered = 0;
-    let description = description(attrs, keys, options, &mut filtered)?;
-    let relationships = relationships(attrs, keys, &mut filtered)?;
+    let mut budget = Budget::whole();
+    let description = description(attrs, keys, options, &mut filtered, &mut budget)?;
+    let relationships = relationships(attrs, keys, &mut filtered, &mut budget)?;
     check_state_size(&description, &relationships)?;
     Ok(State {
         description,
@@ -508,6 +517,26 @@ fn state_of(attrs: &[KeyValue], keys: &Keys, options: &EntityOptions) -> Result<
         interval_s: interval_s(attrs, keys)?,
         filtered,
     })
+}
+
+/// Whether the text holds a control character, NUL included. What names
+/// an entity is typed into URLs and read in log lines, and NUL ends a
+/// string in more than one place between here and a client.
+fn has_control(text: &str) -> bool {
+    text.chars().any(char::is_control)
+}
+
+/// The environment and the schema URL are the sender's, like the event:
+/// bounded, and free of control characters.
+fn check_source(source: &Source<'_>) -> Result<(), EntityDrop> {
+    let schema_url = source.schema_url.unwrap_or("");
+    if source.environment.len() > MAX_ENVIRONMENT_LEN || schema_url.len() > MAX_SCHEMA_URL_LEN {
+        return Err(EntityDrop::Oversized);
+    }
+    if has_control(source.environment) || has_control(schema_url) {
+        return Err(EntityDrop::Malformed);
+    }
+    Ok(())
 }
 
 fn value_of<'a>(attrs: &'a [KeyValue], key: &str) -> Option<&'a any_value::Value> {
@@ -534,6 +563,9 @@ fn entity_type<'a>(attrs: &'a [KeyValue], keys: &Keys) -> Result<&'a str, Entity
     if entity_type.len() > MAX_TYPE_LEN {
         return Err(EntityDrop::Oversized);
     }
+    if has_control(entity_type) {
+        return Err(EntityDrop::Malformed);
+    }
     Ok(entity_type)
 }
 
@@ -559,12 +591,15 @@ fn identity(
     checked_identity(pairs)
 }
 
-/// Identifying attributes within the size limits, sorted by key, no key
-/// twice.
+/// Identifying attributes within the size limits and free of control
+/// characters, sorted by key, no key twice.
 fn checked_identity(mut pairs: Vec<(String, String)>) -> Result<Vec<(String, String)>, EntityDrop> {
     for (key, value) in &pairs {
         if key.len() > MAX_ID_PART_LEN || value.len() > MAX_ID_PART_LEN {
             return Err(EntityDrop::Oversized);
+        }
+        if has_control(key) || has_control(value) {
+            return Err(EntityDrop::Malformed);
         }
     }
     pairs.sort();
@@ -674,16 +709,24 @@ fn is_flat(value: Option<&AnyValue>) -> bool {
 /// removed. A key the operator named is kept with whatever it holds. A key
 /// kept by default or as a listed label is kept only with a flat value, so
 /// nothing nested rides in under a listed name.
-fn kept_value(entry: &KeyValue, options: &EntityOptions) -> Result<Option<Json>, EntityDrop> {
+fn kept_value(
+    entry: &KeyValue,
+    options: &EntityOptions,
+    budget: &mut Budget,
+) -> Result<Option<Json>, EntityDrop> {
     let value = entry.value.as_ref();
     if attribute_is_allowed(&entry.key, &options.attribute_allow) {
-        return value_json(value, 1).map(Some);
+        budget.charge_key(&entry.key)?;
+        return value_json(value, 1, budget).map(Some);
     }
     let listed = kept_by_default(&entry.key) || label_is_allowed(&entry.key, &options.label_allow);
     if !listed || !is_flat(value) {
+        // A removed entry is still one the daemon had to look at.
+        budget.take(0)?;
         return Ok(None);
     }
-    value_json(value, 1).map(Some)
+    budget.charge_key(&entry.key)?;
+    value_json(value, 1, budget).map(Some)
 }
 
 /// The descriptive attributes that are kept as a JSON object, `{}` when
@@ -693,6 +736,7 @@ fn description(
     keys: &Keys,
     options: &EntityOptions,
     filtered: &mut u64,
+    budget: &mut Budget,
 ) -> Result<Json, EntityDrop> {
     let entries = match value_of(attrs, keys.description) {
         None => return Ok(Json::Object(Map::new())),
@@ -701,7 +745,7 @@ fn description(
     };
     let mut object = Map::new();
     for entry in entries {
-        match kept_value(entry, options)? {
+        match kept_value(entry, options, budget)? {
             Some(value) => {
                 object.insert(entry.key.clone(), value);
             }
@@ -718,7 +762,12 @@ const RELATIONSHIP_TYPE_SHORT: &str = "type";
 
 /// The relationships as a JSON array, `[]` when absent or in the legacy
 /// form, which has none. `filtered` counts the keys left out.
-fn relationships(attrs: &[KeyValue], keys: &Keys, filtered: &mut u64) -> Result<Json, EntityDrop> {
+fn relationships(
+    attrs: &[KeyValue],
+    keys: &Keys,
+    filtered: &mut u64,
+    budget: &mut Budget,
+) -> Result<Json, EntityDrop> {
     let Some(value) = keys.relationships.and_then(|key| value_of(attrs, key)) else {
         return Ok(Json::Array(Vec::new()));
     };
@@ -732,7 +781,11 @@ fn relationships(attrs: &[KeyValue], keys: &Keys, filtered: &mut u64) -> Result<
         .values
         .iter()
         .map(|item| match item.value.as_ref() {
-            Some(any_value::Value::KvlistValue(map)) => relationship(&map.values, filtered),
+            Some(any_value::Value::KvlistValue(map)) => {
+                let stored = relationship(&map.values, filtered)?;
+                budget.take(stored.to_string().len())?;
+                Ok(stored)
+            }
             _ => Err(EntityDrop::Malformed),
         })
         .collect::<Result<Vec<Json>, EntityDrop>>()
@@ -785,17 +838,69 @@ fn relationship(entries: &[KeyValue], filtered: &mut u64) -> Result<Json, Entity
     Ok(Json::Object(object))
 }
 
+/// What one event may still take while its description and relationships
+/// are converted. It is charged before a value is built, so a description
+/// that is too large stops the conversion where it exceeds the limit
+/// instead of being built whole and measured afterwards. A charge is
+/// never more than the JSON of the value takes, so the budget refuses
+/// nothing that [`check_state_size`] would accept for its bytes.
+struct Budget {
+    bytes: usize,
+    elements: usize,
+}
+
+impl Budget {
+    const fn whole() -> Self {
+        Self {
+            bytes: MAX_STATE_BYTES,
+            elements: MAX_STATE_ELEMENTS,
+        }
+    }
+
+    /// Take one value of `bytes` from what is left.
+    fn take(&mut self, bytes: usize) -> Result<(), EntityDrop> {
+        self.elements = self.elements.checked_sub(1).ok_or(EntityDrop::Oversized)?;
+        self.charge(bytes)
+    }
+
+    /// Take the bytes of a key with its quotes and colon.
+    fn charge_key(&mut self, key: &str) -> Result<(), EntityDrop> {
+        self.charge(key.len() + 3)
+    }
+
+    fn charge(&mut self, bytes: usize) -> Result<(), EntityDrop> {
+        self.bytes = self.bytes.checked_sub(bytes).ok_or(EntityDrop::Oversized)?;
+        Ok(())
+    }
+}
+
+/// The least the JSON of a value takes, without what it contains.
+fn least_json_len(value: &any_value::Value) -> usize {
+    match value {
+        any_value::Value::StringValue(text) => text.len() + 2,
+        any_value::Value::BytesValue(bytes) => bytes.len() * 2 + 2,
+        any_value::Value::BoolValue(_) | any_value::Value::StringValueStrindex(_) => 4,
+        any_value::Value::IntValue(_) | any_value::Value::DoubleValue(_) => 1,
+        any_value::Value::ArrayValue(_) | any_value::Value::KvlistValue(_) => 2,
+    }
+}
+
 /// A key-value list as a JSON object that sits `depth` levels deep.
 fn object_json<'a>(
     entries: impl Iterator<Item = &'a KeyValue>,
     depth: usize,
+    budget: &mut Budget,
 ) -> Result<Json, EntityDrop> {
     if depth > MAX_DEPTH {
         return Err(EntityDrop::Malformed);
     }
     let mut object = Map::new();
     for kv in entries {
-        object.insert(kv.key.clone(), value_json(kv.value.as_ref(), depth)?);
+        budget.charge_key(&kv.key)?;
+        object.insert(
+            kv.key.clone(),
+            value_json(kv.value.as_ref(), depth, budget)?,
+        );
     }
     Ok(Json::Object(object))
 }
@@ -803,10 +908,16 @@ fn object_json<'a>(
 /// One value with its type kept; `depth` is the level of its container.
 /// Bytes become hex, a double JSON cannot hold becomes its text, and an
 /// unset value becomes null.
-fn value_json(value: Option<&AnyValue>, depth: usize) -> Result<Json, EntityDrop> {
+fn value_json(
+    value: Option<&AnyValue>,
+    depth: usize,
+    budget: &mut Budget,
+) -> Result<Json, EntityDrop> {
     let Some(value) = value.and_then(|v| v.value.as_ref()) else {
+        budget.take(4)?;
         return Ok(Json::Null);
     };
+    budget.take(least_json_len(value))?;
     Ok(match value {
         any_value::Value::StringValue(text) => Json::String(text.clone()),
         any_value::Value::BoolValue(flag) => Json::Bool(*flag),
@@ -821,11 +932,11 @@ fn value_json(value: Option<&AnyValue>, depth: usize) -> Result<Json, EntityDrop
             let items: Result<Vec<Json>, EntityDrop> = array
                 .values
                 .iter()
-                .map(|item| value_json(Some(item), depth + 1))
+                .map(|item| value_json(Some(item), depth + 1, budget))
                 .collect();
             Json::Array(items?)
         }
-        any_value::Value::KvlistValue(map) => object_json(map.values.iter(), depth + 1)?,
+        any_value::Value::KvlistValue(map) => object_json(map.values.iter(), depth + 1, budget)?,
         // An interned string cannot be resolved without the string table.
         any_value::Value::StringValueStrindex(_) => Json::Null,
     })

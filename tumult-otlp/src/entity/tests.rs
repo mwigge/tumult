@@ -12,6 +12,7 @@ use tumult_lake::{EntityEventKind, EntityEventRow, WireForm, ENTITY_INTERVAL_MAX
 
 use super::*;
 
+mod bounds;
 mod filter;
 
 const TS: u64 = 1_774_980_000_000_000_000;

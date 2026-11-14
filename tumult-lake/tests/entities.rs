@@ -108,6 +108,37 @@ fn the_key_escapes_its_separators_so_two_ids_never_collide() {
     assert_eq!(entity_key("a/b", &slashed), "a%2Fb|p=%2Fvar%2Fx%7Cy%25");
 }
 
+/// The lookup of the latest row passes the keys of a batch to the store as
+/// one JSON parameter. A quote, a backslash or text that reads like SQL in
+/// an identifying value must come back as the same key, or every heartbeat
+/// of that entity would open a row.
+#[test]
+fn a_key_with_quotes_and_backslashes_is_found_again() {
+    let (_d, store) = fixture();
+    let id = r#"a"b\c'd; DROP TABLE entity_versions; --"#;
+    let odd = |ts_ns: i64| EntityEventRow {
+        entity_id: vec![("host.id".into(), id.into())],
+        ..state(ts_ns, json!({}))
+    };
+    assert_eq!(apply(&store, &[odd(PAST)]), vec![EntityOutcome::Opened]);
+    assert_eq!(
+        apply(&store, &[odd(PAST + SECOND)]),
+        vec![EntityOutcome::Refreshed]
+    );
+    let rows = versions(&store);
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["host_id"], id);
+    assert_eq!(
+        rows[0]["entity_key"],
+        entity_key("host", &[("host.id".into(), id.into())])
+    );
+    assert_eq!(
+        apply(&store, &[delete(PAST + 2 * SECOND)]),
+        vec![EntityOutcome::DeleteUnknown],
+        "the plain host is another entity"
+    );
+}
+
 #[test]
 fn the_first_state_opens_a_row_with_every_column() {
     let (_d, store) = fixture();
