@@ -422,12 +422,14 @@ mod tests {
         s.parse().expect("valid socket addr")
     }
 
-    /// A loopback address nothing listens on, picked by the kernel so that
-    /// the pidfile keyed on it is not shared with another test or test run.
-    fn unused_addr() -> SocketAddr {
-        std::net::TcpListener::bind("127.0.0.1:0")
-            .and_then(|listener| listener.local_addr())
-            .expect("bind an ephemeral port")
+    /// A loopback address picked by the kernel, with the listener that owns
+    /// it. The pidfile is keyed on the address, so the caller keeps the
+    /// listener for as long as it uses the pidfile: while it is bound, the
+    /// kernel cannot hand the same port to another test.
+    fn reserved_addr() -> (std::net::TcpListener, SocketAddr) {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind an ephemeral port");
+        let addr = listener.local_addr().expect("read the bound address");
+        (listener, addr)
     }
 
     #[test]
@@ -450,7 +452,7 @@ mod tests {
 
     #[tokio::test]
     async fn stop_proxy_removes_a_stale_pidfile() {
-        let listen = unused_addr();
+        let (_reserved, listen) = reserved_addr();
         let pidfile = pidfile_path(listen);
         // Simulate a leftover pidfile pointing at a long-dead PID. On Linux the
         // identity check refuses the kill and the stale file is cleaned up;
@@ -483,7 +485,7 @@ mod tests {
     #[cfg(target_os = "linux")]
     #[tokio::test]
     async fn stop_proxy_refuses_to_kill_a_non_proxyd_process() {
-        let listen = unused_addr();
+        let (_reserved, listen) = reserved_addr();
         let pidfile = pidfile_path(listen);
         tokio::fs::write(&pidfile, std::process::id().to_string())
             .await
@@ -512,7 +514,7 @@ mod tests {
         else {
             return; // no `sleep` on this host — nothing to test
         };
-        let listen = unused_addr();
+        let (_reserved, listen) = reserved_addr();
         let pidfile = pidfile_path(listen);
         tokio::fs::write(&pidfile, child.id().to_string())
             .await
@@ -701,7 +703,7 @@ mod tests {
 
     #[tokio::test]
     async fn stop_proxy_treats_a_garbage_pidfile_as_nothing_running() {
-        let listen = unused_addr();
+        let (_reserved, listen) = reserved_addr();
         let pidfile = pidfile_path(listen);
         tokio::fs::write(&pidfile, "not-a-pid").await.unwrap();
         let out = stop_proxy(listen).await.expect("idempotent rollback");

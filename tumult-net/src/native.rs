@@ -178,10 +178,10 @@ mod tests {
 
     #[tokio::test]
     async fn stop_proxy_without_running_proxy_is_idempotent() {
-        // Kernel-assigned, so the pidfile keyed on it belongs to this run.
-        let listen = std::net::TcpListener::bind("127.0.0.1:0")
-            .and_then(|listener| listener.local_addr())
-            .expect("bind an ephemeral port");
+        // Kernel-assigned, and held until the test ends, so the pidfile keyed
+        // on the address cannot be shared with another test.
+        let reserved = std::net::TcpListener::bind("127.0.0.1:0").expect("bind an ephemeral port");
+        let listen = reserved.local_addr().expect("read the bound address");
         let args = NativeArgs::from([("listen".into(), serde_json::json!(listen.to_string()))]);
         let output = NetExecutor.execute("stop_proxy", &args).await.unwrap();
         assert!(output.contains("no chaos proxy running"));
