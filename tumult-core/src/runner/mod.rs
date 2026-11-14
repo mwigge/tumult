@@ -257,12 +257,29 @@ pub fn settled_versions(
     resolver: &dyn TargetVersionResolver,
     window: &RunWindow,
 ) -> Result<Vec<VersionShare>, String> {
+    settled_versions_unless(resolver, window, None)
+}
+
+/// [`settled_versions`] for a run that can be told to stop: once
+/// `cancelled` is set the asking ends, inside a pause too, and the last
+/// answer stands.
+///
+/// # Errors
+///
+/// Returns the resolver's error.
+pub fn settled_versions_unless(
+    resolver: &dyn TargetVersionResolver,
+    window: &RunWindow,
+    cancelled: Option<&CancellationToken>,
+) -> Result<Vec<VersionShare>, String> {
     let requests = |seen: &[VersionShare]| -> u64 { seen.iter().map(|share| share.requests).sum() };
     let settle = resolver.settle();
     let asked_at = std::time::Instant::now();
     let mut last = resolver.resolve(window)?;
     while !settle.pause.is_zero() && asked_at.elapsed() + settle.pause <= settle.deadline {
-        std::thread::sleep(settle.pause);
+        if !activity::wait_pause(Some(settle.pause.as_secs_f64()), cancelled) {
+            break;
+        }
         let next = resolver.resolve(window)?;
         let settled = requests(&next) == requests(&last);
         last = next;

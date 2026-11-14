@@ -656,6 +656,7 @@ fn seen_in_window(
     resolver: &dyn super::TargetVersionResolver,
     target: &crate::types::ExperimentTarget,
     journal: &Journal,
+    cancelled: Option<&CancellationToken>,
 ) -> Result<Vec<crate::types::VersionShare>, String> {
     let window = |pad_ns: i64| super::RunWindow {
         system: target.system.clone(),
@@ -664,12 +665,12 @@ fn seen_in_window(
         started_at_ns: journal.started_at_ns.saturating_sub(pad_ns),
         ended_at_ns: journal.ended_at_ns.saturating_add(pad_ns),
     };
-    let own = super::settled_versions(resolver, &window(0))?;
+    let own = super::settled_versions_unless(resolver, &window(0), cancelled)?;
     if TargetVersion::versioned_requests(&own) > 0 {
         return Ok(own);
     }
     let skew_ns = i64::try_from(super::VERSION_WINDOW_SKEW.as_nanos()).unwrap_or(i64::MAX);
-    super::settled_versions(resolver, &window(skew_ns))
+    super::settled_versions_unless(resolver, &window(skew_ns), cancelled)
 }
 
 /// Ask the target's telemetry which version served the run
@@ -686,7 +687,8 @@ fn observed_target_version(
 ) -> Option<TargetVersion> {
     let target = experiment.target.as_ref()?;
     let resolver = config.version_resolver.as_ref()?;
-    let seen = match seen_in_window(resolver.as_ref(), target, journal) {
+    let cancelled = config.cancellation_token.as_ref();
+    let seen = match seen_in_window(resolver.as_ref(), target, journal, cancelled) {
         Ok(seen) => seen,
         Err(error) => {
             tracing::warn!(

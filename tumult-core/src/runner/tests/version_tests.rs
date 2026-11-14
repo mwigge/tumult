@@ -88,6 +88,46 @@ fn the_telemetry_is_asked_again_until_its_count_settles() {
     assert_eq!(recorded.shares, vec![share("1.5.1", 94), share("1.5.0", 6)]);
 }
 
+/// A run that is told to stop while its version is being asked for does
+/// not sit out the settle pauses: it records what the last answer said.
+#[test]
+fn a_run_told_to_stop_does_not_wait_for_the_telemetry_to_settle() {
+    /// Counts ever more requests, and stops the run on the first question.
+    struct Stopping(tokio_util::sync::CancellationToken, Mutex<u64>);
+    impl TargetVersionResolver for Stopping {
+        fn resolve(&self, _window: &RunWindow) -> Result<Vec<VersionShare>, String> {
+            let mut asked = self.1.lock().unwrap();
+            *asked += 1;
+            self.0.cancel();
+            Ok(vec![share("1.5.0", *asked)])
+        }
+
+        fn settle(&self) -> VersionSettle {
+            VersionSettle {
+                pause: std::time::Duration::from_millis(100),
+                deadline: std::time::Duration::from_secs(1),
+            }
+        }
+    }
+    let mut exp = minimal_experiment();
+    exp.target = Some(checkout(None));
+    let token = tokio_util::sync::CancellationToken::new();
+    let resolver = Arc::new(Stopping(token.clone(), Mutex::new(0)));
+    let config = RunConfig {
+        cancellation_token: Some(token),
+        version_resolver: Some(resolver.clone()),
+        ..RunConfig::default()
+    };
+
+    let journal = run(&exp, &config);
+
+    assert_eq!(*resolver.1.lock().unwrap(), 1, "asked once, not again");
+    assert_eq!(
+        journal.target_version.map(|v| v.version),
+        Some("1.5.0".into())
+    );
+}
+
 #[test]
 fn telemetry_that_never_settles_is_read_at_the_deadline() {
     struct Growing(Mutex<u64>);
