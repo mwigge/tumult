@@ -264,7 +264,7 @@ with the number left out.
 | `unknown_kind` | the record is marked as an entity event but is neither a state nor a delete |
 | `no_type` | the type attribute of its wire form is missing or empty |
 | `no_identity` | it has no identifying attributes and the resource has none for its type (only `host` → `host.id` is known) |
-| `malformed` | a type that is not a string, an interval that is not a number, an identifying value that is empty or not a scalar, the same identifying name twice, a description that is not a map, relationships that are not an array of maps, a relationship without a type or without the type and identity of its target, or nesting deeper than 8 |
+| `malformed` | a type that is not a string, an interval that is not a number, an identifying value that is empty or not a string (a number or a boolean would name the same entity as the string that reads alike), the same identifying name twice, a description that is not a map, relationships that are not an array of maps, a relationship without a type or without the type and identity of its target, or nesting deeper than 8 |
 | `oversized` | a type over 128 bytes, more than 16 identifying attributes, a name or value over 256 bytes, more than 64 relationships, or description and relationships over 64 KiB together |
 
 A delete event is read for its type, its identifying attributes and its

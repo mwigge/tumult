@@ -574,8 +574,9 @@ fn checked_identity(mut pairs: Vec<(String, String)>) -> Result<Vec<(String, Str
     Ok(pairs)
 }
 
-/// The id map of an event as text pairs. A value is a scalar; a nested
-/// value, an empty one or an empty key cannot identify anything.
+/// The id map of an event as text pairs. A value is a string that is not
+/// empty, under a key that is not empty; nothing else identifies an
+/// entity.
 fn own_identity(own: &[KeyValue]) -> Result<Vec<(String, String)>, EntityDrop> {
     if own.len() > MAX_ID_PAIRS {
         return Err(EntityDrop::Oversized);
@@ -591,16 +592,12 @@ fn own_identity(own: &[KeyValue]) -> Result<Vec<(String, String)>, EntityDrop> {
         .collect()
 }
 
+/// An identifying value. The key of an entity is text, so a number or a
+/// boolean accepted here would name the same entity as the string that
+/// reads alike (`1` and `"1"`): only a string is taken.
 fn id_text(value: Option<&AnyValue>) -> Result<String, EntityDrop> {
-    let value = value.ok_or(EntityDrop::Malformed)?;
-    match value.value {
-        Some(
-            any_value::Value::StringValue(_)
-            | any_value::Value::BoolValue(_)
-            | any_value::Value::IntValue(_)
-            | any_value::Value::DoubleValue(_)
-            | any_value::Value::BytesValue(_),
-        ) => Ok(common::any_value_to_string(value)),
+    match value.and_then(|v| v.value.as_ref()) {
+        Some(any_value::Value::StringValue(text)) => Ok(text.clone()),
         _ => Err(EntityDrop::Malformed),
     }
 }

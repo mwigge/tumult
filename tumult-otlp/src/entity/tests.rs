@@ -601,28 +601,61 @@ fn description_values_keep_their_types() {
     );
 }
 
+/// The key of an entity is text. Were `1` and `"1"`, or `true` and
+/// `"true"`, both accepted they would name the same entity, so only a
+/// string identifies one.
 #[test]
-fn id_values_that_are_not_strings_are_rendered_as_text() {
+fn only_a_string_identifies_an_entity() {
+    let with_id = |value: Value| {
+        spec_record(
+            "entity.state",
+            vec![
+                text("entity.type", "process"),
+                kv(
+                    "entity.id",
+                    map(vec![kv("process.pid", value), text("host.id", "9f2c")]),
+                ),
+            ],
+        )
+    };
+    assert_eq!(
+        entities_of(prod(), vec![with_id(Value::StringValue("1".into()))])[0].entity_id,
+        vec![
+            ("host.id".to_string(), "9f2c".to_string()),
+            ("process.pid".to_string(), "1".to_string()),
+        ]
+    );
+    let others = vec![
+        with_id(Value::IntValue(1)),
+        with_id(Value::BoolValue(true)),
+        with_id(Value::DoubleValue(1.0)),
+        with_id(Value::BytesValue(vec![0x31])),
+    ];
+    assert_eq!(drops_of(prod(), others), vec![EntityDrop::Malformed; 4]);
+}
+
+/// The target of a relationship is identified the same way.
+#[test]
+fn only_a_string_identifies_the_target_of_a_relationship() {
     let record = spec_record(
         "entity.state",
         vec![
-            text("entity.type", "process"),
+            text("entity.type", "k8s.pod"),
+            kv("entity.id", pod_id()),
             kv(
-                "entity.id",
-                map(vec![
-                    kv("process.pid", Value::IntValue(4242)),
-                    text("host.id", "9f2c"),
-                ]),
+                "entity.relationships",
+                list(vec![map(vec![
+                    text("relationship.type", "runs_on"),
+                    text("entity.type", "process"),
+                    kv(
+                        "entity.id",
+                        map(vec![kv("process.pid", Value::IntValue(1))]),
+                    ),
+                ])]),
             ),
         ],
     );
-    assert_eq!(
-        entities_of(prod(), vec![record])[0].entity_id,
-        vec![
-            ("host.id".to_string(), "9f2c".to_string()),
-            ("process.pid".to_string(), "4242".to_string()),
-        ]
-    );
+    assert_eq!(drops_of(prod(), vec![record]), vec![EntityDrop::Malformed]);
 }
 
 fn labelled() -> LogRecord {
