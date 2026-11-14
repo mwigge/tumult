@@ -206,15 +206,30 @@ are not Rust constants; the checker and this table are the source of truth.
   is either a path with an `@` in it or a password with an unescaped
   delimiter, and any URL with a scheme the sanitiser does not know
   (`alice://password@host`: what stands before `://` may be a user name).
+  The schemes it knows are `amqp`, `amqps`, `clickhouse`, `ftp`, `ftps`,
+  `grpc`, `grpcs`, `h2c`, `http`, `https`, `kafka`, `mongodb`, `mqtt`,
+  `mysql`, `nats`, `otlp`, `postgres`, `postgresql`, `redis`, `rediss`,
+  `s3`, `sftp`, `ssh`, `tcp`, `tls`, `tumult`, `udp`, `ws` and `wss`.
+  `file` is not one of them: a `file://` URL is logged as `[redacted-url]`;
+  log a path as `file.path`.
   `logging::server_address` answers the same way for `server.address`. An
   error text that may quote a URL goes through `logging::redact_url`, which
   replaces the user name, the password and the query, fragment and path
   parameter values of the URL (three bytes or longer) with `[redacted]`
-  wherever they stand, raw or percent-encoded. A user name of one or two
-  bytes is replaced only where it is a word of its own. A credential of
-  more than 4096 bytes is not searched for: the whole text becomes
-  `[redacted]`. `logging::redact_credentials` does the same with a user
-  name and a password that are configured beside the URL.
+  wherever they stand, raw or percent-encoded, and as a lossy conversion
+  spells them when they are not UTF-8. Every `@` of the URL is taken as a
+  possible end of the userinfo. A user name of one or two bytes is replaced
+  only where it is a word of its own, that is where no ASCII letter or
+  digit stands next to it. The text is searched and kept up to 8 KiB, the
+  most a field holds; the rest is replaced by `...[truncated N bytes]`. A
+  credential of more than 4096 bytes, or credentials of more than 16 KiB
+  together, are not searched for: the whole text becomes `[redacted]`.
+  `logging::redact_credentials` does the same with a user name and a
+  password that are configured beside the URL. The ClickHouse store uses
+  it for the error text of a connection retry, so the configured user
+  name is `[redacted]` there, and so is the built-in `default` when no
+  other is configured: a retry warning that says `[redacted]` where a
+  word such as "default" is expected has lost nothing else.
 - Query strings. Log `url.path`.
 - Request and response bodies, prompts, model output.
 - stdout and stderr of child processes and plugin scripts. Log their sizes

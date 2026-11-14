@@ -6,6 +6,10 @@
 //! merely looks like a URL ends shows whatever stood before that point, and
 //! that can be the password.
 
+use std::borrow::Cow;
+
+use super::fields::MAX_FIELD_BYTES;
+
 /// What stands in for a URL, or a host, that cannot be shown to be free of
 /// credentials. No part of the input is in it.
 pub const REDACTED_URL: &str = "[redacted-url]";
@@ -27,13 +31,19 @@ const MIN_USER_NAME_BYTES: usize = 3;
 /// replaced as a whole.
 const MAX_SECRET_BYTES: usize = 4096;
 
+/// The most bytes of secrets, all of them together, that are searched
+/// for. Each one is tried at every position of the text, so a text is not
+/// searched for more: it is replaced as a whole.
+const MAX_SECRETS_TOTAL_BYTES: usize = 16 * 1024;
+
 /// The schemes a URL is read with. Anything else before `://` may be a
 /// user name (`alice://password@host`), so such a value is not shown.
-const KNOWN_SCHEMES: [&str; 30] = [
+/// `file` is not one of them: a file URL names no server, and a path is
+/// logged as `file.path`.
+const KNOWN_SCHEMES: [&str; 29] = [
     "amqp",
     "amqps",
     "clickhouse",
-    "file",
     "ftp",
     "ftps",
     "grpc",
@@ -125,8 +135,15 @@ pub fn server_address(url: &str) -> ServerAddress {
 /// (`[redacted]:[redacted]@`) is then removed.
 ///
 /// A user name under three bytes is replaced only where it is a word of
-/// its own. When a credential is longer than 4096 bytes the text is not
-/// searched: the answer is `[redacted]` alone.
+/// its own: where no ASCII letter or digit stands next to it. A credential
+/// that is not UTF-8 once decoded is also looked for as a lossy conversion
+/// spells it, with replacement characters.
+///
+/// The work is bounded. The text is searched and returned up to
+/// [`MAX_FIELD_BYTES`], the most a log field holds, and what follows is
+/// replaced by a note of its length. When one credential is longer than
+/// 4096 bytes, or all of them together are longer than 16 KiB, the text is
+/// not searched: the answer is `[redacted]` alone.
 #[must_use]
 pub fn redact_url(text: &str, url: &str) -> String {
     let mut secrets = Secrets::default();
@@ -257,7 +274,9 @@ fn without_parameters(path: &str) -> String {
 struct Secret {
     /// Percent-decoded.
     bytes: Vec<u8>,
-    /// Replaced only where no letter or digit stands next to it.
+    /// Replaced only where no ASCII letter or digit stands next to it.
+    /// A letter or digit of another script does not hide it: `éab` holds
+    /// the user name `ab`.
     whole_word: bool,
 }
 
@@ -276,7 +295,7 @@ impl Secret {
         let inside_a_word = [previous, next]
             .into_iter()
             .flatten()
-            .any(char::is_alphanumeric);
+            .any(|neighbour| neighbour.is_ascii_alphanumeric());
         (!inside_a_word).then_some(end)
     }
 }
@@ -285,13 +304,19 @@ impl Secret {
 #[derive(Default)]
 struct Secrets {
     values: Vec<Secret>,
-    /// A value was longer than [`MAX_SECRET_BYTES`].
-    too_long: bool,
+    /// The bytes of `values`, and of what was refused, together.
+    total_bytes: usize,
+    /// A value was longer than [`MAX_SECRET_BYTES`], or all of them
+    /// together than [`MAX_SECRETS_TOTAL_BYTES`].
+    too_much: bool,
 }
 
 impl Secrets {
     /// Reads `url` generously: every reading of it that yields a userinfo
-    /// counts, since a library may have quoted it under any of them.
+    /// counts, since a library may have quoted it under any of them. Any
+    /// `@` may be the one that ends the userinfo: in
+    /// `http://u:pa/ss@host/x@y` it is neither the last of the authority
+    /// nor the last of all.
     fn add_url(&mut self, url: &str) {
         let (scheme, rest) = url
             .split_once("://")
@@ -300,9 +325,7 @@ impl Secrets {
             // `alice://password@host`.
             self.add_user(scheme);
         }
-        let strict = rest[..end_of_authority(rest)].rfind('@');
-        let generous = rest.rfind('@');
-        for at in [strict, generous].into_iter().flatten() {
+        for (at, _) in rest.match_indices('@') {
             self.add_userinfo(&rest[..at]);
         }
         for value in parameter_values(rest) {
@@ -331,19 +354,30 @@ impl Secrets {
     }
 
     fn add(&mut self, bytes: Vec<u8>, min_bytes: usize, whole_word: bool) {
-        if bytes.len() > MAX_SECRET_BYTES {
-            self.too_long = true;
+        if bytes.len() < min_bytes {
             return;
         }
-        if bytes.len() >= min_bytes {
-            self.values.push(Secret { bytes, whole_word });
+        // Bytes that are no UTF-8 cannot stand in a text as they are; a
+        // lossy conversion of them can (`%FF%FEabc` as `\u{fffd}\u{fffd}abc`).
+        if let Cow::Owned(lossy) = String::from_utf8_lossy(&bytes) {
+            self.push(lossy.into_bytes(), whole_word);
         }
+        self.push(bytes, whole_word);
     }
 
-    /// `text` without the secrets. Fails closed: a secret too long to
-    /// search for leaves nothing of the text.
+    fn push(&mut self, bytes: Vec<u8>, whole_word: bool) {
+        self.total_bytes = self.total_bytes.saturating_add(bytes.len());
+        if bytes.len() > MAX_SECRET_BYTES || self.total_bytes > MAX_SECRETS_TOTAL_BYTES {
+            self.too_much = true;
+            return;
+        }
+        self.values.push(Secret { bytes, whole_word });
+    }
+
+    /// `text` without the secrets, up to [`MAX_FIELD_BYTES`] of it. Fails
+    /// closed: secrets too long to search for leave nothing of the text.
     fn redact(mut self, text: &str) -> String {
-        if self.too_long {
+        if self.too_much {
             return REDACTED.to_string();
         }
         // Longest first, so a secret is not cut short by one it contains.
@@ -351,9 +385,29 @@ impl Secrets {
             .sort_by_key(|secret| (std::cmp::Reverse(secret.bytes.len()), secret.whole_word));
         self.values
             .dedup_by(|later, kept| later.bytes == kept.bytes);
-        replace_values(text, &self.values)
+        let (redacted, read) = replace_values(self.window(text), &self.values, MAX_FIELD_BYTES);
+        let redacted = redacted
             .replace(&format!("{REDACTED}:{REDACTED}@"), "")
-            .replace(&format!("{REDACTED}:@"), "")
+            .replace(&format!("{REDACTED}:@"), "");
+        let unread = text.len() - read;
+        if unread == 0 {
+            return redacted;
+        }
+        format!("{redacted}...[truncated {unread} bytes]")
+    }
+
+    /// The start of `text` that is looked at: [`MAX_FIELD_BYTES`] and as
+    /// much more as the longest secret can take up, each byte of it
+    /// percent-encoded, so that a secret which begins before the maximum
+    /// is seen whole and not shown in part. `values` are sorted longest
+    /// first.
+    fn window<'t>(&self, text: &'t str) -> &'t str {
+        let longest = self.values.first().map_or(0, |secret| secret.bytes.len());
+        let mut end = text.len().min(MAX_FIELD_BYTES + 3 * longest);
+        while !text.is_char_boundary(end) {
+            end -= 1;
+        }
+        &text[..end]
     }
 }
 
@@ -376,12 +430,16 @@ fn parameter_values(rest: &str) -> impl Iterator<Item = &str> {
 }
 
 /// `text` with every occurrence of one of `values` replaced by
-/// [`REDACTED`]. `values` are tried in order.
-fn replace_values(text: &str, values: &[Secret]) -> String {
-    let mut redacted = String::with_capacity(text.len());
+/// [`REDACTED`], and how many bytes of `text` that covers. `values` are
+/// tried in order. Nothing that begins at `limit` bytes or later is read.
+fn replace_values(text: &str, values: &[Secret], limit: usize) -> (String, usize) {
+    let mut redacted = String::with_capacity(text.len().min(limit));
     let mut rest = text;
     let mut previous = None;
     while let Some(character) = rest.chars().next() {
+        if text.len() - rest.len() >= limit {
+            break;
+        }
         let matched = values
             .iter()
             .find_map(|secret| secret.end_at_start(rest, previous));
@@ -394,7 +452,7 @@ fn replace_values(text: &str, values: &[Secret]) -> String {
         previous = rest[..end].chars().next_back();
         rest = &rest[end..];
     }
-    redacted
+    (redacted, text.len() - rest.len())
 }
 
 /// Where `value` ends when `text` starts with it, each byte spelled either
@@ -446,6 +504,7 @@ fn percent_decode(raw: &[u8]) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::{redact_credentials, redact_url, sanitize_url, server_address, ServerAddress};
+    use crate::logging::fields::MAX_FIELD_BYTES;
 
     /// What stands in for a URL that cannot be shown to be clean.
     const PLACEHOLDER: &str = "[redacted-url]";
@@ -558,6 +617,9 @@ mod tests {
             None,
             &["alice"],
         ),
+        // A file URL names no server; a path is logged as `file.path`.
+        ("file:///tmp/x", PLACEHOLDER, PLACEHOLDER, None, &[]),
+        ("file://host/tmp/x", PLACEHOLDER, PLACEHOLDER, None, &[]),
         // Clean readings.
         (
             "clickhouse://bob:hunter2@ch:9000/db",
@@ -835,6 +897,34 @@ mod tests {
             "bad url http://host",
             &[],
         ),
+        // Nor inside a word of ASCII letters and digits only: a letter or
+        // digit of another script next to it does not hide it.
+        (
+            "http://ab:hunter2@host",
+            "éab ab٣ 日ab本 9ab abZ",
+            "é[redacted] [redacted]٣ 日[redacted]本 9ab abZ",
+            &["hunter2"],
+        ),
+        // Every `@` may be the one that ends the userinfo.
+        (
+            "http://u:pa/ss@host/x@y",
+            "password pa/ss rejected",
+            "password [redacted] rejected",
+            &["pa/ss"],
+        ),
+        (
+            "http://u:pa/ss@mid/x@host/y@z",
+            "password pa/ss rejected, pa/ss@mid/x too",
+            "password [redacted] rejected, [redacted] too",
+            &["pa/ss"],
+        ),
+        // Bytes that are no UTF-8, quoted with replacement characters.
+        (
+            "http://u:%FF%FEabc@host",
+            "bad password \u{fffd}\u{fffd}abc (%FF%FEabc)",
+            "bad password [redacted] ([redacted])",
+            &["abc"],
+        ),
         // A scheme that is not known may be a user name.
         (
             "alice://hunter2@ch:9000",
@@ -888,6 +978,53 @@ mod tests {
         assert_eq!(redact_url("connection refused", &url(4097)), "[redacted]");
         let user = format!("http://{}:pw@host", "u".repeat(4097));
         assert_eq!(redact_url("connection refused", &user), "[redacted]");
+    }
+
+    #[test]
+    fn secrets_too_many_to_search_for_hide_the_whole_text() {
+        let url = |values: usize| {
+            let query: Vec<String> = (0..values)
+                .map(|value| format!("k{value}={value}{}", "x".repeat(3999)))
+                .collect();
+            format!("http://host/?{}", query.join("&"))
+        };
+
+        // 16 000 bytes of secrets are searched for, 20 000 are not.
+        assert_eq!(
+            redact_url("connection refused", &url(4)),
+            "connection refused"
+        );
+        assert_eq!(redact_url("connection refused", &url(5)), "[redacted]");
+    }
+
+    #[test]
+    fn a_text_is_searched_and_shown_up_to_the_field_maximum() {
+        let url = "http://u:hunter2@host";
+        let full = "a".repeat(MAX_FIELD_BYTES);
+        assert_eq!(redact_url(&full, url), full);
+
+        // Past the maximum nothing is shown.
+        let beyond = format!("{full} hunter2 and more");
+        assert_eq!(
+            redact_url(&beyond, url),
+            format!("{full}...[truncated 17 bytes]")
+        );
+
+        // A secret that straddles the maximum is not shown in part.
+        let head = "a".repeat(MAX_FIELD_BYTES - 3);
+        let straddling = format!("{head}hunter2 tail");
+        assert_eq!(
+            redact_url(&straddling, url),
+            format!("{head}[redacted]...[truncated 5 bytes]")
+        );
+
+        // The cut does not split a character.
+        let wide = format!("a{}", "é".repeat(MAX_FIELD_BYTES));
+        let shown = "é".repeat(MAX_FIELD_BYTES / 2);
+        assert_eq!(
+            redact_url(&wide, url),
+            format!("a{shown}...[truncated {MAX_FIELD_BYTES} bytes]")
+        );
     }
 
     #[test]
