@@ -131,7 +131,9 @@ use tumult_perf::{compare_runs, CompareOptions, Comparison, Quantile, SampleSumm
 use self::answer::Answer;
 use self::select::{Env, NoEnvironment, Requests, Side, VersionSeen};
 use crate::auth::Principal;
-use crate::error::{bad_request, conflict, forbidden, not_found, unavailable, ApiError};
+use crate::error::{
+    bad_request, bad_request_because, conflict, forbidden, not_found, unavailable, ApiError,
+};
 use crate::sql_util::{internal, now_ns, with_reader};
 use crate::ApiState;
 
@@ -150,6 +152,10 @@ const FAILURE_SHARE_Z: f64 = 1.645;
 const MAX_VERSION_WINDOW_NS: i64 = 24 * 3_600 * NS_PER_S;
 /// The longest `service.namespace` a request may name, in bytes.
 const MAX_NAMESPACE_LEN: usize = 128;
+
+/// The `reason` of the 400 that says the deployment order of two
+/// versions cannot be told.
+pub(crate) const UNORDERABLE: &str = "unorderable";
 
 #[derive(Deserialize, Default)]
 pub(crate) struct PerfQuery {
@@ -376,6 +382,13 @@ impl Request {
 enum Refusal {
     NotFound(String),
     BadRequest(String),
+    /// Which of two versions was deployed latest cannot be told.
+    Unorderable(String),
+}
+
+/// 400 with `reason: unorderable`, which a gate reads as inconclusive.
+fn unorderable(message: String) -> ApiError {
+    bad_request_because(UNORDERABLE, message)
 }
 
 impl From<Refusal> for ApiError {
@@ -383,6 +396,7 @@ impl From<Refusal> for ApiError {
         match refusal {
             Refusal::NotFound(message) => not_found(message),
             Refusal::BadRequest(message) => bad_request(message),
+            Refusal::Unorderable(message) => unorderable(message),
         }
     }
 }
@@ -439,6 +453,54 @@ fn redeploy_message(target: &str, env: &Env, candidate: &str, baseline: &str) ->
          name the pair with baseline= and candidate=",
         env_name(env)
     )
+}
+
+/// The candidate came back too recently, or on too few requests, for
+/// its return to be told from a request that still reached the old
+/// build: ask for the version under test.
+fn return_message(target: &str, env: &Env, candidate: &str, baseline: &str, why: &str) -> String {
+    format!(
+        "version {candidate} of {target} reported again in environment {} after {baseline} had          taken over, {why}, so whether {candidate} was rolled back to or {baseline} is still          the version deployed latest cannot be told; name the version under test with          candidate=, or ask again when the one in service has served more",
+        env_name(env)
+    )
+}
+
+/// Why the order of `candidate` before `baseline` cannot be told, when
+/// it rests on a return of the candidate and the request leaves the
+/// order to the daemon.
+fn unorderable_reason(
+    reader: &Reader,
+    req: &Request,
+    env: &Env,
+    candidate: &VersionSeen,
+    baseline: &VersionSeen,
+) -> Result<Option<String>, String> {
+    if req.names_the_pair() || !candidate.redeployed {
+        return Ok(None);
+    }
+    let (c, b) = (candidate.version.as_str(), baseline.version.as_str());
+    if select::redeploy_is_ambiguous(candidate, baseline) {
+        return Ok(Some(redeploy_message(&req.target, env, c, b)));
+    }
+    if req.candidate.is_some() {
+        return Ok(None);
+    }
+    if select::redeploy_is_young(candidate, req.as_of_ns) {
+        let why = "less than 10 minutes ago";
+        return Ok(Some(return_message(&req.target, env, c, b, why)));
+    }
+    let back = candidate.last_deployed_ns;
+    let since = (back, req.as_of_ns);
+    let around = (back.saturating_sub(select::REDEPLOY_GAP_NS), req.as_of_ns);
+    let returned = evidence::requests_served(reader, &req.target, env, c, since)?;
+    let other = evidence::requests_served(reader, &req.target, env, b, around)?;
+    if !select::redeploy_is_thin(returned, other) {
+        return Ok(None);
+    }
+    let why = format!(
+        "on {returned} request(s) since, against {other} for {b} from 10 minutes before that"
+    );
+    Ok(Some(return_message(&req.target, env, c, b, &why)))
 }
 
 /// Which rule chose the pair, in words.
@@ -767,11 +829,9 @@ fn decide(reader: &Reader, req: &Request) -> Result<Result<Answer, Refusal>, Str
             req.include_partial,
         )
     };
-    if let Some(b) = baseline.filter(|b| select::redeploy_is_ambiguous(candidate, b)) {
-        if !req.names_the_pair() {
-            let message =
-                redeploy_message(&req.target, &environment, &candidate.version, &b.version);
-            return Ok(Err(Refusal::BadRequest(message)));
+    if let Some(b) = baseline {
+        if let Some(message) = unorderable_reason(reader, req, &environment, candidate, b)? {
+            return Ok(Err(Refusal::Unorderable(message)));
         }
     }
     let explicit = !wanted.is_empty();

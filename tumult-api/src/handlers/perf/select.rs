@@ -23,6 +23,14 @@ pub(crate) const UNANSWERED_LIMIT: f64 = 0.10;
 #[allow(clippy::cast_possible_wrap)]
 pub(crate) const REDEPLOY_GAP_NS: i64 = REDEPLOY_GAP.as_secs() as i64 * 1_000_000_000;
 
+/// The fewest requests a version must have served since it came back for
+/// its return to count as a deployment.
+pub(crate) const REDEPLOY_MIN_REQUESTS: u64 = 10;
+/// The least share of the other version's requests, counted from
+/// [`REDEPLOY_GAP`] before the return, that a returned version must have
+/// served since.
+pub(crate) const REDEPLOY_MIN_SHARE: f64 = 0.05;
+
 /// `<n>` followed by `s`, `m`, `h`, `d` or `w` as seconds; `None` for
 /// anything else, zero included.
 pub(crate) fn parse_range(range: &str) -> Option<i64> {
@@ -319,6 +327,28 @@ pub(crate) fn redeploy_is_ambiguous(candidate: &VersionSeen, baseline: &VersionS
         && baseline.last_seen_ns > candidate.last_deployed_ns.saturating_add(REDEPLOY_GAP_NS)
 }
 
+/// Whether `candidate` came back less than [`REDEPLOY_GAP_NS`] before
+/// `as_of_ns`: too recently to tell a rollback from a request that still
+/// reached the old build.
+pub(crate) fn redeploy_is_young(candidate: &VersionSeen, as_of_ns: i64) -> bool {
+    candidate.redeployed && as_of_ns < candidate.last_deployed_ns.saturating_add(REDEPLOY_GAP_NS)
+}
+
+/// Whether a return rests on a handful of requests: fewer than
+/// [`REDEPLOY_MIN_REQUESTS`] since it began, or fewer than
+/// [`REDEPLOY_MIN_SHARE`] of what the `other` version served from
+/// [`REDEPLOY_GAP`] before it.
+pub(crate) fn redeploy_is_thin(returned: u64, other: u64) -> bool {
+    if returned < REDEPLOY_MIN_REQUESTS {
+        return true;
+    }
+    #[allow(clippy::cast_precision_loss)]
+    let least = REDEPLOY_MIN_SHARE * other as f64;
+    #[allow(clippy::cast_precision_loss)]
+    let thin = (returned as f64) < least;
+    thin
+}
+
 /// Environments in a stable order: by name, the unnamed one last.
 pub(crate) fn sorted_envs<'a>(envs: impl Iterator<Item = &'a Env>) -> Vec<Env> {
     let mut envs: Vec<Env> = envs.cloned().collect();
@@ -372,11 +402,33 @@ pub(crate) fn choose_environment(
     }
 }
 
+/// The version `versions[c]` replaced: the one in service just before
+/// its latest deployment. A version later in the order was deployed
+/// before it; one ahead of it that came back since was in service before
+/// it when it was first seen before it.
+fn replaced_by(versions: &[VersionSeen], c: usize) -> Option<usize> {
+    let at = versions[c].last_deployed_ns;
+    let began = |(i, v): (usize, &VersionSeen)| {
+        if i > c {
+            return Some((v.last_deployed_ns, i));
+        }
+        (i < c && v.redeployed && v.first_seen_ns < at).then_some((v.first_seen_ns, i))
+    };
+    versions
+        .iter()
+        .enumerate()
+        .filter_map(began)
+        .max_by(|a, b| a.0.cmp(&b.0).then(b.1.cmp(&a.1)))
+        .map(|(_, i)| i)
+}
+
 /// `(candidate, baseline)` among `versions` (deployment order, latest
 /// first, not empty). Unnamed, the candidate is the latest version and
 /// the baseline the one deployed just before the candidate; a named
 /// baseline alone takes the latest other version as its candidate.
-/// `Err` carries a named version the list does not hold.
+/// A named candidate alone is compared against the version it replaced
+/// ([`replaced_by`]). `Err` carries a named version the list does not
+/// hold.
 pub(crate) fn pick<'a>(
     versions: &'a [VersionSeen],
     baseline: Option<&str>,
@@ -392,7 +444,7 @@ pub(crate) fn pick<'a>(
     let candidate = candidate.map(index).transpose()?;
     let (c, b) = match (candidate, baseline) {
         (Some(c), Some(b)) => (c, Some(b)),
-        (Some(c), None) => (c, (c + 1 < versions.len()).then_some(c + 1)),
+        (Some(c), None) => (c, replaced_by(versions, c)),
         (None, None) => (0, (versions.len() > 1).then_some(1)),
         (None, Some(b)) => match (0..versions.len()).find(|i| *i != b) {
             Some(c) => (c, Some(b)),
@@ -889,6 +941,64 @@ mod tests {
             ..again
         };
         assert!(!redeploy_is_ambiguous(&fresh, &live));
+    }
+
+    #[test]
+    fn a_named_candidate_is_compared_against_the_version_it_replaced() {
+        // 1.3.0, 1.4.0, 1.5.0, and then 1.4.0 once more.
+        let again = VersionSighting {
+            last_deployed_ns: 4_000 * S,
+            deployments: 2,
+            ..demo("1.4.0", 2_000 * S, 4_000 * S)
+        };
+        let sightings = [
+            demo("1.3.0", 1_000 * S, 1_900 * S),
+            again,
+            demo("1.5.0", 3_000 * S, 3_900 * S),
+        ];
+        let by_env = versions_by_env(&sightings, &[], &[]);
+        let versions = &by_env[&Some("demo".to_string())];
+        assert_eq!(names(versions), vec!["1.4.0", "1.5.0", "1.3.0"]);
+        let pair = |candidate: &str| {
+            let (c, b) = pick(versions, None, Some(candidate)).expect("known");
+            (c.version.clone(), b.map(|b| b.version.clone()))
+        };
+        // 1.5.0 replaced 1.4.0, which was there before it and came back
+        // after it; it did not replace 1.3.0.
+        assert_eq!(pair("1.5.0"), ("1.5.0".into(), Some("1.4.0".into())));
+        assert_eq!(pair("1.4.0"), ("1.4.0".into(), Some("1.5.0".into())));
+        assert_eq!(pair("1.3.0"), ("1.3.0".into(), None));
+    }
+
+    #[test]
+    fn a_return_that_is_young_or_rests_on_a_handful_of_requests_is_no_order() {
+        let again = VersionSeen {
+            last_deployed_ns: 3_000 * S,
+            redeployed: true,
+            ..seen("1.4.0", 10 * S)
+        };
+        assert!(redeploy_is_young(&again, 3_000 * S + REDEPLOY_GAP_NS - 1));
+        assert!(!redeploy_is_young(&again, 3_000 * S + REDEPLOY_GAP_NS));
+        // A version that never came back is as old as its first sight.
+        assert!(!redeploy_is_young(&seen("1.5.0", 3_000 * S), 3_001 * S));
+
+        // (requests since the return, the other version's, thin)
+        for (returned, other, thin) in [
+            (0, 0, true),
+            (1, 0, true),
+            (REDEPLOY_MIN_REQUESTS - 1, 0, true),
+            (REDEPLOY_MIN_REQUESTS, 0, false),
+            (REDEPLOY_MIN_REQUESTS, 200, false),
+            (REDEPLOY_MIN_REQUESTS, 201, true),
+            (5_000, 100_000, false),
+            (4_999, 100_000, true),
+        ] {
+            assert_eq!(
+                redeploy_is_thin(returned, other),
+                thin,
+                "{returned} against {other}"
+            );
+        }
     }
 
     #[test]

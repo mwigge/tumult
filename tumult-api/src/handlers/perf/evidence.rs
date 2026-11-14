@@ -397,6 +397,24 @@ pub(crate) fn load(
     })
 }
 
+/// The requests `version` of `target` served in `environment` over
+/// `[from_ns, to_ns]`.
+pub(crate) fn requests_served(
+    reader: &Reader,
+    target: &str,
+    environment: &Env,
+    version: &str,
+    (from_ns, to_ns): (i64, i64),
+) -> Result<u64, String> {
+    let shares = reader
+        .observed_versions(target, environment.as_deref(), None, from_ns, to_ns)
+        .map_err(|e| e.to_string())?;
+    Ok(shares
+        .iter()
+        .find(|share| share.version == version)
+        .map_or(0, |share| share.requests))
+}
+
 /// The verdicts stored for `target` in `environment`, latest first.
 pub(crate) fn history(
     reader: &Reader,

@@ -1514,6 +1514,8 @@ async fn perf_orders_versions_by_latest_deployment_whatever_the_range() {
         span_in("demo", "a3", "1.4.0", now - 5 * day),
         span_in("demo", "a4", "1.4.0", now - 3600 * NS),
     ];
+    // What makes it a rollback and no stray request: it serves again.
+    spans.extend(stream("demo", "1.4.0", now - 5 * day, now - 5 * day + 300 * NS));
     let mut journals = Vec::new();
     for (prefix, version, first, p95) in [
         ("first", "1.4.0", now - 35 * day, 100.0),
@@ -1561,6 +1563,61 @@ async fn perf_orders_versions_by_latest_deployment_whatever_the_range() {
     );
     assert_eq!(runs_of(&two["candidate"]).len(), 6, "{two}");
     assert_eq!(runs_of(&month["baseline"]), runs_of(&two["baseline"]));
+}
+
+/// 1.4.0 measured at 100 ms, then 1.5.0 at 150 ms and live, then 1.4.0
+/// heard from once more at `straggler`.
+async fn seed_straggler(srv: &TestServer, now: i64, new_until: i64, straggler: i64) {
+    let hour = 3600 * NS;
+    let mut spans = stream("demo", "1.4.0", now - 10 * hour, now - 9 * hour);
+    spans.extend(stream("demo", "1.5.0", now - 8 * hour, new_until));
+    spans.push(span_in("demo", "straggler", "1.4.0", straggler));
+    let mut journals = Vec::new();
+    for (prefix, version, first, p95) in [
+        ("old", "1.4.0", now - 10 * hour, 100.0),
+        ("new", "1.5.0", now - 8 * hour, 150.0),
+    ] {
+        let (roots, runs) = declared_runs(prefix, version, first, p95);
+        spans.extend(roots);
+        journals.extend(runs);
+    }
+    seed_journals(srv, spans, journals).await;
+}
+
+/// One request that still reached the old build does not make the old
+/// build the latest deployment: the order is refused, whether the
+/// request came a moment ago or the new build has been idle since, and
+/// naming the candidate answers.
+#[tokio::test]
+async fn perf_does_not_order_versions_by_a_straggler_of_the_old_one() {
+    let now = now_ns();
+    let hour = 3600 * NS;
+    for (what, new_until, straggler) in [
+        ("a moment ago", now - 300 * NS, now - 100 * NS),
+        ("an idle new build", now - 4 * hour, now - 2 * hour),
+    ] {
+        let srv = spawn_server().await;
+        seed_straggler(&srv, now, new_until, straggler).await;
+        let (status, body) = get(&srv.base, "/api/perf/checkout").await;
+        assert_eq!(status, 400, "{what}: {body}");
+        assert_eq!(body["reason"], "unorderable", "{what}: {body}");
+        let error = error_of(&body);
+        assert!(
+            error.contains("1.4.0") && error.contains("1.5.0"),
+            "{what}: {error}"
+        );
+        assert!(error.contains("candidate="), "{what}: {error}");
+        let (status, body) = post(&srv.base, "/api/perf/checkout/verdicts").await;
+        assert_eq!(status, 400, "{what}: {body}");
+
+        // The gate names what it tests: 1.5.0, against the version it
+        // replaced.
+        let (status, body) = get(&srv.base, "/api/perf/checkout?candidate=1.5.0").await;
+        assert_eq!(status, 200, "{what}: {body}");
+        assert_eq!(body["candidate"]["version"], "1.5.0", "{what}: {body}");
+        assert_eq!(body["baseline"]["version"], "1.4.0", "{what}: {body}");
+        assert_eq!(body["verdict"], "regressed", "{what}: {body}");
+    }
 }
 
 /// `range`, thirty days unless asked otherwise, bounds the runs whose
