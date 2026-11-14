@@ -447,12 +447,8 @@ pub(crate) enum Commands {
         include: Option<PerfIncludeArg>,
         /// Which verdicts make the command exit non-zero, comma-separated:
         /// `regressed` exits 3, `inconclusive` exits 4
-        #[arg(
-            long,
-            value_enum,
-            value_delimiter = ',',
-            default_values_t = [PerfFailOnArg::Regressed, PerfFailOnArg::Inconclusive]
-        )]
+        /// [default: regressed,inconclusive]
+        #[arg(long, value_enum, value_delimiter = ',')]
         fail_on: Vec<PerfFailOnArg>,
         /// Print the daemon's JSON answer instead of the summary
         #[arg(long)]
