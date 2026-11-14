@@ -55,6 +55,11 @@ pub const MAX_SCHEMA_URL_LEN: usize = 2048;
 /// counting every entry of a map or a list at any depth.
 pub const MAX_STATE_ELEMENTS: usize = 4096;
 
+/// Entity events stored from one export. The store folds them in one
+/// transaction on the single writer; an export beyond this would hold the
+/// writer for longer than other telemetry should wait.
+pub const MAX_EVENTS_PER_EXPORT: usize = 10_000;
+
 /// Seconds between two warnings about dropped entity events.
 const DROP_WARN_INTERVAL_S: u64 = 60;
 
@@ -186,16 +191,19 @@ pub enum EntityDrop {
     Malformed,
     /// A part of the event is larger than this module keeps.
     Oversized,
+    /// The export already gave [`MAX_EVENTS_PER_EXPORT`] entity events.
+    ExportLimit,
 }
 
 impl EntityDrop {
     /// Every reason, in the order of the counters.
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 6] = [
         Self::UnknownKind,
         Self::NoType,
         Self::NoIdentity,
         Self::Malformed,
         Self::Oversized,
+        Self::ExportLimit,
     ];
 
     /// The reason as it appears in logs and metrics.
@@ -207,6 +215,7 @@ impl EntityDrop {
             Self::NoIdentity => "no_identity",
             Self::Malformed => "malformed",
             Self::Oversized => "oversized",
+            Self::ExportLimit => "export_limit",
         }
     }
 
@@ -217,6 +226,7 @@ impl EntityDrop {
             Self::NoIdentity => 2,
             Self::Malformed => 3,
             Self::Oversized => 4,
+            Self::ExportLimit => 5,
         }
     }
 }
@@ -224,7 +234,7 @@ impl EntityDrop {
 /// Dropped entity events per reason, with the limit on the warning about
 /// them.
 pub(crate) struct EntityDrops {
-    counts: [AtomicU64; 5],
+    counts: [AtomicU64; 6],
     /// Keys removed from descriptions and relationships of stored events.
     filtered: AtomicU64,
     warn: WarnLimit,
@@ -237,6 +247,7 @@ impl EntityDrops {
     pub(crate) const fn new() -> Self {
         Self {
             counts: [
+                AtomicU64::new(0),
                 AtomicU64::new(0),
                 AtomicU64::new(0),
                 AtomicU64::new(0),
@@ -338,6 +349,11 @@ pub(crate) fn split_with(
                         &scope_attrs,
                         received_at_ns,
                     ));
+                    continue;
+                }
+                if split.entities.len() >= MAX_EVENTS_PER_EXPORT {
+                    note_drop(EntityDrop::ExportLimit, record, tally);
+                    split.dropped.push(EntityDrop::ExportLimit);
                     continue;
                 }
                 match normalise(record, &source, options) {

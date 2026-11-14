@@ -483,6 +483,7 @@ fn every_outcome_is_counted_under_its_own_name() {
         "\ntumultd_entity_versions ",
         "tumultd_entity_events_dropped_total{reason=\"no_identity\"} ",
         "tumultd_entity_events_dropped_total{reason=\"malformed\"} ",
+        "tumultd_entity_events_dropped_total{reason=\"export_limit\"} ",
     ] {
         assert!(text.contains(line), "{line}: {text}");
     }

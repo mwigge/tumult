@@ -166,3 +166,51 @@ fn the_budget_stops_the_conversion_at_the_value_that_exceeds_it() {
         Err(EntityDrop::Oversized)
     );
 }
+
+/// An export stores a bounded number of entity events. The ones beyond it
+/// are dropped and counted; the ordinary records of the export are kept
+/// wherever they stand.
+#[test]
+fn entity_events_beyond_the_export_limit_are_dropped_and_counted() {
+    assert_eq!(MAX_EVENTS_PER_EXPORT, 10_000);
+    let records: Vec<LogRecord> = (0..MAX_EVENTS_PER_EXPORT + 3)
+        .map(|n| pod("k8s.pod", "k8s.pod.uid", &format!("u-{n}")))
+        .collect();
+    let mut export = request(resource(&[]), marked_scope(), records);
+    export.resource_logs[0].scope_logs.push(ScopeLogs {
+        scope: None,
+        log_records: vec![LogRecord {
+            time_unix_nano: TS,
+            ..LogRecord::default()
+        }],
+        schema_url: String::new(),
+    });
+    let tally = EntityDrops::new();
+    let split = split_with(&export, RECEIVED, &options(), &tally);
+    assert_eq!(split.entities.len(), MAX_EVENTS_PER_EXPORT);
+    assert_eq!(
+        split.entities.last().unwrap().entity_id[0].1,
+        format!("u-{}", MAX_EVENTS_PER_EXPORT - 1),
+        "the first ones are the ones kept"
+    );
+    assert_eq!(split.dropped, vec![EntityDrop::ExportLimit; 3]);
+    assert_eq!(tally.count(EntityDrop::ExportLimit), 3);
+    assert_eq!(EntityDrop::ExportLimit.as_str(), "export_limit");
+    assert_eq!(split.logs.len(), 1, "a log record after them is stored");
+}
+
+/// An event that is dropped for another reason takes no place under the
+/// limit.
+#[test]
+fn only_stored_events_count_towards_the_export_limit() {
+    let mut records = vec![spec_record("entity.state", vec![]); 5];
+    records.extend(
+        (0..MAX_EVENTS_PER_EXPORT).map(|n| pod("k8s.pod", "k8s.pod.uid", &format!("u-{n}"))),
+    );
+    let export = request(resource(&[]), marked_scope(), records);
+    let tally = EntityDrops::new();
+    let split = split_with(&export, RECEIVED, &options(), &tally);
+    assert_eq!(split.entities.len(), MAX_EVENTS_PER_EXPORT);
+    assert_eq!(tally.count(EntityDrop::ExportLimit), 0);
+    assert_eq!(tally.count(EntityDrop::NoType), 5);
+}

@@ -17,7 +17,6 @@
 use std::collections::HashMap;
 
 use duckdb::params;
-use serde_json::Value;
 
 use crate::error::StoreError;
 use crate::Writer;
@@ -93,7 +92,7 @@ GROUP BY environment";
 const CAP_VERSIONS: &str = "
 DELETE FROM entity_versions WHERE rowid IN (
     SELECT rowid FROM entity_versions
-    WHERE entity_key IN (SELECT unnest(CAST(json(?) AS VARCHAR[])))
+    WHERE entity_key IN (SELECT entity_key FROM entity_batch_keys)
     QUALIFY row_number() OVER (
         PARTITION BY entity_key, environment ORDER BY valid_from_ns DESC
     ) > ?
@@ -142,11 +141,10 @@ impl Writer {
         if keys.is_empty() {
             return Ok(0);
         }
-        let keys: Vec<Value> = keys.iter().cloned().map(Value::String).collect();
-        Ok(self.conn.execute(
-            CAP_VERSIONS,
-            params![Value::Array(keys).to_string(), as_param(keep.max(1))],
-        )?)
+        self.stage_entity_keys(keys.iter())?;
+        Ok(self
+            .conn
+            .execute(CAP_VERSIONS, params![as_param(keep.max(1))])?)
     }
 
     /// Remove every row of at most `limit` entities that are gone or

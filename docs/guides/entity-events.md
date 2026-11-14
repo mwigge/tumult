@@ -296,7 +296,18 @@ with the number left out.
 | `no_type` | the type attribute of its wire form is missing or empty |
 | `no_identity` | it has no identifying attributes and the resource has none for its type (only `host` → `host.id` is known) |
 | `malformed` | a control character (NUL included) in the type, in an identifying name or value, in the environment or in the schema URL, a type that is not a string, an interval that is not a number, an identifying value that is empty or not a string (a number or a boolean would name the same entity as the string that reads alike), the same identifying name twice, a description that is not a map, relationships that are not an array of maps, a relationship without a type or without the type and identity of its target, or nesting deeper than 8 |
+| `export_limit` | the export already gave 10 000 entity events; the first 10 000 are stored and the rest dropped |
 | `oversized` | a type over 128 bytes, more than 16 identifying attributes, a name or value over 256 bytes, an environment over 256 bytes, a schema URL over 2048 bytes, more than 64 relationships, more than 4096 values in description and relationships (every entry of a map or a list counts, a removed key too), or description and relationships over 64 KiB together |
+
+One export stores at most 10 000 entity events. The daemon has a single
+writer for all telemetry and folds the entity events of an export in one
+transaction; the limit keeps that transaction short. Events beyond it are
+dropped with reason `export_limit` and the export is still accepted, so
+its other records are stored and the Collector does not retry it. A
+Collector that could send more in one export needs `send_batch_max_size`
+at or below 10 000 on its `batch` processor (by default it batches
+8 192 records and sets no maximum); a dropped state event is made up for by the next periodic report
+of that entity, a dropped delete event is not.
 
 A delete event is read for its type, its identifying attributes and its
 reason only. A description or an interval in it is ignored, so a delete is
@@ -336,6 +347,27 @@ earlier history.
 
 `tumultd_entity_versions` is the number of rows in the table after the
 last export that carried entity events.
+
+### What an export costs the writer
+
+The daemon has one writer for all telemetry, so the time it spends on
+entity events is time other exports wait. The entity events of an export
+are folded in one transaction with a fixed number of statements whatever
+their count: the latest rows of the entities named are read at once, new
+rows are inserted at once, changed rows are updated at once and the row
+bound is applied at once. Measured on a development machine with an
+unoptimised build, 5 000 events in one export take 0.25 s when each opens
+a row and 0.15 s when each is a heartbeat or a delete (the test
+`a_batch_of_five_thousand_events_is_folded_well_within_the_second` holds
+each case under one second); the same export took 13 s when every event
+ran its own statements.
+
+`entity_versions` has no primary key and no index. Heartbeats and deletes
+update rows in place, and the lake keeps indexes off every table that
+receives updates: an index that falls out of step with its table after a
+restart makes each later update of that table fail. The statements above
+join on `(entity_key, environment, valid_from_ns)` by hashing, which the
+figures above include.
 
 ## 7. Reading entities
 

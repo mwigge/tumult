@@ -2,6 +2,8 @@
 //! state events into one row per distinct state, and `entities_current`
 //! derives liveness from the latest row of each entity.
 
+use std::time::{Duration, Instant};
+
 use serde_json::{json, Value};
 use tumult_lake::{
     entity_key, EntityApplied, EntityEventKind, EntityEventRow, EntityLimits, EntityOutcome,
@@ -1164,4 +1166,84 @@ fn a_pruned_entity_frees_its_place_under_the_cap() {
         apply_within(&store, &[host("b", PAST, 0)], &limits).outcomes,
         vec![EntityOutcome::Opened]
     );
+}
+
+/// The table carries no index: it receives an UPDATE with every heartbeat,
+/// and since schema v5 no table that is updated has one (an index that
+/// WAL replay leaves out of step with its table makes every later UPDATE
+/// fail). The writer therefore has to be quick without one.
+#[test]
+fn the_entity_table_has_no_index() {
+    let (_d, store) = fixture();
+    let indexes = store
+        .read_only()
+        .unwrap()
+        .query_json_rows(
+            "SELECT index_name FROM duckdb_indexes() WHERE table_name = 'entity_versions'",
+        )
+        .unwrap();
+    assert!(indexes.is_empty(), "{indexes:?}");
+}
+
+/// The largest batch a careful sender makes is a few thousand events. The
+/// single writer serves all telemetry, so such a batch has to be folded
+/// well within the second, whatever it does to the rows: open them,
+/// refresh them, supersede them or delete them.
+#[test]
+fn a_batch_of_five_thousand_events_is_folded_well_within_the_second() {
+    const BOUND: Duration = Duration::from_millis(1_000);
+    let (_d, store) = fixture();
+    let writer = store.writer().unwrap();
+    let limits = EntityLimits::default();
+    let batch = |ts_ns: i64, n: i64| -> Vec<EntityEventRow> {
+        (0..5_000)
+            .map(|i| host(&format!("h-{i}"), ts_ns, n))
+            .collect()
+    };
+    let timed = |events: &[EntityEventRow]| {
+        let start = Instant::now();
+        let applied = writer.apply_entity_events(events, &limits).unwrap();
+        (start.elapsed(), applied.outcomes)
+    };
+    let deletes: Vec<EntityEventRow> = batch(PAST + 3 * SECOND, 1)
+        .into_iter()
+        .map(|event| EntityEventRow {
+            kind: EntityEventKind::Delete,
+            ..event
+        })
+        .collect();
+    let steps = [
+        ("opened", batch(PAST, 0), EntityOutcome::Opened),
+        (
+            "refreshed",
+            batch(PAST + SECOND, 0),
+            EntityOutcome::Refreshed,
+        ),
+        (
+            "superseded",
+            batch(PAST + 2 * SECOND, 1),
+            EntityOutcome::Opened,
+        ),
+        ("deleted", deletes, EntityOutcome::Tombstoned),
+    ];
+    for (what, events, expected) in steps {
+        let (took, outcomes) = timed(&events);
+        assert!(
+            outcomes.iter().all(|outcome| *outcome == expected),
+            "{what}"
+        );
+        assert!(took < BOUND, "{what}: 5000 events took {took:?}");
+    }
+    assert_eq!(writer.entity_version_count().unwrap(), 10_000);
+    drop(writer);
+    let gone = store
+        .read_only()
+        .unwrap()
+        .query_json_rows(
+            "SELECT count(*) AS n, min(last_seen_ns) AS seen FROM entities_current \
+             WHERE liveness = 'gone' AND delete_reason IS NULL",
+        )
+        .unwrap();
+    assert_eq!(gone[0]["n"], 5_000);
+    assert_eq!(gone[0]["seen"], PAST + 2 * SECOND);
 }

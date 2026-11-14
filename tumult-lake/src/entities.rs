@@ -32,6 +32,11 @@
 //! of rows, an environment and the lake hold a limited number of entities,
 //! and entities that are gone or expired leave after a retention window.
 //!
+//! A batch costs the writer a fixed number of statements whatever it
+//! holds (see [`batch`]): the latest rows of the entities it names are read
+//! at once, the new rows are inserted at once, the changed rows are updated
+//! at once, and the version cap is applied at once.
+//!
 //! Rows are tracked per `(entity_key, environment)`. The table has no
 //! primary key or index (the v5 rule for tables that receive UPDATEs);
 //! `valid_from_ns` is strictly increasing per entity by construction (a
@@ -41,14 +46,14 @@
 use std::collections::HashMap;
 use std::fmt::Write as _;
 
-use duckdb::params;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 use crate::error::StoreError;
-use crate::store::{attrs_json, with_tx};
+use crate::store::with_tx;
 use crate::{LogRow, Writer};
 
+mod batch;
 mod caps;
 
 use caps::Census;
@@ -245,10 +250,18 @@ fn state_hash(description: &str, relationships: &str) -> String {
     hex
 }
 
+fn id_object(entity_id: &[(String, String)]) -> Value {
+    let pairs = entity_id
+        .iter()
+        .map(|(name, value)| (name.clone(), Value::String(value.clone())));
+    Value::Object(pairs.collect())
+}
+
 /// The columns of a row that has not been inserted yet.
 struct Unsaved {
     entity_type: String,
-    entity_id: String,
+    /// The identifying attributes, a JSON object of strings.
+    entity_id: Value,
     description: String,
     relationships: String,
     schema_url: Option<String>,
@@ -276,10 +289,6 @@ struct Latest {
 }
 
 impl Latest {
-    fn needs_write(&self) -> bool {
-        self.unsaved.is_some() || self.dirty
-    }
-
     /// Whether an event at `ts_ns` arrived after the event of its own batch
     /// that this row records and is not older than it: the tie on the
     /// timestamp that the order of arrival settles.
@@ -315,12 +324,12 @@ impl<'a> Prepared<'a> {
     /// The row this state opens after `superseded`, the latest row so far.
     /// It starts at the event time, or one nanosecond after the superseded
     /// row started when a tie would otherwise give two rows one start.
-    fn open(&self, superseded: Option<&Latest>) -> Result<Latest, StoreError> {
+    fn open(&self, superseded: Option<&Latest>) -> Latest {
         let event = self.event;
         let valid_from_ns = superseded.map_or(event.ts_ns, |row| {
             event.ts_ns.max(row.valid_from_ns.saturating_add(1))
         });
-        Ok(Latest {
+        Latest {
             valid_from_ns,
             last_seen_ns: valid_from_ns,
             last_received_ns: event.received_at_ns,
@@ -332,14 +341,14 @@ impl<'a> Prepared<'a> {
             observer: event.observer.clone(),
             unsaved: Some(Unsaved {
                 entity_type: event.entity_type.clone(),
-                entity_id: attrs_json(&event.entity_id)?,
+                entity_id: id_object(&event.entity_id),
                 description: self.description.clone(),
                 relationships: self.relationships.clone(),
                 schema_url: event.schema_url.clone(),
             }),
             dirty: false,
             batch_ts_ns: Some(event.ts_ns),
-        })
+        }
     }
 }
 
@@ -424,32 +433,17 @@ struct Fold<'a> {
     census: Option<Census>,
     /// The keys of the entities that gained a row.
     grown: Vec<String>,
+    /// Rows that a later event of the batch superseded.
+    closed: Vec<(Slot, Latest)>,
 }
 
-const LOAD_LATEST: &str = "
-SELECT entity_key, environment, valid_from_ns, last_seen_ns, interval_s,
-       wire_form, state_hash, deleted_at_ns, delete_reason, observer,
-       last_received_ns
-FROM entity_versions
-WHERE entity_key IN (SELECT unnest(CAST(json(?) AS VARCHAR[])))
-QUALIFY row_number() OVER (
-    PARTITION BY entity_key, environment ORDER BY valid_from_ns DESC
-) = 1";
-
-const INSERT_VERSION: &str = "
-INSERT INTO entity_versions (
-    entity_key, environment, entity_type, entity_id, state_hash,
-    description, relationships, valid_from_ns, last_seen_ns, interval_s,
-    deleted_at_ns, delete_reason, wire_form, observer, schema_url,
-    last_received_ns
-) VALUES (?, ?, ?, CAST(json(?) AS MAP(VARCHAR, VARCHAR)), ?,
-    CAST(? AS JSON), CAST(? AS JSON), ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-
-const UPDATE_VERSION: &str = "
-UPDATE entity_versions
-SET last_seen_ns = ?, interval_s = ?, wire_form = ?, deleted_at_ns = ?, delete_reason = ?,
-    last_received_ns = ?
-WHERE entity_key = ? AND environment = ? AND valid_from_ns = ?";
+impl Fold<'_> {
+    /// Every row the batch touched: the superseded ones, then the latest.
+    fn rows(&self) -> impl Iterator<Item = (&Slot, &Latest)> {
+        let closed = self.closed.iter().map(|(slot, row)| (slot, row));
+        closed.chain(self.latest.iter())
+    }
+}
 
 impl Writer {
     /// Fold `events` into `entity_versions` in one transaction, in the order
@@ -499,6 +493,7 @@ impl Writer {
             latest: self.load_latest(&prepared)?,
             census: None,
             grown: Vec::new(),
+            closed: Vec::new(),
         };
         let mut outcomes = Vec::with_capacity(events.len());
         for item in &prepared {
@@ -509,9 +504,8 @@ impl Writer {
             };
             outcomes.push(outcome);
         }
-        for (slot, row) in &fold.latest {
-            self.write_version(slot, row)?;
-        }
+        self.insert_versions(&fold)?;
+        self.update_versions(&fold)?;
         let versions_pruned = self.cap_entity_versions(&fold.grown, limits.versions_per_entity)?;
         Ok(EntityApplied {
             outcomes,
@@ -537,13 +531,13 @@ impl Writer {
                 if !fold.latest.contains_key(&slot) && !self.admit(fold, &slot.1)? {
                     return Ok(EntityOutcome::EntityLimit);
                 }
-                // The row this one supersedes leaves the map: write it now.
-                if let Some(closed) = fold.latest.get(&slot) {
-                    self.write_version(&slot, closed)?;
-                }
-                let opened = state.open(fold.latest.get(&slot))?;
+                let opened = state.open(fold.latest.get(&slot));
                 fold.grown.push(slot.0.clone());
-                fold.latest.insert(slot, opened);
+                // The row this one supersedes leaves the map; it is
+                // written with the others when the batch is folded.
+                if let Some(closed) = fold.latest.insert(slot.clone(), opened) {
+                    fold.closed.push((slot, closed));
+                }
                 Ok(EntityOutcome::Opened)
             }
         }
@@ -557,88 +551,6 @@ impl Writer {
             None => self.entity_census()?,
         };
         Ok(fold.census.insert(census).admit(environment, fold.limits))
-    }
-
-    /// The latest stored row of every entity the batch names.
-    fn load_latest(&self, prepared: &[Prepared<'_>]) -> Result<HashMap<Slot, Latest>, StoreError> {
-        let keys: Vec<Value> = prepared
-            .iter()
-            .map(|p| Value::String(p.key.clone()))
-            .collect();
-        let mut stmt = self.conn.prepare(LOAD_LATEST)?;
-        let rows = stmt.query_map(params![Value::Array(keys).to_string()], |row| {
-            Ok((
-                (row.get::<_, String>(0)?, row.get::<_, String>(1)?),
-                Latest {
-                    valid_from_ns: row.get(2)?,
-                    last_seen_ns: row.get(3)?,
-                    interval_s: row.get(4)?,
-                    wire_form: row.get(5)?,
-                    state_hash: row.get(6)?,
-                    deleted_at_ns: row.get(7)?,
-                    delete_reason: row.get(8)?,
-                    observer: row.get(9)?,
-                    last_received_ns: row.get(10)?,
-                    unsaved: None,
-                    dirty: false,
-                    batch_ts_ns: None,
-                },
-            ))
-        })?;
-        let mut latest = HashMap::new();
-        for row in rows {
-            let (slot, value) = row?;
-            latest.insert(slot, value);
-        }
-        Ok(latest)
-    }
-
-    /// Insert a new row or update the mutable columns of a stored one; a
-    /// stored row that did not change is left alone.
-    fn write_version(&self, slot: &Slot, row: &Latest) -> Result<(), StoreError> {
-        if !row.needs_write() {
-            return Ok(());
-        }
-        let (key, environment) = slot;
-        let Some(unsaved) = &row.unsaved else {
-            self.conn.execute(
-                UPDATE_VERSION,
-                params![
-                    row.last_seen_ns,
-                    row.interval_s,
-                    row.wire_form,
-                    row.deleted_at_ns,
-                    row.delete_reason,
-                    row.last_received_ns,
-                    key,
-                    environment,
-                    row.valid_from_ns,
-                ],
-            )?;
-            return Ok(());
-        };
-        self.conn.execute(
-            INSERT_VERSION,
-            params![
-                key,
-                environment,
-                unsaved.entity_type,
-                unsaved.entity_id,
-                row.state_hash,
-                unsaved.description,
-                unsaved.relationships,
-                row.valid_from_ns,
-                row.last_seen_ns,
-                row.interval_s,
-                row.deleted_at_ns,
-                row.delete_reason,
-                row.wire_form,
-                row.observer,
-                unsaved.schema_url,
-                row.last_received_ns,
-            ],
-        )?;
-        Ok(())
     }
 }
 
