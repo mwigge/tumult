@@ -26,34 +26,13 @@ tumult-api/tests/env_parts.rs::retention_export_fails_closed_even_with_ingest_ha
 
 # tumult-cli: deferred, the crate is being changed elsewhere
 tumult-cli/src/commands/tests/executor.rs::sync_executor_timeout_kills_process_group::bare-sleep  # deferred: sleep without a stated reason
-tumult-cli/src/commands/analyze.rs::aggregate_on_empty_store_reports_absence::no-assert  # deferred: asserts nothing yet
-tumult-cli/src/commands/analyze.rs::aggregate_renders_store_wide_stats::no-assert  # deferred: asserts nothing yet
-tumult-cli/src/commands/analyze.rs::analyze_accepts_a_single_journal_file::no-assert  # deferred: asserts nothing yet
-tumult-cli/src/commands/analyze.rs::analyze_skips_experiment_definitions_and_warns_on_malformed_toon::no-assert  # deferred: asserts nothing yet
-tumult-cli/src/commands/analyze.rs::query_runs_normal_select::no-assert  # deferred: asserts nothing yet
-tumult-cli/src/commands/analyze.rs::select_only_allows_plain_select::no-assert  # deferred: asserts nothing yet
-tumult-cli/src/commands/analyze.rs::summary_on_empty_store_reports_no_experiments::no-assert  # deferred: asserts nothing yet
-tumult-cli/src/commands/analyze.rs::summary_renders_full_timeline_and_load_block::no-assert  # deferred: asserts nothing yet
-tumult-cli/src/commands/chaosgraph.rs::query_and_neighbors_succeed_against_seeded_store::no-assert  # deferred: asserts nothing yet
-tumult-cli/src/commands/tests/compliance.rs::compliance_scans_directory_and_skips_malformed_journals::no-assert  # deferred: asserts nothing yet
-tumult-cli/src/commands/tests/compliance.rs::compliance_sources_lists_registry_for_each_framework::no-assert  # deferred: asserts nothing yet
-tumult-cli/src/commands/tests/new.rs::templates_lists_every_curated_starter::no-assert  # deferred: asserts nothing yet
-tumult-cli/src/commands/tests/report.rs::compliance_runs_over_journal_with_mttr::no-assert  # deferred: asserts nothing yet
 tumult-cli/src/commands/tests/store_commands.rs::store_path_reports_existing_store::no-assert  # deferred: asserts nothing yet
 tumult-cli/src/commands/tests/store_commands.rs::store_path_reports_missing_store::no-assert  # deferred: asserts nothing yet
 tumult-cli/src/commands/tests/store_commands.rs::store_stats_without_store_reports_absence::no-assert  # deferred: asserts nothing yet
-tumult-cli/src/commands/tests/trend.rs::trend_accepts_a_single_journal_file::no-assert  # deferred: asserts nothing yet
-tumult-cli/src/commands/tests/trend.rs::trend_last_window_excludes_old_journals::no-assert  # deferred: asserts nothing yet
-tumult-cli/src/commands/tests/trend.rs::trend_reports_metric_over_journal_dir::no-assert  # deferred: asserts nothing yet
-tumult-cli/src/commands/tests/trend.rs::trend_skips_malformed_journals_with_warning::no-assert  # deferred: asserts nothing yet
-tumult-cli/src/commands/tests/trend.rs::trend_supports_every_documented_metric::no-assert  # deferred: asserts nothing yet
-tumult-cli/src/commands/tests/trend.rs::trend_target_filter_selects_matching_titles::no-assert  # deferred: asserts nothing yet
-tumult-cli/src/commands/tests/trend.rs::trend_without_data_points_reports_absence::no-assert  # deferred: asserts nothing yet
 tumult-cli/src/commands/tests/validate_extra.rs::validate_renders_summary_for_full_featured_experiment::no-assert  # deferred: asserts nothing yet
 tumult-cli/src/commands/tests/validate_extra.rs::validate_warns_but_passes_on_unknown_native_plugin::no-assert  # deferred: asserts nothing yet
 tumult-cli/src/commands/tests/validate_extra.rs::validate_warns_but_passes_on_unknown_script_plugin::no-assert  # deferred: asserts nothing yet
 tumult-cli/src/commands/tests/validate_extra.rs::validate_warns_on_unknown_function_of_known_native_plugin::no-assert  # deferred: asserts nothing yet
-tumult-cli/src/commands/topology.rs::import_map_lineage_and_recommend_round_trip::no-assert  # deferred: asserts nothing yet
 tumult-cli/src/dispatch_tests.rs::dispatch_agents_lists_adapters::no-assert  # deferred: asserts nothing yet
 tumult-cli/src/dispatch_tests.rs::dispatch_compliance_report_and_sources::no-assert  # deferred: asserts nothing yet
 tumult-cli/src/dispatch_tests.rs::dispatch_recommend_against_populated_store::no-assert  # deferred: asserts nothing yet

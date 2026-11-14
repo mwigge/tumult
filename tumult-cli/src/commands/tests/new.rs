@@ -6,9 +6,25 @@ use tempfile::TempDir;
 
 #[test]
 fn templates_lists_every_curated_starter() {
-    // Rendering must not fail; the catalog it prints is the one `new --from`
-    // instantiates from.
-    cmd_templates().unwrap();
+    // The catalog it prints is the one `new --from` instantiates from.
+    let (result, printed) = crate::output::testing::capture(cmd_templates);
+
+    result.unwrap();
+    let out = printed.stdout;
+    let templates = tumult_authoring::templates::all_templates();
+    assert!(
+        out.starts_with(&format!(
+            "Curated starter templates ({}):\n",
+            templates.len()
+        )),
+        "{out}"
+    );
+    assert!(!templates.is_empty());
+    for template in templates {
+        let line = format!("  {}  [{}]\n", template.name, template.domain.label());
+        assert!(out.contains(&line), "{line} missing from {out}");
+    }
+    assert!(out.contains("  tumult new --from <name>"), "{out}");
 }
 
 #[test]

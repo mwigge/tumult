@@ -57,11 +57,19 @@ static STDERR: Stream = Stream::new("stderr");
 
 /// Writes `args` to stdout; see [`outln!`](crate::outln).
 pub fn stdout(args: Arguments<'_>) {
+    #[cfg(test)]
+    if testing::captured(testing::Target::Stdout, args) {
+        return;
+    }
     STDOUT.write(&mut io::stdout().lock(), args);
 }
 
 /// Writes `args` to stderr; see [`errln!`](crate::errln).
 pub fn stderr(args: Arguments<'_>) {
+    #[cfg(test)]
+    if testing::captured(testing::Target::Stderr, args) {
+        return;
+    }
     STDERR.write(&mut io::stderr().lock(), args);
 }
 
@@ -112,6 +120,82 @@ impl Stream {
             },
             "command output could not be written; no more is written"
         );
+    }
+}
+
+/// What a command printed, for the tests of this crate.
+///
+/// [`capture`] collects what the calling thread prints through
+/// [`outln!`](crate::outln), [`out!`](crate::out) and
+/// [`errln!`](crate::errln) while a closure runs. Output of other threads
+/// is not collected, and neither is that of the `tumult` binary: its tests
+/// start the binary and read its streams.
+#[cfg(test)]
+pub(crate) mod testing {
+    use std::cell::RefCell;
+    use std::fmt::{Arguments, Write};
+
+    /// The output of one [`capture`].
+    #[derive(Debug, Default)]
+    pub(crate) struct Captured {
+        pub(crate) stdout: String,
+        pub(crate) stderr: String,
+    }
+
+    #[derive(Clone, Copy)]
+    pub(super) enum Target {
+        Stdout,
+        Stderr,
+    }
+
+    thread_local! {
+        static CAPTURE: RefCell<Option<Captured>> = const { RefCell::new(None) };
+    }
+
+    /// Ends the capture of the thread when it goes out of scope, also when
+    /// the captured code panics.
+    struct Running;
+
+    impl Drop for Running {
+        fn drop(&mut self) {
+            CAPTURE.with(|capture| capture.borrow_mut().take());
+        }
+    }
+
+    /// Runs `run` and returns its result with what it printed.
+    ///
+    /// # Panics
+    ///
+    /// When called while the thread is already capturing.
+    pub(crate) fn capture<T>(run: impl FnOnce() -> T) -> (T, Captured) {
+        CAPTURE.with(|capture| {
+            let previous = capture.borrow_mut().replace(Captured::default());
+            assert!(previous.is_none(), "output is already being captured");
+        });
+        let running = Running;
+        let result = run();
+        let captured = CAPTURE
+            .with(|capture| capture.borrow_mut().take())
+            .unwrap_or_default();
+        drop(running);
+        (result, captured)
+    }
+
+    /// Takes `args` when the thread is capturing; `false` when it is not.
+    pub(super) fn captured(target: Target, args: Arguments<'_>) -> bool {
+        CAPTURE.with(|capture| {
+            let mut capture = capture.borrow_mut();
+            let Some(captured) = capture.as_mut() else {
+                return false;
+            };
+            let text = match target {
+                Target::Stdout => &mut captured.stdout,
+                Target::Stderr => &mut captured.stderr,
+            };
+            // Writing to a String does not fail.
+            let _ = text.write_fmt(args);
+            true
+        })
     }
 }
 
@@ -206,5 +290,28 @@ mod tests {
         stream.write(&mut sink, crate::__output_line!("{name} {} {:>3}", 1, 2));
 
         assert_eq!(String::from_utf8(sink).unwrap(), "\nplain\nx 1   2\n");
+    }
+
+    #[test]
+    fn a_capture_holds_what_the_thread_printed_on_each_stream() {
+        let (answer, printed) = super::testing::capture(|| {
+            crate::outln!("result {}", 1);
+            crate::out!("no newline");
+            crate::errln!("note");
+            7
+        });
+
+        assert_eq!(answer, 7);
+        assert_eq!(printed.stdout, "result 1\nno newline");
+        assert_eq!(printed.stderr, "note\n");
+    }
+
+    #[test]
+    fn a_capture_ends_with_its_closure() {
+        let ((), first) = super::testing::capture(|| crate::outln!("first"));
+        let ((), second) = super::testing::capture(|| crate::outln!("second"));
+
+        assert_eq!(first.stdout, "first\n");
+        assert_eq!(second.stdout, "second\n");
     }
 }

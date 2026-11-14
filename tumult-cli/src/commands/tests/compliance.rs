@@ -4,6 +4,7 @@
 
 use super::super::*;
 use super::helpers::*;
+use crate::output::testing::capture;
 use tempfile::TempDir;
 use tumult_core::types::ExperimentStatus;
 
@@ -16,7 +17,21 @@ fn compliance_scans_directory_and_skips_malformed_journals() {
     // Non-toon files are ignored entirely.
     std::fs::write(dir.path().join("notes.txt"), "hello").unwrap();
 
-    cmd_compliance(Some(dir.path()), ComplianceFramework::Dora, false).unwrap();
+    let (result, printed) =
+        capture(|| cmd_compliance(Some(dir.path()), ComplianceFramework::Dora, false));
+
+    result.unwrap();
+    let out = printed.stdout;
+    let heading = format!(
+        "=== {} ===\n",
+        ComplianceFramework::Dora.to_core().full_name()
+    );
+    assert!(out.starts_with(&heading), "{out}");
+    // Only the one readable journal counts, and it deviated.
+    assert!(out.contains("Journals analyzed: 1\n"), "{out}");
+    assert!(out.contains("  deviated: 1 run(s)\n"), "{out}");
+    assert!(out.contains("  Pass rate: 0.0%\n"), "{out}");
+    assert!(out.ends_with("=== End Report ===\n"), "{out}");
 }
 
 #[test]
@@ -51,7 +66,21 @@ fn compliance_without_recovery_signals_falls_back_to_pass_rate_only() {
     let path = dir.path().join("plain.toon");
     tumult_core::journal::write_journal(&journal, &path).unwrap();
 
-    cmd_compliance(Some(&path), ComplianceFramework::PciDss, false).unwrap();
+    let (result, printed) =
+        capture(|| cmd_compliance(Some(&path), ComplianceFramework::PciDss, false));
+
+    result.unwrap();
+    let out = printed.stdout;
+    assert!(out.contains("  Pass rate: 100.0%\n"), "{out}");
+    assert!(out.contains("  Recovery compliance: N/A"), "{out}");
+    assert!(
+        out.contains("  verdict based on pass rate ONLY (reduced assurance).\n"),
+        "{out}"
+    );
+    assert!(
+        out.contains("  Evidence verdict: COMPLIANT (pass-rate only)\n"),
+        "{out}"
+    );
 }
 
 #[test]
@@ -66,6 +95,26 @@ fn compliance_sources_lists_registry_for_each_framework() {
         ComplianceFramework::Soc2,
         ComplianceFramework::BaselIii,
     ] {
-        cmd_compliance(None, framework, true).unwrap();
+        let (result, printed) = capture(|| cmd_compliance(None, framework, true));
+
+        result.unwrap();
+        let out = printed.stdout;
+        let core = framework.to_core();
+        let heading = format!("=== {} — citation registry ===\n", core.full_name());
+        assert!(out.starts_with(&heading), "{out}");
+        assert!(
+            out.contains(&format!(
+                "Registry version: {}\n",
+                tumult_core::compliance::REGISTRY_VERSION
+            )),
+            "{out}"
+        );
+        assert!(!core.citations().is_empty(), "{heading} has no citations");
+        for citation in core.citations() {
+            let line = format!("  {} — {}\n", citation.control_id, citation.title);
+            assert!(out.contains(&line), "{line} missing from {out}");
+        }
+        // No report without journals.
+        assert!(!out.contains("Journals analyzed"), "{out}");
     }
 }
