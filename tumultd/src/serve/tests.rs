@@ -239,7 +239,10 @@ fn failing(why: &'static str) -> Listener {
     tokio::spawn(async move { Err(std::io::Error::other(why)) })
 }
 
-#[tokio::test]
+// The two tests below wait on tasks only, so they run on the paused
+// clock: their bound costs no time, and a wait that never ends fails at
+// once instead of after the bound.
+#[tokio::test(start_paused = true)]
 async fn a_failed_http_listener_stops_the_grpc_one() {
     let (grpc, grpc_gone) = serving();
     let outcome = tokio::time::timeout(
@@ -255,7 +258,7 @@ async fn a_failed_http_listener_stops_the_grpc_one() {
     assert!(grpc_gone.await.is_err());
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn a_failed_grpc_listener_stops_the_http_one() {
     let (http, http_gone) = serving();
     let outcome = tokio::time::timeout(
@@ -346,7 +349,9 @@ fn persisted(store: &tumult_lake::Store) -> Result<String, String> {
 /// The one row [`write_in_flight`] writes.
 const WRITTEN: &str = "{\"answer\":42}\n";
 
-/// Longer than any drain here takes.
+/// Longer than any drain here takes. The drain tests stay on the wall
+/// clock: the writer works on its own thread, which a paused clock does
+/// not wait for, so a bound would fire before the write it bounds.
 const AMPLE: std::time::Duration = std::time::Duration::from_secs(30);
 
 fn listener_failed() -> anyhow::Result<()> {
@@ -502,6 +507,11 @@ fn alive_tasks() -> usize {
 
 /// The number of alive tasks once it is back at `expected`, or what it
 /// still is after a few seconds.
+///
+/// The tests from here on run the whole daemon on real sockets and a
+/// multi-threaded runtime, where the clock cannot be paused and nothing
+/// signals "serving" or "all tasks gone": they poll, and their 30 s
+/// bounds are only there to turn a hang into a failure.
 async fn alive_tasks_settled(expected: usize) -> usize {
     for _ in 0..100 {
         if alive_tasks() == expected {
