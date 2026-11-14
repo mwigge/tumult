@@ -648,7 +648,7 @@ tumult perf checkout --quantile p95 --margin-pct 5 --env staging --store
 | `--include partial` | Keep the latency samples of aborted and truncated runs, which are left out by default |
 | `--store` | Append the verdict to the daemon's `perf_verdicts` history (`POST`, operator role); without it the command only reads. A retry with the same evidence appends nothing and still counts as stored. Exits non-zero when the daemon did not store, whatever `--fail-on` says |
 | `--daemon-url <url>` | Overrides `TUMULT_DAEMON_URL` |
-| `--fail-on <verdicts>` | Which verdicts exit non-zero, comma-separated: `regressed`, `inconclusive`, or `never` alone (default `regressed,inconclusive`) |
+| `--fail-on <verdicts>` | Which verdicts exit non-zero, comma-separated: `regressed`, `inconclusive`, or `never` alone (default `regressed,inconclusive`). Given without `--candidate`, the command warns on stderr that it gates on the version deployed latest |
 | `--json` | Print the daemon's JSON answer |
 
 | Exit code | Meaning |

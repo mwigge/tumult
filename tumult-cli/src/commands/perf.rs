@@ -120,8 +120,18 @@ pub struct PerfArgs {
     /// the verdict was not stored.
     pub store: bool,
     pub daemon_url: Option<String>,
-    pub fail_on: PerfFailOn,
+    /// The policy `--fail-on` named; `None` when it was left out, which
+    /// keeps the default policy without the caller having asked for a gate.
+    pub fail_on: Option<PerfFailOn>,
     pub json: bool,
+}
+
+impl PerfArgs {
+    /// The policy the exit code follows: the one named, else the default.
+    #[must_use]
+    pub fn policy(&self) -> PerfFailOn {
+        self.fail_on.unwrap_or(PerfFailOn::Inconclusive)
+    }
 }
 
 /// One side of the daemon's answer, only what the CLI prints.
@@ -359,10 +369,11 @@ fn side_lines(role: &str, side: &PerfSide) -> String {
 /// What a gate is told when no `--candidate` names the build under test:
 /// the daemon then judges whichever version was deployed last, which is
 /// not the build a pipeline means once another has been deployed since.
-/// Nothing when the candidate is named or no verdict fails the command.
+/// Nothing when `--fail-on` was not given, the candidate is named or no
+/// verdict fails the command.
 #[must_use]
 pub fn gate_warning(args: &PerfArgs) -> Option<String> {
-    if args.fail_on == PerfFailOn::Never || args.candidate.is_some() {
+    if matches!(args.fail_on, None | Some(PerfFailOn::Never)) || args.candidate.is_some() {
         return None;
     }
     Some(format!(
@@ -585,7 +596,7 @@ pub async fn cmd_perf(args: &PerfArgs) -> Result<()> {
         } else {
             crate::out!("{}", render_unorderable(&args.target, &why));
         }
-        return inconclusive(&args.target, args.fail_on);
+        return inconclusive(&args.target, args.policy());
     }
     if !status.is_success() {
         let msg = body
@@ -601,7 +612,7 @@ pub async fn cmd_perf(args: &PerfArgs) -> Result<()> {
     } else {
         crate::out!("{}", render(&parsed));
     }
-    let Some(code) = exit_code(&parsed.verdict, args.fail_on) else {
+    let Some(code) = exit_code(&parsed.verdict, args.policy()) else {
         return Ok(());
     };
     Err(PerfDidNotPass {
@@ -796,7 +807,7 @@ mod tests {
             include_partial: false,
             store: false,
             daemon_url: None,
-            fail_on: PerfFailOn::Inconclusive,
+            fail_on: None,
             json: false,
         }
     }
@@ -835,24 +846,34 @@ mod tests {
     }
 
     #[test]
-    fn a_gate_without_a_named_candidate_is_warned_of() {
-        let gate = args();
-        assert_ne!(gate.fail_on, PerfFailOn::Never);
+    fn a_gate_asked_for_without_a_named_candidate_is_warned_of() {
+        let gate = PerfArgs {
+            fail_on: Some(PerfFailOn::Regressed),
+            ..args()
+        };
         let warning = gate_warning(&gate).expect("a warning");
         assert!(warning.contains("--candidate"), "{warning}");
         assert!(warning.contains("deployed latest"), "{warning}");
         // The build under test is named: nothing to warn of.
         let named = PerfArgs {
             candidate: Some("1.5.0".into()),
-            ..args()
+            ..gate.clone()
         };
         assert_eq!(gate_warning(&named), None);
         // No verdict fails the command: it is a read, not a gate.
         let read = PerfArgs {
-            fail_on: PerfFailOn::Never,
-            ..args()
+            fail_on: Some(PerfFailOn::Never),
+            ..gate
         };
         assert_eq!(gate_warning(&read), None);
+    }
+
+    #[test]
+    fn a_run_that_did_not_ask_for_a_gate_is_not_warned() {
+        // The default policy still fails the command, but nobody said gate.
+        let plain = args();
+        assert_eq!(plain.policy(), PerfFailOn::Inconclusive);
+        assert_eq!(gate_warning(&plain), None);
     }
 
     #[test]
