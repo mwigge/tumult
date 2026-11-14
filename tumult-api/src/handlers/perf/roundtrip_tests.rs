@@ -13,7 +13,9 @@ use tumult_lake::{AnalyticsStore, SpanRow, Store};
 
 use super::*;
 
-const NOW: i64 = 1_800_000_000 * NS_PER_S;
+/// A time the wall clock has passed: the version rollup leaves out spans
+/// stamped ahead of it.
+const NOW: i64 = 1_700_000_000 * NS_PER_S;
 const FILES: [&str; 6] = [
     "experiments.parquet",
     "activities.parquet",
