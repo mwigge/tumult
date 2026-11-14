@@ -30,8 +30,13 @@ and OTel-Arrow.
 
 With the flag off nothing changes. An entity event is an ordinary log
 record: it is stored in `logs` and shown by `GET /api/logs`, as before the
-feature existed. An export that carries no entity event is stored the same
-with the flag on as with it off.
+feature existed. That is the whole record as sent: the allow-list of
+section 5 belongs to the entity table and does not touch `logs`, so the
+labels, selectors and annotations of an entity event, a manifest in an
+annotation included, are stored and readable with the flag off. A
+Collector that sends entity events to a daemon with the flag off should
+drop what must not be stored before it exports. An export that carries no
+entity event is stored the same with the flag on as with it off.
 
 Lake schema v21 adds the table and the view described below, and two
 nullable columns on `logs` (`event_name` and `scope_attrs`), which hold
@@ -177,6 +182,13 @@ The rules:
 - A delete event marks the latest row as deleted. It is ignored when it is
   older than the last report, when the entity has no row or when the
   entity is already deleted. Who sent it plays no part (section 5).
+- A delete with the same time as the last report is applied, also when it
+  arrives in a later export. This is the one place where a tie is not
+  read as a delayed copy: a state and the delete that follows it often
+  carry one timestamp, and a delete that is dropped is not sent again,
+  where a state is. The cost is that a copy of an old delete, replayed
+  with exactly the time of the latest report, marks a live entity `gone`
+  until its next report brings it back.
 - A state event newer than the deletion opens a new row: the entity is
   back.
 - Newer means a later event time. An event without a time, or with one
@@ -230,6 +242,17 @@ id, so the daemon cannot tell one sender from another.
   a criticality and every other description value are stored and returned
   as sent. `org.yaml` and the register stay the source of truth, and
   nothing in this release overrides them from entity data.
+- **A description can hold personal data.** `ict.entity.owner` is often a
+  person or a mailbox, and `host.name` on a workstation is often the name
+  of its user. Both are stored by default, kept as history for as long as
+  the entity is (section 6) and returned to every reader whose scopes
+  include the environment. Have the sender write a team or a role
+  instead, or drop the attribute in the Collector, when that is not
+  wanted; `DELETE /api/entities` (section 6) removes what is already
+  stored.
+- **The allow-list applies with the flag on only.** With the flag off an
+  entity event is stored in `logs` whole, annotations included
+  (section 1).
 - **Whatever reads entities next must not treat any of this as verified.**
   That holds for the graph, the Star Map and the maturity roll-up of the
   next phase: an entity, its environment, its liveness, its owner and its
@@ -267,6 +290,12 @@ every other key before the row is written. The keys stored by default:
 
 `<kind>` is one name without a dot. On top of the table:
 
+- The six namespaces of the first two rows, `host.`, `os.`, `service.`,
+  `deployment.`, `cloud.` and `ict.`, are prefixes and they are open: any
+  key that starts with one of them is stored, whether or not the semantic
+  conventions know it (`host.anything.at.all`). What a sender puts under
+  them is bounded by the size limits of section 6 and by the next rule,
+  not by a list of names. Every other row of the table names its keys.
 - A key with a segment that starts with `label`, `annotation` or
   `selector`, in any case, is never stored by default, whatever namespace
   it stands in (`host.label.rack`, `service.Labels.team`,
@@ -640,9 +669,12 @@ A key sent without that encoding names another path, or another entity.
 ## 8. Switching it off again
 
 Unset `KRONIKA_ENTITY_EVENTS` and restart the daemon. Entity events are
-stored as log records again from then on. The rows already in
+stored as log records again from then on, whole: what the allow-list of
+section 5 kept out of the entity table (labels, selectors, annotations)
+is written to `logs` with the rest of the record. The rows already in
 `entity_versions` stay and are still returned by the two endpoints; their
-`liveness` turns `expired` as their intervals pass.
+`liveness` turns `expired` as their intervals pass, and
+`DELETE /api/entities` (section 6) still removes them.
 
 ### Rolling back to an older build
 
@@ -659,19 +691,25 @@ in the lake is changed by the attempt.
 
 `scripts/proof/entity-events/proof.sh` starts a Collector container
 (contrib 0.165.0, `host_metrics` and `resourcedetection`, a ten-second
-report interval) against a fresh daemon in four phases: flag off (the
+report interval) against a fresh daemon in five phases: flag off (the
 records are in `logs`, no entity row), the legacy form and the
 specification form over OTLP/gRPC (one `host` entity, `live`, the right
 `wire_form`, exactly one row after several heartbeats, nothing in `logs`,
-then `expired` three intervals after the Collector is stopped), and the
-specification form over OTel-Arrow. The Collector's `otlp` exporter runs
-with its default compression (gzip).
+then `expired` three intervals after the Collector is stopped), the
+specification form over OTel-Arrow, and the specification form over
+OTLP/HTTP. The Collector's `otlp` and `otlphttp` exporters run with gzip,
+their default, and in the OTLP/HTTP phase the daemon's log has to say that
+it expanded a gzip body. That phase ends with the Collector stopped and
+`DELETE /api/entities?environment=&type=host`: one entity and one row
+removed, none listed, the purge in the log.
 
-A fifth phase has no Collector. One quiet host never changes, deletes or
+A sixth phase has no Collector. One quiet host never changes, deletes or
 labels anything, so the example binary
 `tumult-ingest/examples/entity_probe.rs` sends those events itself, one
 gzip-compressed OTLP/gRPC export each, for a `k8s.pod` entity, to a daemon
-started with `KRONIKA_ENTITY_LABEL_ALLOW=app`:
+started with `KRONIKA_ENTITY_LABEL_ALLOW=app`. The probe prints the
+`rejected_log_records` of every answer, and the proof compares it: 0 for
+every export but the oversized one.
 
 | Sent | Checked on the API and `/metrics` |
 |---|---|
@@ -679,8 +717,9 @@ started with `KRONIKA_ENTITY_LABEL_ALLOW=app`:
 | a state, phase `Running` | a second row; the first still says `Pending` |
 | a delete | the entity is `gone` with its reason, still two rows |
 | the state again | the entity is `live` in a third row; the deleted row keeps its mark |
-| a state with two labels, an annotation holding a manifest, a container label and a nested map of labels | the description holds the name, the phase and `k8s.pod.label.app` only; `tumultd_entity_event_keys_filtered_total` is 4; the secret in the manifest is in no API answer and not in the lake file |
-| a state whose description is one byte over 64 KiB | `tumultd_entity_events_dropped_total{reason="oversized"}` is 1, no entity, no log record |
+| a state with two labels, an annotation holding a manifest, a container label and a nested map of labels | the description holds the name, the phase and `k8s.pod.label.app` only; `tumultd_entity_event_keys_filtered_total` is 4; the secret in the manifest is in no API answer and not in the lake file. The search of the file has a control: the value of the label that was kept, `checkout`, must be found in it |
+| a state whose description is one byte over 64 KiB | the answer says 1 rejected record; `tumultd_entity_events_dropped_total{reason="oversized"}` is 1, no entity, no log record |
+| a state for each of two more pods | `GET /api/entities?limit=1` followed through `next_cursor`: three pages, every entity exactly once, in key order |
 
 Build the probe with
 `cargo build -p tumult-ingest --example entity_probe` before running the
