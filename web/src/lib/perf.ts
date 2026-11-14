@@ -1,7 +1,8 @@
 // Presentation helpers for the performance-regression page: number
 // formatting, the labels of the answer and the distribution chart option.
 
-import type { EChartsCoreOption } from './echarts';
+import type { chartTokens, EChartsCoreOption } from './echarts';
+import { swatch, tip, tipFormatter, type Tip, type TipLine } from './tooltip';
 import type { PerfQuantile, PerfSide, PerfVerdict, PerfVerdictKind } from './types';
 
 export const PERF_QUANTILES: readonly PerfQuantile[] = ['p50', 'p95', 'p99'];
@@ -129,11 +130,8 @@ export function perfChartLabel(answer: PerfVerdict): string {
     return `Latency distribution: ${parts.join(' versus ')}${tail}`;
 }
 
-export interface PerfChartTokens {
-    text: string;
-    axis: string;
-    tooltip: Record<string, unknown>;
-}
+/** The chart tokens the distribution chart reads. */
+export type PerfChartTokens = Pick<ReturnType<typeof chartTokens>, 'text' | 'axis' | 'tooltip'>;
 
 interface TooltipPoint {
     seriesName?: string;
@@ -141,33 +139,22 @@ interface TooltipPoint {
     value?: unknown;
 }
 
-function tooltipRow(point: TooltipPoint): HTMLElement {
-    const row = document.createElement('div');
-    const dot = document.createElement('span');
-    dot.style.cssText = 'display:inline-block;width:8px;height:8px;border-radius:50%';
-    dot.style.marginRight = '6px';
-    dot.style.backgroundColor = typeof point.color === 'string' ? point.color : '';
+function tooltipRow(point: TooltipPoint): TipLine {
     const ms = Array.isArray(point.value) ? Number(point.value[1]) : NaN;
-    const label = document.createElement('span');
-    label.textContent = `${point.seriesName ?? ''}: ${Number.isFinite(ms) ? fmtMs(ms) : DASH} ms`;
-    row.append(dot, label);
-    return row;
+    const label = `${point.seriesName ?? ''}: ${Number.isFinite(ms) ? fmtMs(ms) : DASH} ms`;
+    return [swatch(point.color), label];
 }
 
 /**
- * The tooltip of the distribution chart as DOM nodes. A series is named
- * after a version, and a version is whatever a service reported: it is
- * set as text, so no part of it is ever parsed as HTML.
+ * The tooltip of the distribution chart. A series is named after a
+ * version, and a version is whatever a service reported: every line goes
+ * through `tip`, which escapes it.
  */
-export function perfTooltip(params: unknown): HTMLElement {
+export function perfTooltip(params: unknown): Tip {
     const points = (Array.isArray(params) ? params : [params]) as TooltipPoint[];
-    const box = document.createElement('div');
-    box.dataset.testid = 'perf-tooltip';
     const first = points[0]?.value;
-    const head = document.createElement('div');
-    head.textContent = Array.isArray(first) ? `percentile ${first[0]}` : '';
-    box.append(head, ...points.map(tooltipRow));
-    return box;
+    const head = Array.isArray(first) ? `percentile ${first[0]}` : '';
+    return tip(head, ...points.map(tooltipRow));
 }
 
 /**
@@ -190,7 +177,12 @@ export function perfDistributionOption(
     return {
         grid: { left: 52, right: 20, top: 34, bottom: 44 },
         legend: { top: 0 },
-        tooltip: { ...tokens.tooltip, trigger: 'axis', formatter: perfTooltip },
+        tooltip: {
+            ...tokens.tooltip,
+            trigger: 'axis',
+            className: 'perf-tooltip',
+            formatter: tipFormatter(perfTooltip),
+        },
         xAxis: {
             type: 'value',
             min: 0,

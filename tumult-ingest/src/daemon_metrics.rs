@@ -16,6 +16,7 @@ static WEBHOOK_DELIVERED: AtomicU64 = AtomicU64::new(0);
 static WEBHOOK_FAILED: AtomicU64 = AtomicU64::new(0);
 static WEBHOOK_DEAD_LETTERED: AtomicU64 = AtomicU64::new(0);
 static SCHEDULE_FIRES: AtomicU64 = AtomicU64::new(0);
+static SCORE_SNAPSHOTS_SKIPPED: AtomicU64 = AtomicU64::new(0);
 static ACTIVE_CAMPAIGNS: AtomicU64 = AtomicU64::new(0);
 static SUPERVISOR_TICK_NS: AtomicU64 = AtomicU64::new(0);
 
@@ -58,6 +59,18 @@ pub fn webhook_dead_lettered(n: u64) {
 /// A schedule fired a run.
 pub fn schedule_fired() {
     inc(&SCHEDULE_FIRES);
+}
+
+/// A daily score snapshot was not stored because the default parameters
+/// stood in for a refused org file.
+pub fn score_snapshot_skipped() {
+    inc(&SCORE_SNAPSHOTS_SKIPPED);
+}
+
+/// Daily score snapshots skipped since the process started.
+#[must_use]
+pub fn score_snapshots_skipped_total() -> u64 {
+    SCORE_SNAPSHOTS_SKIPPED.load(Ordering::Relaxed)
 }
 
 /// Snapshot of campaigns currently advancing (gauge, set each supervisor
@@ -137,6 +150,18 @@ pub fn render_prometheus() -> String {
         "Schedule fires.",
         load(&SCHEDULE_FIRES),
     );
+    push_counter(
+        &mut out,
+        "tumultd_malformed_entity_ids_total",
+        "Resources received with a malformed ict.entity.id.",
+        tumult_otlp::common::malformed_entity_ids_total(),
+    );
+    push_counter(
+        &mut out,
+        "tumultd_score_snapshots_skipped_total",
+        "Daily score snapshots not stored while defaults stood in for a refused org file.",
+        load(&SCORE_SNAPSHOTS_SKIPPED),
+    );
     push_gauge(
         &mut out,
         "tumultd_active_campaigns",
@@ -156,6 +181,22 @@ pub fn render_prometheus() -> String {
 mod tests {
     use super::*;
 
+    /// Nothing else in this test binary skips a snapshot: the count is exact.
+    #[test]
+    fn a_skipped_score_snapshot_is_counted_and_rendered() {
+        let before = score_snapshots_skipped_total();
+        score_snapshot_skipped();
+        score_snapshot_skipped();
+        assert_eq!(score_snapshots_skipped_total(), before + 2);
+        let text = render_prometheus();
+        let line = format!("tumultd_score_snapshots_skipped_total {}\n", before + 2);
+        assert!(text.contains(&line), "{text}");
+        assert!(
+            text.contains("# TYPE tumultd_score_snapshots_skipped_total counter"),
+            "{text}"
+        );
+    }
+
     #[test]
     fn render_emits_prometheus_text_for_every_metric() {
         webhook_delivered();
@@ -171,6 +212,8 @@ mod tests {
             "tumultd_webhook_deliveries_failed_total",
             "tumultd_webhook_dead_letters_total",
             "tumultd_schedule_fires_total",
+            "tumultd_malformed_entity_ids_total",
+            "tumultd_score_snapshots_skipped_total",
             "tumultd_active_campaigns",
             "tumultd_supervisor_last_tick_ns",
         ] {

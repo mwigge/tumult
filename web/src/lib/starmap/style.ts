@@ -8,6 +8,8 @@ import { PALETTE } from '../echarts.js';
 import type { chartTokens } from '../echarts.js';
 import type { StarEdge, StarKind, StarNode, StarRel } from '../types.js';
 import type { Point } from './layout.js';
+import { strong, tip } from '../tooltip';
+import type { Tip, TipLine } from '../tooltip';
 
 export type Lens = 'evidence' | 'risk' | 'conformance';
 export const LENSES: Lens[] = ['evidence', 'risk', 'conformance'];
@@ -108,19 +110,6 @@ const CONTAINMENT = new Set<StarRel>(['owns', 'implements', 'runs_on']);
 const ON_SELECTION = new Set<StarRel>(['tested_by', 'covers', 'measures']);
 const SOON_NS = 14 * 86_400_000_000_000;
 const DIMMED = 0.35;
-
-const HTML: Record<string, string> = {
-    '&': '&amp;',
-    '<': '&lt;',
-    '>': '&gt;',
-    '"': '&quot;',
-    "'": '&#39;',
-};
-
-/** Escape text for an ECharts tooltip, which renders formatter output as HTML. */
-export function esc(text: unknown): string {
-    return String(text ?? '').replace(/[&<>"']/g, (c) => HTML[c]);
-}
 
 export interface ItemStyle {
     color: string;
@@ -289,17 +278,17 @@ const day = (ns: number) => new Date(ns / 1_000_000).toISOString().slice(0, 10);
 
 function suppressionLine(n: StarNode): string | null {
     if (n.risks.suppressed <= 0) return null;
-    const who = esc(n.risks.suppressed_by ?? 'unknown');
+    const who = n.risks.suppressed_by ?? 'unknown';
     const until =
         n.risks.suppression_expires_ns === null
             ? 'with no expiry'
             : `until ${day(n.risks.suppression_expires_ns)}`;
-    return `suppressed by ${who} ${until}: ${esc(n.risks.suppression_reason ?? '')}`;
+    return `suppressed by ${who} ${until}: ${n.risks.suppression_reason ?? ''}`;
 }
 
 function riskLine(n: StarNode): string | null {
     if (n.risks.open + n.risks.suppressed <= 0) return null;
-    const worst = n.risks.worst ? ` (worst ${esc(n.risks.worst)})` : '';
+    const worst = n.risks.worst ? ` (worst ${n.risks.worst})` : '';
     return `risks: ${n.risks.open} open${worst}, ${n.risks.suppressed} suppressed`;
 }
 
@@ -308,11 +297,11 @@ function gapLines(n: StarNode): string[] {
     const wanted = n.gap === 'missing' ? 'missing' : 'stale';
     const names = Object.entries(n.evidence.by_discipline)
         .filter(([, status]) => status === wanted)
-        .map(([discipline]) => esc(discipline));
+        .map(([discipline]) => discipline);
     const head = n.gap === 'missing' ? 'no evidence' : 'stale evidence';
     const lines = [names.length ? `${head}: ${names.join(', ')}` : head];
     if (n.risks.recommended.length) {
-        lines.push(`recommended: ${n.risks.recommended.map(esc).join(', ')}`);
+        lines.push(`recommended: ${n.risks.recommended.join(', ')}`);
     }
     return lines;
 }
@@ -324,10 +313,10 @@ function evidenceLine(n: StarNode): string | null {
     return `${e.runs} runs (${e.failed} failed), ${e.manual} manual${last}`;
 }
 
-function headLine(n: StarNode): string {
+function headLine(n: StarNode): TipLine {
     const kind = n.kind === 'org' && n.org_kind ? n.org_kind : n.kind;
-    const env = n.env ? ` · ${esc(n.env)}` : '';
-    return `<b>${esc(n.label)}</b> (${esc(kind)}${env})`;
+    const env = n.env ? ` · ${n.env}` : '';
+    return [strong(n.label), ` (${kind}${env})`];
 }
 
 const FLAG_TEXT: Record<string, string> = {
@@ -360,24 +349,27 @@ export function rollupLines(n: StarNode): string[] {
 
 function detailLines(n: StarNode): string[] {
     const lines: string[] = [];
-    if (n.tier) lines.push(`tier: ${esc(n.tier)}`);
-    if (n.posture) lines.push(`posture: ${n.posture.score.toFixed(1)} (${esc(n.posture.band)})`);
+    if (n.tier) lines.push(`tier: ${n.tier}`);
+    if (n.posture) lines.push(`posture: ${n.posture.score.toFixed(1)} (${n.posture.band})`);
     if (n.conflict) lines.push('reports more than one entity id');
-    for (const flag of n.flags) lines.push(esc(flagText(flag)));
+    for (const flag of n.flags) lines.push(flagText(flag));
     lines.push(...rollupLines(n));
     if (n.declared) lines.push('declared only, not seen in telemetry');
     if (n.members !== null) lines.push(`${n.members} nodes collapsed; click to expand`);
     return lines;
 }
 
-/** Tooltip body of the active lens. Every name is escaped. */
-export function tooltipHtml(n: StarNode, c: StyleContext): string {
-    const lines = [headLine(n), ...detailLines(n)];
+/**
+ * Tooltip of a node under the active lens. The lines here are plain
+ * text: `tip` escapes every one of them.
+ */
+export function tooltipHtml(n: StarNode, c: StyleContext): Tip {
+    const lines: TipLine[] = [headLine(n), ...detailLines(n)];
     if (c.lens === 'conformance' && n.kind === 'service') {
-        lines.push(`conformance: ${esc(n.conformance ?? 'unknown')}`);
+        lines.push(`conformance: ${n.conformance ?? 'unknown'}`);
     }
-    lines.push(evidenceLine(n) ?? '', ...gapLines(n), riskLine(n) ?? '', suppressionLine(n) ?? '');
-    return lines.filter((line) => line !== '').join('<br/>');
+    lines.push(evidenceLine(n), ...gapLines(n), riskLine(n), suppressionLine(n));
+    return tip(...lines);
 }
 
 const REL_TEXT: Record<StarRel, string> = {
@@ -392,9 +384,9 @@ const REL_TEXT: Record<StarRel, string> = {
     measures: 'measures',
 };
 
-/** Tooltip body for an edge. */
-export function edgeTooltipHtml(e: StarEdge): string {
-    const head = `${esc(e.from)} ${REL_TEXT[e.rel]} ${esc(e.to)}`;
-    if (e.weight === undefined) return `${head}<br/>source: ${esc(e.source)}`;
-    return `${head}<br/>${e.weight} calls, ${e.errors ?? 0} errors · source: ${esc(e.source)}`;
+/** Tooltip of an edge. */
+export function edgeTooltipHtml(e: StarEdge): Tip {
+    const head = `${e.from} ${REL_TEXT[e.rel]} ${e.to}`;
+    if (e.weight === undefined) return tip(head, `source: ${e.source}`);
+    return tip(head, `${e.weight} calls, ${e.errors ?? 0} errors · source: ${e.source}`);
 }

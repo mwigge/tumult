@@ -55,6 +55,8 @@ mod file_integrity;
 #[cfg(feature = "duckdb")]
 mod forecast;
 #[cfg(feature = "duckdb")]
+mod ict;
+#[cfg(feature = "duckdb")]
 pub mod lake;
 #[cfg(feature = "duckdb")]
 mod manual;
@@ -63,6 +65,7 @@ mod perf;
 pub mod query_row;
 #[cfg(feature = "duckdb")]
 mod reader;
+#[cfg(feature = "duckdb")]
 mod risk;
 #[cfg(feature = "duckdb")]
 mod rows;
@@ -98,6 +101,11 @@ pub use forecast::{
     FORECAST_ROWS_PER_SERIES,
 };
 #[cfg(feature = "duckdb")]
+pub use ict::{
+    is_critical_or_important, IctFunction, IctFunctionService, IctLegalEntity, IctRegister,
+    MaturityDailyRow, PlannedTest, RequirementStatusRow,
+};
+#[cfg(feature = "duckdb")]
 pub use manual::{
     AttachmentKind, ExerciseType, ManualDetail, ManualError, ManualOutcome, NewManualExperiment,
 };
@@ -121,11 +129,12 @@ pub use schema::CURRENT_SCHEMA_VERSION;
 #[cfg(feature = "duckdb")]
 pub use sightings::{StoredVersions, VersionSighting, REDEPLOY_GAP};
 #[cfg(feature = "duckdb")]
-pub(crate) use store::{migrate, query_json_rows, with_tx};
+pub(crate) use store::{migrate, query_json_rows, query_json_rows_bound, with_tx};
 #[cfg(feature = "duckdb")]
 pub use store::{SqlParam, Store};
 #[cfg(feature = "duckdb")]
 pub use version_order::version_cmp;
+#[cfg(feature = "duckdb")]
 pub use webhooks::{WebhookDeadLetter, WebhookRow};
 #[cfg(feature = "duckdb")]
 pub use writer::Writer;

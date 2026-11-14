@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test';
 
+import { installChartHooks } from './charts';
+
 // The API is mocked; the fan chart renders to canvas, so it is asserted
 // through the option mirrored at window.__tumultCharts.
 
@@ -100,9 +102,7 @@ type Answer = { status: number; body: unknown; delayMs?: number };
 
 async function mockApi(page: import('@playwright/test').Page, answer: Answer) {
     // Charts mirror their option only when this registry is already there.
-    await page.addInitScript(() => {
-        (window as Window & { __tumultCharts?: Record<string, unknown> }).__tumultCharts = {};
-    });
+    await installChartHooks(page);
     await page.route('**/api/**', async (route) => {
         const path = new URL(route.request().url()).pathname;
         let body: unknown = {};

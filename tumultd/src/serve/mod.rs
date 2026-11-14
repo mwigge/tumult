@@ -355,6 +355,20 @@ pub(crate) async fn serve() -> Result<()> {
     // the rest is done here, a turn at a time, beside the telemetry.
     let backfill_task =
         spawn_version_backfill(ingest.clone(), BACKFILL_PAUSE, background_shutdown.clone());
+    // Score jobs: sync the function register from the org file, then
+    // store the daily requirement status. Same shutdown-drain contract.
+    let score_task = crate::score_jobs::spawn_score_jobs(
+        crate::score_jobs::ScoreJobs {
+            db_path: config.db_path.clone(),
+            runtime: std::sync::Arc::clone(api_state.score_runtime()),
+            interval: crate::score_jobs::snapshot_interval_from_env(),
+            reload: crate::score_jobs::reload_interval_from_env(),
+            day_check: crate::score_jobs::DAY_CHECK,
+            now: crate::score_jobs::now_ns,
+        },
+        ingest.clone(),
+        background_shutdown.clone(),
+    );
     // Schedule scheduler: fires due interval schedules through the normal
     // run path every tick. Holds an IngestWriter clone, so it is cancelled
     // and awaited before the writer drain below, like the lake task.
@@ -453,6 +467,7 @@ pub(crate) async fn serve() -> Result<()> {
         ("gameday supervisor", gameday_task),
         ("run retention", retention_task),
         ("version backfill", backfill_task),
+        ("score jobs", score_task),
     ];
     tasks.extend(lake_task.map(|task| ("lake scheduler", task)));
     let workers = Workers {

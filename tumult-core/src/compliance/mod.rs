@@ -11,6 +11,8 @@ mod dates;
 mod dora_refs;
 mod evidence;
 mod framework;
+mod ids;
+mod requirements;
 mod signals;
 
 pub use citations::{
@@ -20,6 +22,16 @@ pub use dates::{current_year_month, months_since_verified, parse_year_month, sta
 pub use dora_refs::{dora_paragraph_count, dora_ref_exists, parse_dora_ref, DoraRef};
 pub use evidence::{EvidenceStrength, EvidenceType};
 pub use framework::ComplianceFramework;
+pub use ids::{
+    check_entity_id, entity_id_is_valid, lei_is_valid, truncated, EntityIdError, ENTITY_ID_ATTR,
+    ENTITY_ID_MALFORMED_ATTR, ENTITY_ID_MAX_LEN, ENTITY_ID_PATTERN, ENTITY_ID_TRUNCATION_MARK,
+};
+pub use requirements::{
+    applicable, article_title, requirement, EntityFlags, EntityProfile, EvidenceClass, Feed,
+    FlagRule, FunctionScope, MicroRule, Profile, ProfileSet, Requirement, ScopeBasis, Selector,
+    ARTICLES, CORE_WEIGHT_MIN, EXPECTED_STATUS_DESIGNED, EXPECTED_STATUS_EXISTING,
+    EXPECTED_STATUS_OPERATING, FLAG_NAMES, GATING_WEIGHT, REQUIREMENTS, REQUIREMENTS_VERSION,
+};
 pub use signals::{compliance_verdict, ComplianceSignals, DEFAULT_MTTR_TARGET_S};
 
 #[cfg(test)]

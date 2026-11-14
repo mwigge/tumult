@@ -34,3 +34,35 @@ assignments:
     criticality:
       "message-queue dependency loss — restart fails": high
 defaults: {weight: 1.0, stale_days: 30}
+
+# Function register for the DORA score (docs/guides/dora-score.md): one
+# legal entity under the simplified framework and three functions bound to
+# the demo systems by service name. "order-archive" is declared on the
+# critical function but nothing in the demo reports under that name: it is
+# deliberately uninstrumented, so the score page shows the level capped by
+# svc:order-archive until telemetry or a test for it arrives. No feed is
+# ingested, so incident rows (Art. 19) read "unknown". Listing a feed
+# under `feeds` records the declaration and changes no score.
+legal_entities:
+  - lei: 529900T8BM49AURSDO55
+    name: Demo Firm
+    profile: simplified
+    feeds: []
+functions:
+  - id: cif-0001
+    name: Order processing
+    tier: critical
+    licensed_activities: [payment-services]
+    org_unit: platform/compute
+    rto_s: 3600
+    services: ["api-worker*", order-archive]
+  - id: cif-0002
+    name: Messaging
+    tier: important
+    org_unit: platform/data
+    services: ["message-queue*", "config-service*"]
+  - id: cif-0003
+    name: Batch settlement
+    tier: important
+    org_unit: platform/compute
+    services: ["batch-worker*"]

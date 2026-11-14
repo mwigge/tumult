@@ -33,6 +33,9 @@ pub enum ExerciseType {
     Tabletop,
     Failover,
     Pentest,
+    /// A threat-led penetration test under DORA Art. 26, as distinct
+    /// from an ordinary penetration test.
+    Tlpt,
     Drill,
     Other,
 }
@@ -44,6 +47,7 @@ impl ExerciseType {
             Self::Tabletop => "tabletop",
             Self::Failover => "failover",
             Self::Pentest => "pentest",
+            Self::Tlpt => "tlpt",
             Self::Drill => "drill",
             Self::Other => "other",
         }
@@ -55,12 +59,13 @@ impl ExerciseType {
             "tabletop" => Self::Tabletop,
             "failover" => Self::Failover,
             "pentest" => Self::Pentest,
+            "tlpt" => Self::Tlpt,
             "drill" => Self::Drill,
             "other" => Self::Other,
             other => {
                 return Err(ManualError::Invalid(format!(
                     "unknown exercise_type '{other}' \
-                     (gameday|tabletop|failover|pentest|drill|other)"
+                     (gameday|tabletop|failover|pentest|tlpt|drill|other)"
                 )))
             }
         })
@@ -243,6 +248,7 @@ mod tests {
             ("tabletop", ExerciseType::Tabletop),
             ("failover", ExerciseType::Failover),
             ("pentest", ExerciseType::Pentest),
+            ("tlpt", ExerciseType::Tlpt),
             ("drill", ExerciseType::Drill),
             ("other", ExerciseType::Other),
         ] {

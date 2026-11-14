@@ -624,7 +624,7 @@ test('GIVEN a version and a target that are markup WHEN the page renders and the
     const canvas = page.locator('[data-chart="perf"] canvas');
     await canvas.hover({ position: { x: 260, y: 150 } });
     await canvas.hover({ position: { x: 300, y: 140 } });
-    const tip = page.getByTestId('perf-tooltip');
+    const tip = page.locator('.perf-tooltip');
     await expect(tip).toBeVisible();
     await expect(tip).toContainText(`candidate ${hostile}`);
     await expect(tip).toContainText('baseline 1.0.0');

@@ -253,7 +253,7 @@ pub(crate) fn query_json_rows(
     conn: &Connection,
     sql: &str,
 ) -> Result<Vec<serde_json::Value>, StoreError> {
-    query_json_rows_bound(conn, sql, &[])
+    query_json_rows_bound(conn, sql, &[] as &[&str])
 }
 
 /// A value bound to a `$n` placeholder of a query: it reaches the engine
@@ -285,12 +285,14 @@ impl duckdb::ToSql for SqlParam {
     }
 }
 
-/// [`query_json_rows`] with `params` bound to the statement's `$1`, `$2`,
-/// … placeholders, in order. The statement must use every one of them.
-pub(crate) fn query_json_rows_bound(
+/// [`query_json_rows`] with `params` bound to the statement's
+/// placeholders, in order: `?`, or `$1`, `$2`, …, every one of which the
+/// statement must use. A value from a request or a file goes here, never
+/// into the statement text.
+pub(crate) fn query_json_rows_bound<P: duckdb::ToSql>(
     conn: &Connection,
     sql: &str,
-    params: &[SqlParam],
+    params: &[P],
 ) -> Result<Vec<serde_json::Value>, StoreError> {
     let wrapped = format!("SELECT row_to_json(t) AS j FROM ({sql}) AS t");
     let mut stmt = conn.prepare(&wrapped)?;
@@ -355,6 +357,27 @@ mod tests {
         let rows = query_json_rows(&conn, "SELECT 1 AS v, 'x' AS s").unwrap();
         assert_eq!(rows, vec![serde_json::json!({"v": 1, "s": "x"})]);
         assert!(query_json_rows(&conn, "SELECT FROM nonsense").is_err());
+    }
+
+    /// A bound value is data whatever it holds: a quote or a statement
+    /// in it is compared, not run.
+    #[test]
+    fn a_bound_value_is_compared_as_text_and_never_parsed() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch("CREATE TABLE t (name VARCHAR); INSERT INTO t VALUES ('a'), ('o''b')")
+            .unwrap();
+        let named = |name: &str| {
+            query_json_rows_bound(&conn, "SELECT name FROM t WHERE name = ?", &[name]).unwrap()
+        };
+        assert_eq!(named("o'b"), vec![serde_json::json!({"name": "o'b"})]);
+        assert_eq!(named("x' OR '1'='1"), Vec::<serde_json::Value>::new());
+        let both = query_json_rows_bound(
+            &conn,
+            "SELECT name FROM t WHERE name IN (?, ?) ORDER BY 1",
+            &["o'b", "a"],
+        )
+        .unwrap();
+        assert_eq!(both.len(), 2);
     }
 
     #[test]

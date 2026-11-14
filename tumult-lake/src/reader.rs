@@ -4,7 +4,7 @@ use duckdb::Connection;
 
 use crate::error::StoreError;
 use crate::rows::ExperimentRun;
-use crate::store::{query_json_rows, query_json_rows_bound, SqlParam};
+use crate::store::{query_json_rows, query_json_rows_bound};
 
 /// The read side of the store (read-only `DuckDB` connection).
 pub struct Reader {
@@ -51,16 +51,17 @@ impl Reader {
     }
 
     /// [`Reader::query_json_rows`] with `params` bound to the statement's
-    /// `$1`, `$2`, … placeholders: whatever a request supplied goes here,
-    /// never into the statement's text.
+    /// placeholders, in order (`?`, or `$1`, `$2`, …): texts, or
+    /// [`crate::SqlParam`]s. Whatever a request or a file supplied goes
+    /// here, never into the statement's text.
     ///
     /// # Errors
     /// Returns an error if the query fails to prepare or execute, or does
     /// not use exactly the parameters given.
-    pub fn query_json_rows_bound(
+    pub fn query_json_rows_bound<P: duckdb::ToSql>(
         &self,
         sql: &str,
-        params: &[SqlParam],
+        params: &[P],
     ) -> Result<Vec<serde_json::Value>, StoreError> {
         query_json_rows_bound(&self.conn, sql, params)
     }

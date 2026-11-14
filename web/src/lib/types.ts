@@ -1215,8 +1215,340 @@ export interface ConformanceReport {
     as_of_ns: number;
     range: string;
     contract: { target: string[]; spine: string[]; recommended: string[] };
-    summary: { services: number; spine: number; target: number; none: number };
+    summary: {
+        services: number;
+        spine: number;
+        target: number;
+        none: number;
+        malformed_entity_ids: number;
+    };
     services: ServiceConformance[];
+    /** The canonical form of `ict.entity.id`, as a pattern. */
+    entity_id_pattern: string;
+    /** Ids that do not match it, exactly as the service sent them. */
+    malformed_entity_ids: MalformedEntityId[];
+    /** Whether more ids than `malformed_entity_ids_limit` were found. */
+    malformed_entity_ids_truncated?: boolean;
+    malformed_entity_ids_limit?: number;
+}
+
+export interface MalformedEntityId {
+    service: string;
+    /** As received, cut to 64 characters. */
+    entity_id: string;
+    /** Whether the id received was longer than what is shown. */
+    truncated?: boolean;
+    spans: number;
+    last_seen_ns: number | null;
+    flagged_at_ingest: boolean;
+    reason: string;
+}
+
+// --- DORA coverage and maturity (`/api/dora`, `/api/maturity`) ---
+
+export type EntityProfile = 'full' | 'simplified' | 'microenterprise';
+
+export interface LegalEntityRef {
+    lei: string;
+    name: string;
+    profile: string;
+}
+
+/** Fields every score document opens with. */
+export interface ScoreHeader {
+    as_of_ns: number;
+    registry_version: string;
+    lei: string | null;
+    entity_name: string | null;
+    profile: string;
+    profile_label: string;
+    profile_flags: string[];
+    legal_entities: LegalEntityRef[];
+    disclaimer?: string;
+    /** The request scored another profile than the registered one. */
+    profile_overridden: boolean;
+    registered_profile: string | null;
+    /** The caller sees part of the environments only. */
+    scoped: boolean;
+    scope_note: string | null;
+    feeds: ScoreFeed[];
+    params: ScoreParams;
+    snapshot: ScoreSnapshot;
+    proof_days: ProofDays;
+    register_state: RegisterState;
+    register_reason: string | null;
+}
+
+/** A feed the score reads, with what the org file declares of it. */
+export interface ScoreFeed {
+    name: string;
+    declared: boolean;
+    connected: boolean;
+    reason: string | null;
+}
+
+/** The house parameters a document was scored with. */
+export interface ScoreParams {
+    source: 'defaults' | 'org_file' | 'last_valid_org_file';
+    /** The org file was refused and never was valid: the defaults are in force. */
+    fallback: boolean;
+    /** The org file was refused and the last valid one is still in force. */
+    held: boolean;
+    reason: string | null;
+    overridden: { key: string; value: unknown; default: unknown }[];
+}
+
+/** Whether the daily job stores days, and how many it has left out. */
+export interface ScoreSnapshot {
+    /** No day is stored while defaults stand in for a refused org file. */
+    skipping: boolean;
+    /** Days left out since the daemon started. */
+    skipped: number;
+    reason: string | null;
+}
+
+/** Days the proof tool stored for past dates: a test setting of the daemon. */
+export interface ProofDays {
+    enabled: boolean;
+    counted: number;
+    ignored: number;
+    note: string | null;
+}
+
+/** Where the function register of the org file stands in the lake. */
+export type RegisterState = 'none' | 'ok' | 'stale' | 'invalid';
+
+/** One function's cell of a requirement row, in `GET /api/dora/{article}`. */
+export interface DoraEvidenceRow {
+    evidence_id: string;
+    source: string;
+    kind: string | null;
+    exercise_type: string | null;
+    experiment: string | null;
+    at_ns: number;
+    age_days: number;
+    outcome: string;
+    v: number;
+}
+
+export interface DoraRequirementCell {
+    entity_id: string;
+    tier: string;
+    state: CellState;
+    status: EvidenceStatus;
+    streak_days: number;
+    days_until_operating: number | null;
+    reason: string | null;
+    evidence?: DoraEvidenceRow[];
+}
+
+export interface DoraRequirement {
+    id: string;
+    cite: string;
+    title: string;
+    window_days: number | null;
+    scope: string;
+    scope_basis: 'regulation' | 'house';
+    status: EvidenceStatus;
+    expected: string;
+    reason: string | null;
+    entities: DoraRequirementCell[];
+}
+
+/** `GET /api/dora/{article}` */
+export interface DoraArticleReport extends ScoreHeader {
+    article: string;
+    title: string;
+    requirements: DoraRequirement[];
+}
+
+export type CellState = 'known' | 'unknown' | 'no_events';
+export type EvidenceStatus =
+    'na' | 'unknown' | 'no_events' | 'none' | 'designed' | 'existing' | 'operating';
+export type Standing = 'meets' | 'gap' | 'unknown' | 'no_events' | 'na';
+
+export interface DoraRow {
+    entity_id: string;
+    label: string;
+    tier: string | null;
+}
+
+export interface DoraFunction {
+    entity_id: string;
+    name: string;
+    tier: string;
+    registered: boolean;
+    register_codes: string[];
+    org_unit: string | null;
+    rto_s: number | null;
+    rpo_s: number | null;
+    last_assessed_ns: number | null;
+    last_assessed: string | null;
+    coverage: number | null;
+    unknown: number;
+    band: string;
+}
+
+export interface DoraArticle {
+    article: string;
+    title: string;
+    coverage: number | null;
+    unknown: number;
+    band: string;
+    na: number;
+    na_rows: number;
+    status: Record<Standing, number> | null;
+    sources: Record<'otel_only' | 'tested' | 'manual' | 'none' | 'unknown', number>;
+}
+
+export interface DoraCell {
+    article: string;
+    entity_id: string;
+    coverage: number | null;
+    unknown: number;
+    state: CellState;
+    status: EvidenceStatus;
+    status_rank: number;
+    gaps: number;
+}
+
+export interface DoraExpectation {
+    id: string;
+    article: string;
+    cite: string;
+    title: string;
+    weight: number;
+    expected: string;
+    actual: EvidenceStatus;
+    gap: number;
+    standing: Standing;
+    criticality: number;
+    priority: number;
+    short: string[];
+    oldest_evidence_ns: number | null;
+    oldest_evidence_date: string | null;
+    days_until_operating: number | null;
+    evidence: { id: string; source: string } | null;
+    reason: string | null;
+    /** `house`: the regulation does not restrict the row this way, the house does. */
+    scope_basis: 'regulation' | 'house';
+    window_days: number | null;
+}
+
+export interface DoraReadiness {
+    functions: number;
+    registered: number;
+    with_rto: number;
+    with_rpo: number;
+    with_assessment: number;
+    complete: number;
+    register: {
+        connected: boolean;
+        reconciled_ns: number | null;
+        signed_by: string | null;
+        signed_at: string | null;
+        rows: number;
+    };
+    unmapped_services: string[];
+}
+
+/** `GET /api/dora` */
+export interface DoraReport extends ScoreHeader {
+    by: 'entity' | 'org';
+    portfolio: { coverage: number | null; unknown: number; band: string };
+    status: Record<Standing, number>;
+    rows: DoraRow[];
+    functions: DoraFunction[];
+    articles: DoraArticle[];
+    cells: DoraCell[];
+    expectations: DoraExpectation[];
+    na: { count: number; rows: { id: string; article: string; cite: string }[] };
+    readiness: DoraReadiness;
+}
+
+export type MaturityComponent = 'conformance' | 'coverage' | 'slo' | 'recovery' | 'loop';
+
+export interface PillarState {
+    value: number | null;
+    state: string;
+    reason: string | null;
+}
+
+export interface MaturityNode {
+    id: string;
+    kind: string;
+    label: string;
+    parent: string | null;
+    index: number;
+    level: number;
+    target: number;
+    own: number | null;
+    pillars: Record<string, PillarState>;
+    rollup: { mean: number | null; weight: number; children: number };
+    unknown_share: number;
+    unknown: boolean;
+    critical: boolean;
+    cap: {
+        rule: string;
+        level: number | null;
+        node_ids: string[];
+        origin: string[];
+        origin_state: string | null;
+        reason: string | null;
+    };
+    drag: number | null;
+    note: string | null;
+}
+
+/** A quarter of the history: a stored day, today, or nothing stored. */
+export interface MaturityHistoryPoint {
+    quarter: string;
+    state: 'stored' | 'today' | 'no_data';
+    /** Who stored the day: `snapshot` (the daily job) or `proof` (the proof tool). */
+    source: string | null;
+    as_of: string | null;
+    as_of_ns: number | null;
+    level: number | null;
+    index: number | null;
+    unknown_share: number | null;
+    reason: string | null;
+}
+
+/** `GET /api/maturity` */
+export interface MaturityReport extends ScoreHeader {
+    scale: { internal: boolean; source: string; levels: string[] };
+    /** Level and index shown: the roll-up root's. */
+    level: number;
+    index: number;
+    /** Level and index of the pillars alone, before the roll-up. */
+    flat_level: number;
+    flat_index: number;
+    target: number;
+    headline: string;
+    gate_level: number;
+    capped: boolean;
+    cap: {
+        rule: 'none' | 'gate' | 'weakest_critical_child';
+        level: number | null;
+        blocked_level?: number;
+        component: string | null;
+        node_ids?: string[];
+        origin?: string[];
+        reason: string | null;
+    };
+    components: Record<MaturityComponent, number | null>;
+    component_states: Record<MaturityComponent, PillarState>;
+    weights: Record<MaturityComponent, number>;
+    gates: { level: number; passed: boolean; failing: string[] }[];
+    /** Unknown share of the rolled-up index, the one shown. */
+    unknown_share: number;
+    /** Unknown share of the pillars alone. */
+    flat_unknown_share: number;
+    history: MaturityHistoryPoint[];
+    rollup: MaturityNode | null;
+    rollup_headline: string | null;
+    by: 'node' | 'entity' | 'org' | null;
+    nodes: MaturityNode[];
 }
 
 /** Which model produced a forecast; `fallback_reason` is set when the

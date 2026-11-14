@@ -6,7 +6,7 @@
     // are drawn widest first so narrower ones sit on top.
     import type { EChartsCoreOption } from '#lib/echarts.js';
     import { chartTokens } from '#lib/echarts.js';
-    import { esc } from '#lib/starmap/style.js';
+    import { strong, swatch, tip, tipFormatter } from '#lib/tooltip.js';
     import EChart from './EChart.svelte';
 
     export interface FanBand {
@@ -54,7 +54,7 @@
     }
 
     interface TipRow {
-        marker?: string;
+        color?: unknown;
         seriesName?: string;
         axisValueLabel?: string;
         value?: unknown;
@@ -66,17 +66,21 @@
         return String(Number(y.toPrecision(6)));
     }
 
-    // ECharts renders what a formatter returns as HTML, and the series name
-    // and the unit come from the lake: both are escaped. The marker is
-    // ECharts' own swatch.
-    function tip(params: unknown): string {
+    // The series name and the unit come from the lake: the tooltip is
+    // built of text, with the dot of each series in its colour (a
+    // neutral dot where the colour is a gradient or missing).
+    const pointTip = (params: unknown) => {
         const rows = (Array.isArray(params) ? params : [params]) as TipRow[];
-        const lines = rows.map(
-            (r) =>
-                `${r.marker ?? ''}${esc(r.seriesName)}: <b>${esc(shown(r.value))}</b> ${esc(unit)}`,
-        );
-        return [esc(rows[0]?.axisValueLabel), ...lines].join('<br/>');
-    }
+        const lines = rows.map((r) => [
+            swatch(r.color),
+            r.seriesName,
+            ': ',
+            strong(shown(r.value)),
+            ' ',
+            unit,
+        ]);
+        return tip(rows[0]?.axisValueLabel, ...lines);
+    };
 
     const option: EChartsCoreOption = $derived.by(() => {
         const bands = [...(series.bands ?? [])].sort((a, b) => b.level - a.level);
@@ -167,7 +171,7 @@
             : [];
         return {
             grid: { left: 48, right: 16, top: 24, bottom: 28 },
-            tooltip: { trigger: 'axis', ...t.tooltip, formatter: tip },
+            tooltip: { trigger: 'axis', ...t.tooltip, formatter: tipFormatter(pointTip) },
             xAxis: { type: 'time' },
             yAxis: { type: 'value', name: unit, scale: true },
             series: [...bandSeries, observed, ...median],

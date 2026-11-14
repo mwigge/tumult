@@ -128,7 +128,10 @@ fn span_to_row(span: &Span, resource: &ResourceCtx) -> SpanRow {
             .or_else(|| common::attr_string(attrs, keys::PLUGIN_NAME)),
         hypothesis_met: common::attr_bool(attrs, keys::OUTCOME_HYPOTHESIS_MET),
         recovery_time_s: common::attr_double(attrs, keys::OUTCOME_RECOVERY_TIME_S),
-        span_attrs: common::unpromoted_attrs(attrs, PROMOTED_SPAN_KEYS),
+        span_attrs: common::flag_malformed_entity_id(common::unpromoted_attrs(
+            attrs,
+            PROMOTED_SPAN_KEYS,
+        )),
         resource_attrs: resource.resource_attrs.clone(),
         events: events_json(span),
     }
@@ -298,6 +301,63 @@ mod tests {
         }
     }
 
+    /// The score reads `ict.entity.id` of a span before the one of its
+    /// resource. A span-level id gets the same treatment: an over-long
+    /// one is stored cut and can never pass for a valid id, a malformed
+    /// one is flagged and counted, and a sender's own flag is dropped.
+    #[test]
+    fn a_span_level_entity_id_is_bounded_flagged_and_counted() {
+        use tumult_core::compliance::{
+            entity_id_is_valid, ENTITY_ID_MALFORMED_ATTR, ENTITY_ID_MAX_LEN,
+            ENTITY_ID_TRUNCATION_MARK,
+        };
+        let id_of = |row: &SpanRow| -> String {
+            let found = row.span_attrs.iter().find(|(k, _)| k == "ict.entity.id");
+            found.map(|(_, v)| v.clone()).expect("the id is kept")
+        };
+        let flags = |row: &SpanRow| -> Vec<String> {
+            let ours = |(k, _): &&(String, String)| k == ENTITY_ID_MALFORMED_ATTR;
+            row.span_attrs
+                .iter()
+                .filter(ours)
+                .map(|(_, v)| v.clone())
+                .collect()
+        };
+        let row_with = |attrs: Vec<KeyValue>| {
+            let span = Span {
+                attributes: attrs,
+                ..bare_span()
+            };
+            let resource = vec![kv("service.name", Value::StringValue("checkout".into()))];
+            trace_request_to_spans(&request_for(vec![span], resource)).remove(0)
+        };
+        let id = |value: &str| kv("ict.entity.id", Value::StringValue(value.into()));
+
+        let before = common::malformed_entity_ids_total();
+        let long = format!("cif-{}", "0".repeat(5_000));
+        let markup = format!("<img src=x onerror=alert(1)>{}", "å".repeat(5_000));
+        for sent in [long, markup] {
+            let row = row_with(vec![id(&sent)]);
+            let stored = id_of(&row);
+            assert!(stored.len() <= ENTITY_ID_MAX_LEN, "{} bytes", stored.len());
+            assert!(stored.ends_with(ENTITY_ID_TRUNCATION_MARK), "{stored}");
+            assert!(!entity_id_is_valid(&stored), "{stored}");
+            assert_eq!(flags(&row), ["true"]);
+        }
+        let short = row_with(vec![id("CF-0042")]);
+        assert_eq!(id_of(&short), "CF-0042", "kept as received");
+        assert_eq!(flags(&short), ["true"]);
+        // Other tests of this binary count too: three at the least.
+        assert!(common::malformed_entity_ids_total() >= before + 3);
+
+        let forged = kv(ENTITY_ID_MALFORMED_ATTR, Value::StringValue("true".into()));
+        let good = row_with(vec![id("cif-0042"), forged]);
+        assert_eq!(id_of(&good), "cif-0042");
+        assert_eq!(flags(&good), Vec::<String>::new());
+        let denied = kv(ENTITY_ID_MALFORMED_ATTR, Value::StringValue("false".into()));
+        assert_eq!(flags(&row_with(vec![id("Not An Id"), denied])), ["true"]);
+    }
+
     #[test]
     fn span_kind_and_status_strings_cover_all_variants() {
         assert_eq!(span_kind_str(SpanKind::Unspecified as i32), "Unspecified");
@@ -455,7 +515,7 @@ mod tests {
                     "resilience.target.technology",
                     Value::StringValue("jvm".into()),
                 ),
-                kv("ict.entity.id", Value::StringValue("CF-0042".into())),
+                kv("ict.entity.id", Value::StringValue("cif-0042".into())),
             ],
         );
         let rows = trace_request_to_spans(&req);
@@ -467,7 +527,7 @@ mod tests {
         assert!(
             row.resource_attrs
                 .iter()
-                .any(|(k, v)| k == "ict.entity.id" && v == "CF-0042"),
+                .any(|(k, v)| k == "ict.entity.id" && v == "cif-0042"),
             "spine attributes stay queryable in resource_attrs: {:?}",
             row.resource_attrs
         );

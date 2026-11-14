@@ -45,6 +45,7 @@
         { href: '/posture', label: 'Posture', icon: '◎' },
         { href: '/performance', label: 'Performance', icon: '◭' },
         { href: '/scores', label: 'Scores', icon: '▦' },
+        { href: '/scores?view=dora', label: 'DORA', icon: '⚖' },
         { href: '/experiments', label: 'Experiments', icon: '⚗' },
         { href: '/runs', label: 'Runs', icon: '▶' },
         { href: '/author', label: 'Author', icon: '✚' },
@@ -63,8 +64,19 @@
         { href: '/schedules', label: 'Schedules', icon: '↻', operator: true },
     ];
 
-    function active(pathname: string, href: string): boolean {
-        return href === '/' ? pathname === '/' : pathname.startsWith(href);
+    // An entry with a query (`/scores?view=dora`) is active only when the
+    // page carries that `view`; its plain sibling (`/scores`) only when not.
+    function active(
+        url: { pathname: string; searchParams: { get(name: string): string | null } },
+        href: string,
+    ): boolean {
+        const [path, query] = href.split('?');
+        if (path === '/') return url.pathname === '/';
+        if (!url.pathname.startsWith(path)) return false;
+        const wanted = new URLSearchParams(query ?? '').get('view');
+        const viewed = url.searchParams.get('view');
+        if (wanted) return viewed === wanted;
+        return !NAV.some((n) => n.href === `${path}?view=${viewed}`);
     }
 
     // Session state for the user chip. me() never breaks the layout: any
@@ -116,7 +128,7 @@
             <nav class="nav">
                 {#each NAV as item (item.href)}
                     {#if (!item.admin || isAdmin) && (!item.operator || isOperator)}
-                        <a href={item.href} class:active={active(page.url.pathname, item.href)}>
+                        <a href={item.href} class:active={active(page.url, item.href)}>
                             <span>{item.icon}</span>{item.label}
                         </a>
                     {/if}
