@@ -1,0 +1,746 @@
+<script lang="ts">
+    // DORA coverage and the internal maturity level of one legal entity:
+    // header, articles × functions heatmap, expectation table, maturity
+    // with its gates and the per-node roll-up, reporting readiness.
+    // Every number is shown with its unknown share.
+    import { onMount } from 'svelte';
+    import { api } from '#lib/api.js';
+    import { chartTheme } from '#lib/echarts.js';
+    import type { ChartTheme } from '#lib/echarts.js';
+    import {
+        COMPONENTS,
+        STATUS_NAMES,
+        capText,
+        cellLines,
+        cellOf,
+        componentsOption,
+        coverageText,
+        durationText,
+        gaugeOption,
+        heatmapHeight,
+        heatmapOption,
+        historyOption,
+        historyStateText,
+        nodeTree,
+        pct,
+        unknownLabel,
+    } from '#lib/dora.js';
+    import type { HeatmapMode } from '#lib/dora.js';
+    import type { DoraExpectation, DoraReport, MaturityReport } from '#lib/types.js';
+    import DoraEvidence from './DoraEvidence.svelte';
+    import DoraNotices from './DoraNotices.svelte';
+    import EChart from './EChart.svelte';
+    import ScoreNumber from './ScoreNumber.svelte';
+
+    let { lei, onlei }: { lei: string; onlei: (lei: string) => void } = $props();
+
+    let report = $state<DoraReport | null>(null);
+    let maturity = $state<MaturityReport | null>(null);
+    let error = $state<string | null>(null);
+    let mode = $state<HeatmapMode>('coverage');
+    /** The row whose evidence the drawer shows. */
+    let opened = $state<DoraExpectation | null>(null);
+
+    let theme = $state<ChartTheme>(chartTheme());
+    onMount(() => {
+        const retheme = () => (theme = chartTheme());
+        const mo = new MutationObserver(retheme);
+        mo.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+        const mq = window.matchMedia?.('(prefers-color-scheme: light)');
+        mq?.addEventListener?.('change', retheme);
+        return () => {
+            mo.disconnect();
+            mq?.removeEventListener?.('change', retheme);
+        };
+    });
+
+    $effect(() => {
+        const selected = lei;
+        let cancelled = false;
+        error = null;
+        opened = null;
+        Promise.all([api.dora(selected), api.maturity(selected, 'node')])
+            .then(([d, m]) => {
+                if (cancelled) return;
+                report = d;
+                maturity = m;
+            })
+            .catch((e) => !cancelled && (error = String(e)));
+        return () => {
+            cancelled = true;
+        };
+    });
+
+    const heatmap = $derived(report ? heatmapOption(report, mode, theme) : null);
+    const gauge = $derived(maturity ? gaugeOption(maturity, theme) : null);
+    const components = $derived(maturity ? componentsOption(maturity, theme) : null);
+    const history = $derived(maturity ? historyOption(maturity, theme) : null);
+    const expectations = $derived(
+        report ? [...report.expectations].sort((a, b) => b.priority - a.priority) : [],
+    );
+    const tree = $derived(maturity ? nodeTree(maturity.nodes) : []);
+
+    const date = (ns: number | null) =>
+        ns === null ? '–' : new Date(ns / 1e6).toISOString().slice(0, 10);
+
+    /** Share of the requirement rows whose standing is unknown. */
+    function statusUnknown(r: DoraReport): number {
+        const judged = r.status.meets + r.status.gap + r.status.unknown;
+        return judged === 0 ? 1 : r.status.unknown / judged;
+    }
+
+    /** Share of the functions the register says nothing about. */
+    function unregistered(r: DoraReport): number {
+        const { functions, registered } = r.readiness;
+        return functions === 0 ? 1 : (functions - registered) / functions;
+    }
+
+    const STANDING_CLASS: Record<string, string> = {
+        meets: 'ok',
+        gap: 'fail',
+        unknown: 'neutral',
+        no_events: 'neutral',
+        na: 'neutral',
+    };
+</script>
+
+{#if error}
+    <div class="panel"><div class="state error">Failed to load the DORA score: {error}</div></div>
+{:else if !report || !maturity}
+    <div class="panel"><div class="skeleton" style="height: 320px"></div></div>
+{:else}
+    <div data-testid="dora-view">
+        <section class="panel head" data-testid="dora-header">
+            <div class="who">
+                <label>
+                    <span class="lbl">Legal entity</span>
+                    <select
+                        aria-label="Legal entity"
+                        value={report.lei ?? ''}
+                        onchange={(e) => onlei(e.currentTarget.value)}
+                        disabled={report.legal_entities.length < 2}
+                    >
+                        {#if report.legal_entities.length === 0}
+                            <option value="">no legal entity registered</option>
+                        {/if}
+                        {#each report.legal_entities as entity (entity.lei)}
+                            <option value={entity.lei}>{entity.name} · {entity.lei}</option>
+                        {/each}
+                    </select>
+                </label>
+                <span class="name">{report.entity_name ?? 'unregistered entity'}</span>
+                <span class="badge neutral" data-testid="profile">{report.profile_label}</span>
+                {#each report.profile_flags as flag (flag)}
+                    <span class="badge neutral">{flag}</span>
+                {/each}
+            </div>
+            <div class="headline" class:capped={maturity.capped}>{maturity.headline}</div>
+            {#if maturity.cap.reason}
+                <div class="cap" data-testid="cap-reason">{maturity.cap.reason}</div>
+            {/if}
+            <div class="note">
+                {maturity.scale.source} Requirement registry {report.registry_version}, as of {date(
+                    report.as_of_ns,
+                )}.
+            </div>
+            <DoraNotices doc={report} />
+        </section>
+
+        <div class="tiles">
+            <ScoreNumber
+                label="Maturity level"
+                value="{maturity.level} / {maturity.target}"
+                unknown={maturity.unknown_share}
+                hint="{maturity.scale.levels[maturity.level - 1] ??
+                    ''} · level of target, internal scale"
+            />
+            <ScoreNumber
+                label="Maturity index"
+                value={maturity.index.toFixed(2)}
+                unknown={maturity.unknown_share}
+                muted={maturity.capped}
+                hint="{maturity.capped
+                    ? 'greyed: a cap decides the level, not the index'
+                    : 'rolled up over every node, 1–5 scale'} · pillars alone {maturity.flat_index.toFixed(
+                    2,
+                )}"
+            />
+            <ScoreNumber
+                label="DORA coverage"
+                value={coverageText(report.portfolio.coverage)}
+                unknown={report.portfolio.unknown}
+                hint="criticality-weighted over all applicable rows"
+            />
+            <ScoreNumber
+                label="Rows meeting expectation"
+                value="{report.status.meets} / {report.status.meets + report.status.gap}"
+                unknown={statusUnknown(report)}
+                hint="{report.status.no_events} without events · {report.status.na} not applicable"
+            />
+        </div>
+
+        <section class="panel" data-testid="dora-heatmap">
+            <div class="panel-head">
+                <h2>Articles × {report.by === 'org' ? 'org units' : 'functions'}</h2>
+                <div class="toggle" role="group" aria-label="heatmap value">
+                    <button
+                        class:on={mode === 'coverage'}
+                        aria-pressed={mode === 'coverage'}
+                        onclick={() => (mode = 'coverage')}>Coverage</button
+                    >
+                    <button
+                        class:on={mode === 'status'}
+                        aria-pressed={mode === 'status'}
+                        onclick={() => (mode = 'status')}>Evidence status</button
+                    >
+                </div>
+            </div>
+            {#if report.rows.length === 0 || report.articles.length === 0}
+                <div class="state">
+                    No functions on record. Declare them under <span class="mono">functions:</span> in
+                    org.yaml.
+                </div>
+            {:else if heatmap}
+                <EChart
+                    option={heatmap}
+                    height={heatmapHeight(report.rows.length)}
+                    id="dora-heatmap"
+                    label="Heatmap of {mode === 'coverage'
+                        ? 'coverage'
+                        : 'evidence status'} per article and {report.by === 'org'
+                        ? 'org unit'
+                        : 'function'}. The same values follow as a table."
+                />
+                <details class="alt">
+                    <summary>Show the heatmap as a table</summary>
+                    <table class="data" aria-label="Articles by function, as a table">
+                        <thead>
+                            <tr>
+                                <th scope="col">{report.by === 'org' ? 'Org unit' : 'Function'}</th>
+                                {#each report.articles as a (a.article)}
+                                    <th scope="col">Art. {a.article}</th>
+                                {/each}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {#each report.rows as row (row.entity_id)}
+                                <tr>
+                                    <th scope="row">{row.label}</th>
+                                    {#each report.articles as a (a.article)}
+                                        {@const cell = cellOf(report, a.article, row.entity_id)}
+                                        <td>
+                                            {#if cell}
+                                                {#each cellLines(cell) as line (line)}
+                                                    <div>{line}</div>
+                                                {/each}
+                                            {:else}
+                                                not applicable
+                                            {/if}
+                                        </td>
+                                    {/each}
+                                </tr>
+                            {/each}
+                        </tbody>
+                    </table>
+                </details>
+            {/if}
+            <div class="legend">
+                {#if mode === 'coverage'}
+                    <span>cell = coverage in %, hue low → high</span>
+                {:else}
+                    <span
+                        >cell = evidence status {STATUS_NAMES.map((s, i) => `${i} ${s}`).join(
+                            ' · ',
+                        )}</span
+                    >
+                {/if}
+                <span><i class="swatch hatch"></i> hatched = unknown share</span>
+                <span><b>?</b> no source connected</span>
+                <span><b>–</b> no events in window</span>
+            </div>
+            <table class="data articles">
+                <thead>
+                    <tr><th>Article</th><th>Coverage</th><th>Meets</th><th>Gap</th></tr>
+                </thead>
+                <tbody>
+                    {#each report.articles as a (a.article)}
+                        <tr>
+                            <td>Art. {a.article} <span class="dim">{a.title}</span></td>
+                            <td data-figure>
+                                <span class="mono">{coverageText(a.coverage)}</span>
+                                <span class="unk">{unknownLabel(a.unknown)}</span>
+                            </td>
+                            <td class="mono">{a.status?.meets ?? '–'}</td>
+                            <td class="mono">{a.status?.gap ?? '–'}</td>
+                        </tr>
+                    {/each}
+                </tbody>
+            </table>
+            <div class="foot">
+                {report.na.count} rows not applicable to profile {report.profile_label}
+            </div>
+        </section>
+
+        <section class="panel" data-testid="dora-expectations">
+            <h2>Expected and actual evidence status, largest gap first</h2>
+            {#if expectations.length === 0}
+                <div class="state">No requirement applies to this profile.</div>
+            {:else}
+                <table class="data">
+                    <thead>
+                        <tr>
+                            <th>Requirement</th><th>Expected</th><th>Actual</th><th>Gap</th>
+                            <th>Oldest evidence</th><th>Days until operating</th><th>Evidence</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {#each expectations as e (e.id)}
+                            <tr>
+                                <td>
+                                    <span class="mono">{e.cite}</span>
+                                    {e.title}
+                                    {#if e.scope_basis === 'house'}
+                                        <span
+                                            class="badge neutral"
+                                            data-testid="house-scope"
+                                            title="The regulation does not limit this row to these functions; the house does."
+                                            >house scope</span
+                                        >
+                                    {/if}
+                                    <div class="dim mono">{e.id}</div>
+                                    {#if e.reason}<div class="dim">{e.reason}</div>{/if}
+                                </td>
+                                <td>{e.expected}</td>
+                                <td>{e.actual.replace('_', ' ')}</td>
+                                <td>
+                                    <span class="badge {STANDING_CLASS[e.standing] ?? 'neutral'}"
+                                        >{e.standing === 'gap'
+                                            ? `−${e.gap}`
+                                            : e.standing.replace('_', ' ')}</span
+                                    >
+                                    {#if e.short.length > 0}
+                                        <div class="dim mono">{e.short.join(', ')}</div>
+                                    {/if}
+                                </td>
+                                <td class="mono">{e.oldest_evidence_date ?? '–'}</td>
+                                <td class="mono">{e.days_until_operating ?? '–'}</td>
+                                <td>
+                                    {#if e.evidence}
+                                        <button
+                                            class="link mono"
+                                            aria-haspopup="dialog"
+                                            title="{e.evidence.source} evidence behind {e.cite}"
+                                            onclick={() => (opened = e)}>{e.evidence.id}</button
+                                        >
+                                    {:else}–{/if}
+                                </td>
+                            </tr>
+                        {/each}
+                    </tbody>
+                </table>
+            {/if}
+            {#if report.disclaimer}<div class="foot">{report.disclaimer}</div>{/if}
+        </section>
+
+        <section class="panel" data-testid="dora-maturity">
+            <h2>Maturity — {maturity.headline}</h2>
+            <div class="maturity">
+                <div class="gauge">
+                    {#if gauge}
+                        <EChart
+                            option={gauge}
+                            height={210}
+                            id="dora-gauge"
+                            label="Gauge: maturity index {maturity.index.toFixed(
+                                2,
+                            )} on the internal 1 to 5 scale, {maturity.headline}"
+                        />
+                    {/if}
+                    <div class="dim center">
+                        index on the internal 1–5 scale · {unknownLabel(maturity.unknown_share)}
+                    </div>
+                    <div class="dim center">
+                        pillars alone: {unknownLabel(maturity.flat_unknown_share)}
+                    </div>
+                </div>
+                <div class="bars">
+                    {#if components}
+                        <EChart
+                            option={components}
+                            height={210}
+                            id="dora-components"
+                            label="Bars: {COMPONENTS.map(
+                                (c) =>
+                                    `${c.label} ${maturity?.components[c.key]?.toFixed(1) ?? 'unknown'}`,
+                            ).join(', ')}"
+                        />
+                    {/if}
+                    <ul class="reasons">
+                        {#each COMPONENTS as c (c.key)}
+                            {@const state = maturity.component_states[c.key]}
+                            {#if state?.reason}
+                                <li><b>{c.label}</b>: {state.reason}</li>
+                            {/if}
+                        {/each}
+                    </ul>
+                </div>
+            </div>
+            <div class="maturity">
+                <div class="history" data-testid="dora-history">
+                    {#if history && maturity.history.length > 0}
+                        <EChart
+                            option={history}
+                            height={170}
+                            id="dora-history"
+                            label="Line chart of level and index per quarter. The same values follow as a table."
+                        />
+                        <div class="dim center">
+                            level and index per quarter, from the days the daily snapshot stored
+                        </div>
+                        <table class="data">
+                            <thead>
+                                <tr><th>Quarter</th><th>From</th><th>Level</th><th>Index</th></tr>
+                            </thead>
+                            <tbody>
+                                {#each maturity.history as h (h.quarter)}
+                                    <tr>
+                                        <td class="mono">{h.quarter}</td>
+                                        <td>
+                                            {historyStateText(h)}
+                                            {#if h.reason}<div class="dim">{h.reason}</div>{/if}
+                                        </td>
+                                        <td class="mono">{h.level ?? '–'}</td>
+                                        {#if h.index === null}
+                                            <td class="mono">–</td>
+                                        {:else}
+                                            <td data-figure>
+                                                <span class="mono">{h.index.toFixed(2)}</span>
+                                                <span class="unk"
+                                                    >{unknownLabel(h.unknown_share ?? 1)}</span
+                                                >
+                                            </td>
+                                        {/if}
+                                    </tr>
+                                {/each}
+                            </tbody>
+                        </table>
+                    {/if}
+                </div>
+                <table class="data gates">
+                    <thead><tr><th>Gate</th><th>State</th><th>Failing conditions</th></tr></thead>
+                    <tbody>
+                        {#each maturity.gates as g (g.level)}
+                            <tr>
+                                <td
+                                    >Level {g.level}
+                                    <span class="dim"
+                                        >{maturity.scale.levels[g.level - 1] ?? ''}</span
+                                    ></td
+                                >
+                                <td
+                                    ><span class="badge {g.passed ? 'ok' : 'fail'}"
+                                        >{g.passed ? 'passed' : 'blocked'}</span
+                                    ></td
+                                >
+                                <td>{g.failing.join('; ') || '–'}</td>
+                            </tr>
+                        {/each}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="panel" data-testid="dora-rollup">
+            <h2>Maturity per node — {maturity.rollup_headline ?? 'no nodes on record'}</h2>
+            {#if tree.length === 0}
+                <div class="state">No nodes to roll up.</div>
+            {:else}
+                <table class="data">
+                    <thead>
+                        <tr><th>Node</th><th>Level</th><th>Index</th><th>Cap</th></tr>
+                    </thead>
+                    <tbody>
+                        {#each tree as { node, depth } (node.id)}
+                            <tr>
+                                <td style="padding-left: {10 + depth * 18}px">
+                                    <span class="mono">{node.id}</span>
+                                    <span class="dim">{node.kind}</span>
+                                    {#if node.critical}<span class="badge warn">critical</span>{/if}
+                                    {#if node.unknown}
+                                        <span class="badge neutral">not instrumented</span>
+                                    {/if}
+                                    {#if node.note}<div class="dim">{node.note}</div>{/if}
+                                </td>
+                                <td class="mono">{node.level} / {node.target}</td>
+                                <td data-figure>
+                                    <span class="mono">{node.index.toFixed(2)}</span>
+                                    <span class="unk">{unknownLabel(node.unknown_share)}</span>
+                                </td>
+                                <td>{node.cap.rule === 'none' ? '–' : capText(node)}</td>
+                            </tr>
+                        {/each}
+                    </tbody>
+                </table>
+            {/if}
+            <div class="foot">
+                A node is the criticality-weighted mean of its children, capped by its weakest
+                critical child. A node that sends nothing counts at the floor.
+            </div>
+        </section>
+
+        <section class="panel" data-testid="dora-readiness">
+            <h2>Reporting readiness — function register</h2>
+            <div class="tiles">
+                <ScoreNumber
+                    label="Functions with RTO"
+                    value="{report.readiness.with_rto} / {report.readiness.functions}"
+                    unknown={unregistered(report)}
+                />
+                <ScoreNumber
+                    label="Functions with RPO"
+                    value="{report.readiness.with_rpo} / {report.readiness.functions}"
+                    unknown={unregistered(report)}
+                />
+                <ScoreNumber
+                    label="With assessment date"
+                    value="{report.readiness.with_assessment} / {report.readiness.functions}"
+                    unknown={unregistered(report)}
+                />
+                <ScoreNumber
+                    label="Complete rows"
+                    value="{report.readiness.complete} / {report.readiness.functions}"
+                    unknown={unregistered(report)}
+                    hint="RTO, RPO and assessment date all present"
+                />
+            </div>
+            <table class="data functions">
+                <thead>
+                    <tr>
+                        <th>Function</th><th>Code</th><th>Tier</th><th>RTO</th><th>RPO</th>
+                        <th>Assessed</th><th>Coverage</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {#each report.functions as f (f.entity_id)}
+                        <tr>
+                            <td>
+                                <span class="mono">{f.entity_id}</span>
+                                {f.name}
+                                {#if !f.registered}
+                                    <span class="badge warn">not in register</span>
+                                {/if}
+                            </td>
+                            <td class="mono">{f.register_codes.join(', ') || '–'}</td>
+                            <td>{f.tier}</td>
+                            <td class="mono">{durationText(f.rto_s)}</td>
+                            <td class="mono">{durationText(f.rpo_s)}</td>
+                            <td class="mono">{f.last_assessed ?? '–'}</td>
+                            <td data-figure>
+                                <span class="mono">{coverageText(f.coverage)}</span>
+                                <span class="unk">{unknownLabel(f.unknown)}</span>
+                            </td>
+                        </tr>
+                    {/each}
+                </tbody>
+            </table>
+            <dl class="register">
+                <dt>Register of information</dt>
+                <dd>
+                    {#if report.readiness.register.connected}
+                        connected, {report.readiness.register.rows} rows, reconciled {date(
+                            report.readiness.register.reconciled_ns,
+                        )}
+                    {:else}
+                        not connected: Art. 28 rows are unknown
+                    {/if}
+                </dd>
+                <dt>Signed off</dt>
+                <dd>
+                    {#if report.readiness.register.signed_by}
+                        {report.readiness.register.signed_by}
+                        {report.readiness.register.signed_at ?? ''}
+                    {:else}
+                        no sign-off recorded
+                    {/if}
+                </dd>
+                <dt>Services mapped to no function</dt>
+                <dd class="mono">
+                    {report.readiness.unmapped_services.join(', ') || 'none'}
+                </dd>
+            </dl>
+            <div class="foot">
+                {pct(1 - unregistered(report))} of the functions seen are in the register.
+            </div>
+        </section>
+    </div>
+    {#if opened}
+        <DoraEvidence row={opened} lei={report.lei ?? ''} onclose={() => (opened = null)} />
+    {/if}
+{/if}
+
+<style>
+    .head .who {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+    .head .lbl {
+        color: var(--text-dim);
+        font-size: 11.5px;
+        text-transform: uppercase;
+        letter-spacing: 0.6px;
+        margin-right: 6px;
+    }
+    .head select {
+        background: var(--bg-raised);
+        color: var(--text);
+        border: 1px solid var(--border-strong);
+        border-radius: 4px;
+        padding: 3px 6px;
+        font: inherit;
+        font-size: 12.5px;
+    }
+    .head .name {
+        font-weight: 600;
+    }
+    .headline {
+        font-size: 22px;
+        font-weight: 600;
+        margin-top: 10px;
+    }
+    .headline.capped {
+        color: var(--warn);
+    }
+    .cap {
+        margin-top: 4px;
+        color: var(--text);
+    }
+    .note,
+    .foot,
+    .dim {
+        color: var(--text-faint);
+        font-size: 11.5px;
+    }
+    .note,
+    .foot {
+        margin-top: 8px;
+    }
+    .center {
+        text-align: center;
+    }
+    .tiles {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 12px;
+        margin: 12px 0;
+    }
+    section.panel {
+        margin-bottom: 12px;
+    }
+    .panel-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+    }
+    .toggle button {
+        background: var(--bg-raised);
+        color: var(--text-dim);
+        border: 1px solid var(--border-strong);
+        padding: 3px 10px;
+        font: inherit;
+        font-size: 12px;
+        cursor: pointer;
+    }
+    .toggle button:first-child {
+        border-radius: 4px 0 0 4px;
+    }
+    .toggle button:last-child {
+        border-radius: 0 4px 4px 0;
+        border-left: none;
+    }
+    .toggle button.on {
+        color: var(--text);
+        background: var(--bg-hover);
+        border-color: var(--accent);
+    }
+    .link {
+        background: none;
+        border: none;
+        padding: 0;
+        color: var(--accent);
+        font-size: inherit;
+        cursor: pointer;
+        text-align: left;
+    }
+    .link:hover {
+        text-decoration: underline;
+    }
+    .alt {
+        margin: 4px 0 10px;
+        font-size: 12.5px;
+    }
+    .alt summary {
+        cursor: pointer;
+        color: var(--text-dim);
+    }
+    .legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 16px;
+        color: var(--text-dim);
+        font-size: 11.5px;
+        margin: 6px 0 10px;
+    }
+    .swatch {
+        display: inline-block;
+        width: 14px;
+        height: 10px;
+        vertical-align: middle;
+        border: 1px solid var(--border-strong);
+    }
+    .swatch.hatch {
+        background: repeating-linear-gradient(135deg, var(--text-dim) 0 1px, transparent 1px 4px);
+    }
+    .unk {
+        color: var(--text-faint);
+        font-size: 11px;
+        margin-left: 6px;
+        white-space: nowrap;
+    }
+    .maturity {
+        display: grid;
+        grid-template-columns: minmax(220px, 1fr) 2fr;
+        gap: 16px;
+        align-items: start;
+        margin-bottom: 12px;
+    }
+    .reasons {
+        margin: 4px 0 0;
+        padding-left: 18px;
+        color: var(--text-dim);
+        font-size: 12px;
+    }
+    .register {
+        display: grid;
+        grid-template-columns: max-content 1fr;
+        gap: 4px 16px;
+        margin: 12px 0 0;
+        font-size: 12.5px;
+    }
+    .register dt {
+        color: var(--text-dim);
+    }
+    .register dd {
+        margin: 0;
+    }
+    @media (max-width: 900px) {
+        .tiles {
+            grid-template-columns: repeat(2, 1fr);
+        }
+        .maturity {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>

@@ -21,7 +21,12 @@ async fn overview_returns_kpis_deltas_and_breakdowns() {
     assert_eq!(kpi("experiments")["delta"].as_f64().unwrap(), 2.0);
     assert!(!kpi("experiments")["spark"].as_array().unwrap().is_empty());
 
-    assert_eq!(body["experiments_per_day"].as_array().unwrap().len(), 1);
+    // The seed is two runs 20 minutes apart, 30 and 10 minutes ago: one
+    // UTC day, or two when midnight falls between them.
+    let per_day = body["experiments_per_day"].as_array().unwrap();
+    assert!((1..=2).contains(&per_day.len()), "{per_day:?}");
+    let runs: f64 = per_day.iter().map(|day| day["v"].as_f64().unwrap()).sum();
+    assert!((runs - 2.0).abs() < f64::EPSILON, "{per_day:?}");
     let targets = body["targets"].as_array().unwrap();
     assert_eq!(targets[0]["target"], "database");
     assert_eq!(targets[0]["experiments"], 2);

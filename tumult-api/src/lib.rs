@@ -98,6 +98,15 @@
 //!   gated and recorded when a policy is loaded (Operator);
 //!   `GET /api/posture?env=` — the continuous posture score next to the
 //!   risk summary and the top findings.
+//! * `GET /api/dora?lei=&profile=&by=entity|org&env=` — DORA coverage per
+//!   article and function of one legal entity, each number with its
+//!   unknown share, the expectation table (expected against actual
+//!   evidence status) and the reporting-readiness facts;
+//!   `GET /api/dora/{article}?entity=` lists every evidence row behind
+//!   the cells of one article.
+//! * `GET /api/maturity?lei=&profile=&by=node|entity|org&env=` — the
+//!   internal maturity level (1–5, a house scale) with its pillars, gates
+//!   and history, and the per-node roll-up naming the nodes that cap it.
 //! * `GET /api/otel/conformance?range=&env=` — per service, which naming
 //!   contract attributes every span in the window carried (target columns,
 //!   ICT spine), the resulting level (`none|target|spine`) and what is
@@ -167,6 +176,7 @@ pub mod manual;
 pub mod registry;
 pub mod runs;
 pub mod schedules;
+pub mod score;
 pub mod sql_util;
 pub mod webhooks;
 
@@ -208,6 +218,9 @@ pub struct ApiState {
     secure_cookies: bool,
     /// Kubernetes manifests the passive risk scanner reads (`KRONIKA_MANIFESTS_DIR`).
     manifests_dir: Option<Arc<PathBuf>>,
+    /// House parameters, register state, workloads and response cache of
+    /// the DORA coverage and maturity scores.
+    score: Arc<score::ScoreRuntime>,
     /// The Timestral forecasting sidecar (`TUMULTD_FORECAST_URL`); `None`
     /// means the built-in Holt-Winters provider.
     forecast_client: Option<Arc<forecast::client::TimestralClient>>,
@@ -245,11 +258,27 @@ impl ApiState {
             autopilot_policy,
             secure_cookies,
             manifests_dir: None,
+            // No org file, default parameters, no response cache: the
+            // daemon passes its own runtime.
+            score: Arc::new(score::ScoreRuntime::default().with_ttl(std::time::Duration::ZERO)),
             forecast_client: None,
             forecast_breaker: Arc::default(),
             forecast_slots: Arc::new(tokio::sync::Semaphore::new(forecast::SIDECAR_SLOTS)),
             starmap_cache: Arc::default(),
         }
+    }
+
+    /// Score with this runtime (org file, manifests, response cache).
+    #[must_use]
+    pub fn with_score_runtime(mut self, runtime: Arc<score::ScoreRuntime>) -> Self {
+        self.score = runtime;
+        self
+    }
+
+    /// The shared state of the DORA score endpoints.
+    #[must_use]
+    pub fn score_runtime(&self) -> &Arc<score::ScoreRuntime> {
+        &self.score
     }
 
     /// How long a failing forecasting sidecar is skipped before it is
@@ -377,9 +406,8 @@ impl ApiState {
         let reports_dir = db_path
             .parent()
             .map_or_else(|| PathBuf::from("reports"), |d| d.join("reports"));
-        let org_path = std::env::var_os("KRONIKA_ORG_FILE")
-            .map(PathBuf::from)
-            .or_else(|| db_path.parent().map(|d| d.join("org.yaml")));
+        let org_path = org_file_path(&db_path);
+        let score_org_file = org_path.clone();
         let org = org_path
             .filter(|p| p.exists())
             .map_or_else(tumult_compliance::OrgTree::empty, |p| {
@@ -415,7 +443,16 @@ impl ApiState {
             autopilot_policy,
             secure_cookies,
         )
-        .with_manifests_dir(manifests_dir)
+        .with_manifests_dir(manifests_dir.clone())
+        .with_score_runtime(Arc::new(
+            score::ScoreRuntime::open(
+                score_org_file,
+                manifests_dir,
+                score::cache_ttl_from_env(),
+                sql_util::now_ns(),
+            )
+            .with_proof_days(score::proof_days_from_env()),
+        ))
     }
 
     /// Directory the report scheduler writes into and `/api/reports` reads.
@@ -447,6 +484,15 @@ impl ApiState {
     pub fn secure_cookies(&self) -> bool {
         self.secure_cookies
     }
+}
+
+/// Where the org file (org tree, function register, score parameters)
+/// is read from: `KRONIKA_ORG_FILE`, else `<db dir>/org.yaml`.
+#[must_use]
+pub fn org_file_path(db_path: &std::path::Path) -> Option<PathBuf> {
+    std::env::var_os("KRONIKA_ORG_FILE")
+        .map(PathBuf::from)
+        .or_else(|| db_path.parent().map(|d| d.join("org.yaml")))
 }
 
 /// Build the API router. Merge into the daemon's HTTP server.
@@ -484,6 +530,9 @@ pub fn router(state: ApiState) -> Router {
             "/api/otel/conformance",
             get(handlers::conformance::conformance),
         )
+        .route("/api/dora", get(handlers::dora::dora))
+        .route("/api/dora/{article}", get(handlers::dora::article))
+        .route("/api/maturity", get(handlers::dora::maturity))
         .route("/api/perf/{target}", get(handlers::perf::perf))
         .route("/api/perf/{target}/verdicts", post(handlers::perf::store))
         .route(

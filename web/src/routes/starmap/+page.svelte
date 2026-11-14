@@ -20,6 +20,8 @@
     import type { Point } from '#lib/starmap/layout.js';
     import { listNodes } from '#lib/starmap/list.js';
     import { RANGES } from '#lib/ranges.js';
+    import { tipFormatter } from '#lib/tooltip.js';
+    import type { Tip } from '#lib/tooltip.js';
     import {
         KINDS,
         LENSES,
@@ -129,9 +131,9 @@
         data?: { raw?: StarNode | StarEdge };
     }
 
-    function tip(p: TipParams): string {
+    function tipOf(p: TipParams): Tip | null {
         const raw = p.data?.raw;
-        if (!raw) return '';
+        if (!raw) return null;
         if (p.dataType === 'edge') return edgeTooltipHtml(raw as StarEdge);
         return tooltipHtml(raw as StarNode, context);
     }
@@ -155,7 +157,7 @@
         const links: StarLink[] = [];
         for (const e of map.edges) links.push(toLink(e, context));
         return {
-            tooltip: { ...t.tooltip, confine: true, formatter: tip },
+            tooltip: { ...t.tooltip, confine: true, formatter: tipFormatter(tipOf) },
             series: [
                 {
                     id: 'star',

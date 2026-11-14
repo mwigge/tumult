@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payments-api
+  namespace: proof
+  labels: {app: payments-api}
+spec:
+  replicas: 2
+  template:
+    metadata:
+      labels: {app: payments-api}
+    spec:
+      containers:
+        - name: app
+          image: payments-api:latest
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reporting-api
+  namespace: proof
+  labels: {app: reporting-api}
+spec:
+  replicas: 2
+  template:
+    metadata:
+      labels: {app: reporting-api}
+    spec:
+      containers:
+        - name: app
+          image: reporting-api:latest
