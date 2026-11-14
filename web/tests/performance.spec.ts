@@ -1,5 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
+import { installChartHooks } from './charts';
+
 // The API is mocked. The distribution chart renders to canvas, so it is
 // asserted through its accessible name, the option mirrored at
 // window.__tumultCharts and the evidence table next to it.
@@ -215,6 +217,7 @@ const lastOf = (urls: URL[]): URL => {
 test('GIVEN a regressed candidate WHEN the page opens THEN the verdict, the delta and the evidence are shown', async ({
     page,
 }) => {
+    await installChartHooks(page);
     const calls = await mockApi(page);
     await page.goto('/performance');
 
