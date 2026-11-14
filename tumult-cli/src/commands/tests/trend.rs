@@ -32,7 +32,7 @@ fn journal(id: &str, title: &str, started_at_ns: i64) -> Journal {
         }],
         rollback_results: vec![],
         rollback_failures: 0,
-        kind: Default::default(),
+        kind: tumult_core::types::TestKind::default(),
         objectives: None,
         probe_samples: vec![],
         estimate: None,

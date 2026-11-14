@@ -102,9 +102,8 @@ impl EntityFlags {
         })
     }
 
-    fn get(&self, name: &str) -> bool {
-        let mut copy = *self;
-        copy.slot(name).is_some_and(|flag| *flag)
+    fn get(mut self, name: &str) -> bool {
+        self.slot(name).is_some_and(|flag| *flag)
     }
 }
 
@@ -377,7 +376,7 @@ impl Requirement {
     pub fn applies(&self, entity: &EntityProfile) -> bool {
         self.profile_matches(entity.profile)
             && self.micro_matches(entity.flags.microenterprise)
-            && self.flag_matches(&entity.flags)
+            && self.flag_matches(entity.flags)
     }
 
     fn profile_matches(&self, profile: Profile) -> bool {
@@ -396,7 +395,7 @@ impl Requirement {
         }
     }
 
-    fn flag_matches(&self, flags: &EntityFlags) -> bool {
+    fn flag_matches(&self, flags: EntityFlags) -> bool {
         match self.flag {
             FlagRule::None => true,
             FlagRule::Csd => flags.csd,
@@ -1088,6 +1087,7 @@ mod tests {
         EntityProfile::parse(name, &flags).expect("valid profile")
     }
 
+    #[allow(clippy::trivially_copy_pass_by_ref)] // mirrors applicable(&EntityProfile)
     fn ids(p: &EntityProfile) -> Vec<&'static str> {
         applicable(p).map(|r| r.id).collect()
     }

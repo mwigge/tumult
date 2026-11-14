@@ -73,7 +73,7 @@ fn rich_journal() -> Journal {
         ],
         rollback_results: vec![activity("undo", ActivityStatus::Succeeded, "", None, None)],
         rollback_failures: 0,
-        kind: Default::default(),
+        kind: tumult_core::types::TestKind::default(),
         objectives: None,
         probe_samples: vec![],
         estimate: None,
