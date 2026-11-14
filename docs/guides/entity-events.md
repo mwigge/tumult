@@ -20,7 +20,8 @@ Map, the maturity roll-up and the web UI do not read entities yet.
 | Variable | Default | Meaning |
 |---|---|---|
 | `KRONIKA_ENTITY_EVENTS` | unset (off) | `1` or `true` stores entity events as entities. Any other value is off. Read once, when the daemon starts. |
-| `KRONIKA_ENTITY_LABEL_ALLOW` | empty | Comma-separated label names that are kept from `k8s.<kind>.label.<name>` attributes, for example `team,app.kubernetes.io/name`. Every other label is removed before the entity is stored. |
+| `KRONIKA_ENTITY_LABEL_ALLOW` | empty | Comma-separated label names that are kept from `k8s.<kind>.label.<name>` attributes, for example `team,app.kubernetes.io/name`. See section 5. |
+| `KRONIKA_ENTITY_ATTRIBUTE_ALLOW` | empty | Comma-separated description keys that are kept whatever they are: a whole key (`k8s.service.annotation.owner`) or the start of one followed by `*` (`k8s.service.selector.*`). See section 5. |
 
 With the flag on the daemon logs `daemon.entity_events.enabled` at
 startup. The flag applies to all three log carriers: OTLP/gRPC, OTLP/HTTP
@@ -122,9 +123,11 @@ event names, the attribute `otel.entity.event.type`, or that scope
 attribute.
 
 The stored row is the same for both forms. The legacy interval is
-converted to seconds and rounded up. Maps and arrays are stored as JSON
-with their structure intact; `relationships` is kept as sent and nothing
-reads it yet.
+converted to seconds and rounded up. Of the description only the keys of
+section 5 are stored. Of each relationship only `relationship.type` (also
+read from `type`, which the specification uses in one place),
+`entity.type` and `entity.id` of the target are stored; nothing reads
+relationships yet and no Collector component sends them.
 
 ## 4. What is stored
 
@@ -136,7 +139,7 @@ row per report.
 | `entity_key` | the type, `\|`, then the identifying attributes as `name=value` pairs sorted by name and joined with `,`; for example `k8s.pod\|k8s.pod.uid=3f0c…`. `%`, `\|`, `=`, `,` and `/` inside a part are percent-encoded |
 | `environment` | the environment the sending resource names (`resilience.target.environment`, or `deployment.environment.name`); empty when it names none |
 | `entity_type`, `entity_id` | the type and the identifying attributes |
-| `description`, `relationships` | JSON, after the label allow-list |
+| `description`, `relationships` | JSON, reduced to the keys of section 5 |
 | `state_hash` | SHA-256 over description and relationships |
 | `valid_from_ns` | when this state was first reported |
 | `last_seen_ns` | when it was last reported |
@@ -195,9 +198,59 @@ For that reason:
   and a deleted entity is shown as `gone` rather than removed. With a
   single ingest token every sender is the same observer, so this rule only
   separates senders once the daemon has more than one token.
-- Kubernetes labels can carry internal data. No `k8s.<kind>.label.*`
-  attribute is stored unless its label name is in
-  `KRONIKA_ENTITY_LABEL_ALLOW`.
+
+### What of a description is stored
+
+A description is written by the sender, and labels, selectors and
+annotations in particular carry internal data: an annotation can hold a
+whole manifest with the values of its environment variables. The daemon
+therefore stores a description key only when it is listed, and removes
+every other key before the row is written. The keys stored by default:
+
+| Key | What it is |
+|---|---|
+| `host.*`, `os.*`, `service.*`, `deployment.*`, `cloud.*` | the semantic-convention attributes of these namespaces |
+| `ict.*` | the function register attributes (`ict.entity.tier`, `ict.entity.owner`, ...) |
+| `container.image.*` | image name, tag and digests |
+| `container.id`, `container.name`, `container.runtime`, `container.status`, `container.status.reason`, `k8s.container.name` | the container itself |
+| `k8s.workload.kind`, `k8s.workload.name` | the workload an object belongs to |
+| `k8s.<kind>.name`, `k8s.<kind>.uid` | the name and uid of the object and of its owner, namespace and node |
+| `k8s.<kind>.start_time`, `k8s.<kind>.creation_timestamp`, `<kind>.creation_timestamp` | when it started or was created |
+| `k8s.<kind>.phase`, `k8s.<kind>.status_reason`, `k8s.node.condition_*` | its status |
+| `schedule`, `concurrency_policy`, `current_revision`, `update_revision` | what `k8s_cluster` writes without a prefix for a cron job and a stateful set |
+
+`<kind>` is one name without a dot. On top of the table:
+
+- A key with a segment `label`, `labels`, `annotation`, `annotations`,
+  `selector` or `selectors` is never stored by default, whatever it starts
+  with (`host.label.rack`, `service.annotations.x`).
+- A key stored by default keeps a scalar or a list of scalars. A map, or a
+  list that holds one, is removed with its key, so nothing nested arrives
+  under a listed name.
+- `KRONIKA_ENTITY_LABEL_ALLOW` names labels: `team` keeps
+  `k8s.<kind>.label.team` for every kind. It does not keep an annotation
+  or a selector of that name.
+- `KRONIKA_ENTITY_ATTRIBUTE_ALLOW` names keys: a whole key, or the start of
+  one followed by `*`. A key named here is stored with whatever value it
+  has, nested or not, within the size limits of section 6. `*` alone
+  stores every key; do not set it on a daemon that receives events from
+  clusters you do not control.
+- Relationships are reduced to their type and the type and identity of
+  their target; the two variables do not widen that.
+
+Removed keys are counted in `tumultd_entity_event_keys_filtered_total` on
+`GET /metrics`. When a label you expect is missing from an entity, that
+counter moving is the sign that it was removed here.
+
+The table was written from the source of the `k8s_cluster` receiver in
+Collector contrib v0.165.0 (`receiver/k8sclusterreceiver/internal`), not
+from a running cluster. That source sends, per object, a flat map of
+strings: the keys above, `k8s.<kind>.label.<name>` for every label,
+`k8s.service.selector.<name>`, `k8s.<kind>.annotation.<name>` for
+services, persistent volumes and their claims, and one empty-valued
+`k8s.service.<service name>` key on a pod for each service that selects
+it. Those last four groups are removed unless named. A receiver that sends
+other keys loses them the same way: unlisted is not stored.
 
 ## 6. Limits and dropped events
 
@@ -211,8 +264,8 @@ with the number left out.
 | `unknown_kind` | the record is marked as an entity event but is neither a state nor a delete |
 | `no_type` | the type attribute of its wire form is missing or empty |
 | `no_identity` | it has no identifying attributes and the resource has none for its type (only `host` → `host.id` is known) |
-| `malformed` | a type that is not a string, an interval that is not a number, an identifying value that is empty or not a scalar, the same identifying name twice, a description that is not a map, relationships that are not an array of maps, or nesting deeper than 8 |
-| `oversized` | a type over 128 bytes, more than 16 identifying attributes, a name or value over 256 bytes, or description and relationships over 64 KiB together |
+| `malformed` | a type that is not a string, an interval that is not a number, an identifying value that is empty or not a scalar, the same identifying name twice, a description that is not a map, relationships that are not an array of maps, a relationship without a type or without the type and identity of its target, or nesting deeper than 8 |
+| `oversized` | a type over 128 bytes, more than 16 identifying attributes, a name or value over 256 bytes, more than 64 relationships, or description and relationships over 64 KiB together |
 
 The report interval is kept between 0 and 30 days. An event time in the
 future is replaced by the time of receipt. A delete reason is cut at 256

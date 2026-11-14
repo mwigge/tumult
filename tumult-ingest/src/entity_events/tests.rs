@@ -110,7 +110,15 @@ pub(crate) fn host_export(legacy: bool) -> ExportLogsServiceRequest {
 
 /// The flag set, no label allowed, no ingest token.
 pub(crate) fn enabled() -> Option<EntityEvents> {
-    EntityEvents::from_settings(Some("1"), None, None)
+    EntityEvents::from_settings(&on())
+}
+
+/// The flag set and nothing else.
+fn on() -> EntitySettings<'static> {
+    EntitySettings {
+        flag: Some("1"),
+        ..EntitySettings::default()
+    }
 }
 
 /// A store with its writer task, entity events on or off.
@@ -174,13 +182,21 @@ fn the_flag_is_off_unless_set_to_one_or_true() {
         Some(" 1"),
     ] {
         assert!(
-            EntityEvents::from_settings(off, None, None).is_none(),
+            EntityEvents::from_settings(&EntitySettings {
+                flag: off,
+                ..EntitySettings::default()
+            })
+            .is_none(),
             "{off:?}"
         );
     }
     for on in ["1", "true"] {
         assert!(
-            EntityEvents::from_settings(Some(on), None, None).is_some(),
+            EntityEvents::from_settings(&EntitySettings {
+                flag: Some(on),
+                ..EntitySettings::default()
+            })
+            .is_some(),
             "{on}"
         );
     }
@@ -189,11 +205,14 @@ fn the_flag_is_off_unless_set_to_one_or_true() {
 #[test]
 fn the_label_allow_list_is_a_comma_separated_list_of_names() {
     let labels = |list: Option<&str>| {
-        EntityEvents::from_settings(Some("1"), list, None)
-            .unwrap()
-            .options()
-            .label_allow
-            .clone()
+        EntityEvents::from_settings(&EntitySettings {
+            label_allow: list,
+            ..on()
+        })
+        .unwrap()
+        .options()
+        .label_allow
+        .clone()
     };
     assert!(labels(None).is_empty(), "no label is kept by default");
     assert!(labels(Some(" , ")).is_empty());
@@ -204,13 +223,104 @@ fn the_label_allow_list_is_a_comma_separated_list_of_names() {
 }
 
 #[test]
+fn the_attribute_allow_list_is_a_comma_separated_list_of_keys() {
+    let attributes = |list: Option<&str>| {
+        EntityEvents::from_settings(&EntitySettings {
+            attribute_allow: list,
+            ..on()
+        })
+        .unwrap()
+        .options()
+        .attribute_allow
+        .clone()
+    };
+    assert!(
+        attributes(None).is_empty(),
+        "nothing more is kept by default"
+    );
+    assert_eq!(
+        attributes(Some("k8s.service.annotation.owner, k8s.pod.label.* ,")),
+        vec!["k8s.service.annotation.owner", "k8s.pod.label.*"]
+    );
+}
+
+/// A label and an annotation in a description reach the store only when
+/// the operator named them.
+#[tokio::test]
+async fn a_stored_description_holds_only_listed_keys() {
+    let labelled = || {
+        let mut export = host_export(false);
+        let record = &mut export.resource_logs[0].scope_logs[0].log_records[0];
+        record
+            .attributes
+            .retain(|kv| kv.key != "entity.description");
+        record.attributes.push(kv(
+            "entity.description",
+            map(vec![
+                text("host.name", "node-a"),
+                text("k8s.node.label.team", "payments"),
+                text("k8s.node.label.rack", "r1"),
+                text("k8s.node.annotation.owner", "ops@example.test"),
+                text("k8s.node.annotation.config", "{\"password\":\"hunter2\"}"),
+            ]),
+        ));
+        export
+    };
+    let description = |store: &Store| -> serde_json::Value {
+        let stored = rows(store, ENTITIES);
+        serde_json::from_str(stored[0]["description"].as_str().unwrap()).unwrap()
+    };
+
+    let filtered = tumult_otlp::entity_event_keys_filtered_total();
+    let (_dir, store, ingest) = ingest_with(enabled());
+    let batch = ingest.logs_batch(&labelled(), RECEIVED);
+    ingest.write(batch).await.unwrap();
+    assert_eq!(description(&store), json!({"host.name": "node-a"}));
+    assert!(tumult_otlp::entity_event_keys_filtered_total() >= filtered + 4);
+
+    let named = EntityEvents::from_settings(&EntitySettings {
+        label_allow: Some("team"),
+        attribute_allow: Some("k8s.node.annotation.owner"),
+        ..on()
+    });
+    let (_dir, store, ingest) = ingest_with(named);
+    let batch = ingest.logs_batch(&labelled(), RECEIVED);
+    ingest.write(batch).await.unwrap();
+    assert_eq!(
+        description(&store),
+        json!({
+            "host.name": "node-a",
+            "k8s.node.label.team": "payments",
+            "k8s.node.annotation.owner": "ops@example.test",
+        })
+    );
+}
+
+#[test]
+fn the_filtered_keys_counter_is_exported() {
+    let mut text = String::new();
+    render_prometheus(&mut text);
+    assert!(
+        text.contains("# TYPE tumultd_entity_event_keys_filtered_total counter"),
+        "{text}"
+    );
+    assert!(
+        text.contains("\ntumultd_entity_event_keys_filtered_total "),
+        "{text}"
+    );
+}
+
+#[test]
 fn the_observer_names_the_ingest_token_without_revealing_it() {
     let observer = |token: Option<&str>| {
-        EntityEvents::from_settings(Some("1"), None, token)
-            .unwrap()
-            .options()
-            .observer
-            .clone()
+        EntityEvents::from_settings(&EntitySettings {
+            ingest_token: token,
+            ..on()
+        })
+        .unwrap()
+        .options()
+        .observer
+        .clone()
     };
     assert_eq!(observer(None), "anonymous");
     let named = observer(Some("kro_secret-ingest-token"));

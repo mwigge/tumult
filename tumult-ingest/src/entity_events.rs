@@ -21,6 +21,9 @@ use crate::writer::Batch;
 pub const FLAG_ENV: &str = "KRONIKA_ENTITY_EVENTS";
 /// Comma-separated label names kept from `k8s.<kind>.label.<name>` keys.
 pub const LABEL_ALLOW_ENV: &str = "KRONIKA_ENTITY_LABEL_ALLOW";
+/// Comma-separated description keys kept whatever they are: a whole key,
+/// or the start of one followed by `*`.
+pub const ATTRIBUTE_ALLOW_ENV: &str = "KRONIKA_ENTITY_ATTRIBUTE_ALLOW";
 
 /// The observer recorded for events that arrived with the ingest token.
 /// The daemon has one shared token, so it is one observer; the name says
@@ -28,6 +31,19 @@ pub const LABEL_ALLOW_ENV: &str = "KRONIKA_ENTITY_LABEL_ALLOW";
 const TOKEN_OBSERVER: &str = "token:default";
 /// The observer recorded when ingest runs without a token (loopback).
 const ANONYMOUS_OBSERVER: &str = "anonymous";
+
+/// The settings of entity events as the environment gives them.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct EntitySettings<'a> {
+    /// `KRONIKA_ENTITY_EVENTS`.
+    pub flag: Option<&'a str>,
+    /// `KRONIKA_ENTITY_LABEL_ALLOW`.
+    pub label_allow: Option<&'a str>,
+    /// `KRONIKA_ENTITY_ATTRIBUTE_ALLOW`.
+    pub attribute_allow: Option<&'a str>,
+    /// `KRONIKA_INGEST_TOKEN`.
+    pub ingest_token: Option<&'a str>,
+}
 
 /// Entity events switched on, with what the conversion needs to know.
 #[derive(Debug, Clone)]
@@ -43,29 +59,25 @@ impl EntityEvents {
     pub fn from_env(ingest_token: Option<&str>) -> Option<Self> {
         let flag = std::env::var(FLAG_ENV).ok();
         let labels = std::env::var(LABEL_ALLOW_ENV).ok();
-        Self::from_settings(flag.as_deref(), labels.as_deref(), ingest_token)
+        let attributes = std::env::var(ATTRIBUTE_ALLOW_ENV).ok();
+        Self::from_settings(&EntitySettings {
+            flag: flag.as_deref(),
+            label_allow: labels.as_deref(),
+            attribute_allow: attributes.as_deref(),
+            ingest_token,
+        })
     }
 
-    /// [`Self::from_env`] with the values given: `flag` switches entity
-    /// events on when it is exactly `1` or `true`, `label_allow` is the
-    /// comma-separated list of label names to keep.
+    /// [`Self::from_env`] with the values given: the flag switches entity
+    /// events on when it is exactly `1` or `true`; the two allow-lists are
+    /// comma-separated.
     #[must_use]
-    pub fn from_settings(
-        flag: Option<&str>,
-        label_allow: Option<&str>,
-        ingest_token: Option<&str>,
-    ) -> Option<Self> {
-        if !matches!(flag, Some("1" | "true")) {
+    pub fn from_settings(settings: &EntitySettings<'_>) -> Option<Self> {
+        if !matches!(settings.flag, Some("1" | "true")) {
             return None;
         }
-        let label_allow = label_allow
-            .unwrap_or_default()
-            .split(',')
-            .map(str::trim)
-            .filter(|name| !name.is_empty())
-            .map(str::to_string)
-            .collect();
-        let observer = match ingest_token {
+        let label_allow = comma_separated(settings.label_allow);
+        let observer = match settings.ingest_token {
             Some(_) => TOKEN_OBSERVER,
             None => ANONYMOUS_OBSERVER,
         };
@@ -73,6 +85,7 @@ impl EntityEvents {
             options: Arc::new(EntityOptions {
                 observer: observer.to_string(),
                 label_allow,
+                attribute_allow: comma_separated(settings.attribute_allow),
             }),
         })
     }
@@ -82,6 +95,16 @@ impl EntityEvents {
     pub fn options(&self) -> &EntityOptions {
         &self.options
     }
+}
+
+/// The entries of a comma-separated list, without the empty ones.
+fn comma_separated(list: Option<&str>) -> Vec<String> {
+    list.unwrap_or_default()
+        .split(',')
+        .map(str::trim)
+        .filter(|entry| !entry.is_empty())
+        .map(str::to_string)
+        .collect()
 }
 
 /// The batch a logs export becomes. Without entity events, and for an
@@ -223,6 +246,12 @@ pub fn render_prometheus(out: &mut String) {
         "reason",
         &drops,
     );
+    let name = "tumultd_entity_event_keys_filtered_total";
+    out.push_str(&format!(
+        "# HELP {name} Keys removed from descriptions and relationships of stored entity events.\n\
+         # TYPE {name} counter\n{name} {}\n",
+        tumult_otlp::entity_event_keys_filtered_total()
+    ));
 }
 
 #[cfg(test)]

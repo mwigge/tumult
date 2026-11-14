@@ -45,6 +45,8 @@ pub const MAX_STATE_BYTES: usize = 64 * 1024;
 pub const MAX_DEPTH: usize = 8;
 /// Longest delete reason kept, in bytes; a longer one is cut.
 pub const MAX_REASON_LEN: usize = 256;
+/// Most relationships of one event.
+pub const MAX_RELATIONSHIPS: usize = 64;
 
 /// Seconds between two warnings about dropped entity events.
 const DROP_WARN_INTERVAL_S: u64 = 60;
@@ -57,6 +59,99 @@ const DROP_WARN_INTERVAL_S: u64 = 60;
 /// on the resource.
 const RESOURCE_IDENTITY: &[(&str, &[&str])] = &[("host", &["host.id"])];
 
+/// How a description key that is stored by default is recognised.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KeptKey {
+    /// This key and no other.
+    Exact(&'static str),
+    /// Every key that starts with this text and goes on after it.
+    Prefix(&'static str),
+    /// `k8s.<kind>.<field>` with this field, for a kind of one segment.
+    K8sField(&'static str),
+    /// `<kind>.<field>` with this field, for a kind of one segment.
+    KindField(&'static str),
+}
+
+impl KeptKey {
+    /// Whether `key` is one this rule keeps.
+    #[must_use]
+    pub fn matches(self, key: &str) -> bool {
+        match self {
+            Self::Exact(exact) => key == exact,
+            Self::Prefix(prefix) => key.len() > prefix.len() && key.starts_with(prefix),
+            Self::K8sField(field) => key
+                .strip_prefix("k8s.")
+                .is_some_and(|rest| kind_field(rest) == Some(field)),
+            Self::KindField(field) => kind_field(key) == Some(field),
+        }
+    }
+
+    /// The rule as the guide writes it.
+    #[must_use]
+    pub fn pattern(self) -> String {
+        match self {
+            Self::Exact(exact) => exact.to_string(),
+            Self::Prefix(prefix) => format!("{prefix}*"),
+            Self::K8sField(field) => format!("k8s.<kind>.{field}"),
+            Self::KindField(field) => format!("<kind>.{field}"),
+        }
+    }
+}
+
+/// The field of a `<kind>.<field>` key whose kind is one segment.
+fn kind_field(key: &str) -> Option<&str> {
+    let (kind, field) = key.split_once('.')?;
+    (!kind.is_empty()).then_some(field)
+}
+
+/// The description keys stored without the operator naming them: the
+/// attributes the semantic conventions define for the entity types a
+/// Collector reports, and what `k8s_cluster` writes for an object apart
+/// from its labels, selectors and annotations. Every other key is removed
+/// unless [`EntityOptions`] names it. `docs/guides/entity-events.md` shows
+/// the same table and a test keeps the two alike.
+pub const KEPT_DESCRIPTION_KEYS: &[KeptKey] = &[
+    KeptKey::Prefix("host."),
+    KeptKey::Prefix("os."),
+    KeptKey::Prefix("service."),
+    KeptKey::Prefix("deployment."),
+    KeptKey::Prefix("cloud."),
+    KeptKey::Prefix("ict."),
+    KeptKey::Prefix("container.image."),
+    KeptKey::Exact("container.id"),
+    KeptKey::Exact("container.name"),
+    KeptKey::Exact("container.runtime"),
+    KeptKey::Exact("container.status"),
+    KeptKey::Exact("container.status.reason"),
+    KeptKey::Exact("k8s.container.name"),
+    KeptKey::Exact("k8s.workload.kind"),
+    KeptKey::Exact("k8s.workload.name"),
+    KeptKey::K8sField("name"),
+    KeptKey::K8sField("uid"),
+    KeptKey::K8sField("start_time"),
+    KeptKey::K8sField("creation_timestamp"),
+    KeptKey::K8sField("phase"),
+    KeptKey::K8sField("status_reason"),
+    KeptKey::Prefix("k8s.node.condition_"),
+    KeptKey::KindField("creation_timestamp"),
+    KeptKey::Exact("schedule"),
+    KeptKey::Exact("concurrency_policy"),
+    KeptKey::Exact("current_revision"),
+    KeptKey::Exact("update_revision"),
+];
+
+/// A key with one of these segments is a label, a selector or an
+/// annotation whatever it starts with: [`KEPT_DESCRIPTION_KEYS`] never
+/// keeps it.
+const NEVER_KEPT_SEGMENTS: &[&str] = &[
+    "label",
+    "labels",
+    "annotation",
+    "annotations",
+    "selector",
+    "selectors",
+];
+
 /// What the ingest path knows about the sender and the operator's choices.
 #[derive(Debug, Clone, Default)]
 pub struct EntityOptions {
@@ -64,8 +159,10 @@ pub struct EntityOptions {
     /// token itself.
     pub observer: String,
     /// Label names kept from `k8s.<kind>.label.<name>` description keys.
-    /// Every other label is removed before the event is stored.
     pub label_allow: Vec<String>,
+    /// Description keys kept whatever they are: a whole key, or the start
+    /// of one followed by `*`.
+    pub attribute_allow: Vec<String>,
 }
 
 /// Why an entity event was not stored.
@@ -121,6 +218,8 @@ impl EntityDrop {
 /// them.
 pub(crate) struct EntityDrops {
     counts: [AtomicU64; 5],
+    /// Keys removed from descriptions and relationships of stored events.
+    filtered: AtomicU64,
     warn: WarnLimit,
 }
 
@@ -134,8 +233,13 @@ impl EntityDrops {
                 AtomicU64::new(0),
                 AtomicU64::new(0),
             ],
+            filtered: AtomicU64::new(0),
             warn: WarnLimit::new(),
         }
+    }
+
+    pub(crate) fn filtered(&self) -> u64 {
+        self.filtered.load(Ordering::Relaxed)
     }
 
     pub(crate) fn count(&self, reason: EntityDrop) -> u64 {
@@ -162,6 +266,13 @@ pub fn entity_events_dropped(reason: EntityDrop) -> u64 {
     DROPS.count(reason)
 }
 
+/// Keys removed since start from the descriptions and the relationships of
+/// stored entity events, because nothing lists them as kept.
+#[must_use]
+pub fn entity_event_keys_filtered_total() -> u64 {
+    DROPS.filtered()
+}
+
 /// One logs export, divided into what goes to `logs` and what goes to
 /// `entity_versions`.
 #[derive(Debug, Default)]
@@ -172,6 +283,9 @@ pub struct LogsSplit {
     pub entities: Vec<EntityEventRow>,
     /// One entry per entity event that was dropped.
     pub dropped: Vec<EntityDrop>,
+    /// Keys removed from the descriptions and the relationships of
+    /// [`Self::entities`].
+    pub filtered: u64,
 }
 
 /// Divide a logs export into log rows and entity events (pure apart from
@@ -216,7 +330,10 @@ pub(crate) fn split_with(
                     continue;
                 }
                 match normalise(record, &source, options) {
-                    Ok(row) => split.entities.push(row),
+                    Ok((row, filtered)) => {
+                        split.entities.push(row);
+                        split.filtered += filtered;
+                    }
                     Err(reason) => {
                         note_drop(reason, record, tally);
                         split.dropped.push(reason);
@@ -225,6 +342,7 @@ pub(crate) fn split_with(
             }
         }
     }
+    tally.filtered.fetch_add(split.filtered, Ordering::Relaxed);
     split
 }
 
@@ -325,20 +443,22 @@ fn kind_and_keys(record: &LogRecord) -> Result<(EntityEventKind, &'static Keys),
         .ok_or(EntityDrop::UnknownKind)
 }
 
-/// One record as a row, or the reason it cannot be one.
+/// One record as a row with the number of keys removed from it, or the
+/// reason it cannot be a row.
 fn normalise(
     record: &LogRecord,
     source: &Source<'_>,
     options: &EntityOptions,
-) -> Result<EntityEventRow, EntityDrop> {
+) -> Result<(EntityEventRow, u64), EntityDrop> {
     let (kind, keys) = kind_and_keys(record)?;
     let attrs = record.attributes.as_slice();
     let entity_type = entity_type(attrs, keys)?;
     let entity_id = identity(attrs, keys, entity_type, source.resource)?;
-    let description = description(attrs, keys, &options.label_allow)?;
-    let relationships = relationships(attrs, keys)?;
+    let mut filtered = 0;
+    let description = description(attrs, keys, options, &mut filtered)?;
+    let relationships = relationships(attrs, keys, &mut filtered)?;
     check_state_size(&description, &relationships)?;
-    Ok(EntityEventRow {
+    let row = EntityEventRow {
         kind,
         ts_ns: logs::log_ts(record, source.received_at_ns).min(source.received_at_ns),
         entity_type: entity_type.to_string(),
@@ -351,7 +471,8 @@ fn normalise(
         observer: options.observer.clone(),
         schema_url: source.schema_url.map(str::to_string),
         environment: source.environment.to_string(),
-    })
+    };
+    Ok((row, filtered))
 }
 
 fn value_of<'a>(attrs: &'a [KeyValue], key: &str) -> Option<&'a any_value::Value> {
@@ -395,11 +516,17 @@ fn identity(
         Some(any_value::Value::KvlistValue(map)) => map.values.as_slice(),
         Some(_) => return Err(EntityDrop::Malformed),
     };
-    let mut pairs = if own.is_empty() {
+    let pairs = if own.is_empty() {
         resource_identity(entity_type, resource).ok_or(EntityDrop::NoIdentity)?
     } else {
         own_identity(own)?
     };
+    checked_identity(pairs)
+}
+
+/// Identifying attributes within the size limits, sorted by key, no key
+/// twice.
+fn checked_identity(mut pairs: Vec<(String, String)>) -> Result<Vec<(String, String)>, EntityDrop> {
     for (key, value) in &pairs {
         if key.len() > MAX_ID_PART_LEN || value.len() > MAX_ID_PART_LEN {
             return Err(EntityDrop::Oversized);
@@ -472,48 +599,158 @@ pub(crate) fn label_name(key: &str) -> Option<&str> {
     Some(name)
 }
 
-/// Whether a description key is stored: every key that is not a label,
-/// and the labels the operator listed.
-fn key_is_kept(key: &str, label_allow: &[String]) -> bool {
-    label_name(key).is_none_or(|name| label_allow.iter().any(|allowed| allowed == name))
+/// Whether [`KEPT_DESCRIPTION_KEYS`] keeps the key.
+fn kept_by_default(key: &str) -> bool {
+    KEPT_DESCRIPTION_KEYS.iter().any(|rule| rule.matches(key))
+        && !key
+            .split('.')
+            .any(|segment| NEVER_KEPT_SEGMENTS.contains(&segment))
 }
 
-/// The descriptive attributes as a JSON object, `{}` when absent.
+/// Whether the operator listed the label this key holds.
+fn label_is_allowed(key: &str, label_allow: &[String]) -> bool {
+    label_name(key).is_some_and(|name| label_allow.iter().any(|allowed| allowed == name))
+}
+
+/// Whether the operator listed the key, whole or by how it starts.
+fn attribute_is_allowed(key: &str, attribute_allow: &[String]) -> bool {
+    attribute_allow.iter().any(|allowed| {
+        allowed
+            .strip_suffix('*')
+            .map_or(allowed == key, |start| key.starts_with(start))
+    })
+}
+
+fn is_scalar(value: &AnyValue) -> bool {
+    !matches!(
+        value.value,
+        Some(any_value::Value::ArrayValue(_) | any_value::Value::KvlistValue(_))
+    )
+}
+
+/// Whether the value is a scalar or a list of scalars, which is all a
+/// semantic-convention attribute can be.
+fn is_flat(value: Option<&AnyValue>) -> bool {
+    match value.and_then(|v| v.value.as_ref()) {
+        Some(any_value::Value::ArrayValue(array)) => array.values.iter().all(is_scalar),
+        Some(any_value::Value::KvlistValue(_)) => false,
+        _ => true,
+    }
+}
+
+/// The stored value of one description entry; `None` when the entry is
+/// removed. A key the operator named is kept with whatever it holds. A key
+/// kept by default or as a listed label is kept only with a flat value, so
+/// nothing nested rides in under a listed name.
+fn kept_value(entry: &KeyValue, options: &EntityOptions) -> Result<Option<Json>, EntityDrop> {
+    let value = entry.value.as_ref();
+    if attribute_is_allowed(&entry.key, &options.attribute_allow) {
+        return value_json(value, 1).map(Some);
+    }
+    let listed = kept_by_default(&entry.key) || label_is_allowed(&entry.key, &options.label_allow);
+    if !listed || !is_flat(value) {
+        return Ok(None);
+    }
+    value_json(value, 1).map(Some)
+}
+
+/// The descriptive attributes that are kept as a JSON object, `{}` when
+/// there are none; `filtered` counts the removed ones.
 fn description(
     attrs: &[KeyValue],
     keys: &Keys,
-    label_allow: &[String],
+    options: &EntityOptions,
+    filtered: &mut u64,
 ) -> Result<Json, EntityDrop> {
     let entries = match value_of(attrs, keys.description) {
         None => return Ok(Json::Object(Map::new())),
         Some(any_value::Value::KvlistValue(map)) => map.values.as_slice(),
         Some(_) => return Err(EntityDrop::Malformed),
     };
-    let kept: Vec<&KeyValue> = entries
-        .iter()
-        .filter(|kv| key_is_kept(&kv.key, label_allow))
-        .collect();
-    object_json(kept.into_iter(), 1)
+    let mut object = Map::new();
+    for entry in entries {
+        match kept_value(entry, options)? {
+            Some(value) => {
+                object.insert(entry.key.clone(), value);
+            }
+            None => *filtered += 1,
+        }
+    }
+    Ok(Json::Object(object))
 }
 
-/// The relationships as a JSON array of objects, `[]` when absent or in
-/// the legacy form, which has none.
-fn relationships(attrs: &[KeyValue], keys: &Keys) -> Result<Json, EntityDrop> {
+/// The key the stored relationship type has; the specification also calls
+/// it `type`.
+const RELATIONSHIP_TYPE: &str = "relationship.type";
+const RELATIONSHIP_TYPE_SHORT: &str = "type";
+
+/// The relationships as a JSON array, `[]` when absent or in the legacy
+/// form, which has none. `filtered` counts the keys left out.
+fn relationships(attrs: &[KeyValue], keys: &Keys, filtered: &mut u64) -> Result<Json, EntityDrop> {
     let Some(value) = keys.relationships.and_then(|key| value_of(attrs, key)) else {
         return Ok(Json::Array(Vec::new()));
     };
     let any_value::Value::ArrayValue(array) = value else {
         return Err(EntityDrop::Malformed);
     };
+    if array.values.len() > MAX_RELATIONSHIPS {
+        return Err(EntityDrop::Oversized);
+    }
     array
         .values
         .iter()
         .map(|item| match item.value.as_ref() {
-            Some(any_value::Value::KvlistValue(map)) => object_json(map.values.iter(), 2),
+            Some(any_value::Value::KvlistValue(map)) => relationship(&map.values, filtered),
             _ => Err(EntityDrop::Malformed),
         })
         .collect::<Result<Vec<Json>, EntityDrop>>()
         .map(Json::Array)
+}
+
+/// One relationship as its type and the type and identity of its target,
+/// under the names of the specification form. Nothing else a sender puts
+/// in a relationship is stored.
+fn relationship(entries: &[KeyValue], filtered: &mut u64) -> Result<Json, EntityDrop> {
+    let relationship_type = text_attr(entries, RELATIONSHIP_TYPE)
+        .or_else(|| text_attr(entries, RELATIONSHIP_TYPE_SHORT))
+        .filter(|name| !name.is_empty())
+        .ok_or(EntityDrop::Malformed)?;
+    if relationship_type.len() > MAX_TYPE_LEN {
+        return Err(EntityDrop::Oversized);
+    }
+    let target_type = entity_type(entries, &SPEC).map_err(|reason| match reason {
+        EntityDrop::Oversized => EntityDrop::Oversized,
+        _ => EntityDrop::Malformed,
+    })?;
+    let target_id = match value_of(entries, SPEC.id) {
+        Some(any_value::Value::KvlistValue(map)) if !map.values.is_empty() => {
+            checked_identity(own_identity(&map.values)?)?
+        }
+        _ => return Err(EntityDrop::Malformed),
+    };
+    let known = [
+        RELATIONSHIP_TYPE,
+        RELATIONSHIP_TYPE_SHORT,
+        SPEC.entity_type,
+        SPEC.id,
+    ];
+    let unknown = entries
+        .iter()
+        .filter(|entry| !known.contains(&entry.key.as_str()))
+        .count();
+    *filtered += unknown as u64;
+    let target_id: Map<String, Json> = target_id
+        .into_iter()
+        .map(|(key, value)| (key, Json::String(value)))
+        .collect();
+    let mut object = Map::new();
+    object.insert(
+        RELATIONSHIP_TYPE.into(),
+        Json::String(relationship_type.into()),
+    );
+    object.insert(SPEC.entity_type.into(), Json::String(target_type.into()));
+    object.insert(SPEC.id.into(), Json::Object(target_id));
+    Ok(Json::Object(object))
 }
 
 /// A key-value list as a JSON object that sits `depth` levels deep.

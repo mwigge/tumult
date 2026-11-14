@@ -10,7 +10,7 @@ use opentelemetry_proto::tonic::common::v1::{
 use opentelemetry_proto::tonic::logs::v1::{LogRecord, ResourceLogs, ScopeLogs};
 use opentelemetry_proto::tonic::resource::v1::Resource;
 use prost::Message;
-use tumult_ingest::{http, EntityEvents, IngestWriter};
+use tumult_ingest::{http, EntityEvents, EntitySettings, IngestWriter};
 use tumult_lake::Store;
 
 const TS: u64 = 1_774_980_000_000_000_000;
@@ -111,7 +111,11 @@ async fn serve(flag: Option<&str>) -> Served {
     let dir = tempfile::TempDir::new().unwrap();
     let store = Store::open(&dir.path().join("k.duckdb")).unwrap();
     let (ingest, _task) = IngestWriter::spawn(store.writer().unwrap(), 16);
-    let ingest = ingest.with_entity_events(EntityEvents::from_settings(flag, None, Some(TOKEN)));
+    let ingest = ingest.with_entity_events(EntityEvents::from_settings(&EntitySettings {
+        flag,
+        ingest_token: Some(TOKEN),
+        ..EntitySettings::default()
+    }));
     let app = http::router_with_token(ingest, Some(TOKEN.into()));
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();

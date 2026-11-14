@@ -41,7 +41,7 @@ pub mod webhooks;
 mod writer;
 
 pub use config::Config;
-pub use entity_events::EntityEvents;
+pub use entity_events::{EntityEvents, EntitySettings};
 pub use error::IngestError;
 pub use manual::{ImportSummary, ManualImporter};
 pub use runs::{prepare_run, EnqueueError, RunQueue, RunQueueConfig, RunRequest, StopError};

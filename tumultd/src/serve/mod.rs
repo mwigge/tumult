@@ -614,13 +614,16 @@ pub(crate) async fn serve() -> Result<()> {
 }
 
 /// Entity events as the environment sets them (`KRONIKA_ENTITY_EVENTS`,
-/// `KRONIKA_ENTITY_LABEL_ALLOW`): `None`, the default, leaves every log
-/// record a log record.
+/// `KRONIKA_ENTITY_LABEL_ALLOW`, `KRONIKA_ENTITY_ATTRIBUTE_ALLOW`): `None`,
+/// the default, leaves every log record a log record.
 fn entity_events(config: &Config) -> Option<tumult_ingest::EntityEvents> {
     let entities = tumult_ingest::EntityEvents::from_env(config.ingest_token.as_deref())?;
     tracing::info!(
         name: "daemon.entity_events.enabled",
-        { entity.label_allow.count = entities.options().label_allow.len() },
+        {
+            entity.label_allow.count = entities.options().label_allow.len(),
+            entity.attribute_allow.count = entities.options().attribute_allow.len(),
+        },
         "entity events are stored as entities"
     );
     Some(entities)

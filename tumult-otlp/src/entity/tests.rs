@@ -12,6 +12,8 @@ use tumult_lake::{EntityEventKind, EntityEventRow, WireForm, ENTITY_INTERVAL_MAX
 
 use super::*;
 
+mod filter;
+
 const TS: u64 = 1_774_980_000_000_000_000;
 const RECEIVED: i64 = 1_774_980_000_500_000_000;
 const SCHEMA: &str = "https://opentelemetry.io/schemas/1.40.0";
@@ -46,6 +48,8 @@ fn options() -> EntityOptions {
     EntityOptions {
         observer: "tok:test".into(),
         label_allow: vec![],
+        // The fixtures use `test.` keys where the kept keys do not matter.
+        attribute_allow: vec!["test.*".into()],
     }
 }
 
@@ -90,10 +94,10 @@ fn pod_id() -> Value {
 fn pod_description() -> Value {
     map(vec![
         text("k8s.pod.name", "checkout-7d9"),
-        kv("k8s.pod.restarts", Value::IntValue(3)),
-        kv("ready", Value::BoolValue(true)),
+        kv("test.restarts", Value::IntValue(3)),
+        kv("test.ready", Value::BoolValue(true)),
         kv(
-            "limits",
+            "test.limits",
             map(vec![kv(
                 "cpu",
                 list(vec![
@@ -108,9 +112,9 @@ fn pod_description() -> Value {
 fn pod_description_json() -> serde_json::Value {
     json!({
         "k8s.pod.name": "checkout-7d9",
-        "k8s.pod.restarts": 3,
-        "ready": true,
-        "limits": {"cpu": [0.5, "m"]},
+        "test.restarts": 3,
+        "test.ready": true,
+        "test.limits": {"cpu": [0.5, "m"]},
     })
 }
 
@@ -485,7 +489,7 @@ fn oversized_events_are_dropped() {
             kv("entity.id", pod_id()),
             kv(
                 "entity.description",
-                map(vec![text("blob", &"x".repeat(MAX_STATE_BYTES))]),
+                map(vec![text("test.blob", &"x".repeat(MAX_STATE_BYTES))]),
             ),
         ],
     );
@@ -502,7 +506,7 @@ fn oversized_events_are_dropped() {
 fn a_description_nested_too_deep_is_malformed() {
     let mut value = Value::IntValue(1);
     for _ in 0..=MAX_DEPTH {
-        value = map(vec![kv("n", value)]);
+        value = map(vec![kv("test.n", value)]);
     }
     let record = spec_record(
         "entity.state",
@@ -525,12 +529,12 @@ fn description_values_keep_their_types() {
             kv(
                 "entity.description",
                 map(vec![
-                    kv("bytes", Value::BytesValue(vec![0x01, 0xff])),
-                    kv("nan", Value::DoubleValue(f64::NAN)),
-                    kv("ratio", Value::DoubleValue(0.25)),
-                    kv("count", Value::IntValue(-2)),
+                    kv("test.bytes", Value::BytesValue(vec![0x01, 0xff])),
+                    kv("test.nan", Value::DoubleValue(f64::NAN)),
+                    kv("test.ratio", Value::DoubleValue(0.25)),
+                    kv("test.count", Value::IntValue(-2)),
                     KeyValue {
-                        key: "unset".into(),
+                        key: "test.unset".into(),
                         value: None,
                         key_strindex: 0,
                     },
@@ -540,7 +544,13 @@ fn description_values_keep_their_types() {
     );
     assert_eq!(
         entities_of(prod(), vec![record])[0].description,
-        json!({"bytes": "01ff", "nan": "NaN", "ratio": 0.25, "count": -2, "unset": null})
+        json!({
+            "test.bytes": "01ff",
+            "test.nan": "NaN",
+            "test.ratio": 0.25,
+            "test.count": -2,
+            "test.unset": null,
+        })
     );
 }
 
@@ -599,6 +609,7 @@ fn label_keys_are_removed_unless_allowed() {
     let allow = EntityOptions {
         observer: "tok:test".into(),
         label_allow: vec!["app.kubernetes.io/name".into(), "team".into()],
+        attribute_allow: vec![],
     };
     let split = split_with(
         &request(prod(), marked_scope(), vec![labelled()]),
