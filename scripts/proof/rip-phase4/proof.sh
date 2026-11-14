@@ -578,14 +578,18 @@ run_expecting run-1.3.2 checkout-soak deviated --target-version 1.3.2
 planned=$(load_field run-1.3.2 planned_windows); done_=$(load_field run-1.3.2 completed_windows)
 [[ "$done_" -ge 1 && "$done_" -lt "$planned" ]] || fail "expected the hung requests to cut the plan short, got $done_ of $planned windows"
 await_json "the 1.3.2 run" "/api/perf/checkout?env=demo" 'd["candidate"]["version"]=="1.3.2" and d["candidate"]["partial"]["excluded"]==1'
-curl -fs "$URL/api/perf/checkout?env=demo&baseline=1.3.0" >"$WORK/perf-cut-short.json"
+# One run is too little for the failure-share rule on the default three
+# runs a side: the answer is inconclusive until the caller says one is enough.
+curl -fs "$URL/api/perf/checkout?env=demo&baseline=1.3.0" >"$WORK/perf-cut-short-default.json"
+py 'assert d["verdict"]=="inconclusive" and d["reason"]=="failure_share_unsettled", (d["verdict"],d["reason"],d["reasons"])' <"$WORK/perf-cut-short-default.json"
+curl -fs "$URL/api/perf/checkout?env=demo&baseline=1.3.0&min_runs=1" >"$WORK/perf-cut-short.json"
 py 'b,c=d["baseline"],d["candidate"]
 assert b["version"]=="1.3.0" and c["version"]=="1.3.2", (b["version"],c["version"])
 assert c["runs"]==[] and c["samples"]==0 and c["partial"]["truncated"]==1, (c["runs"],c["samples"],c["partial"])
 r=c["requests"]; assert r["sent"]>0 and r["failure_share"]>0.15, r
 assert d["verdict"]=="regressed" and d["reason"]=="failure_share", (d["verdict"],d["reason"],d["reasons"])
 print("     candidate 1.3.2: plan cut short, no run in the latencies, %d of %d requests failed (%.0f%%): %s" % (r["failed"],r["sent"],100*r["failure_share"],d["verdict"]))' <"$WORK/perf-cut-short.json"
-perf_exits 3 cli-cut-short.out checkout --env demo --baseline 1.3.0
+perf_exits 3 cli-cut-short.out checkout --env demo --baseline 1.3.0 --min-runs 1
 pass "the same build on the default timeout: $done_ of $planned windows ran, the run deviated and is left out of the latencies, and it is regressed on the requests it failed"
 deploy 2
 
