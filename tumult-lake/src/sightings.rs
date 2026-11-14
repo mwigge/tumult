@@ -50,7 +50,6 @@ use tumult_core::types::{bounded_version_text, VersionShare, MAX_VERSION_LEN};
 
 use crate::error::StoreError;
 use crate::rows::SpanRow;
-use crate::store::with_tx;
 use crate::{Reader, Store, Writer};
 
 /// The silence after which a version that speaks again, another having
@@ -800,7 +799,7 @@ impl Writer {
     /// Returns an error if the rebuild fails (the rollup is left as it was).
     #[cfg(test)]
     pub(crate) fn rebuild_version_sightings(&self) -> Result<(), StoreError> {
-        with_tx(&self.conn, || {
+        crate::store::with_tx(&self.conn, || {
             backfill_restart(&self.conn)?;
             let now_ns = (self.clock)();
             while !backfill_step(&self.conn, None, now_ns)? {}
