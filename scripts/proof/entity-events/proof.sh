@@ -16,8 +16,20 @@
 #                  wire form `spec`.
 #   phase arrow    flag on, feature gate on, OTel-Arrow instead of OTLP: the
 #                  same entity over the other log carrier.
+#   phase probe    flag on, no Collector: the entity_probe example sends the
+#                  events one quiet host never produces, one export each,
+#                  gzip-compressed. A changed state opens a second row; a
+#                  delete makes the entity `gone`; a state after it brings
+#                  the entity back in a third row; a description with
+#                  labels, an annotation holding a manifest, a container
+#                  label and a nested map comes back with the allow-listed
+#                  keys only (KRONIKA_ENTITY_LABEL_ALLOW=app) and the
+#                  manifest's secret is in no answer and not in the lake
+#                  file; a description over the size limit is counted as
+#                  dropped and leaves no entity.
 #
 #   cargo build -p tumultd && (cd web && npm ci && npm run build)
+#   cargo build -p tumult-ingest --example entity_probe
 #   bash scripts/proof/entity-events/proof.sh [run-number]
 #
 # Needs docker and the otel/opentelemetry-collector-contrib image pinned
@@ -37,6 +49,7 @@ S="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$S/../../.." && pwd)"
 PROFILE=${PROOF_PROFILE:-debug}
 BIN=${TUMULT_BIN_DIR:-${CARGO_TARGET_DIR:-$REPO/target}/$PROFILE}
+PROBE=$BIN/examples/entity_probe
 RUN=${1:-1}
 [[ "$RUN" =~ ^[0-9]{1,6}$ ]] || { echo "run number must be an integer, got '$RUN'" >&2; exit 2; }
 for tool in python3 curl ss docker; do
@@ -56,7 +69,8 @@ GATE=pkg.experimentalmetricmetadata.useEntityEventsSpecification
 INTERVAL=10
 export KRONIKA_METRICS_DIR=$REPO/metrics
 export KRONIKA_INGEST_TOKEN=proof-entity-token-$RUN
-unset KRONIKA_ENTITY_EVENTS KRONIKA_ENTITY_LABEL_ALLOW
+unset KRONIKA_ENTITY_EVENTS KRONIKA_ENTITY_LABEL_ALLOW KRONIKA_ENTITY_ATTRIBUTE_ALLOW
+unset KRONIKA_ENTITY_MAX_PER_ENVIRONMENT
 # The machine id the Collector's resourcedetection reads as `host.id`.
 HOST_ID=$(printf '%016x%016x' "$$" "$RUN")
 printf '%s\n' "$HOST_ID" >"$WORK/machine-id"
@@ -122,16 +136,17 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# start_daemon <phase> <on|off>: a fresh lake and two fresh ports; the flag
-# is set only for `on`.
+# start_daemon <phase> <on|off> [NAME=value...]: a fresh lake and two fresh
+# ports; the flag is set only for `on`, and the daemon gets the variables
+# named after it.
 start_daemon() {
   PHASE=$1
   mkdir -p "$WORK/$PHASE"
   DLOG=$WORK/$PHASE/tumultd.log
   read -r GRPC_PORT HTTP_PORT < <(free_ports 2)
   URL=http://127.0.0.1:$HTTP_PORT
-  local flag=()
-  [[ "$2" == off ]] || flag=(KRONIKA_ENTITY_EVENTS=1)
+  local flag=("${@:3}")
+  [[ "$2" == off ]] || flag+=(KRONIKA_ENTITY_EVENTS=1)
   env "${flag[@]}" \
     TUMULT_LAKE_PATH="$WORK/$PHASE/lake.duckdb" \
     KRONIKA_OTLP_GRPC_ADDR="127.0.0.1:$GRPC_PORT" \
@@ -181,6 +196,15 @@ else:
 counter_at_least() { [[ "$(counter "$1" "$2")" -ge "$3" ]]; }
 entity_count_is() {
   fetch "/api/entities$2" entities.json && py 'assert d["count"] == int(a[0]), d' "$1" <"$WORK/$PHASE/entities.json"
+}
+# plain_counter <name>: the value of a daemon counter without labels.
+plain_counter() {
+  curl -fs -m 10 "$URL/metrics" | python3 -c 'import sys
+for line in sys.stdin:
+    if line.startswith(sys.argv[1] + " "):
+        print(line.split()[-1]); break
+else:
+    sys.exit("no such counter")' "$1"
 }
 no_drops() {
   curl -fs -m 10 "$URL/metrics" | python3 -c 'import sys
@@ -243,7 +267,26 @@ print(f"     expired {silent:.0f}s after it was last heard of")' "$ENTITY_KEY" "
   pass "Collector stopped: the entity is expired after three intervals, still one row, not deleted"
 }
 
+# probe <case> <pod uid>: one hand-built entity event, sent the way a
+# Collector sends its own (OTLP/gRPC, gzip, the ingest token).
+probe() {
+  "$PROBE" "http://127.0.0.1:$GRPC_PORT" "$1" "$2" "$KRONIKA_INGEST_TOKEN" >>"$WORK/$PHASE/probe.log" 2>&1 \
+    || { tail -5 "$WORK/$PHASE/probe.log"; fail "the probe could not send '$1'"; }
+}
+# pod_history <rows>: the pod of the probe phase has that many stored rows.
+pod_history() {
+  fetch "/api/entities/$POD_PATH/history" history.json && py 'assert d["total"] == int(a[0]), d' "$1" <"$WORK/$PHASE/history.json"
+}
+# The outcome and drop counters of the probe phase are exactly these.
+probe_counters() { # <opened> <tombstoned> <oversized>
+  [[ "$(counter tumultd_entity_events_total opened)" == "$1" ]] || fail "expected $1 rows opened"
+  [[ "$(counter tumultd_entity_events_total tombstoned)" == "$2" ]] || fail "expected $2 deletes applied"
+  [[ "$(counter tumultd_entity_events_dropped_total oversized)" == "$3" ]] || fail "expected $3 oversized drops"
+  alive "$4"
+}
+
 [[ -x "$BIN/tumultd" ]] || fail "missing $BIN/tumultd (cargo build -p tumultd)"
+[[ -x "$PROBE" ]] || fail "missing $PROBE (cargo build -p tumult-ingest --example entity_probe)"
 
 echo "[1] flag off: entity events are stored as the log records they are"
 start_daemon off off
@@ -290,5 +333,85 @@ alive "at the end"
 stop_collector
 stop_daemon
 pass "the same entity over the OTel-Arrow log stream"
+
+echo "[5] flag on, hand-built events over OTLP/gRPC with gzip: change, delete, return, filter, limit"
+start_daemon probe on KRONIKA_ENTITY_LABEL_ALLOW=app
+POD=proof-pod-$RUN
+POD_KEY="k8s.pod|k8s.pod.uid=$POD"
+POD_PATH="k8s.pod%7Ck8s.pod.uid%3D$POD"
+# What the manifest in the probe's annotation holds (entity_probe.rs).
+SECRET=proof-secret
+
+probe state:Pending "$POD"
+await "the pod entity" 30 entity_count_is 1 "?liveness=live"
+py 'e = d["entities"][0]
+assert e["entity_key"] == a[0] and e["entity_type"] == "k8s.pod" and e["wire_form"] == "spec", e
+assert e["description"] == {"k8s.pod.name": "probe", "k8s.pod.phase": "Pending"}, e
+assert e["interval_s"] == 600 and e["observer"] == "token:default", e' "$POD_KEY" <"$WORK/$PHASE/entities.json"
+pod_history 1 || fail "a first state must be one row"
+probe_counters 1 0 0 "after the first state"
+pass "a state sent with gzip opened the entity: live, phase Pending, one row"
+
+probe state:Running "$POD"
+await "the second row" 30 pod_history 2
+py 'new, old = d["versions"]
+assert new["description"]["k8s.pod.phase"] == "Running", new
+assert old["description"]["k8s.pod.phase"] == "Pending", old
+assert new["valid_from_ns"] > old["valid_from_ns"], d
+assert new["deleted_at_ns"] is None and old["deleted_at_ns"] is None, d' <"$WORK/$PHASE/history.json"
+entity_count_is 1 "" || fail "a changed state must not add an entity"
+py 'assert d["entities"][0]["description"]["k8s.pod.phase"] == "Running", d' <"$WORK/$PHASE/entities.json"
+probe_counters 2 0 0 "after the changed state"
+pass "a changed state opened a second row; the first is kept as it was (phase Pending)"
+
+probe delete "$POD"
+await "the entity to be gone" 30 entity_count_is 1 "?liveness=gone"
+py 'e = d["entities"][0]
+assert e["liveness"] == "gone" and e["deleted_at_ns"] is not None and e["delete_reason"] == "probe", e' <"$WORK/$PHASE/entities.json"
+entity_count_is 0 "?liveness=live" || fail "a deleted entity is still listed as live"
+pod_history 2 || fail "a delete must mark the latest row, not add one"
+probe_counters 2 1 0 "after the delete"
+pass "a delete made the entity gone (reason probe), still two rows"
+
+probe state:Running "$POD"
+await "the entity to be back" 30 entity_count_is 1 "?liveness=live"
+py 'e = d["entities"][0]
+assert e["deleted_at_ns"] is None and e["delete_reason"] is None, e' <"$WORK/$PHASE/entities.json"
+entity_count_is 0 "?liveness=gone" || fail "the entity is back and still listed as gone"
+pod_history 3 || fail "a state after a delete must open a new row"
+py 'back, deleted, first = d["versions"]
+assert back["deleted_at_ns"] is None and back["valid_from_ns"] > deleted["deleted_at_ns"], d
+assert deleted["delete_reason"] == "probe" and first["deleted_at_ns"] is None, d' <"$WORK/$PHASE/history.json"
+probe_counters 3 1 0 "after the return"
+pass "a state after the delete brought the entity back in a third row; the deleted row keeps its mark"
+
+[[ "$(plain_counter tumultd_entity_event_keys_filtered_total)" == 0 ]] || fail "a key was filtered before any label was sent"
+probe labelled "$POD"
+await "the labelled state" 30 pod_history 4
+fetch "/api/entities" entities.json
+py 'e = d["entities"][0]
+assert e["description"] == {"k8s.pod.name": "probe", "k8s.pod.phase": "Running", "k8s.pod.label.app": "checkout"}, e
+print("     description", sorted(e["description"]))' <"$WORK/$PHASE/entities.json"
+if grep -q -e "$SECRET" -e annotation -e payments -e maintainer "$WORK/$PHASE/entities.json" "$WORK/$PHASE/history.json"; then
+  fail "a key that is not allow-listed came back from the API"
+fi
+[[ "$(plain_counter tumultd_entity_event_keys_filtered_total)" == 4 ]] || fail "expected four filtered keys (a label, the annotation, a container label, a nested map)"
+probe_counters 4 1 0 "after the labelled state"
+pass "labels and annotation sent: only the allow-listed label came back, four keys counted as filtered"
+
+probe oversized "$POD-big"
+await "the oversized drop" 30 counter_at_least tumultd_entity_events_dropped_total oversized 1
+probe_counters 4 1 1 "after the oversized state"
+entity_count_is 1 "" || fail "an oversized state left an entity behind"
+py 'assert d["total"] == 1 and d["truncated"] is False and d["next_cursor"] is None, d' <"$WORK/$PHASE/entities.json"
+for reason in unknown_kind no_type no_identity malformed export_limit; do
+  [[ "$(counter tumultd_entity_events_dropped_total "$reason")" == 0 ]] || fail "an event was dropped as $reason"
+done
+fetch "/api/logs?range=24h&attr=k8s.pod.uid=$POD-big" logs.json
+py 'assert d["count"] == 0, d' <"$WORK/$PHASE/logs.json"
+pass "a description over 64 KiB: counted as dropped (oversized), no entity, not stored as a log"
+stop_daemon
+if grep -q -a -e "$SECRET" "$WORK/$PHASE"/lake.duckdb*; then fail "the manifest's secret is in the lake file"; fi
+pass "the annotation's content is not in the lake file"
 
 echo "ALL ENTITY EVENT PROOF CHECKS PASSED (run $RUN, $PROFILE build)"

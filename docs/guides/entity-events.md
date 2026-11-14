@@ -496,4 +496,24 @@ records are in `logs`, no entity row), the legacy form and the
 specification form over OTLP/gRPC (one `host` entity, `live`, the right
 `wire_form`, exactly one row after several heartbeats, nothing in `logs`,
 then `expired` three intervals after the Collector is stopped), and the
-specification form over OTel-Arrow.
+specification form over OTel-Arrow. The Collector's `otlp` exporter runs
+with its default compression (gzip).
+
+A fifth phase has no Collector. One quiet host never changes, deletes or
+labels anything, so the example binary
+`tumult-ingest/examples/entity_probe.rs` sends those events itself, one
+gzip-compressed OTLP/gRPC export each, for a `k8s.pod` entity, to a daemon
+started with `KRONIKA_ENTITY_LABEL_ALLOW=app`:
+
+| Sent | Checked on the API and `/metrics` |
+|---|---|
+| a state, phase `Pending` | one live entity, one row |
+| a state, phase `Running` | a second row; the first still says `Pending` |
+| a delete | the entity is `gone` with its reason, still two rows |
+| the state again | the entity is `live` in a third row; the deleted row keeps its mark |
+| a state with two labels, an annotation holding a manifest, a container label and a nested map of labels | the description holds the name, the phase and `k8s.pod.label.app` only; `tumultd_entity_event_keys_filtered_total` is 4; the secret in the manifest is in no API answer and not in the lake file |
+| a state whose description is one byte over 64 KiB | `tumultd_entity_events_dropped_total{reason="oversized"}` is 1, no entity, no log record |
+
+Build the probe with
+`cargo build -p tumult-ingest --example entity_probe` before running the
+proof.
