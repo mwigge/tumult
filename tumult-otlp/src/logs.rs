@@ -1,7 +1,7 @@
 //! `ExportLogsServiceRequest` → `Vec<LogRow>`.
 
 use opentelemetry_proto::tonic::collector::logs::v1::ExportLogsServiceRequest;
-use opentelemetry_proto::tonic::logs::v1::LogRecord;
+use opentelemetry_proto::tonic::logs::v1::{LogRecord, ScopeLogs};
 use tumult_lake::LogRow;
 
 use crate::common::{self, ResourceCtx};
@@ -21,6 +21,21 @@ fn log_ts(record: &LogRecord, received_at_ns: i64) -> i64 {
     }
 }
 
+/// The record's `EventName`, `None` when the sender left it empty.
+fn event_name(record: &LogRecord) -> Option<String> {
+    if record.event_name.is_empty() {
+        return None;
+    }
+    Some(record.event_name.clone())
+}
+
+/// The attributes of the scope that emitted `scope_logs` (empty without one).
+fn scope_attrs(scope_logs: &ScopeLogs) -> Vec<(String, String)> {
+    scope_logs.scope.as_ref().map_or_else(Vec::new, |scope| {
+        common::unpromoted_attrs(&scope.attributes, &[])
+    })
+}
+
 /// Convert an OTLP logs export request into store rows (pure).
 /// `received_at_ns` is the wall-clock time the export reached kronika, used
 /// only for records that carry no timestamp of their own (see `log_ts`).
@@ -33,6 +48,7 @@ pub fn logs_request_to_rows(
     for resource_logs in &request.resource_logs {
         let resource = ResourceCtx::from_resource(resource_logs.resource.as_ref());
         for scope_logs in &resource_logs.scope_logs {
+            let scope_attrs = scope_attrs(scope_logs);
             for record in &scope_logs.log_records {
                 out.push(LogRow {
                     ts_ns: log_ts(record, received_at_ns),
@@ -46,6 +62,8 @@ pub fn logs_request_to_rows(
                     service_name: resource.service_name.clone(),
                     log_attrs: common::unpromoted_attrs(&record.attributes, &[]),
                     resource_attrs: resource.resource_attrs.clone(),
+                    event_name: event_name(record),
+                    scope_attrs: scope_attrs.clone(),
                 });
             }
         }
@@ -110,6 +128,53 @@ mod tests {
         assert_eq!(row.trace_id.as_deref(), Some("01".repeat(16).as_str()));
         // Log attributes are kept verbatim (no promotion on the logs table).
         assert_eq!(row.log_attrs.len(), 1);
+    }
+
+    #[test]
+    fn event_name_and_scope_attributes_are_kept() {
+        use opentelemetry_proto::tonic::common::v1::InstrumentationScope;
+        let flag = KeyValue {
+            key: "otel.entity.event_as_log".into(),
+            value: Some(AnyValue {
+                value: Some(Value::BoolValue(true)),
+            }),
+            key_strindex: 0,
+        };
+        let named = LogRecord {
+            event_name: "entity.state".into(),
+            ..LogRecord::default()
+        };
+        let request = ExportLogsServiceRequest {
+            resource_logs: vec![ResourceLogs {
+                resource: None,
+                scope_logs: vec![
+                    ScopeLogs {
+                        scope: Some(InstrumentationScope {
+                            attributes: vec![flag],
+                            ..InstrumentationScope::default()
+                        }),
+                        log_records: vec![named],
+                        schema_url: String::new(),
+                    },
+                    ScopeLogs {
+                        scope: None,
+                        log_records: vec![LogRecord::default()],
+                        schema_url: String::new(),
+                    },
+                ],
+                schema_url: String::new(),
+            }],
+        };
+        let rows = logs_request_to_rows(&request, 42);
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].event_name.as_deref(), Some("entity.state"));
+        assert_eq!(
+            rows[0].scope_attrs,
+            vec![("otel.entity.event_as_log".to_string(), "true".to_string())]
+        );
+        // A record without an event name or a scope stays empty, not "".
+        assert_eq!(rows[1].event_name, None);
+        assert!(rows[1].scope_attrs.is_empty());
     }
 
     #[test]
