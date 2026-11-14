@@ -6,7 +6,7 @@ use std::sync::OnceLock;
 use opentelemetry::metrics::{Meter, MeterProvider};
 use opentelemetry::trace::{Span, TraceContextExt, TraceId, Tracer};
 use opentelemetry::{global, Context, KeyValue, Value};
-use opentelemetry_sdk::metrics::data::{AggregatedMetrics, MetricData};
+use opentelemetry_sdk::metrics::data::{AggregatedMetrics, MetricData, ScopeMetrics};
 use opentelemetry_sdk::metrics::{InMemoryMetricExporter, SdkMeterProvider};
 use opentelemetry_sdk::propagation::TraceContextPropagator;
 use opentelemetry_sdk::trace::{InMemorySpanExporter, SdkTracerProvider, SpanData};
@@ -231,7 +231,7 @@ impl MetricCapture {
             .map(|export| {
                 export
                     .scope_metrics()
-                    .flat_map(|scope| scope.metrics())
+                    .flat_map(ScopeMetrics::metrics)
                     .filter(|metric| metric.name() == name)
                     .map(|metric| match metric.data() {
                         AggregatedMetrics::F64(data) => series_of(data, |v| v),
@@ -454,9 +454,9 @@ mod tests {
         let capture = MetricCapture::new();
         let counter = capture.meter("unit").u64_counter("hits").build();
         counter.add(1, &[]);
-        assert_eq!(capture.points("hits")[0].value, 1.0);
+        assert!((capture.points("hits")[0].value - 1.0).abs() < f64::EPSILON);
         counter.add(4, &[]);
-        assert_eq!(capture.points("hits")[0].value, 5.0);
+        assert!((capture.points("hits")[0].value - 5.0).abs() < f64::EPSILON);
     }
 
     #[test]
