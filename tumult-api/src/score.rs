@@ -457,9 +457,11 @@ impl ScoreRuntime {
     }
 
     /// Count one snapshot that was not stored; returns the total since
-    /// start. Responses carry the count, so none built before is reused.
+    /// start. Responses carry the count, so none built before is reused,
+    /// and `/metrics` has it as `tumultd_score_snapshots_skipped_total`.
     pub fn snapshot_skipped(&self) -> u64 {
         let total = self.snapshots_skipped.fetch_add(1, Ordering::SeqCst) + 1;
+        tumult_ingest::daemon_metrics::score_snapshot_skipped();
         self.invalidate();
         total
     }
@@ -818,8 +820,14 @@ spec:
         let why = runtime.snapshot_block().expect("the snapshot is blocked");
         assert!(why.contains("band_good"), "{why}");
         let before = runtime.generation();
+        let exported = tumult_ingest::daemon_metrics::score_snapshots_skipped_total();
         assert_eq!(runtime.snapshot_skipped(), 1);
         assert_eq!(runtime.snapshot_skipped(), 2);
+        // The process counter of `/metrics`; other tests may count too.
+        assert!(
+            tumult_ingest::daemon_metrics::score_snapshots_skipped_total() >= exported + 2,
+            "a skipped snapshot reaches /metrics"
+        );
         assert!(
             runtime.generation() > before,
             "the count is in the response"
