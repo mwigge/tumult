@@ -313,6 +313,46 @@ mod tests {
         }
     }
 
+    // ── discover_all_plugins ───────────────────────────────────
+
+    /// The default-path entry point adds nothing to the configured one except
+    /// where it looks: `$HOME/.tumult/plugins` and each `TUMULT_PLUGIN_PATH`
+    /// entry. Names are unique to this test, so whatever `./plugins` holds
+    /// does not matter.
+    #[test]
+    fn discover_all_plugins_reads_the_home_directory_and_the_plugin_path_variable() {
+        let home = TempDir::new().unwrap();
+        let extra = TempDir::new().unwrap();
+        let empty = TempDir::new().unwrap();
+        write_manifest(
+            &home.path().join(".tumult").join("plugins"),
+            "from-home",
+            &sample_manifest("discovery-test-from-home"),
+        );
+        write_manifest(
+            extra.path(),
+            "from-env",
+            &sample_manifest("discovery-test-from-env"),
+        );
+        let mut env = tumult_test_utils::EnvGuard::lock();
+        env.set("HOME", home.path()).set(
+            "TUMULT_PLUGIN_PATH",
+            format!("{}:{}", empty.path().display(), extra.path().display()),
+        );
+
+        let manifests = discover_all_plugins().expect("discovery never fails");
+
+        let ours: Vec<&str> = manifests
+            .iter()
+            .map(|manifest| manifest.name.as_str())
+            .filter(|name| name.starts_with("discovery-test-"))
+            .collect();
+        assert_eq!(
+            ours,
+            ["discovery-test-from-home", "discovery-test-from-env"]
+        );
+    }
+
     // ── discover_plugins_in_dir ────────────────────────────────
 
     #[test]
@@ -540,10 +580,12 @@ mod tests {
         fs::create_dir(&bad_plugin).unwrap();
         fs::write(bad_plugin.join("plugin.toon"), "{{{{").unwrap();
 
-        let config = PluginDiscoveryConfig {
-            plugin_paths: vec![dir.path().to_path_buf()],
-        };
-        let manifests = discover_report_with_config(&config).into_manifests();
+        // One directory, not the search path: the count below must not depend
+        // on what `./plugins`, `$HOME` or `TUMULT_PLUGIN_PATH` hold.
+        let report = discover_plugins_in_dir(dir.path());
+        assert_eq!(report.warnings.len(), 1, "{:?}", report.warnings);
+
+        let manifests = report.into_manifests();
         assert_eq!(manifests.len(), 1);
         assert_eq!(manifests[0].name, "tumult-kafka");
     }
