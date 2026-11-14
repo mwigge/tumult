@@ -48,7 +48,7 @@ pub use error::{err, err_sources, error_type, ErrorChain, SourceChain};
 pub use fields::{bounded, TypedFields, MAX_FIELD_BYTES};
 pub use filter::{default_directives, is_exporter_internal};
 pub use format::{EventFormatter, LogFormat, LogResource};
-pub use sanitize::{redact_url, sanitize_url, server_address, ServerAddress};
+pub use sanitize::{redact_url, sanitize_url, server_address, ServerAddress, REDACTED_URL};
 pub use selection::{choose_format, FormatChoice, FORMAT_ENV};
 
 /// Environment variable naming the deployment environment (`prod`, `dev`,

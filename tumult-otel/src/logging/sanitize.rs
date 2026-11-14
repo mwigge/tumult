@@ -1,445 +1,702 @@
 //! Making values safe to log.
+//!
+//! A URL is shown clean or not at all. [`sanitize_url`] and
+//! [`server_address`] accept one reading only, the strict one, and answer
+//! with [`REDACTED_URL`] for anything else: a value that is cut where it
+//! merely looks like a URL ends shows whatever stood before that point, and
+//! that can be the password.
 
-/// Removes the parts of a URL that can carry credentials — the userinfo
-/// (`user:password@`), the query string and the fragment — so the result is
-/// safe to log as `url.full`.
+/// What stands in for a URL, or a host, that cannot be shown to be free of
+/// credentials. No part of the input is in it.
+pub const REDACTED_URL: &str = "[redacted-url]";
+
+/// What stands in for a secret value inside a longer text.
+const REDACTED: &str = "[redacted]";
+
+/// A query, fragment or path parameter value shorter than this is not
+/// treated as a secret by [`redact_url`]: it cannot be one, and replacing
+/// every `1` in an error text would leave nothing to read.
+const MIN_PARAMETER_SECRET_BYTES: usize = 3;
+
+/// The URL without the parts that can carry credentials — the userinfo
+/// (`user:password@`), the query string, the fragment and path parameters
+/// (`;key=value`) — so the result is safe to log as `url.full`.
 ///
-/// Works on anything URL-shaped, with or without a scheme, and never fails:
-/// a value that is not a URL is returned without its query and fragment.
-///
-/// A password with an unescaped `/` (`http://u:pa/ss@host`) is recognised
-/// when what precedes the `/` cannot be a `host[:port]`; see
-/// [`split_userinfo`] for the one form that stays ambiguous.
+/// Accepts `[scheme://][userinfo@]host[:port][/path]` and nothing else.
+/// The answer is [`REDACTED_URL`] when the value is not of that form, and
+/// when an `@` stands after the first `/`, `?` or `#`: that is either a
+/// path with an `@` in it or a password with an unescaped delimiter, and
+/// nothing in the value says which.
 #[must_use]
 pub fn sanitize_url(raw: &str) -> String {
-    UrlParts::of(raw).sanitized()
-}
-
-/// Replaces every occurrence of `url` in `text` with its
-/// [sanitised](sanitize_url) form.
-///
-/// Error messages for a bad endpoint usually quote the endpoint, and not
-/// always as it was configured: libraries lower-case the scheme and host,
-/// add or drop a trailing slash and the scheme's default port. Each of those
-/// spellings is replaced, and whatever is left of the `user:password@` text
-/// is removed wherever it stands, so the credentials stay out of
-/// `error.message` even in a spelling nobody predicted.
-#[must_use]
-pub fn redact_url(text: &str, url: &str) -> String {
-    let parts = UrlParts::of(url);
-    let userinfo = parts.userinfo.filter(|userinfo| !userinfo.is_empty());
-    if userinfo.is_none() && parts.tail.is_empty() {
-        return text.to_string();
+    if raw.is_empty() {
+        return String::new();
     }
-    let mut redacted = text.to_string();
-    for (quoted, clean) in parts.spellings() {
-        redacted = redacted.replace(&quoted, &clean);
-    }
-    match userinfo {
-        Some(userinfo) => redacted.replace(&format!("{userinfo}@"), ""),
-        None => redacted,
-    }
+    CleanUrl::parse(raw).map_or_else(|| REDACTED_URL.to_string(), |clean| clean.spell())
 }
 
 /// The host and port a URL points at.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ServerAddress {
-    /// The host name or address, without brackets around an IPv6 address.
-    /// Safe to record as `server.address`.
+    /// The host name or address, without brackets around an IPv6 address;
+    /// [`REDACTED_URL`] when the URL could not be read. Safe to record as
+    /// `server.address`.
     pub host: String,
     /// The port, when the URL names one. Recorded as `server.port`.
     pub port: Option<u16>,
 }
 
-/// The host and port of `url`, with everything that can carry a credential
-/// (userinfo, path, query, fragment) left out.
+/// The host and port of `url`, read as strictly as [`sanitize_url`] reads
+/// it: the host is [`REDACTED_URL`] when the URL is not provably clean.
 #[must_use]
 pub fn server_address(url: &str) -> ServerAddress {
-    let host_port = UrlParts::of(url).host_port;
-    let port = port_of(host_port);
-    let host = &host_port[..host_port.len() - port.map_or(0, |port| port.len() + 1)];
-    let host = host
+    let Some(clean) = CleanUrl::parse(url) else {
+        return ServerAddress {
+            host: REDACTED_URL.to_string(),
+            port: None,
+        };
+    };
+    let host = clean
+        .host
         .strip_prefix('[')
         .and_then(|address| address.strip_suffix(']'))
-        .unwrap_or(host);
+        .unwrap_or(clean.host);
     ServerAddress {
         host: host.to_string(),
-        port: port.and_then(|port| port.parse().ok()),
+        port: clean.port,
     }
 }
 
-/// A URL, split at the places a credential can hide.
-struct UrlParts<'a> {
+/// Replaces the secrets of `url` wherever they stand in `text`.
+///
+/// Error messages for a bad endpoint usually quote the endpoint, and not as
+/// it was configured: with another case, port, path, parameter order or
+/// percent-encoding, or only a part of it. So this does not look for the
+/// URL. It takes the secret values out of `url` — the password (the whole
+/// userinfo when it has no `:`), and every query, fragment and path
+/// parameter value of at least three bytes — and replaces each occurrence
+/// of one with `[redacted]`, whether the text spells it raw, percent-encoded
+/// or a mix of both. A `user:[redacted]@` that is left is removed.
+#[must_use]
+pub fn redact_url(text: &str, url: &str) -> String {
+    let secrets = Secrets::of(url);
+    if secrets.values.is_empty() {
+        return text.to_string();
+    }
+    let redacted = replace_values(text, &secrets.values);
+    secrets.users.iter().fold(redacted, |text, user| {
+        text.replace(&format!("{user}:{REDACTED}@"), "")
+    })
+}
+
+/// A URL that was read in full, with nothing left over.
+struct CleanUrl<'a> {
     scheme: Option<&'a str>,
-    /// `user` or `user:password`, without the `@`.
-    userinfo: Option<&'a str>,
-    /// `host` or `host:port`; an IPv6 address keeps its brackets.
-    host_port: &'a str,
-    path: &'a str,
-    /// The query and fragment, with their `?`/`#`; empty when absent.
-    tail: &'a str,
+    /// An IPv6 address keeps its brackets.
+    host: &'a str,
+    port: Option<u16>,
+    /// The path without parameters; empty or starting with `/`.
+    path: String,
 }
 
-impl<'a> UrlParts<'a> {
-    /// Splits anything URL-shaped, with or without a scheme. Never fails:
-    /// a value that is not a URL ends up as a host and a path.
-    fn of(raw: &'a str) -> Self {
-        let (head, tail) = raw.split_at(raw.find(['?', '#']).unwrap_or(raw.len()));
-        let (scheme, rest) = match head.split_once("://") {
-            Some((scheme, rest)) => (Some(scheme), rest),
-            None => (None, head),
-        };
-        let (userinfo, located) = split_userinfo(rest);
-        let (host_port, path) = located.split_at(located.find('/').unwrap_or(located.len()));
-        Self {
+impl<'a> CleanUrl<'a> {
+    /// `None` unless `raw` is `[scheme://][userinfo@]host[:port][/path]`
+    /// with an optional query and fragment, and no `@` past the authority.
+    fn parse(raw: &'a str) -> Option<Self> {
+        let (scheme, rest) = split_scheme(raw)?;
+        let (authority, beyond) = rest.split_at(end_of_authority(rest));
+        if beyond.contains('@') {
+            return None;
+        }
+        let host_port = authority
+            .rsplit_once('@')
+            .map_or(authority, |(_userinfo, host_port)| host_port);
+        let (host, port) = split_host_port(host_port)?;
+        let path = &beyond[..beyond.find(['?', '#']).unwrap_or(beyond.len())];
+        Some(Self {
             scheme,
-            userinfo,
-            host_port,
-            path,
-            tail,
-        }
+            host,
+            port,
+            path: without_parameters(path),
+        })
     }
 
-    /// The URL without its userinfo, query and fragment.
-    fn sanitized(&self) -> String {
-        spell(self.scheme, None, self.host_port, self.path, "")
-    }
-
-    /// The spellings this URL may be quoted in, each paired with its
-    /// sanitised form, longest first so that a spelling is never replaced
-    /// through one of its own prefixes.
-    fn spellings(&self) -> Vec<(String, String)> {
-        let schemes = with_lowercase(self.scheme.map(str::to_string).into_iter().collect());
-        let default_port = self.scheme.and_then(default_port);
-        let host_ports = with_lowercase(host_port_spellings(self.host_port, default_port));
-        let paths = match self.path {
-            "" => vec!["", "/"],
-            "/" => vec!["/", ""],
-            path => vec![path],
-        };
-        let mut spellings = Vec::new();
-        for scheme in schemes.iter().map(|scheme| Some(scheme.as_str())).chain(
-            // A URL without a scheme has exactly one (absent) scheme.
-            self.scheme.is_none().then_some(None),
-        ) {
-            for host_port in &host_ports {
-                for path in &paths {
-                    spellings.push((
-                        spell(scheme, self.userinfo, host_port, path, self.tail),
-                        spell(scheme, None, host_port, path, ""),
-                    ));
-                }
-            }
-        }
-        spellings.sort_by_key(|(quoted, _)| std::cmp::Reverse(quoted.len()));
-        spellings
+    fn spell(&self) -> String {
+        let scheme = self
+            .scheme
+            .map(|scheme| format!("{scheme}://"))
+            .unwrap_or_default();
+        let port = self.port.map(|port| format!(":{port}")).unwrap_or_default();
+        format!("{scheme}{}{port}{}", self.host, self.path)
     }
 }
 
-/// Puts a URL back together from its parts.
-fn spell(
-    scheme: Option<&str>,
-    userinfo: Option<&str>,
-    host_port: &str,
-    path: &str,
-    tail: &str,
-) -> String {
-    let scheme = scheme
-        .map(|scheme| format!("{scheme}://"))
-        .unwrap_or_default();
-    let userinfo = userinfo
-        .map(|userinfo| format!("{userinfo}@"))
-        .unwrap_or_default();
-    format!("{scheme}{userinfo}{host_port}{path}{tail}")
+/// Where the authority of `rest` (a URL from just after its scheme) ends:
+/// at the first `/`, `?` or `#`.
+fn end_of_authority(rest: &str) -> usize {
+    rest.find(['/', '?', '#']).unwrap_or(rest.len())
 }
 
-/// `values`, each followed by its lower-case form when that differs.
-fn with_lowercase(values: Vec<String>) -> Vec<String> {
-    let mut all = Vec::with_capacity(values.len() * 2);
-    for value in values {
-        let lower = value.to_ascii_lowercase();
-        let differs = lower != value;
-        all.push(value);
-        if differs {
-            all.push(lower);
-        }
-    }
-    all
-}
-
-/// The port a scheme implies when the URL names none.
-fn default_port(scheme: &str) -> Option<&'static str> {
-    match scheme.to_ascii_lowercase().as_str() {
-        "http" => Some("80"),
-        "https" => Some("443"),
-        _ => None,
-    }
-}
-
-/// `host_port` as configured, and with the scheme's default port dropped
-/// (when it names it) or added (when it names none).
-fn host_port_spellings(host_port: &str, default_port: Option<&str>) -> Vec<String> {
-    let mut spellings = vec![host_port.to_string()];
-    let Some(default_port) = default_port else {
-        return spellings;
+/// Splits `scheme://` off the front. A value without `://` has no scheme;
+/// one with something other than a scheme before it is not a URL.
+fn split_scheme(raw: &str) -> Option<(Option<&str>, &str)> {
+    let Some((scheme, rest)) = raw.split_once("://") else {
+        return Some((None, raw));
     };
-    match port_of(host_port) {
-        Some(port) if port == default_port => {
-            let host = &host_port[..host_port.len() - port.len() - 1];
-            spellings.push(host.to_string());
-        }
-        Some(_) => {}
-        None => spellings.push(format!("{host_port}:{default_port}")),
-    }
-    spellings
+    is_scheme(scheme).then_some((Some(scheme), rest))
 }
 
-/// Splits `user:password@` off the front of `rest`, a URL from just after
-/// its scheme.
-///
-/// The authority ends at the first `/` and the userinfo at the last `@`
-/// inside it. A password with an unescaped `/` breaks that rule:
-/// `u:pa/ss@host` would read as host `u`, port `pa`, path `/ss@host`. No
-/// host has such a port, so when what would be the host is not a plausible
-/// `host[:port]`, the userinfo is taken to run up to the last `@` of the
-/// whole value instead.
-///
-/// One form stays ambiguous and is read as the URL standard reads it:
-/// `http://user/pass@host`, where the text before the `/` could be a host,
-/// is host `user` with the path `/pass@host`.
-fn split_userinfo(rest: &str) -> (Option<&str>, &str) {
-    let authority_end = rest.find('/').unwrap_or(rest.len());
-    let at_in_authority = rest[..authority_end].rfind('@');
-    let host_start = at_in_authority.map_or(0, |at| at + 1);
-    let boundary = if is_host_port(&rest[host_start..authority_end]) {
-        at_in_authority
+/// RFC 3986: a letter, then letters, digits, `+`, `-` and `.`.
+fn is_scheme(candidate: &str) -> bool {
+    let mut bytes = candidate.bytes();
+    bytes
+        .next()
+        .is_some_and(|first| first.is_ascii_alphabetic())
+        && bytes.all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'+' | b'-' | b'.'))
+}
+
+/// Splits `host[:port]`; `None` unless the host is a name or address and
+/// the port, when there is one, a port number.
+fn split_host_port(host_port: &str) -> Option<(&str, Option<u16>)> {
+    let (host, after) = if let Some(bracketed) = host_port.strip_prefix('[') {
+        let (address, after) = bracketed.split_once(']')?;
+        is_ipv6_address(address).then_some(())?;
+        (&host_port[..address.len() + 2], after)
     } else {
-        rest.rfind('@')
+        let colon = host_port.find(':').unwrap_or(host_port.len());
+        let (name, after) = host_port.split_at(colon);
+        is_host_name(name).then_some(())?;
+        (name, after)
     };
-    match boundary {
-        Some(at) => (Some(&rest[..at]), &rest[at + 1..]),
-        None => (None, rest),
+    if after.is_empty() {
+        return Some((host, None));
+    }
+    let port = after.strip_prefix(':')?;
+    let all_digits = !port.is_empty() && port.bytes().all(|byte| byte.is_ascii_digit());
+    all_digits.then_some(())?;
+    Some((host, Some(port.parse().ok()?)))
+}
+
+fn is_host_name(candidate: &str) -> bool {
+    !candidate.is_empty()
+        && candidate
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'_'))
+}
+
+fn is_ipv6_address(candidate: &str) -> bool {
+    !candidate.is_empty()
+        && candidate
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() || matches!(byte, b':' | b'.'))
+}
+
+/// `path` with the `;parameters` of every segment removed.
+fn without_parameters(path: &str) -> String {
+    let segments: Vec<&str> = path
+        .split('/')
+        .map(|segment| segment.split(';').next().unwrap_or(segment))
+        .collect();
+    segments.join("/")
+}
+
+/// What must not be quoted from a URL.
+struct Secrets {
+    /// Percent-decoded, longest first, without duplicates.
+    values: Vec<Vec<u8>>,
+    /// The user names that stand before a password.
+    users: Vec<String>,
+}
+
+impl Secrets {
+    /// Reads `url` generously: every reading of it that yields a userinfo
+    /// counts, since a library may have quoted it under any of them.
+    fn of(url: &str) -> Self {
+        let rest = url.split_once("://").map_or(url, |(_scheme, rest)| rest);
+        let mut secrets = Self {
+            values: Vec::new(),
+            users: Vec::new(),
+        };
+        let strict = rest[..end_of_authority(rest)].rfind('@');
+        let generous = rest.rfind('@');
+        for at in [strict, generous].into_iter().flatten() {
+            secrets.add_userinfo(&rest[..at]);
+        }
+        for value in parameter_values(rest) {
+            secrets.add_value(value, MIN_PARAMETER_SECRET_BYTES);
+        }
+        secrets
+            .values
+            .sort_by_key(|value| std::cmp::Reverse(value.len()));
+        secrets.values.dedup();
+        secrets.users.dedup();
+        secrets
+    }
+
+    fn add_userinfo(&mut self, userinfo: &str) {
+        let Some((user, password)) = userinfo.split_once(':') else {
+            // No password: the userinfo is a token.
+            self.add_value(userinfo, 1);
+            return;
+        };
+        self.add_value(password, 1);
+        if !user.is_empty() {
+            self.users.push(user.to_string());
+        }
+    }
+
+    fn add_value(&mut self, value: &str, min_bytes: usize) {
+        let decoded = percent_decode(value.as_bytes());
+        if decoded.len() >= min_bytes {
+            self.values.push(decoded);
+        }
     }
 }
 
-/// What follows the host in `host_port`: empty, or `:port`. An IPv6
-/// address is only a host inside brackets.
-fn after_host(host_port: &str) -> &str {
-    let bracketed = host_port
-        .strip_prefix('[')
-        .and_then(|address| address.split_once(']'));
-    match bracketed {
-        Some((_address, after)) => after,
-        None => host_port.find(':').map_or("", |colon| &host_port[colon..]),
-    }
+/// The values of the query, fragment and path parameters of `rest`, a URL
+/// from just after its scheme. A parameter without `=` is its own value.
+fn parameter_values(rest: &str) -> impl Iterator<Item = &str> {
+    let (head, tail) = rest.split_at(rest.find(['?', '#']).unwrap_or(rest.len()));
+    let in_path = head
+        .split('/')
+        .flat_map(|segment| segment.split(';').skip(1));
+    let in_tail = tail.split(['?', '#', '&', ';']);
+    in_path
+        .chain(in_tail)
+        .filter(|parameter| !parameter.is_empty())
+        .map(|parameter| {
+            parameter
+                .split_once('=')
+                .map_or(parameter, |(_key, value)| value)
+        })
 }
 
-/// The port named in `host_port`, if any, as written.
-fn port_of(host_port: &str) -> Option<&str> {
-    after_host(host_port).strip_prefix(':')
+/// `text` with every occurrence of one of `values` replaced by
+/// [`REDACTED`]. `values` are percent-decoded and tried in order.
+fn replace_values(text: &str, values: &[Vec<u8>]) -> String {
+    let mut redacted = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(character) = rest.chars().next() {
+        let matched = values
+            .iter()
+            .filter_map(|value| spelled_at_start(rest, value))
+            .find(|&end| rest.is_char_boundary(end));
+        if let Some(end) = matched {
+            redacted.push_str(REDACTED);
+            rest = &rest[end..];
+            continue;
+        }
+        redacted.push(character);
+        rest = &rest[character.len_utf8()..];
+    }
+    redacted
 }
 
-/// Whether `candidate` can be a `host` or `host:port`: nothing but an
-/// optional all-digit port follows the host.
-fn is_host_port(candidate: &str) -> bool {
-    let after = after_host(candidate);
-    match after.strip_prefix(':') {
-        Some(port) => port.bytes().all(|byte| byte.is_ascii_digit()),
-        None => after.is_empty(),
+/// Where `value` ends when `text` starts with it, each byte spelled either
+/// as itself or percent-encoded.
+fn spelled_at_start(text: &str, value: &[u8]) -> Option<usize> {
+    let bytes = text.as_bytes();
+    let mut at = 0;
+    for &expected in value {
+        at += spelling_len(&bytes[at..], expected)?;
     }
+    (at > 0).then_some(at)
+}
+
+/// How many bytes at the start of `bytes` spell `expected`: three for
+/// `%XX`, one for the byte itself.
+fn spelling_len(bytes: &[u8], expected: u8) -> Option<usize> {
+    if bytes.get(..3).and_then(escaped_byte) == Some(expected) {
+        return Some(3);
+    }
+    (bytes.first() == Some(&expected)).then_some(1)
+}
+
+/// The byte a `%XX` escape stands for.
+fn escaped_byte(escape: &[u8]) -> Option<u8> {
+    let [b'%', high, low] = escape else {
+        return None;
+    };
+    let high = char::from(*high).to_digit(16)?;
+    let low = char::from(*low).to_digit(16)?;
+    u8::try_from(high * 16 + low).ok()
+}
+
+/// `raw` with every valid `%XX` escape replaced by its byte.
+fn percent_decode(raw: &[u8]) -> Vec<u8> {
+    let mut decoded = Vec::with_capacity(raw.len());
+    let mut at = 0;
+    while let Some(&byte) = raw.get(at) {
+        if let Some(escaped) = raw.get(at..at + 3).and_then(escaped_byte) {
+            decoded.push(escaped);
+            at += 3;
+            continue;
+        }
+        decoded.push(byte);
+        at += 1;
+    }
+    decoded
 }
 
 #[cfg(test)]
 mod tests {
     use super::{redact_url, sanitize_url, server_address, ServerAddress};
 
-    #[test]
-    fn server_address_is_the_host_and_port_only() {
-        let cases = [
-            (
-                "http://admin:s3cret@clickhouse.internal:8123/db?password=x",
-                "clickhouse.internal",
-                Some(8123),
-            ),
-            ("https://clickhouse.internal", "clickhouse.internal", None),
-            ("http://u:p@[::1]:8123", "::1", Some(8123)),
-            ("http://[2001:db8::7]/x", "2001:db8::7", None),
-            ("localhost:9000", "localhost", Some(9000)),
-            ("http://u:pa/ss@host:8123", "host", Some(8123)),
-            ("http://host:notaport/x", "host", None),
-        ];
-        for (url, host, port) in cases {
-            let expected = ServerAddress {
-                host: host.to_string(),
-                port,
-            };
-            assert_eq!(server_address(url), expected, "{url}");
-        }
+    /// What stands in for a URL that cannot be shown to be clean.
+    const PLACEHOLDER: &str = "[redacted-url]";
+
+    /// Whether any three bytes in a row of `secret` occur in `shown`.
+    fn leaks(shown: &str, secret: &str) -> bool {
+        secret
+            .as_bytes()
+            .windows(3)
+            .any(|window| shown.as_bytes().windows(3).any(|seen| seen == window))
     }
 
-    #[test]
-    fn redact_url_replaces_every_quoted_occurrence() {
-        let url = "http://alice:hunter2@host:4317/?token=abc";
-        let text = format!("invalid URI {url}. Reason: bad ({url})");
-        assert_eq!(
-            redact_url(&text, url),
-            "invalid URI http://host:4317/. Reason: bad (http://host:4317/)"
-        );
-    }
+    /// (input, sanitised URL, host, port, the secrets in the input)
+    type Case = (
+        &'static str,
+        &'static str,
+        &'static str,
+        Option<u16>,
+        &'static [&'static str],
+    );
+
+    const CASES: &[Case] = &[
+        // Userinfo that holds a character which ends an authority: nothing
+        // of the input can be trusted to be the host.
+        (
+            "http://u:hun#ter2@h:8123/db",
+            PLACEHOLDER,
+            PLACEHOLDER,
+            None,
+            &["hun#ter2"],
+        ),
+        (
+            "http://u:hun?ter2@h/db",
+            PLACEHOLDER,
+            PLACEHOLDER,
+            None,
+            &["hun?ter2"],
+        ),
+        (
+            "http://u:123/456@h",
+            PLACEHOLDER,
+            PLACEHOLDER,
+            None,
+            &["123/456"],
+        ),
+        (
+            "http://token/en77@h",
+            PLACEHOLDER,
+            PLACEHOLDER,
+            None,
+            &["token/en77"],
+        ),
+        (
+            "http://u:pa/ss@host",
+            PLACEHOLDER,
+            PLACEHOLDER,
+            None,
+            &["pa/ss"],
+        ),
+        ("http:/u:pw9@h", PLACEHOLDER, PLACEHOLDER, None, &["pw9"]),
+        // An `@` past the authority may be a path, or the end of a
+        // password: not provably clean.
+        (
+            "https://example.com/users/@alice",
+            PLACEHOLDER,
+            PLACEHOLDER,
+            None,
+            &[],
+        ),
+        (
+            "http://host/x?token=abc@def",
+            PLACEHOLDER,
+            PLACEHOLDER,
+            None,
+            &["abc@def"],
+        ),
+        // Not a URL.
+        (
+            "http://host:notaport/x",
+            PLACEHOLDER,
+            PLACEHOLDER,
+            None,
+            &[],
+        ),
+        ("http://host:/x", PLACEHOLDER, PLACEHOLDER, None, &[]),
+        ("http://host:99999/x", PLACEHOLDER, PLACEHOLDER, None, &[]),
+        ("http://ho st/x", PLACEHOLDER, PLACEHOLDER, None, &[]),
+        ("ht!tp://host/x", PLACEHOLDER, PLACEHOLDER, None, &[]),
+        ("http://[::1/x", PLACEHOLDER, PLACEHOLDER, None, &[]),
+        (
+            "http://u:hunter2@/x",
+            PLACEHOLDER,
+            PLACEHOLDER,
+            None,
+            &["hunter2"],
+        ),
+        // Clean readings.
+        (
+            "http://h:8123/db?password=hunter2",
+            "http://h:8123/db",
+            "h",
+            Some(8123),
+            &["hunter2"],
+        ),
+        (
+            "http://h/db;password=hunter2",
+            "http://h/db",
+            "h",
+            None,
+            &["hunter2"],
+        ),
+        (
+            "http://h/a;p=hunter2/b;q=s3cret?x=y",
+            "http://h/a/b",
+            "h",
+            None,
+            &["hunter2", "s3cret"],
+        ),
+        (
+            "http://u:hun@ter2@host/x",
+            "http://host/x",
+            "host",
+            None,
+            &["hun@ter2"],
+        ),
+        (
+            "http://token123@host",
+            "http://host",
+            "host",
+            None,
+            &["token123"],
+        ),
+        (
+            "http://u:hunter2@[::1]:8123/db",
+            "http://[::1]:8123/db",
+            "::1",
+            Some(8123),
+            &["hunter2"],
+        ),
+        (
+            "http://[2001:db8::7]/x",
+            "http://[2001:db8::7]/x",
+            "2001:db8::7",
+            None,
+            &[],
+        ),
+        (
+            "u:hunter2@host:9000",
+            "host:9000",
+            "host",
+            Some(9000),
+            &["hunter2"],
+        ),
+        (
+            "localhost:9000",
+            "localhost:9000",
+            "localhost",
+            Some(9000),
+            &[],
+        ),
+        (
+            "collector:4317/v1/logs",
+            "collector:4317/v1/logs",
+            "collector",
+            Some(4317),
+            &[],
+        ),
+        (
+            "HTTP://u:hunter2@Host/x",
+            "HTTP://Host/x",
+            "Host",
+            None,
+            &["hunter2"],
+        ),
+        (
+            "http://u:hun%2Fter2@host",
+            "http://host",
+            "host",
+            None,
+            &["hun%2Fter2"],
+        ),
+        (
+            "https://collector.example/v1#token=abc123",
+            "https://collector.example/v1",
+            "collector.example",
+            None,
+            &["abc123"],
+        ),
+        (
+            "http://u:p@[::1]:4318/hook/T000/B000?sig=xyz",
+            "http://[::1]:4318/hook/T000/B000",
+            "::1",
+            Some(4318),
+            &[],
+        ),
+        ("http://@host", "http://host", "host", None, &[]),
+        (
+            "https://clickhouse.internal",
+            "https://clickhouse.internal",
+            "clickhouse.internal",
+            None,
+            &[],
+        ),
+        ("", "", PLACEHOLDER, None, &[]),
+    ];
 
     #[test]
-    fn redact_url_leaves_unrelated_text_alone() {
-        assert_eq!(
-            redact_url("connection refused", "http://u:p@host"),
-            "connection refused"
-        );
-        assert_eq!(redact_url("anything", ""), "anything");
-    }
-
-    #[test]
-    fn plain_urls_are_unchanged() {
-        assert_eq!(
-            sanitize_url("http://localhost:4317"),
-            "http://localhost:4317"
-        );
-        assert_eq!(
-            sanitize_url("https://collector.example/v1/logs"),
-            "https://collector.example/v1/logs"
-        );
-        assert_eq!(sanitize_url("collector:4317"), "collector:4317");
-    }
-
-    #[test]
-    fn userinfo_is_removed() {
-        assert_eq!(
-            sanitize_url("https://alice:s3cret@collector.example:4317/v1"),
-            "https://collector.example:4317/v1"
-        );
-        assert_eq!(sanitize_url("token@collector:4317"), "collector:4317");
-    }
-
-    #[test]
-    fn query_and_fragment_are_removed() {
-        assert_eq!(
-            sanitize_url("https://collector.example/v1?api_key=abc123#frag"),
-            "https://collector.example/v1"
-        );
-        assert_eq!(
-            sanitize_url("https://collector.example/v1#token=abc123"),
-            "https://collector.example/v1"
-        );
-    }
-
-    #[test]
-    fn everything_secret_is_removed_at_once() {
-        let clean = sanitize_url("http://u:p@[::1]:4318/hook/T000/B000?sig=xyz");
-        assert_eq!(clean, "http://[::1]:4318/hook/T000/B000");
-    }
-
-    #[test]
-    fn an_at_sign_in_the_path_is_not_userinfo() {
-        assert_eq!(
-            sanitize_url("https://example.com/users/@alice"),
-            "https://example.com/users/@alice"
-        );
-    }
-
-    #[test]
-    fn the_last_at_sign_in_the_authority_ends_the_userinfo() {
-        assert_eq!(sanitize_url("https://a@b:c@host/x"), "https://host/x");
-    }
-
-    #[test]
-    fn sanitize_url_table() {
-        let cases = [
-            // A password with a slash: the authority cannot be `u:pa`, so
-            // the userinfo runs up to the last `@`.
-            ("http://u:pa/ss@host", "http://host"),
-            (
-                "http://u:pa/ss@host:4317/v1/logs",
-                "http://host:4317/v1/logs",
-            ),
-            ("https://u:p/a/b@c@host/x?k=v", "https://host/x"),
-            ("u:pa/ss@host:4317", "host:4317"),
-            // A well-formed authority keeps `@` in its path.
-            (
-                "https://example.com/users/@alice",
-                "https://example.com/users/@alice",
-            ),
-            (
-                "https://example.com:8443/a@b",
-                "https://example.com:8443/a@b",
-            ),
-            ("http://[::1]:4318/a@b", "http://[::1]:4318/a@b"),
-            ("http://u:p@[::1]:4318/a@b", "http://[::1]:4318/a@b"),
-            ("collector:4317/a@b", "collector:4317/a@b"),
-        ];
-        for (raw, expected) in cases {
-            assert_eq!(sanitize_url(raw), expected, "{raw}");
-        }
-    }
-
-    #[test]
-    fn redact_url_catches_normalised_forms_of_the_configured_url() {
-        let secret = "alice:hunter2";
-        let cases = [
-            // (configured, how a library quotes it back)
-            (
-                "http://alice:hunter2@host:4317",
-                "http://alice:hunter2@host:4317/",
-            ),
-            (
-                "http://alice:hunter2@host:4317/",
-                "http://alice:hunter2@host:4317",
-            ),
-            (
-                "HTTP://alice:hunter2@Host:4317",
-                "http://alice:hunter2@host:4317",
-            ),
-            (
-                "http://alice:hunter2@host:80/v1",
-                "http://alice:hunter2@host/v1",
-            ),
-            (
-                "https://alice:hunter2@host/v1",
-                "https://alice:hunter2@host:443/v1",
-            ),
-            (
-                "https://alice:hunter2@HOST:443",
-                "https://alice:hunter2@host/",
-            ),
-            (
-                "http://alice:hunter2@host/a?token=t0p",
-                "http://alice:hunter2@host:80/a?token=t0p",
-            ),
-            // A form nobody predicted still loses its userinfo.
-            (
-                "http://alice:hunter2@host:4317",
-                "dns error for alice:hunter2@host.:4317",
-            ),
-        ];
-        for (configured, quoted) in cases {
-            let text = format!("invalid URI {quoted}. Reason: bad");
-            let redacted = redact_url(&text, configured);
-            assert!(
-                !redacted.contains(secret),
-                "{configured} / {quoted}: {redacted}"
+    fn a_url_is_shown_clean_or_not_at_all() {
+        for &(raw, url, host, port, secrets) in CASES {
+            let sanitized = sanitize_url(raw);
+            let address = server_address(raw);
+            assert_eq!(sanitized, url, "{raw}");
+            assert_eq!(
+                address,
+                ServerAddress {
+                    host: host.to_string(),
+                    port
+                },
+                "{raw}"
             );
-            assert!(
-                !redacted.contains("t0p"),
-                "{configured} / {quoted}: {redacted}"
-            );
-            assert!(redacted.contains("host"), "{redacted}");
-            assert!(redacted.starts_with("invalid URI "), "{redacted}");
-            assert!(redacted.ends_with(". Reason: bad"), "{redacted}");
+            for secret in secrets {
+                assert!(!leaks(&sanitized, secret), "{raw}: {sanitized}");
+                assert!(!leaks(&address.host, secret), "{raw}: {}", address.host);
+            }
+        }
+    }
+
+    /// (configured URL, error text, redacted text, the secrets configured)
+    type Quote = (
+        &'static str,
+        &'static str,
+        &'static str,
+        &'static [&'static str],
+    );
+
+    const QUOTES: &[Quote] = &[
+        (
+            "http://alice:hunter2@host:4317/?token=abc123",
+            "invalid URI http://alice:hunter2@host:4317/?token=abc123. Reason: bad (http://alice:hunter2@host:4317/?token=abc123)",
+            "invalid URI http://host:4317/?token=[redacted]. Reason: bad (http://host:4317/?token=[redacted])",
+            &["hunter2", "abc123"],
+        ),
+        // Quoted in another spelling than configured.
+        (
+            "HTTP://alice:hunter2@Host:4317",
+            "invalid URI http://alice:hunter2@host:4317/",
+            "invalid URI http://host:4317/",
+            &["hunter2"],
+        ),
+        (
+            "https://alice:hunter2@host/v1",
+            "no route to https://alice:hunter2@host:443/v1",
+            "no route to https://host:443/v1",
+            &["hunter2"],
+        ),
+        (
+            "http://alice:hunter2@host:4317",
+            "dns error for alice:hunter2@host.:4317",
+            "dns error for host.:4317",
+            &["hunter2"],
+        ),
+        // The userinfo in another percent-encoding than configured.
+        (
+            "http://u:hun%2Fter2@host",
+            "bad url http://u:hun/ter2@host",
+            "bad url http://host",
+            &["hun/ter2", "hun%2Fter2"],
+        ),
+        (
+            "http://u:hun/ter2@host",
+            "bad url http://u:hun%2Fter2@host and http://u:hun%2fter2@host",
+            "bad url http://host and http://host",
+            &["hun/ter2", "hun%2Fter2", "hun%2fter2"],
+        ),
+        (
+            "http://u:hun#ter2@h:8123/db",
+            "cannot parse http://u:hun#ter2@h:8123/db (http://u:hun%23ter2@h:8123/db)",
+            "cannot parse http://h:8123/db (http://h:8123/db)",
+            &["hun#ter2", "hun%23ter2"],
+        ),
+        // A token in the query, quoted with another path, a trailing
+        // slash, another parameter order, or on its own.
+        (
+            "http://host/a?token=t0psecret&mode=fast",
+            "GET http://host/b/?mode=fast&token=t0psecret failed",
+            "GET http://host/b/?mode=[redacted]&token=[redacted] failed",
+            &["t0psecret"],
+        ),
+        (
+            "http://host/a?token=t0psecret",
+            "rejected: token=t0psecret",
+            "rejected: token=[redacted]",
+            &["t0psecret"],
+        ),
+        (
+            "http://host/a?sig=a%2Bb%3Dc",
+            "bad signature a+b=c (sig=a%2bb%3dc)",
+            "bad signature [redacted] (sig=[redacted])",
+            &["a+b=c", "a%2Bb%3Dc"],
+        ),
+        (
+            "http://host/#access_token=abcdef",
+            "fragment abcdef was sent",
+            "fragment [redacted] was sent",
+            &["abcdef"],
+        ),
+        (
+            "http://host/db;password=hunter2",
+            "the value hunter2 was refused",
+            "the value [redacted] was refused",
+            &["hunter2"],
+        ),
+        (
+            "http://tok3n77@host",
+            "dns error for tok3n77@host.",
+            "dns error for [redacted]@host.",
+            &["tok3n77"],
+        ),
+        // Nothing to redact.
+        (
+            "http://u:hunter2@host",
+            "connection refused",
+            "connection refused",
+            &["hunter2"],
+        ),
+        (
+            "http://host:4317",
+            "cannot reach http://host:4317/ today",
+            "cannot reach http://host:4317/ today",
+            &[],
+        ),
+        ("", "anything", "anything", &[]),
+        // A value this short is no secret, and replacing it would shred
+        // the message.
+        (
+            "http://host/?debug=1&v=ab",
+            "os error 111 (tab)",
+            "os error 111 (tab)",
+            &[],
+        ),
+    ];
+
+    #[test]
+    fn an_error_text_loses_the_secrets_of_the_url_in_any_spelling() {
+        for &(configured, text, expected, secrets) in QUOTES {
+            let redacted = redact_url(text, configured);
+            assert_eq!(redacted, expected, "{configured}");
+            for secret in secrets {
+                assert!(!leaks(&redacted, secret), "{configured}: {redacted}");
+            }
         }
     }
 
     #[test]
-    fn redact_url_without_credentials_changes_nothing_else() {
-        assert_eq!(
-            redact_url("cannot reach http://host:4317/ today", "http://host:4317"),
-            "cannot reach http://host:4317/ today"
-        );
+    fn a_redaction_never_splits_a_character() {
+        let redacted = redact_url("lösenord pässword fel", "http://u:pässword@host");
+        assert_eq!(redacted, "lösenord [redacted] fel");
     }
 }

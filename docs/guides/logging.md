@@ -189,8 +189,15 @@ are not Rust constants; the checker and this table are the source of truth.
   headers, private keys. Log the name of the setting (`config.key`), never
   its value.
 - A URL that was not passed through `logging::sanitize_url` (removes
-  userinfo, query and fragment). An error text that may quote a URL goes
-  through `logging::redact_url`.
+  userinfo, query, fragment and `;` path parameters). A URL it cannot read
+  for certain is logged as `[redacted-url]` and no part of it is shown;
+  that includes any URL with an `@` after the first `/`, `?` or `#`, which
+  is either a path with an `@` in it or a password with an unescaped
+  delimiter. `logging::server_address` answers the same way for
+  `server.address`. An error text that may quote a URL goes through
+  `logging::redact_url`, which replaces the password and the query,
+  fragment and path parameter values of the URL (three bytes or longer)
+  with `[redacted]` wherever they stand, raw or percent-encoded.
 - Query strings. Log `url.path`.
 - Request and response bodies, prompts, model output.
 - stdout and stderr of child processes and plugin scripts. Log their sizes
