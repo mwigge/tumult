@@ -154,13 +154,30 @@ gate by default.
    late spans one after another cannot walk a version back past that); a
    span stamped earlier (a clock gone wrong, a replay) is stored as a
    span and left out of the version history, with a
-   `lake.sightings.early_span_ignored` warning in the daemon's log. A
-   span stamped more than five minutes ahead of the daemon's clock is
-   stored and left out of the history too
-   (`lake.sightings.future_span_ignored`): it would otherwise pin its
-   version as the latest deployment until the clock caught up. Both
-   warnings name the service, environment and version, and are written
-   at most once a minute with the number held back since.
+   `lake.sightings.early_span_ignored` warning in the daemon's log.
+
+   **Clocks.** A span stamped more than five minutes ahead of the
+   daemon's clock is stored as a span and left out of the version
+   history: it would otherwise pin its version as the latest deployment
+   until the clock caught up. It is not revisited later. When the
+   daemon's clock reaches the span's time, the span is still not part of
+   the history. The daemon's log reports it with a
+   `lake.sightings.future_span_ignored` warning, which carries the
+   span's time (`span_ts_ns`) and the latest time the daemon accepted
+   (`horizon_ns`). The remedy is to fix the clock that is wrong, the
+   sender's or the daemon's; spans sent after that count as usual. A
+   version row that an earlier build wrote from such a span is begun
+   anew by the next span of that version the clock bound admits.
+
+   A span stamped before 2000-01-01T00:00:00Z (a clock never set, a
+   timestamp of zero or in the wrong unit) is treated the same way: it
+   is stored, left out of the version history, not revisited, and
+   reported with a `lake.sightings.ancient_span_ignored` warning. The
+   floor is fixed: the lake keeps its spans without a retention limit,
+   so there is no shorter bound to take it from.
+
+   All three warnings name the service, environment and version, and
+   are written at most once a minute with the number held back since.
 
    **Version numbers.** Where two versions tie, the greater number wins,
    in one total order: versions that parse as numbers (`1.10.0`, `v2.1`,
