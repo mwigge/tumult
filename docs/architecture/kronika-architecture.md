@@ -334,6 +334,16 @@ read-only reader, asks the provider, and writes the cache row through the
 single-writer channel, which also caps the rows per series and prunes expired
 ones a batch at a time. Rows are derived data and can be deleted at any time.
 
+v21 adds `entity_versions` and the view `entities_current`: what
+OpenTelemetry entity events reported, one row per distinct state of an
+entity per environment (identical heartbeats move `last_seen_ns`, a delete
+sets `deleted_at_ns` on the latest row), with `liveness` (`live`,
+`expired`, `gone`) computed when the view is read. The table is written
+only when `KRONIKA_ENTITY_EVENTS` is set and, like the run tables, has no
+primary key or index because its rows are updated. v21 also adds the
+nullable `logs.event_name` and `logs.scope_attrs`. See
+[the entity events guide](../guides/entity-events.md).
+
 ## Roadmap: external tooling on the lake
 
 The parquet lake (above) is the substrate for future external tooling —
