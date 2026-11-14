@@ -789,13 +789,17 @@ impl Reader {
 }
 
 impl Writer {
-    /// Rebuild the rollup from the spans stored, to the end, for use
-    /// after spans arrived by another road than [`Writer::insert_spans`]
-    /// (a bulk import).
+    /// Rebuild the rollup from the spans stored, to the end.
+    ///
+    /// For tests only. It throws away every row of the rollup and keeps
+    /// what the spans still in the store say, so sightings that came in
+    /// with an import, and those of spans since pruned, are lost for
+    /// good: nothing a running daemon may do to a lake with a history.
     ///
     /// # Errors
     /// Returns an error if the rebuild fails (the rollup is left as it was).
-    pub fn rebuild_version_sightings(&self) -> Result<(), StoreError> {
+    #[cfg(test)]
+    pub(crate) fn rebuild_version_sightings(&self) -> Result<(), StoreError> {
         with_tx(&self.conn, || {
             backfill_restart(&self.conn)?;
             let now_ns = (self.clock)();
