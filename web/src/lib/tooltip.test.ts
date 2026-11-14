@@ -141,7 +141,61 @@ function scriptsOf(text: string): string {
 }
 
 const SINKS = /\{@html|\.innerHTML|\.outerHTML|insertAdjacentHTML|document\.write/g;
-const MARKUP = /<br\s*\/?>|<\/?(?:b|i|em|strong|span|div|img|a|p|script|svg)>/g;
+// A tag, closing or opening, with or without attributes.
+const ATTRIBUTE = /\s+[\w:-]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'<>]+))?/;
+const MARKUP = new RegExp(
+    `<br\\s*\\/?>|<\\/?(?:b|i|em|strong|span|div|img|a|p|script|svg)(?:${ATTRIBUTE.source})*\\s*\\/?>`,
+    'g',
+);
+
+// A key written as a string, or computed from one, is the same key.
+const QUOTED_KEY = /(\[\s*)?(["'`])(tooltip|formatter|valueFormatter)\2(\s*\])?(?=\s*:)/g;
+
+/** `code` with such keys written plainly, every index kept. */
+function plainKeys(code: string): string {
+    return code.replace(QUOTED_KEY, (_all, pre: string = '', _quote, name: string, post = '') => {
+        return `${blank(pre)} ${name} ${blank(String(post))}`;
+    });
+}
+
+/** The index after the parenthesis closing the one at `open`; strings are skipped. */
+function afterCall(text: string, open: number): number {
+    let depth = 0;
+    let quote = '';
+    for (let i = open; i < text.length; i += 1) {
+        const c = text[i];
+        if (quote !== '') {
+            if (c === '\\') i += 1;
+            else if (c === quote) quote = '';
+            continue;
+        }
+        if (c === '"' || c === "'" || c === '`') quote = c;
+        if (c === '(') depth += 1;
+        if (c === ')') depth -= 1;
+        if (depth === 0) return i + 1;
+    }
+    return text.length;
+}
+
+/** The members of an object body themselves: what is nested in them is blanked. */
+function shallow(body: string): string {
+    let depth = 0;
+    let out = '';
+    for (const c of body) {
+        if ('})]'.includes(c)) depth -= 1;
+        out += depth <= 1 || c === '\n' ? c : ' ';
+        if ('{(['.includes(c)) depth += 1;
+    }
+    return out;
+}
+
+// `x.tooltip` or `x["tooltip"]`, then any members of it, then `=`.
+const TOOLTIP_MEMBER = /(?:\.\s*tooltip\b|\[\s*(["'`])tooltip\1\s*\])/.source;
+const ASSIGNED = new RegExp(
+    `${TOOLTIP_MEMBER}(?:\\s*\\.\\s*[\\w$]+|\\s*\\[[^\\]]*\\])*\\s*=(?![=>])`,
+    'g',
+);
+const OBJECT_ASSIGN = new RegExp(`Object\\s*\\.\\s*assign\\s*\\(\\s*[^,)]*${TOOLTIP_MEMBER}`, 'g');
 
 /** What in `text` could put unescaped text into a tooltip or the page. */
 function findings(file: string, text: string): Finding[] {
@@ -149,16 +203,32 @@ function findings(file: string, text: string): Finding[] {
     const add = (index: number, what: string) =>
         out.push({ file, line: lineAt(text, index), what });
     for (const m of text.matchAll(SINKS)) add(m.index, `${m[0]} sets markup from a string`);
-    const code = scriptOf(file, text);
+    const code = plainKeys(scriptOf(file, text));
     for (const m of code.matchAll(/(?<![.\w])tooltip\s*:\s*\{/g)) {
         const open = m.index + m[0].length - 1;
         const body = code.slice(open, closing(code, open) + 1);
-        for (const f of body.matchAll(/\b(formatter|valueFormatter)\s*:(?!\s*tipFormatter\()/g)) {
+        // The formatter is one call of tipFormatter and nothing after it.
+        for (const f of body.matchAll(/\b(formatter|valueFormatter)\s*:/g)) {
+            const rest = body.slice(f.index + f[0].length);
+            const call = /^\s*tipFormatter\(/.exec(rest);
+            const end = call ? afterCall(rest, call[0].length - 1) : 0;
+            if (call && /^\s*(?:,|\}|$)/.test(rest.slice(end))) continue;
             add(open + f.index, `tooltip ${f[1]} is not made by tipFormatter`);
         }
-        for (const f of body.matchAll(/\b(formatter|valueFormatter)\s*[,}]/g)) {
+        // A shorthand or a method.
+        for (const f of body.matchAll(/\b(formatter|valueFormatter)\s*[,}(]/g)) {
             add(open + f.index, `tooltip ${f[1]} is not made by tipFormatter`);
         }
+        // A spread brings members this check does not see.
+        for (const f of shallow(body).matchAll(/\.\.\.\s*([^,}\n]*)/g)) {
+            if (/^[A-Za-z_$][\w$]*\.tooltip\s*$/.test(f[1])) continue;
+            add(open + f.index, 'tooltip spreads something that is not a theme tooltip');
+        }
+    }
+    // A tooltip changed after it was written is not read above.
+    for (const m of code.matchAll(ASSIGNED)) add(m.index, 'tooltip is assigned to here');
+    for (const m of code.matchAll(OBJECT_ASSIGN)) {
+        add(m.index, 'tooltip is changed by Object.assign here');
     }
     // A tooltip set from a variable hides its formatter from this check.
     for (const m of code.matchAll(/(?<![.\w])tooltip\s*:(?!\s*\{)\s*([^\n,}]*)/g)) {
@@ -211,12 +281,73 @@ describe('the tooltip guard', () => {
         expect(findings('x.svelte', '<p>{@html s}</p>')).toHaveLength(1);
     });
 
+    it('reports a tooltip key written as a string or computed', () => {
+        expect(at('x = { "tooltip": { formatter } }')).toHaveLength(1);
+        expect(at("x = { 'tooltip': { formatter: f } }")).toHaveLength(1);
+        expect(at('x = { ["tooltip"]: { formatter: f } }')).toHaveLength(1);
+        expect(at('x = { ["tooltip"]: mine }')).toHaveLength(1);
+        expect(at('x = { [`tooltip`]: mine }')).toHaveLength(1);
+        expect(at('x = { tooltip: { "formatter": f } }')).toHaveLength(1);
+        expect(at('x = { tooltip: { ["valueFormatter"]: f } }')).toHaveLength(1);
+    });
+
+    it('reports a formatter written as a method', () => {
+        expect(at('x = { tooltip: { formatter(p) { return p.name; } } }')).toHaveLength(1);
+    });
+
+    it('reports a tooltip changed after it was written', () => {
+        expect(at('opt.tooltip.formatter = f;')).toEqual(['1: tooltip is assigned to here']);
+        expect(at('opt.tooltip = mine;')).toHaveLength(1);
+        expect(at('opt["tooltip"].formatter = f;')).toHaveLength(1);
+        expect(at("opt.tooltip['formatter'] = f;")).toHaveLength(1);
+        expect(at('opt.series[0].tooltip.formatter = f;')).toHaveLength(1);
+        expect(at('if (opt.tooltip === mine || opt.tooltip == null) {}')).toEqual([]);
+    });
+
+    it('reports a tooltip filled in by Object.assign', () => {
+        expect(at('Object.assign(o.tooltip, { formatter: f });')).toEqual([
+            '1: tooltip is changed by Object.assign here',
+        ]);
+        expect(at('Object.assign(o["tooltip"], more);')).toHaveLength(1);
+        expect(at('Object.assign(\n  o.series[0].tooltip,\n  more,\n);')).toHaveLength(1);
+    });
+
+    it('reports a tooltip that spreads what it cannot read', () => {
+        expect(at('x = { tooltip: { ...mine } }')).toEqual([
+            '1: tooltip spreads something that is not a theme tooltip',
+        ]);
+        expect(at('x = { tooltip: { ...t.tooltip, ...mine() } }')).toHaveLength(1);
+        expect(at('x = { tooltip: { trigger: "axis", ...a.b.c } }')).toHaveLength(1);
+    });
+
+    it('reports a formatter that is tipFormatter and something more', () => {
+        expect(at('x = { tooltip: { formatter: tipFormatter(a) || raw } }')).toEqual([
+            '1: tooltip formatter is not made by tipFormatter',
+        ]);
+        expect(at('x = { tooltip: { formatter: tipFormatter(a) ?? raw } }')).toHaveLength(1);
+        expect(at('x = { tooltip: { formatter: tipFormatter(a).bind(raw) } }')).toHaveLength(1);
+        expect(at('x = { tooltip: { formatter: tipFormatter(a)\n  || raw,\n} }')).toHaveLength(1);
+        expect(at('x = { tooltip: { formatter: c ? tipFormatter(a) : raw } }')).toHaveLength(1);
+    });
+
+    it('reports an opening tag with attributes', () => {
+        expect(at('const s = `<span style="color:${c}">`;')).toHaveLength(1);
+        expect(at("const s = '<img src=x onerror=a()>';")).toHaveLength(1);
+        expect(at('const s = `<a href=${url}>`;')).toHaveLength(1);
+        expect(at('const s = `<div class="x" hidden>`;')).toHaveLength(1);
+        expect(at('const s = "<svg onload=a()/>";')).toHaveLength(1);
+        expect(at("const s = '<b\tclass=x>';")).toHaveLength(1);
+    });
+
     it('accepts a formatter made by tipFormatter and a label formatter', () => {
         const ok = [
             'x = { tooltip: { ...t.tooltip, formatter: tipFormatter((p) => tip(p.name)) } }',
             'x = { tooltip: { ...CHART.tooltip, trigger: "axis" } }',
             'x = { tooltip: t.tooltip, series: [{ tooltip: { show: false } }] }',
             'x = { label: { formatter: (p) => p.name } }',
+            'x = { tooltip: { formatter: tipFormatter((p) => tip([p.name, " (", p.v, ")"])) } }',
+            'x = { tooltip: { formatter: tipFormatter((p) => tip(...rows(p))),\n} }',
+            'x = { tooltip: {\n  ...t.tooltip,\n  formatter: tipFormatter(pointTip),\n} }',
             'const a: Record<string, number> = {}; if (a <b || c> d) {}',
         ];
         for (const text of ok) expect(at(text), text).toEqual([]);
