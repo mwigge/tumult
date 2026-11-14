@@ -14,6 +14,8 @@ use tumult_lake::{
     Store, WireForm, ENTITIES_PER_ENVIRONMENT,
 };
 
+use tumult_otel::logging::testing::{capture_json, LogCapture};
+
 use super::*;
 use crate::writer::EntityPurgeRequest;
 use crate::writer::{Batch, IngestWriter};
@@ -836,6 +838,10 @@ fn evictions_are_logged_at_a_bounded_rate() {
     assert!(text.contains("entity.evicted.unreported=3"), "{text}");
 }
 
+/// The environment a purge names, as a JSON log line has it: the plain key
+/// is the formatter's, for the environment the daemon itself runs in.
+const ENVIRONMENT: &str = "field.deployment.environment.name";
+
 /// An operator's purge goes through the writer task like every write, and
 /// says in the log who removed what.
 #[tokio::test]
@@ -889,6 +895,7 @@ async fn a_purge_fails_when_the_writer_task_is_gone() {
         entity_type: None,
         by: "ada".into(),
     };
+    let capture = LogCapture::start(tracing::Level::WARN);
     let refused = IngestWriter::stopped_for_test()
         .purge_entities(request)
         .await;
@@ -896,4 +903,65 @@ async fn a_purge_fails_when_the_writer_task_is_gone() {
         matches!(&refused, Err(crate::IngestError::Channel(_))),
         "{refused:?}"
     );
+    let logs = capture.snapshot();
+    let failed = logs.named("ingest.entity_events.purge_failed");
+    assert_eq!(failed.len(), 1, "{}", logs.raw);
+    assert_eq!(failed[0]["level"], "WARN");
+    assert_eq!(failed[0]["user.name"], "ada");
+    assert_eq!(failed[0][ENVIRONMENT], "prod");
+    assert_eq!(failed[0]["entity.type"], "*");
+    let reason = failed[0]["error.message"].as_str().unwrap();
+    assert!(reason.ends_with("writer task stopped"), "{reason}");
+}
+
+/// A purge the store refuses is logged with the same names, by whoever
+/// asked: nothing was removed, and someone tried.
+#[tokio::test]
+async fn a_purge_the_store_refuses_is_written_to_the_log() {
+    let (_dir, _store, ingest) = ingest_with(enabled());
+    let batch = ingest.logs_batch(&host_export(false), RECEIVED);
+    ingest.write(batch).await.unwrap();
+    let broken = Batch::Exec(Box::new(|writer| {
+        writer
+            .execute(
+                "ALTER TABLE entity_versions RENAME TO entity_versions_away",
+                [],
+            )
+            .map(|_| ())
+            .map_err(|error| error.to_string())
+    }));
+    ingest.write(broken).await.unwrap();
+
+    let capture = LogCapture::start(tracing::Level::WARN);
+    let request = EntityPurgeRequest {
+        environment: String::new(),
+        entity_type: Some("host".into()),
+        by: "ada".into(),
+    };
+    assert!(ingest.purge_entities(request).await.is_err());
+    let logs = capture.snapshot();
+    let failed = logs.named("ingest.entity_events.purge_failed");
+    assert_eq!(failed.len(), 1, "{}", logs.raw);
+    assert_eq!(failed[0]["user.name"], "ada");
+    assert_eq!(failed[0][ENVIRONMENT], "");
+    assert_eq!(failed[0]["entity.type"], "host");
+    let reason = failed[0]["error.message"].as_str().unwrap();
+    assert!(reason.contains("entity_versions"), "{reason}");
+}
+
+#[test]
+fn a_refused_purge_is_logged_with_who_asked_for_what() {
+    let logs = capture_json(tracing::Level::WARN, || {
+        purge_refused("eve", Some("prod"), None, "insufficient role");
+        purge_refused("eve", None, Some("host"), "environment is required");
+    });
+    let refused = logs.named("ingest.entity_events.purge_refused");
+    assert_eq!(refused.len(), 2, "{}", logs.raw);
+    assert_eq!(refused[0]["level"], "WARN");
+    assert_eq!(refused[0]["user.name"], "eve");
+    assert_eq!(refused[0][ENVIRONMENT], "prod");
+    assert_eq!(refused[0]["entity.type"], "*");
+    assert_eq!(refused[0]["error.message"], "insufficient role");
+    assert!(refused[1].get(ENVIRONMENT).is_none());
+    assert_eq!(refused[1]["entity.type"], "host");
 }

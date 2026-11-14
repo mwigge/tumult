@@ -466,7 +466,9 @@ pub(crate) fn after_write(writer: &Writer, applied: &EntityApplied) -> usize {
 
 /// Remove what an operator asked for and write it to the log: who, which
 /// environment and type, and how much. Every purge is logged, also one
-/// that found nothing; a purge that fails is logged by the writer task.
+/// that found nothing; one that fails is logged by whoever asked for it
+/// ([`purge_failed`]), and one that was refused by whoever refused it
+/// ([`purge_refused`]).
 pub(crate) fn purge(writer: &Writer, request: &EntityPurgeRequest) -> Result<EntityPurge, String> {
     let purged = writer
         .purge_entities(&request.environment, request.entity_type.as_deref())
@@ -484,6 +486,42 @@ pub(crate) fn purge(writer: &Writer, request: &EntityPurgeRequest) -> Result<Ent
     );
     count_versions(writer);
     Ok(purged)
+}
+
+/// Say that a purge was refused before it reached the writer: who asked,
+/// for which environment (`None` when the request named none) and type
+/// (`None` for every type), and why. Someone tried to remove what the
+/// lake holds, which is worth a line whether or not it was allowed.
+pub fn purge_refused(
+    by: &str,
+    environment: Option<&str>,
+    entity_type: Option<&str>,
+    reason: &'static str,
+) {
+    tracing::warn!(
+        name: "ingest.entity_events.purge_refused",
+        {
+            user.name = by,
+            deployment.environment.name = environment,
+            entity.type = entity_type.unwrap_or("*"),
+            error.message = reason,
+        },
+        "a purge of entities was refused"
+    );
+}
+
+/// Say that a purge that was allowed failed, and so removed nothing.
+pub fn purge_failed(request: &EntityPurgeRequest, reason: &str) {
+    tracing::warn!(
+        name: "ingest.entity_events.purge_failed",
+        {
+            user.name = request.by.as_str(),
+            deployment.environment.name = request.environment.as_str(),
+            entity.type = request.entity_type.as_deref().unwrap_or("*"),
+            error.message = reason,
+        },
+        "a purge of entities failed and removed nothing"
+    );
 }
 
 /// Say, at a bounded rate, that entities were refused for lack of room.

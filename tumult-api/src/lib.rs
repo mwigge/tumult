@@ -45,9 +45,10 @@
 //!   segment.
 //! * `DELETE /api/entities?environment=&type=` — remove the entities of
 //!   one environment (required; empty for the entities that name none),
-//!   of one type or of all, with their history (Operator, confined to the
+//!   of one type or of all, with their history (Admin, confined to the
 //!   caller's environment scopes). Runs on the single writer and is
-//!   written to the log; answers `entities` and `versions` removed.
+//!   written to the log, as is a request that was refused or failed;
+//!   answers `entities` and `versions` removed.
 //! * `GET /api/traces?range=&service=&min_duration_ms=&outcome=` — traces
 //!   grouped from spans (root name/service, span/error counts, experiment
 //!   outcome where the trace is an experiment run).

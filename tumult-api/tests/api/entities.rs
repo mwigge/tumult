@@ -717,8 +717,8 @@ async fn a_key_with_any_character_is_read_once_url_encoded() {
 }
 
 // ---------------------------------------------------------------------------
-// DELETE /api/entities?environment=…[&type=…]: an operator removes the
-// entities of one environment.
+// DELETE /api/entities?environment=…[&type=…]: an administrator removes
+// the entities of one environment.
 
 async fn purge(base: &str, query: &str, token: Option<&str>) -> (u16, Value) {
     let mut request = reqwest::Client::new().delete(format!("{base}/api/entities{query}"));
@@ -796,33 +796,113 @@ async fn a_purge_names_its_environment() {
     assert_eq!(body["count"], 4);
 }
 
+/// A purge removes stored history for good, like nothing an operator or
+/// an approver may do: it needs the Admin role.
 #[tokio::test]
-async fn a_purge_needs_the_operator_role() {
+async fn a_purge_needs_the_admin_role() {
     let srv = spawn_server().await;
     seed_entities(&srv).await;
     let viewer = add_scoped_token(&srv, "a-viewer", "viewer", &[]).await;
-    let operator = add_scoped_token(&srv, "an-operator", "operator", &[]).await;
+    let admin = add_scoped_token(&srv, "an-admin", "admin", &[]).await;
 
     let (status, body) = purge(&srv.base, "?environment=prod", None).await;
     assert_eq!(status, 401, "{body}");
-    let (status, body) = purge(&srv.base, "?environment=prod", Some(&viewer)).await;
-    assert_eq!(status, 403, "{body}");
-    assert_eq!(body["error"], "insufficient role");
+    for (name, role) in [
+        ("a-viewer-2", "viewer"),
+        ("an-operator", "operator"),
+        ("an-approver", "approver"),
+    ] {
+        let token = add_scoped_token(&srv, name, role, &[]).await;
+        let (status, body) = purge(&srv.base, "?environment=prod", Some(&token)).await;
+        assert_eq!(status, 403, "{role}: {body}");
+        assert_eq!(body["error"], "insufficient role", "{role}");
+    }
     let (_, body) = get_auth(&srv.base, "/api/entities", &viewer).await;
     assert_eq!(body["count"], 5, "a refused purge removes nothing");
 
-    let (status, body) = purge(&srv.base, "?environment=prod", Some(&operator)).await;
+    let (status, body) = purge(&srv.base, "?environment=prod", Some(&admin)).await;
     assert_eq!(status, 200, "{body}");
     assert_eq!(body["entities"], 3);
 }
 
-/// A scoped operator purges its own environments only, and never the
+/// The one event named `name` among what was logged since `capture`
+/// started.
+fn logged(capture: &tumult_otel::logging::testing::LogCapture, name: &str) -> Value {
+    let logs = capture.snapshot();
+    let events = logs.named(name);
+    assert_eq!(events.len(), 1, "{name}: {}", logs.raw);
+    events[0].clone()
+}
+
+/// The environment a purge names, as a JSON log line has it: the plain key
+/// is the formatter's, for the environment the daemon itself runs in.
+const ENVIRONMENT: &str = "field.deployment.environment.name";
+
+const PURGE_REFUSED: &str = "ingest.entity_events.purge_refused";
+
+/// A purge that is refused leaves a warning that says who asked for what:
+/// someone tried to remove evidence.
+#[tokio::test]
+async fn a_purge_refused_for_the_role_is_written_to_the_log() {
+    let srv = spawn_server().await;
+    seed_entities(&srv).await;
+    let operator = add_scoped_token(&srv, "an-operator", "operator", &[]).await;
+
+    let capture = tumult_otel::logging::testing::LogCapture::start(tracing::Level::WARN);
+    let query = "?environment=prod&type=k8s.pod";
+    let (status, _) = purge(&srv.base, query, Some(&operator)).await;
+    assert_eq!(status, 403);
+    let event = logged(&capture, PURGE_REFUSED);
+    assert_eq!(event["level"], "WARN", "{event}");
+    assert_eq!(event["user.name"], "an-operator");
+    assert_eq!(event[ENVIRONMENT], "prod");
+    assert_eq!(event["entity.type"], "k8s.pod");
+    assert_eq!(event["error.message"], "insufficient role");
+}
+
+#[tokio::test]
+async fn a_purge_refused_for_the_scope_is_written_to_the_log() {
+    let srv = spawn_server().await;
+    seed_entities(&srv).await;
+    let staging = add_scoped_token(&srv, "stg-admin", "admin", &["staging"]).await;
+
+    let capture = tumult_otel::logging::testing::LogCapture::start(tracing::Level::WARN);
+    let (status, _) = purge(&srv.base, "?environment=prod", Some(&staging)).await;
+    assert_eq!(status, 403);
+    let event = logged(&capture, PURGE_REFUSED);
+    assert_eq!(event["level"], "WARN", "{event}");
+    assert_eq!(event["user.name"], "stg-admin");
+    assert_eq!(event[ENVIRONMENT], "prod");
+    assert_eq!(event["entity.type"], "*", "every type was asked for");
+    assert_eq!(
+        event["error.message"],
+        "the environment is outside the principal's scopes"
+    );
+}
+
+#[tokio::test]
+async fn a_purge_refused_for_naming_no_environment_is_written_to_the_log() {
+    let srv = spawn_server().await;
+    seed_entities(&srv).await;
+
+    let capture = tumult_otel::logging::testing::LogCapture::start(tracing::Level::WARN);
+    let (status, _) = purge(&srv.base, "?type=host", None).await;
+    assert_eq!(status, 400);
+    let event = logged(&capture, PURGE_REFUSED);
+    assert_eq!(event["level"], "WARN", "{event}");
+    assert_eq!(event["user.name"], "anonymous");
+    assert_eq!(event["entity.type"], "host");
+    assert_eq!(event["error.message"], "environment is required");
+    assert!(event.get(ENVIRONMENT).is_none(), "none was named: {event}");
+}
+
+/// A scoped administrator purges its own environments only, and never the
 /// entities that name no environment.
 #[tokio::test]
 async fn a_purge_is_confined_to_the_principals_environments() {
     let srv = spawn_server().await;
     seed_entities(&srv).await;
-    let staging = add_scoped_token(&srv, "stg-operator", "operator", &["staging"]).await;
+    let staging = add_scoped_token(&srv, "stg-admin", "admin", &["staging"]).await;
     let all = add_scoped_token(&srv, "all-viewer", "viewer", &[]).await;
 
     for query in ["?environment=prod", "?environment="] {

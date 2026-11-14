@@ -20,7 +20,6 @@ pub const ROUTE_TABLE: &[(&str, &str, Role)] = &[
     ("GET", "/api/logs/volume", Role::Viewer),
     ("GET", "/api/entities", Role::Viewer),
     ("GET", "/api/entities/{key}/history", Role::Viewer),
-    ("DELETE", "/api/entities", Role::Operator),
     ("GET", "/api/traces", Role::Viewer),
     ("GET", "/api/traces/durations", Role::Viewer),
     ("GET", "/api/traces/{id}", Role::Viewer),
@@ -125,6 +124,8 @@ pub const ROUTE_TABLE: &[(&str, &str, Role)] = &[
     ("POST", "/api/runs/{id}/approve", Role::Approver),
     ("POST", "/api/runs/{id}/reject", Role::Approver),
     ("POST", "/api/runs/{id}/break-glass", Role::Admin),
+    // Admin: removing stored entities with their history.
+    ("DELETE", "/api/entities", Role::Admin),
     // Admin: user and token management.
     ("POST", "/api/users", Role::Admin),
     ("POST", "/api/users/{id}/role", Role::Admin),
@@ -268,6 +269,8 @@ mod tests {
         assert_eq!(required_role("POST", "/api/users"), Role::Admin);
         assert_eq!(required_role("GET", "/api/tokens"), Role::Admin);
         assert_eq!(required_role("POST", "/api/tokens/x/revoke"), Role::Admin);
+        // Removing stored evidence is not an operator's to do.
+        assert_eq!(required_role("DELETE", "/api/entities"), Role::Admin);
     }
 
     #[test]

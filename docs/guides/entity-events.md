@@ -426,7 +426,7 @@ not evicted for that export. Evictions are counted in
 `tumultd_entity_evictions_total` by `reason` (`gone`, `expired`,
 `unreported`) and logged as `ingest.entity_events.evicted` at a bounded
 rate. An entity that is live and reports is never evicted: when a bound
-is full of those, new entities are refused until an operator purges
+is full of those, new entities are refused until an administrator purges
 (below) or raises the bound. When a search finds nothing to evict the
 daemon does not search that bound again for a minute, or until a delete
 event is applied in that environment (a delete elsewhere changes nothing
@@ -498,8 +498,10 @@ curl -X DELETE -H "Authorization: Bearer $KRO_TOKEN" \
 # {"environment":"staging","type":"k8s.pod","entities":1204,"versions":3611}
 ```
 
-- It needs the Operator role. A principal with environment scopes purges
-  its own environments only (`403` for any other).
+- It needs the Admin role, like `DELETE /api/runs`: it removes history
+  that cannot be brought back (`403` for any other role). An
+  administrator with environment scopes purges its own environments only
+  (`403` for any other).
 - `environment` must be given (`400` without it). Given empty,
   `?environment=`, it names the entities whose sender named no
   environment; those are outside every scope, so only an unscoped
@@ -517,6 +519,16 @@ curl -X DELETE -H "Authorization: Bearer $KRO_TOKEN" \
   `entity.purged.entities` and `entity.purged.versions`, also when it
   found nothing. With authentication off (no users) the name is
   `anonymous`.
+- A purge that was refused (`403` for the role or the scope, `400` for
+  naming no environment) is written at `WARN` as
+  `ingest.entity_events.purge_refused`, and one that was allowed and
+  failed (the store refused it, or the daemon has no writer: `503`) as
+  `ingest.entity_events.purge_failed`. Both carry `user.name`,
+  `deployment.environment.name` (absent when the request named none),
+  `entity.type` and the reason in `error.message`. In the daemon's JSON
+  log lines the environment of all three events is under
+  `field.deployment.environment.name`, since
+  `deployment.environment.name` there is the daemon's own.
 
 ### What an export costs the writer
 

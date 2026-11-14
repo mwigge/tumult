@@ -167,8 +167,9 @@ impl IngestWriter {
     }
 
     /// Remove the entities of one environment, with all their rows, on
-    /// the writer task, and say so in the log. Entities that still report
-    /// come back with their next report, without their history.
+    /// the writer task, and say so in the log, also when it fails.
+    /// Entities that still report come back with their next report,
+    /// without their history.
     ///
     /// # Errors
     /// Returns [`IngestError::Channel`] if the writer task is gone or the
@@ -177,6 +178,15 @@ impl IngestWriter {
         &self,
         request: EntityPurgeRequest,
     ) -> Result<EntityPurge, IngestError> {
+        let asked = request.clone();
+        let purged = self.run_purge(request).await;
+        if let Err(error) = &purged {
+            entity_events::purge_failed(&asked, &error.to_string());
+        }
+        purged
+    }
+
+    async fn run_purge(&self, request: EntityPurgeRequest) -> Result<EntityPurge, IngestError> {
         let slot = Arc::new(Mutex::new(None));
         let filled = Arc::clone(&slot);
         self.write(Batch::Exec(Box::new(move |writer: &Writer| {

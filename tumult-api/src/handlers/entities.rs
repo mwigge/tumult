@@ -11,11 +11,12 @@
 //! whether rows were left out, and `next_cursor` where to go on.
 //!
 //! `DELETE /api/entities?environment=…[&type=…]` removes the entities of
-//! one environment with all their rows ([`purge_entities`]). It runs on
-//! the daemon's single writer and is written to the log there.
+//! one environment with all their rows ([`purge_entities`]). It needs the
+//! Admin role, runs on the daemon's single writer and is written to the
+//! log there; a purge that is refused or fails is written to the log too.
 
 use axum::extract::{Path, Query, State};
-use axum::http::StatusCode;
+use axum::http::{StatusCode, Uri};
 use axum::response::IntoResponse;
 use axum::{Extension, Json};
 use serde::Deserialize;
@@ -421,11 +422,45 @@ pub(crate) async fn entity_history(
     body.map(Json).ok_or_else(not_found)
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Default)]
 pub(crate) struct PurgeParams {
     environment: Option<String>,
     #[serde(rename = "type")]
     entity_type: Option<String>,
+}
+
+impl PurgeParams {
+    /// The type asked for; `None` for every type.
+    fn entity_type(&self) -> Option<&str> {
+        self.entity_type.as_deref().filter(|s| !s.is_empty())
+    }
+}
+
+pub(crate) const INSUFFICIENT_ROLE: &str = "insufficient role";
+const NO_ENVIRONMENT: &str = "environment is required";
+const OUTSIDE_SCOPES: &str = "the environment is outside the principal's scopes";
+const NOT_WIRED: &str = "entity storage is not wired (no ingest handle)";
+
+/// Write to the log that `principal` asked for a purge and was refused.
+fn log_refused(principal: &Principal, params: &PurgeParams, reason: &'static str) {
+    tumult_ingest::entity_events::purge_refused(
+        &principal.username,
+        params.environment.as_deref(),
+        params.entity_type(),
+        reason,
+    );
+}
+
+/// For the auth middleware, which turns a request away for its role
+/// before any handler runs: a purge refused there is written to the log
+/// like one refused here. A query that cannot be read names nothing.
+pub(crate) fn purge_refused_for_role(method: &str, uri: &Uri, principal: &Principal) {
+    if method != "DELETE" || uri.path() != "/api/entities" {
+        return;
+    }
+    let params = Query::<PurgeParams>::try_from_uri(uri)
+        .map_or_else(|_| PurgeParams::default(), |Query(params)| params);
+    log_refused(principal, &params, INSUFFICIENT_ROLE);
 }
 
 /// Whether `principal` may remove the entities of `environment`: every
@@ -439,30 +474,31 @@ fn may_purge(principal: &Principal, environment: &str) -> bool {
 /// their history. `environment` must be given; given empty it names the
 /// entities that name no environment. An entity that still reports is
 /// stored again with its next report, as a new entity. Answers what was
-/// removed: `entities` and `versions` (rows).
+/// removed: `entities` and `versions` (rows). Needs the Admin role (the
+/// route table); a request that is refused or fails is logged as a
+/// warning with who asked for what.
 pub(crate) async fn purge_entities(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
     Query(params): Query<PurgeParams>,
 ) -> Result<Json<Value>, ApiError> {
-    let Some(environment) = params.environment else {
-        return Err(bad_request("environment is required".into()));
+    let Some(environment) = params.environment.clone() else {
+        log_refused(&principal, &params, NO_ENVIRONMENT);
+        return Err(bad_request(NO_ENVIRONMENT.into()));
     };
     if !may_purge(&principal, &environment) {
-        return Err(forbidden(
-            "the environment is outside the principal's scopes",
-        ));
+        log_refused(&principal, &params, OUTSIDE_SCOPES);
+        return Err(forbidden(OUTSIDE_SCOPES));
     }
-    let Some(ingest) = state.ingest_handle() else {
-        return Err(unavailable(
-            "entity storage is not wired (no ingest handle)",
-        ));
-    };
-    let entity_type = params.entity_type.filter(|s| !s.is_empty());
+    let entity_type = params.entity_type().map(str::to_owned);
     let request = tumult_ingest::EntityPurgeRequest {
         environment: environment.clone(),
         entity_type: entity_type.clone(),
         by: principal.username.clone(),
+    };
+    let Some(ingest) = state.ingest_handle() else {
+        tumult_ingest::entity_events::purge_failed(&request, NOT_WIRED);
+        return Err(unavailable(NOT_WIRED));
     };
     let purged = ingest
         .purge_entities(request)

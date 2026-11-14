@@ -3,6 +3,7 @@
 
 use crate::error::ApiError;
 pub(crate) use crate::error::{bad_request, forbidden, not_found, unavailable};
+use crate::handlers::entities::{purge_refused_for_role, INSUFFICIENT_ROLE};
 use std::sync::{Arc, Mutex, Once};
 
 use axum::extract::{Request, State};
@@ -235,7 +236,8 @@ pub async fn auth_middleware(
             }
             let required = required_role(&method, &path);
             if principal.role < required {
-                return forbidden("insufficient role").into_response();
+                purge_refused_for_role(&method, req.uri(), &principal);
+                return forbidden(INSUFFICIENT_ROLE).into_response();
             }
             req.extensions_mut().insert(principal);
         }

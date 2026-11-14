@@ -56,6 +56,8 @@ tower = { version = "0.5", features = ["util"] }
 hyper-util = { version = "0.1", features = ["tokio"] }
 tracing-subscriber.workspace = true
 flatbuffers.workspace = true
+# Captures what a purge logs (`logging::testing`).
+tumult-otel = { path = "../tumult-otel" }
 
 [[example]]
 name = "otap_probe"
