@@ -1,6 +1,7 @@
 // Imported from kronika. Pedantic lints are scoped to tumult-native
 // crates; this file predates the pedantic gate (see crate lib.rs).
 #![allow(clippy::pedantic)]
+#![allow(clippy::print_stdout)] // an example: the list of rendered files is its output
 
 //! Render sample R1/R3/R2 PDFs from a seeded fixture store into
 //! `/tmp/krk/out/` — the visual-iteration loop for the report pipeline.

@@ -174,3 +174,21 @@ fn trend_without_data_points_reports_absence() {
 
     cmd_trend(dir.path(), "resilience_score", None, None).unwrap();
 }
+
+#[test]
+fn trend_reports_a_journal_it_could_not_read_as_a_log_event() {
+    let now_ns = chrono::Utc::now().timestamp_nanos_opt().unwrap();
+    let dir = journal_dir(&[journal("t-1", "experiment", now_ns)]);
+    let corrupt = dir.path().join("corrupt.toon");
+    std::fs::write(&corrupt, "{{{{ not a journal").unwrap();
+
+    let capture = tumult_otel::logging::testing::LogCapture::start(tracing::Level::WARN);
+    cmd_trend(dir.path(), "duration_ms", None, None).unwrap();
+    let logs = capture.snapshot();
+
+    let skipped = logs.named("cli.journal.skipped");
+    assert_eq!(skipped.len(), 1, "{}", logs.raw);
+    assert_eq!(skipped[0]["level"], "WARN");
+    assert_eq!(skipped[0]["file.path"], corrupt.to_str().unwrap());
+    assert!(skipped[0]["error.message"].is_string(), "{}", logs.raw);
+}

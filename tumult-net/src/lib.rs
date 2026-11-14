@@ -36,6 +36,7 @@ pub mod handles;
 pub mod native;
 pub mod probes;
 pub mod proxy;
+pub(crate) mod startup_log;
 pub(crate) mod telemetry;
 
 pub use config::{FaultProfile, ProxySpec};
@@ -43,3 +44,4 @@ pub use error::NetError;
 pub use handles::FaultHandles;
 pub use native::NetExecutor;
 pub use proxy::Proxy;
+pub use startup_log::daemon_log_options;

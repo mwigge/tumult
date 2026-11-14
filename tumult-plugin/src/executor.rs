@@ -87,8 +87,15 @@ impl ScriptExitStatus {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ScriptResult {
     pub exit_status: ScriptExitStatus,
+    /// What the script wrote to stdout, up to the capture limit. Nothing is
+    /// ever added to it: output that was cut is flagged in
+    /// [`stdout_truncated`](Self::stdout_truncated).
     pub stdout: String,
     pub stderr: String,
+    /// Whether stdout held more than the capture limit and was cut.
+    pub stdout_truncated: bool,
+    /// Whether stderr held more than the capture limit and was cut.
+    pub stderr_truncated: bool,
 }
 
 impl ScriptResult {
@@ -252,17 +259,18 @@ pub async fn execute_script<S: std::hash::BuildHasher>(
     let stdout_task = child
         .stdout
         .take()
-        .map(|out| tokio::spawn(read_to_end(out)));
+        .map(|out| tokio::spawn(read_capped(out, "stdout")));
     let stderr_task = child
         .stderr
         .take()
-        .map(|err| tokio::spawn(read_to_end(err)));
+        .map(|err| tokio::spawn(read_capped(err, "stderr")));
 
     let status = if let Some(duration) = timeout {
         match tokio::time::timeout(duration, child.wait()).await {
             Ok(status) => status.map_err(ExecutorError::ExecutionFailed)?,
             Err(_elapsed) => {
                 kill_timed_out_child(&mut child).await;
+                log_timed_out(&path_str, duration);
                 crate::telemetry::event_script_timed_out(&path_str, duration.as_secs_f64());
                 crate::telemetry::record_execution(false);
                 return Err(ExecutorError::Timeout(duration.as_secs_f64()));
@@ -273,24 +281,25 @@ pub async fn execute_script<S: std::hash::BuildHasher>(
     };
 
     // The reader tasks finish at EOF once the process group is dead.
-    let stdout = collect_output(stdout_task).await;
-    let stderr = collect_output(stderr_task).await;
+    let stdout = collect_output(stdout_task, "stdout").await;
+    let stderr = collect_output(stderr_task, "stderr").await;
 
     let exit_status = match status.code() {
         Some(n) => ScriptExitStatus::Code(n),
         None => ScriptExitStatus::Signal,
     };
     let exit_code_for_telemetry = exit_status.code().unwrap_or(-1);
+    // Sizes are what the script wrote, not what was kept of it.
+    let (stdout_bytes, stderr_bytes) = (stdout.total, stderr.total);
     let result = ScriptResult {
         exit_status,
-        stdout: String::from_utf8_lossy(&stdout).into_owned(),
-        stderr: String::from_utf8_lossy(&stderr).into_owned(),
+        stdout_truncated: stdout.truncated,
+        stderr_truncated: stderr.truncated,
+        stdout: stdout.into_text(),
+        stderr: stderr.into_text(),
     };
-    crate::telemetry::event_script_completed(
-        exit_code_for_telemetry,
-        result.stdout.len(),
-        result.stderr.len(),
-    );
+    log_non_zero_exit(&path_str, &result, stdout_bytes, stderr_bytes);
+    crate::telemetry::event_script_completed(exit_code_for_telemetry, stdout_bytes, stderr_bytes);
     crate::telemetry::record_execution(result.succeeded());
     Ok(result)
 }
@@ -313,23 +322,210 @@ pub async fn execute_script<S: std::hash::BuildHasher>(
     Err(ExecutorError::UnsupportedPlatform)
 }
 
-/// Read a stream to EOF into memory. Output capture is unbounded, matching
-/// the previous `Command::output()` behavior.
+/// Most bytes kept from one output stream of a script. A script is
+/// third-party code: without a cap, one that writes without end would grow
+/// the caller's memory until the process is killed.
 #[cfg(not(windows))]
-async fn read_to_end<R: tokio::io::AsyncRead + Unpin>(mut reader: R) -> Vec<u8> {
-    use tokio::io::AsyncReadExt as _;
-    let mut buf = Vec::new();
-    let _ = reader.read_to_end(&mut buf).await;
-    buf
+const OUTPUT_CAP: usize = 8 * 1024 * 1024;
+
+/// Size of one read from a script's output pipe.
+#[cfg(not(windows))]
+const READ_CHUNK_BYTES: usize = 8192;
+
+/// One output stream of a script, as captured.
+#[cfg(not(windows))]
+#[derive(Debug, Default)]
+struct Captured {
+    /// At most [`OUTPUT_CAP`] bytes, from the start of the stream.
+    bytes: Vec<u8>,
+    /// How many bytes the stream held, kept or not.
+    total: usize,
+    /// Whether the stream held more than was kept.
+    truncated: bool,
 }
 
-/// Collect a reader task's output, treating a join failure as empty output.
 #[cfg(not(windows))]
-async fn collect_output(task: Option<tokio::task::JoinHandle<Vec<u8>>>) -> Vec<u8> {
-    match task {
-        Some(handle) => handle.await.unwrap_or_default(),
-        None => Vec::new(),
+impl Captured {
+    /// Keeps as much of `chunk` as still fits under [`OUTPUT_CAP`].
+    fn keep(&mut self, chunk: &[u8]) {
+        self.total += chunk.len();
+        let room = OUTPUT_CAP - self.bytes.len();
+        let kept = chunk.len().min(room);
+        self.bytes.extend_from_slice(&chunk[..kept]);
+        if kept < chunk.len() {
+            self.truncated = true;
+        }
     }
+
+    /// The captured bytes as text. Nothing is added to them: output that was
+    /// cut ends at the last complete character, so the cut itself never
+    /// shows up as a replacement character.
+    fn into_text(mut self) -> String {
+        if self.truncated {
+            let complete = complete_utf8_prefix(&self.bytes);
+            self.bytes.truncate(complete);
+        }
+        String::from_utf8_lossy(&self.bytes).into_owned()
+    }
+}
+
+/// Length of `bytes` without a UTF-8 character cut short at its very end.
+///
+/// Only the last three bytes are looked at, which is as far back as the lead
+/// byte of an unfinished character can be; invalid bytes anywhere else are
+/// the script's own and are left for the lossy conversion.
+#[cfg(not(windows))]
+fn complete_utf8_prefix(bytes: &[u8]) -> usize {
+    let tail_start = bytes.len().saturating_sub(3);
+    for index in (tail_start..bytes.len()).rev() {
+        let byte = bytes[index];
+        if is_utf8_continuation(byte) {
+            continue;
+        }
+        let ends_inside = index + utf8_width(byte) > bytes.len();
+        return if ends_inside { index } else { bytes.len() };
+    }
+    bytes.len()
+}
+
+#[cfg(not(windows))]
+fn is_utf8_continuation(byte: u8) -> bool {
+    byte & 0b1100_0000 == 0b1000_0000
+}
+
+/// How many bytes the character led by `lead` takes; 1 for a byte that leads
+/// nothing.
+#[cfg(not(windows))]
+fn utf8_width(lead: u8) -> usize {
+    match lead {
+        0xC0..=0xDF => 2,
+        0xE0..=0xEF => 3,
+        0xF0..=0xF7 => 4,
+        _ => 1,
+    }
+}
+
+/// Reads `reader` to EOF, keeping the first [`OUTPUT_CAP`] bytes.
+///
+/// The stream is drained past the cap so the script never blocks on a full
+/// pipe. A read error ends the capture with what arrived so far and is
+/// logged; `stream` names the pipe (`stdout` or `stderr`) in log events.
+#[cfg(not(windows))]
+async fn read_capped<R: tokio::io::AsyncRead + Unpin>(
+    mut reader: R,
+    stream: &'static str,
+) -> Captured {
+    use tokio::io::AsyncReadExt as _;
+    let mut captured = Captured::default();
+    let mut chunk = vec![0_u8; READ_CHUNK_BYTES];
+    loop {
+        match reader.read(&mut chunk).await {
+            Ok(0) => break,
+            Ok(read) => captured.keep(&chunk[..read]),
+            Err(error) => {
+                log_read_failed(stream, captured.bytes.len(), &error);
+                break;
+            }
+        }
+    }
+    if captured.truncated {
+        log_truncated(stream, captured.total);
+    }
+    captured
+}
+
+/// Collects a reader task's output. A reader that panicked or was cancelled
+/// yields empty output and is logged.
+#[cfg(not(windows))]
+async fn collect_output(
+    task: Option<tokio::task::JoinHandle<Captured>>,
+    stream: &'static str,
+) -> Captured {
+    let Some(handle) = task else {
+        return Captured::default();
+    };
+    match handle.await {
+        Ok(captured) => captured,
+        Err(error) => {
+            log_reader_failed(stream, &error);
+            Captured::default()
+        }
+    }
+}
+
+#[cfg(not(windows))]
+fn log_read_failed(stream: &'static str, bytes_read: usize, error: &std::io::Error) {
+    tracing::warn!(
+        name: "plugin.script.output.read_failed",
+        {
+            process.stream = stream,
+            bytes_read,
+            error.type = "io",
+            error.message = %error,
+        },
+        "script output read failed, captured output is incomplete"
+    );
+}
+
+#[cfg(not(windows))]
+fn log_truncated(stream: &'static str, bytes_total: usize) {
+    tracing::warn!(
+        name: "plugin.script.output.truncated",
+        { process.stream = stream, max_bytes = OUTPUT_CAP, bytes_total },
+        "script output exceeded the capture limit and was truncated"
+    );
+}
+
+#[cfg(not(windows))]
+fn log_reader_failed(stream: &'static str, error: &tokio::task::JoinError) {
+    tracing::warn!(
+        name: "plugin.script.output.reader_failed",
+        {
+            process.stream = stream,
+            error.type = "join",
+            error.message = %error,
+        },
+        "script output reader did not finish, captured output is empty"
+    );
+}
+
+#[cfg(not(windows))]
+fn log_timed_out(script_path: &str, timeout: Duration) {
+    tracing::warn!(
+        name: "plugin.script.timed_out",
+        { file.path = script_path, timeout_s = timeout.as_secs_f64() },
+        "script timed out and was killed"
+    );
+}
+
+/// Notes a script that did not exit with code 0.
+///
+/// That is an observation, not a failure of ours: a probe reports a broken
+/// steady state this way, and the caller decides what it means. Hence debug.
+/// The output is the caller's to handle and is never logged: only its sizes
+/// are, counted as written by the script rather than as kept.
+#[cfg(not(windows))]
+fn log_non_zero_exit(
+    script_path: &str,
+    result: &ScriptResult,
+    stdout_bytes: usize,
+    stderr_bytes: usize,
+) {
+    if result.succeeded() {
+        return;
+    }
+    tracing::debug!(
+        name: "plugin.script.exited",
+        {
+            file.path = script_path,
+            process.exit.code = result.exit_status.code(),
+            stdout_bytes,
+            stderr_bytes,
+            stdout_truncated = result.stdout_truncated,
+            stderr_truncated = result.stderr_truncated,
+        },
+        "script exited with a non-zero status"
+    );
 }
 
 /// Kill the timed-out child's whole process group on Unix, so children the
@@ -548,26 +744,16 @@ mod tests {
 
     #[test]
     fn script_result_succeeded_checks_exit_code() {
-        let success = ScriptResult {
-            exit_status: ScriptExitStatus::Code(0),
+        let exited = |exit_status| ScriptResult {
+            exit_status,
             stdout: String::new(),
             stderr: String::new(),
+            stdout_truncated: false,
+            stderr_truncated: false,
         };
-        assert!(success.succeeded());
-
-        let failure = ScriptResult {
-            exit_status: ScriptExitStatus::Code(1),
-            stdout: String::new(),
-            stderr: String::new(),
-        };
-        assert!(!failure.succeeded());
-
-        let signalled = ScriptResult {
-            exit_status: ScriptExitStatus::Signal,
-            stdout: String::new(),
-            stderr: String::new(),
-        };
-        assert!(!signalled.succeeded());
+        assert!(exited(ScriptExitStatus::Code(0)).succeeded());
+        assert!(!exited(ScriptExitStatus::Code(1)).succeeded());
+        assert!(!exited(ScriptExitStatus::Signal).succeeded());
     }
 
     #[tokio::test]
@@ -700,5 +886,229 @@ mod tests {
         assert_eq!(result.exit_status, ScriptExitStatus::Signal);
         assert_eq!(result.exit_status.code(), None);
         assert!(!result.succeeded());
+    }
+
+    // ── output capture and log events ──────────────────────────
+
+    /// Yields some bytes, then fails.
+    struct FailingReader {
+        served: bool,
+    }
+
+    impl tokio::io::AsyncRead for FailingReader {
+        fn poll_read(
+            mut self: std::pin::Pin<&mut Self>,
+            _cx: &mut std::task::Context<'_>,
+            buf: &mut tokio::io::ReadBuf<'_>,
+        ) -> std::task::Poll<std::io::Result<()>> {
+            if self.served {
+                return std::task::Poll::Ready(Err(std::io::Error::other("pipe torn down")));
+            }
+            self.served = true;
+            buf.put_slice(b"partial");
+            std::task::Poll::Ready(Ok(()))
+        }
+    }
+
+    fn capture(level: tracing::Level) -> tumult_otel::logging::testing::LogCapture {
+        tumult_otel::logging::testing::LogCapture::start(level)
+    }
+
+    #[tokio::test]
+    async fn a_failed_pipe_read_keeps_what_arrived_and_is_logged() {
+        let logs = capture(tracing::Level::DEBUG);
+        let captured = read_capped(FailingReader { served: false }, "stderr").await;
+        let logs = logs.snapshot();
+
+        assert_eq!(captured.bytes, b"partial");
+        let event = &logs.named("plugin.script.output.read_failed")[0];
+        assert_eq!(event["level"], "WARN");
+        assert_eq!(event["process.stream"], "stderr");
+        assert_eq!(event["bytes_read"], 7);
+        assert_eq!(event["error.type"], "io");
+        assert_eq!(event["error.message"], "pipe torn down");
+    }
+
+    #[tokio::test]
+    async fn output_beyond_the_cap_is_dropped_flagged_and_logged() {
+        use tokio::io::AsyncReadExt as _;
+
+        let source = tokio::io::repeat(b'x').take(OUTPUT_CAP as u64 + 4096);
+        let logs = capture(tracing::Level::DEBUG);
+        let captured = read_capped(source, "stdout").await;
+        let logs = logs.snapshot();
+
+        assert_eq!(captured.bytes.len(), OUTPUT_CAP);
+        assert_eq!(captured.total, OUTPUT_CAP + 4096);
+        assert!(captured.truncated);
+        let event = &logs.named("plugin.script.output.truncated")[0];
+        assert_eq!(event["level"], "WARN");
+        assert_eq!(event["process.stream"], "stdout");
+        assert_eq!(event["max_bytes"], OUTPUT_CAP);
+        assert_eq!(event["bytes_total"], OUTPUT_CAP + 4096);
+        // Nothing is added to what the script wrote.
+        let text = captured.into_text();
+        assert_eq!(text.len(), OUTPUT_CAP);
+        assert!(text.bytes().all(|byte| byte == b'x'));
+    }
+
+    #[tokio::test]
+    async fn output_is_cut_between_characters_not_inside_one() {
+        // One ASCII byte, then two-byte characters: the cap, an even number
+        // of bytes in, falls inside a character.
+        let mut source = String::from("x");
+        source.push_str(&"\u{e9}".repeat(OUTPUT_CAP / 2 + 8));
+        let _logs = capture(tracing::Level::DEBUG);
+
+        let captured = read_capped(source.as_bytes(), "stdout").await;
+
+        assert!(captured.truncated);
+        assert_eq!(captured.total, source.len());
+        let text = captured.into_text();
+        assert_eq!(
+            text.len(),
+            OUTPUT_CAP - 1,
+            "the split character is left out"
+        );
+        assert!(source.starts_with(&text), "only what the script wrote");
+    }
+
+    #[test]
+    fn a_cut_keeps_complete_characters_of_every_width() {
+        let cut = |bytes: &[u8]| {
+            let captured = Captured {
+                bytes: bytes.to_vec(),
+                total: bytes.len() + 1,
+                truncated: true,
+            };
+            captured.into_text()
+        };
+        assert_eq!(cut(b"ab"), "ab");
+        assert_eq!(cut("a\u{e9}".as_bytes()), "a\u{e9}");
+        assert_eq!(cut(&"a\u{e9}".as_bytes()[..2]), "a");
+        assert_eq!(cut("a\u{20ac}".as_bytes()), "a\u{20ac}");
+        assert_eq!(cut(&"a\u{20ac}".as_bytes()[..3]), "a");
+        assert_eq!(cut("a\u{1f600}".as_bytes()), "a\u{1f600}");
+        assert_eq!(cut(&"a\u{1f600}".as_bytes()[..4]), "a");
+        assert_eq!(cut(b""), "");
+    }
+
+    #[tokio::test]
+    async fn a_script_with_too_much_output_says_so_beside_the_output() {
+        let dir = TempDir::new().unwrap();
+        let script = create_test_script(
+            dir.path(),
+            "loud.sh",
+            "#!/bin/sh\nprintf '{\"rows\":\"'\nhead -c 9000000 /dev/zero | tr '\\0' 'x'\necho quiet >&2\nexit 2\n",
+        );
+        let logs = capture(tracing::Level::DEBUG);
+        let result = execute_script(&script, dir.path(), &HashMap::new(), None)
+            .await
+            .unwrap();
+        let logs = logs.snapshot();
+
+        assert!(result.stdout_truncated);
+        assert!(!result.stderr_truncated);
+        assert_eq!(result.stdout.len(), OUTPUT_CAP);
+        assert!(result.stdout.starts_with("{\"rows\":\"xxx"));
+        assert!(result.stdout.ends_with("xxx"), "no note inside the output");
+        assert_eq!(result.stderr, "quiet\n");
+        let event = &logs.named("plugin.script.exited")[0];
+        assert_eq!(event["stdout_bytes"], 9_000_009);
+        assert_eq!(event["stderr_bytes"], 6);
+        assert_eq!(event["stdout_truncated"], true);
+        assert_eq!(event["stderr_truncated"], false);
+    }
+
+    #[tokio::test]
+    async fn output_within_the_cap_is_returned_unchanged_and_silent() {
+        let logs = capture(tracing::Level::DEBUG);
+        let captured = read_capped(&b"hello\n"[..], "stdout").await;
+        let logs = logs.snapshot();
+
+        assert!(!captured.truncated);
+        assert_eq!(captured.into_text(), "hello\n");
+        assert!(logs.events.is_empty(), "{}", logs.raw);
+    }
+
+    #[tokio::test]
+    async fn a_reader_task_that_dies_is_logged_and_yields_empty_output() {
+        let dead = tokio::spawn(std::future::pending::<Captured>());
+        dead.abort();
+        let logs = capture(tracing::Level::DEBUG);
+        let captured = collect_output(Some(dead), "stdout").await;
+        let logs = logs.snapshot();
+
+        assert!(captured.bytes.is_empty());
+        let event = &logs.named("plugin.script.output.reader_failed")[0];
+        assert_eq!(event["level"], "WARN");
+        assert_eq!(event["process.stream"], "stdout");
+        assert!(event["error.message"].is_string(), "{event}");
+    }
+
+    #[tokio::test]
+    async fn a_non_zero_exit_is_a_debug_observation_and_a_zero_exit_is_silent() {
+        let dir = TempDir::new().unwrap();
+        let failing = create_test_script(
+            dir.path(),
+            "fail.sh",
+            "#!/bin/sh\necho out\necho problem >&2\nexit 3\n",
+        );
+        let passing = create_test_script(dir.path(), "ok.sh", "#!/bin/sh\necho out\nexit 0\n");
+        let logs = capture(tracing::Level::DEBUG);
+
+        let result = execute_script(&failing, dir.path(), &HashMap::new(), None)
+            .await
+            .unwrap();
+        let after_the_failing_script = logs.snapshot();
+        execute_script(&passing, dir.path(), &HashMap::new(), None)
+            .await
+            .unwrap();
+        let after_both = logs.snapshot();
+
+        assert_eq!(result.exit_status, ScriptExitStatus::Code(3));
+        let exits = after_the_failing_script.named("plugin.script.exited");
+        assert_eq!(exits.len(), 1, "{}", after_the_failing_script.raw);
+        let event = exits[0];
+        assert_eq!(event["level"], "DEBUG");
+        assert_eq!(event["file.path"], failing.to_str().unwrap());
+        assert_eq!(event["process.exit.code"], 3);
+        assert_eq!(event["stdout_bytes"], 4);
+        assert_eq!(event["stderr_bytes"], 8);
+        assert_eq!(event["stdout_truncated"], false);
+        assert!(
+            !after_both.raw.contains("problem"),
+            "output is not logged: {}",
+            after_both.raw
+        );
+        // The passing script added no exit event, and neither raised a warning.
+        assert_eq!(after_both.named("plugin.script.exited").len(), 1);
+        let warnings = after_both
+            .events
+            .iter()
+            .filter(|event| event["level"] == "WARN" || event["level"] == "ERROR")
+            .count();
+        assert_eq!(warnings, 0, "{}", after_both.raw);
+    }
+
+    #[tokio::test]
+    async fn a_script_timeout_is_a_named_warning() {
+        let dir = TempDir::new().unwrap();
+        let script = create_test_script(dir.path(), "slow.sh", "#!/bin/sh\nsleep 10\n");
+        let logs = capture(tracing::Level::INFO);
+        let result = execute_script(
+            &script,
+            dir.path(),
+            &HashMap::new(),
+            Some(Duration::from_millis(100)),
+        )
+        .await;
+        let logs = logs.snapshot();
+
+        assert!(matches!(result, Err(ExecutorError::Timeout(_))));
+        let event = &logs.named("plugin.script.timed_out")[0];
+        assert_eq!(event["level"], "WARN");
+        assert_eq!(event["file.path"], script.to_str().unwrap());
+        assert_eq!(event["timeout_s"], 0.1);
     }
 }

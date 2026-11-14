@@ -57,16 +57,16 @@ pub fn cmd_validate(experiment_path: &Path) -> Result<()> {
     let config_result = resolve_config(&experiment.configuration);
     let secrets_result = resolve_secrets(&experiment.secrets);
 
-    println!("Experiment: {}", experiment.title);
+    crate::outln!("Experiment: {}", experiment.title);
     if let Some(ref desc) = experiment.description {
-        println!("Description: {desc}");
+        crate::outln!("Description: {desc}");
     }
-    println!("Tags: {}", experiment.tags.join(", "));
-    println!("Method steps: {}", experiment.method.len());
-    println!("Rollback steps: {}", experiment.rollbacks.len());
+    crate::outln!("Tags: {}", experiment.tags.join(", "));
+    crate::outln!("Method steps: {}", experiment.method.len());
+    crate::outln!("Rollback steps: {}", experiment.rollbacks.len());
 
     if let Some(ref hypothesis) = experiment.steady_state_hypothesis {
-        println!(
+        crate::outln!(
             "Hypothesis: {} ({} probes)",
             hypothesis.title,
             hypothesis.probes.len()
@@ -74,26 +74,26 @@ pub fn cmd_validate(experiment_path: &Path) -> Result<()> {
     }
 
     if experiment.estimate.is_some() {
-        println!("Estimate: present (Phase 0)");
+        crate::outln!("Estimate: present (Phase 0)");
     }
     if experiment.baseline.is_some() {
-        println!("Baseline: configured (Phase 1)");
+        crate::outln!("Baseline: configured (Phase 1)");
     }
     if experiment.regulatory.is_some() {
-        println!("Regulatory: mapped");
+        crate::outln!("Regulatory: mapped");
     }
 
     // Report config/secret resolution
     match config_result {
-        Ok(_) => println!("Configuration: all values resolved"),
-        Err(e) => println!("Configuration: WARNING — {e}"),
+        Ok(_) => crate::outln!("Configuration: all values resolved"),
+        Err(e) => crate::outln!("Configuration: WARNING — {e}"),
     }
     match secrets_result {
-        Ok(_) => println!("Secrets: all values resolved"),
-        Err(e) => println!("Secrets: WARNING — {e}"),
+        Ok(_) => crate::outln!("Secrets: all values resolved"),
+        Err(e) => crate::outln!("Secrets: WARNING — {e}"),
     }
 
-    println!("\nValidation passed.");
+    crate::outln!("\nValidation passed.");
     Ok(())
 }
 
@@ -128,7 +128,7 @@ fn warn_on_unknown_plugin_refs(experiment: &tumult_core::types::Experiment) {
     let native_registry = tumult_exec::native_registry();
     let discovery = tumult_plugin::discovery::discover_all_report();
     for warning in &discovery.warnings {
-        eprintln!("warning: {warning}");
+        crate::errln!("warning: {warning}");
     }
     let all_activities = experiment
         .method
@@ -147,14 +147,14 @@ fn warn_on_unknown_plugin_refs(experiment: &tumult_core::types::Experiment) {
             Provider::Native {
                 plugin, function, ..
             } => match native_registry.get(plugin) {
-                None => eprintln!(
+                None => crate::errln!(
                     "warning: activity '{}' uses unknown native plugin '{}' (available: {})",
                     activity.name,
                     plugin,
                     native_registry.plugin_names().join(", ")
                 ),
                 Some(executor) if !executor.functions().contains(&function.as_str()) => {
-                    eprintln!(
+                    crate::errln!(
                         "warning: activity '{}' uses unknown function '{}::{}' (available: {})",
                         activity.name,
                         plugin,
@@ -171,7 +171,7 @@ fn warn_on_unknown_plugin_refs(experiment: &tumult_core::types::Experiment) {
                 .iter()
                 .find(|p| &p.manifest.name == plugin)
             {
-                None => eprintln!(
+                None => crate::errln!(
                     "warning: activity '{}' uses unknown script plugin '{}' (available: {})",
                     activity.name,
                     plugin,
@@ -194,7 +194,7 @@ fn warn_on_unknown_plugin_refs(experiment: &tumult_core::types::Experiment) {
                             .iter()
                             .any(|p| &p.name == function) =>
                 {
-                    eprintln!(
+                    crate::errln!(
                         "warning: activity '{}' uses unknown action '{}::{}' (available: {})",
                         activity.name,
                         plugin,
@@ -231,7 +231,7 @@ pub fn cmd_discover(plugin_filter: Option<&str>) -> Result<()> {
     // surfaced on stderr instead of silently shrinking the listing.
     let discovery = tumult_plugin::discovery::discover_all_report();
     for warning in &discovery.warnings {
-        eprintln!("warning: {warning}");
+        crate::errln!("warning: {warning}");
     }
     for discovered in discovery.plugins {
         registry.register_script(discovered.manifest);
@@ -241,7 +241,7 @@ pub fn cmd_discover(plugin_filter: Option<&str>) -> Result<()> {
     // experiment runner dispatches through, so discovery and execution
     // can never disagree.
     let output = render_discover(plugin_filter, &registry, tumult_exec::native_registry())?;
-    print!("{output}");
+    crate::out!("{output}");
     Ok(())
 }
 

@@ -15,6 +15,7 @@ use std::time::Duration;
 
 use tumult_lake::{Reader, StoreError};
 use tumult_metrics::{to_sql, MetricDef, MetricsError};
+use tumult_otel::logging::{bounded, err};
 
 /// Report errors.
 #[derive(Debug, thiserror::Error)]
@@ -354,21 +355,7 @@ impl Scheduler {
         let mut ticker = tokio::time::interval(self.interval);
         loop {
             ticker.tick().await;
-            match self.produce_once() {
-                Ok(report) => {
-                    let kpis = report
-                        .sections
-                        .iter()
-                        .filter_map(|s| match s {
-                            Section::Kpi { label, value, .. } => Some(format!("{label}={value}")),
-                            _ => None,
-                        })
-                        .collect::<Vec<_>>()
-                        .join(", ");
-                    tracing::info!(kpis = %kpis, "scheduled report produced");
-                }
-                Err(e) => tracing::warn!(error = %e, "scheduled report failed"),
-            }
+            log_tick(&self.produce_once());
         }
     }
 
@@ -377,6 +364,38 @@ impl Scheduler {
         let reader = store.read_only()?;
         build_report(&reader, &self.defs, &self.title, None)
     }
+}
+
+/// Logs the outcome of one scheduler tick.
+fn log_tick(outcome: &Result<Report, ReportError>) {
+    match outcome {
+        Ok(report) => tracing::info!(
+            name: "report.scheduled.produced",
+            {
+                report.title = %bounded(&report.title),
+                report.kpis = %bounded(&kpi_summary(report)),
+            },
+            "scheduled report produced"
+        ),
+        Err(error) => tracing::warn!(
+            name: "report.scheduled.failed",
+            { error.message = %err(error) },
+            "scheduled report failed"
+        ),
+    }
+}
+
+/// The report's headline numbers as `label=value, label=value`.
+fn kpi_summary(report: &Report) -> String {
+    report
+        .sections
+        .iter()
+        .filter_map(|section| match section {
+            Section::Kpi { label, value, .. } => Some(format!("{label}={value}")),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 #[cfg(test)]
@@ -584,5 +603,51 @@ mod tests {
             Section::Kpi { value, .. } => assert_eq!(value, "1"),
             other => panic!("expected KPI section, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn a_produced_scheduled_report_is_a_named_event_with_its_kpis() {
+        let report = Report {
+            title: "weekly digest".into(),
+            generated_at_ns: 1,
+            sections: vec![
+                Section::Kpi {
+                    label: "experiment_count".into(),
+                    value: "6".into(),
+                    delta: None,
+                },
+                Section::Table {
+                    headers: vec!["experiment".into()],
+                    rows: vec![vec!["pg-failover".into()]],
+                },
+                Section::Kpi {
+                    label: "pass_rate".into(),
+                    value: "0.875".into(),
+                    delta: None,
+                },
+            ],
+        };
+        let logs = tumult_otel::logging::testing::capture_json(tracing::Level::INFO, || {
+            log_tick(&Ok(report));
+        });
+        let event = &logs.named("report.scheduled.produced")[0];
+        assert_eq!(event["level"], "INFO");
+        assert_eq!(event["report.title"], "weekly digest");
+        assert_eq!(event["report.kpis"], "experiment_count=6, pass_rate=0.875");
+    }
+
+    #[test]
+    fn a_failed_scheduled_report_is_a_named_warning_with_the_cause() {
+        let failure = ReportError::Store(StoreError::StoreLocked {
+            path: PathBuf::from("/var/lib/tumult/lake.duckdb"),
+        });
+        let logs = tumult_otel::logging::testing::capture_json(tracing::Level::INFO, || {
+            log_tick(&Err(failure));
+        });
+        let event = &logs.named("report.scheduled.failed")[0];
+        assert_eq!(event["level"], "WARN");
+        let cause = event["error.message"].as_str().unwrap();
+        assert!(cause.contains("locked"), "{cause}");
+        assert!(event.get("error").is_none(), "legacy field: {event}");
     }
 }

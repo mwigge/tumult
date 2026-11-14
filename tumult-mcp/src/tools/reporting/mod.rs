@@ -70,6 +70,16 @@ pub fn report(
     })
 }
 
+/// Reports a journal left out of a directory walk, so a result computed
+/// from a partial data set is explained in the log.
+pub(super) fn journal_skipped(path: &Path, error: &dyn std::fmt::Display) {
+    tracing::warn!(
+        name: "mcp.journal.skipped",
+        { file.path = %path.display(), error.message = %error },
+        "journal skipped: it could not be loaded"
+    );
+}
+
 /// Read every journal under `journals_path` (a `.toon` file or a directory
 /// of them, non-recursive — CLI parity), invoking `on_journal` per journal.
 /// Returns `(loaded, skipped)` counts; unreadable files are skipped.
@@ -90,7 +100,10 @@ pub(super) fn for_each_journal(
                         on_journal(journal);
                         loaded += 1;
                     }
-                    Err(_) => skipped += 1,
+                    Err(error) => {
+                        journal_skipped(&entry_path, &error);
+                        skipped += 1;
+                    }
                 }
             }
         }
@@ -153,5 +166,29 @@ mod tests {
         assert!(!result.structured.contains_key("content"));
         let xml = std::fs::read_to_string(&out).unwrap();
         assert!(xml.contains("<testsuite name=\"MCP test experiment\""));
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn an_unreadable_journal_in_a_directory_is_skipped_with_a_warning() {
+        // The run leaves its experiment definition beside the journal, so
+        // the journal is copied to a directory of its own.
+        let run = TempDir::new().unwrap();
+        let dir = TempDir::new().unwrap();
+        std::fs::copy(write_run_journal(run.path()), dir.path().join("run.toon")).unwrap();
+        let corrupt = dir.path().join("corrupt.toon");
+        std::fs::write(&corrupt, "{{{{ not a journal").unwrap();
+
+        let capture = tumult_otel::logging::testing::LogCapture::start(tracing::Level::INFO);
+        let mut seen = 0usize;
+        let counts = for_each_journal(dir.path().to_str().unwrap(), |_| seen += 1).unwrap();
+        let logs = capture.snapshot();
+
+        assert_eq!((seen, counts.0), (1, 1));
+        assert_eq!(counts.1, 1, "exactly the corrupt file is skipped");
+        let skipped = logs.named("mcp.journal.skipped");
+        assert_eq!(skipped.len(), 1, "{}", logs.raw);
+        assert_eq!(skipped[0]["level"], "WARN");
+        assert_eq!(skipped[0]["file.path"], corrupt.to_str().unwrap());
+        assert!(skipped[0]["error.message"].is_string(), "{}", logs.raw);
     }
 }

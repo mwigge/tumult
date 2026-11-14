@@ -1,8 +1,12 @@
+use std::path::Path;
+use std::process::ExitCode;
+
 use tumult_cli::commands;
 use tumult_cli::commands::{build_load_override, parse_var_args};
 
 use anyhow::Context;
 use clap::Parser;
+use tumult_otel::logging::{self, LogOptions};
 
 use cli::{
     AgenticAction, AutopilotAction, ChaosGraphAction, Cli, Commands, GameDayAction, GateFailOn,
@@ -25,30 +29,44 @@ impl Drop for TelemetryShutdown {
 }
 
 #[tokio::main]
-#[allow(clippy::too_many_lines)]
-async fn main() -> anyhow::Result<()> {
-    // Keep interactive runs quiet: without an OTLP endpoint there is nowhere for
-    // spans to go, so the INFO-level tracing/telemetry lines (`experiment.started`,
-    // `Global tracer provider is set`, …) are pure noise on the terminal. Default
-    // the log level to `warn` in that case. When an endpoint IS configured, or the
-    // operator sets `RUST_LOG` explicitly, we leave the level untouched so audit
-    // logs and span export behave exactly as before.
-    if std::env::var_os("OTEL_EXPORTER_OTLP_ENDPOINT").is_none()
-        && std::env::var_os("RUST_LOG").is_none()
-    {
-        std::env::set_var("RUST_LOG", "warn");
+async fn main() -> ExitCode {
+    let cli = Cli::parse();
+
+    // Diagnostics are structured events on stderr; stdout carries command
+    // output only. Interactive runs stay quiet: without an OTLP endpoint the
+    // level defaults to `warn`, with one it is `info`; `RUST_LOG` overrides
+    // either.
+    let otel_config = tumult_otel::config::TelemetryConfig::from_env();
+    if let Err(error) = logging::init(LogOptions::for_tool(&otel_config)) {
+        logging::report_init_failure(&otel_config.service_name, &error);
+        return ExitCode::FAILURE;
     }
 
-    // Initialize OpenTelemetry from environment. The guard flushes spans on
-    // every exit path below (success or early `?` return), preserving the
-    // existing exit codes.
-    let otel_config = tumult_otel::config::TelemetryConfig::from_env();
+    // Initialize OpenTelemetry from environment. The guard flushes spans and
+    // logs on every exit path below, including the fatal event.
     let _telemetry_guard =
         TelemetryShutdown(tumult_otel::telemetry::TumultTelemetry::new(otel_config));
 
-    let cli = Cli::parse();
-    // OTel spans are flushed by the TelemetryShutdown guard on all paths.
-    dispatch(cli.command).await
+    match dispatch(cli.command).await {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            logging::log_fatal(&error);
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// Prints the journal at `path` to stdout as pretty JSON
+/// (`run --output-format json`).
+fn print_journal_json(path: &Path) -> anyhow::Result<()> {
+    let content = std::fs::read_to_string(path)
+        .with_context(|| format!("failed to read journal: {}", path.display()))?;
+    let journal: tumult_core::types::Journal = toon_format::decode_default(&content)
+        .with_context(|| format!("failed to decode journal: {}", path.display()))?;
+    let json = serde_json::to_string_pretty(&journal)
+        .with_context(|| format!("failed to encode journal as JSON: {}", path.display()))?;
+    tumult_cli::outln!("{json}");
+    Ok(())
 }
 
 /// Dispatch a parsed command to its handler. Split from `main` so the wiring
@@ -99,17 +117,7 @@ async fn dispatch(command: Commands) -> anyhow::Result<()> {
             .await?;
             // If --output-format json was specified, print the journal as JSON to stdout
             if matches!(output_format, Some(OutputFormat::Json)) {
-                if let Ok(content) = std::fs::read_to_string(&journal_path) {
-                    if let Ok(journal) =
-                        toon_format::decode_default::<tumult_core::types::Journal>(&content)
-                    {
-                        println!(
-                            "{}",
-                            serde_json::to_string_pretty(&journal)
-                                .unwrap_or_else(|e| format!("{{\"error\": \"{e}\"}}")),
-                        );
-                    }
-                }
+                print_journal_json(&journal_path)?;
             }
         }
         Commands::Validate { experiment } => {
@@ -214,32 +222,32 @@ async fn dispatch(command: Commands) -> anyhow::Result<()> {
                 timeout_secs: agent_timeout,
                 generate_dir: generate_experiments,
             });
-            println!(
+            tumult_cli::outln!(
                 "{}",
                 commands::cmd_recommend(&options, agent_args.as_ref())?
             );
         }
         Commands::Agents => {
-            print!("{}", commands::cmd_agents());
+            tumult_cli::out!("{}", commands::cmd_agents());
         }
         Commands::Agentic { action } => match action {
             AgenticAction::ListPacks => {
-                print!("{}", commands::cmd_agentic_list_scenario_packs()?);
+                tumult_cli::out!("{}", commands::cmd_agentic_list_scenario_packs()?);
             }
             AgenticAction::Smoke { journal } => {
-                print!("{}", commands::cmd_agentic_smoke(&journal)?);
+                tumult_cli::out!("{}", commands::cmd_agentic_smoke(&journal)?);
             }
             AgenticAction::Run { scenario, journal } => {
-                print!(
+                tumult_cli::out!(
                     "{}",
                     commands::cmd_agentic_run_scenario(&scenario, &journal)?
                 );
             }
             AgenticAction::Trajectory { pack, journal } => {
-                print!("{}", commands::cmd_agentic_trajectory(&pack, &journal)?);
+                tumult_cli::out!("{}", commands::cmd_agentic_trajectory(&pack, &journal)?);
             }
             AgenticAction::Replay { fixture, journal } => {
-                print!("{}", commands::cmd_agentic_replay(&fixture, &journal)?);
+                tumult_cli::out!("{}", commands::cmd_agentic_replay(&fixture, &journal)?);
             }
             AgenticAction::Proxy {
                 listen,
@@ -266,7 +274,7 @@ async fn dispatch(command: Commands) -> anyhow::Result<()> {
                 otlp,
                 client,
             } => {
-                print!(
+                tumult_cli::out!(
                     "{}",
                     commands::cmd_agentic_run_live(
                         &prompt,

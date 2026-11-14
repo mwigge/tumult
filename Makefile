@@ -161,7 +161,7 @@ e2e: build up
 
 lint:
 	cargo fmt --all -- --check
-	cargo clippy --all-targets --all-features -- -D warnings -W clippy::pedantic
+	cargo clippy --all-targets --all-features -- -D warnings -W clippy::pedantic -D clippy::print_stdout -D clippy::print_stderr -D clippy::dbg_macro
 
 precommit: lint
 	cargo test --workspace

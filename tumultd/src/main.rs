@@ -53,6 +53,7 @@
 //! * `tumultd create-admin` — create the first admin user (daemon stopped).
 
 mod admin;
+mod events;
 mod lake_jobs;
 mod ops;
 mod reports;
@@ -60,9 +61,11 @@ mod score_jobs;
 mod serve;
 
 use std::path::PathBuf;
+use std::process::ExitCode;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
+use tumult_otel::logging;
 
 #[derive(Parser)]
 #[command(
@@ -110,21 +113,80 @@ enum Command {
     },
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "tumultd=info,tumult_ingest=info".into()),
-        )
-        .init();
-
+/// Every subcommand logs through the shared structured pipeline: JSON on
+/// stderr unless a terminal or `TUMULT_LOG_FORMAT` says otherwise. stdout
+/// carries only command output (reports, the one-time admin password).
+fn main() -> ExitCode {
     let cli = Cli::parse();
+    let service_name = events::service_name();
+    if let Err(error) = logging::init(events::log_options(&service_name)) {
+        logging::report_init_failure(&service_name, &error);
+        return ExitCode::FAILURE;
+    }
+    // A returned error would be printed unstructured by the runtime; log it
+    // as an event instead.
+    let outcome = run_to_exit(run(cli), RUNTIME_SHUTDOWN_GRACE)
+        .context("start the async runtime")
+        .and_then(std::convert::identity);
+    if let Err(error) = outcome {
+        events::fatal(&error);
+        return ExitCode::FAILURE;
+    }
+    ExitCode::SUCCESS
+}
+
+/// How long the process waits, once its work is done, for blocking tasks
+/// that are still running.
+const RUNTIME_SHUTDOWN_GRACE: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// Runs `work` on a runtime of its own and leaves that runtime within
+/// `grace`. Dropping a runtime waits for its blocking tasks without limit,
+/// and one of them can be a telemetry flush against an exporter that hangs:
+/// the daemon would have stopped serving and never exit.
+fn run_to_exit<F: std::future::Future>(
+    work: F,
+    grace: std::time::Duration,
+) -> std::io::Result<F::Output> {
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?;
+    let outcome = runtime.block_on(work);
+    runtime.shutdown_timeout(grace);
+    Ok(outcome)
+}
+
+async fn run(cli: Cli) -> Result<()> {
     match cli.command.unwrap_or(Command::Serve) {
         Command::Serve => serve::serve().await,
         Command::Import { file, label } => admin::import(file, label),
         Command::Report { metric, out } => reports::report(metric, out),
         Command::CreateAdmin { username, db } => admin::create_admin(&username, db),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::{Duration, Instant};
+
+    /// A telemetry flush that hangs was given up on (`flush_within`), but
+    /// its thread is still there when the daemon is done.
+    #[test]
+    fn a_blocking_task_that_hangs_does_not_hold_up_the_exit() {
+        let (release, held) = std::sync::mpsc::channel::<()>();
+        let work = async move {
+            tokio::task::spawn_blocking(move || {
+                // Ends when the sender is dropped.
+                let _ = held.recv();
+            });
+            7
+        };
+
+        let started = Instant::now();
+        let outcome = super::run_to_exit(work, Duration::from_millis(50)).unwrap();
+
+        assert_eq!(outcome, 7);
+        assert!(started.elapsed() < Duration::from_secs(5));
+        drop(release);
     }
 }
 

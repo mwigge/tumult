@@ -206,9 +206,9 @@ pub async fn cmd_gate(args: &GateArgs) -> Result<bool> {
     }
     let parsed = GateResponse::from_value(&body)?;
     if args.json {
-        println!("{}", serde_json::to_string_pretty(&body)?);
+        crate::outln!("{}", serde_json::to_string_pretty(&body)?);
     } else {
-        print!("{}", render(&parsed));
+        crate::out!("{}", render(&parsed));
     }
     Ok(passes(&parsed.verdict, args.fail_on))
 }

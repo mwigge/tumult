@@ -135,7 +135,7 @@ pub fn run_cypher_capped(
     // Guard first: a rejected query must never reach the engine, so even a
     // parser bug in grafeo cannot turn a write into a silent no-op.
     if let Some(token) = find_mutation_token(query) {
-        tracing::debug!(token, "cypher query rejected: mutating clause");
+        log_mutation_rejected(&token);
         return Err(CypherError::MutationRejected(token));
     }
     // Engine-side resource limits: clamp the row cap even when the caller did
@@ -485,6 +485,17 @@ fn find_mutation_token(query: &str) -> Option<String> {
     flush(&mut token)
 }
 
+/// A query was refused because it contains a mutating clause. `token` is one
+/// of [`MUTATING_TOKENS`] as the query spelled it; the canonical upper-case
+/// keyword is logged, so no query text reaches the log.
+fn log_mutation_rejected(token: &str) {
+    tracing::debug!(
+        name: "cypher.query.mutation_rejected",
+        { cypher.clause = %token.to_ascii_uppercase() },
+        "cypher query rejected, mutating clause"
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -642,5 +653,16 @@ mod tests {
         let snap = GraphSnapshot::default();
         let estimated = estimate_expansion_steps(&snap, "MATCH (a)-[*]->(b)-[*]->(c) RETURN c");
         assert!(estimated <= MAX_EXPANSION_STEPS);
+    }
+
+    #[test]
+    fn a_rejected_mutation_is_a_named_debug_event_with_the_keyword() {
+        let logs = tumult_otel::logging::testing::capture_json(tracing::Level::DEBUG, || {
+            super::log_mutation_rejected("dEtAcH");
+        });
+        let event = &logs.named("cypher.query.mutation_rejected")[0];
+        assert_eq!(event["level"], "DEBUG");
+        assert_eq!(event["cypher.clause"], "DETACH");
+        assert!(event.get("token").is_none(), "{event}");
     }
 }

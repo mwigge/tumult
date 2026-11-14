@@ -6,6 +6,7 @@
 
 use clickhouse::Client;
 use tumult_lake::error::AnalyticsError;
+use tumult_otel::logging::{redact_credentials, sanitize_url};
 
 use crate::config::ClickHouseConfig;
 
@@ -79,6 +80,38 @@ pub struct ClickHouseStore {
     query_timeout: std::time::Duration,
 }
 
+/// Logs a failed connection attempt that will be retried.
+///
+/// The URL is logged without userinfo or query, and the error text has the
+/// credentials of the URL and the configured user name and password
+/// removed: a client error may quote any of them.
+fn log_connect_retry(
+    config: &ClickHouseConfig,
+    attempt: u32,
+    max_attempts: u32,
+    backoff: std::time::Duration,
+    error: &AnalyticsError,
+) {
+    tracing::warn!(
+        name: "clickhouse.connect.retrying",
+        {
+            url.full = %sanitize_url(&config.url),
+            db.namespace = %config.database,
+            attempt,
+            max_attempts,
+            backoff_s = backoff.as_secs(),
+            error.message = %without_credentials(&error.to_string(), config),
+        },
+        "ClickHouse connection failed, retrying"
+    );
+}
+
+/// `text` without the credentials of the configured URL, the user name and
+/// the password, in any spelling.
+fn without_credentials(text: &str, config: &ClickHouseConfig) -> String {
+    redact_credentials(text, &config.url, &config.user, &config.password)
+}
+
 impl ClickHouseStore {
     /// Connect to `ClickHouse` with retry and exponential backoff.
     ///
@@ -105,13 +138,7 @@ impl ClickHouseStore {
                         .get(attempt as usize)
                         .copied()
                         .unwrap_or(std::time::Duration::from_secs(8));
-                    tracing::warn!(
-                        attempt = attempt + 1,
-                        max_attempts = retry_config.max_attempts,
-                        backoff_s = backoff.as_secs(),
-                        error = %e,
-                        "ClickHouse connection failed, retrying"
-                    );
+                    log_connect_retry(config, attempt + 1, retry_config.max_attempts, backoff, &e);
                     last_err = Some(e);
                     tokio::time::sleep(backoff).await;
                 }

@@ -162,10 +162,13 @@ pub(super) async fn trust_on_first_use(
 
     // No entry found — add to known_hosts (TOFU)
     tracing::info!(
-        host = %host,
-        port = port,
-        fingerprint = %actual_fp,
-        "TOFU: adding new host key to known_hosts"
+        name: "ssh.host_key.trusted_on_first_use",
+        {
+            server.address = %host,
+            server.port = port,
+            ssh.host_key.fingerprint = %actual_fp,
+        },
+        "adding new host key to known_hosts"
     );
     append_known_hosts_entry(host, port, known_hosts_path, server_key).await?;
     Ok(true)

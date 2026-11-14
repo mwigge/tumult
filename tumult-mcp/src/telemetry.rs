@@ -6,6 +6,29 @@ use tumult_otel::SpanGuard;
 
 const TRACER: &str = "tumult-mcp";
 
+/// Longest tool name written to a log event, in characters. Every real tool
+/// name is far shorter; the name is client input, so anything longer is cut
+/// rather than letting a caller write arbitrarily large log lines.
+pub(crate) const MAX_LOGGED_TOOL_NAME_CHARS: usize = 64;
+
+/// Logs a tool invocation under the `gen_ai.tool.name` key, with the
+/// client-supplied name cut to [`MAX_LOGGED_TOOL_NAME_CHARS`].
+pub(crate) fn log_tool_call(tool_name: &str) {
+    tracing::info!(
+        name: "mcp.tool.called",
+        { gen_ai.tool.name = bounded_tool_name(tool_name) },
+        "MCP tool call"
+    );
+}
+
+/// The first [`MAX_LOGGED_TOOL_NAME_CHARS`] characters of `name`.
+fn bounded_tool_name(name: &str) -> &str {
+    match name.char_indices().nth(MAX_LOGGED_TOOL_NAME_CHARS) {
+        Some((end, _)) => &name[..end],
+        None => name,
+    }
+}
+
 /// Start a span for MCP tool invocation.
 pub(crate) fn begin_tool_call(tool_name: &str) -> SpanGuard {
     let tracer = global::tracer(TRACER);
@@ -90,5 +113,27 @@ mod tests {
         // Context must be a valid (non-panicking) value regardless of provider.
         // With a noop provider the span is invalid but context is still present.
         let _ = cx; // non-panicking assertion
+    }
+
+    #[test]
+    fn a_tool_call_is_logged_under_the_gen_ai_tool_name() {
+        let logs = tumult_otel::logging::testing::capture_json(tracing::Level::INFO, || {
+            log_tool_call("tumult_validate");
+        });
+        let called = logs.named("mcp.tool.called");
+        assert_eq!(called.len(), 1, "{}", logs.raw);
+        assert_eq!(called[0]["gen_ai.tool.name"], "tumult_validate");
+        assert_eq!(called[0]["message"], "MCP tool call");
+    }
+
+    #[test]
+    fn a_client_supplied_tool_name_is_bounded_before_it_is_logged() {
+        let hostile = format!("tumult_{}\u{e9}", "x".repeat(4096));
+        let logs = tumult_otel::logging::testing::capture_json(tracing::Level::INFO, || {
+            log_tool_call(&hostile);
+        });
+        let logged = logs.events[0]["gen_ai.tool.name"].as_str().unwrap();
+        assert_eq!(logged.chars().count(), MAX_LOGGED_TOOL_NAME_CHARS);
+        assert!(hostile.starts_with(logged));
     }
 }

@@ -517,7 +517,12 @@ INFO experiment.started experiment_id="abc-123" title="Kill DB connections" trig
 INFO experiment.completed experiment_id="abc-123" status="Completed" duration_ms=45231
 ```
 
-These events appear in log aggregators (Loki, Elasticsearch) correlated with the experiment trace via `trace_id`.
+The sample above is the terminal (text) rendering. Without a terminal the same events are JSON lines on stderr; see [Logging](logging.md) for the format and the field vocabulary.
+
+Correlation with the experiment trace depends on the path the record takes:
+
+- OTLP log records carry the trace and span id of the span that was active when the event fired. This is what a log aggregator behind a Collector (Loki, Elasticsearch) correlates on.
+- Local JSON and text lines carry `trace_id` and `span_id` only when the event fired inside an active OpenTelemetry span. An event logged outside a span (process start, shutdown, background tasks) has neither key.
 
 ## Metrics Reference
 
