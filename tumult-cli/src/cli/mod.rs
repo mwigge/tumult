@@ -410,7 +410,7 @@ pub(crate) enum Commands {
         /// Fewer runs with samples on either side is inconclusive (daemon
         /// default 3, at most 1000); an interval from fewer than 5 is
         /// flagged as resting on few runs
-        #[arg(long)]
+        #[arg(long, value_parser = clap::value_parser!(u32).range(1..=1000))]
         min_runs: Option<u32>,
         /// Seed of the resampling (daemon default fixed): the same runs
         /// and seed give the same interval

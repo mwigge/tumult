@@ -268,3 +268,20 @@ fn perf_takes_a_range_and_can_include_partial_runs() {
     );
     assert!(Cli::try_parse_from(["tumult", "perf", "checkout", "--include", "all"]).is_err());
 }
+
+#[test]
+fn perf_takes_between_1_and_1000_minimum_runs() {
+    let min_runs = |value: &str| {
+        Cli::try_parse_from(["tumult", "perf", "checkout", "--min-runs", value]).map(|cli| {
+            let Commands::Perf { min_runs, .. } = cli.command else {
+                panic!("expected Perf command");
+            };
+            min_runs
+        })
+    };
+    assert_eq!(min_runs("1").unwrap(), Some(1));
+    assert_eq!(min_runs("1000").unwrap(), Some(1000));
+    for refused in ["0", "1001", "-1", "many"] {
+        assert!(min_runs(refused).is_err(), "{refused}");
+    }
+}
