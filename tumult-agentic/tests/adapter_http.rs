@@ -76,8 +76,8 @@ async fn invoke_floors_latency_at_the_time_the_call_took() {
     let app = Router::new().route(
         "/agent",
         post(|| async {
-            // Not synchronisation: the delay is the quantity under test, and a
-            // sleep never returns early, so the lower bound below is exact.
+            // sleep: the delay is the quantity under test, and a sleep never
+            // returns early, so the lower bound below is exact.
             tokio::time::sleep(SERVER_DELAY).await;
             Json(serde_json::json!({"body": "ok", "latency_ms": 0}))
         }),
@@ -291,6 +291,8 @@ async fn invoke_times_out_when_the_server_stalls() {
     let app = Router::new().route(
         "/agent",
         post(|| async {
+            // sleep: the stalled server is the fault under test; the client
+            // gives up after 100 ms and the test never waits this out.
             tokio::time::sleep(Duration::from_secs(5)).await;
             Json(serde_json::json!({"body": "too late", "latency_ms": 1}))
         }),

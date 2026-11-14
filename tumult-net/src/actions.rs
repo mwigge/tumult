@@ -534,6 +534,7 @@ mod tests {
                 execd = true;
                 break;
             }
+            // sleep: interval of the bounded poll of /proc above.
             tokio::time::sleep(std::time::Duration::from_millis(20)).await;
         }
         assert!(execd, "stand-in proxyd never exec'd");

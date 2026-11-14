@@ -544,7 +544,8 @@ mod tests {
         .await;
         assert!(matches!(result, Err(ExecutorError::Timeout(_))));
 
-        // Wait past the grandchild's would-be write time.
+        // sleep: there is no event for a file that must stay absent; wait
+        // past the time the grandchild would have written it.
         tokio::time::sleep(Duration::from_millis(800)).await;
         assert!(
             !marker.exists(),
