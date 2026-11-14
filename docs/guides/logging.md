@@ -49,7 +49,11 @@ Guarantees of the JSON format:
 - Field values keep their type: numbers are JSON numbers, booleans are JSON
   booleans.
 - Any single string value is cut at 8 KiB (`MAX_FIELD_BYTES`) and suffixed
-  with `...[truncated N bytes]`.
+  with `...[truncated N bytes]`. The cut is made once, before the event
+  reaches a sink, so the exported OTLP record carries the same value as the
+  line on stderr.
+- A closed or broken stderr never ends the process: a line that cannot be
+  written is dropped.
 
 ## Configuration
 
@@ -75,6 +79,13 @@ With the default filter, `opentelemetry*`, `tonic`, `hyper*`, `h2`, `tower*`,
 stack are never exported over OTLP, whatever `RUST_LOG` says, so the exporter
 cannot feed itself.
 
+`tumultd` receives its own export. For the same reason the events of its
+ingest path (`tumult_ingest::writer`, `tumult_ingest::grpc`,
+`tumult_ingest::http`, `tumult_ingest::otap`, `tumult_lake::writer`) are on
+stderr only: a record that cannot be persisted would otherwise be logged,
+exported to the same ingest, fail again and be logged again. A binary names
+such targets with `LogOptions::with_local_only_targets`.
+
 ### Process start and fatal errors
 
 `init` is the first thing `main` does. If it fails, the binary writes one
@@ -84,10 +95,20 @@ than refusing to start.
 An error that ends the process is the last event on stderr:
 
 ```json
-{"timestamp":"...","level":"ERROR","target":"tumult_otel::logging","event.name":"process.fatal","message":"fatal error","service.name":"tumult","service.version":"2.22.0","error.message":"reading experiment missing.toon: No such file or directory (os error 2)"}
+{"timestamp":"...","level":"ERROR","target":"tumult_otel::logging","event.name":"process.fatal","message":"exiting because of an unrecoverable error","service.name":"tumult","service.version":"2.22.0","error.message":"reading experiment missing.toon: No such file or directory (os error 2)"}
 ```
 
-The exit code is non-zero.
+The exit code is non-zero. A panic is reported the same way, as
+`process.panic` with `exception.message`.
+
+These two events do not depend on the filter. With `RUST_LOG=off`, or a
+filter that names other targets only, the line is written to stderr
+directly, as JSON, exactly once. `tumultd` logs `process.fatal` before it
+flushes telemetry, so the event is also exported while the OTLP listener is
+still up.
+
+The standard panic message and backtrace are printed after the event only
+when `RUST_BACKTRACE` is set to something other than `0`.
 
 ## Event names
 
@@ -173,7 +194,8 @@ are not Rust constants; the checker and this table are the source of truth.
 - Query strings. Log `url.path`.
 - Request and response bodies, prompts, model output.
 - stdout and stderr of child processes and plugin scripts. Log their sizes
-  (`stdout_bytes`, `stderr_bytes`) and the exit code.
+  (`stdout_bytes`, `stderr_bytes`: what the process wrote, also when less
+  was kept) and the exit code.
 - Query text (SQL, Cypher). Log a bounded classification such as
   `cypher.clause`.
 - Unbounded values taken from a request. The formatter caps every string at
@@ -220,17 +242,48 @@ in every crate (`clippy::print_stdout`, `clippy::print_stderr`,
 `clippy::dbg_macro`). Where output is the product of a command, the function
 or module carries an `#[allow]` with a comment saying so: the result
 printing of `tumult`, the admin and report subcommands of `tumultd`, and
-`winfault`. Tests may print (`allow-print-in-tests` in `clippy.toml`).
+`winfault`. Tests may print and use `dbg!` (`allow-print-in-tests` and
+`allow-dbg-in-tests` in `clippy.toml`).
+
+### Human diagnostics that stay text
+
+Three commands write to stderr for the person who ran them, as plain text
+and not as events, whatever `TUMULT_LOG_FORMAT` says:
+
+| Command | What it writes to stderr |
+|---|---|
+| `tumult validate` | findings about the experiment: an unknown plugin or function, a plugin search path that was skipped |
+| `tumult discover` | plugin discovery warnings that annotate the listing |
+| `tumult analyze` | `warning: skipping <file>: <cause>` for a journal it could not load |
+
+They are part of what the command reports, read next to its stdout, and no
+machine is expected to parse them. Anything else these commands have to say
+(a fatal error, a failure in a library they call) is an event like
+everywhere else. Do not add to this list: a new diagnostic is an event.
 
 ## Child processes
 
 A daemon's stderr is its log stream. `tumult-net-proxyd` logs JSON to stderr;
-the parent keeps that stream in `<tmp>/tumult-net-<key>.stderr.log` while the
-proxy runs and removes it when the proxy is stopped. When the proxy fails to
-start, the parent reports the `error.message` of its last log line.
+the parent keeps that stream in `<tmp>/tumult-net-<key>.log.d/stderr.log`
+while the proxy runs. The directory is created for the proxy with mode
+`0700` and the file with `0600`, never through an existing file or link; a
+directory of that name that others can enter is refused. Nothing rotates the
+file, so the daemon stops writing to it after 1 MiB
+(`LogOptions::with_output_limit`): the event that does not fit and every
+later one are dropped whole, a fatal error included, so the file is always
+an unbroken start of the log. The file and its directory are removed when
+the proxy is stopped and when it fails to start. In that case the parent
+reads at most the first 8 KiB and reports the `error.message` of the last
+log line in it.
 
 Output of plugin scripts and agent CLIs is data, not log: it is captured,
-bounded, and returned to the caller.
+bounded, and returned to the caller. A script plugin's stream is cut at
+8 MiB on a character boundary and nothing is written into it; the result
+says so (`stdout_truncated`, `stderr_truncated`) and
+`plugin.script.output.truncated` carries the size the script wrote
+(`bytes_total`). A script that exits non-zero is an observation about the
+system under test, logged at `debug` as `plugin.script.exited`; a timeout
+and a stream that could not be read are warnings.
 
 ## Crates not converted yet
 
@@ -238,5 +291,6 @@ bounded, and returned to the caller.
 `tumult-ingest` and `tumult-lake` still log through the same subscriber, so
 their output is JSON with typed fields, but their events have no `name:` yet
 and some still use the replaced field names. They are listed in `DEFERRED`
-in `scripts/check-log-messages.py`; converting a crate means removing its
-entry and fixing what the checker then reports.
+in `scripts/check-log-messages.py`, which prints that list with its length
+on every run; converting a crate means removing its entry and fixing what
+the checker then reports.
