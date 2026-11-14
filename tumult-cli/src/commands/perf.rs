@@ -96,6 +96,10 @@ pub struct PerfArgs {
     pub probe: Option<String>,
     pub quantile: Option<String>,
     pub min_samples: Option<u32>,
+    /// Fewer runs with samples on either side is inconclusive.
+    pub min_runs: Option<u32>,
+    /// Seed of the resampling, for an interval that can be reproduced.
+    pub seed: Option<u64>,
     pub margin_pct: Option<f64>,
     pub env: Option<String>,
     /// The version to compare against, instead of the one deployed just
@@ -164,6 +168,8 @@ pub struct PerfResponse {
     pub delta_pct: Option<f64>,
     pub ci: Option<(f64, f64)>,
     pub margin: Option<f64>,
+    /// The interval rests on fewer than five runs on a side.
+    pub low_run_count: bool,
     pub stored: bool,
     /// The daemon already held this verdict and appended nothing.
     pub duplicate: bool,
@@ -254,6 +260,10 @@ impl PerfResponse {
                 _ => None,
             },
             margin: num("margin"),
+            low_run_count: comparison
+                .get("low_run_count")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
             stored: v.get("stored").and_then(Value::as_bool).unwrap_or(false),
             duplicate: v.get("duplicate").and_then(Value::as_bool).unwrap_or(false),
             quantile,
@@ -371,6 +381,11 @@ pub fn render(resp: &PerfResponse) -> String {
             .unwrap_or_default();
         out.push_str(&format!("  delta {delta:+.1} ms{pct}{ci}{margin}\n"));
     }
+    if resp.low_run_count {
+        out.push_str(
+            "  note: fewer than 5 runs on a side; the interval has few resamples to draw from\n",
+        );
+    }
     for reason in &resp.reasons {
         out.push_str(&format!("  - {reason}\n"));
     }
@@ -436,6 +451,12 @@ pub fn query_params(args: &PerfArgs) -> Vec<(&'static str, String)> {
     }
     if let Some(m) = args.min_samples {
         query.push(("min_samples", m.to_string()));
+    }
+    if let Some(m) = args.min_runs {
+        query.push(("min_runs", m.to_string()));
+    }
+    if let Some(seed) = args.seed {
+        query.push(("seed", seed.to_string()));
     }
     if let Some(m) = args.margin_pct {
         query.push(("margin_pct", m.to_string()));
@@ -715,6 +736,8 @@ mod tests {
             probe: None,
             quantile: None,
             min_samples: None,
+            min_runs: None,
+            seed: None,
             margin_pct: None,
             env: None,
             baseline: None,
@@ -726,6 +749,38 @@ mod tests {
             fail_on: PerfFailOn::Inconclusive,
             json: false,
         }
+    }
+
+    #[test]
+    fn the_runs_a_side_needs_and_the_seed_go_to_the_daemon_when_asked_for() {
+        let asked = PerfArgs {
+            min_runs: Some(5),
+            seed: Some(42),
+            ..args()
+        };
+        assert_eq!(
+            query_params(&asked),
+            vec![("min_runs", "5".to_string()), ("seed", "42".to_string())]
+        );
+    }
+
+    #[test]
+    fn render_says_when_the_interval_rests_on_few_runs() {
+        let mut v = answer();
+        v["comparison"]["low_run_count"] = true.into();
+        let resp = PerfResponse::from_value(&v).unwrap();
+        assert!(resp.low_run_count);
+        let text = render(&resp);
+        assert!(
+            text.contains(
+                "  note: fewer than 5 runs on a side; the interval has few resamples to draw from\n"
+            ),
+            "{text}"
+        );
+        // An older daemon does not say; nothing is printed.
+        let plain = PerfResponse::from_value(&answer()).unwrap();
+        assert!(!plain.low_run_count);
+        assert!(!render(&plain).contains("note:"));
     }
 
     #[test]

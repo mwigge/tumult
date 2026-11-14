@@ -407,6 +407,15 @@ pub(crate) enum Commands {
         /// Fewer samples on either side is inconclusive (daemon default 20)
         #[arg(long)]
         min_samples: Option<u32>,
+        /// Fewer runs with samples on either side is inconclusive (daemon
+        /// default 3, at most 1000); an interval from fewer than 5 is
+        /// flagged as resting on few runs
+        #[arg(long)]
+        min_runs: Option<u32>,
+        /// Seed of the resampling (daemon default fixed): the same runs
+        /// and seed give the same interval
+        #[arg(long)]
+        seed: Option<u64>,
         /// Noise margin as a percentage of the baseline quantile (daemon default 5)
         #[arg(long)]
         margin_pct: Option<f64>,

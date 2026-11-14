@@ -1672,6 +1672,7 @@ mod tests {
         );
         assert_eq!(body["comparison"]["failure_share"], Value::Null);
         assert_eq!(body["comparison"]["min_runs"], 3);
+        assert_eq!(body["comparison"]["low_run_count"], true);
         assert_eq!(body["candidate"]["windows"]["lost"], 0);
         assert_eq!(body["candidate"]["windows"]["censored"], 0);
         assert_eq!(body["candidate"]["attribution"]["declared"], 1);

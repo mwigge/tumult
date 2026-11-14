@@ -208,6 +208,7 @@ impl Answer {
                 "seed": c.seed,
                 "min_samples": self.min_samples,
                 "min_runs": self.min_runs,
+                "low_run_count": c.low_run_count,
                 "failure_share": failure_json(self.failure),
             },
             "versions_seen": self.versions.iter().map(|v| json!({
