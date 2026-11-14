@@ -26,8 +26,12 @@
 //! from earlier than that is left out. So is a
 //! span whose time lies more than [`CLOCK_SKEW`] ahead of the wall clock:
 //! it would hold its version's first and last sight at a time that never
-//! was, and the versions that follow would sort before it. Both are kept
-//! as spans.
+//! was, and the versions that follow would sort before it. And so is a
+//! span from before [`EARLIEST_SIGHT_NS`] (2000-01-01): it would hold the
+//! first sight, and the bound late spans are measured from, at a time
+//! that never was. All three are kept as spans. A row an older build left
+//! with a start ahead of the clock is begun anew by the next sight of
+//! its version.
 //!
 //! A lake written before the rollup existed, or before it knew
 //! deployments, is read back from its spans once, a day of spans at a
@@ -70,6 +74,16 @@ pub const LATE_SPAN_LIMIT: Duration = Duration::from_secs(600);
 /// that (a clock gone wrong, a bad unit) is kept as a span and left out
 /// of the rollup.
 pub const CLOCK_SKEW: Duration = Duration::from_secs(300);
+
+/// The earliest time a span may bear and still count as a sight:
+/// 2000-01-01T00:00:00Z. The lake keeps its spans without limit, so no
+/// retention says how old an honest span may be; this fixed floor does.
+/// A span from before it (a clock never set, a timestamp of nought or in
+/// the wrong unit) is kept as a span and left out of the rollup: it
+/// would hold its version's first sight, and the anchor late spans are
+/// measured from, at a time that never was, and no later span could
+/// move them.
+pub const EARLIEST_SIGHT_NS: i64 = 946_684_800 * SECOND_NS;
 
 /// The least time between two warnings about spans left out of the
 /// rollup: a sender with a clock gone wrong sends many of them.
@@ -195,6 +209,7 @@ impl Throttle {
 
 static EARLY_SPANS: Throttle = Throttle::new();
 static AHEAD_SPANS: Throttle = Throttle::new();
+static ANCIENT_SPANS: Throttle = Throttle::new();
 
 /// The latest time a span may bear and still count as a sight, by a wall
 /// clock that reads `now_ns`.
@@ -202,7 +217,8 @@ fn horizon_of(now_ns: i64) -> i64 {
     now_ns.saturating_add(i64::try_from(CLOCK_SKEW.as_nanos()).unwrap_or(i64::MAX))
 }
 
-/// Versioned spans left out of the rollup for a time ahead of the clock.
+/// Versioned spans left out of the rollup for the time they bear: ahead
+/// of the clock, or from before [`EARLIEST_SIGHT_NS`].
 struct Ahead {
     service: String,
     environment: Option<String>,
@@ -227,6 +243,22 @@ fn warn_ahead(ahead: &Ahead, horizon_ns: i64) {
     );
 }
 
+fn warn_ancient(ancient: &Ahead) {
+    let Some(held_back) = ANCIENT_SPANS.pass(Instant::now()) else {
+        return;
+    };
+    tracing::warn!(
+        service = %ancient.service,
+        environment = ancient.environment.as_deref().unwrap_or(""),
+        version = %ancient.version,
+        spans = ancient.spans,
+        span_ts_ns = ancient.span_ts_ns,
+        floor_ns = EARLIEST_SIGHT_NS,
+        warnings_held_back = held_back,
+        "lake.sightings.ancient_span_ignored"
+    );
+}
+
 fn warn_early(sight: &Sight, row: &Held) {
     let Some(held_back) = EARLY_SPANS.pass(Instant::now()) else {
         return;
@@ -245,9 +277,21 @@ fn warn_early(sight: &Sight, row: &Held) {
 /// The versioned spans of a batch from later than `horizon_ns`, named by
 /// the first of them.
 fn ahead_in(rows: &[SpanRow], horizon_ns: i64) -> Option<Ahead> {
+    left_out_in(rows, |ts_ns| ts_ns > horizon_ns)
+}
+
+/// The versioned spans of a batch from before [`EARLIEST_SIGHT_NS`],
+/// named by the first of them.
+fn before_the_floor_in(rows: &[SpanRow]) -> Option<Ahead> {
+    left_out_in(rows, |ts_ns| ts_ns < EARLIEST_SIGHT_NS)
+}
+
+/// The versioned spans of a batch whose time is `outside` what the
+/// rollup takes, named by the first of them.
+fn left_out_in(rows: &[SpanRow], outside: impl Fn(i64) -> bool) -> Option<Ahead> {
     let mut ahead = rows
         .iter()
-        .filter(|row| row.ts_ns > horizon_ns)
+        .filter(|row| outside(row.ts_ns))
         .filter_map(|row| {
             let (version, _) = stored_version(row).filter(|(v, _)| !v.is_empty())?;
             Some((row, version))
@@ -359,13 +403,14 @@ fn fold(held: &mut BTreeMap<Key, Held>, sight: &Sight) {
 /// A service, environment and version within one minute of a batch.
 type Bucket<'a> = (&'a str, Option<&'a str>, Cow<'a, str>, i64);
 
-/// The versioned spans of one batch at or before `upto` as sights,
-/// oldest first: the rest are the backfill's to read, or lie ahead of
-/// the clock.
+/// The versioned spans of one batch at or before `upto` and not from
+/// before [`EARLIEST_SIGHT_NS`] as sights, oldest first: the rest are the
+/// backfill's to read, lie ahead of the clock, or bear no time a span
+/// was sent at.
 fn sights_in(rows: &[SpanRow], upto: i64) -> Vec<Sight> {
     let mut seen: BTreeMap<Bucket<'_>, (i64, i64, bool)> = BTreeMap::new();
     for row in rows {
-        if row.ts_ns > upto {
+        if row.ts_ns > upto || row.ts_ns < EARLIEST_SIGHT_NS {
             continue;
         }
         let Some((version, cut)) = stored_version(row).filter(|(v, _)| !v.is_empty()) else {
@@ -602,7 +647,7 @@ fn backfill_step(
 
 /// Read the versioned spans of `(from, upto]` into the rollup and set
 /// the cursor to `upto`. Spans from later than the clock at `now_ns`
-/// allows are passed over.
+/// allows, and from before [`EARLIEST_SIGHT_NS`], are passed over.
 fn backfill_slice(
     conn: &Connection,
     from: i64,
@@ -624,7 +669,15 @@ fn backfill_slice(
             warn_ahead(&ahead, horizon_ns);
         }
     }
-    let rows = stmt.query_map(params![from, upto.min(horizon_ns), BUCKET_NS], |row| {
+    // The last instant before the floor: the query takes what is later.
+    let below_ns = EARLIEST_SIGHT_NS - 1;
+    if from < below_ns {
+        if let Some(ancient) = ahead_stored(conn, from, upto.min(below_ns))? {
+            warn_ancient(&ancient);
+        }
+    }
+    let after_ns = from.max(below_ns);
+    let rows = stmt.query_map(params![after_ns, upto.min(horizon_ns), BUCKET_NS], |row| {
         let version: String = row.get(2)?;
         let (version, sanitized) = bounded_version_text(&version);
         Ok(Sight {
@@ -677,7 +730,8 @@ pub(crate) fn backfill(conn: &Connection, now_ns: i64) -> Result<(), duckdb::Err
 }
 
 /// Fold the versioned spans of one batch into the rollup, but for those
-/// from later than the clock allows. Runs inside the caller's transaction. While the backfill runs, spans it has yet to
+/// from later than the clock allows and from before
+/// [`EARLIEST_SIGHT_NS`]. Runs inside the caller's transaction. While the backfill runs, spans it has yet to
 /// reach are left to it, and each batch moves it one step on. `now_ns` is
 /// the wall clock's reading.
 pub(crate) fn note_sightings(
@@ -699,6 +753,9 @@ pub(crate) fn note_sightings(
     let horizon_ns = horizon_of(now_ns);
     if let Some(ahead) = ahead_in(rows, horizon_ns) {
         warn_ahead(&ahead, horizon_ns);
+    }
+    if let Some(ancient) = before_the_floor_in(rows) {
+        warn_ancient(&ancient);
     }
     let state = backfill_state(conn)?;
     let cursor = match state {
