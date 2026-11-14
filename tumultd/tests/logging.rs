@@ -131,9 +131,41 @@ impl Daemon {
             .spawn()
             .expect("spawn tumultd");
         // Owned before waiting, so a daemon that never answers is killed.
-        let daemon = Self(Some(child));
-        wait_until_healthy(http_port);
+        let mut daemon = Self(Some(child));
+        daemon.wait_until_healthy(http_port);
         daemon
+    }
+
+    /// Waits for `/healthz`. A daemon that has exited (the port it was
+    /// given was taken in the meantime, say) fails the test at once with
+    /// what it wrote, rather than after the whole wait.
+    fn wait_until_healthy(&mut self, http_port: u16) {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(120);
+        while !is_healthy(http_port) {
+            self.assert_running();
+            assert!(
+                std::time::Instant::now() < deadline,
+                "tumultd did not answer /healthz"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+    }
+
+    fn assert_running(&mut self) {
+        let child = self.0.as_mut().expect("daemon is running");
+        let Some(status) = child.try_wait().expect("poll tumultd") else {
+            return;
+        };
+        let output = self
+            .0
+            .take()
+            .expect("daemon is running")
+            .wait_with_output()
+            .expect("collect what tumultd wrote");
+        panic!(
+            "tumultd exited before it was healthy ({status}): {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
     }
 
     /// Sends SIGTERM and returns everything the daemon wrote.
@@ -170,18 +202,6 @@ fn free_port() -> u16 {
         .and_then(|listener| listener.local_addr())
         .expect("bind a free loopback port")
         .port()
-}
-
-#[cfg(unix)]
-fn wait_until_healthy(http_port: u16) {
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(120);
-    while !is_healthy(http_port) {
-        assert!(
-            std::time::Instant::now() < deadline,
-            "tumultd did not answer /healthz"
-        );
-        std::thread::sleep(std::time::Duration::from_millis(100));
-    }
 }
 
 #[cfg(unix)]
