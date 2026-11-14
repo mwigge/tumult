@@ -20,6 +20,9 @@
 //! [`REDEPLOY_GAP`] during which another version of the service spoke in
 //! the same environment: a rollback, or a redeploy after a newer build.
 //!
+//! A span that arrives late moves a version's first sight back by at most
+//! [`LATE_SPAN_LIMIT`]; one from earlier than that is left out.
+//!
 //! A lake written before the rollup existed, or before it knew
 //! deployments, is read back from its spans once, a day of spans at a
 //! step: a bounded stretch when the lake is opened, then one step with
@@ -46,6 +49,12 @@ use crate::{Reader, Store, Writer};
 /// The silence after which a version that speaks again, another having
 /// spoken meanwhile, counts as deployed anew.
 pub const REDEPLOY_GAP: Duration = Duration::from_secs(600);
+
+/// How far before a version's first sight a span that arrives later may
+/// move that sight back. A span from earlier still (a clock gone wrong,
+/// a replay) is kept as a span and left out of the rollup: one such span
+/// would otherwise make a new version read as the oldest.
+pub const LATE_SPAN_LIMIT: Duration = Duration::from_secs(600);
 
 /// How long opening a lake may spend reading an old lake's spans back
 /// into the rollup before it leaves the rest to later steps.
@@ -151,6 +160,13 @@ fn returned_after_another(held: &BTreeMap<Key, Held>, key: &Key, row: &Held, at_
     })
 }
 
+/// Whether `sight` lies further before the first sight `row` holds than
+/// a late span may: more than [`LATE_SPAN_LIMIT`].
+fn before_the_start(row: &Held, sight: &Sight) -> bool {
+    let limit_ns = i64::try_from(LATE_SPAN_LIMIT.as_nanos()).unwrap_or(i64::MAX);
+    sight.first_ns < row.first_ns.saturating_sub(limit_ns)
+}
+
 /// Fold one sight into the rows of its service.
 fn fold(held: &mut BTreeMap<Key, Held>, sight: &Sight) {
     let key = (sight.environment.clone(), sight.version.clone());
@@ -167,11 +183,21 @@ fn fold(held: &mut BTreeMap<Key, Held>, sight: &Sight) {
         );
         return;
     };
+    if before_the_start(&row, sight) {
+        tracing::warn!(
+            service = %sight.service,
+            first_seen_ns = row.first_ns,
+            span_ts_ns = sight.first_ns,
+            "lake.sightings.early_span_ignored"
+        );
+        return;
+    }
     if returned_after_another(held, &key, &row, sight.first_ns) {
         row.deployed_ns = sight.first_ns;
         row.deployments = row.deployments.saturating_add(1);
     } else if sight.first_ns < row.first_ns && row.deployments == 1 {
-        // Spans that arrived late move the one deployment's start back.
+        // Spans that arrived late move the one deployment's start back,
+        // by no more than `LATE_SPAN_LIMIT`.
         row.deployed_ns = sight.first_ns;
     }
     row.first_ns = row.first_ns.min(sight.first_ns);

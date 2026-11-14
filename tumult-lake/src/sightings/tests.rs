@@ -212,6 +212,29 @@ fn silence_alone_or_two_versions_side_by_side_is_no_redeploy() {
 }
 
 #[test]
+fn a_span_with_an_early_timestamp_moves_a_deployment_start_only_so_far() {
+    let (_dir, store) = lake();
+    let writer = store.writer().unwrap();
+    writer.insert_spans(&[demo_span("1.4.0", 10_000)]).unwrap();
+    writer.insert_spans(&[demo_span("1.5.0", 20_000)]).unwrap();
+    // A span delivered late, from five minutes before the first one seen.
+    writer.insert_spans(&[demo_span("1.5.0", 19_700)]).unwrap();
+    // A clock gone wrong: 1.5.0 at a time before 1.4.0 was ever deployed.
+    writer.insert_spans(&[demo_span("1.5.0", 0)]).unwrap();
+    writer.insert_spans(&[demo_span("1.5.0", 20_100)]).unwrap();
+    drop(writer);
+
+    assert_eq!(
+        deployments(&store),
+        [("1.4.0".to_string(), 10_000, 1), ("1.5.0".to_string(), 19_700, 1)]
+    );
+    assert_eq!(
+        seen(&store, "checkout"),
+        [demo("1.4.0", 10_000, 10_000), demo("1.5.0", 19_700, 20_100)]
+    );
+}
+
+#[test]
 fn the_rollup_holds_one_row_for_each_service_environment_and_version() {
     let (_dir, store) = lake();
     let writer = store.writer().unwrap();
