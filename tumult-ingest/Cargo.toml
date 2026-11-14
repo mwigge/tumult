@@ -22,6 +22,12 @@ prost.workspace = true
 # OTel-Arrow payloads are Arrow IPC streams, zstd-compressed by default.
 arrow = { workspace = true, features = ["ipc_compression"] }
 ciborium.workspace = true
+zstd.workspace = true
+# The gRPC listener does the TLS handshake itself, to know when it is done.
+tokio-rustls = { version = "0.26", default-features = false, features = ["aws-lc-rs", "tls12"] }
+# Keepalive on accepted sockets: tonic sets it only on its own listener.
+socket2 = { version = "0.6", features = ["all"] }
+flatbuffers = { workspace = true, optional = true }
 axum.workspace = true
 tokio.workspace = true
 tokio-util = { workspace = true }
@@ -33,5 +39,22 @@ thiserror.workspace = true
 tracing.workspace = true
 dirs-next.workspace = true
 
+[features]
+# Compiles the generated OTel-Arrow gRPC clients. The daemon only serves, so
+# production builds leave them out; tests and the proof probe use them.
+otap-client = ["dep:flatbuffers"]
+
 [dev-dependencies]
+# Regenerates src/otap/proto.rs in tests/otap_proto_drift.rs.
+tonic-prost-build.workspace = true
 tempfile.workspace = true
+# A paused clock for the connection time limits.
+tokio = { workspace = true, features = ["test-util"] }
+tower = { version = "0.5", features = ["util"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+tracing-subscriber.workspace = true
+flatbuffers.workspace = true
+
+[[example]]
+name = "otap_probe"
+required-features = ["otap-client"]

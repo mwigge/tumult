@@ -10,7 +10,7 @@
 //! tumultd's ops router (behind the API auth middleware), not here.
 
 use axum::body::Bytes;
-use axum::extract::{Request, State};
+use axum::extract::{ConnectInfo, Request, State};
 use axum::http::{header, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
@@ -26,6 +26,7 @@ use opentelemetry_proto::tonic::collector::trace::v1::{
     ExportTraceServiceRequest, ExportTraceServiceResponse,
 };
 use prost::Message;
+use std::net::SocketAddr;
 
 use crate::error::IngestError;
 use crate::writer::{Batch, IngestWriter};
@@ -67,6 +68,11 @@ async fn require_bearer(
             .and_then(|v| v.to_str().ok());
         let authorized = presented.is_some_and(|v| tumult_auth::constant_time_eq(v, &expected));
         if !authorized {
+            let peer = req
+                .extensions()
+                .get::<ConnectInfo<SocketAddr>>()
+                .map(|ConnectInfo(peer)| peer.ip());
+            crate::log_guard::warn_rejected("http", presented.is_some(), peer);
             return status_response(StatusCode::UNAUTHORIZED, "unauthorized".into());
         }
     }
@@ -281,5 +287,56 @@ mod protocol_tests {
         );
         drop(ingest);
         task.await.unwrap();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    async fn serve_with_token() -> std::net::SocketAddr {
+        let ingest = IngestWriter::stopped_for_test();
+        let app = router_with_token(ingest, Some("kro_secret".into()));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        // As the daemon serves it: with the peer address of each call.
+        let app = app.into_make_service_with_connect_info::<SocketAddr>();
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        addr
+    }
+
+    #[tokio::test]
+    async fn rejected_bearer_is_logged_at_warn_without_its_contents() {
+        let addr = serve_with_token().await;
+        let (logs, _guard) = crate::test_logs::capture();
+        let client = reqwest::Client::new();
+        let response = client
+            .post(format!("http://{addr}/v1/traces"))
+            .header("authorization", "Bearer kro_other")
+            .body(Vec::new())
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), reqwest::StatusCode::UNAUTHORIZED);
+        let text = logs.text();
+        assert!(
+            text.contains("WARN") && text.contains("ingest bearer token rejected"),
+            "{text}"
+        );
+        assert!(text.contains("presented=true"), "{text}");
+        assert!(text.contains(" peer=127.0.0.1 "), "{text}");
+        assert!(!text.contains("kro_other") && !text.contains("kro_secret"));
+
+        // A flood of them is summarised, not repeated.
+        for _ in 0..100 {
+            client
+                .post(format!("http://{addr}/v1/traces"))
+                .body(Vec::new())
+                .send()
+                .await
+                .unwrap();
+        }
+        let lines = logs.text().matches("ingest bearer token rejected").count();
+        assert!((1..=20).contains(&lines), "{lines} warnings");
     }
 }
