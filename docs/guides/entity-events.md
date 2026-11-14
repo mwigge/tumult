@@ -405,6 +405,40 @@ opens it again as a new entity, without its earlier history.
 `tumultd_entity_versions` is the number of rows in the table after the
 last export that carried entity events.
 
+### Purging an environment
+
+`DELETE /api/entities?environment=<name>[&type=<type>]` removes the
+entities of one environment with all their rows: all of them, or those of
+one type. It is the remedy when a bound is held by entities that should
+not be there (a sender that named the wrong environment, a token that
+leaked and was rotated).
+
+```bash
+curl -X DELETE -H "Authorization: Bearer $KRO_TOKEN" \
+  "http://127.0.0.1:24318/api/entities?environment=staging&type=k8s.pod"
+# {"environment":"staging","type":"k8s.pod","entities":1204,"versions":3611}
+```
+
+- It needs the Operator role. A principal with environment scopes purges
+  its own environments only (`403` for any other).
+- `environment` must be given (`400` without it). Given empty,
+  `?environment=`, it names the entities whose sender named no
+  environment; those are outside every scope, so only an unscoped
+  principal removes them.
+- It removes live entities too, and history with them. An entity that
+  still reports is stored again with its next report, as a new entity:
+  purging does not silence a sender, rotating the ingest token does.
+- It runs on the daemon's single writer, in one transaction: either all
+  matching rows are removed or none. Nothing else in the lake is touched;
+  entity events that were stored as log records while the flag was off
+  stay in `logs`.
+- Every purge is written to the daemon's log as
+  `ingest.entity_events.purged`, with `user.name`,
+  `deployment.environment.name`, `entity.type` (`*` for all types),
+  `entity.purged.entities` and `entity.purged.versions`, also when it
+  found nothing. With authentication off (no users) the name is
+  `anonymous`.
+
 ### What an export costs the writer
 
 The daemon has one writer for all telemetry, so the time it spends on

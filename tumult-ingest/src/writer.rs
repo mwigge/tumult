@@ -3,10 +3,11 @@
 //! batching and backpressure for free.
 
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, PoisonError};
 
 use opentelemetry_proto::tonic::collector::logs::v1::ExportLogsServiceRequest;
 use tokio::sync::{mpsc, oneshot};
-use tumult_lake::{EntityEventRow, EntityLimits, LogRow, SpanRow, Store, Writer};
+use tumult_lake::{EntityEventRow, EntityLimits, EntityPurge, LogRow, SpanRow, Store, Writer};
 use tumult_otlp::MetricRows;
 
 use crate::entity_events::{self, EntityEvents};
@@ -32,6 +33,18 @@ pub enum Batch {
     Metrics(MetricRows),
     /// See `ExecFn`.
     Exec(ExecFn),
+}
+
+/// What an operator asks to have removed from the entity table.
+#[derive(Debug, Clone)]
+pub struct EntityPurgeRequest {
+    /// The environment whose entities go; empty for the entities that
+    /// name none.
+    pub environment: String,
+    /// Only the entities of this type; `None` for every type.
+    pub entity_type: Option<String>,
+    /// Who asked, for the log.
+    pub by: String,
 }
 
 struct Envelope {
@@ -117,6 +130,29 @@ impl IngestWriter {
             .await
             .map_err(|_| IngestError::Channel("writer task dropped the ack".into()))?
             .map_err(IngestError::Channel)
+    }
+
+    /// Remove the entities of one environment, with all their rows, on
+    /// the writer task, and say so in the log. Entities that still report
+    /// come back with their next report, without their history.
+    ///
+    /// # Errors
+    /// Returns [`IngestError::Channel`] if the writer task is gone or the
+    /// store refused the removal, in which case nothing was removed.
+    pub async fn purge_entities(
+        &self,
+        request: EntityPurgeRequest,
+    ) -> Result<EntityPurge, IngestError> {
+        let slot = Arc::new(Mutex::new(None));
+        let filled = Arc::clone(&slot);
+        self.write(Batch::Exec(Box::new(move |writer: &Writer| {
+            let purged = entity_events::purge(writer, &request)?;
+            *filled.lock().unwrap_or_else(PoisonError::into_inner) = Some(purged);
+            Ok(())
+        })))
+        .await?;
+        let purged = slot.lock().unwrap_or_else(PoisonError::into_inner).take();
+        purged.ok_or_else(|| IngestError::Channel("the purge did not run".into()))
     }
 
     /// Round-trip a no-op through the channel: proves the writer task is

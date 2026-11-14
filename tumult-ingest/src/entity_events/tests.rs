@@ -15,6 +15,7 @@ use tumult_lake::{
 };
 
 use super::*;
+use crate::writer::EntityPurgeRequest;
 use crate::writer::{Batch, IngestWriter};
 
 pub(crate) const TS: u64 = 1_774_980_000_000_000_000;
@@ -833,4 +834,66 @@ fn evictions_are_logged_at_a_bounded_rate() {
     assert!(text.contains("entity.evicted.gone=1"), "{text}");
     assert!(text.contains("entity.evicted.expired=2"), "{text}");
     assert!(text.contains("entity.evicted.unreported=3"), "{text}");
+}
+
+/// An operator's purge goes through the writer task like every write, and
+/// says in the log who removed what.
+#[tokio::test]
+async fn a_purge_runs_on_the_writer_and_is_written_to_the_log() {
+    let (_dir, store, ingest) = ingest_with(enabled());
+    let batch = ingest.logs_batch(&host_export(false), RECEIVED);
+    ingest.write(batch).await.unwrap();
+    assert_eq!(rows(&store, ENTITIES).len(), 1);
+
+    let (logs, _guard) = crate::test_logs::capture();
+    let other_type = EntityPurgeRequest {
+        environment: String::new(),
+        entity_type: Some("k8s.pod".into()),
+        by: "ada".into(),
+    };
+    let purged = ingest.purge_entities(other_type).await.unwrap();
+    assert_eq!((purged.entities, purged.versions), (0, 0));
+    assert_eq!(
+        rows(&store, ENTITIES).len(),
+        1,
+        "another type is left alone"
+    );
+
+    let hosts = EntityPurgeRequest {
+        environment: String::new(),
+        entity_type: Some("host".into()),
+        by: "ada".into(),
+    };
+    let purged = ingest.purge_entities(hosts).await.unwrap();
+    assert_eq!((purged.entities, purged.versions), (1, 1));
+    assert_eq!(rows(&store, ENTITIES).len(), 0);
+    assert_eq!(rows(&store, LOGS).len(), 1, "log records are not entities");
+
+    let text = logs.text();
+    assert_eq!(
+        text.matches("INFO").count(),
+        2,
+        "one line per purge: {text}"
+    );
+    assert!(text.contains("user.name=\"ada\""), "{text}");
+    assert!(text.contains("entity.type=\"host\""), "{text}");
+    assert!(text.contains("deployment.environment.name=\"\""), "{text}");
+    assert!(text.contains("entity.purged.entities=1"), "{text}");
+    assert!(text.contains("entity.purged.versions=1"), "{text}");
+}
+
+#[tokio::test]
+async fn a_purge_fails_when_the_writer_task_is_gone() {
+    let request = EntityPurgeRequest {
+        environment: "prod".into(),
+        entity_type: None,
+        by: "ada".into(),
+    };
+    let refused = IngestWriter::stopped_for_test()
+        .purge_entities(request)
+        .await;
+    assert!(
+        matches!(&refused, Err(crate::IngestError::Channel(_))),
+        "{refused:?}"
+    );
 }

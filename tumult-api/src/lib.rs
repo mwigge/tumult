@@ -41,6 +41,11 @@
 //!   each with its environment; `404` for a key that has none in the
 //!   caller's environments. The key is percent-encoded as one path
 //!   segment.
+//! * `DELETE /api/entities?environment=&type=` — remove the entities of
+//!   one environment (required; empty for the entities that name none),
+//!   of one type or of all, with their history (Operator, confined to the
+//!   caller's environment scopes). Runs on the single writer and is
+//!   written to the log; answers `entities` and `versions` removed.
 //! * `GET /api/traces?range=&service=&min_duration_ms=&outcome=` — traces
 //!   grouped from spans (root name/service, span/error counts, experiment
 //!   outcome where the trace is an experiment run).
@@ -203,7 +208,7 @@ use std::sync::Arc;
 use axum::routing::{get, post};
 use axum::Router;
 
-use handlers::entities::{entities, entity_history};
+use handlers::entities::{entities, entity_history, purge_entities};
 use handlers::experiments::{dimensions, experiment_detail, experiment_windows, experiments};
 use handlers::logs::{logs, logs_volume};
 use handlers::metrics::{list_metrics, metrics_catalog, metrics_query, timeseries};
@@ -525,7 +530,7 @@ pub fn router(state: ApiState) -> Router {
         .route("/api/metrics", get(list_metrics))
         .route("/api/logs", get(logs))
         .route("/api/logs/volume", get(logs_volume))
-        .route("/api/entities", get(entities))
+        .route("/api/entities", get(entities).delete(purge_entities))
         .route("/api/entities/{key}/history", get(entity_history))
         .route("/api/traces", get(traces))
         .route("/api/traces/durations", get(trace_durations))

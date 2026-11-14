@@ -12,12 +12,13 @@ use std::sync::Arc;
 
 use opentelemetry_proto::tonic::collector::logs::v1::ExportLogsServiceRequest;
 use tumult_lake::{
-    EntityApplied, EntityEvictions, EntityLimits, EntityOutcome, EvictionReason, Writer,
+    EntityApplied, EntityEvictions, EntityLimits, EntityOutcome, EntityPurge, EvictionReason,
+    Writer,
 };
 use tumult_otlp::{EntityDrop, EntityOptions};
 
 use crate::log_guard::LogLimiter;
-use crate::writer::Batch;
+use crate::writer::{Batch, EntityPurgeRequest};
 
 /// Set to `1`, `true`, `yes` or `on` (in any case) to store entity events
 /// as entities.
@@ -427,6 +428,28 @@ pub(crate) fn after_write(writer: &Writer, applied: &EntityApplied) {
     housekeeping(writer, &LAST_PRUNE_NS, crate::now_ns());
 }
 
+/// Remove what an operator asked for and write it to the log: who, which
+/// environment and type, and how much. Every purge is logged, also one
+/// that found nothing; a purge that fails is logged by the writer task.
+pub(crate) fn purge(writer: &Writer, request: &EntityPurgeRequest) -> Result<EntityPurge, String> {
+    let purged = writer
+        .purge_entities(&request.environment, request.entity_type.as_deref())
+        .map_err(|error| error.to_string())?;
+    tracing::info!(
+        name: "ingest.entity_events.purged",
+        {
+            user.name = request.by.as_str(),
+            deployment.environment.name = request.environment.as_str(),
+            entity.type = request.entity_type.as_deref().unwrap_or("*"),
+            entity.purged.entities = purged.entities,
+            entity.purged.versions = purged.versions,
+        },
+        "entities removed at the request of an operator"
+    );
+    count_versions(writer);
+    Ok(purged)
+}
+
 /// Say, at a bounded rate, that entities were refused for lack of room.
 fn warn_refused(limiter: &LogLimiter, refused: usize) {
     if refused == 0 {
@@ -466,6 +489,11 @@ fn housekeeping(writer: &Writer, last: &AtomicI64, now_ns: i64) {
             Err(error) => warn_upkeep_failed("prune", &error),
         }
     }
+    count_versions(writer);
+}
+
+/// Count the rows of the table for `tumultd_entity_versions`.
+fn count_versions(writer: &Writer) {
     match writer.entity_version_count() {
         Ok(rows) => VERSION_ROWS.store(rows, Ordering::Relaxed),
         Err(error) => warn_upkeep_failed("count", &error),

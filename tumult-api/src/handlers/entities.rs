@@ -9,6 +9,10 @@
 //! Both answer one page at a time (see [`page`]): `total` is the number of
 //! rows the request matches, `count` the number returned, `truncated`
 //! whether rows were left out, and `next_cursor` where to go on.
+//!
+//! `DELETE /api/entities?environment=…[&type=…]` removes the entities of
+//! one environment with all their rows ([`purge_entities`]). It runs on
+//! the daemon's single writer and is written to the log there.
 
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
@@ -19,8 +23,8 @@ use serde_json::{json, Value};
 use tumult_lake::{Reader, SqlParam};
 
 use crate::auth::Principal;
-use crate::error::ApiError;
-use crate::sql_util::{in_scopes, invalid_range, scopes_param, windows, with_reader};
+use crate::error::{forbidden, unavailable, ApiError};
+use crate::sql_util::{in_scopes, internal, invalid_range, scopes_param, windows, with_reader};
 use crate::ApiState;
 
 mod page;
@@ -343,9 +347,75 @@ pub(crate) async fn entity_history(
     body.map(Json).ok_or_else(not_found)
 }
 
+#[derive(Deserialize)]
+pub(crate) struct PurgeParams {
+    environment: Option<String>,
+    #[serde(rename = "type")]
+    entity_type: Option<String>,
+}
+
+/// Whether `principal` may remove the entities of `environment`: every
+/// environment for an unscoped principal, its own for a scoped one. The
+/// entities that name no environment are outside every scope.
+fn may_purge(principal: &Principal, environment: &str) -> bool {
+    principal.env_scopes.is_empty() || principal.env_scopes.iter().any(|s| s == environment)
+}
+
+/// Remove the entities of `environment`, of one `type` or of all, with
+/// their history. `environment` must be given; given empty it names the
+/// entities that name no environment. An entity that still reports is
+/// stored again with its next report, as a new entity. Answers what was
+/// removed: `entities` and `versions` (rows).
+pub(crate) async fn purge_entities(
+    State(state): State<ApiState>,
+    Extension(principal): Extension<Principal>,
+    Query(params): Query<PurgeParams>,
+) -> Result<Json<Value>, ApiError> {
+    let Some(environment) = params.environment else {
+        return Err(bad_request("environment is required".into()));
+    };
+    if !may_purge(&principal, &environment) {
+        return Err(forbidden(
+            "the environment is outside the principal's scopes",
+        ));
+    }
+    let Some(ingest) = state.ingest_handle() else {
+        return Err(unavailable(
+            "entity storage is not wired (no ingest handle)",
+        ));
+    };
+    let entity_type = params.entity_type.filter(|s| !s.is_empty());
+    let request = tumult_ingest::EntityPurgeRequest {
+        environment: environment.clone(),
+        entity_type: entity_type.clone(),
+        by: principal.username.clone(),
+    };
+    let purged = ingest
+        .purge_entities(request)
+        .await
+        .map_err(|e| internal(e.to_string()))?;
+    Ok(Json(json!({
+        "environment": environment,
+        "type": entity_type,
+        "entities": purged.entities,
+        "versions": purged.versions,
+    })))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_scoped_principal_purges_its_own_environments_only() {
+        let mut principal = Principal::synthetic();
+        assert!(may_purge(&principal, "prod"));
+        assert!(may_purge(&principal, ""));
+        principal.env_scopes = vec!["staging".into()];
+        assert!(may_purge(&principal, "staging"));
+        assert!(!may_purge(&principal, "prod"));
+        assert!(!may_purge(&principal, ""));
+    }
 
     #[test]
     fn an_absent_or_empty_filter_binds_null() {

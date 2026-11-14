@@ -595,3 +595,130 @@ async fn a_key_with_any_character_is_read_once_url_encoded() {
         .unwrap();
     assert_ne!(raw.status(), 200);
 }
+
+// ---------------------------------------------------------------------------
+// DELETE /api/entities?environment=…[&type=…]: an operator removes the
+// entities of one environment.
+
+async fn purge(base: &str, query: &str, token: Option<&str>) -> (u16, Value) {
+    let mut request = reqwest::Client::new().delete(format!("{base}/api/entities{query}"));
+    if let Some(token) = token {
+        request = request.header("Authorization", format!("Bearer {token}"));
+    }
+    let resp = request.send().await.unwrap();
+    let status = resp.status().as_u16();
+    (status, resp.json().await.unwrap_or(Value::Null))
+}
+
+#[tokio::test]
+async fn a_purge_removes_the_entities_of_one_environment() {
+    let srv = spawn_server().await;
+    seed_entities(&srv).await;
+    let (status, body) = purge(&srv.base, "?environment=prod", None).await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(
+        body,
+        json!({"environment": "prod", "type": null, "entities": 3, "versions": 3})
+    );
+    let (_, body) = get(&srv.base, "/api/entities").await;
+    assert_eq!(keys(&body), ["host|host.id=h-1", "k8s.pod|k8s.pod.uid=d"]);
+    let (status, _) = get(&srv.base, &format!("/api/entities/{POD_A_PATH}/history")).await;
+    assert_eq!(status, 404, "the history went with the entity");
+
+    let (status, body) = purge(&srv.base, "?environment=prod", None).await;
+    assert_eq!(
+        status, 200,
+        "nothing left to remove is not an error: {body}"
+    );
+    assert_eq!(body["entities"], 0);
+}
+
+#[tokio::test]
+async fn a_purge_of_one_type_leaves_the_other_types() {
+    let srv = spawn_server().await;
+    seed_entities(&srv).await;
+    let node = state("k8s.node", ("k8s.node.uid", "n"), "prod", now_ns() - NS);
+    store(&srv, vec![node]).await;
+    let (status, body) = purge(&srv.base, "?environment=prod&type=k8s.pod", None).await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["type"], "k8s.pod");
+    assert_eq!(body["entities"], 3, "{body}");
+    let (_, body) = get(&srv.base, "/api/entities").await;
+    assert_eq!(
+        keys(&body),
+        [
+            "k8s.node|k8s.node.uid=n",
+            "host|host.id=h-1",
+            "k8s.pod|k8s.pod.uid=d"
+        ]
+    );
+}
+
+/// The entities that name no environment are purged with an empty
+/// `environment`; leaving the parameter out is refused, so a request
+/// cannot remove them by omission.
+#[tokio::test]
+async fn a_purge_names_its_environment() {
+    let srv = spawn_server().await;
+    seed_entities(&srv).await;
+    for query in ["", "?type=k8s.pod"] {
+        let (status, body) = purge(&srv.base, query, None).await;
+        assert_eq!(status, 400, "{query}: {body}");
+        assert_eq!(body["error"], "environment is required", "{query}");
+    }
+    let (_, body) = get(&srv.base, "/api/entities").await;
+    assert_eq!(body["count"], 5, "a refused purge removes nothing");
+
+    let (status, body) = purge(&srv.base, "?environment=", None).await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["entities"], 1, "{body}");
+    let (_, body) = get(&srv.base, "/api/entities").await;
+    assert_eq!(body["count"], 4);
+}
+
+#[tokio::test]
+async fn a_purge_needs_the_operator_role() {
+    let srv = spawn_server().await;
+    seed_entities(&srv).await;
+    let viewer = add_scoped_token(&srv, "a-viewer", "viewer", &[]).await;
+    let operator = add_scoped_token(&srv, "an-operator", "operator", &[]).await;
+
+    let (status, body) = purge(&srv.base, "?environment=prod", None).await;
+    assert_eq!(status, 401, "{body}");
+    let (status, body) = purge(&srv.base, "?environment=prod", Some(&viewer)).await;
+    assert_eq!(status, 403, "{body}");
+    assert_eq!(body["error"], "insufficient role");
+    let (_, body) = get_auth(&srv.base, "/api/entities", &viewer).await;
+    assert_eq!(body["count"], 5, "a refused purge removes nothing");
+
+    let (status, body) = purge(&srv.base, "?environment=prod", Some(&operator)).await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["entities"], 3);
+}
+
+/// A scoped operator purges its own environments only, and never the
+/// entities that name no environment.
+#[tokio::test]
+async fn a_purge_is_confined_to_the_principals_environments() {
+    let srv = spawn_server().await;
+    seed_entities(&srv).await;
+    let staging = add_scoped_token(&srv, "stg-operator", "operator", &["staging"]).await;
+    let all = add_scoped_token(&srv, "all-viewer", "viewer", &[]).await;
+
+    for query in ["?environment=prod", "?environment="] {
+        let (status, body) = purge(&srv.base, query, Some(&staging)).await;
+        assert_eq!(status, 403, "{query}: {body}");
+        assert_eq!(
+            body["error"], "the environment is outside the principal's scopes",
+            "{query}"
+        );
+    }
+    let (_, body) = get_auth(&srv.base, "/api/entities", &all).await;
+    assert_eq!(body["count"], 5, "a refused purge removes nothing");
+
+    let (status, body) = purge(&srv.base, "?environment=staging", Some(&staging)).await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["entities"], 1);
+    let (_, body) = get_auth(&srv.base, "/api/entities", &all).await;
+    assert_eq!(body["count"], 4);
+}
