@@ -498,6 +498,8 @@ pub(crate) struct Requests {
     /// Sent and not answered well: timed out, refused, or answered with
     /// an error.
     pub failed: u64,
+    /// Runs whose tool counted its requests.
+    pub runs: usize,
     /// Runs whose tool counted no requests; they are in neither number.
     pub runs_without_counts: usize,
 }
@@ -518,6 +520,7 @@ impl Requests {
             self.runs_without_counts += 1;
             return;
         };
+        self.runs += 1;
         self.sent += sent;
         self.failed += sent.saturating_sub(ok);
     }
@@ -1233,6 +1236,7 @@ mod tests {
             Requests {
                 sent: 4000,
                 failed: 400,
+                runs: 2,
                 runs_without_counts: 1
             }
         );
@@ -1271,6 +1275,7 @@ mod tests {
                 Requests {
                     sent: 2000,
                     failed: 900,
+                    runs: 3,
                     runs_without_counts: 0
                 }
             );

@@ -74,7 +74,12 @@
 //!    well) is above the baseline's by more than one percentage point,
 //!    and by more than chance (one-sided two-proportion test, z ≥ 1.645),
 //!    is `regressed` (`failure_share`) whatever its latencies: the
-//!    survivors of a build that hangs are fast. The requests of every
+//!    survivors of a build that hangs are fast. That takes evidence:
+//!    `min_runs` runs a side that counted their requests,
+//!    [`FAILURE_MIN_SENT`] requests a side and [`FAILURE_MIN_EXCESS`]
+//!    failures beyond what the baseline's share would give. A difference
+//!    that rests on less is `inconclusive` (`failure_share_unsettled`),
+//!    never a regression and never passed over. The requests of every
 //!    run of a side are counted, those of the runs left out as partial
 //!    too: requests that hang are what makes a plan fall short, and a
 //!    request that failed did fail. Runs whose tool counted no requests
@@ -148,6 +153,12 @@ pub(crate) const FAILURE_SHARE_MARGIN: f64 = 0.01;
 /// The least z of the one-sided two-proportion test for that difference
 /// to be more than chance (95 %).
 const FAILURE_SHARE_Z: f64 = 1.645;
+/// The fewest requests a side must have counted for a difference in
+/// failure share to be called a regression.
+pub(crate) const FAILURE_MIN_SENT: u64 = 100;
+/// The fewest failures the candidate must have beyond what the baseline's
+/// share of its requests would give.
+pub(crate) const FAILURE_MIN_EXCESS: f64 = 5.0;
 /// The widest window `GET /api/perf/{target}/version` reads.
 const MAX_VERSION_WINDOW_NS: i64 = 24 * 3_600 * NS_PER_S;
 /// The longest `service.namespace` a request may name, in bytes.
@@ -610,13 +621,46 @@ fn fails_more(candidate: &Requests, baseline: &Requests) -> bool {
     c - b >= FAILURE_SHARE_Z * spread
 }
 
-fn failure_reason(candidate: &Side, baseline: &Side) -> String {
+/// What a difference in failure share that is over the margin and more
+/// than chance still lacks to be called a regression: enough runs that
+/// counted, enough requests a side, enough failures beyond the
+/// baseline's share. Empty when it lacks nothing.
+fn failure_lacks(candidate: &Requests, baseline: &Requests, min_runs: usize) -> Vec<String> {
+    let mut lacks = Vec::new();
+    for (role, side) in [("candidate", candidate), ("baseline", baseline)] {
+        if side.runs < min_runs {
+            lacks.push(format!(
+                "{} run(s) counted the {role}'s requests where {min_runs} are needed",
+                side.runs
+            ));
+        }
+        if side.sent < FAILURE_MIN_SENT {
+            lacks.push(format!(
+                "the {role} counted {} request(s) where {FAILURE_MIN_SENT} requests are needed",
+                side.sent
+            ));
+        }
+    }
+    #[allow(clippy::cast_precision_loss)]
+    let expected = baseline.failure_share().unwrap_or(0.0) * candidate.sent as f64;
+    #[allow(clippy::cast_precision_loss)]
+    let excess = candidate.failed as f64 - expected;
+    if excess < FAILURE_MIN_EXCESS {
+        lacks.push(format!(
+            "{excess:.0} more failure(s) than the baseline's share would give where \
+             {FAILURE_MIN_EXCESS:.0} are needed"
+        ));
+    }
+    lacks
+}
+
+/// The two failure shares side by side, in words.
+fn failure_counts(candidate: &Side, baseline: &Side) -> String {
     let share = |side: &Side| side.requests.failure_share().unwrap_or(0.0) * 100.0;
     format!(
         "candidate {}: {} of {} requests failed ({:.1}%) against {} of {} ({:.1}%) for \
          baseline {}, more than the {:.0} percentage point(s) a candidate may be above its \
-         baseline and more than chance; the latencies leave out the requests that were not \
-         answered",
+         baseline and more than chance",
         candidate.version,
         candidate.requests.failed,
         candidate.requests.sent,
@@ -629,6 +673,26 @@ fn failure_reason(candidate: &Side, baseline: &Side) -> String {
     )
 }
 
+/// The candidate fails more of its requests than the baseline: a
+/// regression when the difference rests on enough, else no verdict.
+fn ruling_on_failures(candidate: &Side, baseline: &Side, min_runs: usize) -> Option<Ruling> {
+    if !fails_more(&candidate.requests, &baseline.requests) {
+        return None;
+    }
+    let counts = failure_counts(candidate, baseline);
+    let lacks = failure_lacks(&candidate.requests, &baseline.requests, min_runs);
+    if lacks.is_empty() {
+        let reason =
+            format!("{counts}; the latencies leave out the requests that were not answered");
+        return Ruling::regressed("failure_share", reason);
+    }
+    let reason = format!(
+        "{counts}, but on too little to call it a regression: {}; run more load",
+        lacks.join("; ")
+    );
+    Ruling::inconclusive("failure_share_unsettled", vec![reason])
+}
+
 /// What decides before the latencies are looked at: no baseline, a
 /// history still being read back, silence, failed requests.
 fn ruling_before_latency(
@@ -636,6 +700,7 @@ fn ruling_before_latency(
     candidate: &Side,
     baseline: Option<&Side>,
     versions: usize,
+    min_runs: usize,
     history_incomplete: bool,
 ) -> Option<Ruling> {
     let Some(baseline) = baseline else {
@@ -658,10 +723,7 @@ fn ruling_before_latency(
         (None, Some(c)) => return Ruling::regressed("candidate_unanswered", c),
         (None, None) => {}
     }
-    if fails_more(&candidate.requests, &baseline.requests) {
-        return Ruling::regressed("failure_share", failure_reason(candidate, baseline));
-    }
-    None
+    ruling_on_failures(candidate, baseline, min_runs)
 }
 
 fn quantile_of(summary: &SampleSummary, quantile: Quantile) -> Option<f64> {
@@ -752,8 +814,15 @@ fn judge(
     let none = Vec::new();
     let baseline_runs = baseline.map_or(&none, |b| &b.by_run);
     let mut c = compare_runs(baseline_runs, &candidate.by_run, opts);
-    let ruling = ruling_before_latency(target, candidate, baseline, versions, history_incomplete)
-        .or_else(|| baseline.and_then(|b| ruling_on_censoring(&c, candidate, b)));
+    let before = ruling_before_latency(
+        target,
+        candidate,
+        baseline,
+        versions,
+        opts.min_runs,
+        history_incomplete,
+    );
+    let ruling = before.or_else(|| baseline.and_then(|b| ruling_on_censoring(&c, candidate, b)));
     let mut codes = Vec::new();
     match ruling {
         Some(mut ruling) => {
@@ -1204,6 +1273,7 @@ mod tests {
         side.requests = Requests {
             sent,
             failed,
+            runs: 3,
             runs_without_counts: 0,
         };
         side
@@ -1299,6 +1369,105 @@ mod tests {
         let j = judged(&one, &few);
         assert_eq!(j.comparison.verdict, Verdict::Unchanged);
         assert_eq!(j.codes, vec!["latency"]);
+    }
+
+    /// `(failed, sent, runs that counted)` of a side.
+    type Counts = (u64, u64, usize);
+
+    fn counted_in(version: &str, (failed, sent, runs): Counts) -> Side {
+        let mut side = counted(side_with(version, steady(100.0), WHOLE), sent, failed);
+        side.requests.runs = runs;
+        side
+    }
+
+    #[test]
+    fn a_failure_share_that_rests_on_too_little_is_not_a_regression() {
+        let cases: [(Counts, Counts, &str, Verdict); 7] = [
+            // One request, and it failed.
+            (
+                (1, 1, 1),
+                (0, 2, 1),
+                "failure_share_unsettled",
+                Verdict::Inconclusive,
+            ),
+            (
+                (1, 3, 3),
+                (0, 8, 3),
+                "failure_share_unsettled",
+                Verdict::Inconclusive,
+            ),
+            // Three failures more than none.
+            (
+                (3, 150, 3),
+                (0, 150, 3),
+                "failure_share_unsettled",
+                Verdict::Inconclusive,
+            ),
+            // Many requests, too few runs behind them.
+            (
+                (1600, 4000, 2),
+                (0, 4000, 3),
+                "failure_share_unsettled",
+                Verdict::Inconclusive,
+            ),
+            (
+                (1600, 4000, 3),
+                (0, 4000, 1),
+                "failure_share_unsettled",
+                Verdict::Inconclusive,
+            ),
+            // Three runs a side of 4000 requests each: 2 % against 0.2 %.
+            (
+                (240, 12_000, 3),
+                (24, 12_000, 3),
+                "failure_share",
+                Verdict::Regressed,
+            ),
+            // The floors themselves: 100 requests a side, 5 failures more.
+            (
+                (5, 100, 3),
+                (0, 100, 3),
+                "failure_share",
+                Verdict::Regressed,
+            ),
+        ];
+        for (candidate, baseline, code, verdict) in cases {
+            let j = judged(
+                &counted_in("1.1.0", candidate),
+                &counted_in("1.0.0", baseline),
+            );
+            assert_eq!(j.codes[0], code, "{candidate:?} against {baseline:?}");
+            assert_eq!(j.comparison.verdict, verdict, "{candidate:?}");
+            let reason = &j.comparison.reasons[0];
+            assert!(reason.contains("candidate 1.1.0"), "{reason}");
+            assert!(reason.contains("baseline 1.0.0"), "{reason}");
+        }
+        let j = judged(
+            &counted_in("1.1.0", (3, 150, 3)),
+            &counted_in("1.0.0", (0, 150, 3)),
+        );
+        let reason = &j.comparison.reasons[0];
+        assert!(reason.contains("3 of 150"), "{reason}");
+        assert!(reason.contains("3 more failure(s)"), "{reason}");
+        let j = judged(
+            &counted_in("1.1.0", (1, 1, 1)),
+            &counted_in("1.0.0", (0, 2, 1)),
+        );
+        let reason = &j.comparison.reasons[0];
+        assert!(reason.contains("1 run(s)"), "{reason}");
+        assert!(reason.contains("100 requests"), "{reason}");
+
+        // A candidate that answered nothing is regressed on one run and
+        // one request: silence is not a share to be unsure about.
+        let silent = Windows {
+            unanswered: 40,
+            ..WHOLE
+        };
+        let mut dead = counted(side_with("1.1.0", steady(50.0), silent), 1, 1);
+        dead.requests.runs = 1;
+        let j = judged(&dead, &counted_in("1.0.0", (0, 2, 1)));
+        assert_eq!(j.comparison.verdict, Verdict::Regressed);
+        assert_eq!(j.codes[0], "candidate_unanswered");
     }
 
     #[test]

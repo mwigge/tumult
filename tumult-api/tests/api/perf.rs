@@ -1515,7 +1515,12 @@ async fn perf_orders_versions_by_latest_deployment_whatever_the_range() {
         span_in("demo", "a4", "1.4.0", now - 3600 * NS),
     ];
     // What makes it a rollback and no stray request: it serves again.
-    spans.extend(stream("demo", "1.4.0", now - 5 * day, now - 5 * day + 300 * NS));
+    spans.extend(stream(
+        "demo",
+        "1.4.0",
+        now - 5 * day,
+        now - 5 * day + 300 * NS,
+    ));
     let mut journals = Vec::new();
     for (prefix, version, first, p95) in [
         ("first", "1.4.0", now - 35 * day, 100.0),

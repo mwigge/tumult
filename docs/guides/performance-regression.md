@@ -215,7 +215,19 @@ gate by default.
    two-proportion test at z ≥ 1.645, the 5 % level) is `regressed` with
    reason `failure_share`, whatever its latencies. Equal shares, or a
    difference inside the margin, decide nothing. `comparison.failure_share`
-   carries both shares, the delta and the margin. A run recorded before
+   carries both shares, the delta and the margin.
+
+   A regression on failures takes evidence. Each side needs `min_runs`
+   runs that counted their requests and at least **100 requests**, and
+   the candidate needs at least **5 failures more** than the baseline's
+   share of its requests would give. One failed request of one sent, or
+   three failures in 150 against none, is over the margin and proves
+   nothing: such a difference is `inconclusive` with reason
+   `failure_share_unsettled`, and the reason says what is missing. It is
+   not passed over either, so the latencies do not get to call the
+   candidate `unchanged`. A candidate that answered nothing at all is
+   judged by the rule above (`candidate_unanswered`) and stays
+   `regressed` on any number of requests. A run recorded before
    request counts existed, or by a tool whose summary has none, is
    counted in `runs_without_counts` and the answer adds
    `failure_data_missing`: its silence is not read as zero failures. k6
@@ -268,7 +280,8 @@ gate by default.
 
    `reason_codes` lists what the verdict rests on, the deciding one first
    (also as `reason`): `candidate_unanswered`, `baseline_unanswered`,
-   `both_unanswered`, `failure_share`, `censored`, `latency`,
+   `both_unanswered`, `failure_share`, `failure_share_unsettled`,
+   `censored`, `latency`,
    `insufficient_evidence`, `no_baseline`, `history_incomplete`, and
    `failure_data_missing` as a note beside any of them. `reasons` says the same in sentences.
 
