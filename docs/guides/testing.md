@@ -57,7 +57,7 @@ is allowed only against a delay the test itself asked for.
 A sleep that is not a wait for an event (the interval of a bounded poll, a
 delay that is the thing under test, waiting for something that must not
 happen) carries a comment on the same line or directly above it that starts
-with `// sleep:` and gives the reason.
+with `// sleep:` and gives the reason in at least three words.
 
 ## Isolation
 
@@ -102,16 +102,18 @@ behaviour is not ours to cover.
 |---|---|
 | `no-assert` | A Rust test (`#[test]`, `#[tokio::test]`, `#[rstest]`, `#[test_case]` and the like) that asserts nothing. See below for what counts. |
 | `bare-ignore` | `#[ignore]` or `#[cfg_attr(.., ignore)]` without a reason string. |
-| `bare-sleep` | `sleep(..)` in Rust test code without a `// sleep:` comment. A test on a paused tokio clock (`start_paused = true` or `tokio::time::pause()`) is exempt. |
-| `raw-env` | `env::set_var` or `env::remove_var` in Rust test code outside `tumult-test-utils`. |
-| `focused-test` | `test.only`, `it.only`, `describe.only`, `fdescribe`, `fit` in JavaScript or TypeScript, outside comments and strings. |
-| `bare-skip` | A Python `skip`, `skipif`, `skipIf`, `skipUnless` or `xfail` decorator, or a `pytest.skip()` call, with no reason or an empty one. |
+| `bare-sleep` | `sleep(..)`, `sleep_until(..)` or `park_timeout(..)` in Rust test code, also under a renamed import, without a `// sleep:` comment of at least three words. A tokio sleep in a test on a paused clock (`start_paused = true` or `tokio::time::pause()`) is exempt. A `std::thread` sleep is not: the paused clock does not skip it. |
+| `raw-env` | `env::set_var` or `env::remove_var` in Rust test code outside `tumult-test-utils`, also when `env` or the function is imported under another name. |
+| `focused-test` | `test.only`, `it.only`, `describe.only` (also `.only.each` and `describe["only"]`), `fdescribe`, `fit` in JavaScript or TypeScript, outside comments and strings. |
+| `bare-skip` | A Python `skip`, `skipif`, `skipIf`, `skipUnless` or `xfail` with no reason or an empty one: as a decorator, in `pytestmark`, in the `marks` of `pytest.param`, or as a `pytest.skip()` call. |
 | `stale-allow` | An allowlist entry that matches nothing. |
 | `bad-allow` | An allowlist entry that is not `path::name::rule`. |
 
 What counts as an assertion:
 
-- an `assert*!` macro, except on the literal `true`;
+- an `assert*!` macro that looks at a value. One that compares literals
+  alone (`assert!(true)`, `assert!(1 == 1)`, `assert_eq!("a", "a")`) does not
+  count, and neither does `debug_assert!`;
 - `unwrap_err`, `expect_err`, `panic!` and `unreachable!`, so a `match` or
   `let .. else` that panics on the wrong variant is an assertion;
 - `#[should_panic]`, and `#[test_case(input => expected)]`;
@@ -144,7 +146,12 @@ The guard is a text scan, so it has limits:
   is reported.
 - A test file pulled in with `#[cfg(test)] mod x;` under another name than
   `tests.rs` is not checked for sleeps or environment changes.
-- `set_var` imported and called without the `env::` prefix is not seen.
+- Renamed imports are followed for `use` items only. A function taken as a
+  value (`let nap = sleep;`, `map(env::remove_var)`) is not seen.
+- A closure that sleeps or changes the environment is reported whether or
+  not it is called.
+- Names are resolved per file, not per module: a file that imports
+  `std::thread::sleep` has every bare `sleep(..)` treated as a thread sleep.
 
 ### Allowlist
 
