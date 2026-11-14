@@ -150,14 +150,18 @@ async fn backfill_turn(ingest: &IngestWriter, budget: Duration) -> Result<bool> 
 async fn backfill_finished(ingest: &IngestWriter) -> bool {
     match backfill_turn(ingest, BACKFILL_TURN).await {
         Ok(true) => {
-            tracing::info!("daemon.sightings.backfill.done");
+            tracing::info!(
+                name: "daemon.sightings.backfill.done",
+                "the version history of the stored spans is read back"
+            );
             true
         }
         Ok(false) => false,
         Err(e) => {
             tracing::warn!(
-                error.message = %bounded_log_text(&format!("{e:#}")),
-                "daemon.sightings.backfill.failed"
+                name: "daemon.sightings.backfill.failed",
+                { error.message = %bounded_log_text(&format!("{e:#}")) },
+                "a turn of reading back the version history failed, it is tried again"
             );
             false
         }
