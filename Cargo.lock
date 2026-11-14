@@ -8123,6 +8123,7 @@ dependencies = [
  "tumult-mcp",
  "tumult-otel",
  "tumult-plugin",
+ "tumult-test-utils",
  "tumult-tui",
 ]
 
@@ -8532,6 +8533,7 @@ dependencies = [
  "indexmap",
  "opentelemetry",
  "opentelemetry_sdk",
+ "tempfile",
  "tokio",
  "tumult-core",
 ]

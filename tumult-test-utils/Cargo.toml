@@ -22,4 +22,5 @@ opentelemetry = { workspace = true, optional = true }
 opentelemetry_sdk = { workspace = true, features = ["testing"], optional = true }
 
 [dev-dependencies]
+tempfile = { workspace = true }
 tokio = { workspace = true }
