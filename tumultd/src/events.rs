@@ -22,12 +22,17 @@ fn service_name_from(configured: Option<String>) -> String {
 /// The modules that receive and store OTLP records. The daemon exports its
 /// own log events to its own ingest, so an error logged here while a record
 /// is being stored would be exported, received, fail the same way and be
-/// logged again, without end. Their events stay on stderr.
-pub(crate) const INGEST_PATH: [&str; 5] = [
+/// logged again, without end. Their events stay on stderr. The listener
+/// that admits the connections, and the guard that rate-limits what these
+/// modules log, are on the same path: a refused connection of the daemon's
+/// own exporter would otherwise be exported over the next one.
+pub(crate) const INGEST_PATH: [&str; 7] = [
     "tumult_ingest::writer",
     "tumult_ingest::grpc",
     "tumult_ingest::http",
     "tumult_ingest::otap",
+    "tumult_ingest::listener",
+    "tumult_ingest::log_guard",
     "tumult_lake::writer",
 ];
 
@@ -144,7 +149,7 @@ mod tests {
     #[test]
     fn the_ingest_path_is_kept_out_of_the_daemons_own_export() {
         assert_eq!(log_options("tumultd").local_only_targets, INGEST_PATH);
-        for module in ["writer", "grpc", "http", "otap"] {
+        for module in ["writer", "grpc", "http", "otap", "listener", "log_guard"] {
             let target = format!("tumult_ingest::{module}");
             assert!(INGEST_PATH.contains(&target.as_str()), "{target}");
         }
