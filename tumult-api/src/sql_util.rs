@@ -10,7 +10,7 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::Json;
 use serde_json::{json, Value};
-use tumult_lake::{Reader, Store};
+use tumult_lake::{Reader, SqlParam, Store};
 
 // ---------------------------------------------------------------------------
 // helpers
@@ -130,6 +130,24 @@ pub(crate) fn env_scope_where(col: &str, scopes: &[String]) -> Option<String> {
         .collect::<Vec<_>>()
         .join(", ");
     Some(format!("{col} IN ({list})"))
+}
+
+/// The principal's scopes as one bound parameter: a JSON list, or null for
+/// every environment. Read in the statement with [`in_scopes`].
+pub(crate) fn scopes_param(scopes: &[String]) -> SqlParam {
+    if scopes.is_empty() {
+        return SqlParam::Null;
+    }
+    SqlParam::text_list(scopes)
+}
+
+/// `$n` holds [`scopes_param`]: the predicate that keeps `column` inside
+/// the principal's scopes.
+pub(crate) fn in_scopes(n: usize, column: &str) -> String {
+    format!(
+        "(${n} IS NULL OR list_contains(\
+         from_json(CAST(${n} AS VARCHAR), '[\"VARCHAR\"]'), {column}))"
+    )
 }
 
 /// `" AND <predicate>"` suffix for a WHERE clause, or empty when the

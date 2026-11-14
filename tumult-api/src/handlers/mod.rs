@@ -2,6 +2,7 @@
 
 pub mod conformance;
 pub mod dora;
+pub mod entities;
 pub mod experiments;
 pub mod gate;
 pub mod logs;

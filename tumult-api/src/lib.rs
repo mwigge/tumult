@@ -29,6 +29,14 @@
 //!   contains-match on the body).
 //! * `GET /api/logs/volume?range=&interval=&severity=&service=&q=` — log
 //!   volume bucketed per severity for the explorer's stacked bar.
+//! * `GET /api/entities?type=&liveness=&range=&limit=` — the current row of
+//!   every entity that entity events reported (`KRONIKA_ENTITY_EVENTS`),
+//!   most recently heard of first, with its `liveness` (`live`, `expired`,
+//!   `gone`). `range` keeps the entities last heard of inside it; left out,
+//!   all are listed. At most 1000 rows (`limit`, default 200).
+//! * `GET /api/entities/{key}/history?limit=` — every stored version of one
+//!   entity, newest first; `404` for a key that has none in the caller's
+//!   environments.
 //! * `GET /api/traces?range=&service=&min_duration_ms=&outcome=` — traces
 //!   grouped from spans (root name/service, span/error counts, experiment
 //!   outcome where the trace is an experiment run).
@@ -191,6 +199,7 @@ use std::sync::Arc;
 use axum::routing::{get, post};
 use axum::Router;
 
+use handlers::entities::{entities, entity_history};
 use handlers::experiments::{dimensions, experiment_detail, experiment_windows, experiments};
 use handlers::logs::{logs, logs_volume};
 use handlers::metrics::{list_metrics, metrics_catalog, metrics_query, timeseries};
@@ -512,6 +521,8 @@ pub fn router(state: ApiState) -> Router {
         .route("/api/metrics", get(list_metrics))
         .route("/api/logs", get(logs))
         .route("/api/logs/volume", get(logs_volume))
+        .route("/api/entities", get(entities))
+        .route("/api/entities/{key}/history", get(entity_history))
         .route("/api/traces", get(traces))
         .route("/api/traces/durations", get(trace_durations))
         .route("/api/traces/{id}", get(trace_detail))

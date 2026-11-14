@@ -16,6 +16,8 @@ use tumult_core::runner::VERSION_WINDOW_SKEW;
 use tumult_core::types::bounded_version_text;
 use tumult_lake::{Reader, SqlParam, VersionSighting};
 
+use crate::sql_util::{in_scopes, scopes_param};
+
 use super::select::{Env, Execution, RecordedVersion, Run, Sample, STALE_NS};
 
 /// Stored verdicts returned as history.
@@ -44,22 +46,6 @@ pub(crate) struct Evidence {
     /// The rollup is still being read back from an old lake's spans:
     /// versions and deployments may be missing from `sightings`.
     pub backfill_running: bool,
-}
-
-/// `$n` holds the principal's scopes as a JSON list, or null for every
-/// environment: the predicate that keeps `column` inside them.
-fn in_scopes(n: usize, column: &str) -> String {
-    format!(
-        "(${n} IS NULL OR list_contains(\
-         from_json(CAST(${n} AS VARCHAR), '[\"VARCHAR\"]'), {column}))"
-    )
-}
-
-fn scopes_param(scopes: &[String]) -> SqlParam {
-    if scopes.is_empty() {
-        return SqlParam::Null;
-    }
-    SqlParam::text_list(scopes)
 }
 
 /// The experiment root spans against the target `$1` at or after `$2`,
