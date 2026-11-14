@@ -90,29 +90,91 @@ pub(crate) fn event_tool_error(tool_name: &str, error: &str) {
 mod tests {
     use super::*;
 
+    use opentelemetry::Value;
+    use tumult_test_utils::{attribute, capture_spans, span_attribute};
+
     #[test]
-    fn tool_call_span_does_not_panic() {
-        let _g = begin_tool_call("tumult_run_experiment");
-        event_tool_completed("tumult_run_experiment", true);
+    fn a_tool_call_is_a_server_span_named_after_the_rpc_with_the_tool_name() {
+        let ((), spans) = capture_spans(|| {
+            let _active = begin_tool_call("tumult_run_experiment");
+        });
+
+        assert_eq!(spans.len(), 1, "{spans:?}");
+        let span = &spans[0];
+        assert_eq!(span.name, "mcp.tool.call");
+        assert_eq!(span.span_kind, SpanKind::Server);
+        assert_eq!(
+            span_attribute(span, "mcp.tool.name"),
+            Some(&Value::from("tumult_run_experiment"))
+        );
+        assert_eq!(
+            span_attribute(span, "rpc.method"),
+            Some(&Value::from("tools/call"))
+        );
+        assert_eq!(
+            span_attribute(span, "rpc.system"),
+            Some(&Value::from("mcp"))
+        );
     }
 
     #[test]
-    fn tool_error_event_does_not_panic() {
-        let _g = begin_tool_call("tumult_analyze");
-        event_tool_error("tumult_analyze", "query failed: syntax error");
+    fn a_completed_tool_call_is_an_event_with_success_and_grpc_status() {
+        let ((), spans) = capture_spans(|| {
+            let _active = begin_tool_call("tumult_run_experiment");
+            event_tool_completed("tumult_run_experiment", true);
+            event_tool_completed("tumult_run_experiment", false);
+        });
+
+        let events = &spans[0].events.events;
+        assert_eq!(events.len(), 2, "{events:?}");
+        for (event, success, status) in [(&events[0], true, 0_i64), (&events[1], false, 2_i64)] {
+            assert_eq!(event.name, "mcp.tool.completed");
+            assert_eq!(
+                attribute(&event.attributes, "mcp.tool.name"),
+                Some(&Value::from("tumult_run_experiment"))
+            );
+            assert_eq!(
+                attribute(&event.attributes, "mcp.tool.success"),
+                Some(&Value::Bool(success))
+            );
+            assert_eq!(
+                attribute(&event.attributes, "rpc.grpc.status_code"),
+                Some(&Value::I64(status))
+            );
+        }
     }
 
     #[test]
-    fn current_context_captured_while_span_active() {
-        // The context captured inside the span guard scope contains the active
-        // span; after the guard drops the context still retains the trace info.
-        let cx = {
-            let _g = begin_tool_call("tumult_run_experiment");
-            current_context()
-        };
-        // Context must be a valid (non-panicking) value regardless of provider.
-        // With a noop provider the span is invalid but context is still present.
-        let _ = cx; // non-panicking assertion
+    fn a_tool_error_is_an_event_carrying_the_tool_and_the_message() {
+        let ((), spans) = capture_spans(|| {
+            let _active = begin_tool_call("tumult_analyze");
+            event_tool_error("tumult_analyze", "query failed: syntax error");
+        });
+
+        let events = &spans[0].events.events;
+        assert_eq!(events.len(), 1, "{events:?}");
+        assert_eq!(events[0].name, "mcp.tool.error");
+        assert_eq!(
+            attribute(&events[0].attributes, "mcp.tool.name"),
+            Some(&Value::from("tumult_analyze"))
+        );
+        assert_eq!(
+            attribute(&events[0].attributes, "mcp.tool.error"),
+            Some(&Value::from("query failed: syntax error"))
+        );
+    }
+
+    #[test]
+    fn the_context_captured_during_a_tool_call_carries_the_tool_call_span() {
+        let (captured, spans) = capture_spans(|| {
+            let _active = begin_tool_call("tumult_run_experiment");
+            current_context().span().span_context().clone()
+        });
+
+        assert!(captured.is_valid(), "{captured:?}");
+        assert_eq!(spans.len(), 1, "{spans:?}");
+        assert_eq!(captured.span_id(), spans[0].span_context.span_id());
+        assert_eq!(captured.trace_id(), spans[0].span_context.trace_id());
     }
 
     #[test]

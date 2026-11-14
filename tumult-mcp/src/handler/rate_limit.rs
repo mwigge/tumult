@@ -165,11 +165,26 @@ mod tests {
 
     #[test]
     fn tokens_refill_over_time() {
-        let limiter = RateLimiter::new(1000.0, 1);
+        let limiter = RateLimiter::new(1.0, 1);
         assert!(limiter.check("client"));
         assert!(!limiter.check("client"));
-        std::thread::sleep(std::time::Duration::from_millis(10));
+
+        // Two seconds pass for this client's bucket: at one token per second
+        // that is more than the one token a request costs.
+        {
+            let mut buckets = limiter.buckets.lock().unwrap();
+            let bucket = buckets.get_mut("client").unwrap();
+            bucket.last_refill = bucket
+                .last_refill
+                .checked_sub(std::time::Duration::from_secs(2))
+                .unwrap();
+        }
+
         assert!(limiter.check("client"), "bucket refills at the rps rate");
+        assert!(
+            !limiter.check("client"),
+            "the refill is capped at the burst of one"
+        );
     }
 
     #[test]

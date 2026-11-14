@@ -132,23 +132,6 @@ tumult-lake/src/telemetry.rs::query_truncates_long_sql::no-assert  # deferred: a
 tumult-lake/src/telemetry.rs::record_gauges_does_not_panic::no-assert  # deferred: asserts nothing yet
 tumult-lake/tests/backup.rs::relative_restore_child::no-assert  # deferred: asserts nothing yet
 
-# tumult-mcp: deferred, the crate is being changed elsewhere
-tumult-mcp/src/handler/rate_limit.rs::tokens_refill_over_time::bare-sleep  # deferred: sleep without a stated reason
-tumult-mcp/src/server.rs::health_server_answers_ok_json::bare-sleep  # deferred: sleep without a stated reason
-tumult-mcp/src/server.rs::health_server_logs_and_returns_when_the_port_is_taken::no-assert  # deferred: asserts nothing yet
-tumult-mcp/src/telemetry.rs::current_context_captured_while_span_active::no-assert  # deferred: asserts nothing yet
-tumult-mcp/src/telemetry.rs::tool_call_span_does_not_panic::no-assert  # deferred: asserts nothing yet
-tumult-mcp/src/telemetry.rs::tool_error_event_does_not_panic::no-assert  # deferred: asserts nothing yet
-tumult-mcp/src/handler/auth.rs::load_falls_back_to_the_legacy_single_token::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumult-mcp/src/handler/auth.rs::load_reads_an_explicit_auth_config_file::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumult-mcp/src/handler/auth.rs::load_rejects_an_unreadable_explicit_config_and_from_env_denies::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumult-mcp/src/handler/dispatch/tests/resource_links.rs::viewer_rejected_on_autopilot_run::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumult-mcp/src/handler/dispatch/tests/resource_links.rs::viewer_store_path_override_is_ignored::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumult-mcp/src/main.rs::auth_flags_are_exported_through_the_environment::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumult-mcp/src/server.rs::serve_aborts_on_an_unreadable_auth_config::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumult-mcp/src/tools/mod.rs::drop::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumult-mcp/src/tools/mod.rs::set::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-
 # tumultd: deferred, the crate is being changed elsewhere
 tumultd/src/reports.rs::report_scheduler_writes_a_digest_after_one_interval::bare-sleep  # deferred: sleep without a stated reason
 tumultd/src/serve/tests.rs::alive_tasks_settled::bare-sleep  # deferred: sleep without a stated reason
