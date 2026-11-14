@@ -20,7 +20,8 @@ pub struct ClickHouseConfig {
 impl std::fmt::Debug for ClickHouseConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ClickHouseConfig")
-            .field("url", &self.url)
+            // The URL may embed credentials as userinfo or query parameters.
+            .field("url", &crate::telemetry::redacted_url(&self.url))
             .field("database", &self.database)
             .field("user", &self.user)
             // Redact password to prevent accidental leakage in logs or panic output.
@@ -162,6 +163,23 @@ mod tests {
             ClickHouseConfig::from_env().query_timeout,
             Duration::from_secs(30)
         );
+    }
+
+    #[test]
+    fn debug_redacts_credentials_embedded_in_the_url() {
+        let config = ClickHouseConfig {
+            url: "http://admin:s3cret@ch:8123/db?password=hunter2".into(),
+            ..ClickHouseConfig::default()
+        };
+
+        let debug_output = format!("{config:?}");
+
+        assert!(
+            debug_output.contains(r#"url: "http://ch:8123""#),
+            "{debug_output}"
+        );
+        assert!(!debug_output.contains("s3cret"), "{debug_output}");
+        assert!(!debug_output.contains("hunter2"), "{debug_output}");
     }
 
     #[test]
