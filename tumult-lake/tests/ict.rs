@@ -113,10 +113,13 @@ fn tables_present(store: &Store, names: &[&str]) -> Vec<String> {
 }
 
 #[test]
-fn a_fresh_lake_is_v20_with_the_forecast_and_the_register_tables() {
+fn a_fresh_lake_is_current_with_the_forecast_and_the_register_tables() {
     let (_d, store) = fixture();
-    assert_eq!(CURRENT_SCHEMA_VERSION, 20);
-    assert_eq!(store.writer().unwrap().schema_version().unwrap(), 20);
+    assert_eq!(CURRENT_SCHEMA_VERSION, 21);
+    assert_eq!(
+        store.writer().unwrap().schema_version().unwrap(),
+        CURRENT_SCHEMA_VERSION
+    );
     assert_eq!(tables_present(&store, &V19_TABLES).len(), V19_TABLES.len());
     assert_eq!(tables_present(&store, &V20_TABLES).len(), V20_TABLES.len());
 }
@@ -146,7 +149,7 @@ fn a_v19_lake_opens_keeps_its_forecasts_and_gains_the_v20_tables() {
     }
     let store = Store::open(&path).unwrap();
     let writer = store.writer().unwrap();
-    assert_eq!(writer.schema_version().unwrap(), 20);
+    assert_eq!(writer.schema_version().unwrap(), CURRENT_SCHEMA_VERSION);
     drop(writer);
     assert_eq!(tables_present(&store, &V19_TABLES).len(), 1);
     assert_eq!(tables_present(&store, &V20_TABLES).len(), V20_TABLES.len());
@@ -186,7 +189,7 @@ fn a_v18_lake_opens_and_gains_the_v19_and_the_v20_tables() {
     }
     let store = Store::open(&path).unwrap();
     let writer = store.writer().unwrap();
-    assert_eq!(writer.schema_version().unwrap(), 20);
+    assert_eq!(writer.schema_version().unwrap(), CURRENT_SCHEMA_VERSION);
     writer.sync_ict_register(&register(), 1_000).unwrap();
     drop(writer);
     assert_eq!(tables_present(&store, &V19_TABLES).len(), V19_TABLES.len());
@@ -204,7 +207,10 @@ fn a_v18_lake_opens_and_gains_the_v19_and_the_v20_tables() {
     drop(reader);
     drop(store);
     let again = Store::open(&path).unwrap();
-    assert_eq!(again.writer().unwrap().schema_version().unwrap(), 20);
+    assert_eq!(
+        again.writer().unwrap().schema_version().unwrap(),
+        CURRENT_SCHEMA_VERSION
+    );
 }
 
 #[test]

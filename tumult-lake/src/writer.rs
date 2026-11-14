@@ -93,8 +93,12 @@ impl Writer {
     pub fn insert_logs(&self, rows: &[LogRow]) -> Result<(), StoreError> {
         with_tx(&self.conn, || {
             let mut stmt = self.conn.prepare(
-                "INSERT INTO logs VALUES (?,?,?,?,?,?,
+                "INSERT INTO logs (ts_ns, severity_text, body, trace_id, span_id,
+                    service_name, log_attrs, resource_attrs, event_name, scope_attrs)
+                 VALUES (?,?,?,?,?,?,
                     CAST(json(?) AS MAP(VARCHAR,VARCHAR)),
+                    CAST(json(?) AS MAP(VARCHAR,VARCHAR)),
+                    ?,
                     CAST(json(?) AS MAP(VARCHAR,VARCHAR)))",
             )?;
             for r in rows {
@@ -107,6 +111,8 @@ impl Writer {
                     r.service_name,
                     attrs_json(&r.log_attrs)?,
                     attrs_json(&r.resource_attrs)?,
+                    r.event_name,
+                    attrs_json(&r.scope_attrs)?,
                 ])?;
             }
             Ok(())

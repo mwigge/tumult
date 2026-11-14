@@ -349,6 +349,7 @@ fn findings_fixture() -> (tempfile::TempDir, tumult_lake::Store) {
             ("status".to_string(), status.to_string()),
         ],
         resource_attrs: vec![],
+        ..tumult_lake::LogRow::default()
     };
     writer
         .insert_logs(&[
@@ -638,6 +639,7 @@ fn executive_digest_all_green_has_no_weaknesses() {
                 ("status".to_string(), "Completed".to_string()),
             ],
             resource_attrs: vec![],
+            ..tumult_lake::LogRow::default()
         }])
         .unwrap();
     let reader = store.read_only().unwrap();
@@ -724,6 +726,7 @@ fn game_day_fixture() -> (tempfile::TempDir, tumult_lake::Store) {
                     ("title".to_string(), "pg-failover-drill".to_string()),
                 ],
                 resource_attrs: vec![],
+                ..tumult_lake::LogRow::default()
             },
             tumult_lake::LogRow {
                 ts_ns: BASE_NS + 2 * NS_MIN,
@@ -734,6 +737,7 @@ fn game_day_fixture() -> (tempfile::TempDir, tumult_lake::Store) {
                 service_name: "tumult".into(),
                 log_attrs: vec![],
                 resource_attrs: vec![],
+                ..tumult_lake::LogRow::default()
             },
             tumult_lake::LogRow {
                 ts_ns: BASE_NS + 3 * NS_MIN,
@@ -744,6 +748,7 @@ fn game_day_fixture() -> (tempfile::TempDir, tumult_lake::Store) {
                 service_name: "tumult".into(),
                 log_attrs: vec![],
                 resource_attrs: vec![],
+                ..tumult_lake::LogRow::default()
             },
             tumult_lake::LogRow {
                 ts_ns: BASE_NS + 9 * NS_MIN,
@@ -757,6 +762,7 @@ fn game_day_fixture() -> (tempfile::TempDir, tumult_lake::Store) {
                     ("status".to_string(), "Completed".to_string()),
                 ],
                 resource_attrs: vec![],
+                ..tumult_lake::LogRow::default()
             },
         ])
         .unwrap();

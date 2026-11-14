@@ -1397,6 +1397,7 @@ async fn env_scoping_filters_telemetry_reads() {
                 service_name: "tumult".into(),
                 log_attrs: vec![("experiment_id".to_string(), "exp-stg".to_string())],
                 resource_attrs: vec![],
+                ..LogRow::default()
             },
             LogRow {
                 ts_ns: now - 89 * NS,
@@ -1407,6 +1408,7 @@ async fn env_scoping_filters_telemetry_reads() {
                 service_name: "tumult".into(),
                 log_attrs: vec![("experiment_id".to_string(), "exp-prd".to_string())],
                 resource_attrs: vec![],
+                ..LogRow::default()
             },
         ])
         .map_err(|e| e.to_string())?;
@@ -1605,6 +1607,7 @@ async fn env_scoping_confines_report_generation_and_artifacts() {
                 ("status".to_string(), "Completed".to_string()),
             ],
             resource_attrs: vec![],
+            ..LogRow::default()
         }])
         .map_err(|e| e.to_string())
     })

@@ -497,6 +497,7 @@ mod tests {
                 ("status".to_string(), status.to_string()),
             ],
             resource_attrs: vec![],
+            ..tumult_lake::LogRow::default()
         };
         let now = 100 * DAY;
         store

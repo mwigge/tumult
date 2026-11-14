@@ -89,6 +89,10 @@
 //! and index-free. Every statement is `IF NOT EXISTS`, so a database at
 //! v18 or at v19 migrates to v20 the same way.
 //!
+//! v21 adds `logs.event_name` and `logs.scope_attrs` (additive ALTERs like
+//! v9): the OTLP `EventName` and the instrumentation-scope attributes of a
+//! log record, NULL on rows stored before v21.
+//!
 //! The DDL is split by feature area: [`telemetry`] (v1), [`manual`] (v2/v8
 //! shape), [`analytics`] (v3), [`runs`] (v4–v7), [`auth`] (v6/v9),
 //! [`table_stakes`] (v10–v13), [`migrations`] (the versioned rebuilds).
@@ -108,7 +112,7 @@ mod telemetry;
 
 pub use migrations::{MIGRATE_V5_RUN_TABLES_INDEX_FREE, MIGRATE_V8_MANUAL_EXPERIMENTS_INDEX_FREE};
 
-pub const CURRENT_SCHEMA_VERSION: i64 = 20;
+pub const CURRENT_SCHEMA_VERSION: i64 = 21;
 
 /// The full DDL, one batch per feature area, executed in order. All DDL is
 /// `IF NOT EXISTS`, so this doubles as the idempotent v0 → v1 migration on
