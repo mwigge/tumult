@@ -14,6 +14,7 @@ fn state(entity_type: &str, id: (&str, &str), env: &str, ts_ns: i64) -> EntityEv
     EntityEventRow {
         kind: EntityEventKind::State,
         ts_ns,
+        received_at_ns: ts_ns,
         entity_type: entity_type.into(),
         entity_id: vec![(id.0.into(), id.1.into())],
         description: json!({"k8s.pod.name": "checkout-1"}),
@@ -30,6 +31,7 @@ fn state(entity_type: &str, id: (&str, &str), env: &str, ts_ns: i64) -> EntityEv
 fn delete(mut of: EntityEventRow, ts_ns: i64, reason: &str) -> EntityEventRow {
     of.kind = EntityEventKind::Delete;
     of.ts_ns = ts_ns;
+    of.received_at_ns = ts_ns;
     of.delete_reason = Some(reason.into());
     of
 }

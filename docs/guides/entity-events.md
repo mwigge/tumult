@@ -142,7 +142,8 @@ row per report.
 | `description`, `relationships` | JSON, reduced to the keys of section 5 |
 | `state_hash` | SHA-256 over description and relationships |
 | `valid_from_ns` | when this state was first reported |
-| `last_seen_ns` | when it was last reported |
+| `last_seen_ns` | when it was last reported, by the sender's clock |
+| `last_received_ns` | when the daemon last received a report of it, by the daemon's clock |
 | `interval_s` | seconds between reports; `0` means the sender reports once |
 | `deleted_at_ns`, `delete_reason` | set by a delete event |
 | `wire_form` | `spec` or `legacy` |
@@ -175,12 +176,17 @@ environment with a `liveness` column:
 
 | `liveness` | Meaning |
 |---|---|
-| `live` | reported within three report intervals, or reports only once (`interval_s = 0`) |
-| `expired` | not deleted, but silent for more than three report intervals |
+| `live` | a report was received within three report intervals, or it reports only once (`interval_s = 0`) |
+| `expired` | not deleted, but no report received for more than three report intervals |
 | `gone` | a delete event was accepted |
 
 Liveness is computed when the view is read, so an entity becomes `expired`
-without any write. Deleted rows are kept; nothing removes them.
+without any write. The silence is counted from `last_received_ns`, the
+daemon's own time of receipt, and not from the event time: a Collector
+whose clock runs behind, or one that delivers from a retry queue, does not
+make a reporting entity look expired. Every repeated state moves
+`last_received_ns`, also a delayed copy that is too old to move
+`last_seen_ns`. Deleted rows are kept; nothing removes them.
 
 An entity event that is stored as an entity is not written to `logs`. One
 that is dropped (section 6) is not written to `logs` either.
@@ -318,6 +324,7 @@ every entity, most recently heard of first.
       "relationships": [],
       "valid_from_ns": 1794650000000000000,
       "last_seen_ns": 1794650060000000000,
+      "last_received_ns": 1794650060120000000,
       "interval_s": 60,
       "deleted_at_ns": null,
       "delete_reason": null,

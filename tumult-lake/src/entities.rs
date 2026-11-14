@@ -4,7 +4,9 @@
 //! An entity event is either the full current state of an entity or its
 //! deletion. Senders repeat the state at a fixed interval, so storing every
 //! event would grow with time. Instead one row holds one distinct state of
-//! one entity, and a repeated state only moves `last_seen_ns`:
+//! one entity, and a repeated state only moves `last_seen_ns` (the sender's
+//! event time) and `last_received_ns` (the daemon's time of receipt, from
+//! which liveness is counted):
 //!
 //! * a state with no row yet opens a row;
 //! * a state equal to the latest row (same `state_hash`) refreshes it;
@@ -78,6 +80,10 @@ impl WireForm {
 pub struct EntityEventRow {
     pub kind: EntityEventKind,
     pub ts_ns: i64,
+    /// When the daemon received the export that carried the event, by the
+    /// daemon's clock. Liveness is counted from this, not from `ts_ns`,
+    /// which is the sender's clock.
+    pub received_at_ns: i64,
     pub entity_type: String,
     /// The identifying attributes.
     pub entity_id: Vec<(String, String)>,
@@ -224,6 +230,7 @@ struct Unsaved {
 struct Latest {
     valid_from_ns: i64,
     last_seen_ns: i64,
+    last_received_ns: i64,
     interval_s: i64,
     wire_form: String,
     state_hash: String,
@@ -288,6 +295,7 @@ impl<'a> Prepared<'a> {
         Ok(Latest {
             valid_from_ns,
             last_seen_ns: valid_from_ns,
+            last_received_ns: event.received_at_ns,
             interval_s: self.interval_s,
             wire_form: event.wire_form.as_str().to_owned(),
             state_hash: self.hash.clone(),
@@ -335,9 +343,13 @@ fn state_step(latest: Option<&Latest>, state: &Prepared<'_>) -> StateStep {
     StateStep::Stale
 }
 
-/// Move `last_seen_ns` forward; the newest heartbeat also sets the interval
-/// and the wire form. An older copy of a heartbeat changes nothing.
+/// Record that the state was reported again. Every copy moves the time of
+/// receipt forward: the daemon heard from the sender. Only one that is not
+/// older than the last report moves `last_seen_ns`, and that one also sets
+/// the interval and the wire form.
 fn refresh(latest: &mut Latest, state: &Prepared<'_>) {
+    latest.last_received_ns = latest.last_received_ns.max(state.event.received_at_ns);
+    latest.dirty = true;
     if state.event.ts_ns < latest.last_seen_ns {
         return;
     }
@@ -368,6 +380,7 @@ fn apply_delete(latest: Option<&mut Latest>, event: &EntityEventRow) -> EntityOu
     // A row that won a tie starts, and was last seen, a nanosecond after
     // the event time; its tombstone is not earlier than that.
     latest.deleted_at_ns = Some(event.ts_ns.max(latest.last_seen_ns));
+    latest.last_received_ns = latest.last_received_ns.max(event.received_at_ns);
     latest.batch_ts_ns = Some(event.ts_ns);
     latest.delete_reason.clone_from(&event.delete_reason);
     latest.dirty = true;
@@ -379,7 +392,8 @@ type Slot = (String, String);
 
 const LOAD_LATEST: &str = "
 SELECT entity_key, environment, valid_from_ns, last_seen_ns, interval_s,
-       wire_form, state_hash, deleted_at_ns, delete_reason, observer
+       wire_form, state_hash, deleted_at_ns, delete_reason, observer,
+       last_received_ns
 FROM entity_versions
 WHERE entity_key IN (SELECT unnest(CAST(json(?) AS VARCHAR[])))
 QUALIFY row_number() OVER (
@@ -390,13 +404,15 @@ const INSERT_VERSION: &str = "
 INSERT INTO entity_versions (
     entity_key, environment, entity_type, entity_id, state_hash,
     description, relationships, valid_from_ns, last_seen_ns, interval_s,
-    deleted_at_ns, delete_reason, wire_form, observer, schema_url
+    deleted_at_ns, delete_reason, wire_form, observer, schema_url,
+    last_received_ns
 ) VALUES (?, ?, ?, CAST(json(?) AS MAP(VARCHAR, VARCHAR)), ?,
-    CAST(? AS JSON), CAST(? AS JSON), ?, ?, ?, ?, ?, ?, ?, ?)";
+    CAST(? AS JSON), CAST(? AS JSON), ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
 const UPDATE_VERSION: &str = "
 UPDATE entity_versions
-SET last_seen_ns = ?, interval_s = ?, wire_form = ?, deleted_at_ns = ?, delete_reason = ?
+SET last_seen_ns = ?, interval_s = ?, wire_form = ?, deleted_at_ns = ?, delete_reason = ?,
+    last_received_ns = ?
 WHERE entity_key = ? AND environment = ? AND valid_from_ns = ?";
 
 impl Writer {
@@ -500,6 +516,7 @@ impl Writer {
                     deleted_at_ns: row.get(7)?,
                     delete_reason: row.get(8)?,
                     observer: row.get(9)?,
+                    last_received_ns: row.get(10)?,
                     unsaved: None,
                     dirty: false,
                     batch_ts_ns: None,
@@ -530,6 +547,7 @@ impl Writer {
                     row.wire_form,
                     row.deleted_at_ns,
                     row.delete_reason,
+                    row.last_received_ns,
                     key,
                     environment,
                     row.valid_from_ns,
@@ -555,6 +573,7 @@ impl Writer {
                 row.wire_form,
                 row.observer,
                 unsaved.schema_url,
+                row.last_received_ns,
             ],
         )?;
         Ok(())

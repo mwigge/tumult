@@ -473,6 +473,7 @@ fn normalise(
     let row = EntityEventRow {
         kind,
         ts_ns: logs::log_ts(record, source.received_at_ns).min(source.received_at_ns),
+        received_at_ns: source.received_at_ns,
         entity_type: entity_type.to_string(),
         entity_id,
         description: state.description,

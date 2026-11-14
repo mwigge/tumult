@@ -2,8 +2,8 @@
 //! entity, and the `entities_current` view over the latest row of each.
 
 /// Index-free and without a primary key, like every table that receives
-/// UPDATEs since v5: `last_seen_ns` moves on each heartbeat and a delete
-/// sets the tombstone. `crate::entities` keeps
+/// UPDATEs since v5: `last_seen_ns` and `last_received_ns` move on each
+/// heartbeat and a delete sets the tombstone. `crate::entities` keeps
 /// `(entity_key, environment, valid_from_ns)` unique.
 pub(super) const DDL: &str = "
 CREATE TABLE IF NOT EXISTS entity_versions (
@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS entity_versions (
     relationships JSON,
     valid_from_ns BIGINT NOT NULL,
     last_seen_ns BIGINT NOT NULL,
+    last_received_ns BIGINT NOT NULL,
     interval_s BIGINT NOT NULL DEFAULT 0,
     deleted_at_ns BIGINT,
     delete_reason VARCHAR,
@@ -29,6 +30,11 @@ CREATE TABLE IF NOT EXISTS entity_versions (
 /// `gone` once deleted, `expired` after three missed report intervals,
 /// `live` otherwise. An entity with `interval_s = 0` sends no periodic
 /// reports and never expires.
+///
+/// The silence is measured from `last_received_ns`, which the daemon's
+/// clock set, against the daemon's `now()`. `last_seen_ns` is the sender's
+/// clock: a sender that runs behind, or delivers from a retry queue, would
+/// otherwise look silent while it reports.
 pub(super) const VIEW: &str = "
 CREATE OR REPLACE VIEW entities_current AS
 SELECT
@@ -41,6 +47,7 @@ SELECT
     relationships,
     valid_from_ns,
     last_seen_ns,
+    last_received_ns,
     interval_s,
     deleted_at_ns,
     delete_reason,
@@ -51,7 +58,7 @@ SELECT
         WHEN deleted_at_ns IS NOT NULL THEN 'gone'
         WHEN
             interval_s > 0
-            AND epoch_ns(now()) - last_seen_ns > 3 * interval_s * 1000000000
+            AND epoch_ns(now()) - last_received_ns > 3 * interval_s * 1000000000
             THEN 'expired'
         ELSE 'live'
     END AS liveness

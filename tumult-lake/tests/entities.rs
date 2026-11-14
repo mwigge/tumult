@@ -30,6 +30,7 @@ fn state(ts_ns: i64, description: Value) -> EntityEventRow {
     EntityEventRow {
         kind: EntityEventKind::State,
         ts_ns,
+        received_at_ns: ts_ns,
         entity_type: "host".into(),
         entity_id: host_id(),
         description,
@@ -64,7 +65,7 @@ fn versions(store: &Store) -> Vec<Value> {
             "SELECT entity_key, environment, entity_type, entity_id['host.id'] AS host_id, \
              state_hash, CAST(description AS VARCHAR) AS description, \
              CAST(relationships AS VARCHAR) AS relationships, valid_from_ns, last_seen_ns, \
-             interval_s, deleted_at_ns, delete_reason, wire_form, observer, schema_url \
+             last_received_ns, interval_s, deleted_at_ns, delete_reason, wire_form, observer, schema_url \
              FROM entity_versions ORDER BY environment, entity_key, valid_from_ns",
         )
         .unwrap()
@@ -607,6 +608,72 @@ fn liveness_follows_three_missed_report_intervals() {
         .map(|r| r["liveness"].as_str().unwrap())
         .collect();
     assert_eq!(liveness, vec!["expired", "live", "live"]);
+}
+
+/// The sender stamps the event and the daemon decides on liveness, each by
+/// its own clock. A Collector whose clock is behind, or one that delivers
+/// from a retry queue, must not make a reporting entity look silent, so
+/// silence is counted from when the daemon received the last report.
+#[test]
+fn liveness_counts_from_the_receipt_and_not_from_the_event_time() {
+    let (_d, store) = fixture();
+    let host = |name: &str, ts_ns: i64, received_at_ns: i64| EntityEventRow {
+        entity_id: vec![("host.id".into(), name.into())],
+        received_at_ns,
+        ..state(ts_ns, json!({}))
+    };
+    apply(
+        &store,
+        &[
+            host("a-clock-behind", PAST, FUTURE),
+            host("b-clock-ahead", FUTURE, PAST),
+        ],
+    );
+    let now = current(&store);
+    assert_eq!(now[0]["liveness"], "live");
+    assert_eq!(now[1]["liveness"], "expired");
+    let rows = versions(&store);
+    assert_eq!(rows[0]["last_seen_ns"], PAST);
+    assert_eq!(rows[0]["last_received_ns"], FUTURE);
+    assert_eq!(rows[1]["last_seen_ns"], FUTURE);
+    assert_eq!(rows[1]["last_received_ns"], PAST);
+}
+
+#[test]
+fn every_heartbeat_moves_the_receipt_time_forward_and_never_back() {
+    let (_d, store) = fixture();
+    apply(&store, &[state(PAST + 10 * SECOND, json!({}))]);
+    assert_eq!(current(&store)[0]["liveness"], "expired");
+
+    // A copy from a retry queue: older than the last report by its own
+    // time, but the daemon heard from the sender just now.
+    let late = EntityEventRow {
+        received_at_ns: FUTURE,
+        ..state(PAST + 5 * SECOND, json!({}))
+    };
+    assert_eq!(apply(&store, &[late]), vec![EntityOutcome::Refreshed]);
+    let rows = versions(&store);
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["last_seen_ns"], PAST + 10 * SECOND);
+    assert_eq!(rows[0]["last_received_ns"], FUTURE);
+    assert_eq!(current(&store)[0]["liveness"], "live");
+
+    apply(&store, &[state(PAST + 20 * SECOND, json!({}))]);
+    let rows = versions(&store);
+    assert_eq!(rows[0]["last_seen_ns"], PAST + 20 * SECOND);
+    assert_eq!(rows[0]["last_received_ns"], FUTURE, "not moved back");
+}
+
+#[test]
+fn a_delete_records_when_it_was_received() {
+    let (_d, store) = fixture();
+    apply(&store, &[state(PAST, json!({}))]);
+    let gone = EntityEventRow {
+        received_at_ns: PAST + 7 * SECOND,
+        ..delete(PAST + SECOND)
+    };
+    assert_eq!(apply(&store, &[gone]), vec![EntityOutcome::Tombstoned]);
+    assert_eq!(versions(&store)[0]["last_received_ns"], PAST + 7 * SECOND);
 }
 
 #[test]

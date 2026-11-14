@@ -32,7 +32,8 @@ const LIVENESS: [&str; 3] = ["live", "expired", "gone"];
 const COLUMNS: &str = "entity_key, environment, entity_type, entity_id, \
      CAST(description AS VARCHAR) AS description, \
      CAST(relationships AS VARCHAR) AS relationships, \
-     valid_from_ns, last_seen_ns, interval_s, deleted_at_ns, delete_reason, \
+     valid_from_ns, last_seen_ns, last_received_ns, interval_s, deleted_at_ns, \
+     delete_reason, \
      wire_form, observer, schema_url";
 
 /// When an entity was last heard of: its last report or its deletion.

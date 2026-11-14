@@ -165,6 +165,7 @@ fn pod_row(wire_form: WireForm) -> EntityEventRow {
     EntityEventRow {
         kind: EntityEventKind::State,
         ts_ns: i64::try_from(TS).unwrap(),
+        received_at_ns: RECEIVED,
         entity_type: "k8s.pod".into(),
         entity_id: vec![("k8s.pod.uid".into(), "u-1".into())],
         description: pod_description_json(),
@@ -209,6 +210,22 @@ fn drops_of(resource: Option<Resource>, records: Vec<LogRecord>) -> Vec<EntityDr
     assert!(split.logs.is_empty(), "a dropped entity event is not a log");
     assert_eq!(tally.total(), split.dropped.len() as u64);
     split.dropped
+}
+
+/// The row carries the daemon's time of receipt next to the sender's event
+/// time; liveness is counted from the former.
+#[test]
+fn the_row_carries_the_time_of_receipt_whatever_the_event_time_is() {
+    let mut old = spec_state();
+    old.time_unix_nano = 1;
+    let mut untimed = spec_state();
+    untimed.time_unix_nano = 0;
+    let rows = entities_of(prod(), vec![old, untimed, spec_state()]);
+    assert_eq!(rows[0].ts_ns, 1);
+    assert_eq!(
+        rows.iter().map(|r| r.received_at_ns).collect::<Vec<_>>(),
+        vec![RECEIVED; 3]
+    );
 }
 
 #[test]
