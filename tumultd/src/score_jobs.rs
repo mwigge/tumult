@@ -21,6 +21,10 @@
 //! file that is refused and never was valid: that day would be scored
 //! with parameters the house did not choose. The skip is logged, counted
 //! and shown in every score response (`snapshot`).
+//!
+//! Nor is a day stored while proof days are in use
+//! (`KRONIKA_SCORE_PROOF_DAYS`): it would be scored on days the proof
+//! tool wrote and would stay in the lake as a real day afterwards.
 
 use std::future::Future;
 use std::path::PathBuf;
@@ -110,6 +114,8 @@ enum Attempt {
     Stored(usize),
     /// Nothing was stored; `total` attempts were skipped since start.
     Skipped { total: u64 },
+    /// Nothing was stored: proof days are in use.
+    ProofDays,
 }
 
 /// Store the day of `as_of_ns`, unless the score runtime says a day
@@ -122,6 +128,9 @@ async fn snapshot_unless_blocked(
     if jobs.runtime.snapshot_block().is_some() {
         let total = jobs.runtime.snapshot_skipped();
         return Ok(Attempt::Skipped { total });
+    }
+    if jobs.runtime.proof_days() {
+        return Ok(Attempt::ProofDays);
     }
     run_snapshot(jobs, ingest, as_of_ns)
         .await
@@ -173,8 +182,8 @@ async fn run_snapshot(jobs: &ScoreJobs, ingest: &IngestWriter, as_of_ns: i64) ->
     let snapshot = tokio::task::spawn_blocking(move || -> Result<_> {
         let workloads = runtime.workloads().map_err(anyhow::Error::msg)?;
         let reader = Store::at(&db).read_only().context("open store read-only")?;
-        let proof_days = runtime.proof_days();
-        report::snapshot_all(&reader, &runtime.params(), &workloads, as_of_ns, proof_days)
+        // Never on proof days: what is stored here is real history.
+        report::snapshot_all(&reader, &runtime.params(), &workloads, as_of_ns, false)
             .map_err(|e| anyhow::anyhow!("score the lake: {e}"))
     })
     .await??;
@@ -223,6 +232,10 @@ async fn run_snapshot_logged(jobs: &ScoreJobs, ingest: &IngestWriter, as_of_ns: 
         Ok(Attempt::Stored(rows)) => tracing::info!(
             "resilience.snapshot.rows" = rows,
             "requirement status snapshot stored"
+        ),
+        Ok(Attempt::ProofDays) => tracing::warn!(
+            "error.type" = "status_snapshot_proof_days",
+            "requirement status snapshot not stored: proof days are in use"
         ),
         Ok(Attempt::Skipped { total }) => tracing::warn!(
             "error.type" = "status_snapshot_skipped",
@@ -688,6 +701,37 @@ functions:
             .unwrap();
         assert!(matches!(attempt, Attempt::Stored(_)), "{attempt:?}");
         assert_eq!(count(&d.store, "maturity_daily"), 2);
+        d.stop().await;
+    }
+
+    /// With the proof opt-in the day would be scored on the days the
+    /// proof tool wrote. Such a day is not stored: it would stay in the
+    /// lake as a real one after the opt-in is taken away.
+    #[tokio::test]
+    async fn no_day_is_stored_while_proof_days_are_in_use() {
+        let mut d = daemon(Some(ORG), None);
+        let runtime = ScoreRuntime::open(
+            Some(d.org_file.clone()),
+            None,
+            tumult_api::score::DEFAULT_CACHE_TTL,
+            now_ns(),
+        );
+        d.jobs.runtime = Arc::new(runtime.with_proof_days(true));
+        sync_register(&d.jobs, &d.ingest).await.unwrap();
+        let attempt = snapshot_unless_blocked(&d.jobs, &d.ingest, now_ns())
+            .await
+            .unwrap();
+        assert_eq!(attempt, Attempt::ProofDays);
+        assert_eq!(count(&d.store, "requirement_status_daily"), 0);
+        assert_eq!(count(&d.store, "maturity_daily"), 0);
+        assert_eq!(
+            d.jobs.runtime.snapshot_skipped(),
+            1,
+            "not counted as a refused org file"
+        );
+        // The attempt ends: the day check does not try the day again.
+        assert!(run_snapshot_logged(&d.jobs, &d.ingest, now_ns()).await);
+        assert_eq!(count(&d.store, "maturity_daily"), 0);
         d.stop().await;
     }
 
