@@ -158,13 +158,10 @@ fn read_k6_summary_returns_none_for_missing_or_invalid_files() {
 /// Write an executable fake-k6 script and point `TUMULT_K6_BINARY` at it.
 fn install_fake_k6(dir: &tempfile::TempDir, body: &str) {
     let path = dir.path().join("fake-k6");
-    std::fs::write(&path, body).expect("write fake k6");
     #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))
-            .expect("chmod fake k6");
-    }
+    tumult_test_utils::write_executable(&path, body);
+    #[cfg(not(unix))]
+    std::fs::write(&path, body).expect("write fake k6");
     std::env::set_var("TUMULT_K6_BINARY", &path);
 }
 

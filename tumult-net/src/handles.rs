@@ -73,22 +73,58 @@ impl FaultHandles {
 
 #[cfg(test)]
 mod tests {
+    use tokio_netem::delayer::Duration as _;
+    use tokio_netem::probability::Probability as _;
+    use tokio_netem::slicer::Size as _;
+    use tokio_netem::throttler::Rate as _;
+
     use super::*;
 
+    /// The values a proxy pipe holding these handles reads on its next write.
+    fn knobs(handles: &FaultHandles) -> (Duration, usize, usize, f64) {
+        (
+            handles.delay.duration(),
+            handles.rate.rate(),
+            handles.slice.size(),
+            handles.corrupt.probability(),
+        )
+    }
+
     #[test]
-    fn from_profile_builds_and_retunes() {
+    fn handles_start_at_the_profile_values_and_retune_shared_clones() {
         let profile = FaultProfile {
             delay_ms: 5,
             rate_bps: 2048,
             slice_bytes: 32,
-            corrupt_prob: 0.0,
+            corrupt_prob: 0.25,
             ..FaultProfile::default()
         };
-        let h = FaultHandles::from_profile(&profile).expect("handles");
-        h.set_delay(Duration::from_millis(10));
-        h.set_rate(4096);
-        h.set_slice(16);
-        assert!(h.set_corrupt(0.5).is_ok());
-        assert!(h.set_corrupt(2.0).is_err());
+        let handles = FaultHandles::from_profile(&profile).expect("handles");
+        // A pipe holds a clone; retuning the original must reach it.
+        let held_by_pipe = handles.clone();
+        assert_eq!(
+            knobs(&held_by_pipe),
+            (Duration::from_millis(5), 2048, 32, 0.25)
+        );
+
+        handles.set_delay(Duration::from_millis(10));
+        handles.set_rate(4096);
+        handles.set_slice(16);
+        handles.set_corrupt(0.5).expect("in range");
+
+        assert_eq!(
+            knobs(&held_by_pipe),
+            (Duration::from_millis(10), 4096, 16, 0.5)
+        );
+    }
+
+    #[test]
+    fn out_of_range_corruption_is_rejected_and_leaves_the_knob_unchanged() {
+        let handles = FaultHandles::from_profile(&FaultProfile::default()).expect("handles");
+        handles.set_corrupt(0.5).expect("in range");
+
+        assert!(matches!(handles.set_corrupt(2.0), Err(NetError::Io(_))));
+
+        assert!((handles.corrupt.probability() - 0.5).abs() < f64::EPSILON);
     }
 }

@@ -235,10 +235,13 @@ mod tests {
     }
 
     #[test]
-    fn pool_starts_empty() {
-        let pool = SshPool::new();
-        assert!(pool.is_empty());
-        assert_eq!(pool.len(), 0);
+    fn new_and_default_pools_hold_no_sessions_and_clear_keeps_them_empty() {
+        for pool in [SshPool::new(), SshPool::default()] {
+            assert!(pool.is_empty());
+            assert_eq!(pool.len(), 0);
+            pool.clear();
+            assert_eq!(pool.len(), 0);
+        }
     }
 
     #[test]
@@ -246,13 +249,6 @@ mod tests {
         let pool = SshPool::new();
         let config = dummy_config("host-a");
         assert!(!pool.evict(&config));
-    }
-
-    #[test]
-    fn clear_on_empty_pool_does_not_panic() {
-        let pool = SshPool::new();
-        pool.clear();
-        assert!(pool.is_empty());
     }
 
     #[test]
@@ -316,12 +312,6 @@ mod tests {
         assert_eq!(key.user, "deploy");
         assert_eq!(key.auth, PoolAuth::Agent);
         assert_eq!(key.host_key_policy, HostKeyPolicy::Verify);
-    }
-
-    #[test]
-    fn default_creates_empty_pool() {
-        let pool = SshPool::default();
-        assert!(pool.is_empty());
     }
 
     #[test]

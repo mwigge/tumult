@@ -47,13 +47,10 @@ fn recorded(dir: &tempfile::TempDir, name: &str) -> Vec<String> {
 /// Write an executable fake-oha script and point `TUMULT_OHA_BINARY` at it.
 fn install_fake_oha(dir: &tempfile::TempDir, body: &str) {
     let path = dir.path().join("fake-oha");
-    std::fs::write(&path, body).expect("write fake oha");
     #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))
-            .expect("chmod fake oha");
-    }
+    tumult_test_utils::write_executable(&path, body);
+    #[cfg(not(unix))]
+    std::fs::write(&path, body).expect("write fake oha");
     std::env::set_var("TUMULT_OHA_BINARY", &path);
 }
 

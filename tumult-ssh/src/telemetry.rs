@@ -28,7 +28,7 @@ pub(crate) fn begin_connect(host: &str, port: u16, auth_method: &str) -> SpanGua
 
 pub(crate) fn begin_execute(command: &str, timeout_s: Option<f64>) -> SpanGuard {
     let cmd_preview = if command.len() > 256 {
-        format!("{}...", &command[..256])
+        format!("{}...", &command[..command.floor_char_boundary(256)])
     } else {
         command.to_string()
     };
@@ -93,31 +93,127 @@ pub(crate) fn event_auth_success(method: &str) {
 
 #[cfg(test)]
 mod tests {
+    use opentelemetry::trace::SpanKind;
+    use tumult_test_utils::capture_spans;
+
     use super::*;
 
     #[test]
-    fn connect_span_does_not_panic() {
-        let _g = begin_connect("host.example.com", 22, "key");
-        event_auth_success("key");
+    fn connect_span_carries_host_port_auth_and_net_peer_attributes() {
+        let ((), spans) = capture_spans(|| {
+            let _g = begin_connect("db.internal", 2222, "agent");
+            event_auth_success("agent");
+        });
+
+        assert_eq!(spans.len(), 1);
+        let span = &spans[0];
+        assert_eq!(span.name, "ssh.connect");
+        assert_eq!(span.span_kind, SpanKind::Client);
+        assert_eq!(
+            span.attributes,
+            [
+                KeyValue::new("ssh.host", "db.internal"),
+                KeyValue::new("ssh.port", 2222_i64),
+                KeyValue::new("ssh.auth_method", "agent"),
+                KeyValue::new("net.peer.name", "db.internal"),
+                KeyValue::new("net.peer.port", 2222_i64),
+            ]
+        );
+        let events = &span.events.events;
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].name, "ssh.auth.success");
+        assert_eq!(
+            events[0].attributes,
+            [KeyValue::new("ssh.auth_method", "agent")]
+        );
     }
 
     #[test]
-    fn connect_span_includes_net_peer_attributes() {
-        // Smoke test: begin_connect must not panic and includes net.peer.* attrs.
-        // The attributes are verified by the OTel SDK constructing the span
-        // without error — attribute presence is an API-level guarantee.
-        let _g = begin_connect("db.internal", 2222, "agent");
+    fn execute_span_carries_command_timeout_and_completion_event() {
+        let ((), spans) = capture_spans(|| {
+            let _g = begin_execute("uname -a", Some(30.0));
+            event_command_completed(3, 100, 7);
+        });
+
+        assert_eq!(spans.len(), 1);
+        let span = &spans[0];
+        assert_eq!(span.name, "ssh.execute");
+        assert_eq!(
+            span.attributes,
+            [
+                KeyValue::new("ssh.command", "uname -a"),
+                KeyValue::new("ssh.timeout_seconds", 30.0),
+            ]
+        );
+        let events = &span.events.events;
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].name, "ssh.command.completed");
+        assert_eq!(
+            events[0].attributes,
+            [
+                KeyValue::new("ssh.exit_code", 3_i64),
+                KeyValue::new("ssh.stdout_bytes", 100_i64),
+                KeyValue::new("ssh.stderr_bytes", 7_i64),
+            ]
+        );
     }
 
     #[test]
-    fn execute_span_does_not_panic() {
-        let _g = begin_execute("uname -a", Some(30.0));
-        event_command_completed(0, 100, 0);
+    fn execute_span_omits_timeout_when_none_and_truncates_long_commands() {
+        let command = "x".repeat(300);
+        let ((), spans) = capture_spans(|| {
+            let _g = begin_execute(&command, None);
+        });
+
+        assert_eq!(
+            spans[0].attributes,
+            [KeyValue::new(
+                "ssh.command",
+                format!("{}...", "x".repeat(256))
+            )]
+        );
     }
 
     #[test]
-    fn upload_span_does_not_panic() {
-        let _g = begin_upload("/tmp/script.sh", 4096);
-        event_upload_completed(4096);
+    fn execute_span_truncates_a_long_command_on_a_character_boundary() {
+        // Byte 256 falls inside a two-byte character.
+        let command = format!("x{}", "é".repeat(200));
+        let ((), spans) = capture_spans(|| {
+            let _span = begin_execute(&command, None);
+        });
+
+        assert_eq!(
+            spans[0].attributes,
+            [KeyValue::new(
+                "ssh.command",
+                format!("x{}...", "é".repeat(127))
+            )]
+        );
+    }
+
+    #[test]
+    fn upload_span_carries_path_size_and_completion_event() {
+        let ((), spans) = capture_spans(|| {
+            let _g = begin_upload("/tmp/script.sh", 4096);
+            event_upload_completed(4000);
+        });
+
+        assert_eq!(spans.len(), 1);
+        let span = &spans[0];
+        assert_eq!(span.name, "ssh.upload");
+        assert_eq!(
+            span.attributes,
+            [
+                KeyValue::new("ssh.remote_path", "/tmp/script.sh"),
+                KeyValue::new("ssh.file_bytes", 4096_i64),
+            ]
+        );
+        let events = &span.events.events;
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].name, "ssh.upload.completed");
+        assert_eq!(
+            events[0].attributes,
+            [KeyValue::new("ssh.bytes_transferred", 4000_i64)]
+        );
     }
 }

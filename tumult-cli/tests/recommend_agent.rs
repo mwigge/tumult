@@ -13,6 +13,7 @@ use std::sync::Mutex;
 use tumult_cli::commands::{cmd_agents, cmd_recommend, AgentArgs};
 use tumult_core::engine::{parse_experiment, validate_experiment};
 use tumult_intelligence::{OutputFormat, RecommendOptions};
+use tumult_test_utils::fake_bin;
 
 /// Serializes tests that mutate process-global env vars.
 static ENV_LOCK: Mutex<()> = Mutex::new(());
@@ -44,17 +45,6 @@ impl Drop for EnvGuard {
             None => env::remove_var(self.key),
         }
     }
-}
-
-/// Write an executable `#!/bin/sh` script into `dir`.
-fn fake_bin(dir: &Path, name: &str, body: &str) -> PathBuf {
-    use std::os::unix::fs::PermissionsExt;
-    let path = dir.join(name);
-    fs::write(&path, format!("#!/bin/sh\n{body}\n")).expect("write fake binary");
-    let mut perms = fs::metadata(&path).expect("stat fake binary").permissions();
-    perms.set_mode(0o755);
-    fs::set_permissions(&path, perms).expect("chmod fake binary");
-    path
 }
 
 const VALID_TOON: &str = r#"title: Process retry validation

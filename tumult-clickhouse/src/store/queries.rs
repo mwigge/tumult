@@ -36,6 +36,15 @@ impl ClickHouseStore {
     ///
     /// Returns an error if either `ClickHouse` query fails or times out.
     pub async fn stats_async(&self) -> Result<StoreStats, AnalyticsError> {
+        self.stats_recorded_on(&crate::telemetry::meter()).await
+    }
+
+    /// [`Self::stats_async`] recording the store gauges on an explicit meter,
+    /// so they can be read back without a process-wide meter provider.
+    pub(crate) async fn stats_recorded_on(
+        &self,
+        meter: &opentelemetry::metrics::Meter,
+    ) -> Result<StoreStats, AnalyticsError> {
         let exp = self.experiment_count_async().await?;
         let act_row = self
             .with_timeout(async {
@@ -49,6 +58,7 @@ impl ClickHouseStore {
         // u64 → usize: same rationale as experiment_count_async above.
         #[allow(clippy::cast_possible_truncation)]
         let activity_count = act_row.count as usize;
+        crate::telemetry::record_store_gauges(meter, exp, activity_count);
         Ok(StoreStats {
             experiment_count: exp,
             activity_count,

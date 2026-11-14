@@ -7,9 +7,10 @@
 //! records the exact method/path/body the executor sent and replies with
 //! scripted JSON, one scripted response per request.
 //!
-//! `KUBECONFIG` is process-global, so every test that touches it serializes
-//! on `ENV_LOCK` (async-aware, since it is held across `.await` points) and
-//! restores the variable on drop.
+//! `KUBECONFIG` is process-global, so every test sets it through
+//! `tumult_test_utils::EnvGuard`, which serialises the tests and restores the
+//! variable on drop. Each test runs on its own current-thread runtime, so
+//! waiting for the guard blocks only that test.
 
 use std::collections::VecDeque;
 use std::net::SocketAddr;
@@ -23,15 +24,11 @@ use tokio::net::{TcpListener, TcpStream};
 
 use tumult_kubernetes::KubernetesExecutor;
 use tumult_plugin::native::{NativeArgs, NativeError, NativeExecutor};
+use tumult_test_utils::EnvGuard;
 
 // ── Environment plumbing ──────────────────────────────────────
 
-static ENV_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
-
-async fn env_lock() -> tokio::sync::MutexGuard<'static, ()> {
-    ENV_LOCK.lock().await
-}
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(PoisonError::into_inner)
@@ -74,33 +71,27 @@ fn write_kubeconfig(server: &str) -> PathBuf {
     path
 }
 
-/// Sets `KUBECONFIG` for the lifetime of the guard, restoring the previous
-/// value (or absence) and deleting the temp file on drop.
+/// Points `KUBECONFIG` at `path` until the guard is dropped, then restores
+/// the previous value and deletes the file.
 struct KubeconfigEnv {
-    original: Option<std::ffi::OsString>,
-    file: Option<PathBuf>,
+    file: PathBuf,
+    _env: EnvGuard,
 }
 
 impl KubeconfigEnv {
     fn point_at(path: &Path) -> Self {
-        let original = std::env::var_os("KUBECONFIG");
-        std::env::set_var("KUBECONFIG", path);
+        let mut env = EnvGuard::lock();
+        env.set("KUBECONFIG", path);
         Self {
-            original,
-            file: Some(path.to_path_buf()),
+            file: path.to_path_buf(),
+            _env: env,
         }
     }
 }
 
 impl Drop for KubeconfigEnv {
     fn drop(&mut self) {
-        match &self.original {
-            Some(value) => std::env::set_var("KUBECONFIG", value),
-            None => std::env::remove_var("KUBECONFIG"),
-        }
-        if let Some(file) = &self.file {
-            let _ = std::fs::remove_file(file);
-        }
+        let _ = std::fs::remove_file(&self.file);
     }
 }
 
@@ -299,9 +290,8 @@ struct Case {
     expected: Expected,
 }
 
-async fn run_cases(cases: Vec<Case>) {
+async fn assert_rejected_before_any_api_call(cases: Vec<Case>) {
     install_crypto_provider();
-    let _lock = env_lock().await;
     let kubeconfig = write_kubeconfig("http://127.0.0.1:1"); // unreachable; never dialed
     let _env = KubeconfigEnv::point_at(&kubeconfig);
     let executor = KubernetesExecutor;
@@ -429,7 +419,7 @@ async fn dispatch_validates_action_arguments_before_any_api_call() {
             Expected::Invalid("cpu_workers"),
         ),
     ];
-    run_cases(cases).await;
+    assert_rejected_before_any_api_call(cases).await;
 }
 
 #[tokio::test]
@@ -475,7 +465,7 @@ async fn dispatch_validates_probe_arguments_before_any_api_call() {
             Expected::Missing("phase"),
         ),
     ];
-    run_cases(cases).await;
+    assert_rejected_before_any_api_call(cases).await;
 }
 
 // ── Client-init failure ───────────────────────────────────────
@@ -483,7 +473,6 @@ async fn dispatch_validates_probe_arguments_before_any_api_call() {
 #[tokio::test]
 async fn dispatch_reports_client_init_failure_for_missing_kubeconfig() {
     install_crypto_provider();
-    let _lock = env_lock().await;
     let missing = std::env::temp_dir().join(format!(
         "tumult-no-such-kubeconfig-{}.yaml",
         std::process::id()
@@ -527,7 +516,6 @@ async fn dispatch_executes_pod_and_node_actions_against_apiserver() {
     ])
     .await;
 
-    let _lock = env_lock().await;
     let kubeconfig = write_kubeconfig(&server.url());
     let _env = KubeconfigEnv::point_at(&kubeconfig);
     let executor = KubernetesExecutor;
@@ -623,7 +611,6 @@ async fn dispatch_executes_drain_and_network_policies_against_apiserver() {
     ])
     .await;
 
-    let _lock = env_lock().await;
     let kubeconfig = write_kubeconfig(&server.url());
     let _env = KubeconfigEnv::point_at(&kubeconfig);
     let executor = KubernetesExecutor;
@@ -740,7 +727,6 @@ async fn dispatch_executes_probes_against_apiserver() {
     ])
     .await;
 
-    let _lock = env_lock().await;
     let kubeconfig = write_kubeconfig(&server.url());
     let _env = KubeconfigEnv::point_at(&kubeconfig);
     let executor = KubernetesExecutor;

@@ -19,6 +19,38 @@ mod tests;
 
 const SCHEMA_VERSION: i64 = 1;
 
+/// Table behind [`rows::ExperimentRow`]; the columns must match its fields.
+const EXPERIMENTS_DDL: &str = "CREATE TABLE IF NOT EXISTS experiments (
+                experiment_id String,
+                title String,
+                status String,
+                started_at_ns Int64,
+                ended_at_ns Int64,
+                duration_ms UInt64,
+                method_step_count Int64,
+                rollback_count Int64,
+                hypothesis_before_met Nullable(UInt8),
+                hypothesis_after_met Nullable(UInt8),
+                estimate_accuracy Nullable(Float64),
+                resilience_score Nullable(Float64)
+            ) ENGINE = ReplacingMergeTree()
+            ORDER BY (experiment_id)
+            PRIMARY KEY (experiment_id)";
+
+/// Table behind [`rows::ActivityRow`]; the columns must match its fields.
+const ACTIVITY_RESULTS_DDL: &str = "CREATE TABLE IF NOT EXISTS activity_results (
+                experiment_id String,
+                name String,
+                activity_type String,
+                status String,
+                started_at_ns Int64,
+                duration_ms UInt64,
+                output Nullable(String),
+                error Nullable(String),
+                phase String
+            ) ENGINE = MergeTree()
+            ORDER BY (experiment_id, started_at_ns)";
+
 /// Retry configuration for `ClickHouse` connection attempts.
 pub struct RetryConfig {
     /// Maximum number of connection attempts.
@@ -64,6 +96,9 @@ impl ClickHouseStore {
         for attempt in 0..retry_config.max_attempts {
             match Self::connect(config).await {
                 Ok(store) => return Ok(store),
+                // Nothing follows the last attempt, so there is nothing to
+                // wait for.
+                Err(e) if attempt + 1 == retry_config.max_attempts => last_err = Some(e),
                 Err(e) => {
                     let backoff = retry_config
                         .backoff_durations
@@ -131,41 +166,9 @@ impl ClickHouseStore {
         ))
         .await?;
 
-        self.execute_ddl(
-            "CREATE TABLE IF NOT EXISTS experiments (
-                experiment_id String,
-                title String,
-                status String,
-                started_at_ns Int64,
-                ended_at_ns Int64,
-                duration_ms UInt64,
-                method_step_count Int64,
-                rollback_count Int64,
-                hypothesis_before_met Nullable(UInt8),
-                hypothesis_after_met Nullable(UInt8),
-                estimate_accuracy Nullable(Float64),
-                resilience_score Nullable(Float64)
-            ) ENGINE = ReplacingMergeTree()
-            ORDER BY (experiment_id)
-            PRIMARY KEY (experiment_id)",
-        )
-        .await?;
+        self.execute_ddl(EXPERIMENTS_DDL).await?;
 
-        self.execute_ddl(
-            "CREATE TABLE IF NOT EXISTS activity_results (
-                experiment_id String,
-                name String,
-                activity_type String,
-                status String,
-                started_at_ns Int64,
-                duration_ms UInt64,
-                output Nullable(String),
-                error Nullable(String),
-                phase String
-            ) ENGINE = MergeTree()
-            ORDER BY (experiment_id, started_at_ns)",
-        )
-        .await?;
+        self.execute_ddl(ACTIVITY_RESULTS_DDL).await?;
 
         self.execute_ddl(
             "CREATE TABLE IF NOT EXISTS schema_meta (

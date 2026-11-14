@@ -213,38 +213,159 @@ pub(crate) fn event_pods_counted(count: usize) {
 
 #[cfg(test)]
 mod tests {
+    use opentelemetry::trace::SpanKind;
+    use tumult_test_utils::capture_spans;
+
     use super::*;
 
-    #[test]
-    fn action_spans_do_not_panic() {
-        let _g = begin_delete_pod("default", "my-pod");
-        let _g = begin_scale_deployment("default", "my-deploy", 3);
-        let _g = begin_cordon_node("node-1");
-        let _g = begin_uncordon_node("node-1");
-        let _g = begin_drain_node("node-1", Some(30));
-        event_drain_completed(5, 1, 2);
-        event_pod_evicted("pod-a");
+    fn kv(key: &'static str, value: impl Into<opentelemetry::Value>) -> KeyValue {
+        KeyValue::new(key, value)
+    }
+
+    /// Runs `begin` and checks the one client span it produced.
+    fn assert_span(begin: impl FnOnce() -> SpanGuard, name: &str, attributes: &[KeyValue]) {
+        let ((), spans) = capture_spans(|| drop(begin()));
+        assert_eq!(spans.len(), 1, "{name}");
+        assert_eq!(spans[0].name, name);
+        assert_eq!(spans[0].span_kind, SpanKind::Client, "{name}");
+        assert_eq!(spans[0].attributes, attributes, "{name}");
     }
 
     #[test]
-    fn probe_spans_do_not_panic() {
-        let _g = begin_pod_probe("default", "my-pod");
-        let _g = begin_pods_by_label("default", "app=web");
-        event_pods_counted(3);
-        let _g = begin_deployment_probe("default", "my-deploy");
-        let _g = begin_node_status("node-1");
-        let _g = begin_discover_services(2);
+    fn action_spans_name_the_operation_and_its_target() {
+        let namespace = || kv("k8s.namespace.name", "prod");
+        assert_span(
+            || begin_delete_pod("prod", "api-0"),
+            "k8s.pod.delete",
+            &[namespace(), kv("k8s.pod.name", "api-0")],
+        );
+        assert_span(
+            || begin_scale_deployment("prod", "web", 3),
+            "k8s.deployment.scale",
+            &[
+                namespace(),
+                kv("k8s.deployment.name", "web"),
+                kv("k8s.deployment.replicas.desired", 3_i64),
+            ],
+        );
+        assert_span(
+            || begin_cordon_node("worker-1"),
+            "k8s.node.cordon",
+            &[kv("k8s.node.name", "worker-1")],
+        );
+        assert_span(
+            || begin_uncordon_node("worker-1"),
+            "k8s.node.uncordon",
+            &[kv("k8s.node.name", "worker-1")],
+        );
+        assert_span(
+            || begin_apply_network_policy("prod", "deny-all"),
+            "k8s.networkpolicy.apply",
+            &[namespace(), kv("k8s.networkpolicy.name", "deny-all")],
+        );
+        assert_span(
+            || begin_delete_network_policy("prod", "deny-all"),
+            "k8s.networkpolicy.delete",
+            &[namespace(), kv("k8s.networkpolicy.name", "deny-all")],
+        );
     }
 
     #[test]
-    fn network_policy_spans_do_not_panic() {
-        let _g = begin_apply_network_policy("default", "deny-all");
-        let _g = begin_delete_network_policy("default", "deny-all");
+    fn drain_span_records_grace_period_only_when_set_and_the_completion_counts() {
+        assert_span(
+            || begin_drain_node("worker-1", None),
+            "k8s.node.drain",
+            &[kv("k8s.node.name", "worker-1")],
+        );
+
+        let ((), spans) = capture_spans(|| {
+            let _span = begin_drain_node("worker-1", Some(30));
+            event_drain_completed(5, 1, 2);
+        });
+
+        assert_eq!(spans.len(), 1);
+        assert_eq!(
+            spans[0].attributes,
+            [
+                kv("k8s.node.name", "worker-1"),
+                kv("k8s.delete.grace_period_seconds", 30_i64),
+            ]
+        );
+        let events = &spans[0].events.events;
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].name, "drain.completed");
+        assert_eq!(
+            events[0].attributes,
+            [
+                kv("k8s.pods.evicted", 5_i64),
+                kv("k8s.pods.failed", 1_i64),
+                kv("k8s.daemonsets.skipped", 2_i64),
+            ]
+        );
     }
 
     #[test]
-    fn injection_spans_do_not_panic() {
-        let _g = begin_pod_network_latency("default", "web-0", "tumult-netem-0", 100, 30);
-        let _g = begin_pod_stress("default", "web-0", "tumult-stress-0", "2 CPU workers", 30);
+    fn probe_spans_name_the_query_and_its_target() {
+        let namespace = || kv("k8s.namespace.name", "prod");
+        assert_span(
+            || begin_pod_probe("prod", "api-0"),
+            "k8s.pod.is_ready",
+            &[namespace(), kv("k8s.pod.name", "api-0")],
+        );
+        assert_span(
+            || begin_pods_by_label("prod", "app=web"),
+            "k8s.pods.list_by_label",
+            &[namespace(), kv("k8s.label_selector", "app=web")],
+        );
+        assert_span(
+            || begin_deployment_probe("prod", "web"),
+            "k8s.deployment.is_ready",
+            &[namespace(), kv("k8s.deployment.name", "web")],
+        );
+        assert_span(
+            || begin_node_status("worker-1"),
+            "k8s.node.status",
+            &[kv("k8s.node.name", "worker-1")],
+        );
+        assert_span(
+            || begin_discover_services(2),
+            "k8s.services.discover",
+            &[kv("k8s.namespaces.requested", 2_i64)],
+        );
+    }
+
+    #[test]
+    fn injection_spans_carry_the_target_container_and_fault_parameters() {
+        let target = |container: &'static str| {
+            [
+                kv("k8s.namespace.name", "prod"),
+                kv("k8s.pod.name", "web-0"),
+                kv("k8s.ephemeral_container.name", container),
+            ]
+        };
+        assert_span(
+            || begin_pod_network_latency("prod", "web-0", "tumult-netem-0", 100, 30),
+            "k8s.pod.network_latency",
+            &[
+                target("tumult-netem-0").as_slice(),
+                &[
+                    kv("tumult.fault.delay_ms", 100_i64),
+                    kv("tumult.fault.duration_s", 30_i64),
+                ],
+            ]
+            .concat(),
+        );
+        assert_span(
+            || begin_pod_stress("prod", "web-0", "tumult-stress-0", "2 CPU workers", 45),
+            "k8s.pod.stress",
+            &[
+                target("tumult-stress-0").as_slice(),
+                &[
+                    kv("tumult.fault.stress", "2 CPU workers"),
+                    kv("tumult.fault.duration_s", 45_i64),
+                ],
+            ]
+            .concat(),
+        );
     }
 }

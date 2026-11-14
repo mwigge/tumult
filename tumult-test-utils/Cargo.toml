@@ -7,7 +7,20 @@ license.workspace = true
 description = "Shared test helpers for tumult workspace integration tests"
 publish = false
 
+[features]
+default = ["builders"]
+# Experiment fixtures. Pulls in tumult-core, so crates that tumult-core
+# depends on must leave this off.
+builders = ["dep:tumult-core", "dep:indexmap"]
+# Span and metric capture.
+otel = ["dep:opentelemetry", "dep:opentelemetry_sdk"]
+
 [dependencies]
-tumult-core = { path = "../tumult-core" }
-serde_json = { workspace = true }
-indexmap = { workspace = true }
+tumult-core = { path = "../tumult-core", optional = true }
+indexmap = { workspace = true, optional = true }
+opentelemetry = { workspace = true, optional = true }
+opentelemetry_sdk = { workspace = true, features = ["testing"], optional = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+tokio = { workspace = true }

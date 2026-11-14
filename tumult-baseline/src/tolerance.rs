@@ -141,28 +141,25 @@ mod tests {
     fn iqr_derives_bounds() {
         let samples: Vec<f64> = (1..=100).map(f64::from).collect();
         let bounds = derive_tolerance(&samples, &Method::Iqr);
-        assert!(bounds.lower < 25.0);
-        assert!(bounds.upper > 75.0);
+        // Q1 = 25.75, Q3 = 75.25, IQR = 49.5; bounds are Q1/Q3 -/+ 74.25.
+        assert!((bounds.lower - -48.5).abs() < 1e-9, "{bounds:?}");
+        assert!((bounds.upper - 149.5).abs() < 1e-9, "{bounds:?}");
     }
 
     // ── is_within_tolerance ────────────────────────────────────
 
     #[test]
-    fn value_inside_bounds_is_within_tolerance() {
+    fn is_within_tolerance_includes_both_bounds_and_excludes_beyond() {
         let bounds = BaselineBounds {
             lower: 10.0,
             upper: 90.0,
         };
-        assert!(is_within_tolerance(50.0, &bounds));
-    }
-
-    #[test]
-    fn value_outside_bounds_is_not_within_tolerance() {
-        let bounds = BaselineBounds {
-            lower: 10.0,
-            upper: 90.0,
-        };
-        assert!(!is_within_tolerance(91.0, &bounds));
+        for inside in [10.0, 50.0, 90.0] {
+            assert!(is_within_tolerance(inside, &bounds), "{inside}");
+        }
+        for outside in [9.9, 90.1] {
+            assert!(!is_within_tolerance(outside, &bounds), "{outside}");
+        }
     }
 
     // ── compliance_ratio ───────────────────────────────────────

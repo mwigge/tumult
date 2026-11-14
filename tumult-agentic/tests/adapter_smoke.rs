@@ -42,35 +42,40 @@ fn validate_target_allows_everything_without_an_allowlist() {
     let target = AgenticTarget::Http {
         endpoint: "http://anything.example".to_string(),
     };
-    validate_target(&target, &privacy(&[])).expect("empty allowlist allows all");
+    assert_eq!(validate_target(&target, &privacy(&[])), Ok(()));
 }
 
 #[test]
 fn validate_target_matches_each_variant_against_the_allowlist() {
     let allowlist = privacy(&["http://allowed", "mcp-server", "fixtures/"]);
 
-    validate_target(
-        &AgenticTarget::Http {
+    let allowed = [
+        AgenticTarget::Http {
             endpoint: "http://allowed/agent".to_string(),
         },
-        &allowlist,
-    )
-    .expect("allowlisted endpoint prefix");
-    validate_target(
-        &AgenticTarget::Mcp {
+        AgenticTarget::Mcp {
             server: "mcp-server-2".to_string(),
             tool: "lookup".to_string(),
         },
-        &allowlist,
-    )
-    .expect("allowlisted server prefix");
-    validate_target(
-        &AgenticTarget::Replay {
+        AgenticTarget::Replay {
             fixture: "fixtures/case.json".to_string(),
         },
-        &allowlist,
-    )
-    .expect("allowlisted fixture prefix");
+    ];
+    for target in &allowed {
+        assert_eq!(validate_target(target, &allowlist), Ok(()), "{target:?}");
+    }
+
+    // The MCP variant is matched on its server, never on its tool.
+    assert_eq!(
+        validate_target(
+            &AgenticTarget::Mcp {
+                server: "elsewhere".to_string(),
+                tool: "mcp-server".to_string(),
+            },
+            &allowlist,
+        ),
+        Err(AgenticError::TargetNotAllowed("elsewhere".to_string()))
+    );
 }
 
 #[test]

@@ -2,72 +2,21 @@
 //! binaries — no real `claude` / `codex`, no network.
 #![cfg(unix)]
 
-use std::env;
-use std::ffi::OsString;
 use std::fs;
-use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::path::Path;
 use std::time::{Duration, Instant};
 
 use tumult_agent_cli::{
     run_prompt, AdapterRegistry, AgentCliAdapter, AgentCliError, ClaudeCodeAdapter, CodexAdapter,
     PromptRequest, RawOutput,
 };
+use tumult_test_utils::{fake_bin, EnvGuard};
 
 /// Realistic `claude -p --output-format json` result envelope (documented
 /// shape of Claude Code's print-mode JSON output).
 const CLAUDE_JSON_ENVELOPE: &str = r#"{"type":"result","subtype":"success","is_error":false,"duration_ms":2734,"duration_api_ms":2450,"num_turns":1,"result":"Fake claude answer.","session_id":"5b1e9a2f-0000-4000-8000-000000000000","total_cost_usd":0.0421,"usage":{"input_tokens":12,"output_tokens":9}}"#;
 
 const CLAUDE_JSON_ERROR_ENVELOPE: &str = r#"{"type":"result","subtype":"error_during_execution","is_error":true,"duration_ms":812,"num_turns":1,"result":"Credit balance is too low","session_id":"5b1e9a2f-0000-4000-8000-000000000001"}"#;
-
-/// Serializes tests that mutate process-global env vars.
-static ENV_LOCK: Mutex<()> = Mutex::new(());
-
-fn env_lock() -> std::sync::MutexGuard<'static, ()> {
-    ENV_LOCK
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-}
-
-/// Restores an env var to its previous state on drop.
-struct EnvGuard {
-    key: &'static str,
-    prev: Option<OsString>,
-}
-
-impl EnvGuard {
-    fn set(key: &'static str, value: impl AsRef<std::ffi::OsStr>) -> Self {
-        let prev = env::var_os(key);
-        env::set_var(key, value);
-        Self { key, prev }
-    }
-
-    fn unset(key: &'static str) -> Self {
-        let prev = env::var_os(key);
-        env::remove_var(key);
-        Self { key, prev }
-    }
-}
-
-impl Drop for EnvGuard {
-    fn drop(&mut self) {
-        match self.prev.take() {
-            Some(prev) => env::set_var(self.key, prev),
-            None => env::remove_var(self.key),
-        }
-    }
-}
-
-/// Write an executable `#!/bin/sh` script into `dir`.
-fn fake_bin(dir: &Path, name: &str, body: &str) -> PathBuf {
-    use std::os::unix::fs::PermissionsExt;
-    let path = dir.join(name);
-    fs::write(&path, format!("#!/bin/sh\n{body}\n")).expect("write fake binary");
-    let mut perms = fs::metadata(&path).expect("stat fake binary").permissions();
-    perms.set_mode(0o755);
-    fs::set_permissions(&path, perms).expect("chmod fake binary");
-    path
-}
 
 fn request(prompt: &str, workspace: &Path) -> PromptRequest {
     let mut req = PromptRequest::new(prompt, workspace);
@@ -77,10 +26,10 @@ fn request(prompt: &str, workspace: &Path) -> PromptRequest {
 
 #[test]
 fn claude_detect_reports_missing_binary() {
-    let _lock = env_lock();
+    let mut env = EnvGuard::lock();
     let dir = tempfile::tempdir().expect("tempdir");
-    let _bin = EnvGuard::set("CLAUDE_CODE_BIN", dir.path().join("does-not-exist"));
-    let _path = EnvGuard::set("PATH", dir.path()); // empty dir: PATH lookup fails
+    env.set("CLAUDE_CODE_BIN", dir.path().join("does-not-exist"));
+    env.set("PATH", dir.path()); // empty dir: PATH lookup fails
 
     let probe = ClaudeCodeAdapter::new().detect();
     assert!(!probe.installed);
@@ -95,15 +44,15 @@ fn claude_detect_reports_missing_binary() {
 
 #[test]
 fn claude_detect_parses_version() {
-    let _lock = env_lock();
+    let mut env = EnvGuard::lock();
     let dir = tempfile::tempdir().expect("tempdir");
     let bin = fake_bin(
         dir.path(),
         "claude",
         r#"if [ "$1" = "--version" ]; then echo "2.0.13 (Claude Code)"; exit 0; fi"#,
     );
-    let _bin = EnvGuard::set("CLAUDE_CODE_BIN", &bin);
-    let _key = EnvGuard::unset("ANTHROPIC_API_KEY");
+    env.set("CLAUDE_CODE_BIN", &bin);
+    env.remove("ANTHROPIC_API_KEY");
 
     let probe = ClaudeCodeAdapter::new().detect();
     assert!(probe.installed);
@@ -117,15 +66,15 @@ fn claude_detect_parses_version() {
 
 #[test]
 fn claude_detect_reports_api_key_auth() {
-    let _lock = env_lock();
+    let mut env = EnvGuard::lock();
     let dir = tempfile::tempdir().expect("tempdir");
     let bin = fake_bin(
         dir.path(),
         "claude",
         r#"if [ "$1" = "--version" ]; then echo "2.0.13 (Claude Code)"; exit 0; fi"#,
     );
-    let _bin = EnvGuard::set("CLAUDE_CODE_BIN", &bin);
-    let _key = EnvGuard::set("ANTHROPIC_API_KEY", "sk-ant-test");
+    env.set("CLAUDE_CODE_BIN", &bin);
+    env.set("ANTHROPIC_API_KEY", "sk-ant-test");
 
     let probe = ClaudeCodeAdapter::new().detect();
     assert_eq!(probe.logged_in, Some(true));
@@ -138,7 +87,7 @@ fn claude_detect_reports_api_key_auth() {
 
 #[test]
 fn claude_run_prompt_round_trip() {
-    let _lock = env_lock();
+    let mut env = EnvGuard::lock();
     let dir = tempfile::tempdir().expect("tempdir");
     let fixture = dir.path().join("envelope.json");
     fs::write(&fixture, CLAUDE_JSON_ENVELOPE).expect("write fixture");
@@ -154,7 +103,7 @@ cat "{fixture}""#,
         fixture = fixture.display(),
     );
     let bin = fake_bin(dir.path(), "claude", &body);
-    let _bin = EnvGuard::set("CLAUDE_CODE_BIN", &bin);
+    env.set("CLAUDE_CODE_BIN", &bin);
 
     let answer = run_prompt(
         &ClaudeCodeAdapter::new(),
@@ -174,10 +123,10 @@ cat "{fixture}""#,
 
 #[test]
 fn claude_build_invocation_model_flag() {
-    let _lock = env_lock();
+    let mut env = EnvGuard::lock();
     let dir = tempfile::tempdir().expect("tempdir");
     let bin = fake_bin(dir.path(), "claude", "exit 0");
-    let _bin = EnvGuard::set("CLAUDE_CODE_BIN", &bin);
+    env.set("CLAUDE_CODE_BIN", &bin);
     let adapter = ClaudeCodeAdapter::new();
 
     let mut req = request("hi", dir.path());
@@ -248,7 +197,7 @@ fn claude_parse_output_surfaces_error_envelope() {
 
 #[test]
 fn claude_nonzero_exit_maps_to_invocation_failed() {
-    let _lock = env_lock();
+    let mut env = EnvGuard::lock();
     let dir = tempfile::tempdir().expect("tempdir");
     let bin = fake_bin(
         dir.path(),
@@ -257,7 +206,7 @@ fn claude_nonzero_exit_maps_to_invocation_failed() {
 echo "API error: rate limited" >&2
 exit 2"#,
     );
-    let _bin = EnvGuard::set("CLAUDE_CODE_BIN", &bin);
+    env.set("CLAUDE_CODE_BIN", &bin);
 
     let err = run_prompt(&ClaudeCodeAdapter::new(), &request("hi", dir.path()))
         .expect_err("non-zero exit");
@@ -273,7 +222,7 @@ exit 2"#,
 
 #[test]
 fn runner_kills_child_on_timeout() {
-    let _lock = env_lock();
+    let mut env = EnvGuard::lock();
     let dir = tempfile::tempdir().expect("tempdir");
     let bin = fake_bin(
         dir.path(),
@@ -281,7 +230,7 @@ fn runner_kills_child_on_timeout() {
         r#"if [ "$1" = "--version" ]; then echo "2.0.13 (Claude Code)"; exit 0; fi
 sleep 5"#,
     );
-    let _bin = EnvGuard::set("CLAUDE_CODE_BIN", &bin);
+    env.set("CLAUDE_CODE_BIN", &bin);
 
     let mut req = request("hi", dir.path());
     req.timeout = Duration::from_millis(300);
@@ -301,7 +250,7 @@ sleep 5"#,
 
 #[test]
 fn codex_detect_and_round_trip() {
-    let _lock = env_lock();
+    let mut env = EnvGuard::lock();
     let dir = tempfile::tempdir().expect("tempdir");
     let args_file = dir.path().join("args.txt");
     let prompt_file = dir.path().join("prompt.txt");
@@ -314,8 +263,8 @@ printf 'The final answer.\n'"#,
         prompt = prompt_file.display(),
     );
     let bin = fake_bin(dir.path(), "codex", &body);
-    let _bin = EnvGuard::set("CODEX_BIN", &bin);
-    let _key = EnvGuard::unset("OPENAI_API_KEY");
+    env.set("CODEX_BIN", &bin);
+    env.remove("OPENAI_API_KEY");
 
     let adapter = CodexAdapter::new();
     let probe = adapter.detect();
@@ -350,10 +299,10 @@ printf 'The final answer.\n'"#,
 
 #[test]
 fn codex_build_invocation_model_flag() {
-    let _lock = env_lock();
+    let mut env = EnvGuard::lock();
     let dir = tempfile::tempdir().expect("tempdir");
     let bin = fake_bin(dir.path(), "codex", "exit 0");
-    let _bin = EnvGuard::set("CODEX_BIN", &bin);
+    env.set("CODEX_BIN", &bin);
     let adapter = CodexAdapter::new();
 
     let mut req = request("hi", dir.path());
@@ -415,7 +364,7 @@ fn registry_lookup_and_unknown_name() {
 
 #[test]
 fn registry_detect_all_probes_every_adapter() {
-    let _lock = env_lock();
+    let mut env = EnvGuard::lock();
     let dir = tempfile::tempdir().expect("tempdir");
     let claude = fake_bin(
         dir.path(),
@@ -427,8 +376,8 @@ fn registry_detect_all_probes_every_adapter() {
         "codex",
         r#"if [ "$1" = "--version" ]; then echo "codex-cli 0.46.0"; exit 0; fi"#,
     );
-    let _claude = EnvGuard::set("CLAUDE_CODE_BIN", &claude);
-    let _codex = EnvGuard::set("CODEX_BIN", &codex);
+    env.set("CLAUDE_CODE_BIN", &claude);
+    env.set("CODEX_BIN", &codex);
 
     let probes = AdapterRegistry::builtin().detect_all();
     assert_eq!(probes.len(), 2);

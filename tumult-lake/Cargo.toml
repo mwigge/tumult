@@ -44,3 +44,4 @@ opentelemetry.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+tumult-test-utils = { path = "../tumult-test-utils", default-features = false }

@@ -136,8 +136,7 @@ async fn start_echo_upstream() -> SocketAddr {
 #[tokio::test]
 async fn proxy_continues_inbound_trace_context_upstream() {
     // A real tracer provider so the proxy's span has a valid context to inject.
-    let provider = opentelemetry_sdk::trace::SdkTracerProvider::builder().build();
-    opentelemetry::global::set_tracer_provider(provider);
+    tumult_test_utils::install_recording_tracer();
 
     let upstream = start_echo_upstream().await;
     // cost-explosion-detector forwards the body unchanged (no body mutation, no
