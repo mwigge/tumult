@@ -103,7 +103,7 @@ async fn run_bails_when_experiment_does_not_complete() {
         guards: vec![],
         blast_radius: None,
         max_concurrent_faults: None,
-        kind: Default::default(),
+        kind: tumult_core::types::TestKind::default(),
         target: None,
         nfr: vec![],
         rto_target_s: None,

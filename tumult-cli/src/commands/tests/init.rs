@@ -137,7 +137,7 @@ async fn dry_run_renders_all_optional_sections_without_executing() {
         guards: vec![],
         blast_radius: None,
         max_concurrent_faults: None,
-        kind: Default::default(),
+        kind: tumult_core::types::TestKind::default(),
         target: None,
         nfr: vec![],
         rto_target_s: None,
