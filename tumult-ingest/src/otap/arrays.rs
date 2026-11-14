@@ -115,8 +115,14 @@ fn expanded_bytes(
 /// null is null; the [`widened`] `keys` are all inside the values (the IPC
 /// reader lets none through that is not). The rows fit the offsets of the
 /// column's type: [`fits_offsets`] has refused the column otherwise, and
-/// `MutableArrayData` panics on one that does not.
-fn materialised(column: &ArrayRef, keys: &[usize], budget: &Budget) -> Result<ArrayRef, OtapError> {
+/// `MutableArrayData` returns an error on one that does not, which `failed`
+/// turns into the column's error.
+fn materialised(
+    column: &ArrayRef,
+    keys: &[usize],
+    budget: &Budget,
+    failed: impl Fn(String) -> OtapError,
+) -> Result<ArrayRef, OtapError> {
     let dictionary = column.as_any_dictionary();
     let values = dictionary.values().to_data();
     if values.is_empty() {
@@ -127,10 +133,12 @@ fn materialised(column: &ArrayRef, keys: &[usize], budget: &Budget) -> Result<Ar
     for (row, &key) in keys.iter().enumerate() {
         budget.tick()?;
         if nulls.is_null(row) {
-            rows.extend_nulls(1);
+            rows.try_extend_nulls(1)
+                .map_err(|e| failed(format!("dictionary row cannot be expanded: {e}")))?;
             continue;
         }
-        rows.extend(0, key, key + 1);
+        rows.try_extend(0, key, key + 1)
+            .map_err(|e| failed(format!("dictionary row cannot be expanded: {e}")))?;
     }
     Ok(make_array(rows.freeze()))
 }
@@ -224,7 +232,7 @@ impl Table {
             let bytes = expanded_bytes(column, value_type, &keys).map_err(failed)?;
             budget.charge_bytes(bytes)?;
             fits_offsets(value_type, bytes).map_err(failed)?;
-            columns.push(materialised(column, &keys, &budget)?);
+            columns.push(materialised(column, &keys, &budget, failed)?);
         }
         Ok(Self {
             name,

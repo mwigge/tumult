@@ -129,6 +129,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Kronika demo: `worker-process-kill` no longer races its own sampler. The worker is started by a `before_experiment` control and removed by `after_experiment`, the hypothesis probe only reads (`kill -0` on the pid file), and no `sleep` process outlives the run.
 - Web: the sidebar navigation scrolls on a short window instead of pushing its last entries out of reach. Chart zoom and pan are reported once per frame, and a chart mirrors its option to `window.__tumultCharts` only where a test installed that registry.
 
+### Security
+
+- Update dependencies with published advisories to patched releases: rustls 0.23.46, rustls-webpki 0.103.17, webpki-roots and webpki-root-certs 1.0.12, tokio 1.54, zstd 0.13.5 (zstd-safe 7.4, zstd-sys 2.1.3), rustix 1.1.6, crypto-bigint 0.7.11 and ctutils 0.4.8.
+- russh 0.61 to 0.65 (RUSTSEC-2026-0492, RUSTSEC-2026-0495). The SSH client rejects a host certificate under every host-key policy; it never advertises host certificate algorithms, so plain host keys verify as before.
+- duckdb-rs 1.10505 to 1.20000 with arrow and parquet 58 to 60, which drops the vulnerable `zip` 6 build dependency and `thrift` 0.17. The bundled DuckDB engine moves from 1.5 to 2.0.
+- Web: `@sveltejs/kit` 3.1.1, `@sveltejs/adapter-static` 4.0.1, `eslint` 10.15.0 and `minimatch` 11.0.8 (override for `@typescript-eslint/typescript-estree`).
+- `deny.toml` ignores RUSTSEC-2024-0449 (`unsafe-libyaml` unmaintained, no known vulnerability, no patched release) with a review date.
+
 ## [2.22.0] - 2026-10-09
 
 ### Security

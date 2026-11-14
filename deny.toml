@@ -23,6 +23,16 @@ ignore = [
     # upgrade is available until typst moves to skrifa/fontations.
     { id = "RUSTSEC-2026-0192", reason = "ttf-parser transitive via typst; no safe upgrade available" },
     { id = "RUSTSEC-2026-0206", reason = "rustybuzz transitive via typst/krilla; no safe upgrade available" },
+    # unsafe-libyaml comes in through serde_yaml 0.9, used directly by
+    # tumult-metrics, tumult-risk and tumult-compliance and pinned
+    # transitively by hayagriva 0.10 (typst 0.15). The advisory is an
+    # unmaintained notice with no known vulnerability and no patched release;
+    # the parser only reads operator-supplied metric, manifest and compliance
+    # YAML. Moving the direct users off serde_yaml would not clear it while
+    # typst keeps the hayagriva pin.
+    # TODO(security): review by 2027-02-14, or sooner on a typst/hayagriva
+    # release that drops serde_yaml or on any unsafe-libyaml vulnerability.
+    { id = "RUSTSEC-2024-0449", reason = "unsafe-libyaml unmaintained notice, no known vulnerability; via serde_yaml 0.9 (direct and pinned by typst/hayagriva); no safe upgrade available; review by 2027-02-14" },
 ]
 
 [licenses]
