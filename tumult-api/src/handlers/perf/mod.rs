@@ -888,10 +888,13 @@ fn judge(
         (None, Some(b)) => failures_of(candidate, b, opts.min_runs),
         _ => None,
     };
-    let note = unsettled_note(failures.as_ref()).filter(|_| latencies_stand(&c, failures.as_ref()));
     let ruling = before
         .or_else(|| ruling_on_failures(&c, failures.as_ref()))
         .or_else(|| baseline.and_then(|b| ruling_on_censoring(&c, candidate, b)));
+    // The note says the verdict rests on the latencies: true only while
+    // no ruling has taken their place.
+    let note = unsettled_note(failures.as_ref())
+        .filter(|_| ruling.is_none() && latencies_stand(&c, failures.as_ref()));
     let mut codes = Vec::new();
     match ruling {
         Some(mut ruling) => {
@@ -1631,6 +1634,45 @@ mod tests {
         let j = judged(&below, &baseline);
         assert_eq!(j.comparison.verdict, Verdict::Improved);
         assert_eq!(j.codes[0], "latency");
+    }
+
+    #[test]
+    fn a_censored_verdict_does_not_say_it_rests_on_the_latencies() {
+        // Slower than a baseline whose p95 is a request given up on at
+        // 50 ms, with three failures more than none: the latencies say
+        // regressed, the failure share rests on too little, and the
+        // censored yardstick decides.
+        let mut fast: Vec<f64> = steady(20.0);
+        for value in fast.iter_mut().step_by(5) {
+            *value = 50.0;
+        }
+        let baseline = Side {
+            censored_floor: Some(50.0),
+            windows: Windows {
+                censored: 8,
+                ..WHOLE
+            },
+            ..counted(side_with("1.0.0", fast, WHOLE), 150, 0)
+        };
+        let slow = counted(side_with("1.1.0", steady(100.0), WHOLE), 150, 3);
+        let j = judged(&slow, &baseline);
+        assert_eq!(j.comparison.verdict, Verdict::Inconclusive);
+        assert_eq!(j.codes[0], "censored");
+        let reasons = &j.comparison.reasons;
+        assert!(
+            !reasons.iter().any(|r| r.contains("rests on the latencies")),
+            "{reasons:?}"
+        );
+        // Against a yardstick that was measured the latencies decide,
+        // and the note says so.
+        let measured = counted(side_with("1.0.0", steady(20.0), WHOLE), 150, 0);
+        let j = judged(&slow, &measured);
+        assert_eq!(j.codes, vec!["latency"]);
+        let reasons = &j.comparison.reasons;
+        assert!(
+            reasons.iter().any(|r| r.contains("rests on the latencies")),
+            "{reasons:?}"
+        );
     }
 
     #[test]
