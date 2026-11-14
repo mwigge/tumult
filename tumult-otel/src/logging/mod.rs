@@ -24,6 +24,7 @@ mod error;
 mod fields;
 mod filter;
 mod format;
+mod limit;
 mod sanitize;
 mod selection;
 pub mod testing;
@@ -97,6 +98,10 @@ pub struct LogOptions {
     /// stderr but never exported over OTLP. See
     /// [`with_local_only_targets`](Self::with_local_only_targets).
     pub local_only_targets: Vec<String>,
+    /// Most bytes of events written to stderr over the life of the process;
+    /// `None` (the default) for no limit. See
+    /// [`with_output_limit`](Self::with_output_limit).
+    pub output_limit: Option<u64>,
 }
 
 impl LogOptions {
@@ -108,6 +113,7 @@ impl LogOptions {
             default_level: Level::INFO,
             format: None,
             local_only_targets: Vec::new(),
+            output_limit: None,
         }
     }
 
@@ -154,6 +160,19 @@ impl LogOptions {
         T: Into<String>,
     {
         self.local_only_targets = targets.into_iter().map(Into::into).collect();
+        self
+    }
+
+    /// Stops writing events to stderr once `bytes` of them have been
+    /// written. Events are kept or dropped whole, and once one has been
+    /// dropped none follows, so what was written is a prefix of the log.
+    /// The OTLP export is not affected.
+    ///
+    /// For a detached process whose stderr is a file nobody rotates: without
+    /// a limit that file grows for as long as the process runs.
+    #[must_use]
+    pub fn with_output_limit(mut self, bytes: u64) -> Self {
+        self.output_limit = Some(bytes);
         self
     }
 }
@@ -204,6 +223,7 @@ pub fn init(options: LogOptions) -> Result<(), InitError> {
         writer: std::io::stderr,
         ansi: stderr_is_terminal && std::env::var_os(NO_COLOR_ENV).is_none(),
         local_only: options.local_only_targets,
+        output_limit: options.output_limit,
     };
     let (subscriber, bridge) = pipeline.build();
     subscriber
@@ -384,6 +404,8 @@ struct Pipeline<W> {
     /// Modules whose events are not exported; see
     /// [`LogOptions::with_local_only_targets`].
     local_only: Vec<String>,
+    /// Byte budget of the writer; see [`LogOptions::with_output_limit`].
+    output_limit: Option<u64>,
 }
 
 impl<W> Pipeline<W>
@@ -395,7 +417,11 @@ where
         let slot = LogBridgeSlot::default();
         let subscriber = tracing_subscriber::registry()
             .with(self.filter)
-            .with(format::event_layer(self.formatter, self.writer, self.ansi))
+            .with(format::event_layer(
+                self.formatter,
+                limit::Limited::new(self.writer, self.output_limit),
+                self.ansi,
+            ))
             .with(tracing_opentelemetry::layer())
             .with(slot.layer_keeping_local(self.local_only));
         (subscriber, slot)
@@ -530,7 +556,49 @@ mod tests {
             writer: capture.clone(),
             ansi: false,
             local_only: Vec::new(),
+            output_limit: None,
         }
+    }
+
+    #[test]
+    fn output_stops_at_the_limit_with_whole_lines_only() {
+        let unlimited = Capture::default();
+        let (subscriber, _slot) = pipeline(&unlimited).build();
+        tracing::subscriber::with_default(subscriber, || {
+            tracing::info!(name: "test.limit.first", "first");
+        });
+        let one_line = u64::try_from(unlimited.text().len()).unwrap();
+
+        let capture = Capture::default();
+        let limited = Pipeline {
+            // Room for two lines and most of a third.
+            output_limit: Some(one_line * 3 - 1),
+            ..pipeline(&capture)
+        };
+        let (subscriber, _slot) = limited.build();
+        tracing::subscriber::with_default(subscriber, || {
+            tracing::info!(name: "test.limit.first", "first");
+            tracing::info!(name: "test.limit.second", "secnd");
+            tracing::info!(name: "test.limit.third", "third");
+            // Shorter than what is left, but after a dropped line: a log
+            // with a hole in it would mislead.
+            tracing::info!(name: "t", "x");
+        });
+
+        let names: Vec<Value> = json_lines(&capture)
+            .iter()
+            .map(|line| line["event.name"].clone())
+            .collect();
+        assert_eq!(names, ["test.limit.first", "test.limit.second"]);
+    }
+
+    #[test]
+    fn no_limit_is_the_default() {
+        assert_eq!(LogOptions::new("svc").output_limit, None);
+        assert_eq!(
+            LogOptions::new("svc").with_output_limit(4096).output_limit,
+            Some(4096)
+        );
     }
 
     /// Runs `emit` under a subscriber filtered by `rust_log`; returns what

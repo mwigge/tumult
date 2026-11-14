@@ -263,6 +263,7 @@ fn pipeline(sink: &Sink, level: Level) -> Pipeline<Sink> {
         writer: sink.clone(),
         ansi: false,
         local_only: Vec::new(),
+        output_limit: None,
     }
 }
 
