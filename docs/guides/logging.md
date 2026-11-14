@@ -271,10 +271,16 @@ everywhere else. Do not add to this list: a new diagnostic is an event.
 ## Child processes
 
 A daemon's stderr is its log stream. `tumult-net-proxyd` logs JSON to stderr;
-the parent keeps that stream in `<tmp>/tumult-net-<key>.log.d/stderr.log`
-while the proxy runs. The directory is created for the proxy with mode
-`0700` and the file with `0600`, never through an existing file or link; a
-directory of that name that others can enter is refused. Nothing rotates the
+the parent keeps that stream in `tumult-net-<key>.log.d/stderr.log` while
+the proxy runs, under `$XDG_RUNTIME_DIR` when that is set and usable and
+under the temp directory otherwise. The directory is created for the proxy
+with mode `0700` and the file with `0600`, never through an existing file or
+link. The directory is opened once without following a link and checked
+through that handle: one that belongs to another user, or that others can
+enter, is refused. The file is created, read and removed relative to the
+handle, so swapping the directory's name for a link afterwards redirects
+nothing; stopping the proxy checks the directory the same way before it
+removes anything from it. Nothing rotates the
 file, so the daemon stops writing to it after 1 MiB
 (`LogOptions::with_output_limit`). The event that does not fit and every
 later one are dropped whole, and one `logging.output.limit_reached` warning

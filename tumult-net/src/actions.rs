@@ -78,18 +78,26 @@ fn locate_proxyd() -> Result<PathBuf, NetError> {
     ))
 }
 
-/// The private directory holding the stderr log of the proxy bound to
-/// `listen`; see [`startup_log`].
-fn log_dir(listen: SocketAddr) -> PathBuf {
-    startup_log::dir_for(&pidfile_path(listen))
+/// Where the private directory holding the stderr log of the proxy bound to
+/// `listen` may be, the preferred place first; see [`startup_log`].
+fn log_dirs(listen: SocketAddr) -> Vec<PathBuf> {
+    startup_log::dirs_for(&pidfile_path(listen), std::env::var_os("XDG_RUNTIME_DIR"))
 }
 
 /// Creates the daemon's stderr log off the async runtime's threads.
-async fn create_startup_log(dir: PathBuf) -> Result<(StartupLog, std::fs::File), NetError> {
-    let created = tokio::task::spawn_blocking(move || StartupLog::create(&dir))
+async fn create_startup_log(dirs: Vec<PathBuf>) -> Result<(StartupLog, std::fs::File), NetError> {
+    let created = tokio::task::spawn_blocking(move || StartupLog::create_in_first(&dirs))
         .await
         .map_err(std::io::Error::other)?;
     Ok(created?)
+}
+
+/// Removes the log of the proxy bound to `listen` from wherever a start
+/// may have put it.
+async fn remove_startup_log(listen: SocketAddr) {
+    for dir in log_dirs(listen) {
+        startup_log::remove(&dir).await;
+    }
 }
 
 /// Poll `listen` until the daemon accepts a TCP connection or [`READY_TIMEOUT`]
@@ -142,7 +150,7 @@ async fn spawn_proxy(
     // file instead of the null device so the readiness check can report
     // *why* a dead-on-arrival daemon failed. The log removes itself when
     // this function leaves without a running daemon.
-    let (log, stderr_file) = create_startup_log(log_dir(listen)).await?;
+    let (log, stderr_file) = create_startup_log(log_dirs(listen)).await?;
     let child = std::process::Command::new(&daemon)
         .args(spec.to_argv())
         .stdin(Stdio::null())
@@ -443,7 +451,7 @@ pub async fn stop_proxy(listen: SocketAddr) -> Result<String, NetError> {
     // report instead of killing whatever happens to hold the PID today.
     if !is_proxyd_process(pid).await {
         let _ = tokio::fs::remove_file(&pidfile).await;
-        startup_log::remove(&log_dir(listen)).await;
+        remove_startup_log(listen).await;
         crate::telemetry::event_proxy_stopped(None);
         return Ok(format!(
             "no chaos proxy running on {listen_s} (removed stale pidfile: pid {pid} is not a live `{PROXYD_BIN}`)"
@@ -454,7 +462,7 @@ pub async fn stop_proxy(listen: SocketAddr) -> Result<String, NetError> {
     // have exited between the identity check and the kill.
     terminate(pid).await;
     let _ = tokio::fs::remove_file(&pidfile).await;
-    startup_log::remove(&log_dir(listen)).await;
+    remove_startup_log(listen).await;
     crate::telemetry::event_proxy_stopped(Some(pid));
     Ok(format!("chaos proxy on {listen_s} stopped (pid {pid})"))
 }
@@ -465,6 +473,11 @@ mod tests {
 
     fn addr(s: &str) -> SocketAddr {
         s.parse().expect("valid socket addr")
+    }
+
+    /// Whether a log directory of the proxy on `listen` exists anywhere.
+    fn log_dir_exists(listen: SocketAddr) -> bool {
+        log_dirs(listen).iter().any(|dir| dir.exists())
     }
 
     #[test]
@@ -495,16 +508,20 @@ mod tests {
         // best-effort kill path runs instead. Both paths remove the pidfile.
         tokio::fs::write(&pidfile, "999999999").await.unwrap();
         // ... and the log that daemon left behind.
-        let (log, _file) = StartupLog::create(&log_dir(listen)).unwrap();
-        log.keep();
-        assert!(log_dir(listen).exists());
+        // Wherever it was put: the stop may run in another environment
+        // than the start did.
+        for dir in log_dirs(listen) {
+            let (log, _file) = StartupLog::create(&dir).unwrap();
+            log.keep();
+            assert!(dir.exists());
+        }
         let out = stop_proxy(listen).await.expect("rollback");
         #[cfg(target_os = "linux")]
         assert!(out.contains("stale pidfile"), "out: {out}");
         #[cfg(not(target_os = "linux"))]
         assert!(out.contains("stopped"), "out: {out}");
         assert!(!pidfile.exists());
-        assert!(!log_dir(listen).exists(), "the log goes with the pidfile");
+        assert!(!log_dir_exists(listen), "the log goes with the pidfile");
     }
 
     #[tokio::test]
@@ -675,7 +692,7 @@ mod tests {
             "pidfile must be removed when the daemon never comes up"
         );
         assert!(
-            !log_dir(listen).exists(),
+            !log_dir_exists(listen),
             "the log must be removed when the daemon never comes up"
         );
         let _ = std::fs::remove_file(&script);
@@ -690,7 +707,7 @@ mod tests {
             .expect_err("a non-executable daemon path must fail to spawn");
         assert!(matches!(err, NetError::Io(_)), "err: {err}");
         assert!(
-            !log_dir(listen).exists(),
+            !log_dir_exists(listen),
             "a daemon that never started must leave no log behind"
         );
         let _ = std::fs::remove_file(&not_exec);

@@ -48,7 +48,13 @@ async fn the_daemon_log_outlives_readiness_and_is_removed_by_the_rollback() {
         .chars()
         .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
         .collect();
-    let dir = std::env::temp_dir().join(format!("tumult-net-{key}.log.d"));
+    // The user's runtime directory when there is one, the temp directory
+    // otherwise.
+    let base = std::env::var_os("XDG_RUNTIME_DIR")
+        .map(std::path::PathBuf::from)
+        .filter(|runtime_dir| runtime_dir.is_dir())
+        .unwrap_or_else(std::env::temp_dir);
+    let dir = base.join(format!("tumult-net-{key}.log.d"));
     let log = dir.join("stderr.log");
 
     start_proxy(listen, free_addr(), tumult_net::FaultProfile::default())
