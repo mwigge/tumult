@@ -335,3 +335,73 @@ async fn lake_status_and_manual_export_trigger() {
         "{second}"
     );
 }
+
+/// POST `body` to a manual-evidence path and expect `status`.
+async fn manual_post(base: &str, path: &str, body: Value, status: u16) -> Value {
+    let resp = reqwest::Client::new()
+        .post(format!("{base}/api/manual/{path}"))
+        .json(&body)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), status, "{path}");
+    resp.json().await.unwrap()
+}
+
+/// A submitted record, ready for review; returns its id.
+async fn submitted(base: &str) -> String {
+    let created = manual_post(base, "experiments", manual_body("alice"), 201).await;
+    let id = created["id"].as_str().unwrap().to_string();
+    let by = json!({"by": "alice"});
+    manual_post(base, &format!("experiments/{id}/submit"), by, 200).await;
+    id
+}
+
+#[tokio::test]
+async fn manual_record_writes_drop_the_cached_star_maps() {
+    let srv = spawn_server().await;
+    let base = srv.base.clone();
+    let verified = submitted(&base).await;
+    let rejected = submitted(&base).await;
+    let cached = starmap_as_of(&base).await;
+    assert_eq!(starmap_as_of(&base).await, cached, "served from the cache");
+
+    // A verified record is evidence the map shows.
+    let review = json!({"reviewer": "bob", "note": "evidence reviewed"});
+    manual_post(
+        &base,
+        &format!("experiments/{verified}/verify"),
+        review,
+        200,
+    )
+    .await;
+    let after_verify = starmap_as_of(&base).await;
+    assert_ne!(after_verify, cached);
+
+    let review = json!({"reviewer": "bob", "note": "insufficient evidence"});
+    manual_post(
+        &base,
+        &format!("experiments/{rejected}/reject"),
+        review,
+        200,
+    )
+    .await;
+    let after_reject = starmap_as_of(&base).await;
+    assert_ne!(after_reject, after_verify);
+
+    let batch = json!({"label": "backfill", "records": [manual_body("carol")]});
+    manual_post(&base, "import", batch, 201).await;
+    assert_ne!(starmap_as_of(&base).await, after_reject);
+
+    // A refused write changed nothing and leaves the cache alone.
+    let kept = starmap_as_of(&base).await;
+    let review = json!({"reviewer": "bob", "note": "again"});
+    manual_post(
+        &base,
+        &format!("experiments/{verified}/verify"),
+        review,
+        409,
+    )
+    .await;
+    assert_eq!(starmap_as_of(&base).await, kept);
+}

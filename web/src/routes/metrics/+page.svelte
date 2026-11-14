@@ -9,11 +9,11 @@
     import { CHART } from '#lib/echarts.js';
     import type { EChartsCoreOption } from '#lib/echarts.js';
     import { experimentOverlay, overlayRunId } from '#lib/overlays.js';
+    import { RANGE_SECONDS } from '#lib/ranges.js';
 
     const INTERVALS = ['5m', '1h', '1d'];
     const CHART_TYPES = ['line', 'area', 'bar'] as const;
     const PALETTE = [CHART.accent, CHART.ok, CHART.warn, CHART.fail, '#a78bfa', '#f472b6'];
-    const RANGE_S: Record<string, number> = { '24h': 86400, '7d': 7 * 86400, '14d': 14 * 86400 };
 
     const filters = $derived({
         name: page.url.searchParams.get('name') ?? '',
@@ -57,7 +57,7 @@
         error = null;
         // Overlay runs for the same window; a failure only drops the bands.
         const toNs = Date.now() * 1e6;
-        const fromNs = toNs - (RANGE_S[params.range] ?? 86400) * 1e9;
+        const fromNs = toNs - (RANGE_SECONDS[params.range] ?? 86400) * 1e9;
         api.experimentWindows(Math.floor(fromNs), Math.floor(toNs))
             .then((w) => !cancelled && (runs = w.runs))
             .catch(() => !cancelled && (runs = []));
@@ -206,7 +206,12 @@
     {:else if series.length === 0}
         <div class="state">No points for this metric in the selected window.</div>
     {:else}
-        <EChart option={chartOption} height={360} onclick={onChartClick} />
+        <EChart
+            option={chartOption}
+            height={360}
+            onclick={onChartClick}
+            label="Metric values over time"
+        />
     {/if}
 </div>
 

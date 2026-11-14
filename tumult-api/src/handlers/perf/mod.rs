@@ -1057,7 +1057,10 @@ pub(crate) async fn store(
         )));
     };
     match store_verdict(&state, a.row(baseline)).await? {
-        Stored::Appended => Ok((StatusCode::CREATED, Json(a.json(true, false)))),
+        Stored::Appended => {
+            state.starmap_cache.clear();
+            Ok((StatusCode::CREATED, Json(a.json(true, false))))
+        }
         Stored::Duplicate => Ok((StatusCode::OK, Json(a.json(true, true)))),
         Stored::NoWriter => Err(unavailable(
             "this daemon has no writer; the verdict was not stored",

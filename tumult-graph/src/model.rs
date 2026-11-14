@@ -40,6 +40,21 @@ pub enum NodeKind {
     /// decision store; the node carries verdict/score/policy-hash attrs so
     /// lineage is queryable in-graph.
     Recommendation,
+    /// An organisation unit or team from the org file (`org:<path>`).
+    OrgUnit,
+    /// An ICT entity: a critical or important function, or a supporting
+    /// ICT asset, keyed by its register id (`ent:<ict.entity.id>`).
+    IctEntity,
+    /// A system under test in one environment (`sys:<env>/<system>`).
+    System,
+    /// A component of a system (`cmp:<env>/<system>/<component>`).
+    Component,
+    /// A deployed workload from a manifest (`wl:<namespace>/<kind>/<name>`).
+    Workload,
+    /// An uninstrumented peer or third-party provider (`ext:<id>`).
+    External,
+    /// A service level objective (`slo:<id>`).
+    Slo,
 }
 
 impl NodeKind {
@@ -56,6 +71,13 @@ impl NodeKind {
             Self::CoverageGap => "coverage_gap",
             Self::FaultDomain => "fault_domain",
             Self::Recommendation => "recommendation",
+            Self::OrgUnit => "org_unit",
+            Self::IctEntity => "ict_entity",
+            Self::System => "system",
+            Self::Component => "component",
+            Self::Workload => "workload",
+            Self::External => "external",
+            Self::Slo => "slo",
         }
     }
 
@@ -72,6 +94,13 @@ impl NodeKind {
             "coverage_gap" => Some(Self::CoverageGap),
             "fault_domain" => Some(Self::FaultDomain),
             "recommendation" => Some(Self::Recommendation),
+            "org_unit" => Some(Self::OrgUnit),
+            "ict_entity" => Some(Self::IctEntity),
+            "system" => Some(Self::System),
+            "component" => Some(Self::Component),
+            "workload" => Some(Self::Workload),
+            "external" => Some(Self::External),
+            "slo" => Some(Self::Slo),
             _ => None,
         }
     }
@@ -117,6 +146,17 @@ pub enum EdgeRel {
     /// full record lives on the recommendation node and in the decision
     /// store.
     Enacted,
+    /// `OrgUnit -> IctEntity` (or `OrgUnit -> System` when no entity is
+    /// known): the unit is accountable for the node.
+    Owns,
+    /// `Service -> IctEntity`, `Component -> IctEntity`,
+    /// `IctEntity -> System`: the source realises the destination.
+    Implements,
+    /// `Service -> Workload` (or `Component`/`System -> Workload` when the
+    /// join is declared on the manifest): where the source is deployed.
+    RunsOn,
+    /// `Slo -> IctEntity` or `Slo -> Service`: what the objective measures.
+    Measures,
 }
 
 impl EdgeRel {
@@ -135,6 +175,10 @@ impl EdgeRel {
             Self::DependsOn => "depends_on",
             Self::CausedBy => "caused_by",
             Self::Enacted => "enacted",
+            Self::Owns => "owns",
+            Self::Implements => "implements",
+            Self::RunsOn => "runs_on",
+            Self::Measures => "measures",
         }
     }
 
@@ -153,6 +197,10 @@ impl EdgeRel {
             "depends_on" => Some(Self::DependsOn),
             "caused_by" => Some(Self::CausedBy),
             "enacted" => Some(Self::Enacted),
+            "owns" => Some(Self::Owns),
+            "implements" => Some(Self::Implements),
+            "runs_on" => Some(Self::RunsOn),
+            "measures" => Some(Self::Measures),
             _ => None,
         }
     }
@@ -267,6 +315,13 @@ mod tests {
             NodeKind::CoverageGap,
             NodeKind::FaultDomain,
             NodeKind::Recommendation,
+            NodeKind::OrgUnit,
+            NodeKind::IctEntity,
+            NodeKind::System,
+            NodeKind::Component,
+            NodeKind::Workload,
+            NodeKind::External,
+            NodeKind::Slo,
         ] {
             assert_eq!(NodeKind::parse(kind.as_str()), Some(kind));
             assert_eq!(NodeKind::parse(&kind.as_str().to_uppercase()), Some(kind));
@@ -279,6 +334,8 @@ mod tests {
         assert_eq!(NodeKind::Experiment.to_string(), "experiment");
         assert_eq!(NodeKind::FaultDomain.to_string(), "fault_domain");
         assert_eq!(NodeKind::Recommendation.to_string(), "recommendation");
+        assert_eq!(NodeKind::OrgUnit.to_string(), "org_unit");
+        assert_eq!(NodeKind::IctEntity.to_string(), "ict_entity");
     }
 
     #[test]
@@ -295,6 +352,10 @@ mod tests {
             EdgeRel::DependsOn,
             EdgeRel::CausedBy,
             EdgeRel::Enacted,
+            EdgeRel::Owns,
+            EdgeRel::Implements,
+            EdgeRel::RunsOn,
+            EdgeRel::Measures,
         ] {
             assert_eq!(EdgeRel::parse(rel.as_str()), Some(rel));
         }
@@ -306,5 +367,6 @@ mod tests {
         assert_eq!(EdgeRel::Targets.to_string(), "targets");
         assert_eq!(EdgeRel::ObservedOn.to_string(), "observed_on");
         assert_eq!(EdgeRel::CausedBy.to_string(), "caused_by");
+        assert_eq!(EdgeRel::RunsOn.to_string(), "runs_on");
     }
 }

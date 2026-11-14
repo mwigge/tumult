@@ -193,24 +193,142 @@ export interface MetricQueryResult {
     series: MetricSeries[];
 }
 
-export interface TopologyNode {
-    id: string;
-    name: string;
-    type: 'service' | 'target';
+export type StarKind =
+    | 'org'
+    | 'entity'
+    | 'system'
+    | 'component'
+    | 'service'
+    | 'workload'
+    | 'ext'
+    | 'def'
+    | 'run'
+    | 'slo'
+    | 'article'
+    | 'gap'
+    | 'cluster';
+
+export type StarRel =
+    | 'owns'
+    | 'implements'
+    | 'calls'
+    | 'runs_on'
+    | 'depends_on'
+    | 'tested_by'
+    | 'broke'
+    | 'covers'
+    | 'measures';
+
+export type StarGap = 'stale' | 'missing';
+
+export interface StarEvidence {
     runs: number;
-    errors: number;
-    avg_duration_ns: number | null;
+    failed: number;
+    manual: number;
+    last_run_ns: number | null;
+    /** Discipline to `covered`, `stale` or `missing`. */
+    by_discipline: Record<string, string>;
 }
 
-export interface TopologyEdge {
-    from_id: string;
-    to_id: string;
-    weight: number;
+export interface StarRisks {
+    open: number;
+    suppressed: number;
+    worst: string | null;
+    suppression_expires_ns: number | null;
+    suppressed_by: string | null;
+    suppression_reason: string | null;
+    recommended: string[];
 }
 
-export interface Topology {
-    nodes: TopologyNode[];
-    edges: TopologyEdge[];
+export interface StarNode {
+    id: string;
+    kind: StarKind;
+    label: string;
+    /** Spine parent used by the layout. */
+    parent: string | null;
+    env: string | null;
+    tier: string | null;
+    org_kind: string | null;
+    criticality_weight: number;
+    conformance: string | null;
+    last_seen_ns: number | null;
+    posture: { score: number; band: string } | null;
+    evidence: StarEvidence;
+    gap: StarGap | null;
+    risks: StarRisks;
+    /** Reserved for the SLO, DORA and maturity sources; null until they exist. */
+    slo: unknown;
+    slo_count: number;
+    dora: unknown;
+    maturity: unknown;
+    conflict: boolean;
+    /** `malformed_id`, `multiple_owners`, `owner_conflict`; sorted. */
+    flags: string[];
+    /** Counted below an entity or an org unit; null on every other kind. */
+    rollup: StarRollup | null;
+    declared: boolean;
+    children: number;
+    members: number | null;
+}
+
+export interface StarRollup {
+    systems: number;
+    untested_systems: number;
+    stale_systems: number;
+    failed: number;
+    risks_open: number;
+    risks_suppressed: number;
+    gaps: number;
+}
+
+export interface StarEdge {
+    id: string;
+    from: string;
+    to: string;
+    rel: StarRel;
+    source: 'telemetry' | 'observed' | 'evidence' | 'declared';
+    weight?: number;
+    errors?: number;
+    avg_duration_ns?: number;
+}
+
+export interface StarCluster {
+    id: string;
+    label: string;
+    members: number;
+    worst: { gap: StarGap | null; risk: string | null };
+}
+
+export type StarSource = 'ok' | 'unavailable';
+
+/** `GET /api/starmap` */
+export interface StarMap {
+    as_of_ns: number;
+    range: string;
+    env: string | null;
+    focus: string | null;
+    /** Whether `focus` named a node the caller may see; null without a focus. */
+    focus_found: boolean | null;
+    depth: number | null;
+    disclaimer: string;
+    /** A source table was longer than its row limit; the map is incomplete. */
+    truncated: boolean;
+    sources: Record<'slo' | 'dora' | 'maturity' | 'conformance' | 'graph', StarSource>;
+    maturity: unknown;
+    counts: {
+        nodes: number;
+        edges: number;
+        pruned: number;
+        clustered: number;
+        risks_open: number;
+        risks_suppressed: number;
+        /** Risks that belong to no node on the map. */
+        risks_unplaced: number;
+        gaps: number;
+    };
+    nodes: StarNode[];
+    edges: StarEdge[];
+    clusters: StarCluster[];
 }
 
 // ---------------------------------------------------------------------------
@@ -1099,4 +1217,125 @@ export interface ConformanceReport {
     contract: { target: string[]; spine: string[]; recommended: string[] };
     summary: { services: number; spine: number; target: number; none: number };
     services: ServiceConformance[];
+}
+
+/** Which model produced a forecast; `fallback_reason` is set when the
+    sidecar was configured but the built-in provider answered instead. It is
+    a code (`unreachable`, `timeout`, `bad_response`, `rejected`, `busy`,
+    `circuit_open`); the detail is in the daemon's log. */
+export interface ForecastProvenance {
+    model: string;
+    version: string;
+    weights_hash: string;
+    fallback_reason: string | null;
+}
+
+/** Chart-ready series shared by the forecast and impact endpoints. */
+export interface ForecastSeries {
+    /** Epoch ms. */
+    ts: number[];
+    observed: (number | null)[];
+    median: (number | null)[];
+    bands: { level: number; lower: (number | null)[]; upper: (number | null)[] }[];
+}
+
+/** `GET /api/forecast` */
+export interface ForecastResponse {
+    metric: string;
+    description: string | null;
+    target: string | null;
+    env: string[] | null;
+    range: string;
+    horizon: number;
+    step_ns: number;
+    from_ns: number;
+    to_ns: number;
+    /** Epoch ms; use these in the browser, where a double cannot hold ns. */
+    from_ms: number;
+    to_ms: number;
+    series: ForecastSeries;
+    forecast: {
+        levels: number[];
+        quantiles: (number | null)[][];
+        context_points: number;
+        insufficient_history: boolean;
+        /** The band had no width and was floored. */
+        degenerate_band: boolean;
+    };
+    provenance: ForecastProvenance;
+    cached: boolean;
+}
+
+/** One probe's counterfactual in `GET /api/runs/{id}/impact`. A probe that
+    could not be compared carries only `probe` and `error`. */
+export interface ProbeImpact {
+    probe: string;
+    error?: string;
+    reference?: 'baseline' | 'post_backcast';
+    step_ns?: number;
+    /** The reference band had no width (a flat or exactly periodic series)
+        and was floored: the multiples below are lower bounds on a guess. */
+    degenerate_band?: boolean;
+    /** Epoch ms. The API also sends `*_ns`, which a double cannot hold. */
+    fault?: { start_ms: number; end_ms: number };
+    series?: ForecastSeries;
+    impact?: {
+        per_sample: (number | null)[];
+        during_mean: number | null;
+        during_peak: number | null;
+        during_peak_ts_ms: number | null;
+        during_outside_ratio: number | null;
+        post_mean: number | null;
+        samples_during: number;
+        samples_post: number;
+    };
+    recovery?: {
+        recovered_at_ms: number | null;
+        recovery_time_s: number | null;
+        /** `undetermined`: not watched long enough after the fault to say. */
+        status?: 'recovered' | 'unrecovered' | 'undetermined';
+        stable_steps: number;
+        outside_during_fault: number;
+        outside_after_fault: number;
+        /** Observed samples after the fault end. */
+        observed_after_fault?: number;
+        /** Whether the last of them was inside the band; null when none. */
+        ended_inside?: boolean | null;
+    };
+    forecast?: {
+        context_points: number;
+        insufficient_history: boolean;
+        degenerate_band: boolean;
+    };
+    provenance?: ForecastProvenance;
+}
+
+/** `GET /api/runs/{id}/impact` */
+export interface RunImpact {
+    run_id: string;
+    experiment_id: string;
+    as_of_ms: number;
+    stable_steps: number;
+    /**
+     * The slowest probe's recovery; null when any evaluated probe never
+     * recovered, or when none was watched long enough to be seen recovering.
+     */
+    recovery_time_s: number | null;
+    /**
+     * What `recovery_time_s` means: `recovered` (a time), `unrecovered` (a
+     * probe never settled), `undetermined` (no probe was watched long enough
+     * to say) or `not_measurable` (no probe could be evaluated at all).
+     */
+    recovery_status: 'recovered' | 'unrecovered' | 'undetermined' | 'not_measurable';
+    /** Evaluated probes that never settled back inside their band. */
+    unrecovered_probes?: number;
+    /** Evaluated probes not sampled long enough after the fault to say. */
+    undetermined_probes?: number;
+    /** Probes whose impact could be evaluated. */
+    evaluated_probes?: number;
+    impact_peak: number | null;
+    /** True when any probe's reference band was degenerate. */
+    degenerate_band: boolean;
+    provenance: ForecastProvenance | null;
+    probes: ProbeImpact[];
 }

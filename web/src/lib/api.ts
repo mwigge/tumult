@@ -19,6 +19,7 @@ import type {
     GameDayEntry,
     ExperimentRow,
     ExperimentWindow,
+    ForecastResponse,
     LogEntry,
     LoginResponse,
     LogVolume,
@@ -41,18 +42,19 @@ import type {
     ReportTemplate,
     RunDetail,
     RunEvent,
+    RunImpact,
     RunRow,
     ScaffoldRequest,
     ScaffoldResponse,
     Schedule,
     Scorecard,
+    StarMap,
     GateVerdict,
     PerfParams,
     PerfTargets,
     PerfVerdict,
     ScoreTree,
     Timeseries,
-    Topology,
     TraceDetail,
     TraceDurations,
     TraceRow,
@@ -88,15 +90,14 @@ function perfQuery(params: PerfParams): string {
     return qs ? `?${qs}` : '';
 }
 
-/**
- * A non-2xx answer: the server's `error` message plus the HTTP status, for
- * callers that tell e.g. "no evidence" (404) from a failure (500).
- */
+/** A request the API answered with an error status. `status` lets a caller
+    tell "nothing there" (404) from "not allowed" (403) and "it broke" (5xx). */
 export class ApiError extends Error {
     readonly status: number;
 
     constructor(message: string, status: number) {
         super(message);
+        this.name = 'ApiError';
         this.status = status;
     }
 }
@@ -260,7 +261,12 @@ export const api = {
         return get<MetricQueryResult>(`/api/metrics/query${qs ? `?${qs}` : ''}`);
     },
 
-    topology: (range: string) => get<Topology>(`/api/topology?range=${range}`),
+    starmap: (params: Record<string, string>) => {
+        const qs = new URLSearchParams(
+            Object.entries(params).filter(([, v]) => v !== ''),
+        ).toString();
+        return get<StarMap>(`/api/starmap${qs ? `?${qs}` : ''}`);
+    },
 
     ask: async (question: string): Promise<AskResponse> => {
         // Deliberately not routed through send(): a non-ok response whose body
@@ -362,6 +368,21 @@ export const api = {
     },
 
     run: (id: string) => get<RunDetail>(`/api/runs/${encodeURIComponent(id)}`),
+
+    // Counterfactual impact of a run; rejects (404) when it has no samples.
+    runImpact: (id: string) => get<RunImpact>(`/api/runs/${encodeURIComponent(id)}/impact`),
+
+    forecast: (
+        metric: string,
+        opts: { target?: string; env?: string; range?: string; horizon?: number } = {},
+    ) => {
+        const qs = new URLSearchParams({ metric });
+        if (opts.target) qs.set('target', opts.target);
+        if (opts.env) qs.set('env', opts.env);
+        if (opts.range) qs.set('range', opts.range);
+        if (opts.horizon) qs.set('horizon', String(opts.horizon));
+        return get<ForecastResponse>(`/api/forecast?${qs}`);
+    },
 
     stopRun: (id: string) =>
         send<{ run_id: string; stop: string }>(

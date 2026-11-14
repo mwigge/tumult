@@ -24,6 +24,7 @@ pub const ROUTE_TABLE: &[(&str, &str, Role)] = &[
     ("GET", "/api/metrics/catalog", Role::Viewer),
     ("GET", "/api/metrics/query", Role::Viewer),
     ("GET", "/api/topology", Role::Viewer),
+    ("GET", "/api/starmap", Role::Viewer),
     ("GET", "/api/scores", Role::Viewer),
     ("GET", "/api/scores/tree", Role::Viewer),
     ("GET", "/api/gate/{target}", Role::Viewer),
@@ -36,6 +37,8 @@ pub const ROUTE_TABLE: &[(&str, &str, Role)] = &[
     ("GET", "/api/perf/{target}", Role::Viewer),
     ("GET", "/api/perf/{target}/version", Role::Viewer),
     ("POST", "/api/perf/{target}/verdicts", Role::Operator),
+    ("GET", "/api/forecast", Role::Viewer),
+    ("GET", "/api/runs/{id}/impact", Role::Viewer),
     ("GET", "/api/manual/experiments", Role::Viewer),
     ("GET", "/api/manual/experiments/{id}", Role::Viewer),
     ("GET", "/api/authoring/catalog", Role::Viewer),
@@ -185,6 +188,8 @@ mod tests {
         assert_eq!(required_role("GET", "/api/risks"), Role::Viewer);
         assert_eq!(required_role("GET", "/api/posture"), Role::Viewer);
         assert_eq!(required_role("GET", "/api/otel/conformance"), Role::Viewer);
+        assert_eq!(required_role("GET", "/api/forecast"), Role::Viewer);
+        assert_eq!(required_role("GET", "/api/runs/x/impact"), Role::Viewer);
         assert_eq!(
             required_role("POST", "/api/risks/r_1/suppress"),
             Role::Operator

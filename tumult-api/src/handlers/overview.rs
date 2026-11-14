@@ -11,8 +11,8 @@ use serde_json::{json, Value};
 
 use crate::auth::Principal;
 use crate::sql_util::{
-    and_pred, bucket_expr, env_metric_exists, env_scope_where, env_trace_exists, ratio_series,
-    scalar, series, w, windows, with_reader,
+    and_pred, bucket_expr, env_metric_exists, env_scope_where, env_trace_exists, invalid_range,
+    ratio_series, scalar, series, w, windows, with_reader,
 };
 use crate::ApiState;
 
@@ -203,7 +203,7 @@ pub(crate) async fn overview(
     let Some((cur, prev)) = windows(&range) else {
         return Err((
             StatusCode::BAD_REQUEST,
-            Json(json!({"error": format!("invalid range {range:?}; expected 24h|7d|14d")})),
+            Json(json!({"error": invalid_range(&range)})),
         )
             .into_response()
             .into());

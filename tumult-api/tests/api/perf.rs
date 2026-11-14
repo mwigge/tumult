@@ -1984,3 +1984,19 @@ async fn perf_lists_targets_and_resolves_the_version_that_served_a_window() {
     let (status, body) = get_auth(&srv.base, &path, &demo).await;
     assert_eq!(status, 403, "{body}");
 }
+
+#[tokio::test]
+async fn a_stored_perf_verdict_drops_the_cached_star_maps() {
+    let srv = spawn_server().await;
+    seed_perf(&srv).await;
+    let cached = starmap_as_of(&srv.base).await;
+
+    // Reading a verdict stores nothing and leaves the cache alone.
+    let (status, body) = get(&srv.base, "/api/perf/checkout").await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(starmap_as_of(&srv.base).await, cached);
+
+    let (status, body) = post(&srv.base, "/api/perf/checkout/verdicts").await;
+    assert_eq!(status, 201, "{body}");
+    assert_ne!(starmap_as_of(&srv.base).await, cached);
+}

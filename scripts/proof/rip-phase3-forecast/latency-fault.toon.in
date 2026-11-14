@@ -1,0 +1,32 @@
+title: RIP phase-3 proof — latency fault with a recovery tail
+description: A probe that slows down while the fault holds and settles afterwards, sampled by the runner
+
+tags[2]: proof, forecast
+target:
+  system: proof-service
+  environment: dev
+
+steady_state_hypothesis:
+  title: Health probe answers ok
+  probes[1]:
+    - name: health
+      activity_type: probe
+      provider:
+        type: process
+        path: sh
+        arguments[4]: "@PROOF_DIR@/probe.sh", "@STATE_DIR@", "2", "20"
+        timeout_s: 5.0
+      tolerance:
+        type: regex
+        pattern: "^ok"
+
+method[1]:
+  - name: hold-latency-fault
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[3]: "@PROOF_DIR@/fault.sh", "@STATE_DIR@", "12"
+      timeout_s: 30.0
+
+rollbacks[0]:

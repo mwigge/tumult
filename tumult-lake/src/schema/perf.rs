@@ -91,6 +91,61 @@ mod tests {
         .expect("earlier rows");
     }
 
+    /// A lake as `strip` leaves it, at schema `version`, with one row in
+    /// `kept`: it opens at the current version and has the tables of both
+    /// lines of work, the row still there.
+    fn opens_with_both_families(strip: &str, version: i64, kept: &str) {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let db = dir.path().join("lake.duckdb");
+        drop(Store::open(&db).expect("a lake of today"));
+        duckdb::Connection::open(&db)
+            .expect("open")
+            .execute_batch(&format!(
+                "{strip} UPDATE schema_meta SET value = {version} WHERE key = 'version';"
+            ))
+            .expect("the lake as it was");
+
+        let store = Store::open(&db).expect("the lake from before opens");
+        let writer = store.writer().expect("writer");
+        assert_eq!(
+            writer.schema_version().expect("version"),
+            crate::CURRENT_SCHEMA_VERSION
+        );
+        let reader = store.read_only().expect("reader");
+        let rows = |table: &str| -> i64 {
+            reader
+                .query_json_rows(&format!("SELECT count(*) AS n FROM {table}"))
+                .expect("the table is there")[0]["n"]
+                .as_i64()
+                .expect("count")
+        };
+        for table in ["forecasts", "perf_verdicts", "service_version_sightings"] {
+            assert_eq!(rows(table), i64::from(table == kept), "{table}");
+        }
+        assert!(rows("sightings_backfill") <= 1);
+    }
+
+    /// The two lines of work that met in schema v19 each left lakes
+    /// behind: one with the version rollup and no `forecasts` at v18, one
+    /// with `forecasts` and no rollup at v19. Either opens.
+    #[test]
+    fn a_lake_from_either_side_of_the_v19_merge_opens() {
+        opens_with_both_families(
+            "INSERT INTO service_version_sightings VALUES \
+             ('checkout', 'demo', '1.4.0', 1, 2, 1, 1, false); \
+             DROP TABLE forecasts;",
+            18,
+            "service_version_sightings",
+        );
+        opens_with_both_families(
+            "INSERT INTO forecasts VALUES \
+             ('k', 'holt-winters', '1', 'none', 0, 1, 2, false, 1, 1, [0.5], [[1.0]], 3, false); \
+             DROP TABLE service_version_sightings; DROP TABLE sightings_backfill;",
+            19,
+            "forecasts",
+        );
+    }
+
     #[test]
     fn tables_of_the_earlier_shape_gain_the_run_columns_and_keep_their_rows() {
         let dir = tempfile::tempdir().expect("tempdir");

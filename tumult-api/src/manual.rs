@@ -60,6 +60,7 @@ fn manual_error(err: &ManualError) -> ApiError {
 /// Run a typed manual-evidence mutation on the single writer and surface
 /// the typed result (the `Batch::Exec` closure itself always "succeeds" so
 /// the channel ack stays clean; the real outcome travels in `slot`).
+/// Every mutation that succeeds clears the Star Map cache.
 async fn exec_manual<T>(
     state: &ApiState,
     principal: &Principal,
@@ -106,7 +107,12 @@ where
         .map_err(|e| internal(e.to_string()))?;
     let result = slot.lock().unwrap_or_else(|e| e.into_inner()).take();
     match result {
-        Some(Ok(v)) => Ok(v),
+        Some(Ok(v)) => {
+            // Manual records are evidence on the Star Map: no cached map
+            // may outlive a change to one.
+            state.starmap_cache.clear();
+            Ok(v)
+        }
         Some(Err(e)) => Err(manual_error(&e)),
         None => Err(internal("manual operation did not run".into())),
     }

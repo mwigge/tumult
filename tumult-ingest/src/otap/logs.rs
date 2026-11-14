@@ -6,27 +6,40 @@ use opentelemetry_proto::tonic::common::v1::AnyValue;
 use opentelemetry_proto::tonic::logs::v1::{LogRecord, ResourceLogs, ScopeLogs};
 
 use super::arrays::Table;
-use super::attrs::{any_value_at, attributes, AttrMap};
-use super::common::{groups, Root};
+use super::attrs::{any_value_at, Attrs};
+use super::common::{Groups, Root};
 use super::decode::OtapBatch;
 use super::proto::ArrowPayloadType;
 use super::OtapError;
+
+/// The tables of a logs batch.
+const TABLES: [ArrowPayloadType; 4] = [
+    ArrowPayloadType::ResourceAttrs,
+    ArrowPayloadType::ScopeAttrs,
+    ArrowPayloadType::Logs,
+    ArrowPayloadType::LogAttrs,
+];
 
 /// Decode one OTAP logs batch into the OTLP request the gRPC/HTTP paths
 /// receive.
 ///
 /// # Errors
-/// Any missing root table, malformed column or unknown value type.
+/// Any missing root table, malformed column, unknown value type, duplicate
+/// id, attribute row without a parent row, or exceeded limit.
 pub fn to_logs_request(batch: &OtapBatch) -> Result<ExportLogsServiceRequest, OtapError> {
+    batch.only("logs", &TABLES)?;
     let logs_rb = batch
         .get(ArrowPayloadType::Logs)
         .ok_or(OtapError::MissingTable("LOGS"))?;
-    let root = Root::new("LOGS", logs_rb, batch)?;
+    let mut root = Root::new("LOGS", logs_rb, batch, &[])?;
     let body = root.table.struct_table("body")?;
-    let log_attrs = attributes(batch.get(ArrowPayloadType::LogAttrs), "LOG_ATTRS")?;
+    let mut log_attrs = Attrs::decode(batch, ArrowPayloadType::LogAttrs, "LOG_ATTRS")?;
 
     let mut out = ExportLogsServiceRequest::default();
-    for (i, new_resource, new_scope) in groups(&root) {
+    let mut groups = Groups::default();
+    for i in 0..root.len() {
+        root.table.tick()?;
+        let (r, new_resource) = groups.resource(root.resource_id(i), out.resource_logs.len());
         if new_resource {
             out.resource_logs.push(ResourceLogs {
                 resource: root.resource(i)?,
@@ -34,9 +47,8 @@ pub fn to_logs_request(batch: &OtapBatch) -> Result<ExportLogsServiceRequest, Ot
                 schema_url: root.resource_schema_url(i)?,
             });
         }
-        let Some(rl) = out.resource_logs.last_mut() else {
-            continue;
-        };
+        let rl = &mut out.resource_logs[r];
+        let (s, new_scope) = groups.scope(r, root.scope_id(i), rl.scope_logs.len());
         if new_scope {
             rl.scope_logs.push(ScopeLogs {
                 scope: root.scope(i)?,
@@ -44,11 +56,11 @@ pub fn to_logs_request(batch: &OtapBatch) -> Result<ExportLogsServiceRequest, Ot
                 schema_url: root.scope_schema_url(i)?,
             });
         }
-        let record = record_at(&root, body.as_ref(), i, &log_attrs)?;
-        if let Some(sl) = rl.scope_logs.last_mut() {
-            sl.log_records.push(record);
-        }
+        let record = record_at(&root, body.as_ref(), i, &mut log_attrs)?;
+        rl.scope_logs[s].log_records.push(record);
     }
+    log_attrs.finish()?;
+    root.finish()?;
     Ok(out)
 }
 
@@ -56,7 +68,7 @@ fn record_at(
     root: &Root,
     body: Option<&Table>,
     i: usize,
-    log_attrs: &AttrMap,
+    log_attrs: &mut Attrs,
 ) -> Result<LogRecord, OtapError> {
     let t = &root.table;
     let body = match body {
@@ -69,13 +81,11 @@ fn record_at(
         severity_number: t.i32_at("severity_number", i)?.unwrap_or(0),
         severity_text: t.string_at("severity_text", i)?,
         body,
-        attributes: root.ids[i]
-            .and_then(|id| log_attrs.get(&id).cloned())
-            .unwrap_or_default(),
+        attributes: log_attrs.take(root.ids[i]),
         dropped_attributes_count: t.u32_at("dropped_attributes_count", i)?.unwrap_or(0),
         flags: t.u32_at("flags", i)?.unwrap_or(0),
-        trace_id: t.vec_at("trace_id", i)?,
-        span_id: t.vec_at("span_id", i)?,
+        trace_id: t.optional_id_at("trace_id", i, 16)?,
+        span_id: t.optional_id_at("span_id", i, 8)?,
         event_name: t.string_at("event_name", i)?,
     })
 }
