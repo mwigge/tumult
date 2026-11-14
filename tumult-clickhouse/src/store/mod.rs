@@ -6,7 +6,7 @@
 
 use clickhouse::Client;
 use tumult_lake::error::AnalyticsError;
-use tumult_otel::logging::{redact_url, sanitize_url};
+use tumult_otel::logging::{redact_credentials, sanitize_url};
 
 use crate::config::ClickHouseConfig;
 
@@ -51,7 +51,8 @@ pub struct ClickHouseStore {
 /// Logs a failed connection attempt that will be retried.
 ///
 /// The URL is logged without userinfo or query, and the error text has the
-/// configured URL and password removed: a client error may quote either.
+/// credentials of the URL and the configured user name and password
+/// removed: a client error may quote any of them.
 fn log_connect_retry(
     config: &ClickHouseConfig,
     attempt: u32,
@@ -73,13 +74,10 @@ fn log_connect_retry(
     );
 }
 
-/// `text` with the configured URL sanitised and the password blanked.
+/// `text` without the credentials of the configured URL, the user name and
+/// the password, in any spelling.
 fn without_credentials(text: &str, config: &ClickHouseConfig) -> String {
-    let redacted = redact_url(text, &config.url);
-    if config.password.is_empty() {
-        return redacted;
-    }
-    redacted.replace(&config.password, "[redacted]")
+    redact_credentials(text, &config.url, &config.user, &config.password)
 }
 
 impl ClickHouseStore {

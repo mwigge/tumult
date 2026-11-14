@@ -149,11 +149,12 @@ fn analytics_backend_sync_methods_do_not_panic_inside_tokio_task() {
 fn a_connection_retry_is_a_named_warning_without_credentials() {
     let config = ClickHouseConfig {
         url: "http://admin:url-secret@clickhouse.internal:8123".into(),
+        user: "svc-tumult".into(),
         password: "pw-secret".into(),
         ..ClickHouseConfig::default()
     };
     let error = AnalyticsError::ClickHouse(format!(
-        "bad response from {} (key pw-secret rejected)",
+        "bad response from {} (key pw-secret rejected for svc-tumult, svc%2Dtumult)",
         config.url
     ));
     let logs = tumult_otel::logging::testing::capture_json(tracing::Level::WARN, || {
@@ -172,7 +173,13 @@ fn a_connection_retry_is_a_named_warning_without_credentials() {
         "{message}"
     );
     assert!(event.get("error").is_none(), "legacy field: {event}");
-    for secret in ["url-secret", "pw-secret"] {
+    for secret in [
+        "url-secret",
+        "pw-secret",
+        "admin",
+        "svc-tumult",
+        "svc%2Dtumult",
+    ] {
         assert!(!logs.raw.contains(secret), "{secret} leaked: {}", logs.raw);
     }
 }
