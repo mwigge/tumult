@@ -149,9 +149,18 @@ gate by default.
    should always pass `--candidate`.**
 
    A span that arrives late moves a version's first sight back by at most
-   ten minutes; a span stamped earlier than that (a clock gone wrong, a
-   replay) is stored as a span and left out of the version history, with
-   a `lake.sightings.early_span_ignored` warning in the daemon's log.
+   ten minutes from where the lake first saw the version begin
+   (`service_version_sightings.first_anchor_ns`, which never moves, so
+   late spans one after another cannot walk a version back past that); a
+   span stamped earlier (a clock gone wrong, a replay) is stored as a
+   span and left out of the version history, with a
+   `lake.sightings.early_span_ignored` warning in the daemon's log. A
+   span stamped more than five minutes ahead of the daemon's clock is
+   stored and left out of the history too
+   (`lake.sightings.future_span_ignored`): it would otherwise pin its
+   version as the latest deployment until the clock caught up. Both
+   warnings name the service, environment and version, and are written
+   at most once a minute with the number held back since.
 
    **Version numbers.** Where two versions tie, the greater number wins,
    in one total order: versions that parse as numbers (`1.10.0`, `v2.1`,
@@ -233,10 +242,14 @@ gate by default.
    the candidate needs at least **5 failures more** than the baseline's
    share of its requests would give. One failed request of one sent, or
    three failures in 150 against none, is over the margin and proves
-   nothing: such a difference is `inconclusive` with reason
-   `failure_share_unsettled`, and the reason says what is missing. It is
-   not passed over either, so the latencies do not get to call the
-   candidate `unchanged`. A candidate that answered nothing at all is
+   nothing by itself. Where the latencies say `improved` or `unchanged`
+   such a difference is `inconclusive` with reason
+   `failure_share_unsettled`, and the reason says what is missing: it is
+   not passed over, so the latencies do not get to call the candidate
+   `unchanged`. Where the latencies say `regressed` the verdict stays
+   `regressed` (`latency`) and the failed requests are named among the
+   reasons: more failures are no reason to withhold a regression. A
+   candidate that answered nothing at all is
    judged by the rule above (`candidate_unanswered`) and stays
    `regressed` on any number of requests. A run recorded before
    request counts existed, or by a tool whose summary has none, is
@@ -276,9 +289,11 @@ gate by default.
      distinct ways, four in 35, five in 126. The minimum stays at three,
      so that a build can be judged after three runs, and an interval
      drawn from fewer than five runs on a side carries
-     `comparison.low_run_count: true`; the CLI prints a note and the
-     console says so beside the interval. Read such bounds as coarse, and
-     pass `min_runs=5` (`--min-runs 5`) where a gate should wait instead.
+     `comparison.low_run_count: true` and says so among the `reasons`,
+     which the stored verdict keeps; the CLI says it in its headline and
+     the console beside the verdict. Read such bounds as coarse, and
+     pass `min_runs=5` (`--min-runs 5`, from 1 to 1000) where a gate
+     should wait instead.
    - **Reproducible.** The resampling uses a seeded generator
      (`comparison.seed`; `seed=` overrides it), so the same runs and the
      same seed give the same interval, bit for bit.
@@ -442,7 +457,9 @@ not be attributed to a version`.
 
 **Exit codes.** By default the command fails on a regression *and* on a
 verdict that could not be reached (`--fail-on regressed,inconclusive`): a
-gate that passes because nothing could be measured is not a gate.
+gate that passes because nothing could be measured is not a gate. A gate
+without `--candidate` judges whichever version was deployed latest, and
+the command warns of it on stderr; `--fail-on never` does not warn.
 
 | Exit | Meaning |
 |---|---|
