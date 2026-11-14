@@ -671,6 +671,31 @@ mod tests {
         })
     }
 
+    /// Slower beyond doubt, with a few more failed requests than there
+    /// is evidence to judge: the daemon answers regressed, and the gate
+    /// fails on it.
+    #[test]
+    fn a_regression_beside_an_unsettled_failure_share_fails_the_gate() {
+        let mut body = answer();
+        body["reason"] = serde_json::json!("latency");
+        body["reason_codes"] = serde_json::json!(["latency"]);
+        body["reasons"]
+            .as_array_mut()
+            .unwrap()
+            .push(serde_json::json!(
+                "candidate 1.5.0: 3 of 150 requests failed (2.0%) against 0 of 150 (0.0%) for \
+             baseline 1.4.0, but on too little to count as a regression by itself"
+            ));
+        let parsed = PerfResponse::from_value(&body).unwrap();
+        assert_eq!(
+            exit_code(&parsed.verdict, PerfFailOn::Regressed),
+            Some(EXIT_REGRESSED)
+        );
+        let text = render(&parsed);
+        assert!(text.starts_with("perf checkout: REGRESSED"), "{text}");
+        assert!(text.contains("  - candidate 1.5.0: 3 of 150"), "{text}");
+    }
+
     #[test]
     fn render_lists_sides_delta_and_reasons() {
         let resp = PerfResponse::from_value(&answer()).unwrap();

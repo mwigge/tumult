@@ -1449,6 +1449,33 @@ async fn perf_counts_the_failed_requests_of_runs_whose_plan_fell_short() {
     assert_eq!(body["reason"], "failure_share", "{body}");
 }
 
+/// Twice as slow beyond doubt, and three failed requests of 150 where
+/// the baseline failed none: too little to judge the failure share on,
+/// which is no reason to withhold what the latencies say.
+#[tokio::test]
+async fn perf_keeps_a_latency_regression_when_the_failure_share_is_unsettled() {
+    let srv = spawn_server().await;
+    seed_counted(&srv, (100.0, [50, 50, 0]), (200.0, [50, 49, 0]), None).await;
+
+    let (status, body) = get(&srv.base, "/api/perf/checkout").await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["candidate"]["requests"]["failed"], 3, "{body}");
+    assert_eq!(body["baseline"]["requests"]["failed"], 0, "{body}");
+    assert_eq!(body["verdict"], "regressed", "{body}");
+    assert_eq!(body["reason"], "latency", "{body}");
+    let reasons = body["reasons"].as_array().unwrap();
+    assert!(
+        reasons.iter().any(|r| {
+            let r = r.as_str().unwrap_or_default();
+            r.contains("3 of 150") && r.contains("too little")
+        }),
+        "{body}"
+    );
+    let (status, stored) = post(&srv.base, "/api/perf/checkout/verdicts").await;
+    assert_eq!(status, 201, "{stored}");
+    assert_eq!(stored["verdict"], "regressed", "{stored}");
+}
+
 /// Both builds fail one request in twenty: the failure share says
 /// nothing against the candidate, and the latencies decide.
 #[tokio::test]

@@ -78,8 +78,11 @@
 //!    `min_runs` runs a side that counted their requests,
 //!    [`FAILURE_MIN_SENT`] requests a side and [`FAILURE_MIN_EXCESS`]
 //!    failures beyond what the baseline's share would give. A difference
-//!    that rests on less is `inconclusive` (`failure_share_unsettled`),
-//!    never a regression and never passed over. The requests of every
+//!    that rests on less is never a regression by itself and never
+//!    passed over: it is `inconclusive` (`failure_share_unsettled`)
+//!    where the latencies say improved or unchanged, and where they say
+//!    regressed the verdict stays `regressed` (`latency`) with the
+//!    failed requests named among the reasons. The requests of every
 //!    run of a side are counted, those of the runs left out as partial
 //!    too: requests that hang are what makes a plan fall short, and a
 //!    request that failed did fail. Runs whose tool counted no requests
@@ -697,34 +700,76 @@ fn failure_counts(candidate: &Side, baseline: &Side) -> String {
     )
 }
 
-/// The candidate fails more of its requests than the baseline: a
-/// regression when the difference rests on enough, else no verdict.
-fn ruling_on_failures(candidate: &Side, baseline: &Side, min_runs: usize) -> Option<Ruling> {
+/// What the failed requests say of a candidate that fails more of its
+/// requests than the baseline.
+enum Failures {
+    /// The difference rests on enough to be a regression.
+    Regressed(String),
+    /// It rests on too little: the counts, and what it lacks.
+    Unsettled { counts: String, lacks: String },
+}
+
+fn failures_of(candidate: &Side, baseline: &Side, min_runs: usize) -> Option<Failures> {
     if !fails_more(&candidate.requests, &baseline.requests) {
         return None;
     }
     let counts = failure_counts(candidate, baseline);
     let lacks = failure_lacks(&candidate.requests, &baseline.requests, min_runs);
     if lacks.is_empty() {
-        let reason =
-            format!("{counts}; the latencies leave out the requests that were not answered");
-        return Ruling::regressed("failure_share", reason);
+        return Some(Failures::Regressed(format!(
+            "{counts}; the latencies leave out the requests that were not answered"
+        )));
     }
-    let reason = format!(
-        "{counts}, but on too little to call it a regression: {}; run more load",
-        lacks.join("; ")
-    );
-    Ruling::inconclusive("failure_share_unsettled", vec![reason])
+    Some(Failures::Unsettled {
+        counts,
+        lacks: lacks.join("; "),
+    })
+}
+
+/// Whether a failure share that rests on too little leaves the
+/// latencies' verdict standing: it does when they say regressed. More
+/// failed requests are no reason to withhold a regression; they stand in
+/// the way of improved and unchanged only.
+fn latencies_stand(c: &Comparison, failures: Option<&Failures>) -> bool {
+    matches!(failures, Some(Failures::Unsettled { .. })) && c.verdict == Verdict::Regressed
+}
+
+/// The candidate fails more of its requests than the baseline: a
+/// regression when the difference rests on enough, else no verdict
+/// unless the latencies say regressed by themselves.
+fn ruling_on_failures(c: &Comparison, failures: Option<&Failures>) -> Option<Ruling> {
+    if latencies_stand(c, failures) {
+        return None;
+    }
+    match failures? {
+        Failures::Regressed(reason) => Ruling::regressed("failure_share", reason.clone()),
+        Failures::Unsettled { counts, lacks } => Ruling::inconclusive(
+            "failure_share_unsettled",
+            vec![format!(
+                "{counts}, but on too little to call it a regression: {lacks}; run more load"
+            )],
+        ),
+    }
+}
+
+/// What an unsettled failure share adds to a verdict it did not decide.
+fn unsettled_note(failures: Option<&Failures>) -> Option<String> {
+    let Some(Failures::Unsettled { counts, lacks }) = failures else {
+        return None;
+    };
+    Some(format!(
+        "{counts}, but on too little to count as a regression by itself: {lacks}; \
+         the verdict rests on the latencies"
+    ))
 }
 
 /// What decides before the latencies are looked at: no baseline, a
-/// history still being read back, silence, failed requests.
+/// history still being read back, silence.
 fn ruling_before_latency(
     target: &str,
     candidate: &Side,
     baseline: Option<&Side>,
     versions: usize,
-    min_runs: usize,
     history_incomplete: bool,
 ) -> Option<Ruling> {
     let Some(baseline) = baseline else {
@@ -742,12 +787,11 @@ fn ruling_before_latency(
     let silent_baseline = select::unanswered_reason("baseline", baseline);
     let silent_candidate = select::unanswered_reason("candidate", candidate);
     match (silent_baseline, silent_candidate) {
-        (Some(b), Some(c)) => return Ruling::inconclusive("both_unanswered", vec![b, c]),
-        (Some(b), None) => return Ruling::inconclusive("baseline_unanswered", vec![b]),
-        (None, Some(c)) => return Ruling::regressed("candidate_unanswered", c),
-        (None, None) => {}
+        (Some(b), Some(c)) => Ruling::inconclusive("both_unanswered", vec![b, c]),
+        (Some(b), None) => Ruling::inconclusive("baseline_unanswered", vec![b]),
+        (None, Some(c)) => Ruling::regressed("candidate_unanswered", c),
+        (None, None) => None,
     }
-    ruling_on_failures(candidate, baseline, min_runs)
 }
 
 fn quantile_of(summary: &SampleSummary, quantile: Quantile) -> Option<f64> {
@@ -824,9 +868,10 @@ fn uncounted_reason(role: &str, side: &Side) -> Option<String> {
     ))
 }
 
-/// The verdict and why. Silence and failed requests decide before the
-/// latencies do; the latencies are `compare_runs`'s, reported as measured
-/// whatever decided.
+/// The verdict and why. Silence decides before the latencies do, and so
+/// do failed requests, but for a failure share that rests on too little
+/// beside latencies that say regressed; the latencies are
+/// `compare_runs`'s, reported as measured whatever decided.
 fn judge(
     target: &str,
     candidate: &Side,
@@ -838,15 +883,15 @@ fn judge(
     let none = Vec::new();
     let baseline_runs = baseline.map_or(&none, |b| &b.by_run);
     let mut c = compare_runs(baseline_runs, &candidate.by_run, opts);
-    let before = ruling_before_latency(
-        target,
-        candidate,
-        baseline,
-        versions,
-        opts.min_runs,
-        history_incomplete,
-    );
-    let ruling = before.or_else(|| baseline.and_then(|b| ruling_on_censoring(&c, candidate, b)));
+    let before = ruling_before_latency(target, candidate, baseline, versions, history_incomplete);
+    let failures = match (&before, baseline) {
+        (None, Some(b)) => failures_of(candidate, b, opts.min_runs),
+        _ => None,
+    };
+    let note = unsettled_note(failures.as_ref()).filter(|_| latencies_stand(&c, failures.as_ref()));
+    let ruling = before
+        .or_else(|| ruling_on_failures(&c, failures.as_ref()))
+        .or_else(|| baseline.and_then(|b| ruling_on_censoring(&c, candidate, b)));
     let mut codes = Vec::new();
     match ruling {
         Some(mut ruling) => {
@@ -858,6 +903,7 @@ fn judge(
         None if c.verdict == Verdict::Inconclusive => codes.push("insufficient_evidence"),
         None => codes.push("latency"),
     }
+    c.reasons.extend(note);
     let Some(baseline) = baseline else {
         return Judged {
             comparison: c,
@@ -1489,6 +1535,26 @@ mod tests {
         let reason = &j.comparison.reasons[0];
         assert!(reason.contains("1 run(s)"), "{reason}");
         assert!(reason.contains("100 requests"), "{reason}");
+
+        // A share with too little behind it stands in the way of a good
+        // verdict only. Latencies that say regressed stand, and the
+        // answer still says what the failed requests were.
+        let baseline = counted_in("1.0.0", (0, 150, 3));
+        let slow = counted(side_with("1.1.0", steady(200.0), WHOLE), 150, 3);
+        let j = judged(&slow, &baseline);
+        assert_eq!(j.comparison.verdict, Verdict::Regressed);
+        assert_eq!(j.codes, vec!["latency"]);
+        let reasons = &j.comparison.reasons;
+        assert!(
+            reasons
+                .iter()
+                .any(|r| r.contains("3 of 150") && r.contains("too little")),
+            "{reasons:?}"
+        );
+        let fast = counted(side_with("1.1.0", steady(20.0), WHOLE), 150, 3);
+        let j = judged(&fast, &baseline);
+        assert_eq!(j.comparison.verdict, Verdict::Inconclusive);
+        assert_eq!(j.codes[0], "failure_share_unsettled");
 
         // A candidate that answered nothing is regressed on one run and
         // one request: silence is not a share to be unsure about.
