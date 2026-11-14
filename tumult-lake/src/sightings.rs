@@ -473,9 +473,21 @@ fn store_changed(
     Ok(())
 }
 
-/// Fold `sights` (oldest first) into the rollup. Runs inside the caller's
-/// transaction.
-fn record(conn: &Connection, sights: &[Sight]) -> Result<(), duckdb::Error> {
+/// Whether `row` began later than a clock whose horizon is `horizon_ns`
+/// allows: a build before the clock bound wrote it from a span stamped
+/// ahead of the clock.
+fn held_ahead(row: &Held, horizon_ns: i64) -> bool {
+    row.anchor_ns > horizon_ns || row.first_ns > horizon_ns
+}
+
+/// Fold `sights` (oldest first, none from later than `horizon_ns`) into
+/// the rollup. Runs inside the caller's transaction.
+///
+/// A row held from later than `horizon_ns` counts as absent: every sight
+/// would lie too far before its start to be taken, until the clock got
+/// there. The first sight of its version begins it anew and is written
+/// over the row whole; until one comes the row stays as it is.
+fn record(conn: &Connection, sights: &[Sight], horizon_ns: i64) -> Result<(), duckdb::Error> {
     let mut by_service: BTreeMap<&str, Vec<&Sight>> = BTreeMap::new();
     for sight in sights {
         by_service.entry(&sight.service).or_default().push(sight);
@@ -483,6 +495,7 @@ fn record(conn: &Connection, sights: &[Sight]) -> Result<(), duckdb::Error> {
     for (service, sights) in by_service {
         let before = held_of(conn, service)?;
         let mut after = before.clone();
+        after.retain(|_, row| !held_ahead(row, horizon_ns));
         for sight in sights {
             fold(&mut after, sight);
         }
@@ -620,7 +633,7 @@ fn backfill_slice(
         })
     })?;
     let sights = rows.collect::<Result<Vec<_>, _>>()?;
-    record(conn, &sights)?;
+    record(conn, &sights, horizon_ns)?;
     conn.execute("UPDATE sightings_backfill SET cursor_ns = ?", params![upto])?;
     Ok(())
 }
@@ -689,7 +702,7 @@ pub(crate) fn note_sightings(
         Backfill::NotStarted | Backfill::Done => None,
     };
     let upto = cursor.map_or(horizon_ns, |cursor| cursor.min(horizon_ns));
-    record(conn, &sights_in(rows, upto))?;
+    record(conn, &sights_in(rows, upto), horizon_ns)?;
     if cursor.is_some() {
         backfill_step(conn, None, now_ns)?;
     }

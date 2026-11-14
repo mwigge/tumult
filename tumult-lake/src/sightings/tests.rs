@@ -818,3 +818,95 @@ fn a_row_of_an_older_build_is_held_to_the_first_sight_it_has() {
         [demo("1.0.0", 10_000, 10_000), demo("2.0.0", 19_500, 20_000)]
     );
 }
+
+/// A row of `checkout` 2.0.0 in demo as a build before the clock bound
+/// left it: every sight at `at_ns`, and with `anchored` the anchor too.
+fn seed_row(writer: &Writer, at_ns: i64, anchored: bool) {
+    writer
+        .conn
+        .execute(
+            "INSERT INTO service_version_sightings
+                (service_name, environment, service_version, first_seen_ns, last_seen_ns,
+                 last_deployed_ns, deployments, sanitized, first_anchor_ns)
+             VALUES ('checkout', 'demo', '2.0.0', ?, ?, ?, 1, false, ?)",
+            params![at_ns, at_ns, at_ns, anchored.then_some(at_ns)],
+        )
+        .unwrap();
+}
+
+/// (first sight, last sight, latest deployment, anchor) of 2.0.0 as the
+/// rollup table itself holds them, in seconds.
+fn stored_row(writer: &Writer) -> Vec<(i64, i64, i64, Option<i64>)> {
+    let mut stmt = writer
+        .conn
+        .prepare(
+            "SELECT first_seen_ns, last_seen_ns, last_deployed_ns, first_anchor_ns
+             FROM service_version_sightings WHERE service_version = '2.0.0'",
+        )
+        .unwrap();
+    let rows = stmt
+        .query_map(params![], |row| {
+            Ok((
+                row.get::<_, i64>(0)? / S,
+                row.get::<_, i64>(1)? / S,
+                row.get::<_, i64>(2)? / S,
+                row.get::<_, Option<i64>>(3)?.map(|ns| ns / S),
+            ))
+        })
+        .unwrap();
+    rows.collect::<Result<_, _>>().unwrap()
+}
+
+#[test]
+fn a_row_held_ahead_of_the_clock_is_anchored_anew_by_the_next_honest_span() {
+    const YEAR: i64 = 365 * 86_400;
+    for anchored in [false, true] {
+        let (_dir, store) = lake();
+        let mut writer = store.writer().unwrap();
+        writer.clock = || 21_250 * S;
+        writer.insert_spans(&[demo_span("1.0.0", 10_000)]).unwrap();
+        seed_row(&writer, (21_250 + YEAR) * S, anchored);
+        // A batch that says nothing of 2.0.0 leaves its row alone.
+        writer.insert_spans(&[demo_span("1.0.0", 10_060)]).unwrap();
+        assert_eq!(stored_row(&writer).len(), 1, "anchored: {anchored}");
+        writer
+            .insert_spans(&[demo_span("2.0.0", 20_000), demo_span("2.0.0", 20_060)])
+            .unwrap();
+        // Nothing of the year ahead is left in the row, the anchor
+        // included: it was written over, not merged with.
+        assert_eq!(
+            stored_row(&writer),
+            [(20_000, 20_060, 20_000, Some(20_000))],
+            "anchored: {anchored}"
+        );
+        // And from there the version is held like any other.
+        writer.insert_spans(&[demo_span("2.0.0", 19_500)]).unwrap();
+        writer.insert_spans(&[demo_span("2.0.0", 19_000)]).unwrap();
+        drop(writer);
+        assert_eq!(
+            seen(&store, "checkout"),
+            [demo("1.0.0", 10_000, 10_060), demo("2.0.0", 19_500, 20_060)],
+            "anchored: {anchored}"
+        );
+        assert_eq!(
+            deployments(&store),
+            [
+                ("1.0.0".to_string(), 10_000, 1),
+                ("2.0.0".to_string(), 19_500, 1)
+            ],
+            "anchored: {anchored}"
+        );
+    }
+}
+
+#[test]
+fn a_row_held_within_the_skew_of_the_clock_keeps_its_anchor() {
+    let (_dir, store) = lake();
+    let mut writer = store.writer().unwrap();
+    writer.clock = || 21_250 * S;
+    // Exactly at the horizon: an honest clock a little ahead.
+    seed_row(&writer, (21_250 + 300) * S, true);
+    writer.insert_spans(&[demo_span("2.0.0", 20_000)]).unwrap();
+    drop(writer);
+    assert_eq!(seen(&store, "checkout"), [demo("2.0.0", 21_550, 21_550)]);
+}
