@@ -228,6 +228,9 @@ pub(crate) struct EntityDrops {
     /// Keys removed from descriptions and relationships of stored events.
     filtered: AtomicU64,
     warn: WarnLimit,
+    /// The limit on naming an unknown kind, apart from `warn` so that
+    /// other drops cannot hide it.
+    unknown_kind: WarnLimit,
 }
 
 impl EntityDrops {
@@ -242,6 +245,7 @@ impl EntityDrops {
             ],
             filtered: AtomicU64::new(0),
             warn: WarnLimit::new(),
+            unknown_kind: WarnLimit::new(),
         }
     }
 
@@ -999,9 +1003,55 @@ fn claimed_type(record: &LogRecord) -> &str {
     truncated(claimed, MAX_TYPE_LEN)
 }
 
+/// The name of a marked record of an unknown kind and the number of such
+/// records not named since the last notice; `None` when this one is held
+/// back too.
+fn unknown_kind_notice(
+    record: &LogRecord,
+    tally: &EntityDrops,
+    now_s: u64,
+) -> Option<(String, u64)> {
+    let suppressed = tally.unknown_kind.allow(now_s, DROP_WARN_INTERVAL_S)?;
+    Some((claimed_event(record).to_string(), suppressed))
+}
+
+/// What a record of an unknown kind calls its event in either form, cut
+/// to what a type can be long.
+fn claimed_event(record: &LogRecord) -> &str {
+    let claimed = if record.event_name.is_empty() {
+        text_attr(&record.attributes, LEGACY_EVENT_TYPE).unwrap_or("")
+    } else {
+        record.event_name.as_str()
+    };
+    truncated(claimed, MAX_TYPE_LEN)
+}
+
+/// Say which unknown kind arrived, at most once per interval. A later
+/// version of the specification may add kinds; the name in the log is how
+/// an operator learns that a sender uses one this build drops.
+fn note_unknown_kind(record: &LogRecord, tally: &EntityDrops) {
+    let Some((event, suppressed)) = unknown_kind_notice(record, tally, common::now_s()) else {
+        return;
+    };
+    // `?` escapes what the sender put in the name.
+    tracing::warn!(
+        name: "otlp.entity_event.unknown_kind",
+        {
+            entity.event.name = ?event,
+            entity.event.dropped_total = tally.count(EntityDrop::UnknownKind),
+            log.suppressed = suppressed,
+        },
+        "entity event of an unknown kind dropped"
+    );
+}
+
 /// Count a dropped event and, at most once per interval, say so.
 fn note_drop(reason: EntityDrop, record: &LogRecord, tally: &EntityDrops) {
     tally.counts[reason.index()].fetch_add(1, Ordering::Relaxed);
+    if reason == EntityDrop::UnknownKind {
+        note_unknown_kind(record, tally);
+        return;
+    }
     let Some(suppressed) = tally.warn.allow(common::now_s(), DROP_WARN_INTERVAL_S) else {
         return;
     };

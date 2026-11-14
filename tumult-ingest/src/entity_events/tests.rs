@@ -171,35 +171,66 @@ pub(crate) fn assert_two_logs_and_no_entity(store: &Store) {
     assert_eq!(logs[1]["body"], "experiment started");
 }
 
+fn with_flag(flag: Option<&str>) -> Option<EntityEvents> {
+    EntityEvents::from_settings(&EntitySettings {
+        flag,
+        ..EntitySettings::default()
+    })
+}
+
 #[test]
-fn the_flag_is_off_unless_set_to_one_or_true() {
+fn the_flag_takes_the_usual_spellings_of_true_and_false() {
+    let (logs, _guard) = crate::test_logs::capture();
+    for on in [
+        "1", "true", "TRUE", "True", "yes", "YES", "on", "On", " 1", "true\n",
+    ] {
+        assert!(with_flag(Some(on)).is_some(), "{on:?}");
+    }
     for off in [
         None,
         Some(""),
+        Some("  "),
         Some("0"),
         Some("false"),
-        Some("yes"),
-        Some(" 1"),
+        Some("FALSE"),
+        Some("no"),
+        Some("No"),
+        Some("off"),
+        Some("OFF"),
     ] {
-        assert!(
-            EntityEvents::from_settings(&EntitySettings {
-                flag: off,
-                ..EntitySettings::default()
-            })
-            .is_none(),
-            "{off:?}"
-        );
+        assert!(with_flag(off).is_none(), "{off:?}");
     }
-    for on in ["1", "true"] {
+    assert_eq!(logs.text(), "", "a recognised value is not worth a line");
+}
+
+/// A value that is neither leaves entity events off, and says so: a
+/// feature that silently stays off looks like a sender that sends nothing.
+#[test]
+fn an_unrecognised_flag_value_leaves_the_feature_off_and_is_logged() {
+    for odd in ["2", "enabled", "tru", "y"] {
+        let (logs, _guard) = crate::test_logs::capture();
+        assert!(with_flag(Some(odd)).is_none(), "{odd}");
+        let text = logs.text();
+        assert_eq!(text.lines().count(), 1, "{text}");
+        assert!(text.contains("WARN"), "{text}");
         assert!(
-            EntityEvents::from_settings(&EntitySettings {
-                flag: Some(on),
-                ..EntitySettings::default()
-            })
-            .is_some(),
-            "{on}"
+            text.contains("config.key=\"KRONIKA_ENTITY_EVENTS\""),
+            "{text}"
         );
+        assert!(text.contains(&format!("config.value=\"{odd}\"")), "{text}");
     }
+}
+
+/// The value is the operator's, but it is still cut and escaped before it
+/// is written.
+#[test]
+fn a_long_unrecognised_flag_value_is_cut_in_the_log() {
+    let (logs, _guard) = crate::test_logs::capture();
+    let long = "x".repeat(500);
+    assert!(with_flag(Some(&long)).is_none());
+    let text = logs.text();
+    assert!(text.contains(&"x".repeat(64)), "{text}");
+    assert!(!text.contains(&"x".repeat(65)), "{text}");
 }
 
 #[test]

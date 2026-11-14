@@ -19,7 +19,7 @@ Map, the maturity roll-up and the web UI do not read entities yet.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `KRONIKA_ENTITY_EVENTS` | unset (off) | `1` or `true` stores entity events as entities. Any other value is off. Read once, when the daemon starts. |
+| `KRONIKA_ENTITY_EVENTS` | unset (off) | `1`, `true`, `yes` or `on` (in any case) stores entity events as entities; unset, empty, `0`, `false`, `no` or `off` leaves them off. Any other value also leaves them off and is logged at start as the warning `ingest.entity_events.flag_unrecognised`. Read once, when the daemon starts. |
 | `KRONIKA_ENTITY_LABEL_ALLOW` | empty | Comma-separated label names that are kept from `k8s.<kind>.label.<name>` attributes, for example `team,app.kubernetes.io/name`. See section 5. |
 | `KRONIKA_ENTITY_ATTRIBUTE_ALLOW` | empty | Comma-separated description keys that are kept whatever they are: a whole key (`k8s.service.annotation.owner`) or the start of one followed by `*` (`k8s.service.selector.*`). See section 5. |
 
@@ -261,7 +261,7 @@ with the number left out.
 
 | `reason` | Dropped when |
 |---|---|
-| `unknown_kind` | the record is marked as an entity event but is neither a state nor a delete |
+| `unknown_kind` | the record is marked as an entity event but is neither a state nor a delete; logged as `otlp.entity_event.unknown_kind` with the name of the event, at most once a minute, so a sender that uses a kind this build does not know can be found |
 | `no_type` | the type attribute of its wire form is missing or empty |
 | `no_identity` | it has no identifying attributes and the resource has none for its type (only `host` → `host.id` is known) |
 | `malformed` | a control character (NUL included) in the type, in an identifying name or value, in the environment or in the schema URL, a type that is not a string, an interval that is not a number, an identifying value that is empty or not a string (a number or a boolean would name the same entity as the string that reads alike), the same identifying name twice, a description that is not a map, relationships that are not an array of maps, a relationship without a type or without the type and identity of its target, or nesting deeper than 8 |

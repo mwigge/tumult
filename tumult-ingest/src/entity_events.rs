@@ -17,8 +17,11 @@ use tumult_otlp::{EntityDrop, EntityOptions};
 use crate::log_guard::LogLimiter;
 use crate::writer::Batch;
 
-/// Set to `1` (or `true`) to store entity events as entities.
+/// Set to `1`, `true`, `yes` or `on` (in any case) to store entity events
+/// as entities.
 pub const FLAG_ENV: &str = "KRONIKA_ENTITY_EVENTS";
+/// How much of an unrecognised flag value is written to the log, in bytes.
+const FLAG_LOGGED_LEN: usize = 64;
 /// Comma-separated label names kept from `k8s.<kind>.label.<name>` keys.
 pub const LABEL_ALLOW_ENV: &str = "KRONIKA_ENTITY_LABEL_ALLOW";
 /// Comma-separated description keys kept whatever they are: a whole key,
@@ -69,12 +72,18 @@ impl EntityEvents {
     }
 
     /// [`Self::from_env`] with the values given: the flag switches entity
-    /// events on when it is exactly `1` or `true`; the two allow-lists are
-    /// comma-separated.
+    /// events on when it is `1`, `true`, `yes` or `on` in any case; the two
+    /// allow-lists are comma-separated. A flag value that is neither a yes
+    /// nor a no leaves entity events off and is logged as a warning.
     #[must_use]
     pub fn from_settings(settings: &EntitySettings<'_>) -> Option<Self> {
-        if !matches!(settings.flag, Some("1" | "true")) {
-            return None;
+        match Flag::parse(settings.flag) {
+            Flag::On => {}
+            Flag::Off => return None,
+            Flag::Unrecognised(value) => {
+                warn_unrecognised_flag(value);
+                return None;
+            }
         }
         let label_allow = comma_separated(settings.label_allow);
         let observer = match settings.ingest_token {
@@ -95,6 +104,43 @@ impl EntityEvents {
     pub fn options(&self) -> &EntityOptions {
         &self.options
     }
+}
+
+/// What `KRONIKA_ENTITY_EVENTS` says.
+#[derive(Debug, PartialEq, Eq)]
+enum Flag<'a> {
+    On,
+    Off,
+    /// Neither a yes nor a no; the value as given.
+    Unrecognised(&'a str),
+}
+
+impl<'a> Flag<'a> {
+    /// Unset and empty are off; spaces around the value and its case do
+    /// not matter.
+    fn parse(value: Option<&'a str>) -> Self {
+        let Some(value) = value else {
+            return Self::Off;
+        };
+        match value.trim().to_ascii_lowercase().as_str() {
+            "1" | "true" | "yes" | "on" => Self::On,
+            "" | "0" | "false" | "no" | "off" => Self::Off,
+            _ => Self::Unrecognised(value),
+        }
+    }
+}
+
+/// Entity events stay off for a value that is neither a yes nor a no, and
+/// an operator who wrote one expects them on: say so once, at start.
+fn warn_unrecognised_flag(value: &str) {
+    tracing::warn!(
+        name: "ingest.entity_events.flag_unrecognised",
+        {
+            config.key = FLAG_ENV,
+            config.value = ?tumult_core::compliance::truncated(value.trim(), FLAG_LOGGED_LEN),
+        },
+        "entity events stay off: the flag is neither a yes nor a no"
+    );
 }
 
 /// The entries of a comma-separated list, without the empty ones.

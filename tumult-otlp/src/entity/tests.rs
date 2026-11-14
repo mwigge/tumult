@@ -456,6 +456,67 @@ fn a_marked_record_that_is_neither_state_nor_delete_is_dropped() {
     );
 }
 
+/// A marked record of a kind this build does not know (a later
+/// `entity.patch`) is dropped like before. The notice about it names the
+/// event and has its own limit, so the warnings about other drops cannot
+/// hide it.
+#[test]
+fn an_unknown_kind_is_named_once_per_interval() {
+    let patch = LogRecord {
+        event_name: "entity.patch".into(),
+        ..LogRecord::default()
+    };
+    let legacy = legacy_record("entity_merge", vec![]);
+    let tally = EntityDrops::new();
+    assert_eq!(
+        unknown_kind_notice(&patch, &tally, 1_000),
+        Some(("entity.patch".to_string(), 0))
+    );
+    assert_eq!(unknown_kind_notice(&patch, &tally, 1_001), None);
+    assert_eq!(unknown_kind_notice(&legacy, &tally, 1_059), None);
+    assert_eq!(
+        unknown_kind_notice(&legacy, &tally, 1_060),
+        Some(("entity_merge".to_string(), 2))
+    );
+}
+
+#[test]
+fn the_name_of_an_unknown_kind_is_cut_and_may_be_absent() {
+    let tally = EntityDrops::new();
+    let long = LogRecord {
+        event_name: "e".repeat(MAX_TYPE_LEN + 50),
+        ..LogRecord::default()
+    };
+    assert_eq!(
+        unknown_kind_notice(&long, &tally, 1_000),
+        Some(("e".repeat(MAX_TYPE_LEN), 0))
+    );
+    let bare = LogRecord::default();
+    assert_eq!(
+        unknown_kind_notice(&bare, &tally, 2_000),
+        Some((String::new(), 0))
+    );
+}
+
+/// Drops for other reasons use the other limit: they neither spend the
+/// notice nor are held back by it.
+#[test]
+fn other_drops_do_not_spend_the_unknown_kind_notice() {
+    let tally = EntityDrops::new();
+    let untyped = spec_record("entity.state", vec![kv("entity.id", pod_id())]);
+    for _ in 0..3 {
+        note_drop(EntityDrop::NoType, &untyped, &tally);
+    }
+    let patch = LogRecord {
+        event_name: "entity.patch".into(),
+        ..LogRecord::default()
+    };
+    assert_eq!(
+        unknown_kind_notice(&patch, &tally, common::now_s()),
+        Some(("entity.patch".to_string(), 0))
+    );
+}
+
 #[test]
 fn values_of_the_wrong_shape_are_dropped_as_malformed() {
     let id_is_text = spec_record(
