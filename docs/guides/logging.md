@@ -82,7 +82,7 @@ cannot feed itself.
 `tumultd` receives its own export. For the same reason the events of its
 ingest path (`tumult_ingest::writer`, `tumult_ingest::grpc`,
 `tumult_ingest::http`, `tumult_ingest::otap`, `tumult_ingest::listener`,
-`tumult_ingest::log_guard`, `tumult_lake::writer`) are on
+`tumult_ingest::log_guard`, `tumult_lake::writer`, `tumult_otlp::common`) are on
 stderr only: a record that cannot be persisted would otherwise be logged,
 exported to the same ingest, fail again and be logged again. A binary names
 such targets with `LogOptions::with_local_only_targets`.

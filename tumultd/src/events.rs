@@ -26,7 +26,7 @@ fn service_name_from(configured: Option<String>) -> String {
 /// that admits the connections, and the guard that rate-limits what these
 /// modules log, are on the same path: a refused connection of the daemon's
 /// own exporter would otherwise be exported over the next one.
-pub(crate) const INGEST_PATH: [&str; 7] = [
+pub(crate) const INGEST_PATH: [&str; 8] = [
     "tumult_ingest::writer",
     "tumult_ingest::grpc",
     "tumult_ingest::http",
@@ -34,6 +34,7 @@ pub(crate) const INGEST_PATH: [&str; 7] = [
     "tumult_ingest::listener",
     "tumult_ingest::log_guard",
     "tumult_lake::writer",
+    "tumult_otlp::common",
 ];
 
 /// How the daemon logs: at `info`, with the [`INGEST_PATH`] kept out of
@@ -154,6 +155,7 @@ mod tests {
             assert!(INGEST_PATH.contains(&target.as_str()), "{target}");
         }
         assert!(INGEST_PATH.contains(&"tumult_lake::writer"));
+        assert!(INGEST_PATH.contains(&"tumult_otlp::common"));
     }
 
     #[test]

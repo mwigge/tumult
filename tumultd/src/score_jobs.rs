@@ -68,9 +68,12 @@ fn interval_from_env(key: &'static str, default: Duration) -> Option<Duration> {
     }
     let Some(interval) = parse_interval(raw) else {
         tracing::warn!(
-            "config.key" = key,
-            "config.value" = ?truncated(raw, LOG_VALUE_MAX_LEN),
-            "config.default_s" = default.as_secs(),
+            name: "score.interval.invalid",
+            {
+                config.key = key,
+                config.value = ?truncated(raw, LOG_VALUE_MAX_LEN),
+                config.default_s = default.as_secs(),
+            },
             "invalid interval (want e.g. 60s, 6h or 24h); using the default"
         );
         return Some(default);
@@ -210,15 +213,19 @@ async fn sync_register_logged(jobs: &ScoreJobs, ingest: &IngestWriter) {
     match sync_register(jobs, ingest).await {
         Ok(Some(functions)) => {
             tracing::info!(
-                "resilience.register.functions" = functions,
+                name: "score.register.written",
+                { resilience.register.functions = functions },
                 "function register written to the lake"
             );
         }
         Ok(None) => {}
         Err(e) => {
             tracing::warn!(
-                "error.type" = "register_sync_failed",
-                "error.message" = ?truncated(&error_text(&e), LOG_VALUE_MAX_LEN),
+                name: "score.register.write_failed",
+                {
+                    error.type = "register_sync_failed",
+                    error.message = ?truncated(&error_text(&e), LOG_VALUE_MAX_LEN),
+                },
                 "function register not written; the lake keeps its previous register"
             );
         }
@@ -230,27 +237,35 @@ async fn sync_register_logged(jobs: &ScoreJobs, ingest: &IngestWriter) {
 async fn run_snapshot_logged(jobs: &ScoreJobs, ingest: &IngestWriter, as_of_ns: i64) -> bool {
     match snapshot_unless_blocked(jobs, ingest, as_of_ns).await {
         Ok(Attempt::Stored(rows)) => tracing::info!(
-            "resilience.snapshot.rows" = rows,
+            name: "score.snapshot.stored",
+            { resilience.snapshot.rows = rows },
             "requirement status snapshot stored"
         ),
         Ok(Attempt::ProofDays) => tracing::warn!(
-            "error.type" = "status_snapshot_proof_days",
+            name: "score.snapshot.proof_days",
+            { error.type = "status_snapshot_proof_days" },
             "requirement status snapshot not stored: proof days are in use"
         ),
         Ok(Attempt::Skipped { total }) => tracing::warn!(
-            "error.type" = "status_snapshot_skipped",
-            "error.message" = ?jobs
-                .runtime
-                .snapshot_block()
-                .as_deref()
-                .map(|reason| truncated(reason, LOG_VALUE_MAX_LEN)),
-            "resilience.snapshot.skipped_total" = total,
+            name: "score.snapshot.skipped",
+            {
+                error.type = "status_snapshot_skipped",
+                error.message = ?jobs
+                    .runtime
+                    .snapshot_block()
+                    .as_deref()
+                    .map(|reason| truncated(reason, LOG_VALUE_MAX_LEN)),
+                resilience.snapshot.skipped_total = total,
+            },
             "requirement status snapshot not stored: the org file is refused and no valid one was read"
         ),
         Err(e) => {
             tracing::warn!(
-                "error.type" = "status_snapshot_failed",
-                "error.message" = ?truncated(&error_text(&e), LOG_VALUE_MAX_LEN),
+                name: "score.snapshot.failed",
+                {
+                    error.type = "status_snapshot_failed",
+                    error.message = ?truncated(&error_text(&e), LOG_VALUE_MAX_LEN),
+                },
                 "requirement status snapshot failed"
             );
             return false;
@@ -320,9 +335,12 @@ pub(crate) fn spawn_score_jobs(
     shutdown: CancellationToken,
 ) -> tokio::task::JoinHandle<()> {
     tracing::info!(
-        "score.snapshot.interval_s" = ?jobs.interval.map(|d| d.as_secs()),
-        "score.reload.interval_s" = ?jobs.reload.map(|d| d.as_secs()),
-        "file.path" = ?jobs.runtime.org_file(),
+        name: "score.jobs.enabled",
+        {
+            score.snapshot.interval_s = ?jobs.interval.map(|d| d.as_secs()),
+            score.reload.interval_s = ?jobs.reload.map(|d| d.as_secs()),
+            file.path = ?jobs.runtime.org_file(),
+        },
         "score jobs enabled"
     );
     tokio::spawn(async move {
@@ -333,7 +351,10 @@ pub(crate) fn spawn_score_jobs(
             return;
         }
         if jobs.interval.is_none() {
-            tracing::info!("requirement status snapshot disabled");
+            tracing::info!(
+                name: "score.snapshot.disabled",
+                "requirement status snapshot disabled"
+            );
         }
         if jobs.interval.is_none() && jobs.reload.is_none() {
             return;
@@ -364,7 +385,7 @@ pub(crate) fn spawn_score_jobs(
                 () = shutdown.cancelled() => None,
             };
             if finished.is_none() {
-                tracing::info!("score jobs stopping (shutdown)");
+                tracing::info!(name: "score.jobs.stopping", "score jobs stopping (shutdown)");
                 break;
             }
         }
