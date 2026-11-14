@@ -8350,6 +8350,7 @@ dependencies = [
  "tumult-baseline",
  "tumult-core",
  "tumult-graph",
+ "tumult-test-utils",
 ]
 
 [[package]]
