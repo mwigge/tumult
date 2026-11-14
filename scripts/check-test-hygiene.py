@@ -4,7 +4,8 @@
 Fails on:
   no-assert      a Rust test whose body asserts nothing
   bare-ignore    `#[ignore]` or `#[cfg_attr(.., ignore)]` without a reason
-  bare-sleep     `sleep(..)` in Rust test code without a `// sleep: why` comment
+  bare-sleep     `sleep`, `sleep_until` or `park_timeout` in Rust test code
+                 without a `// sleep: why` comment of at least three words
   raw-env        `env::set_var` / `env::remove_var` in Rust test code
   focused-test   `test.only` / `it.only` / `describe.only` / `fdescribe` / `fit`
   bare-skip      a Python skip or xfail without a reason
@@ -15,7 +16,9 @@ Known offenders in crates that are being changed elsewhere are listed in
 scripts/test-hygiene-allow.txt, one `path::name::rule  # reason` per line.
 
 This is a text scan, not a parser. Its limits:
-  - It cannot judge whether an assertion is meaningful.
+  - It cannot judge whether an assertion is meaningful. It only rejects an
+    assertion on literals alone, such as `assert!(true)` or `assert_eq!(1, 1)`,
+    and does not count `debug_assert!`.
   - A call to `assert_*(..)` counts only when a function of that name is
     defined in the same top-level directory and itself asserts. Functions are
     matched by name alone, so two helpers with one name are not told apart.
@@ -24,7 +27,12 @@ This is a text scan, not a parser. Its limits:
     under a `tests` directory or a file named `tests.rs`. Other files pulled
     in with `#[cfg(test)] mod x;` are not checked for sleeps or environment
     changes.
-  - `set_var` imported and called without the `env::` prefix is not seen.
+  - Renamed imports are followed for `use` items only. A function taken as
+    a value (`let nap = sleep;`, `map(env::remove_var)`) is not seen, and a
+    closure that sleeps or changes the environment is reported whether or not
+    it is called.
+  - A name is resolved per file, not per module: a file that imports
+    `std::thread::sleep` treats every bare `sleep(..)` as a thread sleep.
   - JavaScript regular expression literals are not parsed.
 """
 
@@ -65,8 +73,10 @@ IGNORE_WORD = re.compile(r"\bignore\b")
 IGNORE_REASON = re.compile(r'\s*=\s*"\s*[^\s"]')
 RAW_STRING = re.compile(r'b?r(#*)"')
 ASSERT_MACRO = re.compile(r"\b((?:\w+_)?assert(?:_\w+)?)\s*!\s*[(\[{]")
-TRIVIAL_ARGS = re.compile(r"\s*true\s*(?:,.*)?", re.DOTALL)
-TRIVIAL_EQ_ARGS = re.compile(r"\s*true\s*,\s*true\s*(?:,.*)?", re.DOTALL)
+# An identifier; the suffix of a literal such as `1u8` does not match.
+IDENTIFIER = re.compile(r"(?<![\w.])[A-Za-z_]\w*")
+# How many leading arguments a macro compares; the rest is the message.
+COMPARED_ARGS = {"assert": 1, "assert_eq": 2, "assert_ne": 2}
 # Fails the test by itself: error unwraps, panics, and the asserting methods
 # of clap (`debug_assert`), mockito and assert_cmd (`assert`, `assert_async`).
 ASSERTION = re.compile(
@@ -75,15 +85,21 @@ ASSERTION = re.compile(
 )
 RESULT_ASSERTION = re.compile(r"\b(?:ensure|bail)\s*!|\breturn\s+Err\b")
 HELPER_CALL = re.compile(r"\b(assert_\w+)\s*\(")
-SLEEP = re.compile(r"(?<![\w.])sleep\s*\(")
-SLEEP_REASON = re.compile(r"//\s*sleep:\s*\S")
+USE = re.compile(r"\buse\s+([^;]+);")
+USE_ITEM = re.compile(r"\b(\w+)(?:\s+as\s+(\w+))?\s*(?=[,}]|$)")
+QUALIFIER = re.compile(r"(\w+)\s*::\s*$")
+SLEEP_NAMES = {"sleep", "sleep_until", "park_timeout"}
+SLEEP_REASON = re.compile(r"//\s*sleep:(.*)")
+SLEEP_REASON_WORDS = 3
 PAUSED_ATTR = re.compile(r"\bstart_paused\s*=\s*true\b")
 PAUSE_CALL = re.compile(r"\btime::pause\s*\(")
-RAW_ENV = re.compile(r"\benv::(?:set_var|remove_var)\s*\(")
+ENV_CHANGES = {"set_var", "remove_var"}
 FOCUSED = re.compile(
-    r"\b(?P<only>(?:test|it|describe)\.only)\s*\("
+    r"\b(?P<only>(?:test|it|describe)\.only)\b\s*(?=[(.`])"
     r"|(?<![\w.$])(?P<jasmine>fdescribe|fit)\s*\(\s*['\"`]"
 )
+# `describe["only"]`, with the string blanked out by strip_js.
+FOCUSED_INDEX = re.compile(r"\b(test|it|describe)\s*\[\s*(['\"`])\s{4}\2\s*\]")
 # Index of the positional reason argument; None when it is keyword-only.
 PY_SKIP_REASON_AT = {
     "skip": 0,
@@ -230,14 +246,41 @@ def _functions(text: str) -> list[_Fn]:
     return found
 
 
+def _arguments(args: str) -> list[str]:
+    """Split macro arguments at the commas outside any bracket."""
+    parts, depth, start = [], 0, 0
+    for k, ch in enumerate(args):
+        if ch in "([{":
+            depth += 1
+        elif ch in ")]}":
+            depth -= 1
+        elif ch == "," and depth == 0:
+            parts.append(args[start:k])
+            start = k + 1
+    parts.append(args[start:])
+    return parts
+
+
+def _names_a_value(expression: str) -> bool:
+    """True when `expression` refers to anything but literals."""
+    names = IDENTIFIER.findall(expression)
+    return any(name not in ("true", "false") for name in names)
+
+
 def _real_assert_macro(body: str) -> bool:
-    """True when `body` has an assert macro other than `assert!(true)`."""
+    """True when `body` has an assert macro that looks at a value.
+
+    `assert!(true)`, `assert!(1 == 1)` and `assert_eq!("a", "a")` do not, and
+    `debug_assert!` is compiled out of a release test run.
+    """
     for match in ASSERT_MACRO.finditer(body):
+        name = match.group(1)
+        if name.startswith("debug_assert"):
+            continue
         open_at = match.end() - 1
-        args = body[open_at + 1 : _matching(body, open_at)]
-        compares = match.group(1).endswith(("_eq", "_ne"))
-        trivial = TRIVIAL_EQ_ARGS if compares else TRIVIAL_ARGS
-        if not trivial.fullmatch(args):
+        args = _arguments(body[open_at + 1 : _matching(body, open_at)])
+        compared = args[: COMPARED_ARGS.get(name, len(args))]
+        if any(_names_a_value(arg) for arg in compared):
             return True
     return False
 
@@ -341,14 +384,114 @@ def _names_the_panic(src: str, block_start: int) -> bool:
     return "panic" in "\n".join(comment).lower()
 
 
+def _parent_module(tree: str, at: int) -> str:
+    """The module that the `use` item at `at` is imported from."""
+    before = tree[:at].rstrip()
+    if not before.endswith("::"):
+        depth = 0
+        for k in range(len(before) - 1, -1, -1):
+            if before[k] == "}":
+                depth += 1
+            elif before[k] == "{" and depth == 0:
+                before = before[:k]
+                break
+            elif before[k] == "{":
+                depth -= 1
+        else:
+            return ""
+    parent = QUALIFIER.search(before)
+    return parent.group(1) if parent else ""
+
+
+def _imports(text: str) -> list[tuple[str, str, str]]:
+    """(parent module, item, local name) for every item a `use` brings in."""
+    found = []
+    for use in USE.finditer(text):
+        tree = use.group(1)
+        for item in USE_ITEM.finditer(tree):
+            local = item.group(2) or item.group(1)
+            found.append((_parent_module(tree, item.start()), item.group(1), local))
+    return found
+
+
+def _calls(names: set[str]) -> re.Pattern:
+    """A call of one of `names` that is not a method call."""
+    return re.compile(
+        r"(?<![\w.])(" + "|".join(sorted(map(re.escape, names))) + r")\s*\("
+    )
+
+
+class _Names:
+    """What the sleep and environment functions are called in one file."""
+
+    def __init__(self, text: str):
+        imports = _imports(text)
+
+        def locals_of(items: set[str], parents: set[str] | None = None) -> set[str]:
+            return {
+                local
+                for parent, item, local in imports
+                if item in items and (parents is None or parent in parents)
+            }
+
+        self.thread_modules = {"thread"} | locals_of({"thread"})
+        self.thread_sleeps = locals_of(SLEEP_NAMES, self.thread_modules)
+        self.sleep = _calls(SLEEP_NAMES | locals_of(SLEEP_NAMES))
+        env_modules = {"env"} | locals_of({"env"})
+        self.env = re.compile(
+            r"\b(?:"
+            + "|".join(sorted(map(re.escape, env_modules)))
+            + r")\s*::\s*(?:set_var|remove_var)\s*\("
+        )
+        imported = locals_of(ENV_CHANGES, env_modules)
+        self.env_imported = _calls(imported) if imported else None
+
+    def blocks_the_thread(self, text: str, match: re.Match) -> bool:
+        """True for a sleep that a paused tokio clock does not skip."""
+        if match.group(1) == "park_timeout":
+            return True
+        qualifier = QUALIFIER.search(text, max(0, match.start() - 80), match.start())
+        if qualifier:
+            return qualifier.group(1) in self.thread_modules
+        return match.group(1) in self.thread_sleeps
+
+    def env_changes(self, text: str) -> list[int]:
+        """Offsets of the calls that change the process environment."""
+        found = [match.start() for match in self.env.finditer(text)]
+        if self.env_imported:
+            found += [
+                match.start()
+                for match in self.env_imported.finditer(text)
+                if not _is_definition(text, match.start())
+                and not QUALIFIER.search(
+                    text, max(0, match.start() - 80), match.start()
+                )
+            ]
+        return sorted(found)
+
+
+def _is_definition(text: str, at: int) -> bool:
+    return text[:at].rstrip().endswith("fn")
+
+
+def _is_reason(comment_line: str) -> bool:
+    """True when the line carries a `// sleep:` marker followed by a reason of
+    at least a few words."""
+    marker = SLEEP_REASON.search(comment_line)
+    if not marker:
+        return False
+    words = [w for w in marker.group(1).split() if any(c.isalpha() for c in w)]
+    return len(words) >= SLEEP_REASON_WORDS
+
+
 def _sleep_explained(lines: list[str], line: int) -> bool:
     """True when line number `line`, or the comment directly above it, carries
     a `// sleep: why` marker."""
-    if SLEEP_REASON.search(lines[line - 1]):
+    if _is_reason(lines[line - 1]):
         return True
     above = line - 2
     while above >= 0 and lines[above].strip().startswith("//"):
-        if SLEEP_REASON.search(lines[above]):
+        if _is_reason(lines[above]):
             return True
         above -= 1
     return False
@@ -425,11 +568,12 @@ def _check_rust(
             seen.add(key)
             found.append((rule, fn.name if fn else "?", _line(text, offset), message))
 
-    for match in SLEEP.finditer(text):
+    names = _Names(text)
+    for match in names.sleep.finditer(text):
         at = match.start()
-        explained = _sleep_explained(lines, _line(text, at))
-        defined_here = text[:at].rstrip().endswith("fn")
-        if explained or defined_here or _in_spans(paused_spans, at):
+        if _is_definition(text, at) or _sleep_explained(lines, _line(text, at)):
+            continue
+        if _in_spans(paused_spans, at) and not names.blocks_the_thread(text, match):
             continue
         report(
             "bare-sleep",
@@ -437,8 +581,8 @@ def _check_rust(
             "wait on the event or a paused clock, or explain with `// sleep: why`",
         )
     if not path.startswith(ENV_OWNER):
-        for match in RAW_ENV.finditer(text):
-            report("raw-env", match.start(), "use tumult_test_utils::EnvGuard")
+        for at in names.env_changes(text):
+            report("raw-env", at, "use tumult_test_utils::EnvGuard")
     return sorted(found, key=lambda offence: (offence[2], offence[0]))
 
 
@@ -493,14 +637,18 @@ def strip_js(src: str) -> str:
 def check_js(src: str) -> list[Offence]:
     """Return focused-test offences in one JavaScript or TypeScript file."""
     text = strip_js(src)
-    return [
-        (
-            "focused-test",
-            m.group("only") or m.group("jasmine"),
-            _line(text, m.start()),
-            "focused test must not be committed",
-        )
+    focused = [
+        (m.start(), m.group("only") or m.group("jasmine"))
         for m in FOCUSED.finditer(text)
+    ]
+    focused += [
+        (m.start(), f"{m.group(1)}.only")
+        for m in FOCUSED_INDEX.finditer(text)
+        if src[m.end(2) : m.end(2) + 4] == "only"
+    ]
+    return [
+        ("focused-test", name, _line(text, at), "focused test must not be committed")
+        for at, name in sorted(focused)
     ]
 
 
@@ -518,6 +666,20 @@ def _has_reason(call: ast.Call | None, position: int | None) -> bool:
     return not (isinstance(reason, ast.Constant) and not str(reason.value).strip())
 
 
+def _bare_marks(node: ast.expr) -> list[str]:
+    """The skips and expected failures in `node` that carry no reason.
+
+    `node` is a decorator, a mark, or a list or tuple of marks.
+    """
+    if isinstance(node, (ast.List, ast.Tuple)):
+        return [kind for element in node.elts for kind in _bare_marks(element)]
+    call = node if isinstance(node, ast.Call) else None
+    kind = ast.unparse(call.func if call else node).rsplit(".", 1)[-1]
+    if kind not in PY_SKIP_REASON_AT or _has_reason(call, PY_SKIP_REASON_AT[kind]):
+        return []
+    return [kind]
+
+
 class _SkipVisitor(ast.NodeVisitor):
     def __init__(self) -> None:
         self.found: list[Offence] = []
@@ -527,17 +689,22 @@ class _SkipVisitor(ast.NodeVisitor):
         self.found.append(("bare-skip", name, line, f"{what} needs a reason"))
 
     def _definition(self, node) -> None:
-        for decorator in node.decorator_list:
-            call = decorator if isinstance(decorator, ast.Call) else None
-            kind = ast.unparse(call.func if call else decorator).rsplit(".", 1)[-1]
-            if kind not in PY_SKIP_REASON_AT:
-                continue
-            if not _has_reason(call, PY_SKIP_REASON_AT[kind]):
-                self._report(node.name, decorator.lineno, kind)
         self.scope.append(node.name)
+        for decorator in node.decorator_list:
+            for kind in _bare_marks(decorator):
+                self._report(node.name, decorator.lineno, kind)
+            self.visit(decorator)
         for child in node.body:
             self.visit(child)
         self.scope.pop()
+
+    def visit_Assign(self, node: ast.Assign) -> None:  # noqa: N802 - ast visitor name
+        targets = [t.id for t in node.targets if isinstance(t, ast.Name)]
+        if "pytestmark" in targets:
+            owner = self.scope[-1] if len(self.scope) > 1 else "pytestmark"
+            for kind in _bare_marks(node.value):
+                self._report(owner, node.lineno, kind)
+        self.generic_visit(node)
 
     def visit_FunctionDef(self, node) -> None:  # noqa: N802 - ast visitor name
         self._definition(node)
@@ -552,6 +719,10 @@ class _SkipVisitor(ast.NodeVisitor):
         name = ast.unparse(node.func)
         if name in PY_SKIP_CALLS and not _has_reason(node, PY_SKIP_CALLS[name]):
             self._report(self.scope[-1], node.lineno, name)
+        if name in ("pytest.param", "param"):
+            marks = [kw.value for kw in node.keywords if kw.arg == "marks"]
+            for kind in (kind for value in marks for kind in _bare_marks(value)):
+                self._report(self.scope[-1], node.lineno, kind)
         self.generic_visit(node)
 
 

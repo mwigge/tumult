@@ -36,7 +36,6 @@ class RustAssertions(unittest.TestCase):
             "assert!(x);",
             "assert_eq!(a, b);",
             "prop_assert!(x);",
-            "debug_assert_ne!(a, b);",
             "insta::assert_snapshot!(x);",
             "let e = f().unwrap_err();",
             'f().expect_err("must fail");',
@@ -262,7 +261,7 @@ class RustSleep(unittest.TestCase):
             "    // which is the fault under test.\n    sleep(d);\n    assert!(ok());"
         )
         detached = test_fn(
-            "// sleep: explained\n    sleep(d);\n    run();\n    sleep(d);\n    assert!(ok());"
+            "// sleep: the delay is under test\n    sleep(d);\n    run();\n    sleep(d);\n    assert!(ok());"
         )
         self.assertEqual(rust(same_line), [])
         self.assertEqual(rust(line_above), [])
@@ -442,6 +441,176 @@ class Python(unittest.TestCase):
         self.assertEqual(self.offences(empty), [("bare-skip", "test_b")])
         self.assertEqual(self.offences(reasoned), [])
         self.assertEqual(self.offences(commented), [])
+
+
+class Hardening(unittest.TestCase):
+    def test_assertions_on_literals_alone_do_not_count(self):
+        for body in (
+            "run(); assert!(1 == 1);",
+            "run(); assert!(!false);",
+            "run(); assert_eq!(1, 1);",
+            'run(); assert_eq!("a", "a", "always");',
+            "run(); assert_ne!(1u8, 2_u8);",
+            'run(); assert!(2 + 2 == 4, "sums");',
+            "run(); assert!();",
+        ):
+            with self.subTest(body=body):
+                self.assertEqual(rust(test_fn(body)), [("no-assert", "t")])
+        for body in (
+            "assert!(x == 1);",
+            "assert_eq!(f(), 1);",
+            'assert_eq!(1, x.len(), "count");',
+            "assert!(matches!(x, Some(1)));",
+        ):
+            with self.subTest(body=body):
+                self.assertEqual(rust(test_fn(body)), [])
+
+    def test_debug_assert_alone_does_not_count(self):
+        for body in (
+            "run(); debug_assert!(x);",
+            "run(); debug_assert_eq!(a, b);",
+            "run(); debug_assert_ne!(a, b);",
+        ):
+            with self.subTest(body=body):
+                self.assertEqual(rust(test_fn(body)), [("no-assert", "t")])
+        self.assertEqual(rust(test_fn("debug_assert!(x); assert!(y);")), [])
+        self.assertEqual(rust(test_fn("Cli::command().debug_assert();")), [])
+
+    def test_renamed_sleep_imports_are_reported(self):
+        for use, call in (
+            ("use tokio::time::sleep as x;", "x(d).await;"),
+            ("use std::thread::sleep as nap;", "nap(d);"),
+            ("use std::thread::{self, sleep as nap};", "nap(d);"),
+            ("use tokio::time::{sleep as pause_for, Duration};", "pause_for(d).await;"),
+        ):
+            with self.subTest(use=use):
+                src = f"{use}\n" + test_fn(f"{call}\n    assert!(ok());")
+                self.assertEqual(rust(src), [("bare-sleep", "t")])
+
+    def test_sleep_until_and_park_timeout_are_reported(self):
+        for call in (
+            "tokio::time::sleep_until(deadline).await;",
+            "sleep_until(deadline).await;",
+            "std::thread::park_timeout(d);",
+            "thread::park_timeout(d);",
+        ):
+            with self.subTest(call=call):
+                src = test_fn(f"{call}\n    assert!(ok());")
+                self.assertEqual(rust(src), [("bare-sleep", "t")])
+
+    def test_a_sleep_reason_needs_a_few_words(self):
+        for reason in ("ok", "needed here", "x", "."):
+            with self.subTest(reason=reason):
+                src = test_fn(f"sleep(d); // sleep: {reason}\n    assert!(ok());")
+                self.assertEqual(rust(src), [("bare-sleep", "t")])
+        src = test_fn("sleep(d); // sleep: interval of the poll\n    assert!(ok());")
+        self.assertEqual(rust(src), [])
+
+    def test_a_paused_clock_does_not_excuse_a_thread_sleep(self):
+        for use, call in (
+            ("", "std::thread::sleep(d);"),
+            ("", "thread::sleep(d);"),
+            ("use std::thread::sleep;", "sleep(d);"),
+            ("use std::thread::{sleep, spawn};", "sleep(d);"),
+            ("use std::thread::sleep as nap;", "nap(d);"),
+            ("", "std::thread::park_timeout(d);"),
+        ):
+            with self.subTest(use=use, call=call):
+                attr = f"{use}\n" + test_fn(
+                    f"{call}\n    assert!(ok());",
+                    "async fn t()",
+                    "#[tokio::test(start_paused = true)]",
+                )
+                called = f"{use}\n" + test_fn(
+                    f"tokio::time::pause();\n    {call}\n    assert!(ok());",
+                    "async fn t()",
+                    "#[tokio::test]",
+                )
+                self.assertEqual(rust(attr), [("bare-sleep", "t")])
+                self.assertEqual(rust(called), [("bare-sleep", "t")])
+        tokio_alias = "use tokio::time::sleep as x;\n" + test_fn(
+            "x(d).await;\n    assert!(ok());",
+            "async fn t()",
+            "#[tokio::test(start_paused = true)]",
+        )
+        self.assertEqual(rust(tokio_alias), [])
+
+    def test_environment_changes_behind_an_alias_or_spacing_are_reported(self):
+        for use, call in (
+            ("use std::env as e;", 'e::set_var("K", "v");'),
+            ("use std::{env as e, fs};", 'e::remove_var("K");'),
+            ("", 'std::env :: set_var("K", "v");'),
+            ("", 'env::\n        remove_var("K");'),
+            ("use std::env::set_var;", 'set_var("K", "v");'),
+            ("use std::env::{remove_var, var};", 'remove_var("K");'),
+        ):
+            with self.subTest(use=use, call=call):
+                src = f"{use}\n" + test_fn(f"{call}\n    assert!(ok());")
+                self.assertEqual(rust(src), [("raw-env", "t")])
+        method = test_fn('cmd.set_var("K", "v");\n    assert!(ok());')
+        self.assertEqual(rust(method), [])
+
+    def test_focused_each_and_bracket_access_are_reported(self):
+        src = (
+            "test.only.each([1, 2])('a %d', (n) => {});\n"
+            "describe.only.each`\n  a\n  ${1}\n`('b', () => {});\n"
+            "describe[\"only\"]('c', () => {});\n"
+            "it['only']('d', () => {});\n"
+            "test[`only`]('e', () => {});\n"
+        )
+        found = [(name, line) for _rule, name, line, _ in guard.check_js(src)]
+        self.assertEqual(
+            found,
+            [
+                ("test.only", 1),
+                ("describe.only", 2),
+                ("describe.only", 6),
+                ("it.only", 7),
+                ("test.only", 8),
+            ],
+        )
+        harmless = "test['skip']('a', () => {});\nconst only = rows['only'];\n"
+        self.assertEqual(guard.check_js(harmless), [])
+
+    def test_module_and_class_level_python_marks_need_a_reason(self):
+        offences = Python().offences
+        for mark in (
+            "pytestmark = pytest.mark.skip",
+            "pytestmark = pytest.mark.skip()",
+            "pytestmark = [pytest.mark.slow, pytest.mark.xfail]",
+            'pytestmark = (pytest.mark.skipif(WINDOWS), pytest.mark.usefixtures("x"))',
+        ):
+            with self.subTest(mark=mark):
+                self.assertEqual(offences(f"{mark}\n"), [("bare-skip", "pytestmark")])
+        in_class = "class TestA:\n    pytestmark = pytest.mark.skip\n"
+        self.assertEqual(offences(in_class), [("bare-skip", "TestA")])
+        reasoned = 'pytestmark = pytest.mark.skip(reason="needs the lab image")\n'
+        unrelated = "pytestmark = pytest.mark.slow\nother = pytest.mark.skip\n"
+        self.assertEqual(offences(reasoned), [])
+        self.assertEqual(offences(unrelated), [])
+
+    def test_parameter_marks_need_a_reason(self):
+        offences = Python().offences
+        template = (
+            "@pytest.mark.parametrize('n', [1, pytest.param(2, marks={})])\n"
+            "def test_a(n):\n    pass\n"
+        )
+        for marks in (
+            "pytest.mark.skip",
+            "pytest.mark.xfail()",
+            "[pytest.mark.slow, pytest.mark.skip]",
+            'pytest.mark.skipif(sys.platform == "win32")',
+        ):
+            with self.subTest(marks=marks):
+                self.assertEqual(
+                    offences(template.format(marks)), [("bare-skip", "test_a")]
+                )
+        for marks in (
+            'pytest.mark.skip(reason="needs the lab image")',
+            "pytest.mark.slow",
+        ):
+            with self.subTest(marks=marks):
+                self.assertEqual(offences(template.format(marks)), [])
 
 
 class Tree(unittest.TestCase):
