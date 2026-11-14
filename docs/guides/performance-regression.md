@@ -124,6 +124,24 @@ gate by default.
    recorded (a target that exports no telemetry) have no sightings to
    find a redeploy in; name the versions there.
 
+   **A return is not always a rollback.** One request that still reaches
+   an old pod after the new build took over looks, in telemetry, like the
+   old build coming back. A return is therefore not taken as the latest
+   deployment while it is younger than ten minutes, nor while it rests on
+   fewer than 10 requests, or on fewer than 5 % of what the other version
+   served from ten minutes before it. Until then the daemon does not
+   order the two: the answer is a 400 with `reason: unorderable` and a
+   message naming both versions, and `tumult perf` reads it as
+   `inconclusive` (exit 4). With `candidate` named the question does not
+   arise: the candidate is compared against the version it replaced,
+   whichever reported last. **A CI gate knows which build it tests and
+   should always pass `--candidate`.**
+
+   A span that arrives late moves a version's first sight back by at most
+   ten minutes; a span stamped earlier than that (a clock gone wrong, a
+   replay) is stored as a span and left out of the version history, with
+   a `lake.sightings.early_span_ignored` warning in the daemon's log.
+
    **Version numbers.** Where two versions tie, the greater number wins,
    in one total order: versions that parse as numbers (`1.10.0`, `v2.1`,
    `1.4.0-rc.1+build.7`) sort among themselves by semver precedence — a
@@ -273,7 +291,7 @@ GET  /api/perf/{target}/version?env=&namespace=&from_ns=&to_ns=
 | `seed` | fixed | Seed of the bootstrap generator; the answer carries the one used |
 | `margin_pct` | `5` | Noise margin as a percentage of the baseline quantile |
 | `env` | the only environment that can answer | The environment the answer is for (403 outside a scoped token's environments, 400 when empty) |
-| `candidate` | the version deployed latest | The version judged; alone, its baseline is the version deployed just before it. At most 128 characters, no control characters |
+| `candidate` | the version deployed latest | The version judged; alone, its baseline is the version it replaced. At most 128 characters, no control characters |
 | `baseline` | the version deployed before the candidate | The version compared against; alone, its candidate is the latest other version. Same bounds |
 | `range` | `30d` | Lookback for runs and samples: a number followed by `s`, `m`, `h`, `d` or `w`. The versions and their order do not depend on it |
 | `include` | — | `partial` keeps the latency samples of aborted and truncated runs |
@@ -400,7 +418,7 @@ gate that passes because nothing could be measured is not a gate.
 | `1` | the command failed: daemon unreachable, an HTTP error, `--store` that did not store, a verdict this build does not know |
 | `2` | usage error (an unknown flag or value) |
 | `3` | `regressed` |
-| `4` | `inconclusive` |
+| `4` | `inconclusive`, or the daemon could not tell which version was deployed latest (`reason: unorderable`) |
 
 `--fail-on regressed` lets `inconclusive` pass (the behaviour before this
 default changed); `--fail-on never` only prints. `--json` prints the
@@ -462,9 +480,12 @@ runs recorded, so name the versions when the runs recorded none.
    probe's name.
 3. Repeat step 2 until the build has at least three runs; one run, or
    two, is `inconclusive` whatever it measured.
-4. `tumult perf checkout --env staging --store` compares *N* against the
-   build deployed before it, records the verdict and fails the job on
-   `regressed` (exit 3) and on `inconclusive` (exit 4).
+4. `tumult perf checkout --env staging --candidate N --store` compares
+   *N* against the build it replaced, records the verdict and fails the
+   job on `regressed` (exit 3) and on `inconclusive` (exit 4). Name the
+   candidate: the pipeline knows which build it tests, and the deployment
+   order the daemon reads from telemetry can be upset by a request that
+   still reaches the old build.
 
 ## Error rates: oha and k6 differ
 
