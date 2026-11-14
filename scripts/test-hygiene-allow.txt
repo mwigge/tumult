@@ -167,16 +167,6 @@ tumult-mcp/src/server.rs::serve_aborts_on_an_unreadable_auth_config::raw-env  # 
 tumult-mcp/src/tools/mod.rs::drop::raw-env  # deferred: move to tumult_test_utils::EnvGuard
 tumult-mcp/src/tools/mod.rs::set::raw-env  # deferred: move to tumult_test_utils::EnvGuard
 
-# tumult-otel: deferred, the crate is being changed elsewhere
-tumult-otel/src/agentic_span/mod.rs::record_agentic_run_is_safe_without_provider::no-assert  # deferred: asserts nothing yet
-tumult-otel/src/tests.rs::metrics_can_be_created::no-assert  # deferred: asserts nothing yet
-tumult-otel/src/tests.rs::record_action_and_probe_sequence_does_not_panic::no-assert  # deferred: asserts nothing yet
-tumult-otel/src/tests.rs::shutdown_also_shuts_down_global_provider_without_panic::no-assert  # deferred: asserts nothing yet
-tumult-otel/src/telemetry.rs::otlp_headers_from_env_scenarios::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumult-otel/src/tests.rs::drop::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumult-otel/src/tests.rs::remove::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumult-otel/src/tests.rs::set::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-
 # tumultd: deferred, the crate is being changed elsewhere
 tumultd/src/reports.rs::report_scheduler_writes_a_digest_after_one_interval::bare-sleep  # deferred: sleep without a stated reason
 tumultd/src/serve/tests.rs::alive_tasks_settled::bare-sleep  # deferred: sleep without a stated reason
