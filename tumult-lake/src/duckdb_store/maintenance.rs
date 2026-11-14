@@ -794,7 +794,9 @@ mod tests {
              'tumult', '2.0.0', 'r2', 'checkout', NULL, NULL, '[]'),
             (150, 't3', 'request', 'GET /cart', 'Server', 5, 'Unset', '',
              'checkout', '1.5.0', NULL, NULL, 'staging', NULL, '[]');
-        INSERT INTO service_version_sightings VALUES
+        INSERT INTO service_version_sightings (service_name, environment,
+            service_version, first_seen_ns, last_seen_ns, last_deployed_ns,
+            deployments, sanitized) VALUES
             ('checkout', 'staging', '1.4.0', 10, 90, 10, 1, false),
             ('checkout', 'staging', '1.5.0', 95, 400, 300, 2, true),
             ('checkout', NULL, '1.5.0', 96, 97, NULL, NULL, NULL);";
@@ -850,7 +852,9 @@ mod tests {
         let lake = AnalyticsStore::in_memory().unwrap();
         lake.conn
             .execute_batch(
-                "INSERT INTO service_version_sightings VALUES
+                "INSERT INTO service_version_sightings (service_name, environment,
+                    service_version, first_seen_ns, last_seen_ns, last_deployed_ns,
+                    deployments, sanitized) VALUES
                     ('checkout', 'staging', '1.5.0', 200, 900, 200, 1, false),
                     ('checkout', 'staging', '1.6.0', 950, 990, 950, 1, false);
                  INSERT INTO spans (ts_ns, trace_id, span_id, span_name, span_kind,

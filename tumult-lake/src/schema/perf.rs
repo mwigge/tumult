@@ -61,6 +61,7 @@ CREATE TABLE IF NOT EXISTS service_version_sightings (
 ALTER TABLE service_version_sightings ADD COLUMN IF NOT EXISTS last_deployed_ns BIGINT;
 ALTER TABLE service_version_sightings ADD COLUMN IF NOT EXISTS deployments INTEGER;
 ALTER TABLE service_version_sightings ADD COLUMN IF NOT EXISTS sanitized BOOLEAN;
+ALTER TABLE service_version_sightings ADD COLUMN IF NOT EXISTS first_anchor_ns BIGINT;
 CREATE TABLE IF NOT EXISTS sightings_backfill (
     done BOOLEAN NOT NULL, cursor_ns BIGINT
 );
@@ -131,7 +132,9 @@ mod tests {
     #[test]
     fn a_lake_from_either_side_of_the_v19_merge_opens() {
         opens_with_both_families(
-            "INSERT INTO service_version_sightings VALUES \
+            "INSERT INTO service_version_sightings (service_name, environment, \
+             service_version, first_seen_ns, last_seen_ns, last_deployed_ns, \
+             deployments, sanitized) VALUES \
              ('checkout', 'demo', '1.4.0', 1, 2, 1, 1, false); \
              DROP TABLE forecasts;",
             18,

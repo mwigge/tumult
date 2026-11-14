@@ -761,3 +761,60 @@ fn the_spans_ahead_of_the_clock_are_named_by_version_and_environment() {
     assert_eq!(ahead.span_ts_ns, 400 * S);
     assert!(ahead_in(&rows, 900 * S).is_none());
 }
+
+/// 1.0.0 at 10 000 s, 2.0.0 at 20 000 s, then thirty single spans of
+/// 2.0.0, each 500 s before the last and each in a batch of its own.
+fn with_late_spans_one_after_another(writer: &Writer) {
+    writer.insert_spans(&[demo_span("1.0.0", 10_000)]).unwrap();
+    writer.insert_spans(&[demo_span("2.0.0", 20_000)]).unwrap();
+    for step in 1..=30 {
+        writer
+            .insert_spans(&[demo_span("2.0.0", 20_000 - step * 500)])
+            .unwrap();
+    }
+}
+
+#[test]
+fn late_spans_one_after_another_do_not_walk_a_first_sight_back() {
+    let (_dir, store) = lake();
+    let writer = store.writer().unwrap();
+    with_late_spans_one_after_another(&writer);
+    drop(writer);
+
+    // Only the first of them lies within the limit of where 2.0.0 began.
+    assert_eq!(
+        seen(&store, "checkout"),
+        [demo("1.0.0", 10_000, 10_000), demo("2.0.0", 19_500, 20_000)]
+    );
+    assert_eq!(
+        deployments(&store),
+        [
+            ("1.0.0".to_string(), 10_000, 1),
+            ("2.0.0".to_string(), 19_500, 1)
+        ]
+    );
+}
+
+#[test]
+fn a_row_of_an_older_build_is_held_to_the_first_sight_it_has() {
+    let (_dir, store) = lake();
+    let writer = store.writer().unwrap();
+    writer.insert_spans(&[demo_span("1.0.0", 10_000)]).unwrap();
+    writer.insert_spans(&[demo_span("2.0.0", 20_000)]).unwrap();
+    // As a build before the rollup kept where a version began left it.
+    writer
+        .conn
+        .execute_batch("UPDATE service_version_sightings SET first_anchor_ns = NULL")
+        .unwrap();
+    for step in 1..=30 {
+        writer
+            .insert_spans(&[demo_span("2.0.0", 20_000 - step * 500)])
+            .unwrap();
+    }
+    drop(writer);
+
+    assert_eq!(
+        seen(&store, "checkout"),
+        [demo("1.0.0", 10_000, 10_000), demo("2.0.0", 19_500, 20_000)]
+    );
+}

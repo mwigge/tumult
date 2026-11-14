@@ -20,8 +20,10 @@
 //! [`REDEPLOY_GAP`] during which another version of the service spoke in
 //! the same environment: a rollback, or a redeploy after a newer build.
 //!
-//! A span that arrives late moves a version's first sight back by at most
-//! [`LATE_SPAN_LIMIT`]; one from earlier than that is left out. So is a
+//! Spans that arrive late move a version's first sight back by at most
+//! [`LATE_SPAN_LIMIT`] from where the rollup first put it
+//! (`first_anchor_ns`, which never moves), however many of them come; one
+//! from earlier than that is left out. So is a
 //! span whose time lies more than [`CLOCK_SKEW`] ahead of the wall clock:
 //! it would hold its version's first and last sight at a time that never
 //! was, and the versions that follow would sort before it. Both are kept
@@ -55,10 +57,13 @@ use crate::{Reader, Store, Writer};
 /// spoken meanwhile, counts as deployed anew.
 pub const REDEPLOY_GAP: Duration = Duration::from_secs(600);
 
-/// How far before a version's first sight a span that arrives later may
-/// move that sight back. A span from earlier still (a clock gone wrong,
-/// a replay) is kept as a span and left out of the rollup: one such span
-/// would otherwise make a new version read as the oldest.
+/// How far before the first sight the rollup took of a version spans
+/// that arrive later may move that sight back, all of them together: the
+/// bound is measured from where the version began in the rollup, not
+/// from where late spans have moved it since. A span from earlier still
+/// (a clock gone wrong, a replay) is kept as a span and left out of the
+/// rollup: such spans would otherwise make a new version read as the
+/// oldest.
 pub const LATE_SPAN_LIMIT: Duration = Duration::from_secs(600);
 
 /// How far ahead of the wall clock a span's time may lie and still count
@@ -131,6 +136,9 @@ type Key = (Option<String>, String);
 /// One rollup row, without its key.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Held {
+    /// The first sight the rollup took of the version. It never moves,
+    /// so the room late spans have is measured from one place.
+    anchor_ns: i64,
     first_ns: i64,
     last_ns: i64,
     deployed_ns: i64,
@@ -147,7 +155,8 @@ SELECT
     max(last_seen_ns) AS last_seen_ns,
     max(coalesce(last_deployed_ns, first_seen_ns)) AS last_deployed_ns,
     max(coalesce(deployments, 1)) AS deployments,
-    coalesce(bool_or(sanitized), false) AS sanitized
+    coalesce(bool_or(sanitized), false) AS sanitized,
+    min(coalesce(first_anchor_ns, first_seen_ns)) AS first_anchor_ns
 FROM service_version_sightings
 WHERE service_name = ?
 GROUP BY environment, service_version
@@ -306,11 +315,11 @@ fn returned_after_another(held: &BTreeMap<Key, Held>, key: &Key, row: &Held, at_
     })
 }
 
-/// Whether `sight` lies further before the first sight `row` holds than
-/// a late span may: more than [`LATE_SPAN_LIMIT`].
+/// Whether `sight` lies further before where `row` began in the rollup
+/// than a late span may: more than [`LATE_SPAN_LIMIT`].
 fn before_the_start(row: &Held, sight: &Sight) -> bool {
     let limit_ns = i64::try_from(LATE_SPAN_LIMIT.as_nanos()).unwrap_or(i64::MAX);
-    sight.first_ns < row.first_ns.saturating_sub(limit_ns)
+    sight.first_ns < row.anchor_ns.saturating_sub(limit_ns)
 }
 
 /// Fold one sight into the rows of its service.
@@ -320,6 +329,7 @@ fn fold(held: &mut BTreeMap<Key, Held>, sight: &Sight) {
         held.insert(
             key,
             Held {
+                anchor_ns: sight.first_ns,
                 first_ns: sight.first_ns,
                 last_ns: sight.last_ns,
                 deployed_ns: sight.first_ns,
@@ -338,7 +348,7 @@ fn fold(held: &mut BTreeMap<Key, Held>, sight: &Sight) {
         row.deployments = row.deployments.saturating_add(1);
     } else if sight.first_ns < row.first_ns && row.deployments == 1 {
         // Spans that arrived late move the one deployment's start back,
-        // by no more than `LATE_SPAN_LIMIT`.
+        // by no more than `LATE_SPAN_LIMIT` from where it began.
         row.deployed_ns = sight.first_ns;
     }
     row.first_ns = row.first_ns.min(sight.first_ns);
@@ -401,6 +411,7 @@ fn held_of(conn: &Connection, service: &str) -> Result<BTreeMap<Key, Held>, duck
                 deployed_ns: row.get(4)?,
                 deployments: row.get(5)?,
                 sanitized: row.get(6)?,
+                anchor_ns: row.get(7)?,
             },
         ))
     })?;
@@ -418,15 +429,15 @@ fn store_changed(
     let mut update = conn.prepare(
         "UPDATE service_version_sightings
          SET first_seen_ns = ?, last_seen_ns = ?, last_deployed_ns = ?,
-             deployments = ?, sanitized = ?
+             deployments = ?, sanitized = ?, first_anchor_ns = ?
          WHERE service_name = ? AND service_version = ?
            AND environment IS NOT DISTINCT FROM ?",
     )?;
     let mut insert = conn.prepare(
         "INSERT INTO service_version_sightings
             (service_name, environment, service_version, first_seen_ns, last_seen_ns,
-             last_deployed_ns, deployments, sanitized)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+             last_deployed_ns, deployments, sanitized, first_anchor_ns)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )?;
     for (key, row) in after {
         let (environment, version) = key;
@@ -439,6 +450,7 @@ fn store_changed(
                     row.deployed_ns,
                     row.deployments,
                     row.sanitized,
+                    row.anchor_ns,
                     service,
                     version,
                     environment
@@ -453,7 +465,8 @@ fn store_changed(
                     row.last_ns,
                     row.deployed_ns,
                     row.deployments,
-                    row.sanitized
+                    row.sanitized,
+                    row.anchor_ns
                 ])?;
             }
         }
