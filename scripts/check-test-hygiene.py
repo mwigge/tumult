@@ -3,21 +3,35 @@
 
 Fails on:
   no-assert      a Rust test whose body asserts nothing
-  bare-ignore    `#[ignore]` without a reason string
+  bare-ignore    `#[ignore]` or `#[cfg_attr(.., ignore)]` without a reason
+  bare-sleep     `sleep(..)` in Rust test code without a `// sleep: why` comment
+  raw-env        `env::set_var` / `env::remove_var` in Rust test code
   focused-test   `test.only` / `it.only` / `describe.only` / `fdescribe` / `fit`
-  bare-skip      a Python skip decorator without a reason
+  bare-skip      a Python skip or xfail without a reason
+  stale-allow    an allowlist entry that matches nothing
+  bad-allow      an allowlist entry that is not `path::name::rule`
 
 Known offenders in crates that are being changed elsewhere are listed in
-scripts/test-hygiene-allow.txt, one `path::name  # reason` per line. An entry
-that no longer matches anything is reported so the list shrinks over time.
+scripts/test-hygiene-allow.txt, one `path::name::rule  # reason` per line.
 
-This is a text scan, not a parser: it cannot judge whether an assertion is
-meaningful. Review against the policy does that.
+This is a text scan, not a parser. Its limits:
+  - It cannot judge whether an assertion is meaningful.
+  - A call to `assert_*(..)` counts only when a function of that name is
+    defined in the same top-level directory and itself asserts. Functions are
+    matched by name alone, so two helpers with one name are not told apart.
+  - Assertions hidden in a helper that is not named `assert_*` are not seen.
+  - Test code is a `#[test]`-like function, a `#[cfg(test)] mod` block, a file
+    under a `tests` directory or a file named `tests.rs`. Other files pulled
+    in with `#[cfg(test)] mod x;` are not checked for sleeps or environment
+    changes.
+  - `set_var` imported and called without the `env::` prefix is not seen.
+  - JavaScript regular expression literals are not parsed.
 """
 
 from __future__ import annotations
 
 import argparse
+import ast
 import re
 import sys
 from pathlib import Path
@@ -26,24 +40,59 @@ ROOT = Path(__file__).resolve().parents[1]
 ALLOWLIST = Path(__file__).with_name("test-hygiene-allow.txt")
 SKIP_DIRS = {".git", ".claude", "target", "node_modules", "dist", ".quality-venv"}
 JS_SUFFIXES = {".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx"}
+RULES = {
+    "no-assert",
+    "bare-ignore",
+    "bare-sleep",
+    "raw-env",
+    "focused-test",
+    "bare-skip",
+}
+# The one crate that may change the environment directly: it defines EnvGuard.
+ENV_OWNER = "tumult-test-utils/"
 
-TEST_ATTR = re.compile(r"#\[\s*(?:\w+::)*test(?:\s*\([^\]]*\))?\s*\]")
-ATTR = re.compile(r"\s*#\[[^\]]*\]")
-FN = re.compile(r"\s*(?:pub(?:\([^)]*\))?\s+)?(?:async\s+)?fn\s+(\w+)")
-BARE_IGNORE = re.compile(r"#\[\s*ignore\s*\]")
-NEXT_FN = re.compile(r"\bfn\s+(\w+)")
+TEST_ATTR_NAMES = {"test", "rstest", "test_case"}
+ATTR_PATH = re.compile(r"\s*((?:\w+\s*::\s*)*\w+)")
+FN = re.compile(
+    r"(?:pub(?:\s*\([^)]*\))?\s+)?"
+    r'(?:(?:const|async|unsafe|extern(?:\s*"[^"]*")?)\s+)*'
+    r"fn\s+(\w+)"
+)
+ANY_FN = re.compile(r"\bfn\s+(\w+)")
+MOD = re.compile(r"(?:pub(?:\s*\([^)]*\))?\s+)?mod\s+\w+\s*\{")
+CFG_TEST = re.compile(r"\s*cfg\s*\((?:.*\W)?test\b", re.DOTALL)
+IGNORE_WORD = re.compile(r"\bignore\b")
+IGNORE_REASON = re.compile(r'\s*=\s*"\s*[^\s"]')
 RAW_STRING = re.compile(r'b?r(#*)"')
+ASSERT_MACRO = re.compile(r"\b((?:\w+_)?assert(?:_\w+)?)\s*!\s*[(\[{]")
+TRIVIAL_ARGS = re.compile(r"\s*true\s*(?:,.*)?", re.DOTALL)
+TRIVIAL_EQ_ARGS = re.compile(r"\s*true\s*,\s*true\s*(?:,.*)?", re.DOTALL)
+# Fails the test by itself: error unwraps, panics, and the asserting methods
+# of clap (`debug_assert`), mockito and assert_cmd (`assert`, `assert_async`).
 ASSERTION = re.compile(
-    r"\b(?:\w+_)?assert(?:_\w+)?\s*!"  # assert!, assert_eq!, prop_assert!, ...
-    r"|\bassert_\w+\s*\("  # local assertion helpers
-    r"|\.\s*(?:expect_err|unwrap_err)\s*\("
+    r"\.\s*(?:expect_err|unwrap_err|debug_assert|assert|assert_async)\s*\("
     r"|\b(?:panic|unreachable)\s*!"
 )
-FOCUSED = re.compile(r"\b(?:test|it|describe)\.only\s*\(|\b(?:fdescribe|fit)\s*\(")
-BARE_SKIP = re.compile(
-    r"^\s*@(?:pytest\.mark\.skip|unittest\.skip)\s*(?:\(\s*\))?\s*$", re.MULTILINE
+RESULT_ASSERTION = re.compile(r"\b(?:ensure|bail)\s*!|\breturn\s+Err\b")
+HELPER_CALL = re.compile(r"\b(assert_\w+)\s*\(")
+SLEEP = re.compile(r"(?<![\w.])sleep\s*\(")
+SLEEP_REASON = re.compile(r"//\s*sleep:\s*\S")
+PAUSED_ATTR = re.compile(r"\bstart_paused\s*=\s*true\b")
+PAUSE_CALL = re.compile(r"\btime::pause\s*\(")
+RAW_ENV = re.compile(r"\benv::(?:set_var|remove_var)\s*\(")
+FOCUSED = re.compile(
+    r"\b(?P<only>(?:test|it|describe)\.only)\s*\("
+    r"|(?<![\w.$])(?P<jasmine>fdescribe|fit)\s*\(\s*['\"`]"
 )
-PY_DEF = re.compile(r"\b(?:def|class)\s+(\w+)")
+# Index of the positional reason argument; None when it is keyword-only.
+PY_SKIP_REASON_AT = {
+    "skip": 0,
+    "skipIf": 1,
+    "skipUnless": 1,
+    "skipif": None,
+    "xfail": None,
+}
+PY_SKIP_CALLS = {"pytest.skip": 0, "pytest.xfail": 0, "self.skipTest": 0}
 
 Offence = tuple[str, str, int, str]  # rule, name, line, message
 
@@ -118,159 +167,500 @@ def _ident_before(src: str, i: int) -> bool:
     return i > 0 and (src[i - 1].isalnum() or src[i - 1] == "_")
 
 
-def _matching_brace(text: str, open_at: int) -> int:
+def _matching(text: str, open_at: int) -> int:
+    """Offset of the bracket closing the one at `open_at`, or the text length."""
+    opener = text[open_at]
+    closer = {"(": ")", "[": "]", "{": "}"}[opener]
     depth = 0
     for k in range(open_at, len(text)):
-        if text[k] == "{":
+        if text[k] == opener:
             depth += 1
-        elif text[k] == "}":
+        elif text[k] == closer:
             depth -= 1
             if depth == 0:
                 return k
     return len(text)
 
 
-def _attr_block_start(text: str, attr_start: int) -> int:
-    """Offset of the first line of the attribute block containing `attr_start`."""
-    start = text.rfind("\n", 0, attr_start) + 1
-    while start > 0:
-        prev = text.rfind("\n", 0, start - 1) + 1
-        if not text[prev:start].strip().startswith("#["):
-            break
-        start = prev
-    return start
-
-
-def _documented(src: str, block_start: int) -> bool:
-    """True when the line above the attribute block is a comment."""
-    above = src[:block_start].rstrip("\n").rsplit("\n", 1)[-1]
-    return above.strip().startswith("//")
-
-
 def _line(text: str, offset: int) -> int:
     return text.count("\n", 0, offset) + 1
 
 
-def check_rust(src: str) -> list[Offence]:
-    """Return the offences in one Rust source file."""
-    text = strip_rust(src)
+def _body_open(text: str, pos: int) -> int | None:
+    """Offset of the `{` opening the body of the function whose name ends at
+    `pos`, or None for a declaration without a body."""
+    depth = 0
+    for k in range(pos, len(text)):
+        ch = text[k]
+        if ch in "([":
+            depth += 1
+        elif ch in ")]":
+            depth -= 1
+        elif depth == 0 and ch == "{":
+            return k
+        elif depth == 0 and ch == ";":
+            return None
+    return None
+
+
+class _Fn:
+    """One function with a body: its name, signature and body span."""
+
+    def __init__(self, text: str, match: re.Match, open_at: int):
+        self.name = match.group(1)
+        self.name_at = match.start(1)
+        self.open_at = open_at
+        self.close_at = _matching(text, open_at)
+        self.signature = text[match.end(1) : open_at]
+        self.body = text[open_at : self.close_at + 1]
+
+    def returns_result(self) -> bool:
+        return "->" in self.signature and "Result" in self.signature
+
+    def contains(self, offset: int) -> bool:
+        return self.open_at < offset <= self.close_at
+
+
+def _functions(text: str) -> list[_Fn]:
     found = []
-    for match in BARE_IGNORE.finditer(text):
-        name = NEXT_FN.search(text, match.end())
-        found.append(
-            (
-                "bare-ignore",
-                name.group(1) if name else "?",
-                _line(text, match.start()),
-                '#[ignore] needs a reason: #[ignore = "why, and which job runs it"]',
-            )
-        )
-    for match in TEST_ATTR.finditer(text):
-        block_start = _attr_block_start(text, match.start())
-        pos = match.end()
-        while more := ATTR.match(text, pos):
-            pos = more.end()
-        attrs = text[block_start:pos]
-        fn = FN.match(text, pos)
-        if not fn:
-            continue
-        name = fn.group(1)
-        open_at = text.find("{", fn.end())
-        if open_at == -1:
-            continue
-        body = text[open_at : _matching_brace(text, open_at) + 1]
-        if "should_panic" in attrs or ASSERTION.search(body):
-            continue
-        if name.endswith("_does_not_panic") and _documented(src, block_start):
-            continue
-        found.append(
-            ("no-assert", name, _line(text, match.start()), "test asserts nothing")
-        )
+    for match in ANY_FN.finditer(text):
+        open_at = _body_open(text, match.end())
+        if open_at is not None:
+            found.append(_Fn(text, match, open_at))
     return found
+
+
+def _real_assert_macro(body: str) -> bool:
+    """True when `body` has an assert macro other than `assert!(true)`."""
+    for match in ASSERT_MACRO.finditer(body):
+        open_at = match.end() - 1
+        args = body[open_at + 1 : _matching(body, open_at)]
+        compares = match.group(1).endswith(("_eq", "_ne"))
+        trivial = TRIVIAL_EQ_ARGS if compares else TRIVIAL_ARGS
+        if not trivial.fullmatch(args):
+            return True
+    return False
+
+
+def _asserts(fn: _Fn, helpers: frozenset[str] | set[str]) -> bool:
+    if _real_assert_macro(fn.body) or ASSERTION.search(fn.body):
+        return True
+    if fn.returns_result() and RESULT_ASSERTION.search(fn.body):
+        return True
+    return any(call.group(1) in helpers for call in HELPER_CALL.finditer(fn.body))
+
+
+def _asserting_helpers(texts: list[str]) -> frozenset[str]:
+    candidates = [
+        fn for text in texts for fn in _functions(text) if fn.name.startswith("assert_")
+    ]
+    helpers: set[str] = set()
+    grew = True
+    while grew:
+        grew = False
+        for fn in candidates:
+            if fn.name not in helpers and _asserts(fn, helpers):
+                helpers.add(fn.name)
+                grew = True
+    return frozenset(helpers)
+
+
+def asserting_helpers(sources: list[str]) -> frozenset[str]:
+    """Names of the `assert_*` functions in `sources` that assert something."""
+    return _asserting_helpers([strip_rust(src) for src in sources])
+
+
+class _Block:
+    """A run of attributes; the item they belong to starts at `end`."""
+
+    def __init__(self, text: str, start: int):
+        self.text = text
+        self.start = start
+        self.attrs: list[tuple[str, int, int]] = []  # last path segment, content span
+        pos = start
+        while text.startswith("#[", pos):
+            close = _matching(text, pos + 1)
+            path = ATTR_PATH.match(text, pos + 2, close)
+            if path:
+                name = path.group(1).split("::")[-1].strip()
+                self.attrs.append((name, pos + 2, close))
+            pos = close + 1
+            while pos < len(text) and text[pos].isspace():
+                pos += 1
+        self.end = pos
+
+    def has(self, name: str) -> bool:
+        return any(found == name for found, _start, _end in self.attrs)
+
+    def content(self, name: str) -> str:
+        """The text of every attribute called `name`."""
+        return " ".join(
+            self.text[start:end] for found, start, end in self.attrs if found == name
+        )
+
+    def first_test_attr(self) -> int | None:
+        for name, start, _end in self.attrs:
+            if name in TEST_ATTR_NAMES:
+                return start
+        return None
+
+    def is_paused(self) -> bool:
+        return any(
+            PAUSED_ATTR.search(self.text, start, end)
+            for _name, start, end in self.attrs
+        )
+
+    def bare_ignores(self, src: str) -> list[int]:
+        """Offsets of the `ignore` attributes that carry no reason."""
+        found = []
+        for name, start, end in self.attrs:
+            if name not in ("ignore", "cfg_attr"):
+                continue
+            for word in IGNORE_WORD.finditer(self.text, start, end):
+                if not IGNORE_REASON.match(src, word.end(), end):
+                    found.append(start)
+        return found
+
+
+def _blocks(text: str) -> list[_Block]:
+    found, pos = [], 0
+    while (start := text.find("#[", pos)) != -1:
+        block = _Block(text, start)
+        found.append(block)
+        pos = max(block.end, start + 2)
+    return found
+
+
+def _names_the_panic(src: str, block_start: int) -> bool:
+    """True when the comment directly above the attribute block mentions a panic."""
+    line_start = src.rfind("\n", 0, block_start) + 1
+    lines = src[:line_start].splitlines()
+    comment = []
+    while lines and lines[-1].strip().startswith("//"):
+        comment.append(lines.pop())
+    return "panic" in "\n".join(comment).lower()
+
+
+def _sleep_explained(lines: list[str], line: int) -> bool:
+    """True when line number `line`, or the comment directly above it, carries
+    a `// sleep: why` marker."""
+    if SLEEP_REASON.search(lines[line - 1]):
+        return True
+    above = line - 2
+    while above >= 0 and lines[above].strip().startswith("//"):
+        if SLEEP_REASON.search(lines[above]):
+            return True
+        above -= 1
+    return False
+
+
+def _is_test_file(path: str) -> bool:
+    parts = path.split("/")
+    return "tests" in parts[:-1] or parts[-1] == "tests.rs"
+
+
+def _in_spans(spans: list[tuple[int, int]], offset: int) -> bool:
+    return any(start < offset <= end for start, end in spans)
+
+
+def _innermost(functions: list[_Fn], offset: int) -> _Fn | None:
+    inside = [fn for fn in functions if fn.contains(offset)]
+    return max(inside, key=lambda fn: fn.open_at, default=None)
+
+
+def _check_rust(
+    src: str, text: str, path: str, helpers: frozenset[str]
+) -> list[Offence]:
+    functions = _functions(text)
+    by_name_at = {fn.name_at: fn for fn in functions}
+    found: list[Offence] = []
+    test_spans: list[tuple[int, int]] = []
+    paused_spans = [
+        (fn.open_at, fn.close_at) for fn in functions if PAUSE_CALL.search(fn.body)
+    ]
+
+    for block in _blocks(text):
+        fn_match = FN.match(text, block.end)
+        fn = by_name_at.get(fn_match.start(1)) if fn_match else None
+        for at in block.bare_ignores(src):
+            owner = fn_match or ANY_FN.search(text, block.end)
+            found.append(
+                (
+                    "bare-ignore",
+                    owner.group(1) if owner else "?",
+                    _line(text, at),
+                    'ignore needs a reason: #[ignore = "why, and which job runs it"]',
+                )
+            )
+        if CFG_TEST.match(block.content("cfg")):
+            mod = MOD.match(text, block.end)
+            if mod:
+                test_spans.append((mod.end() - 1, _matching(text, mod.end() - 1)))
+        test_attr = block.first_test_attr()
+        if test_attr is None or fn is None:
+            continue
+        test_spans.append((fn.open_at, fn.close_at))
+        if block.is_paused():
+            paused_spans.append((fn.open_at, fn.close_at))
+        if block.has("should_panic") or "=>" in block.content("test_case"):
+            continue
+        if _asserts(fn, helpers):
+            continue
+        if fn.name.endswith("_does_not_panic") and _names_the_panic(src, block.start):
+            continue
+        found.append(
+            ("no-assert", fn.name, _line(text, test_attr), "test asserts nothing")
+        )
+
+    whole_file = _is_test_file(path)
+    lines = src.splitlines()
+    seen: set[tuple[str, int]] = set()
+
+    def report(rule: str, offset: int, message: str) -> None:
+        if not (whole_file or _in_spans(test_spans, offset)):
+            return
+        fn = _innermost(functions, offset)
+        key = (rule, fn.open_at if fn else -1)
+        if key not in seen:
+            seen.add(key)
+            found.append((rule, fn.name if fn else "?", _line(text, offset), message))
+
+    for match in SLEEP.finditer(text):
+        at = match.start()
+        explained = _sleep_explained(lines, _line(text, at))
+        defined_here = text[:at].rstrip().endswith("fn")
+        if explained or defined_here or _in_spans(paused_spans, at):
+            continue
+        report(
+            "bare-sleep",
+            at,
+            "wait on the event or a paused clock, or explain with `// sleep: why`",
+        )
+    if not path.startswith(ENV_OWNER):
+        for match in RAW_ENV.finditer(text):
+            report("raw-env", match.start(), "use tumult_test_utils::EnvGuard")
+    return sorted(found, key=lambda offence: (offence[2], offence[0]))
+
+
+def check_rust(
+    src: str, path: str = "", helpers: frozenset[str] | None = None
+) -> list[Offence]:
+    """Return the offences in one Rust source file.
+
+    `path` is the file's path relative to the repository root; it decides
+    whether the whole file is test code. `helpers` are the asserting
+    `assert_*` functions of the crate; by default those defined in `src`.
+    """
+    text = strip_rust(src)
+    if helpers is None:
+        helpers = _asserting_helpers([text])
+    return _check_rust(src, text, path, helpers)
+
+
+def strip_js(src: str) -> str:
+    """Blank out comments and the contents of string and template literals."""
+    out = list(src)
+    i, n = 0, len(src)
+
+    def blank(start: int, end: int) -> None:
+        for k in range(start, min(end, n)):
+            if out[k] != "\n":
+                out[k] = " "
+
+    while i < n:
+        ch = src[i]
+        if src.startswith("//", i):
+            end = src.find("\n", i)
+            end = n if end == -1 else end
+            blank(i, end)
+            i = end
+        elif src.startswith("/*", i):
+            end = src.find("*/", i + 2)
+            end = n if end == -1 else end + 2
+            blank(i, end)
+            i = end
+        elif ch in "'\"`":
+            j = i + 1
+            while j < n and src[j] != ch and (ch == "`" or src[j] != "\n"):
+                j += 2 if src[j] == "\\" else 1
+            blank(i + 1, j)
+            i = j + 1
+        else:
+            i += 1
+    return "".join(out)
 
 
 def check_js(src: str) -> list[Offence]:
     """Return focused-test offences in one JavaScript or TypeScript file."""
+    text = strip_js(src)
     return [
         (
             "focused-test",
-            m.group(0).rstrip("( \t"),
-            _line(src, m.start()),
+            m.group("only") or m.group("jasmine"),
+            _line(text, m.start()),
             "focused test must not be committed",
         )
-        for m in FOCUSED.finditer(src)
+        for m in FOCUSED.finditer(text)
     ]
 
 
+def _has_reason(call: ast.Call | None, position: int | None) -> bool:
+    """True when the skip carries a reason that is not an empty string."""
+    if call is None:
+        return False
+    reason = next(
+        (kw.value for kw in call.keywords if kw.arg in ("reason", "msg")), None
+    )
+    if reason is None and position is not None and len(call.args) > position:
+        reason = call.args[position]
+    if reason is None:
+        return False
+    return not (isinstance(reason, ast.Constant) and not str(reason.value).strip())
+
+
+class _SkipVisitor(ast.NodeVisitor):
+    def __init__(self) -> None:
+        self.found: list[Offence] = []
+        self.scope = ["?"]
+
+    def _report(self, name: str, line: int, what: str) -> None:
+        self.found.append(("bare-skip", name, line, f"{what} needs a reason"))
+
+    def _definition(self, node) -> None:
+        for decorator in node.decorator_list:
+            call = decorator if isinstance(decorator, ast.Call) else None
+            kind = ast.unparse(call.func if call else decorator).rsplit(".", 1)[-1]
+            if kind not in PY_SKIP_REASON_AT:
+                continue
+            if not _has_reason(call, PY_SKIP_REASON_AT[kind]):
+                self._report(node.name, decorator.lineno, kind)
+        self.scope.append(node.name)
+        for child in node.body:
+            self.visit(child)
+        self.scope.pop()
+
+    def visit_FunctionDef(self, node) -> None:  # noqa: N802 - ast visitor name
+        self._definition(node)
+
+    def visit_AsyncFunctionDef(self, node) -> None:  # noqa: N802 - ast visitor name
+        self._definition(node)
+
+    def visit_ClassDef(self, node) -> None:  # noqa: N802 - ast visitor name
+        self._definition(node)
+
+    def visit_Call(self, node: ast.Call) -> None:  # noqa: N802 - ast visitor name
+        name = ast.unparse(node.func)
+        if name in PY_SKIP_CALLS and not _has_reason(node, PY_SKIP_CALLS[name]):
+            self._report(self.scope[-1], node.lineno, name)
+        self.generic_visit(node)
+
+
 def check_python(src: str) -> list[Offence]:
-    """Return reasonless skips in one Python test file."""
-    found = []
-    for m in BARE_SKIP.finditer(src):
-        name = PY_DEF.search(src, m.end())
-        found.append(
-            (
-                "bare-skip",
-                name.group(1) if name else "?",
-                _line(src, m.start()),
-                "skip needs a reason",
-            )
-        )
-    return found
+    """Return reasonless skips and expected failures in one Python test file.
+
+    A file that does not parse reports nothing: it fails its own test run.
+    """
+    try:
+        tree = ast.parse(src)
+    except SyntaxError:
+        return []
+    visitor = _SkipVisitor()
+    visitor.visit(tree)
+    return sorted(visitor.found, key=lambda offence: offence[2])
 
 
-def _checker(path: Path):
-    if path.suffix == ".rs":
-        return check_rust
-    if path.suffix in JS_SUFFIXES:
-        return check_js
-    if path.suffix == ".py" and path.name.startswith(("test_", "test-")):
-        return check_python
-    return None
+def _is_python_test(path: Path) -> bool:
+    return path.suffix == ".py" and (
+        path.name.startswith(("test_", "test-")) or path.stem.endswith("_test")
+    )
+
+
+def _read(path: Path) -> str | None:
+    try:
+        return path.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        return None
 
 
 def scan(root: Path) -> list[tuple[str, str, int, str]]:
-    """Return (key, rule, line, message) for every offence under `root`."""
+    """Return (key, rule, line, message) for every offence under `root`.
+
+    The key is `path::name::rule`, the form used in the allowlist.
+    """
+    rust: dict[str, list[tuple[str, str, str]]] = {}  # crate: (path, source, stripped)
     offences = []
+
+    def add(rel: str, found: list[Offence]) -> None:
+        for rule, name, line, message in found:
+            offences.append((f"{rel}::{name}::{rule}", rule, line, message))
+
     for path in sorted(root.rglob("*")):
         rel = path.relative_to(root)
-        check = _checker(path)
-        if check is None or SKIP_DIRS.intersection(rel.parts) or not path.is_file():
+        is_js = path.suffix in JS_SUFFIXES
+        if not (path.suffix == ".rs" or is_js or _is_python_test(path)):
             continue
-        try:
-            src = path.read_text(encoding="utf-8")
-        except UnicodeDecodeError:
+        if SKIP_DIRS.intersection(rel.parts) or not path.is_file():
             continue
-        for rule, name, line, message in check(src):
-            offences.append((f"{rel.as_posix()}::{name}", rule, line, message))
-    return offences
+        src = _read(path)
+        if src is None:
+            continue
+        if path.suffix == ".rs":
+            crate = rel.parts[0] if len(rel.parts) > 1 else ""
+            rust.setdefault(crate, []).append((rel.as_posix(), src, strip_rust(src)))
+        else:
+            add(rel.as_posix(), check_js(src) if is_js else check_python(src))
+    for files in rust.values():
+        helpers = _asserting_helpers([text for _rel, _src, text in files])
+        for rel, src, text in files:
+            add(rel, _check_rust(src, text, rel, helpers))
+    return sorted(offences, key=lambda offence: (offence[0].split("::")[0], offence[2]))
 
 
-def load_allowlist(path: Path) -> set[str]:
-    """Read `path::name  # reason` lines; a missing file is an empty list."""
+def load_allowlist(path: Path) -> list[tuple[int, str]]:
+    """Read (line number, entry) pairs; a missing file is an empty list."""
     if not path.exists():
-        return set()
-    entries = set()
-    for raw in path.read_text(encoding="utf-8").splitlines():
+        return []
+    entries = []
+    for number, raw in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
         entry = raw.split("#", 1)[0].strip()
         if entry:
-            entries.add(entry)
+            entries.append((number, entry))
     return entries
 
 
+def _well_formed(entry: str) -> bool:
+    parts = entry.split("::")
+    return len(parts) == 3 and all(parts) and parts[2] in RULES
+
+
 def run(root: Path, allowlist: Path, out=sys.stdout) -> int:
-    """Print failures and stale allowlist entries; return the exit code."""
-    allowed = load_allowlist(allowlist)
+    """Print the offences that are not allowlisted and the allowlist entries
+    that are stale or malformed; return the exit code."""
+    entries = load_allowlist(allowlist)
+    allowed = {entry for _number, entry in entries}
     offences = scan(root)
-    failures = [o for o in offences if o[0] not in allowed]
-    stale = sorted(allowed - {o[0] for o in offences})
-    for key, rule, line, message in failures:
-        path, name = key.split("::", 1)
+    present = {key for key, _rule, _line_no, _message in offences}
+    failures = 0
+    for key, rule, line, message in offences:
+        if key in allowed:
+            continue
+        path, name, _rule = key.split("::")
         print(f"{path}:{line}: {rule}: {name}: {message}", file=out)
-    for entry in stale:
-        print(f"note: allowlist entry no longer needed: {entry}", file=out)
+        failures += 1
+    for number, entry in entries:
+        if not _well_formed(entry):
+            problem = "bad-allow", "expected path::name::rule with a known rule"
+        elif entry not in present:
+            problem = "stale-allow", "matches nothing, delete the line"
+        else:
+            continue
+        print(
+            f"{allowlist.name}:{number}: {problem[0]}: {entry}: {problem[1]}", file=out
+        )
+        failures += 1
     if failures:
         print(
-            f"{len(failures)} test hygiene failure(s). See docs/guides/testing.md.",
+            f"{failures} test hygiene failure(s). See docs/guides/testing.md.",
             file=out,
         )
         return 1
@@ -288,8 +678,8 @@ def main() -> int:
     )
     args = parser.parse_args()
     if args.list:
-        for key, rule, _line_no, _message in scan(args.root):
-            print(f"{key}  # {rule}")
+        for key in dict.fromkeys(key for key, *_rest in scan(args.root)):
+            print(key)
         return 0
     return run(args.root, args.allowlist)
 
