@@ -96,6 +96,9 @@ impl ClickHouseStore {
         for attempt in 0..retry_config.max_attempts {
             match Self::connect(config).await {
                 Ok(store) => return Ok(store),
+                // Nothing follows the last attempt, so there is nothing to
+                // wait for.
+                Err(e) if attempt + 1 == retry_config.max_attempts => last_err = Some(e),
                 Err(e) => {
                     let backoff = retry_config
                         .backoff_durations

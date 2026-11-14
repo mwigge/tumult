@@ -180,7 +180,8 @@ async fn default_retry_makes_three_attempts_with_doubling_backoff() {
         .filter(|span| span.name == "clickhouse.connect")
         .count();
     assert_eq!(attempts, 3);
-    assert_eq!(started.elapsed(), std::time::Duration::from_secs(14));
+    // 2 s and 4 s between the attempts, nothing after the last one.
+    assert_eq!(started.elapsed(), std::time::Duration::from_secs(6));
 }
 
 #[tokio::test(start_paused = true)]
@@ -202,7 +203,7 @@ async fn retry_stops_at_the_configured_attempts_and_waits_the_listed_backoff() {
 
     assert!(matches!(result.err(), Some(AnalyticsError::Io(_))));
     assert_eq!(spans.len(), 2);
-    // 300 ms after the first failure; the second has no listed backoff and
-    // falls back to 8 s.
-    assert_eq!(started.elapsed(), std::time::Duration::from_millis(8_300));
+    // 300 ms after the first failure; the second failure is the last and
+    // returns at once.
+    assert_eq!(started.elapsed(), std::time::Duration::from_millis(300));
 }
