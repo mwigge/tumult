@@ -10,8 +10,8 @@ use opentelemetry_proto::tonic::logs::v1::{LogRecord, ResourceLogs, ScopeLogs};
 use opentelemetry_proto::tonic::resource::v1::Resource;
 use serde_json::json;
 use tumult_lake::{
-    EntityEventKind, EntityEventRow, EntityLimits, EntityOutcome, Store, WireForm,
-    ENTITIES_PER_ENVIRONMENT,
+    EntityEventKind, EntityEventRow, EntityEvictions, EntityLimits, EntityOutcome, EvictionReason,
+    Store, WireForm, ENTITIES_PER_ENVIRONMENT,
 };
 
 use super::*;
@@ -756,7 +756,81 @@ fn rows_pruned_for_the_version_cap_are_counted() {
         &tumult_lake::EntityApplied {
             outcomes: vec![EntityOutcome::Opened],
             versions_pruned: 4,
+            ..tumult_lake::EntityApplied::default()
         },
     );
     assert!(versions_pruned(Pruned::VersionCap) >= before + 4);
+}
+
+/// At the cap an entity nobody reports any more makes room for a new one:
+/// the export is stored whole and the eviction is counted by its reason.
+#[tokio::test]
+async fn at_the_cap_a_silent_entity_makes_room_and_the_eviction_is_counted() {
+    /// 2026-01-01: more than a day ago whenever the test runs.
+    const LONG_AGO: i64 = 1_767_225_600_000_000_000;
+    let capped = EntityEvents::from_settings(&EntitySettings {
+        max_per_environment: Some("1"),
+        ..on()
+    });
+    let (_dir, store, ingest) = ingest_with(capped);
+    let batch = ingest.logs_batch(&host_export(false), LONG_AGO);
+    ingest.write(batch).await.unwrap();
+
+    let mut other = host_export(false);
+    other.resource_logs[0].resource.as_mut().unwrap().attributes[0] = text("host.id", "another");
+    let before: u64 = EvictionReason::ALL.into_iter().map(entities_evicted).sum();
+    let batch = ingest.logs_batch(&other, RECEIVED);
+    ingest.write(batch).await.unwrap();
+
+    let after: u64 = EvictionReason::ALL.into_iter().map(entities_evicted).sum();
+    assert!(after > before);
+    let entities = rows(&store, ENTITIES);
+    assert_eq!(entities.len(), 1, "{entities:?}");
+    assert_eq!(entities[0]["host_id"], "another");
+}
+
+#[test]
+fn evictions_are_counted_by_reason_and_exported() {
+    let before = EvictionReason::ALL.map(entities_evicted);
+    add_evicted(&EntityEvictions {
+        gone: 1,
+        expired: 2,
+        unreported: 3,
+    });
+    let after = EvictionReason::ALL.map(entities_evicted);
+    // Another test of this binary evicts too: floors.
+    assert!(after[0] > before[0]);
+    assert!(after[1] >= before[1] + 2);
+    assert!(after[2] >= before[2] + 3);
+    let mut text = String::new();
+    render_prometheus(&mut text);
+    assert!(
+        text.contains("# TYPE tumultd_entity_evictions_total counter"),
+        "{text}"
+    );
+    for reason in ["gone", "expired", "unreported"] {
+        let line = format!("tumultd_entity_evictions_total{{reason=\"{reason}\"}} ");
+        assert!(text.contains(&line), "{line}: {text}");
+    }
+}
+
+#[test]
+fn evictions_are_logged_at_a_bounded_rate() {
+    let (logs, _guard) = crate::test_logs::capture();
+    let limiter = LogLimiter::new(1, std::time::Duration::from_secs(600));
+    log_evicted(&limiter, &EntityEvictions::default());
+    assert_eq!(logs.text(), "", "nothing evicted, nothing said");
+    let evicted = EntityEvictions {
+        gone: 1,
+        expired: 2,
+        unreported: 3,
+    };
+    for _ in 0..5 {
+        log_evicted(&limiter, &evicted);
+    }
+    let text = logs.text();
+    assert_eq!(text.matches("INFO").count(), 1, "{text}");
+    assert!(text.contains("entity.evicted.gone=1"), "{text}");
+    assert!(text.contains("entity.evicted.expired=2"), "{text}");
+    assert!(text.contains("entity.evicted.unreported=3"), "{text}");
 }

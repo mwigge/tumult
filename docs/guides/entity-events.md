@@ -194,8 +194,8 @@ whose clock runs behind, or one that delivers from a retry queue, does not
 make a reporting entity look expired. Every repeated state moves
 `last_received_ns`, also a delayed copy that is too old to move
 `last_seen_ns`. An entity that is gone or expired is kept for 30 days
-after the daemon last heard of it and is then removed with all its rows
-(section 6).
+after the daemon last heard of it and is then removed with all its rows,
+or earlier when its place is needed for a new entity (section 6).
 
 An entity event that is stored as an entity is not written to `logs`. One
 that is dropped (section 6) is not written to `logs` either.
@@ -232,7 +232,8 @@ observer is a record and decides nothing. In particular a delete is
 accepted whatever the observer of the row is: with one token a rule that
 compared observers would refuse no sender, and it would refuse every
 delete sent after a token was introduced or removed. A deleted entity is
-shown as `gone` rather than removed.
+shown as `gone` rather than removed, until it is evicted to make room or its
+retention ends (section 6).
 
 ### What of a description is stored
 
@@ -341,18 +342,65 @@ bounded on every side:
 | Bound | Value | What happens beyond it |
 |---|---|---|
 | Rows per entity and environment | 100 | When a new row takes an entity past the bound its oldest rows are removed. The latest row always stays. Counted in `tumultd_entity_versions_pruned_total{reason="version_cap"}`. |
-| Entities per environment | 50 000, or `KRONIKA_ENTITY_MAX_PER_ENVIRONMENT` | A state event for an entity that has no row is refused: outcome `entity_limit`, and the warning `ingest.entity_events.limit_reached` at a bounded rate. The rest of the export, its log records included, is stored. Events for entities that have a row are applied as usual. |
-| Entities in the lake | four times the bound per environment | The same. The environment is named by the sender, so a bound per environment alone would bound nothing. |
+| Entities per environment | 50 000, or `KRONIKA_ENTITY_MAX_PER_ENVIRONMENT` | A state event for an entity that has no row first makes room (below). Only when nothing can make room is it refused: outcome `entity_limit`, and the warning `ingest.entity_events.limit_reached` at a bounded rate. The rest of the export, its log records included, is stored. Events for entities that have a row are applied as usual. |
+| Entities in the lake | four times the bound per environment | The same, with room made in any environment. The environment is named by the sender, so a bound per environment alone would bound nothing. |
 | Retention of entities that are not live | 30 days since the daemon last received anything for them | The entity is removed with all its rows. Counted in `tumultd_entity_versions_pruned_total{reason="retention"}`. |
 
+**Making room.** At either entity bound the daemon evicts before it
+refuses. Entities are removed, with all their rows, in this order:
+
+1. entities that are `gone` or `expired`, the one the daemon heard of
+   longest ago first;
+2. entities that send no periodic reports (`interval_s = 0`) and of which
+   the daemon received nothing for 24 hours. Such an entity never expires
+   and is `live` for the API however old it is; for the bounds it ages
+   out after a day, so that an environment cannot be filled for good with
+   entities that were reported once.
+
+One eviction removes up to a hundredth of the bound per environment (500
+with the default, never more than 5 000), so that the next new entities
+find room without another search. An entity that the same export names is
+not evicted for that export. Evictions are counted in
+`tumultd_entity_evictions_total` by `reason` (`gone`, `expired`,
+`unreported`) and logged as `ingest.entity_events.evicted` at a bounded
+rate. An entity that is live and reports is never evicted: when a bound
+is full of those, new entities are refused until an operator purges
+(below) or raises the bound. When a search finds nothing to evict the
+daemon does not search that bound again for a minute, or until a delete
+event is applied.
+
+What this means for a sender that misbehaves, since every holder of the
+ingest token can be one (section 5):
+
+- **It names the environment.** It can fill any environment, also one it
+  does not otherwise report for, and the lake bound is four environments'
+  worth. Entities it keeps live by reporting them cannot be evicted, so it
+  can hold a bound against newcomers for as long as it keeps sending.
+  The daemon cannot tell its events from honest ones; the remedy is the
+  operator's: rotate the token, then purge.
+- **It can push out history.** New entities at a full bound evict the
+  entities that are gone or expired, with their history, long before the
+  30 days of retention.
+- **It can roll out the history of one entity.** Every change of state
+  opens a row and an entity keeps 100. An entity that flaps between two
+  states at each report loses its oldest row with the 101st change: at a
+  report interval of one minute that is the history of the last hour and
+  forty minutes. The current state is always kept.
+- **Worst-case size.** The table holds at most 200 000 entities with 100
+  rows each, 20 million rows. A row carries at most 64 KiB of description
+  and relationships and a few KiB of identity, so the bound in bytes,
+  before the lake's compression, is about 1.3 TiB. Rows as a Collector
+  writes them are under 1 KiB, which puts 20 million of them near 20 GiB,
+  and identical reports share a row, so a fleet that is left alone stays
+  at one or a few rows per entity. Where the worst case matters, lower
+  `KRONIKA_ENTITY_MAX_PER_ENVIRONMENT`: every figure here scales with it.
+
 An entity that is gone or expired holds its place under the two entity
-bounds until it is removed. A live entity is never removed, however old:
-one that reports once and never again (`interval_s = 0`) stays until a
-delete event arrives. Removal runs on the writer when entity events
-arrive, at most every ten minutes and at most 5 000 entities at a time, so
-a daemon that receives no entity events removes nothing. A state event for
-an entity that was removed opens it again as a new entity, without its
-earlier history.
+bounds until it is evicted or its retention ends. Removal for retention
+runs on the writer when entity events arrive, at most every ten minutes
+and at most 5 000 entities at a time, so a daemon that receives no entity
+events removes nothing. A state event for an entity that was removed
+opens it again as a new entity, without its earlier history.
 
 `tumultd_entity_versions` is the number of rows in the table after the
 last export that carried entity events.
@@ -361,15 +409,51 @@ last export that carried entity events.
 
 The daemon has one writer for all telemetry, so the time it spends on
 entity events is time other exports wait. The entity events of an export
-are folded in one transaction with a fixed number of statements whatever
-their count: the latest rows of the entities named are read at once, new
-rows are inserted at once, changed rows are updated at once and the row
-bound is applied at once. Measured on a development machine with an
-unoptimised build, 5 000 events in one export take 0.25 s when each opens
-a row and 0.15 s when each is a heartbeat or a delete (the test
-`a_batch_of_five_thousand_events_is_folded_well_within_the_second` holds
-each case under one second); the same export took 13 s when every event
-ran its own statements.
+are folded in one transaction with a number of statements that does not
+grow with their count: the latest rows of the entities named are read at
+once, new rows are inserted at once, changed rows are updated at once and
+the row bound is applied at once. 5 000 events in one export are at most
+40 statements whatever they do to the rows (the test
+`a_batch_of_five_thousand_events_is_a_handful_of_statements` holds each
+case to that) and take about a quarter of a second in an unoptimised
+build; the same export took 13 s when every event ran its own statements.
+
+The writer counts the entities per environment in memory: once, from the
+table, when the first export needs it, and from then on by what it adds
+and removes itself. The rows of the entities an export names are read by
+key and environment. Both matter when the table is as full as a sender
+can make it. Measured with `cargo run -p tumult-lake --example
+entity_writer_cost` (unoptimised build, a development machine, the
+median of 200 exports of one event each, every export a transaction of
+its own; before and after the two changes):
+
+| One-event export | Before | After |
+|---|---|---|
+| heartbeat of a known entity, 50 000 entities in its environment | 37 ms | 38 ms |
+| unknown id, the environment at its bound with live entities (refused) | 44 ms | 27 ms |
+| the same with 150 000 entities in the lake | 143 ms | 33 ms |
+| unknown id, an environment with room (opened), 50 000 entities in the lake | 66 ms | 48 ms |
+| heartbeat of an entity whose key is in 100 000 environments | 374 ms | 49 ms |
+| unknown id, the environment at its bound with expired entities (evicts, then opened) | refused | 52 ms; 124 ms for the one export in 500 that evicts 500 entities |
+
+About 34 ms of every figure is what a transaction costs on that machine
+whatever it holds: a heartbeat in a table of 200 entities takes as long.
+
+What still costs a pass over the table, since it has no index:
+
+- **Opening a row** applies the row bound to the entities that gained
+  one, which reads the table once per export: the difference between a
+  heartbeat (38 ms) and an export that opens a row (48 ms) above.
+- **Eviction** reads the latest row of every entity of the environment
+  (of the lake, at the lake bound) to find the ones to remove, and then
+  removes them: 124 ms for 500 entities out of 50 000 above. A sender
+  that keeps a bound full of entities it lets expire can cause one such
+  search per 500 new entities, not one per export.
+- **The search that finds nothing** costs the same read without the
+  delete and is not repeated for a minute per bound.
+- **Retention**, every ten minutes: 10 ms when nothing is due in a table
+  of 200 000 rows, 84 ms when 5 000 entities are removed.
+- **A purge** of an environment with 50 000 entities took 87 ms.
 
 `entity_versions` has no primary key and no index. Heartbeats and deletes
 update rows in place, and the lake keeps indexes off every table that

@@ -131,6 +131,7 @@ impl Store {
         Ok(Writer {
             conn,
             clock: crate::lake::now_ns,
+            entities: crate::entities::EntityBook::default(),
         })
     }
 

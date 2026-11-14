@@ -25,12 +25,16 @@ use crate::Writer;
 /// Rows sent to the engine in one statement, at most.
 const CHUNK_ROWS: usize = 1_000;
 
-/// Bytes after which a statement is sent even with fewer rows. One row can
-/// carry a description and relationships of 64 KiB each.
+/// Bytes after which a statement is sent even with fewer rows. One row
+/// carries a description and relationships of 64 KiB together at most, as
+/// the conversion from the wire bounds them.
 const CHUNK_BYTES: usize = 4 * 1024 * 1024;
 
 const STAGING: &str = "
-CREATE TEMP TABLE IF NOT EXISTS entity_batch_keys (entity_key VARCHAR);
+CREATE TEMP TABLE IF NOT EXISTS entity_batch_keys (
+    entity_key VARCHAR,
+    environment VARCHAR
+);
 CREATE TEMP TABLE IF NOT EXISTS entity_batch_changes (
     entity_key VARCHAR,
     environment VARCHAR,
@@ -46,14 +50,23 @@ DELETE FROM entity_batch_changes;";
 
 const STAGE_KEYS: &str = "
 INSERT INTO entity_batch_keys
-SELECT unnest(from_json(CAST(? AS VARCHAR), '[\"VARCHAR\"]'))";
+SELECT u.entity_key, u.environment
+FROM (
+    SELECT unnest(from_json(CAST(? AS VARCHAR), '[{
+        \"entity_key\": \"VARCHAR\", \"environment\": \"VARCHAR\"
+    }]')) AS u
+)";
 
+/// Joined on the key and the environment: of a key that a sender planted
+/// in many environments, the rows of those the batch names are read.
 const LOAD_LATEST: &str = "
 SELECT entity_key, environment, valid_from_ns, last_seen_ns, interval_s,
        wire_form, state_hash, deleted_at_ns, delete_reason, observer,
        last_received_ns
 FROM entity_versions
-WHERE entity_key IN (SELECT entity_key FROM entity_batch_keys)
+WHERE (entity_key, environment) IN (
+    SELECT entity_key, environment FROM entity_batch_keys
+)
 QUALIFY row_number() OVER (
     PARTITION BY entity_key, environment ORDER BY valid_from_ns DESC
 ) = 1";
@@ -180,20 +193,25 @@ fn change_json((key, environment): &Slot, row: &Latest) -> Option<Value> {
 impl Writer {
     /// Empty the temporary tables, creating them on first use.
     fn clear_entity_staging(&self) -> Result<(), StoreError> {
+        self.entities.ran();
         Ok(self.conn.execute_batch(STAGING)?)
     }
 
-    /// Replace the staged keys with `keys`, each once.
+    /// Replace the staged keys with `slots`, each once.
     pub(super) fn stage_entity_keys<'k>(
         &self,
-        keys: impl Iterator<Item = &'k String>,
+        slots: impl Iterator<Item = &'k Slot>,
     ) -> Result<(), StoreError> {
         self.clear_entity_staging()?;
-        let mut keys: Vec<&String> = keys.collect();
-        keys.sort_unstable();
-        keys.dedup();
+        let mut slots: Vec<&Slot> = slots.collect();
+        slots.sort_unstable();
+        slots.dedup();
         let mut stage = self.conn.prepare(STAGE_KEYS)?;
-        in_chunks(keys.into_iter().map(|key| json!(key)), |chunk| {
+        let staged = slots
+            .into_iter()
+            .map(|(key, environment)| json!({"entity_key": key, "environment": environment}));
+        in_chunks(staged, |chunk| {
+            self.entities.ran();
             stage.execute(params![chunk])?;
             Ok(())
         })
@@ -204,7 +222,8 @@ impl Writer {
         &self,
         prepared: &[Prepared<'_>],
     ) -> Result<HashMap<Slot, Latest>, StoreError> {
-        self.stage_entity_keys(prepared.iter().map(|item| &item.key))?;
+        self.stage_entity_keys(prepared.iter().map(|item| &item.slot))?;
+        self.entities.ran();
         let mut stmt = self.conn.prepare(LOAD_LATEST)?;
         let rows = stmt.query_map([], |row| {
             Ok((
@@ -240,6 +259,7 @@ impl Writer {
             .rows()
             .filter_map(|(slot, row)| version_json(slot, row));
         in_chunks(opened, |chunk| {
+            self.entities.ran();
             insert.execute(params![chunk])?;
             Ok(())
         })
@@ -252,6 +272,7 @@ impl Writer {
         let mut staged = false;
         let changed = fold.rows().filter_map(|(slot, row)| change_json(slot, row));
         in_chunks(changed, |chunk| {
+            self.entities.ran();
             stage.execute(params![chunk])?;
             staged = true;
             Ok(())
@@ -259,6 +280,7 @@ impl Writer {
         if !staged {
             return Ok(());
         }
+        self.entities.ran();
         self.conn.execute(UPDATE_VERSIONS, [])?;
         Ok(())
     }
@@ -276,6 +298,41 @@ mod tests {
         })
         .unwrap();
         seen
+    }
+
+    /// A sender names the environment, so it can plant one key in as many
+    /// as the lake holds. A batch reads the rows of the environments it
+    /// names and no others.
+    #[test]
+    fn the_latest_rows_are_read_for_the_environments_the_batch_names() {
+        use crate::{EntityEventKind, EntityEventRow, EntityLimits, Store, WireForm};
+        let dir = tempfile::TempDir::new().unwrap();
+        let store = Store::open(&dir.path().join("kronika.duckdb")).unwrap();
+        let writer = store.writer().unwrap();
+        let planted = |environment: &str| EntityEventRow {
+            kind: EntityEventKind::State,
+            ts_ns: 1,
+            received_at_ns: 1,
+            entity_type: "host".into(),
+            entity_id: vec![("host.id".into(), "everywhere".into())],
+            description: json!({}),
+            relationships: json!([]),
+            interval_s: None,
+            delete_reason: None,
+            wire_form: WireForm::Spec,
+            observer: "tok:a".into(),
+            schema_url: None,
+            environment: environment.into(),
+        };
+        let events = [planted("one"), planted("two"), planted("three")];
+        writer
+            .apply_entity_events(&events, &EntityLimits::default())
+            .unwrap();
+        let named = [planted("two")];
+        let prepared: Vec<Prepared<'_>> = named.iter().map(Prepared::new).collect();
+        let latest = writer.load_latest(&prepared).unwrap();
+        let environments: Vec<&str> = latest.keys().map(|slot| slot.1.as_str()).collect();
+        assert_eq!(environments, vec!["two"]);
     }
 
     #[test]

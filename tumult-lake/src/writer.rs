@@ -12,6 +12,8 @@ pub struct Writer {
     pub(crate) conn: Connection,
     /// The wall clock in nanoseconds since the epoch; a test sets its own.
     pub(crate) clock: fn() -> i64,
+    /// What is remembered about the entity table between batches.
+    pub(crate) entities: crate::entities::EntityBook,
 }
 
 impl Writer {

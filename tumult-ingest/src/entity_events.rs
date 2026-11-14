@@ -11,7 +11,9 @@ use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 use std::sync::Arc;
 
 use opentelemetry_proto::tonic::collector::logs::v1::ExportLogsServiceRequest;
-use tumult_lake::{EntityApplied, EntityLimits, EntityOutcome, Writer};
+use tumult_lake::{
+    EntityApplied, EntityEvictions, EntityLimits, EntityOutcome, EvictionReason, Writer,
+};
 use tumult_otlp::{EntityDrop, EntityOptions};
 
 use crate::log_guard::LogLimiter;
@@ -341,6 +343,54 @@ static VERSION_ROWS: AtomicU64 = AtomicU64::new(0);
 /// When entities past the retention window were last looked for.
 static LAST_PRUNE_NS: AtomicI64 = AtomicI64::new(0);
 static REFUSALS: LogLimiter = LogLimiter::warnings();
+/// Entities evicted to make room, in the order of [`EvictionReason::ALL`].
+static EVICTED: [AtomicU64; 3] = [AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0)];
+static EVICTIONS: LogLimiter = LogLimiter::warnings();
+
+fn evicted_counter(reason: EvictionReason) -> &'static AtomicU64 {
+    let index = match reason {
+        EvictionReason::Gone => 0,
+        EvictionReason::Expired => 1,
+        EvictionReason::Unreported => 2,
+    };
+    &EVICTED[index]
+}
+
+/// Entities removed since start to make room for new ones, for `reason`.
+#[must_use]
+pub fn entities_evicted(reason: EvictionReason) -> u64 {
+    evicted_counter(reason).load(Ordering::Relaxed)
+}
+
+fn add_evicted(evicted: &EntityEvictions) {
+    for reason in EvictionReason::ALL {
+        let entities = u64::try_from(evicted.count(reason)).unwrap_or(u64::MAX);
+        evicted_counter(reason).fetch_add(entities, Ordering::Relaxed);
+    }
+}
+
+/// Say, at a bounded rate, that entities were removed to make room: it is
+/// what the table is meant to do at a bound, and an operator who misses
+/// an entity should be able to find out why.
+fn log_evicted(limiter: &LogLimiter, evicted: &EntityEvictions) {
+    if evicted.total() == 0 {
+        return;
+    }
+    let Some(suppressed) = limiter.allow("entity_evicted") else {
+        return;
+    };
+    tracing::info!(
+        name: "ingest.entity_events.evicted",
+        {
+            config.key = MAX_PER_ENVIRONMENT_ENV,
+            entity.evicted.gone = evicted.gone,
+            entity.evicted.expired = evicted.expired,
+            entity.evicted.unreported = evicted.unreported,
+            log.suppressed = suppressed,
+        },
+        "entities nobody reports any more were removed to make room for new ones"
+    );
+}
 
 fn pruned_counter(reason: Pruned) -> &'static AtomicU64 {
     match reason {
@@ -366,6 +416,8 @@ fn add_pruned(reason: Pruned, rows: usize) {
 pub(crate) fn after_write(writer: &Writer, applied: &EntityApplied) {
     note_outcomes(&applied.outcomes);
     add_pruned(Pruned::VersionCap, applied.versions_pruned);
+    add_evicted(&applied.evicted);
+    log_evicted(&EVICTIONS, &applied.evicted);
     let refused = applied
         .outcomes
         .iter()
@@ -390,7 +442,7 @@ fn warn_refused(limiter: &LogLimiter, refused: usize) {
             entity.event.refused = refused,
             log.suppressed = suppressed,
         },
-        "new entities refused: the environment or the lake holds as many as it may"
+        "new entities refused: the limit is reached and every entity under it is live"
     );
 }
 
@@ -471,6 +523,17 @@ pub fn render_prometheus(out: &mut String) {
             ("version_cap", versions_pruned(Pruned::VersionCap)),
             ("retention", versions_pruned(Pruned::Retention)),
         ],
+    );
+    let evicted: Vec<(&str, u64)> = EvictionReason::ALL
+        .iter()
+        .map(|reason| (reason.as_str(), entities_evicted(*reason)))
+        .collect();
+    push_labelled(
+        out,
+        "tumultd_entity_evictions_total",
+        "Entities removed with all their rows to make room at a limit, by reason.",
+        "reason",
+        &evicted,
     );
     let name = "tumultd_entity_versions";
     out.push_str(&format!(

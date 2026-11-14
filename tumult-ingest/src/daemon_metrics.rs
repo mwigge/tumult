@@ -218,6 +218,7 @@ mod tests {
             "tumultd_entity_events_total",
             "tumultd_entity_events_dropped_total",
             "tumultd_entity_versions_pruned_total",
+            "tumultd_entity_evictions_total",
             "tumultd_entity_versions",
             "tumultd_active_campaigns",
             "tumultd_supervisor_last_tick_ns",

@@ -50,14 +50,16 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 use crate::error::StoreError;
-use crate::store::with_tx;
 use crate::{LogRow, Writer};
 
 mod batch;
 mod caps;
 
-use caps::Census;
-pub use caps::{EntityLimits, ENTITIES_PER_ENVIRONMENT, ENTITY_VERSIONS_PER_ENTITY};
+pub(crate) use caps::EntityBook;
+pub use caps::{
+    EntityEvictions, EntityLimits, EntityPurge, EvictionReason, ENTITIES_PER_ENVIRONMENT,
+    ENTITY_UNREPORTED_AFTER_S, ENTITY_VERSIONS_PER_ENTITY,
+};
 
 /// Upper bound on a stored report interval (30 days). It keeps the
 /// `entities_current` expiry arithmetic inside `BIGINT` whatever a sender
@@ -156,6 +158,8 @@ pub struct EntityApplied {
     /// Rows removed because an entity had more than
     /// [`EntityLimits::versions_per_entity`].
     pub versions_pruned: usize,
+    /// Entities removed, with all their rows, to make room for new ones.
+    pub evicted: EntityEvictions,
 }
 
 impl EntityOutcome {
@@ -305,7 +309,8 @@ impl Latest {
 /// An event with its derived key, state text and hash.
 struct Prepared<'a> {
     event: &'a EntityEventRow,
-    key: String,
+    /// The key of the entity and the environment it is tracked in.
+    slot: Slot,
     description: String,
     relationships: String,
     hash: String,
@@ -319,7 +324,10 @@ impl<'a> Prepared<'a> {
         let relationships = canonical(&event.relationships);
         Self {
             event,
-            key: entity_key(&event.entity_type, &event.entity_id),
+            slot: (
+                entity_key(&event.entity_type, &event.entity_id),
+                event.environment.clone(),
+            ),
             hash: state_hash(&description, &relationships),
             description,
             relationships,
@@ -448,11 +456,10 @@ type Slot = (String, String);
 struct Fold<'a> {
     limits: &'a EntityLimits,
     latest: HashMap<Slot, Latest>,
-    /// The entities stored before the batch plus those it added; read when
-    /// the batch first names an entity without a row.
-    census: Option<Census>,
-    /// The keys of the entities that gained a row.
-    grown: Vec<String>,
+    /// The entities that gained a row.
+    grown: Vec<Slot>,
+    /// Entities evicted to make room for the ones the batch opened.
+    evicted: EntityEvictions,
     /// Rows that a later event of the batch superseded.
     closed: Vec<(Slot, Latest)>,
 }
@@ -476,7 +483,7 @@ impl Writer {
         events: &[EntityEventRow],
         limits: &EntityLimits,
     ) -> Result<EntityApplied, StoreError> {
-        with_tx(&self.conn, || self.put_entity_events(events, limits))
+        self.entity_tx(|| self.put_entity_events(events, limits))
     }
 
     /// Store the log rows and the entity events of one export in a single
@@ -491,7 +498,7 @@ impl Writer {
         events: &[EntityEventRow],
         limits: &EntityLimits,
     ) -> Result<EntityApplied, StoreError> {
-        with_tx(&self.conn, || {
+        self.entity_tx(|| {
             self.put_logs(logs)?;
             self.put_entity_events(events, limits)
         })
@@ -511,13 +518,13 @@ impl Writer {
         let mut fold = Fold {
             limits,
             latest: self.load_latest(&prepared)?,
-            census: None,
             grown: Vec::new(),
+            evicted: EntityEvictions::default(),
             closed: Vec::new(),
         };
         let mut outcomes = Vec::with_capacity(events.len());
         for item in &prepared {
-            let slot = (item.key.clone(), item.event.environment.clone());
+            let slot = item.slot.clone();
             let outcome = match item.event.kind {
                 EntityEventKind::Delete => apply_delete(fold.latest.get_mut(&slot), item.event),
                 EntityEventKind::State => self.apply_state(&mut fold, slot, item)?,
@@ -527,9 +534,15 @@ impl Writer {
         self.insert_versions(&fold)?;
         self.update_versions(&fold)?;
         let versions_pruned = self.cap_entity_versions(&fold.grown, limits.versions_per_entity)?;
+        // A delete made an entity evictable where there may have been
+        // none.
+        if outcomes.contains(&EntityOutcome::Tombstoned) {
+            self.entities.look_again();
+        }
         Ok(EntityApplied {
             outcomes,
             versions_pruned,
+            evicted: fold.evicted,
         })
     }
 
@@ -548,11 +561,13 @@ impl Writer {
                 Ok(EntityOutcome::Refreshed)
             }
             StateStep::Open => {
-                if !fold.latest.contains_key(&slot) && !self.admit(fold, &slot.1)? {
+                if !fold.latest.contains_key(&slot)
+                    && !self.admit(&slot.1, fold.limits, &mut fold.evicted)?
+                {
                     return Ok(EntityOutcome::EntityLimit);
                 }
                 let opened = state.open(fold.latest.get(&slot));
-                fold.grown.push(slot.0.clone());
+                fold.grown.push(slot.clone());
                 // The row this one supersedes leaves the map; it is
                 // written with the others when the batch is folded.
                 if let Some(closed) = fold.latest.insert(slot.clone(), opened) {
@@ -561,16 +576,6 @@ impl Writer {
                 Ok(EntityOutcome::Opened)
             }
         }
-    }
-
-    /// Whether the limits leave room for one more entity in `environment`,
-    /// counting it when they do.
-    fn admit(&self, fold: &mut Fold<'_>, environment: &str) -> Result<bool, StoreError> {
-        let census = match fold.census.take() {
-            Some(census) => census,
-            None => self.entity_census()?,
-        };
-        Ok(fold.census.insert(census).admit(environment, fold.limits))
     }
 }
 

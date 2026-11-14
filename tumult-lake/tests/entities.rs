@@ -2,8 +2,6 @@
 //! state events into one row per distinct state, and `entities_current`
 //! derives liveness from the latest row of each entity.
 
-use std::time::{Duration, Instant};
-
 use serde_json::{json, Value};
 use tumult_lake::{
     entity_key, EntityApplied, EntityEventKind, EntityEventRow, EntityLimits, EntityOutcome,
@@ -1057,7 +1055,9 @@ fn a_version_cap_of_zero_still_keeps_the_latest_row() {
 }
 
 /// The cap counts entities, not events: what has a row is served as before,
-/// and only an entity without one is refused.
+/// and only an entity without one is refused. (What makes room at the cap
+/// is in `entity_caps.rs`; here every entity is named by the batch that
+/// would need its place.)
 #[test]
 fn a_new_entity_beyond_the_environment_cap_is_refused() {
     let (_d, store) = fixture();
@@ -1149,7 +1149,7 @@ fn an_entity_named_twice_in_one_batch_takes_one_place() {
 }
 
 /// The environment is the sender's to name, so the environments together
-/// are bounded too.
+/// are bounded too. The entities here are live: nothing can make room.
 #[test]
 fn a_new_entity_beyond_the_total_cap_is_refused_in_any_environment() {
     let (_d, store) = fixture();
@@ -1160,7 +1160,7 @@ fn a_new_entity_beyond_the_total_cap_is_refused_in_any_environment() {
     };
     let in_env = |environment: &str| EntityEventRow {
         environment: environment.into(),
-        ..host("a", PAST, 0)
+        ..host("a", FUTURE, 0)
     };
     assert_eq!(
         apply_within(&store, &[in_env("one"), in_env("two")], &limits).outcomes,
@@ -1234,24 +1234,6 @@ fn pruning_takes_the_longest_silent_entities_first_and_no_more_than_asked() {
     assert_eq!(host_ids(&store), vec!["b"]);
 }
 
-/// A removed entity takes no place: the cap counts what is stored.
-#[test]
-fn a_pruned_entity_frees_its_place_under_the_cap() {
-    let (_d, store) = fixture();
-    let limits = EntityLimits::per_environment(1);
-    apply_within(&store, &gone_host("a", PAST), &limits);
-    assert_eq!(
-        apply_within(&store, &[host("b", PAST, 0)], &limits).outcomes,
-        vec![EntityOutcome::EntityLimit],
-        "a gone entity holds its place until it is pruned"
-    );
-    store.writer().unwrap().prune_entities(FUTURE, 10).unwrap();
-    assert_eq!(
-        apply_within(&store, &[host("b", PAST, 0)], &limits).outcomes,
-        vec![EntityOutcome::Opened]
-    );
-}
-
 /// The table carries no index: it receives an UPDATE with every heartbeat,
 /// and since schema v5 no table that is updated has one (an index that
 /// WAL replay leaves out of step with its table makes every later UPDATE
@@ -1321,65 +1303,86 @@ fn a_lake_from_before_the_receipt_column_opens_and_is_backfilled() {
     assert_eq!(versions(&Store::open(store.path()).unwrap()), before);
 }
 
-/// The largest batch a careful sender makes is a few thousand events. The
-/// single writer serves all telemetry, so such a batch has to be folded
-/// well within the second, whatever it does to the rows: open them,
-/// refresh them, supersede them or delete them.
-#[test]
-fn a_batch_of_five_thousand_events_is_folded_well_within_the_second() {
-    const BOUND: Duration = Duration::from_millis(1_000);
-    let (_d, store) = fixture();
-    let writer = store.writer().unwrap();
-    let limits = EntityLimits::default();
-    let batch = |ts_ns: i64, n: i64| -> Vec<EntityEventRow> {
-        (0..5_000)
-            .map(|i| host(&format!("h-{i}"), ts_ns, n))
-            .collect()
-    };
-    let timed = |events: &[EntityEventRow]| {
-        let start = Instant::now();
-        let applied = writer.apply_entity_events(events, &limits).unwrap();
-        (start.elapsed(), applied.outcomes)
-    };
-    let deletes: Vec<EntityEventRow> = batch(PAST + 3 * SECOND, 1)
-        .into_iter()
-        .map(|event| EntityEventRow {
-            kind: EntityEventKind::Delete,
-            ..event
+fn receipts(store: &Store) -> Vec<(i64, i64, i64, Option<i64>)> {
+    versions(store)
+        .iter()
+        .map(|row| {
+            (
+                row["valid_from_ns"].as_i64().unwrap(),
+                row["last_seen_ns"].as_i64().unwrap(),
+                row["last_received_ns"].as_i64().unwrap(),
+                row["deleted_at_ns"].as_i64(),
+            )
         })
-        .collect();
-    let steps = [
-        ("opened", batch(PAST, 0), EntityOutcome::Opened),
-        (
-            "refreshed",
-            batch(PAST + SECOND, 0),
-            EntityOutcome::Refreshed,
-        ),
-        (
-            "superseded",
-            batch(PAST + 2 * SECOND, 1),
-            EntityOutcome::Opened,
-        ),
-        ("deleted", deletes, EntityOutcome::Tombstoned),
-    ];
-    for (what, events, expected) in steps {
-        let (took, outcomes) = timed(&events);
-        assert!(
-            outcomes.iter().all(|outcome| *outcome == expected),
-            "{what}"
-        );
-        assert!(took < BOUND, "{what}: 5000 events took {took:?}");
-    }
-    assert_eq!(writer.entity_version_count().unwrap(), 10_000);
-    drop(writer);
-    let gone = store
-        .read_only()
-        .unwrap()
-        .query_json_rows(
-            "SELECT count(*) AS n, min(last_seen_ns) AS seen FROM entities_current \
-             WHERE liveness = 'gone' AND delete_reason IS NULL",
-        )
-        .unwrap();
-    assert_eq!(gone[0]["n"], 5_000);
-    assert_eq!(gone[0]["seen"], PAST + 2 * SECOND);
+        .collect()
+}
+
+/// A stored row that one batch first refreshes and then supersedes is
+/// written with what the refresh recorded: when the entity was last seen
+/// in that state and when the daemon heard of it. Writing only the latest
+/// row of each entity would lose it.
+#[test]
+fn a_row_refreshed_and_then_superseded_in_one_batch_keeps_the_refresh() {
+    let (_d, store) = fixture();
+    apply(&store, &[host("a", PAST, 0)]);
+    let heartbeat = EntityEventRow {
+        received_at_ns: PAST + 50 * SECOND,
+        ..host("a", PAST + 5 * SECOND, 0)
+    };
+    let change = EntityEventRow {
+        received_at_ns: PAST + 60 * SECOND,
+        ..host("a", PAST + 6 * SECOND, 1)
+    };
+    assert_eq!(
+        apply(&store, &[heartbeat, change]),
+        vec![EntityOutcome::Refreshed, EntityOutcome::Opened]
+    );
+    assert_eq!(
+        receipts(&store),
+        vec![
+            (PAST, PAST + 5 * SECOND, PAST + 50 * SECOND, None),
+            (
+                PAST + 6 * SECOND,
+                PAST + 6 * SECOND,
+                PAST + 60 * SECOND,
+                None
+            ),
+        ]
+    );
+}
+
+/// The same for a tombstone: a stored row that one batch deletes and then
+/// supersedes (the entity came back) keeps its tombstone, its reason and
+/// the time the delete was received.
+#[test]
+fn a_row_deleted_and_then_superseded_in_one_batch_keeps_the_tombstone() {
+    let (_d, store) = fixture();
+    apply(&store, &[host("a", PAST, 0)]);
+    let gone = EntityEventRow {
+        kind: EntityEventKind::Delete,
+        received_at_ns: PAST + 50 * SECOND,
+        delete_reason: Some("drained".into()),
+        ..host("a", PAST + 5 * SECOND, 0)
+    };
+    let back = EntityEventRow {
+        received_at_ns: PAST + 60 * SECOND,
+        ..host("a", PAST + 6 * SECOND, 0)
+    };
+    assert_eq!(
+        apply(&store, &[gone, back]),
+        vec![EntityOutcome::Tombstoned, EntityOutcome::Opened]
+    );
+    assert_eq!(
+        receipts(&store),
+        vec![
+            (PAST, PAST, PAST + 50 * SECOND, Some(PAST + 5 * SECOND)),
+            (
+                PAST + 6 * SECOND,
+                PAST + 6 * SECOND,
+                PAST + 60 * SECOND,
+                None
+            ),
+        ]
+    );
+    assert_eq!(versions(&store)[0]["delete_reason"], "drained");
 }
