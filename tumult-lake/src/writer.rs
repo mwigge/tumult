@@ -29,6 +29,13 @@ impl Writer {
         migrate(&self.conn).map_err(StoreError::from)
     }
 
+    /// Have the writer read the time from `clock`: for a test of what it
+    /// does as time passes. The daemon never sets one.
+    #[doc(hidden)]
+    pub fn set_clock(&mut self, clock: fn() -> i64) {
+        self.clock = clock;
+    }
+
     /// Recorded schema version.
     ///
     /// # Errors

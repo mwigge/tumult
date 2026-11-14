@@ -61,6 +61,12 @@ const EVICTION_CHUNK_MAX: usize = 5_000;
 /// keeps naming new entities would otherwise make every export pay it.
 const NOTHING_TO_EVICT_FOR_NS: i64 = 60 * 1_000_000_000;
 
+/// The least time between two searches of one bound for something to
+/// evict, in nanoseconds, whatever was deleted in between. A sender at a
+/// full bound that deletes an entity with every export would otherwise
+/// make every export pay the search.
+const EVICTION_SEARCH_SPACING_NS: i64 = 5 * 1_000_000_000;
+
 /// How far `entity_versions` may grow.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct EntityLimits {
@@ -235,6 +241,9 @@ pub(crate) struct EntityBook {
     /// The bounds that held nothing to evict, with the time until which
     /// that is taken as still true.
     nothing_to_evict: RefCell<HashMap<Full, i64>>,
+    /// The bounds that were searched for something to evict, with the
+    /// time of the search.
+    searched: RefCell<HashMap<Full, i64>>,
     /// Statements run on the entity table and its staging tables.
     statements: Cell<u64>,
 }
@@ -251,9 +260,36 @@ impl EntityBook {
         self.look_again();
     }
 
-    /// Something became evictable, or may have.
-    pub(super) fn look_again(&self) {
+    /// Anything may have become evictable.
+    fn look_again(&self) {
         self.nothing_to_evict.borrow_mut().clear();
+    }
+
+    /// Something became evictable in `environment`: what is remembered
+    /// of its bound and of the lake's no longer holds. What is remembered
+    /// of the other environments does.
+    pub(super) fn look_again_in(&self, environment: &str) {
+        let mut noted = self.nothing_to_evict.borrow_mut();
+        noted.remove(&Full::Environment(environment.to_owned()));
+        noted.remove(&Full::Lake);
+    }
+
+    /// Whether `full` was searched less than
+    /// [`EVICTION_SEARCH_SPACING_NS`] ago. A search noted ahead of the
+    /// clock does not count: the clock was set back.
+    fn searched_lately(&self, full: &Full, now_ns: i64) -> bool {
+        self.searched
+            .borrow()
+            .get(full)
+            .is_some_and(|at_ns| lately(*at_ns, now_ns))
+    }
+
+    /// Remember that `full` is searched now, and drop the searches that
+    /// no longer hold anything back.
+    fn note_search(&self, full: Full, now_ns: i64) {
+        let mut searched = self.searched.borrow_mut();
+        searched.retain(|_, at_ns| lately(*at_ns, now_ns));
+        searched.insert(full, now_ns);
     }
 
     fn found_nothing(&self, full: &Full, now_ns: i64) -> bool {
@@ -271,6 +307,10 @@ impl EntityBook {
         noted.retain(|_, until_ns| now_ns < *until_ns);
         noted.insert(full, now_ns.saturating_add(NOTHING_TO_EVICT_FOR_NS));
     }
+}
+
+fn lately(at_ns: i64, now_ns: i64) -> bool {
+    (0..EVICTION_SEARCH_SPACING_NS).contains(&now_ns.saturating_sub(at_ns))
 }
 
 const CENSUS: &str = "
@@ -459,7 +499,8 @@ impl Writer {
     }
 
     /// Evict up to [`EntityLimits::eviction_chunk`] entities from what is
-    /// `full`; whether any went.
+    /// `full`; whether any went. None goes without a search, and `full` is
+    /// searched at most once in [`EVICTION_SEARCH_SPACING_NS`].
     fn evict(
         &self,
         full: &Full,
@@ -467,9 +508,11 @@ impl Writer {
         evicted: &mut EntityEvictions,
     ) -> Result<bool, StoreError> {
         let now_ns = (self.clock)();
-        if self.entities.found_nothing(full, now_ns) {
+        if self.entities.found_nothing(full, now_ns) || self.entities.searched_lately(full, now_ns)
+        {
             return Ok(false);
         }
+        self.entities.note_search(full.clone(), now_ns);
         let silence_ns = limits.unreported_after_s.saturating_mul(1_000_000_000);
         let environment = full.environment();
         self.prepare_victims()?;
@@ -607,7 +650,7 @@ impl Writer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{EntityEventKind, EntityEventRow, Store, WireForm};
+    use crate::{EntityApplied, EntityEventKind, EntityEventRow, EntityOutcome, Store, WireForm};
 
     /// 2100-01-01: ahead of any clock, so the entity is live.
     const FUTURE: i64 = 4_102_444_800_000_000_000;
@@ -718,6 +761,113 @@ mod tests {
         assert!(!book.found_nothing(&Full::Lake, NOTHING_TO_EVICT_FOR_NS));
     }
 
+    fn deleted(id: &str, environment: &str) -> EntityEventRow {
+        EntityEventRow {
+            kind: EntityEventKind::Delete,
+            ts_ns: FUTURE + 1,
+            environment: environment.into(),
+            ..host(id)
+        }
+    }
+
+    fn within(id: &str, environment: &str) -> EntityEventRow {
+        EntityEventRow {
+            environment: environment.into(),
+            ..host(id)
+        }
+    }
+
+    /// What one export of `event` does and how many statements it runs.
+    fn cost(writer: &Writer, event: EntityEventRow) -> (EntityApplied, u64) {
+        let before = writer.entity_statements();
+        let limits = EntityLimits::per_environment(2);
+        let applied = writer.apply_entity_events(&[event], &limits).unwrap();
+        (applied, writer.entity_statements() - before)
+    }
+
+    /// Two environments, each full of two live hosts and each searched in
+    /// vain at [`FUTURE`] by the writer's clock.
+    fn two_full_environments() -> (tempfile::TempDir, Writer, u64) {
+        let (dir, mut writer) = writer();
+        writer.clock = || FUTURE;
+        let mut searched = 0;
+        for environment in ["prod", "dev"] {
+            for id in ["a", "b"] {
+                cost(&writer, within(id, environment));
+            }
+            let (refused, ran) = cost(&writer, within("c", environment));
+            assert_eq!(refused.outcomes, vec![EntityOutcome::EntityLimit]);
+            searched = ran;
+        }
+        (dir, writer, searched)
+    }
+
+    /// A delete says that there is something to evict where it was
+    /// applied. What the writer remembers of another environment stays:
+    /// a sender cannot make every export search every full bound by
+    /// deleting an entity somewhere.
+    #[test]
+    fn a_delete_ends_what_is_remembered_of_its_own_environment_only() {
+        let (_dir, mut writer, searched) = two_full_environments();
+        cost(&writer, deleted("a", "dev"));
+        // Past the spacing of two searches, within the minute.
+        writer.clock = || FUTURE + EVICTION_SEARCH_SPACING_NS;
+        let (refused, ran) = cost(&writer, within("d", "prod"));
+        assert_eq!(refused.outcomes, vec![EntityOutcome::EntityLimit]);
+        assert!(ran < searched, "prod was searched again: {ran} statements");
+        let (opened, _) = cost(&writer, within("d", "dev"));
+        assert_eq!(opened.outcomes, vec![EntityOutcome::Opened]);
+        assert_eq!(opened.evicted.gone, 1);
+    }
+
+    #[test]
+    fn a_delete_ends_what_is_remembered_of_the_lake() {
+        let book = EntityBook::default();
+        let prod = Full::Environment("prod".into());
+        let dev = Full::Environment("dev".into());
+        for full in [&prod, &dev, &Full::Lake] {
+            book.note_nothing(full.clone(), 0);
+        }
+        book.look_again_in("dev");
+        assert!(book.found_nothing(&prod, 1));
+        assert!(!book.found_nothing(&dev, 1));
+        assert!(!book.found_nothing(&Full::Lake, 1));
+    }
+
+    /// One bound is searched once in the spacing, also when a delete says
+    /// there is something to find: the new entity waits for the next
+    /// search.
+    #[test]
+    fn a_bound_is_not_searched_twice_within_the_spacing_whatever_is_deleted() {
+        let (_dir, mut writer, searched) = two_full_environments();
+        cost(&writer, deleted("a", "prod"));
+        writer.clock = || FUTURE + EVICTION_SEARCH_SPACING_NS - 1;
+        let (refused, ran) = cost(&writer, within("d", "prod"));
+        assert_eq!(refused.outcomes, vec![EntityOutcome::EntityLimit]);
+        assert_eq!(refused.evicted, EntityEvictions::default());
+        assert!(ran < searched, "searched again: {ran} statements");
+        writer.clock = || FUTURE + EVICTION_SEARCH_SPACING_NS;
+        let (opened, _) = cost(&writer, within("d", "prod"));
+        assert_eq!(opened.outcomes, vec![EntityOutcome::Opened]);
+        assert_eq!(opened.evicted.gone, 1);
+    }
+
+    /// The searches are remembered per bound and dropped once the spacing
+    /// has passed; a clock that was set back does not hold a bound closed.
+    #[test]
+    fn the_searches_are_remembered_per_bound_for_the_spacing() {
+        let book = EntityBook::default();
+        let prod = Full::Environment("prod".into());
+        book.note_search(prod.clone(), 10);
+        assert!(book.searched_lately(&prod, 10));
+        assert!(book.searched_lately(&prod, 9 + EVICTION_SEARCH_SPACING_NS));
+        assert!(!book.searched_lately(&prod, 10 + EVICTION_SEARCH_SPACING_NS));
+        assert!(!book.searched_lately(&prod, 9), "the clock was set back");
+        assert!(!book.searched_lately(&Full::Lake, 10));
+        book.note_search(Full::Lake, 10 + EVICTION_SEARCH_SPACING_NS);
+        assert_eq!(book.searched.borrow().len(), 1, "prod was dropped");
+    }
+
     /// The silence of an entity without reports is measured by the
     /// writer's clock, like the receipt it is measured from.
     #[test]
@@ -735,6 +885,7 @@ mod tests {
         assert_eq!(applied.evicted, EntityEvictions::default(), "a day exactly");
         assert_eq!(day_ns, 86_400_000_000_000);
         writer.entities.look_again();
+        writer.entities.searched.borrow_mut().clear();
         writer.clock = || FUTURE + ENTITY_UNREPORTED_AFTER_S * 1_000_000_000 + 1;
         let applied = writer.apply_entity_events(&[host("a")], &limits).unwrap();
         assert_eq!(applied.evicted.unreported, 1);

@@ -422,7 +422,13 @@ rate. An entity that is live and reports is never evicted: when a bound
 is full of those, new entities are refused until an operator purges
 (below) or raises the bound. When a search finds nothing to evict the
 daemon does not search that bound again for a minute, or until a delete
-event is applied.
+event is applied in that environment (a delete elsewhere changes nothing
+for it). No bound is searched more than once in five seconds, whatever is
+deleted: a new entity that arrives at a full bound within five seconds of
+the last search is refused (`entity_limit`) and stored when its sender
+reports it again. With a bound under 200 entities one search makes room
+for one entity, so such a bound takes one new entity per five seconds
+once it is full.
 
 What this means for a sender that misbehaves, since every holder of the
 ingest token can be one (section 5):
@@ -537,7 +543,8 @@ What still costs a pass over the table, since it has no index:
   (of the lake, at the lake bound) to find the ones to remove, and then
   removes them: 124 ms for 500 entities out of 50 000 above. A sender
   that keeps a bound full of entities it lets expire can cause one such
-  search per 500 new entities, not one per export.
+  search per 500 new entities, not one per export, and one that deletes
+  an entity with every export one per five seconds and bound.
 - **The search that finds nothing** costs the same read without the
   delete and is not repeated for a minute per bound.
 - **Retention**, every ten minutes: 10 ms when nothing is due in a table

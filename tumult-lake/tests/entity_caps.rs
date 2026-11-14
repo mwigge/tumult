@@ -17,6 +17,16 @@ const PAST: i64 = 1_767_225_600_000_000_000;
 const FUTURE: i64 = 4_102_444_800_000_000_000;
 const SECOND: i64 = 1_000_000_000;
 
+/// The wall clock `S` seconds on. A writer searches a bound for something
+/// to evict at most once in a few seconds; a test that makes it search
+/// again moves its clock on instead of waiting.
+fn ahead<const S: i64>() -> i64 {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap();
+    i64::try_from(now.as_nanos()).unwrap() + S * SECOND
+}
+
 fn fixture() -> (tempfile::TempDir, Store) {
     let d = tempfile::TempDir::new().unwrap();
     let store = Store::open(&d.path().join("kronika.duckdb")).unwrap();
@@ -148,7 +158,7 @@ const MEND_INSERT: &str = "ALTER TABLE entity_versions RENAME COLUMN schema_link
 #[test]
 fn the_count_the_writer_holds_equals_the_table_after_every_change() {
     let (_d, store) = fixture();
-    let writer = store.writer().unwrap();
+    let mut writer = store.writer().unwrap();
     let limits = EntityLimits::per_environment(3);
     let one = EntityLimits {
         versions_per_entity: 1,
@@ -174,6 +184,7 @@ fn the_count_the_writer_holds_equals_the_table_after_every_change() {
     apply(&writer, &[deleted("b", FUTURE + 1)], &limits);
     held_is_stored(&writer, &store, "a delete");
 
+    writer.set_clock(ahead::<10>);
     let applied = apply(&writer, &[live("f")], &limits);
     assert_eq!(applied.outcomes, vec![EntityOutcome::Opened]);
     assert_eq!(applied.evicted.total(), 1);
@@ -225,7 +236,7 @@ fn the_count_the_writer_holds_equals_the_table_after_every_change() {
 #[test]
 fn at_the_bound_the_silent_entities_make_room_before_anything_is_refused() {
     let (_d, store) = fixture();
-    let writer = store.writer().unwrap();
+    let mut writer = store.writer().unwrap();
     let limits = EntityLimits::per_environment(4);
     assert_eq!(limits.eviction_chunk(), 1);
     apply(
@@ -240,7 +251,10 @@ fn at_the_bound_the_silent_entities_make_room_before_anything_is_refused() {
         &limits,
     );
     let mut evictions = Vec::new();
-    for id in ["n1", "n2", "n3"] {
+    let later: [(&str, fn() -> i64); 3] =
+        [("n1", ahead::<0>), ("n2", ahead::<10>), ("n3", ahead::<20>)];
+    for (id, clock) in later {
+        writer.set_clock(clock);
         let applied = apply(&writer, &[live(id)], &limits);
         assert_eq!(applied.outcomes, vec![EntityOutcome::Opened], "{id}");
         evictions.push(applied.evicted);
@@ -263,6 +277,7 @@ fn at_the_bound_the_silent_entities_make_room_before_anything_is_refused() {
         ],
         "longest silent of the gone and expired first, the unreported last"
     );
+    writer.set_clock(ahead::<30>);
     let refused = apply(&writer, &[live("n4")], &limits);
     assert_eq!(refused.outcomes, vec![EntityOutcome::EntityLimit]);
     assert_eq!(refused.evicted, EntityEvictions::default());
@@ -395,11 +410,12 @@ fn at_the_bound_of_the_lake_room_is_made_in_any_environment() {
 
 /// The writer remembers for a while that a bound held nothing to evict,
 /// so a sender that keeps naming new entities does not make every export
-/// search the table. A delete ends that at once: there is something now.
+/// search the table. A delete ends that: there is something now, and the
+/// next search of the bound, a few seconds after the last, finds it.
 #[test]
-fn a_delete_makes_room_for_the_next_export() {
+fn a_delete_makes_room_for_the_next_search() {
     let (_d, store) = fixture();
-    let writer = store.writer().unwrap();
+    let mut writer = store.writer().unwrap();
     let limits = EntityLimits::per_environment(2);
     apply(&writer, &[live("a"), live("b")], &limits);
 
@@ -421,6 +437,12 @@ fn a_delete_makes_room_for_the_next_export() {
     );
 
     apply(&writer, &[deleted("a", FUTURE + 1)], &limits);
+    assert_eq!(
+        outcomes(&writer, &[live("c")], &limits),
+        vec![EntityOutcome::EntityLimit],
+        "the bound was searched a moment ago"
+    );
+    writer.set_clock(ahead::<10>);
     let applied = apply(&writer, &[live("c")], &limits);
     assert_eq!(applied.outcomes, vec![EntityOutcome::Opened]);
     assert_eq!(applied.evicted.gone, 1);
@@ -559,7 +581,10 @@ fn a_purge_of_an_environment_by_a_writer_that_has_not_counted_leaves_the_count_t
 fn a_purge_of_one_type_by_a_writer_that_has_not_counted_leaves_the_count_true() {
     let (_d, store, writer) = a_writer_that_has_not_counted();
     assert_eq!(
-        writer.purge_entities("prod", Some("host")).unwrap().entities,
+        writer
+            .purge_entities("prod", Some("host"))
+            .unwrap()
+            .entities,
         3
     );
     let held = held_is_stored(&writer, &store, "a purge of the hosts of prod");

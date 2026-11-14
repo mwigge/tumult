@@ -535,9 +535,11 @@ impl Writer {
         self.update_versions(&fold)?;
         let versions_pruned = self.cap_entity_versions(&fold.grown, limits.versions_per_entity)?;
         // A delete made an entity evictable where there may have been
-        // none.
-        if outcomes.contains(&EntityOutcome::Tombstoned) {
-            self.entities.look_again();
+        // none: in its environment, and so in the lake.
+        for (item, outcome) in prepared.iter().zip(&outcomes) {
+            if *outcome == EntityOutcome::Tombstoned {
+                self.entities.look_again_in(&item.slot.1);
+            }
         }
         Ok(EntityApplied {
             outcomes,
