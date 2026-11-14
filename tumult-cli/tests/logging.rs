@@ -215,6 +215,93 @@ method[1]:
     assert!(stdout.contains("Method steps: 1"), "{stdout}");
 }
 
+/// What `tumult` printed on stdout for `args`, after it succeeded.
+fn stdout_of(dir: &Path, args: &[&str]) -> String {
+    let output = tumult(dir, args);
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "tumult {args:?}: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8(output.stdout).expect("utf-8 output")
+}
+
+#[test]
+fn agents_prints_one_row_per_adapter_on_stdout() {
+    let dir = tempfile::tempdir().unwrap();
+
+    let table = stdout_of(dir.path(), &["agents"]);
+
+    let mut lines = table.lines();
+    let header = lines.next().expect("a header line");
+    assert!(header.starts_with("ADAPTER"), "{table}");
+    assert!(header.ends_with("DETAIL"), "{table}");
+    let adapters: Vec<&str> = lines
+        .filter_map(|line| line.split_whitespace().next())
+        .collect();
+    assert!(adapters.contains(&"claude-code"), "{table}");
+    assert!(adapters.contains(&"codex"), "{table}");
+}
+
+#[test]
+fn compliance_reports_on_the_journal_of_a_run_and_lists_its_sources() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(
+        dir.path().join("experiment.toon"),
+        experiment_with_rollback(&dir.path().join("rolled-back")),
+    )
+    .unwrap();
+    stdout_of(dir.path(), &["run", "experiment.toon", "--no-ingest"]);
+
+    let report = stdout_of(
+        dir.path(),
+        &["compliance", "journal.toon", "--framework", "soc2"],
+    );
+    assert!(report.contains("Journals analyzed: 1\n"), "{report}");
+    assert!(report.contains("  completed: 1 run(s)\n"), "{report}");
+    assert!(report.ends_with("=== End Report ===\n"), "{report}");
+
+    // --sources lists the citation registry and needs no journals.
+    let sources = stdout_of(
+        dir.path(),
+        &["compliance", "--framework", "dora", "--sources"],
+    );
+    assert!(sources.contains(" — citation registry ===\n"), "{sources}");
+    assert!(sources.ends_with("=== End registry ===\n"), "{sources}");
+    assert!(!sources.contains("Journals analyzed"), "{sources}");
+}
+
+#[test]
+fn recommend_prints_its_json_document_on_stdout() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(
+        dir.path().join("experiment.toon"),
+        experiment_with_rollback(&dir.path().join("rolled-back")),
+    )
+    .unwrap();
+    // The run is ingested into the private store the recommendation reads.
+    stdout_of(dir.path(), &["run", "experiment.toon"]);
+
+    let document = stdout_of(
+        dir.path(),
+        &[
+            "recommend",
+            "--goal",
+            "improve postgres resilience",
+            "--store-path",
+            "lake.duckdb",
+            "--format",
+            "json",
+        ],
+    );
+
+    let value: Value = serde_json::from_str(&document)
+        .unwrap_or_else(|e| panic!("stdout is not one JSON document ({e}): {document}"));
+    assert!(value.is_object(), "{document}");
+    assert!(value.get("source").is_some(), "{document}");
+}
+
 /// The one line a failing run must leave on stderr, whatever the filter.
 fn only_fatal_line(rust_log: &str) -> Value {
     let dir = tempfile::tempdir().unwrap();

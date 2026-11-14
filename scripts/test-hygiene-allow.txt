@@ -24,17 +24,6 @@ tumult-api/tests/env_parts.rs::from_env_parts_loads_org_and_policy_falling_back_
 tumult-api/tests/env_parts.rs::lake_status_reports_watermarks_and_policy::raw-env  # deferred: move to tumult_test_utils::EnvGuard
 tumult-api/tests/env_parts.rs::retention_export_fails_closed_even_with_ingest_handle::raw-env  # deferred: move to tumult_test_utils::EnvGuard
 
-# tumult-cli: deferred, the crate is being changed elsewhere
-tumult-cli/src/dispatch_tests.rs::dispatch_agents_lists_adapters::no-assert  # deferred: asserts nothing yet
-tumult-cli/src/dispatch_tests.rs::dispatch_compliance_report_and_sources::no-assert  # deferred: asserts nothing yet
-tumult-cli/src/dispatch_tests.rs::dispatch_recommend_against_populated_store::no-assert  # deferred: asserts nothing yet
-tumult-cli/src/dispatch_tests.rs::dispatch_run_dry_run_covers_every_rollback_strategy::no-assert  # deferred: asserts nothing yet
-tumult-cli/src/dispatch_tests.rs::dispatch_agentic_deterministic_paths::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumult-cli/src/dispatch_tests.rs::dispatch_run_executes_and_prints_json_journal::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumult-cli/src/dispatch_tests.rs::dispatch_store_import_legacy_without_sources_errors::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumult-cli/src/dispatch_tests.rs::dispatch_store_lifecycle::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumult-cli/src/dispatch_tests.rs::dispatch_store_migrate_requires_clickhouse_url::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-
 # tumult-ingest: deferred, the crate is being changed elsewhere
 tumult-ingest/src/daemon_task.rs::ticker_ticks_until_shutdown::bare-sleep  # deferred: sleep without a stated reason
 tumult-ingest/src/grpc.rs::until::bare-sleep  # deferred: sleep without a stated reason
