@@ -510,7 +510,8 @@ fn normalise(
 struct State {
     description: Json,
     relationships: Json,
-    interval_s: i64,
+    /// `None` when the event states none.
+    interval_s: Option<i64>,
     /// Keys removed from the description and the relationships.
     filtered: u64,
 }
@@ -522,7 +523,7 @@ impl State {
         Self {
             description: Json::Object(Map::new()),
             relationships: Json::Array(Vec::new()),
-            interval_s: 0,
+            interval_s: None,
             filtered: 0,
         }
     }
@@ -1032,12 +1033,14 @@ fn check_state_size(description: &Json, relationships: &Json) -> Result<(), Enti
     Ok(())
 }
 
-/// The report interval in whole seconds, 0 when the event has none. A
-/// legacy interval is in milliseconds and is rounded up, so an entity
-/// that reports more often than once a second still counts as periodic.
-fn interval_s(attrs: &[KeyValue], keys: &Keys) -> Result<i64, EntityDrop> {
+/// The report interval in whole seconds, `None` when the event states
+/// none: the store then keeps the interval the entity has, which a 0
+/// would overwrite. A legacy interval is in milliseconds and is rounded
+/// up, so an entity that reports more often than once a second still
+/// counts as periodic.
+fn interval_s(attrs: &[KeyValue], keys: &Keys) -> Result<Option<i64>, EntityDrop> {
     let seconds = match value_of(attrs, keys.interval) {
-        None => return Ok(0),
+        None => return Ok(None),
         Some(any_value::Value::IntValue(raw)) if keys.interval_in_ms => ms_to_s(*raw),
         Some(any_value::Value::IntValue(raw)) => *raw,
         Some(any_value::Value::DoubleValue(raw)) if raw.is_finite() => {
@@ -1051,7 +1054,7 @@ fn interval_s(attrs: &[KeyValue], keys: &Keys) -> Result<i64, EntityDrop> {
         }
         Some(_) => return Err(EntityDrop::Malformed),
     };
-    Ok(seconds.clamp(0, ENTITY_INTERVAL_MAX_S))
+    Ok(Some(seconds.clamp(0, ENTITY_INTERVAL_MAX_S)))
 }
 
 fn ms_to_s(ms: i64) -> i64 {

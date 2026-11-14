@@ -38,7 +38,7 @@ fn state(ts_ns: i64, description: Value) -> EntityEventRow {
         entity_id: host_id(),
         description,
         relationships: json!([]),
-        interval_s: 10,
+        interval_s: Some(10),
         delete_reason: None,
         wire_form: WireForm::Spec,
         observer: "tok:a".into(),
@@ -260,7 +260,7 @@ fn a_changed_interval_opens_a_new_row() {
     let (_d, store) = fixture();
     let desc = json!({"os.type": "linux"});
     let with_interval = |ts_ns: i64, interval_s: i64| EntityEventRow {
-        interval_s,
+        interval_s: Some(interval_s),
         ..state(ts_ns, desc.clone())
     };
     apply(&store, &[with_interval(PAST, 10)]);
@@ -289,6 +289,90 @@ fn a_changed_interval_opens_a_new_row() {
     assert_eq!(rows[0]["last_seen_ns"], PAST, "the earlier terms are kept");
 }
 
+fn intervals(store: &Store) -> Vec<i64> {
+    versions(store)
+        .iter()
+        .map(|r| r["interval_s"].as_i64().unwrap())
+        .collect()
+}
+
+/// An event that states no interval says nothing about it: the stored one
+/// stays. Two reporters of one entity, of which one sends no interval,
+/// would otherwise open a row with every report, and the one without
+/// would make the entity never expire.
+#[test]
+fn a_state_without_an_interval_keeps_the_stored_one() {
+    let (_d, store) = fixture();
+    let desc = json!({"os.type": "linux"});
+    let unstated = |ts_ns: i64, description: Value| EntityEventRow {
+        interval_s: None,
+        ..state(ts_ns, description)
+    };
+    apply(&store, &[state(PAST, desc.clone())]);
+    assert_eq!(
+        apply(
+            &store,
+            &[
+                unstated(PAST + SECOND, desc.clone()),
+                state(PAST + 2 * SECOND, desc.clone()),
+                unstated(PAST + 3 * SECOND, desc.clone()),
+            ]
+        ),
+        vec![EntityOutcome::Refreshed; 3]
+    );
+    assert_eq!(intervals(&store), vec![10]);
+    // A changed state without an interval opens a row under the same terms.
+    assert_eq!(
+        apply(&store, &[unstated(PAST + 4 * SECOND, json!({"n": 2}))]),
+        vec![EntityOutcome::Opened]
+    );
+    assert_eq!(intervals(&store), vec![10, 10]);
+    assert_eq!(current(&store)[0]["liveness"], "expired");
+}
+
+/// The first event of an entity that states no interval opens it without
+/// one: nothing says it reports periodically.
+#[test]
+fn an_entity_first_seen_without_an_interval_has_none() {
+    let (_d, store) = fixture();
+    let unstated = EntityEventRow {
+        interval_s: None,
+        ..state(PAST, json!({}))
+    };
+    assert_eq!(apply(&store, &[unstated]), vec![EntityOutcome::Opened]);
+    assert_eq!(intervals(&store), vec![0]);
+    assert_eq!(current(&store)[0]["liveness"], "live");
+}
+
+/// An interval of 0 that is stated is a statement: the entity sends no
+/// periodic reports from here on.
+#[test]
+fn a_stated_interval_of_zero_still_means_no_expiry() {
+    let (_d, store) = fixture();
+    let zero = EntityEventRow {
+        interval_s: Some(0),
+        ..state(PAST + SECOND, json!({}))
+    };
+    apply(&store, &[state(PAST, json!({}))]);
+    assert_eq!(apply(&store, &[zero]), vec![EntityOutcome::Opened]);
+    assert_eq!(intervals(&store), vec![10, 0]);
+    assert_eq!(current(&store)[0]["liveness"], "live");
+}
+
+/// An entity that comes back after a delete without stating an interval
+/// comes back under the terms it had.
+#[test]
+fn an_entity_that_returns_without_an_interval_keeps_the_one_it_had() {
+    let (_d, store) = fixture();
+    let back = EntityEventRow {
+        interval_s: None,
+        ..state(PAST + 2 * SECOND, json!({}))
+    };
+    apply(&store, &[state(PAST, json!({})), delete(PAST + SECOND)]);
+    assert_eq!(apply(&store, &[back]), vec![EntityOutcome::Opened]);
+    assert_eq!(intervals(&store), vec![10, 10]);
+}
+
 /// Like any changed state, another interval must be newer than the row to
 /// replace it. A delayed or backdated copy leaves the row as it is.
 #[test]
@@ -298,7 +382,7 @@ fn a_changed_interval_that_is_not_newer_changes_nothing() {
     let stored = versions(&store);
     for interval_s in [0, 1, ENTITY_INTERVAL_MAX_S] {
         let backdated = EntityEventRow {
-            interval_s,
+            interval_s: Some(interval_s),
             received_at_ns: FUTURE,
             ..state(PAST + 10 * SECOND, json!({}))
         };
@@ -670,7 +754,7 @@ fn liveness_follows_three_missed_report_intervals() {
     let (_d, store) = fixture();
     let host = |name: &str, ts_ns: i64, interval_s: i64| EntityEventRow {
         entity_id: vec![("host.id".into(), name.into())],
-        interval_s,
+        interval_s: Some(interval_s),
         ..state(ts_ns, json!({}))
     };
     apply(
@@ -760,7 +844,7 @@ fn the_report_interval_is_bounded() {
     let (_d, store) = fixture();
     let host = |name: &str, interval_s: i64| EntityEventRow {
         entity_id: vec![("host.id".into(), name.into())],
-        interval_s,
+        interval_s: Some(interval_s),
         ..state(PAST, json!({}))
     };
     apply(&store, &[host("a", i64::MAX), host("b", -5)]);
@@ -1114,7 +1198,7 @@ fn host_ids(store: &Store) -> Vec<String> {
 fn pruning_removes_entities_that_are_not_live_and_left_the_window() {
     let (_d, store) = fixture();
     let once = |id: &str, ts_ns: i64| EntityEventRow {
-        interval_s: 0,
+        interval_s: Some(0),
         ..host(id, ts_ns, 0)
     };
     let mut events = Vec::new();

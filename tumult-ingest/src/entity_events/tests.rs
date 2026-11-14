@@ -687,7 +687,7 @@ fn host_event(kind: EntityEventKind, id: &str, at_ns: i64) -> EntityEventRow {
         entity_id: vec![("host.id".into(), id.into())],
         description: json!({}),
         relationships: json!([]),
-        interval_s: 0,
+        interval_s: Some(0),
         delete_reason: None,
         wire_form: WireForm::Spec,
         observer: "anonymous".into(),

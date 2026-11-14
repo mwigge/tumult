@@ -143,7 +143,7 @@ row per report.
 | `valid_from_ns` | when this state was first reported |
 | `last_seen_ns` | when it was last reported, by the sender's clock |
 | `last_received_ns` | when the daemon last received a report of it, by the daemon's clock |
-| `interval_s` | seconds between reports; `0` means the sender reports once |
+| `interval_s` | seconds between reports; `0` means the sender reports once. Taken from the event, or from the row before when the event carries none |
 | `deleted_at_ns`, `delete_reason` | set by a delete event |
 | `wire_form` | `spec` or `legacy` |
 | `observer` | how the event that opened the row came in (section 5); a record, not a permission |
@@ -158,6 +158,12 @@ The rules:
   history. The interval counts because liveness is derived from it: a
   sender that changes it leaves the row with the earlier interval behind,
   and a copy that is not newer than the stored row cannot change it.
+- A state event that carries no interval says nothing about it and the
+  entity keeps the interval it has (none, `0`, when the event is its
+  first). So two reporters of one entity, of which only one sends an
+  interval, share one row, and the one without cannot make the entity
+  stop expiring. An interval of `0` that is sent is a statement: it opens
+  a row and the entity no longer expires.
 - A delete event marks the latest row as deleted. It is ignored when it is
   older than the last report, when the entity has no row or when the
   entity is already deleted. Who sent it plays no part (section 5).

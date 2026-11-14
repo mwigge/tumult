@@ -19,7 +19,7 @@ fn state(entity_type: &str, id: (&str, &str), env: &str, ts_ns: i64) -> EntityEv
         entity_id: vec![(id.0.into(), id.1.into())],
         description: json!({"k8s.pod.name": "checkout-1"}),
         relationships: json!([]),
-        interval_s: 0,
+        interval_s: Some(0),
         delete_reason: None,
         wire_form: WireForm::Spec,
         observer: "token:default".into(),
@@ -50,11 +50,11 @@ async fn store(srv: &TestServer, events: Vec<EntityEventRow>) {
 async fn seed_entities(srv: &TestServer) {
     let now = now_ns();
     let mut silent = state("k8s.pod", ("k8s.pod.uid", "b"), "prod", now - 100 * NS);
-    silent.interval_s = 10;
+    silent.interval_s = Some(10);
     let removed = state("k8s.pod", ("k8s.pod.uid", "c"), "prod", now - 50 * NS);
     let mut host = state("host", ("host.id", "h-1"), "staging", now - 5 * NS);
     host.wire_form = WireForm::Legacy;
-    host.interval_s = 3_600;
+    host.interval_s = Some(3_600);
     store(
         srv,
         vec![

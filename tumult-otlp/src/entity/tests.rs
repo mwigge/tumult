@@ -170,7 +170,7 @@ fn pod_row(wire_form: WireForm) -> EntityEventRow {
         entity_id: vec![("k8s.pod.uid".into(), "u-1".into())],
         description: pod_description_json(),
         relationships: json!([]),
-        interval_s: 300,
+        interval_s: Some(300),
         delete_reason: None,
         wire_form,
         observer: "tok:test".into(),
@@ -278,21 +278,30 @@ fn a_legacy_interval_below_a_second_still_reports_periodically() {
             .push(kv("otel.entity.interval", Value::IntValue(ms)));
         entities_of(prod(), vec![record])[0].interval_s
     };
-    assert_eq!(with_interval(10_000), 10);
-    assert_eq!(with_interval(500), 1);
-    assert_eq!(with_interval(1_001), 2);
-    assert_eq!(with_interval(0), 0);
-    assert_eq!(with_interval(-5), 0);
-    assert_eq!(with_interval(i64::MAX), ENTITY_INTERVAL_MAX_S);
+    assert_eq!(with_interval(10_000), Some(10));
+    assert_eq!(with_interval(500), Some(1));
+    assert_eq!(with_interval(1_001), Some(2));
+    assert_eq!(with_interval(0), Some(0));
+    assert_eq!(with_interval(-5), Some(0));
+    assert_eq!(with_interval(i64::MAX), Some(ENTITY_INTERVAL_MAX_S));
 }
 
+/// An event without an interval states none, which is not the same as
+/// stating 0: the store keeps the interval the entity already has.
 #[test]
-fn an_absent_interval_means_no_periodic_reports() {
+fn an_absent_interval_is_not_an_interval_of_zero() {
     let mut record = spec_state();
     record
         .attributes
         .retain(|kv| kv.key != "entity.report.interval");
-    assert_eq!(entities_of(prod(), vec![record])[0].interval_s, 0);
+    assert_eq!(
+        entities_of(prod(), vec![record.clone()])[0].interval_s,
+        None
+    );
+    record
+        .attributes
+        .push(kv("entity.report.interval", Value::IntValue(0)));
+    assert_eq!(entities_of(prod(), vec![record])[0].interval_s, Some(0));
 }
 
 #[test]
@@ -366,7 +375,7 @@ fn a_delete_reads_only_the_type_the_id_and_the_reason() {
         assert_eq!(row.kind, EntityEventKind::Delete);
         assert_eq!(row.description, json!({}));
         assert_eq!(row.relationships, json!([]));
-        assert_eq!(row.interval_s, 0);
+        assert_eq!(row.interval_s, None);
     }
     assert_eq!(rows[0].delete_reason.as_deref(), Some("scaled_down"));
 }
@@ -395,7 +404,7 @@ fn an_id_less_host_event_takes_its_identity_from_the_resource() {
     for row in &rows {
         assert_eq!(row.entity_type, "host");
         assert_eq!(row.entity_id, vec![("host.id".into(), "9f2c".into())]);
-        assert_eq!(row.interval_s, 10);
+        assert_eq!(row.interval_s, Some(10));
         assert_eq!(row.description, json!({}));
         assert_eq!(row.environment, "");
     }

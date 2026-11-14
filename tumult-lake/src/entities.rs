@@ -10,7 +10,7 @@
 //!
 //! * a state with no row yet opens a row;
 //! * a state equal to the latest row (same `state_hash` and the same
-//!   report interval) refreshes it;
+//!   report interval, or no interval stated) refreshes it;
 //! * a state that differs opens a new row when it is newer than the latest
 //!   row was last seen, and is ignored otherwise. The interval is part of
 //!   the state because liveness is derived from it: were a heartbeat to
@@ -109,8 +109,10 @@ pub struct EntityEventRow {
     pub description: Value,
     /// The relationships, a JSON array kept as sent.
     pub relationships: Value,
-    /// Seconds between periodic reports; `0` means none are sent.
-    pub interval_s: i64,
+    /// Seconds between periodic reports. `Some(0)` says none are sent;
+    /// `None` says nothing, and the entity keeps the interval it has (none
+    /// when it is new).
+    pub interval_s: Option<i64>,
     pub delete_reason: Option<String>,
     pub wire_form: WireForm,
     /// How the event came in: a name for the ingest token that carried it,
@@ -307,7 +309,8 @@ struct Prepared<'a> {
     description: String,
     relationships: String,
     hash: String,
-    interval_s: i64,
+    /// The interval the event states, within bounds.
+    interval_s: Option<i64>,
 }
 
 impl<'a> Prepared<'a> {
@@ -320,8 +323,22 @@ impl<'a> Prepared<'a> {
             hash: state_hash(&description, &relationships),
             description,
             relationships,
-            interval_s: event.interval_s.clamp(0, ENTITY_INTERVAL_MAX_S),
+            interval_s: event
+                .interval_s
+                .map(|stated| stated.clamp(0, ENTITY_INTERVAL_MAX_S)),
         }
+    }
+
+    /// The interval of the entity once this state is applied: the one the
+    /// event states, else the one of `latest`, the row the entity has,
+    /// else none. An event that says nothing about the interval must not
+    /// change it: of two reporters of one entity the one without an
+    /// interval would otherwise open a row with every report and stop the
+    /// entity from ever expiring.
+    fn interval_after(&self, latest: Option<&Latest>) -> i64 {
+        self.interval_s
+            .or_else(|| latest.map(|row| row.interval_s))
+            .unwrap_or(0)
     }
 
     /// The row this state opens after `superseded`, the latest row so far.
@@ -336,7 +353,7 @@ impl<'a> Prepared<'a> {
             valid_from_ns,
             last_seen_ns: valid_from_ns,
             last_received_ns: event.received_at_ns,
-            interval_s: self.interval_s,
+            interval_s: self.interval_after(superseded),
             wire_form: event.wire_form.as_str().to_owned(),
             state_hash: self.hash.clone(),
             deleted_at_ns: None,
@@ -374,7 +391,7 @@ fn state_step(latest: Option<&Latest>, state: &Prepared<'_>) -> StateStep {
         }
         return StateStep::Stale;
     }
-    if latest.state_hash == state.hash && latest.interval_s == state.interval_s {
+    if latest.state_hash == state.hash && latest.interval_s == state.interval_after(Some(latest)) {
         return StateStep::Refresh;
     }
     if ts_ns > latest.last_seen_ns || wins_tie {
