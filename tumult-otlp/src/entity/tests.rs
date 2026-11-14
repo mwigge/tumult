@@ -573,7 +573,12 @@ fn values_of_the_wrong_shape_are_dropped_as_malformed() {
                 relationships_is_map
             ]
         ),
-        vec![EntityDrop::Malformed; 4]
+        vec![
+            EntityDrop::Malformed,
+            EntityDrop::NonStringId,
+            EntityDrop::Malformed,
+            EntityDrop::Malformed,
+        ]
     );
 }
 
@@ -710,7 +715,9 @@ fn only_a_string_identifies_an_entity() {
         with_id(Value::DoubleValue(1.0)),
         with_id(Value::BytesValue(vec![0x31])),
     ];
-    assert_eq!(drops_of(prod(), others), vec![EntityDrop::Malformed; 4]);
+    // Its own reason: a sender that writes `process.pid` as a number is
+    // found by it, apart from events that are broken in some other way.
+    assert_eq!(drops_of(prod(), others), vec![EntityDrop::NonStringId; 4]);
 }
 
 /// The target of a relationship is identified the same way.
@@ -734,7 +741,10 @@ fn only_a_string_identifies_the_target_of_a_relationship() {
             ),
         ],
     );
-    assert_eq!(drops_of(prod(), vec![record]), vec![EntityDrop::Malformed]);
+    assert_eq!(
+        drops_of(prod(), vec![record]),
+        vec![EntityDrop::NonStringId]
+    );
 }
 
 fn labelled() -> LogRecord {
@@ -949,4 +959,5 @@ fn every_drop_reason_has_its_own_name() {
         EntityDrop::ALL.iter().map(|d| d.as_str()).collect();
     assert_eq!(names.len(), EntityDrop::ALL.len());
     assert!(names.contains("no_identity"));
+    assert!(names.contains("non_string_id"));
 }

@@ -214,3 +214,95 @@ fn only_stored_events_count_towards_the_export_limit() {
     assert_eq!(tally.count(EntityDrop::ExportLimit), 0);
     assert_eq!(tally.count(EntityDrop::NoType), 5);
 }
+
+/// Format characters (Unicode `Cf`) are not seen when a name is read: a
+/// bidi override shows it reversed and a zero-width character makes two
+/// names look like one. What names an entity holds none.
+#[test]
+fn a_format_character_in_what_names_an_entity_is_malformed() {
+    let malformed = Some(EntityDrop::Malformed);
+    for hidden in [
+        '\u{ad}',
+        '\u{200b}',
+        '\u{200d}',
+        '\u{200f}',
+        '\u{202e}',
+        '\u{2066}',
+        '\u{feff}',
+        '\u{e0041}',
+    ] {
+        for record in [
+            pod(&format!("k8s{hidden}pod"), "k8s.pod.uid", "u-1"),
+            pod("k8s.pod", &format!("k8s.pod{hidden}uid"), "u-1"),
+            pod("k8s.pod", "k8s.pod.uid", &format!("u{hidden}1")),
+        ] {
+            assert_eq!(drop_of("prod", SCHEMA, record), malformed, "{hidden:?}");
+        }
+    }
+    // Letters outside ASCII are names like any other.
+    assert_eq!(
+        drop_of("prod", SCHEMA, pod("k8s.pod", "k8s.pod.uid", "bjørn-東京")),
+        None
+    );
+}
+
+fn related(relationship_type: &str) -> LogRecord {
+    spec_record(
+        "entity.state",
+        vec![
+            text("entity.type", "k8s.pod"),
+            kv("entity.id", pod_id()),
+            kv(
+                "entity.relationships",
+                list(vec![map(vec![
+                    text("relationship.type", relationship_type),
+                    text("entity.type", "k8s.node"),
+                    kv("entity.id", map(vec![text("k8s.node.uid", "n-1")])),
+                ])]),
+            ),
+        ],
+    )
+}
+
+/// The type of a relationship is a name like the type of an entity.
+#[test]
+fn a_control_or_format_character_in_a_relationship_type_is_malformed() {
+    assert_eq!(drop_of("prod", SCHEMA, related("runs_on")), None);
+    for hidden in ["runs\0on", "runs_on\n", "runs\u{202e}on", "\u{200b}runs_on"] {
+        assert_eq!(
+            drop_of("prod", SCHEMA, related(hidden)),
+            Some(EntityDrop::Malformed),
+            "{hidden:?}"
+        );
+    }
+}
+
+/// A delete is applied whatever its reason holds: the characters a name
+/// may not hold are taken out of the reason and the delete stays.
+#[test]
+fn a_delete_reason_loses_its_control_and_format_characters_and_still_deletes() {
+    let delete = |reason: &str| {
+        spec_record(
+            "entity.delete",
+            vec![
+                text("entity.type", "k8s.pod"),
+                kv("entity.id", pod_id()),
+                text("entity.delete.reason", reason),
+            ],
+        )
+    };
+    let rows = entities_of(
+        prod(),
+        vec![
+            delete("scaled\0 down\n"),
+            delete("\u{202e}evicted\u{200b}"),
+            delete("\0\u{feff}"),
+        ],
+    );
+    let reasons: Vec<Option<&str>> = rows
+        .iter()
+        .map(|row| row.delete_reason.as_deref())
+        .collect();
+    assert_eq!(reasons, vec![Some("scaled down"), Some("evicted"), None]);
+    assert!(rows.iter().all(|row| row.kind == EntityEventKind::Delete));
+}

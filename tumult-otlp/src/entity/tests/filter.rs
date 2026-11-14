@@ -384,7 +384,15 @@ fn a_relationship_without_a_type_or_a_target_is_malformed() {
         .into_iter()
         .map(|item| related(list(vec![item])))
         .collect();
-    assert_eq!(drops_of(prod(), records), vec![EntityDrop::Malformed; 4]);
+    assert_eq!(
+        drops_of(prod(), records),
+        vec![
+            EntityDrop::Malformed,
+            EntityDrop::Malformed,
+            EntityDrop::Malformed,
+            EntityDrop::NonStringId,
+        ]
+    );
 }
 
 #[test]
@@ -454,4 +462,40 @@ fn the_guide_lists_every_kept_key() {
         let cell = format!("`{}`", rule.pattern());
         assert!(guide.contains(&cell), "the guide does not list {cell}");
     }
+}
+
+/// The namespaces kept whole (`host.`, `service.` and the others) are kept
+/// by how a key starts, so a label must not get in under one of them. A
+/// segment that starts with `label`, `annotation` or `selector`, in any
+/// case, is never kept by default.
+#[test]
+fn a_label_under_a_kept_namespace_is_removed_whatever_its_case_or_ending() {
+    let description = strings(&[
+        ("service.name", "checkout"),
+        ("service.Labels.team", "payments"),
+        ("host.labels_json", "{\"team\":\"payments\"}"),
+        ("host.annotation/owner", "someone@example.test"),
+        ("os.SELECTOR", "app=checkout"),
+        ("cloud.Annotations", "x"),
+        ("deployment.label", "x"),
+        ("ict.selectors.app", "x"),
+    ]);
+    let (stored, filtered) = default_description("service", "service.instance.id", &description);
+    assert_eq!(stored, json!({"service.name": "checkout"}));
+    assert_eq!(filtered, 7);
+}
+
+/// The operator can still name such a key: the list of the operator is
+/// read after the rule.
+#[test]
+fn a_key_the_rule_removes_is_kept_when_the_operator_names_it() {
+    let allow = EntityOptions {
+        observer: "tok:test".into(),
+        attribute_allow: vec!["host.labels_json".into()],
+        ..EntityOptions::default()
+    };
+    let description = strings(&[("host.labels_json", "{}"), ("host.Labels.x", "y")]);
+    let (stored, filtered) = filtered_with(&allow, spec_of("host", "host.id", description));
+    assert_eq!(stored, json!({"host.labels_json": "{}"}));
+    assert_eq!(filtered, 1);
 }

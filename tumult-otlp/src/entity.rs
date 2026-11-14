@@ -152,17 +152,12 @@ pub const KEPT_DESCRIPTION_KEYS: &[KeptKey] = &[
     KeptKey::Exact("update_revision"),
 ];
 
-/// A key with one of these segments is a label, a selector or an
-/// annotation whatever it starts with: [`KEPT_DESCRIPTION_KEYS`] never
-/// keeps it.
-const NEVER_KEPT_SEGMENTS: &[&str] = &[
-    "label",
-    "labels",
-    "annotation",
-    "annotations",
-    "selector",
-    "selectors",
-];
+/// A key with a segment that starts with one of these, in any case, is a
+/// label, a selector or an annotation whatever namespace it stands in
+/// (`service.Labels.team`, `host.labels_json`, `host.annotation/owner`):
+/// [`KEPT_DESCRIPTION_KEYS`] never keeps it. The plural forms start with
+/// the singular ones.
+const NEVER_KEPT_SEGMENTS: &[&str] = &["label", "annotation", "selector"];
 
 /// What the ingest path knows about the sender and the operator's choices.
 #[derive(Debug, Clone, Default)]
@@ -193,17 +188,21 @@ pub enum EntityDrop {
     Oversized,
     /// The export already gave [`MAX_EVENTS_PER_EXPORT`] entity events.
     ExportLimit,
+    /// An identifying value that is not a string, such as a process id
+    /// sent as a number.
+    NonStringId,
 }
 
 impl EntityDrop {
     /// Every reason, in the order of the counters.
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 7] = [
         Self::UnknownKind,
         Self::NoType,
         Self::NoIdentity,
         Self::Malformed,
         Self::Oversized,
         Self::ExportLimit,
+        Self::NonStringId,
     ];
 
     /// The reason as it appears in logs and metrics.
@@ -216,6 +215,7 @@ impl EntityDrop {
             Self::Malformed => "malformed",
             Self::Oversized => "oversized",
             Self::ExportLimit => "export_limit",
+            Self::NonStringId => "non_string_id",
         }
     }
 
@@ -227,6 +227,7 @@ impl EntityDrop {
             Self::Malformed => 3,
             Self::Oversized => 4,
             Self::ExportLimit => 5,
+            Self::NonStringId => 6,
         }
     }
 }
@@ -234,7 +235,7 @@ impl EntityDrop {
 /// Dropped entity events per reason, with the limit on the warning about
 /// them.
 pub(crate) struct EntityDrops {
-    counts: [AtomicU64; 6],
+    counts: [AtomicU64; 7],
     /// Keys removed from descriptions and relationships of stored events.
     filtered: AtomicU64,
     warn: WarnLimit,
@@ -247,6 +248,7 @@ impl EntityDrops {
     pub(crate) const fn new() -> Self {
         Self {
             counts: [
+                AtomicU64::new(0),
                 AtomicU64::new(0),
                 AtomicU64::new(0),
                 AtomicU64::new(0),
@@ -540,11 +542,57 @@ fn state_of(attrs: &[KeyValue], keys: &Keys, options: &EntityOptions) -> Result<
     })
 }
 
-/// Whether the text holds a control character, NUL included. What names
-/// an entity is typed into URLs and read in log lines, and NUL ends a
-/// string in more than one place between here and a client.
-fn has_control(text: &str) -> bool {
-    text.chars().any(char::is_control)
+/// The Unicode format characters (general category `Cf`), as inclusive
+/// ranges in ascending order: soft hyphen, the Arabic and Syriac marks,
+/// the zero-width characters, the bidirectional marks, embeddings,
+/// overrides and isolates, the invisible operators, the byte order mark,
+/// the interlinear anchors, the shorthand and musical controls and the
+/// tag characters. A table kept here spares a dependency for one check;
+/// U+180E is listed although Unicode moved it out of `Cf`, since it is
+/// shown as nothing all the same.
+const FORMAT_CHARACTERS: &[(u32, u32)] = &[
+    (0x00AD, 0x00AD),
+    (0x0600, 0x0605),
+    (0x061C, 0x061C),
+    (0x06DD, 0x06DD),
+    (0x070F, 0x070F),
+    (0x0890, 0x0891),
+    (0x08E2, 0x08E2),
+    (0x180E, 0x180E),
+    (0x200B, 0x200F),
+    (0x202A, 0x202E),
+    (0x2060, 0x2064),
+    (0x2066, 0x206F),
+    (0xFEFF, 0xFEFF),
+    (0xFFF9, 0xFFFB),
+    (0x110BD, 0x110BD),
+    (0x110CD, 0x110CD),
+    (0x13430, 0x1343F),
+    (0x1BCA0, 0x1BCA3),
+    (0x1D173, 0x1D17A),
+    (0xE0001, 0xE0001),
+    (0xE0020, 0xE007F),
+];
+
+/// Whether the character is one a reader does not see: a control
+/// character, NUL included, or a format character such as a bidirectional
+/// override or a zero-width space.
+fn is_hidden(character: char) -> bool {
+    if character.is_control() {
+        return true;
+    }
+    let code = u32::from(character);
+    FORMAT_CHARACTERS
+        .iter()
+        .any(|(first, last)| (*first..=*last).contains(&code))
+}
+
+/// Whether the text holds a character that is not seen. What names an
+/// entity is typed into URLs and read in log lines: NUL ends a string in
+/// more than one place between here and a client, an override shows a
+/// name reversed and a zero-width character makes two names read as one.
+fn has_hidden(text: &str) -> bool {
+    text.chars().any(is_hidden)
 }
 
 /// The environment and the schema URL are the sender's, like the event:
@@ -554,7 +602,7 @@ fn check_source(source: &Source<'_>) -> Result<(), EntityDrop> {
     if source.environment.len() > MAX_ENVIRONMENT_LEN || schema_url.len() > MAX_SCHEMA_URL_LEN {
         return Err(EntityDrop::Oversized);
     }
-    if has_control(source.environment) || has_control(schema_url) {
+    if has_hidden(source.environment) || has_hidden(schema_url) {
         return Err(EntityDrop::Malformed);
     }
     Ok(())
@@ -584,7 +632,7 @@ fn entity_type<'a>(attrs: &'a [KeyValue], keys: &Keys) -> Result<&'a str, Entity
     if entity_type.len() > MAX_TYPE_LEN {
         return Err(EntityDrop::Oversized);
     }
-    if has_control(entity_type) {
+    if has_hidden(entity_type) {
         return Err(EntityDrop::Malformed);
     }
     Ok(entity_type)
@@ -619,7 +667,7 @@ fn checked_identity(mut pairs: Vec<(String, String)>) -> Result<Vec<(String, Str
         if key.len() > MAX_ID_PART_LEN || value.len() > MAX_ID_PART_LEN {
             return Err(EntityDrop::Oversized);
         }
-        if has_control(key) || has_control(value) {
+        if has_hidden(key) || has_hidden(value) {
             return Err(EntityDrop::Malformed);
         }
     }
@@ -650,11 +698,14 @@ fn own_identity(own: &[KeyValue]) -> Result<Vec<(String, String)>, EntityDrop> {
 
 /// An identifying value. The key of an entity is text, so a number or a
 /// boolean accepted here would name the same entity as the string that
-/// reads alike (`1` and `"1"`): only a string is taken.
+/// reads alike (`1` and `"1"`): only a string is taken, and another type
+/// is dropped under a reason of its own, so that a sender that writes
+/// `process.pid` as a number is found.
 fn id_text(value: Option<&AnyValue>) -> Result<String, EntityDrop> {
     match value.and_then(|v| v.value.as_ref()) {
         Some(any_value::Value::StringValue(text)) => Ok(text.clone()),
-        _ => Err(EntityDrop::Malformed),
+        Some(_) => Err(EntityDrop::NonStringId),
+        None => Err(EntityDrop::Malformed),
     }
 }
 
@@ -690,9 +741,16 @@ pub(crate) fn label_name(key: &str) -> Option<&str> {
 /// Whether [`KEPT_DESCRIPTION_KEYS`] keeps the key.
 fn kept_by_default(key: &str) -> bool {
     KEPT_DESCRIPTION_KEYS.iter().any(|rule| rule.matches(key))
-        && !key
-            .split('.')
-            .any(|segment| NEVER_KEPT_SEGMENTS.contains(&segment))
+        && !key.split('.').any(never_kept_segment)
+}
+
+/// Whether the segment starts with one of [`NEVER_KEPT_SEGMENTS`],
+/// whatever its case.
+fn never_kept_segment(segment: &str) -> bool {
+    let segment = segment.to_ascii_lowercase();
+    NEVER_KEPT_SEGMENTS
+        .iter()
+        .any(|never| segment.starts_with(never))
 }
 
 /// Whether the operator listed the label this key holds.
@@ -823,6 +881,9 @@ fn relationship(entries: &[KeyValue], filtered: &mut u64) -> Result<Json, Entity
         .ok_or(EntityDrop::Malformed)?;
     if relationship_type.len() > MAX_TYPE_LEN {
         return Err(EntityDrop::Oversized);
+    }
+    if has_hidden(relationship_type) {
+        return Err(EntityDrop::Malformed);
     }
     let target_type = entity_type(entries, &SPEC).map_err(|reason| match reason {
         EntityDrop::Oversized => EntityDrop::Oversized,
@@ -1000,10 +1061,13 @@ fn ms_to_s(ms: i64) -> i64 {
     ms / 1_000 + i64::from(ms % 1_000 != 0)
 }
 
-/// The reason of a delete, cut to [`MAX_REASON_LEN`]; the legacy form has
-/// none.
+/// The reason of a delete without the characters a reader does not see,
+/// cut to [`MAX_REASON_LEN`]; the legacy form has none. The reason is
+/// cleaned rather than refused: an entity that is gone is recorded as
+/// gone whatever the sender wrote about why.
 fn delete_reason(attrs: &[KeyValue], keys: &Keys) -> Option<String> {
-    let reason = common::attr_string(attrs, keys.delete_reason?)?;
+    let sent = common::attr_string(attrs, keys.delete_reason?)?;
+    let reason: String = sent.chars().filter(|c| !is_hidden(*c)).collect();
     if reason.is_empty() {
         return None;
     }

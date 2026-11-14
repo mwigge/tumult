@@ -250,9 +250,12 @@ every other key before the row is written. The keys stored by default:
 
 `<kind>` is one name without a dot. On top of the table:
 
-- A key with a segment `label`, `labels`, `annotation`, `annotations`,
-  `selector` or `selectors` is never stored by default, whatever it starts
-  with (`host.label.rack`, `service.annotations.x`).
+- A key with a segment that starts with `label`, `annotation` or
+  `selector`, in any case, is never stored by default, whatever namespace
+  it stands in (`host.label.rack`, `service.Labels.team`,
+  `host.labels_json`, `host.annotation/owner`). The rule is wide on
+  purpose: a harmless key such as `service.label_count` is removed too and
+  has to be named in `KRONIKA_ENTITY_ATTRIBUTE_ALLOW` to be kept.
 - A key stored by default keeps a scalar or a list of scalars. A map, or a
   list that holds one, is removed with its key, so nothing nested arrives
   under a listed name.
@@ -293,7 +296,8 @@ with the number left out.
 | `unknown_kind` | the record is marked as an entity event but is neither a state nor a delete; logged as `otlp.entity_event.unknown_kind` with the name of the event, at most once a minute, so a sender that uses a kind this build does not know can be found |
 | `no_type` | the type attribute of its wire form is missing or empty |
 | `no_identity` | it has no identifying attributes and the resource has none for its type (only `host` → `host.id` is known) |
-| `malformed` | a control character (NUL included) in the type, in an identifying name or value, in the environment or in the schema URL, a type that is not a string, an interval that is not a number, an identifying value that is empty or not a string (a number or a boolean would name the same entity as the string that reads alike), the same identifying name twice, a description that is not a map, relationships that are not an array of maps, a relationship without a type or without the type and identity of its target, or nesting deeper than 8 |
+| `malformed` | a control character (NUL included) or a Unicode format character (a bidirectional override, a zero-width space and the rest of category `Cf`) in the type, in an identifying name or value, in the type of a relationship, in the environment or in the schema URL, a type that is not a string, an interval that is not a number, an identifying value that is empty, the same identifying name twice, a description that is not a map, relationships that are not an array of maps, a relationship without a type or without the type and identity of its target, or nesting deeper than 8 |
+| `non_string_id` | an identifying value, of the entity or of the target of a relationship, is not a string. A number or a boolean would name the same entity as the string that reads alike (`1` and `"1"`), so only strings identify; a sender that writes `process.pid` as a number shows up under this reason and has to send it as text |
 | `export_limit` | the export already gave 10 000 entity events; the first 10 000 are stored and the rest dropped |
 | `oversized` | a type over 128 bytes, more than 16 identifying attributes, a name or value over 256 bytes, an environment over 256 bytes, a schema URL over 2048 bytes, more than 64 relationships, more than 4096 values in description and relationships (every entry of a map or a list counts, a removed key too), or description and relationships over 64 KiB together |
 
@@ -312,8 +316,9 @@ reason only. A description or an interval in it is ignored, so a delete is
 never dropped for what it says about a state.
 
 The report interval is kept between 0 and 30 days. An event time in the
-future is replaced by the time of receipt. A delete reason is cut at 256
-bytes.
+future is replaced by the time of receipt. A delete reason loses its
+control and format characters and is cut at 256 bytes; the delete is
+applied whatever the reason held.
 
 `tumultd_entity_events_total` counts what the store did with the events it
 accepted, by `outcome`: `opened`, `refreshed`, `tombstoned`,
