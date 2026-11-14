@@ -9,7 +9,21 @@ OTLP/gRPC and OTLP/HTTP, the gRPC listener also speaks OTel-Arrow (OTAP,
 the Collector's `otelarrow` exporter): `tumult-ingest::otap` decodes the
 Arrow IPC tables back into the OTLP request types, so the same
 `tumult-otlp` conversion and the same single-writer channel serve both
-carriers and the rows are identical whichever one delivered them.
+carriers and the rows are identical whichever one delivered them. The Arrow
+receiver treats every declared size as hostile: rows, attributes, decoded
+bytes, message size, retained dictionary bytes, open streams, stream age
+and decode time are bounded by the `KRONIKA_OTAP_*` limits
+(`tumult-ingest::otap::limits`), connections, their handshake time and
+their age by the `KRONIKA_GRPC_*` limits (`tumult-ingest::listener`). The
+listener does the TLS handshake itself and, when an ingest token is set,
+knows which connections have made an authorised call: one that has not
+is closed after `KRONIKA_GRPC_AUTH_TIMEOUT_SECS` and gives its place to a
+newcomer when there is no room. One
+connection or peer (an IPv4 address or an IPv6 /64) gets only a share of
+the streams and of the retained bytes, and waiting batches are decoded
+peer by peer in turn. Because release builds abort on panic, Arrow
+IPC is decoded by a checked reader of its own (`tumult-ingest::otap::ipc`)
+that accepts only the column types OTAP uses.
 Everything lives in this repository as first-class `tumult-*` crates.
 
 The daemon's configuration surface keeps `KRONIKA_*` environment variable
