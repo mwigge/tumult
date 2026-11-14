@@ -8393,6 +8393,7 @@ dependencies = [
  "tumult-plugin",
  "tumult-query",
  "tumult-ssh",
+ "tumult-test-utils",
  "uuid",
 ]
 

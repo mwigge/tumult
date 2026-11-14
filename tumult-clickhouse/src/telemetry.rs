@@ -307,6 +307,20 @@ mod tests {
         );
     }
 
+    /// An empty URL names no server, and there is nothing in it to hide.
+    #[test]
+    fn connect_span_names_no_server_for_an_empty_url() {
+        assert_eq!(
+            span_attributes(""),
+            [
+                KeyValue::new("db.system", "clickhouse"),
+                KeyValue::new("db.name", "tumult"),
+                KeyValue::new("server.address", "[redacted-url]"),
+                KeyValue::new("db.connection_string", ""),
+            ]
+        );
+    }
+
     fn invalid_url() -> Vec<KeyValue> {
         vec![
             KeyValue::new("db.system", "clickhouse"),

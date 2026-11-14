@@ -40,8 +40,9 @@ fn free_addr() -> std::net::SocketAddr {
 async fn the_daemon_log_outlives_readiness_and_is_removed_by_the_rollback() {
     use tumult_net::actions::{start_proxy, stop_proxy};
 
-    // Only this test in this binary reads the variable.
-    std::env::set_var("TUMULT_NET_PROXYD", env!("CARGO_BIN_EXE_tumult-net-proxyd"));
+    // Held to the end of the test: the rollback locates the daemon too.
+    let mut env = tumult_test_utils::EnvGuard::lock();
+    env.set("TUMULT_NET_PROXYD", env!("CARGO_BIN_EXE_tumult-net-proxyd"));
     let listen = free_addr();
     let key: String = listen
         .to_string()

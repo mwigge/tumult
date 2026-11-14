@@ -621,12 +621,12 @@ mod tests {
             "[[tokens]]\ntoken = \"tok-super-secret-value\nrole = \"viewer\"\n",
         )
         .unwrap();
-        std::env::set_var(AUTH_CONFIG_ENV, &path);
+        let mut env = tumult_test_utils::EnvGuard::lock();
+        env.set(AUTH_CONFIG_ENV, &path);
         let capture = tumult_otel::logging::testing::LogCapture::start(tracing::Level::INFO);
         let loaded = McpAuth::load();
         let auth = McpAuth::from_env();
         let logs = capture.snapshot();
-        std::env::remove_var(AUTH_CONFIG_ENV);
 
         let message = loaded.err().expect("a malformed config must not load");
         assert!(message.contains("invalid MCP auth config"), "{message}");
@@ -653,8 +653,8 @@ mod tests {
             // environment cannot exercise the open mode.
             return;
         }
-        std::env::remove_var(AUTH_CONFIG_ENV);
-        std::env::remove_var(TOKEN_ENV);
+        let mut env = tumult_test_utils::EnvGuard::lock();
+        env.remove(AUTH_CONFIG_ENV).remove(TOKEN_ENV);
         let capture = tumult_otel::logging::testing::LogCapture::start(tracing::Level::INFO);
         let auth = McpAuth::load().expect("no auth configured is not an error");
         let logs = capture.snapshot();

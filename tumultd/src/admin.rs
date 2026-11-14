@@ -535,15 +535,15 @@ mod tests {
     fn bootstrap_events_name_the_admin_and_never_carry_a_secret() {
         let _guard = env_lock();
         let (_dir, store, writer) = temp_store();
-        std::env::set_var(
+        let mut env = tumult_test_utils::EnvGuard::lock();
+        env.set(
             "KRONIKA_BOOTSTRAP_ADMIN_PASSWORD",
             "s3cret-bootstrap-password",
-        );
-        std::env::set_var("KRONIKA_BOOTSTRAP_TOKEN", "kro_0123456789abcdefghij");
+        )
+        .set("KRONIKA_BOOTSTRAP_TOKEN", "kro_0123456789abcdefghij");
         let capture = tumult_otel::logging::testing::LogCapture::start(tracing::Level::INFO);
         enforce_bind_guard(&writer, &store, &config("0.0.0.0:4318")).unwrap();
         let logs = capture.snapshot();
-        clear_bootstrap_env();
 
         let created = logs.named("auth.bootstrap.admin.created");
         assert_eq!(created.len(), 1, "{}", logs.raw);
@@ -558,11 +558,12 @@ mod tests {
     fn ignored_bootstrap_settings_are_reported_by_key_with_a_reason() {
         let _guard = env_lock();
         let (_dir, store, writer) = temp_store();
-        std::env::set_var("KRONIKA_BOOTSTRAP_TOKEN", "kro_0123456789abcdefghij");
+        let mut env = tumult_test_utils::EnvGuard::lock();
+        env.remove("KRONIKA_BOOTSTRAP_ADMIN_PASSWORD")
+            .set("KRONIKA_BOOTSTRAP_TOKEN", "kro_0123456789abcdefghij");
         let capture = tumult_otel::logging::testing::LogCapture::start(tracing::Level::INFO);
         enforce_bind_guard(&writer, &store, &config("127.0.0.1:4318")).unwrap();
         let logs = capture.snapshot();
-        clear_bootstrap_env();
 
         let ignored = logs.named("auth.bootstrap.token.ignored");
         assert_eq!(ignored.len(), 1, "{}", logs.raw);

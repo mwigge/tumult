@@ -147,6 +147,7 @@ impl Daemon {
                 std::time::Instant::now() < deadline,
                 "tumultd did not answer /healthz"
             );
+            // sleep: the interval of the bounded poll for /healthz
             std::thread::sleep(std::time::Duration::from_millis(100));
         }
     }

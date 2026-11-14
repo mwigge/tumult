@@ -17,11 +17,20 @@ use tumult_otel::logging::err;
 /// closed.
 #[macro_export]
 macro_rules! outln {
+    ($($arg:tt)*) => {
+        $crate::output::stdout($crate::__output_line!($($arg)*))
+    };
+}
+
+/// The arguments of one line of output: what `println!` would print.
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __output_line {
     () => {
-        $crate::output::stdout(::std::format_args!("\n"))
+        ::std::format_args!("\n")
     };
     ($($arg:tt)*) => {
-        $crate::output::stdout(::std::format_args!("{}\n", ::std::format_args!($($arg)*)))
+        ::std::format_args!("{}\n", ::std::format_args!($($arg)*))
     };
 }
 
@@ -39,7 +48,7 @@ macro_rules! out {
 #[macro_export]
 macro_rules! errln {
     ($($arg:tt)*) => {
-        $crate::output::stderr(::std::format_args!("{}\n", ::std::format_args!($($arg)*)))
+        $crate::output::stderr($crate::__output_line!($($arg)*))
     };
 }
 
@@ -187,14 +196,15 @@ mod tests {
     }
 
     #[test]
-    fn the_macros_format_like_the_ones_they_replace() {
-        // Type-checks every form in use; what they print goes to the test
-        // harness's captured stdout and stderr.
+    fn a_line_is_formatted_like_println_formats_it() {
         let name = "x";
-        crate::outln!();
-        crate::outln!("plain");
-        crate::outln!("{name} {} {:>3}", 1, 2);
-        crate::out!("{name}");
-        crate::errln!("warning: {name}");
+        let stream = Stream::new("stdout");
+        let mut sink = Vec::new();
+
+        stream.write(&mut sink, crate::__output_line!());
+        stream.write(&mut sink, crate::__output_line!("plain"));
+        stream.write(&mut sink, crate::__output_line!("{name} {} {:>3}", 1, 2));
+
+        assert_eq!(String::from_utf8(sink).unwrap(), "\nplain\nx 1   2\n");
     }
 }
