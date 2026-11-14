@@ -29,13 +29,15 @@
 //!   contains-match on the body).
 //! * `GET /api/logs/volume?range=&interval=&severity=&service=&q=` — log
 //!   volume bucketed per severity for the explorer's stacked bar.
-//! * `GET /api/entities?type=&liveness=&range=&limit=&cursor=` — the
-//!   current row of every entity that entity events reported
-//!   (`KRONIKA_ENTITY_EVENTS`), most recently heard of first, with its
+//! * `GET /api/entities?type=&liveness=&range=&sort=&limit=&cursor=` —
+//!   the current row of every entity that entity events reported
+//!   (`KRONIKA_ENTITY_EVENTS`), by key and environment, with its
 //!   `liveness` (`live`, `expired`, `gone`). `range` keeps the entities
-//!   last heard of inside it; left out, all are listed. One page of at
+//!   last received inside it; left out, all are listed. One page of at
 //!   most 1000 rows (`limit`, default 100) and about 4 MiB, with `total`,
-//!   `truncated` and `next_cursor`.
+//!   `truncated` and `next_cursor`; a walk with the cursor returns every
+//!   entity once. `sort=recent` lists the entity received last first,
+//!   without that promise.
 //! * `GET /api/entities/{key}/history?environment=&limit=&cursor=` — the
 //!   stored versions of one entity, newest first and paged the same way,
 //!   each with its environment; `404` for a key that has none in the

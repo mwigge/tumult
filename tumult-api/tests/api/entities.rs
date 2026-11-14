@@ -152,7 +152,7 @@ async fn entity_rows_change_no_other_read() {
 }
 
 #[tokio::test]
-async fn entities_are_listed_newest_first_with_their_liveness() {
+async fn entities_are_listed_by_key_with_their_liveness() {
     let srv = spawn_server().await;
     seed_entities(&srv).await;
     let (status, body) = get(&srv.base, "/api/entities").await;
@@ -162,11 +162,16 @@ async fn entities_are_listed_newest_first_with_their_liveness() {
         keys(&body),
         [
             "host|host.id=h-1",
-            "k8s.pod|k8s.pod.uid=d",
             POD_A,
-            "k8s.pod|k8s.pod.uid=c",
             "k8s.pod|k8s.pod.uid=b",
+            "k8s.pod|k8s.pod.uid=c",
+            "k8s.pod|k8s.pod.uid=d",
         ]
+    );
+    assert_eq!(
+        body["entities"][0].get("last_activity_ns"),
+        None,
+        "a row says when it was received, in last_received_ns"
     );
     let host = &body["entities"][0];
     assert_eq!(host["entity_type"], "host");
@@ -181,7 +186,122 @@ async fn entities_are_listed_newest_first_with_their_liveness() {
     assert_eq!(host["deleted_at_ns"], Value::Null);
     assert_eq!(body["entities"][3]["liveness"], "gone");
     assert_eq!(body["entities"][3]["delete_reason"], "scaled_down");
-    assert_eq!(body["entities"][4]["liveness"], "expired");
+    assert_eq!(body["entities"][2]["liveness"], "expired");
+}
+
+/// `sort=recent` lists the entity the daemon heard of last first. It is
+/// walked with a cursor like the default order.
+#[tokio::test]
+async fn sort_recent_lists_the_entity_heard_of_last_first() {
+    let srv = spawn_server().await;
+    seed_entities(&srv).await;
+    let (status, body) = get(&srv.base, "/api/entities?sort=recent").await;
+    assert_eq!(status, 200, "{body}");
+    let recent = [
+        "host|host.id=h-1",
+        "k8s.pod|k8s.pod.uid=d",
+        POD_A,
+        "k8s.pod|k8s.pod.uid=c",
+        "k8s.pod|k8s.pod.uid=b",
+    ];
+    assert_eq!(keys(&body), recent);
+    let walked = pages(&srv.base, "/api/entities?sort=recent&limit=2").await;
+    let keys_walked: Vec<&str> = walked.iter().flat_map(keys).collect();
+    assert_eq!(keys_walked, recent);
+
+    let (_, body) = get(&srv.base, "/api/entities?sort=key").await;
+    assert_eq!(keys(&body)[1], POD_A, "the default order by its name");
+    let (_, body) = get(&srv.base, "/api/entities?sort=").await;
+    assert_eq!(keys(&body)[1], POD_A, "an empty sort is the default");
+
+    let (status, body) = get(&srv.base, "/api/entities?sort=newest").await;
+    assert_eq!(status, 400, "{body}");
+    assert_eq!(
+        body["error"],
+        "invalid sort \"newest\"; expected key|recent"
+    );
+
+    // A cursor belongs to the order that gave it.
+    let (_, first) = get(&srv.base, "/api/entities?limit=1").await;
+    let by_key = first["next_cursor"].as_str().unwrap();
+    let (status, body) = get(
+        &srv.base,
+        &format!("/api/entities?sort=recent&cursor={by_key}"),
+    )
+    .await;
+    assert_eq!(status, 400, "{body}");
+    assert_eq!(body["error"], "invalid cursor");
+}
+
+/// The default order does not depend on when an entity reports, so a walk
+/// meets every entity once whatever reports while it is under way.
+#[tokio::test]
+async fn a_walk_meets_every_entity_once_when_one_reports_between_pages() {
+    let srv = spawn_server().await;
+    let now = now_ns();
+    let last = state("proc", ("process.pid", "3"), "prod", now - 30 * NS);
+    store(
+        &srv,
+        vec![
+            state("proc", ("process.pid", "1"), "prod", now - 10 * NS),
+            state("proc", ("process.pid", "2"), "prod", now - 20 * NS),
+            last.clone(),
+        ],
+    )
+    .await;
+
+    let mut seen = Vec::new();
+    let mut cursor = String::new();
+    for page in 0..5 {
+        let url = format!("/api/entities?limit=1&cursor={cursor}");
+        let (status, body) = get(&srv.base, &url).await;
+        assert_eq!(status, 200, "{body}");
+        seen.extend(keys(&body).into_iter().map(str::to_owned));
+        cursor = body["next_cursor"].as_str().unwrap_or_default().to_owned();
+        if cursor.is_empty() {
+            break;
+        }
+        if page == 0 {
+            // The entity the walk has not reached yet reports again.
+            let mut again = last.clone();
+            again.ts_ns = now - NS;
+            again.received_at_ns = now - NS;
+            store(&srv, vec![again]).await;
+        }
+    }
+    assert_eq!(
+        seen,
+        [
+            "proc|process.pid=1",
+            "proc|process.pid=2",
+            "proc|process.pid=3"
+        ]
+    );
+    assert_eq!(cursor, "", "the walk ended");
+}
+
+/// `range` is measured on the daemon's clock, like liveness: on when an
+/// entity was last received, not on the time its sender wrote.
+#[tokio::test]
+async fn the_range_is_measured_on_the_time_of_receipt() {
+    let srv = spawn_server().await;
+    let now = now_ns();
+    let mut slow_clock = state("host", ("host.id", "slow"), "prod", now - 3 * 86_400 * NS);
+    slow_clock.received_at_ns = now - NS;
+    let mut fast_clock = state("host", ("host.id", "fast"), "prod", now - NS);
+    fast_clock.received_at_ns = now - 3 * 86_400 * NS;
+    store(&srv, vec![slow_clock, fast_clock]).await;
+
+    let (_, body) = get(&srv.base, "/api/entities?range=24h").await;
+    assert_eq!(keys(&body), ["host|host.id=slow"], "{body}");
+    let (_, body) = get(&srv.base, "/api/entities?range=7d").await;
+    assert_eq!(body["count"], 2, "{body}");
+    let (_, body) = get(&srv.base, "/api/entities?sort=recent").await;
+    assert_eq!(
+        keys(&body),
+        ["host|host.id=slow", "host|host.id=fast"],
+        "and so is the order of sort=recent"
+    );
 }
 
 #[tokio::test]
@@ -203,7 +323,7 @@ async fn the_entity_list_filters_by_type_liveness_and_range() {
     let (_, body) = get(&srv.base, "/api/entities?liveness=expired").await;
     assert_eq!(keys(&body), ["k8s.pod|k8s.pod.uid=b"]);
     let (_, body) = get(&srv.base, "/api/entities?type=k8s.pod&liveness=live").await;
-    assert_eq!(keys(&body), ["k8s.pod|k8s.pod.uid=d", POD_A]);
+    assert_eq!(keys(&body), [POD_A, "k8s.pod|k8s.pod.uid=d"]);
 
     // Without a range every entity is listed; with one, only those last
     // heard of inside it.
@@ -647,8 +767,8 @@ async fn a_purge_of_one_type_leaves_the_other_types() {
     assert_eq!(
         keys(&body),
         [
-            "k8s.node|k8s.node.uid=n",
             "host|host.id=h-1",
+            "k8s.node|k8s.node.uid=n",
             "k8s.pod|k8s.pod.uid=d"
         ]
     );

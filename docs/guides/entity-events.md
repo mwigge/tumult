@@ -498,33 +498,46 @@ figures above include.
 
 ## 7. Reading entities
 
-Both endpoints need the Viewer role. A user with environment scopes sees
-only the entities of those environments; an entity that names no
-environment is visible only to users without scopes.
+Both read endpoints need the Viewer role. A user with environment scopes
+sees only the entities of those environments; an entity that names no
+environment is visible only to users without scopes. (Removing entities
+is `DELETE /api/entities`, section 6.)
 
-`GET /api/entities?type=&liveness=&range=&limit=&cursor=` lists the current
-row of every entity, most recently heard of first.
+`GET /api/entities?type=&liveness=&range=&sort=&limit=&cursor=` lists the
+current row of every entity, ordered by key and then environment.
 
 | Parameter | Meaning |
 |---|---|
 | `type` | exact entity type, for example `k8s.pod` |
 | `liveness` | `live`, `expired` or `gone`; anything else is `400` |
-| `range` | `24h`, `7d`, `14d` or `30d`: only entities last reported or deleted inside it. Left out, every entity is listed |
+| `range` | `24h`, `7d`, `14d` or `30d`: only entities the daemon last received a report or a delete for inside it (`last_received_ns`, the daemon's clock, as for liveness; not the time the sender wrote). Left out, every entity is listed |
+| `sort` | `key` (the default) or `recent`: last received first. Anything else is `400` |
 | `limit` | rows returned, 1 to 1000, default 100 |
-| `cursor` | the `next_cursor` of the page before; anything else is `400` |
+| `cursor` | the `next_cursor` of the page before, with the same `sort`; anything else is `400` |
 
 The answer is one page. `total` is the number of entities the filters
 match, `count` the number in this page and `truncated` whether the page
 left any out. A page ends at `limit` rows or once its rows weigh about
-4 MiB, whichever comes first (a row can carry 128 KiB of description and
+4 MiB, whichever comes first (a row can carry 64 KiB of description and
 relationships, so a page of large rows is shorter than `limit`), and it
-always holds one row at least. When `truncated` is true, `next_cursor` is
-the text to send as `cursor` with the same filters to get the rows that
-follow; otherwise it is `null`. The cursor is the place of the last row
-in the listing (its `last_activity_ns`, key and environment), not a
-snapshot: an entity that reports while a client walks the pages moves to
-the front and is not seen again by a walk that has passed it, and `total`
-can differ from page to page.
+always holds one row at least. The store cuts the page: the daemon does
+not read `limit` rows to return a few. When `truncated` is true,
+`next_cursor` is the text to send as `cursor` with the same filters and
+`sort` to get the rows that follow; otherwise it is `null`.
+
+The cursor is the place of the last row in the listing, not a snapshot,
+and `total` can differ from page to page. What a walk through the pages
+promises depends on the order:
+
+- **By key (the default).** Nothing an entity reports moves it in this
+  order. Every entity that matches the filters from the first page to the
+  last is returned exactly once. An entity that appears, is removed, or
+  starts or stops matching a filter during the walk (`liveness` changes
+  with time) may or may not be returned.
+- **`sort=recent`.** The order is by `last_received_ns`, so an entity that
+  reports during the walk moves to the front and is not returned by a
+  walk that has passed its old place: use it to look at the first page,
+  not to collect every entity.
 
 ```json
 {
@@ -549,8 +562,7 @@ can differ from page to page.
       "wire_form": "legacy",
       "observer": "token:default",
       "schema_url": "https://opentelemetry.io/schemas/1.43.0",
-      "liveness": "live",
-      "last_activity_ns": 1794650060000000000
+      "liveness": "live"
     }
   ]
 }
@@ -562,7 +574,8 @@ on the resource and is not copied into the entity.
 
 `GET /api/entities/{key}/history?environment=&limit=&cursor=` lists the
 stored rows of one entity, newest first, with the same fields except
-`liveness` and `last_activity_ns`. The same key can exist in several
+`liveness`. A stored row keeps its place in that order, so a walk returns
+every row that exists throughout it once. The same key can exist in several
 environments, each with a history of its own: every row names its
 `environment`, `environments` lists the environments the caller may read
 with the number of rows in each, and `environment=` keeps the rows of one.

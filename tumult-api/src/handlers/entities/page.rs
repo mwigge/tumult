@@ -1,12 +1,16 @@
 //! Paging for the entity reads.
 //!
 //! A page is bounded twice: in rows (`limit`) and in bytes, because one
-//! row can carry a description and relationships of 64 KiB each. A page
-//! that leaves rows behind says `truncated: true` and gives `next_cursor`,
-//! the position of its last row in the order of the listing; sent back as
+//! row can carry 64 KiB of description and relationships. A page that
+//! leaves rows behind says `truncated: true` and gives `next_cursor`, the
+//! position of its last row in the order of the listing; sent back as
 //! `cursor`, it continues after that row. The cursor is a position, not a
-//! snapshot: an entity that reports between two pages moves to the front
-//! of the listing and is not seen again by a walk already past it.
+//! snapshot. In an order that nothing moves a row in (the entity list by
+//! key, the history) a walk meets every row that exists throughout it
+//! exactly once; rows that appear or are removed meanwhile may or may not
+//! be met. In the order by receipt an entity that reports between two
+//! pages moves to the front and is not met again by a walk already past
+//! it.
 
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -20,8 +24,8 @@ pub(super) const MAX_LIMIT: u32 = 1000;
 /// row may take the page past it, by one row at most.
 pub(super) const MAX_PAGE_BYTES: usize = 4 * 1024 * 1024;
 
-/// What a row weighs besides its two JSON columns: the key, the id and
-/// the scalar columns.
+/// What a row is taken to weigh besides its two JSON columns: the key,
+/// the id and the scalar columns.
 const ROW_OVERHEAD: usize = 512;
 
 /// A cursor longer than this was not given out by this API.
@@ -77,30 +81,50 @@ pub(super) struct Page {
     pub(super) truncated: bool,
 }
 
-/// The bytes `row` adds to a response, near enough. The JSON columns are
-/// still text here.
-fn weight(row: &Value) -> usize {
-    let text = |column: &str| row.get(column).and_then(Value::as_str).map_or(0, str::len);
-    ROW_OVERHEAD + text("description") + text("relationships")
+/// The statement of one page: the rows of `matched` in `order`, at most
+/// `limit` of them and no more than reach `budget` bytes, one row at
+/// least. The store weighs the rows (the bytes of the two JSON columns
+/// and [`ROW_OVERHEAD`]) and hands over the page only, so a request
+/// never holds `limit` rows of 64 KiB in memory to return a few of them.
+/// Every row says in `page_candidates` how many rows were weighed, one
+/// more than `limit` at most: [`paged`] learns from it whether the
+/// listing goes on.
+pub(super) fn page_sql(matched: &str, order: &str, limit: u32, budget: usize) -> String {
+    let limit = u64::from(limit);
+    format!(
+        "WITH candidates AS ({matched} ORDER BY {order} LIMIT {}), \
+         weighed AS (\
+             SELECT *, count(*) OVER () AS page_candidates, \
+                 sum({ROW_OVERHEAD} + strlen(description) + strlen(relationships)) OVER (\
+                     ORDER BY {order} \
+                     ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING) AS page_bytes_before \
+             FROM candidates) \
+         SELECT * FROM weighed \
+         WHERE coalesce(page_bytes_before, 0) < {budget} \
+         ORDER BY {order} LIMIT {limit}",
+        limit + 1
+    )
 }
 
-/// Cut `rows` to `limit` rows and to `budget` bytes, keeping at least one.
-/// The statement asks for one row more than `limit`, so a row cut here
-/// means the listing goes on.
-pub(super) fn cut(mut rows: Vec<Value>, limit: u32, budget: usize) -> Page {
-    let limit = usize::try_from(limit).unwrap_or(usize::MAX);
-    let mut bytes = 0;
-    let mut keep = 0;
-    for row in rows.iter().take(limit) {
-        if keep > 0 && bytes >= budget {
-            break;
-        }
-        bytes += weight(row);
-        keep += 1;
+/// The page the rows of a [`page_sql`] statement are, without the two
+/// columns that statement added.
+pub(super) fn paged(mut rows: Vec<Value>) -> Page {
+    let candidates = rows
+        .first()
+        .and_then(|row| row["page_candidates"].as_u64())
+        .unwrap_or(0);
+    let returned = u64::try_from(rows.len()).unwrap_or(u64::MAX);
+    for row in &mut rows {
+        let Some(columns) = row.as_object_mut() else {
+            continue;
+        };
+        columns.remove("page_candidates");
+        columns.remove("page_bytes_before");
     }
-    let truncated = keep < rows.len();
-    rows.truncate(keep);
-    Page { rows, truncated }
+    Page {
+        rows,
+        truncated: candidates > returned,
+    }
 }
 
 #[cfg(test)]
@@ -149,27 +173,32 @@ mod tests {
         }
     }
 
-    fn rows(n: usize, description_bytes: usize) -> Vec<Value> {
-        vec![json!({"description": "x".repeat(description_bytes), "relationships": "[]"}); n]
+    fn rows(returned: usize, candidates: usize) -> Vec<Value> {
+        vec![
+            json!({"entity_key": "k", "page_candidates": candidates, "page_bytes_before": 7});
+            returned
+        ]
     }
 
     #[test]
-    fn a_page_holds_the_limit_and_says_when_more_is_left() {
-        let page = cut(rows(3, 2), 3, MAX_PAGE_BYTES);
+    fn a_page_says_when_more_is_left_and_drops_the_columns_of_the_statement() {
+        let page = paged(rows(3, 3));
         assert_eq!((page.rows.len(), page.truncated), (3, false));
-        let page = cut(rows(4, 2), 3, MAX_PAGE_BYTES);
+        assert_eq!(page.rows[0], json!({"entity_key": "k"}));
+        let page = paged(rows(3, 4));
         assert_eq!((page.rows.len(), page.truncated), (3, true));
-        let page = cut(Vec::new(), 3, MAX_PAGE_BYTES);
+        assert_eq!(page.rows[2], json!({"entity_key": "k"}));
+        let page = paged(Vec::new());
         assert_eq!((page.rows.len(), page.truncated), (0, false));
     }
 
     #[test]
-    fn a_page_ends_once_it_is_heavy_enough_but_holds_one_row_at_least() {
-        let page = cut(rows(10, 1_000), 10, 3_000);
-        assert_eq!((page.rows.len(), page.truncated), (2, true));
-        let page = cut(rows(2, 1_000), 10, 1);
-        assert_eq!((page.rows.len(), page.truncated), (1, true));
-        let page = cut(rows(1, 1_000), 10, 0);
-        assert_eq!((page.rows.len(), page.truncated), (1, false));
+    fn the_statement_asks_for_one_row_more_than_the_limit() {
+        let sql = page_sql("SELECT 1", "a, b DESC", 7, 99);
+        assert!(
+            sql.contains("(SELECT 1 ORDER BY a, b DESC LIMIT 8)"),
+            "{sql}"
+        );
+        assert!(sql.ends_with("< 99 ORDER BY a, b DESC LIMIT 7"), "{sql}");
     }
 }
