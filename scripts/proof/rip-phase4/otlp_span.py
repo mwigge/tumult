@@ -5,13 +5,14 @@ The daemon's OTLP/HTTP endpoint takes protobuf, so the message is encoded
 here by hand (standard library only) and posted with curl. target.py
 imports encode() to report its own spans.
 
-    otlp_span.py <service.name> <service.version> <environment> [<attribute>] | \
+    otlp_span.py <service.name> <service.version> <environment> [<attribute> [<age_s>]] | \
         curl --data-binary @- -H 'content-type: application/x-protobuf' $URL/v1/traces
 
 The environment goes on the resource under <attribute> (default
 resilience.target.environment; deployment.environment.name and
 deployment.environment are the other two the daemon reads). An
-environment of "-" leaves the resource untagged.
+environment of "-" leaves the resource untagged. With <age_s> the span
+ended that many seconds ago, as a service's history would show it.
 """
 
 import os
@@ -49,9 +50,11 @@ def key_value(key, value):
     return field_bytes(1, key.encode()) + field_bytes(2, any_value)
 
 
-def encode(service, version, environment, attribute="resilience.target.environment"):
+def encode(
+    service, version, environment, attribute="resilience.target.environment", age_s="0"
+):
     """One ExportTraceServiceRequest holding a single server span that
-    ended now."""
+    ended `age_s` seconds ago."""
     attributes = [
         ("service.name", service),
         ("service.version", version),
@@ -62,7 +65,7 @@ def encode(service, version, environment, attribute="resilience.target.environme
     resource = b"".join(
         field_bytes(1, key_value(k, v)) for k, v in attributes  # Resource.attributes
     )
-    now = time.time_ns()
+    now = time.time_ns() - int(age_s) * 1_000_000_000
     span = (
         field_bytes(1, os.urandom(16))  # trace_id
         + field_bytes(2, os.urandom(8))  # span_id
@@ -77,4 +80,4 @@ def encode(service, version, environment, attribute="resilience.target.environme
 
 
 if __name__ == "__main__":
-    sys.stdout.buffer.write(encode(*sys.argv[1:5]))
+    sys.stdout.buffer.write(encode(*sys.argv[1:6]))
