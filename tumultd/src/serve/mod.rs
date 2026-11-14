@@ -40,10 +40,29 @@ trait Flush: Send + Sync + 'static {
     fn flush(&self);
 }
 
-/// Flushes `telemetry` off the async workers: the exporters block on
-/// network I/O.
+/// How long a stopping daemon waits for its pending telemetry to be
+/// exported. An ordinary flush takes milliseconds; this is for an exporter
+/// that hangs, which must not hold up the shutdown.
+const FLUSH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
+
+/// Flushes `telemetry` and waits at most [`FLUSH_TIMEOUT`] for it.
 async fn flush_telemetry<F: Flush>(telemetry: Arc<F>) {
-    let flushed = tokio::task::spawn_blocking(move || telemetry.flush()).await;
+    flush_within(telemetry, FLUSH_TIMEOUT).await;
+}
+
+/// Flushes `telemetry` off the async workers: the exporters block on
+/// network I/O. After `limit` the shutdown goes on without the flush, which
+/// is left to finish or fail on its own thread.
+async fn flush_within<F: Flush>(telemetry: Arc<F>, limit: std::time::Duration) {
+    let flush = tokio::task::spawn_blocking(move || telemetry.flush());
+    let Ok(flushed) = tokio::time::timeout(limit, flush).await else {
+        tracing::warn!(
+            name: "daemon.telemetry.flush.timed_out",
+            { timeout_ms = u64::try_from(limit.as_millis()).unwrap_or(u64::MAX) },
+            "telemetry flush did not finish in time; pending telemetry may be lost"
+        );
+        return;
+    };
     let Err(error) = flushed else {
         return;
     };

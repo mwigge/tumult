@@ -320,6 +320,14 @@ says so (`stdout_truncated`, `stderr_truncated`) and
 system under test, logged at `debug` as `plugin.script.exited`; a timeout
 and a stream that could not be read are warnings.
 
+## Shutdown flush
+
+A stopping `tumultd` exports its pending spans, metrics and log events
+before the listener that receives them goes away, and waits at most 15
+seconds for that. An export that hangs longer is given up on with a
+`daemon.telemetry.flush.timed_out` warning (`timeout_ms`), and the shutdown
+goes on.
+
 ## Crates not converted yet
 
 `tumult-api`, `tumult-compliance`, `tumult-core`, `tumult-graph`,

@@ -334,6 +334,46 @@ async fn a_clean_stop_leaves_the_flush_to_the_shutdown_signal() {
     assert!(telemetry.flushes.lock().unwrap().is_empty());
 }
 
+/// Telemetry whose exporter hangs until the test lets go of it.
+struct StuckFlush(std::sync::Mutex<std::sync::mpsc::Receiver<()>>);
+
+impl super::Flush for StuckFlush {
+    fn flush(&self) {
+        // Ends when the sender is dropped.
+        let _ = self.0.lock().unwrap().recv();
+    }
+}
+
+#[tokio::test]
+async fn a_flush_that_hangs_is_given_up_on_and_reported() {
+    let capture = tumult_otel::logging::testing::LogCapture::start(tracing::Level::INFO);
+    let (release, held) = std::sync::mpsc::channel::<()>();
+    let telemetry = std::sync::Arc::new(StuckFlush(std::sync::Mutex::new(held)));
+    let limit = std::time::Duration::from_millis(50);
+
+    let started = std::time::Instant::now();
+    super::flush_within(telemetry, limit).await;
+
+    assert!(started.elapsed() < std::time::Duration::from_secs(5));
+    let logs = capture.snapshot();
+    let timed_out = logs.named("daemon.telemetry.flush.timed_out");
+    assert_eq!(timed_out.len(), 1, "{}", logs.raw);
+    assert_eq!(timed_out[0]["level"], "WARN");
+    assert_eq!(timed_out[0]["timeout_ms"], 50);
+    drop(release);
+}
+
+#[tokio::test]
+async fn a_flush_that_finishes_in_time_is_not_reported() {
+    let capture = tumult_otel::logging::testing::LogCapture::start(tracing::Level::INFO);
+    let telemetry = unwatched();
+
+    super::flush_within(std::sync::Arc::clone(&telemetry), super::FLUSH_TIMEOUT).await;
+
+    assert_eq!(telemetry.flushes.lock().unwrap().len(), 1);
+    assert!(capture.snapshot().events.is_empty());
+}
+
 /// A batch the store refuses.
 fn refused_batch() -> tumult_ingest::Batch {
     tumult_ingest::Batch::Exec(Box::new(|_| Err("disk full".to_string())))
