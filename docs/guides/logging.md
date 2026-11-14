@@ -276,9 +276,12 @@ while the proxy runs. The directory is created for the proxy with mode
 `0700` and the file with `0600`, never through an existing file or link; a
 directory of that name that others can enter is refused. Nothing rotates the
 file, so the daemon stops writing to it after 1 MiB
-(`LogOptions::with_output_limit`): the event that does not fit and every
-later one are dropped whole, a fatal error included, so the file is always
-an unbroken start of the log. The file and its directory are removed when
+(`LogOptions::with_output_limit`). The event that does not fit and every
+later one are dropped whole, and one `logging.output.limit_reached` warning
+is written in their place, so the file says where it stops. The last 32 KiB
+of the limit are kept back for that line and for the daemon's last words:
+its `process.fatal` and `process.panic` events are still written after it.
+The file and its directory are removed when
 the proxy is stopped and when it fails to start. In that case the parent
 reads at most the first 8 KiB and reports the `error.message` of the last
 log line in it.

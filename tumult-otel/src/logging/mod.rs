@@ -163,9 +163,12 @@ impl LogOptions {
         self
     }
 
-    /// Stops writing events to stderr once `bytes` of them have been
-    /// written. Events are kept or dropped whole, and once one has been
-    /// dropped none follows, so what was written is a prefix of the log.
+    /// Stops writing events to stderr before `bytes` of them have been
+    /// written. Events are kept or dropped whole. The first one that does
+    /// not fit is replaced by one `logging.output.limit_reached` line (JSON
+    /// in either format), and after that line only the last words of the
+    /// process follow: its `process.fatal` and `process.panic` events, for
+    /// which up to 32 KiB of the limit (at most half of it) are kept back.
     /// The OTLP export is not affected.
     ///
     /// For a detached process whose stderr is a file nobody rotates: without
@@ -288,11 +291,13 @@ fn emit_fatal(message: &str) -> bool {
     if !tracing::enabled!(Level::ERROR) {
         return false;
     }
-    tracing::error!(
-        name: "process.fatal",
-        { error.message = message },
-        "exiting because of an unrecoverable error"
-    );
+    limit::last_words(|| {
+        tracing::error!(
+            name: "process.fatal",
+            { error.message = message },
+            "exiting because of an unrecoverable error"
+        );
+    });
     true
 }
 
@@ -415,11 +420,13 @@ where
     /// Composes the subscriber and returns it with its (empty) bridge slot.
     fn build(self) -> (impl Subscriber + Send + Sync + 'static, LogBridgeSlot) {
         let slot = LogBridgeSlot::default();
+        let marker_source = self.formatter.clone();
+        let marker: limit::Marker = Box::new(move |limit| marker_source.limit_marker(limit));
         let subscriber = tracing_subscriber::registry()
             .with(self.filter)
             .with(format::event_layer(
                 self.formatter,
-                limit::Limited::new(self.writer, self.output_limit),
+                limit::Limited::new(self.writer, self.output_limit, marker),
                 self.ansi,
             ))
             .with(tracing_opentelemetry::layer())
@@ -509,13 +516,18 @@ fn emit_panic(message: &str, location: Option<(&str, u32)>) -> bool {
     if !tracing::enabled!(Level::ERROR) {
         return false;
     }
+    limit::last_words(|| emit_panic_event(message, location));
+    true
+}
+
+fn emit_panic_event(message: &str, location: Option<(&str, u32)>) {
     let Some((file, line)) = location else {
         tracing::error!(
             name: "process.panic",
             { "exception.type" = "panic", exception.message = message },
             "process panicked"
         );
-        return true;
+        return;
     };
     tracing::error!(
         name: "process.panic",
@@ -527,7 +539,6 @@ fn emit_panic(message: &str, location: Option<(&str, u32)>) -> bool {
         },
         "process panicked"
     );
-    true
 }
 
 #[cfg(test)]
@@ -560,19 +571,32 @@ mod tests {
         }
     }
 
-    #[test]
-    fn output_stops_at_the_limit_with_whole_lines_only() {
+    /// The bytes one `test.limit.*` line below takes.
+    fn one_limit_test_line() -> u64 {
         let unlimited = Capture::default();
         let (subscriber, _slot) = pipeline(&unlimited).build();
         tracing::subscriber::with_default(subscriber, || {
             tracing::info!(name: "test.limit.first", "first");
         });
-        let one_line = u64::try_from(unlimited.text().len()).unwrap();
+        u64::try_from(unlimited.text().len()).unwrap()
+    }
 
+    fn event_names(capture: &Capture) -> Vec<Value> {
+        json_lines(capture)
+            .iter()
+            .map(|line| line["event.name"].clone())
+            .collect()
+    }
+
+    #[test]
+    fn output_stops_at_the_limit_with_a_marker_and_whole_lines_only() {
+        let one_line = one_limit_test_line();
+        // Half of the limit is kept back, so ordinary events have room for
+        // two lines and most of a third.
+        let limit = (one_line * 3 - 1) * 2;
         let capture = Capture::default();
         let limited = Pipeline {
-            // Room for two lines and most of a third.
-            output_limit: Some(one_line * 3 - 1),
+            output_limit: Some(limit),
             ..pipeline(&capture)
         };
         let (subscriber, _slot) = limited.build();
@@ -581,15 +605,83 @@ mod tests {
             tracing::info!(name: "test.limit.second", "secnd");
             tracing::info!(name: "test.limit.third", "third");
             // Shorter than what is left, but after a dropped line: a log
-            // with a hole in it would mislead.
+            // with an unmarked hole in it would mislead.
             tracing::info!(name: "t", "x");
+            tracing::info!(name: "test.limit.fifth", "fifth");
         });
 
-        let names: Vec<Value> = json_lines(&capture)
-            .iter()
-            .map(|line| line["event.name"].clone())
-            .collect();
-        assert_eq!(names, ["test.limit.first", "test.limit.second"]);
+        assert_eq!(
+            event_names(&capture),
+            [
+                "test.limit.first",
+                "test.limit.second",
+                "logging.output.limit_reached"
+            ]
+        );
+        let marker = &json_lines(&capture)[2];
+        assert_eq!(marker["level"], "WARN", "{marker}");
+        assert_eq!(marker["logging.output.limit_bytes"], limit, "{marker}");
+        assert_eq!(marker["service.name"], "tumult-test", "{marker}");
+    }
+
+    #[test]
+    fn the_last_words_of_a_process_get_through_after_the_limit() {
+        let one_line = one_limit_test_line();
+        let limit = one_line * 12;
+        let capture = Capture::default();
+        let limited = Pipeline {
+            output_limit: Some(limit),
+            ..pipeline(&capture)
+        };
+        let (subscriber, _slot) = limited.build();
+        tracing::subscriber::with_default(subscriber, || {
+            for _ in 0..20 {
+                tracing::info!(name: "test.limit.first", "first");
+            }
+            assert!(emit_fatal("locked"));
+            assert!(emit_panic("gave up", Some(("src/main.rs", 7))));
+            tracing::error!(name: "test.limit.late", "an ordinary error stays dropped");
+        });
+
+        let names = event_names(&capture);
+        assert_eq!(
+            names[names.len() - 3..],
+            [
+                "logging.output.limit_reached",
+                "process.fatal",
+                "process.panic"
+            ],
+            "{names:?}"
+        );
+        assert_eq!(names.len(), 6 + 3, "six ordinary lines fit in half");
+        let written = u64::try_from(capture.text().len()).unwrap();
+        assert!(written <= limit, "{written} bytes written, limit {limit}");
+    }
+
+    #[test]
+    fn the_last_words_are_dropped_when_even_the_reserve_is_spent() {
+        let one_line = one_limit_test_line();
+        let capture = Capture::default();
+        let limit = one_line * 4;
+        let limited = Pipeline {
+            output_limit: Some(limit),
+            ..pipeline(&capture)
+        };
+        let (subscriber, _slot) = limited.build();
+        tracing::subscriber::with_default(subscriber, || {
+            for _ in 0..6 {
+                assert!(emit_fatal("locked"));
+            }
+        });
+
+        let written = u64::try_from(capture.text().len()).unwrap();
+        assert!(written <= limit, "{written} bytes written, limit {limit}");
+        let names = event_names(&capture);
+        assert!(!names.is_empty() && names.len() < 6, "{names:?}");
+        assert!(
+            names.iter().all(|name| name == "process.fatal"),
+            "{names:?}"
+        );
     }
 
     #[test]

@@ -91,7 +91,29 @@ impl EventFormatter {
         self.clock = clock;
         self
     }
+
+    /// The line that ends a log cut off at `limit_bytes`; see
+    /// [`LogOptions::with_output_limit`](super::LogOptions::with_output_limit).
+    /// It is a JSON line in either format: what reads a capped log is a
+    /// program.
+    pub(crate) fn limit_marker(&self, limit_bytes: u64) -> String {
+        let event = DirectEvent {
+            name: LIMIT_EVENT,
+            message: LIMIT_MESSAGE,
+            fields: vec![("logging.output.limit_bytes", Value::from(limit_bytes))],
+        };
+        direct_line(
+            &self.resource,
+            (self.clock)(),
+            module_path!(),
+            Level::WARN,
+            event,
+        )
+    }
 }
+
+const LIMIT_EVENT: &str = "logging.output.limit_reached";
+const LIMIT_MESSAGE: &str = "log output limit reached; later events are dropped";
 
 impl<S> FormatEvent<S, TypedFields> for EventFormatter
 where
@@ -328,9 +350,20 @@ pub(crate) fn error_line(
     target: &str,
     event: DirectEvent,
 ) -> String {
+    direct_line(resource, now, target, Level::ERROR, event)
+}
+
+/// Renders `event` as one line of the JSON format at `level`.
+fn direct_line(
+    resource: &LogResource,
+    now: DateTime<Utc>,
+    target: &str,
+    level: Level,
+    event: DirectEvent,
+) -> String {
     let head = LineHead {
         timestamp: now.to_rfc3339_opts(SecondsFormat::Micros, true),
-        level: Level::ERROR,
+        level,
         target: target.to_string(),
         name: Some(event.name),
         message: event.message.to_string(),
@@ -341,8 +374,12 @@ pub(crate) fn error_line(
     }
     // A map of JSON values always serialises; the fallback only keeps this
     // function total.
-    line.render()
-        .unwrap_or_else(|_| format!("{{\"level\":\"ERROR\",\"event.name\":\"{}\"}}", event.name))
+    line.render().unwrap_or_else(|_| {
+        format!(
+            "{{\"level\":\"{level}\",\"event.name\":\"{}\"}}",
+            event.name
+        )
+    })
 }
 
 /// What every line starts with, whatever produced it.
