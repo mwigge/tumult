@@ -129,6 +129,26 @@ async fn backfill_turn(ingest: &IngestWriter, budget: Duration) -> Result<bool> 
     Ok(done.load(Ordering::Acquire))
 }
 
+/// One turn of the job: `true` when the rollup is complete and the job
+/// has nothing left to do. A turn that fails is logged and is not the
+/// end.
+async fn backfill_finished(ingest: &IngestWriter) -> bool {
+    match backfill_turn(ingest, BACKFILL_TURN).await {
+        Ok(true) => {
+            tracing::info!("daemon.sightings.backfill.done");
+            true
+        }
+        Ok(false) => false,
+        Err(e) => {
+            tracing::warn!(
+                error.message = %bounded_log_text(&format!("{e:#}")),
+                "daemon.sightings.backfill.failed"
+            );
+            false
+        }
+    }
+}
+
 /// Carry the backfill of the version rollup on after the open: a turn of
 /// [`BACKFILL_TURN`] on the writer, then `pause` for telemetry, until the
 /// rollup is complete. The open itself spends only a short budget, so a
@@ -142,16 +162,8 @@ pub(crate) fn spawn_version_backfill(
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         loop {
-            match backfill_turn(&ingest, BACKFILL_TURN).await {
-                Ok(true) => {
-                    tracing::info!("daemon.sightings.backfill.done");
-                    break;
-                }
-                Ok(false) => {}
-                Err(e) => tracing::warn!(
-                    error.message = %bounded_log_text(&format!("{e:#}")),
-                    "daemon.sightings.backfill.failed"
-                ),
+            if backfill_finished(&ingest).await {
+                break;
             }
             tokio::select! {
                 () = tokio::time::sleep(pause) => {}
@@ -279,11 +291,14 @@ mod tests {
         let (ingest, writer_task) = IngestWriter::spawn(store.writer().unwrap(), 8);
         writer_task.abort();
         let _ = writer_task.await;
-        // Every turn fails now; only the shutdown ends the job.
+        // Every turn fails now, and a failed turn does not end the job:
+        // only the shutdown does.
+        assert!(
+            !backfill_finished(&ingest).await,
+            "a failed turn is tried again"
+        );
         let shutdown = tokio_util::sync::CancellationToken::new();
         let task = spawn_version_backfill(ingest, Duration::from_secs(3600), shutdown.clone());
-        tokio::time::sleep(Duration::from_millis(50)).await;
-        assert!(!task.is_finished(), "a failed turn is tried again");
         shutdown.cancel();
         tokio::time::timeout(Duration::from_secs(10), task)
             .await
