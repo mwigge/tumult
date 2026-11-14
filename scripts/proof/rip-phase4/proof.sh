@@ -705,6 +705,17 @@ DAY=86400
 emit_span inventory 1.0.0 demo resilience.target.environment $(( 40 * DAY ))
 emit_span inventory 2.0.0 demo resilience.target.environment $(( 20 * DAY ))
 emit_span inventory 1.0.0 demo resilience.target.environment $(( 5 * DAY ))
+# One request of the old version is a straggler, not a rollback: the pair
+# has no order the daemon will vouch for.
+unorderable() {
+    curl -s -o "$WORK/perf-straggler.json" -w '%{http_code}' "$URL/api/perf/inventory?env=demo" >"$WORK/perf-straggler.code"
+    [[ "$(<"$WORK/perf-straggler.code")" == 400 ]] && grep -q '"reason":"unorderable"' "$WORK/perf-straggler.json"
+}
+await "one returned request of inventory 1.0.0 to be refused as unorderable" 60 unorderable
+grep -q '1.0.0' "$WORK/perf-straggler.json" && grep -q '2.0.0' "$WORK/perf-straggler.json" || fail "the refusal does not name both versions: $(<"$WORK/perf-straggler.json")"
+for i in $(seq 1 11); do
+    emit_span inventory 1.0.0 demo resilience.target.environment $(( 5 * DAY - i ))
+done
 await_json "inventory's rollback" "/api/perf/inventory?env=demo" 'len(d["versions_seen"])==2 and d["versions_seen"][0]["redeployed"]'
 for range in 30d 60d; do
     curl -fs "$URL/api/perf/inventory?env=demo&range=$range" >"$WORK/perf-rollback-$range.json"
@@ -714,7 +725,7 @@ assert vs[0]["last_deployed_ns"]>vs[1]["last_deployed_ns"]>vs[0]["first_seen_ns"
 assert d["candidate"]["version"]=="1.0.0" and d["baseline"]["version"]=="2.0.0", (d["candidate"]["version"],d["baseline"]["version"])
 assert d["selection"]=="latest_deployment" and "1.0.0" in d["selection_rule"], (d["selection"],d["selection_rule"])' <"$WORK/perf-rollback-$range.json"
 done
-pass "1.0.0 at 40 days, 2.0.0 at 20, 1.0.0 again at 5: 1.0.0 is flagged redeployed and is the candidate against 2.0.0 for range=30d and range=60d alike"
+pass "1.0.0 at 40 days, 2.0.0 at 20, 1.0.0 again at 5: one returned request is 400 unorderable naming both versions; with twelve, 1.0.0 is flagged redeployed and is the candidate against 2.0.0 for range=30d and range=60d alike"
 
 echo "[21] restart the daemon with authentication: roles and scopes on the same lake"
 kill "$DPID"; wait "$DPID" 2>/dev/null || true
