@@ -9,9 +9,13 @@
 //! which liveness is counted):
 //!
 //! * a state with no row yet opens a row;
-//! * a state equal to the latest row (same `state_hash`) refreshes it;
+//! * a state equal to the latest row (same `state_hash` and the same
+//!   report interval) refreshes it;
 //! * a state that differs opens a new row when it is newer than the latest
-//!   row was last seen, and is ignored otherwise;
+//!   row was last seen, and is ignored otherwise. The interval is part of
+//!   the state because liveness is derived from it: were a heartbeat to
+//!   rewrite it in place, a sender could turn an entity expired or
+//!   never-expiring and leave no row that shows what held before;
 //! * a delete sets the tombstone on the latest row when it comes from the
 //!   observer that opened the row and is not older than `last_seen_ns`;
 //! * a state newer than the tombstone opens a new row: the entity is back.
@@ -334,7 +338,7 @@ fn state_step(latest: Option<&Latest>, state: &Prepared<'_>) -> StateStep {
         }
         return StateStep::Stale;
     }
-    if latest.state_hash == state.hash {
+    if latest.state_hash == state.hash && latest.interval_s == state.interval_s {
         return StateStep::Refresh;
     }
     if ts_ns > latest.last_seen_ns || wins_tie {
@@ -346,7 +350,8 @@ fn state_step(latest: Option<&Latest>, state: &Prepared<'_>) -> StateStep {
 /// Record that the state was reported again. Every copy moves the time of
 /// receipt forward: the daemon heard from the sender. Only one that is not
 /// older than the last report moves `last_seen_ns`, and that one also sets
-/// the interval and the wire form.
+/// the wire form. The interval is never touched: another interval is
+/// another state.
 fn refresh(latest: &mut Latest, state: &Prepared<'_>) {
     latest.last_received_ns = latest.last_received_ns.max(state.event.received_at_ns);
     latest.dirty = true;
@@ -355,7 +360,6 @@ fn refresh(latest: &mut Latest, state: &Prepared<'_>) {
     }
     latest.batch_ts_ns = Some(state.event.ts_ns);
     latest.last_seen_ns = state.event.ts_ns;
-    latest.interval_s = state.interval_s;
     state
         .event
         .wire_form

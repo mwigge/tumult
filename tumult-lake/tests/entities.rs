@@ -218,20 +218,75 @@ fn key_order_in_the_description_does_not_change_the_state() {
 }
 
 #[test]
-fn the_newest_heartbeat_sets_the_interval_and_the_wire_form() {
+fn the_newest_heartbeat_sets_the_wire_form() {
     let (_d, store) = fixture();
     let desc = json!({"os.type": "linux"});
     apply(&store, &[state(PAST, desc.clone())]);
     let legacy = EntityEventRow {
-        interval_s: 60,
         wire_form: WireForm::Legacy,
         ..state(PAST + SECOND, desc)
     };
-    apply(&store, &[legacy]);
+    assert_eq!(apply(&store, &[legacy]), vec![EntityOutcome::Refreshed]);
     let rows = versions(&store);
     assert_eq!(rows.len(), 1);
-    assert_eq!(rows[0]["interval_s"], 60);
     assert_eq!(rows[0]["wire_form"], "legacy");
+}
+
+/// The interval decides when an entity counts as expired, so it is part of
+/// what a version is. A heartbeat that names another interval opens a row
+/// and the terms that held before stay on record; it never rewrites them
+/// in place.
+#[test]
+fn a_changed_interval_opens_a_new_row() {
+    let (_d, store) = fixture();
+    let desc = json!({"os.type": "linux"});
+    let with_interval = |ts_ns: i64, interval_s: i64| EntityEventRow {
+        interval_s,
+        ..state(ts_ns, desc.clone())
+    };
+    apply(&store, &[with_interval(PAST, 10)]);
+    assert_eq!(
+        apply(
+            &store,
+            &[
+                with_interval(PAST + SECOND, 1),
+                with_interval(PAST + 2 * SECOND, 1),
+                with_interval(PAST + 3 * SECOND, 0),
+            ]
+        ),
+        vec![
+            EntityOutcome::Opened,
+            EntityOutcome::Refreshed,
+            EntityOutcome::Opened,
+        ]
+    );
+    let rows = versions(&store);
+    let intervals: Vec<i64> = rows
+        .iter()
+        .map(|r| r["interval_s"].as_i64().unwrap())
+        .collect();
+    assert_eq!(intervals, vec![10, 1, 0]);
+    assert_eq!(rows[0]["state_hash"], rows[2]["state_hash"]);
+    assert_eq!(rows[0]["last_seen_ns"], PAST, "the earlier terms are kept");
+}
+
+/// Like any changed state, another interval must be newer than the row to
+/// replace it. A delayed or backdated copy leaves the row as it is.
+#[test]
+fn a_changed_interval_that_is_not_newer_changes_nothing() {
+    let (_d, store) = fixture();
+    apply(&store, &[state(PAST + 10 * SECOND, json!({}))]);
+    let stored = versions(&store);
+    for interval_s in [0, 1, ENTITY_INTERVAL_MAX_S] {
+        let backdated = EntityEventRow {
+            interval_s,
+            received_at_ns: FUTURE,
+            ..state(PAST + 10 * SECOND, json!({}))
+        };
+        assert_eq!(apply(&store, &[backdated]), vec![EntityOutcome::StaleState]);
+    }
+    assert_eq!(versions(&store), stored);
+    assert_eq!(current(&store)[0]["liveness"], "expired");
 }
 
 #[test]

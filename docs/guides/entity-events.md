@@ -140,7 +140,7 @@ row per report.
 | `environment` | the environment the sending resource names (`resilience.target.environment`, or `deployment.environment.name`); empty when it names none |
 | `entity_type`, `entity_id` | the type and the identifying attributes |
 | `description`, `relationships` | JSON, reduced to the keys of section 5 |
-| `state_hash` | SHA-256 over description and relationships |
+| `state_hash` | SHA-256 over description and relationships (the interval is compared separately) |
 | `valid_from_ns` | when this state was first reported |
 | `last_seen_ns` | when it was last reported, by the sender's clock |
 | `last_received_ns` | when the daemon last received a report of it, by the daemon's clock |
@@ -154,8 +154,11 @@ The rules:
 
 - A state event equal to the latest row only moves `last_seen_ns`. A
   thousand heartbeats are one row.
-- A state event with a different description or different relationships
-  opens a new row. The earlier row stays as history.
+- A state event with a different description, different relationships or a
+  different report interval opens a new row. The earlier row stays as
+  history. The interval counts because liveness is derived from it: a
+  sender that changes it leaves the row with the earlier interval behind,
+  and a copy that is not newer than the stored row cannot change it.
 - A delete event marks the latest row as deleted. It is ignored when it is
   older than the last report, when the entity has no row, when the entity
   is already deleted, or when it comes from another observer than the one
