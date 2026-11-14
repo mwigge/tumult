@@ -8596,6 +8596,7 @@ dependencies = [
  "tumult-metrics",
  "tumult-otel",
  "tumult-report",
+ "tumult-test-utils",
  "uuid",
 ]
 
