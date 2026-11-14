@@ -7,7 +7,6 @@ use tumult_otel::SpanGuard;
 
 const TRACER: &str = "tumult-clickhouse";
 
-
 /// Span for `ClickHouse` connection + schema init.
 pub(crate) fn begin_connect(url: &str, database: &str) -> SpanGuard {
     let tracer = global::tracer(TRACER);
@@ -107,7 +106,12 @@ mod tests {
                 Some("9000"),
                 "clickhouse://ch.prod:9000/tumult",
             ),
-            ("https://[::1]:8443", "::1", Some("8443"), "https://[::1]:8443"),
+            (
+                "https://[::1]:8443",
+                "::1",
+                Some("8443"),
+                "https://[::1]:8443",
+            ),
             (
                 "http://localhost:8123",
                 "localhost",
