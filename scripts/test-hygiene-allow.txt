@@ -91,24 +91,6 @@ tumult-cli/tests/e2e_script_plugin.rs::set::raw-env  # deferred: move to tumult_
 tumult-cli/tests/recommend_agent.rs::drop::raw-env  # deferred: move to tumult_test_utils::EnvGuard
 tumult-cli/tests/recommend_agent.rs::set::raw-env  # deferred: move to tumult_test_utils::EnvGuard
 
-# tumult-core: deferred, the crate is being changed elsewhere
-tumult-core/src/runner/tests/background_tests.rs::execute::bare-sleep  # deferred: sleep without a stated reason
-tumult-core/src/runner/tests/sampling_tests.rs::execute::bare-sleep  # deferred: sleep without a stated reason
-tumult-core/tests/background_activity_tests.rs::execute::bare-sleep  # deferred: sleep without a stated reason
-tumult-core/tests/k6_load_executor.rs::abort_collects_a_k6_that_already_finished::bare-sleep  # deferred: sleep without a stated reason
-tumult-core/tests/oha_load_executor.rs::hanging_fake_is_alive::bare-sleep  # deferred: sleep without a stated reason
-tumult-core/tests/oha_load_executor.rs::wait_for_calls::bare-sleep  # deferred: sleep without a stated reason
-tumult-core/src/controls.rs::emit_to_empty_registry_does_not_panic::no-assert  # deferred: asserts nothing yet
-tumult-core/src/engine/validation/tests.rs::validate_accepts_well_formed_objectives_and_targets::no-assert  # deferred: asserts nothing yet
-tumult-core/src/engine/config.rs::resolve_env_config::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumult-core/src/engine/config.rs::resolve_env_secret::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumult-core/src/engine/config.rs::resolve_missing_env_returns_error::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumult-core/src/engine/config.rs::resolve_missing_env_secret_returns_error::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumult-core/tests/k6_load_executor.rs::install_fake_k6::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumult-core/tests/k6_load_executor.rs::start_errors_when_the_k6_binary_cannot_be_spawned::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumult-core/tests/oha_load_executor.rs::install_fake_oha::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumult-core/tests/oha_load_executor.rs::start_errors_when_the_oha_binary_cannot_be_spawned::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-
 # tumult-ingest: deferred, the crate is being changed elsewhere
 tumult-ingest/src/daemon_task.rs::ticker_ticks_until_shutdown::bare-sleep  # deferred: sleep without a stated reason
 tumult-ingest/src/grpc.rs::until::bare-sleep  # deferred: sleep without a stated reason

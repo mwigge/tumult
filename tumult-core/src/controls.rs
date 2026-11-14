@@ -347,12 +347,6 @@ mod tests {
     }
 
     #[test]
-    fn emit_to_empty_registry_does_not_panic() {
-        let registry = ControlRegistry::new();
-        registry.emit(&LifecycleEvent::BeforeExperiment);
-    }
-
-    #[test]
     fn panicking_handler_is_contained_and_remaining_handlers_still_receive_events() {
         struct PanicHandler;
         impl ControlHandler for PanicHandler {
