@@ -212,13 +212,13 @@ fn sync_executor_truncates_output_beyond_cap() {
 #[cfg(unix)]
 #[test]
 fn sync_executor_timeout_kills_process_group() {
-    let marker_dir = tempfile::tempdir().expect("tempdir");
-    let marker = marker_dir.path().join("grandchild-ran");
-    // The grandchild creates the marker file 2s in; the wrapper is killed at
-    // 0.5s. If only the direct child were killed, the grandchild would
-    // survive and create the marker.
-    let script = format!("(sleep 2; touch {}) & wait", marker.display());
-    let activity = process_activity("sh", vec!["-c".into(), script], Some(0.5));
+    let dir = tempfile::tempdir().expect("tempdir");
+    let pid_file = dir.path().join("grandchild.pid");
+    // The wrapper starts a grandchild that would outlive it by far, and is
+    // killed after 2s, long after it wrote the pid. If only the direct child
+    // were killed, the grandchild would still be running afterwards.
+    let script = format!("sleep 30 & echo $! > {}; wait", pid_file.display());
+    let activity = process_activity("sh", vec!["-c".into(), script], Some(2.0));
 
     let outcome = ProviderExecutor::new().execute(&activity);
 
@@ -226,10 +226,64 @@ fn sync_executor_timeout_kills_process_group() {
     let error = outcome.error.expect("timeout must be reported");
     assert!(error.contains("timed out"), "unexpected error: {error}");
 
-    // Give the grandchild ample time to (wrongly) create the marker.
-    std::thread::sleep(std::time::Duration::from_secs(3));
+    let pid = std::fs::read_to_string(&pid_file).expect("the wrapper started its grandchild");
+    let pid: u32 = pid
+        .trim()
+        .parse()
+        .unwrap_or_else(|e| panic!("the pid file holds {pid:?}: {e}"));
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while is_running(pid) {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "grandchild {pid} survived the timeout: the process group was not killed"
+        );
+        // sleep: interval of the bounded poll for the grandchild's end
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+}
+
+/// Whether process `pid` exists and has not exited (a zombie has).
+///
+/// Read from `/proc`, so that "gone" is something the kernel said and not
+/// a tool that failed to run.
+#[cfg(target_os = "linux")]
+fn is_running(pid: u32) -> bool {
+    match std::fs::read_to_string(format!("/proc/{pid}/stat")) {
+        // "pid (comm) state ...": comm may itself hold spaces and brackets.
+        Ok(stat) => {
+            let (_, after_comm) = stat
+                .rsplit_once(')')
+                .unwrap_or_else(|| panic!("unexpected /proc/{pid}/stat: {stat}"));
+            let state = after_comm
+                .split_whitespace()
+                .next()
+                .unwrap_or_else(|| panic!("no state in /proc/{pid}/stat: {stat}"));
+            state != "Z" && state != "X"
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => false,
+        // ESRCH: the process went away between open and read.
+        Err(e) if e.raw_os_error() == Some(3) => false,
+        Err(e) => panic!("cannot read /proc/{pid}/stat: {e}"),
+    }
+}
+
+/// Whether process `pid` exists and has not exited (a zombie has).
+///
+/// `ps` reports a process that is gone the way it reports its own failure,
+/// so it first has to find this process.
+#[cfg(all(unix, not(target_os = "linux")))]
+fn is_running(pid: u32) -> bool {
+    let state_of = |pid: u32| {
+        let ps = std::process::Command::new("ps")
+            .args(["-o", "stat=", "-p", &pid.to_string()])
+            .output()
+            .expect("run ps");
+        String::from_utf8_lossy(&ps.stdout).trim().to_string()
+    };
     assert!(
-        !marker.exists(),
-        "grandchild survived the timeout — process group was not killed"
+        !state_of(std::process::id()).is_empty(),
+        "ps does not report this process, so it cannot tell that another is gone"
     );
+    let state = state_of(pid);
+    !state.is_empty() && !state.starts_with('Z')
 }

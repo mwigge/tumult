@@ -11,7 +11,7 @@ use tempfile::TempDir;
 use tumult_core::controls::ControlRegistry;
 use tumult_core::runner::{run_experiment, ActivityExecutor, RunConfig};
 use tumult_core::types::*;
-use tumult_test_utils::write_executable;
+use tumult_test_utils::{write_executable, EnvGuard};
 
 /// Create a script plugin in a temp directory that:
 /// - Has an action that echoes "injected"
@@ -249,30 +249,6 @@ async fn e2e_failing_script_marks_failed() {
 
 // ── type: script provider dispatch ────────────────────────────
 
-/// Serializes the env-mutating tests in this binary: `TUMULT_PLUGIN_PATH`
-/// is process-global, and tests run on parallel threads.
-static ENV_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
-
-/// Restore an env var to its prior value on drop (test env hygiene).
-struct EnvGuard(&'static str, Option<String>);
-
-impl EnvGuard {
-    fn set(key: &'static str, value: &std::path::Path) -> Self {
-        let prior = std::env::var(key).ok();
-        std::env::set_var(key, value);
-        Self(key, prior)
-    }
-}
-
-impl Drop for EnvGuard {
-    fn drop(&mut self) {
-        match &self.1 {
-            Some(value) => std::env::set_var(self.0, value),
-            None => std::env::remove_var(self.0),
-        }
-    }
-}
-
 /// Script plugin fixture: an action that echoes its `TUMULT_BROKER_ID`
 /// argument (proving args → TUMULT_* env propagation), a cleanup action,
 /// and a probe that echoes "200".
@@ -363,12 +339,12 @@ fn script_provider_experiment() -> Experiment {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn e2e_script_provider_dispatches_through_discovery() {
-    let _lock = ENV_LOCK.lock().await;
+    let mut env = EnvGuard::lock();
     let dir = TempDir::new().unwrap();
     setup_script_provider_plugin(dir.path());
     // Point discovery at the fixture plugin dir (TUMULT_PLUGIN_PATH is one of
     // the default search paths).
-    let _guard = EnvGuard::set("TUMULT_PLUGIN_PATH", &dir.path().join("plugins"));
+    env.set("TUMULT_PLUGIN_PATH", dir.path().join("plugins"));
 
     let experiment = script_provider_experiment();
     tumult_core::engine::validate_experiment(&experiment).unwrap();
@@ -405,10 +381,10 @@ async fn e2e_script_provider_dispatches_through_discovery() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn e2e_script_provider_unknown_plugin_and_action_name_available() {
-    let _lock = ENV_LOCK.lock().await;
+    let mut env = EnvGuard::lock();
     let dir = TempDir::new().unwrap();
     setup_script_provider_plugin(dir.path());
-    let _guard = EnvGuard::set("TUMULT_PLUGIN_PATH", &dir.path().join("plugins"));
+    env.set("TUMULT_PLUGIN_PATH", dir.path().join("plugins"));
 
     let executor = tumult_cli::commands::ProviderExecutor::new();
 

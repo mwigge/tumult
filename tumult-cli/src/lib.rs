@@ -5,7 +5,7 @@
 //! Results are printed through [`output`], which does not panic when the
 //! reader has gone away.
 
-#![allow(clippy::print_stdout)] // analyze.rs still prints with println!: docs/guides/logging.md
+#![allow(clippy::print_stdout)] // commands/store.rs still prints four lines with println!: docs/guides/logging.md
 
 pub mod commands;
 pub mod output;

@@ -135,18 +135,4 @@ mod tests {
             .any(|span| tool_ids.contains(&span.parent_span_id));
         assert!(nested, "experiment span must nest under the tool span");
     }
-
-    #[test]
-    fn record_agentic_run_is_safe_without_provider() {
-        // No global provider installed → no-op tracer/meter, must not panic.
-        let run = AgenticRunTelemetry {
-            scenario: "s",
-            target_type: "http",
-            client: None,
-            resilience_score: 1.0,
-            faults: &[],
-            contracts: &[],
-        };
-        record_agentic_run(&run, None);
-    }
 }

@@ -4,8 +4,6 @@
 //! appropriate tumult-core operations.
 
 mod agentic;
-// TODO(structured-logging phase 2): convert `analyze.rs` and drop this.
-#[allow(clippy::print_stderr)] // analyze.rs prints one warning as text: docs/guides/logging.md
 mod analyze;
 mod autopilot;
 mod chaosgraph;

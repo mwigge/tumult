@@ -6,16 +6,12 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use tumult_core::runner::oha::OhaLoadExecutor;
 use tumult_core::runner::{load_executor_for, LoadExecutor};
 use tumult_core::types::{LoadConfig, LoadProfile, LoadTool};
-
-// The executor resolves the binary through `TUMULT_OHA_BINARY`; tests that
-// point it at a fake binary must not run concurrently.
-static ENV_LOCK: Mutex<()> = Mutex::new(());
+use tumult_test_utils::EnvGuard;
 
 fn config(profile: Option<LoadProfile>, duration_s: f64) -> LoadConfig {
     LoadConfig {
@@ -45,13 +41,15 @@ fn recorded(dir: &tempfile::TempDir, name: &str) -> Vec<String> {
 }
 
 /// Write an executable fake-oha script and point `TUMULT_OHA_BINARY` at it.
-fn install_fake_oha(dir: &tempfile::TempDir, body: &str) {
+/// The executor resolves the binary through that variable, so the guard
+/// keeps the tests that point it at a fake from running concurrently.
+fn install_fake_oha(env: &mut EnvGuard, dir: &tempfile::TempDir, body: &str) {
     let path = dir.path().join("fake-oha");
     #[cfg(unix)]
     tumult_test_utils::write_executable(&path, body);
     #[cfg(not(unix))]
     std::fs::write(&path, body).expect("write fake oha");
-    std::env::set_var("TUMULT_OHA_BINARY", &path);
+    env.set("TUMULT_OHA_BINARY", &path);
 }
 
 /// Block until the fake oha has been invoked `n` times (each invocation
@@ -69,6 +67,7 @@ fn wait_for_calls(dir: &tempfile::TempDir, n: usize) {
             Instant::now() < deadline,
             "fake oha ran {seen} of {n} windows"
         );
+        // sleep: interval of the bounded poll above
         std::thread::sleep(Duration::from_millis(10));
     }
 }
@@ -125,7 +124,7 @@ fn fake_hanging(dir: &tempfile::TempDir) -> String {
 /// when the fake never got as far as recording itself.
 #[cfg(target_os = "linux")]
 fn hanging_fake_is_alive(dir: &tempfile::TempDir) -> bool {
-    // Give a fake that was just spawned the time to record itself.
+    // sleep: a fake that must not be left running gets time to record itself
     std::thread::sleep(Duration::from_millis(300));
     let Ok(pid) = std::fs::read_to_string(dir.path().join("pid")) else {
         return false;
@@ -137,9 +136,9 @@ fn hanging_fake_is_alive(dir: &tempfile::TempDir) -> bool {
 
 #[test]
 fn flat_config_is_one_window_and_one_sample() {
-    let _guard = ENV_LOCK.lock().expect("env lock");
+    let mut env = EnvGuard::lock();
     let dir = tempfile::tempdir().expect("tempdir");
-    install_fake_oha(&dir, FAKE_OHA_JSON);
+    install_fake_oha(&mut env, &dir, FAKE_OHA_JSON);
 
     let executor = OhaLoadExecutor::default();
     let handle = executor.start(&config(None, 1.0)).expect("fake oha starts");
@@ -171,11 +170,10 @@ fn flat_config_is_one_window_and_one_sample() {
 
 #[test]
 fn the_request_timeout_follows_the_window_up_to_thirty_seconds() {
-    let _guard = ENV_LOCK.lock().expect("env lock");
-    let mut env = tumult_test_utils::EnvGuard::lock();
+    let mut env = EnvGuard::lock();
     env.remove("TUMULT_OHA_REQUEST_TIMEOUT_S");
     let dir = tempfile::tempdir().expect("tempdir");
-    install_fake_oha(&dir, FAKE_OHA_JSON);
+    install_fake_oha(&mut env, &dir, FAKE_OHA_JSON);
 
     let executor = OhaLoadExecutor::default();
     for duration_s in [10.0, 600.0] {
@@ -218,11 +216,10 @@ fn run_soak_to_its_end(config: &LoadConfig) -> tumult_core::types::LoadResult {
 
 #[test]
 fn a_blacked_out_soak_of_one_second_windows_is_recorded_not_truncated() {
-    let _guard = ENV_LOCK.lock().expect("env lock");
-    let mut env = tumult_test_utils::EnvGuard::lock();
+    let mut env = EnvGuard::lock();
     env.remove("TUMULT_OHA_REQUEST_TIMEOUT_S");
     let dir = tempfile::tempdir().expect("tempdir");
-    install_fake_oha(&dir, &fake_blacked_out());
+    install_fake_oha(&mut env, &dir, &fake_blacked_out());
 
     // Every started window ends half a second into the next one's slot,
     // so the plan clock shortens or drops the windows behind it. Which
@@ -247,11 +244,10 @@ fn a_blacked_out_soak_of_one_second_windows_is_recorded_not_truncated() {
 
 #[test]
 fn a_blacked_out_soak_misses_a_declared_threshold() {
-    let _guard = ENV_LOCK.lock().expect("env lock");
-    let mut env = tumult_test_utils::EnvGuard::lock();
+    let mut env = EnvGuard::lock();
     env.remove("TUMULT_OHA_REQUEST_TIMEOUT_S");
     let dir = tempfile::tempdir().expect("tempdir");
-    install_fake_oha(&dir, &fake_blacked_out());
+    install_fake_oha(&mut env, &dir, &fake_blacked_out());
 
     let mut bounded = soak(4.0);
     bounded.thresholds.insert("error_rate".into(), 0.5);
@@ -268,9 +264,9 @@ fn a_blacked_out_soak_misses_a_declared_threshold() {
 
 #[test]
 fn soak_profile_streams_one_sample_per_interval() {
-    let _guard = ENV_LOCK.lock().expect("env lock");
+    let mut env = EnvGuard::lock();
     let dir = tempfile::tempdir().expect("tempdir");
-    install_fake_oha(&dir, FAKE_OHA_JSON);
+    install_fake_oha(&mut env, &dir, FAKE_OHA_JSON);
 
     let soak = LoadProfile::Soak {
         sample_interval_s: 1.0,
@@ -292,9 +288,9 @@ fn soak_profile_streams_one_sample_per_interval() {
 
 #[test]
 fn ramp_profile_steps_the_concurrency_per_window() {
-    let _guard = ENV_LOCK.lock().expect("env lock");
+    let mut env = EnvGuard::lock();
     let dir = tempfile::tempdir().expect("tempdir");
-    install_fake_oha(&dir, FAKE_OHA_JSON);
+    install_fake_oha(&mut env, &dir, FAKE_OHA_JSON);
 
     let ramp = LoadProfile::Ramp {
         start_vus: 1,
@@ -313,11 +309,11 @@ fn ramp_profile_steps_the_concurrency_per_window() {
 
 #[test]
 fn stop_finishes_the_current_window_and_skips_the_rest() {
-    let _guard = ENV_LOCK.lock().expect("env lock");
+    let mut env = EnvGuard::lock();
     let dir = tempfile::tempdir().expect("tempdir");
     // Each window takes ~300 ms regardless of `-z`.
     let slow = FAKE_OHA_JSON.replacen("#BEFORE_SUMMARY", "sleep 0.3", 1);
-    install_fake_oha(&dir, &slow);
+    install_fake_oha(&mut env, &dir, &slow);
 
     let soak = LoadProfile::Soak {
         sample_interval_s: 1.0,
@@ -346,10 +342,11 @@ fn stop_finishes_the_current_window_and_skips_the_rest() {
 
 #[test]
 fn a_window_that_outlives_its_grace_is_killed_and_reported() {
-    let _guard = ENV_LOCK.lock().expect("env lock");
+    let mut env = EnvGuard::lock();
     let dir = tempfile::tempdir().expect("tempdir");
     // Ignores `-z` entirely and would run for 30 s.
     install_fake_oha(
+        &mut env,
         &dir,
         "#!/bin/sh\n[ \"$1\" = \"--version\" ] && exit 0\nsleep 30\nexit 0\n",
     );
@@ -374,11 +371,11 @@ fn a_window_that_outlives_its_grace_is_killed_and_reported() {
 
 #[test]
 fn stop_lets_a_window_longer_than_the_grace_finish() {
-    let _guard = ENV_LOCK.lock().expect("env lock");
+    let mut env = EnvGuard::lock();
     let dir = tempfile::tempdir().expect("tempdir");
     // The window takes 0.8 s; grace and request timeout are far shorter.
     let slow = FAKE_OHA_JSON.replacen("#BEFORE_SUMMARY", "sleep 0.8", 1);
-    install_fake_oha(&dir, &slow);
+    install_fake_oha(&mut env, &dir, &slow);
 
     let executor = OhaLoadExecutor::with_window_grace(Duration::from_millis(50))
         .with_request_timeout(Duration::from_millis(50));
@@ -395,9 +392,10 @@ fn stop_lets_a_window_longer_than_the_grace_finish() {
 
 #[test]
 fn failed_window_is_reported_not_hidden() {
-    let _guard = ENV_LOCK.lock().expect("env lock");
+    let mut env = EnvGuard::lock();
     let dir = tempfile::tempdir().expect("tempdir");
     install_fake_oha(
+        &mut env,
         &dir,
         "#!/bin/sh\n[ \"$1\" = \"--version\" ] && exit 0\necho broken >&2\nexit 2\n",
     );
@@ -417,9 +415,9 @@ fn failed_window_is_reported_not_hidden() {
 
 #[test]
 fn dropping_a_handle_right_after_start_does_not_wait_for_a_window() {
-    let _guard = ENV_LOCK.lock().expect("env lock");
+    let mut env = EnvGuard::lock();
     let dir = tempfile::tempdir().expect("tempdir");
-    install_fake_oha(&dir, &fake_hanging(&dir));
+    install_fake_oha(&mut env, &dir, &fake_hanging(&dir));
 
     let executor = OhaLoadExecutor::default();
     let handle = executor.start(&config(None, 600.0)).expect("starts");
@@ -438,9 +436,9 @@ fn dropping_a_handle_right_after_start_does_not_wait_for_a_window() {
 
 #[test]
 fn abort_kills_the_in_flight_window_at_once() {
-    let _guard = ENV_LOCK.lock().expect("env lock");
+    let mut env = EnvGuard::lock();
     let dir = tempfile::tempdir().expect("tempdir");
-    install_fake_oha(&dir, &fake_hanging(&dir));
+    install_fake_oha(&mut env, &dir, &fake_hanging(&dir));
 
     // A flat ten-minute load: one window that a halt must not sit out.
     let executor = OhaLoadExecutor::default();
@@ -477,9 +475,9 @@ wait $!
 
 #[test]
 fn abort_of_a_flat_load_keeps_the_partial_evidence_and_marks_it() {
-    let _guard = ENV_LOCK.lock().expect("env lock");
+    let mut env = EnvGuard::lock();
     let dir = tempfile::tempdir().expect("tempdir");
-    install_fake_oha(&dir, FAKE_OHA_PARTIAL_ON_SIGINT);
+    install_fake_oha(&mut env, &dir, FAKE_OHA_PARTIAL_ON_SIGINT);
 
     let executor = OhaLoadExecutor::default();
     let handle = executor.start(&config(None, 600.0)).expect("starts");
@@ -510,7 +508,7 @@ fn abort_of_a_flat_load_keeps_the_partial_evidence_and_marks_it() {
 
 #[test]
 fn abort_keeps_the_windows_that_completed() {
-    let _guard = ENV_LOCK.lock().expect("env lock");
+    let mut env = EnvGuard::lock();
     let dir = tempfile::tempdir().expect("tempdir");
     // The first two windows answer at once; the third hangs.
     let third_hangs = FAKE_OHA_JSON.replacen(
@@ -518,7 +516,7 @@ fn abort_keeps_the_windows_that_completed() {
         "[ \"$(wc -l < \"$(dirname \"$0\")/calls\")\" -gt 2 ] && sleep 30",
         1,
     );
-    install_fake_oha(&dir, &third_hangs);
+    install_fake_oha(&mut env, &dir, &third_hangs);
 
     let soak = LoadProfile::Soak {
         sample_interval_s: 1.0,
@@ -544,10 +542,11 @@ fn abort_keeps_the_windows_that_completed() {
 
 #[test]
 fn a_window_that_sent_nothing_never_meets_thresholds() {
-    let _guard = ENV_LOCK.lock().expect("env lock");
+    let mut env = EnvGuard::lock();
     let dir = tempfile::tempdir().expect("tempdir");
     // What oha 1.16 prints when no request was answered and none failed.
     install_fake_oha(
+        &mut env,
         &dir,
         &fake_printing(
             r#"{"summary":{"successRate":null,"total":0.5,"requestsPerSec":0.0},"latencyPercentiles":{"p50":null,"p95":null,"p99":null},"statusCodeDistribution":{},"errorDistribution":{}}"#,
@@ -565,10 +564,11 @@ fn a_window_that_sent_nothing_never_meets_thresholds() {
 
 #[test]
 fn a_window_where_every_request_timed_out_is_all_errors() {
-    let _guard = ENV_LOCK.lock().expect("env lock");
+    let mut env = EnvGuard::lock();
     let dir = tempfile::tempdir().expect("tempdir");
     // What oha 1.16 prints against a target that never answers (`-w -t`).
     install_fake_oha(
+        &mut env,
         &dir,
         &fake_printing(
             r#"{"summary":{"successRate":0.0,"total":1.0,"slowest":null,"requestsPerSec":3.9},"latencyPercentiles":{"p50":null,"p95":null,"p99":null},"statusCodeDistribution":{},"errorDistribution":{"timeout":4}}"#,
@@ -597,11 +597,11 @@ fn a_window_where_every_request_timed_out_is_all_errors() {
 
 #[test]
 fn a_straggler_holding_stdout_does_not_hang_a_finished_window() {
-    let _guard = ENV_LOCK.lock().expect("env lock");
+    let mut env = EnvGuard::lock();
     let dir = tempfile::tempdir().expect("tempdir");
     // A child of the wrapper outlives it with the stdout pipe still open.
     let straggler = FAKE_OHA_JSON.replacen("#BEFORE_SUMMARY", "sleep 30 &", 1);
-    install_fake_oha(&dir, &straggler);
+    install_fake_oha(&mut env, &dir, &straggler);
 
     let executor = OhaLoadExecutor::default();
     let handle = executor.start(&config(None, 1.0)).expect("starts");
@@ -618,11 +618,11 @@ fn a_straggler_holding_stdout_does_not_hang_a_finished_window() {
 
 #[test]
 fn a_straggler_outside_the_group_fails_the_window_instead_of_hanging() {
-    let _guard = ENV_LOCK.lock().expect("env lock");
+    let mut env = EnvGuard::lock();
     let dir = tempfile::tempdir().expect("tempdir");
     // Escapes the process group, so the group kill cannot close the pipe.
     let escaped = FAKE_OHA_JSON.replacen("#BEFORE_SUMMARY", "setsid sleep 30 &", 1);
-    install_fake_oha(&dir, &escaped);
+    install_fake_oha(&mut env, &dir, &escaped);
 
     let executor = OhaLoadExecutor::default();
     let handle = executor.start(&config(None, 1.0)).expect("starts");
@@ -640,8 +640,8 @@ fn a_straggler_outside_the_group_fails_the_window_instead_of_hanging() {
 
 #[test]
 fn start_errors_when_the_oha_binary_cannot_be_spawned() {
-    let _guard = ENV_LOCK.lock().expect("env lock");
-    std::env::set_var("TUMULT_OHA_BINARY", "/nonexistent/tumult-oha-test-binary");
+    let mut env = EnvGuard::lock();
+    env.set("TUMULT_OHA_BINARY", "/nonexistent/tumult-oha-test-binary");
 
     let executor = OhaLoadExecutor::default();
     let Err(error) = executor.start(&config(None, 1.0)) else {

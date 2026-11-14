@@ -111,6 +111,7 @@ pub fn cmd_chaosgraph_coverage_gaps(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::output::testing::capture;
     use tumult_core::types::{
         Activity, ActivityType, Experiment, ExperimentStatus, Journal, Provider,
     };
@@ -168,15 +169,72 @@ mod tests {
     }
 
     #[test]
-    fn query_and_neighbors_succeed_against_seeded_store() {
+    fn query_prints_the_nodes_of_a_kind_as_text_or_json() {
         let dir = tempfile::TempDir::new().unwrap();
         let db = seed_store(dir.path());
 
-        // Text and JSON renderings both succeed.
-        cmd_chaosgraph_query(Some(&db), "experiment", None, false).unwrap();
-        cmd_chaosgraph_query(Some(&db), "fault", None, true).unwrap();
-        cmd_chaosgraph_neighbors(Some(&db), "exp:Latency drill", None, 1, false).unwrap();
-        cmd_chaosgraph_coverage_gaps(Some(&db), None, None, false, false).unwrap();
+        let (result, printed) =
+            capture(|| cmd_chaosgraph_query(Some(&db), "experiment", None, false));
+        result.unwrap();
+        assert_eq!(
+            printed.stdout,
+            "kind: experiment  (1 node(s))\n  exp:Latency drill  Latency drill\n"
+        );
+
+        let (result, printed) = capture(|| cmd_chaosgraph_query(Some(&db), "fault", None, true));
+        result.unwrap();
+        let report: serde_json::Value = serde_json::from_str(&printed.stdout).unwrap();
+        assert_eq!(report["kind"], "fault");
+        assert_eq!(report["count"], 1, "{report}");
+        assert_eq!(report["nodes"][0]["kind"], "fault", "{report}");
+    }
+
+    #[test]
+    fn a_label_filter_narrows_the_query() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let db = seed_store(dir.path());
+
+        let (result, printed) =
+            capture(|| cmd_chaosgraph_query(Some(&db), "experiment", Some("no-such"), false));
+
+        result.unwrap();
+        assert_eq!(printed.stdout, "kind: experiment  (0 node(s))\n");
+    }
+
+    #[test]
+    fn neighbors_prints_the_nodes_and_edges_around_a_node() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let db = seed_store(dir.path());
+
+        let (result, printed) =
+            capture(|| cmd_chaosgraph_neighbors(Some(&db), "exp:Latency drill", None, 1, false));
+
+        result.unwrap();
+        let out = printed.stdout;
+        assert!(
+            out.starts_with("center: exp:Latency drill  (depth 1, "),
+            "{out}"
+        );
+        assert!(
+            out.contains("  exp:Latency drill (experiment) Latency drill\n"),
+            "{out}"
+        );
+        assert!(out.contains("\nedges:\n  (exp:Latency drill)-["), "{out}");
+    }
+
+    #[test]
+    fn coverage_gaps_are_filtered_by_fault_domain() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let db = seed_store(dir.path());
+
+        let (result, printed) = capture(|| {
+            cmd_chaosgraph_coverage_gaps(Some(&db), None, Some("no-such-domain"), false, true)
+        });
+
+        result.unwrap();
+        let report: serde_json::Value = serde_json::from_str(&printed.stdout).unwrap();
+        assert_eq!(report["count"], 0, "{report}");
+        assert_eq!(report["gaps"], serde_json::json!([]), "{report}");
     }
 
     #[test]

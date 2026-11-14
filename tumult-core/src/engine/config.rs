@@ -188,7 +188,8 @@ mod tests {
 
     #[test]
     fn resolve_env_config() {
-        std::env::set_var("TEST_TUMULT_DB_HOST", "prod-db.example.com");
+        let mut env = tumult_test_utils::EnvGuard::lock();
+        env.set("TEST_TUMULT_DB_HOST", "prod-db.example.com");
         let config = IndexMap::from([(
             "db_host".into(),
             ConfigValue::Env {
@@ -197,12 +198,12 @@ mod tests {
         )]);
         let resolved = resolve_config(&config).unwrap();
         assert_eq!(resolved.get("db_host").unwrap(), "prod-db.example.com");
-        std::env::remove_var("TEST_TUMULT_DB_HOST");
     }
 
     #[test]
     fn resolve_missing_env_returns_error() {
-        std::env::remove_var("NONEXISTENT_VAR_TUMULT_TEST");
+        let mut env = tumult_test_utils::EnvGuard::lock();
+        env.remove("NONEXISTENT_VAR_TUMULT_TEST");
         let config = IndexMap::from([(
             "db_host".into(),
             ConfigValue::Env {
@@ -225,7 +226,8 @@ mod tests {
 
     #[test]
     fn resolve_env_secret() {
-        std::env::set_var("TEST_SECRET_TUMULT_PW", "s3cret");
+        let mut env = tumult_test_utils::EnvGuard::lock();
+        env.set("TEST_SECRET_TUMULT_PW", "s3cret");
         let secrets = IndexMap::from([(
             "db".into(),
             IndexMap::from([(
@@ -237,7 +239,6 @@ mod tests {
         )]);
         let resolved = resolve_secrets(&secrets).unwrap();
         assert_eq!(resolved["db"]["password"], "s3cret");
-        std::env::remove_var("TEST_SECRET_TUMULT_PW");
     }
 
     #[test]
@@ -256,7 +257,8 @@ mod tests {
 
     #[test]
     fn resolve_missing_env_secret_returns_error() {
-        std::env::remove_var("NONEXISTENT_SECRET_TUMULT");
+        let mut env = tumult_test_utils::EnvGuard::lock();
+        env.remove("NONEXISTENT_SECRET_TUMULT");
         let secrets = IndexMap::from([(
             "db".into(),
             IndexMap::from([(

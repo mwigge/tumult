@@ -477,6 +477,7 @@ mod tests {
         effective_otlp_headers, init_logger_provider, init_meter_provider, otlp_headers_from_env,
         TelemetryConfig,
     };
+    use tumult_test_utils::EnvGuard;
 
     /// The `(key, value)` pairs `raw` parses to, in order.
     fn parse_otlp_headers(raw: &str) -> Vec<(String, String)> {
@@ -485,10 +486,6 @@ mod tests {
             .map(|entry| (entry.key, entry.value))
             .collect()
     }
-
-    /// Serialises the test that mutates `OTEL_EXPORTER_OTLP_HEADERS` so no
-    /// other test thread observes a half-configured value.
-    static HEADER_ENV_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     fn current_thread_runtime() -> tokio_minimal::runtime::Runtime {
         tokio_minimal::runtime::Builder::new_current_thread()
@@ -549,23 +546,20 @@ mod tests {
 
     #[test]
     fn otlp_headers_from_env_scenarios() {
-        let _lock = HEADER_ENV_MUTEX.lock().unwrap();
-        let prev = std::env::var("OTEL_EXPORTER_OTLP_HEADERS").ok();
+        const HEADERS: &str = "OTEL_EXPORTER_OTLP_HEADERS";
+        let mut env = EnvGuard::lock();
 
-        std::env::remove_var("OTEL_EXPORTER_OTLP_HEADERS");
+        env.remove(HEADERS);
         assert!(otlp_headers_from_env().is_none());
         assert!(effective_otlp_headers(None).is_none());
 
-        std::env::set_var("OTEL_EXPORTER_OTLP_HEADERS", "   ");
+        env.set(HEADERS, "   ");
         assert!(otlp_headers_from_env().is_none());
 
-        std::env::set_var("OTEL_EXPORTER_OTLP_HEADERS", "no-equals,=empty-key");
+        env.set(HEADERS, "no-equals,=empty-key");
         assert!(otlp_headers_from_env().is_none());
 
-        std::env::set_var(
-            "OTEL_EXPORTER_OTLP_HEADERS",
-            "authorization=Bearer kro_env,x-tenant=dev",
-        );
+        env.set(HEADERS, "authorization=Bearer kro_env,x-tenant=dev");
         let map = otlp_headers_from_env().expect("headers");
         assert_eq!(map.get("authorization").unwrap(), "Bearer kro_env");
         assert_eq!(map.get("x-tenant").unwrap(), "dev");
@@ -574,15 +568,10 @@ mod tests {
         assert_eq!(resolved.get("authorization").unwrap(), "Bearer kro_env");
 
         // Entries that are not valid gRPC metadata are skipped; valid ones stay.
-        std::env::set_var("OTEL_EXPORTER_OTLP_HEADERS", "sp ace=v,ok=1");
+        env.set(HEADERS, "sp ace=v,ok=1");
         let map = otlp_headers_from_env().expect("headers");
         assert_eq!(map.get("ok").unwrap(), "1");
         assert!(map.get("sp ace").is_none());
-
-        match prev {
-            Some(value) => std::env::set_var("OTEL_EXPORTER_OTLP_HEADERS", value),
-            None => std::env::remove_var("OTEL_EXPORTER_OTLP_HEADERS"),
-        }
     }
 
     #[test]
@@ -709,7 +698,7 @@ mod tests {
     fn exporter_events_log_the_endpoint_without_credentials() {
         // The exporters read `OTEL_EXPORTER_OTLP_HEADERS`; hold the lock so
         // the test that mutates it cannot add header warnings to the capture.
-        let _lock = HEADER_ENV_MUTEX.lock().unwrap();
+        let _env = EnvGuard::lock();
         // A successful meter init replaces the global meter provider, which
         // other tests assert exact counter totals against.
         let _meter_lock = crate::tests::METER_MUTEX.lock().unwrap();
@@ -747,7 +736,7 @@ mod tests {
 
     #[test]
     fn exporter_build_failure_does_not_echo_endpoint_credentials() {
-        let _lock = HEADER_ENV_MUTEX.lock().unwrap();
+        let _env = EnvGuard::lock();
         let rt = current_thread_runtime();
         let _guard = rt.enter();
         let config = TelemetryConfig {

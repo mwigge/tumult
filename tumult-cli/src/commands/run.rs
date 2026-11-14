@@ -408,7 +408,7 @@ fn emit_store_metrics(db_path: &Path, store: &tumult_lake::AnalyticsStore) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::commands::tests::helpers::ENV_LOCK;
+    use tumult_test_utils::EnvGuard;
 
     // Env vars are process-global; serialize every test that touches them on
     // the shared lock so command-handler tests in sibling modules cannot
@@ -476,29 +476,23 @@ mod tests {
     /// An unreachable daemon must fall back to the direct `DuckDB` write: a
     /// connection-level failure means the journal never left the process, so
     /// writing the store directly cannot double-write.
-    // The env guard must cover the awaited ingest (env vars are read inside
-    // it). Only tests serialized on ENV_LOCK can block on it, so holding a
-    // std guard across the await cannot deadlock the test runtime.
-    #[allow(clippy::await_holding_lock)]
+    // The guard covers the awaited ingest: the variables are read inside it.
     #[tokio::test]
     async fn unreachable_daemon_falls_back_to_direct_write() {
-        let _guard = ENV_LOCK.lock().unwrap();
+        let mut env = EnvGuard::lock();
         let tmp = tempfile::TempDir::new().unwrap();
         let db_path = tmp.path().join("lake.duckdb");
-        std::env::set_var("TUMULT_LAKE_PATH", &db_path);
         // The connection is closed without an HTTP response.
         let daemon = SilentDaemon::start().await;
-        std::env::set_var(DAEMON_URL_ENV, format!("http://127.0.0.1:{}", daemon.port));
-        std::env::remove_var("TUMULT_CLICKHOUSE_URL");
+        env.set("TUMULT_LAKE_PATH", &db_path)
+            .set(DAEMON_URL_ENV, format!("http://127.0.0.1:{}", daemon.port))
+            .remove("TUMULT_CLICKHOUSE_URL");
 
         let journal = test_journal("fallback-e1");
         let experiment = Experiment::default();
         let (ingested, via) = auto_ingest_journal(&journal, &experiment).await.unwrap();
         assert!(ingested);
         assert_eq!(via, None, "unreachable daemon must not claim the ingest");
-
-        std::env::remove_var(DAEMON_URL_ENV);
-        std::env::remove_var("TUMULT_LAKE_PATH");
 
         let store = tumult_lake::AnalyticsStore::open_read_only(&db_path).unwrap();
         assert_eq!(store.experiment_count().unwrap(), 1);

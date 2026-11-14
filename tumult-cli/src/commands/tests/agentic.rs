@@ -3,8 +3,9 @@
 //! of the proxy and live-run handlers that do not need external services.
 
 use super::super::*;
-use super::helpers::{use_temp_store, ENV_LOCK};
+use super::helpers::use_temp_store;
 use tempfile::TempDir;
+use tumult_test_utils::EnvGuard;
 
 #[test]
 fn list_scenario_packs_renders_bundled_matrix() {
@@ -25,9 +26,9 @@ fn list_scenario_packs_renders_bundled_matrix() {
 
 #[test]
 fn smoke_passes_and_writes_metadata_journal() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let mut env = EnvGuard::lock();
     let dir = TempDir::new().unwrap();
-    let db = use_temp_store(dir.path());
+    let db = use_temp_store(&mut env, dir.path());
     let journal = dir.path().join("smoke.journal.json");
 
     let out = cmd_agentic_smoke(&journal).unwrap();
@@ -43,8 +44,6 @@ fn smoke_passes_and_writes_metadata_journal() {
     assert!(out.contains("result: pass"), "{out}");
     assert!(journal.exists(), "metadata journal must be written");
 
-    std::env::remove_var("TUMULT_LAKE_PATH");
-
     // The run is ingested into the analytics store the report pointed at.
     let store = tumult_lake::AnalyticsStore::open_read_only(&db).unwrap();
     let rows = store.query("SELECT count(*) FROM agentic_runs").unwrap();
@@ -53,9 +52,9 @@ fn smoke_passes_and_writes_metadata_journal() {
 
 #[test]
 fn run_scenario_reports_fault_and_contract() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let mut env = EnvGuard::lock();
     let dir = TempDir::new().unwrap();
-    use_temp_store(dir.path());
+    use_temp_store(&mut env, dir.path());
     let journal = dir.path().join("scenario.journal.json");
 
     let out = cmd_agentic_run_scenario("malformed-json-recovery", &journal).unwrap();
@@ -67,8 +66,6 @@ fn run_scenario_reports_fault_and_contract() {
     assert!(out.contains("scenario: malformed-json-recovery"), "{out}");
     assert!(out.contains("result: pass"), "{out}");
     assert!(journal.exists());
-
-    std::env::remove_var("TUMULT_LAKE_PATH");
 }
 
 #[test]
@@ -80,9 +77,9 @@ fn run_scenario_unknown_pack_errors() {
 
 #[test]
 fn trajectory_reports_steps_subscores_and_journal() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let mut env = EnvGuard::lock();
     let dir = TempDir::new().unwrap();
-    use_temp_store(dir.path());
+    use_temp_store(&mut env, dir.path());
     let journal = dir.path().join("trajectory.journal.json");
 
     let out = cmd_agentic_trajectory("rag-grounding-failure", &journal).unwrap();
@@ -99,8 +96,6 @@ fn trajectory_reports_steps_subscores_and_journal() {
     assert!(out.contains("trace_id:"), "{out}");
     assert!(out.contains("result: pass"), "{out}");
     assert!(journal.exists());
-
-    std::env::remove_var("TUMULT_LAKE_PATH");
 }
 
 #[test]
@@ -112,9 +107,9 @@ fn trajectory_unknown_pack_errors() {
 
 #[test]
 fn replay_complete_fixture_passes() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let mut env = EnvGuard::lock();
     let dir = TempDir::new().unwrap();
-    use_temp_store(dir.path());
+    use_temp_store(&mut env, dir.path());
     let fixture_path = dir.path().join("fixture.json");
     let fixture = tumult_agentic::replay::complete_replay_fixture();
     std::fs::write(
@@ -130,8 +125,6 @@ fn replay_complete_fixture_passes() {
     assert!(out.contains("replay_source:"), "{out}");
     assert!(out.contains("replay_session:"), "{out}");
     assert!(out.contains("replay_steps:"), "{out}");
-
-    std::env::remove_var("TUMULT_LAKE_PATH");
 }
 
 #[test]

@@ -126,63 +126,15 @@ mod cap_text_tests {
 pub(crate) mod test_support {
     const PLUGIN_PATH_ENV: &str = "TUMULT_PLUGIN_PATH";
 
-    /// Serializes every test that sets or depends on the process-wide
-    /// `TUMULT_PLUGIN_PATH`: tests point discovery at different catalogs, so
-    /// an unserialized test can observe another test's value mid-run. A
-    /// `tokio` mutex is used because it never poisons (one failing test must
-    /// not cascade) and its guard may be held across `.await`.
-    static PLUGIN_PATH_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
-
-    /// Holds [`PLUGIN_PATH_LOCK`] and restores the previous
-    /// `TUMULT_PLUGIN_PATH` value on drop. Keep it alive for the whole test.
-    #[must_use = "the plugin path is only pinned while the guard is alive"]
-    pub(crate) struct PluginPathGuard {
-        // Field order is drop order: the value is restored before the lock
-        // is released, so no guarded test observes the intermediate state.
-        _restore: RestorePluginPath,
-        _lock: tokio::sync::MutexGuard<'static, ()>,
-    }
-
-    /// Sets `TUMULT_PLUGIN_PATH` and puts the previous value back on drop
-    /// (also when the owning test panics).
-    struct RestorePluginPath {
-        previous: Option<std::ffi::OsString>,
-    }
-
-    impl RestorePluginPath {
-        fn set(path: &std::path::Path) -> Self {
-            let previous = std::env::var_os(PLUGIN_PATH_ENV);
-            std::env::set_var(PLUGIN_PATH_ENV, path);
-            Self { previous }
-        }
-    }
-
-    impl Drop for RestorePluginPath {
-        fn drop(&mut self) {
-            match self.previous.take() {
-                Some(value) => std::env::set_var(PLUGIN_PATH_ENV, value),
-                None => std::env::remove_var(PLUGIN_PATH_ENV),
-            }
-        }
-    }
-
     /// Point plugin discovery at `path` for the life of the returned guard.
-    /// For synchronous tests; async tests use [`plugin_path_guard_async`].
-    pub(crate) fn plugin_path_guard(path: &std::path::Path) -> PluginPathGuard {
-        let lock = PLUGIN_PATH_LOCK.blocking_lock();
-        PluginPathGuard {
-            _restore: RestorePluginPath::set(path),
-            _lock: lock,
-        }
-    }
-
-    /// Async variant of [`plugin_path_guard`].
-    pub(crate) async fn plugin_path_guard_async(path: &std::path::Path) -> PluginPathGuard {
-        let lock = PLUGIN_PATH_LOCK.lock().await;
-        PluginPathGuard {
-            _restore: RestorePluginPath::set(path),
-            _lock: lock,
-        }
+    ///
+    /// The guard is the process-wide environment lock, so a test that changes
+    /// more variables does it through the returned guard instead of taking a
+    /// second one.
+    pub(crate) fn plugin_path_guard(path: &std::path::Path) -> tumult_test_utils::EnvGuard {
+        let mut env = tumult_test_utils::EnvGuard::lock();
+        env.set(PLUGIN_PATH_ENV, path);
+        env
     }
 
     /// The workspace's real `plugins/` directory (the live fault catalog).
@@ -191,35 +143,6 @@ pub(crate) mod test_support {
             .join("../plugins")
             .canonicalize()
             .unwrap()
-    }
-
-    #[test]
-    fn plugin_path_guard_pins_the_path_and_restores_the_previous_value() {
-        let outer = plugin_path_guard(std::path::Path::new("/outer"));
-        let read = || std::env::var_os(PLUGIN_PATH_ENV);
-        assert_eq!(read().as_deref(), Some(std::ffi::OsStr::new("/outer")));
-        {
-            // Nested under the held lock: restores to the outer value.
-            let _inner = RestorePluginPath::set(std::path::Path::new("/inner"));
-            assert_eq!(read().as_deref(), Some(std::ffi::OsStr::new("/inner")));
-        }
-        assert_eq!(read().as_deref(), Some(std::ffi::OsStr::new("/outer")));
-        drop(outer);
-    }
-
-    #[test]
-    fn plugin_path_guard_survives_a_panicking_holder() {
-        let holder = std::thread::spawn(|| {
-            let _guard = plugin_path_guard(std::path::Path::new("/panicking"));
-            panic!("simulated test failure while holding the guard");
-        });
-        assert!(holder.join().is_err());
-        // The lock is not poisoned and the panicking holder's value is gone.
-        let _guard = plugin_path_guard(std::path::Path::new("/after"));
-        assert_eq!(
-            std::env::var_os(PLUGIN_PATH_ENV).as_deref(),
-            Some(std::ffi::OsStr::new("/after"))
-        );
     }
 
     /// Write a minimal valid experiment TOON file into `dir` and return its path.
