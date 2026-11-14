@@ -1,0 +1,58 @@
+# OpenTelemetry Collector (contrib) used by scripts/proof/entity-events/proof.sh:
+# the host_metrics receiver reports the `host` entity every ten seconds on a
+# logs pipeline of its own, resourcedetection adds `host.id`, and the export
+# goes to tumultd over OTLP/gRPC or OTel-Arrow (PROOF_EXPORTER).
+receivers:
+  host_metrics:
+    collection_interval: 30s
+    metadata_collection_interval: 10s
+    scrapers:
+      memory:
+
+processors:
+  resourcedetection:
+    detectors: [system]
+    system:
+      hostname_sources: [os]
+      resource_attributes:
+        host.id:
+          enabled: true
+  batch:
+    timeout: 200ms
+
+exporters:
+  otlp/tumultd:
+    endpoint: 127.0.0.1:${env:PROOF_GRPC_PORT}
+    # The daemon's OTLP/gRPC services take uncompressed messages only; the
+    # exporter default (gzip) is refused with UNIMPLEMENTED.
+    compression: none
+    tls:
+      insecure: true
+    headers:
+      authorization: "Bearer ${env:KRONIKA_INGEST_TOKEN}"
+    retry_on_failure:
+      enabled: false
+  otelarrow/tumultd:
+    endpoint: 127.0.0.1:${env:PROOF_GRPC_PORT}
+    tls:
+      insecure: true
+    headers:
+      authorization: "Bearer ${env:KRONIKA_INGEST_TOKEN}"
+    arrow:
+      disable_downgrade: true
+      num_streams: 1
+    retry_on_failure:
+      enabled: false
+
+service:
+  telemetry:
+    logs:
+      level: info
+    # No metrics listener: the container shares the host's network.
+    metrics:
+      level: none
+  pipelines:
+    logs/entity_events:
+      receivers: [host_metrics]
+      processors: [resourcedetection, batch]
+      exporters: ["${env:PROOF_EXPORTER}"]
