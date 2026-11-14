@@ -290,6 +290,27 @@ pub struct ExperimentTarget {
     /// Business criticality tier (e.g. `critical`, `important`, `standard`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub criticality: Option<String>,
+    /// The target's `service.namespace`, when two services of one name
+    /// report to the same store. It narrows which telemetry the observed
+    /// version is read from.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub namespace: Option<String>,
+    /// The version of the target this run measures (its `service.version`,
+    /// e.g. `1.5.0`). Declared here it is recorded on the run as it is;
+    /// left out, the runner asks the target's own telemetry at run end.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+}
+
+impl ExperimentTarget {
+    /// The declared version, when it says anything.
+    #[must_use]
+    pub fn declared_version(&self) -> Option<&str> {
+        self.version
+            .as_deref()
+            .map(str::trim)
+            .filter(|version| !version.is_empty())
+    }
 }
 
 // ── Experiment (the top-level definition) ──────────────────────
@@ -683,6 +704,28 @@ mod tests {
         assert_eq!(exp.nfr[1].operator, NfrOperator::Gte);
         let back = toon_round_trip(&exp);
         assert_eq!(back, exp);
+    }
+
+    #[test]
+    fn a_target_may_declare_the_version_it_measures() {
+        let toon = "title: t\ntarget:\n  system: checkout\n  environment: demo\n  version: 1.5.0\n";
+        let exp: Experiment = toon_format::decode_default(toon).expect("parse");
+        let target = exp.target.clone().expect("target");
+        assert_eq!(target.version.as_deref(), Some("1.5.0"));
+        assert_eq!(target.declared_version(), Some("1.5.0"));
+        assert_eq!(toon_round_trip(&exp), exp);
+
+        // A blank version declares nothing.
+        let blank = ExperimentTarget {
+            version: Some("  ".into()),
+            ..target.clone()
+        };
+        assert_eq!(blank.declared_version(), None);
+        let none = ExperimentTarget {
+            version: None,
+            ..target
+        };
+        assert_eq!(none.declared_version(), None);
     }
 
     #[test]

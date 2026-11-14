@@ -12,6 +12,13 @@ pub(crate) enum StoreAction {
         #[arg(long, default_value = "tumult-backup")]
         output: PathBuf,
     },
+    /// Write the Parquet backup `tumult import` reads: experiments, load
+    /// results, probe samples, run roots and version history
+    Export {
+        /// Output directory for the Parquet files
+        #[arg(long, default_value = "tumult-export")]
+        output: PathBuf,
+    },
     /// Restore a complete backup into a new database file
     Restore {
         #[arg(long)]

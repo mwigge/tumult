@@ -1,0 +1,29 @@
+title: RIP phase-4 proof — checkout soak in prod
+description: Six seconds of oha against the proof's second checkout build, the one that serves environment prod on its own port, sampled every second. It runs while the demo soak is running, so each run's window holds the spans of both builds and each run must still record only the version of its own environment.
+
+tags[2]: proof, performance
+kind: performance
+target:
+  system: checkout
+  technology: http
+  environment: prod
+
+load:
+  tool: oha
+  script: http://127.0.0.1:44382/
+  vus: 2
+  duration_s: 6
+  profile:
+    type: soak
+    sample_interval_s: 1
+
+method[1]:
+  - name: hold-for-the-soak
+    activity_type: probe
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "sleep 7 && curl -fsS -o /dev/null http://127.0.0.1:44382/ready"
+      timeout_s: 60.0
+
+rollbacks[0]:

@@ -47,5 +47,5 @@ rollbacks[1]:
     provider:
       type: process
       path: sh
-      arguments[2]: "-c", "touch \"$PROOF_ROLLBACK_MARK\""
+      arguments[2]: "-c", "date +%s%N > \"$PROOF_ROLLBACK_MARK\""
       timeout_s: 5.0

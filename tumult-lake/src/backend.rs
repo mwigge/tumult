@@ -164,6 +164,7 @@ mod tests {
         let backend: &dyn AnalyticsBackend = &store;
 
         let journal = Journal {
+            target_version: None,
             experiment_title: "trait test".into(),
             experiment_id: "bt-001".into(),
             status: ExperimentStatus::Completed,
@@ -211,6 +212,7 @@ mod tests {
         let store = crate::duckdb_store::AnalyticsStore::in_memory().unwrap();
         let backend: &dyn AnalyticsBackend = &store;
         let journal = |id: &str| Journal {
+            target_version: None,
             experiment_title: format!("batch {id}"),
             experiment_id: id.into(),
             status: ExperimentStatus::Completed,

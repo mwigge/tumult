@@ -187,6 +187,143 @@ pub struct LoadResult {
     /// otherwise). Empty for tools that only report an end-of-run summary.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub samples: Vec<LoadSample>,
+    /// How the plan was carried out: windows planned and completed, an
+    /// abort, and why a run fell short. Left out of the journal when there
+    /// is nothing to say (a tool that only reports an end-of-run summary
+    /// and ran to its end).
+    #[serde(default, skip_serializing_if = "LoadExecution::is_unremarkable")]
+    pub execution: LoadExecution,
+}
+
+/// How a load plan was carried out, as opposed to what it measured.
+///
+/// `planned_windows` and `completed_windows` are set by adapters that run
+/// the plan one window at a time (oha). A plan with fewer completed than
+/// planned windows was truncated: the load never ran its full shape, so
+/// its thresholds count as unmet whatever the windows that did run
+/// measured.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LoadExecution {
+    /// Windows the plan called for.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub planned_windows: Option<u32>,
+    /// Windows that ran to their end and reported.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub completed_windows: Option<u32>,
+    /// Windows in which no request was answered (a blackout): the
+    /// completed ones, and those counted in `lost_to_unanswered`.
+    /// Recorded, never a deviation by itself.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub unanswered_windows: u32,
+    /// Windows that never ran because the unanswered window before them
+    /// was still waiting for its requests to time out when their slot
+    /// came. Part of the blackout, not a truncation of the plan.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub lost_to_unanswered: u32,
+    /// The load was ended by a halt or an interrupt, not by the plan or
+    /// the method running out.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub aborted: bool,
+    /// Why the plan fell short, in plain words; empty when it did not.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub reasons: Vec<String>,
+    /// What became of every request of the run, the windows that left no
+    /// sample included. `None` when the tool does not say.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requests: Option<RequestCounts>,
+    /// Sampled windows whose p99 fell among the requests that timed out
+    /// ([`LoadSample::censored`]).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub censored_windows: u32,
+}
+
+/// What became of the requests of a window or a run. A request is one of
+/// `ok`, `timed_out`, `transport`, `http_4xx`, `http_5xx`, `http_other`
+/// or `unclassified`; `sent` is their sum.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RequestCounts {
+    pub sent: u64,
+    /// Answered with a 2xx or 3xx status.
+    pub ok: u64,
+    /// Never answered within the request timeout.
+    pub timed_out: u64,
+    /// Failed in transport for another reason (refused, reset, …).
+    pub transport: u64,
+    pub http_4xx: u64,
+    pub http_5xx: u64,
+    /// Answered with a status outside 200–599.
+    pub http_other: u64,
+    /// Failed, the tool does not say how.
+    pub unclassified: u64,
+}
+
+impl RequestCounts {
+    /// Requests that did not end in a 2xx or 3xx answer.
+    #[must_use]
+    pub fn failed(&self) -> u64 {
+        self.sent.saturating_sub(self.ok)
+    }
+
+    /// Requests that got any HTTP answer.
+    #[must_use]
+    pub fn answered(&self) -> u64 {
+        self.ok + self.http_4xx + self.http_5xx + self.http_other
+    }
+
+    /// `failed / sent`; `None` when nothing was sent.
+    #[must_use]
+    pub fn failure_share(&self) -> Option<f64> {
+        if self.sent == 0 {
+            return None;
+        }
+        // Request counts are far below 2^53.
+        #[allow(clippy::cast_precision_loss)]
+        Some(self.failed() as f64 / self.sent as f64)
+    }
+
+    /// Add the counts of `other`.
+    pub fn add(&mut self, other: &Self) {
+        self.sent += other.sent;
+        self.ok += other.ok;
+        self.timed_out += other.timed_out;
+        self.transport += other.transport;
+        self.http_4xx += other.http_4xx;
+        self.http_5xx += other.http_5xx;
+        self.http_other += other.http_other;
+        self.unclassified += other.unclassified;
+    }
+}
+
+// serde's `skip_serializing_if` passes a reference.
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_zero(n: &u32) -> bool {
+    *n == 0
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_false(flag: &bool) -> bool {
+    !*flag
+}
+
+impl LoadExecution {
+    /// Nothing worth a line in the journal.
+    #[must_use]
+    pub fn is_unremarkable(&self) -> bool {
+        *self == Self::default()
+    }
+
+    /// Fewer windows are accounted for — completed, or lost to a blackout
+    /// — than the plan called for. `false` for a tool that does not count
+    /// windows.
+    #[must_use]
+    pub fn truncated(&self) -> bool {
+        match (self.planned_windows, self.completed_windows) {
+            (Some(planned), Some(completed)) => {
+                completed.saturating_add(self.lost_to_unanswered) < planned
+            }
+            _ => false,
+        }
+    }
 }
 
 /// One windowed load summary: what the tool measured between `ts_ns` and
@@ -207,6 +344,31 @@ pub struct LoadSample {
     /// Fraction of requests that failed (0.0-1.0).
     pub error_rate: f64,
     pub requests: u64,
+    /// What became of the window's requests, when the tool says.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub counts: Option<RequestCounts>,
+    /// How long a request was waited for before it counted as timed out.
+    /// The latency percentiles count such a request as taking at least
+    /// this long, so one that reads this value or more is a lower bound.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub request_timeout_ms: Option<f64>,
+}
+
+impl LoadSample {
+    /// Whether `latency_ms`, one of this window's percentiles, fell among
+    /// the requests that timed out: the true figure is that or worse.
+    #[must_use]
+    pub fn censors(&self, latency_ms: f64) -> bool {
+        self.request_timeout_ms
+            .is_some_and(|timeout_ms| latency_ms >= timeout_ms)
+    }
+
+    /// Whether any of the window's percentiles is censored (the p99 is
+    /// the first to be).
+    #[must_use]
+    pub fn censored(&self) -> bool {
+        self.censors(self.latency_p99_ms)
+    }
 }
 
 // ── Raw probe samples and objective verdicts ──────────────────
@@ -449,9 +611,128 @@ mod tests {
             total_requests: 148_230,
             thresholds_met: true,
             samples: vec![],
+            execution: LoadExecution::default(),
         };
         let decoded: LoadResult = toon_round_trip(&result);
         assert_eq!(decoded, result);
+    }
+
+    #[test]
+    fn load_execution_round_trips_and_is_left_out_when_unremarkable() {
+        let mut result = LoadResult {
+            tool: LoadTool::Oha,
+            started_at_ns: 1,
+            ended_at_ns: 2,
+            duration_s: 1.0,
+            vus: 5,
+            throughput_rps: 10.0,
+            latency_p50_ms: 1.0,
+            latency_p95_ms: 2.0,
+            latency_p99_ms: 3.0,
+            error_rate: 0.0,
+            total_requests: 10,
+            thresholds_met: false,
+            samples: vec![],
+            execution: LoadExecution::default(),
+        };
+        let plain = serde_json::to_string(&result).expect("json");
+        assert!(!plain.contains("execution"), "{plain}");
+        let old: LoadResult = serde_json::from_str(&plain).expect("an older journal still reads");
+        assert_eq!(old.execution, LoadExecution::default());
+
+        result.execution = LoadExecution {
+            planned_windows: Some(60),
+            completed_windows: Some(35),
+            unanswered_windows: 2,
+            lost_to_unanswered: 1,
+            aborted: true,
+            reasons: vec!["25 of 60 windows were skipped".into()],
+            requests: Some(RequestCounts {
+                sent: 900,
+                ok: 700,
+                timed_out: 200,
+                ..RequestCounts::default()
+            }),
+            censored_windows: 3,
+        };
+        assert!(result.execution.truncated());
+        let decoded: LoadResult = toon_round_trip(&result);
+        assert_eq!(decoded, result);
+    }
+
+    #[test]
+    fn request_counts_add_up_and_give_a_failure_share() {
+        let mut counts = RequestCounts {
+            sent: 100,
+            ok: 60,
+            timed_out: 30,
+            http_5xx: 10,
+            ..RequestCounts::default()
+        };
+        assert_eq!(counts.failed(), 40);
+        assert_eq!(counts.answered(), 70);
+        assert_eq!(counts.failure_share(), Some(0.4));
+        assert_eq!(RequestCounts::default().failure_share(), None);
+        counts.add(&RequestCounts {
+            sent: 100,
+            ok: 90,
+            transport: 4,
+            http_4xx: 5,
+            unclassified: 1,
+            ..RequestCounts::default()
+        });
+        assert_eq!(
+            counts,
+            RequestCounts {
+                sent: 200,
+                ok: 150,
+                timed_out: 30,
+                transport: 4,
+                http_4xx: 5,
+                http_5xx: 10,
+                http_other: 0,
+                unclassified: 1,
+            }
+        );
+    }
+
+    #[test]
+    fn a_percentile_at_the_request_timeout_is_censored() {
+        let sample = |p99: f64, timeout: Option<f64>| LoadSample {
+            ts_ns: 1,
+            duration_s: 10.0,
+            vus: 4,
+            throughput_rps: 40.0,
+            latency_p50_ms: 20.0,
+            latency_p95_ms: 25.0,
+            latency_p99_ms: p99,
+            error_rate: 0.0,
+            requests: 400,
+            counts: None,
+            request_timeout_ms: timeout,
+        };
+        assert!(sample(2000.0, Some(2000.0)).censored());
+        assert!(!sample(1999.0, Some(2000.0)).censored());
+        assert!(!sample(2000.0, None).censored(), "no timeout, no claim");
+        let tail = sample(2000.0, Some(2000.0));
+        assert!(!tail.censors(tail.latency_p95_ms));
+        // A journal written before the counts existed still reads.
+        let old = r#"{"ts_ns":1,"duration_s":10.0,"vus":4,"throughput_rps":40.0,
+            "latency_p50_ms":20.0,"latency_p95_ms":25.0,"latency_p99_ms":30.0,
+            "error_rate":0.0,"requests":400}"#;
+        let read: LoadSample = serde_json::from_str(old).expect("an older sample reads");
+        assert_eq!((read.counts, read.request_timeout_ms), (None, None));
+    }
+
+    #[test]
+    fn a_tool_that_counts_no_windows_is_never_truncated() {
+        assert!(!LoadExecution::default().truncated());
+        let full = LoadExecution {
+            planned_windows: Some(3),
+            completed_windows: Some(3),
+            ..LoadExecution::default()
+        };
+        assert!(!full.truncated());
     }
 
     #[test]

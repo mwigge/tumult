@@ -208,3 +208,80 @@ fn parse_run_invalid_output_format_is_error() {
     let result = Cli::try_parse_from(["tumult", "run", "exp.toon", "--output-format", "xml"]);
     assert!(result.is_err());
 }
+
+// ── Perf gate ─────────────────────────────────────────────
+
+#[test]
+fn perf_fails_on_regressed_and_inconclusive_unless_told_otherwise() {
+    let cli = Cli::try_parse_from(["tumult", "perf", "checkout"]).unwrap();
+    let Commands::Perf {
+        fail_on,
+        range,
+        include,
+        ..
+    } = cli.command
+    else {
+        panic!("expected Perf command");
+    };
+    assert_eq!(
+        fail_on,
+        vec![PerfFailOnArg::Regressed, PerfFailOnArg::Inconclusive]
+    );
+    assert_eq!(range, None);
+    assert_eq!(include, None);
+
+    let cli = Cli::try_parse_from(["tumult", "perf", "checkout", "--fail-on", "regressed"]);
+    let Commands::Perf { fail_on, .. } = cli.unwrap().command else {
+        panic!("expected Perf command");
+    };
+    assert_eq!(fail_on, vec![PerfFailOnArg::Regressed]);
+}
+
+#[test]
+fn perf_takes_a_range_and_can_include_partial_runs() {
+    let cli = Cli::try_parse_from([
+        "tumult",
+        "perf",
+        "checkout",
+        "--range",
+        "60d",
+        "--include",
+        "partial",
+        "--fail-on",
+        "regressed,inconclusive",
+    ])
+    .unwrap();
+    let Commands::Perf {
+        fail_on,
+        range,
+        include,
+        ..
+    } = cli.command
+    else {
+        panic!("expected Perf command");
+    };
+    assert_eq!(range.as_deref(), Some("60d"));
+    assert_eq!(include, Some(PerfIncludeArg::Partial));
+    assert_eq!(
+        fail_on,
+        vec![PerfFailOnArg::Regressed, PerfFailOnArg::Inconclusive]
+    );
+    assert!(Cli::try_parse_from(["tumult", "perf", "checkout", "--include", "all"]).is_err());
+}
+
+#[test]
+fn perf_takes_between_1_and_1000_minimum_runs() {
+    let min_runs = |value: &str| {
+        Cli::try_parse_from(["tumult", "perf", "checkout", "--min-runs", value]).map(|cli| {
+            let Commands::Perf { min_runs, .. } = cli.command else {
+                panic!("expected Perf command");
+            };
+            min_runs
+        })
+    };
+    assert_eq!(min_runs("1").unwrap(), Some(1));
+    assert_eq!(min_runs("1000").unwrap(), Some(1000));
+    for refused in ["0", "1001", "-1", "many"] {
+        assert!(min_runs(refused).is_err(), "{refused}");
+    }
+}

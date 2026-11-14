@@ -10,6 +10,8 @@ use crate::store::{attrs_json, migrate, query_json_rows, with_tx};
 /// daemon funnels every write through a channel onto a single `Writer`).
 pub struct Writer {
     pub(crate) conn: Connection,
+    /// The wall clock in nanoseconds since the epoch; a test sets its own.
+    pub(crate) clock: fn() -> i64,
 }
 
 impl Writer {
@@ -60,7 +62,7 @@ impl Writer {
                     r.status_code,
                     r.status_message,
                     r.service_name,
-                    r.service_version,
+                    crate::sightings::stored_version(r).map(|(version, _)| version),
                     r.experiment_id,
                     r.experiment_name,
                     r.outcome_status,
@@ -79,6 +81,7 @@ impl Writer {
                     events,
                 ])?;
             }
+            crate::sightings::note_sightings(&self.conn, rows, (self.clock)())?;
             Ok(())
         })
     }

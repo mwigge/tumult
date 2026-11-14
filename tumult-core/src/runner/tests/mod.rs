@@ -14,8 +14,10 @@ mod exec_tests;
 mod gameday_tests;
 mod halt_tests;
 mod load_tests;
+pub(crate) mod log_capture;
 mod rollback_tests;
 mod sampling_tests;
+mod version_tests;
 
 // -- Mock executor
 

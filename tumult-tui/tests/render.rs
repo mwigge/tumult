@@ -24,6 +24,7 @@ use tumult_tui::ui;
 fn journal(id: &str, title: &str, status: ExperimentStatus, start_ns: i64, dur_ms: u64) -> Journal {
     let failed = status != ExperimentStatus::Completed;
     Journal {
+        target_version: None,
         experiment_title: title.into(),
         experiment_id: id.into(),
         status,

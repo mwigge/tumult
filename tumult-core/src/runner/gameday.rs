@@ -201,6 +201,7 @@ pub fn run_gameday_with_wiring(
             parent_context: Some(opentelemetry::Context::current()),
             load_executor: None, // load is managed at GameDay level
             max_concurrent_faults: config.max_concurrent_faults,
+            version_resolver: config.version_resolver.clone(),
         };
         let wiring = wiring(index, experiment);
         match run_experiment(experiment, &wiring.executor, &wiring.controls, &exp_config) {

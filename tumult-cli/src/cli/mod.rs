@@ -71,12 +71,18 @@ pub(crate) enum GateFailOn {
 
 #[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum PerfFailOnArg {
-    /// Exit non-zero on a `regressed` verdict only (default)
+    /// Exit 3 on a `regressed` verdict
     Regressed,
-    /// Exit non-zero on `regressed` or `inconclusive`
+    /// Exit 4 on an `inconclusive` verdict, and 3 on a `regressed` one
     Inconclusive,
     /// Always exit zero; print the verdict only
     Never,
+}
+
+#[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum PerfIncludeArg {
+    /// Count the samples of aborted and truncated runs too
+    Partial,
 }
 
 #[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
@@ -157,6 +163,12 @@ pub(crate) enum Commands {
         /// Template variable substitution: KEY=VALUE (may be repeated)
         #[arg(long = "var", value_name = "KEY=VALUE", action = clap::ArgAction::Append)]
         vars: Vec<String>,
+        /// The version of the target this run measures (its
+        /// `service.version`), recorded on the run as declared; without
+        /// it and without `target.version` in the file, the version is
+        /// observed from the target's telemetry when the run ends
+        #[arg(long, value_name = "VERSION")]
+        target_version: Option<String>,
         /// Run a load test concurrently with the experiment method
         #[arg(long, value_enum)]
         load: Option<LoadToolArg>,
@@ -395,22 +407,53 @@ pub(crate) enum Commands {
         /// Fewer samples on either side is inconclusive (daemon default 20)
         #[arg(long)]
         min_samples: Option<u32>,
+        /// Fewer runs with samples on either side is inconclusive (daemon
+        /// default 3, at most 1000); an interval from fewer than 5 is
+        /// flagged as resting on few runs
+        #[arg(long, value_parser = clap::value_parser!(u32).range(1..=1000))]
+        min_runs: Option<u32>,
+        /// Seed of the resampling (daemon default fixed): the same runs
+        /// and seed give the same interval
+        #[arg(long)]
+        seed: Option<u64>,
         /// Noise margin as a percentage of the baseline quantile (daemon default 5)
         #[arg(long)]
         margin_pct: Option<f64>,
-        /// Restrict the compared runs to one environment
+        /// The environment to compare in; needed when the target has
+        /// versions in more than one
         #[arg(long)]
         env: Option<String>,
+        /// Version to compare against (default: the one deployed just
+        /// before the candidate)
+        #[arg(long)]
+        baseline: Option<String>,
+        /// Version to judge (default: the one deployed last)
+        #[arg(long)]
+        candidate: Option<String>,
         /// Append the verdict to the daemon's `perf_verdicts` history
-        /// (needs the operator role); the default only reads
+        /// (needs the operator role; a retry with the same evidence
+        /// appends nothing and still succeeds); the default only reads
         #[arg(long)]
         store: bool,
         /// Daemon base URL (default: `TUMULT_DAEMON_URL`)
         #[arg(long)]
         daemon_url: Option<String>,
-        /// Which verdicts make the command exit non-zero
-        #[arg(long, value_enum, default_value_t = PerfFailOnArg::Regressed)]
-        fail_on: PerfFailOnArg,
+        /// How far back samples are read, such as `30d` or `12h` (daemon
+        /// default 30d); the order of the versions does not depend on it
+        #[arg(long)]
+        range: Option<String>,
+        /// Runs left out by default that are to be counted
+        #[arg(long, value_enum)]
+        include: Option<PerfIncludeArg>,
+        /// Which verdicts make the command exit non-zero, comma-separated:
+        /// `regressed` exits 3, `inconclusive` exits 4
+        #[arg(
+            long,
+            value_enum,
+            value_delimiter = ',',
+            default_values_t = [PerfFailOnArg::Regressed, PerfFailOnArg::Inconclusive]
+        )]
+        fail_on: Vec<PerfFailOnArg>,
         /// Print the daemon's JSON answer instead of the summary
         #[arg(long)]
         json: bool,

@@ -1,7 +1,11 @@
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::{Context, Result};
-use tumult_ingest::IngestWriter;
+use tumult_core::types::bounded_log_text;
+use tumult_ingest::{Batch, IngestWriter};
 use tumult_lake::Store;
 use tumult_otel::logging::err;
 
@@ -116,6 +120,79 @@ pub(crate) fn spawn_lake_scheduler(
 }
 
 // ---------------------------------------------------------------------------
+// Backfill of the version rollup
+
+/// How long one turn of the backfill may hold the writer.
+pub(crate) const BACKFILL_TURN: Duration = Duration::from_millis(250);
+/// The pause between two turns, in which telemetry is written.
+pub(crate) const BACKFILL_PAUSE: Duration = Duration::from_secs(1);
+
+/// Give the backfill one turn on the writer; `true` when the rollup is
+/// complete.
+async fn backfill_turn(ingest: &IngestWriter, budget: Duration) -> Result<bool> {
+    let done = Arc::new(AtomicBool::new(false));
+    let seen = Arc::clone(&done);
+    ingest
+        .write(Batch::Exec(Box::new(move |writer| {
+            let finished = writer
+                .continue_version_backfill(budget)
+                .map_err(|e| e.to_string())?;
+            seen.store(finished, Ordering::Release);
+            Ok(())
+        })))
+        .await?;
+    Ok(done.load(Ordering::Acquire))
+}
+
+/// One turn of the job: `true` when the rollup is complete and the job
+/// has nothing left to do. A turn that fails is logged and is not the
+/// end.
+async fn backfill_finished(ingest: &IngestWriter) -> bool {
+    match backfill_turn(ingest, BACKFILL_TURN).await {
+        Ok(true) => {
+            tracing::info!(
+                name: "daemon.sightings.backfill.done",
+                "the version history of the stored spans is read back"
+            );
+            true
+        }
+        Ok(false) => false,
+        Err(e) => {
+            tracing::warn!(
+                name: "daemon.sightings.backfill.failed",
+                { error.message = %bounded_log_text(&format!("{e:#}")) },
+                "a turn of reading back the version history failed, it is tried again"
+            );
+            false
+        }
+    }
+}
+
+/// Carry the backfill of the version rollup on after the open: a turn of
+/// [`BACKFILL_TURN`] on the writer, then `pause` for telemetry, until the
+/// rollup is complete. The open itself spends only a short budget, so a
+/// large lake does not hold the daemon's start; until this job ends,
+/// answers say `backfill: running`. A turn that fails is logged and tried
+/// again. The task holds an `IngestWriter` clone and stops on `shutdown`.
+pub(crate) fn spawn_version_backfill(
+    ingest: IngestWriter,
+    pause: Duration,
+    shutdown: tokio_util::sync::CancellationToken,
+) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        loop {
+            if backfill_finished(&ingest).await {
+                break;
+            }
+            tokio::select! {
+                () = tokio::time::sleep(pause) => {}
+                () = shutdown.cancelled() => break,
+            }
+        }
+    })
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 
 #[cfg(test)]
@@ -153,6 +230,100 @@ mod tests {
             .await
             .expect("ingest writer drain hung — a sender is still alive")
             .expect("ingest writer task panicked");
+    }
+
+    fn versioned_span(ts_ns: i64) -> tumult_lake::SpanRow {
+        tumult_lake::SpanRow {
+            ts_ns,
+            trace_id: format!("t-{ts_ns}"),
+            span_id: format!("s-{ts_ns}"),
+            span_name: "GET /".into(),
+            span_kind: "SERVER".into(),
+            status_code: "OK".into(),
+            service_name: "checkout".into(),
+            service_version: Some("1.0.0".into()),
+            target_environment: Some("demo".into()),
+            events: "[]".into(),
+            ..tumult_lake::SpanRow::default()
+        }
+    }
+
+    /// A lake whose backfill the open left unfinished: spans on two days,
+    /// an empty rollup, and the cursor at the start.
+    fn lake_with_a_backfill_to_finish(dir: &std::path::Path) -> (PathBuf, Store) {
+        const DAY_NS: i64 = 86_400_000_000_000;
+        let db_path = dir.join("k.duckdb");
+        let store = Store::open(&db_path).unwrap();
+        let writer = store.writer().unwrap();
+        writer
+            .insert_spans(&[versioned_span(DAY_NS), versioned_span(3 * DAY_NS)])
+            .unwrap();
+        for sql in [
+            "DELETE FROM service_version_sightings",
+            "UPDATE sightings_backfill SET done = false, cursor_ns = 0",
+        ] {
+            writer.execute(sql, []).unwrap();
+        }
+        (db_path, store)
+    }
+
+    fn backfill_running(store: &Store) -> bool {
+        store
+            .read_only()
+            .unwrap()
+            .version_backfill_running()
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn a_backfill_the_open_left_unfinished_is_carried_on_until_it_is_done() {
+        let dir = tempfile::tempdir().unwrap();
+        let (_db_path, store) = lake_with_a_backfill_to_finish(dir.path());
+        assert!(backfill_running(&store));
+        let (ingest, writer_task) = IngestWriter::spawn(store.writer().unwrap(), 8);
+
+        let task = spawn_version_backfill(
+            ingest.clone(),
+            Duration::from_millis(5),
+            tokio_util::sync::CancellationToken::new(),
+        );
+        tokio::time::timeout(Duration::from_secs(20), task)
+            .await
+            .expect("the backfill job did not end")
+            .expect("the backfill job panicked");
+
+        assert!(!backfill_running(&store));
+        let seen = store.read_only().unwrap().version_sightings("checkout");
+        assert_eq!(seen.unwrap().len(), 1);
+        // The job gave its writer handle back: the drain ends.
+        drop(ingest);
+        tokio::time::timeout(Duration::from_secs(10), writer_task)
+            .await
+            .expect("ingest writer drain hung")
+            .expect("ingest writer task panicked");
+    }
+
+    #[tokio::test]
+    async fn a_backfill_job_stops_on_shutdown_and_when_the_writer_is_gone() {
+        let dir = tempfile::tempdir().unwrap();
+        let (_db_path, store) = lake_with_a_backfill_to_finish(dir.path());
+        let (ingest, writer_task) = IngestWriter::spawn(store.writer().unwrap(), 8);
+        writer_task.abort();
+        let _ = writer_task.await;
+        // Every turn fails now, and a failed turn does not end the job:
+        // only the shutdown does.
+        assert!(
+            !backfill_finished(&ingest).await,
+            "a failed turn is tried again"
+        );
+        let shutdown = tokio_util::sync::CancellationToken::new();
+        let task = spawn_version_backfill(ingest, Duration::from_secs(3600), shutdown.clone());
+        shutdown.cancel();
+        tokio::time::timeout(Duration::from_secs(10), task)
+            .await
+            .expect("the backfill job did not stop on shutdown")
+            .expect("the backfill job panicked");
+        assert!(backfill_running(&store));
     }
 
     #[test]

@@ -98,6 +98,99 @@ impl Writer {
     }
 }
 
+/// Whether the latest stored row for the comparison `row` names — same
+/// target, probe, versions, quantile and environments — holds the same
+/// evidence: sample counts, percentiles, difference, interval, level,
+/// margin and verdict. NULLs compare equal to NULLs.
+const SAME_AS_LATEST: &str = "
+SELECT count(*) FROM (
+    SELECT * FROM perf_verdicts
+    WHERE target = ? AND probe = ? AND baseline_version = ?
+      AND candidate_version = ? AND quantile = ?
+      AND CAST(envs AS VARCHAR) IS NOT DISTINCT FROM ?
+    ORDER BY computed_at_ns DESC, rowid DESC LIMIT 1
+) AS latest
+WHERE latest.baseline_n = ? AND latest.candidate_n = ?
+  AND latest.baseline_p50 IS NOT DISTINCT FROM ?
+  AND latest.baseline_p95 IS NOT DISTINCT FROM ?
+  AND latest.baseline_p99 IS NOT DISTINCT FROM ?
+  AND latest.candidate_p50 IS NOT DISTINCT FROM ?
+  AND latest.candidate_p95 IS NOT DISTINCT FROM ?
+  AND latest.candidate_p99 IS NOT DISTINCT FROM ?
+  AND latest.delta IS NOT DISTINCT FROM ?
+  AND latest.delta_pct IS NOT DISTINCT FROM ?
+  AND latest.ci_low IS NOT DISTINCT FROM ?
+  AND latest.ci_high IS NOT DISTINCT FROM ?
+  AND latest.confidence = ? AND latest.margin = ? AND latest.verdict = ?";
+
+impl Writer {
+    /// Append `row` unless the latest stored row for the same comparison
+    /// already holds the same evidence, so that a repeated request — a
+    /// retry after a client timeout — leaves one row. `Ok(true)` when a
+    /// row was appended. A verdict that changed and later changed back is
+    /// appended again: only the latest row is compared.
+    ///
+    /// # Errors
+    /// Returns an error if the lookup or the insert fails.
+    pub fn append_perf_verdict(&self, row: &PerfVerdictRow) -> Result<bool, StoreError> {
+        let row = PerfVerdictRow {
+            envs: row.envs.as_deref().map(as_set),
+            computed_at_ns: crate::lake::now_ns(),
+            ..row.clone()
+        };
+        if self.latest_perf_verdict_matches(&row)? {
+            return Ok(false);
+        }
+        self.insert_perf_verdict(&row)?;
+        Ok(true)
+    }
+
+    fn latest_perf_verdict_matches(&self, row: &PerfVerdictRow) -> Result<bool, StoreError> {
+        let envs = row
+            .envs
+            .as_ref()
+            .map(serde_json::to_string)
+            .transpose()
+            .map_err(|e| StoreError::Internal(format!("perf verdict envs: {e}")))?;
+        let same: i64 = self.conn.query_row(
+            SAME_AS_LATEST,
+            params![
+                row.target,
+                row.probe,
+                row.baseline_version,
+                row.candidate_version,
+                row.quantile,
+                envs,
+                row.baseline_n,
+                row.candidate_n,
+                row.baseline_p50,
+                row.baseline_p95,
+                row.baseline_p99,
+                row.candidate_p50,
+                row.candidate_p95,
+                row.candidate_p99,
+                row.delta,
+                row.delta_pct,
+                row.ci_low,
+                row.ci_high,
+                row.confidence,
+                row.margin,
+                row.verdict,
+            ],
+            |r| r.get(0),
+        )?;
+        Ok(same > 0)
+    }
+}
+
+/// An environment list as the set it stands for: sorted, each name once.
+fn as_set(envs: &[String]) -> Vec<String> {
+    let mut envs = envs.to_vec();
+    envs.sort();
+    envs.dedup();
+    envs
+}
+
 impl Reader {
     /// The stored verdicts for `target`, newest first, at most `limit`
     /// rows, as JSON objects with the column names of `perf_verdicts`
@@ -130,7 +223,7 @@ impl Reader {
              FROM perf_verdicts WHERE target = ?
                AND (? OR (envs IS NOT NULL AND list_has_all(
                     CAST(CAST(? AS JSON) AS VARCHAR[]), CAST(envs AS VARCHAR[]))))
-             ORDER BY computed_at_ns DESC LIMIT ?",
+             ORDER BY computed_at_ns DESC, rowid DESC LIMIT ?",
         )?;
         let limit = i64::try_from(limit).unwrap_or(i64::MAX);
         let rows = stmt.query_map(params![target, unscoped, scopes_json, limit], |r| {
@@ -296,6 +389,120 @@ INSERT INTO perf_verdicts VALUES (
 
         assert_eq!(reader.perf_verdicts("checkout", &[], 1).unwrap().len(), 1);
         assert!(reader.perf_verdicts("other", &[], 10).unwrap().is_empty());
+    }
+
+    #[test]
+    fn appending_the_same_verdict_twice_keeps_one_row() {
+        let d = tempfile::TempDir::new().unwrap();
+        let store = Store::open(&d.path().join("lake.duckdb")).unwrap();
+        let writer = store.writer().unwrap();
+        let count = || {
+            let reader = store.read_only().unwrap();
+            reader.perf_verdicts("checkout", &[], 50).unwrap().len()
+        };
+        let demo = |verdict: &str, at: i64| PerfVerdictRow {
+            envs: Some(vec!["demo".into()]),
+            ..row(verdict, at)
+        };
+        assert!(writer.append_perf_verdict(&demo("regressed", 10)).unwrap());
+        // The retry: same comparison, same evidence, a later clock.
+        assert!(!writer.append_perf_verdict(&demo("regressed", 20)).unwrap());
+        assert_eq!(count(), 1);
+
+        // Another environment list, quantile or probe is another comparison.
+        assert!(writer.append_perf_verdict(&row("regressed", 30)).unwrap());
+        assert!(!writer.append_perf_verdict(&row("regressed", 31)).unwrap());
+        let p99 = PerfVerdictRow {
+            quantile: "p99".into(),
+            ..demo("regressed", 40)
+        };
+        assert!(writer.append_perf_verdict(&p99).unwrap());
+        let other_probe = PerfVerdictRow {
+            probe: "health".into(),
+            ..demo("regressed", 50)
+        };
+        assert!(writer.append_perf_verdict(&other_probe).unwrap());
+        assert_eq!(count(), 4);
+
+        // New evidence appends; going back to the earlier evidence does
+        // too, because only the latest row is compared.
+        let more = PerfVerdictRow {
+            candidate_n: 200,
+            ..demo("regressed", 60)
+        };
+        assert!(writer.append_perf_verdict(&more).unwrap());
+        assert!(!writer.append_perf_verdict(&more).unwrap());
+        assert!(writer.append_perf_verdict(&demo("regressed", 70)).unwrap());
+        let missing = PerfVerdictRow {
+            ci_low: None,
+            ci_high: None,
+            ..demo("inconclusive", 80)
+        };
+        assert!(writer.append_perf_verdict(&missing).unwrap());
+        assert!(!writer.append_perf_verdict(&missing).unwrap());
+        assert_eq!(count(), 7);
+    }
+
+    #[test]
+    fn the_writer_stamps_the_row_and_reads_the_environment_list_as_a_set() {
+        let d = tempfile::TempDir::new().unwrap();
+        let store = Store::open(&d.path().join("lake.duckdb")).unwrap();
+        let writer = store.writer().unwrap();
+        let rows = || {
+            let reader = store.read_only().unwrap();
+            reader.perf_verdicts("checkout", &[], 50).unwrap()
+        };
+        let in_envs = |envs: &[&str], at: i64| PerfVerdictRow {
+            envs: Some(envs.iter().map(ToString::to_string).collect()),
+            ..row("regressed", at)
+        };
+        let before = crate::lake::now_ns();
+        // The caller's clock is not what orders the rows: the writer's is.
+        assert!(writer
+            .append_perf_verdict(&in_envs(&["prod", "demo", "prod"], 5))
+            .unwrap());
+        let stored = rows();
+        assert_eq!(stored[0]["envs"], serde_json::json!(["demo", "prod"]));
+        let at = stored[0]["computed_at_ns"].as_i64().unwrap();
+        assert!(at >= before && at <= crate::lake::now_ns(), "{at}");
+        // The same environments in another order are the same comparison.
+        assert!(!writer
+            .append_perf_verdict(&in_envs(&["demo", "prod"], 1))
+            .unwrap());
+        assert_eq!(rows().len(), 1);
+
+        // A caller with an earlier clock still lands after the latest row,
+        // and the row it wrote is the one the next request is compared to.
+        let more = PerfVerdictRow {
+            candidate_n: 300,
+            ..in_envs(&["demo", "prod"], 1)
+        };
+        assert!(writer.append_perf_verdict(&more).unwrap());
+        assert!(!writer.append_perf_verdict(&more).unwrap());
+        let stored = rows();
+        assert_eq!(stored.len(), 2);
+        assert_eq!(stored[0]["candidate_n"], 300);
+        assert!(stored[0]["computed_at_ns"].as_i64().unwrap() >= at);
+    }
+
+    #[test]
+    fn a_different_relative_difference_is_different_evidence() {
+        let d = tempfile::TempDir::new().unwrap();
+        let store = Store::open(&d.path().join("lake.duckdb")).unwrap();
+        let writer = store.writer().unwrap();
+        assert!(writer.append_perf_verdict(&row("regressed", 10)).unwrap());
+        let other = PerfVerdictRow {
+            delta_pct: Some(31.0),
+            ..row("regressed", 20)
+        };
+        assert!(writer.append_perf_verdict(&other).unwrap());
+        assert!(!writer.append_perf_verdict(&other).unwrap());
+        let unknown = PerfVerdictRow {
+            delta_pct: None,
+            ..row("regressed", 30)
+        };
+        assert!(writer.append_perf_verdict(&unknown).unwrap());
+        assert!(!writer.append_perf_verdict(&unknown).unwrap());
     }
 
     #[test]

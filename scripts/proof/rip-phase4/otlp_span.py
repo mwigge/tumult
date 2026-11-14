@@ -2,15 +2,17 @@
 """Write one OTLP ExportTraceServiceRequest (protobuf) to stdout: a single
 server span from a service, the way the service's own SDK would export it.
 The daemon's OTLP/HTTP endpoint takes protobuf, so the message is encoded
-here by hand (standard library only) and posted with curl.
+here by hand (standard library only) and posted with curl. target.py
+imports encode() to report its own spans.
 
-    otlp_span.py <service.name> <service.version> <environment> [<attribute>] | \
+    otlp_span.py <service.name> <service.version> <environment> [<attribute> [<age_s>]] | \
         curl --data-binary @- -H 'content-type: application/x-protobuf' $URL/v1/traces
 
 The environment goes on the resource under <attribute> (default
 resilience.target.environment; deployment.environment.name and
 deployment.environment are the other two the daemon reads). An
-environment of "-" leaves the resource untagged.
+environment of "-" leaves the resource untagged. With <age_s> the span
+ended that many seconds ago, as a service's history would show it.
 """
 
 import os
@@ -48,9 +50,11 @@ def key_value(key, value):
     return field_bytes(1, key.encode()) + field_bytes(2, any_value)
 
 
-def main():
-    service, version, environment = sys.argv[1:4]
-    attribute = sys.argv[4] if len(sys.argv) > 4 else "resilience.target.environment"
+def encode(
+    service, version, environment, attribute="resilience.target.environment", age_s="0"
+):
+    """One ExportTraceServiceRequest holding a single server span that
+    ended `age_s` seconds ago."""
     attributes = [
         ("service.name", service),
         ("service.version", version),
@@ -61,7 +65,7 @@ def main():
     resource = b"".join(
         field_bytes(1, key_value(k, v)) for k, v in attributes  # Resource.attributes
     )
-    now = time.time_ns()
+    now = time.time_ns() - int(age_s) * 1_000_000_000
     span = (
         field_bytes(1, os.urandom(16))  # trace_id
         + field_bytes(2, os.urandom(8))  # span_id
@@ -72,7 +76,8 @@ def main():
     )
     scope_spans = field_bytes(2, span)  # ScopeSpans.spans
     resource_spans = field_bytes(1, resource) + field_bytes(2, scope_spans)
-    sys.stdout.buffer.write(field_bytes(1, resource_spans))
+    return field_bytes(1, resource_spans)
 
 
-main()
+if __name__ == "__main__":
+    sys.stdout.buffer.write(encode(*sys.argv[1:6]))

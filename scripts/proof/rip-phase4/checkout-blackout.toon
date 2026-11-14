@@ -1,0 +1,26 @@
+title: RIP phase-4 proof — a blackout with no thresholds declared
+description: The same hung service and the same load, but the experiment declares no thresholds. A window nobody answered is recorded in the journal and is not a deviation by itself, with oha as with k6.
+
+tags[2]: proof, performance
+kind: performance
+target:
+  system: checkout-blackout
+  technology: http
+  environment: demo
+
+load:
+  tool: oha
+  script: http://127.0.0.1:44381/
+  vus: 2
+  duration_s: 2
+
+method[1]:
+  - name: hold-briefly
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "sleep 1"
+      timeout_s: 5.0
+
+rollbacks[0]:

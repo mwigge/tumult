@@ -35,6 +35,13 @@ pub(crate) fn bad_request(msg: impl Into<String>) -> ApiError {
     error(StatusCode::BAD_REQUEST, msg)
 }
 
+/// 400 with a `reason` a client can act on without reading the message.
+pub(crate) fn bad_request_because(reason: &str, msg: impl Into<String>) -> ApiError {
+    let msg: String = msg.into();
+    let body = json!({"error": msg, "reason": reason});
+    (StatusCode::BAD_REQUEST, Json(body)).into_response().into()
+}
+
 /// 403 JSON error response (the requested environment/role is outside the
 /// principal's scopes).
 pub(crate) fn forbidden(msg: impl Into<String>) -> ApiError {

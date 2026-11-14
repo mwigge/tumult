@@ -53,6 +53,8 @@ import type {
     Scorecard,
     StarMap,
     GateVerdict,
+    PerfParams,
+    PerfTargets,
     PerfVerdict,
     ScoreTree,
     Timeseries,
@@ -77,12 +79,16 @@ function redirectOnUnauthorized(resp: Response, path: string): void {
     }
 }
 
-/** The query string shared by the perf read and the perf store. */
-function perfQuery(params: { probe?: string; quantile?: string; env?: string }): string {
+/** The query string of the perf read and of the store; empty values are omitted. */
+function perfQuery(params: PerfParams): string {
     const q = new URLSearchParams();
     if (params.probe) q.set('probe', params.probe);
     if (params.quantile) q.set('quantile', params.quantile);
     if (params.env) q.set('env', params.env);
+    if (params.baseline) q.set('baseline', params.baseline);
+    if (params.candidate) q.set('candidate', params.candidate);
+    if (params.range) q.set('range', params.range);
+    if (params.include) q.set('include', params.include);
     const qs = q.toString();
     return qs ? `?${qs}` : '';
 }
@@ -213,28 +219,18 @@ export const api = {
         return get<GateVerdict>(`/api/gate/${encodeURIComponent(target)}${qs ? `?${qs}` : ''}`);
     },
 
-    perf: (
-        target: string,
-        params: {
-            probe?: string;
-            quantile?: 'p50' | 'p95' | 'p99';
-            env?: string;
-        } = {},
-    ) => get<PerfVerdict>(`/api/perf/${encodeURIComponent(target)}${perfQuery(params)}`),
+    perfTargets: (range = '') =>
+        get<PerfTargets>(`/api/perf${range ? `?range=${encodeURIComponent(range)}` : ''}`),
 
-    /** Compute the verdict and append it to the stored history (operator). */
-    storePerfVerdict: (
-        target: string,
-        params: {
-            probe?: string;
-            quantile?: 'p50' | 'p95' | 'p99';
-            env?: string;
-        } = {},
-    ) =>
+    perf: (target: string, params: PerfParams = {}) =>
+        get<PerfVerdict>(`/api/perf/${encodeURIComponent(target)}${perfQuery(params)}`),
+
+    /** Stores the verdict of the same query; `duplicate` tells 200 from 201. */
+    storePerfVerdict: (target: string, params: PerfParams = {}) =>
         send<PerfVerdict>(
             'POST',
             `/api/perf/${encodeURIComponent(target)}/verdicts${perfQuery(params)}`,
-            undefined,
+            {},
         ),
 
     reportsV2: () => get<{ reports: ReportMetaV2[] }>('/api/reports/v2'),

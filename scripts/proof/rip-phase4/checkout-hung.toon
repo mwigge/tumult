@@ -1,5 +1,5 @@
 title: RIP phase-4 proof — a target that accepts and never answers
-description: oha against the proof's hung service. Every request runs into the request timeout, so the load has requests but no answer; it must not meet its thresholds and the run must not end completed.
+description: oha against the proof's hung service with an error-rate threshold. Every request runs into the request timeout, so the load has requests but no answer; it must not meet its threshold and the run must not end completed.
 
 tags[2]: proof, performance
 kind: performance
@@ -13,6 +13,8 @@ load:
   script: http://127.0.0.1:44381/
   vus: 2
   duration_s: 2
+  thresholds:
+    error_rate: 0.5
 
 method[1]:
   - name: hold-briefly

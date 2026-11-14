@@ -436,6 +436,7 @@ mod tests {
             span_id: SpanId::from(span),
         };
         let journal = Journal {
+            target_version: None,
             experiment_title: "traced drill".into(),
             experiment_id: "run-traced".into(),
             status: ExperimentStatus::Completed,

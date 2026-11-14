@@ -7,6 +7,81 @@ use super::validate_path_no_symlink;
 
 // ── Import command ──────────────────────────────────────────
 
+/// Two files of a backup that belong together: both, or neither.
+fn pair_in(parquet_dir: &Path, first: &str, second: &str) -> Result<Option<(PathBuf, PathBuf)>> {
+    let (a, b) = (parquet_dir.join(first), parquet_dir.join(second));
+    let lone = |missing: &str, beside: &str| {
+        anyhow::anyhow!(
+            "{missing} not found in {} beside {beside}",
+            parquet_dir.display()
+        )
+    };
+    match (a.exists(), b.exists()) {
+        (true, true) => Ok(Some((a, b))),
+        (false, false) => Ok(None),
+        (true, false) => Err(lone(second, first)),
+        (false, true) => Err(lone(first, second)),
+    }
+}
+
+/// The load evidence of a backup: `load_results.parquet` and
+/// `probe_samples.parquet`, both or neither.
+fn load_evidence_in(parquet_dir: &Path) -> Result<Option<(PathBuf, PathBuf)>> {
+    pair_in(parquet_dir, LOAD_RESULTS, PROBE_SAMPLES)
+}
+
+const EXPERIMENTS: &str = "experiments.parquet";
+const ACTIVITIES: &str = "activities.parquet";
+const LOAD_RESULTS: &str = "load_results.parquet";
+const PROBE_SAMPLES: &str = "probe_samples.parquet";
+const RUN_ROOTS: &str = "run_roots.parquet";
+const VERSION_SIGHTINGS: &str = "version_sightings.parquet";
+
+/// Write the Parquet backup `tumult import` reads into `output_dir`: the
+/// experiments and activities, the load results and probe samples, the
+/// run roots and the version history. Everything a performance verdict
+/// is computed from but the target's own spans.
+///
+/// # Errors
+/// Returns an error if there is no store, the directory already holds a
+/// backup, or the export fails.
+#[must_use = "callers must handle export errors"]
+pub fn cmd_store_export(output_dir: &Path) -> Result<()> {
+    use tumult_lake::AnalyticsStore;
+
+    let db_path =
+        AnalyticsStore::default_path().context("failed to determine analytics store path")?;
+    if !db_path.exists() {
+        bail!("no persistent store found at: {}", db_path.display());
+    }
+    if output_dir.join(EXPERIMENTS).exists() {
+        bail!("{} already holds a backup", output_dir.display());
+    }
+    std::fs::create_dir_all(output_dir)
+        .with_context(|| format!("creating {}", output_dir.display()))?;
+    validate_path_no_symlink(output_dir)?;
+    let file = |name: &str| output_dir.join(name);
+
+    let store = AnalyticsStore::open_read_only(&db_path)?;
+    store.export_tables(&file(EXPERIMENTS), &file(ACTIVITIES))?;
+    store.export_load_tables(&file(LOAD_RESULTS), &file(PROBE_SAMPLES))?;
+    store.export_verdict_tables(&file(RUN_ROOTS), &file(VERSION_SIGHTINGS))?;
+
+    let stats = store.stats()?;
+    println!("Exported to: {}", output_dir.display());
+    println!(
+        "{} experiments, {} activities, with load results, probe samples, run roots and \
+         version history",
+        stats.experiment_count, stats.activity_count
+    );
+    Ok(())
+}
+
+/// Import a Parquet backup: the experiments and activities, and what a
+/// performance verdict is computed from when the backup holds it (the
+/// load results with the probe samples, the run roots with the version
+/// history). Rows the store already holds are left as they are.
+///
 /// # Errors
 ///
 /// Returns an error if the directory is invalid, the parquet files are missing,
@@ -21,8 +96,8 @@ pub fn cmd_import(parquet_dir: &Path) -> Result<()> {
         bail!("not a directory: {}", parquet_dir.display());
     }
 
-    let exp_path = parquet_dir.join("experiments.parquet");
-    let act_path = parquet_dir.join("activities.parquet");
+    let exp_path = parquet_dir.join(EXPERIMENTS);
+    let act_path = parquet_dir.join(ACTIVITIES);
 
     if !exp_path.exists() {
         bail!("experiments.parquet not found in {}", parquet_dir.display());
@@ -30,11 +105,19 @@ pub fn cmd_import(parquet_dir: &Path) -> Result<()> {
     if !act_path.exists() {
         bail!("activities.parquet not found in {}", parquet_dir.display());
     }
+    let load_evidence = load_evidence_in(parquet_dir)?;
+    let history = pair_in(parquet_dir, RUN_ROOTS, VERSION_SIGHTINGS)?;
 
     let db_path =
         AnalyticsStore::default_path().context("failed to determine analytics store path")?;
     let store = AnalyticsStore::open(&db_path)?;
     store.import_tables(&exp_path, &act_path)?;
+    if let Some((loads, samples)) = &load_evidence {
+        store.import_load_tables(loads, samples)?;
+    }
+    if let Some((roots, sightings)) = &history {
+        store.import_verdict_tables(roots, sightings)?;
+    }
 
     let stats = store.stats()?;
     crate::outln!("Imported from: {}", parquet_dir.display());
@@ -43,6 +126,12 @@ pub fn cmd_import(parquet_dir: &Path) -> Result<()> {
         stats.experiment_count,
         stats.activity_count
     );
+    if load_evidence.is_some() {
+        println!("Load results and probe samples imported");
+    }
+    if history.is_some() {
+        println!("Run roots and version history imported");
+    }
     Ok(())
 }
 
