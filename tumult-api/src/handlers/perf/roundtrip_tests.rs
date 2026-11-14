@@ -1,6 +1,7 @@
-//! A lake rebuilt from its Parquet export gives the verdict it gave
-//! before: the export carries everything the verdict is computed from
-//! but the spans, which arrive again from telemetry.
+//! A lake rebuilt from its Parquet export alone gives the verdict it
+//! gave before: the export carries everything the verdict is computed
+//! from, the root span of every run and the version history of the
+//! target among it.
 
 use std::path::Path;
 
@@ -13,12 +14,32 @@ use tumult_lake::{AnalyticsStore, SpanRow, Store};
 use super::*;
 
 const NOW: i64 = 1_800_000_000 * NS_PER_S;
-const FILES: [&str; 4] = [
+const FILES: [&str; 6] = [
     "experiments.parquet",
     "activities.parquet",
     "load_results.parquet",
     "probe_samples.parquet",
+    "run_roots.parquet",
+    "version_sightings.parquet",
 ];
+
+/// A request `checkout` answered as `version`.
+fn request(version: &str, ts: i64) -> SpanRow {
+    SpanRow {
+        ts_ns: ts,
+        trace_id: format!("trace-{version}-{ts}"),
+        span_id: format!("span-{version}-{ts}"),
+        span_name: "GET /cart".into(),
+        span_kind: "Server".into(),
+        duration_ns: 1_000_000,
+        status_code: "Unset".into(),
+        service_name: "checkout".into(),
+        service_version: Some(version.into()),
+        target_environment: Some("demo".into()),
+        events: "[]".into(),
+        ..SpanRow::default()
+    }
+}
 
 fn root(id: &str, ts: i64) -> SpanRow {
     SpanRow {
@@ -110,6 +131,7 @@ fn evidence() -> (Vec<SpanRow>, Vec<Journal>) {
             let id = format!("{prefix}-{i}");
             let started = first + i * 100 * NS_PER_S;
             spans.push(root(&id, started));
+            spans.push(request(version, started + NS_PER_S));
             journals.push(run(&id, version, started, p95, ok, timeout_ms));
         }
     }
@@ -125,17 +147,26 @@ fn write(lake: &Path, spans: &[SpanRow], journals: &[Journal]) {
 }
 
 fn export(lake: &Path, dir: &Path) {
-    let [experiments, activities, loads, samples] = FILES.map(|file| dir.join(file));
+    let [experiments, activities, loads, samples, roots, sightings] =
+        FILES.map(|file| dir.join(file));
     let store = AnalyticsStore::open(lake).unwrap();
     store.export_tables(&experiments, &activities).unwrap();
     store.export_load_tables(&loads, &samples).unwrap();
+    store.export_verdict_tables(&roots, &sightings).unwrap();
 }
 
 fn import(lake: &Path, dir: &Path) {
-    let [experiments, activities, loads, samples] = FILES.map(|file| dir.join(file));
+    let [experiments, activities, loads, samples, roots, sightings] =
+        FILES.map(|file| dir.join(file));
     let store = AnalyticsStore::open(lake).unwrap();
     store.import_tables(&experiments, &activities).unwrap();
     store.import_load_tables(&loads, &samples).unwrap();
+    store.import_verdict_tables(&roots, &sightings).unwrap();
+}
+
+fn history(lake: &Path) -> Vec<tumult_lake::VersionSighting> {
+    let reader = Store::at(lake).read_only().unwrap();
+    reader.version_sightings("checkout").unwrap()
 }
 
 fn verdict(lake: &Path, probe: &str) -> Value {
@@ -166,9 +197,12 @@ fn the_verdict_is_identical_after_an_export_and_an_import() {
     let (spans, journals) = evidence();
     write(&first, &spans, &journals);
     export(&first, dir.path());
-    // The second lake has the telemetry and none of the journals.
-    write(&second, &spans, &[]);
+    // The second lake has nothing but what the export carries; importing
+    // it a second time changes nothing.
     import(&second, dir.path());
+    import(&second, dir.path());
+    assert_eq!(history(&first).len(), 2);
+    assert_eq!(history(&second), history(&first));
 
     for probe in [DEFAULT_PROBE, "load.throughput_rps"] {
         assert_eq!(verdict(&second, probe), verdict(&first, probe), "{probe}");
