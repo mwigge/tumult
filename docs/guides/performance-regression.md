@@ -382,9 +382,8 @@ perf checkout: REGRESSED (p95 of load.latency_p95_ms)
 ```
 
 `--baseline <version>` and `--candidate <version>` name the versions
-instead of taking the two deployed latest (the `versions:` line then
-reads `named on the request`; otherwise it is the daemon's
-`selection_rule`). `--range 12h` shortens or lengthens the lookback for
+instead of taking the two deployed latest; the `versions:` line is the
+daemon's `selection_rule` and says which of the two it was. `--range 12h` shortens or lengthens the lookback for
 runs and samples, and `--include partial` keeps the latency samples of
 aborted and truncated runs. A side that lost load windows to silence adds
 `N of M load window(s) went unanswered`, one with failed requests or
