@@ -204,11 +204,17 @@ are not Rust constants; the checker and this table are the source of truth.
   for certain is logged as `[redacted-url]` and no part of it is shown;
   that includes any URL with an `@` after the first `/`, `?` or `#`, which
   is either a path with an `@` in it or a password with an unescaped
-  delimiter. `logging::server_address` answers the same way for
-  `server.address`. An error text that may quote a URL goes through
-  `logging::redact_url`, which replaces the password and the query,
-  fragment and path parameter values of the URL (three bytes or longer)
-  with `[redacted]` wherever they stand, raw or percent-encoded.
+  delimiter, and any URL with a scheme the sanitiser does not know
+  (`alice://password@host`: what stands before `://` may be a user name).
+  `logging::server_address` answers the same way for `server.address`. An
+  error text that may quote a URL goes through `logging::redact_url`, which
+  replaces the user name, the password and the query, fragment and path
+  parameter values of the URL (three bytes or longer) with `[redacted]`
+  wherever they stand, raw or percent-encoded. A user name of one or two
+  bytes is replaced only where it is a word of its own. A credential of
+  more than 4096 bytes is not searched for: the whole text becomes
+  `[redacted]`. `logging::redact_credentials` does the same with a user
+  name and a password that are configured beside the URL.
 - Query strings. Log `url.path`.
 - Request and response bodies, prompts, model output.
 - stdout and stderr of child processes and plugin scripts. Log their sizes
@@ -327,7 +333,8 @@ A stopping `tumultd` exports its pending spans, metrics and log events
 before the listener that receives them goes away, and waits at most 15
 seconds for that. An export that hangs longer is given up on with a
 `daemon.telemetry.flush.timed_out` warning (`timeout_ms`), and the shutdown
-goes on.
+goes on. The process then exits at most 5 seconds after its work is done,
+whether or not that export has returned.
 
 ## Crates not converted yet
 
