@@ -196,3 +196,39 @@ async fn a_compressed_message_is_measured_by_what_it_expands_to() {
     }
     assert_eq!(daemon.count("logs"), 0);
 }
+
+/// The same bound holds for a trace export: the name of one span that
+/// expands to five mebibytes is refused, not held.
+#[tokio::test]
+async fn a_compressed_trace_export_is_measured_by_what_it_expands_to() {
+    let daemon = Daemon::start().await;
+    let large = "x".repeat(5 * 1024 * 1024);
+    for encoding in [CompressionEncoding::Gzip, CompressionEncoding::Zstd] {
+        let mut client = TraceServiceClient::new(daemon.channel.clone()).send_compressed(encoding);
+        let refused = client.export(spans(&large)).await.unwrap_err();
+        assert_eq!(
+            refused.code(),
+            tonic::Code::ResourceExhausted,
+            "{encoding:?}: {refused}"
+        );
+    }
+    assert_eq!(daemon.count("spans"), 0);
+}
+
+/// And for a metrics export.
+#[tokio::test]
+async fn a_compressed_metrics_export_is_measured_by_what_it_expands_to() {
+    let daemon = Daemon::start().await;
+    let large = "x".repeat(5 * 1024 * 1024);
+    for encoding in [CompressionEncoding::Gzip, CompressionEncoding::Zstd] {
+        let mut client =
+            MetricsServiceClient::new(daemon.channel.clone()).send_compressed(encoding);
+        let refused = client.export(gauge(&large)).await.unwrap_err();
+        assert_eq!(
+            refused.code(),
+            tonic::Code::ResourceExhausted,
+            "{encoding:?}: {refused}"
+        );
+    }
+    assert_eq!(daemon.count("metric_gauges"), 0);
+}
