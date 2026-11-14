@@ -16,6 +16,11 @@
 #                  wire form `spec`.
 #   phase arrow    flag on, feature gate on, OTel-Arrow instead of OTLP: the
 #                  same entity over the other log carrier.
+#   phase http     flag on, feature gate on, OTLP/HTTP with a gzip body
+#                  (the `otlphttp` exporter's default): the same entity,
+#                  and the daemon's log says it expanded gzip bodies. The
+#                  Collector is stopped and an operator purge removes the
+#                  entity: none is listed, and the purge is in the log.
 #   phase probe    flag on, no Collector: the entity_probe example sends the
 #                  events one quiet host never produces, one export each,
 #                  gzip-compressed. A changed state opens a second row; a
@@ -25,8 +30,13 @@
 #                  label and a nested map comes back with the allow-listed
 #                  keys only (KRONIKA_ENTITY_LABEL_ALLOW=app) and the
 #                  manifest's secret is in no answer and not in the lake
-#                  file; a description over the size limit is counted as
-#                  dropped and leaves no entity.
+#                  file, where a value that was stored is found (the
+#                  control of that search); a description over the size
+#                  limit is counted as dropped, leaves no entity and is
+#                  reported to the sender as one rejected record, where
+#                  every other export is answered with none; two more pods
+#                  are sent and the list is walked one entity a page, every
+#                  entity met exactly once.
 #
 #   cargo build -p tumultd && (cd web && npm ci && npm run build)
 #   cargo build -p tumult-ingest --example entity_probe
@@ -172,6 +182,7 @@ start_collector() {
     -v "$S/collector.yaml:/etc/otelcol-contrib/config.yaml:ro" \
     -v "$WORK/machine-id:/etc/machine-id:ro" \
     -e "KRONIKA_INGEST_TOKEN=$KRONIKA_INGEST_TOKEN" -e "PROOF_GRPC_PORT=$GRPC_PORT" \
+    -e "PROOF_HTTP_PORT=$HTTP_PORT" \
     -e "PROOF_EXPORTER=$exporter" \
     "$COLLECTOR_IMAGE" \
     --config=/etc/otelcol-contrib/config.yaml "$@" >/dev/null
@@ -267,11 +278,38 @@ print(f"     expired {silent:.0f}s after it was last heard of")' "$ENTITY_KEY" "
   pass "Collector stopped: the entity is expired after three intervals, still one row, not deleted"
 }
 
-# probe <case> <pod uid>: one hand-built entity event, sent the way a
-# Collector sends its own (OTLP/gRPC, gzip, the ingest token).
+# probe <case> <pod uid> [rejected]: one hand-built entity event, sent the
+# way a Collector sends its own (OTLP/gRPC, gzip, the ingest token). The
+# daemon must answer that it rejected that many records: none unless given.
 probe() {
+  local want="sent: $1, rejected ${3:-0}" answered
   "$PROBE" "http://127.0.0.1:$GRPC_PORT" "$1" "$2" "$KRONIKA_INGEST_TOKEN" >>"$WORK/$PHASE/probe.log" 2>&1 \
     || { tail -5 "$WORK/$PHASE/probe.log"; fail "the probe could not send '$1'"; }
+  answered=$(tail -n 1 "$WORK/$PHASE/probe.log")
+  [[ "$answered" == "$want" ]] || fail "the daemon answered '$answered', expected '$want'"
+}
+# walk <entities>: follow next_cursor through /api/entities one entity a
+# page; every entity is met exactly once, in as many pages as entities.
+walk() {
+  python3 - "$URL" "$1" <<'PY'
+import json, sys, urllib.request
+base, want = sys.argv[1], int(sys.argv[2])
+seen, cursor, pages = [], "", 0
+while True:
+    with urllib.request.urlopen(f"{base}/api/entities?limit=1&cursor={cursor}", timeout=10) as answer:
+        page = json.load(answer)
+    pages += 1
+    assert page["total"] == want and page["count"] == 1, page
+    seen += [e["entity_key"] for e in page["entities"]]
+    assert page["truncated"] == (page["next_cursor"] is not None), page
+    if not page["truncated"]:
+        break
+    assert pages < 10 * want, "the walk does not end"
+    cursor = page["next_cursor"]
+assert pages == want and len(seen) == want and len(set(seen)) == want, (pages, seen)
+assert seen == sorted(seen), seen
+print(f"     walked {pages} pages:", *seen)
+PY
 }
 # pod_history <rows>: the pod of the probe phase has that many stored rows.
 pod_history() {
@@ -334,13 +372,32 @@ stop_collector
 stop_daemon
 pass "the same entity over the OTel-Arrow log stream"
 
-echo "[5] flag on, hand-built events over OTLP/gRPC with gzip: change, delete, return, filter, limit"
+echo "[5] flag on, specification wire form, OTLP/HTTP with a gzip body; operator purge"
+start_daemon http on
+start_collector otlphttp/tumultd "--feature-gates=$GATE"
+check_entity spec
+grep -q 'a gzip body was expanded' "$DLOG" || fail "the entity events did not arrive in a gzip body over OTLP/HTTP"
+if grep -q -e 'OTAP stream opened' "$DLOG"; then fail "the phase was meant for OTLP/HTTP and an OTel-Arrow stream was opened"; fi
+pass "the same entity over OTLP/HTTP, sent with Content-Encoding: gzip"
+stop_collector
+curl -fs -m 10 -X DELETE "$URL/api/entities?environment=&type=host" >"$WORK/$PHASE/purge.json" \
+  || fail "the purge was refused"
+py 'assert d == {"environment": "", "type": "host", "entities": 1, "versions": 1}, d' <"$WORK/$PHASE/purge.json"
+entity_count_is 0 "" || fail "the purged entity is still listed"
+grep -q 'entities removed at the request of an operator' "$DLOG" || fail "the purge is not in the daemon's log"
+alive "after the purge"
+stop_daemon
+pass "operator purge: the entity and its one row are removed, and the log says so"
+
+echo "[6] flag on, hand-built events over OTLP/gRPC with gzip: change, delete, return, filter, limit, pages"
 start_daemon probe on KRONIKA_ENTITY_LABEL_ALLOW=app
 POD=proof-pod-$RUN
 POD_KEY="k8s.pod|k8s.pod.uid=$POD"
 POD_PATH="k8s.pod%7Ck8s.pod.uid%3D$POD"
 # What the manifest in the probe's annotation holds (entity_probe.rs).
 SECRET=proof-secret
+# The value of the allow-listed label, which is stored (entity_probe.rs).
+KEPT=checkout
 
 probe state:Pending "$POD"
 await "the pod entity" 30 entity_count_is 1 "?liveness=live"
@@ -399,7 +456,7 @@ fi
 probe_counters 4 1 0 "after the labelled state"
 pass "labels and annotation sent: only the allow-listed label came back, four keys counted as filtered"
 
-probe oversized "$POD-big"
+probe oversized "$POD-big" 1
 await "the oversized drop" 30 counter_at_least tumultd_entity_events_dropped_total oversized 1
 probe_counters 4 1 1 "after the oversized state"
 entity_count_is 1 "" || fail "an oversized state left an entity behind"
@@ -409,9 +466,20 @@ for reason in unknown_kind no_type no_identity malformed export_limit; do
 done
 fetch "/api/logs?range=24h&attr=k8s.pod.uid=$POD-big" logs.json
 py 'assert d["count"] == 0, d' <"$WORK/$PHASE/logs.json"
-pass "a description over 64 KiB: counted as dropped (oversized), no entity, not stored as a log"
+pass "a description over 64 KiB: counted as dropped (oversized), reported to the sender as 1 rejected record, no entity, not stored as a log"
+
+probe state:Pending "$POD-b"
+probe state:Pending "$POD-c"
+await "three entities" 30 entity_count_is 3 ""
+walk 3 || fail "a walk through the pages did not meet every entity exactly once"
+alive "after the walk"
+pass "three entities walked one a page: each met exactly once, in key order"
 stop_daemon
+# The control: a value that was stored is readable in the file, so a
+# search of the file can find the secret if it is there.
+grep -q -a -e "$KEPT" "$WORK/$PHASE"/lake.duckdb* \
+  || fail "the control failed: the stored label value '$KEPT' is not found in the lake file, so searching it proves nothing"
 if grep -q -a -e "$SECRET" "$WORK/$PHASE"/lake.duckdb*; then fail "the manifest's secret is in the lake file"; fi
-pass "the annotation's content is not in the lake file"
+pass "the annotation's content is not in the lake file (control: the stored label value '$KEPT' is)"
 
 echo "ALL ENTITY EVENT PROOF CHECKS PASSED (run $RUN, $PROFILE build)"

@@ -1,7 +1,7 @@
 # OpenTelemetry Collector (contrib) used by scripts/proof/entity-events/proof.sh:
 # the host_metrics receiver reports the `host` entity every ten seconds on a
 # logs pipeline of its own, resourcedetection adds `host.id`, and the export
-# goes to tumultd over OTLP/gRPC or OTel-Arrow (PROOF_EXPORTER).
+# goes to tumultd over OTLP/gRPC, OTLP/HTTP or OTel-Arrow (PROOF_EXPORTER).
 receivers:
   host_metrics:
     collection_interval: 30s
@@ -27,6 +27,15 @@ exporters:
     # is proven with.
     tls:
       insecure: true
+    headers:
+      authorization: "Bearer ${env:KRONIKA_INGEST_TOKEN}"
+    retry_on_failure:
+      enabled: false
+  otlphttp/tumultd:
+    endpoint: http://127.0.0.1:${env:PROOF_HTTP_PORT}
+    # The exporter default, written out: the daemon is proven with a
+    # gzip body.
+    compression: gzip
     headers:
       authorization: "Bearer ${env:KRONIKA_INGEST_TOKEN}"
     retry_on_failure:
