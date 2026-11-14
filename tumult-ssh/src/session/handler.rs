@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 
 use russh::client;
-use russh::keys::ssh_key;
+use russh::keys::PublicKeyOrCertificate;
 
 use crate::config::HostKeyPolicy;
 use crate::error::SshError;
@@ -28,8 +28,24 @@ impl client::Handler for ClientHandler {
 
     async fn check_server_key(
         &mut self,
-        server_public_key: &ssh_key::PublicKey,
+        server_public_key: &PublicKeyOrCertificate,
     ) -> Result<bool, Self::Error> {
+        // Host certificates are never advertised by this client (russh leaves
+        // `Preferred::host_key_certificates` empty by default), so a
+        // certificate here is unexpected: fail closed rather than trust the
+        // key embedded in a certificate whose CA is not verified.
+        let PublicKeyOrCertificate::PublicKey {
+            key: server_public_key,
+            ..
+        } = server_public_key
+        else {
+            tracing::warn!(
+                name: "ssh.host_key.certificate_rejected",
+                { server.address = %self.host, server.port = self.port },
+                "rejecting host certificate, host certificates are not supported"
+            );
+            return Ok(false);
+        };
         match self.policy {
             HostKeyPolicy::AcceptAny => {
                 tracing::warn!(
@@ -65,11 +81,15 @@ impl client::Handler for ClientHandler {
 mod tests {
     use super::super::known_hosts::key_fingerprint;
     use super::*;
+    use russh::keys::ssh_key;
 
     // A known ed25519 test key pair (public only needed here)
     const TEST_KEY_1: &str = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl test@host";
     // A different key for mismatch testing
     const TEST_KEY_2: &str = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILM+rvN+ot98qgEN796jTiQfZfG1KaT0PtFDJ/XFSqti user@example.com";
+
+    // Host certificate for TEST_KEY_1, signed by a throwaway test CA.
+    const TEST_HOST_CERT_1: &str = "ssh-ed25519-cert-v01@openssh.com AAAAIHNzaC1lZDI1NTE5LWNlcnQtdjAxQG9wZW5zc2guY29tAAAAIJE2ArOL4wpGqfMBxuqjUi2Gwj0NvgFqvyEsmtG89Td1AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJlAAAAAAAAAAAAAAACAAAACHRlc3Rob3N0AAAADAAAAAh0ZXN0aG9zdAAAAABeC9LwAAAAAPKlFXAAAAAAAAAAAAAAAAAAAAAzAAAAC3NzaC1lZDI1NTE5AAAAILFI+cSXADdmR//QPS1aMYcTmLClaLlLtuyrSKWZIEARAAAAUwAAAAtzc2gtZWQyNTUxOQAAAEDTEAeNcZCg7vo/i3qHs1ZOUinF1OD0PyK8EHywU5mrZA4TzA8TZFm/WWhA6U9reGi7fctEPNPJJJD5HIAcPQUG test@host";
 
     fn parse_key(s: &str) -> ssh_key::PublicKey {
         ssh_key::PublicKey::from_openssh(s).expect("valid test key")
@@ -94,9 +114,52 @@ mod tests {
             .enable_all()
             .build()
             .unwrap();
-        let result = rt.block_on(client::Handler::check_server_key(&mut handler, &key));
+        let result = rt.block_on(client::Handler::check_server_key(
+            &mut handler,
+            &key.clone().into(),
+        ));
         assert!(result.is_ok(), "AcceptAny should accept");
         assert!(result.unwrap(), "should return true");
+    }
+
+    /// A host certificate is rejected under every policy, even when the key
+    /// it embeds is already trusted in `known_hosts`.
+    #[test]
+    fn check_server_key_rejects_host_certificate_under_every_policy() {
+        let cert = ssh_key::Certificate::from_openssh(TEST_HOST_CERT_1).expect("valid test cert");
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+
+        for policy in [
+            HostKeyPolicy::AcceptAny,
+            HostKeyPolicy::Verify,
+            HostKeyPolicy::TrustOnFirstUse,
+        ] {
+            let dir = tempfile::TempDir::new().unwrap();
+            let known_hosts = dir.path().join("known_hosts");
+            let entry_line = format!("testhost {}\n", parse_key(TEST_KEY_1).to_string());
+            std::fs::write(&known_hosts, &entry_line).unwrap();
+
+            let mut handler = ClientHandler {
+                host: "testhost".to_string(),
+                port: 22,
+                known_hosts_path: known_hosts.clone(),
+                policy,
+            };
+            let presented = PublicKeyOrCertificate::from(cert.clone());
+            let result = rt.block_on(client::Handler::check_server_key(&mut handler, &presented));
+            assert!(
+                matches!(result, Ok(false)),
+                "host certificate must be rejected"
+            );
+            assert_eq!(
+                std::fs::read_to_string(&known_hosts).unwrap(),
+                entry_line,
+                "known_hosts must be left untouched"
+            );
+        }
     }
 
     /// Verify policy: matching key → accepted
@@ -121,7 +184,10 @@ mod tests {
             .enable_all()
             .build()
             .unwrap();
-        let result = rt.block_on(client::Handler::check_server_key(&mut handler, &key));
+        let result = rt.block_on(client::Handler::check_server_key(
+            &mut handler,
+            &key.clone().into(),
+        ));
         assert!(
             result.is_ok(),
             "Verify: matching key should be accepted (fp: {fp})"
@@ -148,7 +214,10 @@ mod tests {
             .enable_all()
             .build()
             .unwrap();
-        let result = rt.block_on(client::Handler::check_server_key(&mut handler, &key));
+        let result = rt.block_on(client::Handler::check_server_key(
+            &mut handler,
+            &key.clone().into(),
+        ));
         assert!(result.is_err(), "Verify: unknown host should be rejected");
         assert!(
             matches!(result.unwrap_err(), SshError::HostKeyNotFound { .. }),
@@ -183,7 +252,10 @@ mod tests {
             .enable_all()
             .build()
             .unwrap();
-        let result = rt.block_on(client::Handler::check_server_key(&mut handler, &server_key));
+        let result = rt.block_on(client::Handler::check_server_key(
+            &mut handler,
+            &server_key.clone().into(),
+        ));
         assert!(result.is_err(), "Verify: mismatched key should be rejected");
         assert!(
             matches!(result.unwrap_err(), SshError::HostKeyMismatch { .. }),
@@ -205,7 +277,7 @@ mod tests {
             known_hosts_path: known_hosts.clone(),
             policy: HostKeyPolicy::TrustOnFirstUse,
         };
-        let result = client::Handler::check_server_key(&mut handler, &key).await;
+        let result = client::Handler::check_server_key(&mut handler, &key.clone().into()).await;
         assert!(result.is_ok(), "TOFU: new host should be accepted");
         assert!(result.unwrap());
 
@@ -243,7 +315,10 @@ mod tests {
             .enable_all()
             .build()
             .unwrap();
-        let result = rt.block_on(client::Handler::check_server_key(&mut handler, &key));
+        let result = rt.block_on(client::Handler::check_server_key(
+            &mut handler,
+            &key.clone().into(),
+        ));
         assert!(
             result.is_ok(),
             "TOFU: known host with matching key should be accepted"
@@ -275,7 +350,10 @@ mod tests {
             .enable_all()
             .build()
             .unwrap();
-        let result = rt.block_on(client::Handler::check_server_key(&mut handler, &server_key));
+        let result = rt.block_on(client::Handler::check_server_key(
+            &mut handler,
+            &server_key.clone().into(),
+        ));
         assert!(result.is_err(), "TOFU: key mismatch should be rejected");
         assert!(
             matches!(result.unwrap_err(), SshError::HostKeyMismatch { .. }),
@@ -307,7 +385,10 @@ mod tests {
             .enable_all()
             .build()
             .unwrap();
-        let result = rt.block_on(client::Handler::check_server_key(&mut handler, &key));
+        let result = rt.block_on(client::Handler::check_server_key(
+            &mut handler,
+            &key.clone().into(),
+        ));
         assert!(
             matches!(result, Ok(true)),
             "bracket entry for port 2222 must verify, got {result:?}"
@@ -316,7 +397,10 @@ mod tests {
         // The same entry must not vouch for the host on any other port.
         for other_port in [22, 2223] {
             handler.port = other_port;
-            let result = rt.block_on(client::Handler::check_server_key(&mut handler, &key));
+            let result = rt.block_on(client::Handler::check_server_key(
+                &mut handler,
+                &key.clone().into(),
+            ));
             assert!(
                 matches!(result, Err(SshError::HostKeyNotFound { .. })),
                 "port {other_port} must not match a [myserver]:2222 entry, got {result:?}"
@@ -341,7 +425,10 @@ mod tests {
             .enable_all()
             .build()
             .unwrap();
-        let result = rt.block_on(client::Handler::check_server_key(&mut handler, &key));
+        let result = rt.block_on(client::Handler::check_server_key(
+            &mut handler,
+            &key.clone().into(),
+        ));
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
@@ -365,8 +452,11 @@ mod tests {
             .unwrap();
 
         let logs = tumult_otel::logging::testing::capture_json(tracing::Level::INFO, || {
-            rt.block_on(client::Handler::check_server_key(&mut handler, &key))
-                .unwrap();
+            rt.block_on(client::Handler::check_server_key(
+                &mut handler,
+                &key.clone().into(),
+            ))
+            .unwrap();
         });
 
         let event = &logs.named("ssh.host_key.unverified")[0];
@@ -392,8 +482,11 @@ mod tests {
             .unwrap();
 
         let logs = tumult_otel::logging::testing::capture_json(tracing::Level::INFO, || {
-            rt.block_on(client::Handler::check_server_key(&mut handler, &key))
-                .unwrap();
+            rt.block_on(client::Handler::check_server_key(
+                &mut handler,
+                &key.clone().into(),
+            ))
+            .unwrap();
         });
 
         let event = &logs.named("ssh.host_key.trusted_on_first_use")[0];

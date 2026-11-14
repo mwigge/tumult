@@ -12,7 +12,6 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use russh::keys::ssh_key;
 use russh::server::{self, Auth, Msg, Session};
 use russh::{Channel, ChannelId};
 use tokio::net::TcpListener;
@@ -57,7 +56,7 @@ impl server::Handler for TestHandler {
     fn auth_publickey(
         &mut self,
         _user: &str,
-        _key: &ssh_key::PublicKey,
+        _key: server::VerifiedPublicKey<'_>,
     ) -> impl Future<Output = Result<Auth, Self::Error>> + Send {
         ready(if self.reject_auth {
             Ok(Auth::Reject {
@@ -69,12 +68,14 @@ impl server::Handler for TestHandler {
         })
     }
 
-    fn channel_open_session(
+    async fn channel_open_session(
         &mut self,
         _channel: Channel<Msg>,
+        reply: server::ChannelOpenHandle,
         _session: &mut Session,
-    ) -> impl Future<Output = Result<bool, Self::Error>> + Send {
-        ready(Ok(true))
+    ) -> Result<(), Self::Error> {
+        reply.accept().await;
+        Ok(())
     }
 
     fn exec_request(
