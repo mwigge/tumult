@@ -121,6 +121,14 @@ impl LogCapture {
     pub fn snapshot(&self) -> Captured {
         parse(self.sink.text())
     }
+
+    /// The sink the captured lines are written to. Unlike the capture it
+    /// can be sent to another thread, to check there what has been logged
+    /// so far.
+    #[must_use]
+    pub fn sink(&self) -> Sink {
+        self.sink.clone()
+    }
 }
 
 /// A log record as the OTLP exporter received it; see [`ExportCapture`].
@@ -320,6 +328,16 @@ mod tests {
         assert_eq!(logs.events[0]["event.name"], "a.warn");
         drop(capture);
         tracing::warn!(name: "a.after", "nobody is listening");
+    }
+
+    #[test]
+    fn the_sink_of_a_capture_can_be_read_from_another_thread() {
+        let capture = LogCapture::start(Level::INFO);
+        let sink = capture.sink();
+        tracing::warn!(name: "a.warn", "kept");
+        let seen = std::thread::spawn(move || sink.text()).join().unwrap();
+        assert!(seen.contains("\"a.warn\""), "{seen}");
+        assert_eq!(seen, capture.snapshot().raw);
     }
 
     #[test]
