@@ -151,6 +151,76 @@ impl AnalyticsStore {
         })
     }
 
+    /// Export what a performance verdict reads beside the runs' own
+    /// tables: the root span of every run (which target and environment
+    /// it ran against, when, and the version it recorded there) and the
+    /// version history of every service (`service_version_sightings`,
+    /// one row per service, environment and version).
+    ///
+    /// The other spans are telemetry and are not exported.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if any `DuckDB` query or Parquet write fails.
+    #[must_use = "callers must handle export errors"]
+    pub fn export_verdict_tables(
+        &self,
+        run_roots_path: &Path,
+        sightings_path: &Path,
+    ) -> Result<(), AnalyticsError> {
+        let roots = self.query_to_batch(&format!(
+            "SELECT {ROOT_COLUMNS}, span_attrs['resilience.target.version'] AS target_version, \
+             span_attrs['resilience.target.version_source'] AS version_source \
+             FROM spans WHERE span_name = '{ROOT_SPAN}' AND experiment_id IS NOT NULL \
+             ORDER BY ts_ns, span_id"
+        ))?;
+        let sightings = self.query_to_batch(SIGHTINGS_EXPORT)?;
+        export_parquet(&roots, run_roots_path)?;
+        export_parquet(&sightings, sightings_path)?;
+        telemetry::event_export_completed(
+            "parquet",
+            roots.num_rows() + sightings.num_rows(),
+            std::fs::metadata(run_roots_path).map_or(0, |m| m.len())
+                + std::fs::metadata(sightings_path).map_or(0, |m| m.len()),
+        );
+        Ok(())
+    }
+
+    /// Import what [`AnalyticsStore::export_verdict_tables`] wrote, in
+    /// one transaction. A root span the lake already holds (by trace and
+    /// span id) is left as it is. A version the lake already knows keeps
+    /// the wider of the two histories: the earlier first sight, the later
+    /// last sight and deployment, the larger number of deployments.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the Parquet read or `DuckDB` insert fails
+    /// (nothing is kept).
+    #[must_use = "callers must handle import errors"]
+    pub fn import_verdict_tables(
+        &self,
+        run_roots_path: &Path,
+        sightings_path: &Path,
+    ) -> Result<(), AnalyticsError> {
+        self.in_transaction(|| {
+            self.staged(ROOTS_STAGE, run_roots_path, ROOTS_IMPORT)?;
+            self.staged(SIGHTINGS_STAGE, sightings_path, SIGHTINGS_IMPORT)
+        })
+    }
+
+    /// Read `path` into a staging table with `columns`, run `merge`
+    /// against it and drop it.
+    fn staged(&self, columns: &str, path: &Path, merge: &str) -> Result<(), AnalyticsError> {
+        self.conn
+            .execute_batch(&format!("CREATE OR REPLACE TEMP TABLE {STAGE} ({columns})"))?;
+        for batch in &import_parquet(path)? {
+            self.insert_batch(STAGE, batch)?;
+        }
+        self.conn
+            .execute_batch(&format!("{merge}; DROP TABLE {STAGE}"))?;
+        Ok(())
+    }
+
     /// Run `work` in one transaction: kept when it succeeds, undone when
     /// it fails.
     fn in_transaction(
@@ -230,6 +300,73 @@ impl AnalyticsStore {
 
 /// The staging table an import reads a file into.
 const STAGE: &str = "import_stage";
+
+/// The span a run is known by.
+const ROOT_SPAN: &str = "resilience.experiment";
+
+/// The columns of a run's root span a backup carries as they are.
+const ROOT_COLUMNS: &str = "ts_ns, trace_id, span_id, parent_span_id, span_kind, duration_ns, \
+     status_code, status_message, service_name, service_version, experiment_id, \
+     experiment_name, outcome_status, target_system, target_technology, target_environment";
+
+/// The layout of `run_roots.parquet`: [`ROOT_COLUMNS`] and the version
+/// the run recorded on its root span.
+const ROOTS_STAGE: &str = "ts_ns BIGINT, trace_id VARCHAR, span_id VARCHAR, \
+     parent_span_id VARCHAR, span_kind VARCHAR, duration_ns BIGINT, status_code VARCHAR, \
+     status_message VARCHAR, service_name VARCHAR, service_version VARCHAR, \
+     experiment_id VARCHAR, experiment_name VARCHAR, outcome_status VARCHAR, \
+     target_system VARCHAR, target_technology VARCHAR, target_environment VARCHAR, \
+     target_version VARCHAR, version_source VARCHAR";
+
+/// The staged roots the lake does not hold, as spans.
+const ROOTS_IMPORT: &str = "INSERT INTO spans (ts_ns, trace_id, span_id, parent_span_id, \
+     span_kind, duration_ns, status_code, status_message, service_name, service_version, \
+     experiment_id, experiment_name, outcome_status, target_system, target_technology, \
+     target_environment, span_name, span_attrs, events) \
+     SELECT s.ts_ns, s.trace_id, s.span_id, s.parent_span_id, s.span_kind, s.duration_ns, \
+     s.status_code, s.status_message, s.service_name, s.service_version, s.experiment_id, \
+     s.experiment_name, s.outcome_status, s.target_system, s.target_technology, \
+     s.target_environment, 'resilience.experiment', \
+     CASE WHEN s.target_version IS NULL THEN NULL \
+     ELSE MAP {'resilience.target.version': s.target_version, \
+     'resilience.target.version_source': s.version_source} END, '[]' \
+     FROM import_stage AS s WHERE NOT EXISTS (\
+     SELECT 1 FROM spans AS t WHERE t.trace_id = s.trace_id AND t.span_id = s.span_id)";
+
+/// The version history, one row per service, environment and version.
+const SIGHTINGS_EXPORT: &str = "SELECT service_name, environment, service_version, \
+     min(first_seen_ns) AS first_seen_ns, max(last_seen_ns) AS last_seen_ns, \
+     max(coalesce(last_deployed_ns, first_seen_ns)) AS last_deployed_ns, \
+     CAST(max(coalesce(deployments, 1)) AS INTEGER) AS deployments, \
+     coalesce(bool_or(sanitized), false) AS sanitized \
+     FROM service_version_sightings \
+     GROUP BY service_name, environment, service_version \
+     ORDER BY service_name, first_seen_ns, service_version, environment";
+
+const SIGHTINGS_STAGE: &str = "service_name VARCHAR, environment VARCHAR, \
+     service_version VARCHAR, first_seen_ns BIGINT, last_seen_ns BIGINT, \
+     last_deployed_ns BIGINT, deployments INTEGER, sanitized BOOLEAN";
+
+/// Widen the versions the lake knows by the staged history, then add the
+/// versions it does not know.
+const SIGHTINGS_IMPORT: &str = "UPDATE service_version_sightings AS t SET \
+     first_seen_ns = least(t.first_seen_ns, s.first_seen_ns), \
+     last_seen_ns = greatest(t.last_seen_ns, s.last_seen_ns), \
+     last_deployed_ns = \
+     greatest(coalesce(t.last_deployed_ns, t.first_seen_ns), s.last_deployed_ns), \
+     deployments = greatest(coalesce(t.deployments, 1), s.deployments), \
+     sanitized = coalesce(t.sanitized, false) OR s.sanitized \
+     FROM import_stage AS s WHERE t.service_name = s.service_name \
+     AND t.service_version = s.service_version \
+     AND t.environment IS NOT DISTINCT FROM s.environment; \
+     INSERT INTO service_version_sightings (service_name, environment, service_version, \
+     first_seen_ns, last_seen_ns, last_deployed_ns, deployments, sanitized) \
+     SELECT s.service_name, s.environment, s.service_version, s.first_seen_ns, \
+     s.last_seen_ns, s.last_deployed_ns, s.deployments, s.sanitized \
+     FROM import_stage AS s WHERE NOT EXISTS (\
+     SELECT 1 FROM service_version_sightings AS t WHERE t.service_name = s.service_name \
+     AND t.service_version = s.service_version \
+     AND t.environment IS NOT DISTINCT FROM s.environment)";
 
 /// A table an import adds rows to, and the columns that say two rows are
 /// the same row: its natural key.
@@ -640,6 +777,103 @@ mod tests {
             .unwrap();
         assert_eq!(counts(&lake), counts(&all));
         assert_eq!(evidence(&lake), evidence(&all));
+    }
+
+    /// The root span of run `id` against checkout, a request span of the
+    /// target, and what the rollup holds of the target's versions.
+    const HISTORY: &str = "
+        INSERT INTO spans (ts_ns, trace_id, span_id, span_name, span_kind, duration_ns,
+            status_code, status_message, service_name, service_version, experiment_id,
+            target_system, target_environment, span_attrs, events)
+        VALUES
+            (100, 't1', 'root-1', 'resilience.experiment', 'Internal', 60, 'Unset', '',
+             'tumult', '2.0.0', 'r1', 'checkout', 'staging',
+             MAP {'resilience.target.version': '1.5.0',
+                  'resilience.target.version_source': 'declared', 'other': 'x'}, '[]'),
+            (200, 't2', 'root-2', 'resilience.experiment', 'Internal', 60, 'Unset', '',
+             'tumult', '2.0.0', 'r2', 'checkout', NULL, NULL, '[]'),
+            (150, 't3', 'request', 'GET /cart', 'Server', 5, 'Unset', '',
+             'checkout', '1.5.0', NULL, NULL, 'staging', NULL, '[]');
+        INSERT INTO service_version_sightings VALUES
+            ('checkout', 'staging', '1.4.0', 10, 90, 10, 1, false),
+            ('checkout', 'staging', '1.5.0', 95, 400, 300, 2, true),
+            ('checkout', NULL, '1.5.0', 96, 97, NULL, NULL, NULL);";
+
+    const ROOTS: &str = "SELECT ts_ns, trace_id, span_id, span_name, span_kind, duration_ns, \
+         service_name, service_version, experiment_id, target_system, target_environment, \
+         span_attrs['resilience.target.version'], \
+         span_attrs['resilience.target.version_source'], events \
+         FROM spans WHERE span_name = 'resilience.experiment' ORDER BY ts_ns";
+    const SIGHTINGS: &str = "SELECT service_name, environment, service_version, first_seen_ns, \
+         last_seen_ns, coalesce(last_deployed_ns, first_seen_ns), coalesce(deployments, 1), \
+         coalesce(sanitized, false) FROM service_version_sightings \
+         ORDER BY service_version, environment";
+
+    fn rows_of(s: &AnalyticsStore, sql: &str) -> Vec<String> {
+        let rows = s.query(sql).unwrap();
+        rows.iter().map(|row| row.join("|")).collect()
+    }
+
+    #[test]
+    fn a_backup_carries_the_run_roots_and_the_version_history() {
+        let d = tempfile::TempDir::new().unwrap();
+        let (roots, sightings) = (d.path().join("r.parquet"), d.path().join("s.parquet"));
+        let exported = AnalyticsStore::in_memory().unwrap();
+        exported.conn.execute_batch(HISTORY).unwrap();
+        exported.export_verdict_tables(&roots, &sightings).unwrap();
+
+        let imported = AnalyticsStore::in_memory().unwrap();
+        imported.import_verdict_tables(&roots, &sightings).unwrap();
+        let held = rows_of(&exported, ROOTS);
+        assert_eq!(held.len(), 2);
+        assert!(held[0].contains("|staging|1.5.0|declared|"), "{held:?}");
+        assert_eq!(rows_of(&imported, ROOTS), held);
+        assert_eq!(rows_of(&imported, SIGHTINGS), rows_of(&exported, SIGHTINGS));
+        // The target's own spans are telemetry, and no part of a backup.
+        assert_eq!(rows_of(&imported, "SELECT count(*) FROM spans"), ["2"]);
+
+        // A second import adds nothing.
+        imported.import_verdict_tables(&roots, &sightings).unwrap();
+        assert_eq!(rows_of(&imported, ROOTS), held);
+        assert_eq!(rows_of(&imported, SIGHTINGS), rows_of(&exported, SIGHTINGS));
+    }
+
+    #[test]
+    fn imported_version_history_widens_what_the_lake_holds() {
+        let d = tempfile::TempDir::new().unwrap();
+        let (roots, sightings) = (d.path().join("r.parquet"), d.path().join("s.parquet"));
+        let exported = AnalyticsStore::in_memory().unwrap();
+        exported.conn.execute_batch(HISTORY).unwrap();
+        exported.export_verdict_tables(&roots, &sightings).unwrap();
+
+        // The lake saw 1.5.0 later and longer, once, and a version of its own.
+        let lake = AnalyticsStore::in_memory().unwrap();
+        lake.conn
+            .execute_batch(
+                "INSERT INTO service_version_sightings VALUES
+                    ('checkout', 'staging', '1.5.0', 200, 900, 200, 1, false),
+                    ('checkout', 'staging', '1.6.0', 950, 990, 950, 1, false);
+                 INSERT INTO spans (ts_ns, trace_id, span_id, span_name, span_kind,
+                    duration_ns, status_code, status_message, service_name, experiment_id,
+                    target_system, events)
+                 VALUES (100, 't1', 'root-1', 'resilience.experiment', 'Internal', 60,
+                    'Unset', '', 'tumult', 'r1', 'checkout', '[]');",
+            )
+            .unwrap();
+        lake.import_verdict_tables(&roots, &sightings).unwrap();
+        assert_eq!(
+            rows_of(&lake, SIGHTINGS),
+            [
+                "checkout|staging|1.4.0|10|90|10|1|false",
+                "checkout|staging|1.5.0|95|900|300|2|true",
+                "checkout|NULL|1.5.0|96|97|96|1|false",
+                "checkout|staging|1.6.0|950|990|950|1|false",
+            ]
+        );
+        // The root the lake held is kept as the lake held it.
+        let held = rows_of(&lake, ROOTS);
+        assert_eq!(held.len(), 2, "{held:?}");
+        assert!(held[0].contains("|r1|checkout|NULL|NULL|NULL|"), "{held:?}");
     }
 
     #[test]
