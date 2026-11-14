@@ -18,14 +18,14 @@
 //! ```
 
 use std::io;
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 
 use opentelemetry::logs::AnyValue;
 use opentelemetry_sdk::error::OTelSdkResult;
 use opentelemetry_sdk::logs::{LogBatch, LogExporter, SdkLoggerProvider};
 use serde_json::Value;
-use tracing::subscriber::DefaultGuard;
-use tracing::Level;
+use tracing::subscriber::{DefaultGuard, NoSubscriber};
+use tracing::{Dispatch, Level};
 use tracing_subscriber::fmt::MakeWriter;
 
 use super::{filter, EventFormatter, LogFormat, LogOptions, LogResource, Pipeline};
@@ -251,7 +251,21 @@ pub fn capture_json(level: Level, emit: impl FnOnce()) -> Captured {
     parse(sink.text())
 }
 
+/// Keeps a second subscriber registered for the rest of the process.
+///
+/// While a capture owns the only subscriber in the process, `tracing`
+/// decides whether a callsite is enabled by asking the default subscriber
+/// of the thread that reaches it first, and caches the answer for every
+/// thread. A thread without a subscriber then caches "never", and the
+/// capture stops seeing that callsite. With two subscribers registered,
+/// every one of them is asked, on whichever thread the callsite is reached.
+fn share_callsite_interest() {
+    static SECOND_SUBSCRIBER: OnceLock<Dispatch> = OnceLock::new();
+    SECOND_SUBSCRIBER.get_or_init(|| Dispatch::new(NoSubscriber::new()));
+}
+
 fn pipeline(sink: &Sink, level: Level) -> Pipeline<Sink> {
+    share_callsite_interest();
     let resource = LogResource {
         service_name: SERVICE_NAME.to_string(),
         service_version: super::SERVICE_VERSION.to_string(),
