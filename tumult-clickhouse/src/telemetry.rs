@@ -94,11 +94,25 @@ mod tests {
                 Some("8123"),
                 "http://clickhouse.internal:8123/db",
             ),
+            // A password with an unescaped delimiter: the URL cannot be
+            // read for certain, so none of it is recorded.
             (
                 "http://admin:se/cret@clickhouse.internal",
-                "clickhouse.internal",
+                "[redacted-url]",
                 None,
-                "http://clickhouse.internal",
+                "[redacted-url]",
+            ),
+            (
+                "http://admin:se#cret@clickhouse.internal:8123/db",
+                "[redacted-url]",
+                None,
+                "[redacted-url]",
+            ),
+            (
+                "http://admin:se?cret@clickhouse.internal/db",
+                "[redacted-url]",
+                None,
+                "[redacted-url]",
             ),
             (
                 "clickhouse://admin:secret@ch.prod:9000/tumult",
