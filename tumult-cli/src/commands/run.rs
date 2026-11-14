@@ -420,6 +420,37 @@ mod tests {
         }
     }
 
+    /// A loopback "daemon" that closes every connection without answering.
+    ///
+    /// The port stays bound for as long as the stub lives, so nothing that
+    /// would answer can take it: a port that merely happened to be free
+    /// when it was picked gives no such guarantee.
+    struct SilentDaemon {
+        port: u16,
+        accepting: tokio::task::JoinHandle<()>,
+    }
+
+    impl SilentDaemon {
+        async fn start() -> Self {
+            let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+                .await
+                .unwrap();
+            let port = listener.local_addr().unwrap().port();
+            let accepting = tokio::spawn(async move {
+                while let Ok((connection, _peer)) = listener.accept().await {
+                    drop(connection);
+                }
+            });
+            Self { port, accepting }
+        }
+    }
+
+    impl Drop for SilentDaemon {
+        fn drop(&mut self) {
+            self.accepting.abort();
+        }
+    }
+
     /// An unreachable daemon must fall back to the direct `DuckDB` write: a
     /// connection-level failure means the journal never left the process, so
     /// writing the store directly cannot double-write.
@@ -433,8 +464,9 @@ mod tests {
         let tmp = tempfile::TempDir::new().unwrap();
         let db_path = tmp.path().join("lake.duckdb");
         std::env::set_var("TUMULT_LAKE_PATH", &db_path);
-        // Port 1 is never listening: connection refused, no HTTP response.
-        std::env::set_var(DAEMON_URL_ENV, "http://127.0.0.1:1");
+        // The connection is closed without an HTTP response.
+        let daemon = SilentDaemon::start().await;
+        std::env::set_var(DAEMON_URL_ENV, format!("http://127.0.0.1:{}", daemon.port));
         std::env::remove_var("TUMULT_CLICKHOUSE_URL");
 
         let journal = test_journal("fallback-e1");
@@ -452,9 +484,13 @@ mod tests {
 
     #[tokio::test]
     async fn an_unreachable_daemon_is_reported_without_its_url_credentials() {
-        // Port 1 on loopback refuses connections; the URL carries userinfo
-        // and a query token the way a misconfigured TUMULT_DAEMON_URL can.
-        let base = "http://operator:hunter2-daemon-pw@127.0.0.1:1";
+        // The daemon never answers; the URL carries userinfo the way a
+        // misconfigured TUMULT_DAEMON_URL can.
+        let daemon = SilentDaemon::start().await;
+        let base = &format!(
+            "http://operator:hunter2-daemon-pw@127.0.0.1:{}",
+            daemon.port
+        );
         let journal = test_journal("unreachable-1");
         let experiment: Experiment = toon_format::decode_default(
             &std::fs::read_to_string(crate::commands::tests::helpers::write_valid_experiment(
@@ -467,7 +503,7 @@ mod tests {
         let Err(DaemonPostError::Unreachable(reason)) =
             post_journal_to_daemon(base, &journal, &experiment).await
         else {
-            panic!("nothing listens on port 1: the daemon must be unreachable");
+            panic!("a daemon that never answers must be unreachable");
         };
         assert!(!reason.contains("hunter2-daemon-pw"), "{reason}");
 
@@ -476,7 +512,10 @@ mod tests {
         });
         let event = &logs.named("cli.daemon.unreachable")[0];
         assert_eq!(event["level"], "WARN");
-        assert_eq!(event["url.full"], "http://127.0.0.1:1");
+        assert_eq!(
+            event["url.full"],
+            format!("http://127.0.0.1:{}", daemon.port)
+        );
         assert_eq!(event["error.message"], reason.as_str());
         assert!(!logs.raw.contains("hunter2-daemon-pw"), "{}", logs.raw);
     }

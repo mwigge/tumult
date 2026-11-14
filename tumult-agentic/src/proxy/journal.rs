@@ -204,38 +204,29 @@ mod tests {
     }
 
     #[test]
-    fn a_journal_line_that_cannot_be_written_is_an_error_event() {
+    fn only_the_journal_line_that_cannot_be_written_is_an_error_event() {
         let dir = tempfile::TempDir::new().unwrap();
         let blocker = dir.path().join("not-a-directory");
         std::fs::write(&blocker, b"file").unwrap();
-        let journal = blocker.join("proxy.jsonl");
-        let state = state(Some(journal.clone()));
+        let unwritable = blocker.join("proxy.jsonl");
+        let writable = dir.path().join("nested").join("proxy.jsonl");
         let parts = request_parts("/v1/messages");
 
+        // One request into each journal, under the same capture.
         let logs = capture_json(Level::INFO, || {
-            record(&state, &parts, &[], 200, "", 1);
+            record(&state(Some(writable.clone())), &parts, &[], 200, "", 1);
+            record(&state(Some(unwritable.clone())), &parts, &[], 200, "", 1);
         });
 
-        let event = &logs.named("agentic.proxy.journal.write_failed")[0];
+        assert_eq!(logs.named("agentic.proxy.request").len(), 2);
+        let failures = logs.named("agentic.proxy.journal.write_failed");
+        assert_eq!(failures.len(), 1, "{}", logs.raw);
+        let event = failures[0];
         assert_eq!(event["level"], "ERROR");
-        assert_eq!(event["file.path"], journal.to_str().unwrap());
+        assert_eq!(event["file.path"], unwritable.to_str().unwrap());
         assert_eq!(event["error.type"], "io");
         assert!(event["error.message"].is_string(), "{event}");
-    }
-
-    #[test]
-    fn a_written_journal_line_logs_no_failure() {
-        let dir = tempfile::TempDir::new().unwrap();
-        let journal = dir.path().join("nested").join("proxy.jsonl");
-        let state = state(Some(journal.clone()));
-        let parts = request_parts("/v1/messages");
-
-        let logs = capture_json(Level::INFO, || {
-            record(&state, &parts, &[], 200, "", 1);
-        });
-
-        assert!(logs.named("agentic.proxy.journal.write_failed").is_empty());
-        let written = std::fs::read_to_string(&journal).unwrap();
+        let written = std::fs::read_to_string(&writable).unwrap();
         assert_eq!(written.lines().count(), 1, "{written}");
     }
 }
