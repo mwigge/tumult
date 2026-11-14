@@ -105,14 +105,13 @@ pub(crate) fn event_ddl_executed(statement: &str) {
     );
 }
 
-/// Gauge: record `ClickHouse` store size metrics.
-pub(crate) fn record_store_gauges(experiment_count: usize, activity_count: usize) {
-    record_store_gauges_on(&global::meter(TRACER), experiment_count, activity_count);
+/// The meter the store records on outside tests.
+pub(crate) fn meter() -> Meter {
+    global::meter(TRACER)
 }
 
-/// [`record_store_gauges`] against an explicit meter, so the recorded values
-/// can be read back without a process-wide meter provider.
-fn record_store_gauges_on(meter: &Meter, experiment_count: usize, activity_count: usize) {
+/// Gauge: record `ClickHouse` store size metrics on `meter`.
+pub(crate) fn record_store_gauges(meter: &Meter, experiment_count: usize, activity_count: usize) {
     let g = meter.u64_gauge("clickhouse.store.experiments").build();
     g.record(experiment_count as u64, &[]);
 
@@ -284,8 +283,8 @@ mod tests {
     fn store_gauges_report_the_latest_counts() {
         let capture = MetricCapture::new();
         let meter = capture.meter(TRACER);
-        record_store_gauges_on(&meter, 10, 50);
-        record_store_gauges_on(&meter, 12, 61);
+        record_store_gauges(&meter, 10, 50);
+        record_store_gauges(&meter, 12, 61);
 
         let value =
             |name: &str| -> Vec<f64> { capture.points(name).iter().map(|p| p.value).collect() };

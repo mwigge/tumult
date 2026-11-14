@@ -100,3 +100,39 @@ fn analytics_backend_sync_methods_do_not_panic_inside_tokio_task() {
         .expect("task should not panic");
     });
 }
+
+#[derive(serde::Serialize, clickhouse::Row)]
+struct Count {
+    count: u64,
+}
+
+/// A store whose queries are answered by `mock`.
+fn mocked_store(mock: &clickhouse::test::Mock) -> ClickHouseStore {
+    ClickHouseStore {
+        client: Client::default().with_mock(mock),
+        database: "tumult".into(),
+        query_timeout: std::time::Duration::from_secs(5),
+    }
+}
+
+#[tokio::test]
+async fn stats_returns_the_server_counts_and_records_them_as_gauges() {
+    use clickhouse::test::handlers::provide;
+    use tumult_test_utils::MetricCapture;
+
+    let mock = clickhouse::test::Mock::new();
+    mock.add(provide([Count { count: 3 }]));
+    mock.add(provide([Count { count: 7 }]));
+    let store = mocked_store(&mock);
+    let capture = MetricCapture::new();
+
+    let stats = store
+        .stats_recorded_on(&capture.meter("tumult-clickhouse"))
+        .await
+        .expect("both count queries are answered");
+
+    assert_eq!((stats.experiment_count, stats.activity_count), (3, 7));
+    let gauge = |name: &str| -> Vec<f64> { capture.points(name).iter().map(|p| p.value).collect() };
+    assert_eq!(gauge("clickhouse.store.experiments"), [3.0]);
+    assert_eq!(gauge("clickhouse.store.activities"), [7.0]);
+}
