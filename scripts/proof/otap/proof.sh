@@ -9,8 +9,10 @@
 # oversized message, the Arrow IPC messages that used to reach a panic in the
 # Arrow reader, tables that declare rows they do not carry, a log-forging
 # schema id, a flood of refused batches, and a few thousand damaged copies of
-# a valid batch. The exact status of each is asserted, and after every
-# hostile case the daemon started here must still be running and answering:
+# a valid batch, and a connection that completes the HTTP/2 handshake and
+# then never makes an authorised call. The exact status of each is asserted,
+# and after every hostile case the daemon started here must still be running
+# and answering:
 # the release profile aborts on panic, so a panic shows as a dead daemon. No
 # mocks. Exit non-zero on any failed expectation. Run it three times in a row
 # on a debug build and once on a release build before a release.
@@ -475,5 +477,14 @@ code=$(curl -s -o /dev/null -w '%{http_code}' "$URL/api/traces/$TRACE3")
 [[ "$code" == 404 ]] || fail "spans sent with a wrong token must not land (got $code)"
 expect_lines "$DECODED" "$DLOG" 'OTAP batch decoded' 'signal="traces"'
 pass "UNAUTHENTICATED reported to the exporter; lake untouched"
+
+step 15 "a connection that never makes an authorised call is closed after the time to authenticate"
+# The HTTP/2 preface and an empty SETTINGS frame, then nothing: with an
+# ingest token the daemon closes the connection KRONIKA_GRPC_AUTH_TIMEOUT_SECS
+# (default 10) after it accepted it. Prints the seconds the connection was
+# kept, or "open" when it is still there after a minute.
+HELD=$(python3 "$S/idle_connection.py" "$GRPC_PORT")
+[[ "$HELD" =~ ^[0-9]+$ ]] && ((HELD >= 9 && HELD <= 12)) || fail "the idle connection was kept for '$HELD' s, expected about 10"
+pass "idle connection closed by the daemon after $HELD s"
 alive "at the end"
 echo "ALL OTEL-ARROW PROOF CHECKS PASSED (run $RUN, $PROFILE build, daemon pid $DPID alive)"
