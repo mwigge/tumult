@@ -185,6 +185,7 @@ async fn dispatch(command: Commands) -> anyhow::Result<()> {
         Commands::Store { action } => match action {
             StoreAction::Stats => commands::cmd_store_stats()?,
             StoreAction::Backup { output } => commands::cmd_store_backup(&output)?,
+            StoreAction::Export { output } => commands::cmd_store_export(&output)?,
             StoreAction::Restore { input, output } => commands::cmd_store_restore(&input, &output)?,
             StoreAction::Purge { older_than_days } => commands::cmd_store_purge(older_than_days)?,
             StoreAction::Path => commands::cmd_store_path()?,

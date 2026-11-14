@@ -468,7 +468,10 @@ pub fn unorderable(status: u16, body: &Value) -> Option<String> {
         return None;
     }
     let why = body.get("error").and_then(Value::as_str);
-    Some(why.unwrap_or("the deployment order cannot be told").to_owned())
+    Some(
+        why.unwrap_or("the deployment order cannot be told")
+            .to_owned(),
+    )
 }
 
 /// What is printed for a pair the daemon cannot order.

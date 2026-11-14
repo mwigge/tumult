@@ -351,6 +351,100 @@ fn import_of_a_backup_without_load_evidence_still_works() {
     assert_eq!(count(&store, "load_results"), "0");
 }
 
+/// A span of `service`: the root of run `id` when it names one.
+fn span(service: &str, version: Option<&str>, id: Option<&str>) -> tumult_lake::SpanRow {
+    tumult_lake::SpanRow {
+        ts_ns: 1_774_980_000_000_000_000,
+        trace_id: format!("trace-{service}"),
+        span_id: format!("span-{service}"),
+        span_name: id.map_or("GET /cart", |_| "resilience.experiment").into(),
+        span_kind: id.map_or("Server", |_| "Internal").into(),
+        duration_ns: 1_000_000,
+        status_code: "Unset".into(),
+        service_name: service.into(),
+        service_version: version.map(Into::into),
+        experiment_id: id.map(Into::into),
+        target_system: id.map(|_| "checkout".into()),
+        events: "[]".into(),
+        ..tumult_lake::SpanRow::default()
+    }
+}
+
+#[test]
+fn store_export_writes_the_backup_import_reads() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let dir = TempDir::new().unwrap();
+    let source = dir.path().join("source.duckdb");
+    {
+        let writer = tumult_lake::Store::open(&source).unwrap().writer().unwrap();
+        writer
+            .insert_spans(&[
+                span("tumult", None, Some("exp-load")),
+                span("checkout", Some("1.5.0"), None),
+            ])
+            .unwrap();
+        writer.ingest_journal(&load_run("exp-load"), None).unwrap();
+    }
+    let backup = dir.path().join("backup");
+    std::env::set_var("TUMULT_LAKE_PATH", &source);
+    cmd_store_export(&backup).unwrap();
+    // A backup is not written over another.
+    let again = cmd_store_export(&backup).unwrap_err();
+    for file in [
+        "experiments.parquet",
+        "activities.parquet",
+        "load_results.parquet",
+        "probe_samples.parquet",
+        "run_roots.parquet",
+        "version_sightings.parquet",
+    ] {
+        assert!(backup.join(file).is_file(), "{file}");
+    }
+
+    let db = use_temp_store(dir.path());
+    cmd_import(&backup).unwrap();
+    cmd_import(&backup).unwrap();
+    std::env::remove_var("TUMULT_LAKE_PATH");
+    assert!(again.to_string().contains("already holds"), "{again}");
+
+    let store = tumult_lake::AnalyticsStore::open_read_only(&db).unwrap();
+    assert_eq!(count(&store, "experiments"), "1");
+    assert_eq!(count(&store, "load_results"), "1");
+    // The run's root and no other span; the target's version history.
+    assert_eq!(count(&store, "spans"), "1");
+    let versions = store
+        .query("SELECT service_name, service_version FROM service_version_sightings")
+        .unwrap();
+    assert_eq!(versions.len(), 1);
+    assert_eq!(versions[0].join("|"), "checkout|1.5.0");
+}
+
+#[test]
+fn store_export_without_a_store_says_so() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let dir = TempDir::new().unwrap();
+    use_temp_store(dir.path());
+    let err = cmd_store_export(&dir.path().join("backup")).unwrap_err();
+    std::env::remove_var("TUMULT_LAKE_PATH");
+    assert!(err.to_string().contains("no persistent store"), "{err}");
+}
+
+#[test]
+fn import_refuses_a_backup_with_half_of_the_version_history() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let dir = TempDir::new().unwrap();
+    exported_load_run(dir.path(), true, true);
+    std::fs::write(dir.path().join("export/run_roots.parquet"), b"").unwrap();
+    let db = use_temp_store(dir.path());
+    let err = cmd_import(&dir.path().join("export")).unwrap_err();
+    std::env::remove_var("TUMULT_LAKE_PATH");
+    assert!(
+        err.to_string().contains("version_sightings.parquet"),
+        "{err}"
+    );
+    assert!(!db.exists(), "nothing was imported");
+}
+
 // ── import-legacy ────────────────────────────────────────────
 
 #[test]
