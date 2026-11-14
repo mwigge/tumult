@@ -1061,8 +1061,11 @@ async fn serve_with(limits: super::OtapLimits) -> Served {
     let addr = listener.local_addr().unwrap();
     // The daemon's listener: the per-connection share needs the peer
     // address to come through it.
-    let incoming =
-        crate::listener::incoming(listener, crate::listener::ConnectionLimits::default());
+    let incoming = crate::listener::incoming(
+        listener,
+        crate::listener::ConnectionLimits::default(),
+        crate::listener::Access::Open,
+    );
     let server = tokio::spawn(async move {
         router.serve_with_incoming(incoming).await.unwrap();
     });

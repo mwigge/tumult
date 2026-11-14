@@ -225,7 +225,7 @@ impl OtapGrpc {
         convert: Convert,
     ) -> Result<Response<StatusStream>, Status> {
         authorize(self.ingest_token.as_ref(), &request)?;
-        let slot = match request.remote_addr() {
+        let slot = match crate::listener::remote_addr(&request) {
             Some(peer) => Some(
                 self.shares
                     .claim(peer)
