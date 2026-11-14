@@ -11,7 +11,7 @@ use crate::common::{self, ResourceCtx};
 /// (when kronika received the export). tumult's log records arrive with
 /// `time_unix_nano` unset (0), so without this chain every log would be
 /// stamped epoch 0 (1970) in the store.
-fn log_ts(record: &LogRecord, received_at_ns: i64) -> i64 {
+pub(crate) fn log_ts(record: &LogRecord, received_at_ns: i64) -> i64 {
     if record.time_unix_nano != 0 {
         i64::try_from(record.time_unix_nano).unwrap_or(i64::MAX)
     } else if record.observed_time_unix_nano != 0 {
@@ -30,10 +30,34 @@ fn event_name(record: &LogRecord) -> Option<String> {
 }
 
 /// The attributes of the scope that emitted `scope_logs` (empty without one).
-fn scope_attrs(scope_logs: &ScopeLogs) -> Vec<(String, String)> {
+pub(crate) fn scope_attrs(scope_logs: &ScopeLogs) -> Vec<(String, String)> {
     scope_logs.scope.as_ref().map_or_else(Vec::new, |scope| {
         common::unpromoted_attrs(&scope.attributes, &[])
     })
+}
+
+/// One record as a store row.
+pub(crate) fn log_row(
+    record: &LogRecord,
+    resource: &ResourceCtx,
+    scope_attrs: &[(String, String)],
+    received_at_ns: i64,
+) -> LogRow {
+    LogRow {
+        ts_ns: log_ts(record, received_at_ns),
+        severity_text: record.severity_text.clone(),
+        body: record
+            .body
+            .as_ref()
+            .map_or_else(String::new, common::any_value_to_string),
+        trace_id: common::hex_id(&record.trace_id),
+        span_id: common::hex_id(&record.span_id),
+        service_name: resource.service_name.clone(),
+        log_attrs: common::unpromoted_attrs(&record.attributes, &[]),
+        resource_attrs: resource.resource_attrs.clone(),
+        event_name: event_name(record),
+        scope_attrs: scope_attrs.to_vec(),
+    }
 }
 
 /// Convert an OTLP logs export request into store rows (pure).
@@ -50,21 +74,7 @@ pub fn logs_request_to_rows(
         for scope_logs in &resource_logs.scope_logs {
             let scope_attrs = scope_attrs(scope_logs);
             for record in &scope_logs.log_records {
-                out.push(LogRow {
-                    ts_ns: log_ts(record, received_at_ns),
-                    severity_text: record.severity_text.clone(),
-                    body: record
-                        .body
-                        .as_ref()
-                        .map_or_else(String::new, common::any_value_to_string),
-                    trace_id: common::hex_id(&record.trace_id),
-                    span_id: common::hex_id(&record.span_id),
-                    service_name: resource.service_name.clone(),
-                    log_attrs: common::unpromoted_attrs(&record.attributes, &[]),
-                    resource_attrs: resource.resource_attrs.clone(),
-                    event_name: event_name(record),
-                    scope_attrs: scope_attrs.clone(),
-                });
+                out.push(log_row(record, &resource, &scope_attrs, received_at_ns));
             }
         }
     }
