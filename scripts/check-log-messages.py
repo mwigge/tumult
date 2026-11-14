@@ -3,10 +3,12 @@
 
 A log message is a constant; everything that varies is a field. This script
 reads the Rust sources of the workspace and fails when a `tracing` event
-macro (`trace!`, `debug!`, `info!`, `warn!`, `error!`, `event!`):
+macro (`trace!`, `debug!`, `info!`, `warn!`, `error!`, `event!`, written
+with any of the three delimiters: `info!(..)`, `info! {..}`, `info![..]`):
 
 * interpolated-message  builds its message with format arguments or an
-                        inline `{capture}`;
+                        inline `{capture}`, or passes a computed `message`
+                        field (`message = %format!(..)`);
 * missing-event-name    has no stable `name: "component.thing.happened"`;
 * bad-event-name        has a name that is not lowercase dotted;
 * legacy-field          uses a field name the vocabulary replaced
@@ -17,6 +19,7 @@ Test code is not checked: `tests/` and `benches/` directories, `tests.rs`
 files, and items behind `#[cfg(test)]`.
 
 Crates listed in DEFERRED are not converted yet and are skipped entirely.
+Every run prints that list with its size, so the exclusion stays visible.
 See docs/guides/logging.md for the vocabulary.
 
 usage: check-log-messages.py [--root DIR] [--self-test] [FILE ...]
@@ -47,7 +50,7 @@ DEFERRED = {
 SKIPPED_DIRS = {"target", "node_modules", ".git", ".claude", ".quality-venv"}
 
 EVENT_MACRO = re.compile(
-    r"(?<![A-Za-z0-9_])(?:tracing\s*::\s*)?(trace|debug|info|warn|error|event)\s*!\s*\("
+    r"(?<![A-Za-z0-9_])(?:tracing\s*::\s*)?(trace|debug|info|warn|error|event)\s*!\s*[(\[{]"
 )
 EVENT_NAME = re.compile(r"[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+")
 STRING_ARGUMENT = re.compile(r'b?r?#*"[S\n]*"#*')
@@ -308,6 +311,21 @@ def _field_name(argument):
     return name_text.lstrip("%?").strip()
 
 
+def _is_computed_message(argument):
+    """Whether a field argument is a `message` that is not a string literal.
+
+    `tracing` takes a field called `message` as the event's message, so
+    `message = %format!(..)` is an interpolated message by another route.
+    """
+    if _field_name(argument) != "message":
+        return False
+    equals = re.search(r"(?<![=!<>])=(?!=)", argument.masked)
+    if equals is None:
+        return True
+    value = argument.masked[equals.end() :].strip()
+    return not STRING_ARGUMENT.fullmatch(value)
+
+
 def _looks_like_level(argument):
     return re.fullmatch(r"(\w+\s*::\s*)*Level\s*::\s*\w+", argument.masked.strip())
 
@@ -354,6 +372,13 @@ def _event_findings(event, strict):
     elif event.message is not None and _is_interpolated(event.message):
         found.append(
             ("interpolated-message", "message captures a variable; use a field instead")
+        )
+    if any(_is_computed_message(field) for field in event.fields):
+        found.append(
+            (
+                "interpolated-message",
+                "`message` field is computed; use a constant message and other fields",
+            )
         )
     if not strict:
         return found
@@ -430,6 +455,12 @@ SELF_TEST_CASES = [
     ('// tracing::info!("commented {}", x);', []),
     ('let s = "tracing::info!(\\"quoted {}\\", x)";', []),
     ('#[cfg(test)]\nmod tests { fn t() { tracing::info!("{}", 1); } }', []),
+    ('tracing::info! { name: "a.b", "done {}", n }', ["interpolated-message"]),
+    ('tracing::info![name: "a.b", "done {n}"];', ["interpolated-message"]),
+    (
+        'tracing::info!(name: "a.b", message = %format!("done {n}"));',
+        ["interpolated-message"],
+    ),
 ]
 
 
@@ -441,6 +472,12 @@ def self_test():
         if actual != expected:
             failures.append(f"{source!r}: expected {expected}, got {actual}")
     return failures
+
+
+def deferred_notice(deferred=None):
+    """The line naming what is skipped, printed on every checking run."""
+    deferred = DEFERRED if deferred is None else deferred
+    return f"deferred, not checked ({len(deferred)}): {', '.join(sorted(deferred))}"
 
 
 def main(argv=None):
@@ -461,6 +498,7 @@ def main(argv=None):
         )
         return 1 if failures else 0
 
+    print(deferred_notice())
     if options.files:
         findings = []
         for path in options.files:
@@ -472,8 +510,7 @@ def main(argv=None):
     if findings:
         print(f"{len(findings)} log message problem(s); see docs/guides/logging.md")
         return 1
-    deferred = ", ".join(sorted(DEFERRED))
-    print(f"log messages ok (deferred, not checked: {deferred})")
+    print("log messages ok")
     return 0
 
 

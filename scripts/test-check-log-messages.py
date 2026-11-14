@@ -115,6 +115,58 @@ class InterpolationTests(unittest.TestCase):
         self.assertEqual(rules(source), [])
 
 
+class MacroFormTests(unittest.TestCase):
+    def test_brace_delimited_macro_is_checked(self):
+        self.assertEqual(
+            rules('tracing::info! { name: "a.b", "done {}", n }'),
+            ["interpolated-message"],
+        )
+        self.assertEqual(rules('info! { "started" }'), ["missing-event-name"])
+
+    def test_bracket_delimited_macro_is_checked(self):
+        self.assertEqual(
+            rules('tracing::warn![name: "a.b", "retry {attempt}"];'),
+            ["interpolated-message"],
+        )
+        self.assertEqual(rules('error! ["failed"];'), ["missing-event-name"])
+
+    def test_delimiters_do_not_change_a_passing_event(self):
+        for source in (
+            'info!(name: "a.b", { rows = 3 }, "export complete");',
+            'info! { name: "a.b", { rows = 3 }, "export complete" }',
+            'info![name: "a.b", rows = 3, "export complete"];',
+        ):
+            self.assertEqual(rules(source), [], source)
+
+    def test_computed_message_field_is_reported(self):
+        for value in (
+            '%format!("done {n}")',
+            'format!("done {}", n)',
+            "%text",
+            "?failure",
+            "text",
+        ):
+            source = f'tracing::info!(name: "a.b", message = {value});'
+            self.assertEqual(rules(source), ["interpolated-message"], source)
+        self.assertEqual(
+            rules('tracing::info!(name: "a.b", { "message" = %format!("x {n}") });'),
+            ["interpolated-message"],
+        )
+        self.assertEqual(
+            rules('tracing::info!(name: "a.b", message = %format!("x {n}"), "done");'),
+            ["interpolated-message"],
+        )
+
+    def test_constant_message_field_passes(self):
+        self.assertEqual(
+            rules('tracing::info!(name: "a.b", message = "export complete");'), []
+        )
+
+    def test_other_fields_may_be_computed(self):
+        source = 'tracing::info!(name: "a.b", error.message = %format!("{e:#}"), "failed");'
+        self.assertEqual(rules(source), [])
+
+
 class StrictTests(unittest.TestCase):
     def test_missing_event_name_is_reported(self):
         self.assertEqual(rules('tracing::info!("started");'), ["missing-event-name"])
@@ -222,6 +274,8 @@ class TreeTests(unittest.TestCase):
             )
             self.assertEqual(result.returncode, 1)
             self.assertIn("bad/src/lib.rs:1: interpolated-message", result.stdout)
+            skipped = f"deferred, not checked ({len(checker.DEFERRED)}): "
+            self.assertIn(skipped + ", ".join(sorted(checker.DEFERRED)), result.stdout)
             (root / "bad" / "src" / "lib.rs").write_text("fn f() {}\n")
             result = subprocess.run(
                 [sys.executable, str(SCRIPT), "--root", str(root)],
@@ -230,6 +284,15 @@ class TreeTests(unittest.TestCase):
                 check=False,
             )
             self.assertEqual(result.returncode, 0, result.stdout)
+            self.assertIn(skipped, result.stdout)
+            result = subprocess.run(
+                [sys.executable, str(SCRIPT), str(root / "good" / "src" / "lib.rs")],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stdout)
+            self.assertIn(skipped, result.stdout)
 
     def test_self_test_passes(self):
         result = subprocess.run(
