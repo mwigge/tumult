@@ -1,10 +1,15 @@
 use super::*;
 
 const S: i64 = SECOND_NS;
+/// Where these tests begin to count: the earliest time a span may bear
+/// and still be a sight. The helpers below take and give times from
+/// here, so a test reads in seconds from nought.
+const T0: i64 = EARLIEST_SIGHT_NS;
 /// A wall clock far past every span these tests store.
 const NOW: i64 = 1_000_000_000 * S;
 
 fn span(service: &str, version: Option<&str>, env: Option<&str>, ts_ns: i64) -> SpanRow {
+    let ts_ns = T0.saturating_add(ts_ns);
     SpanRow {
         ts_ns,
         trace_id: format!("t-{service}-{ts_ns}"),
@@ -40,11 +45,17 @@ fn lake() -> (tempfile::TempDir, Store) {
 }
 
 fn sightings(store: &Store, service: &str) -> Vec<VersionSighting> {
-    store
+    let mut sightings = store
         .read_only()
         .unwrap()
         .version_sightings(service)
-        .unwrap()
+        .unwrap();
+    for sighting in &mut sightings {
+        sighting.first_seen_ns -= T0;
+        sighting.last_seen_ns -= T0;
+        sighting.last_deployed_ns -= T0;
+    }
+    sightings
 }
 
 type Seen = (Option<String>, String, i64, i64);
@@ -385,7 +396,7 @@ fn a_backfill_reads_a_day_at_a_step_and_says_while_it_is_running() {
     assert_eq!(versions(&conn), ["1.0.0"]);
     assert!(matches!(
         backfill_state(&conn).unwrap(),
-        Backfill::Running(cursor) if cursor == (100 + DAY) * S
+        Backfill::Running(cursor) if cursor == T0 + (100 + DAY) * S
     ));
 
     // A batch stored meanwhile: what the backfill has passed is folded in
@@ -442,7 +453,7 @@ fn a_backfill_out_of_budget_stops_inside_a_day() {
         assert_eq!(seen(&store, "checkout"), vec![demo("1.0.0", 100, 100)]);
         assert!(matches!(
             backfill_state(&writer.conn).unwrap(),
-            Backfill::Running(cursor) if cursor == (100 + HOUR) * S
+            Backfill::Running(cursor) if cursor == T0 + (100 + HOUR) * S
         ));
         // The next turn goes on from there.
         assert!(writer
@@ -502,7 +513,7 @@ fn a_rebuild_reads_the_rollup_back_from_the_spans() {
             "INSERT INTO spans (ts_ns, trace_id, span_id, span_name, span_kind, \
              duration_ns, status_code, status_message, service_name, service_version, \
              target_environment) VALUES \
-             (70000000000, 't', 's', 'GET /', 'SERVER', 0, 'OK', '', 'checkout', \
+             (946684870000000000, 't', 's', 'GET /', 'SERVER', 0, 'OK', '', 'checkout', \
              '1.2.0', 'demo')",
         )
         .unwrap();
@@ -545,7 +556,7 @@ fn the_versions_that_served_a_window_are_counted_in_its_environment() {
     let reader = store.read_only().unwrap();
     let observed = |env: Option<&str>, from: i64, to: i64| {
         reader
-            .observed_versions("checkout", env, None, from * S, to * S)
+            .observed_versions("checkout", env, None, T0 + from * S, T0 + to * S)
             .unwrap()
     };
     // Most served first.
@@ -585,7 +596,7 @@ fn a_window_is_counted_in_requests_so_a_chatty_build_weighs_no_more() {
     let observed = store
         .read_only()
         .unwrap()
-        .observed_versions("checkout", Some("demo"), None, 0, 500 * S)
+        .observed_versions("checkout", Some("demo"), None, T0, T0 + 500 * S)
         .unwrap();
     assert_eq!(observed, vec![share("1.0.0", 3), share("1.1.0", 3)]);
 }
@@ -612,7 +623,7 @@ fn a_namespace_narrows_a_window_to_the_spans_that_carry_it() {
     let reader = store.read_only().unwrap();
     let observed = |namespace: Option<&str>| {
         reader
-            .observed_versions("checkout", Some("demo"), namespace, 0, 500 * S)
+            .observed_versions("checkout", Some("demo"), namespace, T0, T0 + 500 * S)
             .unwrap()
     };
     assert_eq!(observed(Some("shop")), vec![share("1.0.0", 2)]);
@@ -626,8 +637,8 @@ fn a_namespace_narrows_a_window_to_the_spans_that_carry_it() {
         system: "checkout".into(),
         environment: Some("demo".into()),
         namespace: Some("bank".into()),
-        started_at_ns: 0,
-        ended_at_ns: 500 * S,
+        started_at_ns: T0,
+        ended_at_ns: T0 + 500 * S,
     };
     assert_eq!(versions.resolve(&window), Ok(vec![share("7.0.0", 1)]));
 }
@@ -648,8 +659,8 @@ fn a_runner_is_told_the_versions_that_served_its_window_in_its_environment() {
         system: "checkout".into(),
         environment: environment.map(str::to_string),
         namespace: None,
-        started_at_ns: from * S,
-        ended_at_ns: to * S,
+        started_at_ns: T0 + from * S,
+        ended_at_ns: T0 + to * S,
     };
     let demo = versions.resolve(&window(Some("demo"), 90, 130));
     assert_eq!(demo, Ok(vec![share("1.1.0", 3)]));
@@ -711,7 +722,7 @@ fn a_span_stamped_ahead_of_the_clock_is_stored_and_left_out_of_the_rollup() {
     let (_dir, store) = lake();
     let mut writer = store.writer().unwrap();
     // 3.0.0's span is 50 s ahead of this clock: within the skew allowed.
-    writer.clock = || 21_250 * S;
+    writer.clock = || T0 + 21_250 * S;
     with_a_span_from_tomorrow(&writer);
     assert_eq!(spans_stored(&writer), 24);
     drop(writer);
@@ -724,7 +735,7 @@ fn a_span_stamped_ahead_of_the_clock_is_stored_and_left_out_of_the_rollup() {
 fn a_rebuild_leaves_out_a_span_stamped_ahead_of_the_clock() {
     let (_dir, store) = lake();
     let mut writer = store.writer().unwrap();
-    writer.clock = || 21_250 * S;
+    writer.clock = || T0 + 21_250 * S;
     with_a_span_from_tomorrow(&writer);
     writer.rebuild_version_sightings().unwrap();
     assert_eq!(spans_stored(&writer), 24);
@@ -752,14 +763,14 @@ fn the_spans_ahead_of_the_clock_are_named_by_version_and_environment() {
         demo_span("2.0.0", 400),
         demo_span("2.0.0", 900),
     ];
-    let ahead = ahead_in(&rows, 100 * S).unwrap();
+    let ahead = ahead_in(&rows, T0 + 100 * S).unwrap();
     assert_eq!(
         (ahead.service.as_str(), ahead.environment.as_deref()),
         ("checkout", Some("demo"))
     );
     assert_eq!((ahead.version.as_str(), ahead.spans), ("2.0.0", 2));
-    assert_eq!(ahead.span_ts_ns, 400 * S);
-    assert!(ahead_in(&rows, 900 * S).is_none());
+    assert_eq!(ahead.span_ts_ns, T0 + 400 * S);
+    assert!(ahead_in(&rows, T0 + 900 * S).is_none());
 }
 
 /// 1.0.0 at 10 000 s, 2.0.0 at 20 000 s, then thirty single spans of
@@ -817,4 +828,195 @@ fn a_row_of_an_older_build_is_held_to_the_first_sight_it_has() {
         seen(&store, "checkout"),
         [demo("1.0.0", 10_000, 10_000), demo("2.0.0", 19_500, 20_000)]
     );
+}
+
+/// A row of `checkout` 2.0.0 in demo as a build before the clock bound
+/// left it: every sight at `at_ns`, and with `anchored` the anchor too.
+fn seed_row(writer: &Writer, at_ns: i64, anchored: bool) {
+    let at_ns = T0 + at_ns;
+    writer
+        .conn
+        .execute(
+            "INSERT INTO service_version_sightings
+                (service_name, environment, service_version, first_seen_ns, last_seen_ns,
+                 last_deployed_ns, deployments, sanitized, first_anchor_ns)
+             VALUES ('checkout', 'demo', '2.0.0', ?, ?, ?, 1, false, ?)",
+            params![at_ns, at_ns, at_ns, anchored.then_some(at_ns)],
+        )
+        .unwrap();
+}
+
+/// (first sight, last sight, latest deployment, anchor) of 2.0.0 as the
+/// rollup table itself holds them, in seconds.
+fn stored_row(writer: &Writer) -> Vec<(i64, i64, i64, Option<i64>)> {
+    let mut stmt = writer
+        .conn
+        .prepare(
+            "SELECT first_seen_ns, last_seen_ns, last_deployed_ns, first_anchor_ns
+             FROM service_version_sightings WHERE service_version = '2.0.0'",
+        )
+        .unwrap();
+    let rows = stmt
+        .query_map(params![], |row| {
+            Ok((
+                (row.get::<_, i64>(0)? - T0) / S,
+                (row.get::<_, i64>(1)? - T0) / S,
+                (row.get::<_, i64>(2)? - T0) / S,
+                row.get::<_, Option<i64>>(3)?.map(|ns| (ns - T0) / S),
+            ))
+        })
+        .unwrap();
+    rows.collect::<Result<_, _>>().unwrap()
+}
+
+#[test]
+fn a_row_held_ahead_of_the_clock_is_anchored_anew_by_the_next_honest_span() {
+    const YEAR: i64 = 365 * 86_400;
+    for anchored in [false, true] {
+        let (_dir, store) = lake();
+        let mut writer = store.writer().unwrap();
+        writer.clock = || T0 + 21_250 * S;
+        writer.insert_spans(&[demo_span("1.0.0", 10_000)]).unwrap();
+        seed_row(&writer, (21_250 + YEAR) * S, anchored);
+        // A batch that says nothing of 2.0.0 leaves its row alone.
+        writer.insert_spans(&[demo_span("1.0.0", 10_060)]).unwrap();
+        assert_eq!(stored_row(&writer).len(), 1, "anchored: {anchored}");
+        writer
+            .insert_spans(&[demo_span("2.0.0", 20_000), demo_span("2.0.0", 20_060)])
+            .unwrap();
+        // Nothing of the year ahead is left in the row, the anchor
+        // included: it was written over, not merged with.
+        assert_eq!(
+            stored_row(&writer),
+            [(20_000, 20_060, 20_000, Some(20_000))],
+            "anchored: {anchored}"
+        );
+        // And from there the version is held like any other.
+        writer.insert_spans(&[demo_span("2.0.0", 19_500)]).unwrap();
+        writer.insert_spans(&[demo_span("2.0.0", 19_000)]).unwrap();
+        drop(writer);
+        assert_eq!(
+            seen(&store, "checkout"),
+            [demo("1.0.0", 10_000, 10_060), demo("2.0.0", 19_500, 20_060)],
+            "anchored: {anchored}"
+        );
+        assert_eq!(
+            deployments(&store),
+            [
+                ("1.0.0".to_string(), 10_000, 1),
+                ("2.0.0".to_string(), 19_500, 1)
+            ],
+            "anchored: {anchored}"
+        );
+    }
+}
+
+#[test]
+fn a_row_held_within_the_skew_of_the_clock_keeps_its_anchor() {
+    let (_dir, store) = lake();
+    let mut writer = store.writer().unwrap();
+    writer.clock = || T0 + 21_250 * S;
+    // Exactly at the horizon: an honest clock a little ahead.
+    seed_row(&writer, (21_250 + 300) * S, true);
+    writer.insert_spans(&[demo_span("2.0.0", 20_000)]).unwrap();
+    drop(writer);
+    assert_eq!(seen(&store, "checkout"), [demo("2.0.0", 21_550, 21_550)]);
+}
+
+#[test]
+fn a_backfill_ends_past_a_span_stamped_at_the_end_of_time() {
+    let (_dir, store) = lake();
+    let writer = store.writer().unwrap();
+    writer
+        .insert_spans(&[
+            demo_span("1.0.0", 10_000),
+            span("checkout", Some("9.9.9"), Some("demo"), i64::MAX - T0),
+        ])
+        .unwrap();
+    assert_eq!(spans_stored(&writer), 2);
+    in_tx(&writer.conn, || backfill_restart(&writer.conn)).unwrap();
+    // The day that holds the last instant there is cannot end after it:
+    // the step reads it all the same and moves the cursor there.
+    let steps = (0..4)
+        .position(|_| in_tx(&writer.conn, || backfill_step(&writer.conn, None, NOW)).unwrap());
+    assert_eq!(steps, Some(2), "two days of spans, then nothing left");
+    assert_eq!(
+        backfill_state(&writer.conn).unwrap(),
+        Backfill::Done,
+        "the backfill is over"
+    );
+    drop(writer);
+    assert_eq!(seen(&store, "checkout"), [demo("1.0.0", 10_000, 10_000)]);
+}
+
+/// 2.0.0 stamped at the epoch and a nanosecond before the floor, then
+/// 1.0.0 at the floor itself and, long after it, 2.0.0 for real with one
+/// more span from before the epoch: 5 spans.
+fn with_spans_from_before_the_floor(writer: &Writer) {
+    let at = |ts_ns: i64| SpanRow {
+        ts_ns,
+        span_id: format!("old-{ts_ns}"),
+        ..demo_span("2.0.0", 0)
+    };
+    writer
+        .insert_spans(&[at(0), at(EARLIEST_SIGHT_NS - 1)])
+        .unwrap();
+    writer.insert_spans(&[demo_span("1.0.0", 0)]).unwrap();
+    writer
+        .insert_spans(&[demo_span("2.0.0", 20_000), at(-5 * S)])
+        .unwrap();
+}
+
+/// The history [`with_spans_from_before_the_floor`] should leave: 1.0.0
+/// first, at the floor, and 2.0.0 where it really began.
+fn without_the_spans_from_before_the_floor() -> [Seen; 2] {
+    [demo("1.0.0", 0, 0), demo("2.0.0", 20_000, 20_000)]
+}
+
+#[test]
+fn a_span_stamped_before_the_floor_is_stored_and_left_out_of_the_rollup() {
+    let (_dir, store) = lake();
+    let writer = store.writer().unwrap();
+    with_spans_from_before_the_floor(&writer);
+    assert_eq!(spans_stored(&writer), 5);
+    drop(writer);
+
+    assert_eq!(
+        seen(&store, "checkout"),
+        without_the_spans_from_before_the_floor()
+    );
+    assert!(deployments(&store).iter().all(|(_, _, times)| *times == 1));
+}
+
+#[test]
+fn a_rebuild_leaves_out_a_span_stamped_before_the_floor() {
+    let (_dir, store) = lake();
+    let writer = store.writer().unwrap();
+    with_spans_from_before_the_floor(&writer);
+    writer.rebuild_version_sightings().unwrap();
+    assert_eq!(spans_stored(&writer), 5);
+    drop(writer);
+
+    assert_eq!(
+        seen(&store, "checkout"),
+        without_the_spans_from_before_the_floor()
+    );
+}
+
+#[test]
+fn the_spans_from_before_the_floor_are_named_by_version_and_environment() {
+    let rows = [
+        demo_span("1.0.0", 10),
+        span("checkout", None, Some("demo"), -500 * S),
+        demo_span("2.0.0", -400),
+        demo_span("2.0.0", -1),
+    ];
+    let old = before_the_floor_in(&rows).unwrap();
+    assert_eq!(
+        (old.service.as_str(), old.environment.as_deref()),
+        ("checkout", Some("demo"))
+    );
+    assert_eq!((old.version.as_str(), old.spans), ("2.0.0", 2));
+    assert_eq!(old.span_ts_ns, T0 - 400 * S);
+    assert!(before_the_floor_in(&rows[..1]).is_none());
 }
