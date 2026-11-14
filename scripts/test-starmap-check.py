@@ -224,7 +224,9 @@ class KronikaComposeTests(unittest.TestCase):
 
     def test_every_container_name_and_image_follows_the_variables(self):
         services = compose_services(COMPOSE_FILE.read_text())
-        self.assertEqual(sorted(services), ["report", "seed", "tumultd"])
+        self.assertEqual(sorted(services), ["forecastd", "report", "seed", "tumultd"])
+        # The opt-in forecast sidecar is built from its own pinned image.
+        images = {"forecastd": "tumult-forecastd:0.1.0"}
         for name, found in services.items():
             self.assertEqual(
                 found["container_name"],
@@ -232,7 +234,9 @@ class KronikaComposeTests(unittest.TestCase):
                 name,
             )
             self.assertEqual(
-                found["image"], ["${KRONIKA_IMAGE:-tumult-kronika:latest}"], name
+                found["image"],
+                [images.get(name, "${KRONIKA_IMAGE:-tumult-kronika:latest}")],
+                name,
             )
 
     def test_a_fixed_name_would_be_found(self):

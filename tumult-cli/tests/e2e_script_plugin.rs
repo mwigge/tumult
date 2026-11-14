@@ -117,7 +117,7 @@ fn create_experiment(action_script: &str, probe_script: &str) -> Experiment {
         guards: vec![],
         blast_radius: None,
         max_concurrent_faults: None,
-        kind: Default::default(),
+        kind: tumult_core::types::TestKind::default(),
         target: None,
         nfr: vec![],
         rto_target_s: None,

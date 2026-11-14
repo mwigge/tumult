@@ -147,7 +147,7 @@ mod tests {
             method_results: vec![],
             rollback_results: vec![],
             rollback_failures: 0,
-            kind: Default::default(),
+            kind: tumult_core::types::TestKind::default(),
             objectives: None,
             probe_samples: vec![],
             estimate: None,

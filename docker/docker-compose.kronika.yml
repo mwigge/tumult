@@ -247,7 +247,7 @@ services:
     build:
       context: ../forecastd
     image: tumult-forecastd:0.1.0
-    container_name: tumult-kronika-forecastd
+    container_name: ${KRONIKA_NAME_PREFIX:-tumult-kronika}-forecastd
     environment:
       FORECASTD_BIND: 0.0.0.0:8700
       FORECASTD_MODEL: ${FORECASTD_MODEL:-timestral}

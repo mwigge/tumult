@@ -76,7 +76,7 @@ fn test_journal(id: &str) -> tumult_core::types::Journal {
         }],
         rollback_results: vec![],
         rollback_failures: 0,
-        kind: Default::default(),
+        kind: tumult_core::types::TestKind::default(),
         objectives: None,
         probe_samples: vec![],
         estimate: None,
