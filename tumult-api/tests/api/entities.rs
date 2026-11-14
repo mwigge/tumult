@@ -83,7 +83,16 @@ async fn a_store_without_entities_lists_none() {
     let srv = spawn_server().await;
     let (status, body) = get(&srv.base, "/api/entities").await;
     assert_eq!(status, 200, "{body}");
-    assert_eq!(body, json!({"count": 0, "entities": []}));
+    assert_eq!(
+        body,
+        json!({
+            "count": 0,
+            "total": 0,
+            "truncated": false,
+            "next_cursor": null,
+            "entities": [],
+        })
+    );
 
     let (status, body) = get(&srv.base, &format!("/api/entities/{POD_A_PATH}/history")).await;
     assert_eq!(status, 404, "{body}");
@@ -241,8 +250,12 @@ async fn the_entity_list_refuses_unknown_filters_and_is_bounded() {
     store(&srv, many).await;
     let (_, body) = get(&srv.base, "/api/entities?limit=100000").await;
     assert_eq!(body["count"], 1_000, "never more than a thousand");
+    assert_eq!(body["total"], 1_010, "{}", body["total"]);
+    assert_eq!(body["truncated"], true);
     let (_, body) = get(&srv.base, "/api/entities").await;
-    assert_eq!(body["count"], 200, "two hundred unless asked");
+    assert_eq!(body["count"], 100, "a hundred unless asked");
+    assert_eq!(body["total"], 1_010, "{}", body["total"]);
+    assert_eq!(body["truncated"], true);
 }
 
 /// A scoped principal sees the entities of its environments only; an
@@ -319,4 +332,266 @@ async fn the_history_lists_every_version_newest_first() {
 
     let (status, body) = get(&srv.base, "/api/entities/k8s.pod%7Ck8s.pod.uid=zz/history").await;
     assert_eq!(status, 404, "{body}");
+}
+
+/// Follow `next_cursor` from `path` until the listing ends; the pages.
+async fn pages(base: &str, path: &str) -> Vec<Value> {
+    let mut seen = Vec::new();
+    let mut cursor: Option<String> = None;
+    loop {
+        let sep = if path.contains('?') { '&' } else { '?' };
+        let url = match &cursor {
+            Some(cursor) => format!("{path}{sep}cursor={cursor}"),
+            None => path.to_owned(),
+        };
+        let (status, body) = get(base, &url).await;
+        assert_eq!(status, 200, "{url}: {body}");
+        cursor = body["next_cursor"].as_str().map(str::to_owned);
+        assert_eq!(
+            body["truncated"],
+            cursor.is_some(),
+            "a cursor is given exactly when rows are left: {body}"
+        );
+        seen.push(body);
+        assert!(seen.len() <= 50, "the cursor does not advance");
+        if cursor.is_none() {
+            return seen;
+        }
+    }
+}
+
+#[tokio::test]
+async fn the_entity_list_says_how_many_match_and_whether_it_is_cut() {
+    let srv = spawn_server().await;
+    seed_entities(&srv).await;
+    let (_, body) = get(&srv.base, "/api/entities").await;
+    assert_eq!(body["total"], 5, "{body}");
+    assert_eq!(body["truncated"], false, "{body}");
+    assert_eq!(body["next_cursor"], Value::Null, "{body}");
+
+    let (_, body) = get(&srv.base, "/api/entities?limit=2").await;
+    assert_eq!(body["count"], 2, "{body}");
+    assert_eq!(body["total"], 5, "{body}");
+    assert_eq!(body["truncated"], true, "{body}");
+    assert!(body["next_cursor"].is_string(), "{body}");
+
+    // The total counts what the filters match, not what the page holds.
+    let (_, body) = get(&srv.base, "/api/entities?type=k8s.pod&limit=1").await;
+    assert_eq!(body["total"], 4, "{body}");
+    let staging = add_scoped_token(&srv, "stg-viewer", "viewer", &["staging"]).await;
+    let (_, body) = get_auth(&srv.base, "/api/entities?limit=1", &staging).await;
+    assert_eq!(
+        body["total"], 1,
+        "what is out of scope is not counted: {body}"
+    );
+    assert_eq!(body["truncated"], false, "{body}");
+}
+
+#[tokio::test]
+async fn the_entity_list_is_walked_with_the_cursor() {
+    let srv = spawn_server().await;
+    seed_entities(&srv).await;
+    let (_, whole) = get(&srv.base, "/api/entities").await;
+    let walked = pages(&srv.base, "/api/entities?limit=2").await;
+    assert_eq!(walked.len(), 3);
+    let keys_walked: Vec<&str> = walked.iter().flat_map(keys).collect();
+    assert_eq!(keys_walked, keys(&whole));
+    assert!(walked.iter().all(|page| page["total"] == 5));
+
+    // Filters hold on every page.
+    let walked = pages(&srv.base, "/api/entities?type=k8s.pod&limit=3").await;
+    let keys_walked: Vec<&str> = walked.iter().flat_map(keys).collect();
+    assert_eq!(keys_walked.len(), 4);
+    assert!(keys_walked.iter().all(|key| key.starts_with("k8s.pod|")));
+
+    for broken in ["zz", "5b", "5b315d", ""] {
+        let (status, body) = get(&srv.base, &format!("/api/entities?cursor={broken}")).await;
+        if broken.is_empty() {
+            assert_eq!(status, 200, "an empty cursor is none: {body}");
+            continue;
+        }
+        assert_eq!(status, 400, "{broken}: {body}");
+        assert_eq!(body["error"], "invalid cursor");
+    }
+}
+
+/// Entities last heard of in the same nanosecond are told apart by key and
+/// environment: no page repeats or skips one.
+#[tokio::test]
+async fn the_cursor_passes_through_entities_heard_of_at_the_same_time() {
+    let srv = spawn_server().await;
+    let at = now_ns() - NS;
+    let mut same: Vec<EntityEventRow> = (0..7)
+        .map(|n| state("proc", ("process.pid", &n.to_string()), "prod", at))
+        .collect();
+    same.push(state("proc", ("process.pid", "3"), "staging", at));
+    store(&srv, same).await;
+    let walked = pages(&srv.base, "/api/entities?limit=3").await;
+    let mut seen: Vec<(String, String)> = walked
+        .iter()
+        .flat_map(|page| page["entities"].as_array().unwrap())
+        .map(|e| {
+            (
+                e["entity_key"].as_str().unwrap().to_owned(),
+                e["environment"].as_str().unwrap().to_owned(),
+            )
+        })
+        .collect();
+    assert_eq!(seen.len(), 8);
+    seen.sort();
+    seen.dedup();
+    assert_eq!(seen.len(), 8, "{seen:?}");
+}
+
+/// A page stops short of its row limit once it carries about four
+/// mebibytes of descriptions, and the cursor continues from there.
+#[tokio::test]
+async fn a_page_is_bounded_in_bytes_as_well_as_rows() {
+    let srv = spawn_server().await;
+    let at = now_ns() - NS;
+    let filler = "x".repeat(60_000);
+    let large: Vec<EntityEventRow> = (0..100)
+        .map(|n| {
+            let mut event = state("proc", ("process.pid", &n.to_string()), "prod", at);
+            event.description = json!({"process.command_line": filler});
+            event
+        })
+        .collect();
+    store(&srv, large).await;
+
+    let response = reqwest::get(format!("{}/api/entities?limit=1000", srv.base))
+        .await
+        .unwrap();
+    let bytes = response.bytes().await.unwrap();
+    assert!(bytes.len() < 5 * 1024 * 1024, "{} bytes", bytes.len());
+    let body: Value = serde_json::from_slice(&bytes).unwrap();
+    let count = body["count"].as_u64().unwrap();
+    assert!((1..100).contains(&count), "{count}");
+    assert_eq!(body["total"], 100);
+    assert_eq!(body["truncated"], true);
+
+    let walked = pages(&srv.base, "/api/entities?limit=1000").await;
+    let rows: u64 = walked.iter().map(|p| p["count"].as_u64().unwrap()).sum();
+    assert_eq!(rows, 100);
+}
+
+#[tokio::test]
+async fn the_history_names_its_environments_and_is_walked_with_the_cursor() {
+    let srv = spawn_server().await;
+    let now = now_ns();
+    let mut events = Vec::new();
+    for n in 0..5 {
+        let mut event = state("k8s.pod", ("k8s.pod.uid", "a"), "prod", now - (50 - n) * NS);
+        event.description = json!({"k8s.pod.name": format!("checkout-{n}")});
+        events.push(event);
+    }
+    // One version elsewhere that starts when a version in prod does.
+    events.push(state(
+        "k8s.pod",
+        ("k8s.pod.uid", "a"),
+        "staging",
+        now - 50 * NS,
+    ));
+    events.push(state("k8s.pod", ("k8s.pod.uid", "a"), "", now - 10 * NS));
+    store(&srv, events).await;
+    let history = format!("/api/entities/{POD_A_PATH}/history");
+
+    let (status, body) = get(&srv.base, &history).await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["count"], 7, "{body}");
+    assert_eq!(body["total"], 7, "{body}");
+    assert_eq!(body["truncated"], false, "{body}");
+    assert_eq!(body["next_cursor"], Value::Null, "{body}");
+    assert_eq!(
+        body["environments"],
+        json!([
+            {"environment": "", "versions": 1},
+            {"environment": "prod", "versions": 5},
+            {"environment": "staging", "versions": 1},
+        ])
+    );
+    let whole: Vec<(i64, String)> = starts(&body);
+
+    let (_, body) = get(&srv.base, &format!("{history}?limit=3")).await;
+    assert_eq!(body["count"], 3, "{body}");
+    assert_eq!(body["total"], 7, "{body}");
+    assert_eq!(body["truncated"], true, "{body}");
+    let walked = pages(&srv.base, &format!("{history}?limit=3")).await;
+    let walked: Vec<(i64, String)> = walked.iter().flat_map(starts).collect();
+    assert_eq!(walked, whole);
+
+    // One environment at a time.
+    let (_, body) = get(&srv.base, &format!("{history}?environment=prod&limit=2")).await;
+    assert_eq!(body["total"], 5, "{body}");
+    assert_eq!(body["truncated"], true, "{body}");
+    assert!(starts(&body).iter().all(|(_, env)| env == "prod"));
+    assert_eq!(body["environments"].as_array().unwrap().len(), 3);
+    let (status, body) = get(&srv.base, &format!("{history}?environment=dev")).await;
+    assert_eq!(status, 200, "the entity exists, though not there: {body}");
+    assert_eq!(body["total"], 0, "{body}");
+    assert_eq!(body["versions"], json!([]));
+
+    // A scoped caller is told of its own environments only.
+    let staging = add_scoped_token(&srv, "stg-viewer", "viewer", &["staging"]).await;
+    let (_, body) = get_auth(&srv.base, &history, &staging).await;
+    assert_eq!(body["total"], 1, "{body}");
+    assert_eq!(
+        body["environments"],
+        json!([{"environment": "staging", "versions": 1}])
+    );
+
+    let (status, body) = get_auth(&srv.base, &format!("{history}?cursor=zz"), &staging).await;
+    assert_eq!(status, 400, "{body}");
+    assert_eq!(body["error"], "invalid cursor");
+}
+
+fn starts(body: &Value) -> Vec<(i64, String)> {
+    body["versions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| {
+            (
+                v["valid_from_ns"].as_i64().unwrap(),
+                v["environment"].as_str().unwrap().to_owned(),
+            )
+        })
+        .collect()
+}
+
+/// A key holds whatever the sender put in the id. A client that encodes it
+/// as one URL path segment reads the entity, whatever the characters.
+#[tokio::test]
+async fn a_key_with_any_character_is_read_once_url_encoded() {
+    let srv = spawn_server().await;
+    let odd = "a\"b\\c/d%e f?g#h|i=j,k'l";
+    store(
+        &srv,
+        vec![state("host", ("host.id", odd), "prod", now_ns() - NS)],
+    )
+    .await;
+    let (_, body) = get(&srv.base, "/api/entities?type=host").await;
+    let key = body["entities"][0]["entity_key"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert_eq!(key, "host|host.id=a\"b\\c%2Fd%25e f?g#h%7Ci%3Dj%2Ck'l");
+    assert_eq!(body["entities"][0]["entity_id"], json!({"host.id": odd}));
+
+    let mut url = reqwest::Url::parse(&srv.base).unwrap();
+    url.path_segments_mut()
+        .unwrap()
+        .extend(["api", "entities", key.as_str(), "history"]);
+    assert!(url.path().contains("%252F"), "{url}");
+    let response = reqwest::get(url).await.unwrap();
+    assert_eq!(response.status(), 200);
+    let body: Value = response.json().await.unwrap();
+    assert_eq!(body["entity_key"], key);
+    assert_eq!(body["count"], 1, "{body}");
+
+    // Sent as it is, the key is another path, or no path at all.
+    let raw = reqwest::get(format!("{}/api/entities/{key}/history", srv.base))
+        .await
+        .unwrap();
+    assert_ne!(raw.status(), 200);
 }

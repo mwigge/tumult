@@ -375,19 +375,36 @@ Both endpoints need the Viewer role. A user with environment scopes sees
 only the entities of those environments; an entity that names no
 environment is visible only to users without scopes.
 
-`GET /api/entities?type=&liveness=&range=&limit=` lists the current row of
-every entity, most recently heard of first.
+`GET /api/entities?type=&liveness=&range=&limit=&cursor=` lists the current
+row of every entity, most recently heard of first.
 
 | Parameter | Meaning |
 |---|---|
 | `type` | exact entity type, for example `k8s.pod` |
 | `liveness` | `live`, `expired` or `gone`; anything else is `400` |
 | `range` | `24h`, `7d`, `14d` or `30d`: only entities last reported or deleted inside it. Left out, every entity is listed |
-| `limit` | rows returned, 1 to 1000, default 200 |
+| `limit` | rows returned, 1 to 1000, default 100 |
+| `cursor` | the `next_cursor` of the page before; anything else is `400` |
+
+The answer is one page. `total` is the number of entities the filters
+match, `count` the number in this page and `truncated` whether the page
+left any out. A page ends at `limit` rows or once its rows weigh about
+4 MiB, whichever comes first (a row can carry 128 KiB of description and
+relationships, so a page of large rows is shorter than `limit`), and it
+always holds one row at least. When `truncated` is true, `next_cursor` is
+the text to send as `cursor` with the same filters to get the rows that
+follow; otherwise it is `null`. The cursor is the place of the last row
+in the listing (its `last_activity_ns`, key and environment), not a
+snapshot: an entity that reports while a client walks the pages moves to
+the front and is not seen again by a walk that has passed it, and `total`
+can differ from page to page.
 
 ```json
 {
   "count": 1,
+  "total": 1,
+  "truncated": false,
+  "next_cursor": null,
   "entities": [
     {
       "entity_key": "host|host.id=4c4c4544004d",
@@ -405,7 +422,8 @@ every entity, most recently heard of first.
       "wire_form": "legacy",
       "observer": "token:default",
       "schema_url": "https://opentelemetry.io/schemas/1.43.0",
-      "liveness": "live"
+      "liveness": "live",
+      "last_activity_ns": 1794650060000000000
     }
   ]
 }
@@ -415,11 +433,43 @@ This is the `host` entity as `host_metrics` reports it: the event carries
 no descriptive attributes, so `description` is empty; the host name stays
 on the resource and is not copied into the entity.
 
-`GET /api/entities/{key}/history?limit=` lists every stored row of one
-entity, newest first, with the same fields except `liveness`. The key is
-one path segment, so `|` is written `%7C`:
-`/api/entities/host%7Chost.id=4c4c4544004d/history`. A key with no row in
-the caller's environments is `404`.
+`GET /api/entities/{key}/history?environment=&limit=&cursor=` lists the
+stored rows of one entity, newest first, with the same fields except
+`liveness` and `last_activity_ns`. The same key can exist in several
+environments, each with a history of its own: every row names its
+`environment`, `environments` lists the environments the caller may read
+with the number of rows in each, and `environment=` keeps the rows of one.
+The answer is paged like the list, with `total`, `count`, `truncated` and
+`next_cursor` of its own. A key with no row in the caller's environments
+is `404`.
+
+```json
+{
+  "entity_key": "host|host.id=4c4c4544004d",
+  "count": 2,
+  "total": 2,
+  "truncated": false,
+  "next_cursor": null,
+  "environments": [{"environment": "", "versions": 2}],
+  "versions": [{"environment": "", "valid_from_ns": 1794650000000000000}]
+}
+```
+
+(Each element of `versions` has all the fields; two are shown.)
+
+The key goes into the path as one segment, and it is not safe to put there
+as it is. Inside a type or an id the key writes `%`, `|`, `=`, `,` and `/`
+as `%25`, `%7C`, `%3D`, `%2C` and `%2F`; every other character is kept as
+the sender sent it, so a key can hold a space, `?`, `#` or a quote. A
+client must percent-encode the whole key, its `%` signs included, the way
+`encodeURIComponent` does:
+
+| Key as the list returns it | In the path |
+|---|---|
+| `host\|host.id=4c4c4544004d` | `/api/entities/host%7Chost.id%3D4c4c4544004d/history` |
+| `service\|service.name=a%2Fb` (the name is `a/b`) | `/api/entities/service%7Cservice.name%3Da%252Fb/history` |
+
+A key sent without that encoding names another path, or another entity.
 
 ## 8. Switching it off again
 

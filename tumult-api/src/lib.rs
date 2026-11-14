@@ -29,14 +29,18 @@
 //!   contains-match on the body).
 //! * `GET /api/logs/volume?range=&interval=&severity=&service=&q=` — log
 //!   volume bucketed per severity for the explorer's stacked bar.
-//! * `GET /api/entities?type=&liveness=&range=&limit=` — the current row of
-//!   every entity that entity events reported (`KRONIKA_ENTITY_EVENTS`),
-//!   most recently heard of first, with its `liveness` (`live`, `expired`,
-//!   `gone`). `range` keeps the entities last heard of inside it; left out,
-//!   all are listed. At most 1000 rows (`limit`, default 200).
-//! * `GET /api/entities/{key}/history?limit=` — every stored version of one
-//!   entity, newest first; `404` for a key that has none in the caller's
-//!   environments.
+//! * `GET /api/entities?type=&liveness=&range=&limit=&cursor=` — the
+//!   current row of every entity that entity events reported
+//!   (`KRONIKA_ENTITY_EVENTS`), most recently heard of first, with its
+//!   `liveness` (`live`, `expired`, `gone`). `range` keeps the entities
+//!   last heard of inside it; left out, all are listed. One page of at
+//!   most 1000 rows (`limit`, default 100) and about 4 MiB, with `total`,
+//!   `truncated` and `next_cursor`.
+//! * `GET /api/entities/{key}/history?environment=&limit=&cursor=` — the
+//!   stored versions of one entity, newest first and paged the same way,
+//!   each with its environment; `404` for a key that has none in the
+//!   caller's environments. The key is percent-encoded as one path
+//!   segment.
 //! * `GET /api/traces?range=&service=&min_duration_ms=&outcome=` — traces
 //!   grouped from spans (root name/service, span/error counts, experiment
 //!   outcome where the trace is an experiment run).

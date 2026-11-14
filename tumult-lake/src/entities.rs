@@ -179,7 +179,10 @@ fn push_key_part(out: &mut String, part: &str) {
 /// The stable key of an entity: its type, `|`, then its identifying
 /// attributes as `name=value` pairs sorted by name and joined with `,`.
 /// `%`, `|`, `=`, `,` and `/` inside a part are percent-encoded, so two
-/// different identities never share a key and a key is one URL path segment.
+/// different identities never share a key. Every other character of the
+/// type and the id is kept as sent (`?`, `#`, a space, a quote), so a key
+/// is not safe to put in a URL as it is: a client percent-encodes the
+/// whole key, `%` included, to make it one path segment.
 #[must_use]
 pub fn entity_key(entity_type: &str, entity_id: &[(String, String)]) -> String {
     let mut pairs: Vec<&(String, String)> = entity_id.iter().collect();
