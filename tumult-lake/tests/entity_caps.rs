@@ -502,6 +502,82 @@ fn a_purge_makes_room_at_once() {
     );
 }
 
+/// A lake with three hosts and a service in prod and a host in dev, one of
+/// the hosts of prod gone, and a writer that has counted nothing yet: the
+/// daemon after a start, after it rebuilt its connection, or after a
+/// transaction that failed.
+fn a_writer_that_has_not_counted() -> (tempfile::TempDir, Store, Writer) {
+    let (d, store) = fixture();
+    let service = EntityEventRow {
+        entity_type: "service".into(),
+        entity_id: vec![("service.name".into(), "api".into())],
+        ..live("unused")
+    };
+    let first = store.writer().unwrap();
+    apply(
+        &first,
+        &[
+            live("a"),
+            live("b"),
+            host("gone", PAST),
+            deleted("gone", PAST + SECOND),
+            service,
+            within(live("a"), "dev"),
+        ],
+        &EntityLimits::default(),
+    );
+    drop(first);
+    let writer = store.writer().unwrap();
+    (d, store, writer)
+}
+
+fn total(held: &BTreeMap<String, usize>) -> usize {
+    held.values().sum()
+}
+
+/// What a removal takes is taken out of the count once, also when the
+/// writer counts the table for the first time because of that removal.
+#[test]
+fn a_purge_of_an_environment_by_a_writer_that_has_not_counted_leaves_the_count_true() {
+    let (_d, store, writer) = a_writer_that_has_not_counted();
+    assert_eq!(writer.purge_entities("prod", None).unwrap().entities, 4);
+    let held = held_is_stored(&writer, &store, "a purge of prod");
+    assert_eq!(held, BTreeMap::from([("dev".to_owned(), 1)]));
+    assert_eq!(total(&held), 1);
+    // The count of the lake is true as well: one more entity fills it.
+    let two = EntityLimits {
+        entities_total: 2,
+        ..EntityLimits::default()
+    };
+    assert_eq!(
+        outcomes(&writer, &[live("c"), within(live("c"), "test")], &two),
+        vec![EntityOutcome::Opened, EntityOutcome::EntityLimit]
+    );
+}
+
+#[test]
+fn a_purge_of_one_type_by_a_writer_that_has_not_counted_leaves_the_count_true() {
+    let (_d, store, writer) = a_writer_that_has_not_counted();
+    assert_eq!(
+        writer.purge_entities("prod", Some("host")).unwrap().entities,
+        3
+    );
+    let held = held_is_stored(&writer, &store, "a purge of the hosts of prod");
+    assert_eq!(held["prod"], 1, "the service stays");
+    assert_eq!(held["dev"], 1);
+    assert_eq!(total(&held), 2);
+}
+
+#[test]
+fn a_prune_by_a_writer_that_has_not_counted_leaves_the_count_true() {
+    let (_d, store, writer) = a_writer_that_has_not_counted();
+    assert_eq!(writer.prune_entities(i64::MAX, 10).unwrap(), 1);
+    let held = held_is_stored(&writer, &store, "a prune");
+    assert_eq!(held["prod"], 3, "the gone host went");
+    assert_eq!(held["dev"], 1);
+    assert_eq!(total(&held), 4);
+}
+
 /// The single writer serves all telemetry, so what a batch costs must not
 /// grow with its events: 5 000 of them are a handful of statements,
 /// whatever they do to the rows (open them, refresh them, supersede them

@@ -521,6 +521,9 @@ impl Writer {
         if entities.is_empty() {
             return Ok(Removed { rows: 0, entities });
         }
+        // A writer that holds no count takes it before the delete: taken
+        // after, it would lack the victims already and lose them twice.
+        self.with_census(|_| ())?;
         self.entities.ran();
         let rows = self.conn.execute(DELETE_VICTIMS, [])?;
         self.with_census(|census| {
