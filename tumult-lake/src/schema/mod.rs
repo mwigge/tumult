@@ -91,7 +91,13 @@
 //!
 //! v21 adds `logs.event_name` and `logs.scope_attrs` (additive ALTERs like
 //! v9): the OTLP `EventName` and the instrumentation-scope attributes of a
-//! log record, NULL on rows stored before v21.
+//! log record, NULL on rows stored before v21. It also adds
+//! `entity_versions` (`entities.rs`): one row per distinct state of an
+//! entity reported through entity events, index-free under the v5 rule
+//! because heartbeats and deletes UPDATE it, with the `entities_current`
+//! view over the latest row of each entity. Every statement is
+//! `IF NOT EXISTS` or `CREATE OR REPLACE`, so a database at v20 migrates on
+//! open.
 //!
 //! The DDL is split by feature area: [`telemetry`] (v1), [`manual`] (v2/v8
 //! shape), [`analytics`] (v3), [`runs`] (v4–v7), [`auth`] (v6/v9),
@@ -99,6 +105,7 @@
 
 mod analytics;
 mod auth;
+mod entities;
 mod forecast;
 mod ict;
 mod manual;
@@ -129,6 +136,7 @@ pub const CREATE_TABLES: &[&str] = &[
     perf::DDL,
     forecast::DDL,
     ict::DDL,
+    entities::DDL,
 ];
 
 /// Rollup view: one row per experiment run, over the experiment root spans
@@ -136,7 +144,9 @@ pub const CREATE_TABLES: &[&str] = &[
 /// `experiment.completed` log record (capitalised `status` attr), not on the
 /// span, so it is resolved via the same join the API list query uses.
 /// CREATE OR REPLACE so existing databases pick up view changes on startup.
-pub const CREATE_VIEWS: &str = "
+pub const CREATE_VIEWS: &[&str] = &[EXPERIMENT_RUNS_VIEW, entities::VIEW];
+
+const EXPERIMENT_RUNS_VIEW: &str = "
 CREATE OR REPLACE VIEW experiment_runs AS
 SELECT
     s.experiment_id,

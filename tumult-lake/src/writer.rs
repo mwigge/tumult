@@ -91,32 +91,35 @@ impl Writer {
     /// # Errors
     /// Returns an error if the batch fails to insert (the transaction is rolled back).
     pub fn insert_logs(&self, rows: &[LogRow]) -> Result<(), StoreError> {
-        with_tx(&self.conn, || {
-            let mut stmt = self.conn.prepare(
-                "INSERT INTO logs (ts_ns, severity_text, body, trace_id, span_id,
+        with_tx(&self.conn, || self.put_logs(rows))
+    }
+
+    /// The body of [`Writer::insert_logs`], inside the caller's transaction.
+    pub(crate) fn put_logs(&self, rows: &[LogRow]) -> Result<(), StoreError> {
+        let mut stmt = self.conn.prepare(
+            "INSERT INTO logs (ts_ns, severity_text, body, trace_id, span_id,
                     service_name, log_attrs, resource_attrs, event_name, scope_attrs)
                  VALUES (?,?,?,?,?,?,
                     CAST(json(?) AS MAP(VARCHAR,VARCHAR)),
                     CAST(json(?) AS MAP(VARCHAR,VARCHAR)),
                     ?,
                     CAST(json(?) AS MAP(VARCHAR,VARCHAR)))",
-            )?;
-            for r in rows {
-                stmt.execute(params![
-                    r.ts_ns,
-                    r.severity_text,
-                    r.body,
-                    r.trace_id,
-                    r.span_id,
-                    r.service_name,
-                    attrs_json(&r.log_attrs)?,
-                    attrs_json(&r.resource_attrs)?,
-                    r.event_name,
-                    attrs_json(&r.scope_attrs)?,
-                ])?;
-            }
-            Ok(())
-        })
+        )?;
+        for r in rows {
+            stmt.execute(params![
+                r.ts_ns,
+                r.severity_text,
+                r.body,
+                r.trace_id,
+                r.span_id,
+                r.service_name,
+                attrs_json(&r.log_attrs)?,
+                attrs_json(&r.resource_attrs)?,
+                r.event_name,
+                attrs_json(&r.scope_attrs)?,
+            ])?;
+        }
+        Ok(())
     }
 
     /// Insert the sum, gauge and histogram data points of one metrics batch

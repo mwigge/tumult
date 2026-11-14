@@ -214,7 +214,9 @@ pub(crate) fn migrate(conn: &Connection) -> Result<(), duckdb::Error> {
     // pre-existing databases.
     conn.execute_batch(tumult_graph::sql::CREATE_TABLES)?;
     conn.execute_batch(tumult_graph::sql::MIGRATE_EDGES_ADD_ATTRS)?;
-    conn.execute_batch(schema::CREATE_VIEWS)?;
+    for view in schema::CREATE_VIEWS {
+        conn.execute_batch(view)?;
+    }
     // Static `ComplianceArticle` nodes from the citation registry:
     // deterministic and run-independent, seeded at migrate time.
     // Idempotent — nodes upsert on their primary key.
