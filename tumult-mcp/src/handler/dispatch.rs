@@ -340,7 +340,7 @@ impl ServerHandler for TumultHandler {
             .await
             .map_err(|_| CallToolError::from_message("semaphore closed".to_string()))?;
 
-        tracing::info!(tool = %params.name, "MCP tool call");
+        crate::telemetry::log_tool_call(&params.name);
         // SpanGuard contains a non-Send OTel context guard. Capture the active
         // context while the span is alive, then drop the guard so the future
         // remains Send. The captured context is passed to run_experiment as

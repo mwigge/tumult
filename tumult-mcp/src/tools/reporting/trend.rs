@@ -65,7 +65,16 @@ pub fn trend(
         tumult_lake::AnalyticsStore::in_memory().map_err(|e| ToolError::Store(e.to_string()))?;
     let (loaded, skipped) = for_each_journal(journals_path, |journal| {
         // Ingest failures surface as missing points, not tool failures.
-        let _ = store.ingest_journal(&journal);
+        if let Err(error) = store.ingest_journal(&journal) {
+            tracing::warn!(
+                name: "mcp.trend.ingest_failed",
+                {
+                    resilience.experiment.id = journal.experiment_id.as_str(),
+                    error.message = %error,
+                },
+                "journal not ingested; the trend omits it"
+            );
+        }
     })?;
 
     // Pre-built queries keyed by metric — no interpolation of user input.

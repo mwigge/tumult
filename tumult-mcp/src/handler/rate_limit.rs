@@ -26,6 +26,28 @@ const BURST_ENV: &str = "TUMULT_MCP_RATE_LIMIT_BURST";
 const DEFAULT_RPS: f64 = 20.0;
 const DEFAULT_BURST: u32 = 60;
 
+/// Resolves the setting `key` from its raw value: absent means `default`,
+/// and an unparseable value keeps `default` and says so, rather than
+/// silently changing the security posture.
+fn setting<T>(key: &'static str, raw: Option<&str>, default: T) -> T
+where
+    T: std::str::FromStr + Copy + Into<f64>,
+{
+    let Some(raw) = raw else {
+        return default;
+    };
+    if let Ok(value) = raw.parse() {
+        return value;
+    }
+    let fallback: f64 = default.into();
+    tracing::warn!(
+        name: "mcp.rate_limit.invalid",
+        { config.key = key, default = fallback },
+        "invalid rate limit setting; using the default"
+    );
+    default
+}
+
 /// Bound on tracked client buckets; beyond it the map resets rather than
 /// growing without limit under session churn.
 const MAX_BUCKETS: usize = 4096;
@@ -57,24 +79,12 @@ impl RateLimiter {
     /// Build from the environment; unparseable values fall back to the
     /// defaults (with a warning) rather than changing the security posture.
     pub(crate) fn from_env() -> Self {
-        let rps = std::env::var(RPS_ENV)
-            .ok()
-            .and_then(|v| v.parse::<f64>().ok())
-            .unwrap_or_else(|| {
-                if std::env::var(RPS_ENV).is_ok() {
-                    tracing::warn!("invalid {RPS_ENV}; using default {DEFAULT_RPS}");
-                }
-                DEFAULT_RPS
-            });
-        let burst = std::env::var(BURST_ENV)
-            .ok()
-            .and_then(|v| v.parse::<u32>().ok())
-            .unwrap_or_else(|| {
-                if std::env::var(BURST_ENV).is_ok() {
-                    tracing::warn!("invalid {BURST_ENV}; using default {DEFAULT_BURST}");
-                }
-                DEFAULT_BURST
-            });
+        let rps = setting(RPS_ENV, std::env::var(RPS_ENV).ok().as_deref(), DEFAULT_RPS);
+        let burst = setting(
+            BURST_ENV,
+            std::env::var(BURST_ENV).ok().as_deref(),
+            DEFAULT_BURST,
+        );
         // A zero/negative burst with limiting enabled would refuse every
         // request — clamp to one so a misconfiguration degrades to "slow",
         // not "down".
@@ -160,5 +170,33 @@ mod tests {
         assert!(!limiter.check("client"));
         std::thread::sleep(std::time::Duration::from_millis(10));
         assert!(limiter.check("client"), "bucket refills at the rps rate");
+    }
+
+    #[test]
+    fn an_unparseable_setting_falls_back_to_the_default_with_a_named_warning() {
+        let logs = tumult_otel::logging::testing::capture_json(tracing::Level::INFO, || {
+            assert!(
+                (setting(RPS_ENV, Some("fast"), DEFAULT_RPS) - DEFAULT_RPS).abs() < f64::EPSILON
+            );
+            assert_eq!(setting(BURST_ENV, Some("-3"), DEFAULT_BURST), DEFAULT_BURST);
+        });
+
+        let invalid = logs.named("mcp.rate_limit.invalid");
+        assert_eq!(invalid.len(), 2, "{}", logs.raw);
+        assert_eq!(invalid[0]["level"], "WARN");
+        assert_eq!(invalid[0]["config.key"], RPS_ENV);
+        assert_eq!(invalid[0]["default"], 20.0);
+        assert_eq!(invalid[1]["config.key"], BURST_ENV);
+        assert_eq!(invalid[1]["default"], 60.0);
+    }
+
+    #[test]
+    fn a_valid_or_absent_setting_is_silent() {
+        let logs = tumult_otel::logging::testing::capture_json(tracing::Level::INFO, || {
+            assert!((setting(RPS_ENV, Some("2.5"), DEFAULT_RPS) - 2.5).abs() < f64::EPSILON);
+            assert_eq!(setting(BURST_ENV, Some("7"), DEFAULT_BURST), 7);
+            assert_eq!(setting(BURST_ENV, None, DEFAULT_BURST), DEFAULT_BURST);
+        });
+        assert!(logs.events.is_empty(), "{}", logs.raw);
     }
 }

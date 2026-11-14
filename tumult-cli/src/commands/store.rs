@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
+use tumult_otel::logging::{bounded, err};
 
 use super::validate_path_no_symlink;
 
@@ -119,10 +120,11 @@ pub fn cmd_import(parquet_dir: &Path) -> Result<()> {
     }
 
     let stats = store.stats()?;
-    println!("Imported from: {}", parquet_dir.display());
-    println!(
+    crate::outln!("Imported from: {}", parquet_dir.display());
+    crate::outln!(
         "Store now contains: {} experiments, {} activities",
-        stats.experiment_count, stats.activity_count
+        stats.experiment_count,
+        stats.activity_count
     );
     if load_evidence.is_some() {
         println!("Load results and probe samples imported");
@@ -145,8 +147,8 @@ pub fn cmd_store_stats() -> Result<()> {
     let db_path =
         AnalyticsStore::default_path().context("failed to determine analytics store path")?;
     if !db_path.exists() {
-        println!("No persistent store found at: {}", db_path.display());
-        println!("Run an experiment to create it automatically.");
+        crate::outln!("No persistent store found at: {}", db_path.display());
+        crate::outln!("Run an experiment to create it automatically.");
         return Ok(());
     }
 
@@ -154,16 +156,16 @@ pub fn cmd_store_stats() -> Result<()> {
     let stats = store.stats()?;
     let version = store.schema_version()?;
 
-    println!("Store: {}", db_path.display());
-    println!("Schema version: {version}");
-    println!("Experiments: {}", stats.experiment_count);
-    println!("Activities: {}", stats.activity_count);
+    crate::outln!("Store: {}", db_path.display());
+    crate::outln!("Schema version: {version}");
+    crate::outln!("Experiments: {}", stats.experiment_count);
+    crate::outln!("Activities: {}", stats.activity_count);
 
     if let Ok(size) = std::fs::metadata(&db_path) {
         // u64 → f64: file size in MB for display; precision loss is acceptable.
         #[allow(clippy::cast_precision_loss)]
         let mb = size.len() as f64 / (1024.0 * 1024.0);
-        println!("File size: {mb:.2} MB");
+        crate::outln!("File size: {mb:.2} MB");
     }
 
     Ok(())
@@ -180,7 +182,7 @@ pub fn cmd_store_backup(output_dir: &Path) -> Result<()> {
         bail!("no persistent store found at: {}", db_path.display());
     }
     tumult_lake::backup::create(&db_path, output_dir)?;
-    println!(
+    crate::outln!(
         "Complete operational backup: {} (includes credentials)",
         output_dir.display()
     );
@@ -194,7 +196,7 @@ pub fn cmd_store_backup(output_dir: &Path) -> Result<()> {
 #[must_use = "callers must handle restore errors"]
 pub fn cmd_store_restore(input: &Path, output: &Path) -> Result<()> {
     tumult_lake::backup::restore(input, output)?;
-    println!("Restored database: {}", output.display());
+    crate::outln!("Restored database: {}", output.display());
     Ok(())
 }
 
@@ -216,13 +218,14 @@ pub fn cmd_store_purge(older_than_days: u32) -> Result<()> {
 
     let stats = store.stats()?;
     if purged == 0 {
-        println!("No experiments older than {older_than_days} days found");
+        crate::outln!("No experiments older than {older_than_days} days found");
     } else {
-        println!("Purged {purged} experiment(s) older than {older_than_days} days");
+        crate::outln!("Purged {purged} experiment(s) older than {older_than_days} days");
     }
-    println!(
+    crate::outln!(
         "Remaining: {} experiments, {} activities",
-        stats.experiment_count, stats.activity_count
+        stats.experiment_count,
+        stats.activity_count
     );
     Ok(())
 }
@@ -237,16 +240,16 @@ pub fn cmd_store_path() -> Result<()> {
 
     let db_path =
         AnalyticsStore::default_path().context("failed to determine analytics store path")?;
-    println!("{}", db_path.display());
+    crate::outln!("{}", db_path.display());
     if db_path.exists() {
         if let Ok(size) = std::fs::metadata(&db_path) {
             // u64 → f64: file size in MB for display; precision loss is acceptable.
             #[allow(clippy::cast_precision_loss)]
             let mb = size.len() as f64 / (1024.0 * 1024.0);
-            println!("Size: {mb:.2} MB");
+            crate::outln!("Size: {mb:.2} MB");
         }
     } else {
-        println!("(not yet created)");
+        crate::outln!("(not yet created)");
     }
     Ok(())
 }
@@ -312,21 +315,21 @@ pub fn cmd_store_import_legacy(
         validate_path_no_symlink(source)?;
         // Never import a store into itself.
         if source.canonicalize().ok() == db_path.canonicalize().ok() {
-            println!("Skipping {} — that IS the unified store", source.display());
+            crate::outln!("Skipping {} — that IS the unified store", source.display());
             continue;
         }
         let report = store
             .import_legacy(source)
             .with_context(|| format!("importing legacy store {}", source.display()))?;
-        println!("{}:", source.display());
+        crate::outln!("{}:", source.display());
         if report.is_empty() {
-            println!("  (no known tables found)");
+            crate::outln!("  (no known tables found)");
         }
         for (table, n) in &report {
-            println!("  {table}: {n} row(s) imported");
+            crate::outln!("  {table}: {n} row(s) imported");
         }
     }
-    println!("Unified store: {}", db_path.display());
+    crate::outln!("Unified store: {}", db_path.display());
     Ok(())
 }
 
@@ -356,11 +359,11 @@ pub async fn cmd_store_migrate() -> Result<()> {
     let duckdb = AnalyticsStore::open(&db_path)?;
     let duckdb_count = duckdb.experiment_count()?;
     if duckdb_count == 0 {
-        println!("DuckDB store is empty — nothing to migrate.");
+        crate::outln!("DuckDB store is empty — nothing to migrate.");
         return Ok(());
     }
 
-    println!("Migrating {duckdb_count} experiments from DuckDB to ClickHouse...");
+    crate::outln!("Migrating {duckdb_count} experiments from DuckDB to ClickHouse...");
 
     let config = tumult_clickhouse::ClickHouseConfig::from_env();
     let ch_store = tumult_clickhouse::ClickHouseStore::connect(&config)
@@ -383,7 +386,11 @@ pub async fn cmd_store_migrate() -> Result<()> {
         {
             experiment_id.as_str()
         } else {
-            eprintln!("warning: skipping invalid experiment_id: {experiment_id}");
+            tracing::warn!(
+                name: "cli.migrate.experiment_id.invalid",
+                { resilience.experiment.id = %bounded(experiment_id) },
+                "experiment skipped, its id is not safe to query with"
+            );
             skipped += 1;
             continue;
         };
@@ -421,17 +428,22 @@ pub async fn cmd_store_migrate() -> Result<()> {
         .unwrap_or_else(|e| {
             // Best-effort — ClickHouse may not support file() in all configurations.
             // Log the error but do not abort the migration.
-            eprintln!("warning: ClickHouse INSERT from Parquet failed (non-fatal): {e}");
+            tracing::warn!(
+                name: "cli.migrate.parquet_insert_failed",
+                { file.path = %exp_path.display(), error.message = %err(&e) },
+                "ClickHouse INSERT from Parquet failed, migration continues"
+            );
             vec![]
         });
 
-    println!("Migration complete: {migrated} to migrate, {skipped} already in ClickHouse");
-    println!("DuckDB store retained at: {}", db_path.display());
+    crate::outln!("Migration complete: {migrated} to migrate, {skipped} already in ClickHouse");
+    crate::outln!("DuckDB store retained at: {}", db_path.display());
 
     let ch_stats = ch_store.stats()?;
-    println!(
+    crate::outln!(
         "ClickHouse now has: {} experiments, {} activities",
-        ch_stats.experiment_count, ch_stats.activity_count
+        ch_stats.experiment_count,
+        ch_stats.activity_count
     );
 
     Ok(())

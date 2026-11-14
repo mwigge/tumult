@@ -35,9 +35,9 @@ pub(crate) fn resolve_store(store: Option<&Path>) -> Result<PathBuf> {
 /// Shared with the `topology` commands.
 pub(crate) fn emit(report: &StructuredReport, json: bool) -> Result<()> {
     if json {
-        println!("{}", serde_json::to_string_pretty(&report.structured)?);
+        crate::outln!("{}", serde_json::to_string_pretty(&report.structured)?);
     } else {
-        print!("{}", report.text);
+        crate::out!("{}", report.text);
     }
     Ok(())
 }

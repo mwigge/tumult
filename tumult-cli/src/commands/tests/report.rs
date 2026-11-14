@@ -248,3 +248,18 @@ fn compliance_runs_over_journal_with_mttr() {
     // Exercises the --sources registry-listing path (no journals needed).
     cmd_compliance(None, ComplianceFramework::Soc2, true).unwrap();
 }
+
+#[test]
+fn the_provenance_hash_of_an_unreadable_journal_is_an_error_not_a_hash() {
+    let dir = TempDir::new().unwrap();
+    let missing = dir.path().join("gone.toon");
+
+    let err = crate::commands::report::source_hash(&missing).unwrap_err();
+    assert!(format!("{err:#}").contains("gone.toon"), "{err:#}");
+
+    let present = dir.path().join("journal.toon");
+    std::fs::write(&present, b"status: completed\n").unwrap();
+    let hash = crate::commands::report::source_hash(&present).unwrap();
+    assert_eq!(hash.len(), 16);
+    assert!(hash.chars().all(|c| c.is_ascii_hexdigit()), "{hash}");
+}

@@ -21,6 +21,8 @@
 //! batch goes unanswered or a stream ends in a way a refusal does not
 //! explain (the daemon is gone, say).
 
+#![allow(clippy::print_stdout)] // an example: what the server answered is its output
+
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
@@ -92,9 +94,9 @@ fn spans(rows: usize, zero_ids: bool) -> Result<RecordBatch, Failure> {
     table(vec![
         (
             plain_id(),
-            Arc::new(UInt16Array::from_iter_values(
-                (0..rows).map(|i| (i % 65_536) as u16),
-            )),
+            Arc::new(UInt16Array::from_iter_values((0..rows).map(|i| {
+                u16::try_from(i % 65_536).expect("a remainder below 65 536")
+            }))),
         ),
         (
             time(DataType::Timestamp(TimeUnit::Nanosecond, None)),

@@ -7993,6 +7993,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.19",
  "tracing",
+ "tumult-otel",
  "tumult-test-utils",
 ]
 
@@ -8143,7 +8144,6 @@ dependencies = [
  "tumult-lake",
  "tumult-otel",
  "tumult-test-utils",
- "url",
 ]
 
 [[package]]
@@ -8215,6 +8215,7 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.19",
  "tracing",
+ "tumult-otel",
  "tumult-test-utils",
 ]
 
@@ -8392,6 +8393,7 @@ dependencies = [
  "tumult-plugin",
  "tumult-query",
  "tumult-ssh",
+ "tumult-test-utils",
  "uuid",
 ]
 
@@ -8411,6 +8413,7 @@ version = "2.22.0"
 dependencies = [
  "async-trait",
  "opentelemetry",
+ "rustix 1.1.4",
  "serde_json",
  "thiserror 2.0.19",
  "tokio",
@@ -8425,15 +8428,19 @@ dependencies = [
 name = "tumult-otel"
 version = "2.22.0"
 dependencies = [
+ "chrono",
  "opentelemetry",
  "opentelemetry-appender-tracing",
  "opentelemetry-otlp",
  "opentelemetry-stdout",
  "opentelemetry_sdk",
  "serde",
+ "serde_json",
+ "thiserror 2.0.19",
  "tokio",
  "tonic",
  "tracing",
+ "tracing-log",
  "tracing-opentelemetry",
  "tracing-subscriber",
 ]
@@ -8470,6 +8477,7 @@ dependencies = [
  "thiserror 2.0.19",
  "tokio",
  "toon-format",
+ "tracing",
  "tumult-otel",
  "tumult-test-utils",
 ]
@@ -8498,6 +8506,7 @@ dependencies = [
  "tumult-intelligence",
  "tumult-lake",
  "tumult-metrics",
+ "tumult-otel",
 ]
 
 [[package]]
@@ -8578,13 +8587,13 @@ dependencies = [
  "mime_guess",
  "rust-embed",
  "rustls",
+ "serde_json",
  "tempfile",
  "tokio",
  "tokio-stream",
  "tokio-util",
  "tonic",
  "tracing",
- "tracing-subscriber",
  "tumult-api",
  "tumult-auth",
  "tumult-compliance",

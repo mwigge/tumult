@@ -775,3 +775,22 @@ async fn dispatch_autopilot_status_missing_store_errors() {
     .unwrap_err();
     assert!(err.to_string().contains("store not found"), "{err}");
 }
+
+#[test]
+fn printing_a_missing_journal_as_json_is_an_error_not_silence() {
+    let dir = TempDir::new().unwrap();
+    let missing = dir.path().join("journal.toon");
+
+    let err = crate::print_journal_json(&missing).unwrap_err();
+    assert!(format!("{err:#}").contains("journal.toon"), "{err:#}");
+}
+
+#[test]
+fn printing_an_undecodable_journal_as_json_is_an_error_not_silence() {
+    let dir = TempDir::new().unwrap();
+    let corrupt = dir.path().join("journal.toon");
+    std::fs::write(&corrupt, "{{{{ not a journal").unwrap();
+
+    let err = crate::print_journal_json(&corrupt).unwrap_err();
+    assert!(format!("{err:#}").contains("journal.toon"), "{err:#}");
+}

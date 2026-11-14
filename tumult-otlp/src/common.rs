@@ -92,9 +92,12 @@ fn note_malformed(stored: &str, tally: &MalformedIds) {
     // `stored` is already cut to the id length; `?` escapes what the
     // sender put in it.
     tracing::warn!(
-        "ict.entity.id" = ?stored,
-        "ict.entity.id.malformed_total" = total,
-        "log.suppressed" = suppressed,
+        name: "otlp.entity_id.malformed",
+        {
+            ict.entity.id = ?stored,
+            ict.entity.id.malformed_total = total,
+            log.suppressed = suppressed,
+        },
         "malformed ict.entity.id received"
     );
 }

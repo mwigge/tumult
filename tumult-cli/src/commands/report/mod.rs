@@ -53,22 +53,15 @@ pub fn cmd_report(
         ReportFormat::Junit => {
             let xml = generate_junit_report(&journal);
             std::fs::write(&out_path, &xml)?;
-            println!("Report generated: {}", out_path.display());
+            crate::outln!("Report generated: {}", out_path.display());
         }
         ReportFormat::Json => {
             let json = generate_json_report(&journal)?;
             std::fs::write(&out_path, &json)?;
-            println!("Report generated: {}", out_path.display());
+            crate::outln!("Report generated: {}", out_path.display());
         }
         ReportFormat::Html | ReportFormat::Pdf => {
-            // FIX 4: stable, non-cryptographic content hash of the raw journal bytes.
-            // Uses std DefaultHasher (no crypto crate in the workspace) — acceptable for
-            // provenance/tamper-evidence signalling, not a security guarantee.
-            use std::hash::{Hash, Hasher};
-            let raw = std::fs::read(journal_path).unwrap_or_default();
-            let mut h = std::collections::hash_map::DefaultHasher::new();
-            raw.hash(&mut h);
-            let source_hash = format!("{:016x}", h.finish());
+            let source_hash = source_hash(journal_path)?;
 
             // FIX 2: trace UI base resolves flag > env var, off by default.
             // This is the trace UI, NOT the OTLP ingest endpoint.
@@ -82,22 +75,44 @@ pub fn cmd_report(
             if matches!(format, ReportFormat::Pdf) {
                 // PDF: write HTML first, then note that wkhtmltopdf or browser print is needed
                 std::fs::write(out_path.with_extension("html"), &html)?;
-                println!(
+                crate::outln!(
                     "HTML generated: {}",
                     out_path.with_extension("html").display()
                 );
-                println!(
+                crate::outln!(
                     "To convert to PDF, use: wkhtmltopdf {} {}",
                     out_path.with_extension("html").display(),
                     out_path.display()
                 );
-                println!("Or open the HTML in a browser and print to PDF.");
+                crate::outln!("Or open the HTML in a browser and print to PDF.");
             } else {
                 std::fs::write(&out_path, &html)?;
-                println!("Report generated: {}", out_path.display());
+                crate::outln!("Report generated: {}", out_path.display());
             }
         }
     }
 
     Ok(())
+}
+
+/// Stable, non-cryptographic content hash of the raw journal bytes, shown in
+/// the report as provenance. Uses std `DefaultHasher` (no crypto crate in the
+/// workspace): tamper-evidence signalling, not a security guarantee.
+///
+/// # Errors
+///
+/// Returns an error when the journal cannot be read: a hash of nothing
+/// would be presented as the provenance of a file that was never hashed.
+pub(crate) fn source_hash(journal_path: &Path) -> Result<String> {
+    use std::hash::{Hash, Hasher};
+
+    let raw = std::fs::read(journal_path).with_context(|| {
+        format!(
+            "failed to read journal for its provenance hash: {}",
+            journal_path.display()
+        )
+    })?;
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    raw.hash(&mut hasher);
+    Ok(format!("{:016x}", hasher.finish()))
 }

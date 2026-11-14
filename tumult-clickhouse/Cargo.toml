@@ -21,8 +21,7 @@ thiserror = { workspace = true }
 serde_json = { workspace = true }
 opentelemetry = { workspace = true }
 tracing = { workspace = true }
-# Connection URLs are parsed before any part of them is logged or traced.
-url = "2"
+
 
 [dev-dependencies]
 tumult-test-utils = { path = "../tumult-test-utils", default-features = false, features = ["otel"] }

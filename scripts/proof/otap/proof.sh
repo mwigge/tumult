@@ -142,7 +142,7 @@ fetch() { curl -fs "$1" >"$2"; } # fetch <url> <file>
 [[ -x "$PROBE" ]] || fail "missing $PROBE (cargo build -p tumult-ingest --features otap-client --example otap_probe)"
 
 echo "[1] start tumultd ($PROFILE build) on a fresh lake (ingest token required on gRPC)"
-RUST_LOG=info,tumult_ingest=debug prlimit --as="$AS_LIMIT" "$BIN/tumultd" serve >"$DLOG" 2>&1 &
+TUMULT_LOG_FORMAT=text RUST_LOG=info,tumult_ingest=debug prlimit --as="$AS_LIMIT" "$BIN/tumultd" serve >"$DLOG" 2>&1 &
 DPID=$!
 poll "the daemon to come up" curl -fs "$URL/healthz"
 alive "after the health check"

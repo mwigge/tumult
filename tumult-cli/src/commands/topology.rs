@@ -73,12 +73,12 @@ fn emit_proposed(toml: &str, service_count: usize, output: Option<&Path>) -> Res
             std::fs::write(path, toml).map_err(|e| {
                 anyhow!("cannot write proposed topology to {}: {e}", path.display())
             })?;
-            println!(
+            crate::outln!(
                 "proposed topology with {service_count} service(s) written to {} — review, fill in depends_on, then `tumult topology import`",
                 path.display()
             );
         }
-        None => print!("{toml}"),
+        None => crate::out!("{toml}"),
     }
     Ok(())
 }

@@ -7,6 +7,8 @@ mod tests;
 mod tls;
 mod ui;
 
+use std::sync::Arc;
+
 use anyhow::{Context, Result};
 use tumult_ingest::{Config, IngestWriter};
 use tumult_lake::Store;
@@ -34,13 +36,65 @@ where
         .context(name)
 }
 
+/// Something that pushes pending telemetry out, to a listener that must
+/// still be serving when it is asked to.
+trait Flush: Send + Sync + 'static {
+    fn flush(&self);
+}
+
+/// How long a stopping daemon waits for its pending telemetry to be
+/// exported. An ordinary flush takes milliseconds; this is for an exporter
+/// that hangs, which must not hold up the shutdown.
+const FLUSH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
+
+/// Flushes `telemetry` and waits at most [`FLUSH_TIMEOUT`] for it.
+async fn flush_telemetry<F: Flush>(telemetry: Arc<F>) {
+    flush_within(telemetry, FLUSH_TIMEOUT).await;
+}
+
+/// Flushes `telemetry` off the async workers: the exporters block on
+/// network I/O. After `limit` the shutdown goes on without the flush, which
+/// is left to finish or fail on its own thread.
+async fn flush_within<F: Flush>(telemetry: Arc<F>, limit: std::time::Duration) {
+    let flush = tokio::task::spawn_blocking(move || telemetry.flush());
+    let Ok(flushed) = tokio::time::timeout(limit, flush).await else {
+        tracing::warn!(
+            name: "daemon.telemetry.flush.timed_out",
+            { timeout_ms = u64::try_from(limit.as_millis()).unwrap_or(u64::MAX) },
+            "telemetry flush did not finish in time; pending telemetry may be lost"
+        );
+        return;
+    };
+    let Err(error) = flushed else {
+        return;
+    };
+    tracing::warn!(
+        name: "daemon.telemetry.flush.failed",
+        { error.message = %tumult_otel::logging::err(&error), error.type = "task_join" },
+        "telemetry flush task failed; pending telemetry is lost"
+    );
+}
+
 /// Waits until both listeners have stopped. A listener that fails ends
 /// the wait at once and stops the other one: a daemon that could not
 /// bind its HTTP address must not stay up answering gRPC only.
-async fn until_both_stop<G, H>(mut grpc: Listener<G>, mut http: Listener<H>) -> Result<()>
+///
+/// The failure ends the process, so it is logged as `process.fatal` here
+/// and `telemetry` is flushed before any listener is stopped: stopped
+/// first, the listener that receives the daemon's own telemetry would be
+/// gone, the failure would never reach the store, and the export would sit
+/// out its timeouts against a closed port. When the listener that failed is
+/// that very one, there is nobody to flush to and the events reach stderr
+/// only.
+async fn until_both_stop<G, H, F>(
+    mut grpc: Listener<G>,
+    mut http: Listener<H>,
+    telemetry: &Arc<F>,
+) -> Result<()>
 where
     G: std::error::Error + Send + Sync + 'static,
     H: std::error::Error + Send + Sync + 'static,
+    F: Flush,
 {
     let outcome = tokio::try_join!(
         stopped(&mut grpc, "gRPC server"),
@@ -49,7 +103,13 @@ where
     let Err(error) = outcome else {
         return Ok(());
     };
-    tracing::error!(error = %format!("{error:#}"), "a listener failed; stopping the daemon");
+    tracing::error!(
+        name: "daemon.listener.failed",
+        { error.message = %tumult_otel::logging::err(&error) },
+        "a listener failed; stopping the daemon"
+    );
+    let error = crate::events::report_fatal(error);
+    flush_telemetry(Arc::clone(telemetry)).await;
     grpc.abort();
     http.abort();
     Err(error)
@@ -111,17 +171,23 @@ where
         (served, None) => served,
     };
     let Err(failure) = served else {
-        tracing::info!("servers stopped; draining ingest writer");
+        tracing::info!(name: "daemon.ingest.draining", "servers stopped; draining ingest writer");
         return workers.drain().await;
     };
-    tracing::info!("a listener failed; draining ingest writer before exit");
+    tracing::info!(
+        name: "daemon.ingest.draining_after_failure",
+        "a listener failed; draining ingest writer before exit"
+    );
     match tokio::time::timeout(failed_drain_limit, workers.drain()).await {
         Ok(Ok(())) => {}
-        Ok(Err(error)) => {
-            tracing::error!(error = %format!("{error:#}"), "drain after a listener failure failed");
-        }
+        Ok(Err(error)) => tracing::error!(
+            name: "daemon.ingest.drain_failed",
+            { error.message = %tumult_otel::logging::err(&error) },
+            "drain after a listener failure failed"
+        ),
         Err(_) => tracing::error!(
-            limit_ms = failed_drain_limit.as_millis() as u64,
+            name: "daemon.ingest.drain_timed_out",
+            { timeout_ms = failed_drain_limit.as_millis() as u64 },
             "ingest writer still held open after a listener failure; exiting without waiting longer"
         ),
     }
@@ -146,7 +212,11 @@ async fn shutdown_signal(name: &'static str) {
             _ = sigterm.recv() => {},
             _ = tokio::signal::ctrl_c() => {},
         }
-        tracing::info!(server = name, "shutdown signal received");
+        tracing::info!(
+            name: "daemon.shutdown.signal",
+            { resilience.task.name = name },
+            "shutdown signal received"
+        );
     }
     #[cfg(not(unix))]
     {
@@ -154,15 +224,63 @@ async fn shutdown_signal(name: &'static str) {
     }
 }
 
-/// Drop guard that flushes OpenTelemetry spans on every exit path from
-/// `serve` — including `?` early returns — so telemetry is not lost exactly
-/// on the failed runs where it matters most (mirrors the CLI's guard).
-struct TelemetryShutdown(tumult_otel::telemetry::TumultTelemetry);
+/// Flushes and shuts down the daemon's telemetry exactly once: on the
+/// shutdown signal while the listener it exports to still accepts (see
+/// [`shutdown_after_telemetry_flush`]), or else on drop, which covers every
+/// other exit path from `serve` — including `?` early returns — so telemetry
+/// is not lost exactly on the failed runs where it matters most.
+struct TelemetryShutdown {
+    telemetry: tumult_otel::telemetry::TumultTelemetry,
+    finished: std::sync::atomic::AtomicBool,
+}
+
+impl TelemetryShutdown {
+    fn new(telemetry: tumult_otel::telemetry::TumultTelemetry) -> Self {
+        Self {
+            telemetry,
+            finished: std::sync::atomic::AtomicBool::new(false),
+        }
+    }
+
+    fn finish(&self) {
+        if self
+            .finished
+            .swap(true, std::sync::atomic::Ordering::SeqCst)
+        {
+            return;
+        }
+        self.telemetry.shutdown();
+    }
+}
 
 impl Drop for TelemetryShutdown {
     fn drop(&mut self) {
-        self.0.shutdown();
+        self.finish();
     }
+}
+
+impl Flush for TelemetryShutdown {
+    fn flush(&self) {
+        self.finish();
+    }
+}
+
+/// Shutdown trigger for the gRPC listener that receives the daemon's own
+/// telemetry. It resolves only after the pending spans, metrics and log
+/// events have been exported, so the listener is still there to take them.
+/// Events logged later in the shutdown reach stderr only.
+async fn shutdown_after_telemetry_flush(name: &'static str, telemetry: Arc<TelemetryShutdown>) {
+    shutdown_signal(name).await;
+    flush_telemetry(telemetry).await;
+}
+
+/// Shutdown trigger for a gRPC listener: the one carrying the daemon's own
+/// telemetry (`telemetry` is `Some`) flushes it first.
+async fn grpc_shutdown(name: &'static str, telemetry: Option<Arc<TelemetryShutdown>>) {
+    let Some(telemetry) = telemetry else {
+        return shutdown_signal(name).await;
+    };
+    shutdown_after_telemetry_flush(name, telemetry).await;
 }
 
 pub(crate) async fn serve() -> Result<()> {
@@ -173,13 +291,7 @@ pub(crate) async fn serve() -> Result<()> {
     // a bad cert/key fails startup here with a clear message.
     let tls = load_tls(&config).await?;
     warn_if_plaintext_on_network(&config, tls.is_some());
-    tracing::info!(
-        db = %config.db_path.display(),
-        grpc = %config.otlp_grpc_addr,
-        http = %config.otlp_http_addr,
-        tls = tls.is_some(),
-        "starting tumultd"
-    );
+    crate::events::starting(&config, tls.is_some());
 
     // With gRPC TLS enabled, the daemon's own exporter cannot speak TLS back
     // to it (the opentelemetry-otlp client here is built without TLS), so it
@@ -216,12 +328,19 @@ pub(crate) async fn serve() -> Result<()> {
     });
     let otel_config = tumult_otel::config::TelemetryConfig {
         enabled: true,
+        service_name: crate::events::service_name(),
         otlp_endpoint: Some(loopback),
         otlp_headers: loopback_headers,
         ..tumult_otel::config::TelemetryConfig::from_env()
     };
-    let _telemetry_guard =
-        TelemetryShutdown(tumult_otel::telemetry::TumultTelemetry::new(otel_config));
+    let telemetry = Arc::new(TelemetryShutdown::new(
+        tumult_otel::telemetry::TumultTelemetry::new(otel_config),
+    ));
+    // The public gRPC listener carries the daemon's own telemetry unless the
+    // internal loopback listener exists.
+    let public_grpc_telemetry = internal_grpc_listener
+        .is_none()
+        .then(|| Arc::clone(&telemetry));
 
     let store = Store::open(&config.db_path).context("open store")?;
     let writer = store.writer().context("open store writer")?;
@@ -251,10 +370,15 @@ pub(crate) async fn serve() -> Result<()> {
     match tumult_ingest::runs::reconcile_orphans(&ingest, &config.db_path, &run_factory).await {
         Ok(0) => {}
         Ok(count) => tracing::warn!(
+            name: "runs.orphans.reconciled",
             count,
             "reconciled orphaned runs from a previous process lifetime"
         ),
-        Err(e) => tracing::error!(error = %e, "orphan reconciliation failed"),
+        Err(e) => tracing::error!(
+            name: "runs.orphans.reconcile_failed",
+            { error.message = %e },
+            "orphan reconciliation failed"
+        ),
     }
 
     let run_queue = tumult_ingest::RunQueue::spawn(
@@ -286,9 +410,12 @@ pub(crate) async fn serve() -> Result<()> {
     };
     let grpc_server = tokio::spawn(async move {
         let result = grpc_router
-            .serve_with_incoming_shutdown(grpc_incoming, shutdown_signal("grpc"))
+            .serve_with_incoming_shutdown(
+                grpc_incoming,
+                grpc_shutdown("grpc", public_grpc_telemetry),
+            )
             .await;
-        tracing::info!("gRPC server future completed: {result:?}");
+        crate::events::server_stopped("grpc", &result);
         result
     });
 
@@ -298,14 +425,15 @@ pub(crate) async fn serve() -> Result<()> {
     let internal_grpc_server = internal_grpc_listener.map(|listener| {
         let router =
             tumult_ingest::grpc::router_with_token(ingest.clone(), config.ingest_token.clone());
+        let telemetry = Arc::clone(&telemetry);
         tokio::spawn(async move {
             let result = router
                 .serve_with_incoming_shutdown(
                     tokio_stream::wrappers::TcpListenerStream::new(listener),
-                    shutdown_signal("grpc-loopback"),
+                    shutdown_after_telemetry_flush("grpc-loopback", telemetry),
                 )
                 .await;
-            tracing::info!("internal gRPC loopback server future completed: {result:?}");
+            crate::events::server_stopped("grpc-loopback", &result);
             result
         })
     });
@@ -442,7 +570,7 @@ pub(crate) async fn serve() -> Result<()> {
                     .handle(handle)
                     .serve(app.into_make_service_with_connect_info::<std::net::SocketAddr>())
                     .await;
-                tracing::info!("HTTPS server future completed: {result:?}");
+                crate::events::server_stopped("https", &result);
                 result
             }
             None => {
@@ -454,7 +582,7 @@ pub(crate) async fn serve() -> Result<()> {
                 )
                 .with_graceful_shutdown(shutdown_signal("http"))
                 .await;
-                tracing::info!("HTTP server future completed: {result:?}");
+                crate::events::server_stopped("http", &result);
                 result
             }
         };
@@ -478,8 +606,8 @@ pub(crate) async fn serve() -> Result<()> {
     };
     // Both servers are down once this returns; their channel clones
     // (moved into the tasks) are dropped.
-    let served = until_both_stop(grpc_server, http_server).await;
+    let served = until_both_stop(grpc_server, http_server, &telemetry).await;
     finish(served, internal_grpc_server, workers, FAILED_DRAIN_LIMIT).await?;
-    tracing::info!("tumultd stopped cleanly");
+    tracing::info!(name: "daemon.stopped", "tumultd stopped cleanly");
     Ok(())
 }

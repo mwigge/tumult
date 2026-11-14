@@ -27,12 +27,14 @@ pub(crate) fn init_at(path: &Path, plugin: Option<&str>) -> Result<()> {
     let template = generate_template(plugin);
     std::fs::write(path, &template)?;
 
-    println!("Created {} from a template", path.display());
+    crate::outln!("Created {} from a template", path.display());
     if let Some(p) = plugin {
-        println!("Template references the {p} plugin — edit the method steps to use its actions");
+        crate::outln!(
+            "Template references the {p} plugin — edit the method steps to use its actions"
+        );
     }
-    println!("Edit the file to configure your experiment, then run:");
-    println!("  tumult run {}", path.display());
+    crate::outln!("Edit the file to configure your experiment, then run:");
+    crate::outln!("  tumult run {}", path.display());
 
     Ok(())
 }
@@ -90,46 +92,46 @@ rollbacks[1]:
 // ── Dry run ───────────────────────────────────────────────────
 
 pub(crate) fn print_dry_run(experiment: &Experiment) {
-    println!("=== DRY RUN ===\n");
-    println!("Experiment: {}", experiment.title);
+    crate::outln!("=== DRY RUN ===\n");
+    crate::outln!("Experiment: {}", experiment.title);
     if let Some(ref desc) = experiment.description {
-        println!("Description: {desc}");
+        crate::outln!("Description: {desc}");
     }
-    println!();
+    crate::outln!();
 
     if let Some(ref estimate) = experiment.estimate {
-        println!("Phase 0 — Estimate:");
-        println!("  Expected outcome: {:?}", estimate.expected_outcome);
+        crate::outln!("Phase 0 — Estimate:");
+        crate::outln!("  Expected outcome: {:?}", estimate.expected_outcome);
         if let Some(recovery) = estimate.expected_recovery_s {
-            println!("  Expected recovery: {recovery}s");
+            crate::outln!("  Expected recovery: {recovery}s");
         }
-        println!();
+        crate::outln!();
     }
 
     if let Some(ref baseline) = experiment.baseline {
-        println!("Phase 1 — Baseline:");
-        println!("  Duration: {}s", baseline.duration_s);
-        println!("  Interval: {}s", baseline.interval_s);
-        println!("  Method: {:?}", baseline.method);
-        println!();
+        crate::outln!("Phase 1 — Baseline:");
+        crate::outln!("  Duration: {}s", baseline.duration_s);
+        crate::outln!("  Interval: {}s", baseline.interval_s);
+        crate::outln!("  Method: {:?}", baseline.method);
+        crate::outln!();
     }
 
     if let Some(ref hypothesis) = experiment.steady_state_hypothesis {
-        println!("Hypothesis: {}", hypothesis.title);
+        crate::outln!("Hypothesis: {}", hypothesis.title);
         for probe in &hypothesis.probes {
-            println!("  Probe: {}", probe.name);
+            crate::outln!("  Probe: {}", probe.name);
         }
-        println!();
+        crate::outln!();
     }
 
-    println!("Phase 2 — Method ({} steps):", experiment.method.len());
+    crate::outln!("Phase 2 — Method ({} steps):", experiment.method.len());
     for (i, activity) in experiment.method.iter().enumerate() {
         let bg = if activity.background {
             " [background]"
         } else {
             ""
         };
-        println!(
+        crate::outln!(
             "  {}. {} ({:?}){}",
             i + 1,
             activity.name,
@@ -137,19 +139,19 @@ pub(crate) fn print_dry_run(experiment: &Experiment) {
             bg
         );
     }
-    println!();
+    crate::outln!();
 
     if !experiment.rollbacks.is_empty() {
-        println!("Rollbacks ({} steps):", experiment.rollbacks.len());
+        crate::outln!("Rollbacks ({} steps):", experiment.rollbacks.len());
         for activity in &experiment.rollbacks {
-            println!("  - {} ({:?})", activity.name, activity.activity_type);
+            crate::outln!("  - {} ({:?})", activity.name, activity.activity_type);
         }
-        println!();
+        crate::outln!();
     }
 
     if let Some(ref regulatory) = experiment.regulatory {
-        println!("Regulatory: {}", regulatory.frameworks.join(", "));
+        crate::outln!("Regulatory: {}", regulatory.frameworks.join(", "));
     }
 
-    println!("=== END DRY RUN ===");
+    crate::outln!("=== END DRY RUN ===");
 }

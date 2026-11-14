@@ -3,96 +3,38 @@
 use opentelemetry::metrics::Meter;
 use opentelemetry::trace::{SpanKind, TraceContextExt, Tracer};
 use opentelemetry::{global, KeyValue};
+use tumult_otel::logging::{sanitize_url, server_address};
 use tumult_otel::SpanGuard;
 
 const TRACER: &str = "tumult-clickhouse";
 
-/// Recorded in place of a URL that does not parse. A string that cannot be
-/// split into its parts cannot be shown to be free of credentials.
-const UNPARSEABLE_URL: &str = "invalid-url";
-
-/// The parts of a connection URL that are safe to export: where the server
-/// is, never who connects to it.
-struct Endpoint {
-    /// Host without brackets, port or scheme.
-    address: String,
-    /// The written port, or the default of an `http`/`https` scheme.
-    port: Option<u16>,
-    /// `scheme://host[:port]`.
-    redacted: String,
-}
-
-impl Endpoint {
-    /// `None` when the URL does not parse, has no host, or has a literal `@`
-    /// after the authority.
-    ///
-    /// An unescaped `/`, `?` or `#` inside the userinfo ends the authority
-    /// early: `http://user:123/456@host` parses with host `user` and port
-    /// `123`. The `@` that was meant to close the userinfo then sits in the
-    /// path, query or fragment, so its presence there means the host and
-    /// port cannot be trusted. A legitimate `@` in those parts is written
-    /// `%40`.
-    fn parse(raw: &str) -> Option<Self> {
-        let url = url::Url::parse(raw).ok()?;
-        let after_authority = [Some(url.path()), url.query(), url.fragment()];
-        if after_authority
-            .into_iter()
-            .flatten()
-            .any(|part| part.contains('@'))
-        {
-            return None;
-        }
-        let host = url.host_str()?;
-        let address = match url.host()? {
-            url::Host::Ipv6(ip) => ip.to_string(),
-            _ => host.to_string(),
-        };
-        let redacted = match url.port() {
-            Some(port) => format!("{}://{host}:{port}", url.scheme()),
-            None => format!("{}://{host}", url.scheme()),
-        };
-        Some(Self {
-            address,
-            port: url.port_or_known_default(),
-            redacted,
-        })
-    }
-}
-
-/// A connection URL reduced to `scheme://host[:port]`.
-///
-/// Userinfo, path, query and fragment are dropped: each of them can carry a
-/// credential (`user:pass@`, `?password=`). A URL that does not parse, or
-/// whose userinfo cannot be told from its host, becomes a constant.
-pub(crate) fn redacted_url(raw: &str) -> String {
-    Endpoint::parse(raw).map_or_else(|| UNPARSEABLE_URL.to_string(), |e| e.redacted)
-}
-
 /// Span for `ClickHouse` connection + schema init.
 pub(crate) fn begin_connect(url: &str, database: &str) -> SpanGuard {
     let tracer = global::tracer(TRACER);
-    let mut attributes = vec![
-        KeyValue::new("db.system", "clickhouse"),
-        KeyValue::new("db.name", database.to_string()),
-    ];
-    // The raw URL may embed credentials, so only its parsed parts are recorded.
-    if let Some(endpoint) = Endpoint::parse(url) {
-        attributes.push(KeyValue::new("server.address", endpoint.address));
-        if let Some(port) = endpoint.port {
-            attributes.push(KeyValue::new("server.port", i64::from(port)));
-        }
-        attributes.push(KeyValue::new("db.connection_string", endpoint.redacted));
-    } else {
-        attributes.push(KeyValue::new("server.address", UNPARSEABLE_URL));
-        attributes.push(KeyValue::new("db.connection_string", UNPARSEABLE_URL));
-    }
     let span = tracer
         .span_builder("clickhouse.connect")
         .with_kind(SpanKind::Client)
-        .with_attributes(attributes)
+        .with_attributes(connect_attributes(url, database))
         .start(&tracer);
     let cx = opentelemetry::Context::current_with_span(span);
     SpanGuard::new(cx.attach())
+}
+
+/// The attributes of the connect span. `url` is configuration and may carry
+/// credentials, so it is never recorded as given.
+fn connect_attributes(url: &str, database: &str) -> Vec<KeyValue> {
+    let server = server_address(url);
+    let mut attributes = vec![
+        KeyValue::new("db.system", "clickhouse"),
+        KeyValue::new("db.name", database.to_string()),
+        KeyValue::new("server.address", server.host),
+    ];
+    if let Some(port) = server.port {
+        attributes.push(KeyValue::new("server.port", i64::from(port)));
+    }
+    // The connection string without userinfo, query and fragment.
+    attributes.push(KeyValue::new("db.connection_string", sanitize_url(url)));
+    attributes
 }
 
 /// Event: schema initialized.
@@ -141,7 +83,94 @@ mod tests {
 
     use super::*;
 
-    fn connect_attributes(url: &str) -> Vec<KeyValue> {
+    fn attribute(attributes: &[KeyValue], key: &str) -> Option<String> {
+        attributes
+            .iter()
+            .find(|attribute| attribute.key.as_str() == key)
+            .map(|attribute| attribute.value.to_string())
+    }
+
+    #[test]
+    fn the_connect_span_names_the_host_and_port_and_no_credentials() {
+        // (configured URL, server.address, server.port, db.connection_string)
+        let cases = [
+            (
+                "http://admin:secret@clickhouse.internal:8123/db?password=secret",
+                "clickhouse.internal",
+                Some("8123"),
+                "http://clickhouse.internal:8123/db",
+            ),
+            // A password with an unescaped delimiter: the URL cannot be
+            // read for certain, so none of it is recorded.
+            (
+                "http://admin:se/cret@clickhouse.internal",
+                "[redacted-url]",
+                None,
+                "[redacted-url]",
+            ),
+            (
+                "http://admin:se#cret@clickhouse.internal:8123/db",
+                "[redacted-url]",
+                None,
+                "[redacted-url]",
+            ),
+            (
+                "http://admin:se?cret@clickhouse.internal/db",
+                "[redacted-url]",
+                None,
+                "[redacted-url]",
+            ),
+            (
+                "clickhouse://admin:secret@ch.prod:9000/tumult",
+                "ch.prod",
+                Some("9000"),
+                "clickhouse://ch.prod:9000/tumult",
+            ),
+            (
+                "https://[::1]:8443",
+                "::1",
+                Some("8443"),
+                "https://[::1]:8443",
+            ),
+            (
+                "http://localhost:8123",
+                "localhost",
+                Some("8123"),
+                "http://localhost:8123",
+            ),
+        ];
+        for (url, host, port, connection) in cases {
+            let attributes = connect_attributes(url, "tumult");
+            assert_eq!(
+                attribute(&attributes, "server.address").as_deref(),
+                Some(host),
+                "{url}"
+            );
+            assert_eq!(
+                attribute(&attributes, "server.port").as_deref(),
+                port,
+                "{url}"
+            );
+            assert_eq!(
+                attribute(&attributes, "db.connection_string").as_deref(),
+                Some(connection),
+                "{url}"
+            );
+            for recorded in &attributes {
+                let value = recorded.value.to_string();
+                for secret in ["admin", "cret"] {
+                    assert!(
+                        !value.contains(secret),
+                        "{} leaks {secret} from {url}: {value}",
+                        recorded.key
+                    );
+                }
+            }
+        }
+    }
+
+    /// The attributes of the span `begin_connect` exports for `url`.
+    fn span_attributes(url: &str) -> Vec<KeyValue> {
         let ((), spans) = capture_spans(|| {
             let _span = begin_connect(url, "tumult");
         });
@@ -189,7 +218,7 @@ mod tests {
     #[test]
     fn connect_span_drops_userinfo() {
         assert_eq!(
-            connect_attributes("https://admin:secret@clickhouse.internal:8443"),
+            span_attributes("https://admin:secret@clickhouse.internal:8443"),
             endpoint(
                 "clickhouse.internal",
                 8443,
@@ -201,21 +230,22 @@ mod tests {
     #[test]
     fn connect_span_drops_credentials_passed_as_query_parameters() {
         assert_eq!(
-            connect_attributes("http://ch:8123/?user=admin&password=hunter2"),
-            endpoint("ch", 8123, "http://ch:8123")
+            span_attributes("http://ch:8123/?user=admin&password=hunter2"),
+            endpoint("ch", 8123, "http://ch:8123/")
         );
     }
 
+    /// The path names no one, so it stays; what can carry a credential goes.
     #[test]
-    fn connect_span_drops_userinfo_path_query_and_fragment_together() {
+    fn connect_span_drops_userinfo_query_and_fragment_together() {
         assert_eq!(
-            connect_attributes("http://admin:s3cret@ch:8123/db?password=x#token=y"),
-            endpoint("ch", 8123, "http://ch:8123")
+            span_attributes("http://admin:s3cret@ch:8123/db?password=x#token=y"),
+            endpoint("ch", 8123, "http://ch:8123/db")
         );
     }
 
     /// An unescaped `/`, `?` or `#` in the userinfo ends the authority early:
-    /// the parser then reads the user name as the host and a numeric password
+    /// a parser then reads the user name as the host and a numeric password
     /// prefix as the port. A literal `@` after the authority is the sign of
     /// that, so such a URL is recorded as a constant.
     #[test]
@@ -228,51 +258,75 @@ mod tests {
             "http://ch:8123?password=p@ss",
             "http://ch:8123/db#frag@ment",
         ] {
-            assert_eq!(connect_attributes(url), invalid_url(), "{url}");
+            assert_eq!(span_attributes(url), invalid_url(), "{url}");
         }
     }
 
     #[test]
     fn connect_span_keeps_the_host_when_an_escaped_at_sign_follows_the_authority() {
         assert_eq!(
-            connect_attributes("http://ch:8123/db?password=p%40ss"),
-            endpoint("ch", 8123, "http://ch:8123")
+            span_attributes("http://ch:8123/db?password=p%40ss"),
+            endpoint("ch", 8123, "http://ch:8123/db")
         );
     }
 
-    /// A single slash after an `http` scheme is read as two, so the userinfo
-    /// is still recognised and dropped.
+    /// A single slash after the scheme leaves no authority to read the host
+    /// from, so the userinfo cannot be told from it.
     #[test]
-    fn connect_span_drops_userinfo_after_a_single_slash() {
+    fn connect_span_records_a_constant_for_a_single_slash_after_the_scheme() {
+        assert_eq!(span_attributes("http:/u:pw@h"), invalid_url());
+    }
+
+    /// Only a port that is written is reported; none is assumed from the
+    /// scheme.
+    #[test]
+    fn connect_span_reports_no_port_when_none_is_written() {
         assert_eq!(
-            connect_attributes("http:/u:pw@h"),
-            endpoint("h", 80, "http://h")
+            span_attributes("https://ch.example/"),
+            [
+                KeyValue::new("db.system", "clickhouse"),
+                KeyValue::new("db.name", "tumult"),
+                KeyValue::new("server.address", "ch.example"),
+                KeyValue::new("db.connection_string", "https://ch.example/"),
+            ]
         );
     }
 
     #[test]
-    fn connect_span_reports_the_scheme_default_port_when_none_is_written() {
-        assert_eq!(
-            connect_attributes("https://ch.example/"),
-            endpoint("ch.example", 443, "https://ch.example")
-        );
-    }
-
-    #[test]
-    fn connect_span_records_a_constant_for_a_url_that_does_not_parse() {
+    fn connect_span_records_a_constant_for_a_url_that_cannot_be_read() {
         // An unescaped slash in the password: nothing after the scheme can be
         // told apart from the secret, so none of it is recorded.
-        for url in ["http://admin:p/ss@ch:8123", "admin:hunter2@ch:8123", ""] {
-            assert_eq!(connect_attributes(url), invalid_url(), "{url}");
-        }
+        assert_eq!(span_attributes("http://admin:p/ss@ch:8123"), invalid_url());
+    }
+
+    #[test]
+    fn connect_span_drops_userinfo_from_a_url_without_a_scheme() {
+        assert_eq!(
+            span_attributes("admin:hunter2@ch:8123"),
+            endpoint("ch", 8123, "ch:8123")
+        );
+    }
+
+    /// An empty URL names no server, and there is nothing in it to hide.
+    #[test]
+    fn connect_span_names_no_server_for_an_empty_url() {
+        assert_eq!(
+            span_attributes(""),
+            [
+                KeyValue::new("db.system", "clickhouse"),
+                KeyValue::new("db.name", "tumult"),
+                KeyValue::new("server.address", "[redacted-url]"),
+                KeyValue::new("db.connection_string", ""),
+            ]
+        );
     }
 
     fn invalid_url() -> Vec<KeyValue> {
         vec![
             KeyValue::new("db.system", "clickhouse"),
             KeyValue::new("db.name", "tumult"),
-            KeyValue::new("server.address", "invalid-url"),
-            KeyValue::new("db.connection_string", "invalid-url"),
+            KeyValue::new("server.address", "[redacted-url]"),
+            KeyValue::new("db.connection_string", "[redacted-url]"),
         ]
     }
 

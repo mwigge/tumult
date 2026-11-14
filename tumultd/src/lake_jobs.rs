@@ -7,6 +7,7 @@ use anyhow::{Context, Result};
 use tumult_core::types::bounded_log_text;
 use tumult_ingest::{Batch, IngestWriter};
 use tumult_lake::Store;
+use tumult_otel::logging::err;
 
 use crate::reports::parse_interval;
 
@@ -28,7 +29,8 @@ pub(crate) fn lake_interval_from_env() -> Option<std::time::Duration> {
         Some(d) => Some(d),
         None => {
             tracing::warn!(
-                value = raw,
+                name: "lake.interval.invalid",
+                { config.key = "KRONIKA_LAKE_INTERVAL", config.value = raw },
                 "invalid KRONIKA_LAKE_INTERVAL (want e.g. 30m or 24h); using 24h"
             );
             Some(default)
@@ -57,9 +59,12 @@ async fn run_lake_job(
     .await??;
     let total: u64 = report.tables.iter().map(|t| t.rows).sum();
     tracing::info!(
-        rows = total,
-        files = report.tables.iter().map(|t| t.files.len()).sum::<usize>(),
-        dir = %report.lake_dir,
+        name: "lake.export.completed",
+        {
+            rows = total,
+            files = report.tables.iter().map(|t| t.files.len()).sum::<usize>(),
+            file.path = %report.lake_dir,
+        },
         "lake export complete"
     );
     Ok(())
@@ -79,9 +84,12 @@ pub(crate) fn spawn_lake_scheduler(
     shutdown: tokio_util::sync::CancellationToken,
 ) -> tokio::task::JoinHandle<()> {
     tracing::info!(
-        interval = ?interval,
-        dir = %cfg.dir.display(),
-        retention_days = cfg.retention_days,
+        name: "lake.export.enabled",
+        {
+            interval_s = interval.as_secs(),
+            file.path = %cfg.dir.display(),
+            retention_days = cfg.retention_days,
+        },
         "lake export job enabled"
     );
     tokio::spawn(async move {
@@ -92,11 +100,18 @@ pub(crate) fn spawn_lake_scheduler(
             tokio::select! {
                 _ = ticker.tick() => {
                     if let Err(e) = run_lake_job(&db_path, &ingest, &cfg).await {
-                        tracing::warn!(error = %format!("{e:#}"), "lake export job failed");
+                        tracing::warn!(
+                            name: "lake.export.failed",
+                            { error.message = %err(&e) },
+                            "lake export job failed"
+                        );
                     }
                 }
                 () = shutdown.cancelled() => {
-                    tracing::info!("lake export job stopping (shutdown)");
+                    tracing::info!(
+                        name: "lake.export.stopping",
+                        "lake export job stopping (shutdown)"
+                    );
                     break;
                 }
             }

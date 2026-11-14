@@ -4,9 +4,11 @@
 //! owns the actual server wiring so `tumult-cli`'s `tumult mcp serve` and this
 //! binary behave identically.
 
+use std::process::ExitCode;
+
 use clap::{Parser, ValueEnum};
-use rust_mcp_sdk::error::SdkResult;
 use tumult_mcp::server::{serve, ServeOptions, Transport};
+use tumult_otel::logging::{self, LogOptions};
 
 /// Drop guard that shuts the OpenTelemetry providers down on every exit path
 /// from `main` — including `?` early returns — flushing pending spans and
@@ -83,29 +85,33 @@ impl From<Cli> for ServeOptions {
 }
 
 #[tokio::main]
-async fn main() -> SdkResult<()> {
-    // Same quiet-by-default logging policy as tumult-cli: without an OTLP
-    // endpoint there is nowhere for telemetry to go, so default to `warn`
-    // unless the operator set RUST_LOG explicitly.
-    if std::env::var_os("OTEL_EXPORTER_OTLP_ENDPOINT").is_none()
-        && std::env::var_os("RUST_LOG").is_none()
-    {
-        std::env::set_var("RUST_LOG", "warn");
-    }
+async fn main() -> ExitCode {
+    let cli = Cli::parse();
 
-    let args = ServeOptions::from(Cli::parse());
-
-    // Initialize OTel (traces, metrics, and logs — `TumultTelemetry::new`
-    // installs all providers internally) before serving, so `tumult-mcp` and
-    // `tumult mcp serve` behave identically. Without an OTLP endpoint the
-    // providers degrade to noop and the server runs exactly as before. The
-    // guard shuts the providers down (flushing) on every exit path. The fmt
-    // layer always writes to stderr, keeping stdout clean for stdio framing.
+    // Logs go to stderr, always: stdout carries the JSON-RPC framing of the
+    // stdio transport. Same quiet-by-default policy as tumult-cli (`warn`
+    // until an OTLP endpoint is configured, `RUST_LOG` overrides).
     let otel_config = tumult_otel::config::TelemetryConfig::from_env();
+    if let Err(error) = logging::init(LogOptions::for_tool(&otel_config)) {
+        logging::report_init_failure(&otel_config.service_name, &error);
+        return ExitCode::FAILURE;
+    }
+    let args = ServeOptions::from(cli);
+
+    // Initialize the OTel providers (traces, metrics, and the log bridge)
+    // before serving, so `tumult-mcp` and `tumult mcp serve` behave
+    // identically. Without an OTLP endpoint the providers degrade to noop.
+    // The guard shuts the providers down (flushing) on every exit path.
     let _telemetry_guard =
         TelemetryShutdown(tumult_otel::telemetry::TumultTelemetry::new(otel_config));
 
-    serve(args).await
+    match serve(args).await {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            logging::log_fatal(&error);
+            ExitCode::FAILURE
+        }
+    }
 }
 
 #[cfg(test)]

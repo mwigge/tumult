@@ -81,8 +81,15 @@ fn collect_toon_files(
         let path = entry.path();
 
         if path.is_dir() {
-            // Recurse, but ignore errors from subdirectories (permissions etc.)
-            let _ = collect_toon_files(base, &path, results);
+            // Recurse; an unreadable subdirectory (permissions etc.) is
+            // skipped, not fatal.
+            if let Err(error) = collect_toon_files(base, &path, results) {
+                tracing::debug!(
+                    name: "mcp.experiments.directory.skipped",
+                    { file.path = %path.display(), error.message = %error },
+                    "experiment subdirectory skipped"
+                );
+            }
             continue;
         }
 
@@ -239,5 +246,34 @@ mod tests {
         assert_eq!(items[0]["name"], "exp-3.toon");
         assert!(report.text.contains("Experiments: 5"), "{}", report.text);
         assert!(!report.text.contains("exp-0.toon"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn an_unreadable_subdirectory_is_skipped_with_a_debug_event() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = TempDir::new().unwrap();
+        let locked = dir.path().join("locked");
+        std::fs::create_dir(&locked).unwrap();
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
+        if std::fs::read_dir(&locked).is_ok() {
+            // Running with privileges that ignore directory modes (root):
+            // the walk cannot fail here, so there is nothing to observe.
+            std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
+            return;
+        }
+
+        let mut results = Vec::new();
+        let logs = tumult_otel::logging::testing::capture_json(tracing::Level::DEBUG, || {
+            collect_toon_files(dir.path(), dir.path(), &mut results).unwrap();
+        });
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        let skipped = logs.named("mcp.experiments.directory.skipped");
+        assert_eq!(skipped.len(), 1, "{}", logs.raw);
+        assert_eq!(skipped[0]["level"], "DEBUG");
+        assert_eq!(skipped[0]["file.path"], locked.to_str().unwrap());
+        assert!(skipped[0]["error.message"].is_string(), "{}", logs.raw);
     }
 }

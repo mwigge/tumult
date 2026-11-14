@@ -2,6 +2,7 @@ use anyhow::{bail, Context, Result};
 
 use tumult_exec::ProviderExecutor;
 
+use super::events::EnvKey;
 use super::{ComplianceFramework, LoadToolArg};
 
 // ── GameDay commands ────────────────────────────────────────
@@ -56,9 +57,9 @@ pub fn cmd_gameday_create(
     let filename = format!("{name}.gameday.toon");
     std::fs::write(&filename, &content).with_context(|| format!("failed to write {filename}"))?;
 
-    println!("Created: {filename}");
-    println!("Edit the file to add compliance_maps and regulatory requirements.");
-    println!("Run with: tumult gameday run {filename}");
+    crate::outln!("Created: {filename}");
+    crate::outln!("Edit the file to add compliance_maps and regulatory requirements.");
+    crate::outln!("Run with: tumult gameday run {filename}");
     Ok(())
 }
 
@@ -84,8 +85,8 @@ pub fn cmd_gameday_run(gameday_path: &std::path::Path) -> Result<()> {
     let gameday: GameDay =
         toon_format::decode_default(&content).with_context(|| "failed to parse gameday file")?;
 
-    println!("GameDay: {}", gameday.title);
-    println!("Experiments: {}", gameday.experiments.len());
+    crate::outln!("GameDay: {}", gameday.title);
+    crate::outln!("Experiments: {}", gameday.experiments.len());
 
     // Parse all experiment files. Each experiment gets the same
     // configuration/secrets semantics as `tumult run`: values resolve up
@@ -129,18 +130,8 @@ pub fn cmd_gameday_run(gameday_path: &std::path::Path) -> Result<()> {
         // names keys only, never values — the maps carry resolved secrets.
         let (config_env, skipped_config) = build_config_env(&config);
         let (secret_env, skipped_secrets) = build_secret_env(&secrets_flat);
-        for key in &skipped_config {
-            eprintln!(
-                "warning: configuration key '{key}' does not form a valid env var name after \
-                 uppercasing; usable in templates but not injected as TUMULT_CONFIG_*"
-            );
-        }
-        for key in &skipped_secrets {
-            eprintln!(
-                "warning: secret key '{key}' does not form a valid env var name after \
-                 uppercasing; usable in templates but not injected as TUMULT_SECRET_*"
-            );
-        }
+        super::events::env_keys_skipped(EnvKey::Config, &skipped_config);
+        super::events::env_keys_skipped(EnvKey::Secret, &skipped_secrets);
         let mut injected_env = config_env;
         injected_env.extend(secret_env);
 
@@ -173,7 +164,11 @@ pub fn cmd_gameday_run(gameday_path: &std::path::Path) -> Result<()> {
     let cancel_token_for_signal = cancel_token.clone();
     tokio::spawn(async move {
         if tokio::signal::ctrl_c().await.is_ok() {
-            tracing::warn!("SIGINT received — cancelling gameday");
+            tracing::warn!(
+                name: "cli.gameday.cancelled",
+                { signal = "SIGINT" },
+                "cancelling gameday"
+            );
             cancel_token_for_signal.cancel();
         }
     });
@@ -188,7 +183,7 @@ pub fn cmd_gameday_run(gameday_path: &std::path::Path) -> Result<()> {
         max_concurrent_faults: None,
     };
 
-    println!("Running...\n");
+    crate::outln!("Running...\n");
 
     let journal = run_gameday_with_wiring(
         &gameday,
@@ -198,8 +193,8 @@ pub fn cmd_gameday_run(gameday_path: &std::path::Path) -> Result<()> {
     )?;
 
     // Print summary
-    println!("GameDay: {}", journal.title);
-    println!(
+    crate::outln!("GameDay: {}", journal.title);
+    crate::outln!(
         "Status:  {}/{} PASS ({})",
         journal
             .experiment_journals
@@ -209,7 +204,7 @@ pub fn cmd_gameday_run(gameday_path: &std::path::Path) -> Result<()> {
         journal.experiment_journals.len(),
         journal.compliance_status
     );
-    println!("Duration: {:.1}s\n", journal.duration_s);
+    crate::outln!("Duration: {:.1}s\n", journal.duration_s);
 
     for (i, ej) in journal.experiment_journals.iter().enumerate() {
         let icon = if ej.status == tumult_core::types::ExperimentStatus::Completed {
@@ -217,7 +212,7 @@ pub fn cmd_gameday_run(gameday_path: &std::path::Path) -> Result<()> {
         } else {
             "FAIL"
         };
-        println!(
+        crate::outln!(
             "  #{} [{}] {} ({}ms)",
             i + 1,
             icon,
@@ -226,31 +221,34 @@ pub fn cmd_gameday_run(gameday_path: &std::path::Path) -> Result<()> {
         );
     }
 
-    println!(
+    crate::outln!(
         "\nResilience Score: {:.2}",
         journal.resilience_score.overall
     );
-    println!(
+    crate::outln!(
         "  Pass rate:        {:.2}",
         journal.resilience_score.pass_rate
     );
-    println!(
+    crate::outln!(
         "  Recovery:         {:.2}",
         journal.resilience_score.recovery_compliance
     );
-    println!(
+    crate::outln!(
         "  Load impact:      {:.2}",
         journal.resilience_score.load_impact_tolerance
     );
-    println!(
+    crate::outln!(
         "  Compliance:       {:.2}",
         journal.resilience_score.compliance_coverage
     );
 
     if let Some(ref lr) = journal.load_result {
-        println!(
+        crate::outln!(
             "\nLoad ({}): {} requests, p95={}ms, error_rate={:.4}",
-            lr.tool, lr.total_requests, lr.latency_p95_ms, lr.error_rate
+            lr.tool,
+            lr.total_requests,
+            lr.latency_p95_ms,
+            lr.error_rate
         );
     }
 
@@ -260,7 +258,7 @@ pub fn cmd_gameday_run(gameday_path: &std::path::Path) -> Result<()> {
         .with_context(|| "failed to encode gameday journal")?;
     std::fs::write(&journal_path, &toon)
         .with_context(|| format!("failed to write {}", journal_path.display()))?;
-    println!("\nJournal: {}", journal_path.display());
+    crate::outln!("\nJournal: {}", journal_path.display());
 
     Ok(())
 }
@@ -281,10 +279,11 @@ pub fn cmd_gameday_analyze(gameday_path: &std::path::Path) -> Result<()> {
     let journal: GameDayJournal =
         toon_format::decode_default(&content).with_context(|| "failed to parse gameday journal")?;
 
-    println!("GameDay: {}", journal.title);
-    println!(
+    crate::outln!("GameDay: {}", journal.title);
+    crate::outln!(
         "Status:  {} ({:.1}s)\n",
-        journal.compliance_status, journal.duration_s
+        journal.compliance_status,
+        journal.duration_s
     );
 
     for (i, ej) in journal.experiment_journals.iter().enumerate() {
@@ -293,7 +292,7 @@ pub fn cmd_gameday_analyze(gameday_path: &std::path::Path) -> Result<()> {
         } else {
             "FAIL"
         };
-        println!(
+        crate::outln!(
             "  #{} [{}] {} ({}ms)",
             i + 1,
             icon,
@@ -302,18 +301,18 @@ pub fn cmd_gameday_analyze(gameday_path: &std::path::Path) -> Result<()> {
         );
     }
 
-    println!(
+    crate::outln!(
         "\nResilience Score: {:.2}",
         journal.resilience_score.overall
     );
-    println!(
+    crate::outln!(
         "  Pass rate:    {:.2}  Recovery: {:.2}  Load: {:.2}  Compliance: {:.2}",
         journal.resilience_score.pass_rate,
         journal.resilience_score.recovery_compliance,
         journal.resilience_score.load_impact_tolerance,
         journal.resilience_score.compliance_coverage
     );
-    println!("  Status: {}", journal.compliance_status);
+    crate::outln!("  Status: {}", journal.compliance_status);
 
     Ok(())
 }

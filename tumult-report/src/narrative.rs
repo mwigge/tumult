@@ -234,11 +234,26 @@ pub async fn narrate(llm: &Arc<dyn Llm>, mut report: Report, timeout: Duration) 
                     .sections
                     .insert(0, Section::Narrative { text: grounded });
             } else {
-                tracing::info!("LLM narrative dropped: no grounded sentences survived");
+                tracing::info!(
+                    name: "report.narrative.dropped",
+                    "LLM narrative dropped, no grounded sentences survived"
+                );
             }
         }
-        Ok(Err(e)) => tracing::info!(error = %e, "LLM narrative skipped"),
-        Err(_) => tracing::info!("LLM narrative skipped: chat timed out"),
+        Ok(Err(e)) => tracing::info!(
+            name: "report.narrative.skipped",
+            { error.type = "llm", error.message = %tumult_otel::logging::err(&e) },
+            "LLM narrative skipped"
+        ),
+        Err(_elapsed) => tracing::info!(
+            name: "report.narrative.skipped",
+            {
+                error.type = "timeout",
+                error.message = "chat timed out",
+                timeout_ms = u64::try_from(timeout.as_millis()).unwrap_or(u64::MAX),
+            },
+            "LLM narrative skipped"
+        ),
     }
     report
 }
@@ -462,5 +477,50 @@ mod tests {
         let llm: Arc<dyn Llm> = Arc::new(StubLlm(StubReply::Hang));
         let out = narrate(&llm, report(), Duration::from_millis(50)).await;
         assert_eq!(out, report());
+    }
+
+    /// Runs `narrate` with `reply` and returns the log events it emitted.
+    async fn narrate_logs(
+        reply: StubReply,
+        timeout: Duration,
+    ) -> tumult_otel::logging::testing::Captured {
+        let llm: Arc<dyn Llm> = Arc::new(StubLlm(reply));
+        let capture = tumult_otel::logging::testing::LogCapture::start(tracing::Level::INFO);
+        let _ = narrate(&llm, report(), timeout).await;
+        capture.snapshot()
+    }
+
+    #[tokio::test]
+    async fn an_ungrounded_narrative_is_a_named_event() {
+        let logs = narrate_logs(
+            StubReply::Text("999 experiments ran."),
+            Duration::from_secs(5),
+        )
+        .await;
+        let event = &logs.named("report.narrative.dropped")[0];
+        assert_eq!(event["level"], "INFO");
+        assert_eq!(
+            event["message"],
+            "LLM narrative dropped, no grounded sentences survived"
+        );
+    }
+
+    #[tokio::test]
+    async fn an_llm_failure_is_a_named_event_with_the_cause() {
+        let logs = narrate_logs(StubReply::Fail, Duration::from_secs(5)).await;
+        let event = &logs.named("report.narrative.skipped")[0];
+        assert_eq!(event["level"], "INFO");
+        assert_eq!(event["error.type"], "llm");
+        let cause = event["error.message"].as_str().unwrap();
+        assert!(cause.contains("stub failure"), "{cause}");
+        assert!(event.get("error").is_none(), "legacy field: {event}");
+    }
+
+    #[tokio::test]
+    async fn an_llm_timeout_is_the_same_event_with_a_timeout_type() {
+        let logs = narrate_logs(StubReply::Hang, Duration::from_millis(50)).await;
+        let event = &logs.named("report.narrative.skipped")[0];
+        assert_eq!(event["error.type"], "timeout");
+        assert_eq!(event["timeout_ms"], 50);
     }
 }

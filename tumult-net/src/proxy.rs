@@ -68,7 +68,7 @@ impl Proxy {
             let handles = FaultHandles::from_profile(&self.profile)?;
             tokio::spawn(async move {
                 if let Err(e) = forward(downstream, upstream, handles, terminate_prob, seed).await {
-                    tracing::debug!(error = %e, "proxied connection closed with error");
+                    connection_failed(&e);
                 }
             });
         }
@@ -83,6 +83,16 @@ impl Proxy {
         let listener = self.bind().await?;
         self.serve(&listener).await
     }
+}
+
+/// A proxied connection ended with an error. Debug level: under an injected
+/// fault this is the expected outcome for many connections.
+fn connection_failed(error: &NetError) {
+    tracing::debug!(
+        name: "net.proxy.connection.failed",
+        { error.message = %tumult_otel::logging::err(error) },
+        "proxied connection closed with error"
+    );
 }
 
 /// Dial the upstream and pump both directions until either side closes.
@@ -208,5 +218,18 @@ mod tests {
         let mut buf = vec![0u8; payload.len()];
         client.read_exact(&mut buf).await.unwrap();
         assert_eq!(&buf, payload);
+    }
+
+    #[test]
+    fn a_failed_connection_is_a_named_debug_event() {
+        let error = NetError::Io(std::io::Error::other("connection reset by peer"));
+        let logs = tumult_otel::logging::testing::capture_json(tracing::Level::DEBUG, || {
+            connection_failed(&error);
+        });
+        let event = &logs.named("net.proxy.connection.failed")[0];
+        assert_eq!(event["level"], "DEBUG");
+        let message = event["error.message"].as_str().unwrap();
+        assert!(message.contains("connection reset by peer"), "{message}");
+        assert!(event.get("error").is_none(), "legacy field: {event}");
     }
 }

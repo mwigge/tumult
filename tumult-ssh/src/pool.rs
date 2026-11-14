@@ -166,20 +166,12 @@ impl SshPool {
             if e.session.execute("true").await.is_ok() {
                 (e.session, e.config)
             } else {
-                tracing::debug!(
-                    host = %key.host,
-                    port = key.port,
-                    "cached SSH session stale — reconnecting"
-                );
+                log_session_stale(&key);
                 let new_session = SshSession::connect((*e.config).clone()).await?;
                 (new_session, e.config)
             }
         } else {
-            tracing::debug!(
-                host = %key.host,
-                port = key.port,
-                "opening new SSH session"
-            );
+            log_session_opening(&key);
             let arc = Arc::new(config.clone());
             let new_session = SshSession::connect((*arc).clone()).await?;
             (new_session, arc)
@@ -223,6 +215,24 @@ impl SshPool {
         let mut guard = self.lock_entries();
         guard.remove(&key).is_some()
     }
+}
+
+/// The cached session for `key` no longer answers; a new one replaces it.
+fn log_session_stale(key: &PoolKey) {
+    tracing::debug!(
+        name: "ssh.session.stale",
+        { server.address = %key.host, server.port = key.port },
+        "cached SSH session stale, reconnecting"
+    );
+}
+
+/// No session is cached for `key`; one is being opened.
+fn log_session_opening(key: &PoolKey) {
+    tracing::debug!(
+        name: "ssh.session.opening",
+        { server.address = %key.host, server.port = key.port },
+        "opening new SSH session"
+    );
 }
 
 #[cfg(test)]
@@ -332,5 +342,22 @@ mod tests {
         assert!(!pool.evict(&dummy_config("host-a")));
         pool.clear();
         assert!(pool.is_empty());
+    }
+
+    #[test]
+    fn session_lifecycle_events_name_the_endpoint() {
+        let key = PoolKey::from_config(&dummy_config("db-1.internal"));
+        let logs = tumult_otel::logging::testing::capture_json(tracing::Level::DEBUG, || {
+            log_session_stale(&key);
+            log_session_opening(&key);
+        });
+
+        for name in ["ssh.session.stale", "ssh.session.opening"] {
+            let event = &logs.named(name)[0];
+            assert_eq!(event["level"], "DEBUG");
+            assert_eq!(event["server.address"], "db-1.internal");
+            assert_eq!(event["server.port"], 22);
+            assert!(event.get("host").is_none(), "legacy field: {event}");
+        }
     }
 }

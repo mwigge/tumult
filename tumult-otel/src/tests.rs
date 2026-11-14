@@ -17,7 +17,7 @@ static ENV_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
 /// production-path smoke test installs its own in-memory provider. Without
 /// this lock, parallel test threads could interleave a noop reset between
 /// another test's `set_meter_provider` and its recording, making it flaky.
-static METER_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
+pub(crate) static METER_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 /// RAII guard that restores an environment variable to its previous value
 /// when dropped, even on panic.
