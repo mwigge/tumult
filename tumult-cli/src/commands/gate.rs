@@ -1,6 +1,8 @@
 //! `tumult gate <target>` — ask the daemon's CI gate and turn its verdict
 //! into an exit code a pipeline can act on.
 
+use std::fmt::Write as _;
+
 use anyhow::{bail, Context, Result};
 use serde_json::Value;
 
@@ -108,7 +110,7 @@ pub fn encode_segment(s: &str) -> String {
         if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.' | b'~') {
             out.push(char::from(b));
         } else {
-            out.push_str(&format!("%{b:02X}"));
+            let _ = write!(out, "%{b:02X}");
         }
     }
     out
@@ -140,10 +142,10 @@ pub fn render(resp: &GateResponse) -> String {
             .last_run_at_ns
             .map(|ns| format!(" at {ns} ns"))
             .unwrap_or_default();
-        out.push_str(&format!("  latest evidence: {id}{when}\n"));
+        let _ = writeln!(out, "  latest evidence: {id}{when}");
     }
     for reason in &resp.reasons {
-        out.push_str(&format!("  - {reason}\n"));
+        let _ = writeln!(out, "  - {reason}");
     }
     out
 }

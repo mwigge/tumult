@@ -5,6 +5,8 @@
 //! (`POST /api/perf/{target}/verdicts`), and a verdict the daemon did not
 //! store is an error.
 
+use std::fmt::Write as _;
+
 use anyhow::{bail, Context, Result};
 use serde_json::Value;
 
@@ -155,19 +157,21 @@ pub fn render(resp: &PerfResponse) -> String {
         resp.probe
     );
     if let Some(b) = &resp.baseline {
-        out.push_str(&format!(
-            "  baseline  {}: {} ms over {} sample(s)\n",
+        let _ = writeln!(
+            out,
+            "  baseline  {}: {} ms over {} sample(s)",
             b.version,
             fmt_opt(b.quantile_value),
             b.samples
-        ));
+        );
     }
-    out.push_str(&format!(
-        "  candidate {}: {} ms over {} sample(s)\n",
+    let _ = writeln!(
+        out,
+        "  candidate {}: {} ms over {} sample(s)",
         resp.candidate.version,
         fmt_opt(resp.candidate.quantile_value),
         resp.candidate.samples
-    ));
+    );
     if let Some(delta) = resp.delta {
         let pct = resp
             .delta_pct
@@ -181,10 +185,10 @@ pub fn render(resp: &PerfResponse) -> String {
             .margin
             .map(|m| format!(", margin ±{m:.1}"))
             .unwrap_or_default();
-        out.push_str(&format!("  delta {delta:+.1} ms{pct}{ci}{margin}\n"));
+        let _ = writeln!(out, "  delta {delta:+.1} ms{pct}{ci}{margin}");
     }
     for reason in &resp.reasons {
-        out.push_str(&format!("  - {reason}\n"));
+        let _ = writeln!(out, "  - {reason}");
     }
     if resp.stored {
         out.push_str("  verdict stored in perf_verdicts\n");
