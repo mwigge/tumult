@@ -307,13 +307,12 @@ fn wait_for_exit(pid_file: &std::path::Path) {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
     loop {
         let pid = std::fs::read_to_string(pid_file).unwrap_or_default();
-        if !pid.trim().is_empty() {
-            let ps = std::process::Command::new("ps")
-                .args(["-o", "stat=", "-p", pid.trim()])
-                .output()
-                .expect("ps runs");
-            let state = String::from_utf8_lossy(&ps.stdout);
-            if state.trim().is_empty() || state.trim().starts_with('Z') {
+        // Without its newline the pid is not written yet, or not in full.
+        if let Some(pid) = pid.strip_suffix('\n') {
+            let pid: u32 = pid
+                .parse()
+                .unwrap_or_else(|e| panic!("the pid file holds {pid:?}: {e}"));
+            if !is_running(pid) {
                 return;
             }
         }
@@ -324,6 +323,52 @@ fn wait_for_exit(pid_file: &std::path::Path) {
         // sleep: interval of the bounded poll above
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
+}
+
+/// Whether process `pid` exists and has not exited (a zombie has).
+///
+/// Read from `/proc`, so that "gone" is something the kernel said and not
+/// a tool that failed to run.
+#[cfg(target_os = "linux")]
+fn is_running(pid: u32) -> bool {
+    match std::fs::read_to_string(format!("/proc/{pid}/stat")) {
+        // "pid (comm) state ...": comm may itself hold spaces and brackets.
+        Ok(stat) => {
+            let (_, after_comm) = stat
+                .rsplit_once(')')
+                .unwrap_or_else(|| panic!("unexpected /proc/{pid}/stat: {stat}"));
+            let state = after_comm
+                .split_whitespace()
+                .next()
+                .unwrap_or_else(|| panic!("no state in /proc/{pid}/stat: {stat}"));
+            state != "Z" && state != "X"
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => false,
+        // ESRCH: the process went away between open and read.
+        Err(e) if e.raw_os_error() == Some(3) => false,
+        Err(e) => panic!("cannot read /proc/{pid}/stat: {e}"),
+    }
+}
+
+/// Whether process `pid` exists and has not exited (a zombie has).
+///
+/// `ps` reports a process that is gone the way it reports its own failure,
+/// so it first has to find this process.
+#[cfg(all(unix, not(target_os = "linux")))]
+fn is_running(pid: u32) -> bool {
+    let state_of = |pid: u32| {
+        let ps = std::process::Command::new("ps")
+            .args(["-o", "stat=", "-p", &pid.to_string()])
+            .output()
+            .expect("run ps");
+        String::from_utf8_lossy(&ps.stdout).trim().to_string()
+    };
+    assert!(
+        !state_of(std::process::id()).is_empty(),
+        "ps does not report this process, so it cannot tell that another is gone"
+    );
+    let state = state_of(pid);
+    !state.is_empty() && !state.starts_with('Z')
 }
 
 #[cfg(unix)]

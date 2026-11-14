@@ -273,14 +273,26 @@ fn fault_gate_caps_concurrent_background_faults() {
     ];
 
     // A second concurrent fault must not happen: each activity gives one
-    // 50 ms to show up before it lets go of its slot.
-    let (tracker, max_seen) = ConcurrencyTracker::new(2, std::time::Duration::from_millis(50));
+    // 250 ms to show up before it lets go of its slot, which is long enough
+    // for the other two threads to arrive on a loaded machine if the gate
+    // lets them through.
+    let (tracker, max_seen) = ConcurrencyTracker::new(2, std::time::Duration::from_millis(250));
     let executor: Arc<dyn ActivityExecutor> = Arc::new(tracker);
     let controls = Arc::new(ControlRegistry::new());
 
     let journal = run_experiment(&exp, &executor, &controls, &default_config()).unwrap();
 
+    // run_experiment has joined the background activities, so this is the
+    // peak over the whole run and not a reading taken while some still wait.
     assert_eq!(journal.method_results.len(), 3);
+    assert!(
+        journal
+            .method_results
+            .iter()
+            .all(|result| result.status == ActivityStatus::Succeeded),
+        "every background fault must have run through the tracker: {:?}",
+        journal.method_results
+    );
     assert_eq!(
         max_seen.load(Ordering::SeqCst),
         1,
