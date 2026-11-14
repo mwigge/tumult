@@ -265,8 +265,10 @@ fn a_changed_relationship_is_a_changed_state() {
     assert_eq!(versions(&store).len(), 2);
 }
 
+/// Against a row of an earlier batch a state must be strictly newer: one
+/// with the timestamp the row was last seen at may be a delayed copy.
 #[test]
-fn a_changed_state_older_than_the_latest_row_is_ignored() {
+fn a_changed_state_not_newer_than_the_stored_row_is_ignored() {
     let (_d, store) = fixture();
     apply(&store, &[state(PAST + 10 * SECOND, json!({"v": 2}))]);
     let outcomes = apply(
@@ -283,6 +285,159 @@ fn a_changed_state_older_than_the_latest_row_is_ignored() {
     let rows = versions(&store);
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0]["last_seen_ns"], PAST + 10 * SECOND);
+}
+
+/// Events without a timestamp, or with one ahead of the daemon's clock,
+/// all carry the receipt time of their export. Within one export the order
+/// of arrival then decides: the later event is the newer one.
+#[test]
+fn a_later_event_of_one_batch_wins_a_tie_on_the_timestamp() {
+    let (_d, store) = fixture();
+    let outcomes = apply(
+        &store,
+        &[
+            state(FUTURE, json!({"v": 1})),
+            state(FUTURE, json!({"v": 2})),
+        ],
+    );
+    assert_eq!(outcomes, vec![EntityOutcome::Opened, EntityOutcome::Opened]);
+    let rows = versions(&store);
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[0]["description"], r#"{"v":1}"#);
+    assert_eq!(rows[0]["valid_from_ns"], FUTURE);
+    assert_eq!(rows[1]["description"], r#"{"v":2}"#);
+    assert_eq!(
+        rows[1]["valid_from_ns"],
+        FUTURE + 1,
+        "one nanosecond later, so the rows of an entity stay ordered"
+    );
+    assert_eq!(current(&store)[0]["valid_from_ns"], FUTURE + 1);
+}
+
+#[test]
+fn a_state_after_a_delete_in_one_batch_brings_the_entity_back() {
+    let (_d, store) = fixture();
+    let outcomes = apply(
+        &store,
+        &[
+            state(FUTURE, json!({})),
+            delete(FUTURE),
+            state(FUTURE, json!({})),
+        ],
+    );
+    assert_eq!(
+        outcomes,
+        vec![
+            EntityOutcome::Opened,
+            EntityOutcome::Tombstoned,
+            EntityOutcome::Opened,
+        ]
+    );
+    let rows = versions(&store);
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[0]["deleted_at_ns"], FUTURE);
+    assert_eq!(rows[1]["deleted_at_ns"], Value::Null);
+    assert_eq!(current(&store)[0]["liveness"], "live");
+}
+
+/// The same tie against a row that an earlier export stored.
+#[test]
+fn a_delete_then_a_state_at_the_time_of_the_stored_row_leave_it_live() {
+    let (_d, store) = fixture();
+    apply(&store, &[state(FUTURE, json!({}))]);
+    assert_eq!(
+        apply(&store, &[delete(FUTURE), state(FUTURE, json!({}))]),
+        vec![EntityOutcome::Tombstoned, EntityOutcome::Opened]
+    );
+    assert_eq!(current(&store)[0]["liveness"], "live");
+    assert_eq!(versions(&store).len(), 2);
+}
+
+#[test]
+fn one_batch_at_one_instant_is_applied_in_the_order_it_arrived() {
+    let (_d, store) = fixture();
+    let outcomes = apply(
+        &store,
+        &[
+            state(PAST, json!({"v": 1})),
+            state(PAST, json!({"v": 2})),
+            state(PAST, json!({"v": 2})),
+            state(PAST, json!({"v": 1})),
+            delete(PAST),
+        ],
+    );
+    assert_eq!(
+        outcomes,
+        vec![
+            EntityOutcome::Opened,
+            EntityOutcome::Opened,
+            EntityOutcome::Refreshed,
+            EntityOutcome::Opened,
+            EntityOutcome::Tombstoned,
+        ]
+    );
+    let rows = versions(&store);
+    let starts: Vec<i64> = rows
+        .iter()
+        .map(|r| r["valid_from_ns"].as_i64().unwrap())
+        .collect();
+    assert_eq!(starts, vec![PAST, PAST + 1, PAST + 2]);
+    assert_eq!(rows[2]["description"], r#"{"v":1}"#);
+    assert_eq!(rows[2]["deleted_at_ns"], PAST + 2);
+    assert_eq!(rows[0]["deleted_at_ns"], Value::Null);
+}
+
+/// Arrival order settles a tie only inside one batch. A batch that is sent
+/// again finds its own rows and changes nothing, and a different state
+/// with the same timestamp in a later batch cannot be told from a copy
+/// that was delayed: it stays stale.
+#[test]
+fn a_tie_with_a_stored_row_is_not_settled_by_a_later_batch() {
+    let (_d, store) = fixture();
+    let batch = [state(PAST, json!({"v": 1})), state(PAST, json!({"v": 2}))];
+    apply(&store, &batch);
+    let stored = versions(&store);
+    assert_eq!(stored.len(), 2);
+    assert_eq!(
+        apply(&store, &batch),
+        vec![EntityOutcome::StaleState, EntityOutcome::Refreshed],
+        "the retry of an export"
+    );
+    assert_eq!(versions(&store), stored);
+    assert_eq!(
+        apply(&store, &[state(PAST, json!({"v": 3}))]),
+        vec![EntityOutcome::StaleState]
+    );
+    assert_eq!(versions(&store), stored);
+}
+
+/// Arrival order does not overrule a timestamp: an older event later in
+/// the batch is still older.
+#[test]
+fn an_older_event_later_in_the_batch_stays_stale() {
+    let (_d, store) = fixture();
+    apply(&store, &[state(PAST + 10 * SECOND, json!({"v": 1}))]);
+    let outcomes = apply(
+        &store,
+        &[
+            state(PAST + 5 * SECOND, json!({"v": 1})),
+            state(PAST + 6 * SECOND, json!({"v": 2})),
+            state(PAST + 20 * SECOND, json!({"v": 3})),
+            state(PAST + 15 * SECOND, json!({"v": 4})),
+            delete(PAST + 15 * SECOND),
+        ],
+    );
+    assert_eq!(
+        outcomes,
+        vec![
+            EntityOutcome::Refreshed,
+            EntityOutcome::StaleState,
+            EntityOutcome::Opened,
+            EntityOutcome::StaleState,
+            EntityOutcome::DeleteOutOfOrder,
+        ]
+    );
+    assert_eq!(versions(&store).len(), 2);
 }
 
 #[test]

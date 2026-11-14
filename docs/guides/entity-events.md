@@ -161,6 +161,13 @@ The rules:
   that reported the entity.
 - A state event newer than the deletion opens a new row: the entity is
   back.
+- Newer means a later event time. An event without a time, or with one
+  ahead of the daemon's clock, gets the time its export was received, so
+  several events of one entity in one export can carry the same time.
+  Among those the order in the export decides and the later event is the
+  newer one; a row opened that way starts one nanosecond after the row
+  before it. An event with the same time as a row that an earlier export
+  stored is not newer: it cannot be told from a delayed copy.
 - The same entity key in two environments is two entities.
 
 The view `entities_current` is the latest row of each entity per

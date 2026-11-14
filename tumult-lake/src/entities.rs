@@ -14,10 +14,19 @@
 //!   observer that opened the row and is not older than `last_seen_ns`;
 //! * a state newer than the tombstone opens a new row: the entity is back.
 //!
+//! "Newer" is decided by the event time. Events that carry none, or one
+//! ahead of the daemon's clock, all get the receipt time of their export,
+//! so within one batch a tie is settled by the order of arrival: an event
+//! is also newer than the row when an earlier event of the same batch set
+//! what the row records and is not later than it. Against a row that an
+//! earlier batch stored, an equal time stays "not newer": it cannot be told
+//! from a delayed copy.
+//!
 //! Rows are tracked per `(entity_key, environment)`. The table has no
 //! primary key or index (the v5 rule for tables that receive UPDATEs);
-//! `valid_from_ns` is strictly increasing per entity by construction, which
-//! keeps `(entity_key, environment, valid_from_ns)` unique.
+//! `valid_from_ns` is strictly increasing per entity by construction (a
+//! row that wins a tie starts one nanosecond after the row it supersedes),
+//! which keeps `(entity_key, environment, valid_from_ns)` unique.
 
 use std::collections::HashMap;
 use std::fmt::Write as _;
@@ -225,11 +234,22 @@ struct Latest {
     unsaved: Option<Unsaved>,
     /// A stored row whose mutable columns changed.
     dirty: bool,
+    /// The time of the event of this batch that set what the row records
+    /// (its state, `last_seen_ns` or the tombstone); `None` while only
+    /// earlier batches did.
+    batch_ts_ns: Option<i64>,
 }
 
 impl Latest {
     fn needs_write(&self) -> bool {
         self.unsaved.is_some() || self.dirty
+    }
+
+    /// Whether an event at `ts_ns` arrived after the event of its own batch
+    /// that this row records and is not older than it: the tie on the
+    /// timestamp that the order of arrival settles.
+    fn set_earlier_in_batch(&self, ts_ns: i64) -> bool {
+        self.batch_ts_ns.is_some_and(|set_at| ts_ns >= set_at)
     }
 }
 
@@ -257,11 +277,17 @@ impl<'a> Prepared<'a> {
         }
     }
 
-    fn open(&self) -> Result<Latest, StoreError> {
+    /// The row this state opens after `superseded`, the latest row so far.
+    /// It starts at the event time, or one nanosecond after the superseded
+    /// row started when a tie would otherwise give two rows one start.
+    fn open(&self, superseded: Option<&Latest>) -> Result<Latest, StoreError> {
         let event = self.event;
+        let valid_from_ns = superseded.map_or(event.ts_ns, |row| {
+            event.ts_ns.max(row.valid_from_ns.saturating_add(1))
+        });
         Ok(Latest {
-            valid_from_ns: event.ts_ns,
-            last_seen_ns: event.ts_ns,
+            valid_from_ns,
+            last_seen_ns: valid_from_ns,
             interval_s: self.interval_s,
             wire_form: event.wire_form.as_str().to_owned(),
             state_hash: self.hash.clone(),
@@ -276,6 +302,7 @@ impl<'a> Prepared<'a> {
                 schema_url: event.schema_url.clone(),
             }),
             dirty: false,
+            batch_ts_ns: Some(event.ts_ns),
         })
     }
 }
@@ -292,8 +319,9 @@ fn state_step(latest: Option<&Latest>, state: &Prepared<'_>) -> StateStep {
         return StateStep::Open;
     };
     let ts_ns = state.event.ts_ns;
+    let wins_tie = latest.set_earlier_in_batch(ts_ns);
     if let Some(deleted_at_ns) = latest.deleted_at_ns {
-        if ts_ns > deleted_at_ns {
+        if ts_ns > deleted_at_ns || wins_tie {
             return StateStep::Open;
         }
         return StateStep::Stale;
@@ -301,7 +329,7 @@ fn state_step(latest: Option<&Latest>, state: &Prepared<'_>) -> StateStep {
     if latest.state_hash == state.hash {
         return StateStep::Refresh;
     }
-    if ts_ns > latest.last_seen_ns {
+    if ts_ns > latest.last_seen_ns || wins_tie {
         return StateStep::Open;
     }
     StateStep::Stale
@@ -313,6 +341,7 @@ fn refresh(latest: &mut Latest, state: &Prepared<'_>) {
     if state.event.ts_ns < latest.last_seen_ns {
         return;
     }
+    latest.batch_ts_ns = Some(state.event.ts_ns);
     latest.last_seen_ns = state.event.ts_ns;
     latest.interval_s = state.interval_s;
     state
@@ -333,10 +362,13 @@ fn apply_delete(latest: Option<&mut Latest>, event: &EntityEventRow) -> EntityOu
     if latest.observer != event.observer {
         return EntityOutcome::DeleteForeignObserver;
     }
-    if event.ts_ns < latest.last_seen_ns {
+    if event.ts_ns < latest.last_seen_ns && !latest.set_earlier_in_batch(event.ts_ns) {
         return EntityOutcome::DeleteOutOfOrder;
     }
-    latest.deleted_at_ns = Some(event.ts_ns);
+    // A row that won a tie starts, and was last seen, a nanosecond after
+    // the event time; its tombstone is not earlier than that.
+    latest.deleted_at_ns = Some(event.ts_ns.max(latest.last_seen_ns));
+    latest.batch_ts_ns = Some(event.ts_ns);
     latest.delete_reason.clone_from(&event.delete_reason);
     latest.dirty = true;
     EntityOutcome::Tombstoned
@@ -442,7 +474,8 @@ impl Writer {
                 if let Some(closed) = latest.get(&slot) {
                     self.write_version(&slot, closed)?;
                 }
-                latest.insert(slot, state.open()?);
+                let opened = state.open(latest.get(&slot))?;
+                latest.insert(slot, opened);
                 Ok(EntityOutcome::Opened)
             }
         }
@@ -469,6 +502,7 @@ impl Writer {
                     observer: row.get(9)?,
                     unsaved: None,
                     dirty: false,
+                    batch_ts_ns: None,
                 },
             ))
         })?;
