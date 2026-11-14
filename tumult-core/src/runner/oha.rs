@@ -2356,6 +2356,7 @@ mod tests {
         let deadline = Instant::now() + Duration::from_secs(10);
         while !leader_exited(&mut child).expect("waitid") {
             assert!(Instant::now() < deadline, "true never exited");
+            // sleep: the interval of a bounded poll
             std::thread::sleep(Duration::from_millis(5));
         }
         // Still a zombie: asking again gives the same answer, and its pid

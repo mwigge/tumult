@@ -172,7 +172,8 @@ fn flat_config_is_one_window_and_one_sample() {
 #[test]
 fn the_request_timeout_follows_the_window_up_to_thirty_seconds() {
     let _guard = ENV_LOCK.lock().expect("env lock");
-    std::env::remove_var("TUMULT_OHA_REQUEST_TIMEOUT_S");
+    let mut env = tumult_test_utils::EnvGuard::lock();
+    env.remove("TUMULT_OHA_REQUEST_TIMEOUT_S");
     let dir = tempfile::tempdir().expect("tempdir");
     install_fake_oha(&dir, FAKE_OHA_JSON);
 
@@ -210,6 +211,7 @@ fn fake_blacked_out() -> String {
 fn run_soak_to_its_end(config: &LoadConfig) -> tumult_core::types::LoadResult {
     let executor = OhaLoadExecutor::default();
     let handle = executor.start(config).expect("starts");
+    // sleep: the plan runs on the wall clock and no event marks its end
     std::thread::sleep(Duration::from_secs(7));
     executor.stop(handle).expect("stops")
 }
@@ -217,7 +219,8 @@ fn run_soak_to_its_end(config: &LoadConfig) -> tumult_core::types::LoadResult {
 #[test]
 fn a_blacked_out_soak_of_one_second_windows_is_recorded_not_truncated() {
     let _guard = ENV_LOCK.lock().expect("env lock");
-    std::env::remove_var("TUMULT_OHA_REQUEST_TIMEOUT_S");
+    let mut env = tumult_test_utils::EnvGuard::lock();
+    env.remove("TUMULT_OHA_REQUEST_TIMEOUT_S");
     let dir = tempfile::tempdir().expect("tempdir");
     install_fake_oha(&dir, &fake_blacked_out());
 
@@ -245,7 +248,8 @@ fn a_blacked_out_soak_of_one_second_windows_is_recorded_not_truncated() {
 #[test]
 fn a_blacked_out_soak_misses_a_declared_threshold() {
     let _guard = ENV_LOCK.lock().expect("env lock");
-    std::env::remove_var("TUMULT_OHA_REQUEST_TIMEOUT_S");
+    let mut env = tumult_test_utils::EnvGuard::lock();
+    env.remove("TUMULT_OHA_REQUEST_TIMEOUT_S");
     let dir = tempfile::tempdir().expect("tempdir");
     install_fake_oha(&dir, &fake_blacked_out());
 
@@ -481,6 +485,7 @@ fn abort_of_a_flat_load_keeps_the_partial_evidence_and_marks_it() {
     let handle = executor.start(&config(None, 600.0)).expect("starts");
     wait_for_calls(&dir, 1);
     // Let the shell reach its `wait` with the trap installed.
+    // sleep: the fake cannot say when its trap is installed
     std::thread::sleep(Duration::from_millis(200));
     let started = Instant::now();
     let result = executor.abort(handle).expect("an aborted load is a result");

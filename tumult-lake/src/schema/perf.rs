@@ -95,7 +95,7 @@ mod tests {
     /// A lake as `strip` leaves it, at schema `version`, with one row in
     /// `kept`: it opens at the current version and has the tables of both
     /// lines of work, the row still there.
-    fn opens_with_both_families(strip: &str, version: i64, kept: &str) {
+    fn assert_opens_with_both_families(strip: &str, version: i64, kept: &str) {
         let dir = tempfile::tempdir().expect("tempdir");
         let db = dir.path().join("lake.duckdb");
         drop(Store::open(&db).expect("a lake of today"));
@@ -131,7 +131,7 @@ mod tests {
     /// with `forecasts` and no rollup at v19. Either opens.
     #[test]
     fn a_lake_from_either_side_of_the_v19_merge_opens() {
-        opens_with_both_families(
+        assert_opens_with_both_families(
             "INSERT INTO service_version_sightings (service_name, environment, \
              service_version, first_seen_ns, last_seen_ns, last_deployed_ns, \
              deployments, sanitized) VALUES \
@@ -140,7 +140,7 @@ mod tests {
             18,
             "service_version_sightings",
         );
-        opens_with_both_families(
+        assert_opens_with_both_families(
             "INSERT INTO forecasts VALUES \
              ('k', 'holt-winters', '1', 'none', 0, 1, 2, false, 1, 1, [0.5], [[1.0]], 3, false); \
              DROP TABLE service_version_sightings; DROP TABLE sightings_backfill;",

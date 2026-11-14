@@ -32,6 +32,7 @@ impl ActivityExecutor for Scripted {
         let output = match activity.activity_type {
             ActivityType::Probe => self.probe,
             ActivityType::Action => {
+                // sleep: how long the scripted action takes is the input
                 std::thread::sleep(self.action);
                 if let Some(token) = &self.cancel {
                     token.cancel();
