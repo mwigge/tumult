@@ -368,3 +368,39 @@ async fn without_the_flag_nothing_is_reported_as_rejected() {
     assert_eq!(answer.partial_success, None);
     assert_eq!(served.logs().len(), 3);
 }
+
+/// NUL is the character a store is most likely to refuse. A delete whose
+/// reason holds one is applied, with the reason cleaned, and a state with
+/// one in a description value is stored: neither fails the export or
+/// costs it another record.
+#[tokio::test]
+async fn a_nul_in_a_delete_reason_or_a_description_does_not_fail_the_export() {
+    let served = serve(Some("1")).await;
+    let mut state = legacy_state(TS);
+    state.attributes.push(kv(
+        "otel.entity.attributes",
+        Value::KvlistValue(KeyValueList {
+            values: vec![text("k8s.pod.name", "check\0out")],
+        }),
+    ));
+    let answer = served.post(vec![state, ordinary()]).await;
+    assert_eq!(answer.partial_success, None);
+    let described = served.rows("SELECT CAST(description AS VARCHAR) AS d FROM entities_current");
+    assert_eq!(described[0]["d"], r#"{"k8s.pod.name":"check\u0000out"}"#);
+
+    let mut delete = spec_delete(TS + 1);
+    delete
+        .attributes
+        .retain(|kv| kv.key != "entity.delete.reason");
+    delete
+        .attributes
+        .push(text("entity.delete.reason", "scaled\0down\u{202e}"));
+    let answer = served.post(vec![delete, ordinary()]).await;
+    assert_eq!(answer.partial_success, None, "the delete was applied");
+
+    let entities = served.entities();
+    assert_eq!(entities.len(), 1);
+    assert_eq!(entities[0]["liveness"], "gone");
+    assert_eq!(entities[0]["delete_reason"], "scaleddown");
+    assert_eq!(served.logs().len(), 2, "the records beside them are stored");
+}
