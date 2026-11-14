@@ -104,8 +104,17 @@ whole and bounded as one; anything after a member that is not a member is
 `400`. Any other encoding (`zstd`, `snappy`,
 `deflate`, several at once) is answered `415 Unsupported Media Type` with
 `Accept-Encoding: gzip`, never accepted and never called malformed; a
-body that says gzip and is not is `400`. The body on the wire is bounded
-at 2 MiB, compressed or not, as before.
+body that says gzip and is not is `400`.
+
+An OTLP/HTTP body has two bounds, and both answer `413`:
+
+| Bound | Value | Applies to |
+|-------|-------|------------|
+| On the wire | 2 MiB | the body as it is sent, compressed or not, refused before it is read |
+| Expanded | 4 MiB | what a gzip body expands to, all its members together |
+
+Neither is configurable. A Collector whose batches are refused for their
+size sends smaller ones (`send_batch_max_size` of the `batch` processor).
 
 `resourcedetection` matters for the `host` entity: `host_metrics` sends its
 event without an id, and the daemon takes the identity from the resource

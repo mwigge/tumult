@@ -273,3 +273,68 @@ async fn a_gzip_member_followed_by_something_else_is_a_client_error() {
         assert_eq!(daemon.count(table), 0, "{route}");
     }
 }
+
+/// The status the router gives `body` on `route`, without a socket: a
+/// refusal that comes before the body is read is seen as it is.
+async fn answer(route: &str, encoding: Option<&str>, body: Vec<u8>) -> (u16, tempfile::TempDir) {
+    use tower::ServiceExt;
+
+    let dir = tempfile::TempDir::new().unwrap();
+    let store = Store::open(&dir.path().join("k.duckdb")).unwrap();
+    let (ingest, _task) = IngestWriter::spawn(store.writer().unwrap(), 16);
+    let mut request =
+        axum::http::Request::post(route).header("content-type", "application/x-protobuf");
+    if let Some(encoding) = encoding {
+        request = request.header("content-encoding", encoding);
+    }
+    let request = request.body(axum::body::Body::from(body)).unwrap();
+    let response = http::router(ingest).oneshot(request).await.unwrap();
+    (response.status().as_u16(), dir)
+}
+
+/// An export for `route` of exactly `len` bytes.
+fn export_of(route: &str, len: usize) -> Vec<u8> {
+    let framing = export(route, &"x".repeat(len - 64)).len() - (len - 64);
+    let body = export(route, &"x".repeat(len - framing));
+    assert_eq!(body.len(), len, "{route}");
+    body
+}
+
+/// Bytes gzip cannot make smaller (a xorshift sequence).
+fn noise(len: usize) -> Vec<u8> {
+    let mut state = 0x2545_f491_4f6c_dd1d_u64;
+    let mut next = || {
+        state ^= state << 13;
+        state ^= state >> 7;
+        state ^= state << 17;
+        state.to_le_bytes()[0]
+    };
+    (0..len).map(|_| next()).collect()
+}
+
+/// The body on the wire is bounded whatever its encoding: one of exactly
+/// the bound is read, one byte more is too large.
+#[tokio::test]
+async fn a_body_larger_than_the_bound_on_the_wire_is_too_large() {
+    for (route, _) in ROUTES {
+        let at_the_bound = export_of(route, http::MAX_BODY_BYTES);
+        let (status, _dir) = answer(route, None, at_the_bound).await;
+        assert_eq!(status, 200, "{route}: exactly the bound");
+        let one_more = export_of(route, http::MAX_BODY_BYTES + 1);
+        let (status, _dir) = answer(route, None, one_more).await;
+        assert_eq!(status, 413, "{route}: one byte more");
+    }
+}
+
+/// A gzip body is bounded on the wire too, before anything is expanded:
+/// one that would expand to less than a gzip body may is still too large
+/// when it is more than the bound as it is sent.
+#[tokio::test]
+async fn a_gzip_body_larger_than_the_bound_on_the_wire_is_too_large() {
+    let body = gzip(&noise(3 * 1024 * 1024));
+    assert!(body.len() > http::MAX_BODY_BYTES, "{} bytes", body.len());
+    for (route, _) in ROUTES {
+        let (status, _dir) = answer(route, Some("gzip"), body.clone()).await;
+        assert_eq!(status, 413, "{route}");
+    }
+}

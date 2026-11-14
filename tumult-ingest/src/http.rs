@@ -8,6 +8,8 @@
 //! Collector's `otlphttp` exporter does by default). A gzip body may expand
 //! to 4 MiB, as a message may on gRPC; one that expands to more is `413`.
 //! Any other encoding is `415`, with `Accept-Encoding: gzip` in the answer.
+//! The body as it is sent, compressed or not, is at most
+//! [`MAX_BODY_BYTES`] (2 MiB); a larger one is `413` before it is read.
 //!
 //! When an ingest token is configured (`KRONIKA_INGEST_TOKEN`), every
 //! `/v1/*` route requires `Authorization: Bearer <token>`; non-`/v1` routes
@@ -15,7 +17,7 @@
 //! tumultd's ops router (behind the API auth middleware), not here.
 
 use axum::body::Bytes;
-use axum::extract::{ConnectInfo, Request, State};
+use axum::extract::{ConnectInfo, DefaultBodyLimit, Request, State};
 use axum::http::{header, HeaderMap, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
@@ -38,6 +40,12 @@ mod encoding;
 
 use encoding::Refusal;
 
+/// The most an OTLP/HTTP body may be on the wire, compressed or not
+/// (2 MiB). It is what axum takes when nothing is said; it is said here so
+/// that the bound does not move with a dependency. What a gzip body may
+/// expand to is bounded apart from it (4 MiB).
+pub const MAX_BODY_BYTES: usize = 2 * 1024 * 1024;
+
 /// Build the HTTP router (OTLP/HTTP), unauthenticated.
 pub fn router(ingest: IngestWriter) -> Router {
     router_with_token(ingest, None)
@@ -49,7 +57,8 @@ pub fn router_with_token(ingest: IngestWriter, ingest_token: Option<String>) -> 
     let router = Router::new()
         .route("/v1/traces", post(traces))
         .route("/v1/metrics", post(metrics))
-        .route("/v1/logs", post(logs));
+        .route("/v1/logs", post(logs))
+        .layer(DefaultBodyLimit::max(MAX_BODY_BYTES));
     let router = match ingest_token {
         Some(token) => router.layer(middleware::from_fn_with_state(
             std::sync::Arc::new(format!("Bearer {token}")),
