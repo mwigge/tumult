@@ -20,7 +20,8 @@
 //! the one to fix.
 //!
 //! None of this is prescribed by a regulation: it is a house model, and
-//! its numbers live in [`super::params::RollupParams`].
+//! its numbers live in [`super::params::RollupParams`], all but the
+//! floor: an unknown node is index 1 and level 1 by construction.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -31,6 +32,13 @@ use super::maturity::{
 };
 use super::model::{day_of, Evidence, Function, Service, Slo, SloFeed, Tier, Workload};
 use super::params::{HouseParams, PillarWeights};
+
+/// Index of an unknown node, and what it enters its parent's mean with:
+/// the bottom of the scale. It is not a parameter: nothing an org file
+/// says may lift a node no evidence was ingested for.
+pub const UNKNOWN_INDEX: f64 = 1.0;
+/// Level of an unknown node, whatever gate its input carries.
+pub const UNKNOWN_LEVEL: u8 = 1;
 
 /// Id of the organisation node, the root of the spine.
 pub const ROOT_ID: &str = "org:";
@@ -313,7 +321,7 @@ fn score(
     target: u8,
     params: &HouseParams,
 ) -> NodeScore {
-    let floor = params.rollup.unknown_floor;
+    let floor = UNKNOWN_INDEX;
     let own = node.own.filter(|_| !node.kind.is_org());
     let unknown = own.is_none() && kids.iter().all(|kid| kid.unknown);
     let mean = weighted(kids, |kid| kid.index);
@@ -341,7 +349,8 @@ fn score(
         node.critical
     };
     let by_index = floor_level(index);
-    let base = by_index.min(node.gate);
+    let gate = if unknown { UNKNOWN_LEVEL } else { node.gate };
+    let base = by_index.min(gate);
     let weakest = kids
         .iter()
         .filter(|kid| kid.critical)
@@ -349,9 +358,9 @@ fn score(
         .min();
     let cap = match weakest {
         Some(level) if level < base => child_cap(level, kids, scores),
-        _ if node.gate < by_index => Cap {
+        _ if gate < by_index => Cap {
             rule: CapRule::Gate,
-            level: Some(node.gate),
+            level: Some(gate),
             reason: node.gate_reason.clone(),
             ..Cap::none()
         },
@@ -1286,8 +1295,11 @@ mod tests {
     }
 
     fn spine(inputs: &Inputs) -> BTreeMap<String, NodeScore> {
-        let params = HouseParams::default();
-        let matrix = Matrix::build(inputs, &params);
+        spine_with(inputs, &HouseParams::default())
+    }
+
+    fn spine_with(inputs: &Inputs, params: &HouseParams) -> BTreeMap<String, NodeScore> {
+        let matrix = Matrix::build(inputs, params);
         let entity = maturity::assess(&matrix, Scope::Entity);
         assess(&matrix, &entity)
             .into_iter()
@@ -1357,6 +1369,44 @@ mod tests {
         assert_eq!(org.level, 2);
         assert!(!org.cap.origin.contains(&"svc:payments-db".to_string()));
         assert_eq!(org.unknown_share, 0.0);
+    }
+
+    /// The floor is the model's, not the org file's: a parameter that
+    /// got past validation still gives a silent service nothing.
+    #[test]
+    fn an_unknown_node_is_index_1_and_level_1_whatever_the_floor_parameter_says() {
+        let mut inputs = firm_b();
+        let known = spine(&inputs)["org:"].index;
+        for name in ["archive", "batch", "mirror"] {
+            inputs.services.push(Service::silent(name, &["cif-0002"]));
+        }
+        let default = spine(&inputs);
+        assert!(default["org:"].index < known);
+        let mut params = HouseParams::default();
+        params.rollup.unknown_floor = 5.0;
+        let raised = spine_with(&inputs, &params);
+        for (id, node) in &raised {
+            assert_eq!(node.index, default[id].index, "{id}");
+            assert_eq!(node.level, default[id].level, "{id}");
+            if node.unknown {
+                assert_eq!((node.index, node.level), (1.0, 1), "{id}");
+            }
+        }
+        assert_eq!(raised["svc:archive"].index, 1.0);
+    }
+
+    #[test]
+    fn an_unknown_node_is_level_1_even_where_no_gate_is_evaluated() {
+        let mut params = HouseParams::default();
+        params.rollup.unknown_floor = 5.0;
+        let nodes = [
+            node("org:bank", Kind::Organisation, None, 0.0, None),
+            node("org:bank/empty", Kind::Org, Some("org:bank"), 0.0, None),
+        ];
+        for scored in roll_up(&nodes, "org:bank", 3, &params) {
+            assert!(scored.unknown);
+            assert_eq!((scored.index, scored.level), (1.0, 1), "{}", scored.id);
+        }
     }
 
     #[test]

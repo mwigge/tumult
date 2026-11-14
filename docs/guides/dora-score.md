@@ -233,7 +233,7 @@ score:
 | `gates` | l2_c1 50, l2_coverage 25; l3_c1 80, l3_c2 50, l3_coverage 60, l3_slo 80, l3_slo_history_days 180, l3_recovery 60, l3_max_unknown_share 0.5; l4_c3 80, l4_coverage 80, l4_slo 90, l4_recovery 80, l4_loop 60; l5_c4 90, l5_coverage 90, l5_slo 95, l5_recovery 90, l5_loop 85 | Gate thresholds |
 | `rollup.own_share` | workload 1, service 0.5, component 0.3, system 0.3, entity 0.5, org 0 | ω per node kind |
 | `rollup.own_pillars` | workload C T R; service C T S; component and system T R; entity T S R L; org none | Pillars a node kind scores itself on |
-| `rollup.unknown_floor` | 1.0 | Index of an unknown node |
+| `rollup.unknown_floor` | 1.0 | Index of an unknown node. Fixed: any other value is refused, and an unknown node is level 1 |
 | `rollup.unassigned_weight` | 1.0 | Weight of a service with no function, and of an org unit with no function |
 | `rollup.critical_inheritance` | true | A node that supports a critical function is critical |
 | `conformance` | window_days 90; level1 … level4 key lists | Attribute keys each conformance level needs on every span |

@@ -244,8 +244,10 @@ pub struct RollupParams {
     /// Pillars a node of each kind can observe itself (`C`, `T`, `S`,
     /// `R`, `L`).
     pub own_pillars: BTreeMap<String, Vec<String>>,
-    /// Score an unknown child enters its parent's mean with, and the
-    /// level it caps a parent at when critical.
+    /// Fixed at 1, the bottom of the scale: the index of an unknown node
+    /// and what it enters its parent's mean with. The key is kept so an
+    /// org file that names it still reads; the roll-up never reads it,
+    /// and any other value is refused.
     pub unknown_floor: f64,
     /// Weight of each service that maps to no function.
     pub unassigned_weight: f64,
@@ -677,13 +679,27 @@ impl HouseParams {
                 ));
             }
         }
-        within("rollup.unknown_floor", self.rollup.unknown_floor, 1.0, 5.0)?;
+        self.check_unknown_floor()?;
         for (id, status) in &self.expected_status {
             if !(1..=3).contains(status) {
                 return Err(format!(
                     "score.expected_status.{id} must be 1, 2 or 3, got {status}"
                 ));
             }
+        }
+        Ok(())
+    }
+
+    /// A node nothing was ingested for sits at the bottom of the scale;
+    /// a higher floor would hand it a score from the org file.
+    fn check_unknown_floor(&self) -> Result<(), String> {
+        let floor = self.rollup.unknown_floor;
+        within("rollup.unknown_floor", floor, 1.0, 5.0)?;
+        if floor > 1.0 {
+            return Err(format!(
+                "score.rollup.unknown_floor is fixed at 1 (a node without ingested evidence \
+                 cannot score above the bottom of the scale), got {floor}"
+            ));
         }
         Ok(())
     }
@@ -1015,6 +1031,21 @@ mod tests {
         "l5_recovery",
         "l5_loop",
     ];
+
+    /// An unknown node enters at 1 and nowhere else: the key reads, and
+    /// any other value is refused by name.
+    #[test]
+    fn the_unknown_floor_is_fixed_at_1() {
+        let named: HouseParams = serde_yaml::from_str("rollup: {unknown_floor: 1.0}\n").unwrap();
+        named.validate().unwrap();
+        for value in ["1.5", "3", "5.0"] {
+            let error = refused(&format!("rollup: {{unknown_floor: {value}}}\n"));
+            assert!(
+                error.contains("score.rollup.unknown_floor is fixed at 1"),
+                "{value} gave: {error}"
+            );
+        }
+    }
 
     #[test]
     fn every_gate_threshold_is_a_percentage() {
