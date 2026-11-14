@@ -414,10 +414,22 @@ pub async fn stop_proxy(listen: SocketAddr) -> Result<String, NetError> {
 
 #[cfg(test)]
 mod tests {
+    use tumult_test_utils::EnvGuard;
+
     use super::*;
 
     fn addr(s: &str) -> SocketAddr {
         s.parse().expect("valid socket addr")
+    }
+
+    /// A loopback address picked by the kernel, with the listener that owns
+    /// it. The pidfile is keyed on the address, so the caller keeps the
+    /// listener for as long as it uses the pidfile: while it is bound, the
+    /// kernel cannot hand the same port to another test.
+    fn reserved_addr() -> (std::net::TcpListener, SocketAddr) {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind an ephemeral port");
+        let addr = listener.local_addr().expect("read the bound address");
+        (listener, addr)
     }
 
     #[test]
@@ -440,7 +452,7 @@ mod tests {
 
     #[tokio::test]
     async fn stop_proxy_removes_a_stale_pidfile() {
-        let listen = addr("127.0.0.1:65533");
+        let (_reserved, listen) = reserved_addr();
         let pidfile = pidfile_path(listen);
         // Simulate a leftover pidfile pointing at a long-dead PID. On Linux the
         // identity check refuses the kill and the stale file is cleaned up;
@@ -473,7 +485,7 @@ mod tests {
     #[cfg(target_os = "linux")]
     #[tokio::test]
     async fn stop_proxy_refuses_to_kill_a_non_proxyd_process() {
-        let listen = addr("127.0.0.1:65532");
+        let (_reserved, listen) = reserved_addr();
         let pidfile = pidfile_path(listen);
         tokio::fs::write(&pidfile, std::process::id().to_string())
             .await
@@ -502,7 +514,7 @@ mod tests {
         else {
             return; // no `sleep` on this host — nothing to test
         };
-        let listen = addr("127.0.0.1:65531");
+        let (_reserved, listen) = reserved_addr();
         let pidfile = pidfile_path(listen);
         tokio::fs::write(&pidfile, child.id().to_string())
             .await
@@ -522,6 +534,7 @@ mod tests {
                 execd = true;
                 break;
             }
+            // sleep: interval of the bounded poll of /proc above.
             tokio::time::sleep(std::time::Duration::from_millis(20)).await;
         }
         assert!(execd, "stand-in proxyd never exec'd");
@@ -531,30 +544,6 @@ mod tests {
         assert!(!pidfile.exists());
         let status = child.wait().expect("reap stand-in daemon");
         assert!(!status.success(), "stand-in should have been signalled");
-    }
-
-    /// Restore an env var to its prior value on drop, so a panicking scenario
-    /// cannot leak `TUMULT_NET_PROXYD` into other tests in this process.
-    struct EnvGuard {
-        key: &'static str,
-        saved: Option<String>,
-    }
-
-    impl EnvGuard {
-        fn set(key: &'static str, value: &std::path::Path) -> Self {
-            let saved = std::env::var(key).ok();
-            std::env::set_var(key, value);
-            Self { key, saved }
-        }
-    }
-
-    impl Drop for EnvGuard {
-        fn drop(&mut self) {
-            match &self.saved {
-                Some(value) => std::env::set_var(self.key, value),
-                None => std::env::remove_var(self.key),
-            }
-        }
     }
 
     fn unique_temp_file(tag: &str) -> PathBuf {
@@ -569,11 +558,10 @@ mod tests {
         //    found beside the test executable.
         let real_file = unique_temp_file("real-proxyd");
         std::fs::write(&real_file, b"not really a daemon").unwrap();
-        {
-            let _guard = EnvGuard::set(PROXYD_ENV, &real_file);
-            let found = locate_proxyd().expect("an existing override file must be honoured");
-            assert_eq!(found, real_file);
-        }
+        let mut env = EnvGuard::lock();
+        env.set(PROXYD_ENV, &real_file);
+        let found = locate_proxyd().expect("an existing override file must be honoured");
+        assert_eq!(found, real_file);
 
         // 2. An override pointing at a nonexistent path falls through to the
         //    sibling-daemon search beside the current executable; with no such
@@ -581,7 +569,7 @@ mod tests {
         //    on the build layout (Cargo places `tumult-net-proxyd` one
         //    directory up from the test binary when it is built).
         let missing = unique_temp_file("missing-proxyd");
-        let _guard = EnvGuard::set(PROXYD_ENV, &missing);
+        env.set(PROXYD_ENV, &missing);
         let exe = std::env::current_exe().unwrap();
         let dir = exe.parent().unwrap();
         let sibling_exists =
@@ -604,13 +592,11 @@ mod tests {
         //    listen address, so the start must fail surfacing the daemon's
         //    captured stderr, and must not leave a pidfile behind.
         let script = unique_temp_file("dead-proxyd");
-        std::fs::write(&script, b"#!/bin/sh\necho boom >&2\nsleep 30\n").unwrap();
         #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
-        }
-        let _guard = EnvGuard::set(PROXYD_ENV, &script);
+        tumult_test_utils::write_executable(&script, "#!/bin/sh\necho boom >&2\nsleep 30\n");
+        #[cfg(not(unix))]
+        std::fs::write(&script, b"#!/bin/sh\necho boom >&2\nsleep 30\n").unwrap();
+        env.set(PROXYD_ENV, &script);
         let listen = addr("127.0.0.1:0");
         let err = start_proxy(listen, addr("127.0.0.1:9"), FaultProfile::default())
             .await
@@ -628,7 +614,7 @@ mod tests {
         //    the spawn itself.
         let not_exec = unique_temp_file("not-exec-proxyd");
         std::fs::write(&not_exec, b"plain text, no exec bit").unwrap();
-        let _guard = EnvGuard::set(PROXYD_ENV, &not_exec);
+        env.set(PROXYD_ENV, &not_exec);
         let err = start_proxy(listen, addr("127.0.0.1:9"), FaultProfile::default())
             .await
             .expect_err("a non-executable daemon path must fail to spawn");
@@ -716,7 +702,7 @@ mod tests {
 
     #[tokio::test]
     async fn stop_proxy_treats_a_garbage_pidfile_as_nothing_running() {
-        let listen = addr("127.0.0.1:59993");
+        let (_reserved, listen) = reserved_addr();
         let pidfile = pidfile_path(listen);
         tokio::fs::write(&pidfile, "not-a-pid").await.unwrap();
         let out = stop_proxy(listen).await.expect("idempotent rollback");

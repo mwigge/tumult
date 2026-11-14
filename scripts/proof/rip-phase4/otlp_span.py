@@ -12,6 +12,7 @@ resilience.target.environment; deployment.environment.name and
 deployment.environment are the other two the daemon reads). An
 environment of "-" leaves the resource untagged.
 """
+
 import os
 import struct
 import sys
@@ -58,8 +59,7 @@ def main():
     if environment != "-":
         attributes.append((attribute, environment))
     resource = b"".join(
-        field_bytes(1, key_value(k, v))  # Resource.attributes
-        for k, v in attributes
+        field_bytes(1, key_value(k, v)) for k, v in attributes  # Resource.attributes
     )
     now = time.time_ns()
     span = (

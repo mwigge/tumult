@@ -4,7 +4,6 @@
 //! through the CLI command layer, and verifies the journal output.
 
 use std::collections::HashMap;
-use std::os::unix::fs::PermissionsExt;
 use std::sync::Arc;
 
 use indexmap::IndexMap;
@@ -12,6 +11,7 @@ use tempfile::TempDir;
 use tumult_core::controls::ControlRegistry;
 use tumult_core::runner::{run_experiment, ActivityExecutor, RunConfig};
 use tumult_core::types::*;
+use tumult_test_utils::write_executable;
 
 /// Create a script plugin in a temp directory that:
 /// - Has an action that echoes "injected"
@@ -34,14 +34,12 @@ fn setup_script_plugin(dir: &std::path::Path) {
     // Action script
     let action_script = "#!/bin/sh\necho injected\nexit 0\n";
     let action_path = plugin_dir.join("actions/inject.sh");
-    std::fs::write(&action_path, action_script).unwrap();
-    std::fs::set_permissions(&action_path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    write_executable(&action_path, action_script);
 
     // Probe script
     let probe_script = "#!/bin/sh\necho 200\nexit 0\n";
     let probe_path = plugin_dir.join("probes/check.sh");
-    std::fs::write(&probe_path, probe_script).unwrap();
-    std::fs::set_permissions(&probe_path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    write_executable(&probe_path, probe_script);
 }
 
 /// Create an experiment that uses process providers (shell scripts).
@@ -229,12 +227,10 @@ async fn e2e_failing_script_marks_failed() {
 
     // Create a script that fails
     let fail_script = dir.path().join("fail.sh");
-    std::fs::write(&fail_script, "#!/bin/sh\nexit 1\n").unwrap();
-    std::fs::set_permissions(&fail_script, std::fs::Permissions::from_mode(0o755)).unwrap();
+    write_executable(&fail_script, "#!/bin/sh\nexit 1\n");
 
     let probe_script = dir.path().join("probe.sh");
-    std::fs::write(&probe_script, "#!/bin/sh\necho 200\nexit 0\n").unwrap();
-    std::fs::set_permissions(&probe_script, std::fs::Permissions::from_mode(0o755)).unwrap();
+    write_executable(&probe_script, "#!/bin/sh\necho 200\nexit 0\n");
 
     let experiment = create_experiment(
         fail_script.to_str().unwrap(),
@@ -315,8 +311,7 @@ probes[1]:
     ];
     for (name, content) in scripts {
         let path = plugin_dir.join(name);
-        std::fs::write(&path, content).unwrap();
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        write_executable(&path, content);
     }
 }
 

@@ -1,7 +1,6 @@
 //! Integration tests that build the fault catalog from the repository's
 //! shipped `plugins/` directory and scaffold an experiment from each domain.
 
-use std::collections::HashMap;
 use std::path::PathBuf;
 
 use indexmap::IndexMap;
@@ -121,7 +120,6 @@ fn scaffold_carries_target_and_rollback_where_applicable() {
     let toon = build_experiment_toon(&request).unwrap();
     assert!(toon.contains("checkout"));
     // add-latency has a curated rollback (reset-tc).
-    let _empty: HashMap<String, String> = HashMap::new();
     let parsed = parse_experiment(&toon).unwrap();
     assert_eq!(parsed.rollbacks.len(), 1);
     assert_eq!(parsed.rollbacks[0].name, "reset-tc");

@@ -1,5 +1,7 @@
 """Runnable container topology must preserve the local sandbox boundary."""
 
+import importlib.util
+import re
 from pathlib import Path
 
 import yaml
@@ -52,6 +54,18 @@ def test_build_installs_checksum_pinned_real_tumult():
     dockerfile = (ROOT / "agent/Dockerfile").read_text()
     assert "install_tumult.py" in dockerfile
     installer = (ROOT / "scripts/install_tumult.py").read_text()
-    assert 'VERSION = "2.22.0"' in installer
-    assert "sha256" in installer
     assert "extractall" not in installer
+    spec = importlib.util.spec_from_file_location(
+        "install_tumult", ROOT / "scripts/install_tumult.py"
+    )
+    pinned = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(pinned)
+    version = pinned.VERSION
+    assert re.fullmatch(r"\d+\.\d+\.\d+", version)
+    # One release, one checksum per supported architecture.
+    assert set(pinned.ASSETS) == {"x86_64", "aarch64"}
+    checksums = [checksum for _, checksum in pinned.ASSETS.values()]
+    assert all(re.fullmatch(r"[0-9a-f]{64}", checksum) for checksum in checksums)
+    assert len(set(checksums)) == len(checksums)
+    # The local check script asks for a binary of the same release.
+    assert f"Tumult {version} " in (ROOT / "scripts/check.sh").read_text()

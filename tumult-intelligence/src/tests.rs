@@ -1,12 +1,11 @@
 //! Test suite for the intelligence recommendation pipeline.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use crate::context::{build_context, heuristic_output};
 use crate::model::parse_model_response;
 use crate::recommend::validate_draft;
 use crate::render::render_text;
-use crate::report::heuristic_report;
 use crate::types::{OutputFormat, RecommendOptions, RecommendationItem, RecommendationOutput};
 
 #[test]
@@ -66,12 +65,6 @@ fn rejects_model_json_without_recommendations() {
         err.to_string().contains("recommendations"),
         "unexpected error: {err}"
     );
-}
-
-#[test]
-fn missing_store_heuristic_is_useful() {
-    let report = heuristic_report(Path::new("/definitely/not/a/tumult/store.duckdb"));
-    assert!(report.contains("No analytics store found"));
 }
 
 #[test]

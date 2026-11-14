@@ -70,3 +70,10 @@ web/playwright-report/
 web/test-results/
 
 .quality-venv/
+
+# Local build and test logs
+.build.log
+.clippy.log
+.test.log
+__pycache__/
+*.pyc

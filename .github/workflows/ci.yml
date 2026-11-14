@@ -118,6 +118,9 @@ jobs:
       # every target including tests, so a check pass first only recompiles
       # the workspace crates a second time.
       - run: cargo clippy --all-targets --all-features -- -D warnings -W clippy::pedantic
+      # tumult-clickhouse depends on tumult-lake without the duckdb feature;
+      # --all-features never builds that shape.
+      - run: cargo check -p tumult-lake --no-default-features
       # Fail on unused dependencies declared in Cargo.toml (respects
       # [package.metadata.cargo-machete] ignore lists).
       - run: cargo machete --with-metadata
@@ -220,3 +223,5 @@ jobs:
       - run: python3 scripts/test-smoke-daemon-binary.py
       - run: bash -n scripts/demo-check.sh
       - run: python3 scripts/test-starmap-check.py
+      - run: python3 scripts/test-check-test-hygiene.py
+      - run: python3 scripts/check-test-hygiene.py

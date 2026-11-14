@@ -7993,6 +7993,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.19",
  "tracing",
+ "tumult-test-utils",
 ]
 
 [[package]]
@@ -8001,7 +8002,6 @@ version = "2.22.0"
 dependencies = [
  "axum",
  "opentelemetry",
- "opentelemetry_sdk",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
@@ -8011,6 +8011,7 @@ dependencies = [
  "toon-format",
  "tracing",
  "tumult-otel",
+ "tumult-test-utils",
 ]
 
 [[package]]
@@ -8090,6 +8091,7 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.19",
  "tumult-otel",
+ "tumult-test-utils",
 ]
 
 [[package]]
@@ -8121,6 +8123,7 @@ dependencies = [
  "tumult-mcp",
  "tumult-otel",
  "tumult-plugin",
+ "tumult-test-utils",
  "tumult-tui",
 ]
 
@@ -8139,6 +8142,8 @@ dependencies = [
  "tumult-core",
  "tumult-lake",
  "tumult-otel",
+ "tumult-test-utils",
+ "url",
 ]
 
 [[package]]
@@ -8210,6 +8215,7 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.19",
  "tracing",
+ "tumult-test-utils",
 ]
 
 [[package]]
@@ -8225,6 +8231,7 @@ dependencies = [
  "tumult-net",
  "tumult-plugin",
  "tumult-ssh",
+ "tumult-test-utils",
  "tumult-windows",
 ]
 
@@ -8300,6 +8307,7 @@ dependencies = [
  "tumult-core",
  "tumult-lake",
  "tumult-plugin",
+ "tumult-test-utils",
 ]
 
 [[package]]
@@ -8322,6 +8330,7 @@ dependencies = [
  "tumult-graph",
  "tumult-otel",
  "tumult-plugin",
+ "tumult-test-utils",
 ]
 
 [[package]]
@@ -8343,6 +8352,7 @@ dependencies = [
  "tumult-baseline",
  "tumult-core",
  "tumult-graph",
+ "tumult-test-utils",
 ]
 
 [[package]]
@@ -8408,6 +8418,7 @@ dependencies = [
  "tracing",
  "tumult-otel",
  "tumult-plugin",
+ "tumult-test-utils",
 ]
 
 [[package]]
@@ -8460,6 +8471,7 @@ dependencies = [
  "tokio",
  "toon-format",
  "tumult-otel",
+ "tumult-test-utils",
 ]
 
 [[package]]
@@ -8513,6 +8525,7 @@ dependencies = [
  "tracing",
  "tumult-otel",
  "tumult-plugin",
+ "tumult-test-utils",
  "zeroize",
 ]
 
@@ -8521,7 +8534,10 @@ name = "tumult-test-utils"
 version = "2.22.0"
 dependencies = [
  "indexmap",
- "serde_json",
+ "opentelemetry",
+ "opentelemetry_sdk",
+ "tempfile",
+ "tokio",
  "tumult-core",
 ]
 
@@ -8580,6 +8596,7 @@ dependencies = [
  "tumult-metrics",
  "tumult-otel",
  "tumult-report",
+ "tumult-test-utils",
  "uuid",
 ]
 

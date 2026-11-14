@@ -167,6 +167,20 @@ pub fn plugin_search_paths() -> Vec<PathBuf> {
 /// 4. `TUMULT_PLUGIN_PATH` env var (colon-separated)
 #[must_use]
 pub fn plugin_search_paths_with_config(config: &PluginDiscoveryConfig) -> Vec<PathBuf> {
+    search_paths(
+        config,
+        dirs_path().as_deref(),
+        std::env::var("TUMULT_PLUGIN_PATH").ok().as_deref(),
+    )
+}
+
+/// [`plugin_search_paths_with_config`] with the two process-wide inputs (the
+/// home directory and `TUMULT_PLUGIN_PATH`) passed in.
+fn search_paths(
+    config: &PluginDiscoveryConfig,
+    home: Option<&Path>,
+    env_paths: Option<&str>,
+) -> Vec<PathBuf> {
     let mut paths = Vec::new();
 
     // 0. Explicit config paths
@@ -176,16 +190,14 @@ pub fn plugin_search_paths_with_config(config: &PluginDiscoveryConfig) -> Vec<Pa
     paths.push(PathBuf::from("./plugins"));
 
     // 2. User-global ~/.tumult/plugins/
-    if let Some(home) = dirs_path() {
+    if let Some(home) = home {
         paths.push(home.join(".tumult").join("plugins"));
     }
 
     // 3. TUMULT_PLUGIN_PATH env var (colon-separated)
-    if let Ok(env_paths) = std::env::var("TUMULT_PLUGIN_PATH") {
-        for p in env_paths.split(':') {
-            if !p.is_empty() {
-                paths.push(PathBuf::from(p));
-            }
+    for p in env_paths.unwrap_or_default().split(':') {
+        if !p.is_empty() {
+            paths.push(PathBuf::from(p));
         }
     }
 
@@ -301,6 +313,46 @@ mod tests {
         }
     }
 
+    // ── discover_all_plugins ───────────────────────────────────
+
+    /// The default-path entry point adds nothing to the configured one except
+    /// where it looks: `$HOME/.tumult/plugins` and each `TUMULT_PLUGIN_PATH`
+    /// entry. Names are unique to this test, so whatever `./plugins` holds
+    /// does not matter.
+    #[test]
+    fn discover_all_plugins_reads_the_home_directory_and_the_plugin_path_variable() {
+        let home = TempDir::new().unwrap();
+        let extra = TempDir::new().unwrap();
+        let empty = TempDir::new().unwrap();
+        write_manifest(
+            &home.path().join(".tumult").join("plugins"),
+            "from-home",
+            &sample_manifest("discovery-test-from-home"),
+        );
+        write_manifest(
+            extra.path(),
+            "from-env",
+            &sample_manifest("discovery-test-from-env"),
+        );
+        let mut env = tumult_test_utils::EnvGuard::lock();
+        env.set("HOME", home.path()).set(
+            "TUMULT_PLUGIN_PATH",
+            format!("{}:{}", empty.path().display(), extra.path().display()),
+        );
+
+        let manifests = discover_all_plugins().expect("discovery never fails");
+
+        let ours: Vec<&str> = manifests
+            .iter()
+            .map(|manifest| manifest.name.as_str())
+            .filter(|name| name.starts_with("discovery-test-"))
+            .collect();
+        assert_eq!(
+            ours,
+            ["discovery-test-from-home", "discovery-test-from-env"]
+        );
+    }
+
     // ── discover_plugins_in_dir ────────────────────────────────
 
     #[test]
@@ -384,17 +436,31 @@ mod tests {
     // ── plugin_search_paths ────────────────────────────────────
 
     #[test]
-    fn search_paths_includes_local_plugins() {
-        let paths = plugin_search_paths();
-        assert!(paths.contains(&PathBuf::from("./plugins")));
+    fn search_paths_are_config_then_local_then_home_then_env_entries() {
+        let config = PluginDiscoveryConfig {
+            plugin_paths: vec![PathBuf::from("/etc/tumult/plugins")],
+        };
+        let paths = search_paths(
+            &config,
+            Some(Path::new("/home/ops")),
+            Some("/opt/a::/opt/b:"),
+        );
+        assert_eq!(
+            paths,
+            [
+                PathBuf::from("/etc/tumult/plugins"),
+                PathBuf::from("./plugins"),
+                PathBuf::from("/home/ops/.tumult/plugins"),
+                PathBuf::from("/opt/a"),
+                PathBuf::from("/opt/b"),
+            ]
+        );
     }
 
     #[test]
-    fn search_paths_includes_home_tumult_plugins() {
-        let paths = plugin_search_paths();
-        let home = std::env::var("HOME").unwrap();
-        let expected = PathBuf::from(home).join(".tumult").join("plugins");
-        assert!(paths.contains(&expected));
+    fn search_paths_without_home_or_env_are_only_the_local_directory() {
+        let paths = search_paths(&PluginDiscoveryConfig::default(), None, None);
+        assert_eq!(paths, [PathBuf::from("./plugins")]);
     }
 
     // ── discover_report_with_config (dedup + shadow warnings) ──
@@ -514,21 +580,14 @@ mod tests {
         fs::create_dir(&bad_plugin).unwrap();
         fs::write(bad_plugin.join("plugin.toon"), "{{{{").unwrap();
 
-        let config = PluginDiscoveryConfig {
-            plugin_paths: vec![dir.path().to_path_buf()],
-        };
-        let manifests = discover_report_with_config(&config).into_manifests();
+        // One directory, not the search path: the count below must not depend
+        // on what `./plugins`, `$HOME` or `TUMULT_PLUGIN_PATH` hold.
+        let report = discover_plugins_in_dir(dir.path());
+        assert_eq!(report.warnings.len(), 1, "{:?}", report.warnings);
+
+        let manifests = report.into_manifests();
         assert_eq!(manifests.len(), 1);
         assert_eq!(manifests[0].name, "tumult-kafka");
-    }
-
-    #[test]
-    fn compatibility_wrapper_never_fails() {
-        // The legacy `Result`-returning entry point scans the default search
-        // paths and always succeeds, whatever they contain.
-        let plugins = discover_all_plugins().unwrap();
-        // Every returned manifest is well-formed enough to have a name.
-        assert!(plugins.iter().all(|p| !p.name.is_empty()));
     }
 
     #[cfg(unix)]

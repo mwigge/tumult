@@ -144,10 +144,13 @@ mod tests {
     }
 
     #[test]
-    fn default_registry_matches_new() {
-        let registry = PluginRegistry::default();
-        assert!(registry.list_plugins().is_empty());
-        assert!(!registry.has_action("anything", "anything"));
+    fn new_and_default_registries_start_empty() {
+        for registry in [PluginRegistry::new(), PluginRegistry::default()] {
+            assert!(registry.list_plugins().is_empty());
+            assert!(registry.list_all_actions().is_empty());
+            assert!(!registry.has_action("anything", "anything"));
+            assert!(!registry.has_probe("anything", "anything"));
+        }
     }
 
     #[test]

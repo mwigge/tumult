@@ -136,25 +136,127 @@ pub(crate) fn event_proxy_stopped(pid: Option<u32>) {
 
 #[cfg(test)]
 mod tests {
+    use opentelemetry::trace::SpanKind;
+    use tumult_test_utils::capture_spans;
+
     use super::*;
 
-    #[test]
-    fn action_spans_do_not_panic() {
-        let _g = begin_start_proxy("127.0.0.1:8080", "10.0.0.1:80");
-        let _g = begin_stop_proxy("127.0.0.1:8080");
-        let _g = begin_inject_latency("127.0.0.1:8080", 100);
-        let _g = begin_throttle_bandwidth("127.0.0.1:8080", 1024);
-        let _g = begin_fragment_stream("127.0.0.1:8080", 64);
-        let _g = begin_corrupt_bytes("127.0.0.1:8080", 0.01);
-        let _g = begin_terminate_connections("127.0.0.1:8080", 0.05);
-        event_proxy_started(4242);
-        event_proxy_stopped(Some(4242));
-        event_proxy_stopped(None);
+    const LISTEN: &str = "127.0.0.1:8080";
+
+    fn kv(key: &'static str, value: impl Into<opentelemetry::Value>) -> KeyValue {
+        KeyValue::new(key, value)
+    }
+
+    /// Runs `begin` and checks the one client span it produced.
+    fn assert_span(begin: impl FnOnce() -> SpanGuard, name: &str, attributes: &[KeyValue]) {
+        let ((), spans) = capture_spans(|| drop(begin()));
+        assert_eq!(spans.len(), 1, "{name}");
+        assert_eq!(spans[0].name, name);
+        assert_eq!(spans[0].span_kind, SpanKind::Client, "{name}");
+        assert_eq!(spans[0].attributes, attributes, "{name}");
     }
 
     #[test]
-    fn probe_spans_do_not_panic() {
-        let _g = begin_reachable("example.com", 443);
-        let _g = begin_measured_latency("example.com", 443);
+    fn fault_spans_name_the_fault_and_carry_its_parameter() {
+        let listen = || kv("net.listen.addr", LISTEN);
+        assert_span(
+            || begin_inject_latency(LISTEN, 100),
+            "net.latency.inject",
+            &[listen(), kv("net.latency.delay_ms", 100_i64)],
+        );
+        assert_span(
+            || begin_throttle_bandwidth(LISTEN, 1024),
+            "net.bandwidth.throttle",
+            &[listen(), kv("net.bandwidth.rate_bps", 1024_i64)],
+        );
+        assert_span(
+            || begin_fragment_stream(LISTEN, 64),
+            "net.fragment.inject",
+            &[listen(), kv("net.fragment.slice_bytes", 64_i64)],
+        );
+        assert_span(
+            || begin_corrupt_bytes(LISTEN, 0.01),
+            "net.corrupt.inject",
+            &[listen(), kv("net.corrupt.probability", 0.01)],
+        );
+        assert_span(
+            || begin_terminate_connections(LISTEN, 0.05),
+            "net.terminate.inject",
+            &[listen(), kv("net.terminate.probability", 0.05)],
+        );
+    }
+
+    #[test]
+    fn proxy_lifecycle_spans_record_addresses_and_the_daemon_pid() {
+        let ((), spans) = capture_spans(|| {
+            {
+                let _span = begin_start_proxy(LISTEN, "10.0.0.1:80");
+                event_proxy_started(4242);
+            }
+            {
+                let _span = begin_stop_proxy(LISTEN);
+                event_proxy_stopped(Some(4242));
+            }
+            let _span = begin_stop_proxy(LISTEN);
+            event_proxy_stopped(None);
+        });
+
+        let summary: Vec<_> = spans
+            .iter()
+            .map(|span| {
+                let events: Vec<_> = span
+                    .events
+                    .events
+                    .iter()
+                    .map(|event| (event.name.as_ref(), event.attributes.as_slice()))
+                    .collect();
+                (span.name.as_ref(), span.attributes.as_slice(), events)
+            })
+            .collect();
+        let pid = [kv("net.proxy.pid", 4242_i64)];
+        let listen = [kv("net.listen.addr", LISTEN)];
+        assert_eq!(
+            summary,
+            [
+                (
+                    "net.proxy.start",
+                    [
+                        kv("net.listen.addr", LISTEN),
+                        kv("net.upstream.addr", "10.0.0.1:80"),
+                    ]
+                    .as_slice(),
+                    vec![("net.proxy.started", pid.as_slice())],
+                ),
+                (
+                    "net.proxy.stop",
+                    listen.as_slice(),
+                    vec![("net.proxy.stopped", pid.as_slice())],
+                ),
+                (
+                    "net.proxy.stop",
+                    listen.as_slice(),
+                    // No pid is known when nothing was running.
+                    vec![("net.proxy.stopped", [].as_slice())],
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn probe_spans_name_the_probe_and_its_peer() {
+        let peer = [
+            kv("net.peer.name", "example.com"),
+            kv("net.peer.port", 443_i64),
+        ];
+        assert_span(
+            || begin_reachable("example.com", 443),
+            "net.probe.reachable",
+            &peer,
+        );
+        assert_span(
+            || begin_measured_latency("example.com", 443),
+            "net.probe.latency",
+            &peer,
+        );
     }
 }

@@ -54,6 +54,37 @@ fn malformed_output_fault_records_low_cardinality_label() {
     assert_eq!(outcome.response.body, "{malformed-json");
 }
 
+fn truncated_to(max_bytes: usize, body: &str) -> String {
+    let response = FaultTargetResponse {
+        body: body.to_string(),
+        ..target_response()
+    };
+    apply_fault(
+        &FaultSpec::OutputTruncation {
+            max_bytes,
+            probability: 1.0,
+        },
+        response,
+    )
+    .expect("truncation applies to any body")
+    .response
+    .body
+}
+
+#[test]
+fn output_truncation_cuts_the_body_to_the_byte_limit() {
+    assert_eq!(truncated_to(4, "abcdefgh"), "abcd");
+    assert_eq!(truncated_to(8, "abcdefgh"), "abcdefgh");
+    assert_eq!(truncated_to(64, "abcdefgh"), "abcdefgh");
+}
+
+#[test]
+fn output_truncation_backs_off_to_a_character_boundary() {
+    // "é" is two bytes, so byte 4 falls inside the second one.
+    assert_eq!(truncated_to(4, "abcéé"), "abc");
+    assert_eq!(truncated_to(5, "abcéé"), "abcé");
+}
+
 #[test]
 fn all_fault_types_have_stable_labels() {
     let faults = vec![
@@ -137,7 +168,7 @@ fn all_fault_types_have_stable_labels() {
 }
 
 #[test]
-fn fault_outcome_omits_raw_context_by_default() {
+fn retrieval_poisoning_appends_documents_and_keeps_raw_context_out_of_the_answer() {
     let outcome = apply_fault(
         &FaultSpec::RetrievalPoisoning {
             document_count: 2,
@@ -152,11 +183,21 @@ fn fault_outcome_omits_raw_context_by_default() {
         FaultOutcome {
             fault_type: "retrieval_poisoning".to_string(),
             label: "retrieval_poisoning.injected".to_string(),
-            response: outcome.response.clone(),
+            response: FaultTargetResponse {
+                // Only the synthetic documents reach the answer body; the text
+                // of the genuinely retrieved record does not.
+                body: concat!(
+                    r#"{"answer":"answer contaminated by poisoned retrieval: "#,
+                    r#"poisoned-document-0 poisoned-document-1"}"#
+                )
+                .to_string(),
+                retrieved_documents: vec![
+                    "primary order record".to_string(),
+                    "poisoned-document-0".to_string(),
+                    "poisoned-document-1".to_string(),
+                ],
+                ..target_response()
+            },
         }
-    );
-    assert!(
-        !outcome.label.contains("primary order record"),
-        "expected fault labels to stay metadata-only and omit retrieved document content"
     );
 }

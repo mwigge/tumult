@@ -95,6 +95,7 @@ async fn timed_out_process_group_is_actually_gone() {
                 break;
             }
         }
+        // sleep: interval of the bounded poll for the pid file above.
         std::thread::sleep(std::time::Duration::from_millis(100));
     }
     assert!(!pid.is_empty(), "child never recorded its pid");

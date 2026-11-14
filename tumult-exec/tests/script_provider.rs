@@ -1,8 +1,8 @@
 //! Behavior tests for the `script` provider dispatch: discovery failures,
 //! action/probe resolution, argument-to-env mapping, and script exit-status
 //! handling. A temporary plugin tree is published through
-//! `TUMULT_PLUGIN_PATH`; all scenarios run in one test function so the
-//! process-wide environment mutation stays serialized.
+//! `TUMULT_PLUGIN_PATH` under the shared environment guard, which restores
+//! the variable when the test ends.
 #![cfg(unix)]
 
 use std::collections::HashMap;
@@ -102,9 +102,9 @@ fn script_provider_scenarios() {
     );
     tree.write("cov-quiet-plugin/actions/fail-quietly.sh", "exit 3\n");
 
-    // Publish the tree through the custom search path (serialized by running
-    // every scenario inside this single test function).
-    std::env::set_var("TUMULT_PLUGIN_PATH", &tree.0);
+    // Publish the tree through the custom search path.
+    let mut env = tumult_test_utils::EnvGuard::lock();
+    env.set("TUMULT_PLUGIN_PATH", &tree.0);
     let executor = ProviderExecutor::new();
 
     // Unknown plugin names what is available instead of failing silently.
@@ -153,6 +153,8 @@ fn script_provider_scenarios() {
     let outcome = executor.execute(&script_activity("cov-test-plugin", "greet", arguments));
     assert!(outcome.success, "{:?}", outcome.error);
     assert_eq!(outcome.output.as_deref(), Some("hi:3"));
+    // A lower bound only: the script sleeps 80ms and a sleep never returns
+    // early, so this cannot fail on a slow machine.
     assert!(
         outcome.duration_ms >= 60,
         "script duration must include execution: {}",
@@ -202,6 +204,4 @@ fn script_provider_scenarios() {
         error.contains("script not found"),
         "unexpected error: {error}"
     );
-
-    std::env::remove_var("TUMULT_PLUGIN_PATH");
 }

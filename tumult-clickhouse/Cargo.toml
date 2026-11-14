@@ -21,4 +21,12 @@ thiserror = { workspace = true }
 serde_json = { workspace = true }
 opentelemetry = { workspace = true }
 tracing = { workspace = true }
+# Connection URLs are parsed before any part of them is logged or traced.
+url = "2"
 
+[dev-dependencies]
+tumult-test-utils = { path = "../tumult-test-utils", default-features = false, features = ["otel"] }
+# test-util: an in-process HTTP server that stands in for ClickHouse.
+clickhouse = { workspace = true, features = ["test-util"] }
+# test-util: a paused clock, so backoff is measured without waiting for it.
+tokio = { version = "1", features = ["rt", "macros", "time", "test-util"] }

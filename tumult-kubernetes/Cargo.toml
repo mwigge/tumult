@@ -19,6 +19,7 @@ tracing = { workspace = true }
 opentelemetry = { workspace = true }
 
 [dev-dependencies]
+tumult-test-utils = { path = "../tumult-test-utils", default-features = false, features = ["otel"] }
 tokio = { workspace = true, features = ["rt-multi-thread"] }
 # Round-trip check only: the proposed topology TOML rendered by `discovery`
 # must parse with the same parser `tumult topology import` uses.
