@@ -1,6 +1,8 @@
 use super::*;
 
 const S: i64 = SECOND_NS;
+/// A wall clock far past every span these tests store.
+const NOW: i64 = 1_000_000_000 * S;
 
 fn span(service: &str, version: Option<&str>, env: Option<&str>, ts_ns: i64) -> SpanRow {
     SpanRow {
@@ -379,7 +381,7 @@ fn a_backfill_reads_a_day_at_a_step_and_says_while_it_is_running() {
 
     // One step reads one day and leaves the rest.
     in_tx(&conn, || backfill_restart(&conn)).unwrap();
-    assert!(!in_tx(&conn, || backfill_step(&conn, None)).unwrap());
+    assert!(!in_tx(&conn, || backfill_step(&conn, None, NOW)).unwrap());
     assert_eq!(versions(&conn), ["1.0.0"]);
     assert!(matches!(
         backfill_state(&conn).unwrap(),
@@ -393,6 +395,7 @@ fn a_backfill_reads_a_day_at_a_step_and_says_while_it_is_running() {
         note_sightings(
             &conn,
             &[demo_span("0.9.0", 50), demo_span("2.0.0", 9 * DAY)],
+            NOW,
         )
         .map_err(|e| duckdb::Error::InvalidParameterName(e.to_string()))
     })
@@ -669,4 +672,92 @@ fn a_store_that_cannot_be_read_is_an_error_not_an_absent_version() {
     };
     let error = versions.resolve(&window).unwrap_err();
     assert!(error.contains("missing.duckdb"), "{error}");
+}
+
+/// 1.0.0, then 2.0.0 whose first span bears a time a day ahead of the
+/// clock, twenty minutes of 2.0.0, then 3.0.0: 24 spans.
+fn with_a_span_from_tomorrow(writer: &Writer) {
+    writer.insert_spans(&[demo_span("1.0.0", 10_000)]).unwrap();
+    writer
+        .insert_spans(&[demo_span("2.0.0", 20_000 + 86_400)])
+        .unwrap();
+    for minute in 0..=20 {
+        writer
+            .insert_spans(&[demo_span("2.0.0", 20_000 + minute * 60)])
+            .unwrap();
+    }
+    writer.insert_spans(&[demo_span("3.0.0", 21_300)]).unwrap();
+}
+
+fn spans_stored(writer: &Writer) -> i64 {
+    writer
+        .conn
+        .query_row("SELECT count(*) FROM spans", params![], |row| row.get(0))
+        .unwrap()
+}
+
+/// The history [`with_a_span_from_tomorrow`] should leave: the span from
+/// tomorrow nowhere in it, and 3.0.0 the latest.
+fn without_the_span_from_tomorrow() -> [Seen; 3] {
+    [
+        demo("1.0.0", 10_000, 10_000),
+        demo("2.0.0", 20_000, 21_200),
+        demo("3.0.0", 21_300, 21_300),
+    ]
+}
+
+#[test]
+fn a_span_stamped_ahead_of_the_clock_is_stored_and_left_out_of_the_rollup() {
+    let (_dir, store) = lake();
+    let mut writer = store.writer().unwrap();
+    // 3.0.0's span is 50 s ahead of this clock: within the skew allowed.
+    writer.clock = || 21_250 * S;
+    with_a_span_from_tomorrow(&writer);
+    assert_eq!(spans_stored(&writer), 24);
+    drop(writer);
+
+    assert_eq!(seen(&store, "checkout"), without_the_span_from_tomorrow());
+    assert!(deployments(&store).iter().all(|(_, _, times)| *times == 1));
+}
+
+#[test]
+fn a_rebuild_leaves_out_a_span_stamped_ahead_of_the_clock() {
+    let (_dir, store) = lake();
+    let mut writer = store.writer().unwrap();
+    writer.clock = || 21_250 * S;
+    with_a_span_from_tomorrow(&writer);
+    writer.rebuild_version_sightings().unwrap();
+    assert_eq!(spans_stored(&writer), 24);
+    drop(writer);
+
+    assert_eq!(seen(&store, "checkout"), without_the_span_from_tomorrow());
+}
+
+#[test]
+fn a_warning_passes_once_in_a_while_and_says_how_many_were_held_back() {
+    let throttle = Throttle::new();
+    let start = Instant::now();
+    assert_eq!(throttle.pass(start), Some(0));
+    assert_eq!(throttle.pass(start + Duration::from_secs(1)), None);
+    assert_eq!(throttle.pass(start + WARN_EVERY / 2), None);
+    assert_eq!(throttle.pass(start + WARN_EVERY), Some(2));
+    assert_eq!(throttle.pass(start + WARN_EVERY * 2), Some(0));
+}
+
+#[test]
+fn the_spans_ahead_of_the_clock_are_named_by_version_and_environment() {
+    let rows = [
+        demo_span("1.0.0", 10),
+        span("checkout", None, Some("demo"), 500),
+        demo_span("2.0.0", 400),
+        demo_span("2.0.0", 900),
+    ];
+    let ahead = ahead_in(&rows, 100 * S).unwrap();
+    assert_eq!(
+        (ahead.service.as_str(), ahead.environment.as_deref()),
+        ("checkout", Some("demo"))
+    );
+    assert_eq!((ahead.version.as_str(), ahead.spans), ("2.0.0", 2));
+    assert_eq!(ahead.span_ts_ns, 400 * S);
+    assert!(ahead_in(&rows, 900 * S).is_none());
 }

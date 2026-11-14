@@ -21,7 +21,11 @@
 //! the same environment: a rollback, or a redeploy after a newer build.
 //!
 //! A span that arrives late moves a version's first sight back by at most
-//! [`LATE_SPAN_LIMIT`]; one from earlier than that is left out.
+//! [`LATE_SPAN_LIMIT`]; one from earlier than that is left out. So is a
+//! span whose time lies more than [`CLOCK_SKEW`] ahead of the wall clock:
+//! it would hold its version's first and last sight at a time that never
+//! was, and the versions that follow would sort before it. Both are kept
+//! as spans.
 //!
 //! A lake written before the rollup existed, or before it knew
 //! deployments, is read back from its spans once, a day of spans at a
@@ -35,6 +39,7 @@
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
 use duckdb::{params, Connection};
@@ -55,6 +60,16 @@ pub const REDEPLOY_GAP: Duration = Duration::from_secs(600);
 /// a replay) is kept as a span and left out of the rollup: one such span
 /// would otherwise make a new version read as the oldest.
 pub const LATE_SPAN_LIMIT: Duration = Duration::from_secs(600);
+
+/// How far ahead of the wall clock a span's time may lie and still count
+/// as a sight: the room two honest clocks need. A span from later than
+/// that (a clock gone wrong, a bad unit) is kept as a span and left out
+/// of the rollup.
+pub const CLOCK_SKEW: Duration = Duration::from_secs(300);
+
+/// The least time between two warnings about spans left out of the
+/// rollup: a sender with a clock gone wrong sends many of them.
+const WARN_EVERY: Duration = Duration::from_secs(60);
 
 /// How long opening a lake may spend reading an old lake's spans back
 /// into the rollup before it leaves the rest to later steps.
@@ -139,6 +154,133 @@ GROUP BY environment, service_version
 ORDER BY first_seen_ns, service_version, environment
 ";
 
+/// Lets one warning through each [`WARN_EVERY`] and counts the ones it
+/// holds back.
+struct Throttle {
+    /// When the last warning passed, and how many were held back since.
+    state: Mutex<(Option<Instant>, u64)>,
+}
+
+impl Throttle {
+    const fn new() -> Self {
+        Self {
+            state: Mutex::new((None, 0)),
+        }
+    }
+
+    /// Whether a warning may be written at `now`: `Some` with the number
+    /// held back since the last one that was.
+    fn pass(&self, now: Instant) -> Option<u64> {
+        let mut state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
+        if state
+            .0
+            .is_some_and(|last| now.saturating_duration_since(last) < WARN_EVERY)
+        {
+            state.1 = state.1.saturating_add(1);
+            return None;
+        }
+        let held_back = state.1;
+        *state = (Some(now), 0);
+        Some(held_back)
+    }
+}
+
+static EARLY_SPANS: Throttle = Throttle::new();
+static AHEAD_SPANS: Throttle = Throttle::new();
+
+/// The latest time a span may bear and still count as a sight, by a wall
+/// clock that reads `now_ns`.
+fn horizon_of(now_ns: i64) -> i64 {
+    now_ns.saturating_add(i64::try_from(CLOCK_SKEW.as_nanos()).unwrap_or(i64::MAX))
+}
+
+/// Versioned spans left out of the rollup for a time ahead of the clock.
+struct Ahead {
+    service: String,
+    environment: Option<String>,
+    version: String,
+    spans: u64,
+    span_ts_ns: i64,
+}
+
+fn warn_ahead(ahead: &Ahead, horizon_ns: i64) {
+    let Some(held_back) = AHEAD_SPANS.pass(Instant::now()) else {
+        return;
+    };
+    tracing::warn!(
+        service = %ahead.service,
+        environment = ahead.environment.as_deref().unwrap_or(""),
+        version = %ahead.version,
+        spans = ahead.spans,
+        span_ts_ns = ahead.span_ts_ns,
+        horizon_ns,
+        warnings_held_back = held_back,
+        "lake.sightings.future_span_ignored"
+    );
+}
+
+fn warn_early(sight: &Sight, row: &Held) {
+    let Some(held_back) = EARLY_SPANS.pass(Instant::now()) else {
+        return;
+    };
+    tracing::warn!(
+        service = %sight.service,
+        environment = sight.environment.as_deref().unwrap_or(""),
+        version = %sight.version,
+        first_seen_ns = row.first_ns,
+        span_ts_ns = sight.first_ns,
+        warnings_held_back = held_back,
+        "lake.sightings.early_span_ignored"
+    );
+}
+
+/// The versioned spans of a batch from later than `horizon_ns`, named by
+/// the first of them.
+fn ahead_in(rows: &[SpanRow], horizon_ns: i64) -> Option<Ahead> {
+    let mut ahead = rows
+        .iter()
+        .filter(|row| row.ts_ns > horizon_ns)
+        .filter_map(|row| {
+            let (version, _) = stored_version(row).filter(|(v, _)| !v.is_empty())?;
+            Some((row, version))
+        });
+    let (first, version) = ahead.next()?;
+    Some(Ahead {
+        service: first.service_name.clone(),
+        environment: first.target_environment.clone(),
+        version: version.into_owned(),
+        spans: 1 + u64::try_from(ahead.count()).unwrap_or(u64::MAX - 1),
+        span_ts_ns: first.ts_ns,
+    })
+}
+
+/// The versioned spans stored in `(from, upto]`, named by the service,
+/// environment and version with the most of them.
+fn ahead_stored(conn: &Connection, from: i64, upto: i64) -> Result<Option<Ahead>, duckdb::Error> {
+    let mut stmt = conn.prepare(
+        "SELECT service_name, target_environment, service_version,
+                count(*) AS spans, min(ts_ns) AS first_ns
+         FROM spans
+         WHERE ts_ns > ? AND ts_ns <= ?
+           AND service_version IS NOT NULL AND service_version <> ''
+         GROUP BY service_name, target_environment, service_version
+         ORDER BY spans DESC, first_ns
+         LIMIT 1",
+    )?;
+    let mut rows = stmt.query(params![from, upto])?;
+    let Some(row) = rows.next()? else {
+        return Ok(None);
+    };
+    let version: String = row.get(2)?;
+    Ok(Some(Ahead {
+        service: row.get(0)?,
+        environment: row.get(1)?,
+        version: bounded_version_text(&version).0.into_owned(),
+        spans: row.get(3)?,
+        span_ts_ns: row.get(4)?,
+    }))
+}
+
 /// A span's `service.version` as the lake stores it: within the bounds
 /// every version is held to, and whether it had to be cut to them.
 /// `None` for a span that names no version.
@@ -188,12 +330,7 @@ fn fold(held: &mut BTreeMap<Key, Held>, sight: &Sight) {
         return;
     };
     if before_the_start(&row, sight) {
-        tracing::warn!(
-            service = %sight.service,
-            first_seen_ns = row.first_ns,
-            span_ts_ns = sight.first_ns,
-            "lake.sightings.early_span_ignored"
-        );
+        warn_early(sight, &row);
         return;
     }
     if returned_after_another(held, &key, &row, sight.first_ns) {
@@ -213,12 +350,13 @@ fn fold(held: &mut BTreeMap<Key, Held>, sight: &Sight) {
 /// A service, environment and version within one minute of a batch.
 type Bucket<'a> = (&'a str, Option<&'a str>, Cow<'a, str>, i64);
 
-/// The versioned spans of one batch as sights, oldest first. With `upto`
-/// only the spans at or before it: the rest are the backfill's to read.
-fn sights_in(rows: &[SpanRow], upto: Option<i64>) -> Vec<Sight> {
+/// The versioned spans of one batch at or before `upto` as sights,
+/// oldest first: the rest are the backfill's to read, or lie ahead of
+/// the clock.
+fn sights_in(rows: &[SpanRow], upto: i64) -> Vec<Sight> {
     let mut seen: BTreeMap<Bucket<'_>, (i64, i64, bool)> = BTreeMap::new();
     for row in rows {
-        if upto.is_some_and(|upto| row.ts_ns > upto) {
+        if row.ts_ns > upto {
             continue;
         }
         let Some((version, cut)) = stored_version(row).filter(|(v, _)| !v.is_empty()) else {
@@ -401,7 +539,11 @@ fn backfill_restart(conn: &Connection) -> Result<(), duckdb::Error> {
 /// read; `true` when no span is left to read, which marks the backfill
 /// done. Past `until` the step ends after the slice it is in, the rest of
 /// the day left to the next step. Runs inside the caller's transaction.
-fn backfill_step(conn: &Connection, until: Option<Instant>) -> Result<bool, duckdb::Error> {
+fn backfill_step(
+    conn: &Connection,
+    until: Option<Instant>,
+    now_ns: i64,
+) -> Result<bool, duckdb::Error> {
     let Backfill::Running(cursor) = backfill_state(conn)? else {
         return Ok(true);
     };
@@ -420,7 +562,7 @@ fn backfill_step(conn: &Connection, until: Option<Instant>) -> Result<bool, duck
     let mut upto = next;
     while upto < day_end {
         upto = upto.saturating_add(BACKFILL_SLICE_NS).min(day_end);
-        backfill_slice(conn, from, upto)?;
+        backfill_slice(conn, from, upto, now_ns)?;
         from = upto;
         if until.is_some_and(|until| Instant::now() >= until) {
             break;
@@ -430,8 +572,14 @@ fn backfill_step(conn: &Connection, until: Option<Instant>) -> Result<bool, duck
 }
 
 /// Read the versioned spans of `(from, upto]` into the rollup and set
-/// the cursor to `upto`.
-fn backfill_slice(conn: &Connection, from: i64, upto: i64) -> Result<(), duckdb::Error> {
+/// the cursor to `upto`. Spans from later than the clock at `now_ns`
+/// allows are passed over.
+fn backfill_slice(
+    conn: &Connection,
+    from: i64,
+    upto: i64,
+    now_ns: i64,
+) -> Result<(), duckdb::Error> {
     let mut stmt = conn.prepare(
         "SELECT service_name, target_environment, service_version,
                 min(ts_ns) AS first_ns, max(ts_ns) AS last_ns
@@ -441,7 +589,13 @@ fn backfill_slice(conn: &Connection, from: i64, upto: i64) -> Result<(), duckdb:
          GROUP BY service_name, target_environment, service_version, ts_ns // ?
          ORDER BY first_ns",
     )?;
-    let rows = stmt.query_map(params![from, upto, BUCKET_NS], |row| {
+    let horizon_ns = horizon_of(now_ns);
+    if upto > horizon_ns {
+        if let Some(ahead) = ahead_stored(conn, from.max(horizon_ns), upto)? {
+            warn_ahead(&ahead, horizon_ns);
+        }
+    }
+    let rows = stmt.query_map(params![from, upto.min(horizon_ns), BUCKET_NS], |row| {
         let version: String = row.get(2)?;
         let (version, sanitized) = bounded_version_text(&version);
         Ok(Sight {
@@ -461,11 +615,11 @@ fn backfill_slice(conn: &Connection, from: i64, upto: i64) -> Result<(), duckdb:
 
 /// Step the backfill until it is done or `budget` is spent, each step in
 /// a transaction of its own; `true` when it is done.
-fn backfill_for(conn: &Connection, budget: Duration) -> Result<bool, duckdb::Error> {
+fn backfill_for(conn: &Connection, budget: Duration, now_ns: i64) -> Result<bool, duckdb::Error> {
     let started = Instant::now();
     let until = started.checked_add(budget);
     loop {
-        let done = in_tx(conn, || backfill_step(conn, until))?;
+        let done = in_tx(conn, || backfill_step(conn, until, now_ns))?;
         if done || started.elapsed() >= budget {
             return Ok(done);
         }
@@ -476,13 +630,14 @@ fn backfill_for(conn: &Connection, budget: Duration) -> Result<bool, duckdb::Err
 /// written before the rollup knew deployments; on a new lake it ends at
 /// once, there being no spans) and give a running one
 /// [`BACKFILL_OPEN_BUDGET`]. A finished backfill is never run again.
-pub(crate) fn backfill(conn: &Connection) -> Result<(), duckdb::Error> {
+/// `now_ns` is the wall clock's reading.
+pub(crate) fn backfill(conn: &Connection, now_ns: i64) -> Result<(), duckdb::Error> {
     match backfill_state(conn)? {
         Backfill::Done => return Ok(()),
         Backfill::NotStarted => in_tx(conn, || backfill_restart(conn))?,
         Backfill::Running(_) => {}
     }
-    let done = backfill_for(conn, BACKFILL_OPEN_BUDGET)?;
+    let done = backfill_for(conn, BACKFILL_OPEN_BUDGET, now_ns)?;
     if !done {
         tracing::info!(
             budget_ms = u64::try_from(BACKFILL_OPEN_BUDGET.as_millis()).unwrap_or(u64::MAX),
@@ -492,10 +647,15 @@ pub(crate) fn backfill(conn: &Connection) -> Result<(), duckdb::Error> {
     Ok(())
 }
 
-/// Fold the versioned spans of one batch into the rollup. Runs inside the
-/// caller's transaction. While the backfill runs, spans it has yet to
-/// reach are left to it, and each batch moves it one step on.
-pub(crate) fn note_sightings(conn: &Connection, rows: &[SpanRow]) -> Result<(), StoreError> {
+/// Fold the versioned spans of one batch into the rollup, but for those
+/// from later than the clock allows. Runs inside the caller's transaction. While the backfill runs, spans it has yet to
+/// reach are left to it, and each batch moves it one step on. `now_ns` is
+/// the wall clock's reading.
+pub(crate) fn note_sightings(
+    conn: &Connection,
+    rows: &[SpanRow],
+    now_ns: i64,
+) -> Result<(), StoreError> {
     let cut = rows
         .iter()
         .filter(|row| stored_version(row).is_some_and(|(_, cut)| cut))
@@ -507,14 +667,19 @@ pub(crate) fn note_sightings(conn: &Connection, rows: &[SpanRow]) -> Result<(), 
             "lake.span.version_sanitized"
         );
     }
+    let horizon_ns = horizon_of(now_ns);
+    if let Some(ahead) = ahead_in(rows, horizon_ns) {
+        warn_ahead(&ahead, horizon_ns);
+    }
     let state = backfill_state(conn)?;
-    let upto = match state {
+    let cursor = match state {
         Backfill::Running(cursor) => Some(cursor),
         Backfill::NotStarted | Backfill::Done => None,
     };
+    let upto = cursor.map_or(horizon_ns, |cursor| cursor.min(horizon_ns));
     record(conn, &sights_in(rows, upto))?;
-    if upto.is_some() {
-        backfill_step(conn, None)?;
+    if cursor.is_some() {
+        backfill_step(conn, None, now_ns)?;
     }
     Ok(())
 }
@@ -620,7 +785,8 @@ impl Writer {
     pub fn rebuild_version_sightings(&self) -> Result<(), StoreError> {
         with_tx(&self.conn, || {
             backfill_restart(&self.conn)?;
-            while !backfill_step(&self.conn, None)? {}
+            let now_ns = (self.clock)();
+            while !backfill_step(&self.conn, None, now_ns)? {}
             Ok(())
         })
     }
@@ -631,7 +797,7 @@ impl Writer {
     /// # Errors
     /// Returns an error if a step fails (the steps before it are kept).
     pub fn continue_version_backfill(&self, budget: Duration) -> Result<bool, StoreError> {
-        Ok(backfill_for(&self.conn, budget)?)
+        Ok(backfill_for(&self.conn, budget, (self.clock)())?)
     }
 }
 

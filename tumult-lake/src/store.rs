@@ -118,7 +118,10 @@ impl Store {
     /// exactly one `Writer` by construction — one channel, one task.)
     pub fn writer(&self) -> Result<Writer, StoreError> {
         let conn = open_with_retry(&self.path, || Connection::open(&self.path))?;
-        Ok(Writer { conn })
+        Ok(Writer {
+            conn,
+            clock: crate::lake::now_ns,
+        })
     }
 
     /// Open a read-only connection (`access_mode = READ_ONLY`). Multiple
@@ -173,7 +176,7 @@ pub(crate) fn migrate(conn: &Connection) -> Result<(), duckdb::Error> {
     for ddl in schema::CREATE_TABLES {
         conn.execute_batch(ddl)?;
     }
-    crate::sightings::backfill(conn)?;
+    crate::sightings::backfill(conn, crate::lake::now_ns())?;
     // v4 → v5: rebuild the run tables index-free (crash-robustness — see
     // schema.rs). Conditional on the stored version actually being 4: older
     // databases have no run tables to rebuild, and fresh ones got the v5
