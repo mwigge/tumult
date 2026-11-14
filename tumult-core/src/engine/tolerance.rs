@@ -111,7 +111,7 @@ impl RunFacts {
     }
 
     /// Anything that by itself makes a finished run a deviation.
-    fn deviates(&self) -> bool {
+    fn deviates(self) -> bool {
         self.hypothesis_after_met == Some(false)
             || self.blocking_breach
             || self.load_missed_thresholds
@@ -143,7 +143,7 @@ pub struct Conclusion {
 /// was started.
 #[must_use]
 pub fn conclude(facts: &RunFacts) -> Conclusion {
-    let status = concluded_status(facts);
+    let status = concluded_status(*facts);
     let fault_left_behind = facts.fault_started
         && matches!(
             status,
@@ -155,7 +155,7 @@ pub fn conclude(facts: &RunFacts) -> Conclusion {
     }
 }
 
-fn concluded_status(facts: &RunFacts) -> ExperimentStatus {
+fn concluded_status(facts: RunFacts) -> ExperimentStatus {
     if facts.cancelled {
         return ExperimentStatus::Interrupted;
     }

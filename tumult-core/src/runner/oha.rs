@@ -935,7 +935,7 @@ fn leader_exited(child: &mut std::process::Child) -> std::io::Result<bool> {
         libc::waitid(
             libc::P_PID,
             child.id(),
-            &mut info,
+            &raw mut info,
             libc::WEXITED | libc::WNOHANG | libc::WNOWAIT,
         )
     };

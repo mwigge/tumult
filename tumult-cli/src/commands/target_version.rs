@@ -230,7 +230,9 @@ mod tests {
         if let Some(version) = target {
             toon.push_str("target:\n  system: checkout\n  environment: demo\n");
             if !version.is_empty() {
-                toon.push_str(&format!("  version: {version}\n"));
+                toon.push_str("  version: ");
+                toon.push_str(version);
+                toon.push('\n');
             }
         }
         tumult_core::engine::parse_experiment(&toon).unwrap()

@@ -138,7 +138,10 @@ fn outcomes(provider: &SdkMeterProvider, exporter: &InMemoryMetricExporter) -> O
     provider.force_flush().expect("flush");
     let mut seen = Outcomes::default();
     for rm in exporter.get_finished_metrics().unwrap_or_default() {
-        for metric in rm.scope_metrics().flat_map(|sm| sm.metrics()) {
+        for metric in rm
+            .scope_metrics()
+            .flat_map(opentelemetry_sdk::metrics::data::ScopeMetrics::metrics)
+        {
             match (metric.name(), metric.data()) {
                 ("tumult.experiments.total", AggregatedMetrics::U64(MetricData::Sum(sum))) => {
                     (seen.counted_success, seen.counted_failure) = (0, 0);

@@ -13,6 +13,9 @@
 //! `reason: unorderable`) is inconclusive too: a gate names what it
 //! tests with `--candidate`.
 
+// Writing to a `String` cannot fail, so the results of `writeln!` are dropped.
+use std::fmt::Write as _;
+
 use anyhow::{bail, Context, Result};
 use serde_json::Value;
 
@@ -280,10 +283,9 @@ pub fn exit_code(verdict: &str, fail_on: PerfFailOn) -> Option<i32> {
         return None;
     }
     match verdict {
-        "improved" | "unchanged" => None,
         "regressed" => Some(EXIT_REGRESSED),
         "inconclusive" if fail_on == PerfFailOn::Inconclusive => Some(EXIT_INCONCLUSIVE),
-        "inconclusive" => None,
+        "improved" | "unchanged" | "inconclusive" => None,
         _ => Some(1),
     }
 }
@@ -326,27 +328,30 @@ fn side_lines(role: &str, side: &PerfSide) -> String {
         runs.push(format!("{} partial run(s) left out", side.excluded));
     }
     if !runs.is_empty() {
-        out.push_str(&format!("      {}\n", runs.join("; ")));
+        let _ = writeln!(out, "      {}", runs.join("; "));
     }
     if side.unanswered > 0 {
-        out.push_str(&format!(
-            "      {} of {} load window(s) went unanswered\n",
+        let _ = writeln!(
+            out,
+            "      {} of {} load window(s) went unanswered",
             side.unanswered, side.planned
-        ));
+        );
     }
     if side.failed > 0 {
         #[allow(clippy::cast_precision_loss)]
         let share = side.failed as f64 / side.sent.max(1) as f64 * 100.0;
-        out.push_str(&format!(
-            "      {} of {} request(s) failed ({share:.1}%)\n",
+        let _ = writeln!(
+            out,
+            "      {} of {} request(s) failed ({share:.1}%)",
             side.failed, side.sent
-        ));
+        );
     }
     if side.censored > 0 {
-        out.push_str(&format!(
-            "      {} load window(s) hold a request given up on at its timeout\n",
+        let _ = writeln!(
+            out,
+            "      {} load window(s) hold a request given up on at its timeout",
             side.censored
-        ));
+        );
     }
     out
 }
@@ -400,16 +405,17 @@ pub fn render(resp: &PerfResponse) -> String {
             .margin
             .map(|m| format!(", margin ±{m:.1}"))
             .unwrap_or_default();
-        out.push_str(&format!("  delta {delta:+.1} ms{pct}{ci}{margin}\n"));
+        let _ = writeln!(out, "  delta {delta:+.1} ms{pct}{ci}{margin}");
     }
     for reason in &resp.reasons {
-        out.push_str(&format!("  - {reason}\n"));
+        let _ = writeln!(out, "  - {reason}");
     }
     if resp.unattributed > 0 {
-        out.push_str(&format!(
-            "  {} run(s) could not be attributed to a version\n",
+        let _ = writeln!(
+            out,
+            "  {} run(s) could not be attributed to a version",
             resp.unattributed
-        ));
+        );
     }
     if resp.stored && resp.duplicate {
         out.push_str(
@@ -549,7 +555,7 @@ pub async fn cmd_perf(args: &PerfArgs) -> Result<()> {
         .filter(|s| !s.is_empty())
         .with_context(|| format!("no daemon URL: pass --daemon-url or set {DAEMON_URL_ENV}"))?;
     if let Some(warning) = gate_warning(args) {
-        eprintln!("{warning}");
+        crate::errln!("{warning}");
     }
     let (method, url) = endpoint(&base, args);
     let query = query_params(args);
@@ -575,9 +581,9 @@ pub async fn cmd_perf(args: &PerfArgs) -> Result<()> {
         .with_context(|| format!("perf answered HTTP {status} with an unreadable body"))?;
     if let Some(why) = unorderable(status.as_u16(), &body) {
         if args.json {
-            println!("{}", serde_json::to_string_pretty(&body)?);
+            crate::outln!("{}", serde_json::to_string_pretty(&body)?);
         } else {
-            print!("{}", render_unorderable(&args.target, &why));
+            crate::out!("{}", render_unorderable(&args.target, &why));
         }
         return inconclusive(&args.target, args.fail_on);
     }
@@ -591,9 +597,9 @@ pub async fn cmd_perf(args: &PerfArgs) -> Result<()> {
     let parsed = PerfResponse::from_value(&body)?;
     ensure_stored(args, &parsed)?;
     if args.json {
-        println!("{}", serde_json::to_string_pretty(&body)?);
+        crate::outln!("{}", serde_json::to_string_pretty(&body)?);
     } else {
-        print!("{}", render(&parsed));
+        crate::out!("{}", render(&parsed));
     }
     let Some(code) = exit_code(&parsed.verdict, args.fail_on) else {
         return Ok(());
