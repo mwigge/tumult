@@ -88,6 +88,35 @@ async fn a_store_without_entities_lists_none() {
     assert_eq!(body, json!({"error": "entity not found"}));
 }
 
+/// `body` with every array put in one order. `/api/topology` lists nodes
+/// with the same number of runs, and their edges, in no fixed order.
+fn in_one_order(body: Value) -> Value {
+    match body {
+        Value::Array(items) => {
+            let mut items: Vec<Value> = items.into_iter().map(in_one_order).collect();
+            items.sort_by_key(Value::to_string);
+            Value::Array(items)
+        }
+        Value::Object(fields) => Value::Object(
+            fields
+                .into_iter()
+                .map(|(name, value)| (name, in_one_order(value)))
+                .collect(),
+        ),
+        other => other,
+    }
+}
+
+/// One read for the comparison below: status and body, the body in one
+/// order where the endpoint promises none.
+async fn read(base: &str, path: &str) -> (u16, Value) {
+    let (status, body) = get(base, path).await;
+    if path == "/api/topology" {
+        return (status, in_one_order(body));
+    }
+    (status, body)
+}
+
 /// Entity rows are read only by the entity endpoints: the telemetry reads
 /// answer the same with them as without.
 #[tokio::test]
@@ -102,12 +131,12 @@ async fn entity_rows_change_no_other_read() {
     ];
     let mut before = Vec::new();
     for path in paths {
-        before.push(get(&srv.base, path).await);
+        before.push(read(&srv.base, path).await);
     }
     seed_entities(&srv).await;
     for (path, expected) in paths.iter().zip(&before) {
         assert_eq!(expected.0, 200, "{path}: {}", expected.1);
-        assert_eq!(&get(&srv.base, path).await, expected, "{path}");
+        assert_eq!(&read(&srv.base, path).await, expected, "{path}");
     }
 }
 
