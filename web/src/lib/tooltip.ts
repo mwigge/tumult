@@ -55,19 +55,23 @@ class Swatch {
 /**
  * The dot ECharts puts before a series name, in `color`. A colour that
  * is not a plain CSS colour (a gradient object, or text with anything
- * else in it) gives no dot.
+ * else in it) gives a dot in [`NEUTRAL_DOT`], so every row keeps one.
  */
 export function swatch(color: unknown): Swatch {
     return new Swatch(color);
 }
 
+/** The colour of a dot whose own colour cannot be written as one. */
+export const NEUTRAL_DOT = '#888';
+
 // A hex colour, an rgb()/hsl() call of numbers, or a colour name.
 const PLAIN_COLOR = /^(#[0-9a-f]{3,8}|(rgb|hsl)a?\([\d\s.,%/]+\)|[a-z]+)$/i;
 
 function swatchHtml(dot: Swatch): string {
-    if (typeof dot.color !== 'string' || !PLAIN_COLOR.test(dot.color)) return '';
+    const plain = typeof dot.color === 'string' && PLAIN_COLOR.test(dot.color);
+    const color = plain ? escapeHtml(dot.color) : NEUTRAL_DOT;
     const style = 'display:inline-block;margin-right:4px;border-radius:50%;width:10px;height:10px;';
-    return `<span style="${style}background-color:${escapeHtml(dot.color)}"></span>`;
+    return `<span style="${style}background-color:${color}"></span>`;
 }
 
 /** `text` in bold. */

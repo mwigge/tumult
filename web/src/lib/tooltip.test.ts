@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vitest';
 
-import { escapeHtml, strong, swatch, tip, tipFormatter } from './tooltip';
+import { escapeHtml, NEUTRAL_DOT, strong, swatch, tip, tipFormatter } from './tooltip';
 import type { Tip } from './tooltip';
 
 const EVIL = `<img src=x onerror="a('b')">&`;
@@ -57,7 +57,8 @@ describe('swatch', () => {
         expect(tip([swatch('tomato')]).html).toBe(dot('tomato'));
     });
 
-    it('gives no dot for what is not a plain colour', () => {
+    it('gives a neutral dot for what is not a plain colour', () => {
+        expect(NEUTRAL_DOT).toBe('#888');
         for (const color of [
             EVIL,
             'red"><img src=x>',
@@ -68,7 +69,7 @@ describe('swatch', () => {
             undefined,
             '',
         ]) {
-            expect(tip([swatch(color), 'name']).html).toBe('name');
+            expect(tip([swatch(color), 'name']).html).toBe(`${dot(NEUTRAL_DOT)}name`);
         }
     });
 });

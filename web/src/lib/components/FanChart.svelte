@@ -67,7 +67,8 @@
     }
 
     // The series name and the unit come from the lake: the tooltip is
-    // built of text, with the dot of each series in its colour.
+    // built of text, with the dot of each series in its colour (a
+    // neutral dot where the colour is a gradient or missing).
     const pointTip = (params: unknown) => {
         const rows = (Array.isArray(params) ? params : [params]) as TipRow[];
         const lines = rows.map((r) => [
