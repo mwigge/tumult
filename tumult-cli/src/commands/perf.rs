@@ -351,11 +351,32 @@ fn side_lines(role: &str, side: &PerfSide) -> String {
     out
 }
 
+/// What a gate is told when no `--candidate` names the build under test:
+/// the daemon then judges whichever version was deployed last, which is
+/// not the build a pipeline means once another has been deployed since.
+/// Nothing when the candidate is named or no verdict fails the command.
+#[must_use]
+pub fn gate_warning(args: &PerfArgs) -> Option<String> {
+    if args.fail_on == PerfFailOn::Never || args.candidate.is_some() {
+        return None;
+    }
+    Some(format!(
+        "warning: perf {} gates on the version deployed latest, whichever that is; \
+         pass --candidate to gate on the build under test",
+        args.target
+    ))
+}
+
 /// Human-readable rendering of the perf answer.
 #[must_use]
 pub fn render(resp: &PerfResponse) -> String {
+    let few_runs = if resp.low_run_count {
+        "; fewer than 5 runs on a side"
+    } else {
+        ""
+    };
     let mut out = format!(
-        "perf {}: {} ({} of {})\n",
+        "perf {}: {} ({} of {}{few_runs})\n",
         resp.target,
         resp.verdict.to_uppercase(),
         resp.quantile,
@@ -380,11 +401,6 @@ pub fn render(resp: &PerfResponse) -> String {
             .map(|m| format!(", margin ±{m:.1}"))
             .unwrap_or_default();
         out.push_str(&format!("  delta {delta:+.1} ms{pct}{ci}{margin}\n"));
-    }
-    if resp.low_run_count {
-        out.push_str(
-            "  note: fewer than 5 runs on a side; the interval has few resamples to draw from\n",
-        );
     }
     for reason in &resp.reasons {
         out.push_str(&format!("  - {reason}\n"));
@@ -532,6 +548,9 @@ pub async fn cmd_perf(args: &PerfArgs) -> Result<()> {
         .or_else(|| std::env::var(DAEMON_URL_ENV).ok())
         .filter(|s| !s.is_empty())
         .with_context(|| format!("no daemon URL: pass --daemon-url or set {DAEMON_URL_ENV}"))?;
+    if let Some(warning) = gate_warning(args) {
+        eprintln!("{warning}");
+    }
     let (method, url) = endpoint(&base, args);
     let query = query_params(args);
 
@@ -796,16 +815,38 @@ mod tests {
         let resp = PerfResponse::from_value(&v).unwrap();
         assert!(resp.low_run_count);
         let text = render(&resp);
+        // In the headline, where it cannot be missed.
         assert!(
-            text.contains(
-                "  note: fewer than 5 runs on a side; the interval has few resamples to draw from\n"
+            text.starts_with(
+                "perf checkout: REGRESSED (p95 of load.latency_p95_ms; fewer than 5 runs on a side)\n"
             ),
             "{text}"
         );
         // An older daemon does not say; nothing is printed.
         let plain = PerfResponse::from_value(&answer()).unwrap();
         assert!(!plain.low_run_count);
-        assert!(!render(&plain).contains("note:"));
+        assert!(!render(&plain).contains("fewer than 5 runs"));
+    }
+
+    #[test]
+    fn a_gate_without_a_named_candidate_is_warned_of() {
+        let gate = args();
+        assert_ne!(gate.fail_on, PerfFailOn::Never);
+        let warning = gate_warning(&gate).expect("a warning");
+        assert!(warning.contains("--candidate"), "{warning}");
+        assert!(warning.contains("deployed latest"), "{warning}");
+        // The build under test is named: nothing to warn of.
+        let named = PerfArgs {
+            candidate: Some("1.5.0".into()),
+            ..args()
+        };
+        assert_eq!(gate_warning(&named), None);
+        // No verdict fails the command: it is a read, not a gate.
+        let read = PerfArgs {
+            fail_on: PerfFailOn::Never,
+            ..args()
+        };
+        assert_eq!(gate_warning(&read), None);
     }
 
     #[test]

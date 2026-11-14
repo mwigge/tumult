@@ -1760,7 +1760,12 @@ mod tests {
         assert_eq!(row.envs, Some(vec!["demo".to_string()]));
         assert_eq!(row.verdict, "regressed");
         assert_eq!((row.baseline_n, row.candidate_n), (40, 40));
+        // Four runs a side: the stored row says the interval is coarse.
+        let few = |reasons: &[String]| reasons.iter().any(|r| r.contains("fewer than 5 runs"));
+        assert!(few(&row.reasons), "{:?}", row.reasons);
         let body = a.json(false, false);
+        let said: Vec<String> = serde_json::from_value(body["reasons"].clone()).unwrap();
+        assert!(few(&said), "{said:?}");
         assert_eq!(body["selection"], "latest_deployment");
         assert_eq!(body["selection_rule"], "the rule");
         assert_eq!(body["backfill"], "done");

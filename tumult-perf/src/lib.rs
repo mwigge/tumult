@@ -293,6 +293,14 @@ pub fn compare_runs(
     );
     let (verdict, reason) = classify(ci, margin, q);
     reasons.push(reason);
+    if few_runs {
+        reasons.push(format!(
+            "the interval was drawn from {} baseline and {} candidate run(s), fewer than \
+             {SETTLED_RUNS} runs on a side: read its bounds as coarse",
+            base.len(),
+            cand.len()
+        ));
+    }
     done(verdict, Some(ci), reasons)
 }
 
@@ -613,6 +621,20 @@ mod tests {
         let c = compare_runs(&three(100.0), &three(150.0), &opts);
         assert_eq!(c.verdict, Verdict::Regressed);
         assert!(c.low_run_count, "{c:?}");
+        // The verdict says so in words too, after why it is what it is.
+        let coarse = |c: &Comparison| {
+            c.reasons
+                .iter()
+                .filter(|r| r.contains("fewer than 5 runs on a side"))
+                .count()
+        };
+        assert_eq!(coarse(&c), 1, "{:?}", c.reasons);
+        let said = c.reasons.last().unwrap();
+        assert!(
+            said.contains("3 baseline") && said.contains("3 candidate"),
+            "{said}"
+        );
+        assert_eq!(coarse(&compare_runs(&five(100.0), &five(150.0), &opts)), 0);
         // One thin side is enough.
         assert!(compare_runs(&five(100.0), &three(150.0), &opts).low_run_count);
         assert!(compare_runs(&three(100.0), &five(150.0), &opts).low_run_count);
@@ -622,6 +644,7 @@ mod tests {
         let c = compare_runs(&three(100.0), &two, &opts);
         assert_eq!(c.verdict, Verdict::Inconclusive);
         assert!(!c.low_run_count);
+        assert_eq!(coarse(&c), 0, "{:?}", c.reasons);
         // An answer from before the field reads as not flagged.
         let mut old = serde_json::to_value(&c).unwrap();
         old.as_object_mut().unwrap().remove("low_run_count");

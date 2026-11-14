@@ -227,6 +227,7 @@ test('GIVEN a regressed candidate WHEN the page opens THEN the verdict, the delt
     const verdict = page.getByTestId('verdict');
     await expect(verdict.getByTestId('verdict-badge')).toHaveText('regressed');
     await expect(verdict).toContainText('p95 difference interval lies above the margin');
+    await expect(verdict.getByTestId('few-runs')).toHaveText('fewer than 5 runs');
     await expect(page.getByTestId('low-run-count')).toContainText('Fewer than 5 runs on a side');
     await expect(verdict).toContainText('deployment order');
     await expect(verdict).toContainText('environment demo');

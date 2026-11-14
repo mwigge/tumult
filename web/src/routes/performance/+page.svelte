@@ -360,6 +360,9 @@
                 <span class="badge big {VERDICT_CLASS[answer.verdict]}" data-testid="verdict-badge"
                     >{answer.verdict}</span
                 >
+                {#if cmp.low_run_count}
+                    <span class="badge warn" data-testid="few-runs">fewer than 5 runs</span>
+                {/if}
                 <span class="mono">{answer.target}</span>
                 <span class="muted mono">{answer.probe}</span>
             </div>

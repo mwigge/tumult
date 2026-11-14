@@ -403,6 +403,19 @@ async fn perf_compares_the_latest_two_versions_and_stores_the_verdict() {
     assert_eq!(history[0]["candidate_version"], "1.5.0");
     assert_eq!(history[0]["envs"], json!(["demo"]));
     assert_eq!(again["comparison"], body["comparison"]);
+    // Three runs a side: the answer and the stored row both say the
+    // interval rests on few runs.
+    assert_eq!(body["comparison"]["low_run_count"], true, "{body}");
+    for reasons in [&body["reasons"], &history[0]["reasons"]] {
+        assert!(
+            reasons
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|r| r.as_str().unwrap().contains("fewer than 5 runs")),
+            "{reasons}"
+        );
+    }
 
     // A retry of the POST (the client timed out, the daemon had stored)
     // answers 200 and appends nothing; naming the environment the answer
