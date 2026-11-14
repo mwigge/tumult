@@ -1000,3 +1000,24 @@ async fn the_pre_bound_grpc_listener_enforces_the_connection_limits() {
     assert!(second_closed, "a connection over the limit stayed open");
     assert_eq!(settings.ok(), Some(4), "the freed place was not reused");
 }
+
+/// The daemon stores entity events as entities only when the operator
+/// sets the flag; the label allow-list comes from the environment too.
+#[test]
+fn entity_events_follow_the_environment_flag() {
+    let config = config_with_tls(None, None);
+    let mut env = tumult_test_utils::EnvGuard::lock();
+    env.remove("KRONIKA_ENTITY_EVENTS")
+        .remove("KRONIKA_ENTITY_LABEL_ALLOW");
+    assert!(super::entity_events(&config).is_none(), "off by default");
+    env.set("KRONIKA_ENTITY_EVENTS", "0");
+    assert!(super::entity_events(&config).is_none());
+    env.set("KRONIKA_ENTITY_EVENTS", "1")
+        .set("KRONIKA_ENTITY_LABEL_ALLOW", "team, app.kubernetes.io/name");
+    let on = super::entity_events(&config).expect("the flag switches entity events on");
+    assert_eq!(
+        on.options().label_allow,
+        vec!["team", "app.kubernetes.io/name"]
+    );
+    assert_eq!(on.options().observer, "anonymous");
+}
