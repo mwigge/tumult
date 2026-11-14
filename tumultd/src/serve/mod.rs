@@ -263,21 +263,28 @@ pub(crate) async fn serve() -> Result<()> {
     );
 
     // OTLP/gRPC server (tumult exporter target) — TLS when configured.
-    // The router is built before the task spawns so an invalid TLS identity
-    // fails startup here instead of inside the task.
-    let grpc_router = tumult_ingest::grpc::router_with_token_tls(
-        ingest.clone(),
-        config.ingest_token.clone(),
-        tls.as_ref().map(|t| t.grpc_identity.clone()),
-    )
-    .context("invalid TLS identity for the gRPC server (KRONIKA_TLS_CERT/KRONIKA_TLS_KEY)")?;
+    let grpc_router =
+        tumult_ingest::grpc::router_with_token(ingest.clone(), config.ingest_token.clone());
+    // Connections are admitted under `KRONIKA_GRPC_MAX_CONNECTIONS` and the
+    // per-peer and per-site shares; unary OTLP exports and OTel-Arrow
+    // streams share them. With an ingest token a connection must make an
+    // authorised call in time and gives way to a newcomer until it has;
+    // without one the listener cannot tell clients apart.
+    let grpc_limits = tumult_ingest::listener::ConnectionLimits::from_env();
+    let grpc_access = match config.ingest_token {
+        Some(_) => tumult_ingest::listener::Access::Token,
+        None => tumult_ingest::listener::Access::Open,
+    };
+    let grpc_incoming = tumult_ingest::listener::incoming(grpc_listener, grpc_limits, grpc_access);
+    // The listener does the TLS handshake: its deadline ends when the
+    // handshake is complete, which only the side doing it knows.
+    let grpc_incoming = match tls.as_ref() {
+        Some(tls) => grpc_incoming.with_tls(tls.grpc.clone()),
+        None => grpc_incoming,
+    };
     let grpc_server = tokio::spawn(async move {
         let result = grpc_router
-            .serve_with_incoming_shutdown(
-                // TCP_NODELAY as tonic sets it on a listener it binds itself.
-                tonic::transport::server::TcpIncoming::from(grpc_listener).with_nodelay(Some(true)),
-                shutdown_signal("grpc"),
-            )
+            .serve_with_incoming_shutdown(grpc_incoming, shutdown_signal("grpc"))
             .await;
         tracing::info!("gRPC server future completed: {result:?}");
         result

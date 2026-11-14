@@ -59,7 +59,7 @@ fn scope(name: &str, version: &str, attrs: Vec<KeyValue>) -> Option<Instrumentat
 /// Two resources, two scopes, three spans: promoted attributes on spans and
 /// resources, every attribute value type, events with attributes, both
 /// status shapes.
-fn traces_fixture() -> ExportTraceServiceRequest {
+pub(super) fn traces_fixture() -> ExportTraceServiceRequest {
     let experiment = Span {
         trace_id: vec![0xab; 16],
         span_id: vec![0x01; 8],
@@ -310,7 +310,7 @@ fn later_batches_on_a_stream_carry_no_schema_message() {
     assert!(
         matches!(
             err,
-            OtapError::Ipc {
+            OtapError::Malformed {
                 payload: "SPANS",
                 ..
             }
@@ -335,7 +335,8 @@ fn unknown_payload_types_and_garbage_are_rejected() {
         .unwrap_err();
     assert!(matches!(err, OtapError::UnknownPayloadType(99)), "{err}");
 
-    let err = consumer
+    // The failure above ended that stream; garbage on a new one.
+    let err = StreamConsumer::default()
         .consume(BatchArrowRecords {
             batch_id: 2,
             arrow_payloads: vec![ArrowPayload {
@@ -349,7 +350,7 @@ fn unknown_payload_types_and_garbage_are_rejected() {
     assert!(
         matches!(
             err,
-            OtapError::Ipc {
+            OtapError::Malformed {
                 payload: "SPANS",
                 ..
             }
@@ -361,14 +362,14 @@ fn unknown_payload_types_and_garbage_are_rejected() {
     let mut encoder = Encoder::new(false);
     let mut records = encoder.traces(&traces_fixture());
     records.arrow_payloads.remove(0);
-    let batch = consumer.consume(records).unwrap();
+    let batch = StreamConsumer::default().consume(records).unwrap();
     assert!(matches!(
         to_trace_request(&batch).unwrap_err(),
         OtapError::MissingTable("SPANS")
     ));
 }
 
-fn logs_fixture() -> ExportLogsServiceRequest {
+pub(super) fn logs_fixture() -> ExportLogsServiceRequest {
     ExportLogsServiceRequest {
         resource_logs: vec![ResourceLogs {
             resource: resource(vec![
@@ -443,7 +444,7 @@ fn logs_round_trip_matches_the_otlp_rows() {
     assert_eq!(rows[2].body, "");
 }
 
-fn metrics_fixture() -> ExportMetricsServiceRequest {
+pub(super) fn metrics_fixture() -> ExportMetricsServiceRequest {
     let point = |t: u64, value: number_data_point::Value, attrs: Vec<KeyValue>| NumberDataPoint {
         attributes: attrs,
         start_time_unix_nano: 1_785_000_000_000_000_000,
@@ -640,7 +641,23 @@ async fn arrow_stream_acks_every_batch_and_stores_the_promoted_columns() {
         (good_id, StatusCode::Ok as i32)
     );
 
-    // A broken payload is refused in its own status; the stream survives.
+    // A continuation batch (no schema message) on the same stream.
+    let mut second = traces_fixture();
+    second.resource_spans.truncate(1);
+    second.resource_spans[0].scope_spans[0].spans.truncate(1);
+    second.resource_spans[0].scope_spans[0].spans[0].span_id = vec![0x09; 8];
+    let again = encoder.traces(&second);
+    let again_id = again.batch_id;
+    tx.send(again).await.unwrap();
+    let ack = acks.message().await.unwrap().unwrap();
+    assert_eq!(
+        (ack.batch_id, ack.status_code),
+        (again_id, StatusCode::Ok as i32)
+    );
+
+    // A broken payload is refused in its own status, and then the stream
+    // ends with an error: the schemas and dictionaries it may have carried
+    // are lost, so nothing after it could be decoded correctly.
     tx.send(BatchArrowRecords {
         batch_id: 77,
         arrow_payloads: vec![ArrowPayload {
@@ -660,20 +677,31 @@ async fn arrow_stream_acks_every_batch_and_stores_the_promoted_columns() {
         "{}",
         ack.status_message
     );
-
-    // A continuation batch (no schema message) after the failure still lands.
-    let mut second = traces_fixture();
-    second.resource_spans.truncate(1);
-    second.resource_spans[0].scope_spans[0].spans.truncate(1);
-    second.resource_spans[0].scope_spans[0].spans[0].span_id = vec![0x09; 8];
-    let again = encoder.traces(&second);
-    let again_id = again.batch_id;
-    tx.send(again).await.unwrap();
-    let ack = acks.message().await.unwrap().unwrap();
-    assert_eq!(
-        (ack.batch_id, ack.status_code),
-        (again_id, StatusCode::Ok as i32)
+    let closed = acks.message().await.unwrap_err();
+    assert_eq!(closed.code(), tonic::Code::InvalidArgument, "{closed}");
+    assert!(
+        closed.message().starts_with("otel-arrow decode: "),
+        "{closed}"
     );
+    // A batch sent into the dead stream is neither decoded nor acked.
+    let mut third = second.clone();
+    third.resource_spans[0].scope_spans[0].spans[0].span_id = vec![0x0a; 8];
+    let _ = tx.send(encoder.traces(&third)).await;
+    assert!(!matches!(acks.message().await, Ok(Some(_))));
+
+    // The exporter's reaction is a new stream, which starts from scratch.
+    let (tx, rx) = tokio::sync::mpsc::channel(8);
+    let outbound = tonic::codegen::tokio_stream::wrappers::ReceiverStream::new(rx);
+    let mut request = tonic::Request::new(outbound);
+    request.metadata_mut().insert(
+        "authorization",
+        tonic::metadata::MetadataValue::from_static("Bearer kro_secret"),
+    );
+    let mut acks = client.arrow_traces(request).await.unwrap().into_inner();
+    third.resource_spans[0].scope_spans[0].spans[0].span_id = vec![0x0b; 8];
+    tx.send(Encoder::new(true).traces(&third)).await.unwrap();
+    let ack = acks.message().await.unwrap().unwrap();
+    assert_eq!(ack.status_code, StatusCode::Ok as i32);
     drop(tx);
     assert!(
         acks.message().await.unwrap().is_none(),
@@ -691,7 +719,7 @@ async fn arrow_stream_acks_every_batch_and_stores_the_promoted_columns() {
              FROM spans ORDER BY span_id",
         )
         .unwrap();
-    assert_eq!(rows.len(), 4, "{rows:?}");
+    assert_eq!(rows.len(), 5, "{rows:?}");
     assert_eq!(rows[0]["span_name"], "resilience.experiment");
     assert_eq!(rows[0]["service_name"], "tumult");
     assert_eq!(rows[0]["experiment_id"], "exp-otap-1");
@@ -709,6 +737,10 @@ async fn arrow_stream_acks_every_batch_and_stores_the_promoted_columns() {
     assert_eq!(
         rows[3]["experiment_id"], "exp-otap-1",
         "continuation batch stored"
+    );
+    assert_eq!(
+        rows[4]["experiment_id"], "exp-otap-1",
+        "batch on the new stream stored, the one sent into the dead stream is not"
     );
 }
 
@@ -743,7 +775,7 @@ async fn arrow_stream_requires_the_ingest_token() {
 }
 
 #[tokio::test]
-async fn write_failure_is_reported_as_internal_in_the_batch_status() {
+async fn write_failure_is_reported_as_unavailable_so_the_exporter_retries() {
     let dead = super::service::OtapGrpc::new(IngestWriter::stopped_for_test(), None);
     let router = tonic::transport::Server::builder().add_service(dead.traces());
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -761,8 +793,46 @@ async fn write_failure_is_reported_as_internal_in_the_batch_status() {
     let mut encoder = Encoder::new(false);
     tx.send(encoder.traces(&traces_fixture())).await.unwrap();
     let ack = acks.message().await.unwrap().unwrap();
-    assert_eq!(ack.status_code, StatusCode::Internal as i32);
+    // UNAVAILABLE is the one code the exporter retries; INTERNAL would make
+    // it drop the data and tear the stream down.
+    assert_eq!(ack.status_code, StatusCode::Unavailable as i32);
     assert_eq!(ack.status_message, "telemetry write failed");
+    // The stream itself is intact.
+    tx.send(encoder.traces(&traces_fixture())).await.unwrap();
+    let ack = acks.message().await.unwrap().unwrap();
+    assert_eq!(ack.status_code, StatusCode::Unavailable as i32);
+}
+
+#[tokio::test]
+async fn oversized_message_ends_the_stream_with_out_of_range() {
+    let served = serve(None).await;
+    let mut client = connect(served.addr).await;
+    let (tx, rx) = tokio::sync::mpsc::channel(1);
+    let outbound = tonic::codegen::tokio_stream::wrappers::ReceiverStream::new(rx);
+    let mut acks = client
+        .arrow_traces(tonic::Request::new(outbound))
+        .await
+        .unwrap()
+        .into_inner();
+    tx.send(BatchArrowRecords {
+        batch_id: 1,
+        arrow_payloads: vec![ArrowPayload {
+            schema_id: "SPANS-1".into(),
+            r#type: super::proto::ArrowPayloadType::Spans as i32,
+            record: vec![0; super::limits::DEFAULT_MAX_MESSAGE_BYTES + 1],
+        }],
+        headers: vec![],
+    })
+    .await
+    .unwrap();
+    // The read error reaches the client as the stream's status, not as a
+    // clean end of stream.
+    let closed = acks.message().await.unwrap_err();
+    assert_eq!(closed.code(), tonic::Code::OutOfRange, "{closed}");
+    assert!(
+        closed.message().contains("message length too large"),
+        "{closed}"
+    );
 }
 
 #[tokio::test]
@@ -906,4 +976,471 @@ async fn unknown_grpc_encoding_is_refused_by_name() {
         assert_eq!(err.code(), tonic::Code::Unimplemented, "{encoding}");
         assert!(err.message().contains(encoding), "{}", err.message());
     }
+}
+
+// ---------------------------------------------------------------------------
+// Stream endings: nothing but a clean client close may look like one.
+// ---------------------------------------------------------------------------
+
+use super::service::{respond, Convert, StreamContext};
+use tonic::codegen::tokio_stream::{self, StreamExt};
+
+fn context(limits: super::OtapLimits, convert: Convert) -> StreamContext {
+    StreamContext {
+        ingest: IngestWriter::stopped_for_test(),
+        limits,
+        decodes: super::decode_gate::DecodeGate::new(1),
+        signal: "traces",
+        convert,
+        guards: super::service::Guards::new(&limits),
+        slot: None,
+    }
+}
+
+fn no_rows(_: &super::OtapBatch) -> Result<crate::writer::Batch, OtapError> {
+    Ok(crate::writer::Batch::Spans(Vec::new()))
+}
+
+#[tokio::test]
+async fn stream_read_error_is_sent_to_the_client() {
+    let inbound = tokio_stream::iter(vec![Err(tonic::Status::data_loss("frame cut short"))]);
+    let mut out = respond(
+        inbound,
+        context(super::OtapLimits::default(), no_rows),
+        None,
+    );
+    let status = out.next().await.unwrap().unwrap_err();
+    assert_eq!(status.code(), tonic::Code::DataLoss);
+    assert_eq!(status.message(), "frame cut short");
+    assert!(out.next().await.is_none());
+}
+
+#[tokio::test]
+async fn panic_while_decoding_is_an_internal_status_and_an_error_log() {
+    fn explode(_: &super::OtapBatch) -> Result<crate::writer::Batch, OtapError> {
+        panic!("decoder bug with secret-payload-bytes");
+    }
+    let (logs, _guard) = crate::test_logs::capture();
+    let inbound = tokio_stream::iter(vec![Ok(Encoder::new(false).traces(&traces_fixture()))]);
+    let mut out = respond(
+        inbound,
+        context(super::OtapLimits::default(), explode),
+        None,
+    );
+    let status = out.next().await.unwrap().unwrap_err();
+    assert_eq!(status.code(), tonic::Code::Internal);
+    assert_eq!(status.message(), "otel-arrow decode task failed");
+    assert!(out.next().await.is_none());
+    let text = logs.text();
+    assert!(
+        text.contains("ERROR") && text.contains("OTAP decode task failed"),
+        "{text}"
+    );
+}
+
+#[tokio::test]
+async fn silent_stream_is_closed_as_unavailable() {
+    let limits = super::OtapLimits {
+        stream_idle: std::time::Duration::from_millis(50),
+        ..super::OtapLimits::default()
+    };
+    let inbound = tokio_stream::pending::<Result<BatchArrowRecords, tonic::Status>>();
+    let mut out = respond(inbound, context(limits, no_rows), None);
+    let status = out.next().await.unwrap().unwrap_err();
+    assert_eq!(status.code(), tonic::Code::Unavailable);
+    assert!(status.message().contains("idle"), "{status}");
+}
+
+async fn serve_with(limits: super::OtapLimits) -> Served {
+    let dir = tempfile::TempDir::new().unwrap();
+    let store = tumult_lake::Store::open(&dir.path().join("k.duckdb")).unwrap();
+    let (ingest, _task) = IngestWriter::spawn(store.writer().unwrap(), 16);
+    let otap = super::service::OtapGrpc::with_limits(ingest, None, limits);
+    let router = tonic::transport::Server::builder().add_service(otap.traces());
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    // The daemon's listener: the per-connection share needs the peer
+    // address to come through it.
+    let incoming = crate::listener::incoming(
+        listener,
+        crate::listener::ConnectionLimits::default(),
+        crate::listener::Access::Open,
+    );
+    let server = tokio::spawn(async move {
+        router.serve_with_incoming(incoming).await.unwrap();
+    });
+    Served {
+        _dir: dir,
+        store,
+        addr,
+        _server: server,
+    }
+}
+
+#[tokio::test]
+async fn streams_beyond_the_limit_are_refused_until_one_closes() {
+    let served = serve_with(super::OtapLimits {
+        max_streams: 1,
+        ..super::OtapLimits::default()
+    })
+    .await;
+    let mut client = connect(served.addr).await;
+    let open = |client: &mut ArrowTracesServiceClient<tonic::transport::Channel>| {
+        let (tx, rx) = tokio::sync::mpsc::channel::<BatchArrowRecords>(1);
+        let outbound = tonic::codegen::tokio_stream::wrappers::ReceiverStream::new(rx);
+        let mut client = client.clone();
+        async move { (tx, client.arrow_traces(tonic::Request::new(outbound)).await) }
+    };
+    let (first_tx, first) = open(&mut client).await;
+    let mut first = first.unwrap().into_inner();
+    let (_tx, second) = open(&mut client).await;
+    let refused = second.unwrap_err();
+    assert_eq!(refused.code(), tonic::Code::ResourceExhausted, "{refused}");
+
+    // The first stream still works, and its slot is free once it ends.
+    first_tx
+        .send(Encoder::new(false).traces(&traces_fixture()))
+        .await
+        .unwrap();
+    assert_eq!(
+        first.message().await.unwrap().unwrap().status_code,
+        StatusCode::Ok as i32
+    );
+    drop(first_tx);
+    assert!(first.message().await.unwrap().is_none());
+    let mut reopened = None;
+    for _ in 0..100 {
+        let (tx, result) = open(&mut client).await;
+        if let Ok(response) = result {
+            reopened = Some((tx, response));
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    assert!(reopened.is_some(), "the closed stream's slot was not freed");
+}
+
+#[tokio::test]
+async fn batch_over_a_decode_limit_closes_the_stream_as_resource_exhausted() {
+    let served = serve_with(super::OtapLimits {
+        max_rows_per_table: 2,
+        ..super::OtapLimits::default()
+    })
+    .await;
+    let mut client = connect(served.addr).await;
+    let (tx, rx) = tokio::sync::mpsc::channel(1);
+    let outbound = tonic::codegen::tokio_stream::wrappers::ReceiverStream::new(rx);
+    let mut acks = client
+        .arrow_traces(tonic::Request::new(outbound))
+        .await
+        .unwrap()
+        .into_inner();
+    // Three spans against a limit of two rows.
+    let batch = Encoder::new(false).traces(&traces_fixture());
+    let batch_id = batch.batch_id;
+    tx.send(batch).await.unwrap();
+    let ack = acks.message().await.unwrap().unwrap();
+    assert_eq!(
+        (ack.batch_id, ack.status_code),
+        (batch_id, StatusCode::InvalidArgument as i32)
+    );
+    assert!(
+        ack.status_message
+            .contains("rows per table exceeds the limit of 2"),
+        "{}",
+        ack.status_message
+    );
+    let closed = acks.message().await.unwrap_err();
+    assert_eq!(closed.code(), tonic::Code::ResourceExhausted, "{closed}");
+    let rows = served
+        .store
+        .read_only()
+        .unwrap()
+        .query_json_rows("SELECT count(*) AS n FROM spans")
+        .unwrap();
+    assert_eq!(rows[0]["n"], 0, "{rows:?}");
+}
+
+#[test]
+fn batch_reports_how_many_tables_continued_an_earlier_schema() {
+    let mut encoder = Encoder::new(false);
+    let mut consumer = StreamConsumer::default();
+    let first = consumer.consume(encoder.traces(&traces_fixture())).unwrap();
+    assert!(first.payloads() > 1);
+    assert_eq!(first.continued_payloads(), 0);
+    let second = consumer.consume(encoder.traces(&traces_fixture())).unwrap();
+    assert_eq!(second.continued_payloads(), second.payloads());
+    assert_eq!(second.payloads(), first.payloads());
+}
+
+// ---------------------------------------------------------------------------
+// Streams that misbehave over time rather than in one batch.
+// ---------------------------------------------------------------------------
+
+fn rejected(_: &super::OtapBatch) -> Result<crate::writer::Batch, OtapError> {
+    Err(OtapError::Unsupported("TEST_ONLY"))
+}
+
+fn batches(n: usize) -> Vec<Result<BatchArrowRecords, tonic::Status>> {
+    let mut encoder = Encoder::new(false);
+    (0..n)
+        .map(|_| Ok(encoder.traces(&traces_fixture())))
+        .collect()
+}
+
+#[tokio::test]
+async fn stream_closes_after_too_many_rejected_batches() {
+    let limits = super::OtapLimits {
+        max_rejected_batches: 2,
+        ..super::OtapLimits::default()
+    };
+    let mut out = respond(
+        tokio_stream::iter(batches(5)),
+        context(limits, rejected),
+        None,
+    );
+    for _ in 0..2 {
+        let ack = out.next().await.unwrap().unwrap();
+        assert_eq!(ack.status_code, StatusCode::InvalidArgument as i32);
+    }
+    let closed = out.next().await.unwrap().unwrap_err();
+    assert_eq!(closed.code(), tonic::Code::InvalidArgument, "{closed}");
+    assert!(closed.message().contains("rejected batches"), "{closed}");
+    assert!(out.next().await.is_none(), "nothing after the close");
+}
+
+#[tokio::test]
+async fn rejected_batch_warnings_are_rate_limited() {
+    let limits = super::OtapLimits {
+        max_rejected_batches: 1000,
+        ..super::OtapLimits::default()
+    };
+    let (logs, _guard) = crate::test_logs::capture();
+    let mut out = respond(
+        tokio_stream::iter(batches(200)),
+        context(limits, rejected),
+        None,
+    );
+    let mut acks = 0;
+    while let Some(item) = out.next().await {
+        item.unwrap();
+        acks += 1;
+    }
+    assert_eq!(acks, 200, "every batch is still answered");
+    let text = logs.text();
+    let warned = text.matches("OTAP batch rejected").count();
+    assert!(
+        (1..=20).contains(&warned),
+        "{warned} warnings for 200 rejected batches"
+    );
+}
+
+/// A client that floods the log with one warning does not get to hide
+/// the next one of another kind.
+#[tokio::test]
+async fn a_flood_of_rejected_batches_does_not_hide_an_undecodable_one() {
+    let limits = super::OtapLimits {
+        max_rejected_batches: 1000,
+        ..super::OtapLimits::default()
+    };
+    let mut stream = batches(200);
+    stream.push(Ok(BatchArrowRecords {
+        batch_id: 201,
+        arrow_payloads: vec![ArrowPayload {
+            schema_id: "s".into(),
+            r#type: super::proto::ArrowPayloadType::Spans as i32,
+            record: b"not arrow ipc".to_vec(),
+        }],
+        headers: Vec::new(),
+    }));
+    let (logs, _guard) = crate::test_logs::capture();
+    let mut out = respond(tokio_stream::iter(stream), context(limits, rejected), None);
+    while out.next().await.is_some() {}
+    let text = logs.text();
+    let rejected = text.matches("OTAP batch rejected").count();
+    assert_eq!(rejected, 10, "the burst went to the flood: {text}");
+    assert_eq!(text.matches("OTAP batch undecodable").count(), 1, "{text}");
+}
+
+/// `line` without its quoted values: what a reader of `key=value` pairs
+/// takes for the keys and the bare values.
+fn outside_quotes(line: &str) -> String {
+    let (mut out, mut quoted, mut escaped) = (String::new(), false, false);
+    for c in line.chars() {
+        match (quoted, escaped, c) {
+            (true, true, _) => escaped = false,
+            (true, false, '\\') => escaped = true,
+            (_, false, '"') => quoted = !quoted,
+            (false, ..) => out.push(c),
+            (true, ..) => {}
+        }
+    }
+    out
+}
+
+#[test]
+fn text_inside_a_quoted_value_is_not_outside_it() {
+    let line = r#"WARN a=1 error="x \" b=2 \\" c=3 note="d=4" e=5"#;
+    assert_eq!(outside_quotes(line), "WARN a=1 error= c=3 note= e=5");
+}
+
+/// A schema id (or anything else a peer chooses) is logged inside one
+/// quoted value: it cannot add `key=value` pairs to the line.
+#[tokio::test]
+async fn peer_text_in_a_warning_cannot_forge_fields() {
+    let schema = arrow::datatypes::Schema::new(vec![arrow::datatypes::Field::new(
+        "id",
+        arrow::datatypes::DataType::UInt16,
+        true,
+    )]);
+    let forgeries = [
+        "x suppressed=99 signal=forged",
+        "x\" suppressed=99 signal=\"forged",
+        "x\\\" suppressed=99 signal=forged",
+    ];
+    for schema_id in forgeries {
+        let records = BatchArrowRecords {
+            batch_id: 7,
+            arrow_payloads: vec![ArrowPayload {
+                schema_id: schema_id.into(),
+                r#type: super::proto::ArrowPayloadType::Spans as i32,
+                record: super::craft::schema_message(&schema),
+            }],
+            headers: Vec::new(),
+        };
+        let (logs, _guard) = crate::test_logs::capture();
+        let mut out = respond(
+            tokio_stream::iter(vec![Ok(records)]),
+            context(super::OtapLimits::default(), no_rows),
+            None,
+        );
+        let refused = out.next().await.unwrap().unwrap();
+        assert_eq!(refused.status_code, StatusCode::InvalidArgument as i32);
+        while out.next().await.is_some() {}
+        let text = logs.text();
+        let line = text
+            .lines()
+            .find(|line| line.contains("OTAP batch undecodable"))
+            .unwrap_or_else(|| panic!("no warning: {text}"));
+        assert!(line.contains("signal=\"traces\""), "{line}");
+        assert!(line.contains("error=\"SPANS payload for schema"), "{line}");
+        let bare = outside_quotes(line);
+        assert!(
+            !bare.contains("forged") && !bare.contains("suppressed=99"),
+            "{schema_id:?} reached the fields: {line}"
+        );
+        assert!(bare.contains("suppressed=0"), "{line}");
+    }
+}
+
+#[tokio::test]
+async fn acks_nobody_reads_end_the_stream() {
+    let limits = super::OtapLimits {
+        ack_timeout: std::time::Duration::from_millis(50),
+        ..super::OtapLimits::default()
+    };
+    let slots = std::sync::Arc::new(tokio::sync::Semaphore::new(1));
+    let permit = slots.clone().try_acquire_owned().unwrap();
+    // Ten batches, then silence; the client never reads a status.
+    let inbound = tokio_stream::iter(batches(10)).chain(tokio_stream::pending());
+    let out = respond(inbound, context(limits, no_rows), Some(permit));
+    let freed = tokio::time::timeout(std::time::Duration::from_secs(5), slots.acquire()).await;
+    assert!(
+        freed.is_ok(),
+        "the stream still holds its slot although nobody reads its acks"
+    );
+    drop(out);
+}
+
+#[tokio::test]
+async fn stream_is_closed_at_its_maximum_lifetime() {
+    let limits = super::OtapLimits {
+        stream_lifetime: std::time::Duration::from_millis(100),
+        ..super::OtapLimits::default()
+    };
+    let inbound = tokio_stream::pending::<Result<BatchArrowRecords, tonic::Status>>();
+    let mut out = respond(inbound, context(limits, no_rows), None);
+    let closed = tokio::time::timeout(std::time::Duration::from_secs(5), out.next())
+        .await
+        .expect("the stream outlived its lifetime");
+    let status = closed.unwrap().unwrap_err();
+    assert_eq!(status.code(), tonic::Code::Unavailable);
+    assert!(status.message().contains("lifetime"), "{status}");
+}
+
+#[tokio::test]
+async fn one_connection_gets_only_its_share_of_the_streams() {
+    let served = serve_with(super::OtapLimits {
+        max_streams: 4,
+        max_streams_per_connection: 1,
+        ..super::OtapLimits::default()
+    })
+    .await;
+    let open = |client: &ArrowTracesServiceClient<tonic::transport::Channel>| {
+        let (tx, rx) = tokio::sync::mpsc::channel::<BatchArrowRecords>(1);
+        let outbound = tonic::codegen::tokio_stream::wrappers::ReceiverStream::new(rx);
+        let mut client = client.clone();
+        async move { (tx, client.arrow_traces(tonic::Request::new(outbound)).await) }
+    };
+    let first_connection = connect(served.addr).await;
+    let (_first_tx, first) = open(&first_connection).await;
+    first.unwrap();
+    let (_tx, second) = open(&first_connection).await;
+    let refused = second.unwrap_err();
+    assert_eq!(refused.code(), tonic::Code::ResourceExhausted, "{refused}");
+    assert!(refused.message().contains("connection"), "{refused}");
+
+    // Another connection still gets a stream.
+    let second_connection = connect(served.addr).await;
+    let (_second_tx, other) = open(&second_connection).await;
+    other.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn decode_permit_is_held_until_the_batch_is_written() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let store = tumult_lake::Store::open(&dir.path().join("k.duckdb")).unwrap();
+    let (ingest, _task) = IngestWriter::spawn(store.writer().unwrap(), 16);
+    // Stall the writer inside a batch of its own.
+    let (release, stalled) = std::sync::mpsc::channel::<()>();
+    let (entered, running) = tokio::sync::oneshot::channel::<()>();
+    let blocker = ingest.clone();
+    let blocked = tokio::spawn(async move {
+        blocker
+            .write(crate::writer::Batch::Exec(Box::new(move |_| {
+                let _ = entered.send(());
+                let _ = stalled.recv();
+                Ok(())
+            })))
+            .await
+    });
+    running.await.unwrap();
+    assert_eq!(ingest.queued(), 0, "the writer took the stalling batch");
+
+    let mut shared = context(super::OtapLimits::default(), no_rows);
+    shared.ingest = ingest.clone();
+    let decodes = shared.decodes.clone();
+    let mut out = respond(tokio_stream::iter(batches(1)), shared, None);
+
+    // The batch is decoded, converted and handed to the stalled writer.
+    let handed_over = async {
+        while ingest.queued() != 1 {
+            tokio::task::yield_now().await;
+        }
+    };
+    tokio::time::timeout(std::time::Duration::from_secs(30), handed_over)
+        .await
+        .expect("the converted batch reaches the writer queue");
+    assert_eq!(
+        decodes.free(),
+        0,
+        "the decode permit was given back while the batch still waits for the writer"
+    );
+
+    release.send(()).unwrap();
+    blocked.await.unwrap().unwrap();
+    let ack = out.next().await.unwrap().unwrap();
+    assert_eq!(ack.status_code, StatusCode::Ok as i32);
+    assert!(out.next().await.is_none());
+    assert_eq!(decodes.free(), 1, "stored: the permit is back");
 }
