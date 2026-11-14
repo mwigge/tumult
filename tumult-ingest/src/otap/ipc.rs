@@ -496,6 +496,12 @@ const ZSTD_BLOCK_MIN: usize = 3;
 ///   a sender pays for the memory it makes the receiver allocate with
 ///   bytes on the wire (at the format's best ratio) as well as with its
 ///   decoded-bytes budget.
+///
+/// This is a coarse filter: it stops a declared size the bytes cannot
+/// back, and at zstd's best ratio that still leaves tens of thousands of
+/// decoded bytes for one on the wire. The limit on what a batch may
+/// allocate is the decoded-bytes charge (`KRONIKA_OTAP_MAX_DECODED_BYTES`)
+/// made before this is asked.
 fn could_inflate_to(data: &[u8], declared: usize) -> Result<(), &'static str> {
     const INVALID: &str = "invalid zstd buffer";
     const DIFFERS: &str = "decompressed size differs from the declared size";
@@ -705,9 +711,10 @@ impl<'a> Reader<'a> {
         if declared < need {
             return Err(self.fail("buffer shorter than its array"));
         }
-        // Charged, and held against what the compressed bytes can be,
-        // before the memory is asked for; zstd never writes past the
-        // slice it is given.
+        // Charged before the memory is asked for: the charge is the
+        // limit. The check against what the compressed bytes can be is a
+        // coarse filter on top of it. zstd never writes past the slice it
+        // is given.
         self.budget.charge_bytes(declared)?;
         could_inflate_to(data, declared).map_err(|why| self.fail(why))?;
         #[cfg(test)]
