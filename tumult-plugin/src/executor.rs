@@ -366,18 +366,11 @@ fn kill_process_group(pid: u32) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
-    use std::os::unix::fs::PermissionsExt;
     use tempfile::TempDir;
 
     fn create_test_script(dir: &Path, name: &str, content: &str) -> std::path::PathBuf {
-        use std::io::Write;
         let script_path = dir.join(name);
-        let mut file = fs::File::create(&script_path).unwrap();
-        file.write_all(content.as_bytes()).unwrap();
-        file.sync_all().unwrap();
-        drop(file); // Ensure file handle is closed before chmod + exec
-        fs::set_permissions(&script_path, fs::Permissions::from_mode(0o755)).unwrap();
+        tumult_test_utils::write_executable(&script_path, content);
         script_path
     }
 

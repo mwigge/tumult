@@ -3,25 +3,14 @@
 #![cfg(unix)]
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::Duration;
 
 use tumult_agent_cli::{
     resolver, run, run_prompt, AdapterRegistry, AgentCliAdapter, AgentCliError, ClaudeCodeAdapter,
     CliInvocation, CliProbe, CodexAdapter, PromptRequest, RawOutput,
 };
-use tumult_test_utils::EnvGuard;
-
-/// Write an executable `#!/bin/sh` script into `dir`.
-fn fake_bin(dir: &Path, name: &str, body: &str) -> PathBuf {
-    use std::os::unix::fs::PermissionsExt;
-    let path = dir.join(name);
-    fs::write(&path, format!("#!/bin/sh\n{body}\n")).expect("write fake binary");
-    let mut perms = fs::metadata(&path).expect("stat fake binary").permissions();
-    perms.set_mode(0o755);
-    fs::set_permissions(&path, perms).expect("chmod fake binary");
-    path
-}
+use tumult_test_utils::{fake_bin, EnvGuard};
 
 fn request(prompt: &str, workspace: &Path) -> PromptRequest {
     let mut req = PromptRequest::new(prompt, workspace);

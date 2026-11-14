@@ -3,31 +3,20 @@
 #![cfg(unix)]
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::{Duration, Instant};
 
 use tumult_agent_cli::{
     run_prompt, AdapterRegistry, AgentCliAdapter, AgentCliError, ClaudeCodeAdapter, CodexAdapter,
     PromptRequest, RawOutput,
 };
-use tumult_test_utils::EnvGuard;
+use tumult_test_utils::{fake_bin, EnvGuard};
 
 /// Realistic `claude -p --output-format json` result envelope (documented
 /// shape of Claude Code's print-mode JSON output).
 const CLAUDE_JSON_ENVELOPE: &str = r#"{"type":"result","subtype":"success","is_error":false,"duration_ms":2734,"duration_api_ms":2450,"num_turns":1,"result":"Fake claude answer.","session_id":"5b1e9a2f-0000-4000-8000-000000000000","total_cost_usd":0.0421,"usage":{"input_tokens":12,"output_tokens":9}}"#;
 
 const CLAUDE_JSON_ERROR_ENVELOPE: &str = r#"{"type":"result","subtype":"error_during_execution","is_error":true,"duration_ms":812,"num_turns":1,"result":"Credit balance is too low","session_id":"5b1e9a2f-0000-4000-8000-000000000001"}"#;
-
-/// Write an executable `#!/bin/sh` script into `dir`.
-fn fake_bin(dir: &Path, name: &str, body: &str) -> PathBuf {
-    use std::os::unix::fs::PermissionsExt;
-    let path = dir.join(name);
-    fs::write(&path, format!("#!/bin/sh\n{body}\n")).expect("write fake binary");
-    let mut perms = fs::metadata(&path).expect("stat fake binary").permissions();
-    perms.set_mode(0o755);
-    fs::set_permissions(&path, perms).expect("chmod fake binary");
-    path
-}
 
 fn request(prompt: &str, workspace: &Path) -> PromptRequest {
     let mut req = PromptRequest::new(prompt, workspace);

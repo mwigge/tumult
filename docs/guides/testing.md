@@ -68,6 +68,12 @@ with `// sleep:` and gives the reason in at least three words.
   previous values when dropped. `EnvGuard::lock()` is not re-entrant: a second
   call on the same thread while the first guard is alive deadlocks. Take one
   guard per test and pass it to helpers.
+- A stand-in program that a test spawns is written with
+  `tumult_test_utils::fake_bin` or `write_executable`, not with
+  `std::fs::write`. A file written by the test process can be held open by
+  a child that another test thread is starting, and spawning it then fails
+  with "Text file busy". The helpers write the file from a child process,
+  so the test process never holds it open for writing.
 - Spans are asserted with `tumult_test_utils::capture_spans`, which returns
   only the spans of the calling test. Metrics are asserted with
   `tumult_test_utils::MetricCapture`, which owns a private meter provider. Do

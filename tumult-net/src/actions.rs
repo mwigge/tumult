@@ -592,12 +592,10 @@ mod tests {
         //    listen address, so the start must fail surfacing the daemon's
         //    captured stderr, and must not leave a pidfile behind.
         let script = unique_temp_file("dead-proxyd");
-        std::fs::write(&script, b"#!/bin/sh\necho boom >&2\nsleep 30\n").unwrap();
         #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
-        }
+        tumult_test_utils::write_executable(&script, "#!/bin/sh\necho boom >&2\nsleep 30\n");
+        #[cfg(not(unix))]
+        std::fs::write(&script, b"#!/bin/sh\necho boom >&2\nsleep 30\n").unwrap();
         env.set(PROXYD_ENV, &script);
         let listen = addr("127.0.0.1:0");
         let err = start_proxy(listen, addr("127.0.0.1:9"), FaultProfile::default())
