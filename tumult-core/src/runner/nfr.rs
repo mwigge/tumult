@@ -30,6 +30,7 @@ pub(crate) struct Measurements<'a> {
 /// Evaluate every declared objective and the recovery targets. Returns
 /// `None` when the definition declares neither objectives nor targets, so
 /// journals of plain experiments stay unchanged.
+#[allow(clippy::similar_names)] // locals mirror the rto_/rpo_ fields of ObjectiveOutcome
 pub(crate) fn evaluate(experiment: &Experiment, m: &Measurements<'_>) -> Option<ObjectiveOutcome> {
     if experiment.nfr.is_empty()
         && experiment.rto_target_s.is_none()
