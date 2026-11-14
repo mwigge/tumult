@@ -267,6 +267,10 @@ with the number left out.
 | `malformed` | a type that is not a string, an interval that is not a number, an identifying value that is empty or not a scalar, the same identifying name twice, a description that is not a map, relationships that are not an array of maps, a relationship without a type or without the type and identity of its target, or nesting deeper than 8 |
 | `oversized` | a type over 128 bytes, more than 16 identifying attributes, a name or value over 256 bytes, more than 64 relationships, or description and relationships over 64 KiB together |
 
+A delete event is read for its type, its identifying attributes and its
+reason only. A description or an interval in it is ignored, so a delete is
+never dropped for what it says about a state.
+
 The report interval is kept between 0 and 30 days. An event time in the
 future is replaced by the time of receipt. A delete reason is cut at 256
 bytes.

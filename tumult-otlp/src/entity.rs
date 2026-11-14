@@ -454,25 +454,60 @@ fn normalise(
     let attrs = record.attributes.as_slice();
     let entity_type = entity_type(attrs, keys)?;
     let entity_id = identity(attrs, keys, entity_type, source.resource)?;
-    let mut filtered = 0;
-    let description = description(attrs, keys, options, &mut filtered)?;
-    let relationships = relationships(attrs, keys, &mut filtered)?;
-    check_state_size(&description, &relationships)?;
+    let state = match kind {
+        EntityEventKind::State => state_of(attrs, keys, options)?,
+        EntityEventKind::Delete => State::none(),
+    };
     let row = EntityEventRow {
         kind,
         ts_ns: logs::log_ts(record, source.received_at_ns).min(source.received_at_ns),
         entity_type: entity_type.to_string(),
         entity_id,
-        description,
-        relationships,
-        interval_s: interval_s(attrs, keys)?,
+        description: state.description,
+        relationships: state.relationships,
+        interval_s: state.interval_s,
         delete_reason: delete_reason(attrs, keys),
         wire_form: keys.form,
         observer: options.observer.clone(),
         schema_url: source.schema_url.map(str::to_string),
         environment: source.environment.to_string(),
     };
-    Ok((row, filtered))
+    Ok((row, state.filtered))
+}
+
+/// What only a state event says about its entity.
+struct State {
+    description: Json,
+    relationships: Json,
+    interval_s: i64,
+    /// Keys removed from the description and the relationships.
+    filtered: u64,
+}
+
+impl State {
+    /// The state of a delete: it has none, and the attributes that would
+    /// hold one are not read, so a malformed one cannot stop the delete.
+    fn none() -> Self {
+        Self {
+            description: Json::Object(Map::new()),
+            relationships: Json::Array(Vec::new()),
+            interval_s: 0,
+            filtered: 0,
+        }
+    }
+}
+
+fn state_of(attrs: &[KeyValue], keys: &Keys, options: &EntityOptions) -> Result<State, EntityDrop> {
+    let mut filtered = 0;
+    let description = description(attrs, keys, options, &mut filtered)?;
+    let relationships = relationships(attrs, keys, &mut filtered)?;
+    check_state_size(&description, &relationships)?;
+    Ok(State {
+        description,
+        relationships,
+        interval_s: interval_s(attrs, keys)?,
+        filtered,
+    })
 }
 
 fn value_of<'a>(attrs: &'a [KeyValue], key: &str) -> Option<&'a any_value::Value> {

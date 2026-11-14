@@ -306,6 +306,53 @@ fn a_spec_delete_keeps_its_reason_and_a_legacy_delete_has_none() {
     assert_eq!(rows[1].entity_id, rows[0].entity_id);
 }
 
+/// A delete says that an entity is gone. Whatever else the record carries
+/// is not read, so nothing in it can keep the delete from being applied.
+#[test]
+fn a_delete_reads_only_the_type_the_id_and_the_reason() {
+    let spec = spec_record(
+        "entity.delete",
+        vec![
+            text("entity.type", "k8s.pod"),
+            kv("entity.id", pod_id()),
+            text("entity.delete.reason", "scaled_down"),
+            text("entity.description", "not a map"),
+            text("entity.report.interval", "soon"),
+            kv("entity.relationships", map(vec![])),
+        ],
+    );
+    let legacy = legacy_record(
+        "entity_delete",
+        vec![
+            text("otel.entity.type", "k8s.pod"),
+            kv("otel.entity.id", pod_id()),
+            text("otel.entity.attributes", "not a map"),
+            kv("otel.entity.interval", map(vec![])),
+        ],
+    );
+    let large = spec_record(
+        "entity.delete",
+        vec![
+            text("entity.type", "k8s.pod"),
+            kv("entity.id", pod_id()),
+            kv(
+                "entity.description",
+                map(vec![text("test.blob", &"x".repeat(MAX_STATE_BYTES))]),
+            ),
+            kv("entity.report.interval", Value::IntValue(300)),
+        ],
+    );
+    let rows = entities_of(prod(), vec![spec, legacy, large]);
+    assert_eq!(rows.len(), 3);
+    for row in &rows {
+        assert_eq!(row.kind, EntityEventKind::Delete);
+        assert_eq!(row.description, json!({}));
+        assert_eq!(row.relationships, json!([]));
+        assert_eq!(row.interval_s, 0);
+    }
+    assert_eq!(rows[0].delete_reason.as_deref(), Some("scaled_down"));
+}
+
 /// `host_metrics` sends the `host` entity with a type and no id; the id is
 /// on the resource once `resourcedetection` ran.
 #[test]
