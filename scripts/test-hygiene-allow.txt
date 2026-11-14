@@ -26,49 +26,15 @@ tumult-api/tests/env_parts.rs::retention_export_fails_closed_even_with_ingest_ha
 
 # tumult-cli: deferred, the crate is being changed elsewhere
 tumult-cli/src/commands/tests/executor.rs::sync_executor_timeout_kills_process_group::bare-sleep  # deferred: sleep without a stated reason
-tumult-cli/src/commands/tests/store_commands.rs::store_path_reports_existing_store::no-assert  # deferred: asserts nothing yet
-tumult-cli/src/commands/tests/store_commands.rs::store_path_reports_missing_store::no-assert  # deferred: asserts nothing yet
-tumult-cli/src/commands/tests/store_commands.rs::store_stats_without_store_reports_absence::no-assert  # deferred: asserts nothing yet
-tumult-cli/src/commands/tests/validate_extra.rs::validate_renders_summary_for_full_featured_experiment::no-assert  # deferred: asserts nothing yet
-tumult-cli/src/commands/tests/validate_extra.rs::validate_warns_but_passes_on_unknown_native_plugin::no-assert  # deferred: asserts nothing yet
-tumult-cli/src/commands/tests/validate_extra.rs::validate_warns_but_passes_on_unknown_script_plugin::no-assert  # deferred: asserts nothing yet
-tumult-cli/src/commands/tests/validate_extra.rs::validate_warns_on_unknown_function_of_known_native_plugin::no-assert  # deferred: asserts nothing yet
 tumult-cli/src/dispatch_tests.rs::dispatch_agents_lists_adapters::no-assert  # deferred: asserts nothing yet
 tumult-cli/src/dispatch_tests.rs::dispatch_compliance_report_and_sources::no-assert  # deferred: asserts nothing yet
 tumult-cli/src/dispatch_tests.rs::dispatch_recommend_against_populated_store::no-assert  # deferred: asserts nothing yet
 tumult-cli/src/dispatch_tests.rs::dispatch_run_dry_run_covers_every_rollback_strategy::no-assert  # deferred: asserts nothing yet
-tumult-cli/src/commands/gameday.rs::gameday_run_injects_config_env_and_fires_declared_controls::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumult-cli/src/commands/gate.rs::cmd_gate_requires_a_daemon_url::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumult-cli/src/commands/run.rs::unreachable_daemon_falls_back_to_direct_write::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumult-cli/src/commands/tests/agentic.rs::replay_complete_fixture_passes::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumult-cli/src/commands/tests/agentic.rs::run_scenario_reports_fault_and_contract::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumult-cli/src/commands/tests/agentic.rs::smoke_passes_and_writes_metadata_journal::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumult-cli/src/commands/tests/agentic.rs::trajectory_reports_steps_subscores_and_journal::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumult-cli/src/commands/tests/helpers.rs::use_temp_store::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumult-cli/src/commands/tests/run.rs::run_config_secrets_experiment_injects_env_and_journals_no_secret::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumult-cli/src/commands/tests/run_auto_ingest.rs::run_auto_ingests_completed_journal_into_store::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumult-cli/src/commands/tests/store_commands.rs::import_loads_backup_into_fresh_store::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumult-cli/src/commands/tests/store_commands.rs::store_backup_requires_existing_store::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumult-cli/src/commands/tests/store_commands.rs::store_backup_writes_complete_operational_bundle::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumult-cli/src/commands/tests/store_commands.rs::store_import_legacy_without_any_source_errors::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumult-cli/src/commands/tests/store_commands.rs::store_migrate_requires_clickhouse_url::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumult-cli/src/commands/tests/store_commands.rs::store_path_reports_existing_store::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumult-cli/src/commands/tests/store_commands.rs::store_path_reports_missing_store::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumult-cli/src/commands/tests/store_commands.rs::store_purge_removes_only_old_experiments::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumult-cli/src/commands/tests/store_commands.rs::store_purge_requires_existing_store::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumult-cli/src/commands/tests/store_commands.rs::store_purge_with_nothing_old_keeps_everything::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumult-cli/src/commands/tests/store_commands.rs::store_stats_reports_schema_and_counts::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumult-cli/src/commands/tests/store_commands.rs::store_stats_without_store_reports_absence::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumult-cli/src/commands/tests/validate_extra.rs::validate_renders_summary_for_full_featured_experiment::raw-env  # deferred: move to tumult_test_utils::EnvGuard
 tumult-cli/src/dispatch_tests.rs::dispatch_agentic_deterministic_paths::raw-env  # deferred: move to tumult_test_utils::EnvGuard
 tumult-cli/src/dispatch_tests.rs::dispatch_run_executes_and_prints_json_journal::raw-env  # deferred: move to tumult_test_utils::EnvGuard
 tumult-cli/src/dispatch_tests.rs::dispatch_store_import_legacy_without_sources_errors::raw-env  # deferred: move to tumult_test_utils::EnvGuard
 tumult-cli/src/dispatch_tests.rs::dispatch_store_lifecycle::raw-env  # deferred: move to tumult_test_utils::EnvGuard
 tumult-cli/src/dispatch_tests.rs::dispatch_store_migrate_requires_clickhouse_url::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumult-cli/tests/e2e_script_plugin.rs::drop::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumult-cli/tests/e2e_script_plugin.rs::set::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumult-cli/tests/recommend_agent.rs::drop::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumult-cli/tests/recommend_agent.rs::set::raw-env  # deferred: move to tumult_test_utils::EnvGuard
 
 # tumult-ingest: deferred, the crate is being changed elsewhere
 tumult-ingest/src/daemon_task.rs::ticker_ticks_until_shutdown::bare-sleep  # deferred: sleep without a stated reason

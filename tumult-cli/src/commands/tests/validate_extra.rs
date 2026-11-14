@@ -4,6 +4,7 @@
 
 use super::super::*;
 use super::helpers::*;
+use crate::output::testing::capture;
 use tempfile::TempDir;
 use tumult_core::types::{Activity, ActivityType, Experiment, Provider};
 
@@ -23,14 +24,29 @@ fn validate_rejects_oversized_experiment_file() {
 
 #[test]
 fn validate_renders_summary_for_full_featured_experiment() {
-    // Env vars are process-global: pin the secret's env var to unset so the
-    // "Secrets: WARNING" branch deterministically renders.
-    let _guard = ENV_LOCK.lock().unwrap();
-    std::env::remove_var(SECRET_ENV_VAR);
+    // Without the secret's variable the secrets line is the warning.
+    let mut env = tumult_test_utils::EnvGuard::lock();
+    env.remove(SECRET_ENV_VAR);
     let dir = TempDir::new().unwrap();
     let path = write_config_secrets_experiment(dir.path());
 
-    cmd_validate(&path).unwrap();
+    let (result, printed) = capture(|| cmd_validate(&path));
+
+    result.unwrap();
+    let out = printed.stdout;
+    assert!(
+        out.starts_with("Experiment: config/secrets ${config.greeting}\n"),
+        "{out}"
+    );
+    assert!(out.contains("\nTags: test\n"), "{out}");
+    assert!(out.contains("\nMethod steps: 3\n"), "{out}");
+    assert!(out.contains("\nRollback steps: 0\n"), "{out}");
+    assert!(
+        out.contains("\nConfiguration: all values resolved\n"),
+        "{out}"
+    );
+    assert!(out.contains("\nSecrets: WARNING — "), "{out}");
+    assert!(out.ends_with("\n\nValidation passed.\n"), "{out}");
 }
 
 #[test]
@@ -54,19 +70,26 @@ fn validate_warns_but_passes_on_unknown_native_plugin() {
     std::fs::write(&path, toon_format::encode_default(&experiment).unwrap()).unwrap();
 
     // Unknown plugin refs are warnings on stderr, not validation failures.
-    cmd_validate(&path).unwrap();
+    let (result, printed) = capture(|| cmd_validate(&path));
+
+    result.unwrap();
+    assert!(
+        printed.stderr.contains(
+            "warning: activity 'mystery' uses unknown native plugin 'no-such-native-plugin' (available: "
+        ),
+        "{}",
+        printed.stderr
+    );
+    assert!(
+        printed.stdout.ends_with("Validation passed.\n"),
+        "{}",
+        printed.stdout
+    );
 }
 
 #[test]
 fn validate_warns_on_unknown_function_of_known_native_plugin() {
-    let Some(plugin) = native_registry()
-        .plugin_names()
-        .first()
-        .map(|s| (*s).to_string())
-    else {
-        // No native plugins registered in this build — nothing to exercise.
-        return;
-    };
+    let plugin = native_registry().plugin_names()[0].to_string();
     let dir = TempDir::new().unwrap();
     let experiment = Experiment {
         title: "unknown native function".into(),
@@ -74,7 +97,7 @@ fn validate_warns_on_unknown_function_of_known_native_plugin() {
             name: "mystery".into(),
             activity_type: ActivityType::Action,
             provider: Provider::Native {
-                plugin,
+                plugin: plugin.clone(),
                 function: "no_such_function".into(),
                 arguments: std::collections::HashMap::new(),
             },
@@ -85,7 +108,18 @@ fn validate_warns_on_unknown_function_of_known_native_plugin() {
     let path = dir.path().join("exp.toon");
     std::fs::write(&path, toon_format::encode_default(&experiment).unwrap()).unwrap();
 
-    cmd_validate(&path).unwrap();
+    let (result, printed) = capture(|| cmd_validate(&path));
+
+    result.unwrap();
+    let warning = format!(
+        "warning: activity 'mystery' uses unknown function '{plugin}::no_such_function' (available: "
+    );
+    assert!(printed.stderr.contains(&warning), "{}", printed.stderr);
+    assert!(
+        !printed.stderr.contains("unknown native plugin"),
+        "{}",
+        printed.stderr
+    );
 }
 
 #[test]
@@ -109,7 +143,21 @@ fn validate_warns_but_passes_on_unknown_script_plugin() {
     let path = dir.path().join("exp.toon");
     std::fs::write(&path, toon_format::encode_default(&experiment).unwrap()).unwrap();
 
-    cmd_validate(&path).unwrap();
+    let (result, printed) = capture(|| cmd_validate(&path));
+
+    result.unwrap();
+    assert!(
+        printed.stderr.contains(
+            "warning: activity 'mystery' uses unknown script plugin 'no-such-script-plugin' (available: "
+        ),
+        "{}",
+        printed.stderr
+    );
+    assert!(
+        printed.stdout.ends_with("Validation passed.\n"),
+        "{}",
+        printed.stdout
+    );
 }
 
 #[test]

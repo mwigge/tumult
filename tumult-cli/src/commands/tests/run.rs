@@ -188,14 +188,11 @@ async fn dry_run_ignores_existing_journal() {
 /// available to templates (`${config.*}` / `${secrets.*}`) and injected into
 /// process-provider environments as `TUMULT_CONFIG_*` / `TUMULT_SECRET_*`,
 /// while the journal of the run never contains the secret value.
-// The env guard must cover the awaited run (the secret env var is read inside
-// it). Only tests serialized on ENV_LOCK can block on it, so holding a std
-// guard across the await cannot deadlock the test runtime.
-#[allow(clippy::await_holding_lock)]
+// The guard covers the awaited run: the secret's variable is read inside it.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn run_config_secrets_experiment_injects_env_and_journals_no_secret() {
-    let _guard = ENV_LOCK.lock().unwrap();
-    std::env::set_var(SECRET_ENV_VAR, SECRET_MARKER);
+    let mut env = tumult_test_utils::EnvGuard::lock();
+    env.set(SECRET_ENV_VAR, SECRET_MARKER);
     let dir = TempDir::new().unwrap();
     let exp_path = write_config_secrets_experiment(dir.path());
     let journal_path = dir.path().join("journal.toon");
@@ -211,7 +208,6 @@ async fn run_config_secrets_experiment_injects_env_and_journals_no_secret() {
         None,
     )
     .await;
-    std::env::remove_var(SECRET_ENV_VAR);
 
     assert!(result.is_ok(), "run failed: {result:?}");
     let journal = std::fs::read_to_string(&journal_path).unwrap();

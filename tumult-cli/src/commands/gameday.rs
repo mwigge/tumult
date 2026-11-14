@@ -344,7 +344,8 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn gameday_run_injects_config_env_and_fires_declared_controls() {
         const CFG_ENV_VAR: &str = "TEST_TUMULT_GAMEDAY_CFG";
-        std::env::set_var(CFG_ENV_VAR, "gameday-wired");
+        let mut env = tumult_test_utils::EnvGuard::lock();
+        env.set(CFG_ENV_VAR, "gameday-wired");
 
         let dir = tempfile::TempDir::new().unwrap();
         let events_file = dir.path().join("control-events.txt");
@@ -387,9 +388,7 @@ method[1]:
         )
         .unwrap();
 
-        let result = cmd_gameday_run(&gameday_path);
-        std::env::remove_var(CFG_ENV_VAR);
-        result.unwrap();
+        cmd_gameday_run(&gameday_path).unwrap();
 
         // The resolved config reached the method subprocess as TUMULT_CONFIG_*.
         let journal = std::fs::read_to_string(gameday_path.with_extension("journal.toon")).unwrap();

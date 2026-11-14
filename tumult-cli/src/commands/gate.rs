@@ -259,7 +259,8 @@ mod tests {
 
     #[tokio::test]
     async fn cmd_gate_requires_a_daemon_url() {
-        std::env::remove_var("TUMULT_DAEMON_URL");
+        let mut env = tumult_test_utils::EnvGuard::lock();
+        env.remove("TUMULT_DAEMON_URL");
         let args = GateArgs {
             target: "db".into(),
             min_score: None,
