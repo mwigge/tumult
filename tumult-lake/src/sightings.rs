@@ -63,6 +63,10 @@ pub(crate) const BACKFILL_OPEN_BUDGET: Duration = Duration::from_secs(2);
 const SECOND_NS: i64 = 1_000_000_000;
 /// The span of spans one backfill step reads.
 const BACKFILL_STEP_NS: i64 = 86_400 * SECOND_NS;
+/// A step reads its day in slices of this length and looks at its budget
+/// between them, so a day dense with spans cannot overrun a turn by more
+/// than one slice.
+const BACKFILL_SLICE_NS: i64 = 3600 * SECOND_NS;
 /// Sightings are folded a minute of spans at a time, so one batch that
 /// spans a rollback still shows the silence between its deployments.
 const BUCKET_NS: i64 = 60 * SECOND_NS;
@@ -392,10 +396,12 @@ fn backfill_restart(conn: &Connection) -> Result<(), duckdb::Error> {
     )
 }
 
-/// Read the next day of versioned spans into the rollup and move the
-/// cursor past it; `true` when no span is left to read, which marks the
-/// backfill done. Runs inside the caller's transaction.
-fn backfill_step(conn: &Connection) -> Result<bool, duckdb::Error> {
+/// Read the next day of versioned spans into the rollup, a slice of
+/// [`BACKFILL_SLICE_NS`] at a time, and move the cursor past what was
+/// read; `true` when no span is left to read, which marks the backfill
+/// done. Past `until` the step ends after the slice it is in, the rest of
+/// the day left to the next step. Runs inside the caller's transaction.
+fn backfill_step(conn: &Connection, until: Option<Instant>) -> Result<bool, duckdb::Error> {
     let Backfill::Running(cursor) = backfill_state(conn)? else {
         return Ok(true);
     };
@@ -409,7 +415,23 @@ fn backfill_step(conn: &Connection) -> Result<bool, duckdb::Error> {
         conn.execute_batch("UPDATE sightings_backfill SET done = true")?;
         return Ok(true);
     };
-    let upto = next.saturating_add(BACKFILL_STEP_NS);
+    let day_end = next.saturating_add(BACKFILL_STEP_NS);
+    let mut from = cursor;
+    let mut upto = next;
+    while upto < day_end {
+        upto = upto.saturating_add(BACKFILL_SLICE_NS).min(day_end);
+        backfill_slice(conn, from, upto)?;
+        from = upto;
+        if until.is_some_and(|until| Instant::now() >= until) {
+            break;
+        }
+    }
+    Ok(false)
+}
+
+/// Read the versioned spans of `(from, upto]` into the rollup and set
+/// the cursor to `upto`.
+fn backfill_slice(conn: &Connection, from: i64, upto: i64) -> Result<(), duckdb::Error> {
     let mut stmt = conn.prepare(
         "SELECT service_name, target_environment, service_version,
                 min(ts_ns) AS first_ns, max(ts_ns) AS last_ns
@@ -419,7 +441,7 @@ fn backfill_step(conn: &Connection) -> Result<bool, duckdb::Error> {
          GROUP BY service_name, target_environment, service_version, ts_ns // ?
          ORDER BY first_ns",
     )?;
-    let rows = stmt.query_map(params![cursor, upto, BUCKET_NS], |row| {
+    let rows = stmt.query_map(params![from, upto, BUCKET_NS], |row| {
         let version: String = row.get(2)?;
         let (version, sanitized) = bounded_version_text(&version);
         Ok(Sight {
@@ -434,15 +456,16 @@ fn backfill_step(conn: &Connection) -> Result<bool, duckdb::Error> {
     let sights = rows.collect::<Result<Vec<_>, _>>()?;
     record(conn, &sights)?;
     conn.execute("UPDATE sightings_backfill SET cursor_ns = ?", params![upto])?;
-    Ok(false)
+    Ok(())
 }
 
 /// Step the backfill until it is done or `budget` is spent, each step in
 /// a transaction of its own; `true` when it is done.
 fn backfill_for(conn: &Connection, budget: Duration) -> Result<bool, duckdb::Error> {
     let started = Instant::now();
+    let until = started.checked_add(budget);
     loop {
-        let done = in_tx(conn, || backfill_step(conn))?;
+        let done = in_tx(conn, || backfill_step(conn, until))?;
         if done || started.elapsed() >= budget {
             return Ok(done);
         }
@@ -491,7 +514,7 @@ pub(crate) fn note_sightings(conn: &Connection, rows: &[SpanRow]) -> Result<(), 
     };
     record(conn, &sights_in(rows, upto))?;
     if upto.is_some() {
-        backfill_step(conn)?;
+        backfill_step(conn, None)?;
     }
     Ok(())
 }
@@ -597,7 +620,7 @@ impl Writer {
     pub fn rebuild_version_sightings(&self) -> Result<(), StoreError> {
         with_tx(&self.conn, || {
             backfill_restart(&self.conn)?;
-            while !backfill_step(&self.conn)? {}
+            while !backfill_step(&self.conn, None)? {}
             Ok(())
         })
     }

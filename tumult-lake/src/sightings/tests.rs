@@ -379,7 +379,7 @@ fn a_backfill_reads_a_day_at_a_step_and_says_while_it_is_running() {
 
     // One step reads one day and leaves the rest.
     in_tx(&conn, || backfill_restart(&conn)).unwrap();
-    assert!(!in_tx(&conn, || backfill_step(&conn)).unwrap());
+    assert!(!in_tx(&conn, || backfill_step(&conn, None)).unwrap());
     assert_eq!(versions(&conn), ["1.0.0"]);
     assert!(matches!(
         backfill_state(&conn).unwrap(),
@@ -412,6 +412,48 @@ fn a_backfill_reads_a_day_at_a_step_and_says_while_it_is_running() {
         .map(|s| s.version)
         .collect();
     assert_eq!(all, ["0.9.0", "1.0.0", "1.1.0", "1.2.0"]);
+}
+
+/// A day dense with spans must not hold the writer for the whole day:
+/// the budget is looked at after every hour of it.
+#[test]
+fn a_backfill_out_of_budget_stops_inside_a_day() {
+    const HOUR: i64 = 3600;
+    let dir = tempfile::TempDir::new().unwrap();
+    let db = dir.path().join("lake.duckdb");
+    {
+        let store = Store::open(&db).unwrap();
+        let writer = store.writer().unwrap();
+        writer
+            .insert_spans(&[demo_span("1.0.0", 100), demo_span("1.0.1", 100 + 2 * HOUR)])
+            .unwrap();
+        writer
+            .conn
+            .execute_batch(
+                "DELETE FROM service_version_sightings;
+                 UPDATE sightings_backfill SET done = false, cursor_ns = NULL",
+            )
+            .unwrap();
+        // No budget: one hour is read, and kept.
+        assert!(!writer.continue_version_backfill(Duration::ZERO).unwrap());
+        assert_eq!(seen(&store, "checkout"), vec![demo("1.0.0", 100, 100)]);
+        assert!(matches!(
+            backfill_state(&writer.conn).unwrap(),
+            Backfill::Running(cursor) if cursor == (100 + HOUR) * S
+        ));
+        // The next turn goes on from there.
+        assert!(writer
+            .continue_version_backfill(Duration::from_secs(30))
+            .unwrap());
+    }
+    let store = Store::open(&db).unwrap();
+    assert_eq!(
+        seen(&store, "checkout"),
+        vec![
+            demo("1.0.0", 100, 100),
+            demo("1.0.1", 100 + 2 * HOUR, 100 + 2 * HOUR)
+        ]
+    );
 }
 
 #[test]
