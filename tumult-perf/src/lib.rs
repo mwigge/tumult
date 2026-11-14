@@ -50,6 +50,14 @@ impl std::fmt::Display for Verdict {
 /// unless the caller says otherwise.
 pub const DEFAULT_MIN_RUNS: usize = 3;
 
+/// The runs a side needs for its interval to be called settled. The
+/// interval resamples whole runs: three runs can be drawn in ten distinct
+/// ways, four in 35, five in 126. A verdict from fewer is still a
+/// verdict (the default minimum stays [`DEFAULT_MIN_RUNS`], so that a
+/// build can be judged after three runs), and says so in
+/// [`Comparison::low_run_count`].
+pub const SETTLED_RUNS: usize = 5;
+
 /// Knobs of a comparison; [`CompareOptions::default`] is the documented
 /// default (p95, 95 % confidence, 2000 resamples, 20 samples minimum, a
 /// 5 % noise margin).
@@ -144,6 +152,11 @@ pub struct Comparison {
     pub iterations: usize,
     pub seed: u64,
     pub verdict: Verdict,
+    /// The interval was drawn with fewer than [`SETTLED_RUNS`] runs on a
+    /// side: few distinct resamples, so read its bounds as coarse.
+    /// `false` when no interval was drawn.
+    #[serde(default)]
+    pub low_run_count: bool,
     /// Why the verdict is what it is.
     pub reasons: Vec<String>,
 }
@@ -216,7 +229,9 @@ pub fn compare_runs(
         (Some(d), Some(b)) if b != 0.0 => Some(d / b * 100.0),
         _ => None,
     };
-    let done = |verdict, interval, reasons| Comparison {
+    let few_runs = baseline.runs.min(candidate.runs) < SETTLED_RUNS;
+    let done = |verdict, interval: Option<Interval>, reasons| Comparison {
+        low_run_count: interval.is_some() && few_runs,
         quantile: q,
         baseline,
         candidate,
@@ -586,6 +601,32 @@ mod tests {
             compare_runs(&base, &two, &lenient).verdict,
             Verdict::Regressed
         );
+    }
+
+    #[test]
+    fn a_verdict_drawn_from_fewer_than_five_runs_a_side_says_so() {
+        assert_eq!(SETTLED_RUNS, 5);
+        let opts = CompareOptions::default();
+        let three = |level| runs_at(&[level, level, level], 20);
+        let five = |level| runs_at(&[level; 5], 20);
+        // Three runs a side resample in ten distinct ways.
+        let c = compare_runs(&three(100.0), &three(150.0), &opts);
+        assert_eq!(c.verdict, Verdict::Regressed);
+        assert!(c.low_run_count, "{c:?}");
+        // One thin side is enough.
+        assert!(compare_runs(&five(100.0), &three(150.0), &opts).low_run_count);
+        assert!(compare_runs(&three(100.0), &five(150.0), &opts).low_run_count);
+        assert!(!compare_runs(&five(100.0), &five(150.0), &opts).low_run_count);
+        // No interval was drawn: nothing to warn of.
+        let two = runs_at(&[150.0, 150.0], 30);
+        let c = compare_runs(&three(100.0), &two, &opts);
+        assert_eq!(c.verdict, Verdict::Inconclusive);
+        assert!(!c.low_run_count);
+        // An answer from before the field reads as not flagged.
+        let mut old = serde_json::to_value(&c).unwrap();
+        old.as_object_mut().unwrap().remove("low_run_count");
+        let old: Comparison = serde_json::from_value(old).unwrap();
+        assert!(!old.low_run_count);
     }
 
     #[test]
