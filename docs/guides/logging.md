@@ -247,10 +247,19 @@ needs a comment that says why the failure does not matter.
 `println!`, `eprintln!`, `print!`, `eprint!` and `dbg!` are denied by clippy
 in every crate (`clippy::print_stdout`, `clippy::print_stderr`,
 `clippy::dbg_macro`). Where output is the product of a command, the function
-or module carries an `#[allow]` with a comment saying so: the result
-printing of `tumult`, the admin and report subcommands of `tumultd`, and
-`winfault`. Tests may print and use `dbg!` (`allow-print-in-tests` and
-`allow-dbg-in-tests` in `clippy.toml`).
+or module carries an `#[allow]` with a comment saying so: the admin and
+report subcommands of `tumultd`, and `winfault`. Tests may print and use
+`dbg!` (`allow-print-in-tests` and `allow-dbg-in-tests` in `clippy.toml`).
+
+`tumult` prints its results with `outln!`, `out!` and `errln!`
+(`tumult_cli::output`), not with the `std` macros. Those panic when the
+reader has gone away (`tumult run x.toon | head -1`), and a panic is an
+abort in the release profile: the run would end before its journal is
+ingested. The `output` macros give up on a stream that fails (a
+`cli.output.closed` debug event for a closed pipe, a
+`cli.output.write_failed` warning for anything else) and the command
+finishes its work. `tumult analyze` and `tumult perf` still use `println!`
+and `eprintln!` and are to be converted.
 
 ### Human diagnostics that stay text
 

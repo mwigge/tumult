@@ -28,22 +28,22 @@ use indexmap::IndexMap;
 #[must_use = "callers must handle the result"]
 pub fn cmd_templates() -> Result<()> {
     let templates = all_templates();
-    println!("Curated starter templates ({}):\n", templates.len());
+    crate::outln!("Curated starter templates ({}):\n", templates.len());
     for t in templates {
-        println!("  {}  [{}]", t.name, t.domain.label());
-        println!("    {}", t.description);
+        crate::outln!("  {}  [{}]", t.name, t.domain.label());
+        crate::outln!("    {}", t.description);
         let params: Vec<String> = t
             .params
             .iter()
             .map(|p| format!("{}={}", p.name, p.default))
             .collect();
         if !params.is_empty() {
-            println!("    params: {}", params.join(", "));
+            crate::outln!("    params: {}", params.join(", "));
         }
-        println!();
+        crate::outln!();
     }
-    println!("Instantiate one with:");
-    println!("  tumult new --from <name> [--set key=value ...] [--out <path>]");
+    crate::outln!("Instantiate one with:");
+    crate::outln!("  tumult new --from <name> [--set key=value ...] [--out <path>]");
     Ok(())
 }
 
@@ -109,9 +109,9 @@ fn cmd_new_interactive(out: Option<&Path>) -> Result<()> {
     }
 
     // 1. Domain.
-    println!("Pick a fault domain:");
+    crate::outln!("Pick a fault domain:");
     for (i, d) in catalog.domains.iter().enumerate() {
-        println!("  {}) {} ({} actions)", i + 1, d.label, d.actions.len());
+        crate::outln!("  {}) {} ({} actions)", i + 1, d.label, d.actions.len());
     }
     let domain_idx = prompt_index("Domain", catalog.domains.len())?;
     let domain = &catalog.domains[domain_idx];
@@ -125,9 +125,9 @@ fn cmd_new_interactive(out: Option<&Path>) -> Result<()> {
     if actions.is_empty() {
         bail!("domain '{}' has no fault actions to pick", domain.label);
     }
-    println!("\nPick an action in {}:", domain.label);
+    crate::outln!("\nPick an action in {}:", domain.label);
     for (i, a) in actions.iter().enumerate() {
-        println!("  {}) {} — {}", i + 1, a.name, a.description);
+        crate::outln!("  {}) {} — {}", i + 1, a.name, a.description);
     }
     let action_idx = prompt_index("Action", actions.len())?;
     let action = actions[action_idx];
@@ -136,7 +136,7 @@ fn cmd_new_interactive(out: Option<&Path>) -> Result<()> {
     let mut args: IndexMap<String, String> = IndexMap::new();
     let required: Vec<_> = action.args.iter().filter(|a| a.required).collect();
     if !required.is_empty() {
-        println!("\nRequired arguments for {}:", action.name);
+        crate::outln!("\nRequired arguments for {}:", action.name);
         for arg in required {
             let value = prompt_line(&format!("  {} ({})", arg.name, arg.description))?;
             if !value.is_empty() {
@@ -190,9 +190,9 @@ fn write_experiment(path: &Path, toon: &str) -> Result<()> {
         );
     }
     std::fs::write(path, toon).with_context(|| format!("failed to write {}", path.display()))?;
-    println!("\nWrote validated experiment to {}", path.display());
-    println!("Run it with:");
-    println!("  tumult run {}", path.display());
+    crate::outln!("\nWrote validated experiment to {}", path.display());
+    crate::outln!("Run it with:");
+    crate::outln!("  tumult run {}", path.display());
     Ok(())
 }
 
@@ -200,7 +200,7 @@ fn write_experiment(path: &Path, toon: &str) -> Result<()> {
 
 /// Read a trimmed line from stdin. EOF (Ctrl-D) aborts.
 fn prompt_line(label: &str) -> Result<String> {
-    print!("{label}: ");
+    crate::out!("{label}: ");
     std::io::stdout().flush().ok();
     let mut buf = String::new();
     let n = std::io::stdin()
@@ -228,7 +228,7 @@ fn prompt_index(label: &str, len: usize) -> Result<usize> {
         let raw = prompt_line(&format!("{label} (1-{len})"))?;
         match raw.parse::<usize>() {
             Ok(n) if n >= 1 && n <= len => return Ok(n - 1),
-            _ => println!("Please enter a number between 1 and {len}."),
+            _ => crate::outln!("Please enter a number between 1 and {len}."),
         }
     }
 }

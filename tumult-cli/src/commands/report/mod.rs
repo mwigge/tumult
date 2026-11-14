@@ -53,12 +53,12 @@ pub fn cmd_report(
         ReportFormat::Junit => {
             let xml = generate_junit_report(&journal);
             std::fs::write(&out_path, &xml)?;
-            println!("Report generated: {}", out_path.display());
+            crate::outln!("Report generated: {}", out_path.display());
         }
         ReportFormat::Json => {
             let json = generate_json_report(&journal)?;
             std::fs::write(&out_path, &json)?;
-            println!("Report generated: {}", out_path.display());
+            crate::outln!("Report generated: {}", out_path.display());
         }
         ReportFormat::Html | ReportFormat::Pdf => {
             let source_hash = source_hash(journal_path)?;
@@ -75,19 +75,19 @@ pub fn cmd_report(
             if matches!(format, ReportFormat::Pdf) {
                 // PDF: write HTML first, then note that wkhtmltopdf or browser print is needed
                 std::fs::write(out_path.with_extension("html"), &html)?;
-                println!(
+                crate::outln!(
                     "HTML generated: {}",
                     out_path.with_extension("html").display()
                 );
-                println!(
+                crate::outln!(
                     "To convert to PDF, use: wkhtmltopdf {} {}",
                     out_path.with_extension("html").display(),
                     out_path.display()
                 );
-                println!("Or open the HTML in a browser and print to PDF.");
+                crate::outln!("Or open the HTML in a browser and print to PDF.");
             } else {
                 std::fs::write(&out_path, &html)?;
-                println!("Report generated: {}", out_path.display());
+                crate::outln!("Report generated: {}", out_path.display());
             }
         }
     }

@@ -156,6 +156,65 @@ fn a_closed_stderr_does_not_abort_the_run_before_its_rollback() {
     assert!(marker.exists(), "the rollback did not run");
 }
 
+/// A reader of the command's output that goes away (`tumult run ... | head
+/// -1`) must not end the run: the journal is still written and ingested.
+#[test]
+fn a_closed_stdout_does_not_end_the_run_before_its_journal_is_ingested() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(
+        dir.path().join("experiment.toon"),
+        experiment_with_rollback(&dir.path().join("rolled-back")),
+    )
+    .unwrap();
+    let (reader, writer) = std::io::pipe().unwrap();
+    drop(reader);
+
+    let output = command(dir.path(), &["run", "experiment.toon"])
+        .stdout(writer)
+        .output()
+        .expect("run tumult");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(0), "{stderr}");
+    assert!(!stderr.contains("process.panic"), "{stderr}");
+    assert!(dir.path().join("journal.toon").is_file(), "no journal");
+    let stats = tumult(dir.path(), &["store", "stats"]);
+    let stats = String::from_utf8_lossy(&stats.stdout);
+    assert!(stats.contains("Experiments: 1"), "not ingested: {stats}");
+}
+
+/// The same for the findings `validate` addresses to its reader on stderr.
+#[test]
+fn a_closed_stderr_does_not_end_a_validation_that_has_findings() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(
+        dir.path().join("experiment.toon"),
+        r"title: Uses a plugin nobody has
+description: The finding goes to stderr
+
+method[1]:
+  - name: unknown
+    activity_type: action
+    provider:
+      type: native
+      plugin: no-such-plugin
+      function: nothing
+",
+    )
+    .unwrap();
+    let (reader, writer) = std::io::pipe().unwrap();
+    drop(reader);
+
+    let output = command(dir.path(), &["validate", "experiment.toon"])
+        .stderr(writer)
+        .output()
+        .expect("run tumult");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(output.status.code(), Some(0), "{stdout}");
+    assert!(stdout.contains("Method steps: 1"), "{stdout}");
+}
+
 /// The one line a failing run must leave on stderr, whatever the filter.
 fn only_fatal_line(rust_log: &str) -> Value {
     let dir = tempfile::tempdir().unwrap();

@@ -1,5 +1,3 @@
-#![allow(clippy::print_stdout)] // command results are this binary's output; diagnostics go through tracing
-
 use std::path::Path;
 use std::process::ExitCode;
 
@@ -67,7 +65,7 @@ fn print_journal_json(path: &Path) -> anyhow::Result<()> {
         .with_context(|| format!("failed to decode journal: {}", path.display()))?;
     let json = serde_json::to_string_pretty(&journal)
         .with_context(|| format!("failed to encode journal as JSON: {}", path.display()))?;
-    println!("{json}");
+    tumult_cli::outln!("{json}");
     Ok(())
 }
 
@@ -224,32 +222,32 @@ async fn dispatch(command: Commands) -> anyhow::Result<()> {
                 timeout_secs: agent_timeout,
                 generate_dir: generate_experiments,
             });
-            println!(
+            tumult_cli::outln!(
                 "{}",
                 commands::cmd_recommend(&options, agent_args.as_ref())?
             );
         }
         Commands::Agents => {
-            print!("{}", commands::cmd_agents());
+            tumult_cli::out!("{}", commands::cmd_agents());
         }
         Commands::Agentic { action } => match action {
             AgenticAction::ListPacks => {
-                print!("{}", commands::cmd_agentic_list_scenario_packs()?);
+                tumult_cli::out!("{}", commands::cmd_agentic_list_scenario_packs()?);
             }
             AgenticAction::Smoke { journal } => {
-                print!("{}", commands::cmd_agentic_smoke(&journal)?);
+                tumult_cli::out!("{}", commands::cmd_agentic_smoke(&journal)?);
             }
             AgenticAction::Run { scenario, journal } => {
-                print!(
+                tumult_cli::out!(
                     "{}",
                     commands::cmd_agentic_run_scenario(&scenario, &journal)?
                 );
             }
             AgenticAction::Trajectory { pack, journal } => {
-                print!("{}", commands::cmd_agentic_trajectory(&pack, &journal)?);
+                tumult_cli::out!("{}", commands::cmd_agentic_trajectory(&pack, &journal)?);
             }
             AgenticAction::Replay { fixture, journal } => {
-                print!("{}", commands::cmd_agentic_replay(&fixture, &journal)?);
+                tumult_cli::out!("{}", commands::cmd_agentic_replay(&fixture, &journal)?);
             }
             AgenticAction::Proxy {
                 listen,
@@ -276,7 +274,7 @@ async fn dispatch(command: Commands) -> anyhow::Result<()> {
                 otlp,
                 client,
             } => {
-                print!(
+                tumult_cli::out!(
                     "{}",
                     commands::cmd_agentic_run_live(
                         &prompt,

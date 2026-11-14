@@ -192,32 +192,32 @@ pub async fn cmd_run_with_baseline_mode<S: ::std::hash::BuildHasher>(
         max_concurrent_faults: None,
     };
 
-    println!("Running experiment: {}", experiment.title);
+    crate::outln!("Running experiment: {}", experiment.title);
 
     let output = JournalOutput::prepare(journal_path)?;
     let journal = run_experiment(&experiment, &executor_arc, &controls_arc, &run_config)?;
 
     output.write(&encode_journal(&journal)?)?;
 
-    println!("Status: {:?}", journal.status);
-    println!("Duration: {}ms", journal.duration_ms);
-    println!("Method steps: {} executed", journal.method_results.len());
+    crate::outln!("Status: {:?}", journal.status);
+    crate::outln!("Duration: {}ms", journal.duration_ms);
+    crate::outln!("Method steps: {} executed", journal.method_results.len());
     if !journal.rollback_results.is_empty() {
-        println!("Rollbacks: {} executed", journal.rollback_results.len());
+        crate::outln!("Rollbacks: {} executed", journal.rollback_results.len());
     }
-    println!("Journal written to: {}", journal_path.display());
+    crate::outln!("Journal written to: {}", journal_path.display());
 
     // Auto-ingest into persistent analytics store
     if auto_ingest && baseline_mode != tumult_core::runner::BaselineMode::Only {
         match auto_ingest_journal(&journal, &experiment).await {
-            Ok((true, via)) => println!(
+            Ok((true, via)) => crate::outln!(
                 "Ingested into persistent analytics store{}",
                 via.map_or_else(String::new, |url| format!(
                     " via daemon ({})",
                     sanitize_url(&url)
                 ))
             ),
-            Ok((false, _)) => println!("Already in analytics store (duplicate)"),
+            Ok((false, _)) => crate::outln!("Already in analytics store (duplicate)"),
             Err(e) => events::auto_ingest_failed(&e),
         }
     }

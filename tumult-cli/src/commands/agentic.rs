@@ -255,27 +255,27 @@ pub async fn cmd_agentic_proxy(
     let bound = listener.local_addr().unwrap_or(addr);
     let base = format!("http://{bound}");
 
-    println!("Tumult agentic fault-injecting proxy");
-    println!("  listening: {base}");
-    println!("  upstream:  {upstream}");
-    println!("  scenario:  {scenario}");
-    println!("  client:    {}", client.as_str());
+    crate::outln!("Tumult agentic fault-injecting proxy");
+    crate::outln!("  listening: {base}");
+    crate::outln!("  upstream:  {upstream}");
+    crate::outln!("  scenario:  {scenario}");
+    crate::outln!("  client:    {}", client.as_str());
     if let Some(env) = profile.base_url_env {
-        println!("  base-url:  set {env}={base}");
+        crate::outln!("  base-url:  set {env}={base}");
     }
-    println!("  faults:    {faults}");
-    println!(
+    crate::outln!("  faults:    {faults}");
+    crate::outln!(
         "  journal:   {}",
         journal.map_or_else(|| "(none)".to_string(), |path| path.display().to_string())
     );
-    println!();
-    println!("Point your agent at the proxy, then drive it as usual:");
-    println!("  Claude Code:  ANTHROPIC_BASE_URL={base} claude");
-    println!("  Codex CLI:    OPENAI_BASE_URL={base}/v1 codex");
-    println!("  OpenCode:     OPENAI_BASE_URL={base}/v1 opencode");
-    println!("  Copilot CLI:  HTTPS_PROXY={base} copilot");
-    println!();
-    println!("Press Ctrl-C to stop.");
+    crate::outln!();
+    crate::outln!("Point your agent at the proxy, then drive it as usual:");
+    crate::outln!("  Claude Code:  ANTHROPIC_BASE_URL={base} claude");
+    crate::outln!("  Codex CLI:    OPENAI_BASE_URL={base}/v1 codex");
+    crate::outln!("  OpenCode:     OPENAI_BASE_URL={base}/v1 opencode");
+    crate::outln!("  Copilot CLI:  HTTPS_PROXY={base} copilot");
+    crate::outln!();
+    crate::outln!("Press Ctrl-C to stop.");
 
     let config = tumult_agentic::proxy::ProxyConfig {
         upstream: upstream.to_string(),

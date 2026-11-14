@@ -38,7 +38,7 @@ pub fn cmd_autopilot_once(
         0,
     )
     .map_err(|e| anyhow!(e.to_string()))?;
-    println!("{}", report.text);
+    crate::outln!("{}", report.text);
     Ok(())
 }
 
@@ -62,7 +62,7 @@ pub fn cmd_autopilot_status(
     }
     // The status text is newline-joined lines without a trailing newline;
     // println keeps the shell prompt off the last line.
-    println!("{}", report.text);
+    crate::outln!("{}", report.text);
     Ok(())
 }
 
@@ -96,7 +96,7 @@ pub fn cmd_autopilot_respond(
         0,
     )
     .map_err(|e| anyhow!(e.to_string()))?;
-    println!("{}", report.text);
+    crate::outln!("{}", report.text);
     Ok(())
 }
 
@@ -112,7 +112,7 @@ pub fn cmd_autopilot_export(store: Option<&Path>, dir: &Path) -> Result<()> {
     let report =
         tumult_mcp::tools::autopilot_export(&store.to_string_lossy(), &dir.to_string_lossy())
             .map_err(|e| anyhow!(e.to_string()))?;
-    println!("{}", report.text);
+    crate::outln!("{}", report.text);
     Ok(())
 }
 
@@ -136,7 +136,7 @@ pub fn cmd_autopilot_notify_change(
         detail,
     )
     .map_err(|e| anyhow!(e.to_string()))?;
-    println!("{}", report.text);
+    crate::outln!("{}", report.text);
     Ok(())
 }
 
