@@ -409,6 +409,8 @@ export interface PerfVerdict {
         seed: number;
         min_samples: number;
         min_runs: number;
+        /** The interval rests on fewer than five runs on a side. */
+        low_run_count?: boolean;
         /** Shares of failed requests (0..1); `null` when a side counted none. */
         failure_share: {
             baseline: number;

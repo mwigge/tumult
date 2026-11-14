@@ -638,6 +638,8 @@ tumult perf checkout --quantile p95 --margin-pct 5 --env staging --store
 | `--probe <series>` | The `probe_samples` series compared (daemon default `load.latency_p95_ms`) |
 | `--quantile p50\|p95\|p99` | Quantile the verdict is keyed on (daemon default p95) |
 | `--min-samples <n>` | Fewer samples on either side is inconclusive (daemon default 20; the daemon also asks for three runs a side) |
+| `--min-runs <n>` | Fewer runs with samples on either side is inconclusive (daemon default 3). An interval from fewer than 5 runs a side is printed with a note |
+| `--seed <n>` | Seed of the resampling; the same runs and seed give the same interval (daemon default fixed) |
 | `--margin-pct <n>` | Noise margin as a percentage of the baseline quantile (daemon default 5) |
 | `--env <name>` | The environment the verdict is for, matched exactly (403 outside a scoped token's environments; 404 when the target has no telemetry tagged with it). Required when the target has versions in several environments and the named versions do not single one out |
 | `--candidate <version>` | The version judged, instead of the one deployed latest. At most 128 characters, no control characters |

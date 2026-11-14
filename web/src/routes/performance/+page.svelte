@@ -436,8 +436,14 @@
                 <div>noise margin {fmtMs(cmp.margin)} ms</div>
                 <div class="muted">
                     iterations {cmp.iterations} · seed {cmp.seed} · minimum samples
-                    {cmp.min_samples}
+                    {cmp.min_samples} · minimum runs {cmp.min_runs}
                 </div>
+                {#if cmp.low_run_count}
+                    <div class="muted" data-testid="low-run-count">
+                        Fewer than 5 runs on a side: the interval has few resamples to draw from, so
+                        read its bounds as coarse.
+                    </div>
+                {/if}
             </div>
         </section>
     </div>

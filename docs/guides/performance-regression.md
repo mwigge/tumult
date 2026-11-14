@@ -272,6 +272,13 @@ gate by default.
      samples (3) and `min_samples` windows (20); below either the verdict
      is `inconclusive` (`insufficient_evidence`) and says which is short.
      One or two runs give a bootstrap over runs nothing to draw from.
+   - **Few runs are flagged.** Three runs a side can be resampled in ten
+     distinct ways, four in 35, five in 126. The minimum stays at three,
+     so that a build can be judged after three runs, and an interval
+     drawn from fewer than five runs on a side carries
+     `comparison.low_run_count: true`; the CLI prints a note and the
+     console says so beside the interval. Read such bounds as coarse, and
+     pass `min_runs=5` (`--min-runs 5`) where a gate should wait instead.
    - **Reproducible.** The resampling uses a seeded generator
      (`comparison.seed`; `seed=` overrides it), so the same runs and the
      same seed give the same interval, bit for bit.
@@ -324,7 +331,8 @@ The answer carries the `environment` it is for (and `environments_seen`),
 the `range` and `since_ns`, `selection` (`explicit` or
 `latest_deployment`) with its `selection_rule`, `backfill` (`done` or
 `running`), both sides, the `comparison` (`delta`, `delta_pct`, `ci_low`,
-`ci_high`, `margin`, `iterations`, `seed`, `min_samples`, `min_runs` and
+`ci_high`, `margin`, `iterations`, `seed`, `min_samples`, `min_runs`,
+`low_run_count` and
 `failure_share` with `baseline`, `candidate`, `delta` and `margin`, null
 when a side counted no requests), `verdict`, `reason`, `reason_codes`,
 `reasons`, the environment's `versions_seen` in deployment order

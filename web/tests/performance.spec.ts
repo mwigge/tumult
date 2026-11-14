@@ -114,6 +114,7 @@ const comparison = (over: Json = {}) => ({
     seed: 7,
     min_samples: 20,
     min_runs: 3,
+    low_run_count: true,
     failure_share: { baseline: 0, candidate: 0, delta: 0, margin: 0.01 },
     ...over,
 });
@@ -223,6 +224,7 @@ test('GIVEN a regressed candidate WHEN the page opens THEN the verdict, the delt
     const verdict = page.getByTestId('verdict');
     await expect(verdict.getByTestId('verdict-badge')).toHaveText('regressed');
     await expect(verdict).toContainText('p95 difference interval lies above the margin');
+    await expect(page.getByTestId('low-run-count')).toContainText('Fewer than 5 runs on a side');
     await expect(verdict).toContainText('deployment order');
     await expect(verdict).toContainText('environment demo');
     await expect(verdict.getByTestId('attribution-baseline')).toContainText(
@@ -307,6 +309,7 @@ test('GIVEN an unchanged candidate with inferred attribution WHEN the page opens
                     attribution: { declared: 0, observed: 0, inferred: 1 },
                 }),
                 comparison: comparison({
+                    low_run_count: false,
                     delta: 0.1,
                     delta_pct: 1.1,
                     ci_low: -0.2,
