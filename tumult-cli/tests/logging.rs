@@ -6,7 +6,9 @@ use std::process::{Command, Output, Stdio};
 
 use serde_json::Value;
 
-/// `tumult` with `args`, a clean environment and a private store.
+/// `tumult` with `args`, a clean environment and a private store. The
+/// agent CLIs of the machine are out of reach through their variables; a
+/// test that lists them also replaces `PATH`.
 fn command(dir: &Path, args: &[&str]) -> Command {
     let mut command = Command::new(env!("CARGO_BIN_EXE_tumult"));
     command
@@ -21,7 +23,9 @@ fn command(dir: &Path, args: &[&str]) -> Command {
         .env_remove("TUMULT_DAEMON_URL")
         .env_remove("OTEL_SERVICE_NAME")
         .env_remove("OTEL_RESOURCE_ATTRIBUTES")
-        .env_remove("OTEL_EXPORTER_OTLP_ENDPOINT");
+        .env_remove("OTEL_EXPORTER_OTLP_ENDPOINT")
+        .env_remove("CLAUDE_CODE_BIN")
+        .env_remove("CODEX_BIN");
     command
 }
 
@@ -227,21 +231,45 @@ fn stdout_of(dir: &Path, args: &[&str]) -> String {
     String::from_utf8(output.stdout).expect("utf-8 output")
 }
 
+/// The adapters are probed in a world this test made: a stand-in `claude`
+/// named by its variable, and a `PATH` with nothing else in it, so no agent
+/// CLI installed on the machine is found or started.
+#[cfg(unix)]
 #[test]
 fn agents_prints_one_row_per_adapter_on_stdout() {
     let dir = tempfile::tempdir().unwrap();
+    let bin = dir.path().join("bin");
+    let empty = dir.path().join("empty");
+    std::fs::create_dir(&bin).unwrap();
+    std::fs::create_dir(&empty).unwrap();
+    let claude = tumult_test_utils::fake_bin(
+        &bin,
+        "claude",
+        r#"if [ "$1" = "--version" ]; then echo "9.8.7 (stand-in)"; exit 0; fi; exit 64"#,
+    );
 
-    let table = stdout_of(dir.path(), &["agents"]);
+    let output = command(dir.path(), &["agents"])
+        .env("CLAUDE_CODE_BIN", &claude)
+        .env("PATH", &empty)
+        .output()
+        .expect("run tumult");
 
-    let mut lines = table.lines();
-    let header = lines.next().expect("a header line");
-    assert!(header.starts_with("ADAPTER"), "{table}");
-    assert!(header.ends_with("DETAIL"), "{table}");
-    let adapters: Vec<&str> = lines
-        .filter_map(|line| line.split_whitespace().next())
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let table = String::from_utf8(output.stdout).expect("utf-8 output");
+    let rows: Vec<Vec<&str>> = table
+        .lines()
+        .map(|line| line.split_whitespace().collect())
         .collect();
-    assert!(adapters.contains(&"claude-code"), "{table}");
-    assert!(adapters.contains(&"codex"), "{table}");
+    assert_eq!(rows.len(), 3, "a header and one row per adapter: {table}");
+    assert_eq!(rows[0], ["ADAPTER", "INSTALLED", "VERSION", "DETAIL"]);
+    assert_eq!(rows[1][..3], ["claude-code", "yes", "9.8.7"], "{table}");
+    assert_eq!(rows[2][..3], ["codex", "no", "-"], "{table}");
+    assert!(table.contains("npm i -g @openai/codex"), "{table}");
 }
 
 #[test]
@@ -298,8 +326,15 @@ fn recommend_prints_its_json_document_on_stdout() {
 
     let value: Value = serde_json::from_str(&document)
         .unwrap_or_else(|e| panic!("stdout is not one JSON document ({e}): {document}"));
-    assert!(value.is_object(), "{document}");
-    assert!(value.get("source").is_some(), "{document}");
+    assert_eq!(value["source"], "heuristic-fallback", "{document}");
+    assert_eq!(value["goal"], "improve postgres resilience", "{document}");
+    assert_eq!(value["recommendations"][0]["rank"], 1, "{document}");
+    // The run above is what the recommendation read from the store.
+    let context = value["heuristic_context"].as_str().unwrap_or_default();
+    assert!(
+        context.contains("  - Rollback leaves a marker\n"),
+        "{document}"
+    );
 }
 
 /// The one line a failing run must leave on stderr, whatever the filter.

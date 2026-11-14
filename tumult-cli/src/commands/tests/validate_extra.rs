@@ -89,7 +89,11 @@ fn validate_warns_but_passes_on_unknown_native_plugin() {
 
 #[test]
 fn validate_warns_on_unknown_function_of_known_native_plugin() {
-    let plugin = native_registry().plugin_names()[0].to_string();
+    let plugin = native_registry()
+        .plugin_names()
+        .first()
+        .expect("at least one native plugin compiled in")
+        .to_string();
     let dir = TempDir::new().unwrap();
     let experiment = Experiment {
         title: "unknown native function".into(),

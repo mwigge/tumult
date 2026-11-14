@@ -214,7 +214,15 @@ mod tests {
             capture(|| cmd_topology_map(Some(&db), None, None, "text", true, 3));
         result.unwrap();
         let text = printed.stdout;
-        assert!(text.contains("api") && text.contains("db"), "{text}");
+        // Both declared services, the tier of one, and the edge between them.
+        assert_eq!(text.matches("[UNTESTED] svc:").count(), 2, "{text}");
+        assert!(text.contains("[UNTESTED] svc:db (data)\n"), "{text}");
+        assert!(text.contains("\n[UNTESTED] svc:api\n"), "{text}");
+        assert!(text.contains("  <- api depends on this\n"), "{text}");
+        assert!(
+            text.contains("  compliance:DORA/Art.11 untested\n"),
+            "{text}"
+        );
 
         let (result, printed) =
             capture(|| cmd_topology_map(Some(&db), Some("dora"), None, "mermaid", false, 3));
@@ -267,9 +275,14 @@ mod tests {
         let (result, printed) =
             capture(|| cmd_topology_recommend(Some(&db), Some("dora"), 3, "text"));
         result.unwrap();
-        let out = printed.stdout;
-        let first = out.lines().next().unwrap_or_default();
-        assert!(first.ends_with(" recommendation(s)"), "{out}");
+        // Nothing has run, so there is no history to rank an injection by.
+        assert_eq!(printed.stdout, "0 recommendation(s)\n");
+
+        let (result, printed) =
+            capture(|| cmd_topology_recommend(Some(&db), Some("dora"), 3, "json"));
+        result.unwrap();
+        let report: serde_json::Value = serde_json::from_str(&printed.stdout).unwrap();
+        assert_eq!(report, serde_json::json!({ "recommendations": [] }));
     }
 
     #[test]

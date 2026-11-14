@@ -133,7 +133,7 @@ impl Stream {
 #[cfg(test)]
 pub(crate) mod testing {
     use std::cell::RefCell;
-    use std::fmt::{Arguments, Write};
+    use std::fmt::Arguments;
 
     /// The output of one [`capture`].
     #[derive(Debug, Default)]
@@ -183,17 +183,21 @@ pub(crate) mod testing {
 
     /// Takes `args` when the thread is capturing; `false` when it is not.
     pub(super) fn captured(target: Target, args: Arguments<'_>) -> bool {
+        if !CAPTURE.with(|capture| capture.borrow().is_some()) {
+            return false;
+        }
+        // Formatted before the capture is borrowed: a `Display` that prints
+        // through this seam itself must not find it borrowed.
+        let printed = args.to_string();
         CAPTURE.with(|capture| {
             let mut capture = capture.borrow_mut();
             let Some(captured) = capture.as_mut() else {
                 return false;
             };
-            let text = match target {
-                Target::Stdout => &mut captured.stdout,
-                Target::Stderr => &mut captured.stderr,
-            };
-            // Writing to a String does not fail.
-            let _ = text.write_fmt(args);
+            match target {
+                Target::Stdout => captured.stdout.push_str(&printed),
+                Target::Stderr => captured.stderr.push_str(&printed),
+            }
             true
         })
     }
@@ -304,6 +308,24 @@ mod tests {
         assert_eq!(answer, 7);
         assert_eq!(printed.stdout, "result 1\nno newline");
         assert_eq!(printed.stderr, "note\n");
+    }
+
+    /// A value whose `Display` prints while it is being printed.
+    struct Chatty;
+
+    impl std::fmt::Display for Chatty {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            crate::errln!("formatting");
+            f.write_str("value")
+        }
+    }
+
+    #[test]
+    fn a_capture_takes_what_a_display_prints_while_it_is_formatted() {
+        let ((), printed) = super::testing::capture(|| crate::outln!("the {}", Chatty));
+
+        assert_eq!(printed.stdout, "the value\n");
+        assert_eq!(printed.stderr, "formatting\n");
     }
 
     #[test]
