@@ -21,6 +21,8 @@
 //! batch goes unanswered or a stream ends in a way a refusal does not
 //! explain (the daemon is gone, say).
 
+#![allow(clippy::print_stdout)] // an example: what the server answered is its output
+
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 

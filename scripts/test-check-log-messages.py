@@ -264,7 +264,9 @@ class SpanTests(unittest.TestCase):
                 self.assertEqual(rules(source), [])
 
     def test_span_fields_use_the_vocabulary(self):
-        source = 'let s = tracing::info_span!("a.b", run_id = %id, error = %e, rows = 3);'
+        source = (
+            'let s = tracing::info_span!("a.b", run_id = %id, error = %e, rows = 3);'
+        )
         self.assertEqual(rules(source), ["legacy-field", "legacy-field"])
 
     def test_a_span_macro_is_not_an_event(self):
@@ -334,7 +336,9 @@ class ErrorMessageTests(unittest.TestCase):
             '%format!("{e}{cause}")',
             "%format!(TEMPLATE, e)",
         ):
-            source = f'tracing::warn!(name: "a.b", {{ error.message = {value} }}, "failed");'
+            source = (
+                f'tracing::warn!(name: "a.b", {{ error.message = {value} }}, "failed");'
+            )
             with self.subTest(value=value):
                 self.assertEqual(rules(source), ["computed-error-message"])
 
@@ -355,7 +359,9 @@ class ErrorMessageTests(unittest.TestCase):
             '%format!("{:#}", e)',
             '%format_args!("{e}")',
         ):
-            source = f'tracing::warn!(name: "a.b", {{ error.message = {value} }}, "failed");'
+            source = (
+                f'tracing::warn!(name: "a.b", {{ error.message = {value} }}, "failed");'
+            )
             with self.subTest(value=value):
                 self.assertEqual(rules(source), [])
 

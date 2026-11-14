@@ -640,11 +640,17 @@ SELF_TEST_CASES = [
         ["interpolated-message"],
     ),
     ('use tracing::info as i;\nfn f() { i!("started"); }', ["missing-event-name"]),
-    ('use tracing::{warn as w};\nfn f() { w!(name: "a.b", "x {}", n); }', ["interpolated-message"]),
+    (
+        'use tracing::{warn as w};\nfn f() { w!(name: "a.b", "x {}", n); }',
+        ["interpolated-message"],
+    ),
     ('let s = tracing::info_span!("db query");', ["bad-span-name"]),
     ('let s = tracing::info_span!("db.query", run_id = %id);', ["legacy-field"]),
-    ('#[tracing::instrument(name = "Query", skip(self))]\nfn f() {}', ["bad-span-name"]),
-    ('#[tracing::instrument(skip(self))]\nfn f() {}', []),
+    (
+        '#[tracing::instrument(name = "Query", skip(self))]\nfn f() {}',
+        ["bad-span-name"],
+    ),
+    ("#[tracing::instrument(skip(self))]\nfn f() {}", []),
     (
         'tracing::warn!(name: "a.b", { error.message = %format!("{n}: {e}") }, "failed");',
         ["computed-error-message"],

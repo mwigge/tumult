@@ -25,6 +25,8 @@
 //! House parameters come from the `score:` section of `KRONIKA_ORG_FILE`
 //! and workloads from `KRONIKA_MANIFESTS_DIR`, as in the daemon.
 
+#![allow(clippy::print_stdout)] // an example: the count of stored days is its output
+
 use std::error::Error;
 use std::path::{Path, PathBuf};
 
