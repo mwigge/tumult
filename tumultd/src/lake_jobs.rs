@@ -252,11 +252,13 @@ mod tests {
     /// an empty rollup, and the cursor at the start.
     fn lake_with_a_backfill_to_finish(dir: &std::path::Path) -> (PathBuf, Store) {
         const DAY_NS: i64 = 86_400_000_000_000;
+        // 2001-09-09: the rollup takes no span from before 2000.
+        const T0: i64 = 1_000_000_000_000_000_000;
         let db_path = dir.join("k.duckdb");
         let store = Store::open(&db_path).unwrap();
         let writer = store.writer().unwrap();
         writer
-            .insert_spans(&[versioned_span(DAY_NS), versioned_span(3 * DAY_NS)])
+            .insert_spans(&[versioned_span(T0 + DAY_NS), versioned_span(T0 + 3 * DAY_NS)])
             .unwrap();
         for sql in [
             "DELETE FROM service_version_sightings",
