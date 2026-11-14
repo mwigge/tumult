@@ -23,9 +23,25 @@ struct Endpoint {
 }
 
 impl Endpoint {
-    /// `None` when the URL does not parse or has no host.
+    /// `None` when the URL does not parse, has no host, or has a literal `@`
+    /// after the authority.
+    ///
+    /// An unescaped `/`, `?` or `#` inside the userinfo ends the authority
+    /// early: `http://user:123/456@host` parses with host `user` and port
+    /// `123`. The `@` that was meant to close the userinfo then sits in the
+    /// path, query or fragment, so its presence there means the host and
+    /// port cannot be trusted. A legitimate `@` in those parts is written
+    /// `%40`.
     fn parse(raw: &str) -> Option<Self> {
         let url = url::Url::parse(raw).ok()?;
+        let after_authority = [Some(url.path()), url.query(), url.fragment()];
+        if after_authority
+            .into_iter()
+            .flatten()
+            .any(|part| part.contains('@'))
+        {
+            return None;
+        }
         let host = url.host_str()?;
         let address = match url.host()? {
             url::Host::Ipv6(ip) => ip.to_string(),
@@ -46,8 +62,8 @@ impl Endpoint {
 /// A connection URL reduced to `scheme://host[:port]`.
 ///
 /// Userinfo, path, query and fragment are dropped: each of them can carry a
-/// credential (`user:pass@`, `?password=`). A URL that does not parse becomes
-/// a constant.
+/// credential (`user:pass@`, `?password=`). A URL that does not parse, or
+/// whose userinfo cannot be told from its host, becomes a constant.
 pub(crate) fn redacted_url(raw: &str) -> String {
     Endpoint::parse(raw).map_or_else(|| UNPARSEABLE_URL.to_string(), |e| e.redacted)
 }
@@ -198,11 +214,39 @@ mod tests {
         );
     }
 
+    /// An unescaped `/`, `?` or `#` in the userinfo ends the authority early:
+    /// the parser then reads the user name as the host and a numeric password
+    /// prefix as the port. A literal `@` after the authority is the sign of
+    /// that, so such a URL is recorded as a constant.
     #[test]
-    fn connect_span_keeps_the_host_when_a_query_value_contains_an_at_sign() {
+    fn connect_span_records_a_constant_when_an_at_sign_follows_the_authority() {
+        for url in [
+            "http://u:123/456@h",
+            "http://admin:8123?x@ch",
+            "http://admin:123#x@ch:8123",
+            "http://admin/pw@ch:8123",
+            "http://ch:8123?password=p@ss",
+            "http://ch:8123/db#frag@ment",
+        ] {
+            assert_eq!(connect_attributes(url), invalid_url(), "{url}");
+        }
+    }
+
+    #[test]
+    fn connect_span_keeps_the_host_when_an_escaped_at_sign_follows_the_authority() {
         assert_eq!(
-            connect_attributes("http://ch:8123?password=p@ss"),
+            connect_attributes("http://ch:8123/db?password=p%40ss"),
             endpoint("ch", 8123, "http://ch:8123")
+        );
+    }
+
+    /// A single slash after an `http` scheme is read as two, so the userinfo
+    /// is still recognised and dropped.
+    #[test]
+    fn connect_span_drops_userinfo_after_a_single_slash() {
+        assert_eq!(
+            connect_attributes("http:/u:pw@h"),
+            endpoint("h", 80, "http://h")
         );
     }
 
@@ -219,17 +263,17 @@ mod tests {
         // An unescaped slash in the password: nothing after the scheme can be
         // told apart from the secret, so none of it is recorded.
         for url in ["http://admin:p/ss@ch:8123", "admin:hunter2@ch:8123", ""] {
-            assert_eq!(
-                connect_attributes(url),
-                [
-                    KeyValue::new("db.system", "clickhouse"),
-                    KeyValue::new("db.name", "tumult"),
-                    KeyValue::new("server.address", "invalid-url"),
-                    KeyValue::new("db.connection_string", "invalid-url"),
-                ],
-                "{url}"
-            );
+            assert_eq!(connect_attributes(url), invalid_url(), "{url}");
         }
+    }
+
+    fn invalid_url() -> Vec<KeyValue> {
+        vec![
+            KeyValue::new("db.system", "clickhouse"),
+            KeyValue::new("db.name", "tumult"),
+            KeyValue::new("server.address", "invalid-url"),
+            KeyValue::new("db.connection_string", "invalid-url"),
+        ]
     }
 
     fn ddl_statements_recorded(statements: &[&str]) -> Vec<String> {

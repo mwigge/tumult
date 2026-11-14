@@ -183,6 +183,28 @@ mod tests {
     }
 
     #[test]
+    fn debug_prints_a_constant_when_the_userinfo_runs_into_the_path_or_query() {
+        for url in [
+            "http://u:123/456@h",
+            "http://admin:8123?x@ch",
+            "http://admin:123#x@ch:8123",
+            "http://admin/pw@ch:8123",
+        ] {
+            let config = ClickHouseConfig {
+                url: url.into(),
+                ..ClickHouseConfig::default()
+            };
+
+            let debug_output = format!("{config:?}");
+
+            assert!(
+                debug_output.contains(r#"url: "invalid-url""#),
+                "{url}: {debug_output}"
+            );
+        }
+    }
+
+    #[test]
     fn debug_redacts_password() {
         let config = ClickHouseConfig {
             url: "http://localhost:8123".into(),
