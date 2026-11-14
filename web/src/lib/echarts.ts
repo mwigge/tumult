@@ -2,10 +2,13 @@
 import * as echarts from 'echarts/core';
 import {
     BarChart,
+    CustomChart,
+    GaugeChart,
     GraphChart,
     HeatmapChart,
     LineChart,
     PieChart,
+    RadarChart,
     ScatterChart,
     TreemapChart,
 } from 'echarts/charts';
@@ -16,6 +19,7 @@ import {
     LegendComponent,
     MarkAreaComponent,
     MarkLineComponent,
+    RadarComponent,
     TooltipComponent,
     VisualMapComponent,
 } from 'echarts/components';
@@ -29,7 +33,11 @@ echarts.use([
     ScatterChart,
     GraphChart,
     TreemapChart,
+    CustomChart,
+    GaugeChart,
+    RadarChart,
     GridComponent,
+    RadarComponent,
     TooltipComponent,
     DataZoomComponent,
     CalendarComponent,

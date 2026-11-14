@@ -1,0 +1,34 @@
+# Org file of the DORA score proof. proof.sh copies it next to the lake and
+# replaces FEEDS with the feeds connected at that step.
+#
+# One legal entity under the simplified framework (DORA Art. 16) with three
+# functions. The critical one, Payments, declares two services; nothing
+# reports as ledger-archive until the proof instruments it, so it starts as
+# an unknown critical node and caps the level.
+nodes:
+  - {name: firm, kind: domain}
+  - {name: payments, kind: unit, parent: firm}
+  - {name: back-office, kind: unit, parent: firm}
+legal_entities:
+  - lei: 529900T8BM49AURSDO55
+    name: Proof Firm
+    profile: simplified
+    feeds: FEEDS
+functions:
+  - id: cif-0001
+    name: Payments
+    tier: critical
+    licensed_activities: [payment-services]
+    org_unit: firm/payments
+    rto_s: 3600
+    services: [payments-api, ledger-archive]
+  - id: cif-0002
+    name: Reporting
+    tier: important
+    org_unit: firm/back-office
+    services: [reporting-api]
+  - id: cif-0003
+    name: Onboarding
+    tier: important
+    org_unit: firm/back-office
+    services: [onboarding-api]

@@ -5,7 +5,11 @@
     // asserts on the serialised option instead of pixels: when the page
     // was opened with a `window.__tumultCharts` registry already in place
     // (a Playwright init script), a chart with an `id` mirrors its option
-    // there. Nothing is mirrored otherwise.
+    // there. Nothing is mirrored otherwise. A tooltip is HTML next to the
+    // canvas and is asserted as such: next to its option, under
+    // `<id>#tip`, the chart puts a function that shows the tooltip of one
+    // of its items, as a pointer over it would. That registry is the one
+    // hook a test has.
     //
     // `merge` applies option changes on top of the option in force instead
     // of replacing it, so what the user did to the chart (zoom, pan) stays.
@@ -100,6 +104,26 @@
             .__tumultCharts;
         if (!registry) return;
         registry[id] = chart.getOption();
+        registry[`${id}#tip`] = showTip;
+    }
+
+    /**
+     * An item of the chart: what `showTip` of ECharts takes to name one,
+     * or with `cell` the place of a value on the axes of the series,
+     * where a pointer would be.
+     */
+    interface TipTarget {
+        seriesIndex: number;
+        dataIndex?: number;
+        dataType?: 'node' | 'edge';
+        cell?: [number, number];
+    }
+
+    function showTip(at: TipTarget) {
+        if (!chart) return;
+        if (!at.cell) return chart.dispatchAction({ type: 'showTip', ...at });
+        const [x, y] = chart.convertToPixel({ seriesIndex: at.seriesIndex }, at.cell);
+        chart.dispatchAction({ type: 'showTip', x, y });
     }
 
     function init() {

@@ -5,11 +5,22 @@
 //! carried (target columns, promoted from span or resource attributes; the
 //! ICT spine from `resource_attrs`), the resulting level and what is
 //! missing. Scoped principals see only their environments.
+//!
+//! The report also lists every `ict.entity.id` that is not in the
+//! canonical form, exactly as received, per service. The ingest path
+//! flags such resources; ids stored before that check existed are found
+//! by running the same check here. The list is bounded both ways: an id
+//! is shown cut to one character past the longest valid one, and at most
+//! [`MALFORMED_LIMIT`] rows are returned; the document says when either
+//! bound cut something.
 
 use axum::extract::{Query, State};
 use axum::{Extension, Json};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use tumult_core::compliance::{
+    check_entity_id, ENTITY_ID_ATTR, ENTITY_ID_MALFORMED_ATTR, ENTITY_ID_MAX_LEN, ENTITY_ID_PATTERN,
+};
 
 use crate::auth::Principal;
 use crate::error::{bad_request, ApiError};
@@ -161,6 +172,67 @@ fn sql(from_ns: i64, scope: &str) -> String {
     )
 }
 
+/// The most malformed ids one response lists.
+pub(crate) const MALFORMED_LIMIT: usize = 500;
+/// The most characters of a malformed id that are read from the lake:
+/// one past the longest valid id, so an over-long id still reads as one.
+const SHOWN_ID_CHARS: usize = ENTITY_ID_MAX_LEN + 1;
+
+/// One malformed `ict.entity.id` as a service sent it.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub(crate) struct MalformedEntityId {
+    service: String,
+    /// The value as received, never lower-cased or repaired, cut to
+    /// [`SHOWN_ID_CHARS`] characters.
+    entity_id: String,
+    /// Whether the stored id was longer than what is shown.
+    truncated: bool,
+    spans: u64,
+    last_seen_ns: Option<i64>,
+    /// Whether the ingest check marked it; `false` for older rows.
+    flagged_at_ingest: bool,
+    reason: &'static str,
+}
+
+/// The distinct (`service.name`, `ict.entity.id`) pairs of the window
+/// whose id is not canonical. The lake does the check, cuts the id and
+/// stops one row past the limit, so neither a long id nor many ids cost
+/// more than the bound.
+fn entity_ids_sql(from_ns: i64, scope: &str) -> String {
+    let attr = |key: &str| format!("COALESCE(resource_attrs['{key}'], span_attrs['{key}'])");
+    format!(
+        "SELECT service_name, LEFT({id}, {shown}) AS entity_id, COUNT(*) AS spans, \
+         MAX(ts_ns) AS last_seen_ns, \
+         COUNT(*) FILTER (WHERE {flag} = 'true') AS flagged, \
+         MAX(length({id})) > {shown} AS cut \
+         FROM spans WHERE ts_ns >= {from_ns} AND service_name <> '' \
+         AND {id} IS NOT NULL \
+         AND (length({id}) > {max} OR NOT regexp_full_match({id}, '{pattern}')){scope} \
+         GROUP BY 1, 2 ORDER BY 1, 2 LIMIT {limit}",
+        id = attr(ENTITY_ID_ATTR),
+        flag = attr(ENTITY_ID_MALFORMED_ATTR),
+        shown = SHOWN_ID_CHARS,
+        max = ENTITY_ID_MAX_LEN,
+        pattern = ENTITY_ID_PATTERN,
+        limit = MALFORMED_LIMIT + 1,
+    )
+}
+
+/// The row as a malformed id, or `None` when the id is canonical.
+fn malformed_from(row: &Value) -> Option<MalformedEntityId> {
+    let entity_id = row.get("entity_id")?.as_str()?;
+    let fault = check_entity_id(entity_id).err()?;
+    Some(MalformedEntityId {
+        service: row.get("service_name")?.as_str()?.to_string(),
+        entity_id: fault.value,
+        truncated: row.get("cut").and_then(Value::as_bool).unwrap_or(false),
+        spans: row.get("spans").and_then(Value::as_u64).unwrap_or(0),
+        last_seen_ns: row.get("last_seen_ns").and_then(Value::as_i64),
+        flagged_at_ingest: row.get("flagged").and_then(Value::as_u64).unwrap_or(0) > 0,
+        reason: fault.reason,
+    })
+}
+
 /// Conformance level per service since `from_ns`, confined to `envs`
 /// (empty = every environment). The Star Map colours services by it.
 pub(crate) fn levels(
@@ -201,11 +273,21 @@ pub(crate) async fn conformance(
     let as_of_ns = now_ns();
     let scope = and_pred(env_scope_where("target_environment", &envs));
     let query = sql(as_of_ns - range_ns, &scope);
-    let services: Vec<ServiceConformance> = with_reader(&state.db_path, move |reader| {
-        let rows = reader.query_json_rows(&query).map_err(|e| e.to_string())?;
-        Ok(rows.iter().filter_map(service_from).collect())
-    })
-    .await?;
+    let ids_query = entity_ids_sql(as_of_ns - range_ns, &scope);
+    let (services, mut malformed): (Vec<ServiceConformance>, Vec<MalformedEntityId>) =
+        with_reader(&state.db_path, move |reader| {
+            let rows = reader.query_json_rows(&query).map_err(|e| e.to_string())?;
+            let ids = reader
+                .query_json_rows(&ids_query)
+                .map_err(|e| e.to_string())?;
+            Ok((
+                rows.iter().filter_map(service_from).collect(),
+                ids.iter().filter_map(malformed_from).collect(),
+            ))
+        })
+        .await?;
+    let more = malformed.len() > MALFORMED_LIMIT;
+    malformed.truncate(MALFORMED_LIMIT);
     let summary = |level: Level| services.iter().filter(|s| s.level == level).count();
     Ok(Json(serde_json::json!({
         "as_of_ns": as_of_ns,
@@ -215,13 +297,18 @@ pub(crate) async fn conformance(
             "spine": SPINE_KEYS,
             "recommended": RECOMMENDED_KEYS,
         },
+        "entity_id_pattern": ENTITY_ID_PATTERN,
         "summary": {
             "services": services.len(),
             "spine": summary(Level::Spine),
             "target": summary(Level::Target),
             "none": summary(Level::None),
+            "malformed_entity_ids": malformed.len(),
         },
         "services": services,
+        "malformed_entity_ids": malformed,
+        "malformed_entity_ids_truncated": more,
+        "malformed_entity_ids_limit": MALFORMED_LIMIT,
     })))
 }
 
@@ -298,6 +385,51 @@ mod tests {
         );
         assert_eq!(s.keys.len(), 9);
         assert_eq!(s.keys[8].key, "service.version");
+    }
+
+    #[test]
+    fn only_non_canonical_ids_fold_into_the_malformed_list() {
+        let row = |id: &str, flagged: u64| {
+            serde_json::json!({
+                "service_name": "checkout", "entity_id": id, "spans": 4,
+                "last_seen_ns": 7, "flagged": flagged, "cut": false,
+            })
+        };
+        assert_eq!(malformed_from(&row("cif-0042", 0)), None);
+        let bad = malformed_from(&row("CF-0042", 4)).unwrap();
+        assert_eq!(bad.entity_id, "CF-0042", "kept as received");
+        assert_eq!((bad.spans, bad.last_seen_ns), (4, Some(7)));
+        assert!(bad.flagged_at_ingest);
+        assert_eq!(bad.reason, "must start with a lower-case letter");
+        assert!(
+            !malformed_from(&row("cif_0042", 0))
+                .unwrap()
+                .flagged_at_ingest
+        );
+    }
+
+    #[test]
+    fn the_id_query_reads_the_id_and_the_ingest_flag() {
+        let q = entity_ids_sql(100, " AND target_environment IN ('demo')");
+        assert!(q.contains("resource_attrs['ict.entity.id']"));
+        assert!(q.contains("resource_attrs['tumult.ict.entity.id.malformed']"));
+        assert!(q.contains("ts_ns >= 100") && q.contains("IN ('demo')"));
+    }
+
+    #[test]
+    fn the_id_query_is_bounded_in_length_and_in_rows() {
+        let q = entity_ids_sql(100, "");
+        assert!(q.contains("LEFT(COALESCE(resource_attrs['ict.entity.id']"));
+        assert!(q.contains(", 64) AS entity_id"), "{q}");
+        assert!(q.ends_with("LIMIT 501"), "{q}");
+        assert!(q.contains("NOT regexp_full_match("), "{q}");
+        let cut = serde_json::json!({
+            "service_name": "s", "entity_id": "X".repeat(64), "spans": 1,
+            "last_seen_ns": 1, "flagged": 0, "cut": true,
+        });
+        let bad = malformed_from(&cut).unwrap();
+        assert!(bad.truncated);
+        assert_eq!(bad.reason, "longer than 63 characters");
     }
 
     #[test]
