@@ -111,7 +111,7 @@ mod tests {
     /// Scaffolding resolves actions against the live catalog, so tests point
     /// discovery at the workspace's real `plugins/` directory for as long as
     /// the returned guard lives.
-    fn point_discovery_at_workspace_plugins() -> crate::tools::test_support::PluginPathGuard {
+    fn point_discovery_at_workspace_plugins() -> tumult_test_utils::EnvGuard {
         crate::tools::test_support::plugin_path_guard(
             &crate::tools::test_support::workspace_plugins_dir(),
         )

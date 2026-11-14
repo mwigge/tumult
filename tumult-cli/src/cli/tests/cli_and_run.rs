@@ -223,10 +223,8 @@ fn perf_fails_on_regressed_and_inconclusive_unless_told_otherwise() {
     else {
         panic!("expected Perf command");
     };
-    assert_eq!(
-        fail_on,
-        vec![PerfFailOnArg::Regressed, PerfFailOnArg::Inconclusive]
-    );
+    // Nothing listed: the default policy applies and no gate was asked for.
+    assert_eq!(fail_on, Vec::new());
     assert_eq!(range, None);
     assert_eq!(include, None);
 

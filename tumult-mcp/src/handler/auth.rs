@@ -538,7 +538,6 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn load_reads_an_explicit_auth_config_file() {
-        let _guard = crate::handler::test_support::AUTH_ENV_LOCK.lock().await;
         let dir = tempfile::TempDir::new().unwrap();
         let path = dir.path().join("mcp-auth.toml");
         std::fs::write(
@@ -546,9 +545,9 @@ mod tests {
             "[[tokens]]\ntoken = \"cfg-tok\"\nrole = \"viewer\"\n",
         )
         .unwrap();
-        std::env::set_var(AUTH_CONFIG_ENV, &path);
+        let mut env = tumult_test_utils::EnvGuard::lock();
+        env.set(AUTH_CONFIG_ENV, &path);
         let loaded = McpAuth::load();
-        std::env::remove_var(AUTH_CONFIG_ENV);
 
         let auth = loaded.expect("a valid config file must load");
         assert!(auth.is_configured());
@@ -560,13 +559,10 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn load_rejects_an_unreadable_explicit_config_and_from_env_denies() {
-        let _guard = crate::handler::test_support::AUTH_ENV_LOCK.lock().await;
-        let missing = std::env::temp_dir().join(format!(
-            "tumult-mcp-auth-test-missing-{}.toml",
-            std::process::id()
-        ));
-        assert!(!missing.exists());
-        std::env::set_var(AUTH_CONFIG_ENV, &missing);
+        let dir = tempfile::TempDir::new().unwrap();
+        let missing = dir.path().join("missing.toml");
+        let mut env = tumult_test_utils::EnvGuard::lock();
+        env.set(AUTH_CONFIG_ENV, &missing);
 
         let Err(err) = McpAuth::load() else {
             panic!("a set-but-missing config must not load");
@@ -575,7 +571,6 @@ mod tests {
 
         // The infallible variant fails closed: deny every request.
         let auth = McpAuth::from_env();
-        std::env::remove_var(AUTH_CONFIG_ENV);
         assert!(auth.is_configured());
         let err = auth
             .authenticate(Some("Bearer anything"))
@@ -588,16 +583,14 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn load_falls_back_to_the_legacy_single_token() {
-        let _guard = crate::handler::test_support::AUTH_ENV_LOCK.lock().await;
-        if default_config_path().is_some_and(|p| p.exists()) {
-            // A real ~/.tumult/mcp-auth.toml shadows the legacy token by
-            // design; this environment cannot exercise the fallback.
-            return;
-        }
-        std::env::remove_var(AUTH_CONFIG_ENV);
-        std::env::set_var(TOKEN_ENV, "legacy-tok");
+        // An empty home: a real ~/.tumult/mcp-auth.toml would shadow the
+        // legacy token by design.
+        let home = tempfile::TempDir::new().unwrap();
+        let mut env = tumult_test_utils::EnvGuard::lock();
+        env.set("HOME", home.path())
+            .remove(AUTH_CONFIG_ENV)
+            .set(TOKEN_ENV, "legacy-tok");
         let loaded = McpAuth::load();
-        std::env::remove_var(TOKEN_ENV);
 
         let auth = loaded.expect("a legacy token must load");
         assert_eq!(
@@ -611,7 +604,6 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn a_malformed_config_is_reported_without_echoing_its_tokens() {
-        let _guard = crate::handler::test_support::AUTH_ENV_LOCK.lock().await;
         let dir = tempfile::TempDir::new().unwrap();
         let path = dir.path().join("mcp-auth.toml");
         // An unterminated string: the TOML parser's rendered error quotes
@@ -647,14 +639,13 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn running_without_auth_is_a_named_warning() {
-        let _guard = crate::handler::test_support::AUTH_ENV_LOCK.lock().await;
-        if default_config_path().is_some_and(|p| p.exists()) {
-            // A real ~/.tumult/mcp-auth.toml configures auth by design; this
-            // environment cannot exercise the open mode.
-            return;
-        }
+        // An empty home: a real ~/.tumult/mcp-auth.toml would configure auth
+        // by design.
+        let home = tempfile::TempDir::new().unwrap();
         let mut env = tumult_test_utils::EnvGuard::lock();
-        env.remove(AUTH_CONFIG_ENV).remove(TOKEN_ENV);
+        env.set("HOME", home.path())
+            .remove(AUTH_CONFIG_ENV)
+            .remove(TOKEN_ENV);
         let capture = tumult_otel::logging::testing::LogCapture::start(tracing::Level::INFO);
         let auth = McpAuth::load().expect("no auth configured is not an error");
         let logs = capture.snapshot();

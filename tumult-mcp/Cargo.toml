@@ -52,4 +52,5 @@ subtle = { workspace = true }
 [dev-dependencies]
 tempfile = { workspace = true }
 # EnvGuard: tests change environment variables only through it.
-tumult-test-utils = { path = "../tumult-test-utils", default-features = false }
+# capture_spans: tests assert on the spans a tool call emits.
+tumult-test-utils = { path = "../tumult-test-utils", default-features = false, features = ["otel"] }

@@ -243,10 +243,21 @@ fn compliance_runs_over_journal_with_mttr() {
     });
     write_journal(&journal, &journal_path).unwrap();
 
-    // Exercises the MTTR-based recovery accumulation path end to end.
-    cmd_compliance(Some(&journal_path), ComplianceFramework::Soc2, false).unwrap();
-    // Exercises the --sources registry-listing path (no journals needed).
-    cmd_compliance(None, ComplianceFramework::Soc2, true).unwrap();
+    // A recovery inside the target counts in full, so the verdict is the
+    // recovery-aware one and not the pass-rate fallback.
+    let (result, printed) = crate::output::testing::capture(|| {
+        cmd_compliance(Some(&journal_path), ComplianceFramework::Soc2, false)
+    });
+
+    result.unwrap();
+    let out = printed.stdout;
+    assert!(out.contains("  Pass rate: 100.0%\n"), "{out}");
+    assert!(
+        out.contains("  Recovery compliance: 100.0% (MTTR<="),
+        "{out}"
+    );
+    assert!(out.contains("  Evidence verdict: COMPLIANT\n"), "{out}");
+    assert!(!out.contains("pass rate ONLY"), "{out}");
 }
 
 #[test]

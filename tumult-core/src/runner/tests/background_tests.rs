@@ -213,20 +213,28 @@ fn run_experiment_emits_audit_log_without_panic() {
 // -- Tests: fault gate (max_concurrent_faults)
 
 /// Executor that tracks how many activities run at the same instant.
+///
+/// An activity stays active until `expected` activities have been active
+/// together, or until `patience` has passed.
 struct ConcurrencyTracker {
-    active: Arc<AtomicUsize>,
+    /// Activities active now, and the most that were active together.
+    state: std::sync::Mutex<(usize, usize)>,
+    changed: std::sync::Condvar,
     max_seen: Arc<AtomicUsize>,
-    sleep: std::time::Duration,
+    expected: usize,
+    patience: std::time::Duration,
 }
 
 impl ConcurrencyTracker {
-    fn new(sleep: std::time::Duration) -> (Self, Arc<AtomicUsize>) {
+    fn new(expected: usize, patience: std::time::Duration) -> (Self, Arc<AtomicUsize>) {
         let max_seen = Arc::new(AtomicUsize::new(0));
         (
             Self {
-                active: Arc::new(AtomicUsize::new(0)),
+                state: std::sync::Mutex::new((0, 0)),
+                changed: std::sync::Condvar::new(),
                 max_seen: max_seen.clone(),
-                sleep,
+                expected,
+                patience,
             },
             max_seen,
         )
@@ -235,10 +243,16 @@ impl ConcurrencyTracker {
 
 impl ActivityExecutor for ConcurrencyTracker {
     fn execute(&self, _activity: &Activity) -> ActivityOutcome {
-        let now = self.active.fetch_add(1, Ordering::SeqCst) + 1;
-        self.max_seen.fetch_max(now, Ordering::SeqCst);
-        std::thread::sleep(self.sleep);
-        self.active.fetch_sub(1, Ordering::SeqCst);
+        let mut state = self.state.lock().unwrap();
+        state.0 += 1;
+        state.1 = state.1.max(state.0);
+        self.max_seen.store(state.1, Ordering::SeqCst);
+        self.changed.notify_all();
+        let (mut state, _) = self
+            .changed
+            .wait_timeout_while(state, self.patience, |(_, peak)| *peak < self.expected)
+            .unwrap();
+        state.0 -= 1;
         ActivityOutcome {
             success: true,
             output: None,
@@ -258,13 +272,27 @@ fn fault_gate_caps_concurrent_background_faults() {
         test_action_background("bg-3"),
     ];
 
-    let (tracker, max_seen) = ConcurrencyTracker::new(std::time::Duration::from_millis(30));
+    // A second concurrent fault must not happen: each activity gives one
+    // 250 ms to show up before it lets go of its slot, which is long enough
+    // for the other two threads to arrive on a loaded machine if the gate
+    // lets them through.
+    let (tracker, max_seen) = ConcurrencyTracker::new(2, std::time::Duration::from_millis(250));
     let executor: Arc<dyn ActivityExecutor> = Arc::new(tracker);
     let controls = Arc::new(ControlRegistry::new());
 
     let journal = run_experiment(&exp, &executor, &controls, &default_config()).unwrap();
 
+    // run_experiment has joined the background activities, so this is the
+    // peak over the whole run and not a reading taken while some still wait.
     assert_eq!(journal.method_results.len(), 3);
+    assert!(
+        journal
+            .method_results
+            .iter()
+            .all(|result| result.status == ActivityStatus::Succeeded),
+        "every background fault must have run through the tracker: {:?}",
+        journal.method_results
+    );
     assert_eq!(
         max_seen.load(Ordering::SeqCst),
         1,
@@ -286,7 +314,9 @@ fn fault_gate_uncapped_allows_full_concurrency() {
         test_action_background("bg-3"),
     ];
 
-    let (tracker, max_seen) = ConcurrencyTracker::new(std::time::Duration::from_millis(50));
+    // Every activity stays active until all three overlap; the patience is
+    // only the deadline of a run that never gets there.
+    let (tracker, max_seen) = ConcurrencyTracker::new(3, std::time::Duration::from_secs(20));
     let executor: Arc<dyn ActivityExecutor> = Arc::new(tracker);
     let controls = Arc::new(ControlRegistry::new());
 

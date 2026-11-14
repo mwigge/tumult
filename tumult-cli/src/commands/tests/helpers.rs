@@ -5,18 +5,17 @@ use tumult_core::types::{Activity, ActivityType};
 
 // ── Process-global env access ───────────────────────────────
 
-/// Env vars are process-global; every test that reads or mutates
-/// `TUMULT_LAKE_PATH`, `TUMULT_CLICKHOUSE_URL`, `TUMULT_DAEMON_URL`, or `HOME`
-/// must hold this lock for the whole test body so concurrent tests cannot
-/// observe each other's overrides.
-pub(crate) static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
 /// Point the persistent analytics store at a temp file and return that path,
 /// so command handlers that resolve `AnalyticsStore::default_path()` never
-/// touch the real `~/.tumult/lake.duckdb`. Caller must hold [`ENV_LOCK`].
-pub(crate) fn use_temp_store(dir: &std::path::Path) -> std::path::PathBuf {
+/// touch the real `~/.tumult/lake.duckdb`. The guard puts the variable back
+/// when the test ends, and keeps every other test that reads or changes the
+/// environment out while it lasts.
+pub(crate) fn use_temp_store(
+    env: &mut tumult_test_utils::EnvGuard,
+    dir: &std::path::Path,
+) -> std::path::PathBuf {
     let db = dir.join("lake.duckdb");
-    std::env::set_var("TUMULT_LAKE_PATH", &db);
+    env.set("TUMULT_LAKE_PATH", &db);
     db
 }
 

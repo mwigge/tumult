@@ -80,6 +80,13 @@ with `// sleep:` and gives the reason in at least three words.
   not install a global tracer or meter provider in a test. Code that calls
   `set_tracer_provider` itself is tested in a test binary of its own, because
   the global provider is shared by every test in a binary.
+- What a `tumult` command prints is asserted, not only that it returned
+  `Ok`. In the library tests of `tumult-cli`,
+  `crate::output::testing::capture` runs a closure and returns what the
+  calling thread printed through `outln!`, `out!` and `errln!`, stdout and
+  stderr apart. It sees neither the output of other threads nor a bare
+  `println!`. Tests of the binary (`tumult-cli/tests/` and
+  `src/dispatch_tests.rs`) start `tumult` and read its streams instead.
 - The suite passes under both `cargo nextest run` and `cargo test`.
 
 ## Ignored and skipped tests

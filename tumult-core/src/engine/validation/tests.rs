@@ -415,7 +415,8 @@ fn validate_accepts_well_formed_objectives_and_targets() {
         nfr: vec![objective("a"), objective("b")],
         ..Default::default()
     });
-    validate_experiment(&exp).unwrap();
+    let outcome = validate_experiment(&exp);
+    assert!(outcome.is_ok(), "{outcome:?}");
 }
 
 #[test]

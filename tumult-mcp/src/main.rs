@@ -171,10 +171,12 @@ mod tests {
     fn auth_flags_are_exported_through_the_environment() {
         // The auth flags reach `McpAuth::load()` via the environment, exactly
         // like `tumult mcp serve`. The config file takes priority.
-        let config = std::env::temp_dir().join(format!(
-            "tumult-mcp-cli-test-auth-{}.toml",
-            std::process::id()
-        ));
+        let dir = tempfile::tempdir().unwrap();
+        let config = dir.path().join("auth.toml");
+        // The conversion writes both variables; the guard puts them back.
+        let mut env = tumult_test_utils::EnvGuard::lock();
+        env.remove("TUMULT_MCP_TOKEN")
+            .remove("TUMULT_MCP_AUTH_CONFIG");
         let cli = Cli::try_parse_from([
             "tumult-mcp",
             "--token",
@@ -195,7 +197,5 @@ mod tests {
             Ok(config.to_str().unwrap()),
             "--auth-config must be exported for McpAuth::load"
         );
-        std::env::remove_var("TUMULT_MCP_TOKEN");
-        std::env::remove_var("TUMULT_MCP_AUTH_CONFIG");
     }
 }

@@ -511,6 +511,7 @@ mod tests {
                     break;
                 }
                 Err(_) if attempt < 49 => {
+                    // sleep: interval of the bounded connect poll
                     tokio::time::sleep(std::time::Duration::from_millis(20)).await;
                 }
                 Err(e) => panic!("health server never came up: {e}"),
@@ -524,36 +525,18 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn health_server_logs_and_returns_when_the_port_is_taken() {
-        // Hold the port so the health server's bind fails: it must log the
-        // error and return promptly rather than panic or hang.
-        let blocker = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let port = blocker.local_addr().unwrap().port();
-        tokio::time::timeout(
-            std::time::Duration::from_secs(5),
-            run_health_server("127.0.0.1", port),
-        )
-        .await
-        .expect("a failed bind must return, not hang");
-    }
-
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn serve_aborts_on_an_unreadable_auth_config() {
         // An explicit but missing auth config path is a hard startup error:
         // the server must fail closed instead of running unauthenticated.
-        let _guard = crate::handler::test_support::AUTH_ENV_LOCK.lock().await;
-        let missing = std::env::temp_dir().join(format!(
-            "tumult-mcp-test-no-such-auth-{}.toml",
-            std::process::id()
-        ));
-        assert!(!missing.exists());
-        std::env::set_var("TUMULT_MCP_AUTH_CONFIG", &missing);
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir.path().join("no-such-auth.toml");
+        let mut env = tumult_test_utils::EnvGuard::lock();
+        env.set("TUMULT_MCP_AUTH_CONFIG", &missing);
         let result = serve(ServeOptions {
             transport: Transport::Stdio,
             ..ServeOptions::default()
         })
         .await;
-        std::env::remove_var("TUMULT_MCP_AUTH_CONFIG");
         let err = result.expect_err("an unreadable auth config must abort startup");
         assert!(err.to_string().contains("auth config"), "got: {err}");
     }

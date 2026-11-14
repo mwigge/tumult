@@ -101,7 +101,7 @@ fn seed_broken_store(dir: &std::path::Path) -> std::path::PathBuf {
 /// Point script-plugin discovery at a temp catalog with one action so
 /// recommendations have a non-empty catalog regardless of the host machine.
 /// Discovery stays pinned there for as long as the returned guard lives.
-fn with_plugin_catalog(dir: &std::path::Path) -> crate::tools::test_support::PluginPathGuard {
+fn with_plugin_catalog(dir: &std::path::Path) -> tumult_test_utils::EnvGuard {
     let plugin_dir = dir.join("catalog").join("test-topology-plugin");
     std::fs::create_dir_all(&plugin_dir).unwrap();
     let manifest = tumult_plugin::manifest::ScriptPluginManifest {

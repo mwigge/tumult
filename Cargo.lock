@@ -8449,6 +8449,7 @@ dependencies = [
  "tracing-log",
  "tracing-opentelemetry",
  "tracing-subscriber",
+ "tumult-test-utils",
 ]
 
 [[package]]
