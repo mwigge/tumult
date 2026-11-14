@@ -81,6 +81,9 @@ spec:
             # SSRF escape hatches for demos ONLY (never production):
             # - { name: TUMULTD_WEBHOOK_ALLOW_INSECURE, value: "1" }  # permits http
             # - { name: TUMULTD_WEBHOOK_ALLOW_LOCAL, value: "1" }     # permits loopback/private receivers
+            # Timestral forecasting sidecar (deploy/k8s/tumult-forecastd.yaml);
+            # unset = the built-in Holt-Winters provider.
+            # - { name: TUMULTD_FORECAST_URL, value: "http://tumult-forecastd:8700" }
             # Parquet lake export + telemetry retention:
             # - { name: KRONIKA_LAKE_INTERVAL, value: "6h" }
             # - { name: KRONIKA_RETENTION_DAYS, value: "0" }  # 0 = keep forever

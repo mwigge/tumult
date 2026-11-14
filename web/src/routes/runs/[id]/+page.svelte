@@ -9,6 +9,7 @@
     import ApprovalActions from '#lib/components/ApprovalActions.svelte';
     import AuditTimeline from '#lib/components/AuditTimeline.svelte';
     import ScopeSummary from '#lib/components/ScopeSummary.svelte';
+    import RunImpactPanel from '#lib/components/RunImpactPanel.svelte';
 
     const id = $derived(page.params.id ?? '');
 
@@ -176,6 +177,10 @@
             </div>
         {/if}
     </div>
+
+    {#if run.experiment_id && !active}
+        <RunImpactPanel runId={id} />
+    {/if}
 
     <ApprovalActions
         runId={id}

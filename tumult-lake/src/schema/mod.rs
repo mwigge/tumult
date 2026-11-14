@@ -79,12 +79,17 @@
 //! regression verdict between two `service.version`s of a target —
 //! additive and index-free apart from the target lookup index.
 //!
+//! v19 adds `forecasts` (`forecast.rs`): the cache of quantile forecasts
+//! with model provenance (model, version, weights hash, context window),
+//! indexed by series key for the cache lookup and pruned after 30 days.
+//!
 //! The DDL is split by feature area: [`telemetry`] (v1), [`manual`] (v2/v8
 //! shape), [`analytics`] (v3), [`runs`] (v4–v7), [`auth`] (v6/v9),
 //! [`table_stakes`] (v10–v13), [`migrations`] (the versioned rebuilds).
 
 mod analytics;
 mod auth;
+mod forecast;
 mod manual;
 mod migrations;
 mod objectives;
@@ -96,7 +101,7 @@ mod telemetry;
 
 pub use migrations::{MIGRATE_V5_RUN_TABLES_INDEX_FREE, MIGRATE_V8_MANUAL_EXPERIMENTS_INDEX_FREE};
 
-pub const CURRENT_SCHEMA_VERSION: i64 = 18;
+pub const CURRENT_SCHEMA_VERSION: i64 = 19;
 
 /// The full DDL, one batch per feature area, executed in order. All DDL is
 /// `IF NOT EXISTS`, so this doubles as the idempotent v0 → v1 migration on
@@ -111,6 +116,7 @@ pub const CREATE_TABLES: &[&str] = &[
     objectives::DDL,
     risk::DDL,
     perf::DDL,
+    forecast::DDL,
 ];
 
 /// Rollup view: one row per experiment run, over the experiment root spans

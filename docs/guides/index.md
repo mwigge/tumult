@@ -34,6 +34,7 @@ Step-by-step guides covering all major aspects of Tumult.
 | [Topology](topology.md) | Declared service topology, compliance lineage, and injection recommendations |
 | [Autopilot](autopilot.md) | Policy-gated autonomous fault injection with audit-before-act decisions |
 | [Experiment Scheduling](scheduling.md) | Recurring experiments and GameDays on a schedule |
+| [Forecasting and run impact](forecasting.md) | Forecast bands, counterfactual run impact and recovery time; the built-in provider, the optional Timestral sidecar, air-gapped weights |
 | [Data portability and recovery](data-portability.md) | Manifest archives, retention limits, complete backup and restore |
 | [Execution bindings](execution-bindings.md) | Authoritative environment and target bindings for daemon execution |
 | [Functional hardening review](hardening-review.md) | 2.22.0 finding coverage, acceptance scenarios and remaining limits |
