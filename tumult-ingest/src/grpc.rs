@@ -226,11 +226,8 @@ impl LogsService for OtlpGrpc {
         request: Request<ExportLogsServiceRequest>,
     ) -> Result<Response<ExportLogsServiceResponse>, Status> {
         authorize(self.ingest_token.as_ref(), &request)?;
-        let rows = tumult_otlp::logs_request_to_rows(request.get_ref(), crate::now_ns());
-        self.ingest
-            .write(Batch::Logs(rows))
-            .await
-            .map_err(to_status)?;
+        let batch = self.ingest.logs_batch(request.get_ref(), crate::now_ns());
+        self.ingest.write(batch).await.map_err(to_status)?;
         Ok(Response::new(ExportLogsServiceResponse {
             partial_success: None,
         }))
@@ -543,6 +540,33 @@ mod tests {
             .unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0]["body"], serde_json::json!("experiment.started"));
+    }
+
+    #[tokio::test]
+    async fn logs_export_stores_entity_events_only_with_the_flag() {
+        use crate::entity_events::tests as fixtures;
+
+        for (legacy, wire_form) in [(false, "spec"), (true, "legacy")] {
+            let (_d, store, ingest) = fixtures::ingest_with(fixtures::enabled());
+            let svc = OtlpGrpc {
+                ingest,
+                ingest_token: None,
+            };
+            LogsService::export(&svc, Request::new(fixtures::host_export(legacy)))
+                .await
+                .unwrap();
+            fixtures::assert_host_entity_and_one_log(&store, wire_form);
+        }
+
+        let (_d, store, ingest) = fixtures::ingest_with(None);
+        let svc = OtlpGrpc {
+            ingest,
+            ingest_token: None,
+        };
+        LogsService::export(&svc, Request::new(fixtures::host_export(false)))
+            .await
+            .unwrap();
+        fixtures::assert_two_logs_and_no_entity(&store);
     }
 
     #[tokio::test]

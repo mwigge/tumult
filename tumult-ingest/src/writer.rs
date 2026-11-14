@@ -4,10 +4,12 @@
 
 use std::path::{Path, PathBuf};
 
+use opentelemetry_proto::tonic::collector::logs::v1::ExportLogsServiceRequest;
 use tokio::sync::{mpsc, oneshot};
-use tumult_lake::{LogRow, SpanRow, Store, Writer};
+use tumult_lake::{EntityEventRow, LogRow, SpanRow, Store, Writer};
 use tumult_otlp::MetricRows;
 
+use crate::entity_events::{self, EntityEvents};
 use crate::error::IngestError;
 
 /// An arbitrary write executed against the single [`Writer`] — used by
@@ -19,6 +21,12 @@ pub type ExecFn = Box<dyn FnOnce(&Writer) -> Result<(), String> + Send>;
 pub enum Batch {
     Spans(Vec<SpanRow>),
     Logs(Vec<LogRow>),
+    /// A logs export that carried entity events: the ordinary records and
+    /// the events, stored in one transaction.
+    LogsAndEntities {
+        logs: Vec<LogRow>,
+        entities: Vec<EntityEventRow>,
+    },
     Metrics(MetricRows),
     /// See `ExecFn`.
     Exec(ExecFn),
@@ -33,6 +41,8 @@ struct Envelope {
 #[derive(Clone)]
 pub struct IngestWriter {
     tx: mpsc::Sender<Envelope>,
+    /// `Some` when entity events are stored as entities.
+    entities: Option<EntityEvents>,
 }
 
 impl IngestWriter {
@@ -43,7 +53,8 @@ impl IngestWriter {
     /// dropped and the channel closes (graceful shutdown).
     pub fn spawn(writer: Writer, buffer: usize) -> (Self, tokio::task::JoinHandle<()>) {
         let (tx, rx) = mpsc::channel::<Envelope>(buffer);
-        (Self { tx }, tokio::spawn(run_loop(rx, writer, None)))
+        let ingest = Self { tx, entities: None };
+        (ingest, tokio::spawn(run_loop(rx, writer, None)))
     }
 
     /// Like [`IngestWriter::spawn`], but rebuilds the store connection when
@@ -59,9 +70,27 @@ impl IngestWriter {
     ) -> (Self, tokio::task::JoinHandle<()>) {
         let (tx, rx) = mpsc::channel::<Envelope>(buffer);
         (
-            Self { tx },
+            Self { tx, entities: None },
             tokio::spawn(run_loop(rx, writer, Some(db_path))),
         )
+    }
+
+    /// Store entity events as entities (`Some`) or leave every log record
+    /// a log record (`None`, the default).
+    #[must_use]
+    pub fn with_entity_events(mut self, entities: Option<EntityEvents>) -> Self {
+        self.entities = entities;
+        self
+    }
+
+    /// The batch a logs export becomes on this writer, whichever carrier
+    /// delivered it.
+    pub(crate) fn logs_batch(
+        &self,
+        request: &ExportLogsServiceRequest,
+        received_at_ns: i64,
+    ) -> Batch {
+        entity_events::logs_batch(self.entities.as_ref(), request, received_at_ns)
     }
 
     /// Batches waiting in the channel for the writer task.
@@ -106,7 +135,7 @@ impl IngestWriter {
     pub(crate) fn stopped_for_test() -> Self {
         let (tx, rx) = mpsc::channel::<Envelope>(1);
         drop(rx);
-        Self { tx }
+        Self { tx, entities: None }
     }
 }
 
@@ -179,6 +208,10 @@ fn apply(writer: &Writer, batch: Batch) -> Result<(), IngestError> {
     match batch {
         Batch::Spans(rows) => writer.insert_spans(&rows)?,
         Batch::Logs(rows) => writer.insert_logs(&rows)?,
+        Batch::LogsAndEntities { logs, entities } => {
+            let outcomes = writer.insert_logs_and_entity_events(&logs, &entities)?;
+            entity_events::note_outcomes(&outcomes);
+        }
         Batch::Metrics(rows) => {
             writer.insert_metrics(&rows.sums, &rows.gauges, &rows.histograms)?;
         }

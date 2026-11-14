@@ -22,6 +22,7 @@ pub mod approvals;
 pub mod config;
 pub mod daemon_metrics;
 pub mod daemon_task;
+pub mod entity_events;
 mod error;
 pub mod execution_policy;
 pub mod gamedays;
@@ -40,6 +41,7 @@ pub mod webhooks;
 mod writer;
 
 pub use config::Config;
+pub use entity_events::EntityEvents;
 pub use error::IngestError;
 pub use manual::{ImportSummary, ManualImporter};
 pub use runs::{prepare_run, EnqueueError, RunQueue, RunQueueConfig, RunRequest, StopError};

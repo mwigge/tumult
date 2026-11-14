@@ -109,8 +109,8 @@ async fn metrics(State(ingest): State<IngestWriter>, body: Bytes) -> impl IntoRe
 async fn logs(State(ingest): State<IngestWriter>, body: Bytes) -> impl IntoResponse {
     match decode::<ExportLogsServiceRequest>(&body).await {
         Ok(request) => {
-            let rows = tumult_otlp::logs_request_to_rows(&request, crate::now_ns());
-            match ingest.write(Batch::Logs(rows)).await {
+            let batch = ingest.logs_batch(&request, crate::now_ns());
+            match ingest.write(batch).await {
                 Ok(()) => protobuf(ExportLogsServiceResponse::default()),
                 Err(e) => server_error(e),
             }

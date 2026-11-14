@@ -106,8 +106,9 @@ pub struct OtapGrpc {
 
 pub(super) type StatusStream = ReceiverStream<Result<BatchStatus, Status>>;
 
-/// Convert one decoded batch into something the writer takes.
-pub(super) type Convert = fn(&OtapBatch) -> Result<Batch, OtapError>;
+/// Convert one decoded batch into something the writer takes. The writer
+/// is given because it knows what a logs export becomes.
+pub(super) type Convert = fn(&OtapBatch, &IngestWriter) -> Result<Batch, OtapError>;
 
 /// What the streams of one receiver share besides their permits.
 pub(super) struct Guards {
@@ -436,9 +437,10 @@ async fn handle_batch(
         );
     };
     let convert = context.convert;
+    let ingest = context.ingest.clone();
     let decoding = tokio::task::spawn_blocking(move || {
         let decoded = match consumer.consume(records) {
-            Ok(batch) => match convert(&batch) {
+            Ok(batch) => match convert(&batch, &ingest) {
                 Ok(rows) => Decoded::Batch(rows, batch.payloads(), batch.continued_payloads()),
                 Err(e) => Decoded::Rejected(e),
             },
@@ -530,20 +532,17 @@ async fn handle_batch(
     (Some(consumer), outcome)
 }
 
-fn convert_traces(batch: &OtapBatch) -> Result<Batch, OtapError> {
+fn convert_traces(batch: &OtapBatch, _: &IngestWriter) -> Result<Batch, OtapError> {
     let request = to_trace_request(batch)?;
     Ok(Batch::Spans(tumult_otlp::trace_request_to_spans(&request)))
 }
 
-fn convert_logs(batch: &OtapBatch) -> Result<Batch, OtapError> {
+pub(super) fn convert_logs(batch: &OtapBatch, ingest: &IngestWriter) -> Result<Batch, OtapError> {
     let request = to_logs_request(batch)?;
-    Ok(Batch::Logs(tumult_otlp::logs_request_to_rows(
-        &request,
-        crate::now_ns(),
-    )))
+    Ok(ingest.logs_batch(&request, crate::now_ns()))
 }
 
-fn convert_metrics(batch: &OtapBatch) -> Result<Batch, OtapError> {
+fn convert_metrics(batch: &OtapBatch, _: &IngestWriter) -> Result<Batch, OtapError> {
     let request = to_metrics_request(batch)?;
     let rows = tumult_otlp::metrics_request_to_rows(&request);
     if rows.rejected_data_points > 0 {

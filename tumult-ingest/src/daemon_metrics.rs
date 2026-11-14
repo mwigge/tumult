@@ -162,6 +162,7 @@ pub fn render_prometheus() -> String {
         "Daily score snapshots not stored while defaults stood in for a refused org file.",
         load(&SCORE_SNAPSHOTS_SKIPPED),
     );
+    crate::entity_events::render_prometheus(&mut out);
     push_gauge(
         &mut out,
         "tumultd_active_campaigns",
@@ -214,6 +215,8 @@ mod tests {
             "tumultd_schedule_fires_total",
             "tumultd_malformed_entity_ids_total",
             "tumultd_score_snapshots_skipped_total",
+            "tumultd_entity_events_total",
+            "tumultd_entity_events_dropped_total",
             "tumultd_active_campaigns",
             "tumultd_supervisor_last_tick_ns",
         ] {
