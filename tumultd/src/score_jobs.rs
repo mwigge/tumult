@@ -479,9 +479,10 @@ functions:
             .unwrap_or_else(|e| panic!("{what} panicked: {e}"));
     }
 
-    /// Poll until `done` holds; panic with `what` after ten seconds.
+    /// Poll until `done` holds; panic with `what` after a minute, which a
+    /// traced run under coverage needs and a plain one never waits for.
     async fn eventually(what: &str, mut done: impl FnMut() -> bool) {
-        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        let deadline = std::time::Instant::now() + Duration::from_secs(60);
         while !done() {
             assert!(std::time::Instant::now() < deadline, "{what}");
             // sleep: the interval of this bounded poll

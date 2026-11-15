@@ -517,8 +517,10 @@ mod tests {
     fn moved_clock() -> (Clock, Arc<AtomicU64>) {
         let ahead = Arc::new(AtomicU64::new(0));
         let read = Arc::clone(&ahead);
+        // Time passes only when the test moves it, however slowly it runs.
+        let start = Instant::now();
         let clock: Clock =
-            Arc::new(move || Instant::now() + Duration::from_millis(read.load(Ordering::SeqCst)));
+            Arc::new(move || start + Duration::from_millis(read.load(Ordering::SeqCst)));
         (clock, ahead)
     }
 
