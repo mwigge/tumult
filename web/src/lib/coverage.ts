@@ -28,3 +28,9 @@ const DISCIPLINE_LABELS: Record<string, string> = {
 export function disciplineLabel(kind: string): string {
     return DISCIPLINE_LABELS[kind] ?? kind;
 }
+
+/** A discipline label with each bundled part on its own line, for a
+ *  narrow chart axis: `robustness / dr` becomes `robustness /` over `dr`. */
+export function stackedLabel(label: string): string {
+    return label.replaceAll(' / ', ' /\n');
+}

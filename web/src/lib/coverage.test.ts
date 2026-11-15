@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { coverageLabels, disciplineLabel } from './coverage.js';
+import { coverageLabels, disciplineLabel, stackedLabel } from './coverage.js';
 
 const row = (target: string, environment: string | null) => ({ target, environment });
 
@@ -36,5 +36,16 @@ describe('disciplineLabel', () => {
             'security',
             'dr',
         ]);
+    });
+});
+
+describe('stackedLabel', () => {
+    it('puts each part of a bundled discipline on its own line', () => {
+        expect(stackedLabel('robustness / dr')).toBe('robustness /\ndr');
+        expect(stackedLabel('load / performance')).toBe('load /\nperformance');
+    });
+
+    it('leaves a single name alone', () => {
+        expect(stackedLabel('chaos')).toBe('chaos');
     });
 });

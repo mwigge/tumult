@@ -6,7 +6,7 @@
     import { api, fmtAgo } from '#lib/api.js';
     import type { EChartsCoreOption } from '#lib/echarts.js';
     import { chartTokens } from '#lib/echarts.js';
-    import { coverageLabels, disciplineLabel } from '#lib/coverage.js';
+    import { coverageLabels, disciplineLabel, stackedLabel } from '#lib/coverage.js';
     import { strong, tip, tipFormatter } from '#lib/tooltip.js';
     import type {
         ConformanceReport,
@@ -125,8 +125,9 @@
             xAxis: {
                 type: 'category',
                 data: kinds.map(disciplineLabel),
-                // Name every column; a long name wraps instead of being skipped.
-                axisLabel: { color: t.text, interval: 0, width: 80, overflow: 'break' },
+                // Name every column; a bundled name goes on two lines
+                // instead of being skipped or running into its neighbour.
+                axisLabel: { color: t.text, interval: 0, formatter: stackedLabel },
             },
             yAxis: { type: 'category', data: targets, axisLabel: { color: t.text } },
             visualMap: {
