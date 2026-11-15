@@ -256,6 +256,30 @@ fn clean_shutdown_reports_no_failed_telemetry_export() {
     );
 }
 
+/// The daemon exports its own telemetry to its own OTLP listener, so the
+/// export must not begin before that listener is bound: on a slow start
+/// (a large store to open, a loaded host) the first batches would find
+/// nobody there, be lost, and log an export error. The bind guard is the
+/// last step before the addresses are bound; its warning marks that point.
+#[cfg(unix)]
+#[test]
+fn own_telemetry_export_begins_once_its_listener_is_bound() {
+    let dir = tempfile::tempdir().unwrap();
+    let output = Daemon::start(dir.path()).terminate();
+
+    let events = json_lines(&output.stderr);
+    let position = |name: &str| {
+        events
+            .iter()
+            .position(|event| event["event.name"] == name)
+            .unwrap_or_else(|| panic!("no {name} event in {events:#?}"))
+    };
+    assert!(
+        position("auth.disabled.loopback") < position("otel.exporter.initialized"),
+        "the exporters start after the bind guard: {events:#?}"
+    );
+}
+
 /// The bodies of the log events the daemon ingested from itself, read from
 /// its store once it has exited and released it.
 #[cfg(unix)]

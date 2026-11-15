@@ -326,6 +326,25 @@ pub(crate) async fn serve() -> Result<()> {
         );
         map
     });
+    let store = Store::open(&config.db_path).context("open store")?;
+    let writer = store.writer().context("open store writer")?;
+
+    // Auth bind guard + demo bootstrap: refuses a network-exposed bind with
+    // zero users and no bootstrap password; provisions the env bootstrap
+    // admin/token on the zero-users path. Runs before any server binds.
+    enforce_bind_guard(&writer, &store, &config)?;
+
+    // Both public addresses are bound here, before the writer, the run
+    // queue or any background task exists: a daemon that cannot have its
+    // addresses exits having started, and touched, nothing.
+    let grpc_listener = bind(config.otlp_grpc_addr, "gRPC server").await?;
+    let http_listener = bind(config.otlp_http_addr, "HTTP server").await?;
+
+    // The daemon's own telemetry starts only now that the address it is
+    // exported to is bound: started earlier, a slow start (a large store
+    // to open, a loaded host) has the first batches find nobody there,
+    // lose them and log an export error. What was logged before this
+    // point is on stderr only.
     let otel_config = tumult_otel::config::TelemetryConfig {
         enabled: true,
         service_name: crate::events::service_name(),
@@ -341,20 +360,6 @@ pub(crate) async fn serve() -> Result<()> {
     let public_grpc_telemetry = internal_grpc_listener
         .is_none()
         .then(|| Arc::clone(&telemetry));
-
-    let store = Store::open(&config.db_path).context("open store")?;
-    let writer = store.writer().context("open store writer")?;
-
-    // Auth bind guard + demo bootstrap: refuses a network-exposed bind with
-    // zero users and no bootstrap password; provisions the env bootstrap
-    // admin/token on the zero-users path. Runs before any server binds.
-    enforce_bind_guard(&writer, &store, &config)?;
-
-    // Both public addresses are bound here, before the writer, the run
-    // queue or any background task exists: a daemon that cannot have its
-    // addresses exits having started, and touched, nothing.
-    let grpc_listener = bind(config.otlp_grpc_addr, "gRPC server").await?;
-    let http_listener = bind(config.otlp_http_addr, "HTTP server").await?;
 
     let (ingest, writer_task) = IngestWriter::spawn_reconnect(writer, config.db_path.clone(), 1024);
     let ingest = ingest.with_entity_events(entity_events(&config));

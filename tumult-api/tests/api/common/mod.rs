@@ -435,8 +435,9 @@ pub struct TestServer {
     pub pass_log_ts: i64,
     pub db_path: PathBuf,
     pub ingest: tumult_ingest::IngestWriter,
-    /// Milliseconds the Star Map cache's clock runs ahead of the real
-    /// one: a test stores a larger value instead of sleeping.
+    /// Milliseconds the Star Map cache's clock has been moved ahead of
+    /// the moment the server started. It stands still otherwise: a test
+    /// stores a larger value instead of sleeping.
     pub starmap_ahead_ms: Arc<std::sync::atomic::AtomicU64>,
 }
 
@@ -564,9 +565,13 @@ async fn spawn(
     );
     let starmap_ahead_ms = Arc::new(std::sync::atomic::AtomicU64::new(0));
     let ahead = Arc::clone(&starmap_ahead_ms);
+    // The Star Map cache's time passes only when a test moves it, however
+    // slowly the test runs: the real clock would age an entry past the
+    // refresh floor on a loaded host.
+    let started = std::time::Instant::now();
     let state = state.with_starmap_clock(Arc::new(move || {
         let ahead = ahead.load(std::sync::atomic::Ordering::SeqCst);
-        std::time::Instant::now() + std::time::Duration::from_millis(ahead)
+        started + std::time::Duration::from_millis(ahead)
     }));
     let state = tune(state);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
