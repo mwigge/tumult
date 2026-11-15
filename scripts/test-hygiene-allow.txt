@@ -4,26 +4,6 @@
 # matches nothing. List the current offenders with:
 #   python3 scripts/check-test-hygiene.py --list
 
-# tumult-api: deferred, the crate is being changed elsewhere
-tumult-api/src/auth/rate_limit.rs::login_limiter_refills_over_time::bare-sleep  # deferred: sleep without a stated reason
-tumult-api/src/forecast/client.rs::a_slow_sidecar_times_out::bare-sleep  # deferred: sleep without a stated reason
-tumult-api/src/forecast/mod.rs::a_rejected_probe_does_not_close_the_circuit::bare-sleep  # deferred: sleep without a stated reason
-tumult-api/src/handlers/starmap.rs::a_waiter_reads_a_window_that_ends_after_the_write_it_waited_through::bare-sleep  # deferred: sleep without a stated reason
-tumult-api/src/handlers/starmap_cache.rs::builds_of_different_maps_are_limited_together::bare-sleep  # deferred: sleep without a stated reason
-tumult-api/src/handlers/starmap_cache.rs::counted::bare-sleep  # deferred: sleep without a stated reason
-tumult-api/tests/api/auth_approvals.rs::await_terminal_run_auth::bare-sleep  # deferred: sleep without a stated reason
-tumult-api/tests/api/common/mod.rs::execute::bare-sleep  # deferred: sleep without a stated reason
-tumult-api/tests/api/forecast.rs::a_failing_sidecar_opens_the_circuit_and_is_retried_after_the_cooldown::bare-sleep  # deferred: sleep without a stated reason
-tumult-api/tests/api/forecast.rs::next_window::bare-sleep  # deferred: sleep without a stated reason
-tumult-api/tests/api/runs.rs::await_terminal_run::bare-sleep  # deferred: sleep without a stated reason
-tumult-api/src/ask.rs::guard_accepts_legit_aggregate_query::no-assert  # deferred: asserts nothing yet
-tumult-api/src/forecast/telemetry.rs::the_global_entry_points_are_safe_without_a_provider::no-assert  # deferred: asserts nothing yet
-tumult-api/tests/api/authoring.rs::point_discovery_at_workspace_plugins::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumult-api/tests/api/risks.rs::point_discovery_at_workspace_plugins::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumult-api/tests/env_parts.rs::from_env_parts_loads_org_and_policy_falling_back_safely::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumult-api/tests/env_parts.rs::lake_status_reports_watermarks_and_policy::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumult-api/tests/env_parts.rs::retention_export_fails_closed_even_with_ingest_handle::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-
 # tumult-ingest: deferred, the crate is being changed elsewhere
 tumult-ingest/src/daemon_task.rs::ticker_ticks_until_shutdown::bare-sleep  # deferred: sleep without a stated reason
 tumult-ingest/src/grpc.rs::until::bare-sleep  # deferred: sleep without a stated reason

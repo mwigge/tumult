@@ -364,7 +364,8 @@ mod tests {
     fn guard_accepts_legit_aggregate_query() {
         let sql = "SELECT fault_type, COUNT(*) AS count FROM spans \
                    WHERE fault_type IS NOT NULL GROUP BY fault_type ORDER BY count DESC";
-        sql_guard::validate_generated_sql(sql, ALLOWED_TABLES).unwrap();
+        let outcome = sql_guard::validate_generated_sql(sql, ALLOWED_TABLES);
+        assert!(outcome.is_ok(), "{outcome:?}");
     }
 
     #[test]

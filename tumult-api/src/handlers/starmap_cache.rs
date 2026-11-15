@@ -550,6 +550,7 @@ mod tests {
     /// A build that counts how often it ran.
     async fn counted(runs: &AtomicUsize, body: &str) -> Result<CachedMap, String> {
         runs.fetch_add(1, Ordering::SeqCst);
+        // sleep: stands in for a lake read, so requests made together overlap
         tokio::time::sleep(Duration::from_millis(20)).await;
         Ok(CachedMap::new(body.as_bytes().to_vec()))
     }
@@ -938,7 +939,7 @@ mod tests {
         assert_eq!(cache.waiting(), 0);
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn builds_of_different_maps_are_limited_together() {
         let cache = Arc::new(StarMapCache::with_limits(Limits {
             builds: 2,

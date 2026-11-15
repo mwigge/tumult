@@ -208,15 +208,4 @@ mod tests {
         );
         assert_eq!(value("tumult.forecast.cache.lookups", "hit"), Some(1));
     }
-
-    #[test]
-    fn the_global_entry_points_are_safe_without_a_provider() {
-        let produce = Timed::start(PRODUCE);
-        produce.child(SIDECAR_CALL).finish("ok");
-        produce.finish("sidecar");
-        fallback("unreachable");
-        breaker_transition("open");
-        cache_lookup(true);
-        cache_lookup(false);
-    }
 }

@@ -4,16 +4,7 @@ use serde_json::{json, Value};
 // ---------------------------------------------------------------------------
 // /api/authoring* — catalog + scaffold over HTTP. The handlers discover
 // plugins through the standard search paths, so tests point
-// TUMULT_PLUGIN_PATH at the workspace's real `plugins/` directory (every
-// test sets the same value, so parallel test threads cannot race on it).
-
-fn point_discovery_at_workspace_plugins() {
-    let plugins = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../plugins")
-        .canonicalize()
-        .unwrap();
-    std::env::set_var("TUMULT_PLUGIN_PATH", plugins);
-}
+// TUMULT_PLUGIN_PATH at the workspace's real `plugins/` directory.
 
 async fn post(base: &str, path: &str, body: Value) -> (u16, Value) {
     let resp = reqwest::Client::new()
@@ -29,7 +20,7 @@ async fn post(base: &str, path: &str, body: Value) -> (u16, Value) {
 
 #[tokio::test]
 async fn catalog_serves_the_live_plugin_catalog() {
-    point_discovery_at_workspace_plugins();
+    let _env = point_discovery_at_workspace_plugins();
     let srv = spawn_server().await;
     let (status, body) = get(&srv.base, "/api/authoring/catalog").await;
     assert_eq!(status, 200);
@@ -51,7 +42,7 @@ async fn catalog_serves_the_live_plugin_catalog() {
 
 #[tokio::test]
 async fn scaffold_returns_validated_toon() {
-    point_discovery_at_workspace_plugins();
+    let _env = point_discovery_at_workspace_plugins();
     let srv = spawn_server().await;
     let (status, body) = post(
         &srv.base,
@@ -83,7 +74,7 @@ async fn scaffold_returns_validated_toon() {
 
 #[tokio::test]
 async fn scaffold_reports_invalid_experiments_without_registering() {
-    point_discovery_at_workspace_plugins();
+    let _env = point_discovery_at_workspace_plugins();
     let srv = spawn_server().await;
     // An unclosed probe regex fails engine validation: the endpoint still
     // answers 200 with valid:false, and nothing reaches the registry.
@@ -111,7 +102,7 @@ async fn scaffold_reports_invalid_experiments_without_registering() {
 
 #[tokio::test]
 async fn scaffold_rejects_unknown_actions_and_missing_plugin() {
-    point_discovery_at_workspace_plugins();
+    let _env = point_discovery_at_workspace_plugins();
     let srv = spawn_server().await;
     let (status, body) = post(
         &srv.base,

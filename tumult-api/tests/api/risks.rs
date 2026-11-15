@@ -199,17 +199,6 @@ async fn risks_respect_scopes_and_roles() {
     assert_eq!(body["actor"], "risk-operator");
 }
 
-/// The scaffolder discovers plugins through the standard search paths, so
-/// the recommend tests point `TUMULT_PLUGIN_PATH` at the workspace's real
-/// `plugins/` directory (every catalog action lives there).
-fn point_discovery_at_workspace_plugins() {
-    let plugins = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../plugins")
-        .canonicalize()
-        .expect("workspace plugins directory");
-    std::env::set_var("TUMULT_PLUGIN_PATH", plugins);
-}
-
 fn risk_id(report: &Value, rule: &str, kind: Option<&str>) -> String {
     report["risks"]
         .as_array()
@@ -227,7 +216,7 @@ fn risk_id(report: &Value, rule: &str, kind: Option<&str>) -> String {
 /// `risk` trigger. Asking again dedupes on the content hash.
 #[tokio::test]
 async fn recommend_scaffolds_registers_and_proposes_a_candidate() {
-    point_discovery_at_workspace_plugins();
+    let _env = point_discovery_at_workspace_plugins();
     let srv = spawn_server().await;
     let (_, report) = get(&srv.base, "/api/risks").await;
     let id = risk_id(&report, "discipline_gap", Some("dr"));
@@ -283,7 +272,7 @@ async fn recommend_scaffolds_registers_and_proposes_a_candidate() {
 /// the handler's unit tests; the seed has no critical target to raise it.
 #[tokio::test]
 async fn recommend_refuses_what_it_cannot_automate() {
-    point_discovery_at_workspace_plugins();
+    let _env = point_discovery_at_workspace_plugins();
     let srv = spawn_server().await;
     let (_, report) = get(&srv.base, "/api/risks").await;
     let failed = risk_id(&report, "latest_run_failed", None);
