@@ -5,7 +5,7 @@
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
 
-        <mxCell id="title" value="Tumult — Architecture (v2.22.0)" style="text;html=1;fontSize=30;fontStyle=1;align=left;" vertex="1" parent="1">
+        <mxCell id="title" value="Tumult — Architecture (v3.0.0)" style="text;html=1;fontSize=30;fontStyle=1;align=left;" vertex="1" parent="1">
           <mxGeometry x="40" y="20" width="1920" height="60" as="geometry" />
         </mxCell>
         <mxCell id="cli" value="Operator: tumult-cli / tumult-tui&#xa;&#xa;run · validate · discover · analyze · export&#xa;gameday · topology · autopilot · agentic&#xa;TUI: read-only analytics dashboard" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=15;spacing=12;" vertex="1" parent="1">
@@ -80,7 +80,7 @@
         <mxCell id="parquet" value="Portable Parquet lake export&#xa;Complete content-addressed snapshots selected by atomic manifest&#xa;KRONIKA_LAKE_DIR / KRONIKA_LAKE_INTERVAL / POST /api/lake/export&#xa;Credential / recovery-secret tables excluded; full backup is separate&#xa;Automatic hot deletion disabled · local files are not WORM storage" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=15;spacing=12;" vertex="1" parent="daemon">
           <mxGeometry x="30" y="1010" width="750" height="140" as="geometry" />
         </mxCell>
-        <mxCell id="test-only" value="Build inventory: 32 workspace crates · workspace version 2.22.0 (daemon analytics crates retain 0.7.0)&#xa;Test-only: tumult-test-utils — shared fixtures / helpers; outside the runtime path" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;dashed=1;fontSize=15;spacing=12;" vertex="1" parent="1">
+        <mxCell id="test-only" value="Build inventory: 35 workspace crates · workspace version 3.0.0 (daemon analytics crates retain 0.7.0)&#xa;Test-only: tumult-test-utils — shared fixtures / helpers; outside the runtime path" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;dashed=1;fontSize=15;spacing=12;" vertex="1" parent="1">
           <mxGeometry x="40" y="1680" width="1920" height="60" as="geometry" />
         </mxCell>
         <mxCell id="e-cli" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;entryX=0.25;entryY=0;" edge="1" source="cli" target="core" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>

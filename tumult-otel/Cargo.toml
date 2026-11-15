@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "OpenTelemetry instrumentation for Tumult chaos engineering platform"
+description = "OpenTelemetry instrumentation for the Tumult resilience intelligence platform"
 
 [dependencies]
 serde = { workspace = true }

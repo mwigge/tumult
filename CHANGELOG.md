@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-11-15
+
+Tumult moves from chaos testing to resilience intelligence. Runs of every
+test kind, live telemetry and recorded exercises become evidence for a
+resilience score, ranked risks, a DORA and ICT maturity score, performance
+verdicts, forecasts and the Star Map in the Krönika web UI. Read the
+[3.0.0 release notes](docs/releases/3.0.0.md) first: the lake schema
+moves to v21 and cannot be opened by an older binary.
+
 ### Added
 
 - Experiment definitions can name their system under test (`target`: system, technology, environment, criticality), emitted as `resilience.target.*` on the root span so CLI runs score, scope and gate by target like daemon runs do.
@@ -81,6 +90,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Version history: a row of `service_version_sightings` that an earlier build wrote from a span stamped ahead of the daemon's clock no longer keeps its version out of the history until the clock gets there. The next span of that version within the clock bound begins the row anew and replaces the stale first sight, last sight, deployment start and `first_anchor_ns`.
 - Version history: a span stamped before 2000-01-01T00:00:00Z (a clock never set, a timestamp of zero) is stored and left out of the version history, with a `lake.sightings.ancient_span_ignored` warning at most once a minute. It used to pin its version's first sight, and the bound late spans are measured from, at that time for good. Rows already written from such spans are not rewritten.
 - Version history: the one-time backfill of an old lake finishes when a stored span is stamped at the largest timestamp there is (`i64::MAX`); it used to read that span again on every step and never report done.
+- Kronika demo: `worker-process-kill` no longer races its own sampler. The worker is started by a `before_experiment` control and removed by `after_experiment`, the hypothesis probe only reads (`kill -0` on the pid file), and no `sleep` process outlives the run.
+- Web: the sidebar navigation scrolls on a short window instead of pushing its last entries out of reach. Chart zoom and pan are reported once per frame, and a chart mirrors its option to `window.__tumultCharts` only where a test installed that registry.
 
 ### Changed
 
@@ -134,11 +145,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - OpenTelemetry crates upgraded to the 0.33 line (`opentelemetry`, `opentelemetry_sdk`, `opentelemetry-otlp`, `opentelemetry-proto`, `opentelemetry-stdout`, `opentelemetry-appender-tracing`; `tracing-opentelemetry` 0.34). No API changes were needed.
 - The schema DDL and views the lake embeds in Rust constants are formatted and linted with sqlfluff (`scripts/lint-embedded-sql.sh`, also in CI); index statements sit on one line and views alias tables explicitly. No semantic change.
 - The ClickHouse backend keeps its pre-v16 `experiments` shape; objective verdicts and raw samples are DuckDB-lake only for now.
-
-### Fixed
-
-- Kronika demo: `worker-process-kill` no longer races its own sampler. The worker is started by a `before_experiment` control and removed by `after_experiment`, the hypothesis probe only reads (`kill -0` on the pid file), and no `sleep` process outlives the run.
-- Web: the sidebar navigation scrolls on a short window instead of pushing its last entries out of reach. Chart zoom and pan are reported once per frame, and a chart mirrors its option to `window.__tumultCharts` only where a test installed that registry.
 
 ### Security
 

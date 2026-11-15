@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "Plugin system for Tumult chaos engineering platform"
+description = "Plugin system for the Tumult resilience intelligence platform"
 
 [dependencies]
 tumult-otel = { path = "../tumult-otel" }

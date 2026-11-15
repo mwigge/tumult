@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "CLI binary for the Tumult chaos engineering platform"
+description = "CLI binary for the Tumult resilience intelligence platform"
 
 [lib]
 name = "tumult_cli"
