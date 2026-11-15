@@ -42,6 +42,17 @@ belongs to the CLI/native side (`TUMULT_OTEL_ENABLED`, `TUMULT_LAKE_PATH`,
 …). New daemon settings should use `TUMULTD_*`; the `KRONIKA_*` names are
 not being renamed.
 
+## C4 diagrams
+
+| Level | Diagram |
+|---|---|
+| 1, context | ![C4 level 1: who uses Tumult and what it talks to](../images/3.0/diagrams/c4-1-context.png) |
+| 2, containers | ![C4 level 2: the programs that make up Tumult](../images/3.0/diagrams/c4-2-containers.png) |
+| 3, ingest and store | ![C4 level 3: the parts of tumultd that receive telemetry and write the lake](../images/3.0/diagrams/c4-3a-ingest-and-store.png) |
+| 3, intelligence and API | ![C4 level 3: the parts of tumultd that answer the API and build the evidence](../images/3.0/diagrams/c4-3b-intelligence-and-api.png) |
+
+The source of each diagram is the `.json` file beside it.
+
 ## Container view
 
 ```mermaid
@@ -323,7 +334,7 @@ Krönika is a SvelteKit single-page application (`web/`) with ECharts,
 embedded in the `tumultd` binary and served from the HTTP port. A page
 holds no evidence of its own; it calls the JSON API with the user's
 session. The charts and the evidence on each page are described in
-[the platform walkthrough](../guides/platform-walkthrough.md#krönika-pages-charts-and-evidence).
+[the page reference](../reference/kronika-pages.md).
 
 | Page | Route | API | Role |
 |---|---|---|---|

@@ -1,77 +1,36 @@
 # Quickstart
 
-Build Tumult and run your first local experiment. Tumult is a resilience
-intelligence platform, and an experiment run from the CLI is the quickest way
-to put a first piece of evidence into it. This is the CLI-only path; for the full
-platform (daemon, web UI, approvals, scores, verdicts, forecasts, the Star Map,
-compliance reports) see
-[the daemon, lake and web UI](README.md#the-daemon-lake-and-web-ui) in
-README.md — or jump straight to the
-[platform walkthrough](docs/guides/platform-walkthrough.md) for a guided
-click-through of the web UI on the seeded demo stack.
-
-## Choosing your path
-
-- **Learn in your browser** → [Chaos Lab](chaos-lab/README.md). Docker-only setup,
-  four guided fault simulations, and an optional OpenAI/Claude/Ollama tutor.
-  No Rust build or AI key is needed for the lessons.
-- **Ad-hoc local experiments** → the CLI path below. About 10 minutes from
-  clone to first run; no daemon, no secrets.
-- **Team governance and resilience intelligence** — approvals, schedules,
-  audit trails, posture and DORA scores, performance verdicts, forecasts, the
-  Star Map, compliance reports → the platform path (`tumultd` + web UI, see
-  [the daemon, lake and web UI](README.md#the-daemon-lake-and-web-ui)). It
-  needs a `.env` with the three `KRONIKA_*` secrets and a full
-  `docker compose -f docker/docker-compose.kronika.yml up -d --build` —
-  expect ~15–20 minutes for the first build.
+Run your first experiment in about 10 minutes.
 
 ```mermaid
 flowchart LR
     accTitle: Tumult quickstart path
-    accDescr: Install Tumult, start isolated targets, validate and run an experiment, then inspect the journal and analytics results. The same evidence can then be read in the daemon and its web UI as scores, verdicts and reports.
-    install[Install] --> targets[Start isolated targets]
-    targets --> validate[Validate experiment]
-    validate --> run[Run experiment]
-    run --> inspect[Inspect journal and analytics]
-    inspect -.-> platform[Daemon and web UI:<br>scores, verdicts, reports]
+    accDescr: Install Tumult, start test targets, run an experiment, look at the results, then open the web UI to see scores and risks.
+    install[1. Install] --> targets[2. Start targets]
+    targets --> run[3. Run]
+    run --> look[4. Look at results]
+    look -.-> ui[5. Open the web UI]
 ```
 
-## Install
+## Pick a path
 
-### Option A: From source
+| You want to | Do this | Time |
+|---|---|---|
+| Learn chaos testing in a browser | [Chaos Lab](chaos-lab/README.md) | 5 min |
+| Run experiments from a terminal | This page | 10 min |
+| See scores, risks and the Star Map | [Step 5](#5-open-the-web-ui) | 15 to 20 min |
+
+## 1. Install
+
+Pick one.
+
+**From source** (needs [Rust](https://rustup.rs/), Git, Make, Docker):
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/mwigge/tumult/main/install.sh | sh
 ```
 
-Builds the CLI and TCP proxy helper, waits for Docker targets to become ready, and runs a separate self-contained CLI verification. Requires [Rust](https://rustup.rs/), Git, Make and Docker with Compose. The initial source build can take several minutes. If `/usr/local/bin` is not writable, follow the printed PATH instructions in your own shell.
-
-### Option B: Docker (no Rust toolchain needed)
-
-```bash
-docker pull ghcr.io/mwigge/tumult:latest        # CLI + MCP server
-docker pull ghcr.io/mwigge/tumult-mcp:latest     # MCP server (HTTP entrypoint)
-```
-
-Both images contain the CLI, MCP server, bundled providers, examples, and
-GameDay support. Run `tumult discover` against the installed image for the
-authoritative provider and action inventory.
-
-```bash
-# Run CLI commands
-docker run --rm ghcr.io/mwigge/tumult discover
-docker run --rm ghcr.io/mwigge/tumult --help
-
-# Start MCP server for agent access
-docker run -p 3100:3100 --network tumult-e2e \
-  -e TUMULT_MCP_TOKEN='replace-with-a-secret' \
-  ghcr.io/mwigge/tumult-mcp
-```
-
-Without a token the HTTP server binds to loopback only; a bearer token
-(`TUMULT_MCP_TOKEN`) is required before it will serve non-loopback clients.
-
-### Option C: Clone and build
+**Clone and build:**
 
 ```bash
 git clone https://github.com/mwigge/tumult.git && cd tumult
@@ -79,37 +38,39 @@ cargo build --release --locked -p tumult-cli -p tumult-mcp -p tumult-net
 export PATH="$PWD/target/release:$PATH"
 ```
 
-### 2. Start infrastructure
+**Docker only** (no Rust needed):
 
-The remaining commands use the local CLI from option A or C and run from the
-repository root. If the installer cloned into `tumult/`, enter that directory
-first. The Docker commands above demonstrate discovery and server startup;
-container execution additionally needs the workspace and target access in the
+```bash
+docker pull ghcr.io/mwigge/tumult:latest
+docker run --rm ghcr.io/mwigge/tumult discover
+```
+
+The Docker image is good for a first look. To run experiments from a
+container you also need the access described in the
 [deployment guide](docs/guides/production-deployment.md#provider-capabilities).
+
+## 2. Start targets
+
+Run this from the repository root.
 
 ```bash
 make up-targets
 ```
 
-This starts 5 chaos targets on the `tumult-e2e` Docker network:
-
-| Service | Port | Credentials |
-|---------|------|-------------|
+| Service | Port | Login |
+|---|---|---|
 | PostgreSQL 16 | localhost:15432 | tumult / tumult_test |
-| Redis 7 | localhost:16379 | — |
-| Kafka 3.8 | localhost:19092 | — |
+| Redis 7 | localhost:16379 | none |
+| Kafka 3.8 | localhost:19092 | none |
 | MySQL 8 | localhost:13306 | root / tumult_test |
-| SSH Server | localhost:12222 | `make ssh-key` for key |
+| SSH server | localhost:12222 | key from `make ssh-key` |
 
-### 3. Run your first chaos experiment
-
-**Redis connectivity smoke test** — probe availability and exercise SET, GET and DEL. This example injects no fault and does not demonstrate outage recovery:
+## 3. Run an experiment
 
 ```bash
 tumult run examples/redis-chaos.toon
 ```
 
-Output:
 ```
 Running experiment: Redis connectivity — verify basic key operations
 Status: Completed
@@ -118,156 +79,82 @@ Method steps: 3 executed
 Journal written to: journal.toon
 ```
 
-**PostgreSQL failover** — kill idle connections and verify PG recovers:
+This first one only checks that Redis answers. It breaks nothing. Now try
+some that do:
+
+| Experiment | Command |
+|---|---|
+| Kill PostgreSQL connections | `tumult run examples/postgres-failover.toon --journal-path postgres.journal.toon` |
+| Add 200 ms network delay | `tumult run examples/pumba-latency.toon --journal-path pumba.journal.toon` |
+| Stress a host over SSH | `make ssh-key`, then `tumult run examples/ssh-remote.toon --journal-path ssh.journal.toon` |
+
+## 4. Look at the results
+
+Every run writes a journal file and goes into the local database.
 
 ```bash
-tumult run examples/postgres-failover.toon --journal-path postgres.journal.toon
-```
-
-**Pumba network latency** — inject 200ms latency into a container:
-
-```bash
-tumult run examples/pumba-latency.toon --journal-path pumba.journal.toon
-```
-
-**SSH remote stress test** — run stress-ng on a remote host via SSH:
-
-```bash
-make ssh-key  # extract test SSH key first
-tumult run examples/ssh-remote.toon --journal-path ssh.journal.toon
-```
-
-### 4. Explore your data
-
-```bash
-# SQL analytics over all experiments
 tumult analyze --query "SELECT title, status, duration_ms FROM experiments ORDER BY started_at_ns DESC"
-
-# Export to Parquet for BI tools
-tumult export --format parquet journal.toon
-
-# Generate HTML report
-tumult report --format html journal.toon
-
-# Compliance evidence (DORA, NIS2, PCI-DSS, ISO-27001, SOC2, ISO-22301, Basel III)
-tumult compliance --framework dora .
+tumult report --format html journal.toon      # HTML report
+tumult export --format parquet journal.toon   # for BI tools
+tumult compliance --framework dora .          # evidence summary
+tumult discover                               # what can I break?
+tumult init                                   # start a new experiment file
 ```
 
-### 5. See what's available
+## 5. Open the web UI
+
+This is where the evidence becomes scores, risks and verdicts.
 
 ```bash
-# List the providers and actions in this build
-tumult discover
-
-# Scaffold your own experiment from a template (self-contained, no Docker)
-tumult init
+cp .env.example .env   # set the three KRONIKA_* values
+docker compose -f docker/docker-compose.kronika.yml up -d --build
 ```
 
-### 6. Serve Tumult as tools for AI agents (MCP)
+Open <http://localhost:14318/> and sign in as `admin`.
 
-The same chaos actions are exposed over the Model Context Protocol so agents
-(Claude Code, and others) can run experiments and query results. Start the
-server straight from the CLI — no separate binary needed:
+![The Star Map on the demo data](docs/images/3.0/screenshots/starmap.png)
 
-```bash
-# Local agents over stdio (default)
-tumult mcp serve
+The [platform walkthrough](docs/guides/platform-walkthrough.md) shows each
+page.
 
-# Networked agents over HTTP, with a bearer token
-tumult mcp serve --transport http --port 3100 --token "$MCP_TOKEN"
-```
+## More things to try
 
-`tumult mcp --help` lists the options; the server also exposes a `/health`
-endpoint (default: `port + 1`).
-
-### 7. Explore the ChaosGraph knowledge graph
-
-ChaosGraph collapses every accumulated run into a compact node/edge graph.
-Previously reachable only through MCP, it now has first-class CLI commands that
-read the analytics store (`~/.tumult/lake.duckdb`, or `--store <path>`):
-
-```bash
-# List graph nodes of a kind (experiment, fault, service, journal, …)
-tumult chaosgraph query --kind fault
-
-# The neighbourhood of one experiment (nodes + edges within N hops)
-tumult chaosgraph neighbors --node "exp:Redis connectivity — verify basic key operations"
-
-# Chaos actions never exercised by a tested run
-tumult chaosgraph coverage-gaps --framework dora
-
-# Any command supports --format json
-tumult chaosgraph query --kind service --format json
-```
-
-## Run a GameDay (full e2e)
-
-One command — starts infrastructure, runs 4 PostgreSQL resilience experiments via MCP, scores results, maps to DORA compliance. (Note: `tumult validate` checks experiment files only — `.gameday.toon` files are validated when you run them.)
+**A GameDay.** Four PostgreSQL experiments, scored and mapped to DORA
+articles, in one command:
 
 ```bash
 ./scripts/gameday-demo.sh
 ```
 
-Output (trimmed — the script wraps each stage in a banner and indents the GameDay lines):
+**AI agents.** Give an agent the same tools over MCP:
 
-```
-── Running Q2 PostgreSQL Resilience GameDay ────────────────────────
-  Experiments: connection kill, container pause, CPU stress, memory stress
-  Compliance: DORA EU 2022/2554 Articles 11, 24, 25
-  Running... (this takes ~30 seconds)
-
-  GameDay: Q2 PostgreSQL Resilience Programme
-  Status:  4/4 PASS (compliant)  # historical demo label, not a compliance attestation
-  Duration: 27.3s
-
-    #1 [PASS] PostgreSQL connection kill under load (2197ms)
-    #2 [PASS] PostgreSQL container pause — total unavailability (7402ms)
-    #3 [PASS] PostgreSQL CPU stress — resource pressure (9331ms)
-    #4 [PASS] PostgreSQL memory stress — resource pressure (9305ms)
-
-  Resilience Score: 1.00
-    Pass rate:        1.00
-    Recovery:         1.00
-    Load impact:      1.00
-    Compliance:       1.00
-
-╔══════════════════════════════════════════════════════════════════════╗
-║  GameDay Complete                                                   ║
-║  Compliance frameworks:                                             ║
-║    DORA EU 2022/2554 — Art. 11 (recovery), Art. 24 (testing),      ║
-║                        Art. 25 (scenario-based testing)             ║
-║    NIS2 — Incident response and resilience testing                  ║
-╚══════════════════════════════════════════════════════════════════════╝
+```bash
+tumult mcp serve                                              # local, stdio
+tumult mcp serve --transport http --port 3100 --token "$MCP_TOKEN"
 ```
 
-The demo script exercises the full pipeline: Agent → MCP HTTP → experiment runner → plugins → Docker targets → DuckDB analytics → compliance mapping.
+Without a token, HTTP listens on loopback only.
 
-## Add observability
-
-Start the full stack with SigNoz dashboards:
+**Traces in SigNoz.**
 
 ```bash
 ./start.sh infra observe
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:14317 tumult run examples/redis-chaos.toon
 ```
 
-Then run experiments with OpenTelemetry tracing:
+Open <http://localhost:3301>.
+
+**The knowledge graph.**
 
 ```bash
-OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:14317 tumult run examples/redis-chaos.toon --journal-path observed-redis.journal.toon
+tumult chaosgraph query --kind fault
+tumult chaosgraph coverage-gaps --framework dora
 ```
 
-Open SigNoz at http://localhost:3301 to see traces, metrics, and dashboards.
+## Test your own service
 
-| Endpoint | What |
-|----------|------|
-| localhost:3301 | SigNoz UI (traces, metrics, logs) |
-| localhost:14317 | OTLP gRPC (send traces here) |
-| localhost:18889 | Prometheus metrics (host + APM) |
-| localhost:13133 | Collector health check |
-
-## Bring your own target
-
-To test your own service, create an experiment that probes it:
+Write a file like this. It checks a health URL, stops a dependency, and
+starts it again.
 
 ```toon
 title: My service health check
@@ -310,8 +197,8 @@ rollbacks[1]:
 ```
 
 ```bash
-tumult validate my-experiment.toon  # check syntax
-tumult run my-experiment.toon       # execute
+tumult validate my-experiment.toon
+tumult run my-experiment.toon
 ```
 
 ## Stop everything
@@ -322,17 +209,11 @@ make down
 
 ## Next steps
 
-- [Full documentation](https://mwigge.github.io/tumult/)
-- [Platform walkthrough](docs/guides/platform-walkthrough.md): the web UI on
-  the seeded demo, and every Krönika page with its charts
-- [Load testing](docs/guides/load-testing-guide.md) and
-  [performance regression verdicts](docs/guides/performance-regression.md)
-- [Star Map](docs/guides/star-map.md),
-  [DORA score](docs/guides/dora-score.md) and
-  [forecasting](docs/guides/forecasting.md)
-- [Send your services' telemetry](docs/guides/otel-autoinstrumentation.md)
-  and [entity events](docs/guides/entity-events.md)
-- [Plugin reference](docs/plugins/)
-- [Experiment format](docs/guides/experiment-format.md)
-- [Test protocol](docs/testprotocol.md)
-- [Security assessment](docs/security-assessment.md)
+| Topic | Guide |
+|---|---|
+| Every page of the web UI | [Platform walkthrough](docs/guides/platform-walkthrough.md) |
+| Load tests and version verdicts | [Load testing](docs/guides/load-testing-guide.md), [performance](docs/guides/performance-regression.md) |
+| Star Map, DORA score, forecasts | [Star Map](docs/guides/star-map.md), [DORA score](docs/guides/dora-score.md), [forecasting](docs/guides/forecasting.md) |
+| Send telemetry from your services | [Auto-instrumentation](docs/guides/otel-autoinstrumentation.md), [entity events](docs/guides/entity-events.md) |
+| Write experiments | [Experiment format](docs/guides/experiment-format.md), [plugins](docs/plugins/) |
+| All guides | [Guides](docs/guides/index.md) |

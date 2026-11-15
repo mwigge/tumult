@@ -1,0 +1,437 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "C4 level 3: tumultd ingest and store",
+    "output": "c4-3a-ingest-and-store.html",
+    "quality_profile": "showcase",
+    "locale": "en",
+    "repository": {
+      "url": "https://github.com/mwigge/tumult",
+      "revision": "8c24680b94cbab9d5b2011d99b53623618608a22"
+    },
+    "legend": {
+      "entries": {
+        "backend": {
+          "label": "Component"
+        },
+        "security": {
+          "label": "Check"
+        },
+        "messagebus": {
+          "label": "Background job"
+        },
+        "database": {
+          "label": "Data store"
+        },
+        "external": {
+          "label": "External system"
+        },
+        "cloud": {
+          "label": "Files on disk"
+        }
+      }
+    }
+  },
+  "components": [
+    {
+      "id": "otel",
+      "type": "external",
+      "label": "OTel Collector",
+      "sublabel": "or your services",
+      "pos": [
+        40,
+        240
+      ],
+      "size": [
+        180,
+        64
+      ],
+      "sources": [
+        {
+          "path": "docker/otel-collector-kronika.yaml",
+          "line": 1,
+          "end_line": 35
+        }
+      ]
+    },
+    {
+      "id": "grpc",
+      "type": "backend",
+      "label": "OTLP gRPC",
+      "sublabel": "port 4317",
+      "pos": [
+        290,
+        80
+      ],
+      "size": [
+        180,
+        64
+      ],
+      "sources": [
+        {
+          "path": "tumult-ingest/src/grpc.rs",
+          "line": 74,
+          "end_line": 132
+        },
+        {
+          "path": "tumultd/src/serve/mod.rs",
+          "line": 392,
+          "end_line": 421
+        }
+      ]
+    },
+    {
+      "id": "arrow",
+      "type": "backend",
+      "label": "OTel-Arrow",
+      "sublabel": "streams on 4317",
+      "pos": [
+        290,
+        240
+      ],
+      "size": [
+        180,
+        64
+      ],
+      "sources": [
+        {
+          "path": "tumult-ingest/src/otap/service.rs",
+          "line": 559,
+          "end_line": 590
+        }
+      ]
+    },
+    {
+      "id": "http",
+      "type": "backend",
+      "label": "OTLP HTTP",
+      "sublabel": "port 4318, protobuf",
+      "pos": [
+        290,
+        400
+      ],
+      "size": [
+        180,
+        64
+      ],
+      "sources": [
+        {
+          "path": "tumult-ingest/src/http.rs",
+          "line": 43,
+          "end_line": 69
+        }
+      ]
+    },
+    {
+      "id": "token",
+      "type": "security",
+      "label": "Ingest token check",
+      "sublabel": "refuse if wrong",
+      "pos": [
+        530,
+        240
+      ],
+      "size": [
+        180,
+        64
+      ],
+      "sources": [
+        {
+          "path": "tumult-ingest/src/grpc.rs",
+          "line": 134,
+          "end_line": 179
+        },
+        {
+          "path": "tumult-ingest/src/http.rs",
+          "line": 53,
+          "end_line": 95
+        },
+        {
+          "path": "tumultd/src/serve/mod.rs",
+          "line": 287,
+          "end_line": 294
+        }
+      ]
+    },
+    {
+      "id": "convert",
+      "type": "backend",
+      "label": "OTLP converter",
+      "sublabel": "spans, logs, metrics",
+      "pos": [
+        770,
+        240
+      ],
+      "size": [
+        180,
+        64
+      ],
+      "sources": [
+        {
+          "path": "tumult-ingest/src/grpc.rs",
+          "line": 195,
+          "end_line": 240
+        },
+        {
+          "path": "tumult-otlp/src/metrics.rs",
+          "line": 126,
+          "end_line": 133
+        }
+      ]
+    },
+    {
+      "id": "entity",
+      "type": "security",
+      "label": "Entity event filter",
+      "sublabel": "allow-list and caps",
+      "pos": [
+        770,
+        80
+      ],
+      "size": [
+        180,
+        64
+      ],
+      "tag": "off by default",
+      "sources": [
+        {
+          "path": "tumult-ingest/src/entity_events.rs",
+          "line": 82,
+          "end_line": 146
+        },
+        {
+          "path": "tumult-lake/src/entities/caps.rs",
+          "line": 1,
+          "end_line": 111
+        }
+      ]
+    },
+    {
+      "id": "runq",
+      "type": "backend",
+      "label": "Run queue, workers",
+      "sublabel": "run experiments",
+      "pos": [
+        1010,
+        80
+      ],
+      "size": [
+        180,
+        64
+      ],
+      "sources": [
+        {
+          "path": "tumult-ingest/src/runs/queue/mod.rs",
+          "line": 200,
+          "end_line": 268
+        },
+        {
+          "path": "tumult-ingest/src/runs/worker.rs",
+          "line": 302,
+          "end_line": 346
+        }
+      ]
+    },
+    {
+      "id": "writer",
+      "type": "backend",
+      "label": "Single writer",
+      "sublabel": "queue of 1024",
+      "pos": [
+        1010,
+        240
+      ],
+      "size": [
+        180,
+        64
+      ],
+      "sources": [
+        {
+          "path": "tumult-ingest/src/writer.rs",
+          "line": 73,
+          "end_line": 101
+        },
+        {
+          "path": "tumultd/src/serve/mod.rs",
+          "line": 359,
+          "end_line": 360
+        }
+      ]
+    },
+    {
+      "id": "export",
+      "type": "messagebus",
+      "label": "Lake export job",
+      "sublabel": "every 24 hours",
+      "pos": [
+        770,
+        400
+      ],
+      "size": [
+        180,
+        64
+      ],
+      "sources": [
+        {
+          "path": "tumultd/src/lake_jobs.rs",
+          "line": 17,
+          "end_line": 37
+        },
+        {
+          "path": "tumultd/src/lake_jobs.rs",
+          "line": 42,
+          "end_line": 59
+        }
+      ]
+    },
+    {
+      "id": "lake",
+      "type": "database",
+      "label": "DuckDB lake",
+      "sublabel": "one file",
+      "pos": [
+        1010,
+        600
+      ],
+      "size": [
+        180,
+        64
+      ],
+      "sources": [
+        {
+          "path": "tumult-lake/src/writer.rs",
+          "line": 55,
+          "end_line": 117
+        },
+        {
+          "path": "tumult-lake/src/duckdb_store/mod.rs",
+          "line": 140,
+          "end_line": 170
+        }
+      ]
+    },
+    {
+      "id": "parquet",
+      "type": "cloud",
+      "label": "Parquet files",
+      "sublabel": "lake folder",
+      "pos": [
+        770,
+        600
+      ],
+      "size": [
+        180,
+        64
+      ],
+      "sources": [
+        {
+          "path": "tumult-lake/src/lake.rs",
+          "line": 199,
+          "end_line": 215
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "tumultd daemon",
+      "wraps": [
+        "grpc",
+        "arrow",
+        "http",
+        "token",
+        "convert",
+        "entity",
+        "runq",
+        "writer",
+        "export"
+      ],
+      "pad": 24
+    }
+  ],
+  "connections": [
+    {
+      "id": "o-g",
+      "from": "otel",
+      "to": "grpc"
+    },
+    {
+      "id": "o-a",
+      "from": "otel",
+      "to": "arrow",
+      "variant": "emphasis"
+    },
+    {
+      "id": "o-h",
+      "from": "otel",
+      "to": "http"
+    },
+    {
+      "id": "g-t",
+      "from": "grpc",
+      "to": "token"
+    },
+    {
+      "id": "a-t",
+      "from": "arrow",
+      "to": "token",
+      "variant": "emphasis",
+      "route": "straight"
+    },
+    {
+      "id": "h-t",
+      "from": "http",
+      "to": "token"
+    },
+    {
+      "id": "t-c",
+      "from": "token",
+      "to": "convert",
+      "variant": "emphasis"
+    },
+    {
+      "id": "c-e",
+      "from": "convert",
+      "to": "entity",
+      "label": "entity events"
+    },
+    {
+      "id": "c-w",
+      "from": "convert",
+      "to": "writer",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e-w",
+      "from": "entity",
+      "to": "writer"
+    },
+    {
+      "id": "r-w",
+      "from": "runq",
+      "to": "writer",
+      "label": "run journal"
+    },
+    {
+      "id": "w-l",
+      "from": "writer",
+      "to": "lake",
+      "label": "writes",
+      "variant": "emphasis"
+    },
+    {
+      "id": "x-l",
+      "from": "export",
+      "to": "lake",
+      "label": "reads"
+    },
+    {
+      "id": "x-p",
+      "from": "export",
+      "to": "parquet",
+      "label": "writes"
+    }
+  ]
+}

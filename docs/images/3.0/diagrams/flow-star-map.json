@@ -1,0 +1,312 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "How the Star Map is built",
+    "output": "flow-star-map.html",
+    "quality_profile": "showcase",
+    "locale": "en",
+    "repository": {
+      "url": "https://github.com/mwigge/tumult",
+      "revision": "8c24680b94cbab9d5b2011d99b53623618608a22"
+    },
+    "legend": {
+      "entries": {
+        "frontend": {
+          "label": "Web page or API"
+        },
+        "backend": {
+          "label": "Tumult step"
+        },
+        "security": {
+          "label": "Check or limit"
+        },
+        "database": {
+          "label": "Stored data"
+        },
+        "cloud": {
+          "label": "File on disk"
+        }
+      }
+    }
+  },
+  "lanes": [
+    {
+      "id": "ask",
+      "label": "Ask"
+    },
+    {
+      "id": "cache",
+      "label": "Cache"
+    },
+    {
+      "id": "build",
+      "label": "Build"
+    },
+    {
+      "id": "inputs",
+      "label": "Inputs"
+    }
+  ],
+  "mainPath": [
+    "page",
+    "api",
+    "cache",
+    "build",
+    "overlay",
+    "reply"
+  ],
+  "nodes": [
+    {
+      "id": "page",
+      "lane": "ask",
+      "col": 0,
+      "type": "frontend",
+      "label": "Star Map page",
+      "sublabel": "in Krönika",
+      "sources": [
+        {
+          "path": "web/src/routes/starmap/+page.svelte",
+          "line": 86,
+          "end_line": 107
+        }
+      ]
+    },
+    {
+      "id": "api",
+      "lane": "ask",
+      "col": 1,
+      "type": "frontend",
+      "label": "GET /api/starmap",
+      "sublabel": "viewer role",
+      "sources": [
+        {
+          "path": "tumult-api/src/handlers/starmap.rs",
+          "line": 874,
+          "end_line": 886
+        },
+        {
+          "path": "tumult-api/src/auth/route_table.rs",
+          "line": 29,
+          "end_line": 29
+        }
+      ]
+    },
+    {
+      "id": "reply",
+      "lane": "ask",
+      "col": 5,
+      "type": "backend",
+      "label": "Reply with ETag",
+      "sublabel": "304 if unchanged",
+      "sources": [
+        {
+          "path": "tumult-api/src/handlers/starmap.rs",
+          "line": 796,
+          "end_line": 821
+        },
+        {
+          "path": "tumult-api/src/handlers/starmap_cache.rs",
+          "line": 115,
+          "end_line": 135
+        }
+      ]
+    },
+    {
+      "id": "cache",
+      "lane": "cache",
+      "col": 2,
+      "type": "security",
+      "label": "Short cache",
+      "sublabel": "30 seconds",
+      "sources": [
+        {
+          "path": "tumult-api/src/handlers/starmap_cache.rs",
+          "line": 58,
+          "end_line": 76
+        }
+      ]
+    },
+    {
+      "id": "build",
+      "lane": "build",
+      "col": 3,
+      "type": "backend",
+      "label": "Assemble the map",
+      "sublabel": "nodes and links",
+      "sources": [
+        {
+          "path": "tumult-graph/src/starmap/build.rs",
+          "line": 178,
+          "end_line": 204
+        },
+        {
+          "path": "tumult-graph/src/starmap/mod.rs",
+          "line": 50,
+          "end_line": 110
+        }
+      ]
+    },
+    {
+      "id": "overlay",
+      "lane": "build",
+      "col": 4,
+      "type": "backend",
+      "label": "Attach risks",
+      "sublabel": "per node",
+      "sources": [
+        {
+          "path": "tumult-graph/src/starmap/overlay.rs",
+          "line": 56,
+          "end_line": 81
+        }
+      ]
+    },
+    {
+      "id": "org",
+      "lane": "inputs",
+      "col": 1,
+      "type": "cloud",
+      "label": "Org file",
+      "sublabel": "org units, owners",
+      "sources": [
+        {
+          "path": "tumult-api/src/handlers/starmap.rs",
+          "line": 186,
+          "end_line": 211
+        },
+        {
+          "path": "tumult-api/src/lib.rs",
+          "line": 435,
+          "end_line": 444
+        }
+      ]
+    },
+    {
+      "id": "lake",
+      "lane": "inputs",
+      "col": 2,
+      "type": "database",
+      "label": "DuckDB lake",
+      "sublabel": "services, calls, runs",
+      "sources": [
+        {
+          "path": "tumult-api/src/handlers/starmap.rs",
+          "line": 284,
+          "end_line": 432
+        }
+      ]
+    },
+    {
+      "id": "manifests",
+      "lane": "inputs",
+      "col": 3,
+      "type": "cloud",
+      "label": "Kubernetes manifests",
+      "sublabel": "workloads",
+      "sources": [
+        {
+          "path": "tumult-api/src/handlers/risks.rs",
+          "line": 307,
+          "end_line": 336
+        },
+        {
+          "path": "tumult-risk/src/manifests.rs",
+          "line": 143,
+          "end_line": 155
+        }
+      ]
+    },
+    {
+      "id": "scan",
+      "lane": "inputs",
+      "col": 4,
+      "type": "backend",
+      "label": "Risk scan",
+      "sublabel": "run on request",
+      "sources": [
+        {
+          "path": "tumult-risk/src/lib.rs",
+          "line": 31,
+          "end_line": 74
+        },
+        {
+          "path": "tumult-api/src/handlers/starmap.rs",
+          "line": 684,
+          "end_line": 720
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "p-a",
+      "from": "page",
+      "to": "api",
+      "variant": "emphasis"
+    },
+    {
+      "id": "a-c",
+      "from": "api",
+      "to": "cache",
+      "variant": "emphasis"
+    },
+    {
+      "id": "c-b",
+      "from": "cache",
+      "to": "build",
+      "label": "miss",
+      "variant": "emphasis"
+    },
+    {
+      "id": "c-r",
+      "from": "cache",
+      "to": "reply",
+      "label": "hit",
+      "variant": "dashed",
+      "role": "branch"
+    },
+    {
+      "id": "o-b",
+      "from": "org",
+      "to": "build"
+    },
+    {
+      "id": "l-b",
+      "from": "lake",
+      "to": "build"
+    },
+    {
+      "id": "m-b",
+      "from": "manifests",
+      "to": "build"
+    },
+    {
+      "id": "s-o",
+      "from": "scan",
+      "to": "overlay",
+      "label": "risks"
+    },
+    {
+      "id": "b-o",
+      "from": "build",
+      "to": "overlay",
+      "variant": "emphasis"
+    },
+    {
+      "id": "o-r",
+      "from": "overlay",
+      "to": "reply",
+      "label": "map",
+      "variant": "emphasis"
+    },
+    {
+      "id": "r-p",
+      "from": "reply",
+      "to": "page",
+      "label": "JSON",
+      "variant": "dashed",
+      "role": "return"
+    }
+  ]
+}
