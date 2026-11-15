@@ -113,7 +113,40 @@ export const RELS: StarRel[] = [
     'measures',
 ];
 
-const EVIDENCE_RELS = new Set<StarRel>(['tested_by', 'covers', 'measures']);
+/** A relation of the API, or the link from a node to its parent. */
+export type RelKey = StarRel | 'part_of';
+
+/** Every relation the map draws, in the order the legend lists them. */
+export const REL_KEYS: RelKey[] = [...RELS, 'part_of'];
+
+/** How the line of a relation is drawn. */
+export interface Stroke {
+    color: string;
+    width: number;
+    /** `solid`, or the lengths of dash and gap in turn. */
+    type: 'solid' | number[];
+    opacity: number;
+}
+
+/**
+ * Colour and dash per relation: two channels, so a relation is told from
+ * the others also in greyscale. Every colour is a mid tone that stands
+ * out on the dark and on the light panel, and none is a status colour.
+ */
+const REL_LINE: Record<Exclude<RelKey, 'broke' | 'part_of'>, [string, Stroke['type']]> = {
+    owns: ['#8B6CE0', [12, 4]],
+    implements: ['#0E9488', [10, 3, 2, 3]],
+    calls: ['#2F80D0', 'solid'],
+    runs_on: ['#A8752A', [2, 3]],
+    depends_on: ['#C0408F', [12, 3, 5, 3]],
+    tested_by: ['#6B8E23', [5, 4]],
+    covers: ['#1A9BBD', [10, 3, 2, 3, 2, 3]],
+    measures: ['#8A7FA8', [2, 7]],
+};
+
+const LINE_WIDTH = 1.6;
+const BROKE_WIDTH = 3;
+
 const SOON_NS = 14 * 86_400_000_000_000;
 const DIMMED = 0.35;
 /** Longest caption under a node, in characters. */
@@ -147,9 +180,11 @@ export interface StarLink {
     source: string;
     target: string;
     symbol: [string, string];
-    lineStyle: { color: string; width: number; type: string; opacity: number; curveness?: number };
+    /** Which relation the link draws. */
+    rel: RelKey;
+    lineStyle: Stroke & { curveness?: number };
     /** The caption along the edge; the relation as the API names it. */
-    label: { show: boolean; formatter?: string };
+    label: { show: boolean; formatter?: string; position?: string; distance?: number[] };
     /** On hover the caption is written also where it is left out at rest. */
     emphasis?: { label: { show: boolean } };
     /** The API edge, or null for a spine parent that has no edge. */
@@ -281,14 +316,22 @@ export function toItem(n: StarNode, at: Point, c: StyleContext): StarItem {
     };
 }
 
-function lineStyle(e: StarEdge, c: StyleContext): StarLink['lineStyle'] {
-    const t = c.tokens;
-    const plain = { color: t.text, width: 1.4, type: 'solid', opacity: 0.85 };
-    if (e.rel === 'depends_on') return { ...plain, type: 'dotted' };
-    if (e.rel === 'broke') return { ...plain, color: t.fail, width: 2 };
-    if (EVIDENCE_RELS.has(e.rel)) return { ...plain, color: t.accent, type: 'dashed' };
-    if (e.rel !== 'calls') return plain;
-    return { ...plain, width: 1.4 + Math.min(3, Math.log10(1 + (e.weight ?? 0))) };
+/**
+ * The line of a relation: what a run broke is red and thick, the link to
+ * a parent thin and grey, every other relation has its colour and dash.
+ */
+export function relStroke(rel: RelKey, t: Tokens): Stroke {
+    if (rel === 'part_of') return { color: t.text, width: 1, type: 'solid', opacity: 0.55 };
+    if (rel === 'broke') return { color: t.fail, width: BROKE_WIDTH, type: 'solid', opacity: 0.85 };
+    const [color, type] = REL_LINE[rel];
+    return { color, width: LINE_WIDTH, type, opacity: 0.85 };
+}
+
+function lineStyle(e: StarEdge, c: StyleContext): Stroke {
+    const stroke = relStroke(e.rel, c.tokens);
+    if (e.rel !== 'calls') return stroke;
+    // Traffic widens a call, but it stays thinner than what a run broke.
+    return { ...stroke, width: stroke.width + Math.min(1, Math.log10(1 + (e.weight ?? 0)) / 3) };
 }
 
 /** The relation as it is written along an edge: `RUNS_ON`. */
@@ -303,6 +346,7 @@ export function toLink(e: StarEdge, c: StyleContext): StarLink {
         source: e.from,
         target: e.to,
         symbol: ['none', 'arrow'],
+        rel: e.rel,
         lineStyle: lineStyle(e, c),
         label: { show: true, formatter: relCaption(e.rel) },
         raw: e,
@@ -311,6 +355,11 @@ export function toLink(e: StarEdge, c: StyleContext): StarLink {
 
 /** The relation written on the link from a node to its parent. */
 export const PART_OF = 'PART_OF';
+
+/** The name of a relation on the map and in the legend. */
+export function relName(rel: RelKey): string {
+    return rel === 'part_of' ? PART_OF : relCaption(rel);
+}
 
 /**
  * The link from a child to a parent the API joins by no edge (an org unit
@@ -323,7 +372,8 @@ export function toSpineLink(child: string, parent: string, c: StyleContext): Sta
         source: child,
         target: parent,
         symbol: ['none', 'arrow'],
-        lineStyle: { color: c.tokens.text, width: 1, type: 'solid', opacity: 0.55 },
+        rel: 'part_of',
+        lineStyle: relStroke('part_of', c.tokens),
         label: { show: true, formatter: PART_OF },
         raw: null,
     };

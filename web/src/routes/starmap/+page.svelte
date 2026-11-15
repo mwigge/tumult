@@ -20,12 +20,20 @@
     import { layoutStar } from '#lib/starmap/layout.js';
     import type { Point } from '#lib/starmap/layout.js';
     import { listNodes } from '#lib/starmap/list.js';
-    import { legendKinds, starSeries, statusKey } from '#lib/starmap/option.js';
+    import {
+        legendKinds,
+        legendRels,
+        linksAt,
+        starSeries,
+        statusKey,
+        tipPlace,
+    } from '#lib/starmap/option.js';
+    import type { Rect } from '#lib/starmap/option.js';
     import { RANGES } from '#lib/ranges.js';
     import { tipFormatter } from '#lib/tooltip.js';
     import type { Tip } from '#lib/tooltip.js';
     import { LENSES, edgeTooltipHtml, spineTooltipHtml, tooltipHtml } from '#lib/starmap/style.js';
-    import type { Lens, StyleContext } from '#lib/starmap/style.js';
+    import type { Lens, RelKey, StyleContext } from '#lib/starmap/style.js';
 
     const CLUSTER = 'cluster:';
     /** Most buttons the node list renders at once; the filter narrows it. */
@@ -55,6 +63,8 @@
     let filter = $state('');
     // Kinds switched off in the legend.
     let hidden: StarKind[] = $state([]);
+    // Relations switched off in the legend.
+    let hiddenRels: RelKey[] = $state([]);
     let listEl: HTMLElement | undefined = $state();
     let filterEl: HTMLInputElement | undefined = $state();
 
@@ -162,17 +172,59 @@
             canvas: { width: width || CANVAS.width, height: CANVAS.height },
             context,
             hidden: new Set(hidden),
+            hiddenRels: new Set(hiddenRels),
             focused: Boolean(focus),
             light: theme === 'tumult-light',
         });
         const t = context.tokens;
         return {
-            tooltip: { ...t.tooltip, confine: true, formatter: tipFormatter(tipOf) },
+            tooltip: {
+                ...t.tooltip,
+                confine: true,
+                position: placeTip,
+                formatter: tipFormatter(tipOf),
+            },
             series: [series],
         };
     });
 
+    /** Links of the chart in the order it draws them, for a hover. */
+    const drawnLinks = $derived.by(() => {
+        const series = (option.series as { links?: { source: string; target: string }[] }[]) ?? [];
+        return series[0]?.links ?? [];
+    });
+
+    function edgesOf(node: { data?: unknown }): number[] {
+        const id = (node.data as { id?: string } | undefined)?.id;
+        return id ? linksAt(drawnLinks, id) : [];
+    }
+
+    // Above the node, or beside it: never over its own caption.
+    function placeTip(
+        at: [number, number],
+        _params: unknown,
+        _el: unknown,
+        rect: Rect | null,
+        size: { contentSize: [number, number]; viewSize: [number, number] },
+    ): [number, number] {
+        const node = rect ?? { x: at[0] - 20, y: at[1] - 20, width: 40, height: 40 };
+        return tipPlace(node, size.contentSize, size.viewSize);
+    }
+
     const kinds = $derived(legendKinds(map?.nodes ?? []));
+    const rels = $derived(
+        legendRels(
+            (map?.nodes ?? []).filter((n) => !hidden.includes(n.kind)),
+            map?.edges ?? [],
+            context.tokens,
+        ),
+    );
+
+    function toggleRel(rel: RelKey) {
+        hiddenRels = hiddenRels.includes(rel)
+            ? hiddenRels.filter((r) => r !== rel)
+            : [...hiddenRels, rel];
+    }
 
     function toggleKind(kind: StarKind) {
         hidden = hidden.includes(kind) ? hidden.filter((k) => k !== kind) : [...hidden, kind];
@@ -304,6 +356,7 @@
                     onclick={onNode}
                     ondblclick={onNodeTwice}
                     onroam={onRoam}
+                    {edgesOf}
                 />
             </div>
             <p class="sub">
@@ -339,6 +392,33 @@
                     </button>
                 {/each}
             </div>
+            <div class="kinds" role="group" aria-label="relations" data-testid="starmap-rels">
+                {#each rels as r (r.rel)}
+                    <button
+                        class="chip"
+                        aria-pressed={!hiddenRels.includes(r.rel)}
+                        title="Show or hide this relation"
+                        onclick={() => toggleRel(r.rel)}
+                    >
+                        <svg class="rel" width="30" height="10" aria-hidden="true">
+                            <line
+                                x1="1"
+                                y1="5"
+                                x2="23"
+                                y2="5"
+                                stroke={r.stroke.color}
+                                stroke-width={r.stroke.width}
+                                stroke-dasharray={r.stroke.type === 'solid'
+                                    ? undefined
+                                    : r.stroke.type.join(' ')}
+                            />
+                            <path d="M22 1 L29 5 L22 9 Z" fill={r.stroke.color} />
+                        </svg>
+                        <span class="mono">{r.name}</span>
+                        <span class="count">{r.count}</span>
+                    </button>
+                {/each}
+            </div>
             <ul class="key" aria-label="how to read the map" data-testid="starmap-key">
                 {#each statusKey(lens) as k (k.status)}
                     <li><span class="ring {k.status}"></span>{k.mark} {k.text}</li>
@@ -346,7 +426,6 @@
                 <li><span class="ring missing"></span>no evidence</li>
                 <li><span class="ring stale"></span>stale evidence</li>
                 <li><span class="ring suppressed"></span>only suppressed risks</li>
-                <li><span class="line arrow"></span><span class="mono">NAME</span> relation</li>
             </ul>
             {#if unavailable.length > 0}
                 <p class="sub">Not available yet: {unavailable.join(', ')}.</p>
@@ -497,19 +576,11 @@
         border: 2px dotted var(--text-dim);
         opacity: 0.45;
     }
-    .line {
-        position: relative;
-        width: 22px;
-        border-top: 1.5px solid var(--text-dim);
+    .chip .rel {
+        flex: none;
     }
-    .line.arrow::after {
-        content: '';
-        position: absolute;
-        right: -1px;
-        top: -5px;
-        border: 4px solid transparent;
-        border-left: 7px solid var(--text-dim);
-        border-right: 0;
+    .chip .mono {
+        font-size: 11px;
     }
     .focus {
         color: var(--text-dim);

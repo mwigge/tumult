@@ -7,11 +7,14 @@ import {
     KIND_COLOR,
     LENSES,
     RELS,
+    REL_KEYS,
     caption,
     flagText,
     labelShown,
     labelText,
     relCaption,
+    relName,
+    relStroke,
     rollupLines,
     PART_OF,
     spineTooltipHtml,
@@ -309,20 +312,85 @@ describe('toLink', () => {
         expect(toLink(edge('runs_on'), ctx()).label.formatter).toBe('RUNS_ON');
     });
 
-    it('draws calls solid, declared dependencies dotted and evidence dashed', () => {
-        expect(toLink(edge('calls', { weight: 40 }), ctx()).lineStyle.type).toBe('solid');
-        expect(toLink(edge('depends_on'), ctx()).lineStyle.type).toBe('dotted');
-        expect(toLink(edge('tested_by'), ctx()).lineStyle.type).toBe('dashed');
-        expect(toLink(edge('covers'), ctx()).lineStyle.type).toBe('dashed');
+    it('draws every relation with the stroke of its kind, and says which it is', () => {
+        for (const rel of RELS) {
+            const link = toLink(edge(rel), ctx());
+            expect(link.rel, rel).toBe(rel);
+            expect(link.lineStyle, rel).toEqual(relStroke(rel, t));
+        }
     });
 
-    it('widens a call edge with its traffic', () => {
+    it('widens a call edge with its traffic, never to the width of a broke edge', () => {
         const width = (weight: number) => toLink(edge('calls', { weight }), ctx()).lineStyle.width;
         expect(width(1000)).toBeGreaterThan(width(1));
+        expect(width(1e12)).toBeLessThan(relStroke('broke', t).width);
     });
 
-    it('draws what a run broke in the fail colour', () => {
-        expect(toLink(edge('broke'), ctx()).lineStyle.color).toBe(t.fail);
+    it('draws what a run broke red and thick', () => {
+        const stroke = toLink(edge('broke'), ctx()).lineStyle;
+        expect(stroke.color).toBe(t.fail);
+        expect(stroke.type).toBe('solid');
+        for (const rel of RELS.filter((r) => r !== 'broke')) {
+            expect(stroke.width, rel).toBeGreaterThan(relStroke(rel, t).width);
+        }
+    });
+});
+
+describe('relStroke', () => {
+    const themes: ChartTheme[] = ['tumult-dark', 'tumult-light'];
+
+    function luminance(hex: string): number {
+        const channel = (i: number) => {
+            const v = parseInt(hex.slice(1 + 2 * i, 3 + 2 * i), 16) / 255;
+            return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+        };
+        return 0.2126 * channel(0) + 0.7152 * channel(1) + 0.0722 * channel(2);
+    }
+
+    function contrast(a: string, b: string): number {
+        const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+        return (hi + 0.05) / (lo + 0.05);
+    }
+
+    it('names PART_OF next to the nine relations of the API', () => {
+        expect(REL_KEYS).toEqual([...RELS, 'part_of']);
+        expect(relName('part_of')).toBe(PART_OF);
+        expect(relName('runs_on')).toBe('RUNS_ON');
+    });
+
+    it('gives every relation its own colour on both themes', () => {
+        for (const theme of themes) {
+            const colors = REL_KEYS.map((rel) => relStroke(rel, chartTokens(theme)).color);
+            expect(new Set(colors).size, theme).toBe(REL_KEYS.length);
+        }
+    });
+
+    it('gives every relation its own dash, or for a solid line its own width', () => {
+        const shape = (rel: (typeof REL_KEYS)[number]) => {
+            const stroke = relStroke(rel, t);
+            return stroke.type === 'solid' ? `solid ${stroke.width}` : stroke.type.join(' ');
+        };
+        expect(new Set(REL_KEYS.map(shape)).size).toBe(REL_KEYS.length);
+        const solid = REL_KEYS.filter((rel) => relStroke(rel, t).type === 'solid');
+        expect(solid).toEqual(['calls', 'broke', 'part_of']);
+    });
+
+    it('draws every relation in a colour that stands out on both themes', () => {
+        for (const theme of themes) {
+            const tokens = chartTokens(theme);
+            for (const rel of REL_KEYS) {
+                const ratio = contrast(
+                    relStroke(rel, tokens).color,
+                    tokens.tooltip.backgroundColor,
+                );
+                expect(ratio, `${rel} on ${theme}`).toBeGreaterThanOrEqual(3);
+            }
+        }
+    });
+
+    it('keeps PART_OF thin and grey, so that it reads as structure', () => {
+        const stroke = relStroke('part_of', t);
+        expect(stroke).toEqual({ color: t.text, width: 1, type: 'solid', opacity: 0.55 });
     });
 });
 
@@ -333,6 +401,7 @@ describe('toSpineLink', () => {
         expect([link.source, link.target]).toEqual(['cmp:demo/mq/broker', 'sys:demo/mq']);
         expect(link.symbol).toEqual(['none', 'arrow']);
         expect(link.label).toEqual({ show: true, formatter: PART_OF });
+        expect(link.rel).toBe('part_of');
         expect(PART_OF).toBe('PART_OF');
         expect(link.lineStyle.color).toBe(t.text);
         expect(link.lineStyle.width).toBeLessThan(1.2);

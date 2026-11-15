@@ -110,15 +110,21 @@ An arrow is a relation and carries its name (`OWNS`, `IMPLEMENTS`,
 parent it sits under, when no other relation joins the two. It is drawn
 from the `parent` of the node; the API has no such edge.
 
-A relation name is written on the arrow only where the arrow is long
-enough and the name lands on no other caption. Hover an arrow to read
-the name of any relation. When two neighbours have the same name, each
-shows its kind in small text under the name. A long name is cut short,
-more so when the map is drawn small; the tooltip has the full name.
+Each relation has its own colour and its own dash, so an arrow tells
+its relation also without a name on it. `BROKE` is thick and red,
+`PART_OF` thin and grey.
 
-The chips under the map show each kind and its count; click one to hide
-that kind. Hover or select a node to keep its links and neighbours and
-dim the rest.
+A relation name is written on the arrow where it has room and lands on
+no other caption: in the middle, nearer one end, or below the line.
+Hover or select a node to write the name on every one of its links; the
+rest of the map is dimmed then. Hover an arrow to read its name and its
+two ends. When two neighbours have the same name, each shows its kind in
+small text under the name. A long name is cut short, more so when the
+map is drawn small; the tooltip has the full name.
+
+Under the map are two rows of chips. The first has each kind and its
+count, the second each relation with its line, its name and its count.
+Click a chip to hide that kind or that relation, and again to show it.
 
 A lens changes the ring of a node and the mark before its name, never
 its colour:

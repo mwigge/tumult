@@ -369,7 +369,7 @@ interface DrawnLink {
     symbol: string[];
     label: { show: boolean; formatter?: string };
     emphasis: { label: { show: boolean } };
-    lineStyle: { opacity: number; curveness: number };
+    lineStyle: { color: string; type: string | number[]; opacity: number; curveness: number };
 }
 
 /** The whole graph as the chart holds it: what a reader sees on the canvas. */
@@ -389,6 +389,7 @@ async function mockDemo(page: Page) {
 }
 
 test('the demo-sized map reads like a graph: round nodes apart, named arrows', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 1000 });
     const demo = await mockDemo(page);
     await page.goto('/starmap');
     await drawn(page);
@@ -409,7 +410,8 @@ test('the demo-sized map reads like a graph: round nodes apart, named arrows', a
     expect(closest).toBeGreaterThanOrEqual(0.999);
 
     // Every API edge is an arrow that carries the relation the API named.
-    // It is written where the edge has room for it, and on hover everywhere.
+    // It is written where the edge has room for it, at least on half of
+    // them, and on hover everywhere.
     const named = links.filter((l) => !l.id.startsWith('spine|'));
     expect(named.length).toBe(38);
     for (const link of named) {
@@ -417,7 +419,12 @@ test('the demo-sized map reads like a graph: round nodes apart, named arrows', a
         expect(link.label.formatter, link.id).toBe(link.id.split('|')[1].toUpperCase());
         expect(link.emphasis.label.show, link.id).toBe(true);
     }
-    expect(named.filter((l) => l.label.show).length).toBeGreaterThan(0);
+    expect(named.filter((l) => l.label.show).length).toBeGreaterThanOrEqual(19);
+    // Each relation has its own line: colour and dash together.
+    const lines = new Map(named.map((l) => [l.id.split('|')[1], JSON.stringify(l.lineStyle.type)]));
+    const colours = new Map(named.map((l) => [l.id.split('|')[1], l.lineStyle.color]));
+    expect(new Set(colours.values()).size).toBe(colours.size);
+    expect(new Set(lines.values()).size).toBeGreaterThan(1);
     // A test and what it broke join the same two nodes: they bend apart.
     const broke = named.find((l) => l.label.formatter === 'BROKE');
     expect(broke?.lineStyle.curveness).not.toBe(0);
@@ -466,11 +473,119 @@ test('the legend is chips per kind and a key, and a chip hides its kind', async 
         await expect(key).toContainText(text);
     }
     await expect(key).toContainText('only suppressed risks');
-    await expect(key).toContainText('relation');
     await expect(key).not.toContainText('sits under');
     await page.getByRole('button', { name: 'risk', exact: true }).click();
     await expect(key).toContainText('high or critical risk');
     await expect(key).not.toContainText('runs passed');
+});
+
+test('a chip per relation shows its line and count, and hides the relation', async ({ page }) => {
+    const demo = await mockDemo(page);
+    await page.goto('/starmap');
+    await drawn(page);
+
+    const rels = page.getByTestId('starmap-rels');
+    const present = [...new Set(demo.edges.map((e) => e.rel))];
+    await expect(rels.getByRole('button')).toHaveCount(present.length + 1);
+    for (const rel of present) {
+        const count = demo.edges.filter((e) => e.rel === rel).length;
+        const name = new RegExp(`^${rel.toUpperCase()}\\s*${count}$`);
+        await expect(rels.getByRole('button', { name })).toBeVisible();
+    }
+    const spines = (await graph(page)).links.filter((l) => l.id.startsWith('spine|')).length;
+    await expect(
+        rels.getByRole('button', { name: new RegExp(`^PART_OF\\s*${spines}$`) }),
+    ).toBeVisible();
+    // The sample line is drawn in the colour of the relation on the map.
+    const tested = (await graph(page)).links.find((l) => l.id.split('|')[1] === 'tested_by');
+    const chip = rels.getByRole('button', { name: /^TESTED_BY/ });
+    await expect(chip.locator('line')).toHaveAttribute('stroke', tested?.lineStyle.color ?? '');
+
+    await chip.click();
+    await expect(chip).toHaveAttribute('aria-pressed', 'false');
+    await expect
+        .poll(async () => (await graph(page)).links.some((l) => l.id.split('|')[1] === 'tested_by'))
+        .toBe(false);
+    expect((await graph(page)).data.length).toBe(51);
+    await chip.click();
+    await expect
+        .poll(async () => (await graph(page)).links.some((l) => l.id.split('|')[1] === 'tested_by'))
+        .toBe(true);
+});
+
+/** Ids of the links the chart lit with the node under the pointer. */
+const litLinks = (page: Page) =>
+    page.evaluate(() => {
+        const w = window as Window & { __tumultCharts?: Record<string, unknown> };
+        const lit = (w.__tumultCharts?.['starmap#lit'] ?? []) as number[];
+        const option = w.__tumultCharts?.starmap as { series: { links: DrawnLink[] }[] };
+        return lit.map((i) => option.series[0].links[i].id);
+    });
+
+/** Moves the pointer onto node `id`, searching around where it should be drawn. */
+async function hoverNode(page: Page, id: string) {
+    const at = await page.evaluate((id) => {
+        const w = window as Window & { __tumultCharts?: Record<string, unknown> };
+        const option = w.__tumultCharts?.starmap as { series: { data: Drawn[] }[] };
+        const data = option.series[0].data;
+        const r = (
+            document.querySelector('[data-chart=starmap]') as HTMLElement
+        ).getBoundingClientRect();
+        const xs = data.map((d) => d.x);
+        const ys = data.map((d) => d.y);
+        const [x0, x1, y0, y1] = [
+            Math.min(...xs),
+            Math.max(...xs),
+            Math.min(...ys),
+            Math.max(...ys),
+        ];
+        const scale = Math.min((r.width - 140) / (x1 - x0), (r.height - 96) / (y1 - y0));
+        const node = data.find((d) => d.id === id) ?? data[0];
+        return [
+            r.x + r.width / 2 + (node.x - (x0 + x1) / 2) * scale,
+            r.y + r.height / 2 + (node.y - (y0 + y1) / 2) * scale,
+        ];
+    }, id);
+    for (let ring = 0; ring < 6; ring += 1) {
+        for (let k = 0; k < Math.max(1, ring * 6); k += 1) {
+            const a = (k / Math.max(1, ring * 6)) * 2 * Math.PI;
+            await page.mouse.move(at[0] + Math.cos(a) * ring * 6, at[1] + Math.sin(a) * ring * 6);
+            const lit = await litLinks(page);
+            if (lit.length > 0) return lit;
+        }
+    }
+    return [];
+}
+
+test('hovering a node writes the relation on every one of its links', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await mockDemo(page);
+    await page.goto('/starmap');
+    await drawn(page);
+    const id = 'sys:demo/message-queue';
+    const { links } = await graph(page);
+    const own = links.filter((l) => l.source === id || l.target === id).map((l) => l.id);
+    // At rest some of them are left without a name.
+    expect(links.filter((l) => own.includes(l.id) && !l.label.show).length).toBeGreaterThan(0);
+
+    expect(await hoverNode(page, id)).toEqual(own);
+    // Those links are in their hover state, and on hover every link is named.
+    for (const link of links.filter((l) => own.includes(l.id))) {
+        expect(link.emphasis.label.show, link.id).toBe(true);
+    }
+    await page.mouse.move(5, 5);
+    await expect.poll(() => litLinks(page)).toEqual([]);
+});
+
+test('selecting a node writes the relation on every one of its links', async ({ page }) => {
+    await mockDemo(page);
+    await page.goto('/starmap?sel=sys%3Ademo%2Fmessage-queue');
+    await drawn(page);
+    const id = 'sys:demo/message-queue';
+    const { links } = await graph(page);
+    const own = links.filter((l) => l.source === id || l.target === id);
+    expect(own.length).toBeGreaterThan(3);
+    for (const link of own) expect(link.label.show, link.id).toBe(true);
 });
 
 test('selecting a node keeps its neighbourhood and dims the rest', async ({ page }) => {

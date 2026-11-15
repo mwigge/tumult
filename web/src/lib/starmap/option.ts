@@ -1,9 +1,9 @@
 // The Star Map as an ECharts graph series, built by pure functions: round
-// nodes captioned below, directed edges that carry their relation where
-// they are drawn long enough for it, a PART_OF arrow to a parent the API
-// joins by no edge, parallel edges bent apart, and the neighbourhood of
-// the selected node kept while the rest is dimmed. The page adds the
-// tooltip and hands the series to the chart.
+// nodes captioned below, directed edges drawn in the line of their
+// relation and named where there is room along them, a PART_OF arrow to
+// a parent the API joins by no edge, parallel edges bent apart, and the
+// neighbourhood of the selected node kept while the rest is dimmed. The
+// page adds the tooltip and hands the series to the chart.
 
 import type { StarEdge, StarKind, StarNode } from '../types.js';
 import type { Point } from './layout.js';
@@ -13,15 +13,25 @@ import {
     KINDS,
     KIND_COLOR,
     KIND_NAME,
-    PART_OF,
+    REL_KEYS,
     STATUS_MARK,
     caption,
-    relCaption,
+    relName,
+    relStroke,
     toItem,
     toLink,
     toSpineLink,
 } from './style.js';
-import type { Lens, StarItem, StarLink, Status, StyleContext } from './style.js';
+import type {
+    Lens,
+    RelKey,
+    StarItem,
+    StarLink,
+    Status,
+    Stroke,
+    StyleContext,
+    Tokens,
+} from './style.js';
 
 /** With more links than this the relation captions wait for a hover. */
 export const CAPTION_LIMIT = 150;
@@ -39,10 +49,18 @@ const CAPTION_AIR = 6;
 const CAPTION_RISE = 8;
 /** How far above its line the middle of a relation caption is. */
 const CAPTION_LIFT = 10;
+/** The gap the chart leaves between a line and the caption above it. */
+const CAPTION_GAP = 5;
+/** Shares of the drawn line where a relation is tried, in turn. */
+export const CAPTION_SPOTS = [0.5, 0.35, 0.65];
+/** Room between a node and its tooltip. */
+const TIP_GAP = 8;
 /** A node caption: gap below the node, half a character, half a line. */
 const NAME_GAP = 4;
 const NAME_CHAR = 2.8;
 const NAME_RISE = 8;
+/** What the small kind line under a name adds to half the height of a caption. */
+const KIND_RISE = 5;
 /** Room a status mark takes before a name, and the shortest name kept. */
 const NAME_MARK = 11;
 const NAME_MIN = 6;
@@ -65,6 +83,8 @@ export interface StarView {
     context: StyleContext;
     /** Kinds switched off in the legend. */
     hidden: ReadonlySet<StarKind>;
+    /** Relations switched off in the legend. */
+    hiddenRels: ReadonlySet<RelKey>;
     /** Whether the map shows the neighbourhood of one node. */
     focused: boolean;
     light: boolean;
@@ -85,6 +105,13 @@ export interface LegendKind {
     name: string;
     color: string;
     count: number;
+}
+
+export interface LegendRel {
+    rel: RelKey;
+    name: string;
+    count: number;
+    stroke: Stroke;
 }
 
 const pairKey = (a: string, b: string) => (a < b ? `${a}\u0000${b}` : `${b}\u0000${a}`);
@@ -153,7 +180,8 @@ export function fillCanvas(positions: Map<string, Point>, canvas: Canvas): Map<s
 
 /**
  * Whether `text` has room on the edge from `a` to `b`, between the rims
- * of two nodes `sizeA` and `sizeB` pixels across, drawn at `scale`.
+ * of two nodes `sizeA` and `sizeB` pixels across, drawn at `scale`, when
+ * its middle is at the share `at` of the drawn line.
  */
 export function captionFits(
     text: string,
@@ -162,23 +190,30 @@ export function captionFits(
     sizeA: number,
     sizeB: number,
     scale: number,
+    at = 0.5,
 ): boolean {
     const drawn = Math.hypot(b[0] - a[0], b[1] - a[1]) * scale - (sizeA + sizeB) / 2;
-    return drawn >= text.length * CAPTION_CHAR + CAPTION_AIR;
+    return round(Math.min(at, 1 - at) * drawn) >= (text.length * CAPTION_CHAR + CAPTION_AIR) / 2;
 }
 
-/** A box by its centre and half its width and height. */
+/**
+ * A box by its centre and half its width and height. A box `turn`ed is
+ * drawn along the unit vector `u`, `half` long and wide; `w` and `h` are
+ * then the upright box around it.
+ */
 export interface Box {
     x: number;
     y: number;
     w: number;
     h: number;
+    turn?: { u: Point; half: Point };
 }
 
 /**
- * The box of `text` written along the middle of the edge from `a` to `b`,
- * which bends by `bend` of its length. The chart writes it upright, just
- * above the line.
+ * The box of `text` written along the edge from `a` to `b`, with its
+ * middle at the share `at` of the drawn line. The edge bends by `bend`
+ * of its length. The chart writes the text upright, just above the line,
+ * or just `below` it.
  */
 export function captionBox(
     text: string,
@@ -186,34 +221,191 @@ export function captionBox(
     b: Point,
     bend: number,
     sizes: Point = [0, 0],
+    at = 0.5,
+    below = false,
 ): Box {
     const [dx, dy] = [b[0] - a[0], b[1] - a[1]];
     const length = Math.hypot(dx, dy) || 1;
     const [ux, uy] = [Math.abs(dx) / length, Math.abs(dy) / length];
     // Unit vector from the line to the text: up, as seen along the edge read left to right.
-    const turn = dx < 0 ? -1 : 1;
+    const turn = (dx < 0 ? -1 : 1) * (below ? -1 : 1);
     const lift: Point = [(turn * dy * CAPTION_LIFT) / length, (-turn * dx * CAPTION_LIFT) / length];
     const along = (text.length * CAPTION_CHAR) / 2;
-    // The line is drawn between the rims, so its middle leans to the smaller node.
-    const shift = (sizes[0] - sizes[1]) / 4;
+    // The line is drawn between the rims: how far from `a` the caption is.
+    const from = sizes[0] / 2 + (length - (sizes[0] + sizes[1]) / 2) * at;
     return {
-        x: (a[0] + b[0]) / 2 + (dx * shift) / length + (dy * bend) / 2 + lift[0],
-        y: (a[1] + b[1]) / 2 + (dy * shift) / length - (dx * bend) / 2 + lift[1],
+        x: round(a[0] + (dx * from) / length + (dy * bend) / 2 + lift[0]),
+        y: round(a[1] + (dy * from) / length - (dx * bend) / 2 + lift[1]),
         w: along * ux + CAPTION_RISE * uy,
         h: along * uy + CAPTION_RISE * ux,
+        // The sign of `u` does not matter; `+ 0` keeps -0 out.
+        turn: { u: [ux, Math.sign(dx || 1) * (dy / length) + 0], half: [along, CAPTION_RISE] },
     };
+}
+
+/** The two axes of a box and how far it reaches along each. */
+function sides(box: Box): { axes: [Point, Point]; half: Point } {
+    if (!box.turn)
+        return {
+            axes: [
+                [1, 0],
+                [0, 1],
+            ],
+            half: [box.w, box.h],
+        };
+    const [ux, uy] = box.turn.u;
+    return {
+        axes: [
+            [ux, uy],
+            [-uy, ux],
+        ],
+        half: box.turn.half,
+    };
+}
+
+/** Whether two boxes, upright or turned, share any area: no axis of either keeps them apart. */
+function crosses(a: Box, b: Box): boolean {
+    const [sa, sb] = [sides(a), sides(b)];
+    const d: Point = [b.x - a.x, b.y - a.y];
+    const dot = (p: Point, q: Point) => p[0] * q[0] + p[1] * q[1];
+    const reach = (s: typeof sa, axis: Point) =>
+        s.half[0] * Math.abs(dot(s.axes[0], axis)) + s.half[1] * Math.abs(dot(s.axes[1], axis));
+    return [...sa.axes, ...sb.axes].every(
+        (axis) => Math.abs(dot(d, axis)) < reach(sa, axis) + reach(sb, axis) - 1e-9,
+    );
 }
 
 /** Whether `box` shares any area with one of `others`. */
 export function overlaps(box: Box, others: Box[]): boolean {
-    return others.some(
-        (o) => Math.abs(box.x - o.x) < box.w + o.w && Math.abs(box.y - o.y) < box.h + o.h,
-    );
+    return others.some((o) => crosses(box, o));
+}
+
+/** An edge as it is drawn, and the relation to write along it. */
+export interface DrawnEdge {
+    text: string;
+    a: Point;
+    b: Point;
+    /** Diameters of the nodes at `a` and `b`. */
+    sizes: Point;
+    bend: number;
+}
+
+/**
+ * Shares of a line `drawn` pixels long where `text` is tried, in turn:
+ * `CAPTION_SPOTS`, then the two places where the text ends just short
+ * of a rim, at the free end of an edge whose other end is crowded.
+ */
+export function captionShares(text: string, drawn: number): number[] {
+    const half = (text.length * CAPTION_CHAR + CAPTION_AIR) / 2;
+    // Rounded up to whole hundredths, so that the text still fits there.
+    const flush = Math.ceil(round((half / drawn) * 100)) / 100;
+    if (flush >= 0.5 || CAPTION_SPOTS.includes(flush)) return CAPTION_SPOTS;
+    return [...CAPTION_SPOTS, flush, round(1 - flush)];
+}
+
+/** A place for a relation: the share of the drawn line, and which side of it. */
+export interface Spot {
+    at: number;
+    below: boolean;
+}
+
+/**
+ * Where the relation is written: the first of `captionShares`, above the
+ * line and then below it, where the text has room between the rims and
+ * lands on none of `taken`. Null when there is no such place. A bent edge
+ * has its middle only.
+ */
+export function captionSpot(edge: DrawnEdge, taken: Box[]): Spot | null {
+    const { text, a, b, sizes, bend } = edge;
+    const drawn = Math.hypot(b[0] - a[0], b[1] - a[1]) - (sizes[0] + sizes[1]) / 2;
+    const shares = bend === 0 ? captionShares(text, drawn) : [0.5];
+    for (const at of shares) {
+        if (!captionFits(text, a, b, sizes[0], sizes[1], 1, at)) continue;
+        for (const below of [false, true]) {
+            if (!overlaps(captionBox(text, a, b, bend, sizes, at, below), taken)) {
+                return { at, below };
+            }
+        }
+    }
+    return null;
+}
+
+type Side = 'Top' | 'Bottom';
+
+/** Where the chart writes an edge label. */
+export interface Anchor {
+    position: 'middle' | `inside${'Start' | 'Middle' | 'End'}${Side}`;
+    /** Pixels from the end of the line to the text, and from the line to it. */
+    distance?: [number, number];
+}
+
+/** A line as the chart draws it: from the centre of its source to the rim of its target. */
+export interface DrawnLine {
+    /** Length between the two rims. */
+    drawn: number;
+    /** Half the source node: the part of the line inside it. */
+    rim: number;
+    bent: boolean;
+    /** Pixels per unit of the map: the chart reads a distance in those units. */
+    scale: number;
+}
+
+/**
+ * How the chart is told to write a caption at `spot`: measured from the
+ * start of the line or from its end, to the middle of the text. On a bent
+ * edge the chart writes it in the middle of the curve.
+ */
+export function captionAnchor(spot: Spot, line: DrawnLine): Anchor {
+    const side: Side = spot.below ? 'Bottom' : 'Top';
+    if (line.bent) {
+        if (!spot.below) return { position: 'middle' };
+        return { position: 'insideMiddleBottom', distance: [0, round(CAPTION_GAP * line.scale)] };
+    }
+    const gap = round(CAPTION_GAP * line.scale);
+    if (spot.at > 0.5) {
+        const fromEnd = round((1 - spot.at) * line.drawn * line.scale);
+        return { position: `insideEnd${side}`, distance: [fromEnd, gap] };
+    }
+    const fromStart = round((line.rim + spot.at * line.drawn) * line.scale);
+    return { position: `insideStart${side}`, distance: [fromStart, gap] };
+}
+
+/** A rectangle of the chart by its top left corner. */
+export interface Rect {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+}
+
+/**
+ * Where the tooltip of a node goes: above the node, so that the caption
+ * under it stays in sight; beside the node and its caption when there is
+ * no room above. `content` and `view` are the sizes of tooltip and chart.
+ */
+export function tipPlace(node: Rect, content: Point, view: Point): Point {
+    const centre = node.x + node.width / 2;
+    const top = node.y - content[1] - TIP_GAP;
+    if (top >= 0) {
+        return [Math.max(0, Math.min(view[0] - content[0], centre - content[0] / 2)), top];
+    }
+    const reach = Math.max(node.width / 2, CAPTION * NAME_CHAR + 2 * NAME_GAP) + TIP_GAP;
+    const right = centre + reach;
+    return [right + content[0] <= view[0] ? right : centre - reach - content[0], 0];
 }
 
 export interface Pair {
     source: string;
     target: string;
+}
+
+/** Index of every link that starts or ends at node `id`, in order. */
+export function linksAt(links: Pair[], id: string): number[] {
+    const at: number[] = [];
+    links.forEach((link, i) => {
+        if (link.source === id || link.target === id) at.push(i);
+    });
+    return at;
 }
 
 /** Ids of the nodes that have the same name as a node one link away. */
@@ -243,6 +435,24 @@ export function legendKinds(nodes: StarNode[]): LegendKind[] {
         name: KIND_NAME[kind],
         color: KIND_COLOR[kind],
         count: counts.get(kind) ?? 0,
+    }));
+}
+
+/** The relations drawn between `nodes`, with their line, for the legend chips. */
+export function legendRels(nodes: StarNode[], edges: StarEdge[], tokens: Tokens): LegendRel[] {
+    const ids = new Set(nodes.map((n) => n.id));
+    const counts = new Map<RelKey, number>();
+    for (const e of edges) {
+        if (!ids.has(e.from) || !ids.has(e.to)) continue;
+        counts.set(e.rel, (counts.get(e.rel) ?? 0) + 1);
+    }
+    const parents = spinePairs(nodes, edges).length;
+    if (parents > 0) counts.set('part_of', parents);
+    return REL_KEYS.filter((rel) => counts.has(rel)).map((rel) => ({
+        rel,
+        name: relName(rel),
+        count: counts.get(rel) ?? 0,
+        stroke: relStroke(rel, tokens),
     }));
 }
 
@@ -334,10 +544,10 @@ function allLinks(view: StarView, shown: StarNode[]): StarLink[] {
     for (const pair of spinePairs(shown, view.edges)) {
         links.push(toSpineLink(pair.child, pair.parent, view.context));
     }
-    return links.filter((l) => ids.has(l.source) && ids.has(l.target));
+    return links.filter(
+        (l) => ids.has(l.source) && ids.has(l.target) && !view.hiddenRels.has(l.rel),
+    );
 }
-
-const relationOf = (link: StarLink) => (link.raw ? relCaption(link.raw.rel) : PART_OF);
 
 /** Where the map is drawn: positions in pixels, and what is already written there. */
 interface Drawn {
@@ -347,6 +557,8 @@ interface Drawn {
     names: Map<string, Box>;
     /** Box of each node disc, by node id. */
     discs: Map<string, Box>;
+    /** Pixels per unit of the map. */
+    scale: number;
 }
 
 function drawnMap(view: StarView, data: StarItem[], nameOf: (n: StarNode) => string): Drawn {
@@ -363,50 +575,82 @@ function drawnMap(view: StarView, data: StarItem[], nameOf: (n: StarNode) => str
         discs.set(item.id, { x, y, w: half, h: half });
         if (!item.label.show) continue;
         const lines = nameOf(item.raw).split('\n');
-        const h = NAME_RISE * lines.length;
+        const h = NAME_RISE + KIND_RISE * (lines.length - 1);
         const w = Math.max(...lines.map((l) => l.length)) * NAME_CHAR + NAME_GAP;
         names.set(item.id, { x, y: y + half + NAME_GAP + h, w, h });
     }
-    return { at, size: new Map(data.map((item) => [item.id, item.symbolSize])), names, discs };
+    const size = new Map(data.map((item) => [item.id, item.symbolSize]));
+    return { at, size, names, discs, scale };
+}
+
+/** Where a relation that must be written goes: clear of the names already written, if it can. */
+function forcedSpot(edge: DrawnEdge, written: Box[]): Spot {
+    return captionSpot(edge, written) ?? { at: 0.5, below: false };
 }
 
 /**
- * Says for each link, in turn, whether its relation can be written: the
+ * Says for each link, in turn, where its relation can be written: the
  * edge is long enough, and the caption lands on no node, no node caption
- * and no relation written before it.
+ * and no relation written before it. A `forced` relation that has no
+ * such place is written clear of the other relations only.
  */
-function captionRoom(map: Drawn, bend: Map<string, number>): (link: StarLink) => boolean {
+function captionRoom(map: Drawn, bend: Map<string, number>) {
     const written: Box[] = [];
-    return (link) => {
-        const text = relationOf(link);
+    return (link: StarLink, forced: boolean): Anchor | null => {
         const [a, b] = [map.at(link.source), map.at(link.target)];
         const sizes: Point = [map.size.get(link.source) ?? 0, map.size.get(link.target) ?? 0];
-        if (!captionFits(text, a, b, sizes[0], sizes[1], 1)) return false;
-        const box = captionBox(text, a, b, bend.get(link.id) ?? 0, sizes);
+        const edge = { text: relName(link.rel), a, b, sizes, bend: bend.get(link.id) ?? 0 };
         const others = [...map.discs].filter(([id]) => id !== link.source && id !== link.target);
         const taken = [...map.names.values(), ...others.map(([, disc]) => disc), ...written];
-        if (overlaps(box, taken)) return false;
-        written.push(box);
-        return true;
+        const spot = captionSpot(edge, taken) ?? (forced ? forcedSpot(edge, written) : null);
+        if (spot === null) return null;
+        written.push(captionBox(edge.text, a, b, edge.bend, sizes, spot.at, spot.below));
+        const drawn = Math.hypot(b[0] - a[0], b[1] - a[1]) - (sizes[0] + sizes[1]) / 2;
+        return captionAnchor(spot, {
+            drawn,
+            rim: sizes[0] / 2,
+            bent: edge.bend !== 0,
+            scale: map.scale,
+        });
     };
+}
+
+/**
+ * Where each relation is written, by link id. The links of the selected
+ * node come first and are always written: the rest of the map is dimmed
+ * then, so nothing is in their way.
+ */
+function anchors(view: StarView, links: StarLink[], bend: Map<string, number>, map: Drawn) {
+    const captions = captionsShown(links.length, view.context.zoom, view.focused);
+    const room = captionRoom(map, bend);
+    const selected = view.context.selected;
+    const own = (link: StarLink) => link.source === selected || link.target === selected;
+    const placed = new Map<string, Anchor>();
+    // Then the API edges, and the PART_OF links in what room is left.
+    const rank = (link: StarLink) => (own(link) ? 0 : link.raw ? 1 : 2);
+    for (const link of [...links].sort((a, b) => rank(a) - rank(b))) {
+        if (!captions && !own(link)) continue;
+        const anchor = room(link, own(link));
+        if (anchor) placed.set(link.id, anchor);
+    }
+    return placed;
 }
 
 /** Bend, caption and dim the links for the zoom and the selection. */
 function finishLinks(view: StarView, links: StarLink[], map: Drawn, near: Set<string> | null) {
     const bend = bends(links);
-    const captions = captionsShown(links.length, view.context.zoom, view.focused);
-    const room = captionRoom(map, bend);
+    const placed = anchors(view, links, bend, map);
     const selected = view.context.selected;
     return links.map((link) => {
         const own = link.source === selected || link.target === selected;
-        const dimmed = near !== null && !own;
+        const anchor = placed.get(link.id);
         const drawn: StarLink = {
             ...link,
             lineStyle: { ...link.lineStyle, curveness: bend.get(link.id) ?? 0 },
-            label: { ...link.label, show: (captions || own) && !dimmed && room(link) },
+            label: { ...link.label, show: anchor !== undefined, ...anchor },
             emphasis: { label: { show: true } },
         };
-        return dimmed ? dimLink(drawn) : drawn;
+        return near !== null && !own ? dimLink(drawn) : drawn;
     });
 }
 
@@ -477,7 +721,9 @@ export function starSeries(raw: StarView) {
             color: t.text,
             fontSize: 11,
             ...halo,
-            // A pill in the panel colour: a line under the caption stays out of it.
+            // A pill in the panel colour: a line under the caption stays out of it,
+            // also when the node itself is faded.
+            opacity: 1,
             backgroundColor: t.tooltip.backgroundColor,
             padding: [1, 4],
             borderRadius: 3,
@@ -489,6 +735,7 @@ export function starSeries(raw: StarView) {
             color: t.text,
             fontSize: 9,
             fontFamily: 'monospace',
+            align: 'center' as const,
             ...halo,
         },
         labelLayout: { hideOverlap: true },
