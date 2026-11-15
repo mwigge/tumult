@@ -74,15 +74,17 @@
 </script>
 
 <div class="wf">
+    <!-- Grid and tick labels share the lane box of the rows: a line stands
+         under its label, inside the lane, from the ruler to the last row. -->
+    <div class="grid" aria-hidden="true">
+        {#each ticks as t (t)}
+            <i style="left: {(t / built.spanNs) * 100}%"></i>
+        {/each}
+    </div>
     <div class="ruler">
         <div class="labels">
             {#each ticks as t (t)}
-                <span>{tickLabel(t)}</span>
-            {/each}
-        </div>
-        <div class="grid">
-            {#each ticks as t (t)}
-                <i style="left: {(t / built.spanNs) * 100}%"></i>
+                <span style="left: {(t / built.spanNs) * 100}%">{tickLabel(t)}</span>
             {/each}
         </div>
     </div>
@@ -110,6 +112,11 @@
 
 <style>
     .wf {
+        /* The row columns; the lane is what is left between them. */
+        --name-w: 240px;
+        --dur-w: 66px;
+        --gap: 10px;
+        position: relative;
         font-size: 12.5px;
     }
     .ruler {
@@ -121,32 +128,43 @@
         padding: 3px 0;
     }
     .ruler .labels {
-        display: flex;
-        justify-content: space-between;
+        position: relative;
+        height: 1.4em;
+        margin: 0 calc(var(--dur-w) + var(--gap)) 0 calc(var(--name-w) + var(--gap));
         color: var(--text-faint);
         font-size: 10.5px;
-        padding: 0 74px 0 250px;
         font-family: var(--mono);
     }
-    .ruler .grid {
-        position: absolute;
-        inset: 0;
-        pointer-events: none;
-    }
-    .ruler .grid i {
+    .ruler .labels span {
         position: absolute;
         top: 0;
-        bottom: -1000px;
+        transform: translateX(-50%);
+        white-space: nowrap;
+    }
+    .grid {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: calc(var(--name-w) + var(--gap));
+        right: calc(var(--dur-w) + var(--gap));
+        z-index: 1;
+        pointer-events: none;
+    }
+    .grid i {
+        position: absolute;
+        top: 0;
+        bottom: 0;
         width: 1px;
+        transform: translateX(-50%);
         background: var(--border);
         opacity: 0.5;
     }
     .row {
         display: grid;
-        grid-template-columns: 240px 1fr 66px;
+        grid-template-columns: var(--name-w) 1fr var(--dur-w);
         align-items: center;
         width: 100%;
-        gap: 10px;
+        gap: var(--gap);
         background: transparent;
         border: none;
         border-bottom: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
