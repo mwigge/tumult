@@ -769,14 +769,17 @@ fn rows_pruned_for_the_version_cap_are_counted() {
 /// the export is stored whole and the eviction is counted by its reason.
 #[tokio::test]
 async fn at_the_cap_a_silent_entity_makes_room_and_the_eviction_is_counted() {
-    /// 2026-01-01: more than a day ago whenever the test runs.
-    const LONG_AGO: i64 = 1_767_225_600_000_000_000;
+    /// Long enough ago for the entity to have expired, and inside the
+    /// retention window: upkeep would remove an older one before the cap
+    /// is met, and nothing would be evicted.
+    const TWO_DAYS_NS: i64 = 2 * 86_400 * 1_000_000_000;
+    let long_ago = crate::now_ns() - TWO_DAYS_NS;
     let capped = EntityEvents::from_settings(&EntitySettings {
         max_per_environment: Some("1"),
         ..on()
     });
     let (_dir, store, ingest) = ingest_with(capped);
-    let batch = ingest.logs_batch(&host_export(false), LONG_AGO);
+    let batch = ingest.logs_batch(&host_export(false), long_ago);
     ingest.write(batch).await.unwrap();
 
     let mut other = host_export(false);
