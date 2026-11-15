@@ -106,6 +106,11 @@ grep -q '_app/immutable' "$WORK/posture.html" || fail "/posture is not the SPA s
 cmp -s "$WORK/posture.html" "$REPO/web/build/200.html" || fail "/posture is not the SPA shell the daemon embeds"
 curl -fs "$URL/posture.html" >"$WORK/posture-static.html"
 cmp -s "$WORK/posture-static.html" "$REPO/web/build/posture.html" || fail "/posture.html differs from the built page"
-grep -q 'nodes/16\.' "$WORK/posture-static.html" || fail "built posture page lacks its route chunk"
+# The route chunk is the one the page names and the bare shell does not; its
+# number moves whenever a page is added, so it is found, not written here.
+chunks() { grep -o '_app/immutable/nodes/[0-9]*\.[A-Za-z0-9_-]*\.js' "$1" | sort -u; }
+chunk=$(comm -23 <(chunks "$WORK/posture-static.html") <(chunks "$REPO/web/build/200.html") | head -n 1)
+[[ -n "$chunk" ]] || fail "built posture page lacks its route chunk"
+curl -fs -o /dev/null "$URL/$chunk" || fail "the daemon does not serve the posture route chunk $chunk"
 pass "/posture served by the daemon"
 echo "ALL POSTURE-AND-RISKS PROOF CHECKS PASSED (run $RUN)"
