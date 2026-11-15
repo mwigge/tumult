@@ -13,9 +13,9 @@ use axum::http::{header, HeaderMap};
 use flate2::read::MultiGzDecoder;
 use prost::Message;
 
-/// The most a compressed body may expand to: what tonic takes as one
-/// message on the gRPC services (4 MiB).
-pub(super) const MAX_DECODED_BYTES: usize = 4 * 1024 * 1024;
+/// The most a compressed body may expand to: what a body sent as it is
+/// may be.
+pub(super) const MAX_DECODED_BYTES: usize = super::MAX_BODY_BYTES;
 
 /// The longest name of an encoding repeated back to the sender.
 const NAMED_LEN: usize = 32;

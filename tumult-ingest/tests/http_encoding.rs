@@ -326,12 +326,24 @@ async fn a_body_larger_than_the_bound_on_the_wire_is_too_large() {
     }
 }
 
-/// A gzip body is bounded on the wire too, before anything is expanded:
-/// one that would expand to less than a gzip body may is still too large
-/// when it is more than the bound as it is sent.
+/// A body sent as it is may be as large as a gzip body may expand to, and
+/// as a message may be on gRPC: 4 MiB, one bound whatever the encoding.
+#[tokio::test]
+async fn a_plain_body_may_be_as_large_as_a_gzip_body_may_expand_to() {
+    assert_eq!(http::MAX_BODY_BYTES, 4 * 1024 * 1024);
+    for (route, _) in ROUTES {
+        let plain = export_of(route, 3 * 1024 * 1024);
+        let (status, _dir) = answer(route, None, plain.clone()).await;
+        assert_eq!(status, 200, "{route}: as it is");
+        let (status, _dir) = answer(route, Some("gzip"), gzip(&plain)).await;
+        assert_eq!(status, 200, "{route}: gzip");
+    }
+}
+
+/// A gzip body is bounded on the wire too, before anything is expanded.
 #[tokio::test]
 async fn a_gzip_body_larger_than_the_bound_on_the_wire_is_too_large() {
-    let body = gzip(&noise(3 * 1024 * 1024));
+    let body = gzip(&noise(5 * 1024 * 1024));
     assert!(body.len() > http::MAX_BODY_BYTES, "{} bytes", body.len());
     for (route, _) in ROUTES {
         let (status, _dir) = answer(route, Some("gzip"), body.clone()).await;
