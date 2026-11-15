@@ -621,7 +621,15 @@ fn a_straggler_outside_the_group_fails_the_window_instead_of_hanging() {
     let mut env = EnvGuard::lock();
     let dir = tempfile::tempdir().expect("tempdir");
     // Escapes the process group, so the group kill cannot close the pipe.
-    let escaped = FAKE_OHA_JSON.replacen("#BEFORE_SUMMARY", "setsid sleep 30 &", 1);
+    // The script waits until the straggler has left the group: on a slow
+    // runner the group kill could otherwise reach it before `setsid` ran.
+    let escaped = FAKE_OHA_JSON.replacen(
+        "#BEFORE_SUMMARY",
+        r#"mark="$(dirname "$0")/escaped"
+setsid sh -c 'touch "$1"; exec sleep 30' sh "$mark" &
+while [ ! -e "$mark" ]; do sleep 0.01; done"#,
+        1,
+    );
     install_fake_oha(&mut env, &dir, &escaped);
 
     let executor = OhaLoadExecutor::default();
