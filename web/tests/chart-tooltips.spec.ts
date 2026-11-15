@@ -152,7 +152,7 @@ test('scores: a unit with markup in its path and band is text in the treemap too
     await expectShownAsText(page, tip, 'coverage 1/2');
 });
 
-test('posture: targets, disciplines and objectives with markup are text in every tooltip', async ({
+test('resilience: targets, disciplines and objectives with markup are text in every tooltip', async ({
     page,
 }) => {
     const coverage = {
@@ -191,7 +191,7 @@ test('posture: targets, disciplines and objectives with markup are text in every
         },
         '/api/risks': { as_of_ns: 1, risks: [], suppressed: [], summary, coverage },
     });
-    await page.goto('/posture');
+    await page.goto('/resilience');
     const covered = await showTip(page, 'coverage', { seriesIndex: 0, cell: [0, 0] });
     await expectShownAsText(page, covered, `${EVIL} · ${EVIL}`);
     await expectShownAsText(page, covered, 'stale');

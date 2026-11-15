@@ -42,7 +42,7 @@
         operator?: boolean;
     }[] = [
         { href: '/', label: 'Overview', icon: '◧' },
-        { href: '/posture', label: 'Posture', icon: '◎' },
+        { href: '/resilience', label: 'Resilience', icon: '◎' },
         { href: '/performance', label: 'Performance', icon: '◭' },
         { href: '/scores', label: 'Scores', icon: '▦' },
         { href: '/scores?view=dora', label: 'DORA', icon: '⚖' },

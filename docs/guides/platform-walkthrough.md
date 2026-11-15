@@ -52,7 +52,7 @@ Double-click a node to focus on it. The drawer shows its evidence.
 
 More: [Star Map guide](star-map.md).
 
-### Posture
+### Resilience
 
 A ranked list of risks, found without running any fault. Examples: the last
 run failed, a service was never tested, a workload has only one replica.
@@ -61,7 +61,7 @@ Below it, a grid shows which kinds of test each target has had.
 You can accept a risk for a while. The acceptance is recorded and expires
 by itself.
 
-![Posture page with ranked risks and coverage](../images/3.0/screenshots/posture.png)
+![Resilience page with ranked risks and coverage](../images/3.0/screenshots/posture.png)
 
 ### Scores and DORA
 
@@ -191,7 +191,7 @@ of its own.
 | Page | Path | What you see | Main API |
 |---|---|---|---|
 | Overview | `/` | Key numbers, runs per day, fault mix | `GET /api/overview` |
-| Posture | `/posture` | Ranked risks, coverage grid, posture score | `GET /api/risks`, `GET /api/posture` |
+| Resilience | `/resilience` | Ranked risks, coverage grid, resilience score | `GET /api/risks`, `GET /api/posture` |
 | Performance | `/performance` | Version comparison and verdicts | `GET /api/perf/{target}` |
 | Scores | `/scores` | Company score, treemap by team | `GET /api/scores/tree` |
 | DORA | `/scores?view=dora` | Article coverage, maturity level | `GET /api/dora`, `GET /api/maturity` |

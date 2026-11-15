@@ -624,7 +624,7 @@ test('names with markup are text in the node and edge tooltips', async ({ page }
     await drawn(page);
 
     const onNode = await showTip(page, 'starmap', { seriesIndex: 0, dataIndex: 0 });
-    for (const line of [`(system · ${EVIL})`, `tier: ${EVIL}`, `posture: 41.5 (${EVIL})`]) {
+    for (const line of [`(system · ${EVIL})`, `tier: ${EVIL}`, `resilience: 41.5 (${EVIL})`]) {
         await expectShownAsText(page, onNode, line);
     }
     await expectShownAsText(page, onNode, `(worst ${EVIL})`);
@@ -678,6 +678,12 @@ test('lens, selection and focus round-trip through the URL', async ({ page }) =>
         drawer.getByRole('link', { name: 'queue-dependency-loss', exact: true }),
     ).toHaveAttribute('href', '/experiments/run-1');
     await expect(drawer).toContainText('Latest chaos run failed');
+    await expect(drawer.locator('dt', { hasText: 'resilience' })).toHaveCount(1);
+    await expect(drawer.locator('dt', { hasText: 'posture' })).toHaveCount(0);
+    await expect(drawer.getByRole('link', { name: 'Resilience', exact: true })).toHaveAttribute(
+        'href',
+        '/resilience?env=demo',
+    );
     const runs = seen.find((u) => u.pathname === '/api/experiments');
     expect(runs?.searchParams.get('target')).toBe('message-queue');
 

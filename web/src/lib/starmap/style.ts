@@ -455,7 +455,7 @@ export function rollupLines(n: StarNode): string[] {
 function detailLines(n: StarNode): string[] {
     const lines: string[] = [];
     if (n.tier) lines.push(`tier: ${n.tier}`);
-    if (n.posture) lines.push(`posture: ${n.posture.score.toFixed(1)} (${n.posture.band})`);
+    if (n.posture) lines.push(`resilience: ${n.posture.score.toFixed(1)} (${n.posture.band})`);
     if (n.conflict) lines.push('reports more than one entity id');
     for (const flag of n.flags) lines.push(flagText(flag));
     lines.push(...rollupLines(n));

@@ -883,7 +883,7 @@ test('GIVEN only the keyboard WHEN tabbing to the target picker and the store bu
     expect(lastOf(calls.stores).pathname).toBe('/api/perf/payments/verdicts');
 });
 
-test('GIVEN the console navigation WHEN it renders THEN it links Performance to /performance right after Posture', async ({
+test('GIVEN the console navigation WHEN it renders THEN it links Performance to /performance right after Resilience', async ({
     page,
 }) => {
     await mockApi(page);
@@ -893,6 +893,10 @@ test('GIVEN the console navigation WHEN it renders THEN it links Performance to 
     await expect(link).toHaveAttribute('href', '/performance');
     await expect(link).toHaveClass(/active/);
     const labels = await page.getByRole('navigation').getByRole('link').allTextContents();
-    const posture = labels.findIndex((l) => l.includes('Posture'));
-    expect(labels[posture + 1]).toContain('Performance');
+    const resilience = labels.findIndex((l) => l.includes('Resilience'));
+    expect(resilience).toBeGreaterThanOrEqual(0);
+    expect(labels[resilience + 1]).toContain('Performance');
+    await expect(
+        page.getByRole('navigation').getByRole('link', { name: 'Resilience' }),
+    ).toHaveAttribute('href', '/resilience');
 });
