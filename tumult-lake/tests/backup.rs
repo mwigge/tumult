@@ -159,16 +159,19 @@ fn restore_accepts_relative_destination() {
     assert!(dir.path().join("restored.duckdb").is_file());
 }
 
+/// The child process of `restore_accepts_relative_destination`. Run on its
+/// own it has no bundle and nothing to restore.
 #[test]
 fn relative_restore_child() {
     let Some(bundle) = std::env::var_os("TUMULT_TEST_RESTORE_BUNDLE") else {
         return;
     };
-    backup::restore(
-        std::path::Path::new(&bundle),
-        std::path::Path::new("restored.duckdb"),
-    )
-    .unwrap();
+    let destination = std::path::Path::new("restored.duckdb");
+    backup::restore(std::path::Path::new(&bundle), destination).unwrap();
+    assert!(
+        destination.is_file(),
+        "the store is restored into the working directory"
+    );
 }
 
 #[cfg(unix)]

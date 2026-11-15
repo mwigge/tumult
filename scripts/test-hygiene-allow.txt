@@ -54,17 +54,6 @@ tumult-ingest/tests/webhooks.rs::dispatcher_posts_signed_events_and_advances_the
 tumult-ingest/tests/webhooks.rs::failing_endpoint_is_dead_lettered_and_the_cursor_advances_past_the_loss::raw-env  # deferred: move to tumult_test_utils::EnvGuard
 tumult-ingest/tests/webhooks.rs::one_hung_endpoint_does_not_block_the_others::raw-env  # deferred: move to tumult_test_utils::EnvGuard
 
-# tumult-lake: deferred, the crate is being changed elsewhere
-tumult-lake/src/telemetry.rs::duplicate_event_does_not_panic::no-assert  # deferred: asserts nothing yet
-tumult-lake/src/telemetry.rs::export_guard_creates_and_drops_span::no-assert  # deferred: asserts nothing yet
-tumult-lake/src/telemetry.rs::import_guard_creates_and_drops_span::no-assert  # deferred: asserts nothing yet
-tumult-lake/src/telemetry.rs::ingest_guard_creates_and_drops_span::no-assert  # deferred: asserts nothing yet
-tumult-lake/src/telemetry.rs::purge_guard_creates_and_drops_span::no-assert  # deferred: asserts nothing yet
-tumult-lake/src/telemetry.rs::query_guard_creates_and_drops_span::no-assert  # deferred: asserts nothing yet
-tumult-lake/src/telemetry.rs::query_truncates_long_sql::no-assert  # deferred: asserts nothing yet
-tumult-lake/src/telemetry.rs::record_gauges_does_not_panic::no-assert  # deferred: asserts nothing yet
-tumult-lake/tests/backup.rs::relative_restore_child::no-assert  # deferred: asserts nothing yet
-
 # tumultd: deferred, the crate is being changed elsewhere
 tumultd/src/reports.rs::report_scheduler_writes_a_digest_after_one_interval::bare-sleep  # deferred: sleep without a stated reason
 tumultd/src/serve/tests.rs::alive_tasks_settled::bare-sleep  # deferred: sleep without a stated reason
