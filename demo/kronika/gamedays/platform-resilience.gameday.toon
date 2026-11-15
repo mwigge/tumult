@@ -1,0 +1,32 @@
+title: Q4 Platform Resilience Programme
+description: Quarterly resilience testing of the platform runtime — worker freeze, process kill, queue dependency loss and service partition
+
+tags[3]: gameday, platform, dora
+
+regulatory:
+  frameworks[2]: DORA, NIS2
+  requirements[3]:
+    - id: Art. 24
+      description: ICT resilience testing programme
+      evidence: Quarterly GameDay with 4 fault scenarios
+    - id: Art. 25
+      description: Scenario-based testing of ICT tools and systems
+      evidence: Worker freeze, process kill, dependency loss, partition
+    - id: Art. 11
+      description: Response and recovery
+      evidence: MTTR measured across all experiments
+
+experiments[4]:
+  - path: api-worker-freeze.toon
+    compliance_maps[2]: Art. 25, Art. 11
+  - path: worker-process-kill.toon
+    compliance_maps[2]: Art. 25, Art. 11
+  - path: queue-dependency-loss.toon
+    compliance_maps[1]: Art. 25
+  - path: service-partition.toon
+    compliance_maps[1]: Art. 25
+
+scoring:
+  pass_threshold: 0.75
+  mttr_target_s: 30.0
+  recovery_required: true

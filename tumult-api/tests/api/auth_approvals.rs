@@ -348,6 +348,69 @@ async fn t3_approval_fails_closed_without_policy() {
     assert_eq!(body["approval"]["decisions"], json!([]));
 }
 
+/// A harmless fault the test harness deliberately leaves unbound: the
+/// daemon must treat it as T3 whatever its `env` label says.
+const UNBOUND_TOON: &str = "
+title: unbound campaign step
+method[1]:
+  - name: action-1
+    activity_type: action
+    provider:
+      type: native
+      plugin: test
+      function: noop
+rollbacks[1]:
+  - name: rollback-1
+    activity_type: action
+    provider:
+      type: native
+      plugin: test
+      function: noop
+";
+
+/// An unbound execution is T3 even in `dev`, and no autopilot policy lets
+/// an operator-requested T3 run through the approval queue. The refusal
+/// must say what is actually missing (an execution binding), not only that
+/// the autopilot gate is unavailable, and the run must stay pending.
+#[tokio::test]
+async fn unbound_t3_approval_names_the_missing_execution_binding() {
+    let srv = spawn_server().await;
+    let (admin, anna, _, _, _) = approval_tokens(&srv).await;
+    let (status, body) = post_auth(
+        &srv.base,
+        "/api/runs/validate",
+        &admin,
+        json!({"toon": UNBOUND_TOON}),
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    let registry_id = body["registry_id"].as_str().unwrap().to_string();
+
+    let (run_id, tier) = create_gated(&srv.base, &admin, &registry_id, "dev").await;
+    assert_eq!(tier, "T3", "an unbound execution is always T3");
+
+    let (status, body) = post_auth(
+        &srv.base,
+        &format!("/api/runs/{run_id}/approve"),
+        &anna,
+        json!({}),
+    )
+    .await;
+    assert_eq!(status, 422, "{body}");
+    assert_eq!(body["missing"], "execution_binding", "{body}");
+    let error = body["error"].as_str().unwrap();
+    assert!(error.contains("execution binding"), "{body}");
+    assert!(
+        error.contains("\"dev\""),
+        "the refusal names the environment: {body}"
+    );
+
+    let (status, body) = get_auth(&srv.base, &format!("/api/runs/{run_id}"), &anna).await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["run"]["state"], "pending_approval", "{body}");
+    assert_eq!(body["approval"]["decisions"], json!([]));
+}
+
 // ---------------------------------------------------------------------------
 // Auth: middleware, RBAC, sessions, tokens, env scoping
 

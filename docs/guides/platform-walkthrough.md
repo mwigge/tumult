@@ -22,7 +22,13 @@ docker compose -f docker/docker-compose.kronika.yml up -d --build
 
 Open <http://localhost:14318/> and sign in as `admin` with the password you
 set. The demo runs eight experiments for real, adds three manual records,
-and creates a second user, `bob`, who can approve runs.
+and creates a second user, `bob`, who can approve runs. It also registers
+one GameDay, binds its four experiments to `dev`, and runs one campaign
+that `admin` starts and `bob` approves.
+
+You cannot approve your own run. To approve a run you started as `admin`,
+sign in as `bob` with the password `demo-bob-permanent-pw` (local demo
+only).
 
 ![Login page](../assets/login.png)
 
@@ -130,7 +136,8 @@ exact content of the run, and it expires.
 
 An administrator must first allow the experiment to touch its target. That
 is an [execution binding](execution-bindings.md). Without one, the run is
-treated as the highest tier.
+treated as the highest tier, and the approval queue cannot release it:
+**Approve** says that the binding is missing.
 
 ![A run waiting for approval](../assets/run-pending-approval.png)
 

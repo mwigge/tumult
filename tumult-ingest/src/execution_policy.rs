@@ -74,23 +74,7 @@ pub fn classify_execution(
     target: Option<&str>,
     require_binding: bool,
 ) -> Result<Tier, String> {
-    let bindings = match std::env::var("TUMULTD_EXECUTION_BINDINGS") {
-        Ok(path) if !path.trim().is_empty() => {
-            let raw = std::fs::read_to_string(path)
-                .map_err(|_| "execution bindings cannot be read".to_string())?;
-            serde_json::from_str::<Vec<Binding>>(&raw)
-                .map_err(|_| "execution bindings are invalid".to_string())?
-        }
-        _ => {
-            let path = db_path.with_extension("execution-bindings.json");
-            match std::fs::read_to_string(path) {
-                Ok(raw) => serde_json::from_str::<Vec<Binding>>(&raw)
-                    .map_err(|_| "execution bindings are invalid".to_string())?,
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
-                Err(_) => return Err("execution bindings cannot be read".into()),
-            }
-        }
-    };
+    let bindings = load_bindings(db_path)?;
     classify_bound(
         experiment,
         injected,
@@ -99,6 +83,51 @@ pub fn classify_execution(
         require_binding,
         &bindings,
     )
+}
+
+/// Whether an operator-owned binding authorizes this exact execution for
+/// `env` and `target`. Approval refusals use it to name what is missing;
+/// it grants nothing by itself. Invalid configuration is an error.
+pub fn is_bound(
+    db_path: &std::path::Path,
+    experiment: &Experiment,
+    injected: &std::collections::HashMap<String, String>,
+    env: &str,
+    target: Option<&str>,
+) -> Result<bool, String> {
+    let bindings = load_bindings(db_path)?;
+    let hash = execution_hash(experiment, injected)?;
+    Ok(binding_matches(&bindings, &hash, env, target))
+}
+
+/// The configured bindings: `TUMULTD_EXECUTION_BINDINGS` when set (missing
+/// or invalid fails closed), else the file next to the database (missing
+/// means no bindings).
+fn load_bindings(db_path: &std::path::Path) -> Result<Vec<Binding>, String> {
+    if let Ok(path) = std::env::var("TUMULTD_EXECUTION_BINDINGS") {
+        if !path.trim().is_empty() {
+            let raw = std::fs::read_to_string(path)
+                .map_err(|_| "execution bindings cannot be read".to_string())?;
+            return parse_bindings(&raw);
+        }
+    }
+    let path = db_path.with_extension("execution-bindings.json");
+    match std::fs::read_to_string(path) {
+        Ok(raw) => parse_bindings(&raw),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
+        Err(_) => Err("execution bindings cannot be read".into()),
+    }
+}
+
+fn parse_bindings(raw: &str) -> Result<Vec<Binding>, String> {
+    serde_json::from_str::<Vec<Binding>>(raw)
+        .map_err(|_| "execution bindings are invalid".to_string())
+}
+
+fn binding_matches(bindings: &[Binding], hash: &str, env: &str, target: Option<&str>) -> bool {
+    bindings
+        .iter()
+        .any(|b| b.sha256 == hash && b.env == env && b.target.as_deref() == target)
 }
 
 fn classify_bound(
@@ -113,9 +142,7 @@ fn classify_bound(
         return Err("an explicit execution environment is required".into());
     }
     let hash = execution_hash(experiment, injected)?;
-    let bound = bindings
-        .iter()
-        .any(|b| b.sha256 == hash && b.env == env && b.target.as_deref() == target);
+    let bound = binding_matches(bindings, &hash, env, target);
     if !bound && (require_binding || bindings.iter().any(|b| b.sha256 == hash)) {
         return Err("execution is not bound to this environment and target; ask the platform administrator to review its fingerprint and configure TUMULTD_EXECUTION_BINDINGS".into());
     }

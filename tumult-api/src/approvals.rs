@@ -161,6 +161,58 @@ enum GateCheck {
     NotEnact(String),
     /// No policy loaded (or another gate failure) — fail closed.
     Unavailable(String),
+    /// The execution has no operator-owned binding for the run's env and
+    /// target, which is why it is T3 at all; no gate verdict can release
+    /// it, so the refusal names the missing binding (the env rides along).
+    Unbound(String),
+}
+
+/// Map a gate outcome one-to-one onto the approval check. Callers go
+/// through [`refusal_check`] so an unbound execution is named as such.
+fn gate_verdict(outcome: GateOutcome) -> GateCheck {
+    match outcome {
+        GateOutcome::Enact { policy_hash, .. } => GateCheck::Clear(Some(policy_hash)),
+        GateOutcome::Veto { rule } => GateCheck::Veto(rule),
+        GateOutcome::NotEnact { verdict } => GateCheck::NotEnact(verdict),
+        GateOutcome::Unavailable { reason } => GateCheck::Unavailable(reason),
+    }
+}
+
+/// A refusing gate outcome for a run whose execution is unbound becomes
+/// [`GateCheck::Unbound`]; everything else maps as the gate said.
+fn refusal_check(outcome: GateOutcome, bound: bool, env: String) -> GateCheck {
+    if matches!(
+        outcome,
+        GateOutcome::Enact { .. } | GateOutcome::Veto { .. }
+    ) || bound
+    {
+        return gate_verdict(outcome);
+    }
+    GateCheck::Unbound(env)
+}
+
+/// Log a refused approval with the structured logger; the HTTP body carries
+/// the same reason to the approver.
+fn log_refusal(run_id: &str, error_type: &'static str, reason: &str) {
+    tracing::warn!(
+        "run.id" = run_id,
+        "error.type" = error_type,
+        "error.message" = reason,
+        "approval refused"
+    );
+}
+
+/// The 422 for an unbound (therefore T3) execution: say what is missing and
+/// what to do, instead of only that the autopilot gate refused.
+fn unbound_refusal(run_id: &str, env: &str) -> ApiError {
+    let error = format!(
+        "Cannot approve: this run has no execution binding for environment {env:?}, so it is \
+         tier T3, which the approval queue cannot release. An administrator must review its \
+         execution fingerprint and add an execution binding; then reject this request and \
+         start the run again, or use break-glass."
+    );
+    log_refusal(run_id, "execution_binding_missing", &error);
+    unprocessable(json!({"error": error, "missing": "execution_binding", "env": env}))
 }
 
 /// Fetch the approval request and, for T3, re-run the autopilot gate
@@ -170,6 +222,7 @@ async fn gate_check(state: &ApiState, id: &str, run: &Value) -> Result<GateCheck
     let lookup = id.to_string();
     let run = run.clone();
     let policy = state.autopilot_policy();
+    let db_path = state.db_path.clone();
     with_reader(&state.db_path, move |reader| {
         let approval = reader
             .approval_request(&lookup)
@@ -195,7 +248,8 @@ async fn gate_check(state: &ApiState, id: &str, run: &Value) -> Result<GateCheck
                     .collect()
             })
             .unwrap_or_default();
-        let (experiment, _env) = crate::runs::prepare_for_api(&definition.definition_toon, &vars)?;
+        let (experiment, injected) =
+            crate::runs::prepare_for_api(&definition.definition_toon, &vars)?;
         let intro = introspect(&experiment);
         let now = now_ns();
         let runs_today = reader
@@ -218,21 +272,22 @@ async fn gate_check(state: &ApiState, id: &str, run: &Value) -> Result<GateCheck
         };
         let env = approval["env"].as_str().unwrap_or("dev").to_string();
         let target = approval["target"].as_str().map(str::to_string);
-        Ok(
-            match evaluate_t3_gate(
-                policy.as_deref(),
-                &lookup,
-                &intro,
-                &env,
-                target.as_deref(),
-                &ambient,
-            ) {
-                GateOutcome::Enact { policy_hash, .. } => GateCheck::Clear(Some(policy_hash)),
-                GateOutcome::Veto { rule } => GateCheck::Veto(rule),
-                GateOutcome::NotEnact { verdict } => GateCheck::NotEnact(verdict),
-                GateOutcome::Unavailable { reason } => GateCheck::Unavailable(reason),
-            },
-        )
+        let outcome = evaluate_t3_gate(
+            policy.as_deref(),
+            &lookup,
+            &intro,
+            &env,
+            target.as_deref(),
+            &ambient,
+        );
+        let bound = tumult_ingest::execution_policy::is_bound(
+            &db_path,
+            &experiment,
+            &injected,
+            &env,
+            target.as_deref(),
+        )?;
+        Ok(refusal_check(outcome, bound, env))
     })
     .await
 }
@@ -360,15 +415,17 @@ pub async fn approve(
             })));
         }
         GateCheck::NotEnact(verdict) => {
+            log_refusal(&id, "autopilot_not_enact", &verdict);
             return Err(unprocessable(
                 json!({"error": "autopilot gate did not return Enact", "verdict": verdict}),
             ));
         }
         GateCheck::Unavailable(reason) => {
-            return Err(unprocessable(
-                json!({"error": format!("autopilot gate unavailable (fail closed): {reason}")}),
-            ));
+            let error = format!("autopilot gate unavailable (fail closed): {reason}");
+            log_refusal(&id, "autopilot_unavailable", &error);
+            return Err(unprocessable(json!({"error": error})));
         }
+        GateCheck::Unbound(env) => return Err(unbound_refusal(&id, &env)),
     };
 
     let decision_row = ApprovalDecision {
