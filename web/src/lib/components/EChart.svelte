@@ -18,6 +18,11 @@
     // when the theme flips, because that re-creates the chart. A change of
     // `viewKey` says the chart now shows something else: the kept view is
     // dropped and the option replaces the one in force.
+    //
+    // `edgesOf` is for a graph: given the node under the pointer, it names
+    // the edges to light up with it (by index), so that their labels are
+    // written while the pointer is there. Under `<id>#lit` a test reads
+    // which edges are lit. Without it a hover is left to the chart.
     import echarts, { chartTheme } from '#lib/echarts.js';
     import type { EChartsCoreOption } from '#lib/echarts.js';
     import { onMount, untrack } from 'svelte';
@@ -32,6 +37,7 @@
         viewKey = '',
         id,
         label,
+        edgesOf,
     }: {
         option: EChartsCoreOption;
         height?: number;
@@ -45,7 +51,17 @@
         id?: string;
         /** Accessible name of the chart. Without one it is not announced as an image. */
         label?: string;
+        edgesOf?: (node: HoverParams) => number[];
     } = $props();
+
+    interface HoverParams {
+        seriesIndex?: number;
+        dataType?: string;
+        data?: unknown;
+    }
+
+    // Edges lit with the node under the pointer.
+    let lit: { seriesIndex: number; dataIndex: number[] } | null = null;
 
     let el: HTMLDivElement;
     let chart: ReturnType<typeof echarts.init> | null = null;
@@ -105,6 +121,27 @@
         if (!registry) return;
         registry[id] = chart.getOption();
         registry[`${id}#tip`] = showTip;
+        registry[`${id}#lit`] = lit?.dataIndex ?? [];
+    }
+
+    function unlight() {
+        if (!lit) return;
+        chart?.dispatchAction({ type: 'downplay', dataType: 'edge', ...lit });
+        lit = null;
+        expose();
+    }
+
+    // The chart already dims what is away from the node: the edges only
+    // take on their hover look, and nothing else is blurred.
+    function light(params: unknown) {
+        const p = params as HoverParams;
+        unlight();
+        if (!edgesOf || p.dataType !== 'node' || p.seriesIndex === undefined) return;
+        const dataIndex = edgesOf(p);
+        if (dataIndex.length === 0) return;
+        lit = { seriesIndex: p.seriesIndex, dataIndex };
+        chart?.dispatchAction({ type: 'highlight', dataType: 'edge', notBlur: true, ...lit });
+        expose();
     }
 
     /**
@@ -135,6 +172,11 @@
         if (onclick) chart.on('click', onclick);
         if (ondblclick) chart.on('dblclick', ondblclick);
         chart.on('graphroam', roamed);
+        lit = null;
+        if (edgesOf) {
+            chart.on('mouseover', light);
+            chart.on('mouseout', unlight);
+        }
         expose();
     }
 
@@ -173,6 +215,7 @@
             cancelRoam();
             view = null;
         }
+        unlight();
         chart.setOption(option, { notMerge: !merge || moved });
         expose();
         if (moved) onroam?.({ zoom: 1, center: null });

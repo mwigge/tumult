@@ -2,7 +2,7 @@
     // Star Map: one graph of everything Tumult knows, from the organisation
     // at the centre out to workloads, with the evidence, risk and
     // conformance lenses over the same nodes. Positions come from the pure
-    // `layoutStar`, so the map looks the same on every load. Range,
+    // `layoutStar` and `spread`, so the map looks the same on every load. Range,
     // environment, lens, selection and focus live in the URL. The canvas
     // cannot be reached from the keyboard, so the same nodes are also a
     // list of buttons below it.
@@ -10,32 +10,36 @@
     import { page } from '$app/state';
     import { goto } from '$app/navigation';
     import { api } from '#lib/api.js';
-    import type { StarEdge, StarMap, StarNode } from '#lib/types.js';
+    import type { StarEdge, StarKind, StarMap, StarNode } from '#lib/types.js';
     import RangeSwitch from '#lib/components/RangeSwitch.svelte';
     import EChart from '#lib/components/EChart.svelte';
     import StarDrawer from '#lib/components/StarDrawer.svelte';
     import { chartTheme, chartTokens } from '#lib/echarts.js';
     import type { ChartTheme, EChartsCoreOption } from '#lib/echarts.js';
+    import { spread } from '#lib/starmap/force.js';
     import { layoutStar } from '#lib/starmap/layout.js';
     import type { Point } from '#lib/starmap/layout.js';
     import { listNodes } from '#lib/starmap/list.js';
+    import {
+        legendKinds,
+        legendRels,
+        linksAt,
+        starSeries,
+        statusKey,
+        tipPlace,
+    } from '#lib/starmap/option.js';
+    import type { Rect } from '#lib/starmap/option.js';
     import { RANGES } from '#lib/ranges.js';
     import { tipFormatter } from '#lib/tooltip.js';
     import type { Tip } from '#lib/tooltip.js';
-    import {
-        KINDS,
-        LENSES,
-        edgeTooltipHtml,
-        labelText,
-        toItem,
-        toLink,
-        tooltipHtml,
-    } from '#lib/starmap/style.js';
-    import type { Lens, StarItem, StarLink, StyleContext } from '#lib/starmap/style.js';
+    import { LENSES, edgeTooltipHtml, spineTooltipHtml, tooltipHtml } from '#lib/starmap/style.js';
+    import type { Lens, RelKey, StyleContext } from '#lib/starmap/style.js';
 
     const CLUSTER = 'cluster:';
     /** Most buttons the node list renders at once; the filter narrows it. */
     const LISTED = 200;
+    /** Size of the chart; the width is measured once it is on the page. */
+    const CANVAS = { width: 1200, height: 800 };
 
     const param = (key: string) => page.url.searchParams.get(key) ?? '';
     const range = $derived(param('range') || '7d');
@@ -52,9 +56,15 @@
     // Environments seen so far, so the filter keeps its choices once one is set.
     let envs: string[] = $state([]);
     let theme: ChartTheme = $state(chartTheme());
-    // Label level of detail: 0 below zoom 1, 1 from zoom 1, 2 from zoom 2.
+    // Zoom of the map in quarter steps, rounded down: captions follow it.
     let detail = $state(1);
+    // Width of the chart, to tell which edges are long enough for a caption.
+    let width = $state(0);
     let filter = $state('');
+    // Kinds switched off in the legend.
+    let hidden: StarKind[] = $state([]);
+    // Relations switched off in the legend.
+    let hiddenRels: RelKey[] = $state([]);
     let listEl: HTMLElement | undefined = $state();
     let filterEl: HTMLInputElement | undefined = $state();
 
@@ -71,10 +81,9 @@
     });
 
     function place(m: StarMap): Map<string, Point> {
-        return layoutStar(
-            m.nodes.map((n) => ({ id: n.id, kind: n.kind, parent: n.parent })),
-            m.edges.map((e) => ({ from: e.from, to: e.to })),
-        );
+        const nodes = m.nodes.map((n) => ({ id: n.id, kind: n.kind, parent: n.parent }));
+        const edges = m.edges.map((e) => ({ from: e.from, to: e.to }));
+        return spread(nodes, edges, layoutStar(nodes, edges));
     }
 
     function remember(m: StarMap) {
@@ -128,14 +137,19 @@
 
     interface TipParams {
         dataType?: string;
-        data?: { raw?: StarNode | StarEdge };
+        data?: { raw?: StarNode | StarEdge | null; source?: string; target?: string };
+    }
+
+    function edgeTipOf(data: NonNullable<TipParams['data']>): Tip | null {
+        if (data.raw) return edgeTooltipHtml(data.raw as StarEdge);
+        if (!data.source || !data.target) return null;
+        return spineTooltipHtml(data.source, data.target);
     }
 
     function tipOf(p: TipParams): Tip | null {
-        const raw = p.data?.raw;
-        if (!raw) return null;
-        if (p.dataType === 'edge') return edgeTooltipHtml(raw as StarEdge);
-        return tooltipHtml(raw as StarNode, context);
+        if (!p.data) return null;
+        if (p.dataType === 'edge') return edgeTipOf(p.data);
+        return p.data.raw ? tooltipHtml(p.data.raw as StarNode, context) : null;
     }
 
     /** What the canvas is, for a reader who cannot see it. */
@@ -151,54 +165,70 @@
 
     const option: EChartsCoreOption = $derived.by(() => {
         if (!map || map.nodes.length === 0) return {};
+        const series = starSeries({
+            nodes: map.nodes,
+            edges: map.edges,
+            positions,
+            canvas: { width: width || CANVAS.width, height: CANVAS.height },
+            context,
+            hidden: new Set(hidden),
+            hiddenRels: new Set(hiddenRels),
+            focused: Boolean(focus),
+            light: theme === 'tumult-light',
+        });
         const t = context.tokens;
-        const data: StarItem[] = [];
-        for (const n of map.nodes) data.push(toItem(n, positions.get(n.id) ?? [0, 0], context));
-        const links: StarLink[] = [];
-        for (const e of map.edges) links.push(toLink(e, context));
         return {
-            tooltip: { ...t.tooltip, confine: true, formatter: tipFormatter(tipOf) },
-            series: [
-                {
-                    id: 'star',
-                    type: 'graph',
-                    layout: 'none',
-                    roam: true,
-                    scaleLimit: { min: 0.2, max: 8 },
-                    nodeScaleRatio: 0.4,
-                    edgeSymbol: ['none', 'arrow'],
-                    edgeSymbolSize: 5,
-                    emphasis: {
-                        focus: 'adjacency',
-                        label: { show: true },
-                        lineStyle: { width: 2, opacity: 0.9 },
-                    },
-                    blur: {
-                        itemStyle: { opacity: 0.12 },
-                        lineStyle: { opacity: theme === 'tumult-light' ? 0.12 : 0.05 },
-                        label: { show: false },
-                    },
-                    select: { itemStyle: { borderColor: t.accent, borderWidth: 3 } },
-                    label: {
-                        show: true,
-                        position: 'right',
-                        color: t.text,
-                        fontSize: 11,
-                        formatter: (p: { data?: { raw?: StarNode } }) => {
-                            const raw = p.data?.raw;
-                            return raw ? labelText(raw) : '';
-                        },
-                    },
-                    labelLayout: { hideOverlap: true },
-                    categories: KINDS.map((k) => ({ name: k })),
-                    lineStyle: { color: t.axis, opacity: 0.5, curveness: 0.15 },
-                    data,
-                    links,
-                    animation: false,
-                },
-            ],
+            tooltip: {
+                ...t.tooltip,
+                confine: true,
+                position: placeTip,
+                formatter: tipFormatter(tipOf),
+            },
+            series: [series],
         };
     });
+
+    /** Links of the chart in the order it draws them, for a hover. */
+    const drawnLinks = $derived.by(() => {
+        const series = (option.series as { links?: { source: string; target: string }[] }[]) ?? [];
+        return series[0]?.links ?? [];
+    });
+
+    function edgesOf(node: { data?: unknown }): number[] {
+        const id = (node.data as { id?: string } | undefined)?.id;
+        return id ? linksAt(drawnLinks, id) : [];
+    }
+
+    // Above the node, or beside it: never over its own caption.
+    function placeTip(
+        at: [number, number],
+        _params: unknown,
+        _el: unknown,
+        rect: Rect | null,
+        size: { contentSize: [number, number]; viewSize: [number, number] },
+    ): [number, number] {
+        const node = rect ?? { x: at[0] - 20, y: at[1] - 20, width: 40, height: 40 };
+        return tipPlace(node, size.contentSize, size.viewSize);
+    }
+
+    const kinds = $derived(legendKinds(map?.nodes ?? []));
+    const rels = $derived(
+        legendRels(
+            (map?.nodes ?? []).filter((n) => !hidden.includes(n.kind)),
+            map?.edges ?? [],
+            context.tokens,
+        ),
+    );
+
+    function toggleRel(rel: RelKey) {
+        hiddenRels = hiddenRels.includes(rel)
+            ? hiddenRels.filter((r) => r !== rel)
+            : [...hiddenRels, rel];
+    }
+
+    function toggleKind(kind: StarKind) {
+        hidden = hidden.includes(kind) ? hidden.filter((k) => k !== kind) : [...hidden, kind];
+    }
 
     interface NodeEvent {
         dataType?: string;
@@ -242,7 +272,7 @@
     }
 
     function onRoam(view: { zoom: number }) {
-        const next = view.zoom >= 2 ? 2 : view.zoom >= 1 ? 1 : 0;
+        const next = Math.floor(view.zoom * 4) / 4;
         if (next !== detail) detail = next;
     }
 
@@ -303,7 +333,7 @@
         {#if error}
             <div class="state error">Failed to load the star map: {error}</div>
         {:else if !map}
-            <div class="skeleton" style="height: 640px"></div>
+            <div class="skeleton" style="height: {CANVAS.height}px"></div>
         {:else if map.nodes.length === 0}
             <div class="state">
                 {#if map.focus_found === false}
@@ -315,17 +345,23 @@
                 {/if}
             </div>
         {:else}
-            <EChart
-                id="starmap"
-                label={described}
-                {option}
-                height={640}
-                merge
-                viewKey={focus}
-                onclick={onNode}
-                ondblclick={onNodeTwice}
-                onroam={onRoam}
-            />
+            <div bind:clientWidth={width}>
+                <EChart
+                    id="starmap"
+                    label={described}
+                    {option}
+                    height={CANVAS.height}
+                    merge
+                    viewKey={focus}
+                    onclick={onNode}
+                    ondblclick={onNodeTwice}
+                    onroam={onRoam}
+                    {edgesOf}
+                />
+            </div>
+            <p class="sub">
+                Hover to see a node and its links. Click for evidence. Double-click to focus.
+            </p>
             <p class="sub legend" data-testid="starmap-legend">
                 risks: {map.counts.risks_open} open, {map.counts.risks_suppressed} suppressed ·
                 {plural(map.counts.gaps, 'gap')}
@@ -342,12 +378,55 @@
                     · incomplete: a source table is longer than its row limit
                 {/if}
             </p>
-            <p class="sub">
-                shape is the kind of node · a dashed hollow node has no evidence, a thin amber dash
-                is stale evidence · a dimmed node has only suppressed risks · click a node for its
-                evidence, double-click to focus on it · the node list below does the same from the
-                keyboard
-            </p>
+            <div class="kinds" role="group" aria-label="node kinds" data-testid="starmap-kinds">
+                {#each kinds as k (k.kind)}
+                    <button
+                        class="chip"
+                        aria-pressed={!hidden.includes(k.kind)}
+                        title="Show or hide this kind"
+                        onclick={() => toggleKind(k.kind)}
+                    >
+                        <span class="dot" style="background: {k.color}"></span>
+                        {k.name}
+                        <span class="count">{k.count}</span>
+                    </button>
+                {/each}
+            </div>
+            <div class="kinds" role="group" aria-label="relations" data-testid="starmap-rels">
+                {#each rels as r (r.rel)}
+                    <button
+                        class="chip"
+                        aria-pressed={!hiddenRels.includes(r.rel)}
+                        title="Show or hide this relation"
+                        onclick={() => toggleRel(r.rel)}
+                    >
+                        <svg class="rel" width="30" height="10" aria-hidden="true">
+                            <line
+                                x1="1"
+                                y1="5"
+                                x2="23"
+                                y2="5"
+                                stroke={r.stroke.color}
+                                stroke-width={r.stroke.width}
+                                stroke-dasharray={r.stroke.type === 'solid'
+                                    ? undefined
+                                    : r.stroke.type.join(' ')}
+                            />
+                            <path d="M22 1 L29 5 L22 9 Z" fill={r.stroke.color} />
+                        </svg>
+                        <span class="mono">{r.name}</span>
+                        <span class="count">{r.count}</span>
+                    </button>
+                {/each}
+            </div>
+            <ul class="key" aria-label="how to read the map" data-testid="starmap-key">
+                {#each statusKey(lens) as k (k.status)}
+                    <li><span class="ring {k.status}"></span>{k.mark} {k.text}</li>
+                {/each}
+                <li><span class="ring missing"></span>no evidence</li>
+                <li><span class="ring stale"></span>stale evidence</li>
+                <li><span class="ring suppressed"></span>only suppressed risks</li>
+            </ul>
             {#if unavailable.length > 0}
                 <p class="sub">Not available yet: {unavailable.join(', ')}.</p>
             {/if}
@@ -425,6 +504,83 @@
         color: var(--text-dim);
         font-size: 12.5px;
         margin: 8px 0 0;
+    }
+    .kinds {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 8px;
+    }
+    .chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        background: var(--bg-panel);
+        border: 1px solid var(--border-strong);
+        border-radius: 999px;
+        color: var(--text);
+        cursor: pointer;
+        font-size: 12px;
+        padding: 2px 10px 2px 6px;
+    }
+    .chip[aria-pressed='false'] {
+        opacity: 0.45;
+        text-decoration: line-through;
+    }
+    .chip .dot {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+    }
+    .chip .count {
+        color: var(--text-dim);
+        font-size: 11px;
+    }
+    .key {
+        list-style: none;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px 16px;
+        margin: 8px 0 0;
+        padding: 0;
+        color: var(--text-dim);
+        font-size: 12px;
+    }
+    .key li {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+    }
+    .ring {
+        box-sizing: border-box;
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        background: var(--border-strong);
+        border: 2px solid var(--ok);
+    }
+    .ring.warn {
+        border: 3px solid var(--warn);
+    }
+    .ring.fail {
+        border: 4px solid var(--fail);
+    }
+    .ring.missing {
+        background: transparent;
+        border: 2px dashed var(--text-dim);
+    }
+    .ring.stale {
+        border: 2px dashed var(--warn);
+    }
+    .ring.suppressed {
+        border: 2px dotted var(--text-dim);
+        opacity: 0.45;
+    }
+    .chip .rel {
+        flex: none;
+    }
+    .chip .mono {
+        font-size: 11px;
     }
     .focus {
         color: var(--text-dim);

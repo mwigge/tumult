@@ -9,7 +9,7 @@ nav_order: 28
 The Star Map is one graph of everything the platform knows: the
 organisation at the centre, then ICT entities, systems, components,
 services and workloads, with experiment definitions as satellites. Three
-lenses colour the same nodes by evidence, by risk and by telemetry
+lenses ring the same nodes by evidence, by risk and by telemetry
 conformance. It replaces the Topology page; `/topology` redirects to
 `/starmap`.
 
@@ -103,12 +103,40 @@ environment at all, is not counted.
 
 ## Lenses and marks
 
-- **Evidence** (default): a system is green when every run in the window
-  passed and red when one failed. A dashed hollow node has no evidence at
-  all; a thin amber dash means the evidence is stale.
-- **Risk**: fill by the worst open finding of the passive risk scan. A
-  node whose findings are all suppressed is dimmed; its tooltip says who
-  accepted the risk, until when and why, and the border turns amber when
+Every node is a circle in the colour of its kind, with its name below.
+An arrow is a relation and carries its name (`OWNS`, `IMPLEMENTS`,
+`CALLS`, `RUNS_ON`, `DEPENDS_ON`, `TESTED_BY`, `BROKE`, `COVERS`,
+`MEASURES`). A thin grey arrow named `PART_OF` points from a node to the
+parent it sits under, when no other relation joins the two. It is drawn
+from the `parent` of the node; the API has no such edge.
+
+Each relation has its own colour and its own dash, so an arrow tells
+its relation also without a name on it. `BROKE` is thick and red,
+`PART_OF` thin and grey.
+
+A relation name is written on the arrow where it has room and lands on
+no other caption: in the middle, nearer one end, or below the line.
+Hover or select a node to write the name on every one of its links; the
+rest of the map is dimmed then. Hover an arrow to read its name and its
+two ends. When two neighbours have the same name, each shows its kind in
+small text under the name. A long name is cut short, more so when the
+map is drawn small; the tooltip has the full name.
+
+Under the map are two rows of chips. The first has each kind and its
+count, the second each relation with its line, its name and its count.
+Click a chip to hide that kind or that relation, and again to show it.
+
+A lens changes the ring of a node and the mark before its name, never
+its colour:
+
+- **Evidence** (default): a green ring and a check mark when every run in
+  the window passed, a thick red ring and a cross when one failed. A
+  dashed hollow node has no evidence at all; a short amber dash means the
+  evidence is stale.
+- **Risk**: an amber ring for an open finding of the passive risk scan, a
+  thick red ring for a high or critical one. A node whose findings are
+  all suppressed is faded with a dotted ring; its tooltip says who
+  accepted the risk, until when and why, and the ring turns amber when
   the suppression expires within fourteen days. Suppressed findings are
   counted next to the open ones in the legend, never hidden.
 - **Conformance**: services by the level `GET /api/otel/conformance`

@@ -1,10 +1,10 @@
 // Star Map styling: pure functions from an API node or edge to the ECharts
-// item that draws it. A lens changes fill and tooltip, never the node set,
-// the shape or the position. Every colour comes from the chart tokens of
-// the theme in force or from the categorical palette; status is always
-// double-encoded (fill plus border style) so it survives greyscale.
+// item that draws it. Every node is a circle filled with the colour of its
+// kind. A lens changes the ring, the mark before the caption and the
+// tooltip, never the node set, the fill or the position. Status is always
+// double-encoded (ring colour plus ring width, dash or mark) so it
+// survives greyscale.
 
-import { PALETTE } from '../echarts.js';
 import type { chartTokens } from '../echarts.js';
 import type { StarEdge, StarKind, StarNode, StarRel } from '../types.js';
 import type { Point } from './layout.js';
@@ -43,73 +43,114 @@ export const KINDS: StarKind[] = [
     'cluster',
 ];
 
-const SHAPE: Record<StarKind, string> = {
-    org: 'roundRect',
-    entity: 'diamond',
-    system: 'rect',
-    component: 'rect',
-    service: 'circle',
-    workload: 'triangle',
-    ext: 'pin',
-    def: 'circle',
-    run: 'emptyCircle',
-    slo: 'arrow',
-    article: 'rect',
-    gap: 'circle',
-    cluster: 'roundRect',
-};
-
+/** Diameter per kind, in pixels: room to be found and pointed at. */
 const SIZE: Record<StarKind, number> = {
-    org: 26,
-    entity: 20,
-    system: 18,
-    component: 13,
-    service: 14,
-    workload: 12,
-    ext: 18,
-    def: 10,
-    run: 8,
-    slo: 10,
-    article: 8,
-    gap: 10,
-    cluster: 24,
+    org: 44,
+    entity: 40,
+    system: 40,
+    component: 30,
+    service: 34,
+    workload: 30,
+    ext: 34,
+    def: 30,
+    run: 24,
+    slo: 26,
+    article: 26,
+    gap: 28,
+    cluster: 48,
 };
 
-// Palette slot per kind. Slot 6 (yellow) is never used: it vanishes on white.
-const HUE: Record<StarKind, number> = {
-    org: 0,
-    entity: 3,
-    system: 4,
-    component: 4,
-    service: 0,
-    workload: 3,
-    ext: 1,
-    def: 2,
-    run: 2,
-    slo: 5,
-    article: 1,
-    gap: 5,
-    cluster: 0,
+/**
+ * Fill per kind: one colour each, the same under every lens. None is a
+ * status colour of either theme, and none is the yellow lost on white.
+ */
+export const KIND_COLOR: Record<StarKind, string> = {
+    org: '#4C8EDA',
+    entity: '#C990C0',
+    system: '#7B6CD9',
+    component: '#57C7E3',
+    service: '#2A9D8F',
+    workload: '#B08D57',
+    ext: '#6E7B8B',
+    def: '#B8A038',
+    run: '#9AA5B1',
+    slo: '#3B5BA9',
+    article: '#A45EBF',
+    gap: '#D9B8A0',
+    cluster: '#2F7F9E',
 };
 
-/** Smallest zoom at which a kind is labelled; absent kinds always are. */
-const LABEL_FROM: Partial<Record<StarKind, number>> = {
-    system: 1,
-    component: 2,
-    service: 2,
-    workload: 2,
-    ext: 2,
-    def: 2,
-    run: 2,
-    slo: 2,
-    article: 2,
-    gap: 2,
+/** What the legend calls a kind. */
+export const KIND_NAME: Record<StarKind, string> = {
+    org: 'org unit',
+    entity: 'ICT entity',
+    system: 'system',
+    component: 'component',
+    service: 'service',
+    workload: 'workload',
+    ext: 'external',
+    def: 'experiment',
+    run: 'run',
+    slo: 'SLO',
+    article: 'article',
+    gap: 'gap',
+    cluster: 'cluster',
 };
 
-const CONTAINMENT = new Set<StarRel>(['owns', 'implements', 'runs_on']);
-const ON_SELECTION = new Set<StarRel>(['tested_by', 'covers', 'measures']);
+/** Kinds that keep their caption when the map is zoomed out. */
+const ALWAYS_LABELLED = new Set<StarKind>(['org', 'entity', 'system', 'cluster']);
+
+/** Every relation the API names, in the order the legend lists them. */
+export const RELS: StarRel[] = [
+    'owns',
+    'implements',
+    'calls',
+    'runs_on',
+    'depends_on',
+    'tested_by',
+    'broke',
+    'covers',
+    'measures',
+];
+
+/** A relation of the API, or the link from a node to its parent. */
+export type RelKey = StarRel | 'part_of';
+
+/** Every relation the map draws, in the order the legend lists them. */
+export const REL_KEYS: RelKey[] = [...RELS, 'part_of'];
+
+/** How the line of a relation is drawn. */
+export interface Stroke {
+    color: string;
+    width: number;
+    /** `solid`, or the lengths of dash and gap in turn. */
+    type: 'solid' | number[];
+    opacity: number;
+}
+
+/**
+ * Colour and dash per relation: two channels, so a relation is told from
+ * the others also in greyscale. Every colour is a mid tone that stands
+ * out on the dark and on the light panel, and none is a status colour.
+ */
+const REL_LINE: Record<Exclude<RelKey, 'broke' | 'part_of'>, [string, Stroke['type']]> = {
+    owns: ['#8B6CE0', [12, 4]],
+    implements: ['#0E9488', [10, 3, 2, 3]],
+    calls: ['#2F80D0', 'solid'],
+    runs_on: ['#A8752A', [2, 3]],
+    depends_on: ['#C0408F', [12, 3, 5, 3]],
+    tested_by: ['#6B8E23', [5, 4]],
+    covers: ['#1A9BBD', [10, 3, 2, 3, 2, 3]],
+    measures: ['#8A7FA8', [2, 7]],
+};
+
+const LINE_WIDTH = 1.6;
+const BROKE_WIDTH = 3;
+
 const SOON_NS = 14 * 86_400_000_000_000;
 const DIMMED = 0.35;
+/** Longest caption under a node, in characters. */
+export const CAPTION = 16;
 
 export interface ItemStyle {
     color: string;
@@ -117,6 +158,8 @@ export interface ItemStyle {
     borderWidth?: number;
     borderType?: string | number[];
     opacity?: number;
+    shadowBlur?: number;
+    shadowColor?: string;
 }
 
 export interface StarItem {
@@ -137,8 +180,15 @@ export interface StarLink {
     source: string;
     target: string;
     symbol: [string, string];
-    lineStyle: { color: string; width: number; type: string; opacity: number };
-    raw: StarEdge;
+    /** Which relation the link draws. */
+    rel: RelKey;
+    lineStyle: Stroke & { curveness?: number };
+    /** The caption along the edge; the relation as the API names it. */
+    label: { show: boolean; formatter?: string; position?: string; distance?: number[] };
+    /** On hover the caption is written also where it is left out at rest. */
+    emphasis?: { label: { show: boolean } };
+    /** The API edge, or null for a spine parent that has no edge. */
+    raw: StarEdge | null;
 }
 
 /**
@@ -151,54 +201,69 @@ export function labelText(n: StarNode): string {
 }
 
 export function labelShown(kind: StarKind, zoom: number): boolean {
-    return zoom >= (LABEL_FROM[kind] ?? 0);
+    return zoom >= 1 || ALWAYS_LABELLED.has(kind);
 }
+
+export type Status = 'ok' | 'warn' | 'fail';
 
 const severe = (worst: string | null) => worst === 'critical' || worst === 'high';
 
-function riskColor(n: StarNode, t: Tokens): string | null {
+function riskStatus(n: StarNode): Status | null {
     if (n.risks.open <= 0) return null;
-    return severe(n.risks.worst) ? t.fail : t.warn;
+    return severe(n.risks.worst) ? 'fail' : 'warn';
 }
 
-function conformanceColor(n: StarNode, t: Tokens): string | null {
-    if (n.conformance === 'spine') return t.ok;
-    if (n.conformance === 'target') return t.warn;
-    if (n.conformance === 'none') return t.fail;
+function conformanceStatus(n: StarNode): Status | null {
+    if (n.conformance === 'spine') return 'ok';
+    if (n.conformance === 'target') return 'warn';
+    if (n.conformance === 'none') return 'fail';
     return null;
 }
 
-function evidenceColor(n: StarNode, t: Tokens): string | null {
-    if (n.evidence.failed > 0) return t.fail;
-    if (n.evidence.runs + n.evidence.manual > 0) return t.ok;
+function evidenceStatus(n: StarNode): Status | null {
+    if (n.evidence.failed > 0) return 'fail';
+    if (n.evidence.runs + n.evidence.manual > 0) return 'ok';
     return null;
 }
 
-function fill(n: StarNode, c: StyleContext): string {
-    const byLens =
-        c.lens === 'risk'
-            ? riskColor(n, c.tokens)
-            : c.lens === 'conformance'
-              ? conformanceColor(n, c.tokens)
-              : evidenceColor(n, c.tokens);
-    return byLens ?? PALETTE[HUE[n.kind]];
+/** What the lens says about a node, or null when it says nothing. */
+export function statusOf(n: StarNode, lens: Lens): Status | null {
+    if (lens === 'risk') return riskStatus(n);
+    if (lens === 'conformance') return conformanceStatus(n);
+    return evidenceStatus(n);
 }
 
-function riskBorder(n: StarNode, t: Tokens): Partial<ItemStyle> {
-    const color = riskColor(n, t);
-    return color ? { borderColor: color, borderWidth: 1.5 } : {};
+/** The mark before a caption and the ring width: status never by colour alone. */
+export const STATUS_MARK: Record<Status, string> = { ok: '\u2713', warn: '!', fail: '\u2715' };
+const RING: Record<Status, number> = { ok: 2.5, warn: 3.5, fail: 4.5 };
+
+/**
+ * The caption under a node: the mark of its status under the lens, then
+ * its name, cut to `limit` characters. The full name is in the tooltip.
+ */
+export function caption(n: StarNode, lens: Lens, limit = CAPTION): string {
+    const status = statusOf(n, lens);
+    const name = n.label.length > limit ? `${n.label.slice(0, limit - 1)}\u2026` : n.label;
+    const text = labelText({ ...n, label: name });
+    return status ? `${STATUS_MARK[status]} ${text}` : text;
+}
+
+function ring(n: StarNode, c: StyleContext): Partial<ItemStyle> {
+    const status = statusOf(n, c.lens);
+    if (!status) return { borderColor: c.tokens.axis, borderWidth: 1 };
+    return { borderColor: c.tokens[status], borderWidth: RING[status] };
 }
 
 function gapStyle(n: StarNode, t: Tokens): Partial<ItemStyle> {
     if (n.gap === 'missing' || n.kind === 'gap') {
         return {
-            color: 'transparent',
+            color: t.tooltip.backgroundColor,
             borderColor: t.text,
-            borderWidth: 1.5,
+            borderWidth: 2,
             borderType: 'dashed',
         };
     }
-    if (n.gap === 'stale') return { borderColor: t.warn, borderWidth: 1.5, borderType: [2, 3] };
+    if (n.gap === 'stale') return { borderColor: t.warn, borderWidth: 2.5, borderType: [2, 3] };
     return {};
 }
 
@@ -214,11 +279,13 @@ function suppressedStyle(n: StarNode, c: StyleContext): Partial<ItemStyle> {
             borderType: 'dotted',
         };
     }
-    return { opacity: DIMMED, borderColor: c.tokens.axis, borderWidth: 1.5 };
+    return { opacity: DIMMED, borderColor: c.tokens.text, borderWidth: 1.5, borderType: 'dotted' };
 }
 
 function selectedStyle(n: StarNode, c: StyleContext): Partial<ItemStyle> {
-    return n.id === c.selected ? { borderColor: c.tokens.accent, borderWidth: 3 } : {};
+    if (n.id !== c.selected) return {};
+    const accent = c.tokens.accent;
+    return { borderColor: accent, borderWidth: 5, shadowBlur: 16, shadowColor: accent };
 }
 
 function size(n: StarNode): number {
@@ -235,11 +302,11 @@ export function toItem(n: StarNode, at: Point, c: StyleContext): StarItem {
         x: at[0],
         y: at[1],
         category: n.kind,
-        symbol: SHAPE[n.kind],
+        symbol: 'circle',
         symbolSize: size(n),
         itemStyle: {
-            color: fill(n, c),
-            ...riskBorder(n, c.tokens),
+            color: KIND_COLOR[n.kind],
+            ...ring(n, c),
             ...gapStyle(n, c.tokens),
             ...suppressedStyle(n, c),
             ...selectedStyle(n, c),
@@ -249,28 +316,66 @@ export function toItem(n: StarNode, at: Point, c: StyleContext): StarItem {
     };
 }
 
-function lineStyle(e: StarEdge, c: StyleContext): StarLink['lineStyle'] {
-    const t = c.tokens;
-    if (CONTAINMENT.has(e.rel)) return { color: t.axis, width: 0.6, type: 'solid', opacity: 0.5 };
-    if (e.rel === 'depends_on') return { color: t.axis, width: 1, type: 'dotted', opacity: 0.7 };
-    if (e.rel === 'broke') return { color: t.fail, width: 1.5, type: 'solid', opacity: 0.8 };
-    if (ON_SELECTION.has(e.rel)) {
-        const shown = c.selected !== null && (e.from === c.selected || e.to === c.selected);
-        return { color: t.accent, width: 1, type: 'dashed', opacity: shown ? 0.8 : 0 };
-    }
-    const width = 1 + Math.min(3, Math.log10(1 + (e.weight ?? 0)));
-    return { color: t.axis, width, type: 'solid', opacity: 0.6 };
+/**
+ * The line of a relation: what a run broke is red and thick, the link to
+ * a parent thin and grey, every other relation has its colour and dash.
+ */
+export function relStroke(rel: RelKey, t: Tokens): Stroke {
+    if (rel === 'part_of') return { color: t.text, width: 1, type: 'solid', opacity: 0.55 };
+    if (rel === 'broke') return { color: t.fail, width: BROKE_WIDTH, type: 'solid', opacity: 0.85 };
+    const [color, type] = REL_LINE[rel];
+    return { color, width: LINE_WIDTH, type, opacity: 0.85 };
 }
 
-/** The graph link for one edge; the relation decides the line. */
+function lineStyle(e: StarEdge, c: StyleContext): Stroke {
+    const stroke = relStroke(e.rel, c.tokens);
+    if (e.rel !== 'calls') return stroke;
+    // Traffic widens a call, but it stays thinner than what a run broke.
+    return { ...stroke, width: stroke.width + Math.min(1, Math.log10(1 + (e.weight ?? 0)) / 3) };
+}
+
+/** The relation as it is written along an edge: `RUNS_ON`. */
+export function relCaption(rel: StarRel): string {
+    return rel.toUpperCase();
+}
+
+/** The graph link for one edge: an arrow that carries its relation. */
 export function toLink(e: StarEdge, c: StyleContext): StarLink {
     return {
         id: e.id,
         source: e.from,
         target: e.to,
-        symbol: CONTAINMENT.has(e.rel) ? ['none', 'none'] : ['none', 'arrow'],
+        symbol: ['none', 'arrow'],
+        rel: e.rel,
         lineStyle: lineStyle(e, c),
+        label: { show: true, formatter: relCaption(e.rel) },
         raw: e,
+    };
+}
+
+/** The relation written on the link from a node to its parent. */
+export const PART_OF = 'PART_OF';
+
+/** The name of a relation on the map and in the legend. */
+export function relName(rel: RelKey): string {
+    return rel === 'part_of' ? PART_OF : relCaption(rel);
+}
+
+/**
+ * The link from a child to a parent the API joins by no edge (an org unit
+ * under its parent unit, a component in its system). It draws the `parent`
+ * of the node: a thin grey arrow, so that it reads as structure.
+ */
+export function toSpineLink(child: string, parent: string, c: StyleContext): StarLink {
+    return {
+        id: `spine|${child}`,
+        source: child,
+        target: parent,
+        symbol: ['none', 'arrow'],
+        rel: 'part_of',
+        lineStyle: relStroke('part_of', c.tokens),
+        label: { show: true, formatter: PART_OF },
+        raw: null,
     };
 }
 
@@ -389,4 +494,9 @@ export function edgeTooltipHtml(e: StarEdge): Tip {
     const head = `${e.from} ${REL_TEXT[e.rel]} ${e.to}`;
     if (e.weight === undefined) return tip(head, `source: ${e.source}`);
     return tip(head, `${e.weight} calls, ${e.errors ?? 0} errors · source: ${e.source}`);
+}
+
+/** Tooltip of a PART_OF link: which node is part of which, and where that comes from. */
+export function spineTooltipHtml(child: string, parent: string): Tip {
+    return tip(`${child} part of ${parent}`, 'source: the parent of the node');
 }
