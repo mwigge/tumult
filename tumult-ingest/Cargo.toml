@@ -1,7 +1,7 @@
 [package]
 name = "tumult-ingest"
 description = "OTLP gRPC/HTTP ingest + manual importers writing into tumult-lake"
-version = "0.7.0"
+version.workspace = true
 edition.workspace = true
 license.workspace = true
 

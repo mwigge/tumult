@@ -8024,7 +8024,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-api"
-version = "0.7.0"
+version = "3.0.0"
 dependencies = [
  "async-trait",
  "axum",
@@ -8175,7 +8175,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-compliance"
-version = "0.7.0"
+version = "3.0.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -8263,7 +8263,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-ingest"
-version = "0.7.0"
+version = "3.0.0"
 dependencies = [
  "arrow",
  "axum",
@@ -8347,7 +8347,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-lake"
-version = "0.7.0"
+version = "3.0.0"
 dependencies = [
  "arrow",
  "chrono",
@@ -8410,7 +8410,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-metrics"
-version = "0.7.0"
+version = "3.0.0"
 dependencies = [
  "serde",
  "serde_yaml",
@@ -8459,7 +8459,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-otlp"
-version = "0.7.0"
+version = "3.0.0"
 dependencies = [
  "opentelemetry-proto",
  "serde_json",
@@ -8508,7 +8508,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-report"
-version = "0.7.0"
+version = "3.0.0"
 dependencies = [
  "serde_json",
  "tempfile",
@@ -8589,7 +8589,7 @@ dependencies = [
 
 [[package]]
 name = "tumultd"
-version = "0.7.0"
+version = "3.0.0"
 dependencies = [
  "anyhow",
  "async-trait",

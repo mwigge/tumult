@@ -1,7 +1,7 @@
 [package]
 name = "tumult-lake"
 description = "Unified embedded DuckDB store (telemetry, manual evidence, journal analytics) — one file, one writer"
-version = "0.7.0"
+version.workspace = true
 edition.workspace = true
 license.workspace = true
 
