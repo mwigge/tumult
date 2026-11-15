@@ -9,6 +9,7 @@ use std::sync::{Arc, Mutex};
 use serde_json::Value;
 use tumult_ingest::IngestWriter;
 use tumult_lake::{NewRun, Store, WebhookRow};
+use tumult_test_utils::EnvGuard;
 
 /// One captured delivery: (signature, timestamp, signature-v2, body).
 type Hits = Arc<Mutex<Vec<(String, String, String, String)>>>;
@@ -53,6 +54,15 @@ async fn spawn_receiver() -> Receiver {
     Receiver { hits, url }
 }
 
+/// The test receivers are loopback and plain http: the SSRF guard lets
+/// them through only with both opt-ins, held for as long as the guard lives.
+fn allow_local_receivers() -> EnvGuard {
+    let mut env = EnvGuard::lock();
+    env.set("TUMULTD_WEBHOOK_ALLOW_INSECURE", "1")
+        .set("TUMULTD_WEBHOOK_ALLOW_LOCAL", "1");
+    env
+}
+
 fn webhook(url: &str, events: Vec<String>) -> WebhookRow {
     WebhookRow {
         id: "w-1".into(),
@@ -91,11 +101,7 @@ async fn seed(ingest: &IngestWriter, hook: &WebhookRow) {
 
 #[tokio::test]
 async fn dispatcher_posts_signed_events_and_advances_the_cursor() {
-    // The test receiver is loopback+http: the SSRF guard needs the explicit
-    // opt-ins (this is a separate test binary, so the env is contained).
-    std::env::set_var("TUMULTD_WEBHOOK_ALLOW_INSECURE", "1");
-    std::env::set_var("TUMULTD_WEBHOOK_ALLOW_LOCAL", "1");
-
+    let _env = allow_local_receivers();
     let receiver = spawn_receiver().await;
     let tmp = tempfile::TempDir::new().unwrap();
     let db_path = tmp.path().join("kronika.duckdb");
@@ -150,8 +156,7 @@ async fn dispatcher_posts_signed_events_and_advances_the_cursor() {
 
 #[tokio::test]
 async fn dispatcher_honours_the_event_filter() {
-    std::env::set_var("TUMULTD_WEBHOOK_ALLOW_INSECURE", "1");
-    std::env::set_var("TUMULTD_WEBHOOK_ALLOW_LOCAL", "1");
+    let _env = allow_local_receivers();
     let receiver = spawn_receiver().await;
     let tmp = tempfile::TempDir::new().unwrap();
     let db_path = tmp.path().join("kronika.duckdb");
@@ -211,8 +216,7 @@ fn dispatcher(
 
 #[tokio::test]
 async fn failing_endpoint_is_dead_lettered_and_the_cursor_advances_past_the_loss() {
-    std::env::set_var("TUMULTD_WEBHOOK_ALLOW_INSECURE", "1");
-    std::env::set_var("TUMULTD_WEBHOOK_ALLOW_LOCAL", "1");
+    let _env = allow_local_receivers();
     let receiver = spawn_rejecting_receiver().await;
     let tmp = tempfile::TempDir::new().unwrap();
     let db_path = tmp.path().join("kronika.duckdb");
@@ -257,8 +261,7 @@ async fn failing_endpoint_is_dead_lettered_and_the_cursor_advances_past_the_loss
 
 #[tokio::test]
 async fn backoff_skips_ticks_between_attempts() {
-    std::env::set_var("TUMULTD_WEBHOOK_ALLOW_INSECURE", "1");
-    std::env::set_var("TUMULTD_WEBHOOK_ALLOW_LOCAL", "1");
+    let _env = allow_local_receivers();
     let receiver = spawn_rejecting_receiver().await;
     let tmp = tempfile::TempDir::new().unwrap();
     let db_path = tmp.path().join("kronika.duckdb");
@@ -281,15 +284,11 @@ async fn backoff_skips_ticks_between_attempts() {
 
 #[tokio::test]
 async fn one_hung_endpoint_does_not_block_the_others() {
-    std::env::set_var("TUMULTD_WEBHOOK_ALLOW_INSECURE", "1");
-    std::env::set_var("TUMULTD_WEBHOOK_ALLOW_LOCAL", "1");
-    // A receiver that hangs for 10s before answering.
+    let _env = allow_local_receivers();
+    // A receiver that never answers.
     let hang_app = axum::Router::new().route(
         "/hook",
-        axum::routing::post(|| async {
-            tokio::time::sleep(std::time::Duration::from_secs(10)).await;
-            "ok"
-        }),
+        axum::routing::post(std::future::pending::<&'static str>),
     );
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let hang_url = format!("http://{}/hook", listener.local_addr().unwrap());
@@ -320,17 +319,21 @@ async fn one_hung_endpoint_does_not_block_the_others() {
             .unwrap();
     }
 
-    let started = std::time::Instant::now();
-    let mut d = dispatcher(5, std::time::Duration::from_millis(500));
-    let delivered = d.dispatch_pending(&db_path, &ingest).await.unwrap();
-    let elapsed = started.elapsed();
+    // No request timeout on the client: the endpoint budget is all that
+    // can end the tick.
+    let mut d = tumult_ingest::webhooks::Dispatcher::new(
+        reqwest::Client::new(),
+        5,
+        std::time::Duration::from_millis(500),
+    );
+    let tick = d.dispatch_pending(&db_path, &ingest);
+    let delivered = tokio::time::timeout(std::time::Duration::from_secs(30), tick)
+        .await
+        .expect("the hung endpoint stalled the tick")
+        .unwrap();
 
     assert_eq!(delivered, 1, "the healthy endpoint still got the event");
     assert_eq!(good.hits.lock().unwrap().len(), 1);
-    assert!(
-        elapsed < std::time::Duration::from_secs(5),
-        "the hung endpoint stalled the tick: {elapsed:?}"
-    );
     // The hung endpoint's cursor did not advance; its event is retried.
     let reader = Store::at(&db_path).read_only().unwrap();
     assert_eq!(reader.webhook_cursor("w-hung").unwrap(), Some(1));

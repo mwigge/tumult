@@ -4,36 +4,6 @@
 # matches nothing. List the current offenders with:
 #   python3 scripts/check-test-hygiene.py --list
 
-# tumult-ingest: deferred, the crate is being changed elsewhere
-tumult-ingest/src/daemon_task.rs::ticker_ticks_until_shutdown::bare-sleep  # deferred: sleep without a stated reason
-tumult-ingest/src/grpc.rs::until::bare-sleep  # deferred: sleep without a stated reason
-tumult-ingest/src/otap/tests.rs::connect::bare-sleep  # deferred: sleep without a stated reason
-tumult-ingest/src/otap/tests.rs::streams_beyond_the_limit_are_refused_until_one_closes::bare-sleep  # deferred: sleep without a stated reason
-tumult-ingest/src/runs/tests.rs::await_state::bare-sleep  # deferred: sleep without a stated reason
-tumult-ingest/src/runs/tests.rs::await_terminal::bare-sleep  # deferred: sleep without a stated reason
-tumult-ingest/src/runs/tests.rs::execute::bare-sleep  # deferred: sleep without a stated reason
-tumult-ingest/tests/gamedays.rs::await_terminal::bare-sleep  # deferred: sleep without a stated reason
-tumult-ingest/tests/http_ingest.rs::http_post_logs_preserves_or_assigns_timestamps::bare-sleep  # deferred: sleep without a stated reason
-tumult-ingest/tests/schedules.rs::due_schedule_fires_through_the_normal_run_path::bare-sleep  # deferred: sleep without a stated reason
-tumult-ingest/tests/webhooks.rs::one_hung_endpoint_does_not_block_the_others::bare-sleep  # deferred: sleep without a stated reason
-tumult-ingest/src/grpc.rs::routers_build_with_and_without_token::no-assert  # deferred: asserts nothing yet
-tumult-ingest/src/otap/fuzz.rs::every_sample_decodes_before_it_is_damaged::no-assert  # deferred: asserts nothing yet
-tumult-ingest/src/otap/hostile_ipc.rs::dictionaries_a_stream_keeps_are_budgeted_in_bytes::no-assert  # deferred: asserts nothing yet
-tumult-ingest/src/otap/hostile_ipc.rs::schema_id_longer_than_the_cap_is_refused::no-assert  # deferred: asserts nothing yet
-tumult-ingest/src/otap/hostile_ipc.rs::schema_width_is_capped::no-assert  # deferred: asserts nothing yet
-tumult-ingest/src/otap/hostile_ipc.rs::union_column_is_refused_by_the_schema_allowlist::no-assert  # deferred: asserts nothing yet
-tumult-ingest/src/otap/hostile_ipc.rs::variadic_buffer_counts_are_refused::no-assert  # deferred: asserts nothing yet
-tumult-ingest/src/writer.rs::spawn_reconnect_persists_batches_like_spawn::no-assert  # deferred: asserts nothing yet
-tumult-ingest/src/config.rs::db_path_resolution_order::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumult-ingest/src/daemon_task.rs::tick_from_env_parses_seconds_with_floor_and_fallback::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumult-ingest/src/runs/recovery_plan.rs::environment_configuration_is_hashed_and_drift_refuses_cleanup::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumult-ingest/src/runs/tests.rs::run_queue_config_reads_env_with_fallbacks::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumult-ingest/tests/webhooks.rs::backoff_skips_ticks_between_attempts::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumult-ingest/tests/webhooks.rs::dispatcher_honours_the_event_filter::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumult-ingest/tests/webhooks.rs::dispatcher_posts_signed_events_and_advances_the_cursor::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumult-ingest/tests/webhooks.rs::failing_endpoint_is_dead_lettered_and_the_cursor_advances_past_the_loss::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumult-ingest/tests/webhooks.rs::one_hung_endpoint_does_not_block_the_others::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-
 # tumultd: deferred, the crate is being changed elsewhere
 tumultd/src/reports.rs::report_scheduler_writes_a_digest_after_one_interval::bare-sleep  # deferred: sleep without a stated reason
 tumultd/src/serve/tests.rs::alive_tasks_settled::bare-sleep  # deferred: sleep without a stated reason

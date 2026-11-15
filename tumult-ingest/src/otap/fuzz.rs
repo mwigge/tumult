@@ -211,7 +211,14 @@ fn mutated_payloads_never_panic() {
 fn every_sample_decodes_before_it_is_damaged() {
     for sample in samples() {
         let mut consumer = StreamConsumer::new(limits());
-        convert(sample.signal, &mut consumer, sample.first).unwrap();
-        convert(sample.signal, &mut consumer, sample.second).unwrap();
+        for (part, records) in [("first", sample.first), ("second", sample.second)] {
+            let decoded = convert(sample.signal, &mut consumer, records);
+            assert!(
+                decoded.is_ok(),
+                "{:?} sample, {part} message: {:?}",
+                sample.signal,
+                decoded.err()
+            );
+        }
     }
 }

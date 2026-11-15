@@ -193,6 +193,7 @@ async fn due_schedule_fires_through_the_normal_run_path() {
             terminal = state;
             break;
         }
+        // sleep: poll interval, the loop gives up after its last attempt
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
     assert_eq!(terminal, "passed");

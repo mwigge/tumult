@@ -63,6 +63,8 @@ fn configuration_hash(config: &HashMap<String, String>) -> Result<String, String
 
 #[cfg(test)]
 mod tests {
+    use tumult_test_utils::EnvGuard;
+
     use super::*;
 
     #[test]
@@ -144,20 +146,20 @@ rollbacks[1]:
     }
     #[test]
     fn environment_configuration_is_hashed_and_drift_refuses_cleanup() {
+        let mut env = EnvGuard::lock();
         const KEY: &str = "TUMULT_TEST_RECOVERY_CONFIG_SECRET";
-        std::env::set_var(KEY, "original-sensitive-value");
+        env.set(KEY, "original-sensitive-value");
         let toon = format!("title: binding\nconfiguration:\n  target:\n    type: env\n    key: {KEY}\nmethod[1]:\n  - name: action\n    activity_type: action\n    provider:\n      type: process\n      path: echo\n      arguments[1]: ${{config.target}}\n");
         let plan = RecoveryPlan::capture(&toon, &HashMap::new()).unwrap();
         assert!(!serde_json::to_string(&plan)
             .unwrap()
             .contains("original-sensitive-value"));
-        std::env::set_var(KEY, "changed-destination");
+        env.set(KEY, "changed-destination");
         assert!(plan
             .prepare()
             .unwrap_err()
             .contains("configuration changed"));
-        std::env::set_var(KEY, "original-sensitive-value");
+        env.set(KEY, "original-sensitive-value");
         assert!(plan.prepare().is_ok());
-        std::env::remove_var(KEY);
     }
 }

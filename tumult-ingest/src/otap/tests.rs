@@ -612,6 +612,7 @@ async fn connect(
         if let Ok(c) = ArrowTracesServiceClient::connect(format!("http://{addr}")).await {
             return c;
         }
+        // sleep: poll interval, the loop gives up after 50 attempts
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     }
     panic!("gRPC server did not come up");
@@ -1115,6 +1116,7 @@ async fn streams_beyond_the_limit_are_refused_until_one_closes() {
             reopened = Some((tx, response));
             break;
         }
+        // sleep: poll interval, the loop gives up after 100 attempts
         tokio::time::sleep(std::time::Duration::from_millis(20)).await;
     }
     assert!(reopened.is_some(), "the closed stream's slot was not freed");

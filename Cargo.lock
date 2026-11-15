@@ -8298,6 +8298,7 @@ dependencies = [
  "tumult-lake",
  "tumult-otel",
  "tumult-otlp",
+ "tumult-test-utils",
  "uuid",
  "zstd 0.13.5",
 ]

@@ -8,6 +8,7 @@ use tokio_util::sync::CancellationToken;
 use tumult_core::runner::{ActivityExecutor, ActivityOutcome};
 use tumult_core::types::Activity;
 use tumult_lake::{rollback_status, run_state, NewRun, RegisteredDefinition, Store};
+use tumult_test_utils::EnvGuard;
 
 use super::worker::{process, sweep_expired_approvals};
 use super::*;
@@ -53,6 +54,7 @@ struct RecordingExecutor {
 impl ActivityExecutor for RecordingExecutor {
     fn execute(&self, activity: &Activity) -> ActivityOutcome {
         self.executed.lock().unwrap().push(activity.name.clone());
+        // sleep: stands in for the time the activity takes to run
         std::thread::sleep(self.delay);
         ActivityOutcome {
             success: true,
@@ -223,6 +225,7 @@ async fn await_state(fx: &Fixture, run_id: &str, want: &str) -> String {
                 return state;
             }
         }
+        // sleep: poll interval, the loop gives up after 100 attempts
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
     panic!("run {run_id} never reached state {want}");
@@ -235,6 +238,7 @@ async fn await_terminal(fx: &Fixture, run_id: &str) -> String {
                 return state;
             }
         }
+        // sleep: poll interval, the loop gives up after 100 attempts
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
     panic!("run {run_id} never reached a terminal state");
@@ -865,17 +869,18 @@ method[1]:
 
 #[test]
 fn run_queue_config_reads_env_with_fallbacks() {
-    std::env::set_var("TUMULTD_RUN_CONCURRENCY", "7");
-    std::env::set_var("TUMULTD_RUN_QUEUE_DEPTH", "notanumber");
-    std::env::set_var("TUMULTD_APPROVAL_SWEEP_S", "0");
+    let mut env = EnvGuard::lock();
+    env.set("TUMULTD_RUN_CONCURRENCY", "7");
+    env.set("TUMULTD_RUN_QUEUE_DEPTH", "notanumber");
+    env.set("TUMULTD_APPROVAL_SWEEP_S", "0");
     let cfg = RunQueueConfig::from_env();
     assert_eq!(cfg.concurrency, 7);
     // Unparseable and zero values fall back to the defaults.
     assert_eq!(cfg.queue_depth, 32);
     assert_eq!(cfg.sweep_interval, Duration::from_secs(60));
-    std::env::remove_var("TUMULTD_RUN_CONCURRENCY");
-    std::env::remove_var("TUMULTD_RUN_QUEUE_DEPTH");
-    std::env::remove_var("TUMULTD_APPROVAL_SWEEP_S");
+    env.remove("TUMULTD_RUN_CONCURRENCY");
+    env.remove("TUMULTD_RUN_QUEUE_DEPTH");
+    env.remove("TUMULTD_APPROVAL_SWEEP_S");
     let cfg = RunQueueConfig::from_env();
     assert_eq!(cfg.concurrency, 2);
 }
