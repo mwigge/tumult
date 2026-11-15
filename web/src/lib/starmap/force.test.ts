@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { FORCE_LIMIT, SPACING, spread } from './force.js';
+import { FORCE_LIMIT, LINK, RISE, SPACING, spread } from './force.js';
 import { layoutStar } from './layout.js';
 import type { LayoutEdge, LayoutNode, Point } from './layout.js';
 
@@ -49,15 +49,26 @@ const at = (placed: Map<string, Point>, id: string): Point => {
 
 const distance = (a: Point, b: Point) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 
+/** 1 is the room a node and its caption need: `SPACING` wide, `RISE` high. */
+const clearance = (a: Point, b: Point) => Math.hypot((a[0] - b[0]) / SPACING, (a[1] - b[1]) / RISE);
+
 function closest(placed: Map<string, Point>): number {
     const points = [...placed.values()];
     let least = Infinity;
     for (let i = 0; i < points.length; i += 1) {
         for (let j = i + 1; j < points.length; j += 1) {
-            least = Math.min(least, distance(points[i], points[j]));
+            least = Math.min(least, clearance(points[i], points[j]));
         }
     }
     return least;
+}
+
+/** Length of every link: edges and spine parents. */
+function linkLengths(nodes: LayoutNode[], edges: LayoutEdge[], placed: Map<string, Point>) {
+    const ids = new Set(nodes.map((n) => n.id));
+    const ends = edges.map((e): [string, string] => [e.from, e.to]);
+    for (const n of nodes) if (n.parent && ids.has(n.parent)) ends.push([n.id, n.parent]);
+    return ends.map(([a, b]) => distance(at(placed, a), at(placed, b)));
 }
 
 /** A tree of `count` nodes with three children each, plus a few cross links. */
@@ -95,9 +106,48 @@ describe('spread', () => {
 
     it('keeps every pair of nodes a caption apart', () => {
         const { nodes, edges } = estate();
-        expect(closest(place(nodes, edges))).toBeGreaterThanOrEqual(SPACING - 0.01);
+        expect(closest(place(nodes, edges))).toBeGreaterThanOrEqual(0.999);
         const big = tree(200);
-        expect(closest(place(big.nodes, big.edges))).toBeGreaterThanOrEqual(SPACING - 0.01);
+        expect(closest(place(big.nodes, big.edges))).toBeGreaterThanOrEqual(0.999);
+    });
+
+    it('makes every link long enough to carry its relation between two node rims', () => {
+        expect(LINK).toBeGreaterThanOrEqual(44 + 60 + 12);
+        const { nodes, edges } = estate();
+        expect(Math.min(...linkLengths(nodes, edges, place(nodes, edges)))).toBeGreaterThan(
+            LINK - 1,
+        );
+        const big = tree(60);
+        expect(
+            Math.min(...linkLengths(big.nodes, big.edges, place(big.nodes, big.edges))),
+        ).toBeGreaterThan(LINK - 1);
+    });
+
+    it('hangs a node with one link on the outer side of its neighbour, away from the hub', () => {
+        const { nodes, edges } = estate();
+        const placed = place(nodes, edges);
+        const system = at(placed, 'sys:demo/api-worker');
+        const hub = at(placed, 'ent:cif-0001');
+        const leaf = at(placed, 'def:api-worker-kill');
+        const out: Point = [system[0] - hub[0], system[1] - hub[1]];
+        const hang: Point = [leaf[0] - system[0], leaf[1] - system[1]];
+        expect(out[0] * hang[0] + out[1] * hang[1]).toBeGreaterThan(0);
+        expect(distance(leaf, hub)).toBeGreaterThan(distance(system, hub));
+    });
+
+    it('fans several one-link nodes of one neighbour without stacking them', () => {
+        const { nodes, edges } = estate();
+        const placed = place(nodes, edges);
+        const queue = at(placed, 'sys:demo/message-queue');
+        const hub = at(placed, 'ent:cif-0002');
+        const leaves = [
+            'cmp:demo/message-queue/broker',
+            'wl:demo/statefulset/message-queue',
+            'def:queue-dependency-loss',
+        ].map((id) => at(placed, id));
+        for (const leaf of leaves) {
+            expect(distance(leaf, hub)).toBeGreaterThan(distance(queue, hub));
+        }
     });
 
     it('keeps linked nodes at a readable distance', () => {

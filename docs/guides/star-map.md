@@ -106,10 +106,19 @@ environment at all, is not counted.
 Every node is a circle in the colour of its kind, with its name below.
 An arrow is a relation and carries its name (`OWNS`, `IMPLEMENTS`,
 `CALLS`, `RUNS_ON`, `DEPENDS_ON`, `TESTED_BY`, `BROKE`, `COVERS`,
-`MEASURES`). A plain line with no arrow means the node sits under its
-parent. The chips under the map show each kind and its count; click one
-to hide that kind. Hover or select a node to keep its links and
-neighbours and dim the rest.
+`MEASURES`). A thin grey arrow named `PART_OF` points from a node to the
+parent it sits under, when no other relation joins the two. It is drawn
+from the `parent` of the node; the API has no such edge.
+
+A relation name is written on the arrow only where the arrow is long
+enough and the name lands on no other caption. Hover an arrow to read
+the name of any relation. When two neighbours have the same name, each
+shows its kind in small text under the name. A long name is cut short,
+more so when the map is drawn small; the tooltip has the full name.
+
+The chips under the map show each kind and its count; click one to hide
+that kind. Hover or select a node to keep its links and neighbours and
+dim the rest.
 
 A lens changes the ring of a node and the mark before its name, never
 its colour:

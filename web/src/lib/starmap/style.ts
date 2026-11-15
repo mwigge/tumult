@@ -117,7 +117,7 @@ const EVIDENCE_RELS = new Set<StarRel>(['tested_by', 'covers', 'measures']);
 const SOON_NS = 14 * 86_400_000_000_000;
 const DIMMED = 0.35;
 /** Longest caption under a node, in characters. */
-const CAPTION = 16;
+export const CAPTION = 16;
 
 export interface ItemStyle {
     color: string;
@@ -150,6 +150,8 @@ export interface StarLink {
     lineStyle: { color: string; width: number; type: string; opacity: number; curveness?: number };
     /** The caption along the edge; the relation as the API names it. */
     label: { show: boolean; formatter?: string };
+    /** On hover the caption is written also where it is left out at rest. */
+    emphasis?: { label: { show: boolean } };
     /** The API edge, or null for a spine parent that has no edge. */
     raw: StarEdge | null;
 }
@@ -202,11 +204,11 @@ const RING: Record<Status, number> = { ok: 2.5, warn: 3.5, fail: 4.5 };
 
 /**
  * The caption under a node: the mark of its status under the lens, then
- * its name, cut short. The full name is in the tooltip.
+ * its name, cut to `limit` characters. The full name is in the tooltip.
  */
-export function caption(n: StarNode, lens: Lens): string {
+export function caption(n: StarNode, lens: Lens, limit = CAPTION): string {
     const status = statusOf(n, lens);
-    const name = n.label.length > CAPTION ? `${n.label.slice(0, CAPTION - 1)}\u2026` : n.label;
+    const name = n.label.length > limit ? `${n.label.slice(0, limit - 1)}\u2026` : n.label;
     const text = labelText({ ...n, label: name });
     return status ? `${STATUS_MARK[status]} ${text}` : text;
 }
@@ -307,19 +309,22 @@ export function toLink(e: StarEdge, c: StyleContext): StarLink {
     };
 }
 
+/** The relation written on the link from a node to its parent. */
+export const PART_OF = 'PART_OF';
+
 /**
- * The link from a spine parent to a child the API joins by no edge (an
- * org unit under its parent unit, a component in its system). No relation
- * is named, so none is written: a thin line without arrow or caption.
+ * The link from a child to a parent the API joins by no edge (an org unit
+ * under its parent unit, a component in its system). It draws the `parent`
+ * of the node: a thin grey arrow, so that it reads as structure.
  */
 export function toSpineLink(child: string, parent: string, c: StyleContext): StarLink {
     return {
         id: `spine|${child}`,
-        source: parent,
-        target: child,
-        symbol: ['none', 'none'],
-        lineStyle: { color: c.tokens.text, width: 1, type: 'solid', opacity: 0.45 },
-        label: { show: false },
+        source: child,
+        target: parent,
+        symbol: ['none', 'arrow'],
+        lineStyle: { color: c.tokens.text, width: 1, type: 'solid', opacity: 0.55 },
+        label: { show: true, formatter: PART_OF },
         raw: null,
     };
 }
@@ -441,7 +446,7 @@ export function edgeTooltipHtml(e: StarEdge): Tip {
     return tip(head, `${e.weight} calls, ${e.errors ?? 0} errors · source: ${e.source}`);
 }
 
-/** Tooltip of a spine link: where the node sits, and that no relation is named. */
+/** Tooltip of a PART_OF link: which node is part of which, and where that comes from. */
 export function spineTooltipHtml(child: string, parent: string): Tip {
-    return tip(`${child} sits under ${parent}`, 'placement only: no named relation');
+    return tip(`${child} part of ${parent}`, 'source: the parent of the node');
 }

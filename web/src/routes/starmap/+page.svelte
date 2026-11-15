@@ -30,6 +30,8 @@
     const CLUSTER = 'cluster:';
     /** Most buttons the node list renders at once; the filter narrows it. */
     const LISTED = 200;
+    /** Size of the chart; the width is measured once it is on the page. */
+    const CANVAS = { width: 1200, height: 800 };
 
     const param = (key: string) => page.url.searchParams.get(key) ?? '';
     const range = $derived(param('range') || '7d');
@@ -46,8 +48,10 @@
     // Environments seen so far, so the filter keeps its choices once one is set.
     let envs: string[] = $state([]);
     let theme: ChartTheme = $state(chartTheme());
-    // Label level of detail: 0 below zoom 1, 1 from zoom 1, 2 from zoom 2.
+    // Zoom of the map in quarter steps, rounded down: captions follow it.
     let detail = $state(1);
+    // Width of the chart, to tell which edges are long enough for a caption.
+    let width = $state(0);
     let filter = $state('');
     // Kinds switched off in the legend.
     let hidden: StarKind[] = $state([]);
@@ -129,7 +133,7 @@
     function edgeTipOf(data: NonNullable<TipParams['data']>): Tip | null {
         if (data.raw) return edgeTooltipHtml(data.raw as StarEdge);
         if (!data.source || !data.target) return null;
-        return spineTooltipHtml(data.target, data.source);
+        return spineTooltipHtml(data.source, data.target);
     }
 
     function tipOf(p: TipParams): Tip | null {
@@ -155,6 +159,7 @@
             nodes: map.nodes,
             edges: map.edges,
             positions,
+            canvas: { width: width || CANVAS.width, height: CANVAS.height },
             context,
             hidden: new Set(hidden),
             focused: Boolean(focus),
@@ -215,7 +220,7 @@
     }
 
     function onRoam(view: { zoom: number }) {
-        const next = view.zoom >= 2 ? 2 : view.zoom >= 1 ? 1 : 0;
+        const next = Math.floor(view.zoom * 4) / 4;
         if (next !== detail) detail = next;
     }
 
@@ -276,7 +281,7 @@
         {#if error}
             <div class="state error">Failed to load the star map: {error}</div>
         {:else if !map}
-            <div class="skeleton" style="height: 720px"></div>
+            <div class="skeleton" style="height: {CANVAS.height}px"></div>
         {:else if map.nodes.length === 0}
             <div class="state">
                 {#if map.focus_found === false}
@@ -288,17 +293,19 @@
                 {/if}
             </div>
         {:else}
-            <EChart
-                id="starmap"
-                label={described}
-                {option}
-                height={720}
-                merge
-                viewKey={focus}
-                onclick={onNode}
-                ondblclick={onNodeTwice}
-                onroam={onRoam}
-            />
+            <div bind:clientWidth={width}>
+                <EChart
+                    id="starmap"
+                    label={described}
+                    {option}
+                    height={CANVAS.height}
+                    merge
+                    viewKey={focus}
+                    onclick={onNode}
+                    ondblclick={onNodeTwice}
+                    onroam={onRoam}
+                />
+            </div>
             <p class="sub">
                 Hover to see a node and its links. Click for evidence. Double-click to focus.
             </p>
@@ -340,7 +347,6 @@
                 <li><span class="ring stale"></span>stale evidence</li>
                 <li><span class="ring suppressed"></span>only suppressed risks</li>
                 <li><span class="line arrow"></span><span class="mono">NAME</span> relation</li>
-                <li><span class="line"></span>sits under</li>
             </ul>
             {#if unavailable.length > 0}
                 <p class="sub">Not available yet: {unavailable.join(', ')}.</p>

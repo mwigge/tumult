@@ -368,6 +368,7 @@ interface DrawnLink {
     target: string;
     symbol: string[];
     label: { show: boolean; formatter?: string };
+    emphasis: { label: { show: boolean } };
     lineStyle: { opacity: number; curveness: number };
 }
 
@@ -395,32 +396,45 @@ test('the demo-sized map reads like a graph: round nodes apart, named arrows', a
     expect(data.length).toBe(51);
     expect(demo.edges.length).toBe(38);
 
-    // Every node is a circle, and no two sit closer than a caption needs.
+    // Every node is a circle, and no two sit closer than a caption needs:
+    // 112 side by side, 84 above each other.
     expect(new Set(data.map((d) => d.symbol))).toEqual(new Set(['circle']));
     let closest = Infinity;
     for (let i = 0; i < data.length; i += 1) {
         for (let j = i + 1; j < data.length; j += 1) {
-            closest = Math.min(closest, Math.hypot(data[i].x - data[j].x, data[i].y - data[j].y));
+            const [dx, dy] = [data[i].x - data[j].x, data[i].y - data[j].y];
+            closest = Math.min(closest, Math.hypot(dx / 112, dy / 84));
         }
     }
-    expect(closest).toBeGreaterThanOrEqual(89.9);
+    expect(closest).toBeGreaterThanOrEqual(0.999);
 
     // Every API edge is an arrow that carries the relation the API named.
+    // It is written where the edge has room for it, and on hover everywhere.
     const named = links.filter((l) => !l.id.startsWith('spine|'));
     expect(named.length).toBe(38);
     for (const link of named) {
         expect(link.symbol, link.id).toEqual(['none', 'arrow']);
-        expect(link.label.show, link.id).toBe(true);
         expect(link.label.formatter, link.id).toBe(link.id.split('|')[1].toUpperCase());
+        expect(link.emphasis.label.show, link.id).toBe(true);
     }
+    expect(named.filter((l) => l.label.show).length).toBeGreaterThan(0);
     // A test and what it broke join the same two nodes: they bend apart.
     const broke = named.find((l) => l.label.formatter === 'BROKE');
     expect(broke?.lineStyle.curveness).not.toBe(0);
 
-    // No node floats free: a parent the API joins by no edge gets a plain line,
-    // and the one definition that never ran is the only node without a link.
+    // No node floats free: a parent the API joins by no edge gets a PART_OF
+    // arrow from its child, and the one definition that never ran is the only
+    // node without a link.
     const spine = links.filter((l) => l.id.startsWith('spine|'));
-    expect(spine.every((l) => l.symbol[1] === 'none' && !l.label.show)).toBe(true);
+    expect(spine.length).toBeGreaterThan(0);
+    expect(spine.every((l) => l.symbol[1] === 'arrow' && l.label.formatter === 'PART_OF')).toBe(
+        true,
+    );
+    const broker = spine.find((l) => l.id === 'spine|cmp:demo/message-queue/broker');
+    expect([broker?.source, broker?.target]).toEqual([
+        'cmp:demo/message-queue/broker',
+        'sys:demo/message-queue',
+    ]);
     const linked = new Set(links.flatMap((l) => [l.source, l.target]));
     expect(data.filter((d) => !linked.has(d.id)).map((d) => d.id)).toEqual([
         'def:name/never-ran dns outage',
@@ -452,7 +466,8 @@ test('the legend is chips per kind and a key, and a chip hides its kind', async 
         await expect(key).toContainText(text);
     }
     await expect(key).toContainText('only suppressed risks');
-    await expect(key).toContainText('sits under');
+    await expect(key).toContainText('relation');
+    await expect(key).not.toContainText('sits under');
     await page.getByRole('button', { name: 'risk', exact: true }).click();
     await expect(key).toContainText('high or critical risk');
     await expect(key).not.toContainText('runs passed');

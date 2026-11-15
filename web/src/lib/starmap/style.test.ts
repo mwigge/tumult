@@ -13,6 +13,7 @@ import {
     labelText,
     relCaption,
     rollupLines,
+    PART_OF,
     spineTooltipHtml,
     statusOf,
     toItem,
@@ -245,6 +246,8 @@ describe('statusOf and caption', () => {
         const long = node({ label: 'queue-dependency-loss-with-restart' });
         expect(caption(long, 'evidence')).toBe('queue-dependenc…');
         expect(caption(node({ label: 'exactly-16-chars' }), 'evidence')).toBe('exactly-16-chars');
+        // A map drawn small leaves less room under a node.
+        expect(caption(long, 'evidence', 8)).toBe('queue-d…');
     });
 
     it('keeps a name from being read as ECharts rich text', () => {
@@ -324,20 +327,23 @@ describe('toLink', () => {
 });
 
 describe('toSpineLink', () => {
-    it('draws a parent without a relation as a thin plain line, no arrow, no caption', () => {
+    it('draws the parent of a node as a thin grey arrow from the child, named PART_OF', () => {
         const link = toSpineLink('cmp:demo/mq/broker', 'sys:demo/mq', ctx());
         expect(link.id).toBe('spine|cmp:demo/mq/broker');
-        expect([link.source, link.target]).toEqual(['sys:demo/mq', 'cmp:demo/mq/broker']);
-        expect(link.symbol).toEqual(['none', 'none']);
-        expect(link.label.show).toBe(false);
+        expect([link.source, link.target]).toEqual(['cmp:demo/mq/broker', 'sys:demo/mq']);
+        expect(link.symbol).toEqual(['none', 'arrow']);
+        expect(link.label).toEqual({ show: true, formatter: PART_OF });
+        expect(PART_OF).toBe('PART_OF');
+        expect(link.lineStyle.color).toBe(t.text);
         expect(link.lineStyle.width).toBeLessThan(1.2);
+        expect(link.lineStyle.opacity).toBeLessThan(0.7);
         expect(link.raw).toBeNull();
     });
 
-    it('says in its tooltip that the API names no relation', () => {
+    it('says in its tooltip which node is part of which, as text', () => {
         const html = spineTooltipHtml('cmp:<b>', 'sys:demo/mq').html;
-        expect(html).toContain('cmp:&lt;b&gt; sits under sys:demo/mq');
-        expect(html).toContain('no named relation');
+        expect(html).toContain('cmp:&lt;b&gt; part of sys:demo/mq');
+        expect(html).toContain('the parent of the node');
     });
 });
 

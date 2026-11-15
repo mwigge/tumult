@@ -1,22 +1,33 @@
 // Force pass over the radial layout: a pure, repeatable simulation that
-// pulls linked nodes to a readable distance and pushes every pair apart
-// far enough for a round node and its caption. It starts from the radial
+// pulls linked nodes to a distance that fits the relation caption, hangs
+// one-link nodes on the outer side of their neighbour and pushes every
+// pair apart far enough for a round node and its caption. It starts from the radial
 // positions, runs a fixed number of steps and uses no randomness, so the
 // map still looks the same on every load. Layout units are pixels at
 // zoom 1.
 
 import type { LayoutEdge, LayoutNode, Point } from './layout.js';
 
-/** No two nodes end up closer than this. */
-export const SPACING = 90;
+/** No two nodes side by side end up closer than this: a caption wide. */
+export const SPACING = 112;
+/** No two nodes above each other end up closer: a node and its caption. */
+export const RISE = 84;
 /** Above this many linked nodes the radial layout is kept as it is. */
 export const FORCE_LIMIT = 600;
 
-/** Length a link settles at when nothing else pulls on it. */
-const LINK = SPACING * 1.3;
+/** Widest node, widest relation caption (`IMPLEMENTS` in 9px mono), air. */
+const NODE = 44;
+const CAPTION = 60;
+const MARGIN = 26;
+/** No link ends up shorter: its caption fits between the two node rims. */
+export const LINK = NODE + CAPTION + MARGIN;
 const STEPS = 300;
-/** Pull toward the centre; stronger up and down, so the map grows wide. */
-const GRAVITY: Point = [0.02, 0.04];
+/** How much harder nodes push each other apart than links pull. */
+const REPEL = 1.6;
+/** Pull toward the centre; stronger up and down, so the map grows wider than high. */
+const GRAVITY: Point = [0.03, 0.06];
+/** The arc one-link nodes may take around their neighbour. */
+const FAN_ARC = (Math.PI * 5) / 3;
 const SETTLE_PASSES = 400;
 /** Slack over `SPACING` so rounding never breaks the guarantee. */
 const PAD = 0.5;
@@ -74,7 +85,7 @@ function repel(bodies: Body[]): void {
     for (let i = 0; i < bodies.length; i += 1) {
         for (let j = i + 1; j < bodies.length; j += 1) {
             const [x, y, d] = apart(bodies[i], bodies[j], i, j);
-            const push = (LINK * LINK) / (d * d);
+            const push = (REPEL * LINK * LINK) / (d * d);
             bodies[i].dx += x * push;
             bodies[i].dy += y * push;
             bodies[j].dx -= x * push;
@@ -108,23 +119,105 @@ function move(bodies: Body[], heat: number): void {
     }
 }
 
-/** Push apart the pairs that are still too close; true when none was. */
+/** Move two bodies apart along `x`, `y`, half the way each. */
+function part(a: Body, b: Body, x: number, y: number): void {
+    a.x += x / 2;
+    a.y += y / 2;
+    b.x -= x / 2;
+    b.y -= y / 2;
+}
+
+/**
+ * Push apart the pairs whose captions would touch; true when none did.
+ * The room a node needs is `SPACING` wide and `RISE` high.
+ */
 function separate(bodies: Body[]): boolean {
-    const need = SPACING + PAD;
+    const need = 1 + PAD / SPACING;
     let clean = true;
     for (let i = 0; i < bodies.length; i += 1) {
         for (let j = i + 1; j < bodies.length; j += 1) {
-            const [x, y, d] = apart(bodies[i], bodies[j], i, j);
+            const [x, y] = apart(bodies[i], bodies[j], i, j);
+            const d = Math.hypot(x / SPACING, y / RISE);
             if (d >= need) continue;
             clean = false;
-            const shift = (need - d) / 2 / d;
-            bodies[i].x += x * shift;
-            bodies[i].y += y * shift;
-            bodies[j].x -= x * shift;
-            bodies[j].y -= y * shift;
+            const shift = (need - d) / d;
+            part(bodies[i], bodies[j], x * shift, y * shift);
         }
     }
     return clean;
+}
+
+/** Lengthen the links shorter than `LINK`; true when none was. */
+function stretch(bodies: Body[], pairs: Pair[]): boolean {
+    const need = LINK + PAD;
+    let clean = true;
+    for (const [i, j] of pairs) {
+        const [x, y, d] = apart(bodies[i], bodies[j], i, j);
+        if (d >= need) continue;
+        clean = false;
+        const shift = (need - d) / d;
+        part(bodies[i], bodies[j], x * shift, y * shift);
+    }
+    return clean;
+}
+
+/** The bodies each body is linked to, by index. */
+function neighbours(count: number, pairs: Pair[]): number[][] {
+    const near: number[][] = Array.from({ length: count }, () => []);
+    for (const [i, j] of pairs) {
+        near[i].push(j);
+        near[j].push(i);
+    }
+    return near;
+}
+
+function centroid(bodies: Body[]): Point {
+    const sum = bodies.reduce((at, b): Point => [at[0] + b.x, at[1] + b.y], [0, 0]);
+    return [sum[0] / bodies.length, sum[1] / bodies.length];
+}
+
+/** The angle `a` as an offset from `from`, in (-PI, PI]. */
+function turn(a: number, from: number): number {
+    const d = (a - from) % (2 * Math.PI);
+    if (d > Math.PI) return d - 2 * Math.PI;
+    return d <= -Math.PI ? d + 2 * Math.PI : d;
+}
+
+/**
+ * Put the one-link nodes of `anchor` in a fan that points `out`, in the
+ * order the simulation left them, far enough apart for their captions.
+ */
+function fanOut(anchor: Body, leaves: Body[], out: number, arc: number): void {
+    const fit = 2 * Math.asin(Math.min(1, SPACING / (2 * LINK)));
+    const step = Math.min(fit, arc / leaves.length);
+    const radius = Math.max(LINK, SPACING / (2 * Math.sin(step / 2)));
+    const angle = (b: Body) => turn(Math.atan2(b.y - anchor.y, b.x - anchor.x), out);
+    const ordered = [...leaves].sort((a, b) => angle(a) - angle(b) || (a.id < b.id ? -1 : 1));
+    ordered.forEach((leaf, k) => {
+        const at = out + (k - (ordered.length - 1) / 2) * step;
+        leaf.x = anchor.x + Math.cos(at) * radius;
+        leaf.y = anchor.y + Math.sin(at) * radius;
+    });
+}
+
+/**
+ * Hang every node with one link on the outer side of its neighbour: away
+ * from what else the neighbour is linked to, or from the middle of the
+ * map. An experiment then sits beyond its system, not on its caption.
+ */
+function fan(bodies: Body[], pairs: Pair[]): void {
+    if (bodies.length === 0) return;
+    const near = neighbours(bodies.length, pairs);
+    const leaf = (i: number) => near[i].length === 1 && near[near[i][0]].length > 1;
+    const middle = centroid(bodies);
+    bodies.forEach((anchor, i) => {
+        const leaves = near[i].filter(leaf).map((j) => bodies[j]);
+        if (leaves.length === 0) return;
+        const rest = near[i].filter((j) => !leaf(j)).map((j) => bodies[j]);
+        const from = rest.length > 0 ? centroid(rest) : middle;
+        const out = Math.atan2(anchor.y - from[1], anchor.x - from[0]);
+        fanOut(anchor, leaves, out, rest.length > 0 ? FAN_ARC : 2 * Math.PI);
+    });
 }
 
 function simulate(bodies: Body[], pairs: Pair[]): void {
@@ -133,8 +226,10 @@ function simulate(bodies: Body[], pairs: Pair[]): void {
         attract(bodies, pairs);
         move(bodies, LINK * (1 - step / STEPS));
     }
+    fan(bodies, pairs);
     for (let pass = 0; pass < SETTLE_PASSES; pass += 1) {
-        if (separate(bodies)) return;
+        const apartEnough = separate(bodies);
+        if (stretch(bodies, pairs) && apartEnough) return;
     }
 }
 
