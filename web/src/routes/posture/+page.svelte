@@ -6,7 +6,7 @@
     import { api, fmtAgo } from '#lib/api.js';
     import type { EChartsCoreOption } from '#lib/echarts.js';
     import { chartTokens } from '#lib/echarts.js';
-    import { coverageLabels } from '#lib/coverage.js';
+    import { coverageLabels, disciplineLabel } from '#lib/coverage.js';
     import { strong, tip, tipFormatter } from '#lib/tooltip.js';
     import type {
         ConformanceReport,
@@ -119,10 +119,14 @@
                 formatter: tipFormatter((p: { data?: number[] }) => {
                     const [x, y, v] = p.data ?? [0, 0, 0];
                     const status = ['missing', 'stale', 'covered'][v] ?? '';
-                    return tip([strong(targets[y]), ` · ${kinds[x]}`], status);
+                    return tip([strong(targets[y]), ` · ${disciplineLabel(kinds[x])}`], status);
                 }),
             },
-            xAxis: { type: 'category', data: kinds, axisLabel: { color: t.text } },
+            xAxis: {
+                type: 'category',
+                data: kinds.map(disciplineLabel),
+                axisLabel: { color: t.text },
+            },
             yAxis: { type: 'category', data: targets, axisLabel: { color: t.text } },
             visualMap: {
                 show: false,
@@ -147,7 +151,7 @@
         return {
             tooltip: { ...t.tooltip },
             radar: {
-                indicator: kinds.map((k) => ({ name: k.kind, max: 1 })),
+                indicator: kinds.map((k) => ({ name: disciplineLabel(k.kind), max: 1 })),
                 axisName: { color: t.text },
                 splitLine: { lineStyle: { color: t.split } },
                 splitArea: { show: false },
@@ -276,7 +280,9 @@
                         </div>
                         <div class="detail">{r.detail}</div>
                         {#if r.recommended_kind}
-                            <div class="hint">next: run a <b>{r.recommended_kind}</b> test</div>
+                            <div class="hint">
+                                next: run a <b>{disciplineLabel(r.recommended_kind)}</b> test
+                            </div>
                         {/if}
                         {#if suppressing === r.id}
                             <form

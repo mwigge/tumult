@@ -452,8 +452,8 @@ async fn one_system_name_in_two_environments_keeps_its_own_coverage() {
     let prod = node(&body, "sys:prod/shared").expect("prod system");
     let discipline = |n: &Value, kind: &str| n["evidence"]["by_discipline"][kind].clone();
     assert_eq!(discipline(demo, "chaos"), "covered", "{demo}");
-    assert_eq!(discipline(demo, "dr"), "missing", "{demo}");
-    assert_eq!(discipline(prod, "dr"), "covered", "{prod}");
+    assert_eq!(discipline(demo, "robustness"), "missing", "{demo}");
+    assert_eq!(discipline(prod, "robustness"), "covered", "{prod}");
     assert_eq!(discipline(prod, "chaos"), "missing", "{prod}");
     assert!(demo["gap"].is_null() && prod["gap"].is_null());
     assert_eq!(demo["evidence"]["runs"], 1);

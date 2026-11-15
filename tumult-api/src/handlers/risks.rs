@@ -22,6 +22,7 @@ use axum::{Extension, Json};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tumult_compliance::scoring::{ExperimentScore, RunState};
+use tumult_core::types::discipline;
 use tumult_lake::Reader;
 use tumult_risk::{
     Definition, Dependency, ExperimentLatest, Inputs, KindEvidence, Report, Suppression,
@@ -75,13 +76,20 @@ fn in_list(ids: &[String]) -> String {
 }
 
 /// Discipline of a manual exercise type: failover and drill evidence is
-/// disaster recovery, everything else counts as chaos.
+/// disaster recovery, which is part of robustness; everything unnamed
+/// counts as chaos.
 fn manual_kind(exercise_type: &str) -> &'static str {
     match exercise_type.to_ascii_lowercase().as_str() {
-        "failover" | "drill" | "dr" => "dr",
-        "load" => "load",
+        "failover" | "drill" | "dr" | "soak" | "robustness" => "robustness",
+        "load" | "performance" => "performance",
         _ => "chaos",
     }
+}
+
+/// Discipline of an automated run from its stored kind: chaos when the
+/// run recorded none.
+fn run_kind(test_kind: Option<String>) -> String {
+    test_kind.map_or_else(|| "chaos".into(), |kind| discipline(&kind).to_owned())
 }
 
 struct KindRow {
@@ -115,7 +123,7 @@ fn kinds_by_evidence(
             out.insert(
                 id,
                 KindRow {
-                    kind: str_of(&row, "test_kind").unwrap_or_else(|| "chaos".into()),
+                    kind: run_kind(str_of(&row, "test_kind")),
                     rto_target_s: row.get("rto_target_s").and_then(Value::as_f64),
                     rto_measured_s: row.get("rto_measured_s").and_then(Value::as_f64),
                 },
@@ -549,7 +557,7 @@ mod tests {
         kinds.insert(
             "e2".to_string(),
             KindRow {
-                kind: "dr".into(),
+                kind: "robustness".into(),
                 rto_target_s: Some(60.0),
                 rto_measured_s: Some(90.0),
             },
@@ -562,7 +570,7 @@ mod tests {
         assert_eq!(t.experiments.len(), 3);
         let chaos = t.kinds.iter().find(|k| k.kind == "chaos").unwrap();
         assert_eq!((chaos.runs, chaos.last_run_ns), (5, 100));
-        let dr = t.kinds.iter().find(|k| k.kind == "dr").unwrap();
+        let dr = t.kinds.iter().find(|k| k.kind == "robustness").unwrap();
         assert_eq!((dr.runs, dr.last_run_ns), (1, 200));
         let drill = t.experiments.iter().find(|e| e.name == "dr-drill").unwrap();
         assert!(!drill.passed);
@@ -578,7 +586,7 @@ mod tests {
         kinds.insert(
             "e2".to_string(),
             KindRow {
-                kind: "dr".into(),
+                kind: "robustness".into(),
                 rto_target_s: None,
                 rto_measured_s: None,
             },
@@ -594,7 +602,10 @@ mod tests {
             .collect();
         assert_eq!(
             rows,
-            vec![(Some("demo"), vec!["chaos"]), (Some("prod"), vec!["dr"])]
+            vec![
+                (Some("demo"), vec!["chaos"]),
+                (Some("prod"), vec!["robustness"])
+            ]
         );
         assert!(targets.iter().all(|t| t.target == "db"));
         assert!(targets.iter().all(|t| t.experiments.len() == 1));
@@ -627,7 +638,7 @@ mod tests {
                 environment: Some("demo".into()),
                 experiments: vec![ExperimentLatest {
                     name: "pg".into(),
-                    kind: "dr".into(),
+                    kind: "robustness".into(),
                     last_run_ns: 1,
                     passed: true,
                     outcome: None,
@@ -652,9 +663,20 @@ mod tests {
 
     #[test]
     fn manual_exercise_types_map_to_disciplines() {
-        assert_eq!(manual_kind("Failover"), "dr");
-        assert_eq!(manual_kind("drill"), "dr");
+        assert_eq!(manual_kind("Failover"), "robustness");
+        assert_eq!(manual_kind("drill"), "robustness");
         assert_eq!(manual_kind("tabletop"), "chaos");
+        assert_eq!(manual_kind("load"), "performance");
+        assert_eq!(manual_kind("dr"), "robustness");
+        assert_eq!(manual_kind("soak"), "robustness");
+        assert_eq!(manual_kind("Performance"), "performance");
+    }
+
+    #[test]
+    fn a_run_recorded_as_load_counts_as_performance() {
+        assert_eq!(run_kind(Some("load".into())), "performance");
+        assert_eq!(run_kind(Some("dr".into())), "robustness");
+        assert_eq!(run_kind(None), "chaos");
     }
 
     #[test]

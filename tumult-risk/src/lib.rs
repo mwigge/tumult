@@ -165,7 +165,7 @@ mod tests {
         let json = serde_json::to_value(&report).unwrap();
         assert_eq!(json["summary"]["total"], 3);
         assert_eq!(json["risks"][0]["severity"], "high");
-        assert_eq!(json["coverage"]["kinds"].as_array().unwrap().len(), 7);
+        assert_eq!(json["coverage"]["kinds"].as_array().unwrap().len(), 4);
         let back: Report = serde_json::from_value(json).unwrap();
         assert_eq!(back, report);
     }

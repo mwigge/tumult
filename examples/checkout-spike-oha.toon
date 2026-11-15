@@ -2,7 +2,7 @@ title: Checkout API absorbs a 20x traffic spike (oha)
 description: A spike profile on the oha adapter. 10 concurrent users for 20 s, a jump to 200 for 10 s, then back to 10 for the rest of the minute — one oha process per window, each window a sample in the lake. The spike must not push p99 past a second or lose more than 2 % of requests.
 
 tags[3]: load, spike, checkout
-kind: load
+kind: performance
 target:
   system: checkout
   technology: http

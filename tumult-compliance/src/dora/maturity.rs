@@ -25,6 +25,7 @@
 use std::collections::BTreeMap;
 
 use tumult_core::compliance::{Requirement, CORE_WEIGHT_MIN, GATING_WEIGHT};
+use tumult_core::types::discipline;
 
 use super::coverage::{recovery_met, CellState, Ctx, Matrix};
 use super::model::{
@@ -266,7 +267,8 @@ fn conformance(matrix: &Matrix<'_>, scope: Scope) -> (Pillar, Option<[f64; 4]>) 
 
 /// Discipline coverage 0–1 of a set of test evidence: for each test
 /// discipline the best `φ · o · s` inside the test window, weighted by
-/// the discipline weights.
+/// the discipline weights. A kind counts towards its discipline (a dr
+/// run is robustness evidence).
 pub fn discipline_coverage<'e>(ctx: &Ctx<'_>, evidence: impl Iterator<Item = &'e Evidence>) -> f64 {
     let as_of_ns = ctx.inputs.as_of_ns;
     let mut best: BTreeMap<&str, f64> = BTreeMap::new();
@@ -275,7 +277,7 @@ pub fn discipline_coverage<'e>(ctx: &Ctx<'_>, evidence: impl Iterator<Item = &'e
             continue;
         };
         let v = ctx.test_value(e, as_of_ns, ctx.params.test_window_days);
-        let held = best.entry(kind).or_insert(0.0);
+        let held = best.entry(discipline(kind)).or_insert(0.0);
         *held = held.max(v);
     }
     let total: f64 = ctx.params.kind_weights.values().sum();
@@ -1001,7 +1003,7 @@ mod tests {
     }
 
     #[test]
-    fn worked_example_a_is_level_4_with_index_4_42() {
+    fn worked_example_a_is_level_4_with_index_4_44() {
         let inputs = bank_a();
         let params = HouseParams::default();
         let matrix = Matrix::build(&inputs, &params);
@@ -1012,12 +1014,12 @@ mod tests {
         assert_eq!(shares[0].round(), 100.0);
         assert_eq!(shares[2].round(), 85.0);
         assert_eq!(shares[3].round(), 40.0);
-        assert_eq!(value(&m.pillars.coverage).round(), 88.0);
+        assert_eq!(value(&m.pillars.coverage).round(), 90.0);
         assert_eq!(value(&m.pillars.slo).round(), 93.0);
         assert_eq!(value(&m.pillars.recovery).round(), 87.0);
         assert_eq!(value(&m.pillars.loop_), 72.5);
 
-        assert_eq!(round2(m.index), 4.42);
+        assert_eq!(round2(m.index), 4.44);
         assert_eq!(m.gates[0].failing, Vec::<String>::new());
         assert_eq!(m.gates[1].failing, Vec::<String>::new());
         assert_eq!(m.gates[2].failing, Vec::<String>::new());
@@ -1049,15 +1051,15 @@ mod tests {
         let shares = m.pillars.shares.unwrap().map(round2);
         // C_1 40/40; C_2 (40 − 4.5)/40; C_3 (40 − 6)/40; C_4 16/40.
         assert_eq!(shares, [100.0, 88.75, 85.0, 40.0]);
-        assert_eq!(round2(value(&m.pillars.coverage)), 87.92);
+        assert_eq!(round2(value(&m.pillars.coverage)), 89.67);
         assert_eq!(round2(value(&m.pillars.slo)), 93.06);
         // One important function (c = 2) of Σc = 15 breached: 13/15.
         assert_eq!(round2(value(&m.pillars.recovery)), 86.67);
         assert_eq!(value(&m.pillars.loop_), 72.5);
-        // 1 + 4 · (0.20·78.4375 + 0.25·87.92 + 0.25·93.06 + 0.20·86.67
+        // 1 + 4 · (0.20·78.4375 + 0.25·89.67 + 0.25·93.06 + 0.20·86.67
         //          + 0.10·72.5) / 100.
-        assert_eq!(round2(m.index), 4.42);
-        assert!((m.index - 4.4207).abs() < 5e-4, "{}", m.index);
+        assert_eq!(round2(m.index), 4.44);
+        assert!((m.index - 4.4381).abs() < 5e-4, "{}", m.index);
 
         let portfolio = matrix.portfolio(None);
         assert_eq!(round2(portfolio.unknown), 0.05);

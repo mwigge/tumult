@@ -1868,10 +1868,10 @@ mod tests {
     }
 
     #[test]
-    fn worked_example_a_reads_level_4_index_4_42() {
+    fn worked_example_a_reads_level_4_index_4_44() {
         let doc = maturity_of(bank_a(), None);
         assert_eq!(doc["flat_level"], 4);
-        assert_eq!(rounded(doc["flat_index"].as_f64().unwrap(), 2), 4.42);
+        assert_eq!(rounded(doc["flat_index"].as_f64().unwrap(), 2), 4.44);
         assert_eq!(doc["target"], 3);
         // The level and index shown are the roll-up root's.
         assert_eq!(doc["level"], doc["rollup"]["level"]);

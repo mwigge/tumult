@@ -6,7 +6,7 @@
 //!
 //! ```text
 //! posture = 0.35 · objective margin   (met objectives, weighted by criticality)
-//!         + 0.30 · discipline coverage (chaos, dr, load weigh most; stale counts half)
+//!         + 0.30 · discipline coverage (chaos, performance, robustness weigh most; stale counts half)
 //!         + 0.20 · evidence freshness  (half-life 30 days, no cliff)
 //!         + 0.15 · recovery            (measured RTO against its target)
 //! ```
@@ -71,8 +71,7 @@ pub fn band(score: f64) -> &'static str {
 
 fn kind_weight(kind: &str) -> f64 {
     match kind {
-        "chaos" | "dr" => 3.0,
-        "load" => 2.0,
+        "chaos" | "performance" | "robustness" => 3.0,
         _ => 1.0,
     }
 }
@@ -236,7 +235,7 @@ mod tests {
     fn experiment(verdicts: Vec<Verdict>, rto: Option<(f64, f64)>) -> ExperimentLatest {
         ExperimentLatest {
             name: "e".into(),
-            kind: "dr".into(),
+            kind: "robustness".into(),
             last_run_ns: NOW,
             passed: true,
             outcome: None,
@@ -273,21 +272,21 @@ mod tests {
 
     #[test]
     fn coverage_weights_core_disciplines_and_halves_stale_evidence() {
-        // chaos fresh (3), dr stale (1.5) out of 12.
+        // chaos fresh (3), robustness stale (1.5) out of 10.
         let t = TargetEvidence {
             target: "api".into(),
-            kinds: vec![evidence("chaos", 1), evidence("dr", 45)],
+            kinds: vec![evidence("chaos", 1), evidence("robustness", 45)],
             ..Default::default()
         };
         let c = coverage_component(&t, NOW);
-        assert!((c - 100.0 * 4.5 / 12.0).abs() < 1e-9, "{c}");
+        assert!((c - 100.0 * 4.5 / 10.0).abs() < 1e-9, "{c}");
     }
 
     #[test]
     fn freshness_decays_with_a_thirty_day_half_life() {
         let t = TargetEvidence {
             target: "api".into(),
-            kinds: vec![evidence("chaos", 30), evidence("load", 90)],
+            kinds: vec![evidence("chaos", 30), evidence("performance", 90)],
             ..Default::default()
         };
         // The newest evidence (30 days) drives freshness.

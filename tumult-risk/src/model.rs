@@ -8,16 +8,10 @@ use serde::{Deserialize, Serialize};
 
 /// The resilience disciplines a target can be exercised in, in the order
 /// the coverage matrix shows them. Mirrors `TestKind` in the experiment
-/// definition and the `experiments.test_kind` lake column.
-pub const KINDS: [&str; 7] = [
-    "chaos",
-    "load",
-    "performance",
-    "robustness",
-    "dr",
-    "security",
-    "nfr",
-];
+/// definition and the `experiments.test_kind` lake column. Load and
+/// performance are one discipline, `performance`; disaster recovery is
+/// part of `robustness`.
+pub const KINDS: [&str; 4] = ["chaos", "performance", "robustness", "security"];
 
 /// Nanoseconds in one day.
 pub const DAY_NS: i64 = 86_400 * 1_000_000_000;

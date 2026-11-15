@@ -57,7 +57,7 @@ async fn risks_lists_ranked_findings_for_seeded_target() {
             .any(|t| t["target"] == "database"),
         "{body}"
     );
-    assert_eq!(coverage["kinds"].as_array().unwrap().len(), 7);
+    assert_eq!(coverage["kinds"].as_array().unwrap().len(), 4);
     assert!(body["as_of_ns"].is_number());
 }
 
@@ -219,12 +219,12 @@ async fn recommend_scaffolds_registers_and_proposes_a_candidate() {
     let _env = point_discovery_at_workspace_plugins();
     let srv = spawn_server().await;
     let (_, report) = get(&srv.base, "/api/risks").await;
-    let id = risk_id(&report, "discipline_gap", Some("dr"));
+    let id = risk_id(&report, "discipline_gap", Some("robustness"));
     let (status, body) = post(&srv.base, &format!("/api/risks/{id}/recommend"), json!({})).await;
     assert_eq!(status, 201, "{body}");
     assert_eq!(body["risk_id"], id);
     assert_eq!(body["recommendation"]["type"], "scaffold");
-    assert_eq!(body["recommendation"]["kind"], "dr");
+    assert_eq!(body["recommendation"]["kind"], "robustness");
     assert_eq!(body["recommendation"]["target"], "database");
     let exp = &body["experiment"];
     assert!(
@@ -234,15 +234,15 @@ async fn recommend_scaffolds_registers_and_proposes_a_candidate() {
     assert_eq!(exp["registered"], true);
     let toon = exp["toon"].as_str().unwrap();
     assert!(
-        toon.contains("kind: dr") && toon.contains("system: database"),
+        toon.contains("kind: robustness") && toon.contains("system: database"),
         "{toon}"
     );
     let cand = &body["candidate"];
     assert_eq!(cand["trigger"]["type"], "risk");
     assert_eq!(cand["trigger"]["risk_id"], id);
     assert_eq!(cand["playbook_experiment"], exp["name"]);
-    assert_eq!(cand["plugin"], "tumult-containers");
-    assert_eq!(cand["action"], "stop-container");
+    assert_eq!(cand["plugin"], "tumult-stress");
+    assert_eq!(cand["action"], "cpu-stress");
     assert!(body["validator"]["enactable"].is_boolean(), "{body}");
     // No autopilot policy on the test server: validated, not gated.
     assert!(body["decision"].is_null(), "{body}");
@@ -290,7 +290,7 @@ async fn recommend_refuses_what_it_cannot_automate() {
     let (status, _) = post(&srv.base, "/api/risks/r_nope/recommend", json!({})).await;
     assert_eq!(status, 404);
     let viewer = add_scoped_token(&srv, "rec-viewer", "viewer", &["demo"]).await;
-    let dr = risk_id(&report, "discipline_gap", Some("dr"));
+    let dr = risk_id(&report, "discipline_gap", Some("robustness"));
     let (status, body) = post_auth(
         &srv.base,
         &format!("/api/risks/{dr}/recommend"),

@@ -43,8 +43,8 @@ fn fault_for_kind(kind: &str) -> Option<(&'static str, &'static str)> {
     match kind {
         "chaos" => Some(("tumult-process", "kill-process")),
         "dr" => Some(("tumult-containers", "stop-container")),
-        "load" | "robustness" => Some(("tumult-stress", "cpu-stress")),
-        "performance" | "nfr" => Some(("tumult-network", "add-latency")),
+        "robustness" => Some(("tumult-stress", "cpu-stress")),
+        "performance" => Some(("tumult-network", "add-latency")),
         _ => None,
     }
 }

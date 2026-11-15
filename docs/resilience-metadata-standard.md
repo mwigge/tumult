@@ -89,7 +89,7 @@ Identity and lineage of a single experiment run.
 | `resilience.experiment.version` | `string` | Recommended | Semantic version of the experiment definition (e.g. `2.1.0`). |
 | `resilience.experiment.suite` | `string` | Optional | Parent campaign or suite that groups related experiments. |
 | `resilience.experiment.tags` | `string[]` | Optional | Free-form tags for filtering and grouping (e.g. `["network", "critical-path", "dora"]`). |
-| `resilience.test.kind` | `string` | Recommended | Resilience discipline of the run: `chaos`, `load`, `performance`, `robustness`, `dr`, `security`, `nfr`. Emitted on the experiment root span; drives per-discipline coverage. |
+| `resilience.test.kind` | `string` | Recommended | Resilience discipline of the run: `chaos`, `performance` (load and performance), `robustness`, `dr`, `security`. A reader counts `load` as `performance`, and counts `dr` towards the robustness discipline. Emitted on the experiment root span; drives per-discipline coverage. |
 | `resilience.experiment.created_by` | `string` | Recommended | Identity of the user or system that initiated the run. |
 | `resilience.experiment.run_number` | `int` | Recommended | Monotonically increasing run counter for this experiment name. Enables trend analysis across runs. |
 

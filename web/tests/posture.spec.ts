@@ -23,12 +23,12 @@ const risk = (id: string, rank: number, severity: string, title: string, rule: s
     target: 'database',
     environment: 'demo',
     subject: 'database',
-    recommended_kind: rule === 'discipline_gap' ? 'dr' : null,
+    recommended_kind: rule === 'discipline_gap' ? 'robustness' : null,
     evidence: [],
     suppression: null,
 });
 
-const KINDS = ['chaos', 'load', 'performance', 'robustness', 'dr', 'security', 'nfr'];
+const KINDS = ['chaos', 'performance', 'robustness', 'security'];
 
 // The same target tested in two environments is two rows.
 const coverageRow = (environment: string, covered: string | null) => ({
@@ -46,15 +46,13 @@ const coverageRow = (environment: string, covered: string | null) => ({
 const coverage = {
     kinds: KINDS,
     targets: [coverageRow('demo', 'chaos'), coverageRow('staging', null)],
-    portfolio: ['chaos', 'load', 'performance', 'robustness', 'dr', 'security', 'nfr'].map(
-        (kind) => ({
-            kind,
-            covered: kind === 'chaos' ? 1 : 0,
-            stale: 0,
-            missing: kind === 'chaos' ? 0 : 1,
-            ratio: kind === 'chaos' ? 1 : 0,
-        }),
-    ),
+    portfolio: KINDS.map((kind) => ({
+        kind,
+        covered: kind === 'chaos' ? 1 : 0,
+        stale: 0,
+        missing: kind === 'chaos' ? 0 : 1,
+        ratio: kind === 'chaos' ? 1 : 0,
+    })),
 };
 
 const risks = [
@@ -248,7 +246,7 @@ test('posture opens with ranked risks, coverage gaps and the score', async ({ pa
     const list = page.getByTestId('risks').locator('ol.risks > li');
     await expect(list).toHaveCount(3);
     await expect(list.nth(0)).toContainText('Latest chaos run failed');
-    await expect(list.nth(1)).toContainText('next: run a dr test');
+    await expect(list.nth(1)).toContainText('next: run a robustness / dr test');
     await expect(page.getByTestId('posture')).toContainText('62.5');
     await expect(page.getByTestId('posture')).toContainText('fair');
 
@@ -267,7 +265,7 @@ test('posture opens with ranked risks, coverage gaps and the score', async ({ pa
             { series?: { data?: unknown[] }[]; yAxis?: { data?: string[] }[] } | undefined;
         return { count: opt?.series?.[0]?.data?.length ?? -1, rows: opt?.yAxis?.[0]?.data };
     });
-    expect(cells).toEqual({ count: 14, rows: ['database (demo)', 'database (staging)'] });
+    expect(cells).toEqual({ count: 8, rows: ['database (demo)', 'database (staging)'] });
 
     // The radar draws one value per discipline on one axis each.
     const radar = await page.evaluate(() => {
@@ -275,16 +273,20 @@ test('posture opens with ranked risks, coverage gaps and the score', async ({ pa
         const opt = w.__tumultCharts?.['coverage-radar'] as
             | {
                   series?: { type?: string; data?: { value?: number[] }[] }[];
-                  radar?: { indicator?: unknown[] }[];
+                  radar?: { indicator?: { name?: string }[] }[];
               }
             | undefined;
         return {
             type: opt?.series?.[0]?.type,
             values: opt?.series?.[0]?.data?.[0]?.value?.length ?? -1,
-            axes: opt?.radar?.[0]?.indicator?.length ?? -1,
+            axes: opt?.radar?.[0]?.indicator?.map((axis) => axis.name),
         };
     });
-    expect(radar).toEqual({ type: 'radar', values: 7, axes: 7 });
+    expect(radar).toEqual({
+        type: 'radar',
+        values: 4,
+        axes: ['chaos', 'load / performance', 'robustness / dr', 'security'],
+    });
 
     // The NFR heatmap has one cell per verdict; the trend carries the sparkline.
     const charts = await page.evaluate(() => {

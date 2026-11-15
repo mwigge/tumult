@@ -36,6 +36,7 @@ use std::fmt;
 
 use serde_json::Value;
 use tumult_core::compliance::{entity_id_is_valid, truncated, EntityProfile};
+use tumult_core::types::canonical_kind;
 use tumult_lake::{IctFunction, IctFunctionService, IctLegalEntity, IctRegister, Reader};
 
 use super::model::{
@@ -255,7 +256,7 @@ fn plan(row: &IctFunction) -> Vec<PlannedTest> {
     row.test_plan
         .iter()
         .map(|p| PlannedTest {
-            kind: p.kind.clone(),
+            kind: canonical_kind(&p.kind).to_string(),
             interval_days: p.interval_days,
         })
         .collect()
@@ -578,7 +579,10 @@ fn run_of(row: &Value, functions: Vec<String>) -> Option<Evidence> {
         component: text(row, "component"),
         env: text(row, "env"),
         experiment: text(row, "name").unwrap_or_else(|| id.clone()),
-        kind: Some(text(row, "kind").unwrap_or_else(|| DEFAULT_RUN_KIND.to_string())),
+        kind: Some(text(row, "kind").map_or_else(
+            || DEFAULT_RUN_KIND.to_string(),
+            |kind| canonical_kind(&kind).to_string(),
+        )),
         outcome,
         rto_target_s: num(row, "rto_target_s"),
         rto_measured_s: num(row, "rto_measured_s"),
@@ -1209,7 +1213,7 @@ functions:
                     "r2",
                     vec!["cif-0002".to_string()],
                     Outcome::Failed,
-                    Some("load")
+                    Some("performance")
                 ),
                 ("r3", Vec::new(), Outcome::Passed, Some("chaos")),
                 (

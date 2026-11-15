@@ -31,6 +31,7 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 use tumult_core::compliance::{check_entity_id, lei_is_valid, EntityProfile};
+use tumult_core::types::canonical_kind;
 use tumult_lake::{IctFunction, IctFunctionService, IctLegalEntity, IctRegister, PlannedTest};
 
 use super::model::parse_day;
@@ -338,7 +339,7 @@ fn function_rows(spec: &FunctionSpec, lei: &str) -> Vec<IctFunction> {
                 .test_plan
                 .iter()
                 .map(|plan| PlannedTest {
-                    kind: plan.kind.clone(),
+                    kind: canonical_kind(&plan.kind).to_string(),
                     interval_days: plan.interval_days,
                 })
                 .collect(),
@@ -556,6 +557,12 @@ score:
             Err(RegisterError::Invalid(message)) => message,
             other => panic!("expected an invalid register, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn a_planned_load_test_is_a_performance_test() {
+        let register = parse(&ORG.replace("{kind: dr,", "{kind: load,")).unwrap();
+        assert_eq!(register.ict.functions[0].test_plan[0].kind, "performance");
     }
 
     #[test]

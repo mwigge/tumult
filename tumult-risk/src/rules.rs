@@ -26,7 +26,7 @@ use crate::model::{
 
 /// Disciplines whose absence is a risk in itself. The other four only show
 /// in the coverage matrix.
-const CORE_KINDS: [&str; 3] = ["chaos", "load", "dr"];
+const CORE_KINDS: [&str; 3] = ["chaos", "performance", "robustness"];
 
 /// Stable id: `r_` plus the first 16 hex chars of
 /// SHA-256(rule | target | environment | subject).
@@ -104,7 +104,7 @@ fn discipline_gaps(t: &TargetEvidence, out: &mut Vec<Risk>) {
         }
         let severity = match kind {
             "chaos" => Severity::High,
-            "dr" if is_critical(t) => Severity::High,
+            "robustness" if is_critical(t) => Severity::High,
             _ => Severity::Medium,
         };
         out.push(build(Draft {
@@ -405,7 +405,7 @@ fn workload_rules(inputs: &Inputs, out: &mut Vec<Risk>) {
                 target,
                 environment,
                 subject: subject.clone(),
-                recommended_kind: Some("load"),
+                recommended_kind: Some("performance"),
                 evidence: evidence.clone(),
             }));
         }
@@ -510,7 +510,7 @@ mod tests {
     fn risk_ids_are_stable_and_distinct() {
         let a = risk_id("discipline_gap", Some("api"), Some("prod"), "chaos");
         let b = risk_id("discipline_gap", Some("api"), Some("prod"), "chaos");
-        let c = risk_id("discipline_gap", Some("api"), Some("prod"), "dr");
+        let c = risk_id("discipline_gap", Some("api"), Some("prod"), "robustness");
         assert_eq!(a, b);
         assert_ne!(a, c);
         assert!(a.starts_with("r_") && a.len() == 18, "{a}");
@@ -571,7 +571,7 @@ mod tests {
             .filter(|r| r.rule == "discipline_gap")
             .collect();
         let subjects: Vec<&str> = gaps.iter().map(|r| r.subject.as_str()).collect();
-        assert_eq!(subjects, vec!["load", "dr"]);
+        assert_eq!(subjects, vec!["performance", "robustness"]);
         assert!(gaps
             .iter()
             .all(|r| r.recommended_kind.as_deref() == Some(r.subject.as_str())));
@@ -592,8 +592,8 @@ mod tests {
         let risks = evaluate(&inputs);
         let by_subject = |s: &str| risks.iter().find(|r| r.subject == s).unwrap();
         assert_eq!(by_subject("chaos").severity, Severity::High);
-        assert_eq!(by_subject("dr").severity, Severity::High);
-        assert_eq!(by_subject("load").severity, Severity::Medium);
+        assert_eq!(by_subject("robustness").severity, Severity::High);
+        assert_eq!(by_subject("performance").severity, Severity::Medium);
         // Criticality bonus: High base 70 + 8.
         assert_eq!(by_subject("chaos").rank, 78);
     }
@@ -607,8 +607,8 @@ mod tests {
                 None,
                 vec![
                     evidence("chaos", 45),
-                    evidence("load", 120),
-                    evidence("dr", 3),
+                    evidence("performance", 120),
+                    evidence("robustness", 3),
                 ],
             )],
             ..Default::default()
@@ -620,7 +620,7 @@ mod tests {
             .collect();
         assert_eq!(stale.len(), 2);
         let chaos = stale.iter().find(|r| r.subject == "chaos").unwrap();
-        let load = stale.iter().find(|r| r.subject == "load").unwrap();
+        let load = stale.iter().find(|r| r.subject == "performance").unwrap();
         assert_eq!(chaos.severity, Severity::Medium);
         assert_eq!(chaos.rank, 45 + 1);
         assert_eq!(load.severity, Severity::High);
@@ -632,7 +632,7 @@ mod tests {
     fn experiment(name: &str, passed: bool, verdicts: Vec<Verdict>) -> ExperimentLatest {
         ExperimentLatest {
             name: name.into(),
-            kind: "dr".into(),
+            kind: "robustness".into(),
             last_run_ns: NOW - DAY_NS,
             passed,
             outcome: Some(if passed { "Completed" } else { "Deviated" }.into()),
@@ -657,7 +657,7 @@ mod tests {
 
     #[test]
     fn breached_objectives_rank_by_criticality_and_explain_the_failure() {
-        let mut t = target("db", None, vec![evidence("dr", 1)]);
+        let mut t = target("db", None, vec![evidence("robustness", 1)]);
         t.experiments.push(experiment(
             "failover",
             false,
@@ -707,7 +707,7 @@ mod tests {
 
     #[test]
     fn missed_recovery_target_is_high_or_critical() {
-        let mut t = target("db", Some("critical"), vec![evidence("dr", 1)]);
+        let mut t = target("db", Some("critical"), vec![evidence("robustness", 1)]);
         let mut e = experiment("failover", true, vec![]);
         e.rto_target_s = Some(30.0);
         e.rto_measured_s = Some(42.5);
@@ -730,7 +730,7 @@ mod tests {
 
     #[test]
     fn met_recovery_target_is_not_a_risk() {
-        let mut t = target("db", None, vec![evidence("dr", 1)]);
+        let mut t = target("db", None, vec![evidence("robustness", 1)]);
         let mut e = experiment("failover", true, vec![]);
         e.rto_target_s = Some(30.0);
         e.rto_measured_s = Some(12.0);
@@ -829,7 +829,11 @@ mod tests {
             targets: vec![target(
                 "api",
                 Some("high"),
-                vec![evidence("chaos", 1), evidence("load", 1), evidence("dr", 1)],
+                vec![
+                    evidence("chaos", 1),
+                    evidence("performance", 1),
+                    evidence("robustness", 1),
+                ],
             )],
             workloads: vec![
                 workload(
@@ -895,7 +899,11 @@ mod tests {
             targets: vec![target(
                 "api",
                 None,
-                vec![evidence("chaos", 1), evidence("load", 2), evidence("dr", 3)],
+                vec![
+                    evidence("chaos", 1),
+                    evidence("performance", 2),
+                    evidence("robustness", 3),
+                ],
             )],
             ..Default::default()
         };

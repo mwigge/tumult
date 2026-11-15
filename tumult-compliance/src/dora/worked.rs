@@ -106,15 +106,7 @@ fn attestation(id: &str, rows: &[&str], days_ago: i64) -> Evidence {
     record
 }
 
-const BANK_KINDS: [&str; 7] = [
-    "chaos",
-    "dr",
-    "load",
-    "performance",
-    "robustness",
-    "security",
-    "nfr",
-];
+const BANK_KINDS: [&str; 5] = ["chaos", "dr", "performance", "robustness", "security"];
 
 /// (function, tier, disciplines never run, disciplines run with a partial
 /// outcome, age in days of the baseline runs).
@@ -127,7 +119,7 @@ type BankFunction = (
 );
 
 const BANK_FUNCTIONS: [BankFunction; 8] = [
-    ("cif-0001", Tier::Critical, &["nfr"], &[], 200),
+    ("cif-0001", Tier::Critical, &[], &[], 200),
     (
         "cif-0002",
         Tier::Critical,
@@ -142,14 +134,8 @@ const BANK_FUNCTIONS: [BankFunction; 8] = [
         &["robustness"],
         200,
     ),
-    ("cif-0011", Tier::Important, &["load"], &[], 200),
-    (
-        "cif-0012",
-        Tier::Important,
-        &["nfr", "performance"],
-        &[],
-        200,
-    ),
+    ("cif-0011", Tier::Important, &["performance"], &[], 200),
+    ("cif-0012", Tier::Important, &["performance"], &[], 200),
     (
         "cif-0013",
         Tier::Important,
@@ -160,14 +146,14 @@ const BANK_FUNCTIONS: [BankFunction; 8] = [
     (
         "ops-0021",
         Tier::Other,
-        &["load", "performance", "robustness", "security", "nfr"],
+        &["performance", "robustness", "security"],
         &[],
         200,
     ),
     (
         "ops-0022",
         Tier::Other,
-        &["load", "performance", "robustness", "security", "nfr"],
+        &["performance", "robustness", "security"],
         &[],
         200,
     ),
@@ -308,9 +294,9 @@ pub fn bank_a() -> Inputs {
         60.0,
     ));
     for (function, kind) in [
-        ("cif-0001", "load"),
+        ("cif-0001", "performance"),
         ("cif-0002", "chaos"),
-        ("cif-0003", "load"),
+        ("cif-0003", "performance"),
         ("cif-0011", "chaos"),
         ("cif-0012", "chaos"),
     ] {
@@ -320,7 +306,7 @@ pub fn bank_a() -> Inputs {
     }
     inputs
         .evidence
-        .extend(finding("ops-0021", "load", 40, None));
+        .extend(finding("ops-0021", "performance", 40, None));
     inputs.evidence.extend(bank_manual());
     inputs.services = bank_services();
     inputs.slos = SloFeed::Connected {
@@ -384,7 +370,7 @@ pub fn firm_b() -> Inputs {
         .extend(finding("cif-0001", "chaos", 80, Some(50)));
     inputs
         .evidence
-        .extend(finding("cif-0002", "load", 60, None));
+        .extend(finding("cif-0002", "performance", 60, None));
     inputs.services = vec![
         Service::observed("payments-api", 2, &["cif-0001"], ago(1)),
         Service::observed("payments-ledger", 2, &["cif-0001"], ago(1)),
