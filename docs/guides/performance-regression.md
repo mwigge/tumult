@@ -611,10 +611,11 @@ these two consumers of it are not built and are **not** stubbed here:
 - **Soak drift via forecast** — a soak profile now streams a time series
   (`load.*` samples every `sample_interval_s`), which is the input; the
   drift verdict (is the series trending away from its first hour faster
-  than the forecast's band allows) waits for a `ForecastProvider`.
+  than the forecast's band allows) is not built yet; it would read the
+  series through the forecast crate's `ForecastProvider`.
 - **NFR headroom forecasts** — the objective verdicts carry a signed
   `margin` today; projecting when that margin reaches zero under the
-  forecast trend is the same dependency.
+  forecast trend is not built yet either.
 
 Both are small consumers of the forecast crate; nothing in the schema or
 the API shape here needs to change for them.

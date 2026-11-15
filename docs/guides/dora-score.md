@@ -80,7 +80,7 @@ For each function `f` and registry row `r`, the best evidence gives a value
 v(f, r) = max over evidence of  freshness · outcome · strength
 ```
 
-- **Freshness** is 1 inside the row's window and decays to 0 over a further quarter of the window.
+- **Freshness** is 1 inside the row's window. After that it halves for every further quarter of the window (`freshness_decay_fraction`, 0.25), so old evidence counts less but never nothing.
 - **Outcome** is 1 for a passed test, 0.75 for a partial one and 0.5 for a failed one. A failed test is still a test.
 - **Strength** is 1 when the evidence is direct for the row, 0.75 when supporting, 0.25 when indirect; a manual record of a test counts 0.75.
 
