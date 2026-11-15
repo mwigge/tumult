@@ -106,7 +106,7 @@ impl Lcg {
             *weight = self.within(0.0, MAX_WEIGHT);
         }
         p.kind_weights
-            .insert("dr".into(), self.above_zero(MAX_WEIGHT));
+            .insert("robustness".into(), self.above_zero(MAX_WEIGHT));
         p.test_window_days = self.days();
         p.recovery_window_days = self.days();
         p.loop_window_days = self.days();
@@ -200,7 +200,7 @@ fn declared_only(profile: &str, flags: &[&str], feeds_connected: bool) -> Inputs
     let entity = EntityProfile::parse(profile, &flags).unwrap_or_else(|e| panic!("{e}"));
     let mut inputs = Inputs::empty(ns("2026-11-13"), entity);
     let declared: Vec<String> = REQUIREMENTS.iter().map(|r| r.id.to_string()).collect();
-    let plan: Vec<PlannedTest> = ["chaos", "dr", "load", "security"]
+    let plan: Vec<PlannedTest> = ["chaos", "dr", "performance", "security"]
         .iter()
         .map(|kind| PlannedTest {
             kind: (*kind).to_string(),

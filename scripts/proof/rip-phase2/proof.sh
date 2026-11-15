@@ -59,9 +59,9 @@ assert "latest_run_failed" not in rules, "a breached objective explains the devi
 assert "discipline_gap" in rules, rules
 ranks=[r["rank"] for r in d["risks"]]; assert ranks==sorted(ranks, reverse=True)
 t=[c for c in d["coverage"]["targets"] if c["target"]=="proof-service"][0]
-cells={c["kind"]:c["status"] for c in t["cells"]}; assert cells["dr"]=="covered", cells; assert cells["load"]=="missing", cells
+cells={c["kind"]:c["status"] for c in t["cells"]}; assert cells["robustness"]=="covered", cells; assert cells["performance"]=="missing", cells
 assert d["summary"]["total"]==len(d["risks"]) and d["summary"]["suppressed"]==0' <"$WORK/risks1.json"
-pass "breached objective (explains the deviation) and discipline gaps ranked; dr covered, load missing"
+pass "breached objective (explains the deviation) and discipline gaps ranked; robustness (dr) covered, performance missing"
 
 echo "[5] posture score"
 curl -fs "$URL/api/posture" >"$WORK/posture.json"

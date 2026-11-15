@@ -139,24 +139,50 @@ pub enum Trend {
 /// reporting per discipline and which measurements the run is expected to
 /// produce (a `dr` run measures RTO/RPO, a `load` run produces load results).
 /// Defaults to `chaos` so pre-existing definitions keep their meaning.
+/// Non-functional objectives are not a discipline: the `nfr` block of a
+/// definition is verified by a run of any kind.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TestKind {
     /// Fault injection against a steady-state hypothesis.
     #[default]
     Chaos,
-    /// Traffic generation to measure behaviour under load.
-    Load,
-    /// Latency/throughput regression against a previous build.
+    /// Load and performance: traffic generation to measure behaviour
+    /// under load, and latency/throughput regression against a previous
+    /// build. `load` is accepted as another name for it.
+    #[serde(alias = "load")]
     Performance,
     /// Soak, saturation and malformed-input profiles.
     Robustness,
-    /// Disaster recovery: failover with RTO/RPO targets.
+    /// Disaster recovery: failover with RTO/RPO targets. Counts towards
+    /// the robustness discipline.
     Dr,
     /// Security testing (scans, pentest evidence, misuse cases).
     Security,
-    /// Pure objective verification without faults.
-    Nfr,
+}
+
+/// The name a recorded kind is kept under. `load` is another name for
+/// `performance` (a manual exercise type, a `resilience.test.kind`
+/// attribute from another emitter); every other value is returned as it
+/// is.
+#[must_use]
+pub fn canonical_kind(kind: &str) -> &str {
+    if kind == "load" {
+        return "performance";
+    }
+    kind
+}
+
+/// The discipline a recorded kind counts towards in coverage and scores.
+/// There are four: chaos, performance (load included), robustness and
+/// security. Disaster recovery is part of robustness: a `dr` run keeps
+/// its kind and its recovery targets, and is robustness evidence.
+#[must_use]
+pub fn discipline(kind: &str) -> &str {
+    match canonical_kind(kind) {
+        "dr" => "robustness",
+        other => other,
+    }
 }
 
 /// What a non-functional objective constrains.
@@ -342,12 +368,10 @@ impl std::fmt::Display for TestKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let s = match self {
             Self::Chaos => "chaos",
-            Self::Load => "load",
             Self::Performance => "performance",
             Self::Robustness => "robustness",
             Self::Dr => "dr",
             Self::Security => "security",
-            Self::Nfr => "nfr",
         };
         f.write_str(s)
     }
@@ -601,6 +625,13 @@ mod tests {
         assert_eq!(Trend::Degrading.to_string(), "degrading");
     }
 
+    /// Non-functional objectives are verified by a run of every discipline;
+    /// they are not a discipline of their own.
+    #[test]
+    fn nfr_is_not_a_test_kind() {
+        assert!(serde_json::from_str::<TestKind>("\"nfr\"").is_err());
+    }
+
     #[test]
     fn display_matches_the_serde_serialization() {
         // The journal and the CLI rely on Display and serde agreeing; guard
@@ -615,12 +646,10 @@ mod tests {
 
         for kind in [
             TestKind::Chaos,
-            TestKind::Load,
             TestKind::Performance,
             TestKind::Robustness,
             TestKind::Dr,
             TestKind::Security,
-            TestKind::Nfr,
         ] {
             let json = serde_json::to_string(&kind).expect("serialize");
             assert_eq!(json, format!("\"{kind}\""));
@@ -643,6 +672,29 @@ mod tests {
             serde_json::to_string(&phase).unwrap(),
             format!("\"{phase}\"")
         );
+    }
+
+    /// Load and performance are one discipline: a definition may say
+    /// either, the run is recorded as performance.
+    #[test]
+    fn load_is_another_name_for_performance() {
+        let kind = serde_json::from_str::<TestKind>("\"load\"").expect("load parses");
+        assert_eq!(kind, TestKind::Performance);
+        assert_eq!(kind.to_string(), "performance");
+        assert_eq!(discipline("load"), "performance");
+        assert_eq!(discipline("performance"), "performance");
+        assert_eq!(canonical_kind("load"), "performance");
+    }
+
+    /// Disaster recovery is part of robustness: a dr run keeps its kind
+    /// (and its recovery targets) and counts towards robustness.
+    #[test]
+    fn dr_is_part_of_the_robustness_discipline() {
+        assert_eq!(TestKind::Dr.to_string(), "dr");
+        assert_eq!(canonical_kind("dr"), "dr");
+        assert_eq!(discipline("dr"), "robustness");
+        assert_eq!(discipline("robustness"), "robustness");
+        assert_eq!(discipline("chaos"), "chaos");
     }
 
     #[test]

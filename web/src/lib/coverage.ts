@@ -15,3 +15,16 @@ export function coverageLabels(rows: CoverageRow[]): string[] {
         return `${row.target} (${row.environment ?? 'no environment'})`;
     });
 }
+
+const DISCIPLINE_LABELS: Record<string, string> = {
+    performance: 'load / performance',
+    robustness: 'robustness / dr',
+};
+
+/**
+ * The name a discipline is shown under. Load and performance are one
+ * discipline, and disaster recovery is part of robustness.
+ */
+export function disciplineLabel(kind: string): string {
+    return DISCIPLINE_LABELS[kind] ?? kind;
+}

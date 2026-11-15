@@ -2,7 +2,7 @@ title: host cpu burn — shell stays responsive
 description: Inject a bounded CPU busy-loop and verify the host shell stays responsive (stress-ng-free variant of tumult's cpu-stress example)
 
 tags[2]: stress, resilience
-kind: load
+kind: performance
 target:
   system: host
   technology: linux

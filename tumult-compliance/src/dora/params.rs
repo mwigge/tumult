@@ -10,6 +10,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tumult_core::compliance::requirement;
+use tumult_core::types::discipline;
 
 /// Weight of a function by criticality tier (`c_f`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -399,12 +400,9 @@ impl Default for HouseParams {
     fn default() -> Self {
         let kind_weights = [
             ("chaos", 3.0),
-            ("dr", 3.0),
-            ("load", 2.0),
-            ("performance", 1.0),
-            ("robustness", 1.0),
+            ("performance", 3.0),
+            ("robustness", 3.0),
             ("security", 1.0),
-            ("nfr", 1.0),
         ];
         let manual_kinds = [
             ("failover", "dr"),
@@ -580,6 +578,13 @@ impl HouseParams {
                 self.rollup.unassigned_weight,
             ),
         ];
+        for (kind, discipline) in [("load", "performance"), ("dr", "robustness")] {
+            if self.kind_weights.contains_key(kind) {
+                return Err(format!(
+                    "score.kind_weights.{kind}: {kind} is part of the {discipline} discipline, weigh `{discipline}`"
+                ));
+            }
+        }
         for (kind, weight) in &self.kind_weights {
             weights.push((format!("kind_weights.{kind}"), *weight));
         }
@@ -783,9 +788,9 @@ impl HouseParams {
             }
         }
         for (exercise, kind) in &self.manual_kinds {
-            if !self.kind_weights.contains_key(kind) {
+            if !self.kind_weights.contains_key(discipline(kind)) {
                 return Err(format!(
-                    "score.manual_kinds.{exercise}: '{kind}' has no weight in score.kind_weights"
+                    "score.manual_kinds.{exercise}: the discipline of '{kind}' has no weight in score.kind_weights"
                 ));
             }
         }
@@ -951,9 +956,12 @@ mod tests {
         assert_eq!(p.operating_days, 180);
         assert_eq!(p.existing_threshold, 0.75);
         assert_eq!(p.kind_weights["chaos"], 3.0);
-        assert_eq!(p.kind_weights["dr"], 3.0);
-        assert_eq!(p.kind_weights["load"], 2.0);
-        assert_eq!(p.kind_weights.len(), 7);
+        assert_eq!(p.kind_weights["robustness"], 3.0);
+        assert!(!p.kind_weights.contains_key("dr"));
+        assert_eq!(p.kind_weights["performance"], 3.0);
+        assert_eq!(p.kind_weights.len(), 4);
+        assert!(!p.kind_weights.contains_key("nfr"));
+        assert!(!p.kind_weights.contains_key("load"));
         assert_eq!(p.rollup.own_share["service"], 0.5);
         assert_eq!(p.rollup.own_share["component"], 0.3);
         assert_eq!(p.rollup.own_pillars["entity"], ["T", "S", "R", "L"]);
@@ -1272,6 +1280,8 @@ mod tests {
             ("kind_weights: {chaos: -1}\n", "score.kind_weights.chaos"),
             ("kind_weights: {chaos: .inf}\n", "score.kind_weights.chaos"),
             ("kind_weights: {chaos: 0}\n", "score.kind_weights"),
+            ("kind_weights: {load: 2}\n", "score.kind_weights.load"),
+            ("kind_weights: {dr: 2}\n", "score.kind_weights.dr"),
             ("slo: {blocking_weight: -3}\n", "score.slo.blocking_weight"),
             ("slo: {major_weight: .nan}\n", "score.slo.major_weight"),
             ("slo: {minor_weight: -1}\n", "score.slo.minor_weight"),
@@ -1395,11 +1405,8 @@ mod tests {
             ("expected_status.dora.art24.6", "2", "null"),
             ("gates.l2_coverage", "10.0", "25.0"),
             ("gates.l3_coverage", "20.0", "60.0"),
-            ("kind_weights.dr", "null", "3.0"),
-            ("kind_weights.load", "null", "2.0"),
-            ("kind_weights.nfr", "null", "1.0"),
-            ("kind_weights.performance", "null", "1.0"),
-            ("kind_weights.robustness", "null", "1.0"),
+            ("kind_weights.performance", "null", "3.0"),
+            ("kind_weights.robustness", "null", "3.0"),
             ("kind_weights.security", "null", "1.0"),
             ("kind_weights.chaos", "5.0", "3.0"),
             ("operating_days", "90", "180"),

@@ -102,10 +102,13 @@ mod tests {
     #[test]
     fn cells_are_covered_stale_or_missing() {
         let now = 1000 * DAY_NS;
-        let t = target("api", &[("chaos", now - DAY_NS), ("dr", now - 45 * DAY_NS)]);
+        let t = target(
+            "api",
+            &[("chaos", now - DAY_NS), ("robustness", now - 45 * DAY_NS)],
+        );
         assert_eq!(cell(&t, "chaos", now).status, CoverageStatus::Covered);
-        assert_eq!(cell(&t, "dr", now).status, CoverageStatus::Stale);
-        let missing = cell(&t, "load", now);
+        assert_eq!(cell(&t, "robustness", now).status, CoverageStatus::Stale);
+        let missing = cell(&t, "performance", now);
         assert_eq!(missing.status, CoverageStatus::Missing);
         assert_eq!(missing.runs, 0);
         assert_eq!(missing.last_run_ns, None);
@@ -118,18 +121,29 @@ mod tests {
             as_of_ns: now,
             targets: vec![
                 target("api", &[("chaos", now - DAY_NS)]),
-                target("db", &[("chaos", now - 40 * DAY_NS), ("dr", now - DAY_NS)]),
+                target(
+                    "db",
+                    &[("chaos", now - 40 * DAY_NS), ("robustness", now - DAY_NS)],
+                ),
             ],
             ..Default::default()
         };
         let cov = matrix(&inputs);
-        assert_eq!(cov.kinds.len(), 7);
+        assert_eq!(cov.kinds.len(), 4);
+        assert!(!cov
+            .kinds
+            .iter()
+            .any(|kind| kind == "nfr" || kind == "load" || kind == "dr"));
         assert_eq!(cov.targets.len(), 2);
-        assert_eq!(cov.targets[0].cells.len(), 7);
+        assert_eq!(cov.targets[0].cells.len(), 4);
         let chaos = cov.portfolio.iter().find(|k| k.kind == "chaos").unwrap();
         assert_eq!((chaos.covered, chaos.stale, chaos.missing), (1, 1, 0));
         assert!((chaos.ratio - 0.5).abs() < f64::EPSILON);
-        let load = cov.portfolio.iter().find(|k| k.kind == "load").unwrap();
+        let load = cov
+            .portfolio
+            .iter()
+            .find(|k| k.kind == "performance")
+            .unwrap();
         assert_eq!((load.covered, load.stale, load.missing), (0, 0, 2));
         assert!(load.ratio.abs() < f64::EPSILON);
     }

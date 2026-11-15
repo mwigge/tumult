@@ -2,7 +2,7 @@ title: Checkout API ramps from 5 to 50 users while the payments hop is slow
 description: A ramp profile rendered as k6 stages. Load climbs linearly for 60 s, then holds 50 VUs while 150 ms of latency is injected through a tumult-net proxy in front of payments; p95 must stay under 400 ms and the health probe must keep answering.
 
 tags[3]: load, ramp, checkout
-kind: load
+kind: performance
 target:
   system: checkout
   technology: http

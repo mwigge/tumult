@@ -19,7 +19,7 @@ Every experiment has these sections:
 | `description` | No | What this experiment validates |
 | `tags` | No | Classification tags for filtering and analytics |
 | `target` | No | System under test: `system` (required inside the block), `technology`, `environment`, `criticality`, `version` (the build this run measures; `tumult run --target-version` overrides it, and without either the runner records the version the target's own spans carried during the run). Emitted as `resilience.target.*` on the root span; the scorecard, the gate and environment scopes key on it, and performance verdicts compare by the recorded version |
-| `kind` | No | Resilience discipline: `chaos` (default), `load`, `performance`, `robustness`, `dr`, `security`, `nfr`. Drives per-discipline coverage and the `resilience.test.kind` span attribute |
+| `kind` | No | What the run is: `chaos` (default), `performance` (load and performance; `load` is accepted as another name), `robustness`, `dr`, `security`. Coverage and scores count four disciplines: chaos, load / performance, robustness and security. A `dr` run is part of robustness. Non-functional objectives are not a discipline: the `nfr` block below is verified by a run of any kind. Sets the `resilience.test.kind` span attribute |
 | `nfr` | No | Non-functional objectives verified against the run's measurements (see [Objectives](#objectives)) |
 | `rto_target_s` | No | Recovery time objective in seconds; required when `kind: dr`. Measured against post-phase MTTR |
 | `rpo_target_s` | No | Recovery point objective in seconds of tolerated data loss; measured only by an `nfr` entry of `kind: rpo` |

@@ -1453,14 +1453,17 @@ mod tests {
         assert_eq!(parent("wl:pay/deployment/orphan"), UNASSIGNED_ID);
         assert!(by_id["wl:pay/deployment/orphan"].unknown);
         // The restore run names the system: T from the dr discipline
-        // (3 of 12), R met.
+        // inside robustness (3 of 10), R met.
         let system = &by_id["sys:prod/core"];
         let own: Vec<(&str, Option<f64>)> = system
             .pillars
             .iter()
             .map(|(letter, pillar)| (*letter, pillar.value()))
             .collect();
-        assert_eq!(own, [("T", Some(25.0)), ("R", Some(100.0))]);
+        assert_eq!(own.len(), 2);
+        assert_eq!(own[0].0, "T");
+        assert!((own[0].1.unwrap() - 30.0).abs() < 1e-9);
+        assert_eq!(own[1], ("R", Some(100.0)));
         // No run named the component: it has no own score and rolls up.
         assert_eq!(by_id["cmp:prod/core/api"].own, None);
         assert!(!by_id["cmp:prod/core/api"].unknown);
