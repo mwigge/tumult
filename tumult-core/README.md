@@ -1,6 +1,6 @@
 # tumult-core
 
-Core engine for the Tumult chaos engineering platform -- experiment parsing, execution, journaling, and hypothesis evaluation.
+Core engine for the Tumult resilience intelligence platform -- experiment parsing, execution, journaling, and hypothesis evaluation.
 
 ## Key Types
 

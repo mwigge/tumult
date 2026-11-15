@@ -1,3 +1,9 @@
+---
+title: Testing Policy
+parent: Guides
+nav_order: 32
+---
+
 # Testing policy
 
 A test exists to fail when behaviour we own changes. This page says what that

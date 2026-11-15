@@ -1,7 +1,10 @@
 # Quickstart
 
-Build Tumult and run your first local experiment. This is the CLI-only path; for the full
-platform (daemon, web UI, approvals, compliance reports) see
+Build Tumult and run your first local experiment. Tumult is a resilience
+intelligence platform, and an experiment run from the CLI is the quickest way
+to put a first piece of evidence into it. This is the CLI-only path; for the full
+platform (daemon, web UI, approvals, scores, verdicts, forecasts, the Star Map,
+compliance reports) see
 [the daemon, lake and web UI](README.md#the-daemon-lake-and-web-ui) in
 README.md — or jump straight to the
 [platform walkthrough](docs/guides/platform-walkthrough.md) for a guided
@@ -14,8 +17,9 @@ click-through of the web UI on the seeded demo stack.
   No Rust build or AI key is needed for the lessons.
 - **Ad-hoc local experiments** → the CLI path below. About 10 minutes from
   clone to first run; no daemon, no secrets.
-- **Team governance** — approvals, schedules, audit trails, compliance
-  reports → the platform path (`tumultd` + web UI, see
+- **Team governance and resilience intelligence** — approvals, schedules,
+  audit trails, posture and DORA scores, performance verdicts, forecasts, the
+  Star Map, compliance reports → the platform path (`tumultd` + web UI, see
   [the daemon, lake and web UI](README.md#the-daemon-lake-and-web-ui)). It
   needs a `.env` with the three `KRONIKA_*` secrets and a full
   `docker compose -f docker/docker-compose.kronika.yml up -d --build` —
@@ -24,11 +28,12 @@ click-through of the web UI on the seeded demo stack.
 ```mermaid
 flowchart LR
     accTitle: Tumult quickstart path
-    accDescr: Install Tumult, start isolated targets, validate and run an experiment, then inspect the journal and analytics results.
+    accDescr: Install Tumult, start isolated targets, validate and run an experiment, then inspect the journal and analytics results. The same evidence can then be read in the daemon and its web UI as scores, verdicts and reports.
     install[Install] --> targets[Start isolated targets]
     targets --> validate[Validate experiment]
     validate --> run[Run experiment]
     run --> inspect[Inspect journal and analytics]
+    inspect -.-> platform[Daemon and web UI:<br>scores, verdicts, reports]
 ```
 
 ## Install
@@ -318,6 +323,15 @@ make down
 ## Next steps
 
 - [Full documentation](https://mwigge.github.io/tumult/)
+- [Platform walkthrough](docs/guides/platform-walkthrough.md): the web UI on
+  the seeded demo, and every Krönika page with its charts
+- [Load testing](docs/guides/load-testing-guide.md) and
+  [performance regression verdicts](docs/guides/performance-regression.md)
+- [Star Map](docs/guides/star-map.md),
+  [DORA score](docs/guides/dora-score.md) and
+  [forecasting](docs/guides/forecasting.md)
+- [Send your services' telemetry](docs/guides/otel-autoinstrumentation.md)
+  and [entity events](docs/guides/entity-events.md)
 - [Plugin reference](docs/plugins/)
 - [Experiment format](docs/guides/experiment-format.md)
 - [Test protocol](docs/testprotocol.md)

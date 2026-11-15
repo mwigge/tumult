@@ -1,3 +1,9 @@
+---
+title: Star Map
+parent: Guides
+nav_order: 28
+---
+
 # Star Map
 
 The Star Map is one graph of everything the platform knows: the

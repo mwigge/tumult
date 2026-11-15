@@ -604,9 +604,9 @@ a regression, and on the baseline the comparison is inconclusive.
 
 ## What is deferred
 
-Two items of the Phase 4 plan depend on the forecast crate
-(`tumult-forecast`, Phase 3 of the revised plan) that does not exist yet
-and are **not** stubbed here:
+Two items of the Phase 4 plan build on the forecast crate
+(`tumult-forecast`, see [forecasting](forecasting.md)). The crate exists;
+these two consumers of it are not built and are **not** stubbed here:
 
 - **Soak drift via forecast** — a soak profile now streams a time series
   (`load.*` samples every `sample_interval_s`), which is the input; the
@@ -616,5 +616,5 @@ and are **not** stubbed here:
   `margin` today; projecting when that margin reaches zero under the
   forecast trend is the same dependency.
 
-Both become small consumers of the forecast crate once it lands; nothing in
-the schema or the API shape here needs to change for them.
+Both are small consumers of the forecast crate; nothing in the schema or
+the API shape here needs to change for them.
