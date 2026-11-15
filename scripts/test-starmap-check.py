@@ -339,6 +339,11 @@ class DemoCheckStarMapTests(unittest.TestCase):
             self.assertEqual(call["env"]["KRONIKA_NAME_PREFIX"], PROJECT)
             self.assertEqual(call["env"]["KRONIKA_IMAGE"], f"{PROJECT}:latest")
             self.assertEqual(call["env"]["KRONIKA_HOST_GRPC_PORT"], "24317")
+            # The daemon refuses to start on a bootstrap token of another shape.
+            self.assertRegex(call["env"]["KRONIKA_BOOTSTRAP_TOKEN"], r"^kro_.{20,}$")
+            self.assertGreaterEqual(
+                len(call["env"]["KRONIKA_BOOTSTRAP_ADMIN_PASSWORD"]), 12
+            )
         self.assertEqual([path for path, _ in writes], ["/api/risks/r_1/suppress"])
         self.assertIn("1 suppressed risks on 1 nodes", output)
         self.assertNotIn("FAIL", output)

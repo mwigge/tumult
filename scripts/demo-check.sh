@@ -287,7 +287,8 @@ kronika_env() {
   export KRONIKA_HOST_HTTP_PORT="${KRONIKA_HOST_HTTP_PORT:-24318}"
   export KRONIKA_BOOTSTRAP_ADMIN_PASSWORD KRONIKA_BOOTSTRAP_TOKEN KRONIKA_INGEST_TOKEN
   KRONIKA_BOOTSTRAP_ADMIN_PASSWORD="$(throwaway_secret)"
-  KRONIKA_BOOTSTRAP_TOKEN="$(throwaway_secret)"
+  # The daemon takes a bootstrap token only in the shape of its own tokens.
+  KRONIKA_BOOTSTRAP_TOKEN="kro_$(throwaway_secret)"
   KRONIKA_INGEST_TOKEN="$(throwaway_secret)"
 }
 
