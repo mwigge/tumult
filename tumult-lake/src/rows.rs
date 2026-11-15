@@ -50,6 +50,10 @@ pub struct LogRow {
     pub service_name: String,
     pub log_attrs: Vec<(String, String)>,
     pub resource_attrs: Vec<(String, String)>,
+    /// The OTLP `EventName` of the record; `None` when the sender set none.
+    pub event_name: Option<String>,
+    /// Attributes of the instrumentation scope that emitted the record.
+    pub scope_attrs: Vec<(String, String)>,
 }
 
 /// One row of the `metric_sums` table.

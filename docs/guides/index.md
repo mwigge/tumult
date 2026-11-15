@@ -19,6 +19,7 @@ Step-by-step guides covering all major aspects of Tumult.
 | [Observability Setup](observability-setup.md) | OTel env vars, collector configs, Jaeger, Grafana, SigNoz |
 | [Logging](logging.md) | Structured logs: JSON on stderr, `RUST_LOG` and `TUMULT_LOG_FORMAT`, the field vocabulary, event naming, what must never be logged |
 | [OpenTelemetry Auto-instrumentation](otel-autoinstrumentation.md) | The naming contract through the environment alone (Java, Python, Node.js, .NET, Kubernetes), the Collector pipeline that enforces it, `GET /api/otel/conformance` |
+| [Entity Events](entity-events.md) | OpenTelemetry entity events stored as entities with a lifetime: `KRONIKA_ENTITY_EVENTS`, the Collector pipeline, both wire forms, `live` / `expired` / `gone`, the trust model, `GET /api/entities` |
 | [DORA Coverage and Maturity Score](dora-score.md) | Coverage per article and function with unknown shown apart, evidence status, the 1-5 maturity level per node, how to read the cap, every house parameter |
 | [Grafana Stack](grafana-stack.md) | Reference Tempo + Mimir + Loki stack: one compose file, translated metric names, LogQL/TraceQL examples |
 | [Load Testing Guide](load-testing-guide.md) | k6 and oha adapters, ramp/spike/soak profiles, streamed samples |

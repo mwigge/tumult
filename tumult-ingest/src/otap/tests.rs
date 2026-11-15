@@ -997,7 +997,7 @@ fn context(limits: super::OtapLimits, convert: Convert) -> StreamContext {
     }
 }
 
-fn no_rows(_: &super::OtapBatch) -> Result<crate::writer::Batch, OtapError> {
+fn no_rows(_: &super::OtapBatch, _: &IngestWriter) -> Result<crate::writer::Batch, OtapError> {
     Ok(crate::writer::Batch::Spans(Vec::new()))
 }
 
@@ -1017,7 +1017,7 @@ async fn stream_read_error_is_sent_to_the_client() {
 
 #[tokio::test]
 async fn panic_while_decoding_is_an_internal_status_and_an_error_log() {
-    fn explode(_: &super::OtapBatch) -> Result<crate::writer::Batch, OtapError> {
+    fn explode(_: &super::OtapBatch, _: &IngestWriter) -> Result<crate::writer::Batch, OtapError> {
         panic!("decoder bug with secret-payload-bytes");
     }
     let (logs, _guard) = crate::test_logs::capture();
@@ -1177,7 +1177,7 @@ fn batch_reports_how_many_tables_continued_an_earlier_schema() {
 // Streams that misbehave over time rather than in one batch.
 // ---------------------------------------------------------------------------
 
-fn rejected(_: &super::OtapBatch) -> Result<crate::writer::Batch, OtapError> {
+fn rejected(_: &super::OtapBatch, _: &IngestWriter) -> Result<crate::writer::Batch, OtapError> {
     Err(OtapError::Unsupported("TEST_ONLY"))
 }
 
@@ -1443,4 +1443,55 @@ async fn decode_permit_is_held_until_the_batch_is_written() {
     assert_eq!(ack.status_code, StatusCode::Ok as i32);
     assert!(out.next().await.is_none());
     assert_eq!(decodes.free(), 1, "stored: the permit is back");
+}
+
+// ---------------------------------------------------------------------------
+// Entity events: the Arrow carrier stores what the OTLP carriers store.
+// ---------------------------------------------------------------------------
+
+use crate::entity_events::tests as entity_fixtures;
+
+/// Send the host export as one OTAP logs batch through a stream task and
+/// return the store it was written to.
+async fn host_export_over_otap(
+    entities: Option<crate::entity_events::EntityEvents>,
+    legacy: bool,
+) -> (tempfile::TempDir, tumult_lake::Store) {
+    let (dir, store, ingest) = entity_fixtures::ingest_with(entities);
+    let limits = super::OtapLimits::default();
+    let context = StreamContext {
+        ingest,
+        limits,
+        decodes: super::decode_gate::DecodeGate::new(1),
+        signal: "logs",
+        convert: super::service::convert_logs,
+        guards: super::service::Guards::new(&limits),
+        slot: None,
+    };
+    let batch = Encoder::new(true).logs(&entity_fixtures::host_export(legacy));
+    let mut out = respond(tokio_stream::iter(vec![Ok(batch)]), context, None);
+    let ack = out.next().await.unwrap().unwrap();
+    assert_eq!(
+        ack.status_code,
+        StatusCode::Ok as i32,
+        "{}",
+        ack.status_message
+    );
+    (dir, store)
+}
+
+#[tokio::test]
+async fn entity_events_over_otap_become_entity_rows_in_both_wire_forms() {
+    for (legacy, wire_form) in [(false, "spec"), (true, "legacy")] {
+        let (_dir, store) = host_export_over_otap(entity_fixtures::enabled(), legacy).await;
+        entity_fixtures::assert_host_entity_and_one_log(&store, wire_form);
+    }
+}
+
+#[tokio::test]
+async fn without_the_flag_entity_events_over_otap_are_stored_as_logs() {
+    for legacy in [false, true] {
+        let (_dir, store) = host_export_over_otap(None, legacy).await;
+        entity_fixtures::assert_two_logs_and_no_entity(&store);
+    }
 }

@@ -221,6 +221,7 @@ pub fn seed(db_path: &std::path::Path) -> i64 {
         .flatten()
         .collect(),
         resource_attrs: vec![],
+        ..LogRow::default()
     };
     writer
         .insert_logs(&[
@@ -250,6 +251,7 @@ pub fn seed(db_path: &std::path::Path) -> i64 {
                 service_name: "tumult".into(),
                 log_attrs: vec![("experiment_id".to_string(), "exp-fail".to_string())],
                 resource_attrs: vec![],
+                ..LogRow::default()
             },
             LogRow {
                 ts_ns: now - 580 * NS,
@@ -260,6 +262,7 @@ pub fn seed(db_path: &std::path::Path) -> i64 {
                 service_name: "chaos-agent".into(),
                 log_attrs: vec![],
                 resource_attrs: vec![],
+                ..LogRow::default()
             },
         ])
         .unwrap();

@@ -334,6 +334,27 @@ read-only reader, asks the provider, and writes the cache row through the
 single-writer channel, which also caps the rows per series and prunes expired
 ones a batch at a time. Rows are derived data and can be deleted at any time.
 
+v21 adds `entity_versions` and the view `entities_current`: what
+OpenTelemetry entity events reported, one row per distinct state of an
+entity per environment (identical heartbeats move `last_seen_ns`, a delete
+sets `deleted_at_ns` on the latest row), with `liveness` (`live`,
+`expired`, `gone`) computed when the view is read. The table is written
+only when `KRONIKA_ENTITY_EVENTS` is set and, like the run tables, has no
+primary key or index because its rows are updated. v21 also adds the
+nullable `logs.event_name` and `logs.scope_attrs`. See
+[the entity events guide](../guides/entity-events.md).
+
+Rolling back: a schema version only moves forward, and from this version
+on a build refuses to open for writing a lake whose recorded version is
+later than its own (`lake schema vN is newer than this build supports
+(vM)`), before it changes anything in it. Earlier builds had no such check
+and failed later, on the first insert into a table that had gained a
+column. The way back to an older build is unchanged: take
+`tumult store backup` before the upgrade and restore that backup with the
+older build ([data portability](../guides/data-portability.md)). Reading
+stays possible: `tumult store restore` and `GET /readyz` open the lake
+read-only and are not refused.
+
 ## Roadmap: external tooling on the lake
 
 The parquet lake (above) is the substrate for future external tooling —

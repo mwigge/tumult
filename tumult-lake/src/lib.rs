@@ -47,6 +47,8 @@ pub mod auth;
 pub mod backend;
 #[cfg(feature = "duckdb")]
 pub mod duckdb_store;
+#[cfg(feature = "duckdb")]
+mod entities;
 pub mod error;
 #[cfg(feature = "duckdb")]
 pub mod export;
@@ -92,6 +94,12 @@ pub use approvals::{approval_pin, ApprovalDecision, ApprovalRequest, CanonicalPi
 #[cfg(feature = "duckdb")]
 pub use auth::{SessionRow, TokenRow, UserRow};
 pub use backend::{AnalyticsBackend, StoreStats};
+#[cfg(feature = "duckdb")]
+pub use entities::{
+    entity_key, EntityApplied, EntityEventKind, EntityEventRow, EntityEvictions, EntityLimits,
+    EntityOutcome, EntityPurge, EvictionReason, WireForm, ENTITIES_PER_ENVIRONMENT,
+    ENTITY_INTERVAL_MAX_S, ENTITY_UNREPORTED_AFTER_S, ENTITY_VERSIONS_PER_ENTITY,
+};
 pub use error::AnalyticsError;
 #[cfg(feature = "duckdb")]
 pub use error::StoreError;

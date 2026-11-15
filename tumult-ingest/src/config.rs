@@ -15,6 +15,17 @@ use std::path::PathBuf;
 ///   either OTLP listener binds a non-loopback address (fail-closed, see
 ///   [`Config::ensure_ingest_auth`]), unset/empty means unauthenticated
 ///   ingest (loopback dev mode)
+/// * `KRONIKA_ENTITY_EVENTS` — `1` or `true` stores OpenTelemetry entity
+///   events as entities instead of log records (off by default).
+///   `KRONIKA_ENTITY_LABEL_ALLOW` lists the Kubernetes label names kept on
+///   them, `KRONIKA_ENTITY_ATTRIBUTE_ALLOW` the description keys kept
+///   whatever they are (a whole key, or the start of one followed by `*`;
+///   an entry that names no namespace is honoured with a warning at
+///   start), and `KRONIKA_ENTITY_MAX_PER_ENVIRONMENT` is the most entities
+///   one environment may hold (default 50 000, the lake four times as
+///   many; anything but a positive integer keeps the default with a
+///   warning). All four are read once, at start, by
+///   [`crate::EntityEvents::from_env`]
 /// * `KRONIKA_TLS_CERT` / `KRONIKA_TLS_KEY` — PEM certificate chain and
 ///   private key enabling TLS on both the HTTP (axum) and gRPC (tonic)
 ///   servers; both must be set together, unset means plaintext

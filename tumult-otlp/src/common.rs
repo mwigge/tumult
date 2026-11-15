@@ -46,13 +46,13 @@ pub fn malformed_entity_ids_total() -> u64 {
 }
 
 /// Lets one event through per interval and counts the ones it holds back.
-struct WarnLimit {
+pub(crate) struct WarnLimit {
     next_s: AtomicU64,
     suppressed: AtomicU64,
 }
 
 impl WarnLimit {
-    const fn new() -> Self {
+    pub(crate) const fn new() -> Self {
         Self {
             next_s: AtomicU64::new(0),
             suppressed: AtomicU64::new(0),
@@ -62,7 +62,7 @@ impl WarnLimit {
     /// `Some(n)` when an event may be written at `now_s`, with `n` the
     /// number held back since the last one; `None` when this one is
     /// held back too.
-    fn allow(&self, now_s: u64, every_s: u64) -> Option<u64> {
+    pub(crate) fn allow(&self, now_s: u64, every_s: u64) -> Option<u64> {
         let next = self.next_s.load(Ordering::Relaxed);
         let won = now_s >= next
             && self
@@ -77,7 +77,7 @@ impl WarnLimit {
     }
 }
 
-fn now_s() -> u64 {
+pub(crate) fn now_s() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |since| since.as_secs())

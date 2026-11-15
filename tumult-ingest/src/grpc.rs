@@ -33,6 +33,8 @@ use opentelemetry_proto::tonic::collector::trace::v1::{
     ExportTraceServiceRequest, ExportTraceServiceResponse,
 };
 use std::time::Duration;
+use tonic::codec::CompressionEncoding;
+use tonic::service::interceptor::InterceptedService;
 use tonic::transport::server::Router;
 use tonic::{Request, Response, Status};
 
@@ -107,16 +109,22 @@ fn build(
         ingest,
         ingest_token: token.clone(),
     };
+    // The Collector's `otlp` exporter compresses with gzip unless told
+    // otherwise and offers zstd; both are taken, as on the OTel-Arrow
+    // services. The message size limit is on what a message expands to.
+    let traces = TraceServiceServer::new(otlp.clone())
+        .accept_compressed(CompressionEncoding::Gzip)
+        .accept_compressed(CompressionEncoding::Zstd);
+    let metrics = MetricsServiceServer::new(otlp.clone())
+        .accept_compressed(CompressionEncoding::Gzip)
+        .accept_compressed(CompressionEncoding::Zstd);
+    let logs = LogsServiceServer::new(otlp)
+        .accept_compressed(CompressionEncoding::Gzip)
+        .accept_compressed(CompressionEncoding::Zstd);
     builder
-        .add_service(TraceServiceServer::with_interceptor(
-            otlp.clone(),
-            bearer(token.clone()),
-        ))
-        .add_service(MetricsServiceServer::with_interceptor(
-            otlp.clone(),
-            bearer(token.clone()),
-        ))
-        .add_service(LogsServiceServer::with_interceptor(otlp, bearer(token)))
+        .add_service(InterceptedService::new(traces, bearer(token.clone())))
+        .add_service(InterceptedService::new(metrics, bearer(token.clone())))
+        .add_service(InterceptedService::new(logs, bearer(token)))
         // OTel-Arrow: same listener, same token, same writer channel.
         .add_service(otap.clone().traces())
         .add_service(otap.clone().logs())
@@ -226,14 +234,8 @@ impl LogsService for OtlpGrpc {
         request: Request<ExportLogsServiceRequest>,
     ) -> Result<Response<ExportLogsServiceResponse>, Status> {
         authorize(self.ingest_token.as_ref(), &request)?;
-        let rows = tumult_otlp::logs_request_to_rows(request.get_ref(), crate::now_ns());
-        self.ingest
-            .write(Batch::Logs(rows))
-            .await
-            .map_err(to_status)?;
-        Ok(Response::new(ExportLogsServiceResponse {
-            partial_success: None,
-        }))
+        let answer = self.ingest.export_logs(request.get_ref()).await;
+        answer.map(Response::new).map_err(to_status)
     }
 }
 
@@ -543,6 +545,67 @@ mod tests {
             .unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0]["body"], serde_json::json!("experiment.started"));
+    }
+
+    #[tokio::test]
+    async fn logs_export_stores_entity_events_only_with_the_flag() {
+        use crate::entity_events::tests as fixtures;
+
+        for (legacy, wire_form) in [(false, "spec"), (true, "legacy")] {
+            let (_d, store, ingest) = fixtures::ingest_with(fixtures::enabled());
+            let svc = OtlpGrpc {
+                ingest,
+                ingest_token: None,
+            };
+            LogsService::export(&svc, Request::new(fixtures::host_export(legacy)))
+                .await
+                .unwrap();
+            fixtures::assert_host_entity_and_one_log(&store, wire_form);
+        }
+
+        let (_d, store, ingest) = fixtures::ingest_with(None);
+        let svc = OtlpGrpc {
+            ingest,
+            ingest_token: None,
+        };
+        LogsService::export(&svc, Request::new(fixtures::host_export(false)))
+            .await
+            .unwrap();
+        fixtures::assert_two_logs_and_no_entity(&store);
+    }
+
+    /// What the export limit leaves out is in the answer over gRPC as it
+    /// is over HTTP: the count and the reason.
+    #[tokio::test]
+    async fn events_beyond_the_export_limit_are_reported_to_the_sender() {
+        use crate::entity_events::tests as fixtures;
+
+        let (_d, store, ingest) = fixtures::ingest_with(fixtures::enabled());
+        let svc = OtlpGrpc {
+            ingest,
+            ingest_token: None,
+        };
+        let clean = LogsService::export(&svc, Request::new(fixtures::host_export(false)))
+            .await
+            .unwrap()
+            .into_inner();
+        assert_eq!(clean.partial_success, None);
+
+        let mut export = fixtures::host_export(false);
+        let state = export.resource_logs[0].scope_logs[0].log_records[0].clone();
+        export.resource_logs[0].scope_logs[0].log_records =
+            vec![state; tumult_otlp::MAX_EVENTS_PER_EXPORT + 3];
+        let answer = LogsService::export(&svc, Request::new(export))
+            .await
+            .unwrap()
+            .into_inner();
+        let partial = answer.partial_success.expect("three events were dropped");
+        assert_eq!(partial.rejected_log_records, 3);
+        assert_eq!(
+            partial.error_message,
+            "entity events not stored: export_limit=3"
+        );
+        assert_eq!(fixtures::rows(&store, fixtures::ENTITIES).len(), 1);
     }
 
     #[tokio::test]

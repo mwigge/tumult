@@ -114,6 +114,7 @@ fn run(
             .flatten()
             .collect(),
             resource_attrs: vec![],
+            ..LogRow::default()
         });
     }
 }
@@ -322,6 +323,7 @@ fn main() {
         service_name: "tumult".into(),
         log_attrs: vec![("experiment_id".into(), gd.into())],
         resource_attrs: vec![],
+        ..LogRow::default()
     });
     logs.push(LogRow {
         ts_ns: base + 700_000_000,
@@ -332,6 +334,7 @@ fn main() {
         service_name: "app".into(),
         log_attrs: vec![],
         resource_attrs: vec![],
+        ..LogRow::default()
     });
 
     let store = Store::open(&db).unwrap();

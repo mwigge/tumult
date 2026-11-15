@@ -46,8 +46,14 @@ CREATE TABLE IF NOT EXISTS logs (
     span_id VARCHAR,
     service_name VARCHAR NOT NULL,
     log_attrs MAP (VARCHAR, VARCHAR),
-    resource_attrs MAP (VARCHAR, VARCHAR)
+    resource_attrs MAP (VARCHAR, VARCHAR),
+    event_name VARCHAR,
+    scope_attrs MAP (VARCHAR, VARCHAR)
 );
+-- v20 → v21: the OTLP EventName and the scope attributes of a record, for
+-- pre-existing databases (a no-op on a table the CREATE above built).
+ALTER TABLE logs ADD COLUMN IF NOT EXISTS event_name VARCHAR;
+ALTER TABLE logs ADD COLUMN IF NOT EXISTS scope_attrs MAP (VARCHAR, VARCHAR);
 CREATE INDEX IF NOT EXISTS idx_logs_ts_ns ON logs (ts_ns);
 
 CREATE TABLE IF NOT EXISTS metric_sums (

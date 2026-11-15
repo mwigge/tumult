@@ -3,11 +3,16 @@
 //! batching and backpressure for free.
 
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, PoisonError};
 
+use opentelemetry_proto::tonic::collector::logs::v1::{
+    ExportLogsServiceRequest, ExportLogsServiceResponse,
+};
 use tokio::sync::{mpsc, oneshot};
-use tumult_lake::{LogRow, SpanRow, Store, Writer};
+use tumult_lake::{EntityEventRow, EntityLimits, EntityPurge, LogRow, SpanRow, Store, Writer};
 use tumult_otlp::MetricRows;
 
+use crate::entity_events::{self, EntityEvents};
 use crate::error::IngestError;
 
 /// An arbitrary write executed against the single [`Writer`] — used by
@@ -19,20 +24,50 @@ pub type ExecFn = Box<dyn FnOnce(&Writer) -> Result<(), String> + Send>;
 pub enum Batch {
     Spans(Vec<SpanRow>),
     Logs(Vec<LogRow>),
+    /// A logs export that carried entity events: the ordinary records and
+    /// the events, stored in one transaction.
+    LogsAndEntities {
+        logs: Vec<LogRow>,
+        entities: Vec<EntityEventRow>,
+        /// How far the entity table may grow.
+        limits: EntityLimits,
+    },
     Metrics(MetricRows),
     /// See `ExecFn`.
     Exec(ExecFn),
 }
 
+/// What an operator asks to have removed from the entity table.
+#[derive(Debug, Clone)]
+pub struct EntityPurgeRequest {
+    /// The environment whose entities go; empty for the entities that
+    /// name none.
+    pub environment: String,
+    /// Only the entities of this type; `None` for every type.
+    pub entity_type: Option<String>,
+    /// Who asked, for the log.
+    pub by: String,
+}
+
+/// What the writer task says about a batch it stored.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct Written {
+    /// Entity events of the batch that were not stored because their
+    /// entity would have been one too many.
+    entities_refused: usize,
+}
+
 struct Envelope {
     batch: Batch,
-    ack: oneshot::Sender<Result<(), String>>,
+    ack: oneshot::Sender<Result<Written, String>>,
 }
 
 /// Cheaply-cloneable handle to the background writer task.
 #[derive(Clone)]
 pub struct IngestWriter {
     tx: mpsc::Sender<Envelope>,
+    /// `Some` when entity events are stored as entities.
+    entities: Option<EntityEvents>,
 }
 
 impl IngestWriter {
@@ -43,7 +78,8 @@ impl IngestWriter {
     /// dropped and the channel closes (graceful shutdown).
     pub fn spawn(writer: Writer, buffer: usize) -> (Self, tokio::task::JoinHandle<()>) {
         let (tx, rx) = mpsc::channel::<Envelope>(buffer);
-        (Self { tx }, tokio::spawn(run_loop(rx, writer, None)))
+        let ingest = Self { tx, entities: None };
+        (ingest, tokio::spawn(run_loop(rx, writer, None)))
     }
 
     /// Like [`IngestWriter::spawn`], but rebuilds the store connection when
@@ -59,9 +95,47 @@ impl IngestWriter {
     ) -> (Self, tokio::task::JoinHandle<()>) {
         let (tx, rx) = mpsc::channel::<Envelope>(buffer);
         (
-            Self { tx },
+            Self { tx, entities: None },
             tokio::spawn(run_loop(rx, writer, Some(db_path))),
         )
+    }
+
+    /// Store entity events as entities (`Some`) or leave every log record
+    /// a log record (`None`, the default).
+    #[must_use]
+    pub fn with_entity_events(mut self, entities: Option<EntityEvents>) -> Self {
+        self.entities = entities;
+        self
+    }
+
+    /// The batch a logs export becomes on this writer, whichever carrier
+    /// delivered it.
+    pub(crate) fn logs_batch(
+        &self,
+        request: &ExportLogsServiceRequest,
+        received_at_ns: i64,
+    ) -> Batch {
+        entity_events::logs_export(self.entities.as_ref(), request, received_at_ns).0
+    }
+
+    /// Store a logs export and answer it as OTLP does: with the number of
+    /// entity events that were accepted and not stored, and why, when
+    /// there are any (`partial_success`).
+    ///
+    /// # Errors
+    /// Returns [`IngestError::Channel`] if the writer task is gone or the
+    /// store write failed; nothing of the export is stored then.
+    pub(crate) async fn export_logs(
+        &self,
+        request: &ExportLogsServiceRequest,
+    ) -> Result<ExportLogsServiceResponse, IngestError> {
+        let (batch, dropped) =
+            entity_events::logs_export(self.entities.as_ref(), request, crate::now_ns());
+        let written = self.submit(batch).await?;
+        Ok(entity_events::logs_response(
+            &dropped,
+            written.entities_refused,
+        ))
     }
 
     /// Batches waiting in the channel for the writer task.
@@ -77,6 +151,10 @@ impl IngestWriter {
     /// Returns [`IngestError::Channel`] if the writer task is gone or the
     /// store write failed.
     pub async fn write(&self, batch: Batch) -> Result<(), IngestError> {
+        self.submit(batch).await.map(|_| ())
+    }
+
+    async fn submit(&self, batch: Batch) -> Result<Written, IngestError> {
         let (ack_tx, ack_rx) = oneshot::channel();
         self.tx
             .send(Envelope { batch, ack: ack_tx })
@@ -86,6 +164,39 @@ impl IngestWriter {
             .await
             .map_err(|_| IngestError::Channel("writer task dropped the ack".into()))?
             .map_err(IngestError::Channel)
+    }
+
+    /// Remove the entities of one environment, with all their rows, on
+    /// the writer task, and say so in the log, also when it fails.
+    /// Entities that still report come back with their next report,
+    /// without their history.
+    ///
+    /// # Errors
+    /// Returns [`IngestError::Channel`] if the writer task is gone or the
+    /// store refused the removal, in which case nothing was removed.
+    pub async fn purge_entities(
+        &self,
+        request: EntityPurgeRequest,
+    ) -> Result<EntityPurge, IngestError> {
+        let asked = request.clone();
+        let purged = self.run_purge(request).await;
+        if let Err(error) = &purged {
+            entity_events::purge_failed(&asked, &error.to_string());
+        }
+        purged
+    }
+
+    async fn run_purge(&self, request: EntityPurgeRequest) -> Result<EntityPurge, IngestError> {
+        let slot = Arc::new(Mutex::new(None));
+        let filled = Arc::clone(&slot);
+        self.write(Batch::Exec(Box::new(move |writer: &Writer| {
+            let purged = entity_events::purge(writer, &request)?;
+            *filled.lock().unwrap_or_else(PoisonError::into_inner) = Some(purged);
+            Ok(())
+        })))
+        .await?;
+        let purged = slot.lock().unwrap_or_else(PoisonError::into_inner).take();
+        purged.ok_or_else(|| IngestError::Channel("the purge did not run".into()))
     }
 
     /// Round-trip a no-op through the channel: proves the writer task is
@@ -106,7 +217,7 @@ impl IngestWriter {
     pub(crate) fn stopped_for_test() -> Self {
         let (tx, rx) = mpsc::channel::<Envelope>(1);
         drop(rx);
-        Self { tx }
+        Self { tx, entities: None }
     }
 }
 
@@ -175,16 +286,25 @@ async fn reconnect_with(
     Err(last_err)
 }
 
-fn apply(writer: &Writer, batch: Batch) -> Result<(), IngestError> {
+fn apply(writer: &Writer, batch: Batch) -> Result<Written, IngestError> {
+    let mut written = Written::default();
     match batch {
         Batch::Spans(rows) => writer.insert_spans(&rows)?,
         Batch::Logs(rows) => writer.insert_logs(&rows)?,
+        Batch::LogsAndEntities {
+            logs,
+            entities,
+            limits,
+        } => {
+            let applied = writer.insert_logs_and_entity_events(&logs, &entities, &limits)?;
+            written.entities_refused = entity_events::after_write(writer, &applied);
+        }
         Batch::Metrics(rows) => {
             writer.insert_metrics(&rows.sums, &rows.gauges, &rows.histograms)?;
         }
         Batch::Exec(f) => f(writer).map_err(IngestError::Channel)?,
     }
-    Ok(())
+    Ok(written)
 }
 
 #[cfg(test)]

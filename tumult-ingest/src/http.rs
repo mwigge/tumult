@@ -4,21 +4,26 @@
 //! bodies carrying the OTLP export requests, decode them with prost, and
 //! funnel the resulting rows into the single-writer channel.
 //!
+//! A body may be sent as it is or with `Content-Encoding: gzip` (what the
+//! Collector's `otlphttp` exporter does by default). A gzip body may expand
+//! to 4 MiB, as a message may on gRPC; one that expands to more is `413`.
+//! Any other encoding is `415`, with `Accept-Encoding: gzip` in the answer.
+//! The body as it is sent, compressed or not, is at most
+//! [`MAX_BODY_BYTES`] (2 MiB); a larger one is `413` before it is read.
+//!
 //! When an ingest token is configured (`KRONIKA_INGEST_TOKEN`), every
 //! `/v1/*` route requires `Authorization: Bearer <token>`; non-`/v1` routes
 //! pass through. The daemon's `/healthz`, `/readyz` and `/metrics` live on
 //! tumultd's ops router (behind the API auth middleware), not here.
 
 use axum::body::Bytes;
-use axum::extract::{ConnectInfo, Request, State};
-use axum::http::{header, StatusCode};
+use axum::extract::{ConnectInfo, DefaultBodyLimit, Request, State};
+use axum::http::{header, HeaderMap, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::post;
 use axum::Router;
-use opentelemetry_proto::tonic::collector::logs::v1::{
-    ExportLogsServiceRequest, ExportLogsServiceResponse,
-};
+use opentelemetry_proto::tonic::collector::logs::v1::ExportLogsServiceRequest;
 use opentelemetry_proto::tonic::collector::metrics::v1::{
     ExportMetricsPartialSuccess, ExportMetricsServiceRequest, ExportMetricsServiceResponse,
 };
@@ -31,6 +36,16 @@ use std::net::SocketAddr;
 use crate::error::IngestError;
 use crate::writer::{Batch, IngestWriter};
 
+mod encoding;
+
+use encoding::Refusal;
+
+/// The most an OTLP/HTTP body may be on the wire, compressed or not
+/// (2 MiB). It is what axum takes when nothing is said; it is said here so
+/// that the bound does not move with a dependency. What a gzip body may
+/// expand to is bounded apart from it (4 MiB).
+pub const MAX_BODY_BYTES: usize = 2 * 1024 * 1024;
+
 /// Build the HTTP router (OTLP/HTTP), unauthenticated.
 pub fn router(ingest: IngestWriter) -> Router {
     router_with_token(ingest, None)
@@ -42,7 +57,8 @@ pub fn router_with_token(ingest: IngestWriter, ingest_token: Option<String>) -> 
     let router = Router::new()
         .route("/v1/traces", post(traces))
         .route("/v1/metrics", post(metrics))
-        .route("/v1/logs", post(logs));
+        .route("/v1/logs", post(logs))
+        .layer(DefaultBodyLimit::max(MAX_BODY_BYTES));
     let router = match ingest_token {
         Some(token) => router.layer(middleware::from_fn_with_state(
             std::sync::Arc::new(format!("Bearer {token}")),
@@ -79,44 +95,80 @@ async fn require_bearer(
     next.run(req).await
 }
 
-async fn traces(State(ingest): State<IngestWriter>, body: Bytes) -> impl IntoResponse {
-    match decode::<ExportTraceServiceRequest>(&body).await {
-        Ok(request) => {
-            let spans = tumult_otlp::trace_request_to_spans(&request);
-            match ingest.write(Batch::Spans(spans)).await {
-                Ok(()) => protobuf(ExportTraceServiceResponse::default()),
-                Err(e) => server_error(e),
-            }
-        }
-        Err(e) => client_error(e),
+async fn traces(State(ingest): State<IngestWriter>, headers: HeaderMap, body: Bytes) -> Response {
+    let request = match encoding::message::<ExportTraceServiceRequest>(&headers, body).await {
+        Ok(request) => request,
+        Err(refusal) => return refused(refusal),
+    };
+    let spans = tumult_otlp::trace_request_to_spans(&request);
+    match ingest.write(Batch::Spans(spans)).await {
+        Ok(()) => protobuf(ExportTraceServiceResponse::default()),
+        Err(e) => server_error(e),
     }
 }
 
-async fn metrics(State(ingest): State<IngestWriter>, body: Bytes) -> impl IntoResponse {
-    match decode::<ExportMetricsServiceRequest>(&body).await {
-        Ok(request) => {
-            let rows = tumult_otlp::metrics_request_to_rows(&request);
-            let response = metrics_response(rows.rejected_data_points);
-            match ingest.write(Batch::Metrics(rows)).await {
-                Ok(()) => protobuf(response),
-                Err(e) => server_error(e),
-            }
-        }
-        Err(e) => client_error(e),
+async fn metrics(State(ingest): State<IngestWriter>, headers: HeaderMap, body: Bytes) -> Response {
+    let request = match encoding::message::<ExportMetricsServiceRequest>(&headers, body).await {
+        Ok(request) => request,
+        Err(refusal) => return refused(refusal),
+    };
+    let rows = tumult_otlp::metrics_request_to_rows(&request);
+    let response = metrics_response(rows.rejected_data_points);
+    match ingest.write(Batch::Metrics(rows)).await {
+        Ok(()) => protobuf(response),
+        Err(e) => server_error(e),
     }
 }
 
-async fn logs(State(ingest): State<IngestWriter>, body: Bytes) -> impl IntoResponse {
-    match decode::<ExportLogsServiceRequest>(&body).await {
-        Ok(request) => {
-            let rows = tumult_otlp::logs_request_to_rows(&request, crate::now_ns());
-            match ingest.write(Batch::Logs(rows)).await {
-                Ok(()) => protobuf(ExportLogsServiceResponse::default()),
-                Err(e) => server_error(e),
-            }
-        }
-        Err(e) => client_error(e),
+async fn logs(State(ingest): State<IngestWriter>, headers: HeaderMap, body: Bytes) -> Response {
+    let request = match encoding::message::<ExportLogsServiceRequest>(&headers, body).await {
+        Ok(request) => request,
+        Err(refusal) => return refused(refusal),
+    };
+    match ingest.export_logs(&request).await {
+        Ok(answer) => protobuf(answer),
+        Err(e) => server_error(e),
     }
+}
+
+/// The answer to a body that was not read: which status, and words the
+/// operator of the sender can act on.
+fn refused(refusal: Refusal) -> Response {
+    match refusal {
+        Refusal::Malformed(message) => status_response(StatusCode::BAD_REQUEST, message),
+        Refusal::TooLarge => status_response(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            format!(
+                "the body expands to more than {} bytes",
+                encoding::MAX_DECODED_BYTES
+            ),
+        ),
+        Refusal::Unsupported(named) => unsupported_encoding(&named),
+        Refusal::Failed(error) => {
+            tracing::error!(
+                name: "ingest.http.decode_failed",
+                { error.message = error.as_str() },
+                "an OTLP/HTTP body could not be expanded"
+            );
+            status_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "the body could not be read".into(),
+            )
+        }
+    }
+}
+
+/// `415`, with the encoding the daemon does read in `Accept-Encoding`.
+fn unsupported_encoding(named: &str) -> Response {
+    let mut response = status_response(
+        StatusCode::UNSUPPORTED_MEDIA_TYPE,
+        format!("unsupported content encoding {named:?}: send gzip or no encoding"),
+    );
+    response.headers_mut().insert(
+        header::ACCEPT_ENCODING,
+        header::HeaderValue::from_static("gzip"),
+    );
+    response
 }
 
 fn protobuf(message: impl Message) -> Response {
@@ -137,10 +189,6 @@ pub(crate) fn metrics_response(rejected: i64) -> ExportMetricsServiceResponse {
     }
 }
 
-async fn decode<T: Message + Default>(body: &[u8]) -> Result<T, IngestError> {
-    Ok(T::decode(body)?)
-}
-
 // google.rpc.Status wire format used by OTLP error responses.
 #[derive(prost::Message)]
 struct OtlpStatus {
@@ -159,7 +207,10 @@ fn status_response(status: StatusCode, message: String) -> Response {
                 StatusCode::BAD_REQUEST => tonic::Code::InvalidArgument as i32,
                 StatusCode::UNAUTHORIZED => tonic::Code::Unauthenticated as i32,
                 StatusCode::FORBIDDEN => tonic::Code::PermissionDenied as i32,
-                StatusCode::TOO_MANY_REQUESTS => tonic::Code::ResourceExhausted as i32,
+                StatusCode::TOO_MANY_REQUESTS | StatusCode::PAYLOAD_TOO_LARGE => {
+                    tonic::Code::ResourceExhausted as i32
+                }
+                StatusCode::UNSUPPORTED_MEDIA_TYPE => tonic::Code::Unimplemented as i32,
                 StatusCode::SERVICE_UNAVAILABLE => tonic::Code::Unavailable as i32,
                 _ => tonic::Code::Internal as i32,
             },
@@ -168,10 +219,6 @@ fn status_response(status: StatusCode, message: String) -> Response {
         .encode_to_vec(),
     )
         .into_response()
-}
-
-fn client_error(e: IngestError) -> Response {
-    status_response(StatusCode::BAD_REQUEST, e.to_string())
 }
 
 fn server_error(e: IngestError) -> axum::response::Response {
@@ -219,7 +266,7 @@ mod protocol_tests {
         let dir = tempfile::tempdir().unwrap();
         let store = tumult_lake::Store::open(&dir.path().join("db")).unwrap();
         let (ingest, task) = IngestWriter::spawn(store.writer().unwrap(), 4);
-        let empty = metrics(State(ingest.clone()), Bytes::new())
+        let empty = metrics(State(ingest.clone()), HeaderMap::new(), Bytes::new())
             .await
             .into_response();
         assert_eq!(empty.headers()["content-type"], "application/x-protobuf");
@@ -265,9 +312,13 @@ mod protocol_tests {
                 ..Default::default()
             }],
         };
-        let response = metrics(State(ingest.clone()), Bytes::from(request.encode_to_vec()))
-            .await
-            .into_response();
+        let response = metrics(
+            State(ingest.clone()),
+            HeaderMap::new(),
+            Bytes::from(request.encode_to_vec()),
+        )
+        .await
+        .into_response();
         let body = axum::body::to_bytes(response.into_body(), 4096)
             .await
             .unwrap();

@@ -27,7 +27,7 @@ use crate::writer::{Batch, IngestWriter};
 
 const MIB: usize = 1024 * 1024;
 
-fn no_rows(_: &OtapBatch) -> Result<Batch, OtapError> {
+fn no_rows(_: &OtapBatch, _: &IngestWriter) -> Result<Batch, OtapError> {
     Ok(Batch::Spans(Vec::new()))
 }
 
@@ -280,10 +280,10 @@ async fn a_peer_with_many_queued_batches_does_not_stall_another() {
             Ok(())
         }))
     }
-    fn crowd(_: &OtapBatch) -> Result<Batch, OtapError> {
+    fn crowd(_: &OtapBatch, _: &IngestWriter) -> Result<Batch, OtapError> {
         Ok(stored("crowd"))
     }
-    fn other(_: &OtapBatch) -> Result<Batch, OtapError> {
+    fn other(_: &OtapBatch, _: &IngestWriter) -> Result<Batch, OtapError> {
         Ok(stored("other"))
     }
     let receiver = Receiver::new(OtapLimits {

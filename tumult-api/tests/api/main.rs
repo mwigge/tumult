@@ -11,6 +11,7 @@ mod authoring;
 mod common;
 mod dora;
 mod endpoints;
+mod entities;
 mod events;
 mod forecast;
 mod gamedays;

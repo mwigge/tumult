@@ -1,7 +1,7 @@
 //! `ExportLogsServiceRequest` → `Vec<LogRow>`.
 
 use opentelemetry_proto::tonic::collector::logs::v1::ExportLogsServiceRequest;
-use opentelemetry_proto::tonic::logs::v1::LogRecord;
+use opentelemetry_proto::tonic::logs::v1::{LogRecord, ScopeLogs};
 use tumult_lake::LogRow;
 
 use crate::common::{self, ResourceCtx};
@@ -11,13 +11,52 @@ use crate::common::{self, ResourceCtx};
 /// (when kronika received the export). tumult's log records arrive with
 /// `time_unix_nano` unset (0), so without this chain every log would be
 /// stamped epoch 0 (1970) in the store.
-fn log_ts(record: &LogRecord, received_at_ns: i64) -> i64 {
+pub(crate) fn log_ts(record: &LogRecord, received_at_ns: i64) -> i64 {
     if record.time_unix_nano != 0 {
         i64::try_from(record.time_unix_nano).unwrap_or(i64::MAX)
     } else if record.observed_time_unix_nano != 0 {
         i64::try_from(record.observed_time_unix_nano).unwrap_or(i64::MAX)
     } else {
         received_at_ns
+    }
+}
+
+/// The record's `EventName`, `None` when the sender left it empty.
+fn event_name(record: &LogRecord) -> Option<String> {
+    if record.event_name.is_empty() {
+        return None;
+    }
+    Some(record.event_name.clone())
+}
+
+/// The attributes of the scope that emitted `scope_logs` (empty without one).
+pub(crate) fn scope_attrs(scope_logs: &ScopeLogs) -> Vec<(String, String)> {
+    scope_logs.scope.as_ref().map_or_else(Vec::new, |scope| {
+        common::unpromoted_attrs(&scope.attributes, &[])
+    })
+}
+
+/// One record as a store row.
+pub(crate) fn log_row(
+    record: &LogRecord,
+    resource: &ResourceCtx,
+    scope_attrs: &[(String, String)],
+    received_at_ns: i64,
+) -> LogRow {
+    LogRow {
+        ts_ns: log_ts(record, received_at_ns),
+        severity_text: record.severity_text.clone(),
+        body: record
+            .body
+            .as_ref()
+            .map_or_else(String::new, common::any_value_to_string),
+        trace_id: common::hex_id(&record.trace_id),
+        span_id: common::hex_id(&record.span_id),
+        service_name: resource.service_name.clone(),
+        log_attrs: common::unpromoted_attrs(&record.attributes, &[]),
+        resource_attrs: resource.resource_attrs.clone(),
+        event_name: event_name(record),
+        scope_attrs: scope_attrs.to_vec(),
     }
 }
 
@@ -33,20 +72,9 @@ pub fn logs_request_to_rows(
     for resource_logs in &request.resource_logs {
         let resource = ResourceCtx::from_resource(resource_logs.resource.as_ref());
         for scope_logs in &resource_logs.scope_logs {
+            let scope_attrs = scope_attrs(scope_logs);
             for record in &scope_logs.log_records {
-                out.push(LogRow {
-                    ts_ns: log_ts(record, received_at_ns),
-                    severity_text: record.severity_text.clone(),
-                    body: record
-                        .body
-                        .as_ref()
-                        .map_or_else(String::new, common::any_value_to_string),
-                    trace_id: common::hex_id(&record.trace_id),
-                    span_id: common::hex_id(&record.span_id),
-                    service_name: resource.service_name.clone(),
-                    log_attrs: common::unpromoted_attrs(&record.attributes, &[]),
-                    resource_attrs: resource.resource_attrs.clone(),
-                });
+                out.push(log_row(record, &resource, &scope_attrs, received_at_ns));
             }
         }
     }
@@ -110,6 +138,53 @@ mod tests {
         assert_eq!(row.trace_id.as_deref(), Some("01".repeat(16).as_str()));
         // Log attributes are kept verbatim (no promotion on the logs table).
         assert_eq!(row.log_attrs.len(), 1);
+    }
+
+    #[test]
+    fn event_name_and_scope_attributes_are_kept() {
+        use opentelemetry_proto::tonic::common::v1::InstrumentationScope;
+        let flag = KeyValue {
+            key: "otel.entity.event_as_log".into(),
+            value: Some(AnyValue {
+                value: Some(Value::BoolValue(true)),
+            }),
+            key_strindex: 0,
+        };
+        let named = LogRecord {
+            event_name: "entity.state".into(),
+            ..LogRecord::default()
+        };
+        let request = ExportLogsServiceRequest {
+            resource_logs: vec![ResourceLogs {
+                resource: None,
+                scope_logs: vec![
+                    ScopeLogs {
+                        scope: Some(InstrumentationScope {
+                            attributes: vec![flag],
+                            ..InstrumentationScope::default()
+                        }),
+                        log_records: vec![named],
+                        schema_url: String::new(),
+                    },
+                    ScopeLogs {
+                        scope: None,
+                        log_records: vec![LogRecord::default()],
+                        schema_url: String::new(),
+                    },
+                ],
+                schema_url: String::new(),
+            }],
+        };
+        let rows = logs_request_to_rows(&request, 42);
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].event_name.as_deref(), Some("entity.state"));
+        assert_eq!(
+            rows[0].scope_attrs,
+            vec![("otel.entity.event_as_log".to_string(), "true".to_string())]
+        );
+        // A record without an event name or a scope stays empty, not "".
+        assert_eq!(rows[1].event_name, None);
+        assert!(rows[1].scope_attrs.is_empty());
     }
 
     #[test]

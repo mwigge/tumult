@@ -36,3 +36,5 @@ tokio = { workspace = true, features = ["test-util"] }
 tempfile.workspace = true
 async-trait.workspace = true
 opentelemetry_sdk = { workspace = true, features = ["testing"] }
+# Captures what a request logs (`logging::testing`).
+tumult-otel = { path = "../tumult-otel" }

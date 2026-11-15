@@ -17,10 +17,16 @@
 //! All functions are pure; I/O lives in `tumult-ingest`.
 
 pub mod common;
+mod entity;
 mod logs;
 mod metrics;
 mod traces;
 
+pub use entity::{
+    entity_event_keys_filtered_total, entity_events_dropped, entity_events_dropped_total,
+    split_entity_events, EntityDrop, EntityOptions, KeptKey, LogsSplit, KEPT_DESCRIPTION_KEYS,
+    MAX_EVENTS_PER_EXPORT,
+};
 pub use logs::logs_request_to_rows;
 pub use metrics::{metrics_request_to_rows, MetricRows};
 pub use traces::trace_request_to_spans;

@@ -116,11 +116,22 @@ impl Store {
     /// read-write connection to the same file. (Within one process,
     /// `duckdb-rs` shares a single instance per path, so the daemon keeps
     /// exactly one `Writer` by construction — one channel, one task.)
+    /// Returns [`StoreError::SchemaTooNew`] for a lake that a later build
+    /// wrote.
     pub fn writer(&self) -> Result<Writer, StoreError> {
         let conn = open_with_retry(&self.path, || Connection::open(&self.path))?;
+        // Also for a writer that is opened without a migration, as the
+        // ingest task does when it rebuilds its connection.
+        if let Some(stored) = newer_schema(&conn)? {
+            return Err(StoreError::SchemaTooNew {
+                stored,
+                supported: schema::CURRENT_SCHEMA_VERSION,
+            });
+        }
         Ok(Writer {
             conn,
             clock: crate::lake::now_ns,
+            entities: crate::entities::EntityBook::default(),
         })
     }
 
@@ -164,6 +175,27 @@ pub(crate) fn with_tx<T, E: From<StoreError>>(
             Err(e)
         }
     }
+}
+
+/// The schema version the lake records when it is later than the one this
+/// build writes, `None` otherwise. A lake without `schema_meta` is a new
+/// one and has no version to compare.
+///
+/// Tables gain columns with a version and most inserts name no columns, so
+/// an older build would fail on every write to a newer lake. The callers
+/// refuse to open one before [`migrate`] changes anything.
+pub(crate) fn newer_schema(conn: &Connection) -> Result<Option<i64>, duckdb::Error> {
+    let has_meta: bool = conn.query_row(
+        "SELECT count(*) > 0 FROM information_schema.tables WHERE table_name = 'schema_meta'",
+        params![],
+        |row| row.get(0),
+    )?;
+    if !has_meta {
+        return Ok(None);
+    }
+    let mut stmt = conn.prepare("SELECT max(value) FROM schema_meta WHERE key = 'version'")?;
+    let stored: Option<i64> = stmt.query_row(params![], |row| row.get(0))?;
+    Ok(stored.filter(|version| *version > schema::CURRENT_SCHEMA_VERSION))
 }
 
 /// Shared schema migration: the full v3 DDL (telemetry + manual-evidence +
@@ -214,7 +246,12 @@ pub(crate) fn migrate(conn: &Connection) -> Result<(), duckdb::Error> {
     // pre-existing databases.
     conn.execute_batch(tumult_graph::sql::CREATE_TABLES)?;
     conn.execute_batch(tumult_graph::sql::MIGRATE_EDGES_ADD_ATTRS)?;
-    conn.execute_batch(schema::CREATE_VIEWS)?;
+    for amendment in schema::AMEND_TABLES {
+        conn.execute_batch(amendment)?;
+    }
+    for view in schema::CREATE_VIEWS {
+        conn.execute_batch(view)?;
+    }
     // Static `ComplianceArticle` nodes from the citation registry:
     // deterministic and run-independent, seeded at migrate time.
     // Idempotent — nodes upsert on their primary key.

@@ -29,6 +29,26 @@
 //!   contains-match on the body).
 //! * `GET /api/logs/volume?range=&interval=&severity=&service=&q=` — log
 //!   volume bucketed per severity for the explorer's stacked bar.
+//! * `GET /api/entities?type=&liveness=&range=&sort=&limit=&cursor=` —
+//!   the current row of every entity that entity events reported
+//!   (`KRONIKA_ENTITY_EVENTS`), by key and environment, with its
+//!   `liveness` (`live`, `expired`, `gone`). `range` keeps the entities
+//!   last received inside it; left out, all are listed. One page of at
+//!   most 1000 rows (`limit`, default 100) and about 4 MiB, with `total`,
+//!   `truncated` and `next_cursor`; a walk with the cursor returns every
+//!   entity once. `sort=recent` lists the entity received last first,
+//!   without that promise.
+//! * `GET /api/entities/{key}/history?environment=&limit=&cursor=` — the
+//!   stored versions of one entity, newest first and paged the same way,
+//!   each with its environment; `404` for a key that has none in the
+//!   caller's environments. The key is percent-encoded as one path
+//!   segment.
+//! * `DELETE /api/entities?environment=&type=` — remove the entities of
+//!   one environment (required; empty for the entities that name none),
+//!   of one type or of all, with their history (Admin, confined to the
+//!   caller's environment scopes). Runs on the single writer and is
+//!   written to the log, as is a request that was refused or failed;
+//!   answers `entities` and `versions` removed.
 //! * `GET /api/traces?range=&service=&min_duration_ms=&outcome=` — traces
 //!   grouped from spans (root name/service, span/error counts, experiment
 //!   outcome where the trace is an experiment run).
@@ -191,6 +211,7 @@ use std::sync::Arc;
 use axum::routing::{get, post};
 use axum::Router;
 
+use handlers::entities::{entities, entity_history, purge_entities};
 use handlers::experiments::{dimensions, experiment_detail, experiment_windows, experiments};
 use handlers::logs::{logs, logs_volume};
 use handlers::metrics::{list_metrics, metrics_catalog, metrics_query, timeseries};
@@ -512,6 +533,8 @@ pub fn router(state: ApiState) -> Router {
         .route("/api/metrics", get(list_metrics))
         .route("/api/logs", get(logs))
         .route("/api/logs/volume", get(logs_volume))
+        .route("/api/entities", get(entities).delete(purge_entities))
+        .route("/api/entities/{key}/history", get(entity_history))
         .route("/api/traces", get(traces))
         .route("/api/traces/durations", get(trace_durations))
         .route("/api/traces/{id}", get(trace_detail))

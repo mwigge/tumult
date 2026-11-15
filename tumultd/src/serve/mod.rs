@@ -357,6 +357,7 @@ pub(crate) async fn serve() -> Result<()> {
     let http_listener = bind(config.otlp_http_addr, "HTTP server").await?;
 
     let (ingest, writer_task) = IngestWriter::spawn_reconnect(writer, config.db_path.clone(), 1024);
+    let ingest = ingest.with_entity_events(entity_events(&config));
 
     // The run queue's executor: the CLI's providers with the run's
     // resolved TUMULT_CONFIG_* / TUMULT_SECRET_* environment injected.
@@ -610,4 +611,20 @@ pub(crate) async fn serve() -> Result<()> {
     finish(served, internal_grpc_server, workers, FAILED_DRAIN_LIMIT).await?;
     tracing::info!(name: "daemon.stopped", "tumultd stopped cleanly");
     Ok(())
+}
+
+/// Entity events as the environment sets them (`KRONIKA_ENTITY_EVENTS`,
+/// `KRONIKA_ENTITY_LABEL_ALLOW`, `KRONIKA_ENTITY_ATTRIBUTE_ALLOW`): `None`,
+/// the default, leaves every log record a log record.
+fn entity_events(config: &Config) -> Option<tumult_ingest::EntityEvents> {
+    let entities = tumult_ingest::EntityEvents::from_env(config.ingest_token.as_deref())?;
+    tracing::info!(
+        name: "daemon.entity_events.enabled",
+        {
+            entity.label_allow.count = entities.options().label_allow.len(),
+            entity.attribute_allow.count = entities.options().attribute_allow.len(),
+        },
+        "entity events are stored as entities"
+    );
+    Some(entities)
 }
