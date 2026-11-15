@@ -223,7 +223,9 @@ says otherwise, and the earlier `tgt:` ids are gone.
 
 `sources` reports `slo`, `dora` and `maturity` as `unavailable`, and the
 matching node fields are `null`. They are reserved for the SLO, DORA and
-maturity overlays.
+maturity overlays. The page does not list them. It writes a line under the
+map only when a source it draws, the graph or OTel conformance, could not
+be loaded.
 
 The roll-up of maturity is a proposal, not a decision: the rule and its
 weights are pending the DORA score work and may change with it. As

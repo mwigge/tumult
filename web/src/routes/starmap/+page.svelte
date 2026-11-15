@@ -20,6 +20,7 @@
     import { layoutStar } from '#lib/starmap/layout.js';
     import type { Point } from '#lib/starmap/layout.js';
     import { listNodes } from '#lib/starmap/list.js';
+    import { missingNote, missingSources } from '#lib/starmap/sources.js';
     import {
         legendKinds,
         legendRels,
@@ -284,11 +285,7 @@
     const listed = $derived(matching.slice(0, LISTED));
     const kindOf = (n: StarNode) => (n.kind === 'org' && n.org_kind ? n.org_kind : n.kind);
 
-    const unavailable = $derived(
-        Object.entries(map?.sources ?? {})
-            .filter(([, state]) => state === 'unavailable')
-            .map(([name]) => name),
-    );
+    const missing = $derived(missingNote(missingSources(map?.sources)));
 </script>
 
 <div class="page-head">
@@ -427,8 +424,8 @@
                 <li><span class="ring stale"></span>stale evidence</li>
                 <li><span class="ring suppressed"></span>only suppressed risks</li>
             </ul>
-            {#if unavailable.length > 0}
-                <p class="sub">Not available yet: {unavailable.join(', ')}.</p>
+            {#if missing}
+                <p class="sub">{missing}</p>
             {/if}
             <p class="sub">{map.disclaimer}</p>
             <section class="nodes" aria-label="nodes" bind:this={listEl}>
