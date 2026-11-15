@@ -38,8 +38,9 @@ faults, for the time range you pick.
 ### Star Map
 
 Everything in one graph: organisation, systems, services, workloads and
-experiments. Switch the lens to colour the map by evidence, by risk or by
-telemetry quality. Click a node to see what is known about it.
+experiments. Each kind has its own colour and each arrow carries the name
+of the relation. Switch the lens to ring the nodes by evidence, by risk or
+by telemetry quality. Click a node to see what is known about it.
 
 ![Star Map](../images/3.0/screenshots/starmap.png)
 

@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
 
 import { EVIL, expectShownAsText, installChartHooks, showTip } from './charts';
+import { demoStar } from './starmap-demo';
 
 // The API is mocked; the map renders to canvas, so it is asserted through
 // the option mirrored at window.__tumultCharts.starmap.
@@ -325,14 +326,16 @@ test('the star map draws every node with its evidence state', async ({ page }) =
 
     const state = await drawn(page);
     expect(state.nodes.length).toBe(nodes.length);
-    expect(state.links).toBe(edges.length);
+    // Every API edge, plus a plain line for each parent no edge names:
+    // (unassigned) under the company, and the two entities without an owner edge.
+    expect(state.links).toBe(edges.length + 3);
 
     const queue = state.nodes.find((n) => n.name === 'sys:demo/message-queue');
     expect(queue?.category).toBe('system');
 
     const gap = state.nodes.find((n) => n.name === 'sys:demo/session-cache');
     expect(gap?.itemStyle.borderType).toBe('dashed');
-    expect(gap?.itemStyle.color).toBe('transparent');
+    expect(gap?.itemStyle.color).toBe('#151b21');
 
     const suppressed = state.nodes.find((n) => n.name === 'sys:demo/api-worker');
     expect(suppressed?.itemStyle.opacity).toBeLessThan(0.5);
@@ -348,13 +351,132 @@ test('the star map draws every node with its evidence state', async ({ page }) =
     expect(request?.searchParams.get('range')).toBe('7d');
 });
 
+const SYSTEM_FILL = '#7B6CD9';
+
+interface Drawn {
+    id: string;
+    x: number;
+    y: number;
+    symbol: string;
+    category: string;
+    itemStyle: { opacity?: number };
+}
+
+interface DrawnLink {
+    id: string;
+    source: string;
+    target: string;
+    symbol: string[];
+    label: { show: boolean; formatter?: string };
+    lineStyle: { opacity: number; curveness: number };
+}
+
+/** The whole graph as the chart holds it: what a reader sees on the canvas. */
+const graph = (page: Page) =>
+    page.evaluate(() => {
+        const w = window as Window & { __tumultCharts?: Record<string, unknown> };
+        const option = w.__tumultCharts?.starmap as
+            { series: { data: Drawn[]; links: DrawnLink[] }[] } | undefined;
+        const series = option?.series?.[0];
+        return { data: series?.data ?? [], links: series?.links ?? [] };
+    });
+
+async function mockDemo(page: Page) {
+    const demo = demoStar(NOW_NS);
+    await mock(page, [], true, demo);
+    return demo;
+}
+
+test('the demo-sized map reads like a graph: round nodes apart, named arrows', async ({ page }) => {
+    const demo = await mockDemo(page);
+    await page.goto('/starmap');
+    await drawn(page);
+    const { data, links } = await graph(page);
+    expect(data.length).toBe(51);
+    expect(demo.edges.length).toBe(38);
+
+    // Every node is a circle, and no two sit closer than a caption needs.
+    expect(new Set(data.map((d) => d.symbol))).toEqual(new Set(['circle']));
+    let closest = Infinity;
+    for (let i = 0; i < data.length; i += 1) {
+        for (let j = i + 1; j < data.length; j += 1) {
+            closest = Math.min(closest, Math.hypot(data[i].x - data[j].x, data[i].y - data[j].y));
+        }
+    }
+    expect(closest).toBeGreaterThanOrEqual(89.9);
+
+    // Every API edge is an arrow that carries the relation the API named.
+    const named = links.filter((l) => !l.id.startsWith('spine|'));
+    expect(named.length).toBe(38);
+    for (const link of named) {
+        expect(link.symbol, link.id).toEqual(['none', 'arrow']);
+        expect(link.label.show, link.id).toBe(true);
+        expect(link.label.formatter, link.id).toBe(link.id.split('|')[1].toUpperCase());
+    }
+    // A test and what it broke join the same two nodes: they bend apart.
+    const broke = named.find((l) => l.label.formatter === 'BROKE');
+    expect(broke?.lineStyle.curveness).not.toBe(0);
+
+    // No node floats free: a parent the API joins by no edge gets a plain line,
+    // and the one definition that never ran is the only node without a link.
+    const spine = links.filter((l) => l.id.startsWith('spine|'));
+    expect(spine.every((l) => l.symbol[1] === 'none' && !l.label.show)).toBe(true);
+    const linked = new Set(links.flatMap((l) => [l.source, l.target]));
+    expect(data.filter((d) => !linked.has(d.id)).map((d) => d.id)).toEqual([
+        'def:name/never-ran dns outage',
+    ]);
+});
+
+test('the legend is chips per kind and a key, and a chip hides its kind', async ({ page }) => {
+    await mockDemo(page);
+    await page.goto('/starmap');
+    await drawn(page);
+
+    const kinds = page.getByTestId('starmap-kinds');
+    await expect(kinds.getByRole('button')).toHaveCount(6);
+    await expect(kinds.getByRole('button', { name: /org unit\s*9/ })).toBeVisible();
+    await expect(kinds.getByRole('button', { name: /system\s*11/ })).toBeVisible();
+
+    const chip = kinds.getByRole('button', { name: /experiment\s*12/ });
+    await expect(chip).toHaveAttribute('aria-pressed', 'true');
+    await chip.click();
+    await expect(chip).toHaveAttribute('aria-pressed', 'false');
+    await expect.poll(async () => (await graph(page)).data.length).toBe(39);
+    expect((await graph(page)).links.some((l) => l.label.formatter === 'TESTED_BY')).toBe(false);
+    await chip.click();
+    await expect.poll(async () => (await graph(page)).data.length).toBe(51);
+
+    // The key says what a ring means; shape no longer carries anything.
+    const key = page.getByTestId('starmap-key');
+    for (const text of ['runs passed', 'a run failed', 'no evidence', 'stale evidence']) {
+        await expect(key).toContainText(text);
+    }
+    await expect(key).toContainText('only suppressed risks');
+    await expect(key).toContainText('sits under');
+    await page.getByRole('button', { name: 'risk', exact: true }).click();
+    await expect(key).toContainText('high or critical risk');
+    await expect(key).not.toContainText('runs passed');
+});
+
+test('selecting a node keeps its neighbourhood and dims the rest', async ({ page }) => {
+    await mockDemo(page);
+    await page.goto('/starmap?sel=sys%3Ademo%2Fmessage-queue');
+    await drawn(page);
+    const { data, links } = await graph(page);
+    const opacity = (id: string) => data.find((d) => d.id === id)?.itemStyle.opacity;
+    expect(opacity('sys:demo/message-queue')).toBeUndefined();
+    expect(opacity('ent:cif-0004')).toBeUndefined();
+    expect(opacity('cmp:demo/message-queue/broker')).toBeUndefined();
+    expect(opacity('sys:demo/cdn')).toBe(0.2);
+    const away = links.find((l) => l.source === 'sys:demo/cdn');
+    expect(away?.lineStyle.opacity).toBe(0.1);
+    expect(away?.label.show).toBe(false);
+});
+
 interface Placed {
     x: number;
     y: number;
 }
-
-/** How far the page bends an edge, as a share of its length. */
-const CURVENESS = 0.15;
 
 test('names with markup are text in the node and edge tooltips', async ({ page }) => {
     const from = node(`sys:demo/${EVIL}`, 'system', EVIL, null, {
@@ -378,19 +500,15 @@ test('names with markup are text in the node and edge tooltips', async ({ page }
     await expectShownAsText(page, onNode, `(worst ${EVIL})`);
     await expectShownAsText(page, onNode, `suppressed by ${EVIL} with no expiry`);
 
-    // An edge has no index to show a tooltip by: the pointer goes to the
-    // middle of the curve ECharts draws between the two nodes.
+    // An edge has no index to show a tooltip by: the pointer goes onto the
+    // straight line ECharts draws between the two nodes, clear of its caption.
     const [a, b] = await page.evaluate(() => {
         const w = window as Window & { __tumultCharts?: Record<string, unknown> };
         const option = w.__tumultCharts?.starmap as { series: { data: Placed[] }[] };
         return option.series[0].data.map((d) => [d.x, d.y]);
     });
-    const bend = [
-        (a[0] + b[0]) / 2 - (a[1] - b[1]) * CURVENESS,
-        (a[1] + b[1]) / 2 - (b[0] - a[0]) * CURVENESS,
-    ];
-    const middle = (i: number) => a[i] / 4 + bend[i] / 2 + b[i] / 4;
-    const onEdge = await showTip(page, 'starmap', { seriesIndex: 0, cell: [middle(0), middle(1)] });
+    const along = (i: number) => a[i] * 0.7 + b[i] * 0.3;
+    const onEdge = await showTip(page, 'starmap', { seriesIndex: 0, cell: [along(0), along(1)] });
     await expectShownAsText(page, onEdge, `${from.id} calls sys:demo/other`);
     await expectShownAsText(page, onEdge, `source: ${EVIL}`);
 });
@@ -436,7 +554,8 @@ test('lens, selection and focus round-trip through the URL', async ({ page }) =>
     // The selected node carries the accent border in the risk lens.
     const selected = (await drawn(page)).nodes.find((n) => n.name === 'sys:demo/message-queue');
     expect(selected?.itemStyle.borderColor).toBe('#5eb1ef');
-    expect(selected?.itemStyle.color).toBe('#ef4444');
+    // The fill is the colour of its kind under every lens.
+    expect(selected?.itemStyle.color).toBe(SYSTEM_FILL);
 
     // Switching lens keeps the selection and the focus.
     await page.getByRole('button', { name: 'conformance', exact: true }).click();
