@@ -164,6 +164,15 @@ class DistributionTests(unittest.TestCase):
         manifest = (ROOT / "deploy/k8s/tumultd.yaml").read_text()
         self.assertIn(f"image: ghcr.io/mwigge/tumultd:{version}\n", manifest)
 
+    def test_demo_mcp_command_keeps_the_http_transport(self):
+        # A compose command replaces the image CMD, so it names the transport
+        # itself: without it the server speaks stdio and exits on a closed
+        # stdin.
+        compose = (ROOT / "docker/docker-compose.demo.yml").read_text()
+        service = compose.split("    container_name: demo-mcp", 1)[1]
+        command = service.split("    command:", 1)[1].split("\n", 1)[0]
+        self.assertIn('"--transport", "http"', command)
+
     def test_authenticated_demo_healthcheck_can_reach_the_api(self):
         compose = (ROOT / "docker/docker-compose.kronika.yml").read_text()
         healthcheck = compose.split("    healthcheck:", 1)[1].split("    restart:", 1)[

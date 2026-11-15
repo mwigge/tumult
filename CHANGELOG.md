@@ -58,6 +58,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- The one-command demo starts its MCP server again: the compose command replaced the image arguments and dropped `--transport http`, so since 2.22.0 the container spoke stdio, exited and never became healthy.
 - `tumult-ssh`: tracing a remote command longer than the preview limit no longer panics when the cut falls inside a multi-byte character.
 - `tumult-agentic`: the `output_truncation` fault no longer panics when its byte limit falls inside a multi-byte character; the body is cut at the start of that character.
 - `tumult-clickhouse`: the `clickhouse.store.experiments` and `clickhouse.store.activities` gauges were set to zero after every ingest and never to anything else. They now carry the counts of the latest stats query, and ingest no longer touches them.
