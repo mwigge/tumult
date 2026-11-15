@@ -1,0 +1,354 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Telemetry ingest: from sender to lake",
+    "output": "flow-telemetry-ingest.html",
+    "quality_profile": "showcase",
+    "locale": "en",
+    "repository": {
+      "url": "https://github.com/mwigge/tumult",
+      "revision": "8c24680b94cbab9d5b2011d99b53623618608a22"
+    },
+    "legend": {
+      "entries": {
+        "frontend": {
+          "label": "Web page or API"
+        },
+        "backend": {
+          "label": "Tumult step"
+        },
+        "security": {
+          "label": "Check or limit"
+        },
+        "database": {
+          "label": "Stored data"
+        },
+        "external": {
+          "label": "Outside Tumult"
+        },
+        "messagebus": {
+          "label": "Background job"
+        }
+      }
+    }
+  },
+  "lanes": [
+    {
+      "id": "send",
+      "label": "Send"
+    },
+    {
+      "id": "receive",
+      "label": "Receive"
+    },
+    {
+      "id": "check",
+      "label": "Check and convert"
+    },
+    {
+      "id": "store",
+      "label": "Store and read"
+    }
+  ],
+  "mainPath": [
+    "sender",
+    "arrow",
+    "token",
+    "bound",
+    "convert",
+    "writer",
+    "lake"
+  ],
+  "nodes": [
+    {
+      "id": "sender",
+      "lane": "send",
+      "col": 1,
+      "type": "external",
+      "label": "Collector or service",
+      "sublabel": "sends telemetry",
+      "sources": [
+        {
+          "path": "docker/otel-collector-kronika.yaml",
+          "line": 1,
+          "end_line": 35
+        },
+        {
+          "path": "examples/otel/otel-collector.yaml",
+          "line": 66,
+          "end_line": 105
+        }
+      ]
+    },
+    {
+      "id": "grpc",
+      "lane": "receive",
+      "col": 0,
+      "type": "backend",
+      "label": "OTLP gRPC",
+      "sublabel": "port 4317",
+      "sources": [
+        {
+          "path": "tumult-ingest/src/grpc.rs",
+          "line": 74,
+          "end_line": 132
+        },
+        {
+          "path": "tumult-ingest/src/config.rs",
+          "line": 70,
+          "end_line": 77
+        }
+      ]
+    },
+    {
+      "id": "arrow",
+      "lane": "receive",
+      "col": 1,
+      "type": "backend",
+      "label": "OTel-Arrow",
+      "sublabel": "streams on 4317",
+      "sources": [
+        {
+          "path": "tumult-ingest/src/otap/service.rs",
+          "line": 559,
+          "end_line": 590
+        },
+        {
+          "path": "tumult-ingest/src/otap/mod.rs",
+          "line": 1,
+          "end_line": 35
+        }
+      ]
+    },
+    {
+      "id": "http",
+      "lane": "receive",
+      "col": 2,
+      "type": "backend",
+      "label": "OTLP HTTP",
+      "sublabel": "port 4318",
+      "tag": "protobuf only",
+      "sources": [
+        {
+          "path": "tumult-ingest/src/http.rs",
+          "line": 43,
+          "end_line": 69
+        }
+      ]
+    },
+    {
+      "id": "reply",
+      "lane": "receive",
+      "col": 4,
+      "type": "backend",
+      "label": "Reply to sender",
+      "sublabel": "partial success",
+      "sources": [
+        {
+          "path": "tumult-ingest/src/grpc.rs",
+          "line": 195,
+          "end_line": 240
+        },
+        {
+          "path": "tumult-ingest/src/http.rs",
+          "line": 97,
+          "end_line": 131
+        }
+      ]
+    },
+    {
+      "id": "token",
+      "lane": "check",
+      "col": 1,
+      "type": "security",
+      "label": "Check ingest token",
+      "sublabel": "refuse if wrong",
+      "sources": [
+        {
+          "path": "tumult-ingest/src/grpc.rs",
+          "line": 134,
+          "end_line": 179
+        },
+        {
+          "path": "tumult-ingest/src/http.rs",
+          "line": 53,
+          "end_line": 95
+        },
+        {
+          "path": "tumult-ingest/src/otap/service.rs",
+          "line": 222,
+          "end_line": 228
+        }
+      ]
+    },
+    {
+      "id": "bound",
+      "lane": "check",
+      "col": 2,
+      "type": "security",
+      "label": "Unpack and bound",
+      "sublabel": "gzip, 4 MiB max",
+      "sources": [
+        {
+          "path": "tumult-ingest/src/http/encoding.rs",
+          "line": 42,
+          "end_line": 101
+        },
+        {
+          "path": "tumult-ingest/src/otap/limits.rs",
+          "line": 22,
+          "end_line": 94
+        }
+      ]
+    },
+    {
+      "id": "convert",
+      "lane": "check",
+      "col": 3,
+      "type": "backend",
+      "label": "Convert to rows",
+      "sublabel": "spans, logs, metrics",
+      "sources": [
+        {
+          "path": "tumult-otlp/src/metrics.rs",
+          "line": 126,
+          "end_line": 133
+        },
+        {
+          "path": "tumult-ingest/src/grpc.rs",
+          "line": 195,
+          "end_line": 240
+        }
+      ]
+    },
+    {
+      "id": "writer",
+      "lane": "store",
+      "col": 3,
+      "type": "messagebus",
+      "label": "Single writer",
+      "sublabel": "queue of 1024",
+      "sources": [
+        {
+          "path": "tumult-ingest/src/writer.rs",
+          "line": 73,
+          "end_line": 101
+        },
+        {
+          "path": "tumult-ingest/src/writer.rs",
+          "line": 289,
+          "end_line": 308
+        }
+      ]
+    },
+    {
+      "id": "lake",
+      "lane": "store",
+      "col": 4,
+      "type": "database",
+      "label": "DuckDB lake",
+      "sublabel": "spans, logs, metrics",
+      "sources": [
+        {
+          "path": "tumult-lake/src/writer.rs",
+          "line": 55,
+          "end_line": 117
+        }
+      ]
+    },
+    {
+      "id": "pages",
+      "lane": "store",
+      "col": 5,
+      "type": "frontend",
+      "label": "Krönika pages",
+      "sublabel": "traces, logs, metrics",
+      "sources": [
+        {
+          "path": "web/src/lib/api.ts",
+          "line": 108,
+          "end_line": 160
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "s-grpc",
+      "from": "sender",
+      "to": "grpc",
+      "label": "OTLP"
+    },
+    {
+      "id": "s-arrow",
+      "from": "sender",
+      "to": "arrow",
+      "label": "Arrow",
+      "variant": "emphasis"
+    },
+    {
+      "id": "s-http",
+      "from": "sender",
+      "to": "http",
+      "label": "HTTP"
+    },
+    {
+      "id": "grpc-token",
+      "from": "grpc",
+      "to": "token"
+    },
+    {
+      "id": "arrow-token",
+      "from": "arrow",
+      "to": "token",
+      "variant": "emphasis"
+    },
+    {
+      "id": "http-token",
+      "from": "http",
+      "to": "token"
+    },
+    {
+      "id": "token-bound",
+      "from": "token",
+      "to": "bound",
+      "label": "accepted",
+      "variant": "emphasis"
+    },
+    {
+      "id": "bound-convert",
+      "from": "bound",
+      "to": "convert",
+      "variant": "emphasis"
+    },
+    {
+      "id": "convert-writer",
+      "from": "convert",
+      "to": "writer",
+      "label": "batch",
+      "variant": "emphasis"
+    },
+    {
+      "id": "writer-lake",
+      "from": "writer",
+      "to": "lake",
+      "label": "write",
+      "variant": "emphasis"
+    },
+    {
+      "id": "lake-pages",
+      "from": "lake",
+      "to": "pages",
+      "label": "read"
+    },
+    {
+      "id": "convert-reply",
+      "from": "convert",
+      "to": "reply",
+      "label": "rejected points",
+      "variant": "dashed",
+      "role": "return"
+    }
+  ]
+}

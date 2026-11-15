@@ -1,0 +1,464 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "C4 level 3: tumultd API and intelligence",
+    "output": "c4-3b-intelligence-and-api.html",
+    "quality_profile": "showcase",
+    "locale": "en",
+    "repository": {
+      "url": "https://github.com/mwigge/tumult",
+      "revision": "8c24680b94cbab9d5b2011d99b53623618608a22"
+    },
+    "legend": {
+      "entries": {
+        "frontend": {
+          "label": "Container"
+        },
+        "backend": {
+          "label": "Component"
+        },
+        "security": {
+          "label": "Check"
+        },
+        "database": {
+          "label": "Data store"
+        },
+        "external": {
+          "label": "External system"
+        },
+        "cloud": {
+          "label": "Files on disk"
+        }
+      }
+    }
+  },
+  "components": [
+    {
+      "id": "ui",
+      "type": "frontend",
+      "label": "Krönika web UI",
+      "sublabel": "in the browser",
+      "pos": [
+        380,
+        40
+      ],
+      "size": [
+        200,
+        64
+      ],
+      "sources": [
+        {
+          "path": "web/src/lib/api.ts",
+          "line": 108,
+          "end_line": 160
+        }
+      ]
+    },
+    {
+      "id": "cli",
+      "type": "frontend",
+      "label": "tumult CLI",
+      "sublabel": "gate, perf, run",
+      "pos": [
+        660,
+        40
+      ],
+      "size": [
+        200,
+        64
+      ],
+      "sources": [
+        {
+          "path": "tumult-cli/src/commands/gate.rs",
+          "line": 1,
+          "end_line": 35
+        },
+        {
+          "path": "tumult-cli/src/commands/perf.rs",
+          "line": 1,
+          "end_line": 40
+        }
+      ]
+    },
+    {
+      "id": "api",
+      "type": "security",
+      "label": "API and auth",
+      "sublabel": "a role for each route",
+      "pos": [
+        480,
+        200
+      ],
+      "size": [
+        280,
+        64
+      ],
+      "sources": [
+        {
+          "path": "tumult-api/src/lib.rs",
+          "line": 524,
+          "end_line": 643
+        },
+        {
+          "path": "tumult-api/src/auth/middleware.rs",
+          "line": 164,
+          "end_line": 246
+        },
+        {
+          "path": "tumult-api/src/auth/route_table.rs",
+          "line": 10,
+          "end_line": 176
+        }
+      ]
+    },
+    {
+      "id": "runs",
+      "type": "backend",
+      "label": "Run control",
+      "sublabel": "queue, approvals",
+      "pos": [
+        40,
+        380
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
+          "path": "tumult-api/src/runs/control.rs",
+          "line": 50,
+          "end_line": 137
+        }
+      ]
+    },
+    {
+      "id": "risks",
+      "type": "backend",
+      "label": "Risks and posture",
+      "sublabel": "tumult-risk",
+      "pos": [
+        235,
+        380
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
+          "path": "tumult-risk/src/lib.rs",
+          "line": 31,
+          "end_line": 74
+        },
+        {
+          "path": "tumult-risk/src/posture.rs",
+          "line": 1,
+          "end_line": 29
+        },
+        {
+          "path": "tumult-api/src/handlers/risks.rs",
+          "line": 395,
+          "end_line": 423
+        }
+      ]
+    },
+    {
+      "id": "starmap",
+      "type": "backend",
+      "label": "Star Map",
+      "sublabel": "tumult-graph",
+      "pos": [
+        430,
+        380
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "tag": "30 second cache",
+      "sources": [
+        {
+          "path": "tumult-api/src/handlers/starmap.rs",
+          "line": 874,
+          "end_line": 886
+        },
+        {
+          "path": "tumult-graph/src/starmap/mod.rs",
+          "line": 50,
+          "end_line": 110
+        },
+        {
+          "path": "tumult-api/src/handlers/starmap_cache.rs",
+          "line": 58,
+          "end_line": 76
+        }
+      ]
+    },
+    {
+      "id": "scores",
+      "type": "backend",
+      "label": "Scores",
+      "sublabel": "tumult-compliance",
+      "pos": [
+        625,
+        380
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "tag": "daily snapshot job",
+      "sources": [
+        {
+          "path": "tumult-api/src/handlers/dora.rs",
+          "line": 183,
+          "end_line": 267
+        },
+        {
+          "path": "tumult-compliance/src/scoring.rs",
+          "line": 1,
+          "end_line": 16
+        },
+        {
+          "path": "tumultd/src/score_jobs.rs",
+          "line": 323,
+          "end_line": 393
+        }
+      ]
+    },
+    {
+      "id": "perf",
+      "type": "backend",
+      "label": "Performance verdicts",
+      "sublabel": "tumult-perf",
+      "pos": [
+        820,
+        380
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
+          "path": "tumult-api/src/handlers/perf/mod.rs",
+          "line": 936,
+          "end_line": 1025
+        },
+        {
+          "path": "tumult-perf/src/lib.rs",
+          "line": 196,
+          "end_line": 353
+        }
+      ]
+    },
+    {
+      "id": "forecast",
+      "type": "backend",
+      "label": "Forecast",
+      "sublabel": "tumult-forecast",
+      "pos": [
+        1015,
+        380
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "tag": "circuit breaker",
+      "sources": [
+        {
+          "path": "tumult-api/src/forecast/mod.rs",
+          "line": 92,
+          "end_line": 226
+        },
+        {
+          "path": "tumult-api/src/forecast/breaker.rs",
+          "line": 232,
+          "end_line": 365
+        },
+        {
+          "path": "tumult-forecast/src/holt_winters.rs",
+          "line": 1,
+          "end_line": 117
+        }
+      ]
+    },
+    {
+      "id": "files",
+      "type": "cloud",
+      "label": "Org file, manifests",
+      "sublabel": "read from disk",
+      "pos": [
+        235,
+        620
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
+          "path": "tumult-api/src/handlers/risks.rs",
+          "line": 306,
+          "end_line": 336
+        },
+        {
+          "path": "tumult-api/src/handlers/starmap.rs",
+          "line": 186,
+          "end_line": 211
+        }
+      ]
+    },
+    {
+      "id": "lake",
+      "type": "database",
+      "label": "DuckDB lake",
+      "sublabel": "runs, telemetry, scores",
+      "pos": [
+        430,
+        620
+      ],
+      "size": [
+        560,
+        64
+      ],
+      "sources": [
+        {
+          "path": "tumult-lake/src/writer.rs",
+          "line": 55,
+          "end_line": 117
+        },
+        {
+          "path": "tumult-api/src/lib.rs",
+          "line": 231,
+          "end_line": 259
+        }
+      ]
+    },
+    {
+      "id": "sidecar",
+      "type": "external",
+      "label": "Forecast sidecar",
+      "sublabel": "tumult-forecastd",
+      "pos": [
+        1015,
+        620
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "tag": "optional",
+      "sources": [
+        {
+          "path": "tumult-api/src/forecast/client.rs",
+          "line": 1,
+          "end_line": 30
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "tumultd daemon",
+      "wraps": [
+        "api",
+        "runs",
+        "risks",
+        "starmap",
+        "scores",
+        "perf",
+        "forecast"
+      ],
+      "pad": 24
+    }
+  ],
+  "connections": [
+    {
+      "id": "ui-api",
+      "from": "ui",
+      "to": "api",
+      "label": "JSON",
+      "variant": "emphasis"
+    },
+    {
+      "id": "cli-api",
+      "from": "cli",
+      "to": "api",
+      "label": "JSON"
+    },
+    {
+      "id": "a-runs",
+      "from": "api",
+      "to": "runs"
+    },
+    {
+      "id": "a-risks",
+      "from": "api",
+      "to": "risks"
+    },
+    {
+      "id": "a-star",
+      "from": "api",
+      "to": "starmap"
+    },
+    {
+      "id": "a-scores",
+      "from": "api",
+      "to": "scores"
+    },
+    {
+      "id": "a-perf",
+      "from": "api",
+      "to": "perf"
+    },
+    {
+      "id": "a-fc",
+      "from": "api",
+      "to": "forecast"
+    },
+    {
+      "id": "risks-l",
+      "from": "risks",
+      "to": "lake"
+    },
+    {
+      "id": "star-l",
+      "from": "starmap",
+      "to": "lake"
+    },
+    {
+      "id": "scores-l",
+      "from": "scores",
+      "to": "lake",
+      "label": "reads"
+    },
+    {
+      "id": "perf-l",
+      "from": "perf",
+      "to": "lake"
+    },
+    {
+      "id": "fc-l",
+      "from": "forecast",
+      "to": "lake"
+    },
+    {
+      "id": "risks-f",
+      "from": "risks",
+      "to": "files",
+      "label": "reads"
+    },
+    {
+      "id": "fc-s",
+      "from": "forecast",
+      "to": "sidecar",
+      "label": "asks",
+      "variant": "dashed"
+    }
+  ]
+}

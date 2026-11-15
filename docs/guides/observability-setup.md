@@ -8,6 +8,8 @@ nav_order: 6
 
 Tumult emits OpenTelemetry traces, metrics, and logs for every experiment run. This guide covers the complete span hierarchy, attribute reference, structured events, and how to route telemetry to your backend.
 
+![How telemetry arrives on three protocols and ends up in the lake](../images/3.0/diagrams/flow-telemetry-ingest.png)
+
 ## Architecture
 
 ```

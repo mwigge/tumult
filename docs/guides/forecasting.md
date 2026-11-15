@@ -19,6 +19,8 @@ Every response names the model that produced the numbers. Nothing in this
 feature needs a network connection or model weights: the built-in provider
 is plain Rust. A sidecar running Mistral's Timestral model is optional.
 
+![How a forecast is made, with or without the sidecar](../images/3.0/diagrams/flow-forecast.png)
+
 ## Reading the band
 
 A forecast is a set of quantiles per future step. The API returns three by

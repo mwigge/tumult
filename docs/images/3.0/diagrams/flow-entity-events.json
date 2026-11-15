@@ -1,0 +1,357 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Entity events: from Collector to lake",
+    "output": "flow-entity-events.html",
+    "quality_profile": "showcase",
+    "locale": "en",
+    "repository": {
+      "url": "https://github.com/mwigge/tumult",
+      "revision": "8c24680b94cbab9d5b2011d99b53623618608a22"
+    },
+    "legend": {
+      "entries": {
+        "frontend": {
+          "label": "Web page or API"
+        },
+        "backend": {
+          "label": "Tumult step"
+        },
+        "security": {
+          "label": "Check or limit"
+        },
+        "database": {
+          "label": "Stored data"
+        },
+        "external": {
+          "label": "Outside Tumult"
+        }
+      }
+    }
+  },
+  "lanes": [
+    {
+      "id": "receive",
+      "label": "Receive"
+    },
+    {
+      "id": "clean",
+      "label": "Pick and filter"
+    },
+    {
+      "id": "store",
+      "label": "Store"
+    },
+    {
+      "id": "read",
+      "label": "Clean up and read"
+    }
+  ],
+  "mainPath": [
+    "collector",
+    "token",
+    "bound",
+    "pick",
+    "filter",
+    "room",
+    "version",
+    "lake"
+  ],
+  "nodes": [
+    {
+      "id": "collector",
+      "lane": "receive",
+      "col": 0,
+      "type": "external",
+      "label": "OTel Collector",
+      "sublabel": "entity events",
+      "sources": [
+        {
+          "path": "docs/guides/entity-events.md",
+          "line": 1,
+          "end_line": 30
+        }
+      ]
+    },
+    {
+      "id": "token",
+      "lane": "receive",
+      "col": 1,
+      "type": "security",
+      "label": "Check ingest token",
+      "sublabel": "gRPC, HTTP, Arrow",
+      "sources": [
+        {
+          "path": "tumult-ingest/src/grpc.rs",
+          "line": 134,
+          "end_line": 179
+        },
+        {
+          "path": "tumult-ingest/src/http.rs",
+          "line": 53,
+          "end_line": 95
+        }
+      ]
+    },
+    {
+      "id": "bound",
+      "lane": "receive",
+      "col": 2,
+      "type": "backend",
+      "label": "Unpack and bound",
+      "sublabel": "gzip, 4 MiB max",
+      "sources": [
+        {
+          "path": "tumult-ingest/src/http/encoding.rs",
+          "line": 42,
+          "end_line": 101
+        },
+        {
+          "path": "tumult-ingest/src/otap/limits.rs",
+          "line": 22,
+          "end_line": 94
+        }
+      ]
+    },
+    {
+      "id": "reply",
+      "lane": "receive",
+      "col": 4,
+      "type": "backend",
+      "label": "Reply to sender",
+      "sublabel": "rejected count",
+      "sources": [
+        {
+          "path": "tumult-ingest/src/entity_events.rs",
+          "line": 273,
+          "end_line": 300
+        }
+      ]
+    },
+    {
+      "id": "pick",
+      "lane": "clean",
+      "col": 2,
+      "type": "backend",
+      "label": "Pick entity events",
+      "sublabel": "rest stay logs",
+      "tag": "off by default",
+      "sources": [
+        {
+          "path": "tumult-otlp/src/entity.rs",
+          "line": 391,
+          "end_line": 427
+        },
+        {
+          "path": "tumult-ingest/src/entity_events.rs",
+          "line": 82,
+          "end_line": 146
+        }
+      ]
+    },
+    {
+      "id": "filter",
+      "lane": "clean",
+      "col": 3,
+      "type": "security",
+      "label": "Keep allowed keys",
+      "sublabel": "allow-list",
+      "sources": [
+        {
+          "path": "tumult-otlp/src/entity.rs",
+          "line": 119,
+          "end_line": 160
+        }
+      ]
+    },
+    {
+      "id": "room",
+      "lane": "store",
+      "col": 3,
+      "type": "security",
+      "label": "Apply caps",
+      "sublabel": "evict if full",
+      "sources": [
+        {
+          "path": "tumult-lake/src/entities/caps.rs",
+          "line": 468,
+          "end_line": 560
+        }
+      ]
+    },
+    {
+      "id": "version",
+      "lane": "store",
+      "col": 4,
+      "type": "backend",
+      "label": "Version the entity",
+      "sublabel": "open or close",
+      "sources": [
+        {
+          "path": "tumult-lake/src/entities.rs",
+          "line": 383,
+          "end_line": 450
+        }
+      ]
+    },
+    {
+      "id": "lake",
+      "lane": "store",
+      "col": 5,
+      "type": "database",
+      "label": "DuckDB lake",
+      "sublabel": "entity_versions",
+      "sources": [
+        {
+          "path": "tumult-lake/src/schema/entities.rs",
+          "line": 8,
+          "end_line": 39
+        }
+      ]
+    },
+    {
+      "id": "prune",
+      "lane": "read",
+      "col": 3,
+      "type": "backend",
+      "label": "Prune old entities",
+      "sublabel": "after 30 days",
+      "sources": [
+        {
+          "path": "tumult-ingest/src/entity_events.rs",
+          "line": 546,
+          "end_line": 567
+        },
+        {
+          "path": "tumult-lake/src/entities/caps.rs",
+          "line": 619,
+          "end_line": 634
+        }
+      ]
+    },
+    {
+      "id": "list",
+      "lane": "read",
+      "col": 4,
+      "type": "frontend",
+      "label": "List entities",
+      "sublabel": "GET /api/entities",
+      "tag": "API only, no page",
+      "sources": [
+        {
+          "path": "tumult-api/src/handlers/entities.rs",
+          "line": 320,
+          "end_line": 360
+        }
+      ]
+    },
+    {
+      "id": "purge",
+      "lane": "read",
+      "col": 5,
+      "type": "security",
+      "label": "Purge entities",
+      "sublabel": "admin only",
+      "sources": [
+        {
+          "path": "tumult-api/src/handlers/entities.rs",
+          "line": 480,
+          "end_line": 513
+        },
+        {
+          "path": "tumult-api/src/auth/route_table.rs",
+          "line": 127,
+          "end_line": 128
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "send",
+      "from": "collector",
+      "to": "token",
+      "label": "OTLP logs",
+      "variant": "emphasis"
+    },
+    {
+      "id": "authed",
+      "from": "token",
+      "to": "bound",
+      "variant": "emphasis"
+    },
+    {
+      "id": "decoded",
+      "from": "bound",
+      "to": "pick",
+      "variant": "emphasis"
+    },
+    {
+      "id": "events",
+      "from": "pick",
+      "to": "filter",
+      "label": "entity events",
+      "variant": "emphasis"
+    },
+    {
+      "id": "rows",
+      "from": "filter",
+      "to": "room",
+      "variant": "emphasis"
+    },
+    {
+      "id": "admitted",
+      "from": "room",
+      "to": "version",
+      "label": "admitted",
+      "variant": "emphasis"
+    },
+    {
+      "id": "write",
+      "from": "version",
+      "to": "lake",
+      "label": "write",
+      "variant": "emphasis"
+    },
+    {
+      "id": "refused",
+      "from": "room",
+      "to": "reply",
+      "label": "refused at cap",
+      "variant": "dashed",
+      "role": "error"
+    },
+    {
+      "id": "dropped",
+      "from": "filter",
+      "to": "reply",
+      "label": "dropped",
+      "variant": "dashed",
+      "role": "error"
+    },
+    {
+      "id": "prune-lake",
+      "from": "prune",
+      "to": "lake",
+      "label": "after writes",
+      "variant": "dashed",
+      "role": "async"
+    },
+    {
+      "id": "list-lake",
+      "from": "list",
+      "to": "lake",
+      "label": "reads",
+      "role": "branch"
+    },
+    {
+      "id": "purge-lake",
+      "from": "purge",
+      "to": "lake",
+      "label": "deletes",
+      "variant": "security",
+      "role": "branch"
+    }
+  ]
+}
