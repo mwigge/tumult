@@ -1,6 +1,6 @@
 # tumult-ssh
 
-SSH remote execution for the Tumult chaos engineering platform -- run chaos actions and probes on remote hosts.
+SSH remote execution for the Tumult resilience intelligence platform -- run chaos actions and probes on remote hosts.
 
 ## Key Types
 

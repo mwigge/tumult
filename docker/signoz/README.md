@@ -1,6 +1,6 @@
 # Tumult SigNoz dashboards
 
-Predefined SigNoz dashboards for the Tumult chaos engineering platform,
+Predefined SigNoz dashboards for the Tumult resilience intelligence platform,
 plus the import tooling. The stack itself runs via
 `docker/docker-compose.observability.yml` (SigNoz standalone on :3301) —
 or point Tumult at any existing SigNoz.

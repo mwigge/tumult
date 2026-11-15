@@ -1,6 +1,6 @@
 # tumult-plugin
 
-Plugin system for the Tumult chaos engineering platform -- define and load external actions and probes.
+Plugin system for the Tumult resilience intelligence platform -- define and load external actions and probes.
 
 ## Key Types
 

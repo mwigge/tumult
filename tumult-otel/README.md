@@ -1,6 +1,6 @@
 # tumult-otel
 
-OpenTelemetry instrumentation for the Tumult chaos engineering platform -- traces, metrics, and logs for experiment observability.
+OpenTelemetry instrumentation for the Tumult resilience intelligence platform -- traces, metrics, and logs for experiment observability.
 
 ## Key Types
 
