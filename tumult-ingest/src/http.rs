@@ -9,7 +9,7 @@
 //! to 4 MiB, as a message may on gRPC; one that expands to more is `413`.
 //! Any other encoding is `415`, with `Accept-Encoding: gzip` in the answer.
 //! The body as it is sent, compressed or not, is at most
-//! [`MAX_BODY_BYTES`] (2 MiB); a larger one is `413` before it is read.
+//! [`MAX_BODY_BYTES`] (4 MiB too); a larger one is `413` before it is read.
 //!
 //! When an ingest token is configured (`KRONIKA_INGEST_TOKEN`), every
 //! `/v1/*` route requires `Authorization: Bearer <token>`; non-`/v1` routes
@@ -40,11 +40,10 @@ mod encoding;
 
 use encoding::Refusal;
 
-/// The most an OTLP/HTTP body may be on the wire, compressed or not
-/// (2 MiB). It is what axum takes when nothing is said; it is said here so
-/// that the bound does not move with a dependency. What a gzip body may
-/// expand to is bounded apart from it (4 MiB).
-pub const MAX_BODY_BYTES: usize = 2 * 1024 * 1024;
+/// The most an OTLP/HTTP body may be, on the wire and expanded: 4 MiB,
+/// what tonic takes as one message on the gRPC services. One bound, so a
+/// body sent as it is may be as large as a gzip body may expand to.
+pub const MAX_BODY_BYTES: usize = 4 * 1024 * 1024;
 
 /// Build the HTTP router (OTLP/HTTP), unauthenticated.
 pub fn router(ingest: IngestWriter) -> Router {

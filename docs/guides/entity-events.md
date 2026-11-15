@@ -106,11 +106,11 @@ whole and bounded as one; anything after a member that is not a member is
 `Accept-Encoding: gzip`, never accepted and never called malformed; a
 body that says gzip and is not is `400`.
 
-An OTLP/HTTP body has two bounds, and both answer `413`:
+An OTLP/HTTP body has two bounds of the same size, and both answer `413`:
 
 | Bound | Value | Applies to |
 |-------|-------|------------|
-| On the wire | 2 MiB | the body as it is sent, compressed or not, refused before it is read |
+| On the wire | 4 MiB | the body as it is sent, compressed or not, refused before it is read |
 | Expanded | 4 MiB | what a gzip body expands to, all its members together |
 
 Neither is configurable. A Collector whose batches are refused for their
