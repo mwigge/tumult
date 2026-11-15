@@ -6,24 +6,68 @@
 ![Rust](https://img.shields.io/badge/rust-1.92.0%2B-orange)
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue)
 
-Tumult is a Rust-native chaos engineering platform for running observable,
-repeatable resilience experiments from a CLI or Model Context Protocol (MCP)
-client — and for governing, storing and reporting them from the bundled
-`tumultd` daemon and web UI.
+Tumult is a Rust-native resilience intelligence platform. It collects
+resilience evidence from several sources, keeps it in one DuckDB lake, and
+turns it into scores, verdicts, forecasts and reports a team can decide on.
+
+Chaos experiments, run from a CLI or a Model Context Protocol (MCP) client,
+are one evidence source. The others are load and performance runs,
+OpenTelemetry telemetry that services send over OTLP or OTel-Arrow, entity
+events, manual records of exercises, and the organisation and function
+register in `org.yaml`. The `tumultd` daemon ingests and stores all of it,
+and its web UI, Krönika, shows what the evidence says: resilience and
+posture scores, the DORA coverage and maturity score, performance
+regression verdicts per `service.version`, forecast bands and run impact,
+and the Star Map of organisation, systems, services and workloads.
 
 ```mermaid
 flowchart LR
-    accTitle: Tumult architecture and evidence flow
-    accDescr: Operators and MCP clients submit experiments to the Tumult engine, which calls fault providers and writes journals, analytics, graph data, and telemetry.
-    operator[Operator] --> cli[Tumult CLI]
-    client[MCP client] --> mcp[Tumult MCP server]
-    cli --> engine[tumult-core engine]
-    mcp --> engine
-    engine --> providers[Fault and probe providers]
-    providers --> targets[Target systems]
-    engine --> evidence[TOON journals and DuckDB]
-    evidence --> reports[ChaosGraph and reports]
-    engine --> otel[OpenTelemetry exporter]
+    accTitle: Tumult evidence loop
+    accDescr: Evidence sources (chaos experiments, load and performance runs, service telemetry, entity events, manual records) reach the tumultd daemon over OTLP, OTel-Arrow and import. One writer stores them in the DuckDB lake. The intelligence layer reads the lake and produces scores, verdicts, forecasts and the Star Map. Those feed the Krönika web UI, the CI gate, evidence reports and recommended experiments, and a recommended experiment becomes new evidence when it runs.
+    subgraph sources[Evidence sources]
+        chaos[Chaos experiments<br>CLI, MCP, daemon runs]
+        load[Load and performance runs<br>k6, oha]
+        telemetry[Service telemetry<br>traces, metrics, logs]
+        entities[Entity events<br>from a Collector]
+        manual[Manual records<br>and org.yaml]
+    end
+    subgraph ingest[tumultd ingest]
+        otlp[OTLP gRPC and HTTP<br>OTel-Arrow streams]
+        imports[Journal, CSV and<br>manual-record import]
+    end
+    lake[(DuckDB lake<br>one writer, many readers)]
+    subgraph intel[Intelligence]
+        scores[Scores<br>resilience, posture, DORA]
+        verdicts[Verdicts<br>objectives, gate, performance]
+        forecasts[Forecasts<br>bands and run impact]
+        starmap[Star Map<br>and risk scan]
+    end
+    subgraph decisions[Decisions and reports]
+        ui[Krönika web UI]
+        gate[CI gate and JSON API]
+        reports[Evidence reports<br>R1, R2, R3]
+        recommend[Recommended<br>next experiment]
+    end
+    chaos --> otlp
+    load --> otlp
+    telemetry --> otlp
+    entities --> otlp
+    chaos --> imports
+    manual --> imports
+    otlp --> lake
+    imports --> lake
+    lake --> scores
+    lake --> verdicts
+    lake --> forecasts
+    lake --> starmap
+    scores --> ui
+    verdicts --> ui
+    forecasts --> ui
+    starmap --> ui
+    verdicts --> gate
+    scores --> reports
+    starmap --> recommend
+    recommend -.-> chaos
 ```
 
 ## Quick start
@@ -61,7 +105,9 @@ target/release/tumult run examples/redis-chaos.toon
 The run writes a TOON journal and, unless disabled, ingests it into the unified
 DuckDB store, a configured daemon, or the configured ClickHouse backend. Follow
 the [guided walkthrough](QUICKSTART.md) for
-analysis, observability, GameDays, and MCP usage.
+analysis, observability, GameDays, and MCP usage. To see the scores, verdicts
+and the Star Map on seeded evidence, start the
+[daemon and web UI demo stack](#the-daemon-lake-and-web-ui).
 
 ## Capabilities
 
@@ -96,6 +142,28 @@ analysis, observability, GameDays, and MCP usage.
   verdicts per `service.version` with a bootstrap confidence interval
   (`tumult perf`, `GET /api/perf/{target}`, the `/performance` page); each
   run records the version it measured (`tumult run --target-version`).
+- OTLP ingest over gRPC and HTTP (gzip accepted on both, zstd on gRPC) and
+  OTel-Arrow streams on the gRPC listener, behind one ingest token and one
+  writer. See [observability setup](docs/guides/observability-setup.md).
+- Forecast bands for semantic metrics and the counterfactual impact and
+  recovery time of a run's probes (`GET /api/forecast`,
+  `GET /api/runs/{id}/impact`, the Impact panel on the run page), from a
+  built-in Holt-Winters provider or the optional `tumult-forecastd`
+  Timestral sidecar. See [forecasting](docs/guides/forecasting.md).
+- The [Star Map](docs/guides/star-map.md): organisation units, ICT entities,
+  systems, components, services, workloads and experiment definitions as one
+  graph with evidence, risk and conformance lenses (`GET /api/starmap`, the
+  `/starmap` page).
+- A [DORA coverage and maturity score](docs/guides/dora-score.md): coverage
+  per article and business function with unknown shown apart, and an internal
+  1 to 5 maturity level per node (`GET /api/dora`, `GET /api/maturity`,
+  Scores → DORA). The score says what evidence exists. It does not say that
+  an entity complies with the regulation.
+- [Entity events](docs/guides/entity-events.md) (off by default,
+  `KRONIKA_ENTITY_EVENTS=1`): OpenTelemetry entity events stored as entities
+  with a lifetime, read through `GET /api/entities`.
+- Structured logs from every binary: JSON on stderr with stable event names,
+  bridged to OTLP. See [logging](docs/guides/logging.md).
 - Deterministic and live-proxy fault injection for AI agents, plus adapters for
   Claude Code and Codex.
 
@@ -104,8 +172,14 @@ the installed build.
 
 ## How Tumult differs
 
-Against the incumbent chaos tools (Gremlin, Chaos Mesh, LitmusChaos), Tumult
-bets on four things:
+Chaos tools such as Gremlin, Chaos Mesh and LitmusChaos inject faults and
+report what happened in a run. Tumult injects faults too, and differs in
+what it does with the results:
+
+- **Evidence from more than fault runs.** Load and performance runs, the
+  telemetry services already emit, entity events and manual records land in
+  the same lake as chaos experiments, so a score or a verdict can rest on
+  all of them.
 
 - **Agent-first.** A 40-tool MCP server where every tool declares safety
   annotations and role gating (read-only tools need `viewer`, writers and
@@ -113,7 +187,7 @@ bets on four things:
   injection for agentic AI systems themselves
   (`demo/experiments/demo-agentic*.toon`).
 - **Always-on evidence.** The `tumultd` daemon ingests OTLP telemetry
-  (gRPC and HTTP) around the clock into one DuckDB lake (Kronika), so
+  (gRPC, HTTP and OTel-Arrow) around the clock into one DuckDB lake, so
   analytics, trends and audit trails accrue without exporting anything.
 - **Governance built in.** Risk-tiered approvals, hash-chained audit trails
   and compliance evidence packs (`tumult-compliance/`) mapped to DORA, NIS2,
@@ -128,11 +202,13 @@ The launch post has the longer story:
 
 *The chronicle of your resilience work.*
 
-This is the analytics half of Tumult: the `tumultd` daemon, the unified
-DuckDB lake, and the embedded SvelteKit web UI. The CLI is the engine that
-executes experiments. The daemon is where they are registered, approved,
-executed under guardrails, stored, and reported. The crate and binary
-layout is documented in
+This is where evidence becomes intelligence: the `tumultd` daemon, the
+unified DuckDB lake, and Krönika, the embedded SvelteKit web UI. The CLI is
+the engine that executes experiments. The daemon is where they are
+registered, approved, executed under guardrails, stored, scored and
+reported, and where telemetry from other sources is ingested. The
+architecture, the data flows and every Krönika page with its charts and the
+API behind it are documented in
 [docs/architecture/kronika-architecture.md](docs/architecture/kronika-architecture.md).
 
 ```mermaid
@@ -169,9 +245,10 @@ flowchart LR
   cookies) or revocable `kro_`-prefixed API tokens. One route table with
   `viewer < operator < approver < admin` roles and optional
   per-environment scopes (ADR-012).
-- **Automatic ingest** — OTLP/gRPC (`:4317`, tumult's exporter) and
-  OTLP/HTTP protobuf (`:4318`, `/v1/*`) on one daemon. You can also import
-  CSV files and tumult journal JSON by hand (`tumultd import <file>`).
+- **Automatic ingest** — OTLP/gRPC (`:4317`, tumult's exporter), OTel-Arrow
+  streams on the same gRPC listener (the Collector's `otelarrow` exporter)
+  and OTLP/HTTP protobuf (`:4318`, `/v1/*`) on one daemon. You can also
+  import CSV files and tumult journal JSON by hand (`tumultd import <file>`).
 - **Unified DuckDB store + parquet lake** — telemetry, run state, manual
   evidence and the analytics family in one store behind one writer.
   Manifest-based Parquet snapshots include late-arriving and changed records
@@ -190,10 +267,10 @@ flowchart LR
   draft → verified manual-evidence lifecycle (reviewer ≠ enterer,
   append-only hash-chained audit).
 - **Web UI + query API** — a SvelteKit SPA embedded into the `tumultd`
-  binary (Overview, Scores, Experiments, Runs, Author, GameDays, Approvals,
-  Manual evidence, Logs, Traces, Metrics, Topology, Ask, Reports, Events,
-  Schedules, plus admin-only Users and Webhooks — and a two-click stop-all
-  kill switch on the Runs page). It is backed by a JSON
+  binary (Overview, Posture, Performance, Scores, DORA, Experiments, Runs,
+  Author, GameDays, Approvals, Manual evidence, Logs, Traces, Metrics,
+  Star Map, Ask, Reports, Events, Schedules, plus admin-only Users and
+  Webhooks — and a two-click stop-all kill switch on the Runs page). It is backed by a JSON
   API under `/api/*`, including a guarded NL→SQL ask path
   (`tumult_intelligence::sql_guard`).
 
@@ -321,6 +398,13 @@ See [SECURITY.md](SECURITY.md) for the supported-version policy.
 - [Chaos Lab: learn in your browser](chaos-lab/README.md)
 - [Quickstart](QUICKSTART.md)
 - [Guides](docs/guides/index.md)
+- [Architecture and Krönika pages](docs/architecture/kronika-architecture.md)
+- [Star Map](docs/guides/star-map.md),
+  [DORA score](docs/guides/dora-score.md),
+  [forecasting](docs/guides/forecasting.md),
+  [performance regression](docs/guides/performance-regression.md),
+  [entity events](docs/guides/entity-events.md) and
+  [logging](docs/guides/logging.md)
 - [Plugin reference](docs/plugins/index.md)
 - [Data lifecycle](docs/data-lifecycle.md)
 - [Security assessment](docs/security-assessment.md)
