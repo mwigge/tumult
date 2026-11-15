@@ -3,27 +3,3 @@
 # Delete an entry when its test is fixed: the guard fails on an entry that
 # matches nothing. List the current offenders with:
 #   python3 scripts/check-test-hygiene.py --list
-
-# tumultd: deferred, the crate is being changed elsewhere
-tumultd/src/reports.rs::report_scheduler_writes_a_digest_after_one_interval::bare-sleep  # deferred: sleep without a stated reason
-tumultd/src/serve/tests.rs::alive_tasks_settled::bare-sleep  # deferred: sleep without a stated reason
-tumultd/src/serve/tests.rs::serve_binds_serves_and_shuts_down_cleanly_on_sigterm::bare-sleep  # deferred: sleep without a stated reason
-tumultd/src/lake_jobs.rs::shutdown_drains_with_lake_scheduler_enabled::no-assert  # deferred: asserts nothing yet
-tumultd/src/serve/tests.rs::two_listeners_that_stop_cleanly_are_a_clean_stop::no-assert  # deferred: asserts nothing yet
-tumultd/src/admin.rs::bind_guard_bootstrap_password_creates_the_admin_on_a_network_bind::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumultd/src/admin.rs::bind_guard_ignores_a_token_when_no_bootstrap_admin_is_created::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumultd/src/admin.rs::bind_guard_ignores_the_bootstrap_env_when_users_already_exist::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumultd/src/admin.rs::bind_guard_provisions_the_bootstrap_token_for_the_bootstrap_admin::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumultd/src/admin.rs::bind_guard_rejects_a_low_entropy_bootstrap_token_before_writing::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumultd/src/admin.rs::bind_guard_rejects_a_short_bootstrap_password_before_writing::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumultd/src/admin.rs::bind_guard_rejects_a_token_without_the_kro_prefix_before_writing::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumultd/src/admin.rs::clear_bootstrap_env::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumultd/src/admin.rs::create_admin_without_db_flag_uses_the_configured_store_path::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumultd/src/admin.rs::import_loads_a_csv_into_the_store::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumultd/src/admin.rs::import_rejects_missing_and_unrecognised_files::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumultd/src/lake_jobs.rs::lake_interval_from_env_defaults_to_daily_and_honours_overrides::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumultd/src/reports.rs::report_interval_from_env_off_unless_set_to_a_valid_interval::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumultd/src/reports.rs::report_subcommand_writes_out_file_and_rejects_unknown_metrics::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumultd/src/serve/tests.rs::daemon_env::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumultd/src/serve/tests.rs::serve_binds_serves_and_shuts_down_cleanly_on_sigterm::raw-env  # deferred: move to tumult_test_utils::EnvGuard
-tumultd/src/serve/tests.rs::the_pre_bound_grpc_listener_enforces_the_connection_limits::raw-env  # deferred: move to tumult_test_utils::EnvGuard

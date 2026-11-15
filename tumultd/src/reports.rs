@@ -249,10 +249,12 @@ pub(crate) fn spawn_report_scheduler(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::test_support::ENV_LOCK;
     use std::sync::Arc;
     use std::time::Duration;
+
+    use tumult_test_utils::EnvGuard;
+
+    use super::*;
 
     /// One metric definition over the `spans` table, mirroring
     /// `metrics/experiment_count.yaml`.
@@ -277,10 +279,6 @@ condition: { column: span_name, equals: "resilience.experiment" }
         std::fs::create_dir_all(&metrics_dir).unwrap();
         std::fs::write(metrics_dir.join("experiment_count.yaml"), METRIC_YAML).unwrap();
         (dir, db_path, metrics_dir)
-    }
-
-    fn env_lock() -> std::sync::MutexGuard<'static, ()> {
-        ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner())
     }
 
     async fn body_string(resp: Response) -> String {
@@ -325,19 +323,18 @@ condition: { column: span_name, equals: "resilience.experiment" }
 
     #[test]
     fn report_interval_from_env_off_unless_set_to_a_valid_interval() {
-        let _guard = env_lock();
-        std::env::remove_var("KRONIKA_REPORT_INTERVAL");
+        let mut env = EnvGuard::lock();
+        env.remove("KRONIKA_REPORT_INTERVAL");
         assert_eq!(report_interval_from_env(), None);
         for off in ["", "0", "off", "OFF", "Off"] {
-            std::env::set_var("KRONIKA_REPORT_INTERVAL", off);
+            env.set("KRONIKA_REPORT_INTERVAL", off);
             assert_eq!(report_interval_from_env(), None, "{off:?} must disable");
         }
-        std::env::set_var("KRONIKA_REPORT_INTERVAL", "30m");
+        env.set("KRONIKA_REPORT_INTERVAL", "30m");
         assert_eq!(report_interval_from_env(), Some(Duration::from_secs(1_800)));
         // Invalid values disable reporting rather than guessing.
-        std::env::set_var("KRONIKA_REPORT_INTERVAL", "bogus");
+        env.set("KRONIKA_REPORT_INTERVAL", "bogus");
         assert_eq!(report_interval_from_env(), None);
-        std::env::remove_var("KRONIKA_REPORT_INTERVAL");
     }
 
     // -- render_metric_report -------------------------------------------------
@@ -535,10 +532,10 @@ condition: { column: span_name, equals: "resilience.experiment" }
 
     #[test]
     fn report_subcommand_writes_out_file_and_rejects_unknown_metrics() {
-        let _guard = env_lock();
+        let mut env = EnvGuard::lock();
         let (dir, db_path, metrics_dir) = fixture();
-        std::env::set_var("TUMULT_LAKE_PATH", &db_path);
-        std::env::set_var("KRONIKA_METRICS_DIR", &metrics_dir);
+        env.set("TUMULT_LAKE_PATH", &db_path)
+            .set("KRONIKA_METRICS_DIR", &metrics_dir);
 
         let out = dir.path().join("report.html");
         report("experiment_count".to_string(), Some(out.clone())).unwrap();
@@ -550,9 +547,6 @@ condition: { column: span_name, equals: "resilience.experiment" }
 
         let err = report("nope".to_string(), None).unwrap_err();
         assert!(format!("{err:#}").contains("not found"), "{err:#}");
-
-        std::env::remove_var("TUMULT_LAKE_PATH");
-        std::env::remove_var("KRONIKA_METRICS_DIR");
     }
 
     // -- scheduled digests -----------------------------------------------------
@@ -619,6 +613,7 @@ condition: { column: span_name, equals: "resilience.experiment" }
                 "no digest appeared in {} within 30s",
                 reports_dir.display()
             );
+            // sleep: poll interval, bounded by the deadline above
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
     }
