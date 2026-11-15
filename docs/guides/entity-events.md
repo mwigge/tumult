@@ -1,3 +1,9 @@
+---
+title: Entity Events
+parent: Guides
+nav_order: 26
+---
+
 # Entity events
 
 An OpenTelemetry Collector can report the things it sees (a host, a

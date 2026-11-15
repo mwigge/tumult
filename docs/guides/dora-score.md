@@ -1,3 +1,9 @@
+---
+title: DORA Coverage and Maturity Score
+parent: Guides
+nav_order: 27
+---
+
 # DORA coverage and maturity score
 
 Krönika reads the lake and answers two questions for one legal entity:

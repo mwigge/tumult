@@ -1,3 +1,9 @@
+---
+title: OpenTelemetry Auto-instrumentation
+parent: Guides
+nav_order: 25
+---
+
 # OpenTelemetry auto-instrumentation and the resilience contract
 
 Tumult scores, gates and ranks risks by **target**. Everything the platform

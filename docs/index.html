@@ -1,8 +1,8 @@
 ---
-title: Tumult — Rust-Native Chaos Engineering
+title: "Tumult: Rust-Native Resilience Intelligence"
 layout: default
 nav_exclude: true
-description: "Tumult is one platform for chaos engineering: author experiments in the web UI, approve them behind risk-tiered quorums, run them with OpenTelemetry, store every result in the Kronika lake, and report compliance evidence."
+description: "Tumult is a resilience intelligence platform: chaos experiments, load and performance runs, OpenTelemetry telemetry and manual records go into one DuckDB lake, and scores, verdicts, forecasts, the Star Map and evidence reports come out of it."
 image: /images/tumult-banner.png
 ---
 
@@ -15,9 +15,9 @@ image: /images/tumult-banner.png
   <img src="/images/tumult.png" alt="Tumult" class="hero-logo">
   <h1>Embrace the <span>Tumult</span></h1>
   <p class="tagline">
-    Rust-native chaos engineering, end to end. Author experiments in the web UI,
-    approve them behind risk-tiered quorums, run them with real telemetry —
-    and keep every result as resilience evidence.
+    Rust-native resilience intelligence. Collect evidence from chaos experiments,
+    load and performance runs and the telemetry your services already emit,
+    keep it in one lake, and read it as scores, verdicts, forecasts and reports.
   </p>
 
   <div class="install-box" onclick="navigator.clipboard.writeText('curl -sSL https://raw.githubusercontent.com/mwigge/tumult/main/install.sh | sh')">
@@ -37,7 +37,7 @@ image: /images/tumult-banner.png
   </div>
 
   <div class="hero-buttons">
-    <a href="/guides/experiment-format.html" class="btn-primary-custom">Get Started</a>
+    <a href="/guides/platform-walkthrough.html" class="btn-primary-custom">Get Started</a>
     <a href="https://github.com/mwigge/tumult" class="btn-secondary-custom">GitHub</a>
     <a href="/blog/" class="btn-secondary-custom">Blog</a>
   </div>
@@ -58,6 +58,7 @@ image: /images/tumult-banner.png
   <div class="stat"><div class="num">T0–T3</div><div class="label">Approval Risk Tiers</div></div>
   <div class="stat"><div class="num">2</div><div class="label">Unsafe Blocks (audited — process-group kills)</div></div>
   <div class="stat"><div class="num">7</div><div class="label">Compliance Frameworks</div></div>
+  <div class="stat"><div class="num">7</div><div class="label">Resilience Disciplines</div></div>
 </section>
 
 <!-- ════════════════════════════════════════════════════ -->
@@ -66,46 +67,47 @@ image: /images/tumult-banner.png
 <section class="flow-section">
   <h2>One Platform, End to End</h2>
   <p class="lead">
-    Tumult is a single platform, not a pile of tools. Every part feeds the next,
-    and the loop closes when what you learn shapes the next experiment.
+    Tumult is a single platform, not a pile of tools. Evidence goes in from
+    several sources, decisions come out, and the loop closes when a finding
+    becomes the next experiment.
   </p>
   <div class="flow">
     <div class="flow-step">
-      <div class="step-name">Author</div>
-      <div class="step-desc">Catalog-driven wizard in the web UI, or TOON from the CLI</div>
+      <div class="step-name">Test</div>
+      <div class="step-desc">Chaos, load, performance and recovery runs, approved by risk tier T0–T3</div>
     </div>
     <div class="flow-arrow">→</div>
     <div class="flow-step">
-      <div class="step-name">Approve</div>
-      <div class="step-desc">Risk tiers T0–T3: quorum, TTL, content-hash pin</div>
-    </div>
-    <div class="flow-arrow">→</div>
-    <div class="flow-step">
-      <div class="step-name">Run</div>
-      <div class="step-desc">Real OpenTelemetry traces on every action</div>
+      <div class="step-name">Observe</div>
+      <div class="step-desc">Service telemetry and entity events over OTLP and OTel-Arrow</div>
     </div>
     <div class="flow-arrow">→</div>
     <div class="flow-step">
       <div class="step-name">Store</div>
-      <div class="step-desc">OTLP ingest into the Kronika DuckDB lake</div>
+      <div class="step-desc">One DuckDB lake behind a single writer, with Parquet export</div>
     </div>
     <div class="flow-arrow">→</div>
     <div class="flow-step">
-      <div class="step-name">Explore</div>
-      <div class="step-desc">Web UI, SQL, or plain questions in natural language</div>
+      <div class="step-name">Score</div>
+      <div class="step-desc">Posture, org roll-ups, DORA coverage and maturity</div>
     </div>
     <div class="flow-arrow">→</div>
     <div class="flow-step">
-      <div class="step-name">Report</div>
-      <div class="step-desc">Compliance evidence as document-controlled PDFs</div>
+      <div class="step-name">Judge</div>
+      <div class="step-desc">Objective verdicts, performance regression per version, CI gate</div>
     </div>
     <div class="flow-arrow">→</div>
     <div class="flow-step">
-      <div class="step-name">Recommend</div>
-      <div class="step-desc">AI agents over MCP suggest the next experiment</div>
+      <div class="step-name">Forecast</div>
+      <div class="step-desc">Forecast bands and the counterfactual impact of a run</div>
+    </div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step">
+      <div class="step-name">Decide</div>
+      <div class="step-desc">Star Map, ranked risks, evidence reports, the next experiment</div>
     </div>
   </div>
-  <p class="flow-loop"><span class="loop-arrow">↺</span> Recommendations feed back into the next experiment definition.</p>
+  <p class="flow-loop"><span class="loop-arrow">↺</span> A risk finding becomes a registered experiment, and its run becomes new evidence.</p>
 </section>
 
 <!-- ════════════════════════════════════════════════════ -->
@@ -113,13 +115,18 @@ image: /images/tumult-banner.png
 <!-- ════════════════════════════════════════════════════ -->
 <div class="section-heading">
   <h2>The Parts of the Platform</h2>
-  <p>Each piece does one job and hands off to the next. Here's what fits where.</p>
+  <p>Each piece does one job and hands off to the next. Chaos experiments are one evidence source among several.</p>
 </div>
 <section class="features" style="padding-top: 1.5rem;">
   <div class="feature-card">
+    <span class="piece">Collect</span>
+    <h3>Evidence Sources</h3>
+    <p>Chaos experiments from the CLI, an MCP client or the daemon. <a href="/guides/load-testing-guide.html" style="color: var(--copper);">Load profiles</a> (ramp, spike, soak) on k6 and oha. Telemetry from any service that follows the <a href="/guides/otel-autoinstrumentation.html" style="color: var(--copper);">OpenTelemetry naming contract</a>. <a href="/guides/entity-events.html" style="color: var(--copper);">Entity events</a> from a Collector, stored as entities with a lifetime (off by default). Manual records of game days, tabletops and failovers with a reviewed lifecycle.</p>
+  </div>
+  <div class="feature-card">
     <span class="piece">Author &amp; run</span>
     <h3>Web UI Authoring &amp; CLI</h3>
-    <p>Pick a fault from the live plugin catalog and the Author wizard scaffolds validated TOON — one click into a registered, runnable definition. Or write TOON by hand and run it from one static binary: 16 plugins, 91 chaos actions across PostgreSQL, MySQL, Redis, Kafka, Docker, Podman, Pumba network chaos, Kubernetes, SSH, and CPU/memory/IO stress.</p>
+    <p>Pick a fault from the live plugin catalog and the Author wizard scaffolds validated TOON — one click into a registered, runnable definition. Or write TOON by hand and run it from one static binary: 16 plugins, 91 chaos actions across PostgreSQL, MySQL, Redis, Kafka, Docker, Podman, Pumba network chaos, Kubernetes, SSH, and CPU/memory/IO stress. A definition names its discipline (chaos, load, performance, robustness, dr, security, nfr), its target and its objectives.</p>
   </div>
   <div class="feature-card">
     <span class="piece">Govern</span>
@@ -127,9 +134,29 @@ image: /images/tumult-banner.png
     <p>Every run is classified into a risk tier (T0–T3) at request time. Gated runs wait behind a hash-pinned, quorum- and TTL-bound approval with segregation of duties — the requester can never approve their own run. A two-step e-stop and a stop-all kill switch halt anything mid-method, and every action lands in a hash-chained, tamper-evident audit trail.</p>
   </div>
   <div class="feature-card">
-    <span class="piece">Store &amp; explore</span>
+    <span class="piece">Ingest &amp; store</span>
     <h3>Kronika Lake &amp; Analytics</h3>
-    <p>The daemon (<code>tumultd</code>) ingests OTLP traces, metrics, and logs around the clock into an embedded DuckDB store — Kronika — then serves the web UI from the same binary. KPIs, experiment history, log/trace/metric explorers, per-domain score rollups, parquet export. Or just ask a question in plain language over the store.</p>
+    <p>The daemon (<code>tumultd</code>) ingests traces, metrics, and logs around the clock over OTLP/gRPC, OTLP/HTTP and OTel-Arrow into an embedded DuckDB store — Kronika — behind a single writer, then serves the web UI from the same binary. KPIs, experiment history, log/trace/metric explorers, parquet export. Or just ask a question in plain language over the store. See <a href="/guides/observability-setup.html" style="color: var(--copper);">observability setup</a>.</p>
+  </div>
+  <div class="feature-card">
+    <span class="piece">Score</span>
+    <h3>Posture, Scores &amp; DORA</h3>
+    <p>A passive risk scan ranks findings and coverage gaps from the evidence already in the lake, with a continuous posture score per target. Scores roll up by org domain to the company root. The <a href="/guides/dora-score.html" style="color: var(--copper);">DORA coverage and maturity score</a> shows coverage per article and business function, with unknown shown apart, and an internal 1 to 5 level per node. The score says what evidence exists; it does not say that an entity complies.</p>
+  </div>
+  <div class="feature-card">
+    <span class="piece">Judge</span>
+    <h3>Objectives, Gate &amp; Performance Verdicts</h3>
+    <p>Each non-functional objective and recovery target gets a verdict from the run's measurements: met, breached or inconclusive. <code>tumult gate</code> turns a target's evidence into pass, warn or fail for a pipeline. <a href="/guides/performance-regression.html" style="color: var(--copper);">Performance regression verdicts</a> compare two <code>service.version</code>s of a target with a bootstrap confidence interval, and evidence too thin to tell is inconclusive.</p>
+  </div>
+  <div class="feature-card">
+    <span class="piece">Forecast</span>
+    <h3>Forecasting &amp; Run Impact</h3>
+    <p><a href="/guides/forecasting.html" style="color: var(--copper);">Forecast bands</a> for semantic metrics, and for each run the distance of every probe from its counterfactual and the time it took to come back. A built-in Holt-Winters provider needs no network and no model weights; a Timestral sidecar is optional. Every response names the model that produced the numbers.</p>
+  </div>
+  <div class="feature-card">
+    <span class="piece">See it whole</span>
+    <h3>Star Map</h3>
+    <p>The <a href="/guides/star-map.html" style="color: var(--copper);">Star Map</a> draws organisation units, ICT entities, systems, components, services, workloads and experiment definitions as one graph. Three lenses colour the same nodes by evidence, by risk and by telemetry conformance, and a node opens a drawer with its runs, gate verdict, objective verdicts, manual records and findings.</p>
   </div>
   <div class="feature-card">
     <span class="piece">Prove it</span>
@@ -139,7 +166,7 @@ image: /images/tumult-banner.png
   <div class="feature-card">
     <span class="piece">Close the loop</span>
     <h3>MCP Server &amp; Agents</h3>
-    <p>40 MCP tools over stdio or Streamable HTTP, with tool annotations, structured output schemas, and <code>tumult://</code> resources. Any MCP-compatible agent can discover plugins, run experiments, query the analytics lake, and recommend what to test next — and Tumult can inject faults into agentic AI systems themselves.</p>
+    <p>40 MCP tools over stdio or Streamable HTTP, with tool annotations, structured output schemas, and <code>tumult://</code> resources. Any MCP-compatible agent can discover plugins, run experiments, query the analytics lake, and recommend what to test next — and Tumult can inject faults into agentic AI systems themselves. Over the API a risk finding can be turned into a registered experiment and an autopilot candidate.</p>
   </div>
 </section>
 
@@ -156,7 +183,7 @@ image: /images/tumult-banner.png
   </div>
   <div class="feature-card">
     <h3>Native OpenTelemetry</h3>
-    <p>Built-in instrumentation covers executed SSH, Kubernetes, plugin, analytics and MCP paths. Set an OTLP/gRPC endpoint to send the executed activities to Jaeger, SigNoz, or another compatible backend.</p>
+    <p>Built-in instrumentation covers executed SSH, Kubernetes, plugin, analytics and MCP paths. Set an OTLP/gRPC endpoint to send the executed activities to Jaeger, SigNoz, or another compatible backend. Every binary writes <a href="/guides/logging.html" style="color: var(--copper);">structured logs</a>: JSON on stderr with stable event names, bridged to OTLP.</p>
   </div>
   <div class="feature-card">
     <h3>Memory Safe</h3>
@@ -252,7 +279,8 @@ Running Q2 PostgreSQL Resilience GameDay...
     Every screen below is the Tumult web UI on the seeded demo stack
     (<code>docker compose -f docker/docker-compose.kronika.yml up -d</code>) —
     from authoring to an approved, executed, e-stopped and reported run.
-    The full click path is in the <a href="/guides/platform-walkthrough.html" style="color: var(--copper);">platform walkthrough</a>.
+    The full click path, and a list of every Krönika page with its charts and
+    the evidence behind them, is in the <a href="/guides/platform-walkthrough.html" style="color: var(--copper);">platform walkthrough</a>.
   </p>
 </section>
 <section class="shots">
@@ -314,10 +342,11 @@ Running Q2 PostgreSQL Resilience GameDay...
 <!-- ════════════════════════════════════════════════════ -->
 <section class="cta">
   <h2>Ready to Build Resilience?</h2>
-  <p>One command to install. One script to run a full GameDay with DORA/NIS2 evidence mapping.</p>
+  <p>One command to install. One compose file to see scores, verdicts and the Star Map on seeded evidence.</p>
   <div class="hero-buttons">
     <a href="https://github.com/mwigge/tumult" class="btn-primary-custom">View on GitHub</a>
     <a href="https://github.com/mwigge/tumult/blob/main/QUICKSTART.md" class="btn-secondary-custom">Quickstart</a>
+    <a href="/guides/platform-walkthrough.html" class="btn-secondary-custom">Platform Walkthrough</a>
     <a href="/blog/14-gameday-is-here.html" class="btn-secondary-custom">GameDay Guide</a>
   </div>
 </section>

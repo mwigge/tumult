@@ -1,3 +1,9 @@
+---
+title: Logging
+parent: Guides
+nav_order: 29
+---
+
 # Logging
 
 Every Tumult binary writes its diagnostics as structured events through one

@@ -6,7 +6,24 @@ has_children: true
 
 # Guides
 
-Step-by-step guides covering all major aspects of Tumult.
+Step-by-step guides covering all major aspects of Tumult, a resilience
+intelligence platform. Chaos experiments are one source of evidence; load
+and performance runs, service telemetry, entity events and manual records
+are the others. The guides follow the same loop:
+
+- **Produce evidence**: [Experiment Format](experiment-format.md),
+  [Load Testing Guide](load-testing-guide.md),
+  [OpenTelemetry Auto-instrumentation](otel-autoinstrumentation.md),
+  [Entity Events](entity-events.md).
+- **Ingest and store it**: [Observability Setup](observability-setup.md),
+  [Logging](logging.md), [Analytics Guide](analytics-guide.md),
+  [Data portability and recovery](data-portability.md).
+- **Read what it says**: [DORA Coverage and Maturity Score](dora-score.md),
+  [Performance Regression](performance-regression.md),
+  [Forecasting and run impact](forecasting.md), [Star Map](star-map.md).
+- **See it in the web UI**: [Platform Walkthrough](platform-walkthrough.md),
+  which lists every Krönika page with its charts and the evidence behind
+  them.
 
 | Guide | Description |
 |---|---|
@@ -44,5 +61,5 @@ Step-by-step guides covering all major aspects of Tumult.
 | [Quality and release checks](quality-and-release.md) | Source gates, dependency policy and release-artifact verification |
 | [Testing policy](testing.md) | What a test must assert, where fakes are allowed, isolation rules and the CI hygiene guard |
 | [Production Deployment](production-deployment.md) | Deploy Tumult in production: binaries, containers, hardening |
-| [Platform Walkthrough](platform-walkthrough.md) | Click-through of the Tumult web UI on the seeded demo: login → register → approve → run → e-stop → evidence pack, with screenshots |
+| [Platform Walkthrough](platform-walkthrough.md) | Click-through of the Tumult web UI on the seeded demo: login → register → approve → run → e-stop → evidence pack, with screenshots, then every Krönika page with its charts and the evidence it shows |
 | [Windows Faults](windows-faults.md) | `tumult-windows`: native process-kill, CPU-stress, and firewall-blackhole faults, validated live against a Windows 11 guest |
