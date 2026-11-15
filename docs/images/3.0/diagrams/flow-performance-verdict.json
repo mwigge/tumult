@@ -8,7 +8,7 @@
     "locale": "en",
     "repository": {
       "url": "https://github.com/mwigge/tumult",
-      "revision": "8c24680b94cbab9d5b2011d99b53623618608a22"
+      "revision": "b8304ddd84ea7522550cf84687aa0c7c784438e7"
     },
     "legend": {
       "entries": {
@@ -119,8 +119,8 @@
       "sources": [
         {
           "path": "tumult-core/src/types/enums.rs",
-          "line": 162,
-          "end_line": 212
+          "line": 188,
+          "end_line": 238
         }
       ]
     },
@@ -215,13 +215,13 @@
       "sources": [
         {
           "path": "web/src/routes/resilience/+page.svelte",
-          "line": 172,
-          "end_line": 176
+          "line": 176,
+          "end_line": 180
         },
         {
           "path": "tumult-api/src/handlers/risks.rs",
-          "line": 155,
-          "end_line": 170
+          "line": 163,
+          "end_line": 178
         }
       ]
     },
