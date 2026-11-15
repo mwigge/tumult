@@ -1081,6 +1081,16 @@ pub fn cap_sentence(node: &NodeScore) -> Option<String> {
     ))
 }
 
+/// The roll-up root in a few words, for the heading over the node table:
+/// what caps it, or its level against the target when nothing does.
+#[must_use]
+pub fn rollup_headline(node: &NodeScore) -> String {
+    if let Some(capped) = cap_sentence(node) {
+        return capped;
+    }
+    format!("level {} of target {}", node.level, node.target)
+}
+
 /// One point of the maturity history: the quarter `day` lies in, with
 /// the level, index and unknown share shown on that day. `state` is
 /// `stored` for a stored day and `today` for the live one; `source` is
@@ -1270,7 +1280,7 @@ pub fn maturity(
     );
     map.insert("history".into(), Value::Array(history));
     map.insert("rollup".into(), json!(root.map(node_json)));
-    map.insert("rollup_headline".into(), json!(root.and_then(cap_sentence)));
+    map.insert("rollup_headline".into(), json!(root.map(rollup_headline)));
     map.insert("by".into(), json!(by.map(MaturityBy::as_str)));
     let rows: Vec<Value> = by.map_or_else(Vec::new, |by| {
         assessment
@@ -1887,6 +1897,49 @@ mod tests {
         assert_eq!(doc["weights"]["slo"], 0.25);
         assert!(list(&doc["nodes"]).is_empty());
         assert_eq!(doc["rollup"]["id"], ROOT_ID);
+    }
+
+    /// The roll-up root of bank A, with its cap as given.
+    fn bank_a_root(cap: Cap) -> NodeScore {
+        let loaded = loaded(bank_a());
+        let params = HouseParams::default();
+        let matrix = Matrix::build(&loaded.inputs, &params);
+        let assessment = assess(&matrix);
+        let root = assessment.root().expect("bank A has a root").clone();
+        NodeScore { cap, ..root }
+    }
+
+    fn cap(rule: CapRule, origin: &[&str], reason: Option<&str>) -> Cap {
+        Cap {
+            rule,
+            level: None,
+            node_ids: Vec::new(),
+            origin: origin.iter().map(ToString::to_string).collect(),
+            origin_state: None,
+            reason: reason.map(ToString::to_string),
+        }
+    }
+
+    #[test]
+    fn an_uncapped_roll_up_still_has_a_headline() {
+        let root = bank_a_root(cap(CapRule::None, &[], None));
+        let expected = format!("level {} of target 3", root.level);
+        assert_eq!(rollup_headline(&root), expected);
+    }
+
+    #[test]
+    fn a_capped_roll_up_names_what_caps_it() {
+        let by_child = bank_a_root(cap(CapRule::WeakestCriticalChild, &["svc:a"], None));
+        let level = by_child.level;
+        assert_eq!(
+            rollup_headline(&by_child),
+            format!("level {level}, capped by svc:a")
+        );
+        let by_gate = bank_a_root(cap(CapRule::Gate, &[], Some("no evidence")));
+        assert_eq!(
+            rollup_headline(&by_gate),
+            format!("level {level}, held by: no evidence")
+        );
     }
 
     #[test]

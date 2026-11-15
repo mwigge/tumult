@@ -933,6 +933,21 @@ test('the roll-up names the capping node down the chain', async ({ page }) => {
     await expect(silent).toContainText('unknown 100 %');
 });
 
+test('an uncapped roll-up heads the node table with its level', async ({ page }) => {
+    await mockApi(page, [], { maturity: { rollup_headline: 'level 2 of target 3' } });
+    await page.goto('/scores?view=dora');
+    const heading = page.getByTestId('dora-rollup').getByRole('heading');
+    await expect(heading).toHaveText('Maturity per node — level 2 of target 3');
+});
+
+test('listed nodes are never headed as no nodes on record', async ({ page }) => {
+    await mockApi(page, [], { maturity: { rollup_headline: null } });
+    await page.goto('/scores?view=dora');
+    const section = page.getByTestId('dora-rollup');
+    await expect(section.locator('tbody tr')).toHaveCount(6);
+    await expect(section.getByRole('heading')).toHaveText('Maturity per node');
+});
+
 test('readiness lists the functions with their register codes', async ({ page }) => {
     await mockApi(page);
     await page.goto('/scores?view=dora');
