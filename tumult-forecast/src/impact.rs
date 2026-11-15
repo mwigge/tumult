@@ -363,7 +363,7 @@ fn unsettled_head(post: &[f64]) -> usize {
 }
 
 /// How far outside the middle half of the kept post samples one may lie
-/// and still be context, in widths (see [`fence`]).
+/// and still be context, in widths (see `fence`).
 pub const FENCE_WIDTHS: f64 = 3.0;
 
 /// The backcast's context: the post samples after the skipped head,
