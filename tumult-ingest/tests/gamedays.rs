@@ -190,6 +190,7 @@ async fn await_terminal(fx: &Fixture, run_id: &str) -> String {
                 return state;
             }
         }
+        // sleep: poll interval, the loop gives up after its last attempt
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
     panic!("run {run_id} never reached a terminal state");

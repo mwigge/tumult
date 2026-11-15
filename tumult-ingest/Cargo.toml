@@ -58,6 +58,8 @@ tracing-subscriber.workspace = true
 flatbuffers.workspace = true
 # Captures what a purge logs (`logging::testing`).
 tumult-otel = { path = "../tumult-otel" }
+# `EnvGuard` for the tests that read configuration from the environment.
+tumult-test-utils = { path = "../tumult-test-utils", default-features = false }
 
 [[example]]
 name = "otap_probe"

@@ -210,6 +210,7 @@ async fn next_window() {
     let minute = 60 * NS;
     let left = minute - now_ns().rem_euclid(minute);
     let left = Duration::from_nanos(u64::try_from(left).unwrap_or_default());
+    // sleep: the window follows the wall clock, which a test cannot move
     tokio::time::sleep(left + Duration::from_millis(50)).await;
 }
 
@@ -913,6 +914,7 @@ async fn a_failing_sidecar_opens_the_circuit_and_is_retried_after_the_cooldown()
             std::time::Instant::now() < deadline,
             "never retried: {body}"
         );
+        // sleep: poll interval until the cooldown has passed
         tokio::time::sleep(Duration::from_millis(50)).await;
     };
     assert!(recovered["provenance"]["fallback_reason"].is_null());

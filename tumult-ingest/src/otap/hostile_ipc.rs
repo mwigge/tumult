@@ -74,6 +74,13 @@ fn malformed(result: Result<OtapBatch, OtapError>, needle: &str) -> Result<(), S
     }
 }
 
+/// Fails the test unless `result` is malformed for a reason holding `needle`.
+fn assert_malformed(result: Result<OtapBatch, OtapError>, needle: &str) {
+    if let Err(why) = malformed(result, needle) {
+        panic!("{why}");
+    }
+}
+
 fn plain(name: &str, data_type: DataType) -> Field {
     Field::new(name, data_type, true).with_metadata(HashMap::from([(
         "encoding".to_string(),
@@ -339,7 +346,7 @@ fn variadic_buffer_counts_are_refused() {
         ..one_id((0, 2))
     };
     let result = consume(crafted(&ids_schema(), &header, &[7u8; 8]));
-    malformed(result, "variadic").unwrap();
+    assert_malformed(result, "variadic");
 }
 
 #[test]
@@ -356,11 +363,10 @@ fn union_column_is_refused_by_the_schema_allowlist() {
         buffers: vec![(0, 0), (0, 0), (0, 0)],
         ..BatchHeader::default()
     };
-    malformed(
+    assert_malformed(
         consume(crafted(&schema, &header, &[])),
         "unsupported column type",
-    )
-    .unwrap();
+    );
 }
 
 fn item(data_type: DataType) -> Arc<Field> {
@@ -759,7 +765,7 @@ pub(super) fn dictionary_table(columns: usize, values: usize, salt: &str) -> Rec
     RecordBatch::try_new(Arc::new(Schema::new(fields)), vec![array; columns]).unwrap()
 }
 
-fn stream_state(result: Result<OtapBatch, OtapError>, expected: &str, in_pool: bool) {
+fn assert_stream_state(result: Result<OtapBatch, OtapError>, expected: &str, in_pool: bool) {
     match result {
         Err(OtapError::StreamState { what, shared, .. }) => {
             assert_eq!((what, shared), (expected, in_pool));
@@ -778,7 +784,7 @@ fn schema_id_longer_than_the_cap_is_refused() {
         .unwrap();
     payload.schema_id = "s".repeat(257);
     let result = StreamConsumer::default().consume(records(vec![payload]));
-    malformed(result, "schema id longer than 256 bytes").unwrap();
+    assert_malformed(result, "schema id longer than 256 bytes");
 }
 
 #[test]
@@ -791,10 +797,10 @@ fn dictionaries_a_stream_keeps_are_budgeted_in_bytes() {
     consume_with(limits, ipc(&dictionary_table(1, 100, "a"))).unwrap();
     // One big dictionary.
     let result = consume_with(limits, ipc(&dictionary_table(1, 2000, "a")));
-    stream_state(result, "retained bytes per stream", false);
+    assert_stream_state(result, "retained bytes per stream", false);
     // Many dictionary ids, each small.
     let result = consume_with(limits, ipc(&dictionary_table(20, 100, "a")));
-    stream_state(result, "retained bytes per stream", false);
+    assert_stream_state(result, "retained bytes per stream", false);
 }
 
 #[test]
@@ -873,7 +879,7 @@ fn streams_share_one_pool_of_retained_bytes() {
 
     let mut second = StreamConsumer::with_pool(limits, pool.clone());
     let result = second.consume(records(vec![payload(Ty::Spans, ipc(&table))]));
-    stream_state(result, "retained bytes across streams", true);
+    assert_stream_state(result, "retained bytes across streams", true);
     assert_eq!(pool.used(), held, "a refused stream holds nothing");
 
     drop(first);
@@ -935,10 +941,10 @@ fn schema_width_is_capped() {
             .collect();
         consume(crafted(&Schema::new(fields), &BatchHeader::default(), &[]))
     };
-    malformed(wide(257, DataType::UInt8), "fields").unwrap();
+    assert_malformed(wide(257, DataType::UInt8), "fields");
     let names = DataType::Dictionary(Box::new(DataType::UInt8), Box::new(DataType::Utf8));
-    malformed(wide(65, names), "dictionar").unwrap();
-    malformed(wide(0, DataType::UInt8), "fields").unwrap();
+    assert_malformed(wide(65, names), "dictionar");
+    assert_malformed(wide(0, DataType::UInt8), "fields");
 
     // Depth: structs within structs.
     let mut nested = DataType::Int32;
@@ -946,22 +952,20 @@ fn schema_width_is_capped() {
         nested = DataType::Struct(Fields::from(vec![Field::new("in", nested, true)]));
     }
     let schema = Schema::new(vec![Field::new("deep", nested, true)]);
-    malformed(
+    assert_malformed(
         consume(crafted(&schema, &BatchHeader::default(), &[])),
         "nest",
-    )
-    .unwrap();
+    );
 
     // Two columns of one name: which one a decoder reads is anyone's guess.
     let schema = Schema::new(vec![
         Field::new("id", DataType::UInt16, true),
         Field::new("id", DataType::UInt16, true),
     ]);
-    malformed(
+    assert_malformed(
         consume(crafted(&schema, &BatchHeader::default(), &[])),
         "duplicate",
-    )
-    .unwrap();
+    );
 }
 
 // ---------------------------------------------------------------------------

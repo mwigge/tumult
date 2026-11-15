@@ -140,57 +140,58 @@ fn tls_from_env() -> Result<(Option<PathBuf>, Option<PathBuf>), String> {
 
 #[cfg(test)]
 mod tests {
+    use tumult_test_utils::EnvGuard;
+
     use super::*;
 
-    /// One test for the whole env surface: env vars are process-global, so
-    /// parallel tests setting/removing them race. Keep every `set_var` /
-    /// `remove_var` in this single sequential test.
+    /// The whole env surface in one pass, under the guard that keeps other
+    /// tests of this binary out of the environment meanwhile.
     #[test]
     fn db_path_resolution_order() {
-        std::env::remove_var("KRONIKA_OTLP_GRPC_ADDR");
-        std::env::remove_var("KRONIKA_OTLP_HTTP_ADDR");
-        std::env::remove_var("TUMULT_LAKE_PATH");
-        std::env::remove_var("KRONIKA_DB");
-        std::env::remove_var("KRONIKA_INGEST_TOKEN");
-        std::env::remove_var("KRONIKA_TLS_CERT");
-        std::env::remove_var("KRONIKA_TLS_KEY");
+        let mut env = EnvGuard::lock();
+        env.remove("KRONIKA_OTLP_GRPC_ADDR");
+        env.remove("KRONIKA_OTLP_HTTP_ADDR");
+        env.remove("TUMULT_LAKE_PATH");
+        env.remove("KRONIKA_DB");
+        env.remove("KRONIKA_INGEST_TOKEN");
+        env.remove("KRONIKA_TLS_CERT");
+        env.remove("KRONIKA_TLS_KEY");
         let cfg = Config::from_env().unwrap();
         assert_eq!(cfg.otlp_grpc_addr.port(), 4317);
         assert_eq!(cfg.otlp_http_addr.port(), 4318);
         assert!(cfg.db_path.ends_with("lake.duckdb"));
         assert_eq!(cfg.ingest_token, None);
 
-        std::env::set_var("TUMULT_LAKE_PATH", "/tmp/unified.duckdb");
-        std::env::set_var("KRONIKA_DB", "/tmp/legacy.duckdb");
+        env.set("TUMULT_LAKE_PATH", "/tmp/unified.duckdb");
+        env.set("KRONIKA_DB", "/tmp/legacy.duckdb");
         let cfg = Config::from_env().unwrap();
         assert_eq!(cfg.db_path, PathBuf::from("/tmp/unified.duckdb"));
-        std::env::remove_var("TUMULT_LAKE_PATH");
+        env.remove("TUMULT_LAKE_PATH");
         // The deprecated alias still resolves when TUMULT_LAKE_PATH is unset.
         let cfg = Config::from_env().unwrap();
         assert_eq!(cfg.db_path, PathBuf::from("/tmp/legacy.duckdb"));
-        std::env::remove_var("KRONIKA_DB");
+        env.remove("KRONIKA_DB");
 
         // KRONIKA_INGEST_TOKEN: empty string behaves as unset.
-        std::env::set_var("KRONIKA_INGEST_TOKEN", "");
+        env.set("KRONIKA_INGEST_TOKEN", "");
         assert_eq!(Config::from_env().unwrap().ingest_token, None);
-        std::env::set_var("KRONIKA_INGEST_TOKEN", "kro_secret");
+        env.set("KRONIKA_INGEST_TOKEN", "kro_secret");
         assert_eq!(
             Config::from_env().unwrap().ingest_token.as_deref(),
             Some("kro_secret")
         );
-        std::env::remove_var("KRONIKA_INGEST_TOKEN");
+        env.remove("KRONIKA_INGEST_TOKEN");
 
         // KRONIKA_TLS_CERT / KRONIKA_TLS_KEY: both or neither.
         assert_eq!(Config::from_env().unwrap().tls_cert, None);
-        std::env::set_var("KRONIKA_TLS_CERT", "/etc/tumult/tls.crt");
+        env.set("KRONIKA_TLS_CERT", "/etc/tumult/tls.crt");
         assert!(Config::from_env().unwrap_err().contains("TLS_CERT"));
-        std::env::set_var("KRONIKA_TLS_KEY", "/etc/tumult/tls.key");
+        env.set("KRONIKA_TLS_KEY", "/etc/tumult/tls.key");
         let cfg = Config::from_env().unwrap();
         assert_eq!(cfg.tls_cert, Some(PathBuf::from("/etc/tumult/tls.crt")));
         assert_eq!(cfg.tls_key, Some(PathBuf::from("/etc/tumult/tls.key")));
-        std::env::remove_var("KRONIKA_TLS_CERT");
+        env.remove("KRONIKA_TLS_CERT");
         assert!(Config::from_env().unwrap_err().contains("TLS_CERT"));
-        std::env::remove_var("KRONIKA_TLS_KEY");
     }
 
     /// Build a config directly (no env) for the bind-guard tests.

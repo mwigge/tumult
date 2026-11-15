@@ -7,6 +7,7 @@ use axum::http::StatusCode;
 use axum::response::Response;
 use std::path::PathBuf;
 use tumult_ingest::Config;
+use tumult_test_utils::EnvGuard;
 
 /// Throwaway self-signed `localhost` certificate/key pair (generated with
 /// `openssl req -x509`), used to exercise the TLS load path.
@@ -477,9 +478,8 @@ async fn a_failed_grpc_listener_stops_the_http_one() {
 #[tokio::test]
 async fn two_listeners_that_stop_cleanly_are_a_clean_stop() {
     let stopped = || -> Listener { tokio::spawn(async { Ok(()) }) };
-    until_both_stop(stopped(), stopped(), &unwatched())
-        .await
-        .expect("clean stop");
+    let outcome = until_both_stop(stopped(), stopped(), &unwatched()).await;
+    assert!(outcome.is_ok(), "{outcome:?}");
 }
 
 /// The daemon's workers on a new lake, as `serve` starts them: the
@@ -656,17 +656,17 @@ async fn a_clean_stop_waits_for_the_loopback_listener_and_the_writer() {
 }
 
 /// Point `serve` at a lake of its own in `dir` and at these loopback
-/// ports. The caller holds the env lock.
-fn daemon_env(dir: &std::path::Path, grpc_port: u16, http_port: u16) {
-    std::env::set_var("TUMULT_LAKE_PATH", dir.join("lake.duckdb"));
-    std::env::set_var("KRONIKA_METRICS_DIR", dir.join("metrics"));
-    std::env::set_var("KRONIKA_OTLP_GRPC_ADDR", format!("127.0.0.1:{grpc_port}"));
-    std::env::set_var("KRONIKA_OTLP_HTTP_ADDR", format!("127.0.0.1:{http_port}"));
-    std::env::set_var("KRONIKA_LAKE_INTERVAL", "off");
-    std::env::remove_var("KRONIKA_INGEST_TOKEN");
-    std::env::remove_var("KRONIKA_REPORT_INTERVAL");
-    std::env::remove_var("KRONIKA_BOOTSTRAP_ADMIN_PASSWORD");
-    std::env::remove_var("KRONIKA_BOOTSTRAP_TOKEN");
+/// ports, until `env` is dropped.
+fn daemon_env(env: &mut EnvGuard, dir: &std::path::Path, grpc_port: u16, http_port: u16) {
+    env.set("TUMULT_LAKE_PATH", dir.join("lake.duckdb"))
+        .set("KRONIKA_METRICS_DIR", dir.join("metrics"))
+        .set("KRONIKA_OTLP_GRPC_ADDR", format!("127.0.0.1:{grpc_port}"))
+        .set("KRONIKA_OTLP_HTTP_ADDR", format!("127.0.0.1:{http_port}"))
+        .set("KRONIKA_LAKE_INTERVAL", "off")
+        .remove("KRONIKA_INGEST_TOKEN")
+        .remove("KRONIKA_REPORT_INTERVAL")
+        .remove("KRONIKA_BOOTSTRAP_ADMIN_PASSWORD")
+        .remove("KRONIKA_BOOTSTRAP_TOKEN");
 }
 
 /// A run an earlier daemon left queued. Reconciling it is the first work
@@ -719,6 +719,7 @@ async fn alive_tasks_settled(expected: usize) -> usize {
         if alive_tasks() == expected {
             return expected;
         }
+        // sleep: poll interval, the loop gives up after 100 attempts
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     }
     alive_tasks()
@@ -726,12 +727,9 @@ async fn alive_tasks_settled(expected: usize) -> usize {
 
 /// A daemon that cannot have both its addresses says so before it starts
 /// anything: no run is reconciled, no queue, scheduler or listener runs.
-#[allow(clippy::await_holding_lock)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn a_daemon_that_cannot_bind_starts_no_work() {
-    let _guard = crate::test_support::ENV_LOCK
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
+    let mut env = EnvGuard::lock();
     for taken_address in ["gRPC", "HTTP"] {
         let dir = tempfile::tempdir().unwrap();
         let db = dir.path().join("lake.duckdb");
@@ -742,7 +740,7 @@ async fn a_daemon_that_cannot_bind_starts_no_work() {
             "gRPC" => (taken_port, free_port()),
             _ => (free_port(), taken_port),
         };
-        daemon_env(dir.path(), grpc_port, http_port);
+        daemon_env(&mut env, dir.path(), grpc_port, http_port);
         let before = alive_tasks();
 
         let outcome = tokio::time::timeout(std::time::Duration::from_secs(30), serve())
@@ -768,17 +766,14 @@ async fn a_daemon_that_cannot_bind_starts_no_work() {
 
 /// A daemon whose HTTP address is taken must not stay up serving gRPC
 /// only: whoever holds the port would answer its health checks.
-#[allow(clippy::await_holding_lock)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn serve_exits_when_the_http_address_is_taken() {
-    let _guard = crate::test_support::ENV_LOCK
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
+    let mut env = EnvGuard::lock();
     let dir = tempfile::tempdir().unwrap();
     let taken = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let http_port = taken.local_addr().unwrap().port();
     let grpc_port = free_port();
-    daemon_env(dir.path(), grpc_port, http_port);
+    daemon_env(&mut env, dir.path(), grpc_port, http_port);
 
     let outcome = tokio::time::timeout(std::time::Duration::from_secs(30), serve())
         .await
@@ -793,31 +788,19 @@ async fn serve_exits_when_the_http_address_is_taken() {
 
 /// The whole daemon in-process: bind both listeners on loopback, serve
 /// the health and live-report endpoints, then stop cleanly on SIGTERM.
-/// Holds the env lock for its whole lifetime — the configuration is
-/// process-global. Holding a std mutex guard across awaits is deliberate
-/// here: the guard only ever blocks other env-mutating tests, and this
-/// test's own progress never depends on them.
-#[allow(clippy::await_holding_lock)]
+/// Holds the env guard for its whole lifetime: the configuration is
+/// process-global, and the guard only ever blocks other tests that change
+/// the environment, on which this test's own progress never depends.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn serve_binds_serves_and_shuts_down_cleanly_on_sigterm() {
-    let _guard = crate::test_support::ENV_LOCK
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
+    let mut env = EnvGuard::lock();
     let dir = tempfile::tempdir().unwrap();
     let metrics_dir = dir.path().join("metrics");
     std::fs::create_dir_all(&metrics_dir).unwrap();
     std::fs::write(metrics_dir.join("experiment_count.yaml"), METRIC_YAML).unwrap();
     let grpc_port = free_port();
     let http_port = free_port();
-    std::env::set_var("TUMULT_LAKE_PATH", dir.path().join("lake.duckdb"));
-    std::env::set_var("KRONIKA_METRICS_DIR", &metrics_dir);
-    std::env::set_var("KRONIKA_OTLP_GRPC_ADDR", format!("127.0.0.1:{grpc_port}"));
-    std::env::set_var("KRONIKA_OTLP_HTTP_ADDR", format!("127.0.0.1:{http_port}"));
-    std::env::set_var("KRONIKA_LAKE_INTERVAL", "off");
-    std::env::remove_var("KRONIKA_INGEST_TOKEN");
-    std::env::remove_var("KRONIKA_REPORT_INTERVAL");
-    std::env::remove_var("KRONIKA_BOOTSTRAP_ADMIN_PASSWORD");
-    std::env::remove_var("KRONIKA_BOOTSTRAP_TOKEN");
+    daemon_env(&mut env, dir.path(), grpc_port, http_port);
 
     let mut daemon = tokio::spawn(serve());
 
@@ -841,6 +824,7 @@ async fn serve_binds_serves_and_shuts_down_cleanly_on_sigterm() {
             std::time::Instant::now() < deadline,
             "daemon did not start serving within 30s"
         );
+        // sleep: poll interval, bounded by the deadline above
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     };
     assert!(health.contains(" 200 OK"), "{health}");
@@ -881,13 +865,7 @@ async fn serve_binds_serves_and_shuts_down_cleanly_on_sigterm() {
         .await
         .expect("daemon did not stop within 30s of SIGTERM")
         .expect("daemon task panicked");
-    result.expect("daemon returned an error");
-
-    std::env::remove_var("TUMULT_LAKE_PATH");
-    std::env::remove_var("KRONIKA_METRICS_DIR");
-    std::env::remove_var("KRONIKA_OTLP_GRPC_ADDR");
-    std::env::remove_var("KRONIKA_OTLP_HTTP_ADDR");
-    std::env::remove_var("KRONIKA_LAKE_INTERVAL");
+    assert!(result.is_ok(), "daemon returned an error: {result:?}");
 }
 
 #[test]
@@ -936,16 +914,13 @@ async fn closed_by_the_daemon(client: &mut tokio::net::TcpStream) -> bool {
 /// The gRPC listener is bound early and handed to the server; the
 /// connection limits must still apply to it. With room for one connection
 /// the second one is closed, and its place comes back when the first ends.
-#[allow(clippy::await_holding_lock)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn the_pre_bound_grpc_listener_enforces_the_connection_limits() {
-    let _guard = crate::test_support::ENV_LOCK
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
+    let mut env = EnvGuard::lock();
     let dir = tempfile::tempdir().unwrap();
     let (grpc_port, http_port) = (free_port(), free_port());
-    daemon_env(dir.path(), grpc_port, http_port);
-    std::env::set_var("KRONIKA_GRPC_MAX_CONNECTIONS", "1");
+    daemon_env(&mut env, dir.path(), grpc_port, http_port);
+    env.set("KRONIKA_GRPC_MAX_CONNECTIONS", "1");
 
     let mut daemon = tokio::spawn(serve());
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
@@ -986,17 +961,7 @@ async fn the_pre_bound_grpc_listener_enforces_the_connection_limits() {
         .await
         .expect("daemon did not stop within 30s of SIGTERM")
         .expect("daemon task panicked");
-    for name in [
-        "KRONIKA_GRPC_MAX_CONNECTIONS",
-        "TUMULT_LAKE_PATH",
-        "KRONIKA_METRICS_DIR",
-        "KRONIKA_OTLP_GRPC_ADDR",
-        "KRONIKA_OTLP_HTTP_ADDR",
-        "KRONIKA_LAKE_INTERVAL",
-    ] {
-        std::env::remove_var(name);
-    }
-    result.expect("daemon returned an error");
+    assert!(result.is_ok(), "daemon returned an error: {result:?}");
     assert!(second_closed, "a connection over the limit stayed open");
     assert_eq!(settings.ok(), Some(4), "the freed place was not reused");
 }

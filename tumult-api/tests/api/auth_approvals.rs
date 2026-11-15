@@ -96,6 +96,7 @@ async fn await_terminal_run_auth(base: &str, token: &str, run_id: &str) -> Value
         {
             return body;
         }
+        // sleep: poll interval while the run finishes
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     }
     panic!("run {run_id} never reached a terminal state");

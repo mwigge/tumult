@@ -6,6 +6,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::Value;
 use tumult_lake::{LogRow, MetricSumRow, SpanRow, Store};
+use tumult_test_utils::EnvGuard;
 
 pub const NS: i64 = 1_000_000_000;
 
@@ -20,6 +21,18 @@ assignments:
     targets: [\"pg-*\"]
     criticality: {pg-failover: critical}
 ";
+
+/// Points plugin discovery at the workspace's real `plugins/` directory,
+/// where every catalog action lives, for as long as the guard is held.
+pub fn point_discovery_at_workspace_plugins() -> EnvGuard {
+    let plugins = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../plugins")
+        .canonicalize()
+        .expect("workspace plugins directory");
+    let mut env = EnvGuard::lock();
+    env.set("TUMULT_PLUGIN_PATH", plugins);
+    env
+}
 
 pub fn now_ns() -> i64 {
     SystemTime::now()
@@ -41,6 +54,7 @@ impl tumult_core::runner::ActivityExecutor for SlowNoopExecutor {
         } else {
             200
         };
+        // sleep: stands in for the time an activity takes to run
         std::thread::sleep(std::time::Duration::from_millis(ms));
         tumult_core::runner::ActivityOutcome {
             success: true,

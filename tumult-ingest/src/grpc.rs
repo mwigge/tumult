@@ -423,13 +423,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn routers_build_with_and_without_token() {
-        let (_d, _store, ingest) = test_ingest();
-        let _ = router(ingest.clone());
-        let _ = router_with_token(ingest, Some("kro_secret".into()));
-    }
-
-    #[tokio::test]
     async fn trace_export_persists_and_requires_the_token() {
         let (_d, store, ingest) = test_ingest();
         let svc = OtlpGrpc {
@@ -718,6 +711,7 @@ mod wire_tests {
         async fn until(&self, otherwise: &str, done: impl Fn() -> bool) {
             let waited = tokio::time::timeout(secs(60), async {
                 while !done() {
+                    // sleep: poll interval, bounded by the timeout around it
                     tokio::time::sleep(Duration::from_millis(1)).await;
                 }
             });

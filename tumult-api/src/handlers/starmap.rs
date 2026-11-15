@@ -887,6 +887,8 @@ pub(crate) async fn starmap(
 
 #[cfg(test)]
 mod tests {
+    use tumult_otel::logging::testing::{capture_closed_spans, capture_json};
+
     use super::*;
 
     fn plan() -> Plan {
@@ -915,6 +917,7 @@ mod tests {
         assert!(futures_poll(&mut waiter).await.is_none(), "it queues");
 
         // A write lands, then the leader gives up and the waiter reads.
+        // sleep: the clock moves past the window the leader read before the write
         std::thread::sleep(Duration::from_millis(2));
         cache.clear();
         let cleared_ns = now_ns();
@@ -1070,45 +1073,43 @@ mod tests {
     fn a_capped_read_is_logged_by_its_source_and_never_by_its_sql() {
         let (_dir, store) = graph_lake();
         let reader = store.read_only().expect("reader");
-        let recorder = Arc::new(Recorder::default());
-        let (_, cut) = tracing::subscriber::with_default(Arc::clone(&recorder), || {
-            depends(&reader, 1).expect("read")
+        let mut cut = false;
+        let logs = capture_json(tracing::Level::INFO, || {
+            (_, cut) = depends(&reader, 1).expect("read");
         });
         assert!(cut);
 
-        let events = recorder.events.lock().expect("recorder");
-        let [(level, fields)] = events.as_slice() else {
-            panic!("one event, not {}", events.len());
+        let [event] = logs.events.as_slice() else {
+            panic!("one event, not {}", logs.raw);
         };
-        assert_eq!(level, "WARN");
-        assert_eq!(fields["source"], "\"graph_edges.depends_on\"");
-        assert_eq!(fields["limit"], "1");
-        let said = format!("{fields:?}");
-        assert!(!said.contains("SELECT"), "{said}");
+        assert_eq!(event["level"], "WARN");
+        assert_eq!(event["source"], "graph_edges.depends_on");
+        assert_eq!(event["limit"], 1);
+        assert!(!logs.raw.contains("SELECT"), "{}", logs.raw);
     }
 
     #[test]
     fn a_failed_source_read_names_the_source() {
         let (_dir, store) = graph_lake();
         let reader = store.read_only().expect("reader");
-        let recorder = Arc::new(Recorder::default());
-        let failed = tracing::subscriber::with_default(Arc::clone(&recorder), || {
-            capped_rows(&reader, "graph_edges.nothing", "SELECT nothing FROM", 1)
+        let mut failed = None;
+        let logs = capture_json(tracing::Level::INFO, || {
+            failed = capped_rows(&reader, "graph_edges.nothing", "SELECT nothing FROM", 1).err();
         });
-        let message = failed.expect_err("the statement is not SQL");
+        let message = failed.expect("the statement is not SQL");
         assert!(
             message.starts_with("star map source graph_edges.nothing: "),
             "{message}"
         );
 
-        let events = recorder.events.lock().expect("recorder");
-        let [(level, fields)] = events.as_slice() else {
-            panic!("one event, not {}", events.len());
+        let [event] = logs.events.as_slice() else {
+            panic!("one event, not {}", logs.raw);
         };
-        assert_eq!(level, "WARN");
-        assert_eq!(fields["source"], "\"graph_edges.nothing\"");
-        assert!(!fields["error.message"].is_empty());
-        assert!(!fields.contains_key("sql"), "{fields:?}");
+        assert_eq!(event["level"], "WARN");
+        assert_eq!(event["source"], "graph_edges.nothing");
+        let error = event["error.message"].as_str().expect("error.message");
+        assert!(!error.is_empty());
+        assert!(event.get("sql").is_none(), "{event}");
     }
 
     #[test]
@@ -1344,53 +1345,6 @@ mod tests {
         assert!(short.headers().get(CONTENT_TYPE).is_none());
     }
 
-    /// Records the name and fields of every span, for one test.
-    #[derive(Default)]
-    struct Recorder {
-        spans: std::sync::Mutex<Vec<(String, BTreeMap<String, String>)>>,
-        /// The level and fields of every event.
-        events: std::sync::Mutex<Vec<(String, BTreeMap<String, String>)>>,
-    }
-
-    struct Fields<'a>(&'a mut BTreeMap<String, String>);
-
-    impl tracing::field::Visit for Fields<'_> {
-        fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
-            self.0
-                .insert(field.name().to_string(), format!("{value:?}"));
-        }
-    }
-
-    impl tracing::Subscriber for Recorder {
-        fn enabled(&self, _: &tracing::Metadata<'_>) -> bool {
-            true
-        }
-
-        fn new_span(&self, attrs: &tracing::span::Attributes<'_>) -> tracing::span::Id {
-            let mut fields = BTreeMap::new();
-            attrs.record(&mut Fields(&mut fields));
-            let mut spans = self.spans.lock().expect("recorder");
-            spans.push((attrs.metadata().name().to_string(), fields));
-            tracing::span::Id::from_u64(spans.len() as u64)
-        }
-
-        fn record(&self, id: &tracing::span::Id, values: &tracing::span::Record<'_>) {
-            let mut spans = self.spans.lock().expect("recorder");
-            let at = usize::try_from(id.into_u64()).expect("span id") - 1;
-            values.record(&mut Fields(&mut spans[at].1));
-        }
-
-        fn record_follows_from(&self, _: &tracing::span::Id, _: &tracing::span::Id) {}
-        fn event(&self, event: &tracing::Event<'_>) {
-            let mut fields = BTreeMap::new();
-            event.record(&mut Fields(&mut fields));
-            let level = event.metadata().level().to_string();
-            self.events.lock().expect("recorder").push((level, fields));
-        }
-        fn enter(&self, _: &tracing::span::Id) {}
-        fn exit(&self, _: &tracing::span::Id) {}
-    }
-
     #[test]
     fn assembly_runs_inside_a_span_that_says_what_it_built() {
         let inputs = StarInputs {
@@ -1414,20 +1368,24 @@ mod tests {
             range: "14d".into(),
             ..StarQuery::default()
         };
-        let recorder = Arc::new(Recorder::default());
-        let map = tracing::subscriber::with_default(Arc::clone(&recorder), || {
-            assemble_traced(&tracing::Span::none(), &inputs, &query, 2)
-        });
+        let (map, spans) =
+            capture_closed_spans(|| assemble_traced(&tracing::Span::none(), &inputs, &query, 2));
         assert!(map.counts.nodes > 0);
 
-        let spans = recorder.spans.lock().expect("recorder");
-        let (name, fields) = spans.first().expect("one span");
-        assert_eq!(name, "starmap.assemble");
-        assert_eq!(fields["range"], "14d");
-        assert_eq!(fields["envs"], "2");
-        assert_eq!(fields["nodes"], map.counts.nodes.to_string());
-        assert_eq!(fields["edges"], map.counts.edges.to_string());
-        assert_eq!(fields["clustered"], "0");
+        let [span] = spans.as_slice() else {
+            panic!("one span, not {spans:?}");
+        };
+        assert_eq!(span.name, "starmap.assemble");
+        assert_eq!(
+            span.fields,
+            serde_json::json!({
+                "range": "14d",
+                "envs": 2,
+                "nodes": map.counts.nodes,
+                "edges": map.counts.edges,
+                "clustered": 0,
+            })
+        );
 
         let open = Window {
             from_ns: 100,

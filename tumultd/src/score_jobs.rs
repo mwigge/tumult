@@ -864,9 +864,6 @@ functions:
 
     #[test]
     fn the_intervals_have_defaults_and_honour_overrides() {
-        let _guard = crate::test_support::ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
         // Restores both variables when the test ends, also on a failure.
         let mut env = tumult_test_utils::EnvGuard::lock();
         type Read = fn() -> Option<Duration>;

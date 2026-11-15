@@ -25,6 +25,7 @@
 //! - `resilience.store.activities` — activity count
 //! - `resilience.store.size_bytes` — database file size
 
+use opentelemetry::metrics::Meter;
 use opentelemetry::trace::{SpanKind, TraceContextExt, Tracer};
 use opentelemetry::{global, KeyValue};
 
@@ -85,7 +86,7 @@ pub fn event_journal_duplicate(experiment_id: &str) {
 pub fn begin_query(sql: &str) -> QueryGuard {
     let tracer = global::tracer(TRACER_NAME);
     let sql_preview = if sql.len() > 256 {
-        format!("{}...", &sql[..256])
+        format!("{}...", &sql[..sql.floor_char_boundary(256)])
     } else {
         sql.to_string()
     };
@@ -252,7 +253,16 @@ pub fn record_store_gauges(
     size_bytes: Option<u64>,
 ) {
     let meter = global::meter(TRACER_NAME);
+    record_store_gauges_on(&meter, experiment_count, activity_count, size_bytes);
+}
 
+/// [`record_store_gauges`] on `meter` instead of the global one.
+fn record_store_gauges_on(
+    meter: &Meter,
+    experiment_count: usize,
+    activity_count: usize,
+    size_bytes: Option<u64>,
+) {
     let g = meter.u64_gauge("resilience.store.experiments").build();
     g.record(experiment_count as u64, &[]);
 
@@ -267,55 +277,227 @@ pub fn record_store_gauges(
 
 #[cfg(test)]
 mod tests {
+    use tumult_test_utils::{capture_spans, MetricCapture};
+
     use super::*;
 
-    #[test]
-    fn ingest_guard_creates_and_drops_span() {
-        let _guard = begin_ingest("e-001", "test experiment");
-        event_journal_ingested("e-001", 5);
-        // guard drops here, ending the span
+    /// What one guard left behind once it was dropped.
+    #[derive(Debug, PartialEq)]
+    struct Recorded {
+        name: String,
+        attributes: Vec<KeyValue>,
+        events: Vec<(String, Vec<KeyValue>)>,
+    }
+
+    /// The single span `f` finished.
+    fn recorded(f: impl FnOnce()) -> Recorded {
+        let ((), spans) = capture_spans(f);
+        assert_eq!(spans.len(), 1, "one span per guard: {spans:?}");
+        let span = &spans[0];
+        Recorded {
+            name: span.name.to_string(),
+            attributes: span.attributes.clone(),
+            events: span
+                .events
+                .events
+                .iter()
+                .map(|event| (event.name.to_string(), event.attributes.clone()))
+                .collect(),
+        }
+    }
+
+    fn event(name: &str, attributes: Vec<KeyValue>) -> (String, Vec<KeyValue>) {
+        (name.to_string(), attributes)
+    }
+
+    /// The `db.statement` recorded for `sql`.
+    fn statement_recorded(sql: &str) -> String {
+        let span = recorded(|| {
+            let _guard = begin_query(sql);
+        });
+        assert_eq!(span.attributes.len(), 1, "{span:?}");
+        assert_eq!(span.attributes[0].key.as_str(), "db.statement");
+        span.attributes[0].value.as_str().into_owned()
     }
 
     #[test]
-    fn duplicate_event_does_not_panic() {
-        let _guard = begin_ingest("e-002", "dup test");
-        event_journal_duplicate("e-002");
+    fn ingest_span_names_the_experiment_and_counts_its_activities() {
+        let span = recorded(|| {
+            let _guard = begin_ingest("e-001", "test experiment");
+            event_journal_ingested("e-001", 5);
+        });
+
+        assert_eq!(
+            span,
+            Recorded {
+                name: "resilience.analytics.ingest".into(),
+                attributes: vec![
+                    KeyValue::new("resilience.experiment.id", "e-001"),
+                    KeyValue::new("resilience.experiment.title", "test experiment"),
+                ],
+                events: vec![event(
+                    "journal.ingested",
+                    vec![
+                        KeyValue::new("resilience.experiment.id", "e-001"),
+                        KeyValue::new("resilience.activity.count", 5_i64),
+                    ],
+                )],
+            }
+        );
     }
 
     #[test]
-    fn query_guard_creates_and_drops_span() {
-        let _guard = begin_query("SELECT count(*) FROM experiments");
-        event_query_executed(10, 3);
+    fn duplicate_journal_is_an_event_on_the_ingest_span() {
+        let span = recorded(|| {
+            let _guard = begin_ingest("e-002", "dup test");
+            event_journal_duplicate("e-002");
+        });
+
+        assert_eq!(span.name, "resilience.analytics.ingest");
+        assert_eq!(
+            span.events,
+            [event(
+                "resilience.analytics.journal.duplicate",
+                vec![KeyValue::new("resilience.experiment.id", "e-002")],
+            )]
+        );
     }
 
     #[test]
-    fn query_truncates_long_sql() {
-        let long_sql = "SELECT ".to_string() + &"x".repeat(500);
-        let _guard = begin_query(&long_sql);
-        event_query_executed(0, 0);
+    fn query_span_records_the_statement_and_the_result_shape() {
+        let span = recorded(|| {
+            let _guard = begin_query("SELECT count(*) FROM experiments");
+            event_query_executed(10, 3);
+        });
+
+        assert_eq!(
+            span,
+            Recorded {
+                name: "resilience.analytics.query".into(),
+                attributes: vec![KeyValue::new(
+                    "db.statement",
+                    "SELECT count(*) FROM experiments"
+                )],
+                events: vec![event(
+                    "resilience.analytics.query.executed",
+                    vec![
+                        KeyValue::new("resilience.query.row_count", 10_i64),
+                        KeyValue::new("resilience.query.column_count", 3_i64),
+                    ],
+                )],
+            }
+        );
     }
 
     #[test]
-    fn export_guard_creates_and_drops_span() {
-        let _guard = begin_export("parquet", "/tmp/out.parquet");
-        event_export_completed("parquet", 100, 4096);
+    fn query_statement_is_cut_to_256_bytes() {
+        let exact = "x".repeat(256);
+        let long = "y".repeat(257);
+
+        assert_eq!(statement_recorded(&exact), exact);
+        assert_eq!(statement_recorded(&long), format!("{}...", "y".repeat(256)));
     }
 
     #[test]
-    fn import_guard_creates_and_drops_span() {
-        let _guard = begin_import("/tmp/backup");
-        event_import_completed(50, 200);
+    fn query_statement_is_cut_on_a_character_boundary() {
+        // Byte 256 falls inside the two-byte character that starts at 255.
+        let sql = format!("{}{}", "x".repeat(255), "é".repeat(10));
+
+        assert_eq!(statement_recorded(&sql), format!("{}...", "x".repeat(255)));
     }
 
     #[test]
-    fn purge_guard_creates_and_drops_span() {
-        let _guard = begin_purge(90);
-        event_purge_completed(10, 40);
+    fn export_span_records_the_target_and_what_was_written() {
+        let span = recorded(|| {
+            let _guard = begin_export("parquet", "/tmp/out.parquet");
+            event_export_completed("parquet", 100, 4096);
+        });
+
+        assert_eq!(
+            span,
+            Recorded {
+                name: "resilience.analytics.export".into(),
+                attributes: vec![
+                    KeyValue::new("resilience.export.format", "parquet"),
+                    KeyValue::new("resilience.export.path", "/tmp/out.parquet"),
+                ],
+                events: vec![event(
+                    "resilience.analytics.export.completed",
+                    vec![
+                        KeyValue::new("resilience.export.format", "parquet"),
+                        KeyValue::new("resilience.export.row_count", 100_i64),
+                        KeyValue::new("resilience.export.bytes", 4096_i64),
+                    ],
+                )],
+            }
+        );
     }
 
     #[test]
-    fn record_gauges_does_not_panic() {
-        record_store_gauges(10, 50, Some(1024 * 1024));
-        record_store_gauges(0, 0, None);
+    fn import_span_records_the_source_and_what_was_restored() {
+        let span = recorded(|| {
+            let _guard = begin_import("/tmp/backup");
+            event_import_completed(50, 200);
+        });
+
+        assert_eq!(
+            span,
+            Recorded {
+                name: "resilience.analytics.import".into(),
+                attributes: vec![KeyValue::new("resilience.import.path", "/tmp/backup")],
+                events: vec![event(
+                    "resilience.analytics.import.completed",
+                    vec![
+                        KeyValue::new("resilience.import.experiment_count", 50_i64),
+                        KeyValue::new("resilience.import.activity_count", 200_i64),
+                    ],
+                )],
+            }
+        );
+    }
+
+    #[test]
+    fn purge_span_records_the_age_limit_and_the_outcome() {
+        let span = recorded(|| {
+            let _guard = begin_purge(90);
+            event_purge_completed(10, 40);
+        });
+
+        assert_eq!(
+            span,
+            Recorded {
+                name: "resilience.analytics.purge".into(),
+                attributes: vec![KeyValue::new("resilience.purge.older_than_days", 90_i64)],
+                events: vec![event(
+                    "resilience.analytics.purge.completed",
+                    vec![
+                        KeyValue::new("resilience.purge.removed", 10_i64),
+                        KeyValue::new("resilience.purge.remaining", 40_i64),
+                    ],
+                )],
+            }
+        );
+    }
+
+    #[test]
+    fn store_gauges_report_the_latest_counts_and_a_known_size() {
+        let capture = MetricCapture::new();
+        let meter = capture.meter(TRACER_NAME);
+        let value =
+            |name: &str| -> Vec<f64> { capture.points(name).iter().map(|p| p.value).collect() };
+
+        record_store_gauges_on(&meter, 10, 50, None);
+        assert_eq!(value("resilience.store.experiments"), [10.0]);
+        assert_eq!(value("resilience.store.activities"), [50.0]);
+        assert_eq!(
+            value("resilience.store.size_bytes"),
+            [0.0_f64; 0],
+            "an unknown size is not reported as zero"
+        );
+
+        record_store_gauges_on(&meter, 12, 61, Some(1024 * 1024));
+        assert_eq!(value("resilience.store.experiments"), [12.0]);
+        assert_eq!(value("resilience.store.activities"), [61.0]);
+        assert_eq!(value("resilience.store.size_bytes"), [1_048_576.0]);
     }
 }

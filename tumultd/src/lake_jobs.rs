@@ -221,15 +221,17 @@ mod tests {
         );
 
         shutdown.cancel();
-        tokio::time::timeout(std::time::Duration::from_secs(10), lake_task)
-            .await
-            .expect("lake scheduler did not stop on shutdown")
-            .expect("lake scheduler task panicked");
+        let stopped = tokio::time::timeout(std::time::Duration::from_secs(10), lake_task).await;
+        assert!(
+            matches!(stopped, Ok(Ok(()))),
+            "the lake scheduler did not stop cleanly on shutdown: {stopped:?}"
+        );
         drop(ingest);
-        tokio::time::timeout(std::time::Duration::from_secs(10), writer_task)
-            .await
-            .expect("ingest writer drain hung — a sender is still alive")
-            .expect("ingest writer task panicked");
+        let drained = tokio::time::timeout(std::time::Duration::from_secs(10), writer_task).await;
+        assert!(
+            matches!(drained, Ok(Ok(()))),
+            "the ingest writer did not drain, a sender is still alive: {drained:?}"
+        );
     }
 
     fn versioned_span(ts_ns: i64) -> tumult_lake::SpanRow {
@@ -330,25 +332,22 @@ mod tests {
 
     #[test]
     fn lake_interval_from_env_defaults_to_daily_and_honours_overrides() {
-        let _guard = crate::test_support::ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
+        let mut env = tumult_test_utils::EnvGuard::lock();
         let daily = std::time::Duration::from_secs(86_400);
-        std::env::remove_var("KRONIKA_LAKE_INTERVAL");
+        env.remove("KRONIKA_LAKE_INTERVAL");
         assert_eq!(lake_interval_from_env(), Some(daily));
         for off in ["", "0", "off", "OFF"] {
-            std::env::set_var("KRONIKA_LAKE_INTERVAL", off);
+            env.set("KRONIKA_LAKE_INTERVAL", off);
             assert_eq!(lake_interval_from_env(), None, "{off:?} must disable");
         }
-        std::env::set_var("KRONIKA_LAKE_INTERVAL", "30m");
+        env.set("KRONIKA_LAKE_INTERVAL", "30m");
         assert_eq!(
             lake_interval_from_env(),
             Some(std::time::Duration::from_secs(1_800))
         );
         // Invalid values fall back to the default rather than disabling the job.
-        std::env::set_var("KRONIKA_LAKE_INTERVAL", "bogus");
+        env.set("KRONIKA_LAKE_INTERVAL", "bogus");
         assert_eq!(lake_interval_from_env(), Some(daily));
-        std::env::remove_var("KRONIKA_LAKE_INTERVAL");
     }
 
     /// Import `csv` into a fresh store, then hand the writer to the ingest

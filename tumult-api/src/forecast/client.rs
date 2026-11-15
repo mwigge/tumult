@@ -703,14 +703,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_slow_sidecar_times_out() {
-        let app = axum::Router::new().route(
-            "/forecast",
-            post(|| async {
-                tokio::time::sleep(Duration::from_secs(30)).await;
-                GOOD
-            }),
-        );
+    async fn a_sidecar_that_never_answers_times_out() {
+        let app =
+            axum::Router::new().route("/forecast", post(std::future::pending::<&'static str>));
         let base = serve(app).await;
         let client = TimestralClient::with_timeout(&base, Duration::from_millis(300)).unwrap();
         let err = ask(&client).await.unwrap_err();

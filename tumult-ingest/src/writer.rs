@@ -356,18 +356,75 @@ mod tests {
         assert_eq!(err, "always down");
     }
 
+    fn log(body: &str) -> Batch {
+        Batch::Logs(vec![tumult_lake::LogRow {
+            ts_ns: 1,
+            severity_text: "INFO".into(),
+            body: body.into(),
+            service_name: "writer-test".into(),
+            ..Default::default()
+        }])
+    }
+
+    fn log_bodies(store: &Store) -> serde_json::Value {
+        let rows = store
+            .read_only()
+            .unwrap()
+            .query_json_rows("SELECT body FROM logs ORDER BY body")
+            .unwrap();
+        serde_json::Value::Array(rows.into_iter().map(|row| row["body"].clone()).collect())
+    }
+
+    /// The store to reconnect to is a second file, so the test can see
+    /// which connection each batch went through.
     #[tokio::test]
-    async fn spawn_reconnect_persists_batches_like_spawn() {
+    async fn a_fatal_error_fails_its_batch_and_moves_later_ones_to_a_rebuilt_writer() {
         let d = tempfile::TempDir::new().unwrap();
-        let db_path = d.path().join("k.duckdb");
-        let store = Store::open(&db_path).unwrap();
+        let first = Store::open(&d.path().join("first.duckdb")).unwrap();
+        let rebuilt_path = d.path().join("rebuilt.duckdb");
+        let rebuilt = Store::open(&rebuilt_path).unwrap();
         let (ingest, task) =
-            IngestWriter::spawn_reconnect(store.writer().unwrap(), db_path.clone(), 4);
-        ingest.write(Batch::Logs(vec![])).await.unwrap();
+            IngestWriter::spawn_reconnect(first.writer().unwrap(), rebuilt_path, 4);
+
+        ingest.write(log("before")).await.unwrap();
+        let err = ingest
+            .write(Batch::Exec(Box::new(|_| {
+                Err("FATAL Error: database invalidated".to_string())
+            })))
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(&err, IngestError::Channel(msg) if msg.contains("database invalidated")),
+            "the failed batch is answered with its own error: {err:?}"
+        );
+        ingest.write(log("after")).await.unwrap();
         drop(ingest);
         task.await.unwrap();
-        // A real FATAL error cannot be triggered deterministically in a
-        // test; the predicate and retry core above cover the branches.
+
+        assert_eq!(log_bodies(&first), serde_json::json!(["before"]));
+        assert_eq!(log_bodies(&rebuilt), serde_json::json!(["after"]));
+    }
+
+    #[tokio::test]
+    async fn an_ordinary_error_keeps_the_writer_it_has() {
+        let d = tempfile::TempDir::new().unwrap();
+        let first = Store::open(&d.path().join("first.duckdb")).unwrap();
+        let other_path = d.path().join("other.duckdb");
+        let other = Store::open(&other_path).unwrap();
+        let (ingest, task) = IngestWriter::spawn_reconnect(first.writer().unwrap(), other_path, 4);
+
+        ingest
+            .write(Batch::Exec(Box::new(|_| {
+                Err("Constraint Error: duplicate key".to_string())
+            })))
+            .await
+            .unwrap_err();
+        ingest.write(log("after")).await.unwrap();
+        drop(ingest);
+        task.await.unwrap();
+
+        assert_eq!(log_bodies(&first), serde_json::json!(["after"]));
+        assert_eq!(log_bodies(&other), serde_json::json!([]));
     }
 
     #[tokio::test]

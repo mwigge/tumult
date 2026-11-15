@@ -281,8 +281,11 @@ fn chart_series(series: &RegularSeries, forecast: &Forecast, offset: usize) -> V
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::time::Instant;
+
+    use tumult_otel::logging::testing::LogCapture;
+
+    use super::*;
 
     #[test]
     fn chart_series_pads_context_and_horizon() {
@@ -412,12 +415,12 @@ mod tests {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-        let cooldown = std::time::Duration::from_millis(40);
+        let cooldown = std::time::Duration::from_secs(5);
         let state = state_with_sidecar(&format!("http://{addr}"), cooldown);
         let breaker = state.forecast_breaker();
-        let now = Instant::now();
-        breaker.record_failure(breaker.admit(now).unwrap(), now);
-        tokio::time::sleep(std::time::Duration::from_millis(80)).await;
+        // The failure that opened the circuit is two cooldowns old.
+        let failed_at = Instant::now().checked_sub(cooldown * 2).unwrap();
+        breaker.record_failure(breaker.admit(failed_at).unwrap(), failed_at);
 
         assert_eq!(ask(&state, &[1.0, 2.0], 4).await.err(), Some("rejected"));
         let later = Instant::now();
@@ -551,46 +554,16 @@ mod tests {
         assert!(breaker.admit(now).is_some(), "the probe is still to be had");
     }
 
-    /// Every event logged on this thread while it is the default
-    /// subscriber, as `name=value` fields.
-    #[derive(Clone, Default)]
-    struct Events(std::sync::Arc<std::sync::Mutex<Vec<String>>>);
-
-    struct Fields<'a>(&'a mut String);
-
-    impl tracing::field::Visit for Fields<'_> {
-        fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
-            use std::fmt::Write;
-            let _ = write!(self.0, "{}={value:?} ", field.name());
-        }
-    }
-
-    impl tracing::Subscriber for Events {
-        fn enabled(&self, _: &tracing::Metadata<'_>) -> bool {
-            true
-        }
-        fn new_span(&self, _: &tracing::span::Attributes<'_>) -> tracing::span::Id {
-            tracing::span::Id::from_u64(1)
-        }
-        fn record(&self, _: &tracing::span::Id, _: &tracing::span::Record<'_>) {}
-        fn record_follows_from(&self, _: &tracing::span::Id, _: &tracing::span::Id) {}
-        fn event(&self, event: &tracing::Event<'_>) {
-            let mut line = String::new();
-            event.record(&mut Fields(&mut line));
-            self.0.lock().unwrap().push(line);
-        }
-        fn enter(&self, _: &tracing::span::Id) {}
-        fn exit(&self, _: &tracing::span::Id) {}
-    }
-
-    impl Events {
-        fn about_slots(&self) -> Vec<String> {
-            let seen = self.0.lock().unwrap();
-            let slots = seen
-                .iter()
-                .filter(|e| e.contains("forecast.sidecar.slots="));
-            slots.cloned().collect()
-        }
+    /// The slot events among `logs`: how many requests each stands for.
+    fn suppressed_by_slot_events(logs: &LogCapture) -> Vec<serde_json::Value> {
+        let slots = serde_json::json!(SIDECAR_SLOTS);
+        let events = logs.snapshot().events;
+        let about_slots = events
+            .iter()
+            .filter(|event| event["forecast.sidecar.slots"] == slots);
+        about_slots
+            .map(|event| event["forecast.suppressed"].clone())
+            .collect()
     }
 
     /// A request that finds every slot taken says so on its span, and in
@@ -609,8 +582,7 @@ mod tests {
             .with_simple_exporter(exporter.clone())
             .build();
         let tracer = provider.tracer("test");
-        let events = Events::default();
-        let _logged = tracing::subscriber::set_default(events.clone());
+        let logs = LogCapture::start(tracing::Level::INFO);
 
         let span =
             telemetry::Timed::start_in(&tracer, telemetry::PRODUCE, &opentelemetry::Context::new());
@@ -618,17 +590,10 @@ mod tests {
             assert_eq!(ask_under(&state, &span, "s").await.err(), Some("busy"));
         }
         span.finish("fallback");
-        assert_eq!(events.about_slots().len(), 1, "{:?}", events.about_slots());
+        assert_eq!(suppressed_by_slot_events(&logs), [0]);
         advance(breaker::SLOT_EVENT_EVERY.as_secs());
         assert_eq!(ask_for(&state, "s").await.err(), Some("busy"));
-        let logged = events.about_slots();
-        assert_eq!(logged.len(), 2, "{logged:?}");
-        assert!(
-            logged[0].contains("forecast.sidecar.slots=4 "),
-            "{logged:?}"
-        );
-        assert!(logged[0].contains("forecast.suppressed=0 "), "{logged:?}");
-        assert!(logged[1].contains("forecast.suppressed=2 "), "{logged:?}");
+        assert_eq!(suppressed_by_slot_events(&logs), [0, 2]);
 
         let spans = exporter.get_finished_spans().unwrap();
         let flagged = spans[0]

@@ -138,19 +138,36 @@ mod tests {
         assert!(!l.throttled("b"), "b has its own bucket");
     }
 
+    /// Make the last refill of `key` look `by` longer ago than it was.
+    fn age(limiter: &LoginRateLimiter, key: &str, by: std::time::Duration) {
+        let mut buckets = limiter.buckets.lock().unwrap();
+        let bucket = buckets.get_mut(key).unwrap();
+        bucket.last_refill = bucket.last_refill.checked_sub(by).unwrap();
+    }
+
     #[test]
-    fn login_limiter_refills_over_time() {
-        let l = LoginRateLimiter::with_params(1000.0, 1.0);
+    fn login_limiter_refills_at_the_configured_rate() {
+        // One token every ten seconds.
+        let l = LoginRateLimiter::with_params(0.1, 1.0);
         l.penalize("k");
-        // The penalty consumed the only token. Assert the bucket state
-        // directly instead of going through `throttled`: with rps=1000 the
-        // refill between `penalize` and a `throttled` call can cross one
-        // token on a slow/loaded machine, which made this test flaky in CI.
-        {
-            let buckets = l.buckets.lock().unwrap();
-            assert_eq!(buckets["k"].tokens, 0.0, "penalty consumed the token");
-        }
-        std::thread::sleep(std::time::Duration::from_millis(10));
-        assert!(!l.throttled("k"), "bucket refills at the rps rate");
+        assert!(l.throttled("k"), "the penalty consumed the only token");
+
+        age(&l, "k", std::time::Duration::from_secs(5));
+        assert!(l.throttled("k"), "half a token is not an attempt");
+        age(&l, "k", std::time::Duration::from_secs(6));
+        assert!(!l.throttled("k"), "a whole token is back");
+    }
+
+    #[test]
+    fn login_limiter_never_holds_more_than_the_burst() {
+        let l = LoginRateLimiter::with_params(0.1, 2.0);
+        l.penalize("k");
+        age(&l, "k", std::time::Duration::from_secs(3_600));
+        assert!(!l.throttled("k"));
+
+        // An hour of refill is still only two attempts.
+        l.penalize("k");
+        l.penalize("k");
+        assert!(l.throttled("k"));
     }
 }
