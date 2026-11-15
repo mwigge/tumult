@@ -417,6 +417,12 @@ describe('toSpineLink', () => {
 });
 
 describe('tooltipHtml', () => {
+    it('names the score of a node resilience, not posture', () => {
+        const { html } = tooltipHtml(node({ posture: { score: 41.5, band: 'poor' } }), ctx());
+        expect(html).toContain('resilience: 41.5 (poor)');
+        expect(html).not.toContain('posture');
+    });
+
     it('escapes names that come from telemetry', () => {
         const { html } = tooltipHtml(node({ label: '<script>alert(1)</script>' }), ctx());
         expect(html).not.toContain('<script>');

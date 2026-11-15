@@ -236,7 +236,7 @@
           "end_line": 253
         },
         {
-          "path": "web/src/routes/posture/+page.svelte",
+          "path": "web/src/routes/resilience/+page.svelte",
           "line": 278,
           "end_line": 279
         }

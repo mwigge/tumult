@@ -9,7 +9,7 @@ nav_order: 17
 ChaosGraph can now answer the three questions that matter after a chaos run:
 **where** in your service topology does compliance break, **why** (which
 fault injection caused it), and **where to inject next** to improve your
-compliance posture. This guide covers the declared-topology model, the
+compliance. This guide covers the declared-topology model, the
 lineage semantics, the recommender, and the map renderings.
 
 ## Declaring a topology

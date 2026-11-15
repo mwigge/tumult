@@ -149,7 +149,7 @@
 
 <div class="page-head">
     <h1>Overview</h1>
-    <span class="sub">resilience posture for the selected window</span>
+    <span class="sub">resilience for the selected window</span>
     <div style="margin-left: auto">
         <RangeSwitch value={range} onchange={setRange} />
     </div>

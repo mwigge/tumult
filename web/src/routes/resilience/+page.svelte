@@ -1,8 +1,8 @@
 <script lang="ts">
-    // Posture: the executive opening view. Ranked risks and discipline
+    // Resilience: the executive opening view. Ranked risks and discipline
     // coverage gaps first (the passive scan runs with no faults), then the
-    // continuous posture score per target. Operators can accept a finding
-    // for a while; suppressions are hash-chained server side.
+    // continuous resilience score per target (/api/posture). Operators can
+    // accept a finding for a while; suppressions are hash-chained server side.
     import { api, fmtAgo } from '#lib/api.js';
     import type { EChartsCoreOption } from '#lib/echarts.js';
     import { chartTokens } from '#lib/echarts.js';
@@ -234,7 +234,7 @@
 </script>
 
 <div class="page-head">
-    <h1>Posture</h1>
+    <h1>Resilience</h1>
     {#if report}
         <span class="muted">scanned {fmtAgo(report.as_of_ns)}</span>
     {/if}
@@ -471,7 +471,7 @@
     {/if}
 
     <section class="panel score" data-testid="posture">
-        <h2>Posture score</h2>
+        <h2>Resilience score</h2>
         <div class="headline">
             <span class="value mono">{posture.posture.score.toFixed(1)}</span>
             <span class="badge {bandClass(posture.posture.band)}">{posture.posture.band}</span>

@@ -21,11 +21,14 @@ are drawn from. Pages without a chart are tables or forms and say so.
 | Page | Charts and panels | Evidence shown | API |
 |---|---|---|---|
 | **Overview** (`/`) | KPI cards with sparklines (experiments, hypothesis pass rate, deviation rate, mean time to recover, target coverage); experiments per day as a bar chart for `24h` and a calendar heatmap for longer ranges; fault breakdown pie; target systems table | Experiment runs in the selected range, with run windows overlaid on the `24h` chart | `GET /api/overview`, `GET /api/experiments/windows` |
-| **Posture** (`/posture`) | Top risks list with inline accept; accepted findings; coverage heatmap of targets against the four disciplines (missing, stale, covered) and a coverage radar per discipline; objectives heatmap of targets against objectives; compliance score line over 14 days; telemetry contract table; posture score per target | Findings of the passive risk scan, objective verdicts, discipline coverage, the score history, and which services carry the OpenTelemetry naming contract | `GET /api/risks`, `GET /api/posture`, `GET /api/scores/tree`, `GET /api/otel/conformance`, `POST /api/risks/{id}/suppress` |
+| **Resilience** (`/resilience`) | Top risks list with inline accept; accepted findings; coverage heatmap of targets against the four disciplines (missing, stale, covered) and a coverage radar per discipline; objectives heatmap of targets against objectives; compliance score line over 14 days; telemetry contract table; resilience score per target | Findings of the passive risk scan, objective verdicts, discipline coverage, the score history, and which services carry the OpenTelemetry naming contract | `GET /api/risks`, `GET /api/posture`, `GET /api/scores/tree`, `GET /api/otel/conformance`, `POST /api/risks/{id}/suppress` |
 | **Performance** (`/performance`) | Target picker; verdict with how the two versions were selected and attributed; difference at the compared quantile with its confidence interval; latency distribution chart (percentile curves of baseline and candidate, the baseline dashed); tables of latency, partial runs and windows, requests and runs by version; stored verdict history | Load and probe latency samples of two `service.version`s of one target in one environment, and the verdicts an operator stored | `GET /api/perf`, `GET /api/perf/{target}`, `POST /api/perf/{target}/verdicts` |
 | **Scores** (`/scores`) | Company score with a trend sparkline; treemap of domains (area by experiments and criticality, colour by band) that drills from company to domain to member; member table with sparklines | Latest run per experiment rolled up through the `org.yaml` hierarchy, with coverage against expected evidence | `GET /api/scores/tree` |
 | **DORA** (`/scores?view=dora`) | Legal entity picker; heatmap of articles against functions or org units with a table alternative; expected and actual evidence status with the largest gap first and an evidence drawer per row; maturity gauge, component bars and a level-and-index line per quarter; maturity per node with the node that caps the level; reporting readiness of the function register | Runs and manual records matched to the DORA requirement registry, the stored daily snapshots, and the function register declared in `org.yaml` | `GET /api/dora`, `GET /api/dora/{article}`, `GET /api/maturity` |
 | **Star Map** (`/starmap`) | One graph of organisation units, ICT entities, systems, components, services, workloads and definitions; lens switch (evidence, risk, conformance); environment and range pickers; focus on a neighbourhood; node list with a filter; evidence drawer with coverage by discipline, runs, gate verdict, objective verdicts, manual records and risks | Spans, runs, verified manual records, risk suppressions, `org.yaml` and the manifests under `KRONIKA_MANIFESTS_DIR`, assembled per request | `GET /api/starmap`, `GET /api/gate/{target}` (drawer) |
+
+The Resilience page was called Posture. It reads `GET /api/posture`, and
+old `/posture` links open it.
 
 The DORA page reports what evidence exists. It does not state that an
 entity complies; see the [DORA score guide](../guides/dora-score.md). The Star Map
@@ -86,13 +89,13 @@ Taken from the seeded demo.
 
 ![Star Map, risk view](../images/3.0/screenshots/starmap-risk.png)
 
-### Posture: objectives, telemetry contract and posture score
+### Resilience: objectives, telemetry contract and resilience score
 
-![Posture: objectives, telemetry contract and posture score](../images/3.0/screenshots/posture-score.png)
+![Resilience: objectives, telemetry contract and resilience score](../images/3.0/screenshots/posture-score.png)
 
-### Posture: accepted risks
+### Resilience: accepted risks
 
-![Posture: accepted risks](../images/3.0/screenshots/posture-suppressed.png)
+![Resilience: accepted risks](../images/3.0/screenshots/posture-suppressed.png)
 
 ### Scores: one unit and its members
 

@@ -210,11 +210,11 @@
       "lane": "show",
       "col": 2,
       "type": "frontend",
-      "label": "Posture page",
+      "label": "Resilience page",
       "sublabel": "objective heatmap",
       "sources": [
         {
-          "path": "web/src/routes/posture/+page.svelte",
+          "path": "web/src/routes/resilience/+page.svelte",
           "line": 172,
           "end_line": 176
         },

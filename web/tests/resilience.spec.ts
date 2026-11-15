@@ -66,7 +66,7 @@ test.beforeEach(async ({ page }) => {
     await installChartHooks(page);
 });
 
-test('posture opens with ranked risks, coverage gaps and the score', async ({ page }) => {
+test('resilience opens with ranked risks, coverage gaps and the score', async ({ page }) => {
     const posted: unknown[] = [];
     let suppressed = false;
     await page.route('**/api/**', async (route) => {
@@ -242,7 +242,11 @@ test('posture opens with ranked risks, coverage gaps and the score', async ({ pa
         });
     });
 
-    await page.goto('/posture');
+    await page.goto('/resilience');
+    await expect(page.getByRole('heading', { level: 1, name: 'Resilience' })).toBeVisible();
+    await expect(
+        page.getByTestId('posture').getByRole('heading', { name: 'Resilience score' }),
+    ).toBeVisible();
     const list = page.getByTestId('risks').locator('ol.risks > li');
     await expect(list).toHaveCount(3);
     await expect(list.nth(0)).toContainText('Latest chaos run failed');
@@ -322,4 +326,22 @@ test('posture opens with ranked risks, coverage gaps and the score', async ({ pa
     expect(posted).toEqual([{ reason: 'known flake', expires_in_days: 30, actor: 'ops' }]);
     await page.getByRole('button', { name: '1 suppressed' }).click();
     await expect(page.getByTestId('risks')).toContainText('known flake');
+});
+
+test('GIVEN an old /posture link WHEN it opens THEN it lands on /resilience with the query kept', async ({
+    page,
+}) => {
+    // Only the session answers; the page shows its error for the rest.
+    await page.route('**/api/**', (route) =>
+        new URL(route.request().url()).pathname === '/api/me'
+            ? route.fulfill({
+                  status: 200,
+                  contentType: 'application/json',
+                  body: JSON.stringify(me),
+              })
+            : route.fulfill({ status: 503, contentType: 'application/json', body: '{}' }),
+    );
+    await page.goto('/posture?env=x');
+    await expect(page).toHaveURL(/\/resilience\?env=x$/);
+    await expect(page.getByRole('heading', { level: 1, name: 'Resilience' })).toBeVisible();
 });

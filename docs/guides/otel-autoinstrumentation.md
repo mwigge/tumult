@@ -23,7 +23,7 @@ runnable example is `examples/otel/`.
 | Attribute | Carried as | Promoted to | Drives |
 |---|---|---|---|
 | `service.name`, `service.version` | resource | `spans.service_name`, `spans.service_version` | topology, performance verdicts per build |
-| `resilience.target.system` | resource or span | `spans.target_system` | scores, the gate, posture, coverage, risks |
+| `resilience.target.system` | resource or span | `spans.target_system` | scores, the gate, resilience score, coverage, risks |
 | `resilience.target.technology` | resource or span | `spans.target_technology` | risk rules, reports |
 | `resilience.target.environment` (or semconv `deployment.environment.name`) | resource or span | `spans.target_environment` | environment scopes, gate `env=` |
 | `resilience.target.component`, `.tier`, `.criticality`, `.region` | resource | `spans.resource_attrs` | reports, conformance, future rules |
@@ -158,7 +158,7 @@ contract attributes the lake has actually seen and at which level:
 The response lists the missing keys per service, so a platform team can
 see which deployments still need their `OTEL_RESOURCE_ATTRIBUTES`. The
 same check runs in the UI smoke script and is the first thing to look at
-when a target is absent from `/posture`.
+when a target is absent from the Resilience page (`/resilience`).
 
 ## 6. Versions
 

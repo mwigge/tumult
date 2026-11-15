@@ -170,7 +170,7 @@
                 <dd>{node.tier}</dd>
             {/if}
             {#if node.posture}
-                <dt>posture</dt>
+                <dt>resilience</dt>
                 <dd>{node.posture.score.toFixed(1)} ({node.posture.band})</dd>
             {/if}
             {#if node.conformance}
@@ -225,8 +225,8 @@
                 </a>
             {/if}
             {#if isSystem}
-                <a href="/posture{node.env ? `?env=${encodeURIComponent(node.env)}` : ''}">
-                    Posture
+                <a href="/resilience{node.env ? `?env=${encodeURIComponent(node.env)}` : ''}">
+                    Resilience
                 </a>
             {/if}
         </div>

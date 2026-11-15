@@ -133,12 +133,12 @@ rows that are stored go back through the writer.
 ```mermaid
 flowchart LR
     accTitle: Evidence read flow
-    accDescr: The JSON API reads the lake on read-only connections. Scores, the DORA coverage and maturity score, the gate, the risk scan and posture, the Star Map, performance verdicts and forecasts are computed per request from the stored rows, org.yaml and the manifests. Krönika pages, the CI gate and reports consume the results. Daily score snapshots, stored performance verdicts and the forecast cache are written back through the single writer.
+    accDescr: The JSON API reads the lake on read-only connections. Scores, the DORA coverage and maturity score, the gate, the risk scan and resilience score, the Star Map, performance verdicts and forecasts are computed per request from the stored rows, org.yaml and the manifests. Krönika pages, the CI gate and reports consume the results. Daily score snapshots, stored performance verdicts and the forecast cache are written back through the single writer.
     lake[(DuckDB lake)] --> ro[Read-only<br>connections]
     org[org.yaml and<br>manifests] --> api
     ro --> api[tumult-api handlers]
     api --> scores[Scores, DORA,<br>maturity, gate]
-    api --> risk[Risk scan<br>and posture]
+    api --> risk[Risk scan<br>and resilience score]
     api --> map[Star Map<br>30 s cache]
     api --> perf[Performance<br>verdicts]
     api --> fc[Forecast bands<br>and run impact]
@@ -257,7 +257,7 @@ flowchart LR
    from the latest evidence per target and discipline, objective verdicts,
    the span call graph, registered definitions and the Kubernetes
    manifests under `KRONIKA_MANIFESTS_DIR`, with the coverage matrix and
-   the continuous posture score; `POST /api/risks/{id}/suppress` accepts a
+   the continuous resilience score; `POST /api/risks/{id}/suppress` accepts a
    finding for a while; `POST /api/risks/{id}/recommend` turns one into a
    registered experiment and an autopilot candidate with a `risk`
    trigger, gated and recorded when a policy is loaded), and
@@ -300,7 +300,7 @@ of it has a store of its own beyond the derived tables named here.
   count stored days only. Responses are reused for
   `KRONIKA_SCORE_CACHE_TTL` seconds. The score reports what evidence
   exists; see [the DORA score guide](../guides/dora-score.md).
-- **Risk scan and posture.** `tumult-risk` ranks findings from the latest
+- **Risk scan and resilience score.** `tumult-risk` ranks findings from the latest
   evidence per target and discipline, objective verdicts, the span call
   graph, registered definitions and the manifests. Accepting a finding
   appends to the hash-chained `risk_suppressions`.
@@ -339,7 +339,7 @@ session. The charts and the evidence on each page are described in
 | Page | Route | API | Role |
 |---|---|---|---|
 | Overview | `/` | `/api/overview`, `/api/experiments/windows` | viewer |
-| Posture | `/posture` | `/api/risks`, `/api/posture`, `/api/scores/tree`, `/api/otel/conformance`; `POST /api/risks/{id}/suppress` | viewer; operator to accept a finding |
+| Resilience | `/resilience` | `/api/risks`, `/api/posture`, `/api/scores/tree`, `/api/otel/conformance`; `POST /api/risks/{id}/suppress` | viewer; operator to accept a finding |
 | Performance | `/performance` | `/api/perf`, `/api/perf/{target}`; `POST /api/perf/{target}/verdicts` | viewer; operator to store a verdict |
 | Scores | `/scores` | `/api/scores/tree` | viewer |
 | DORA | `/scores?view=dora` | `/api/dora`, `/api/dora/{article}`, `/api/maturity` | viewer |
@@ -363,7 +363,7 @@ session. The charts and the evidence on each page are described in
 The authoritative role of every route is the route table in `tumult-api`;
 a route missing from it requires admin. Three API surfaces have no page
 yet: `/api/forecast` (the run page draws only `/api/runs/{id}/impact`),
-`/api/entities`, and `POST /api/risks/{id}/recommend` (the Posture page
+`/api/entities`, and `POST /api/risks/{id}/recommend` (the Resilience page
 shows the recommended kind of experiment and does not call the route).
 
 ## Single-writer model (tumult-lake)

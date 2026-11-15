@@ -31,8 +31,8 @@ Chaos testing is still here. It is now one source of evidence among several.
 
 | | |
 |---|---|
-| ![Star Map: organisation, systems, services and workloads as one graph](docs/images/3.0/screenshots/starmap.png) | ![Posture: ranked risks and coverage per discipline](docs/images/3.0/screenshots/posture.png) |
-| **Star Map.** Your organisation, systems and workloads as one graph. Colour shows evidence, risk or telemetry quality. | **Posture.** A ranked list of risks and the gaps in what you have tested. No fault needs to run. |
+| ![Star Map: organisation, systems, services and workloads as one graph](docs/images/3.0/screenshots/starmap.png) | ![Resilience: ranked risks and coverage per discipline](docs/images/3.0/screenshots/posture.png) |
+| **Star Map.** Your organisation, systems and workloads as one graph. Colour shows evidence, risk or telemetry quality. | **Resilience.** A ranked list of risks and the gaps in what you have tested. No fault needs to run. |
 | ![Scores: DORA coverage and maturity level](docs/images/3.0/screenshots/scores-dora.png) | ![Performance: version against version with a verdict](docs/images/3.0/screenshots/performance.png) |
 | **Scores.** DORA coverage per article and function, and a maturity level from 1 to 5. | **Performance.** Did the new version get slower? A verdict per version, with a confidence interval. |
 | ![Star Map focus: one system with its evidence](docs/images/3.0/screenshots/starmap-focus.png) | ![Run detail with the span waterfall](docs/images/3.0/screenshots/run-detail.png) |
@@ -99,7 +99,7 @@ as OTel-Arrow. More diagrams:
 | Feature | In one line | Guide |
 |---|---|---|
 | Star Map | One graph from organisation to workload | [Star Map](docs/guides/star-map.md) |
-| Risks and posture | Ranked findings from evidence you already have | [walkthrough](docs/guides/platform-walkthrough.md) |
+| Risks and resilience score | Ranked findings from evidence you already have | [walkthrough](docs/guides/platform-walkthrough.md) |
 | DORA score | Coverage and maturity. It shows what evidence exists. It does not say you comply. | [DORA score](docs/guides/dora-score.md) |
 | Performance verdicts | Compare two versions of a service | [performance](docs/guides/performance-regression.md) |
 | Load profiles | Ramp, spike and soak on k6 and oha | [load testing](docs/guides/load-testing-guide.md) |
