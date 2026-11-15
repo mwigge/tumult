@@ -25,10 +25,13 @@ use opentelemetry_sdk::error::OTelSdkResult;
 use opentelemetry_sdk::logs::{LogBatch, LogExporter, SdkLoggerProvider};
 use serde_json::Value;
 use tracing::subscriber::{DefaultGuard, NoSubscriber};
-use tracing::{Dispatch, Level};
-use tracing_subscriber::fmt::MakeWriter;
+use tracing::{Dispatch, Level, Subscriber};
+use tracing_subscriber::fmt::{FormattedFields, MakeWriter};
+use tracing_subscriber::layer::{Context, SubscriberExt};
+use tracing_subscriber::registry::LookupSpan;
+use tracing_subscriber::Layer;
 
-use super::{filter, EventFormatter, LogFormat, LogOptions, LogResource, Pipeline};
+use super::{filter, EventFormatter, LogFormat, LogOptions, LogResource, Pipeline, TypedFields};
 
 /// The `service.name` on captured lines.
 pub const SERVICE_NAME: &str = "tumult-test";
@@ -251,6 +254,67 @@ pub fn capture_json(level: Level, emit: impl FnOnce()) -> Captured {
     parse(sink.text())
 }
 
+/// A `tracing` span as it was when it closed; see [`capture_closed_spans`].
+#[derive(Debug, Clone, PartialEq)]
+pub struct ClosedSpan {
+    /// The span's name.
+    pub name: String,
+    /// Every field the span carried, whether it was given when the span
+    /// was made or recorded later, as one JSON object.
+    pub fields: Value,
+}
+
+/// Keeps each span that closes, with the fields stored for it.
+struct SpanProbe(Arc<Mutex<Vec<ClosedSpan>>>);
+
+impl<S> Layer<S> for SpanProbe
+where
+    S: Subscriber + for<'span> LookupSpan<'span>,
+{
+    fn on_close(&self, id: tracing::span::Id, ctx: Context<'_, S>) {
+        let span = ctx.span(&id).expect("a closing span is still registered");
+        let extensions = span.extensions();
+        let stored = extensions
+            .get::<FormattedFields<TypedFields>>()
+            .expect("the fmt layer stores the fields of every span");
+        let fields = serde_json::from_str(&stored.fields).expect("span fields are a JSON object");
+        self.0
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push(ClosedSpan {
+                name: span.name().to_string(),
+                fields,
+            });
+    }
+}
+
+/// Runs `run` and returns its result with every `tracing` span that
+/// closed on this thread meanwhile, in the order they closed.
+///
+/// # Panics
+///
+/// When the fields stored for a span are missing or are not JSON, which
+/// would be a bug in [`TypedFields`], and should fail the test.
+pub fn capture_closed_spans<T>(run: impl FnOnce() -> T) -> (T, Vec<ClosedSpan>) {
+    share_callsite_interest();
+    let closed = Arc::new(Mutex::new(Vec::new()));
+    // The probe sits below the fmt layer: it sees a span close before the
+    // fields the fmt layer stored for it are dropped.
+    let subscriber = tracing_subscriber::registry()
+        .with(SpanProbe(Arc::clone(&closed)))
+        .with(
+            tracing_subscriber::fmt::layer()
+                .fmt_fields(TypedFields)
+                .with_writer(io::sink),
+        );
+    let result = tracing::subscriber::with_default(subscriber, run);
+    let spans = closed
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .clone();
+    (result, spans)
+}
+
 /// Keeps a second subscriber registered for the rest of the process.
 ///
 /// While a capture owns the only subscriber in the process, `tracing`
@@ -296,7 +360,10 @@ fn parse(raw: String) -> Captured {
 mod tests {
     use tracing::Level;
 
-    use super::{capture_json, ExportCapture, ExportedEvent, LogCapture, SERVICE_NAME};
+    use super::{
+        capture_closed_spans, capture_json, ClosedSpan, ExportCapture, ExportedEvent, LogCapture,
+        SERVICE_NAME,
+    };
     use crate::logging::LogOptions;
 
     #[test]
@@ -315,6 +382,33 @@ mod tests {
                 event_name: Some("daemon.stopped".to_string()),
                 body: Some("daemon stopped".to_string()),
             }]
+        );
+    }
+
+    #[test]
+    fn closed_spans_carry_their_name_and_every_field_recorded_on_them() {
+        let (answer, spans) = capture_closed_spans(|| {
+            let outer = tracing::info_span!("outer", host = "db-1");
+            let _entered = outer.enter();
+            let inner = tracing::info_span!("inner", rows = tracing::field::Empty);
+            inner.record("rows", 3_u64);
+            drop(inner);
+            7
+        });
+
+        assert_eq!(answer, 7);
+        assert_eq!(
+            spans,
+            [
+                ClosedSpan {
+                    name: "inner".to_string(),
+                    fields: serde_json::json!({"rows": 3}),
+                },
+                ClosedSpan {
+                    name: "outer".to_string(),
+                    fields: serde_json::json!({"host": "db-1"}),
+                },
+            ]
         );
     }
 
