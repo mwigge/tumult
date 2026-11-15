@@ -79,6 +79,13 @@
         report ? [...report.expectations].sort((a, b) => b.priority - a.priority) : [],
     );
     const tree = $derived(maturity ? nodeTree(maturity.nodes) : []);
+    // The roll-up headline, or what is true when there is none: only an
+    // empty table means there are no nodes.
+    const rollupSuffix = $derived.by(() => {
+        if (maturity?.rollup_headline) return ` — ${maturity.rollup_headline}`;
+        if (tree.length === 0) return ' — no nodes on record';
+        return '';
+    });
 
     const date = (ns: number | null) =>
         ns === null ? '–' : new Date(ns / 1e6).toISOString().slice(0, 10);
@@ -451,7 +458,7 @@
         </section>
 
         <section class="panel" data-testid="dora-rollup">
-            <h2>Maturity per node — {maturity.rollup_headline ?? 'no nodes on record'}</h2>
+            <h2>Maturity per node{rollupSuffix}</h2>
             {#if tree.length === 0}
                 <div class="state">No nodes to roll up.</div>
             {:else}

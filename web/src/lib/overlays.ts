@@ -28,13 +28,37 @@ export function outcomeColor(outcome: string | null): string {
 
 const shortName = (r: ExperimentWindow) => r.name ?? r.id ?? '(run)';
 
+type X = number | string;
+
+/** Runs that start on the same x value (one day column, one instant). */
+function groupByX(runs: ExperimentWindow[], toX: (ms: number) => X): Map<X, ExperimentWindow[]> {
+    const groups = new Map<X, ExperimentWindow[]>();
+    for (const r of runs) {
+        const x = toX(r.start_ns / 1e6);
+        groups.set(x, [...(groups.get(x) ?? []), r]);
+    }
+    return groups;
+}
+
+/** One start marker per x: a lone run is named, a group is counted. */
+function startMarker(x: X, group: ExperimentWindow[]): Record<string, unknown> {
+    const colors = new Set(group.map((r) => outcomeColor(r.outcome)));
+    const color = colors.size === 1 ? [...colors][0] : CHART.text;
+    const base = { xAxis: x, lineStyle: { color, type: 'dashed', width: 1 } };
+    const [only] = group;
+    if (group.length !== 1 || only === undefined) {
+        return { ...base, name: `${group.length} runs`, runId: null };
+    }
+    return { ...base, name: `${shortName(only)} — ${only.outcome ?? 'unknown'}`, runId: only.id };
+}
+
 /**
  * A silent series carrying the overlay. `toX` converts epoch ms to the
  * x-axis value (identity for time axes; day-string for category axes).
  */
 export function experimentOverlay(
     runs: ExperimentWindow[],
-    toX: (ms: number) => number | string = (ms) => ms,
+    toX: (ms: number) => X = (ms) => ms,
 ): Series | null {
     if (runs.length === 0) return null;
     return {
@@ -55,19 +79,18 @@ export function experimentOverlay(
         markLine: {
             silent: false,
             symbol: 'none',
+            // Upright above the line: a label inside a vertical line turns
+            // with it, and runs on one x drew their names over each other.
             label: {
                 show: true,
-                position: 'insideEndTop',
+                position: 'end',
                 fontSize: 10,
                 color: CHART.text,
+                width: 160,
+                overflow: 'truncate',
                 formatter: (p: { name?: string }) => p.name ?? '',
             },
-            data: runs.map((r) => ({
-                xAxis: toX(r.start_ns / 1e6),
-                name: `${shortName(r)} — ${r.outcome ?? 'unknown'}`,
-                runId: r.id,
-                lineStyle: { color: outcomeColor(r.outcome), type: 'dashed', width: 1 },
-            })),
+            data: [...groupByX(runs, toX)].map(([x, group]) => startMarker(x, group)),
         },
     } as Series;
 }

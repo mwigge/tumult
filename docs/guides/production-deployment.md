@@ -360,7 +360,10 @@ its bootstrap API token and requires a successful store check.
   at least one supervisor tick since boot (a dead supervisor task stops
   ticking). Use this for the readiness probe; use `/healthz` for liveness.
 - **`GET /metrics`** — Prometheus text exposition of the daemon counters
-  below. Scrape it like any other target.
+  below. Scrape it like any other target. A request whose `Accept` header
+  lists `text/html` first (a browser opening or reloading the Metrics page
+  of the web UI) gets the web UI instead; scrapers, curl and requests with
+  no `Accept` header get the exposition, under the same auth rules.
 
 **Daemon SLIs (all `tumultd_*`):**
 
