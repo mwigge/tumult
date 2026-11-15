@@ -17,7 +17,7 @@
         <mxCell id="agent-cli" value="Agent CLI adapters&#xa;tumult-agent-cli&#xa;&#xa;Claude Code / Codex&#xa;Recommendation enhancement" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=15;spacing=12;" vertex="1" parent="1">
           <mxGeometry x="810" y="110" width="250" height="150" as="geometry" />
         </mxCell>
-        <mxCell id="web-users" value="Web UI users → embedded SvelteKit SPA&#xa;&#xa;Overview · Scores · Experiments · Runs · Author · GameDays · Approvals · Manual evidence&#xa;Logs · Traces · Metrics · Topology · Ask · Reports · Events · Schedules · Users / Webhooks (admin)&#xa;Same daemon HTTP listener: :4318 (Docker demo host: :14318)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=15;spacing=12;" vertex="1" parent="1">
+        <mxCell id="web-users" value="Web UI users → embedded SvelteKit SPA&#xa;&#xa;Overview · Posture · Performance · Scores · DORA · Experiments · Runs · Author&#xa;GameDays · Approvals · Manual evidence · Logs · Traces · Metrics · Star Map&#xa;Ask · Reports · Events · Schedules · Users / Webhooks (admin)&#xa;Same daemon HTTP listener: :4318 (Docker demo host: :14318)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=15;spacing=12;" vertex="1" parent="1">
           <mxGeometry x="1150" y="110" width="810" height="150" as="geometry" />
         </mxCell>
         <mxCell id="core" value="Engine: tumult-core&#xa;&#xa;TOON parse / resolve / validate · controls&#xa;Hypotheses · method · sampling · guards · rollback&#xa;tumult-authoring: catalog / scaffold / templates&#xa;tumult-baseline: statistical acquisition / tolerances" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=15;spacing=12;" vertex="1" parent="1">
@@ -59,7 +59,7 @@
         <mxCell id="daemon" value="tumultd — daemon, governed execution and unified lake" style="swimlane;html=1;startSize=40;container=1;pointerEvents=0;fillColor=#f5f5f5;strokeColor=#666666;fontSize=19;fontStyle=1;rounded=1;" vertex="1" parent="1">
           <mxGeometry x="1150" y="350" width="810" height="1250" as="geometry" />
         </mxCell>
-        <mxCell id="ingest" value="tumult-ingest + tumult-otlp&#xa;OTLP receive / protobuf translation: :4317 gRPC / :4318 HTTP (/v1/*)&#xa;CSV / journal JSON manual import · API journal import&#xa;Bounded channel: telemetry + operational writes → one writer" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=15;spacing=12;" vertex="1" parent="daemon">
+        <mxCell id="ingest" value="tumult-ingest + tumult-otlp&#xa;OTLP receive / protobuf translation: :4317 gRPC + OTel-Arrow streams / :4318 HTTP (/v1/*)&#xa;CSV / journal JSON manual import · API journal import&#xa;Bounded channel: telemetry + operational writes → one writer" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=15;spacing=12;" vertex="1" parent="daemon">
           <mxGeometry x="30" y="60" width="750" height="130" as="geometry" />
         </mxCell>
         <mxCell id="runs" value="Run registry / bounded worker queue&#xa;tumult-ingest → tumult-core + tumult-exec&#xa;&#xa;Validate / dry-run / execute / e-stop&#xa;Orphan rollback reconciliation&#xa;Schedules / GameDay supervisor / webhooks&#xa;Hash-chained run audit" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=15;spacing=12;" vertex="1" parent="daemon">
