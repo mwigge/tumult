@@ -91,6 +91,9 @@ services:
       # Seconds a failing sidecar is skipped before it is tried again
       # (the Holt-Winters fallback answers meanwhile); 0 disables the breaker.
       TUMULTD_FORECAST_COOLDOWN_S: ${TUMULTD_FORECAST_COOLDOWN_S:-30}
+      # Advance GameDay campaigns every 2s (default 15s) so the seeded
+      # campaign finishes within the seed.
+      TUMULTD_GAMEDAY_TICK_S: "2"
     volumes:
       - tumult-kronika-data:/data
       - ../demo/kronika/org.yaml:/data/org.yaml:ro
@@ -130,6 +133,10 @@ services:
       TUMULT_DAEMON_TOKEN: ${KRONIKA_BOOTSTRAP_TOKEN:?required}
     volumes:
       - ../demo/kronika/experiments:/experiments:ro
+      # The GameDay seed below writes the demo's reviewed execution bindings
+      # next to the store (/data/lake.execution-bindings.json).
+      - ../demo/kronika/gamedays:/gamedays:ro
+      - tumult-kronika-data:/data
     command:
       - sh
       - -c
@@ -194,6 +201,11 @@ services:
         echo "=== seed: submitted manual tabletop $$SID (awaiting verification)"
         curl -sf -X POST "$$API/manual/experiments" -H "$$AUTH" -H "$$CT" -d "{\"experiment_name\":\"dns failover drill\",\"exercise_type\":\"drill\",\"executed_at_ns\":$$EXEC_NS,\"hypothesis\":\"Secondary DNS takes over transparently\",\"method\":\"Draft record — drill planned, not yet executed\",\"outcome_status\":\"inconclusive\",\"attestation\":\"I attest this record reflects the exercise as executed.\"}" > /dev/null
         echo "=== seed: draft manual drill (stays draft)"
+        # GameDay: register the platform campaign, bind its four reviewed
+        # experiments to env dev (unbound executions are T3, which the
+        # approval queue cannot release), then run one campaign that admin
+        # launches and bob approves step by step. See the script header.
+        sh /gamedays/seed-gameday.sh "$$API" "$$AUTH" "$$BOB_AUTH"
     depends_on:
       tumultd:
         condition: service_healthy

@@ -67,6 +67,7 @@ moves to v21 and cannot be opened by an older binary.
 
 ### Fixed
 
+- The Krönika demo GameDay no longer stops at `pending_approval`. Unbound executions are T3, and the approval queue cannot release a T3 operator request, so no autopilot policy could help. The demo seed now registers the GameDay, binds its four reviewed experiments to `dev` and runs one campaign that `bob` approves. Approving an unbound run now answers `422` with `"missing": "execution_binding"` and says what to do, and every refused approval is logged.
 - `tumultd`: a slow start no longer loses the daemon's first telemetry and logs `BatchLogProcessor.ExportError`. The daemon exported to its own OTLP listener before that address was bound; export now begins once it is. Events logged before that point (opening the store, the bind guard) are on stderr only.
 - The one-command demo starts its MCP server again: the compose command replaced the image arguments and dropped `--transport http`, so since 2.22.0 the container spoke stdio, exited and never became healthy.
 - `tumult-ssh`: tracing a remote command longer than the preview limit no longer panics when the cut falls inside a multi-byte character.
