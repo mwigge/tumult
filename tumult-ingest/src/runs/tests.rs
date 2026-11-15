@@ -105,7 +105,8 @@ struct ActivityGate {
 
 impl ActivityGate {
     async fn wait(&self) {
-        tokio::time::timeout(Duration::from_secs(10), self.started.notified())
+        // A minute: a traced run under coverage is slow to get here.
+        tokio::time::timeout(Duration::from_secs(60), self.started.notified())
             .await
             .expect("run must enter the gated activity");
     }
