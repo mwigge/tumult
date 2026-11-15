@@ -92,6 +92,7 @@ moves to v21 and cannot be opened by an older binary.
 - Version history: the one-time backfill of an old lake finishes when a stored span is stamped at the largest timestamp there is (`i64::MAX`); it used to read that span again on every step and never report done.
 - Kronika demo: `worker-process-kill` no longer races its own sampler. The worker is started by a `before_experiment` control and removed by `after_experiment`, the hypothesis probe only reads (`kill -0` on the pid file), and no `sleep` process outlives the run.
 - Web: the sidebar navigation scrolls on a short window instead of pushing its last entries out of reach. Chart zoom and pan are reported once per frame, and a chart mirrors its option to `window.__tumultCharts` only where a test installed that registry.
+- Web: the Overview "Experiments per day" chart names the runs of a day once and upright. Every run on a day column drew its own sideways label at the same place, so a busy day showed one unreadable smear over the bar; runs that start on the same x now share one marker counted as "N runs", and a lone run keeps its name. Labels sit above the line on the Metrics chart too.
 
 ### Changed
 

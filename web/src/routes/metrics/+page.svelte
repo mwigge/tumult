@@ -111,7 +111,8 @@
         const stacked = filters.chart === 'area' && series.length > 1;
         const overlay = experimentOverlay(runs);
         return {
-            grid: { left: 56, right: 20, top: 32, bottom: 24 },
+            // Room under the legend for the upright run labels.
+            grid: { left: 56, right: 20, top: 48, bottom: 24 },
             tooltip: { trigger: 'axis', ...CHART.tooltip },
             legend: { textStyle: { color: CHART.text }, top: 0 },
             xAxis: {
