@@ -15,7 +15,7 @@ use opentelemetry::global;
 use opentelemetry::KeyValue;
 use opentelemetry_otlp::{WithExportConfig, WithTonicConfig};
 use opentelemetry_sdk::logs::SdkLoggerProvider;
-use opentelemetry_sdk::metrics::SdkMeterProvider;
+use opentelemetry_sdk::metrics::{SdkMeterProvider, Temporality};
 use opentelemetry_sdk::trace::SdkTracerProvider;
 use opentelemetry_sdk::Resource;
 use tonic::metadata::{AsciiMetadataKey, AsciiMetadataValue, MetadataMap};
@@ -203,6 +203,47 @@ fn log_shutdown_failed<E: std::fmt::Display>(signal: &'static str, error: &E) {
     );
 }
 
+/// The standard OTLP variable an operator sets to choose how counters and
+/// histograms are exported: `cumulative`, `delta` or `lowmemory`.
+const TEMPORALITY_PREFERENCE_ENV: &str = "OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE";
+
+/// The temporality metrics are exported with: delta unless `preference`
+/// names another one.
+///
+/// The Tumult store adds up the points of a counter. A cumulative counter
+/// is exported again every interval for as long as the process lives, so a
+/// daemon (or a long CLI run) would have each run counted again and again.
+fn metric_temporality(preference: Option<&str>) -> Temporality {
+    let preference = preference.map(str::trim).unwrap_or_default();
+    match preference.to_ascii_lowercase().as_str() {
+        "cumulative" => Temporality::Cumulative,
+        "lowmemory" => Temporality::LowMemory,
+        "" | "delta" => Temporality::Delta,
+        _ => {
+            tracing::warn!(
+                name: "otel.exporter.temporality.unknown",
+                { config.value = preference },
+                "unknown OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE; exporting deltas"
+            );
+            Temporality::Delta
+        }
+    }
+}
+
+/// Build the gRPC-tonic OTLP metric exporter for `endpoint`.
+fn metric_exporter(
+    config: &TelemetryConfig,
+    endpoint: &str,
+) -> Result<opentelemetry_otlp::MetricExporter, opentelemetry_otlp::ExporterBuildError> {
+    let builder = opentelemetry_otlp::MetricExporter::builder()
+        .with_tonic()
+        .with_endpoint(endpoint);
+    let preference = std::env::var(TEMPORALITY_PREFERENCE_ENV).ok();
+    with_headers(builder, config)
+        .with_temporality(metric_temporality(preference.as_deref()))
+        .build()
+}
+
 /// Initialize the OTLP metrics pipeline and register it as the global
 /// [`SdkMeterProvider`].
 ///
@@ -231,10 +272,7 @@ pub fn init_meter_provider(config: &TelemetryConfig) -> Option<SdkMeterProvider>
         return None;
     }
     let endpoint = config.otlp_endpoint.as_deref()?;
-    let builder = opentelemetry_otlp::MetricExporter::builder()
-        .with_tonic()
-        .with_endpoint(endpoint);
-    let exporter = match with_headers(builder, config).build() {
+    let exporter = match metric_exporter(config, endpoint) {
         Ok(exporter) => exporter,
         Err(error) => {
             log_exporter_failed(SIGNAL_METRICS, endpoint, &error);
@@ -474,9 +512,11 @@ impl TumultTelemetry {
 #[cfg(test)]
 mod tests {
     use super::{
-        effective_otlp_headers, init_logger_provider, init_meter_provider, otlp_headers_from_env,
-        TelemetryConfig,
+        effective_otlp_headers, init_logger_provider, init_meter_provider, metric_exporter,
+        metric_temporality, otlp_headers_from_env, TelemetryConfig, TEMPORALITY_PREFERENCE_ENV,
     };
+    use opentelemetry_sdk::metrics::exporter::PushMetricExporter;
+    use opentelemetry_sdk::metrics::Temporality;
     use tumult_test_utils::EnvGuard;
 
     /// The `(key, value)` pairs `raw` parses to, in order.
@@ -801,5 +841,95 @@ mod tests {
             dispatch.is::<tracing::subscriber::NoSubscriber>()
         });
         assert!(global_is_noop);
+    }
+
+    // ── metric temporality ─────────────────────────────────────
+
+    #[test]
+    fn metrics_are_delta_unless_the_operator_chooses() {
+        assert_eq!(metric_temporality(None), Temporality::Delta);
+        assert_eq!(metric_temporality(Some("")), Temporality::Delta);
+        assert_eq!(metric_temporality(Some("delta")), Temporality::Delta);
+    }
+
+    #[test]
+    fn the_operator_can_choose_the_metric_temporality() {
+        assert_eq!(
+            metric_temporality(Some("cumulative")),
+            Temporality::Cumulative
+        );
+        assert_eq!(
+            metric_temporality(Some(" Cumulative ")),
+            Temporality::Cumulative
+        );
+        assert_eq!(
+            metric_temporality(Some("LowMemory")),
+            Temporality::LowMemory
+        );
+    }
+
+    #[test]
+    fn an_unknown_temporality_preference_keeps_the_default() {
+        assert_eq!(metric_temporality(Some("sometimes")), Temporality::Delta);
+    }
+
+    #[test]
+    fn the_metric_exporter_is_delta_by_default() {
+        let mut env = EnvGuard::lock();
+        env.remove(TEMPORALITY_PREFERENCE_ENV);
+        let rt = current_thread_runtime();
+        let _guard = rt.enter();
+        let exporter =
+            metric_exporter(&TelemetryConfig::default(), "http://localhost:4317").unwrap();
+        assert_eq!(exporter.temporality(), Temporality::Delta);
+    }
+
+    #[test]
+    fn the_metric_exporter_follows_the_operator_preference() {
+        let mut env = EnvGuard::lock();
+        env.set(TEMPORALITY_PREFERENCE_ENV, "cumulative");
+        let rt = current_thread_runtime();
+        let _guard = rt.enter();
+        let exporter =
+            metric_exporter(&TelemetryConfig::default(), "http://localhost:4317").unwrap();
+        assert_eq!(exporter.temporality(), Temporality::Cumulative);
+    }
+
+    /// Why delta is the default: the store adds up the points of a counter,
+    /// so a long-lived process must not export an unchanged counter again.
+    #[test]
+    fn an_unchanged_counter_is_exported_once_with_the_default_temporality() {
+        use opentelemetry::metrics::MeterProvider;
+        use opentelemetry_sdk::metrics::data::{
+            AggregatedMetrics, MetricData, ScopeMetrics, SumDataPoint,
+        };
+        use opentelemetry_sdk::metrics::{InMemoryMetricExporterBuilder, SdkMeterProvider};
+
+        let exporter = InMemoryMetricExporterBuilder::new()
+            .with_temporality(metric_temporality(None))
+            .build();
+        let provider = SdkMeterProvider::builder()
+            .with_periodic_exporter(exporter.clone())
+            .build();
+        let counter = provider.meter("temporality").u64_counter("runs").build();
+        counter.add(3, &[]);
+        provider.force_flush().unwrap();
+        // Two later intervals in which nothing ran.
+        provider.force_flush().unwrap();
+        provider.force_flush().unwrap();
+
+        let mut stored = 0;
+        for rm in exporter.get_finished_metrics().unwrap_or_default() {
+            for metric in rm.scope_metrics().flat_map(ScopeMetrics::metrics) {
+                if let AggregatedMetrics::U64(MetricData::Sum(sum)) = metric.data() {
+                    stored += sum.data_points().map(SumDataPoint::value).sum::<u64>();
+                }
+            }
+        }
+        assert_eq!(
+            stored, 3,
+            "the sum of the exported points is the true count"
+        );
+        let _ = provider.shutdown();
     }
 }

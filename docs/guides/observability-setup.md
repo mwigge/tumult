@@ -61,8 +61,25 @@ and experiments without optional phases do not emit a complete fault lifecycle.
 | `TUMULT_CLICKHOUSE_URL` | — | ClickHouse URL for SigNoz cross-correlation mode |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | unset (no export) | OTLP/gRPC endpoint, e.g. `http://localhost:14317` |
 | `OTEL_EXPORTER_OTLP_HEADERS` | unset | Export authorization metadata, e.g. `authorization=Bearer <ingest-token>` |
+| `OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE` | `delta` | How counters and histograms are exported: `delta`, `cumulative` or `lowmemory` |
 | `OTEL_SERVICE_NAME` | `tumult` | Service name in telemetry |
 | `OTEL_RESOURCE_ATTRIBUTES` | — | Additional resource attributes (e.g., `deployment.environment=staging`) |
+
+### Delta metrics
+
+Tumult exports counters and histograms as **deltas**: each export holds only
+what happened since the last one. The Tumult store adds the points of a
+counter up, so this keeps every count right however long the daemon runs.
+
+- Sending to Krönika or SigNoz: nothing to do.
+- Sending through a collector to Prometheus or Mimir: add the
+  `deltatocumulative` processor to the metrics pipeline (the collector
+  configs in this repository do), or set
+  `OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE=cumulative`. Do not
+  set `cumulative` for a process that exports to Krönika.
+- Other applications that send cumulative counters to Krönika are still
+  added up point by point. Send deltas, or put the collector's
+  `cumulativetodelta` processor in front.
 
 ### Disabling Telemetry
 
