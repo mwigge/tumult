@@ -21,7 +21,7 @@ do.
 |---|---|
 | Stream | stderr, always |
 | Format | one JSON object per line; one text line per event when stderr is a terminal |
-| Export | the same events are sent as OTLP log records when an OTLP endpoint is configured. Export ends when telemetry is flushed at shutdown (in `tumultd`: on the shutdown signal, while its own OTLP listener still accepts); later events are on stderr only |
+| Export | the same events are sent as OTLP log records when an OTLP endpoint is configured. In `tumultd` export begins once its own OTLP address is bound; earlier startup events are on stderr only. Export ends when telemetry is flushed at shutdown (in `tumultd`: on the shutdown signal, while its own OTLP listener still accepts); later events are on stderr only |
 
 A JSON line:
 
