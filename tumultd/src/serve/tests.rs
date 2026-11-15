@@ -1,6 +1,6 @@
 use super::serve;
 use super::tls::load_tls;
-use super::ui::{ui_handler, UiAssets};
+use super::ui::{metrics_page_for_browsers, ui_handler, wants_html, UiAssets};
 use super::until_both_stop;
 use super::{finish, Workers};
 use axum::http::StatusCode;
@@ -130,6 +130,71 @@ async fn tls_valid_pair_loads() {
         .is_some());
 }
 
+// -- /metrics: Prometheus for scrapers, the web page for a browser ---------
+
+const EXPOSITION: &str = "tumultd_runs_started_total 0";
+
+/// A `/metrics` route that answers with Prometheus text, behind the
+/// browser check, served on a loopback port.
+async fn metrics_behind_the_browser_check() -> u16 {
+    let app = axum::Router::new()
+        .route("/metrics", axum::routing::get(|| async { EXPOSITION }))
+        .layer(axum::middleware::from_fn(metrics_page_for_browsers));
+    let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+        .await
+        .unwrap();
+    let port = listener.local_addr().unwrap().port();
+    tokio::spawn(async move { axum::serve(listener, app).await });
+    port
+}
+
+#[tokio::test]
+async fn a_browser_opening_metrics_gets_the_web_page() {
+    let port = metrics_behind_the_browser_check().await;
+    let resp = http_get_accepting(port, "/metrics", Some(BROWSER_ACCEPT))
+        .await
+        .unwrap();
+    assert!(resp.contains(" 200 OK"), "{resp}");
+    assert!(resp.contains("content-type: text/html"), "{resp}");
+    assert!(!resp.contains(EXPOSITION), "{resp}");
+    let shell = UiAssets::get("200.html").expect("the app shell is embedded");
+    assert!(
+        resp.ends_with(&*String::from_utf8_lossy(&shell.data)),
+        "{resp}"
+    );
+}
+
+#[tokio::test]
+async fn a_scraper_or_curl_on_metrics_gets_prometheus_text() {
+    let port = metrics_behind_the_browser_check().await;
+    for accept in [
+        Some(PROMETHEUS_ACCEPT),
+        Some("text/plain"),
+        Some("*/*"),
+        None,
+    ] {
+        let resp = http_get_accepting(port, "/metrics", accept).await.unwrap();
+        assert!(resp.contains(" 200 OK"), "{accept:?}: {resp}");
+        assert!(resp.ends_with(EXPOSITION), "{accept:?}: {resp}");
+    }
+}
+
+#[test]
+fn only_a_request_that_asks_for_html_first_wants_html() {
+    let accepts = |value: &str| {
+        let mut headers = axum::http::HeaderMap::new();
+        headers.insert(axum::http::header::ACCEPT, value.parse().unwrap());
+        wants_html(&headers)
+    };
+    assert!(accepts(BROWSER_ACCEPT));
+    assert!(accepts("TEXT/HTML; charset=utf-8"));
+    assert!(!accepts(PROMETHEUS_ACCEPT));
+    assert!(!accepts("*/*"));
+    assert!(!accepts("text/plain, text/html"));
+    assert!(!accepts(""));
+    assert!(!wants_html(&axum::http::HeaderMap::new()));
+}
+
 // -- ui_handler (embedded SPA) --------------------------------------------
 
 async fn body_bytes(resp: Response) -> Vec<u8> {
@@ -222,6 +287,29 @@ async fn http_get(port: u16, path: &str) -> std::io::Result<String> {
     stream.read_to_end(&mut buf).await?;
     Ok(String::from_utf8_lossy(&buf).into_owned())
 }
+
+/// `GET path` with an `Accept` header, or none.
+async fn http_get_accepting(
+    port: u16,
+    path: &str,
+    accept: Option<&str>,
+) -> std::io::Result<String> {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let mut stream = tokio::net::TcpStream::connect(("127.0.0.1", port)).await?;
+    let accept = accept.map_or_else(String::new, |a| format!("Accept: {a}\r\n"));
+    stream
+        .write_all(format!("GET {path} HTTP/1.0\r\nHost: localhost\r\n{accept}\r\n").as_bytes())
+        .await?;
+    let mut buf = Vec::new();
+    stream.read_to_end(&mut buf).await?;
+    Ok(String::from_utf8_lossy(&buf).into_owned())
+}
+
+/// What Chrome sends when the address bar or a reload opens a page.
+const BROWSER_ACCEPT: &str =
+    "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8";
+/// What Prometheus 2.x/3.x sends to a scrape target.
+const PROMETHEUS_ACCEPT: &str = "application/openmetrics-text;version=1.0.0;q=0.5,application/openmetrics-text;version=0.0.1;q=0.4,text/plain;version=0.0.4;q=0.3,*/*;q=0.2";
 
 type Listener = tokio::task::JoinHandle<std::io::Result<()>>;
 
@@ -843,6 +931,14 @@ async fn serve_binds_serves_and_shuts_down_cleanly_on_sigterm() {
         metrics.contains("tumultd_runs_started_total"),
         "metrics endpoint did not expose daemon SLIs"
     );
+    // Reloading the Metrics page asks for HTML first: that is the web UI,
+    // not the exposition, on the same path.
+    let page = http_get_accepting(http_port, "/metrics", Some(BROWSER_ACCEPT))
+        .await
+        .expect("metrics page request failed");
+    assert!(page.contains(" 200 OK"), "{page}");
+    assert!(page.contains("content-type: text/html"), "{page}");
+    assert!(!page.contains("tumultd_runs_started_total"), "{page}");
 
     let report = http_get(http_port, "/report?metric=experiment_count")
         .await

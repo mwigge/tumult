@@ -96,6 +96,7 @@ moves to v21 and cannot be opened by an older binary.
 - Web: the Star Map no longer ends with "Not available yet: slo, dora, maturity." Those overlays are reserved for after 3.0 and the API always reports them unavailable, so the line was always there and said nothing. The page now writes a line only when a source it draws (the graph, OTel conformance) could not be loaded, in plain words.
 - DORA maturity: the "Maturity per node" heading no longer reads "no nodes on record" above a list of nodes. `rollup_headline` of `GET /api/maturity` was null whenever nothing capped the roll-up root, and the page took null for an empty roll-up; it is now `level N of target T` for an uncapped root, and the page says "no nodes on record" only when the node table is empty.
 - Web: the span waterfall (experiment, run and trace pages) draws its grid in the lane of the bars, under the tick labels, down to the last row. The lines were placed across the whole width, over the span names and durations and away from their labels, and ran 1000 px past the last row out of the panel.
+- `tumultd`: opening or reloading the Metrics page of the web UI shows the page again instead of the Prometheus text of the daemon, which has the same path. `/metrics` answers a request whose `Accept` header lists `text/html` first with the web UI; Prometheus, curl (`*/*`) and requests without `Accept` get the exposition under the same auth rules as before.
 
 ### Changed
 

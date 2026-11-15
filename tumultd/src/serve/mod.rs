@@ -559,10 +559,14 @@ pub(crate) async fn serve() -> Result<()> {
         };
         let app = tumult_ingest::http::router_with_token(ingest, http_token)
             .merge(report_router(report_state).layer(report_auth))
-            .merge(crate::ops::router(ops_state).layer(ops_auth))
+            .merge(
+                crate::ops::router(ops_state)
+                    .layer(ops_auth)
+                    .layer(axum::middleware::from_fn(ui::metrics_page_for_browsers)),
+            )
             .merge(tumult_api::router(api_state))
             // Everything that is not /v1, /report, /healthz, /readyz, /metrics
-            // or /api is the UI.
+            // or /api is the UI, and so is /metrics when a browser asks for HTML.
             .fallback(ui_handler);
         let result = match http_tls {
             Some(tls_config) => {
