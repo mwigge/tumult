@@ -85,9 +85,9 @@ const nodes = [
             failed: 1,
             manual: 0,
             last_run_ns: NOW_NS - DAY_NS,
-            by_discipline: { chaos: 'covered', dr: 'missing' },
+            by_discipline: { chaos: 'covered', robustness: 'missing' },
         },
-        risks: { ...noRisks, open: 1, worst: 'high', recommended: ['dr'] },
+        risks: { ...noRisks, open: 1, worst: 'high', recommended: ['robustness'] },
         posture: { score: 41.5, band: 'poor' },
     }),
     node('sys:demo/api-worker', 'system', 'api-worker', 'ent:cif-0001', {
@@ -779,6 +779,14 @@ test('the map can be read and driven from the keyboard', async ({ page }) => {
     await expect(drawer).toHaveCount(0);
     await expect(page).not.toHaveURL(/sel=/);
     await expect(first).toBeFocused();
+});
+
+test('the drawer names disciplines as the Resilience page does', async ({ page }) => {
+    await mock(page, []);
+    await page.goto('/starmap?sel=sys%3Ademo%2Fmessage-queue');
+    const drawer = page.getByTestId('starmap-drawer');
+    await expect(drawer).toContainText('robustness / dr: missing');
+    await expect(drawer).toContainText('recommended next: robustness / dr');
 });
 
 test('a map built from a capped read says it is incomplete', async ({ page }) => {

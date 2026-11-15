@@ -125,7 +125,8 @@
             xAxis: {
                 type: 'category',
                 data: kinds.map(disciplineLabel),
-                axisLabel: { color: t.text },
+                // Name every column; a long name wraps instead of being skipped.
+                axisLabel: { color: t.text, interval: 0, width: 80, overflow: 'break' },
             },
             yAxis: { type: 'category', data: targets, axisLabel: { color: t.text } },
             visualMap: {

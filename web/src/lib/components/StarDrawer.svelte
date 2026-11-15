@@ -13,6 +13,7 @@
         Risk,
         StarNode,
     } from '#lib/types.js';
+    import { disciplineLabel } from '#lib/coverage.js';
     import { flagText, rollupLines } from '#lib/starmap/style.js';
 
     let {
@@ -237,11 +238,15 @@
             <h3>Coverage by discipline</h3>
             <div class="chips">
                 {#each disciplines as [discipline, status] (discipline)}
-                    <span class="badge {coverClass(status)}">{discipline}: {status}</span>
+                    <span class="badge {coverClass(status)}"
+                        >{disciplineLabel(discipline)}: {status}</span
+                    >
                 {/each}
             </div>
             {#if node.risks.recommended.length > 0}
-                <p class="note">recommended next: {node.risks.recommended.join(', ')}</p>
+                <p class="note">
+                    recommended next: {node.risks.recommended.map(disciplineLabel).join(', ')}
+                </p>
             {/if}
         </section>
     {/if}

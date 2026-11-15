@@ -266,10 +266,26 @@ test('resilience opens with ranked risks, coverage gaps and the score', async ({
     const cells = await page.evaluate(() => {
         const w = window as Window & { __tumultCharts?: Record<string, unknown> };
         const opt = w.__tumultCharts?.coverage as
-            { series?: { data?: unknown[] }[]; yAxis?: { data?: string[] }[] } | undefined;
-        return { count: opt?.series?.[0]?.data?.length ?? -1, rows: opt?.yAxis?.[0]?.data };
+            | {
+                  series?: { data?: unknown[] }[];
+                  xAxis?: { data?: string[]; axisLabel?: { interval?: number } }[];
+                  yAxis?: { data?: string[] }[];
+              }
+            | undefined;
+        return {
+            count: opt?.series?.[0]?.data?.length ?? -1,
+            rows: opt?.yAxis?.[0]?.data,
+            columns: opt?.xAxis?.[0]?.data,
+            // Every column is named, none is skipped for want of room.
+            interval: opt?.xAxis?.[0]?.axisLabel?.interval,
+        };
     });
-    expect(cells).toEqual({ count: 8, rows: ['database (demo)', 'database (staging)'] });
+    expect(cells).toEqual({
+        count: 8,
+        rows: ['database (demo)', 'database (staging)'],
+        columns: ['chaos', 'load / performance', 'robustness / dr', 'security'],
+        interval: 0,
+    });
 
     // The radar draws one value per discipline on one axis each.
     const radar = await page.evaluate(() => {
