@@ -639,3 +639,129 @@ fn a_target_version_beyond_the_bounds_is_refused() {
         "{control}"
     );
 }
+
+// ── The metric catalogue ───────────────────────────────────────
+
+fn hypothesis(probe: &str) -> Hypothesis {
+    Hypothesis {
+        title: "steady".into(),
+        probes: vec![Activity {
+            name: probe.into(),
+            activity_type: ActivityType::Probe,
+            ..Default::default()
+        }],
+    }
+}
+
+/// An experiment with one objective on `metric` and a hypothesis probe
+/// named `health`.
+fn with_metric(metric: &str) -> Experiment {
+    let mut measured = objective("a");
+    measured.metric = metric.into();
+    with_method(Experiment {
+        nfr: vec![measured],
+        steady_state_hypothesis: Some(hypothesis("health")),
+        ..Default::default()
+    })
+}
+
+#[test]
+fn every_metric_of_the_catalogue_is_accepted() {
+    for metric in [
+        "load.throughput_rps",
+        "load.latency_p50_ms",
+        "load.latency_p95_ms",
+        "load.latency_p99_ms",
+        "load.error_rate",
+        "load.total_requests",
+        "recovery.mttr_s",
+        "recovery.time_s",
+        "during.error_rate",
+        "during.availability",
+        "post.error_rate",
+        "post.availability",
+        "fault.duration_s",
+        "probe.health.mean_ms",
+        "probe.health.max_ms",
+        "probe.health.p95_ms",
+        "probe.health.error_rate",
+    ] {
+        let outcome = validate_experiment(&with_metric(metric));
+        assert!(outcome.is_ok(), "{metric}: {outcome:?}");
+    }
+}
+
+#[test]
+fn a_metric_outside_the_catalogue_is_rejected_and_named() {
+    for metric in [
+        "load.latency_p90_ms",
+        "latency_p95_ms",
+        "during.latency",
+        "recovery.rto",
+        "probe.health",
+        "probe.health.p99_ms",
+    ] {
+        let err = validate_experiment(&with_metric(metric)).unwrap_err();
+        assert!(
+            matches!(err, EngineError::NfrInvalid { .. }),
+            "{metric}: {err}"
+        );
+        assert!(err.to_string().contains(metric), "{err}");
+    }
+}
+
+#[test]
+fn a_probe_metric_must_name_a_hypothesis_probe() {
+    let err = validate_experiment(&with_metric("probe.helth.p95_ms")).unwrap_err();
+    assert!(err.to_string().contains("'helth'"), "{err}");
+
+    // A probe name may hold dots: the statistic is what follows the last one.
+    let mut dotted = with_metric("probe.api.v2.p95_ms");
+    dotted.steady_state_hypothesis = Some(hypothesis("api.v2"));
+    let outcome = validate_experiment(&dotted);
+    assert!(outcome.is_ok(), "{outcome:?}");
+}
+
+// ── Guards and controls run through a provider too ─────────────
+
+fn bad_script() -> Provider {
+    Provider::Script {
+        plugin: "../outside".into(),
+        function: "probe".into(),
+        arguments: HashMap::new(),
+        timeout_s: None,
+    }
+}
+
+#[test]
+fn validate_checks_the_script_provider_of_a_guard() {
+    let mut guard = guard_with_tolerance(
+        "watch",
+        Some(Tolerance::Exact {
+            value: serde_json::json!("ok"),
+        }),
+        1,
+    );
+    guard.probe.provider = bad_script();
+    let exp = with_method(Experiment {
+        guards: vec![guard],
+        ..Default::default()
+    });
+    let err = validate_experiment(&exp).unwrap_err();
+    assert!(err.to_string().contains("invalid script provider"), "{err}");
+    assert!(err.to_string().contains("watch"), "{err}");
+}
+
+#[test]
+fn validate_checks_the_script_provider_of_a_control() {
+    let exp = with_method(Experiment {
+        controls: vec![Control {
+            name: "audit".into(),
+            provider: bad_script(),
+        }],
+        ..Default::default()
+    });
+    let err = validate_experiment(&exp).unwrap_err();
+    assert!(err.to_string().contains("invalid script provider"), "{err}");
+    assert!(err.to_string().contains("audit"), "{err}");
+}

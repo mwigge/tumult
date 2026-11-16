@@ -5,9 +5,10 @@ use std::path::Path;
 use anyhow::{bail, Context, Result};
 
 use tumult_core::engine::{parse_experiment, resolve_config, resolve_secrets, validate_experiment};
-use tumult_core::types::Provider;
+use tumult_core::types::{Experiment, Provider};
 use tumult_plugin::native::NativeExecutorRegistry;
 use tumult_plugin::registry::PluginRegistry;
+use tumult_plugin::ScriptPluginManifest;
 
 // ── Validate command ──────────────────────────────────────────
 
@@ -51,7 +52,7 @@ pub fn cmd_validate(experiment_path: &Path) -> Result<()> {
 
     validate_experiment(&experiment)?;
 
-    warn_on_unknown_plugin_refs(&experiment);
+    refuse_unknown_plugin_refs(&experiment)?;
 
     // Validate configuration references
     let config_result = resolve_config(&experiment.configuration);
@@ -120,100 +121,115 @@ fn gameday_file_hint(path: &Path, content: &str) -> Option<String> {
     })
 }
 
-/// SRE-10: warn when an activity references an unknown native plugin or
-/// function. Script providers get the same check, resolved through the
-/// discovery search paths; discovery problems are surfaced so a skipped path
-/// or malformed manifest does not silently shrink the available plugin set.
-fn warn_on_unknown_plugin_refs(experiment: &tumult_core::types::Experiment) {
-    let native_registry = tumult_exec::native_registry();
+/// SRE-10: refuse an experiment that names a plugin, function or action
+/// this binary cannot run. Such a step fails only when the run reaches it,
+/// which can be after a fault is in place. Discovery problems are printed so
+/// a skipped path or malformed manifest does not silently shrink the
+/// available plugin set.
+fn refuse_unknown_plugin_refs(experiment: &Experiment) -> Result<()> {
     let discovery = tumult_plugin::discovery::discover_all_report();
     for warning in &discovery.warnings {
         crate::errln!("warning: {warning}");
     }
-    let all_activities = experiment
+    let scripts: Vec<&ScriptPluginManifest> =
+        discovery.plugins.iter().map(|p| &p.manifest).collect();
+    let faults = unknown_plugin_refs(experiment, tumult_exec::native_registry(), &scripts);
+    if faults.is_empty() {
+        return Ok(());
+    }
+    let subject = if faults.len() == 1 {
+        "1 step names"
+    } else {
+        &format!("{} steps name", faults.len())
+    };
+    bail!(
+        "{subject} something this binary cannot run:\n  {}",
+        faults.join("\n  ")
+    );
+}
+
+/// Every provider of the experiment, with the words it is reported under:
+/// method, rollbacks and hypothesis probes as activities, then the probes of
+/// the guards and the providers of the controls.
+fn named_providers(experiment: &Experiment) -> Vec<(String, &Provider)> {
+    let hypothesis_probes = experiment
+        .steady_state_hypothesis
+        .iter()
+        .flat_map(|h| &h.probes);
+    let activities = experiment
         .method
         .iter()
-        .chain(experiment.rollbacks.iter())
-        .chain(
-            experiment
-                .steady_state_hypothesis
-                .as_ref()
-                .map(|h| h.probes.iter())
-                .into_iter()
-                .flatten(),
-        );
-    for activity in all_activities {
-        match &activity.provider {
-            Provider::Native {
-                plugin, function, ..
-            } => match native_registry.get(plugin) {
-                None => crate::errln!(
-                    "warning: activity '{}' uses unknown native plugin '{}' (available: {})",
-                    activity.name,
-                    plugin,
-                    native_registry.plugin_names().join(", ")
-                ),
-                Some(executor) if !executor.functions().contains(&function.as_str()) => {
-                    crate::errln!(
-                        "warning: activity '{}' uses unknown function '{}::{}' (available: {})",
-                        activity.name,
-                        plugin,
-                        function,
-                        executor.functions().join(", ")
-                    );
-                }
-                Some(_) => {} // registered native plugin + function
-            },
-            Provider::Script {
-                plugin, function, ..
-            } => match discovery
-                .plugins
-                .iter()
-                .find(|p| &p.manifest.name == plugin)
-            {
-                None => crate::errln!(
-                    "warning: activity '{}' uses unknown script plugin '{}' (available: {})",
-                    activity.name,
-                    plugin,
-                    discovery
-                        .plugins
-                        .iter()
-                        .map(|p| p.manifest.name.as_str())
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                ),
-                Some(discovered)
-                    if !discovered
-                        .manifest
-                        .actions
-                        .iter()
-                        .any(|a| &a.name == function)
-                        && !discovered
-                            .manifest
-                            .probes
-                            .iter()
-                            .any(|p| &p.name == function) =>
-                {
-                    crate::errln!(
-                        "warning: activity '{}' uses unknown action '{}::{}' (available: {})",
-                        activity.name,
-                        plugin,
-                        function,
-                        discovered
-                            .manifest
-                            .actions
-                            .iter()
-                            .map(|a| a.name.as_str())
-                            .chain(discovered.manifest.probes.iter().map(|p| p.name.as_str()))
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    );
-                }
-                Some(_) => {} // discovered script plugin + action
-            },
-            Provider::Process { .. } => {} // supported
-        }
+        .chain(&experiment.rollbacks)
+        .chain(hypothesis_probes)
+        .map(|a| (format!("activity '{}'", a.name), &a.provider));
+    let guards = experiment
+        .guards
+        .iter()
+        .map(|g| (format!("guard '{}'", g.name), &g.probe.provider));
+    let controls = experiment
+        .controls
+        .iter()
+        .map(|c| (format!("control '{}'", c.name), &c.provider));
+    activities.chain(guards).chain(controls).collect()
+}
+
+/// One line per provider that names an unknown plugin, function or action.
+fn unknown_plugin_refs(
+    experiment: &Experiment,
+    native: &NativeExecutorRegistry,
+    scripts: &[&ScriptPluginManifest],
+) -> Vec<String> {
+    named_providers(experiment)
+        .into_iter()
+        .filter_map(|(owner, provider)| {
+            let fault = match provider {
+                Provider::Native {
+                    plugin, function, ..
+                } => native_fault(native, plugin, function),
+                Provider::Script {
+                    plugin, function, ..
+                } => script_fault(scripts, plugin, function),
+                Provider::Process { .. } => None,
+            };
+            fault.map(|fault| format!("{owner} uses {fault}"))
+        })
+        .collect()
+}
+
+fn native_fault(native: &NativeExecutorRegistry, plugin: &str, function: &str) -> Option<String> {
+    let Some(executor) = native.get(plugin) else {
+        return Some(format!(
+            "unknown native plugin '{plugin}' (available: {})",
+            native.plugin_names().join(", ")
+        ));
+    };
+    if executor.functions().contains(&function) {
+        return None;
     }
+    Some(format!(
+        "unknown function '{plugin}::{function}' (available: {})",
+        executor.functions().join(", ")
+    ))
+}
+
+fn script_fault(scripts: &[&ScriptPluginManifest], plugin: &str, function: &str) -> Option<String> {
+    let Some(manifest) = scripts.iter().find(|m| m.name == plugin) else {
+        let available: Vec<&str> = scripts.iter().map(|m| m.name.as_str()).collect();
+        return Some(format!(
+            "unknown script plugin '{plugin}' (available: {})",
+            available.join(", ")
+        ));
+    };
+    let actions = manifest.actions.iter().map(|a| a.name.as_str());
+    let probes = manifest.probes.iter().map(|p| p.name.as_str());
+    let known: Vec<&str> = actions.chain(probes).collect();
+    if known.contains(&function) {
+        return None;
+    }
+    Some(format!(
+        "unknown action '{plugin}::{function}' (available: {})",
+        known.join(", ")
+    ))
 }
 
 // ── Discover command ──────────────────────────────────────────

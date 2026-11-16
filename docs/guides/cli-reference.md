@@ -38,7 +38,8 @@ tumult run <experiment.toon> [OPTIONS]
 # Basic run
 tumult run experiment.toon
 
-# Dry run — show plan without executing
+# Dry run — show the plan without executing: kind, target, recovery
+# targets, objectives, load, hypothesis, guards, steps and rollbacks
 tumult run experiment.toon --dry-run
 
 # Custom journal path
@@ -116,6 +117,10 @@ Reports:
 - Phase 0/1 configuration presence
 - Configuration and secret resolution status
 - Template variable references (warns on undefined vars)
+
+Validation fails when:
+- a step, a guard or a control names a plugin, function or action that this binary does not have. The error lists every such step and what is available.
+- an objective names a metric outside the [metric table](experiment-format.md#objectives).
 
 ### Example
 

@@ -28,7 +28,7 @@ pub mod k6;
 mod load;
 /// Tool-agnostic load plan (stages/windows) every load adapter renders.
 pub mod load_profile;
-mod nfr;
+pub(crate) mod nfr;
 /// oha load executor — runs the plan window by window and streams samples.
 pub mod oha;
 mod phases;

@@ -1,6 +1,6 @@
 //! Static validation of experiment definitions before execution.
 
-use crate::types::{Experiment, LoadProfile, TestKind, Tolerance};
+use crate::types::{Experiment, LoadProfile, Provider, TestKind, Tolerance};
 
 use super::EngineError;
 
@@ -19,6 +19,8 @@ use super::EngineError;
 /// Returns [`EngineError::InvalidMaxConcurrentFaults`] if `max_concurrent_faults` is 0.
 /// Returns [`EngineError::InvalidScriptProvider`] if a script provider's plugin or
 /// function is empty or contains path separators, `..`, null bytes, or whitespace.
+/// This holds for every step: method, rollbacks, hypothesis probes, guards and controls.
+/// Returns [`EngineError::NfrInvalid`] if an objective names a metric no run can measure.
 ///
 /// # Examples
 ///
@@ -159,6 +161,11 @@ pub fn validate_experiment(experiment: &Experiment) -> Result<(), EngineError> {
             }
             Some(_) => {}
         }
+        validate_script_provider(&guard.name, &guard.probe.provider)?;
+    }
+
+    for control in &experiment.controls {
+        validate_script_provider(&control.name, &control.provider)?;
     }
 
     // Validate all regex tolerance patterns compile, and every script
@@ -195,16 +202,23 @@ pub fn validate_experiment(experiment: &Experiment) -> Result<(), EngineError> {
             _ => {}
         }
 
-        if let crate::types::Provider::Script {
-            plugin, function, ..
-        } = &activity.provider
-        {
-            validate_script_name(&activity.name, "plugin", plugin)?;
-            validate_script_name(&activity.name, "function", function)?;
-        }
+        validate_script_provider(&activity.name, &activity.provider)?;
     }
 
     Ok(())
+}
+
+/// Check the plugin and function names of a script provider. `owner` is the
+/// step, guard or control the provider belongs to. Other providers pass.
+fn validate_script_provider(owner: &str, provider: &Provider) -> Result<(), EngineError> {
+    let Provider::Script {
+        plugin, function, ..
+    } = provider
+    else {
+        return Ok(());
+    };
+    validate_script_name(owner, "plugin", plugin)?;
+    validate_script_name(owner, "function", function)
 }
 
 /// A script provider's `plugin`/`function` fields name a plugin directory
@@ -240,6 +254,12 @@ fn validate_script_name(activity: &str, field: &str, value: &str) -> Result<(), 
 /// Objectives and recovery targets: unique, well-formed objectives; finite
 /// positive RTO/RPO; a `dr` run must declare its RTO.
 fn validate_objectives(experiment: &Experiment) -> Result<(), EngineError> {
+    let probes: Vec<&str> = experiment
+        .steady_state_hypothesis
+        .iter()
+        .flat_map(|hypothesis| &hypothesis.probes)
+        .map(|probe| probe.name.as_str())
+        .collect();
     let mut seen = std::collections::HashSet::new();
     for o in &experiment.nfr {
         if o.id.trim().is_empty() {
@@ -255,6 +275,12 @@ fn validate_objectives(experiment: &Experiment) -> Result<(), EngineError> {
             return Err(EngineError::NfrInvalid {
                 id: o.id.clone(),
                 reason: "metric is empty".into(),
+            });
+        }
+        if let Some(reason) = crate::runner::nfr::metric_fault(&o.metric, &probes) {
+            return Err(EngineError::NfrInvalid {
+                id: o.id.clone(),
+                reason,
             });
         }
         if !o.threshold.is_finite() {

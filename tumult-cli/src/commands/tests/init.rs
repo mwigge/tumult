@@ -6,7 +6,8 @@ use tempfile::TempDir;
 use tumult_core::execution::RollbackStrategy;
 use tumult_core::types::{
     Activity, ActivityType, BaselineConfig, BaselineMethod, Estimate, ExpectedOutcome, Experiment,
-    Hypothesis, Provider, RegulatoryMapping,
+    ExperimentTarget, Guard, Hypothesis, LoadConfig, LoadProfile, LoadTool, NfrCriticality,
+    NfrKind, NfrObjective, NfrOperator, Provider, RegulatoryMapping, TestKind,
 };
 
 #[test]
@@ -162,4 +163,127 @@ async fn dry_run_renders_all_optional_sections_without_executing() {
 
     // A dry run is a plan: no journal is written, nothing executed.
     assert!(!journal_path.exists());
+}
+
+fn dry_run_text(experiment: &Experiment) -> String {
+    let ((), printed) = crate::output::testing::capture(|| print_dry_run(experiment));
+    printed.stdout
+}
+
+fn has_line(text: &str, line: &str) -> bool {
+    text.lines().any(|printed| printed == line)
+}
+
+/// A recovery drill that names everything a run is judged by.
+fn judged_experiment() -> Experiment {
+    Experiment {
+        title: "failover drill".into(),
+        kind: TestKind::Dr,
+        target: Some(ExperimentTarget {
+            system: "checkout".into(),
+            technology: Some("postgresql".into()),
+            environment: Some("staging".into()),
+            criticality: None,
+            namespace: None,
+            version: None,
+        }),
+        rto_target_s: Some(900.0),
+        rpo_target_s: Some(60.0),
+        nfr: vec![NfrObjective {
+            id: "p95".into(),
+            kind: NfrKind::Latency,
+            metric: "load.latency_p95_ms".into(),
+            operator: NfrOperator::Lte,
+            threshold: 200.0,
+            window_s: None,
+            criticality: NfrCriticality::Major,
+            description: None,
+        }],
+        load: Some(LoadConfig {
+            tool: LoadTool::K6,
+            script: "examples/k6/smoke-test.js".into(),
+            vus: Some(10),
+            duration_s: Some(30.0),
+            thresholds: std::collections::HashMap::new(),
+            profile: Some(LoadProfile::Ramp {
+                start_vus: 1,
+                ramp_up_s: 10.0,
+            }),
+        }),
+        guards: vec![Guard {
+            name: "error-budget".into(),
+            probe: Activity {
+                name: "errors".into(),
+                activity_type: ActivityType::Probe,
+                ..Default::default()
+            },
+            min_breaches: 2,
+        }],
+        method: vec![Activity {
+            name: "stop-primary".into(),
+            ..Default::default()
+        }],
+        ..Default::default()
+    }
+}
+
+#[test]
+fn dry_run_shows_what_the_run_is_judged_by() {
+    let out = dry_run_text(&judged_experiment());
+
+    for line in [
+        "Kind: dr",
+        "Target: checkout (technology: postgresql, environment: staging)",
+        "Recovery targets: RTO 900s, RPO 60s",
+        "Objectives (1):",
+        "  - p95 (latency, major): load.latency_p95_ms lte 200",
+        "Load: k6 examples/k6/smoke-test.js (10 users, 30s, ramp)",
+        "Guards (1):",
+        "  - error-budget: probe errors, halts after 2 breaches",
+    ] {
+        assert!(has_line(&out, line), "no line {line:?} in:\n{out}");
+    }
+}
+
+#[test]
+fn dry_run_of_a_plain_experiment_has_a_kind_and_no_empty_sections() {
+    let plain = Experiment {
+        title: "plain".into(),
+        method: vec![Activity {
+            name: "step".into(),
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+
+    let out = dry_run_text(&plain);
+
+    assert!(has_line(&out, "Kind: chaos"), "{out}");
+    for absent in [
+        "Target:",
+        "Recovery targets:",
+        "Objectives",
+        "Load:",
+        "Guards",
+    ] {
+        assert!(!out.contains(absent), "{absent} in:\n{out}");
+    }
+}
+
+#[test]
+fn dry_run_shows_a_flat_load_and_one_recovery_target() {
+    let mut experiment = judged_experiment();
+    experiment.kind = TestKind::Performance;
+    experiment.rpo_target_s = None;
+    let load = experiment.load.as_mut().unwrap();
+    load.profile = None;
+    load.vus = None;
+
+    let out = dry_run_text(&experiment);
+
+    assert!(has_line(&out, "Recovery targets: RTO 900s"), "{out}");
+    assert!(
+        has_line(&out, "Load: k6 examples/k6/smoke-test.js (30s, flat)"),
+        "{out}"
+    );
 }

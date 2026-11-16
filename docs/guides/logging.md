@@ -306,7 +306,7 @@ and not as events, whatever `TUMULT_LOG_FORMAT` says:
 
 | Command | What it writes to stderr |
 |---|---|
-| `tumult validate` | findings about the experiment: an unknown plugin or function, a plugin search path that was skipped |
+| `tumult validate` | plugin discovery warnings: a search path that was skipped, a manifest that could not be read |
 | `tumult discover` | plugin discovery warnings that annotate the listing |
 | `tumult analyze` | `warning: skipping <file>: <cause>` for a journal it could not load |
 

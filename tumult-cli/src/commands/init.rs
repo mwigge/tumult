@@ -4,7 +4,7 @@ use std::path::Path;
 
 use anyhow::{bail, Result};
 
-use tumult_core::types::Experiment;
+use tumult_core::types::{Experiment, ExperimentTarget, LoadConfig, LoadProfile};
 
 // ── Init command ──────────────────────────────────────────────
 
@@ -91,11 +91,87 @@ rollbacks[1]:
 
 // ── Dry run ───────────────────────────────────────────────────
 
+/// What the run is judged by: its kind, target and recovery targets, then
+/// the objectives and the load, each as its own paragraph.
+fn judged_by_lines(experiment: &Experiment) -> Vec<String> {
+    let mut lines = vec![format!("Kind: {}", experiment.kind)];
+    lines.extend(experiment.target.as_ref().map(target_line));
+    lines.extend(recovery_targets_line(experiment));
+    if !experiment.nfr.is_empty() {
+        lines.push(String::new());
+        lines.push(format!("Objectives ({}):", experiment.nfr.len()));
+    }
+    for o in &experiment.nfr {
+        lines.push(format!(
+            "  - {} ({}, {}): {} {} {}",
+            o.id, o.kind, o.criticality, o.metric, o.operator, o.threshold
+        ));
+    }
+    if let Some(load) = &experiment.load {
+        lines.push(String::new());
+        lines.push(load_line(load));
+    }
+    lines
+}
+
+fn target_line(target: &ExperimentTarget) -> String {
+    let details: Vec<String> = [
+        ("technology", &target.technology),
+        ("environment", &target.environment),
+        ("criticality", &target.criticality),
+        ("namespace", &target.namespace),
+        ("version", &target.version),
+    ]
+    .into_iter()
+    .filter_map(|(label, value)| value.as_ref().map(|v| format!("{label}: {v}")))
+    .collect();
+    if details.is_empty() {
+        return format!("Target: {}", target.system);
+    }
+    format!("Target: {} ({})", target.system, details.join(", "))
+}
+
+fn recovery_targets_line(experiment: &Experiment) -> Option<String> {
+    let targets: Vec<String> = [
+        ("RTO", experiment.rto_target_s),
+        ("RPO", experiment.rpo_target_s),
+    ]
+    .into_iter()
+    .filter_map(|(label, seconds)| seconds.map(|s| format!("{label} {s}s")))
+    .collect();
+    (!targets.is_empty()).then(|| format!("Recovery targets: {}", targets.join(", ")))
+}
+
+fn load_line(load: &LoadConfig) -> String {
+    let shape = match load.profile {
+        None => "flat",
+        Some(LoadProfile::Ramp { .. }) => "ramp",
+        Some(LoadProfile::Spike { .. }) => "spike",
+        Some(LoadProfile::Soak { .. }) => "soak",
+    };
+    let users = load.vus.map(|vus| format!("{vus} users"));
+    let duration = load.duration_s.map(|s| format!("{s}s"));
+    let parts: Vec<String> = users
+        .into_iter()
+        .chain(duration)
+        .chain([shape.to_string()])
+        .collect();
+    format!(
+        "Load: {} {} ({})",
+        load.tool,
+        load.script.display(),
+        parts.join(", ")
+    )
+}
+
 pub(crate) fn print_dry_run(experiment: &Experiment) {
     crate::outln!("=== DRY RUN ===\n");
     crate::outln!("Experiment: {}", experiment.title);
     if let Some(ref desc) = experiment.description {
         crate::outln!("Description: {desc}");
+    }
+    for line in judged_by_lines(experiment) {
+        crate::outln!("{line}");
     }
     crate::outln!();
 
@@ -120,6 +196,19 @@ pub(crate) fn print_dry_run(experiment: &Experiment) {
         crate::outln!("Hypothesis: {}", hypothesis.title);
         for probe in &hypothesis.probes {
             crate::outln!("  Probe: {}", probe.name);
+        }
+        crate::outln!();
+    }
+
+    if !experiment.guards.is_empty() {
+        crate::outln!("Guards ({}):", experiment.guards.len());
+        for guard in &experiment.guards {
+            crate::outln!(
+                "  - {}: probe {}, halts after {} breaches",
+                guard.name,
+                guard.probe.name,
+                guard.min_breaches
+            );
         }
         crate::outln!();
     }

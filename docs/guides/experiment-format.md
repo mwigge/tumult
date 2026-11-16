@@ -202,6 +202,8 @@ Metrics the runner produces:
 | `probe.<name>.mean_ms`, `probe.<name>.max_ms`, `probe.<name>.p95_ms`, `probe.<name>.error_rate` | raw during-phase samples of one probe |
 | `fault.duration_s` | the during phase |
 
+A metric that is not in this table is an error: no run can measure it. A `probe.<name>` metric must name a probe of the steady-state hypothesis, because those are the probes a run samples.
+
 `rto_target_s` adds an implicit blocking `rto` objective on `recovery.mttr_s`. `rpo_target_s` is recorded with the run; without an `nfr` entry of `kind: rpo` naming a probe-derived metric it is reported `inconclusive`, never silently met.
 
 ```yaml
