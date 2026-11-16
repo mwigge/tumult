@@ -160,18 +160,33 @@ impl NativeExecutor for CloudExecutor {
     }
 }
 
+/// The endpoint set for one AWS service, if any.
+///
+/// `AWS_ENDPOINT_URL_<SERVICE>` is the variable the AWS command line and the
+/// AWS SDKs read: a VPC interface endpoint, or a local stand-in for the
+/// service.
+fn endpoint_override(service: &str) -> Option<String> {
+    std::env::var(format!("AWS_ENDPOINT_URL_{service}")).ok()
+}
+
 /// Build an FIS client from the region argument/environment and AWS creds.
 fn fis_client(args: &NativeArgs) -> Result<FisClient, NativeError> {
     let region = region_from_env(opt_str(args, "region")).map_err(exec_err)?;
     let creds = AwsCredentials::from_env().map_err(exec_err)?;
-    Ok(FisClient::new(region, creds))
+    let Some(endpoint) = endpoint_override("FIS") else {
+        return Ok(FisClient::new(region, creds));
+    };
+    Ok(FisClient::with_endpoint(endpoint, region, creds))
 }
 
 /// Build an EC2 client from the region argument/environment and AWS creds.
 fn ec2_client(args: &NativeArgs) -> Result<Ec2Client, NativeError> {
     let region = region_from_env(opt_str(args, "region")).map_err(exec_err)?;
     let creds = AwsCredentials::from_env().map_err(exec_err)?;
-    Ok(Ec2Client::new(region, creds))
+    let Some(endpoint) = endpoint_override("EC2") else {
+        return Ok(Ec2Client::new(region, creds));
+    };
+    Ok(Ec2Client::with_endpoint(endpoint, region, creds))
 }
 
 /// Build an Azure Chaos Studio client from the ambient bearer token.

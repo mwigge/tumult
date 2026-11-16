@@ -8162,6 +8162,7 @@ dependencies = [
  "thiserror 2.0.19",
  "tokio",
  "tumult-plugin",
+ "tumult-test-utils",
  "zeroize",
 ]
 

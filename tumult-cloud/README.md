@@ -77,6 +77,11 @@ a message naming the exact missing variable.
 AWS requests are signed with a hand-rolled **Signature Version 4** signer
 (`src/sigv4.rs`). Azure and GCP use a `Bearer` token.
 
+`AWS_ENDPOINT_URL_FIS` and `AWS_ENDPOINT_URL_EC2` send the AWS steps to
+another endpoint, for example a VPC interface endpoint. They are the same
+variables the AWS command line reads. When they are not set, the endpoint is
+the public one of the region.
+
 ## GCP has no managed chaos service
 
 This is deliberate, not an omission. Google does not offer a first-party
