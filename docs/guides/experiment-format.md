@@ -33,7 +33,7 @@ Every experiment has these sections:
 | `method` | Yes | Ordered sequence of actions and probes to execute |
 | `rollbacks` | No | Actions to restore system state after the experiment |
 | `estimate` | No | Phase 0 — prediction of expected outcome |
-| `baseline` | No | Phase 1 — statistical baseline acquisition config |
+| `baseline` | No | Statistical baseline settings. Declared only: a run does not use them |
 | `load` | No | Load tool integration (k6 or oha) with an optional traffic profile |
 | `regulatory` | No | Regulatory framework mapping (DORA, NIS2, PCI-DSS) |
 
@@ -164,9 +164,11 @@ Predictions made before any measurement. Compared against actual results in Phas
 | `rationale` | string | Why this prediction |
 | `prior_runs` | int | How many times this has been run before |
 
-## Baseline Config (Phase 1)
+## Baseline Config
 
-Configuration for statistical baseline acquisition:
+A run does not use this block: tolerances stay as written. `tumult validate`
+and a dry run say so. The block is kept for tools that take their own samples
+with the `tumult-baseline` library, see the [Baseline Guide](baseline-guide.md).
 
 | Field | Description |
 |-------|-------------|

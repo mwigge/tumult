@@ -114,7 +114,7 @@ Reports:
 - Title, description, tags
 - Method and rollback step counts
 - Hypothesis probe count
-- Phase 0/1 configuration presence
+- Whether an estimate and a baseline block are present. A run does not use the baseline block, and validate says so
 - Configuration and secret resolution status
 - Template variable references (warns on undefined vars)
 

@@ -185,7 +185,7 @@ pub(crate) fn print_dry_run(experiment: &Experiment) {
     }
 
     if let Some(ref baseline) = experiment.baseline {
-        crate::outln!("Phase 1 — Baseline:");
+        crate::outln!("Baseline (declared, a run does not use it):");
         crate::outln!("  Duration: {}s", baseline.duration_s);
         crate::outln!("  Interval: {}s", baseline.interval_s);
         crate::outln!("  Method: {:?}", baseline.method);

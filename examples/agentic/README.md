@@ -29,7 +29,5 @@ Files:
 
 - `malformed-json-recovery.fixture.json` - minimal replay-style fixture for a
   malformed structured response
-- `fake-http-malformed-json.toon` - compact TOON example for the local fake HTTP
-  smoke path
 - `replay-missing-output-ref.json` - intentionally incomplete replay fixture for
   validation tests

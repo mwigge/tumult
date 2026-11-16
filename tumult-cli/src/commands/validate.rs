@@ -78,7 +78,7 @@ pub fn cmd_validate(experiment_path: &Path) -> Result<()> {
         crate::outln!("Estimate: present (Phase 0)");
     }
     if experiment.baseline.is_some() {
-        crate::outln!("Baseline: configured (Phase 1)");
+        crate::outln!("Baseline: declared, but a run does not use it (tolerances stay as written)");
     }
     if experiment.regulatory.is_some() {
         crate::outln!("Regulatory: mapped");

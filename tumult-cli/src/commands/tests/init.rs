@@ -287,3 +287,24 @@ fn dry_run_shows_a_flat_load_and_one_recovery_target() {
         "{out}"
     );
 }
+
+#[test]
+fn dry_run_says_that_a_run_does_not_use_the_baseline_block() {
+    let mut experiment = judged_experiment();
+    experiment.baseline = Some(BaselineConfig {
+        duration_s: 60.0,
+        warmup_s: None,
+        interval_s: 5.0,
+        method: BaselineMethod::Percentile,
+        sigma: None,
+        confidence: None,
+    });
+
+    let out = dry_run_text(&experiment);
+
+    assert!(
+        has_line(&out, "Baseline (declared, a run does not use it):"),
+        "{out}"
+    );
+    assert!(!out.contains("Phase 1"), "{out}");
+}

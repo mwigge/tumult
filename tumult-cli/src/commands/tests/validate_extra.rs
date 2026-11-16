@@ -6,7 +6,10 @@ use super::super::*;
 use super::helpers::*;
 use crate::output::testing::capture;
 use tempfile::TempDir;
-use tumult_core::types::{Activity, ActivityType, Control, Experiment, Guard, Provider, Tolerance};
+use tumult_core::types::{
+    Activity, ActivityType, BaselineConfig, BaselineMethod, Control, Experiment, Guard, Provider,
+    Tolerance,
+};
 
 #[test]
 fn validate_rejects_oversized_experiment_file() {
@@ -212,6 +215,39 @@ fn validate_names_every_unknown_reference_in_one_error() {
     assert!(error.contains("2 steps"), "{error}");
     assert!(error.contains("activity 'mystery'"), "{error}");
     assert!(error.contains("activity 'undo'"), "{error}");
+}
+
+fn a_baseline() -> BaselineConfig {
+    BaselineConfig {
+        duration_s: 60.0,
+        warmup_s: None,
+        interval_s: 5.0,
+        method: BaselineMethod::Percentile,
+        sigma: None,
+        confidence: None,
+    }
+}
+
+#[test]
+fn validate_says_that_a_run_does_not_use_the_baseline_block() {
+    let mut experiment = with_step(Provider::Process {
+        path: "echo".into(),
+        arguments: vec![],
+        env: std::collections::HashMap::new(),
+        timeout_s: None,
+    });
+    experiment.baseline = Some(a_baseline());
+
+    let (result, stdout) = validated(&experiment);
+
+    result.unwrap();
+    assert!(
+        stdout.contains(
+            "\nBaseline: declared, but a run does not use it (tolerances stay as written)\n"
+        ),
+        "{stdout}"
+    );
+    assert!(!stdout.contains("Phase 1"), "{stdout}");
 }
 
 #[test]
