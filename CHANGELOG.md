@@ -159,6 +159,7 @@ moves to v21 and cannot be opened by an older binary.
 - russh 0.61 to 0.65 (RUSTSEC-2026-0492, RUSTSEC-2026-0495). The SSH client rejects a host certificate under every host-key policy; it never advertises host certificate algorithms, so plain host keys verify as before.
 - duckdb-rs 1.10505 to 1.20000 with arrow and parquet 58 to 60, which drops the vulnerable `zip` 6 build dependency and `thrift` 0.17. The bundled DuckDB engine moves from 1.5 to 2.0.
 - Web: `@sveltejs/kit` 3.1.1, `@sveltejs/adapter-static` 4.0.1, `eslint` 10.15.0 and `minimatch` 11.0.8 (override for `@typescript-eslint/typescript-estree`).
+- Chaos Lab: `certifi` 2026.10.18 (PYSEC-2026-4320), `opentelemetry-api` 1.45.2 (CVE-2026-126360) and `eslint` 10.15.0 (drops the `minimatch` version in GHSA-g3hv-75wg-m249).
 - `deny.toml` ignores RUSTSEC-2024-0449 (`unsafe-libyaml` unmaintained, no known vulnerability, no patched release) with a review date.
 
 ## [2.22.0] - 2026-10-09
