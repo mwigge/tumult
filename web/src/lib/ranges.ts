@@ -16,3 +16,19 @@ export const RANGES = Object.keys(RANGE_SECONDS);
 
 /** What a page offers unless it asks for the long window too. */
 export const SHORT_RANGES = RANGES.filter((range) => range !== '30d');
+
+/**
+ * Bounds of a time axis for bars bucketed over `range`. A bar is centred
+ * on the start of its bucket: the axis starts half a bucket before the
+ * first one, so that bar is whole, and ends at now.
+ */
+export function bucketAxis(
+    range: string,
+    bucketS: number,
+    nowMs: number,
+): { min: number; max: number } {
+    const rangeMs = (RANGE_SECONDS[range] ?? DAY_S) * 1000;
+    const bucketMs = bucketS * 1000;
+    const firstBucket = Math.floor((nowMs - rangeMs) / bucketMs) * bucketMs;
+    return { min: firstBucket - bucketMs / 2, max: nowMs };
+}

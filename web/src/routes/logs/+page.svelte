@@ -7,6 +7,7 @@
     import EChart from '#lib/components/EChart.svelte';
     import { CHART } from '#lib/echarts.js';
     import type { EChartsCoreOption } from '#lib/echarts.js';
+    import { bucketAxis } from '#lib/ranges.js';
 
     const SEVERITIES = ['ERROR', 'WARN', 'INFO', 'DEBUG', 'TRACE'];
     const SEV_COLORS: Record<string, string> = {
@@ -108,6 +109,10 @@
             legend: { textStyle: { color: CHART.text }, top: 0 },
             xAxis: {
                 type: 'time',
+                // Bars would otherwise widen the axis by half a bucket,
+                // past now.
+                ...bucketAxis(filters.range, volume.bucket_s, Date.now()),
+                containShape: false,
                 axisLine: { lineStyle: { color: CHART.axis } },
                 axisLabel: { color: CHART.text },
             },
