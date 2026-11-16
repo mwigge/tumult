@@ -2,7 +2,7 @@
 
 use crate::controls::ControlRegistry;
 use crate::types::{
-    Experiment, ExperimentStatus, GameDay, GameDayExperiment, GameDayJournal, Journal,
+    Experiment, ExperimentStatus, GameDay, GameDayExperiment, GameDayJournal, Journal, LoadConfig,
     ResilienceScore,
 };
 
@@ -11,7 +11,8 @@ use opentelemetry::KeyValue;
 
 use super::telemetry::epoch_nanos_now;
 use super::{
-    run_experiment, ActivityExecutor, LoadExecutor, LoadHandle, RunConfig, RunnerError, TRACER_NAME,
+    load_profile, run_experiment, ActivityExecutor, LoadExecutor, LoadHandle, RunConfig,
+    RunnerError, TRACER_NAME,
 };
 
 /// Stops the shared load process when dropped, so no exit path from
@@ -39,6 +40,19 @@ impl Drop for LoadGuard<'_> {
             }
         }
     }
+}
+
+/// Wait until the shared load, started at `started`, has run its whole plan.
+///
+/// The load is evidence for the whole campaign, and k6 gives its numbers
+/// only when it ends by itself. A cancelled campaign does not wait.
+fn await_load_plan(load: &LoadConfig, started: std::time::Instant, config: &RunConfig) {
+    let left_s = load_profile::plan(load).total_duration_s() - started.elapsed().as_secs_f64();
+    if left_s <= 0.0 {
+        return;
+    }
+    tracing::info!(left_s, "gameday waits for its load to end");
+    super::activity::wait_pause(Some(left_s), config.cancellation_token.as_ref());
 }
 
 /// Executor + controls for one experiment in a [`run_gameday_with_wiring`]
@@ -173,6 +187,8 @@ pub fn run_gameday_with_wiring(
         None
     };
 
+    let load_started = load_handle.as_ref().map(|_| std::time::Instant::now());
+
     // Guard so the shared load process is stopped on *every* exit path —
     // including a campaign-stopping experiment error or an unwind — not just
     // the happy path below.
@@ -212,6 +228,13 @@ pub fn run_gameday_with_wiring(
                 tracing::error!(error = %e, title = %experiment.title, "gameday experiment failed; stopping campaign");
                 break;
             }
+        }
+    }
+
+    // A campaign that ran every experiment lets its load run to the end.
+    if let (Some(load), Some(started)) = (&gameday.load, load_started) {
+        if journals.len() == experiments.len() {
+            await_load_plan(load, started, config);
         }
     }
 

@@ -302,6 +302,102 @@ fn gameday_cancelled_token_skips_experiments_and_stops_load() {
     );
 }
 
+/// Load executor that says how long the load ran before it was stopped.
+struct TimedLoadExecutor {
+    started: std::sync::Mutex<Option<std::time::Instant>>,
+    ran_for: Arc<std::sync::Mutex<Option<std::time::Duration>>>,
+}
+
+impl LoadExecutor for TimedLoadExecutor {
+    fn start(&self, _config: &LoadConfig) -> Result<LoadHandle, String> {
+        *self.started.lock().expect("lock") = Some(std::time::Instant::now());
+        Ok(LoadHandle {
+            inner: Box::new(()),
+        })
+    }
+
+    fn stop(&self, handle: LoadHandle) -> Result<LoadResult, String> {
+        let started = self.started.lock().expect("lock").expect("started");
+        *self.ran_for.lock().expect("lock") = Some(started.elapsed());
+        RecordingLoadExecutor::new().0.stop(handle)
+    }
+}
+
+/// Run a `GameDay` of one experiment that ends at once, under a shared load
+/// of `duration_s`; how long the load ran before the campaign stopped it.
+fn load_time_of_a_short_gameday(duration_s: f64, token: Option<CancellationToken>) -> f64 {
+    let mut gameday = gameday_with_load(&["a.toon"]);
+    gameday.load.as_mut().expect("load").duration_s = Some(duration_s);
+    let executor: Arc<dyn ActivityExecutor> = Arc::new(MockExecutor::always_succeed());
+    let ran_for = Arc::new(std::sync::Mutex::new(None));
+    let config = RunConfig {
+        cancellation_token: token,
+        load_executor: Some(Arc::new(TimedLoadExecutor {
+            started: std::sync::Mutex::new(None),
+            ran_for: ran_for.clone(),
+        })),
+        ..RunConfig::default()
+    };
+
+    let journal = run_gameday(
+        &gameday,
+        &[minimal_experiment()],
+        &executor,
+        &Arc::new(ControlRegistry::new()),
+        &config,
+    )
+    .expect("gameday");
+
+    assert!(journal.load_result.is_some(), "the load left its result");
+    let ran_for = ran_for.lock().expect("lock").expect("the load was stopped");
+    ran_for.as_secs_f64()
+}
+
+#[test]
+fn a_gameday_that_ends_before_its_load_waits_for_the_load_to_run_its_plan() {
+    let ran_for_s = load_time_of_a_short_gameday(0.4, None);
+
+    assert!(ran_for_s >= 0.4, "the load ran {ran_for_s}s of 0.4s");
+}
+
+#[test]
+fn a_cancelled_gameday_does_not_wait_for_its_load() {
+    let token = CancellationToken::new();
+    token.cancel();
+
+    let ran_for_s = load_time_of_a_short_gameday(30.0, Some(token));
+
+    assert!(ran_for_s < 5.0, "the load ran {ran_for_s}s");
+}
+
+#[test]
+fn a_gameday_stopped_by_an_experiment_error_does_not_wait_for_its_load() {
+    let mut gameday = gameday_with_load(&["bad.toon"]);
+    gameday.load.as_mut().expect("load").duration_s = Some(30.0);
+    let executor: Arc<dyn ActivityExecutor> = Arc::new(MockExecutor::always_succeed());
+    let config = RunConfig {
+        load_executor: Some(Arc::new(RecordingLoadExecutor::new().0)),
+        ..RunConfig::default()
+    };
+    // An empty method is an error of the run, which stops the campaign.
+    let bad = Experiment {
+        method: vec![],
+        ..minimal_experiment()
+    };
+
+    let started = std::time::Instant::now();
+    run_gameday(
+        &gameday,
+        &[bad],
+        &executor,
+        &Arc::new(ControlRegistry::new()),
+        &config,
+    )
+    .expect("gameday");
+
+    assert!(started.elapsed().as_secs_f64() < 5.0);
+}
+
 /// Probes answer; every action of the method fails.
 struct FailingMethodExecutor;
 
