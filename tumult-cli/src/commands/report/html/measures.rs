@@ -6,6 +6,7 @@ use tumult_core::types::{
     NfrVerdict, ObjectiveOutcome, PostResult, ProbeDuring, ProbePost, RequestCounts,
 };
 
+use super::charts;
 use super::fmt::{
     badge, fact, facts, latency, number, offset, optional, percent, rate, seconds, section, table,
     text, tr, yes_no,
@@ -17,7 +18,12 @@ pub(super) fn objectives(journal: &Journal) -> String {
     let Some(outcome) = &journal.objectives else {
         return String::new();
     };
-    let body = [recovery(outcome), verdicts(&outcome.verdicts)].concat();
+    let body = [
+        recovery(outcome),
+        charts::headroom(&outcome.verdicts),
+        verdicts(&outcome.verdicts),
+    ]
+    .concat();
     section("objectives", "Objectives", &body)
 }
 
@@ -53,12 +59,16 @@ fn verdicts(verdicts: &[NfrVerdict]) -> String {
     table(&head, &rows)
 }
 
-fn verdict_row(verdict: &NfrVerdict) -> String {
-    let must_be = match verdict.operator {
+/// How a value must compare to its threshold, in words.
+pub(super) fn must_be(operator: NfrOperator) -> &'static str {
+    match operator {
         NfrOperator::Lte => "at most",
         NfrOperator::Gte => "at least",
         NfrOperator::Eq => "equal to",
-    };
+    }
+}
+
+fn verdict_row(verdict: &NfrVerdict) -> String {
     let class = match verdict.state {
         NfrState::Met => "ok",
         NfrState::Breached => "fail",
@@ -70,7 +80,11 @@ fn verdict_row(verdict: &NfrVerdict) -> String {
             text(&verdict.nfr_id),
             verdict.kind.to_string(),
             text(&verdict.metric),
-            format!("{must_be} {}", number(verdict.threshold)),
+            format!(
+                "{} {}",
+                must_be(verdict.operator),
+                number(verdict.threshold)
+            ),
             verdict
                 .observed
                 .map_or_else(|| "not measured".to_string(), number),
@@ -88,7 +102,12 @@ pub(super) fn load(journal: &Journal) -> String {
         return String::new();
     };
     let rows = [totals(load), execution(&load.execution)].concat();
-    let body = [facts(&rows), windows(load, journal.started_at_ns)].concat();
+    let body = [
+        facts(&rows),
+        charts::load(journal, load),
+        windows(load, journal.started_at_ns),
+    ]
+    .concat();
     section("load", "Load", &body)
 }
 
@@ -227,6 +246,7 @@ fn percentile(window: &LoadSample, latency_ms: f64) -> String {
 /// after it.
 pub(super) fn measurements(journal: &Journal) -> String {
     let body = [
+        Some(charts::probes(journal)),
         journal.during_result.as_ref().map(during),
         journal.post_result.as_ref().map(post),
     ]

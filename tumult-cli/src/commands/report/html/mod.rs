@@ -1,6 +1,7 @@
 //! The HTML report of one run: what its journal holds, as one page that
 //! needs nothing but itself.
 
+mod charts;
 mod context;
 mod fmt;
 mod measures;
@@ -15,6 +16,10 @@ use fmt::{badge, text};
 pub(crate) use steps::step_row;
 
 const STYLE: &str = include_str!("report.css");
+
+/// The script that draws the charts: `ECharts` with what the report needs
+/// of it. Built from `web/src/lib/report/main.ts` by `npm run build:report`.
+const CHARTS: &str = include_str!("report-charts.js");
 
 /// What a report says that its journal does not.
 pub(crate) struct ReportFrame<'a> {
@@ -55,12 +60,22 @@ pub(crate) fn generate_html_report(journal: &Journal, frame: &ReportFrame<'_>) -
 <body>
 <main>
 {header}{sections}{footer}</main>
-</body>
+{script}</body>
 </html>
 "#,
         header = header(journal, &title),
         footer = footer(frame),
+        script = script(&sections),
     )
+}
+
+/// The script of the charts, for a report that has a chart. A report
+/// without one is a page without a script.
+fn script(sections: &str) -> String {
+    if !sections.contains(charts::OPTION) {
+        return String::new();
+    }
+    format!("<script>\n{CHARTS}\n</script>\n")
 }
 
 fn header(journal: &Journal, title: &str) -> String {

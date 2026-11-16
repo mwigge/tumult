@@ -112,6 +112,8 @@ tr.row-failed td:first-child { box-shadow: inset 3px 0 0 var(--fail); }
 a { color: var(--accent); }
 footer { color: var(--muted); font-size: 13px; }
 footer p { margin: 0; }
+figure { margin: 0 0 16px; }
+.chart { width: 100%; }
 @media print {
   body { background: #ffffff; }
   section, footer, .card { break-inside: avoid; }

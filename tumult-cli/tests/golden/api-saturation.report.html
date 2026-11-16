@@ -119,6 +119,8 @@ tr.row-failed td:first-child { box-shadow: inset 3px 0 0 var(--fail); }
 a { color: var(--accent); }
 footer { color: var(--muted); font-size: 13px; }
 footer p { margin: 0; }
+figure { margin: 0 0 16px; }
+.chart { width: 100%; }
 @media print {
   body { background: #ffffff; }
   section, footer, .card { break-inside: avoid; }
@@ -164,6 +166,10 @@ footer p { margin: 0; }
 </section>
 <section id="steps">
 <h2>Steps</h2>
+<figure>
+<div class="chart" id="chart-timeline" data-height="216" role="img" aria-label="Timeline of the run: when each step began and how long it took"></div>
+<script type="application/json" data-chart="chart-timeline">{"animation":false,"grid":{"left":12,"right":32,"top":28,"bottom":12},"tooltip":{"trigger":"item","formatter":"{b}"},"xAxis":{"type":"value","min":0,"name":"Time from the start of the run (s)","nameLocation":"middle","nameGap":28},"yAxis":{"type":"category","inverse":true,"data":["health (before)","process-still-up","cpu-stress","health (after)","load (oha)"],"axisLabel":{"width":220,"overflow":"truncate"}},"series":[{"type":"bar","stack":"run","silent":true,"itemStyle":{"color":"transparent"},"data":[0.0,0.008,0.008,122.678,0.008]},{"type":"bar","stack":"run","barMinHeight":2,"data":[{"value":0.006,"name":"health (before): succeeded, began at +0 ms, took 6 ms","itemStyle":{"color":"token:ok"}},{"value":120.023,"name":"process-still-up: succeeded, began at +8 ms, took 2 min 0 s","itemStyle":{"color":"token:ok"}},{"value":122.663,"name":"cpu-stress: succeeded, began at +8 ms, took 2 min 3 s","itemStyle":{"color":"token:ok"}},{"value":0.005,"name":"health (after): succeeded, began at +2 min 3 s, took 5 ms","itemStyle":{"color":"token:ok"}},{"value":122.67,"name":"load (oha): began at +8 ms, took 2 min 3 s","itemStyle":{"color":"token:accent"}}],"markArea":{"silent":true,"itemStyle":{"color":"token:fail","opacity":0.1},"label":{"color":"token:fail"},"data":[[{"name":"fault active","xAxis":0.008},{"xAxis":122.672}]]}}]}</script>
+</figure>
 <table>
 <thead>
 <tr><th>Phase</th><th>Step</th><th>Type</th><th>Status</th><th>Start</th><th>Duration</th><th>Trace</th><th>Detail</th></tr>
@@ -184,6 +190,10 @@ footer p { margin: 0; }
 <tr><td>RTO</td><td>not set</td><td>0 ms</td></tr>
 </tbody>
 </table>
+<figure>
+<div class="chart" id="chart-headroom" data-height="122" role="img" aria-label="Headroom of each objective, in percent of its threshold"></div>
+<script type="application/json" data-chart="chart-headroom">{"animation":false,"grid":{"left":12,"right":32,"top":12,"bottom":12},"tooltip":{"trigger":"item","formatter":"{b}"},"xAxis":{"type":"value","name":"Headroom (% of the threshold)","nameLocation":"middle","nameGap":28},"yAxis":{"type":"category","inverse":true,"data":["health-survives","recovers"],"axisLabel":{"width":220,"overflow":"truncate"}},"series":[{"type":"bar","data":[{"value":5.263,"name":"health-survives: met, 1 against at least 0.95","itemStyle":{"color":"token:ok"}},{"value":0.1,"name":"recovers: met, 1 against at least 0.999","itemStyle":{"color":"token:ok"}}]}]}</script>
+</figure>
 <table>
 <thead>
 <tr><th>Objective</th><th>Kind</th><th>Metric</th><th>Must be</th><th>Observed</th><th>Margin</th><th>State</th><th>Criticality</th></tr>
@@ -212,6 +222,14 @@ footer p { margin: 0; }
 <tr><th>Requests by outcome</th><td>sent 296213, ok 296213</td></tr>
 </tbody>
 </table>
+<figure>
+<div class="chart" id="chart-load-latency" data-height="260" role="img" aria-label="Latency of the load over time: p50, p95 and p99 of each window"></div>
+<script type="application/json" data-chart="chart-load-latency">{"animation":false,"grid":{"left":12,"right":32,"top":40,"bottom":12},"legend":{"top":0},"tooltip":{"trigger":"axis"},"xAxis":{"type":"value","min":0,"name":"Time from the start of the run (s)","nameLocation":"middle","nameGap":28},"yAxis":{"type":"value","name":"Latency (ms)"},"series":[{"type":"line","name":"p50","symbol":"circle","symbolSize":5,"data":[[90.214,96.254047],[120.214,108.990126]],"markArea":{"silent":true,"itemStyle":{"color":"token:fail","opacity":0.1},"label":{"color":"token:fail"},"data":[[{"name":"fault active","xAxis":0.008},{"xAxis":122.672}]]}},{"type":"line","name":"p95","symbol":"circle","symbolSize":5,"data":[[90.214,132.84605499999998],[120.214,167.373046]]},{"type":"line","name":"p99","symbol":"circle","symbolSize":5,"data":[[90.214,142.556951],[120.214,209.827077]]}]}</script>
+</figure>
+<figure>
+<div class="chart" id="chart-load-throughput" data-height="260" role="img" aria-label="Throughput and error rate of the load over time"></div>
+<script type="application/json" data-chart="chart-load-throughput">{"animation":false,"grid":{"left":12,"right":32,"top":40,"bottom":12},"legend":{"top":0},"tooltip":{"trigger":"axis"},"xAxis":{"type":"value","min":0,"name":"Time from the start of the run (s)","nameLocation":"middle","nameGap":28},"yAxis":[{"type":"value","name":"Requests/s"},{"type":"value","name":"Errors (%)","min":0,"splitLine":{"show":false}}],"series":[{"type":"line","name":"throughput","symbol":"circle","symbolSize":5,"data":[[90.214,2128.3917000257184],[120.214,3485.7916065636764]],"markArea":{"silent":true,"itemStyle":{"color":"token:fail","opacity":0.1},"label":{"color":"token:fail"},"data":[[{"name":"fault active","xAxis":0.008},{"xAxis":122.672}]]}},{"type":"line","name":"error rate","symbol":"circle","symbolSize":5,"data":[[90.214,0.0],[120.214,0.0]],"yAxisIndex":1,"itemStyle":{"color":"token:fail"},"lineStyle":{"color":"token:fail"}}]}</script>
+</figure>
 <table>
 <thead>
 <tr><th>Start</th><th>Length</th><th>Users</th><th>Requests</th><th>Throughput</th><th>p50</th><th>p95</th><th>p99</th><th>Error rate</th></tr>
@@ -224,6 +242,10 @@ footer p { margin: 0; }
 </section>
 <section id="measurements">
 <h2>Measurements</h2>
+<figure>
+<div class="chart" id="chart-probes" data-height="260" role="img" aria-label="Time of each probe sample during and after the fault"></div>
+<script type="application/json" data-chart="chart-probes">{"animation":false,"grid":{"left":12,"right":32,"top":40,"bottom":12},"legend":{"top":0},"tooltip":{"trigger":"axis"},"xAxis":{"type":"value","min":0,"name":"Time from the start of the run (s)","nameLocation":"middle","nameGap":28},"yAxis":{"type":"value","name":"Probe time (ms)"},"series":[{"type":"line","name":"health","data":[[0.008,16],[1.025,19],[2.044,18],[3.063,16],[4.08,19],[5.1,12],[6.112,14],[7.126,21],[8.148,16],[9.165,21],[10.186,16],[11.202,12],[12.215,10],[13.226,65],[14.291,79],[15.37,18],[16.389,33],[17.423,25],[18.449,14],[19.463,17],[20.481,14],[21.496,12],[22.509,13],[23.522,14],[24.537,16],[25.554,16],[26.571,24],[27.595,27],[28.623,14],[29.638,17],[30.655,13],[31.668,17],[32.686,17],[33.703,18],[34.722,12],[35.734,11],[36.746,15],[37.762,11],[38.774,21],[39.796,21],[40.817,15],[41.833,18],[42.851,16],[43.867,14],[44.882,14],[45.897,13],[46.911,17],[47.928,23],[48.952,15],[49.968,13],[50.981,21],[52.003,18],[53.022,15],[54.038,28],[55.066,13],[56.08,14],[57.095,10],[58.105,18],[59.124,10],[60.135,16],[61.151,12],[62.163,11],[63.175,16],[64.192,21],[65.214,15],[66.229,15],[67.245,16],[68.261,19],[69.281,13],[70.295,13],[71.308,16],[72.325,14],[73.339,14],[74.354,15],[75.37,10],[76.38,10],[77.391,23],[78.414,19],[79.434,12],[80.447,9],[81.457,8],[82.466,11],[83.478,17],[84.495,14],[85.51,15],[86.525,13],[87.539,11],[88.551,12],[89.564,11],[90.576,19],[91.595,80],[92.676,32],[93.708,16],[94.725,15],[95.74,38],[96.78,37],[97.82,37],[98.857,81],[99.939,21],[100.96,17],[101.978,23],[103.001,47],[104.049,30],[105.08,97],[106.178,33],[107.211,19],[108.231,20],[109.252,28],[110.281,27],[111.308,24],[112.333,22],[113.356,68],[114.425,15],[115.44,12],[116.453,97],[117.55,42],[118.593,27],[119.621,22],[120.643,9],[121.652,9],[122.662,6],[122.672,5]],"markArea":{"silent":true,"itemStyle":{"color":"token:fail","opacity":0.1},"label":{"color":"token:fail"},"data":[[{"name":"fault active","xAxis":0.008},{"xAxis":122.672}]]}}]}</script>
+</figure>
 <h3>During the fault</h3>
 <table class="facts">
 <tbody>
@@ -272,5 +294,8 @@ Report generated: 2026-11-17T00:00:00Z<br>
 Source journal SHA-256: <code>2022b4ab688a749964e420f36de39ed52dbbb8bc625de76fccda2ae520158a3e</code></p>
 </footer>
 </main>
+<script>
+{report-charts.js}
+</script>
 </body>
 </html>

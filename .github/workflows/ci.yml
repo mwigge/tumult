@@ -44,6 +44,13 @@ jobs:
       - run: npx svelte-check --tsconfig ./tsconfig.json
       - run: npm test
       - run: npm run build
+      # tumult-cli embeds the script that draws the charts of its HTML
+      # report, so the built file is committed. It must be what its source
+      # builds.
+      - name: The script of the HTML report is in sync with its source
+        run: |
+          npm run build:report
+          git diff --exit-code -- ../tumult-cli/src/commands/report/html/report-charts.js
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
 
@@ -135,6 +142,16 @@ jobs:
       # [package.metadata.cargo-machete] ignore lists).
       - run: cargo machete --with-metadata
       - run: cargo nextest run --all-features
+      # A browser without a network opens the report the binary of this
+      # build writes: every chart is drawn, and no text of a journal is
+      # markup.
+      - name: HTML report in a browser
+        working-directory: web
+        env:
+          TUMULT_BIN: ${{ github.workspace }}/target/debug/tumult
+        run: |
+          npx playwright install --with-deps chromium
+          npm run test:report
       - name: Show disk use after the test build
         if: always()
         run: df -h /

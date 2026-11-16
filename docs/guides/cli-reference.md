@@ -320,6 +320,13 @@ versions and the analysis. It follows the light or dark setting of the
 browser. Set `SOURCE_DATE_EPOCH` (seconds) to fix the time the report says it
 was generated at, so the same journal always gives the same file.
 
+The report draws up to five charts: a timeline of the steps, the headroom
+of each objective, the load latency, the load throughput with its error
+rate, and the samples of each probe over time. The time a fault was active
+is shaded. The charts need no network: the script that draws them is in
+the file, which makes a report with a chart about 570 KB. A reader with
+scripts off still gets every table.
+
 The JUnit file has one test case per step, and one per check of the steady
 state. A check that did not hold is a failed case, so a deviated run shows as a
 failure in CI.

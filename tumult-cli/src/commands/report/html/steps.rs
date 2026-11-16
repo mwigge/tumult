@@ -2,6 +2,7 @@
 
 use tumult_core::types::{ActivityResult, ActivityStatus, HypothesisResult, Journal};
 
+use super::charts;
 use super::fmt::{badge, millis, offset, section, table, text, tr};
 
 /// The steady state before and after the method, with what each probe
@@ -60,7 +61,8 @@ pub(super) fn steps(journal: &Journal, trace_ui_base: Option<&str>) -> String {
     let head = [
         "Phase", "Step", "Type", "Status", "Start", "Duration", "Trace", "Detail",
     ];
-    section("steps", "Steps", &table(&head, &rows))
+    let body = [charts::timeline(journal), table(&head, &rows)].concat();
+    section("steps", "Steps", &body)
 }
 
 /// The row of one step. Its start is given from the start of the run.

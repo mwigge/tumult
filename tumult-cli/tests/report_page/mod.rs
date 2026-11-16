@@ -1,8 +1,11 @@
 //! The HTML report the binary writes, and how the tests read it.
 //!
 //! A report is written by `tumult report` to a file in the lab and read
-//! from there: its sections by their id, its tables by their rows.
+//! from there: its sections by their id, its tables by their rows, its
+//! charts by the options it gives its script.
 #![allow(dead_code)]
+
+pub mod journals;
 
 use std::path::Path;
 use std::process::{Command, Output};
@@ -148,4 +151,42 @@ pub fn card(html: &str, label: &str) -> String {
     let cards = section(html, "summary");
     let start = format!(r#"<div class="label">{label}</div>"#);
     words(between(cards, &start, "</div>"))
+}
+
+/// How the option of the chart `id` begins in a report.
+fn chart_start(id: &str) -> String {
+    format!(r#"<script type="application/json" data-chart="{id}">"#)
+}
+
+pub fn has_chart(html: &str, id: &str) -> bool {
+    html.contains(&chart_start(id))
+}
+
+/// The ids of the charts of `html`, in their order.
+pub fn chart_ids(html: &str) -> Vec<String> {
+    html.split(&chart_start("x").replace(r#"x">"#, ""))
+        .skip(1)
+        .map(|rest| rest.split('"').next().unwrap_or(rest).to_string())
+        .collect()
+}
+
+/// The `ECharts` option of the chart `id`, as the script of the report
+/// reads it: the text of its element, parsed as JSON.
+pub fn chart(html: &str, id: &str) -> serde_json::Value {
+    let written = between(html, &chart_start(id), "</script>");
+    serde_json::from_str(written).unwrap_or_else(|error| panic!("{error} in: {written}"))
+}
+
+/// The attributes of the element the chart `id` is drawn in, after its id.
+pub fn chart_host<'a>(html: &'a str, id: &str) -> &'a str {
+    between(html, &format!(r#"<div class="chart" id="{id}""#), "></div>")
+}
+
+/// The script that draws the charts, as the binary embeds it.
+pub fn chart_script() -> String {
+    let path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/src/commands/report/html/report-charts.js"
+    );
+    std::fs::read_to_string(path).expect("the script of the charts")
 }

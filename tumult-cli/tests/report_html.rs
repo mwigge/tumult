@@ -12,8 +12,8 @@ use std::path::{Path, PathBuf};
 
 use lab::{experiment, heal, inject, leave_marker, step, step_within, with_block, Lab};
 use report_page::{
-    between, card, card_labels, columns, failed_rows, has_section, report, report_command,
-    report_of, row, rows, section, words, written, GENERATED_TEXT,
+    between, card, card_labels, chart_script, columns, failed_rows, has_section, report,
+    report_command, report_of, row, rows, section, words, written, GENERATED_TEXT,
 };
 use tumult_core::types::{ExperimentStatus, HypothesisResult, Journal};
 
@@ -46,7 +46,8 @@ fn the_report_of_a_recorded_run_is_the_one_kept_with_the_tests() {
     let kept_at = workspace().join("tumult-cli/tests/golden/api-saturation.report.html");
     let version = concat!("<strong>Tumult</strong> v", env!("CARGO_PKG_VERSION"));
 
-    let html = report_of(&lab, &recorded);
+    // The script of the charts is kept in a file of its own.
+    let html = report_of(&lab, &recorded).replace(&chart_script(), "{report-charts.js}");
 
     // Read the new report before you keep it: TUMULT_BLESS=1 writes it.
     if std::env::var_os("TUMULT_BLESS").is_some() {
@@ -77,7 +78,9 @@ fn the_text_of_an_experiment_is_no_markup_in_its_report() {
     let journal = lab.journal(&output);
     assert_eq!(journal.experiment_title, "<script>alert(1)</script> & co");
 
-    let html = report(&lab);
+    // The run has steps, so its report has a chart and the script of the
+    // charts, which is not text of the experiment.
+    let html = report(&lab).replace(&chart_script(), "");
 
     assert!(
         html.contains(
@@ -92,7 +95,7 @@ fn the_text_of_an_experiment_is_no_markup_in_its_report() {
     assert!(html.contains("&lt;b&gt;steady&lt;/b&gt;"), "{html}");
     assert!(html.contains("&lt;img src=x&gt;"), "{html}");
     assert!(html.contains("&lt;u&gt;broken&lt;/u&gt;"), "{html}");
-    for markup in ["<script>", "<b>steady", "<img", "<u>"] {
+    for markup in ["<script>alert", "<b>steady", "<img", "<u>"] {
         assert!(!html.contains(markup), "{markup} in: {html}");
     }
 }

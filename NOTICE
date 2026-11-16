@@ -38,6 +38,18 @@ This project uses the following notable open-source components:
 - Agentic QE Framework — https://agentic-qe.dev/
   Quality engineering framework by Dragan Spiridonov.
 
+- Apache ECharts — https://echarts.apache.org/
+  Charting library. Apache License 2.0.
+  Copyright 2017-2026 The Apache Software Foundation.
+  It embeds code of d3.js (BSD 3-Clause License, Copyright 2010-2016
+  Mike Bostock). The web UI in tumultd and every HTML report that
+  `tumult report` writes with a chart hold a copy; the copy in a report
+  carries the full notices.
+
+- ZRender — https://github.com/ecomfe/zrender
+  Rendering engine of Apache ECharts. BSD 3-Clause License.
+  Copyright (c) 2017, Baidu Inc.
+
 ================================================================================
 
 PROVENANCE
