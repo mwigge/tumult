@@ -8,7 +8,7 @@
 use std::path::{Path, PathBuf};
 
 use tumult_core::engine::{parse_experiment, validate_experiment};
-use tumult_core::types::{Experiment, GameDay, GameDayJournal, LoadConfig, LoadTool};
+use tumult_core::types::{Experiment, GameDay, GameDayJournal, LoadConfig, LoadTool, Provider};
 
 /// Directories that hold experiment files, relative to the workspace root.
 const EXPERIMENT_DIRS: &[&str] = &[
@@ -445,4 +445,118 @@ fn every_shipped_experiment_is_read_back_from_the_encoder() {
         })
         .collect();
     assert!(broken.is_empty(), "not read back:\n{}", broken.join("\n"));
+}
+
+// ── Examples that change the host ──────────────────────────────
+
+/// Examples that change the machine that runs them: they need root, edit a
+/// system file, kill processes by pattern or load every core.
+const HOST_CHANGING: &[&str] = &[
+    "examples/cpu-stress.toon",
+    "examples/dns-redirect-chaos.toon",
+    "examples/network-latency.toon",
+    "examples/process-kill.toon",
+];
+
+const HOST_CHANGING_TAG: &str = "host-changing";
+
+/// How the description of such an example starts.
+const HOST_CHANGING_NOTE: &str = "Changes this host: ";
+
+/// Words in a file that give a host change away.
+const HOST_CHANGE_MARKS: &[&str] = &["sudo ", "/etc/hosts", "pkill ", "tc qdisc", "redirect-dns"];
+
+fn is_host_changing(path: &Path) -> bool {
+    HOST_CHANGING.contains(&shown(path).as_str())
+}
+
+/// What a host-changing example fails to say.
+fn host_note_gaps(experiment: &Experiment) -> Vec<&str> {
+    let tagged = experiment.tags.iter().any(|tag| tag == HOST_CHANGING_TAG);
+    let noted = experiment
+        .description
+        .as_deref()
+        .is_some_and(|text| text.starts_with(HOST_CHANGING_NOTE));
+    let mut gaps = Vec::new();
+    if !tagged {
+        gaps.push("no host-changing tag");
+    }
+    if !noted {
+        gaps.push("the description does not start with the host note");
+    }
+    gaps
+}
+
+#[test]
+fn every_host_changing_example_says_so_at_the_top() {
+    let root = workspace_root();
+    let silent: Vec<String> = HOST_CHANGING
+        .iter()
+        .filter_map(|file| {
+            let experiment = load(&root.join(file)).expect("a listed example loads");
+            let gaps = host_note_gaps(&experiment);
+            (!gaps.is_empty()).then(|| format!("{file}: {}", gaps.join(", ")))
+        })
+        .collect();
+    assert!(silent.is_empty(), "{}", silent.join("\n"));
+}
+
+#[test]
+fn no_other_shipped_experiment_changes_the_host() {
+    let unlisted: Vec<String> = experiment_files()
+        .iter()
+        .filter(|p| !is_host_changing(p))
+        .filter_map(|p| {
+            let text = read(p);
+            let mark = HOST_CHANGE_MARKS
+                .iter()
+                .chain(&[HOST_CHANGING_TAG])
+                .find(|mark| text.contains(**mark))?;
+            Some(format!("{}: holds {mark:?}", shown(p)))
+        })
+        .collect();
+    assert!(
+        unlisted.is_empty(),
+        "not in HOST_CHANGING:\n{}",
+        unlisted.join("\n")
+    );
+}
+
+/// The plugin that makes the change also knows how to undo it, and its
+/// rollback can run twice.
+#[test]
+fn the_dns_example_undoes_its_change_with_the_plugin() {
+    let experiment = load(&workspace_root().join("examples/dns-redirect-chaos.toon")).unwrap();
+
+    let undo: Vec<(&str, &str)> = experiment
+        .rollbacks
+        .iter()
+        .filter_map(|step| match &step.provider {
+            Provider::Script {
+                plugin, function, ..
+            } => Some((plugin.as_str(), function.as_str())),
+            _ => None,
+        })
+        .collect();
+
+    assert_eq!(undo, [("tumult-network", "redirect-dns-rollback")]);
+}
+
+/// The redirect must be seen by a probe, or the run shows nothing.
+#[test]
+fn the_dns_example_looks_at_the_name_it_redirected() {
+    let experiment = load(&workspace_root().join("examples/dns-redirect-chaos.toon")).unwrap();
+    let redirect = experiment
+        .method
+        .iter()
+        .position(|step| step.name == "redirect-dns")
+        .expect("the redirect step");
+
+    let seen_after = experiment.method[redirect + 1..].iter().any(|step| {
+        step.tolerance.is_some()
+            && matches!(&step.provider, Provider::Process { arguments, .. }
+                if arguments.iter().any(|a| a.contains("test-redirect.tumult.local")))
+    });
+
+    assert!(seen_after, "no probe resolves the redirected name");
 }

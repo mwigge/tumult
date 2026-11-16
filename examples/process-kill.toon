@@ -1,7 +1,7 @@
 title: Process kill — verify a disrupted process can be detected and removed
-description: Start a target process, confirm it exists, kill it, confirm it is gone
+description: Changes this host: pkill ends every process of this user whose command line holds sleep 300. Start a target process, confirm it exists, kill it, confirm it is gone
 
-tags[2]: process, resilience
+tags[3]: process, resilience, host-changing
 kind: chaos
 target:
   system: localhost

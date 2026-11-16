@@ -1,7 +1,7 @@
 title: CPU stress — a new process still starts fast when every core is busy
-description: Measure how long the host takes to start a process, load every core with stress-ng for ten seconds, and measure again while the stress runs. The time must stay under half a second.
+description: Changes this host: every core is loaded with stress-ng for ten seconds. Measure how long the host takes to start a process, load every core with stress-ng for ten seconds, and measure again while the stress runs. The time must stay under half a second.
 
-tags[2]: stress, resilience
+tags[3]: stress, resilience, host-changing
 kind: robustness
 target:
   system: localhost

@@ -295,6 +295,9 @@ the provider for it:
 | A container | `process` with `docker exec`, or the `tumult-containers` plugin |
 | A Kubernetes pod | `native` plugin `tumult-kubernetes` ([tumult-kubernetes](../plugins/tumult-kubernetes.md)) |
 
+An example that changes the machine it runs on has the tag `host-changing`, and
+its description starts with what it changes.
+
 A step has no `execution_target:` key. A key that Tumult does not know,
 on a step, a provider or a tolerance, is an error when the file is
 loaded. `tumult validate` shows it.
