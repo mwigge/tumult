@@ -82,13 +82,18 @@ jobs:
     runs-on: ubuntu-latest
     # The 2.22 cold-cache run needed 65 min before cache saving. Bundled
     # JSON/Parquet add native compilation; allow that work and cache upload
-    # to finish so the next run does not repeat another cold build.
-    timeout-minutes: 105
+    # to finish so the next run does not repeat another cold build. The
+    # 3.0 workspace (35 crates, DuckDB 2.0) was still linking after 66 min.
+    timeout-minutes: 150
     env:
       # Linking the big test binaries (duckdb/parquet static libs) with full
       # debuginfo nearly fills the runner disk and ld dies with SIGBUS —
       # same fix as the Coverage job: line tables suffice.
       CARGO_PROFILE_TEST_DEBUG: line-tables-only
+      # About a hundred test executables each link the bundled DuckDB. Its
+      # C++ debug data in every one of them filled the disk again in 3.0;
+      # the tests need Rust line tables only.
+      CXXFLAGS: -g0
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
       - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9  # master
@@ -103,11 +108,13 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: web/package-lock.json
-      # Reclaim ~15 GB so linking the duckdb/parquet test binaries cannot
-      # die with SIGBUS from disk pressure.
+      # Reclaim ~25 GB so linking the duckdb/parquet test binaries cannot
+      # die with SIGBUS from disk pressure (same list as the Coverage job).
       - name: Free runner disk space
         run: |
-          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android \
+            /usr/share/swift /usr/share/miniconda /opt/az /usr/lib/jvm
+          sudo docker system prune -af || true
           df -h /
       # tumultd rust-embeds web/build/ at compile time; without this the
       # workspace cargo steps below fail on the tumultd crate.
@@ -128,6 +135,9 @@ jobs:
       # [package.metadata.cargo-machete] ignore lists).
       - run: cargo machete --with-metadata
       - run: cargo nextest run --all-features
+      - name: Show disk use after the test build
+        if: always()
+        run: df -h /
       # The checked-in OTel-Arrow gRPC code must be what arrow_service.proto
       # generates (the only step that needs protoc). protoc is the pinned
       # upstream release, checked against its SHA-256, not the runner's.

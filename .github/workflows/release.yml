@@ -16,7 +16,8 @@ jobs:
   build:
     name: Build ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 120
+    # The full test gate of a major release starts from a cold cache.
+    timeout-minutes: 180
     strategy:
       fail-fast: false
       matrix:
@@ -95,6 +96,11 @@ jobs:
 
       - name: Full test gate (minor/major/prerelease)
         if: ${{ !matrix.cross && steps.gate.outputs.full == 'true' }}
+        env:
+          # Same as the CI Test job: with full debug data in about a hundred
+          # test executables the runner disk fills and the linker dies.
+          CARGO_PROFILE_TEST_DEBUG: line-tables-only
+          CXXFLAGS: -g0
         run: cargo test --workspace --all-features
 
       - name: Smoke tests only (patch release)
