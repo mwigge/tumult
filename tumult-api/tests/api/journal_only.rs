@@ -39,6 +39,36 @@ fn definition(environment: Option<&str>) -> Experiment {
 
 type StoredRun = (Journal, Option<Experiment>);
 
+/// A run that completed ten minutes ago, with a definition that names
+/// `environment`.
+fn completed_run(id: &str, environment: Option<&str>) -> StoredRun {
+    let stored = journal(id, ExperimentStatus::Completed, 600);
+    (stored, Some(definition(environment)))
+}
+
+/// The value of the experiments card of an overview, and the runs its
+/// sparkline and its chart of runs per day add up to.
+fn overview_counts(body: &Value) -> (f64, f64, f64) {
+    let card = body["kpis"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|kpi| kpi["name"] == "experiments")
+        .unwrap_or_else(|| panic!("no experiments card: {body}"));
+    let total = |points: &Value| -> f64 {
+        let points = points.as_array().unwrap();
+        points
+            .iter()
+            .map(|point| point["v"].as_f64().unwrap())
+            .sum()
+    };
+    (
+        card["value"].as_f64().unwrap(),
+        total(&card["spark"]),
+        total(&body["experiments_per_day"]),
+    )
+}
+
 async fn store(srv: &TestServer, runs: Vec<StoredRun>) {
     exec_write(srv, move |w| {
         for (journal, experiment) in &runs {
@@ -246,15 +276,11 @@ async fn a_run_that_also_sent_its_trace_is_listed_once_and_not_journal_only() {
 
 #[tokio::test]
 async fn a_scoped_reader_sees_only_the_journals_of_its_environments() {
-    let run = |id: &str, environment: Option<&str>| {
-        let stored = journal(id, ExperimentStatus::Completed, 600);
-        (stored, Some(definition(environment)))
-    };
     let nowhere = (journal("bare", ExperimentStatus::Completed, 600), None);
     let runs = vec![
-        run("in-staging", Some("staging")),
-        run("in-prod", Some("prod")),
-        run("no-environment", None),
+        completed_run("in-staging", Some("staging")),
+        completed_run("in-prod", Some("prod")),
+        completed_run("no-environment", None),
         nowhere,
     ];
     let srv = server_with_only_journals(runs).await;
@@ -276,4 +302,23 @@ async fn a_scoped_reader_sees_only_the_journals_of_its_environments() {
     assert_eq!(status, 200, "{body}");
     assert_eq!(body["experiments"], json!([TITLE]));
     assert_eq!(body["targets"], json!(["payments-api"]));
+}
+
+#[tokio::test]
+async fn the_overview_of_a_scoped_reader_counts_only_its_environments() {
+    let runs = vec![
+        completed_run("in-staging", Some("staging")),
+        completed_run("in-prod", Some("prod")),
+        completed_run("no-environment", None),
+    ];
+    let srv = server_with_only_journals(runs).await;
+
+    let (status, all) = get(&srv.base, "/api/overview?range=24h").await;
+    assert_eq!(status, 200, "{all}");
+    let token = add_scoped_token(&srv, "staging-viewer", "viewer", &["staging"]).await;
+    let (status, scoped) = get_auth(&srv.base, "/api/overview?range=24h", &token).await;
+    assert_eq!(status, 200, "{scoped}");
+
+    assert_eq!(overview_counts(&all), (3.0, 3.0, 3.0), "{all}");
+    assert_eq!(overview_counts(&scoped), (1.0, 1.0, 1.0), "{scoped}");
 }

@@ -1,11 +1,13 @@
 //! The game-day report (R3) of a run the runner made.
 //!
-//! The spans come from a real run: the runner writes them, the OTLP
-//! conversion turns them into store rows, and the report is built from the
-//! store. Nothing here writes a span or a log by hand, so the report shows
-//! what a user of `tumult run` gets.
+//! The spans come from a real run: the runner drives the executor of
+//! `tumult run`, every step is an `sh` command on a state file, the OTLP
+//! conversion turns the spans into store rows, and the report is built from
+//! the store. Nothing here writes a span or a log by hand, so the report
+//! shows what a user of `tumult run` gets.
+#![cfg(unix)]
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -18,67 +20,62 @@ use tumult_compliance::builders::build_game_day;
 use tumult_compliance::{Block, Cell, ReportDoc};
 use tumult_core::controls::ControlRegistry;
 use tumult_core::runner::{
-    run_experiment_with_sampling, ActivityExecutor, ActivityOutcome, RunConfig, SamplingConfig,
+    run_experiment_with_sampling, ActivityExecutor, RunConfig, SamplingConfig,
 };
 use tumult_core::types::*;
+use tumult_exec::ProviderExecutor;
 use tumult_test_utils::capture_spans;
 
-/// A target whose probes print `ok` until an action runs, and `after` from
-/// then on.
-struct Target {
-    after: &'static str,
-    acted: AtomicBool,
-}
+/// A target that is one file. It holds `ok` until the fault writes to it.
+struct Lab(tempfile::TempDir);
 
-impl ActivityExecutor for Target {
-    fn execute(&self, activity: &Activity) -> ActivityOutcome {
-        let output = match activity.activity_type {
-            ActivityType::Probe if self.acted.load(Ordering::SeqCst) => self.after,
-            ActivityType::Probe => "ok",
-            ActivityType::Action => {
-                self.acted.store(true, Ordering::SeqCst);
-                "done"
-            }
-        };
-        ActivityOutcome {
-            success: true,
-            output: Some(output.into()),
-            error: None,
-            duration_ms: 1,
+impl Lab {
+    fn new() -> Self {
+        let lab = Self(tempfile::TempDir::new().expect("lab directory"));
+        std::fs::write(lab.0.path().join("state"), "ok\n").expect("state file");
+        lab
+    }
+
+    fn has(&self, name: &str) -> bool {
+        self.0.path().join(name).exists()
+    }
+
+    /// A step that runs `command` in `sh`, in the directory of the lab.
+    fn step(&self, name: &str, activity_type: ActivityType, command: &str) -> Activity {
+        let lab = self.0.path().display();
+        Activity {
+            name: name.into(),
+            activity_type,
+            provider: Provider::Process {
+                path: "sh".into(),
+                arguments: vec!["-c".into(), format!("cd {lab} || exit 1; {command}")],
+                env: HashMap::new(),
+                timeout_s: Some(10.0),
+            },
+            ..Default::default()
         }
     }
-}
 
-fn activity(name: &str, activity_type: ActivityType) -> Activity {
-    Activity {
-        name: name.into(),
-        activity_type,
-        provider: Provider::Native {
-            plugin: "test".into(),
-            function: "noop".into(),
-            arguments: std::collections::HashMap::new(),
-        },
-        ..Default::default()
-    }
-}
-
-/// One fault, a steady state that holds while the target prints `ok`, one
-/// rollback and a declared blast radius.
-fn experiment(title: &str) -> Experiment {
-    let mut probe = activity("steady", ActivityType::Probe);
-    probe.tolerance = Some(Tolerance::Regex {
-        pattern: "ok".into(),
-    });
-    Experiment {
-        title: title.into(),
-        steady_state_hypothesis: Some(Hypothesis {
-            title: "the target answers ok".into(),
-            probes: vec![probe],
-        }),
-        blast_radius: Some("one replica".into()),
-        method: vec![activity("kill-replica", ActivityType::Action)],
-        rollbacks: vec![activity("restart-replica", ActivityType::Action)],
-        ..Experiment::default()
+    /// One fault that writes `after` to the state file, a steady state that
+    /// holds while the file says `ok`, one rollback and a declared blast
+    /// radius.
+    fn experiment(&self, title: &str, after: &str) -> Experiment {
+        let mut probe = self.step("steady", ActivityType::Probe, "cat state");
+        probe.tolerance = Some(Tolerance::Regex {
+            pattern: "^ok$".into(),
+        });
+        let fault = format!("echo {after} > state");
+        Experiment {
+            title: title.into(),
+            steady_state_hypothesis: Some(Hypothesis {
+                title: "the target answers ok".into(),
+                probes: vec![probe],
+            }),
+            blast_radius: Some("one replica".into()),
+            method: vec![self.step("kill-replica", ActivityType::Action, &fault)],
+            rollbacks: vec![self.step("restart-replica", ActivityType::Action, "touch restarted")],
+            ..Experiment::default()
+        }
     }
 }
 
@@ -93,21 +90,19 @@ fn rows(spans: Vec<SpanData>) -> Vec<tumult_lake::SpanRow> {
     tumult_otlp::trace_request_to_spans(&request)
 }
 
-/// Run an experiment whose probes print `after` once the fault is in, and
+/// Run an experiment whose target says `after` once the fault is in, and
 /// build the report of that run from a store that holds only its spans.
-fn report_of_a_run(title: &str, after: &'static str) -> (Journal, ReportDoc) {
-    let executor: Arc<dyn ActivityExecutor> = Arc::new(Target {
-        after,
-        acted: AtomicBool::new(false),
-    });
+fn report_of_a_run(title: &str, after: &str) -> (Journal, ReportDoc) {
+    let lab = Lab::new();
+    let executor: Arc<dyn ActivityExecutor> = Arc::new(ProviderExecutor::new());
     let sampling = SamplingConfig {
         interval: Duration::from_millis(10),
         max_during_samples: 50,
-        recovery_timeout: Duration::from_millis(80),
+        recovery_timeout: Duration::from_millis(500),
     };
     let (journal, spans) = capture_spans(|| {
         run_experiment_with_sampling(
-            &experiment(title),
+            &lab.experiment(title, after),
             &executor,
             &Arc::new(ControlRegistry::new()),
             &RunConfig::default(),
@@ -115,6 +110,12 @@ fn report_of_a_run(title: &str, after: &'static str) -> (Journal, ReportDoc) {
         )
         .expect("run")
     });
+
+    assert_eq!(
+        lab.has("restarted"),
+        !journal.rollback_results.is_empty(),
+        "the journal and the target disagree on the rollback"
+    );
 
     let dir = tempfile::TempDir::new().expect("temp dir");
     let store = tumult_lake::Store::open(&dir.path().join("lake.duckdb")).expect("store");
@@ -201,6 +202,7 @@ fn the_report_of_a_deviated_run_says_deviated_and_shows_the_rollback() {
     assert_eq!(value(&doc, "Outcome"), "deviated");
     assert_eq!(value(&doc, "Hypothesis"), "Not met");
     assert_eq!(value(&doc, "Recovery time"), "not recorded");
+    assert_eq!(journal.rollback_results.len(), 1);
     assert_eq!(value(&doc, "Rollback exercised"), "yes");
     assert_eq!(timeline_status(&doc, "resilience.experiment"), "error");
     assert!(

@@ -8179,6 +8179,7 @@ dependencies = [
  "thiserror 2.0.19",
  "tracing",
  "tumult-core",
+ "tumult-exec",
  "tumult-lake",
  "tumult-otlp",
  "tumult-test-utils",
