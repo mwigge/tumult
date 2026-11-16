@@ -299,6 +299,9 @@ A step has no `execution_target:` key. A key that Tumult does not know,
 on a step, a provider or a tolerance, is an error when the file is
 loaded. `tumult validate` shows it.
 
+A key written twice in one object is an error too. Only the last one
+would be used, so a block left behind by an edit would win.
+
 ## Example
 
 Run `tumult init` to generate a sample experiment, or build one programmatically using the `tumult-core` types and encode with `toon_format::encode_default()`.
