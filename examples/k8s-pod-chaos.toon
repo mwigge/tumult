@@ -2,6 +2,11 @@ title: Kubernetes chaos via native kube-rs plugin
 description: Scale deployment and verify recovery using native tumult-kubernetes
 
 tags[2]: kubernetes, resilience
+kind: chaos
+target:
+  system: nginx-test
+  technology: kubernetes
+  environment: staging
 
 steady_state_hypothesis:
   title: System check

@@ -2,6 +2,11 @@ title: Process kill — verify a disrupted process can be detected and removed
 description: Start a target process, confirm it exists, kill it, confirm it is gone
 
 tags[2]: process, resilience
+kind: chaos
+target:
+  system: localhost
+  technology: linux
+  environment: local
 
 steady_state_hypothesis:
   title: A target process can be started and is running

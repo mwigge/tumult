@@ -2,6 +2,11 @@ title: Container pause — verify a paused service recovers when unpaused
 description: Confirm Redis is alive, pause its container, unpause it, confirm it responds again
 
 tags[2]: containers, resilience
+kind: chaos
+target:
+  system: redis
+  technology: redis
+  environment: lab
 
 steady_state_hypothesis:
   title: Redis container responds to ping

@@ -2,6 +2,11 @@ title: PostgreSQL connection kill under load
 description: Terminate active database connections while queries are running, verify recovery
 
 tags[2]: postgres, resilience
+kind: chaos
+target:
+  system: postgres
+  technology: postgresql
+  environment: lab
 
 steady_state_hypothesis:
   title: PostgreSQL accepts queries and has active connections

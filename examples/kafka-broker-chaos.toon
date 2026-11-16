@@ -2,6 +2,11 @@ title: Kafka broker chaos — verify the broker recovers after a pause
 description: Confirm the broker answers API requests, pause it briefly, confirm it recovers
 
 tags[2]: kafka, resilience
+kind: chaos
+target:
+  system: kafka
+  technology: kafka
+  environment: lab
 
 steady_state_hypothesis:
   title: Kafka broker answers API version requests

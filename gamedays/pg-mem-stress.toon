@@ -2,6 +2,11 @@ title: PostgreSQL memory stress — resource pressure
 description: Inject memory stress on PG container via Pumba, verify queries still complete
 
 tags[2]: postgres, stress
+kind: robustness
+target:
+  system: postgres
+  technology: postgresql
+  environment: lab
 
 steady_state_hypothesis:
   title: PostgreSQL accepts queries

@@ -2,6 +2,11 @@ title: Drive an Azure Chaos Studio experiment via the native tumult-cloud connec
 description: Start an Azure Chaos Studio experiment, poll its provisioning state, then cancel it — Tumult drives Chaos Studio over the ARM API, it does not reimplement the fault
 
 tags[3]: azure, cloud, resilience
+kind: chaos
+target:
+  system: checkout
+  technology: azure-chaos-studio
+  environment: staging
 
 steady_state_hypothesis:
   title: Toolchain is reachable before we touch the cloud

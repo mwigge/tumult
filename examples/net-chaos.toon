@@ -2,6 +2,11 @@ title: TCP latency chaos via native tokio-netem proxy
 description: Inject one-way latency through a tumult-net chaos proxy and roll it back
 
 tags[2]: network, resilience
+kind: chaos
+target:
+  system: checkout
+  technology: http
+  environment: staging
 
 steady_state_hypothesis:
   title: System check

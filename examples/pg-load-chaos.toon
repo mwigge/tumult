@@ -2,6 +2,11 @@ title: PostgreSQL under k6 load — container pause disruption
 description: k6 queries PG with real inserts/selects for 15 s while Pumba pauses the container; the method (3 s settle, 5 s pause, 8 s recovery) outlasts the load, so every second of it is measured
 
 tags[4]: postgres, load, pumba, resilience
+kind: chaos
+target:
+  system: postgres
+  technology: postgresql
+  environment: lab
 
 load:
   tool: k6

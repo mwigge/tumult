@@ -2,6 +2,11 @@ title: Demo — agentic fault-injection smoke
 description: Run the bundled malformed-output agentic scenario (fake HTTP adapter, no external API) and confirm the contract-feedback loop fires
 
 tags[3]: demo, agentic, resilience
+kind: chaos
+target:
+  system: demo-agent
+  technology: agent
+  environment: demo
 
 steady_state_hypothesis:
   title: demo-app is healthy before the agentic scenario

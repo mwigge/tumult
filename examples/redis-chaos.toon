@@ -2,6 +2,11 @@ title: Redis freeze — a paused store gives no answer, then comes back with its
 description: Write a key, pause the Redis container, show that a client on the published port gets no answer while it is paused, unpause it and read the key back
 
 tags[2]: redis, resilience
+kind: chaos
+target:
+  system: redis
+  technology: redis
+  environment: lab
 
 steady_state_hypothesis:
   title: Redis responds to ping

@@ -2,6 +2,11 @@ title: Demo — recovery validation on demo-postgres (recommended by sluss-style
 description: The topology/compliance recommender flags NIS2 BC/DR as unevidenced on the data tier; this run validates demo-postgres connection recovery to close that gap.
 
 tags[4]: demo, postgres, recovery, compliance
+kind: chaos
+target:
+  system: demo-postgres
+  technology: postgresql
+  environment: demo
 
 regulatory:
   frameworks[1]: NIS2

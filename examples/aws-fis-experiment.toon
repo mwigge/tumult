@@ -2,6 +2,11 @@ title: Drive an AWS FIS experiment via the native tumult-cloud connector
 description: Start a preconfigured AWS Fault Injection Service experiment template, poll its status, then stop it — Tumult drives FIS, it does not reimplement the fault. The status and stop steps name no experiment id, so they mean the experiment this run started.
 
 tags[3]: aws, cloud, resilience
+kind: chaos
+target:
+  system: checkout
+  technology: aws-fis
+  environment: staging
 
 steady_state_hypothesis:
   title: Toolchain is reachable before we touch the cloud

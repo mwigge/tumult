@@ -2,6 +2,11 @@ title: Demo — CPU stress on demo-app
 description: Drive stress-ng inside demo-app's namespaces via Pumba and confirm the service stays healthy under CPU pressure
 
 tags[3]: demo, stress, resilience
+kind: robustness
+target:
+  system: demo-app
+  technology: http
+  environment: demo
 
 steady_state_hypothesis:
   title: demo-app is healthy

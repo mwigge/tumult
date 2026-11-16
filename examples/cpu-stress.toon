@@ -2,6 +2,11 @@ title: CPU stress — a new process still starts fast when every core is busy
 description: Measure how long the host takes to start a process, load every core with stress-ng for ten seconds, and measure again while the stress runs. The time must stay under half a second.
 
 tags[2]: stress, resilience
+kind: robustness
+target:
+  system: localhost
+  technology: linux
+  environment: local
 
 steady_state_hypothesis:
   title: A new process starts within 500 ms

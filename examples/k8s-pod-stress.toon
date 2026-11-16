@@ -2,6 +2,11 @@ title: In-pod CPU stress via ephemeral debug container
 description: Run stress-ng inside a target pod's process namespace, then verify it stays ready
 
 tags[3]: kubernetes, stress, resilience
+kind: robustness
+target:
+  system: nginx-test
+  technology: kubernetes
+  environment: staging
 
 steady_state_hypothesis:
   title: Target pod is ready before injection

@@ -2,6 +2,11 @@ title: Demo — recovery validation with a BLIND guard (pre-flight must catch th
 description: The topology/compliance recommender flags NIS2 BC/DR as unevidenced on the data tier; this run validates demo-postgres connection recovery to close that gap.
 
 tags[4]: demo, postgres, recovery, compliance
+kind: chaos
+target:
+  system: demo-postgres
+  technology: postgresql
+  environment: demo
 
 regulatory:
   frameworks[1]: NIS2

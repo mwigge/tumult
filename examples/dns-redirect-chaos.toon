@@ -2,6 +2,11 @@ title: DNS redirect chaos — verify application handles wrong DNS responses
 description: Redirect a domain to 127.0.0.1 via /etc/hosts and verify the probe detects it
 
 tags[2]: dns, network
+kind: chaos
+target:
+  system: localhost
+  technology: linux
+  environment: local
 
 steady_state_hypothesis:
   title: DNS resolves correctly

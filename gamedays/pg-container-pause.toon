@@ -2,6 +2,11 @@ title: PostgreSQL container pause — total unavailability
 description: Freeze PG container for 5 seconds via Pumba, verify full recovery
 
 tags[2]: postgres, pumba
+kind: chaos
+target:
+  system: postgres
+  technology: postgresql
+  environment: lab
 
 steady_state_hypothesis:
   title: PostgreSQL accepts queries

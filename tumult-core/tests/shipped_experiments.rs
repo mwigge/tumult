@@ -162,6 +162,58 @@ fn the_recorded_gameday_journal_parses() {
     assert_eq!(journal.experiment_journals.len(), 4);
 }
 
+// ── Kind and target ────────────────────────────────────────────
+
+/// Whether a file sets `kind` itself. The parsed value cannot tell: a
+/// file without the key reads as chaos.
+fn names_its_kind(text: &str) -> bool {
+    text.lines().any(|line| line.starts_with("kind:"))
+}
+
+/// What a file leaves out of the things the scorecard groups runs by.
+fn naming_gaps(path: &Path) -> Vec<&'static str> {
+    let Ok(experiment) = load(path) else {
+        return Vec::new();
+    };
+    let target = experiment.target.as_ref();
+    let mut gaps = Vec::new();
+    if !names_its_kind(&read(path)) {
+        gaps.push("kind");
+    }
+    if target.is_none() {
+        gaps.push("target");
+    }
+    if target.is_some_and(|t| t.environment.is_none()) {
+        gaps.push("target.environment");
+    }
+    gaps
+}
+
+#[test]
+fn a_kind_is_found_only_at_the_top_level() {
+    assert!(names_its_kind("title: t\nkind: dr\n"));
+    assert!(!names_its_kind(
+        "title: t\nnfr[1]:\n  - id: a\n    kind: latency\n"
+    ));
+}
+
+#[test]
+fn every_shipped_experiment_names_its_kind_and_target() {
+    let unnamed: Vec<String> = experiment_files()
+        .iter()
+        .filter_map(|p| {
+            let gaps = naming_gaps(p);
+            (!gaps.is_empty()).then(|| format!("{}: no {}", shown(p), gaps.join(", no ")))
+        })
+        .collect();
+    assert!(
+        unnamed.is_empty(),
+        "{} files without a kind or a target:\n{}",
+        unnamed.len(),
+        unnamed.join("\n")
+    );
+}
+
 // ── The load and the target of the examples ────────────────────
 
 /// What is wrong with a load block, if anything. A k6 script must be in
