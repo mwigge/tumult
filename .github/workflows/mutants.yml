@@ -1,0 +1,93 @@
+name: Mutation tests
+
+# cargo-mutants changes each Rust line a pull request touches, one small step
+# at a time, and runs the tests of the crate after each step. A change that
+# no test notices fails the job: the tests did not prove that line.
+# The policy is in docs/guides/testing.md. Locally: `make mutants`.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "**.rs"
+      - ".cargo/mutants.toml"
+      - "scripts/mutants.sh"
+      - ".github/workflows/mutants.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mutants-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_MUTANTS_VERSION: 27.1.0
+  # Same reasons as the Test job of ci.yml: line tables are enough, and the
+  # C++ debug data of the bundled DuckDB fills the runner disk.
+  CARGO_PROFILE_TEST_DEBUG: line-tables-only
+  CARGO_PROFILE_DEV_DEBUG: line-tables-only
+  CXXFLAGS: -g0
+
+jobs:
+  mutants:
+    name: Mutants (part ${{ matrix.shard }} of 8)
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7]
+    env:
+      BASE_REF: ${{ github.base_ref }}
+    steps:
+      # The whole history: the script compares with the point where the
+      # branch left the base.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # stable
+        with:
+          toolchain: 1.92.0
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          shared-key: mutants
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Free runner disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android \
+            /usr/share/swift /usr/share/miniconda /opt/az /usr/lib/jvm
+          sudo docker system prune -af || true
+          df -h /
+
+      # tumultd embeds web/build at compile time.
+      - name: Build the web UI
+        run: npm --prefix web ci && npm --prefix web run build
+
+      - name: Install cargo-mutants
+        run: cargo install cargo-mutants --version "$CARGO_MUTANTS_VERSION" --locked
+
+      # In place: the checkout is thrown away after the job, and the build
+      # cache is used. One job at a time is all an in-place run allows.
+      - name: Mutate the changed lines
+        run: |
+          bash scripts/mutants.sh "origin/${BASE_REF:-main}" \
+            --in-place --shard "${{ matrix.shard }}/8" --no-shuffle
+
+      - name: Upload the result
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: mutants-${{ matrix.shard }}
+          path: mutants.out
+          if-no-files-found: ignore

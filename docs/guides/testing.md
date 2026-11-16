@@ -47,6 +47,53 @@ is not a test.
 Shared test helpers live in `tumult-test-utils`, one definition each. A helper
 is tested only when it contains logic of its own.
 
+## Real paths
+
+A behaviour a user can see has at least one test that goes the whole way: the
+real thing runs, and the test reads what a user would read.
+
+| Behaviour of | The test goes through |
+|---|---|
+| A run (status, steps, rollbacks, recovery) | The `tumult` binary, or the runner with `tumult_exec::ProviderExecutor`, with steps that are real `sh` commands |
+| A command | The `tumult` binary: its exit code, its output, the files it writes |
+| The lake | A store in a temporary directory, written by the code that writes it in production |
+| The API | The real router over a real store |
+
+A scripted executor (a type that implements `ActivityExecutor` and returns
+what the test tells it to) is a double at an I/O boundary. It is allowed for
+cases a real process cannot give on demand, such as a cancel at an exact
+step. It is never the only proof of a behaviour: the same behaviour has a
+test from the table above.
+
+Rows written by hand into a store prove the reader, not the writer. Use them
+for data the current code no longer writes, such as old spellings. For
+everything else the rows come from a real run.
+
+## Mutation tests
+
+`cargo-mutants` changes the code one small step at a time: a `==` becomes
+`!=`, a function returns a fixed value, a `!` is removed. After each step it
+runs the tests of the crate. A change that no test notices is a line the
+tests do not prove.
+
+```sh
+cargo install cargo-mutants --locked
+make mutants                          # the lines changed since origin/main
+make mutants ARGS="-p tumult-core"    # one crate
+```
+
+- Every changed line is mutated before the commit. The `Mutation tests`
+  workflow does the same on each pull request, in eight parts.
+- `MISSED` means no test failed. Add a test that fails for that change, or
+  remove the code if nothing needs it.
+- `TIMEOUT` means the change made a test hang. It counts as caught only when
+  a test would also fail without the timeout; otherwise bound the loop.
+- A change that cannot be told apart from the original (an equivalent
+  mutant) is listed under `exclude_re` in `.cargo/mutants.toml` with a
+  comment that says why. This is rare. Do not use it to silence a missed
+  mutant.
+- Test code and `tumult-test-utils` are not mutated (`.cargo/mutants.toml`).
+
 ## Names
 
 `<subject>_<condition>_<outcome>` or a plain sentence. The name states the

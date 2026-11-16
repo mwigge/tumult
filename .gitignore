@@ -1,6 +1,9 @@
 # Build
 target/
 
+# Mutation test results (cargo-mutants)
+mutants.out*/
+
 # Runtime logs
 serve.out
 

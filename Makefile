@@ -20,7 +20,7 @@ COMPOSE_CLASSIC = $(COMPOSE_FULL) --profile classic
 COMPOSE_DEMO    = docker compose -f docker/docker-compose.demo.yml
 
 .PHONY: up up-targets up-observe up-classic down status reset logs \
-        ssh-key test e2e lint precommit build clean \
+        ssh-key test e2e mutants lint precommit build clean \
         demo demo-down demo-check demo-base ui-check
 
 # ── Docker Infrastructure ──────────────────────────────────────
@@ -156,6 +156,12 @@ e2e: build up
 	OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:14317 \
 	cargo test --workspace -- --ignored e2e 2>&1
 	@echo "E2E tests complete. Check SigNoz at http://localhost:13301"
+
+# Mutation tests of the Rust lines changed since origin/main. Needs
+# cargo-mutants (cargo install cargo-mutants --locked). One crate:
+#   make mutants ARGS="-p tumult-core"
+mutants:
+	bash scripts/mutants.sh origin/main $(ARGS)
 
 # ── Quality ────────────────────────────────────────────────────
 
