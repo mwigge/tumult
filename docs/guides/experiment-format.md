@@ -281,16 +281,21 @@ The degradation fields on during/post results (`degradation_onset_s`, `degradati
 
 `tumult export <journal> --format <fmt>` writes the journal's experiment record in four formats: `parquet` (Apache Parquet), `csv`, `json` (pretty-printed journal), and `arrow` (Apache Arrow IPC file format, suitable for zero-copy analytics interchange).
 
-## Execution Target
+## Where a step runs
 
-Activities can specify WHERE they run:
+A step runs on the machine that runs Tumult. To reach another place, pick
+the provider for it:
 
-| Target | Description |
-|--------|-------------|
-| `local` | Run on the machine running tumult (default) |
-| `ssh` | Run via SSH on a remote host |
-| `container` | Run inside a Docker/Podman container |
-| `kube_exec` | Run via kubectl exec in a Kubernetes pod |
+| Place | How |
+|-------|-----|
+| This machine | `process`, or a `script` plugin |
+| A remote host | `native` plugin `tumult-ssh`, function `execute` ([tumult-ssh](../plugins/tumult-ssh.md)) |
+| A container | `process` with `docker exec`, or the `tumult-containers` plugin |
+| A Kubernetes pod | `native` plugin `tumult-kubernetes` ([tumult-kubernetes](../plugins/tumult-kubernetes.md)) |
+
+A step has no `execution_target:` key. A key that Tumult does not know,
+on a step, a provider or a tolerance, is an error when the file is
+loaded. `tumult validate` shows it.
 
 ## Example
 

@@ -83,7 +83,7 @@ rollbacks[1]:
     provider:
       type: script
       plugin: tumult-network
-      action: reset-tc
+      function: reset-tc
 ```
 
 For DNS block (`/etc/hosts` + iptables):
@@ -94,7 +94,7 @@ rollbacks[1]:
     provider:
       type: script
       plugin: tumult-network
-      action: block-dns-rollback
+      function: block-dns-rollback
 ```
 
 For DNS redirect (`/etc/hosts` entries added by `redirect-dns`):
@@ -105,5 +105,5 @@ rollbacks[1]:
     provider:
       type: script
       plugin: tumult-network
-      action: redirect-dns-rollback
+      function: redirect-dns-rollback
 ```

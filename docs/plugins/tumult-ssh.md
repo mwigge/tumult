@@ -51,24 +51,26 @@ method[1]:
 
 `verify` checks the server key against `known_hosts` and fails with a typed error on unknown or changed keys. `accept-any` is an explicit opt-in for ephemeral targets with unverifiable keys — the old implicit accept-all behaviour is gone. Unknown function names error with the list of available functions.
 
-## Configuration
+## One way to run on a remote host
 
-Activities can target remote hosts via the `ExecutionTarget::Ssh` variant:
+A step runs on the machine that runs Tumult. The `execute` function above
+is the way to run a command on another host. There is no
+`execution_target:` key on a step: Tumult rejects it, so a step written
+for a remote host cannot run on the local one by mistake.
 
 ```toon
 method[1]:
   - name: stress-cpu-remote
     activity_type: action
     provider:
-      type: process
-      path: stress-ng
-      arguments[3]: --cpu, 4, --timeout, 30s
-    execution_target:
-      type: ssh
-      host: db-primary.example.com
-      port: 22
-      user: ops
-      key_path: /home/ops/.ssh/id_ed25519
+      type: native
+      plugin: tumult-ssh
+      function: execute
+      arguments:
+        host: db-primary.example.com
+        user: ops
+        key_file: /home/ops/.ssh/id_ed25519
+        command: stress-ng --cpu 4 --timeout 30s
 ```
 
 ## Authentication
@@ -171,12 +173,8 @@ The `russh` 0.58 dependency tree includes `rsa` 0.10.0-rc.12, which has a known 
 # Generate an Ed25519 key (recommended)
 ssh-keygen -t ed25519 -C "tumult-chaos" -f ~/.ssh/tumult_ed25519
 
-# Use it in your experiment
-execution_target:
-  type: ssh
-  host: target-host
-  user: ops
-  key_path: ~/.ssh/tumult_ed25519
+# Use it in your experiment: the key_file argument of the execute function
+#   key_file: /home/ops/.ssh/tumult_ed25519
 ```
 
 No upstream fix is currently available for the RSA crate. This advisory will be resolved when `russh` updates its dependency.

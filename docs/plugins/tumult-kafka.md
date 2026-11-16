@@ -54,26 +54,33 @@ method[1]:
   - name: kill-broker-2
     activity_type: action
     provider:
-      type: process
-      path: plugins/tumult-kafka/actions/kill-broker.sh
-    execution_target:
-      type: ssh
-      host: broker-2
-      user: kafka
-      key_path: /home/ops/.ssh/id_ed25519
+      type: native
+      plugin: tumult-ssh
+      function: execute
+      arguments:
+        host: broker-2
+        user: kafka
+        key_file: /home/ops/.ssh/id_ed25519
+        command: pkill -KILL -f kafka.Kafka
 
 rollbacks[1]:
   - name: restart-broker
     activity_type: action
     provider:
-      type: process
-      path: /opt/kafka/bin/kafka-server-start.sh
-      arguments[2]: -daemon, /opt/kafka/config/server.properties
-    execution_target:
-      type: ssh
-      host: broker-2
-      user: kafka
+      type: native
+      plugin: tumult-ssh
+      function: execute
+      arguments:
+        host: broker-2
+        user: kafka
+        key_file: /home/ops/.ssh/id_ed25519
+        command: /opt/kafka/bin/kafka-server-start.sh -daemon /opt/kafka/config/server.properties
 ```
+
+A step runs on the machine that runs Tumult. The probe above runs there
+and talks to the cluster over the network. The kill must happen on the
+broker host, so it goes through the [tumult-ssh](tumult-ssh.md) plugin.
+`kill-broker.sh` does the same for a broker on the local machine.
 
 ## Network Chaos for Kafka
 

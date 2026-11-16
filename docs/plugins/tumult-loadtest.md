@@ -79,14 +79,12 @@ method[3]:
         TUMULT_K6_VUS: 50
         TUMULT_K6_DURATION: 5m
     background: true
-
   - name: wait-for-stable-load
     activity_type: action
     provider:
       type: process
       path: sleep
       arguments[1]: "30"
-
   - name: kill-db-connections
     activity_type: action
     provider:

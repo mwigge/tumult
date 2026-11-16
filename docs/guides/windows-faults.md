@@ -31,18 +31,21 @@ plugin removes the firewall rule when the experiment's rollback runs
 ## Example experiment
 
 ```toon
-version: v1
 title: Windows service survives a process kill
-steady-state:
+
+steady_state_hypothesis:
+  title: The service is running
   probes[1]:
     - name: service-healthy
-      type: probe
+      activity_type: probe
       provider:
         type: process
-        arguments[3]: ["cmd", "/c", "sc query MyService | findstr RUNNING"]
+        path: cmd
+        arguments[2]: "/c", "sc query MyService | findstr RUNNING"
+
 method[1]:
   - name: kill-the-service
-    type: action
+    activity_type: action
     provider:
       type: native
       plugin: tumult-windows
