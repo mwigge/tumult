@@ -173,15 +173,20 @@ It brings the stack up, waits for every service to report healthy, runs each
 experiment in the sweep via `docker compose exec tumult-mcp tumult run …`, and
 asserts:
 
-1. **Each experiment ends `Completed`** — `tumult run` exits non-zero on any
-   other status, so the fault injected *and* the system recovered.
+1. **Each journal says what is expected** — `demo/experiments/expectations.json`
+   names, for each experiment, the status, the hypothesis before and after,
+   the number of rollbacks and each objective verdict.
+   `scripts/check-proof-journals.py` compares the journal of each run with it.
+   A run that halts by design passes when its journal says `halted`.
 2. **Telemetry landed** — it scrapes the collector's self-telemetry on
    `:18888` and asserts `otelcol_receiver_accepted_spans > 0` (falling back to
    grepping the collector logs for exported spans).
 
-It prints `PASS`/`FAIL` per domain and a final summary, and **exits non-zero on
-any failure**. The same script backs `make demo` in `--mode populate`, where it
-runs the sweep best-effort to warm the dashboards without failing the caller.
+It prints `PASS`/`FAIL` per experiment and a final summary, and **exits non-zero
+on any failure**. When a journal is not as expected, the journals and run logs
+are kept and the path is printed. The same script backs `make demo` in
+`--mode populate`, where it runs the ten domains best-effort to warm the
+dashboards without failing the caller.
 
 ## Ports (host)
 

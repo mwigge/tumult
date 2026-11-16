@@ -259,7 +259,9 @@ exit.
 `scripts/demo-check.sh` brings `docker/docker-compose.kronika.yml` up as
 its own compose project, with its own container names, image tag, ports
 and a fresh volume, so a Krönika demo that is already up is not touched.
-It runs the seed, calls `scripts/starmap-check.py --write` (the
+It runs the seed, compares the journal of each seed experiment with
+`demo/kronika/experiments/expectations.json`, calls
+`scripts/starmap-check.py --write` (the
 organisation, 3 teams, 4 workloads with `runs_on` edges, 8 definitions
 referenced, a gap, a failed run, a suppressed risk, no `tgt:` id) and
 removes the stack again, also when it is interrupted. The project, its

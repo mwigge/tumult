@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Hermetic checks of scripts/starmap-check.py against a fake daemon, and of
-the Star Map part of scripts/demo-check.sh against a fake `docker`."""
+scripts/demo-check.sh (the sweep, the seed and the Star Map part) against a
+fake `docker`."""
 
 import fcntl
 import json
@@ -19,21 +20,72 @@ from pathlib import Path
 
 SCRIPT = Path(__file__).with_name("starmap-check.py")
 DEMO_CHECK = Path(__file__).with_name("demo-check.sh")
+JOURNAL_CHECK = Path(__file__).with_name("check-proof-journals.py")
 COMPOSE_FILE = Path(__file__).parent.parent / "docker" / "docker-compose.kronika.yml"
 PROJECT = "tumult-demo-check-kronika"
 # Records each call (arguments and the Kronika variables) and plays the
-# compose subcommands demo-check.sh uses.
+# compose subcommands demo-check.sh uses. The seed leaves the journals of
+# FAKE_JOURNALS/seed in the directory mounted at /tmp/journals; `exec cat`
+# of a sweep journal prints the one of that name in FAKE_JOURNALS/sweep.
 FAKE_DOCKER = r"""
-import json, os, sys, time
+import json, os, shutil, sys, time
+from pathlib import Path
 args = sys.argv[1:]
 env = {k: v for k, v in os.environ.items() if k.startswith("KRONIKA_")}
 with open(os.environ["FAKE_DOCKER_RECORD"], "a") as out:
     out.write(json.dumps({"args": args, "env": env}) + "\n")
+journals = Path(os.environ["FAKE_JOURNALS"])
 if "up" in args:
     time.sleep(float(os.environ.get("FAKE_UP_SECONDS", "0")))
-if "run" in args:
-    print("=== seed: suite done — 6 passed, 2 deviated/failed")
+if "run" in args and "exec" not in args:
+    mount = next(a for a in args if a.endswith(":/tmp/journals"))
+    for journal in (journals / "seed").iterdir():
+        shutil.copy(journal, mount.rsplit(":", 1)[0])
+if "exec" in args and "cat" in args:
+    wanted = journals / "sweep" / Path(args[-1]).name
+    if not wanted.is_file():
+        sys.exit(1)
+    sys.stdout.write(wanted.read_text())
+if "exec" in args and "run" in args:
+    print("Status: " + os.environ.get("FAKE_RUN_EXIT", "0"))
+    sys.exit(int(os.environ.get("FAKE_RUN_EXIT", "0")))
+if "logs" in args:
+    print("ResourceSpans")
 """
+
+COMPLETED = {
+    "status": "completed",
+    "hypothesis_before": True,
+    "hypothesis_after": True,
+    "rollbacks": 0,
+    "objectives": {},
+}
+DEVIATED = {**COMPLETED, "status": "deviated", "hypothesis_after": False}
+HALTED = {**COMPLETED, "status": "halted", "hypothesis_after": None, "rollbacks": 1}
+SEED_EXPECTATIONS = {
+    "one.toon": {"proof": "kronika-seed", "expect": COMPLETED},
+    "two.toon": {"proof": "kronika-seed", "expect": DEVIATED},
+}
+SWEEP_EXPECTATIONS = {
+    "demo-net.toon": {"proof": "demo-check", "expect": COMPLETED},
+    "demo-guard-halt.toon": {"proof": "demo-check", "expect": HALTED},
+    "demo-elsewhere.toon": {"proof": "validate-only", "reason": "not in the demo"},
+}
+
+
+def journal(expect):
+    """The lines of a journal that the journal check reads."""
+    status, rollbacks = expect["status"], expect["rollbacks"]
+    after = expect["hypothesis_after"]
+    after_block = " null" if after is None else f"\n  met: {json.dumps(after)}"
+    undo = "  - name: undo\n    status: succeeded\n" * rollbacks
+    return (
+        f"status: {status}\n"
+        "steady_state_before:\n  met: true\n"
+        f"steady_state_after:{after_block}\n"
+        f"rollback_results[{rollbacks}]:\n{undo}"
+        "rollback_failures: 0\n"
+    )
 
 
 def node(node_id, kind, **over):
@@ -239,6 +291,13 @@ class KronikaComposeTests(unittest.TestCase):
                 name,
             )
 
+    def test_the_seed_lets_the_host_read_each_journal(self):
+        # tumult writes a journal for its owner alone, and the seed user is
+        # not the user that mounted /tmp/journals.
+        self.assertIn(
+            'chmod a+r "/tmp/journals/$$n.journal.toon"', COMPOSE_FILE.read_text()
+        )
+
     def test_a_fixed_name_would_be_found(self):
         text = COMPOSE_FILE.read_text()
         fixed_name = text.replace(
@@ -269,8 +328,12 @@ class Checkout:
         (self.root / "docker" / "docker-compose.kronika.yml").write_text(
             "services: {}\n"
         )
-        for script in (DEMO_CHECK, SCRIPT):
+        for script in (DEMO_CHECK, SCRIPT, JOURNAL_CHECK):
             shutil.copy(script, self.root / "scripts" / script.name)
+        # What the fake docker hands out: journals that are as expected.
+        self.journals = Path(directory) / "journals"
+        self.expect("demo/kronika/experiments", "seed", SEED_EXPECTATIONS)
+        self.expect("demo/experiments", "sweep", SWEEP_EXPECTATIONS)
         self.bin = Path(directory) / "bin"
         self.bin.mkdir()
         docker = self.bin / "docker"
@@ -282,6 +345,22 @@ class Checkout:
         self.tmp = Path(directory) / "tmp"
         self.tmp.mkdir()
         self.lock = self.tmp / f"{PROJECT}.lock"
+
+    def expect(self, directory, kind, experiments):
+        """Write an expectations file, and a journal for each `expect` in it."""
+        (self.root / directory).mkdir(parents=True)
+        (self.root / directory / "expectations.json").write_text(
+            json.dumps({"experiments": experiments})
+        )
+        (self.journals / kind).mkdir(parents=True)
+        for name, entry in experiments.items():
+            if "expect" in entry:
+                self.journal(kind, name).write_text(journal(entry["expect"]))
+
+    def journal(self, kind, name):
+        """Where the fake docker keeps the journal of one experiment."""
+        stem = name.removesuffix(".toon")
+        return self.journals / kind / f"{stem}.journal.toon"
 
     def replace_checker(self, body):
         """Stand a script that only does `body` in for starmap-check.py."""
@@ -296,13 +375,15 @@ class Checkout:
         env.pop("COMPOSE_KRONIKA", None)
         env["PATH"] = f"{self.bin}{os.pathsep}{env['PATH']}"
         env["FAKE_DOCKER_RECORD"] = str(self.record)
+        env["FAKE_JOURNALS"] = str(self.journals)
         env["STARMAP_WAIT"] = "0"
         env["TMPDIR"] = str(self.tmp)
         return {**env, **over}
 
-    def start(self, **over):
+    def start(self, *arguments, **over):
+        arguments = arguments or ("--starmap-only",)
         return subprocess.Popen(
-            ["bash", str(self.root / "scripts" / "demo-check.sh"), "--starmap-only"],
+            ["bash", str(self.root / "scripts" / "demo-check.sh"), *arguments],
             env=self.env(**over),
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
@@ -311,6 +392,29 @@ class Checkout:
 
     def calls(self):
         return [json.loads(line) for line in self.record.read_text().splitlines()]
+
+    def left_behind(self):
+        """The directories demo-check.sh made for itself and did not remove."""
+        return [path for path in self.tmp.iterdir() if path.is_dir()]
+
+    def sweep(self, daemon, mode="full", **over):
+        """Run the sweep against the fake docker; the Star Map is only read."""
+        process = self.start(
+            "--mode",
+            mode,
+            "--no-wait",
+            COMPOSE_DEMO="docker compose -f demo.yml",
+            COLLECTOR_METRICS_URL=f"{daemon.url}/metrics",
+            STARMAP_URL=daemon.url,
+            **over,
+        )
+        output, _ = process.communicate(timeout=120)
+        return process.returncode, output
+
+    def runs(self):
+        """The experiment of each `tumult run` in the demo, in order."""
+        ran = [c["args"] for c in self.calls() if "tumult" in c["args"]]
+        return [args[args.index("run") + 1] for args in ran]
 
 
 def verb(call):
@@ -347,6 +451,49 @@ class DemoCheckStarMapTests(unittest.TestCase):
         self.assertEqual([path for path, _ in writes], ["/api/risks/r_1/suppress"])
         self.assertIn("1 suppressed risks on 1 nodes", output)
         self.assertNotIn("FAIL", output)
+        # The seed is judged by its journals, one line for each.
+        self.assertRegex(output, r"PASS.*seed — one\.toon")
+        self.assertRegex(output, r"PASS.*seed — two\.toon")
+
+    def test_the_journals_of_the_seed_are_in_a_directory_that_is_removed(self):
+        with tempfile.TemporaryDirectory() as directory, FakeDaemon() as daemon:
+            checkout = Checkout(directory)
+            port = daemon.url.rsplit(":", 1)[1]
+            process = checkout.start(KRONIKA_HOST_HTTP_PORT=port)
+            output, _ = process.communicate(timeout=120)
+            seed = next(c["args"] for c in checkout.calls() if verb(c) == "run")
+            left = checkout.left_behind()
+        self.assertEqual(process.returncode, 0, output)
+        mount = seed[seed.index("-v") + 1]
+        self.assertTrue(mount.startswith(f"{checkout.tmp}/"), mount)
+        self.assertTrue(mount.endswith(":/tmp/journals"), mount)
+        self.assertLess(seed.index("-v"), seed.index("seed"))
+        self.assertEqual(left, [])
+
+    def test_a_seed_journal_that_is_not_as_expected_fails_the_check(self):
+        with tempfile.TemporaryDirectory() as directory, FakeDaemon() as daemon:
+            checkout = Checkout(directory)
+            checkout.journal("seed", "two.toon").write_text(journal(COMPLETED))
+            port = daemon.url.rsplit(":", 1)[1]
+            process = checkout.start(KRONIKA_HOST_HTTP_PORT=port)
+            output, _ = process.communicate(timeout=120)
+            calls = checkout.calls()
+        self.assertEqual(process.returncode, 1, output)
+        self.assertRegex(output, r"PASS.*seed — one\.toon")
+        self.assertRegex(output, r"FAIL.*seed — two\.toon")
+        self.assertIn("status: expected deviated, journal has completed", output)
+        self.assertNotIn("suppressed risks", output, "the map was not checked")
+        self.assertEqual([verb(c) for c in calls], ["down", "up", "run", "down"])
+
+    def test_a_seed_that_leaves_no_journal_fails_the_check(self):
+        with tempfile.TemporaryDirectory() as directory, FakeDaemon() as daemon:
+            checkout = Checkout(directory)
+            checkout.journal("seed", "one.toon").unlink()
+            port = daemon.url.rsplit(":", 1)[1]
+            process = checkout.start(KRONIKA_HOST_HTTP_PORT=port)
+            output, _ = process.communicate(timeout=120)
+        self.assertEqual(process.returncode, 1, output)
+        self.assertIn("no journal one.journal.toon", output)
 
     def test_a_daemon_that_is_not_its_own_is_only_read(self):
         with tempfile.TemporaryDirectory() as directory, FakeDaemon() as daemon:
@@ -374,8 +521,10 @@ class DemoCheckStarMapTests(unittest.TestCase):
             process.send_signal(signal.SIGTERM)
             output, _ = process.communicate(timeout=60)
             calls = checkout.calls()
+            left = checkout.left_behind()
         self.assertEqual(process.returncode, 143, output)
         self.assertEqual([verb(c) for c in calls], ["down", "up", "down"], output)
+        self.assertEqual(left, [])
 
     def test_two_checks_at_once_take_turns(self):
         with tempfile.TemporaryDirectory() as directory, FakeDaemon() as daemon:
@@ -502,6 +651,98 @@ class DemoCheckStarMapTests(unittest.TestCase):
         self.assertEqual(process.returncode, 1, output)
         self.assertIn("star map: two", output)
         self.assertIn("1 check(s) failed", output)
+
+
+class DemoCheckSweepTests(unittest.TestCase):
+    def test_the_sweep_runs_what_the_expectations_give_this_proof(self):
+        with tempfile.TemporaryDirectory() as directory, FakeDaemon() as daemon:
+            checkout = Checkout(directory)
+            status, output = checkout.sweep(daemon)
+            runs = checkout.runs()
+            left = checkout.left_behind()
+        self.assertEqual(status, 0, output)
+        self.assertEqual(
+            runs,
+            [
+                "/demo/experiments/demo-net.toon",
+                "/demo/experiments/demo-guard-halt.toon",
+            ],
+        )
+        self.assertRegex(output, r"PASS.*demo-net\.toon")
+        self.assertRegex(output, r"PASS.*demo-guard-halt\.toon")
+        self.assertNotIn("FAIL", output)
+        self.assertEqual(left, [])
+
+    def test_a_run_is_judged_by_its_journal_not_by_its_exit_status(self):
+        with tempfile.TemporaryDirectory() as directory, FakeDaemon() as daemon:
+            checkout = Checkout(directory)
+            status, output = checkout.sweep(daemon, FAKE_RUN_EXIT="1")
+        self.assertEqual(status, 0, output)
+        self.assertNotIn("FAIL", output)
+
+    def test_a_journal_that_is_not_as_expected_fails_and_is_kept(self):
+        with tempfile.TemporaryDirectory() as directory, FakeDaemon() as daemon:
+            checkout = Checkout(directory)
+            failed = journal({**COMPLETED, "status": "failed"})
+            checkout.journal("sweep", "demo-net.toon").write_text(failed)
+            status, output = checkout.sweep(daemon)
+            left = checkout.left_behind()
+            kept = [path.name for path in left[0].glob("sweep/*")] if left else []
+        self.assertEqual(status, 1, output)
+        self.assertRegex(output, r"FAIL.*demo-net\.toon")
+        self.assertIn("status: expected completed, journal has failed", output)
+        self.assertRegex(output, r"PASS.*demo-guard-halt\.toon")
+        self.assertIn("1 check(s) failed", output)
+        self.assertEqual(len(left), 1, output)
+        self.assertIn(f"kept in {left[0]}", output)
+        self.assertIn("demo-net.journal.toon", kept)
+        self.assertIn("demo-net.log", kept)
+
+    def test_a_journal_of_an_earlier_run_is_not_judged(self):
+        with tempfile.TemporaryDirectory() as directory, FakeDaemon() as daemon:
+            checkout = Checkout(directory)
+            status, output = checkout.sweep(daemon)
+            calls = [c["args"] for c in checkout.calls() if "exec" in c["args"]]
+        self.assertEqual(status, 0, output)
+        journal_path = "/journals/demo-net.journal.toon"
+        removed = next(
+            i for i, a in enumerate(calls) if a[-3:] == ["rm", "-f", journal_path]
+        )
+        ran = next(
+            i for i, a in enumerate(calls) if "tumult" in a and journal_path in a
+        )
+        self.assertLess(removed, ran)
+
+    def test_a_run_that_leaves_no_journal_fails_the_check(self):
+        with tempfile.TemporaryDirectory() as directory, FakeDaemon() as daemon:
+            checkout = Checkout(directory)
+            checkout.journal("sweep", "demo-net.toon").unlink()
+            status, output = checkout.sweep(daemon)
+        self.assertEqual(status, 1, output)
+        self.assertIn("no journal demo-net.journal.toon", output)
+        self.assertIn("1 check(s) failed", output)
+
+    def test_no_expectations_file_is_one_clear_failure(self):
+        with tempfile.TemporaryDirectory() as directory, FakeDaemon() as daemon:
+            checkout = Checkout(directory)
+            (checkout.root / "demo/experiments/expectations.json").unlink()
+            status, output = checkout.sweep(daemon)
+            runs = checkout.runs()
+        self.assertEqual(status, 1, output)
+        self.assertEqual(runs, [])
+        self.assertIn("sweep — nothing to run", output)
+
+    def test_the_warm_up_leaves_out_the_halting_run_and_never_fails(self):
+        with tempfile.TemporaryDirectory() as directory, FakeDaemon() as daemon:
+            checkout = Checkout(directory)
+            checkout.journal("sweep", "demo-net.toon").unlink()
+            status, output = checkout.sweep(daemon, mode="populate", FAKE_RUN_EXIT="1")
+            runs = checkout.runs()
+            left = checkout.left_behind()
+        self.assertEqual(status, 0, output)
+        self.assertEqual(runs, ["/demo/experiments/demo-net.toon"])
+        self.assertNotIn("FAIL", output)
+        self.assertEqual(left, [])
 
 
 if __name__ == "__main__":
