@@ -18,7 +18,7 @@ regulatory:
 
 load:
   tool: k6
-  script: examples/k6/smoke-test.js
+  script: examples/k6/pg-load.js
   vus: 5
   duration_s: 60.0
 

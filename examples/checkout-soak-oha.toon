@@ -23,7 +23,7 @@ nfr[2]:
 
 load:
   tool: oha
-  script: http://127.0.0.1:8080/api/checkout
+  script: http://127.0.0.1:8080/checkout/1
   vus: 20
   duration_s: 7200
   profile:

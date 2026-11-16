@@ -8,7 +8,7 @@
 use std::path::{Path, PathBuf};
 
 use tumult_core::engine::{parse_experiment, validate_experiment};
-use tumult_core::types::{Experiment, GameDay, GameDayJournal};
+use tumult_core::types::{Experiment, GameDay, GameDayJournal, LoadConfig, LoadTool};
 
 /// Directories that hold experiment files, relative to the workspace root.
 const EXPERIMENT_DIRS: &[&str] = &[
@@ -160,6 +160,87 @@ fn the_recorded_gameday_journal_parses() {
     let journal: GameDayJournal =
         toon_format::decode_default(&read(&path)).expect("decode journal");
     assert_eq!(journal.experiment_journals.len(), 4);
+}
+
+// ── The load and the target of the examples ────────────────────
+
+/// What is wrong with a load block, if anything. A k6 script must be in
+/// the repository and must send requests; an oha load names a URL.
+fn load_fault(load: &LoadConfig) -> Option<String> {
+    let script = load.script.to_string_lossy();
+    if load.tool == LoadTool::Oha {
+        return (!script.starts_with("http")).then(|| format!("oha needs a URL, not {script}"));
+    }
+    let path = workspace_root().join(load.script.as_path());
+    let Ok(text) = std::fs::read_to_string(&path) else {
+        return Some(format!("load script {script} is not in the repository"));
+    };
+    let sends = text.contains("k6/http") || text.contains("k6/x/sql");
+    (!sends).then(|| format!("load script {script} sends no request"))
+}
+
+fn gameday_load(file: &str) -> Option<LoadConfig> {
+    let gameday: GameDay = toon_format::decode_default(&read(&workspace_root().join(file)))
+        .unwrap_or_else(|e| panic!("decode {file}: {e}"));
+    gameday.load
+}
+
+#[test]
+fn every_load_sends_real_requests() {
+    let mut broken: Vec<String> = experiment_files()
+        .iter()
+        .filter_map(|p| {
+            let load = load(p).ok()?.load?;
+            load_fault(&load).map(|fault| format!("{}: {fault}", shown(p)))
+        })
+        .collect();
+    for (file, _) in GAMEDAYS {
+        let fault = gameday_load(file).as_ref().and_then(load_fault);
+        broken.extend(fault.map(|fault| format!("{file}: {fault}")));
+    }
+    assert!(broken.is_empty(), "broken loads:\n{}", broken.join("\n"));
+}
+
+/// The routes of the demo app (`demo/app/src/app.rs`), which listens on
+/// port 8080 when the demo stack is up.
+const DEMO_APP_ROUTES: &[&str] = &["/health", "/orders", "/checkout/"];
+const DEMO_APP: &str = "http://127.0.0.1:8080";
+
+/// The paths asked of the demo app in a text.
+fn demo_app_paths(text: &str) -> Vec<String> {
+    text.match_indices(DEMO_APP)
+        .map(|(at, _)| {
+            text[at + DEMO_APP.len()..]
+                .chars()
+                .take_while(|c| !c.is_whitespace() && !"\"'\\".contains(*c))
+                .collect()
+        })
+        .collect()
+}
+
+#[test]
+fn demo_app_paths_are_read_from_a_text() {
+    let text =
+        "a http://127.0.0.1:8080/health b 'http://127.0.0.1:8080/checkout/1' http://127.0.0.1:8080";
+    assert_eq!(demo_app_paths(text), vec!["/health", "/checkout/1", ""]);
+}
+
+#[test]
+fn examples_ask_the_demo_app_only_for_routes_it_serves() {
+    let mut wrong = Vec::new();
+    for file in toon_files("examples") {
+        for path in demo_app_paths(&read(&file)) {
+            let served = DEMO_APP_ROUTES.iter().any(|route| path.starts_with(route));
+            if !path.is_empty() && !served {
+                wrong.push(format!("{}: {path}", shown(&file)));
+            }
+        }
+    }
+    assert!(
+        wrong.is_empty(),
+        "the demo app does not serve:\n{}",
+        wrong.join("\n")
+    );
 }
 
 // ── Experiments shown in the documentation ─────────────────────

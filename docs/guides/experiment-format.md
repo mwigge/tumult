@@ -250,7 +250,7 @@ A profile shapes the traffic over `duration_s`; without one the load is flat at 
 ```toon
 load:
   tool: oha
-  script: http://127.0.0.1:8080/api/checkout
+  script: http://127.0.0.1:8080/checkout/1
   vus: 20
   duration_s: 7200
   profile:
