@@ -3,7 +3,7 @@
 use crate::controls::ControlRegistry;
 use crate::types::{
     Experiment, ExperimentStatus, GameDay, GameDayExperiment, GameDayJournal, Journal, LoadConfig,
-    ResilienceScore,
+    LoadResult, ResilienceScore,
 };
 
 use opentelemetry::trace::{TraceContextExt, Tracer};
@@ -53,6 +53,40 @@ fn await_load_plan(load: &LoadConfig, started: std::time::Instant, config: &RunC
     }
     tracing::info!(left_s, "gameday waits for its load to end");
     super::activity::wait_pause(Some(left_s), config.cancellation_token.as_ref());
+}
+
+/// End the shared load and give what it measured.
+///
+/// A campaign that was cancelled, or that an error stopped, cuts its load:
+/// the tool is not left to finish what it is doing, and the result says it
+/// was cut. Any other campaign has waited for the plan and stops the load.
+fn end_shared_load(
+    handle: Option<LoadHandle>,
+    config: &RunConfig,
+    cut: bool,
+) -> Option<LoadResult> {
+    let (Some(handle), Some(executor)) = (handle, &config.load_executor) else {
+        return None;
+    };
+    let ended = if cut {
+        executor.abort(handle)
+    } else {
+        executor.stop(handle)
+    };
+    match ended {
+        Ok(result) => {
+            tracing::info!(
+                throughput_rps = result.throughput_rps,
+                cut,
+                "gameday load completed"
+            );
+            Some(result)
+        }
+        Err(e) => {
+            tracing::error!(error = %e, cut, "failed to collect gameday load results");
+            None
+        }
+    }
 }
 
 /// Executor + controls for one experiment in a [`run_gameday_with_wiring`]
@@ -232,31 +266,14 @@ pub fn run_gameday_with_wiring(
     }
 
     // A campaign that ran every experiment lets its load run to the end.
-    if let (Some(load), Some(started)) = (&gameday.load, load_started) {
-        if journals.len() == experiments.len() {
-            await_load_plan(load, started, config);
-        }
+    let ran_all = journals.len() == experiments.len();
+    if let (Some(load), Some(started), true) = (&gameday.load, load_started, ran_all) {
+        await_load_plan(load, started, config);
     }
 
-    // Stop load and collect results (the guard covers every other path)
-    let load_result =
-        if let (Some(handle), Some(ref load_exec)) = (load_guard.take(), &config.load_executor) {
-            match load_exec.stop(handle) {
-                Ok(result) => {
-                    tracing::info!(
-                        throughput_rps = result.throughput_rps,
-                        "gameday load completed"
-                    );
-                    Some(result)
-                }
-                Err(e) => {
-                    tracing::error!(error = %e, "failed to collect gameday load results");
-                    None
-                }
-            }
-        } else {
-            None
-        };
+    // End the load and collect results (the guard covers every other path)
+    let cut = !ran_all || super::activity::is_cancelled(config.cancellation_token.as_ref());
+    let load_result = end_shared_load(load_guard.take(), config, cut);
 
     // Compute resilience score
     let total = journals.len();

@@ -7,11 +7,12 @@
 #![cfg(unix)]
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
+use tokio_util::sync::CancellationToken;
 use tumult_core::controls::ControlRegistry;
 use tumult_core::runner::{
     load_executor_for, run_gameday, ActivityExecutor, ActivityOutcome, RunConfig,
@@ -98,7 +99,18 @@ fn experiment(name: &str, method: &[&str], reads: u32) -> Experiment {
 /// Run `experiments` as one game day in a new lab.
 fn run(experiments: &[Experiment], load: Option<LoadConfig>, mttr_target_s: f64) -> GameDayJournal {
     let lab = tempfile::TempDir::new().expect("lab directory");
-    std::fs::write(lab.path().join("target.sh"), TARGET).expect("target script");
+    run_in(lab.path(), experiments, load, mttr_target_s, None)
+}
+
+/// Run `experiments` as one game day in `lab`. `token` cancels it.
+fn run_in(
+    lab: &Path,
+    experiments: &[Experiment],
+    load: Option<LoadConfig>,
+    mttr_target_s: f64,
+    token: Option<CancellationToken>,
+) -> GameDayJournal {
+    std::fs::write(lab.join("target.sh"), TARGET).expect("target script");
     let gameday = GameDay {
         title: "Lab game day".into(),
         description: None,
@@ -117,9 +129,10 @@ fn run(experiments: &[Experiment], load: Option<LoadConfig>, mttr_target_s: f64)
         },
         load: load.clone(),
     };
-    let executor: Arc<dyn ActivityExecutor> = Arc::new(InLab(lab.path().to_path_buf()));
+    let executor: Arc<dyn ActivityExecutor> = Arc::new(InLab(lab.to_path_buf()));
     let config = RunConfig {
         load_executor: load.map(|load| load_executor_for(&load.tool).expect("load executor")),
+        cancellation_token: token,
         ..RunConfig::default()
     };
     run_gameday(
@@ -176,38 +189,64 @@ fn the_recovery_score_is_the_share_of_runs_that_came_back_within_the_target() {
 
 /// A stand-in for the `oha` binary, which the machines that run these tests
 /// do not have: it runs for the time `-z` asks for and prints the summary of
-/// 40 answered requests. The adapter, its process and the wait of the game
-/// day are the real ones.
+/// 40 answered requests. As `oha` does, it takes a time in `s` or in `ms`,
+/// and prints that summary at once when it is interrupted. The adapter, its
+/// process and the wait of the game day are the real ones.
 const OHA_STAND_IN: &str = r#"#!/bin/sh
 [ "$1" = "--version" ] && exit 0
 while [ $# -gt 0 ]; do
   if [ "$1" = "-z" ]; then shift; length="$1"; fi
   shift
 done
-sleep "${length%s}"
-printf '%s' '{"summary":{"successRate":1.0,"total":3.0,"slowest":0.2,"fastest":0.01,"average":0.05,"requestsPerSec":13.3,"totalData":1,"sizePerRequest":1,"sizePerSec":1},"responseTimeHistogram":{},"latencyPercentiles":{"p50":0.02,"p95":0.08,"p99":0.1},"rps":{},"details":{},"statusCodeDistribution":{"200":40},"errorDistribution":{}}'
+summary() {
+  printf '%s' '{"summary":{"successRate":1.0,"total":3.0,"slowest":0.2,"fastest":0.01,"average":0.05,"requestsPerSec":13.3,"totalData":1,"sizePerRequest":1,"sizePerSec":1},"responseTimeHistogram":{},"latencyPercentiles":{"p50":0.02,"p95":0.08,"p99":0.1},"rps":{},"details":{},"statusCodeDistribution":{"200":40},"errorDistribution":{}}'
+}
+trap 'summary; exit 0' INT
+case "$length" in
+  *ms) sleep "$(awk "BEGIN { print ${length%ms} / 1000 }")" ;;
+  *) sleep "${length%s}" ;;
+esac
+summary
 "#;
 
-#[test]
-fn a_game_day_waits_for_its_load_and_no_longer() {
+/// Put the stand-in in the place of `oha` for as long as the result lives.
+fn oha_stand_in() -> (tempfile::TempDir, EnvGuard) {
     let tools = tempfile::TempDir::new().expect("tools directory");
     let oha = tools.path().join("oha-stand-in.sh");
     tumult_test_utils::write_executable(&oha, OHA_STAND_IN);
     let mut env = EnvGuard::lock();
     env.set("TUMULT_OHA_BINARY", &oha);
-    // The one run takes under a second; the load is planned for three.
-    let load = LoadConfig {
+    (tools, env)
+}
+
+/// A load of two users for `duration_s`.
+fn load(duration_s: f64, profile: Option<LoadProfile>) -> LoadConfig {
+    LoadConfig {
         tool: LoadTool::Oha,
         script: PathBuf::from("http://127.0.0.1:9/health"),
         vus: Some(2),
-        duration_s: Some(3.0),
+        duration_s: Some(duration_s),
         thresholds: HashMap::new(),
-        profile: None,
+        profile,
+    }
+}
+
+#[test]
+fn a_game_day_waits_for_its_load_and_no_longer() {
+    let _oha = oha_stand_in();
+    // The one run takes under a second. The load is planned for three: a
+    // second of two users, a second of four, a second of two again. Each
+    // second is a window of its own, and a load that is stopped starts no
+    // further window.
+    let spike = LoadProfile::Spike {
+        peak_vus: 4,
+        after_s: 1.0,
+        hold_s: 1.0,
     };
 
     let journal = run(
         &[experiment("stays-up", &["sleep 0.7"], 1)],
-        Some(load),
+        Some(load(3.0, Some(spike))),
         30.0,
     );
 
@@ -217,5 +256,122 @@ fn a_game_day_waits_for_its_load_and_no_longer() {
         journal.duration_s
     );
     let load = journal.load_result.expect("the load left its result");
+    assert_eq!(load.execution.planned_windows, Some(3));
+    assert_eq!(load.execution.completed_windows, Some(3));
+    assert!(!load.execution.aborted, "{:?}", load.execution);
+    assert_eq!(load.total_requests, 120);
+}
+
+/// The game day ended long before its load of 30 seconds would have. The
+/// load says that it was cut, and what it had measured by then.
+fn assert_the_load_was_cut(journal: &GameDayJournal) {
+    assert!(
+        journal.duration_s < 10.0,
+        "the game day took {}s",
+        journal.duration_s
+    );
+    let load = journal
+        .load_result
+        .as_ref()
+        .expect("the load left its result");
+    assert!(load.execution.aborted, "{:?}", load.execution);
     assert_eq!(load.total_requests, 40);
+}
+
+#[test]
+fn a_game_day_stopped_by_an_error_cuts_its_load_and_keeps_what_it_measured() {
+    let _oha = oha_stand_in();
+    // The second run has no method, which is an error of the run. It stops
+    // the game day when the load has more than 29 seconds left.
+    let experiments = [
+        experiment("stays-up", &["sleep 0.5"], 1),
+        experiment("no-method", &[], 1),
+    ];
+
+    let journal = run(&experiments, Some(load(30.0, None)), 30.0);
+
+    let ran: Vec<(&str, &ExperimentStatus)> = journal
+        .experiment_journals
+        .iter()
+        .map(|run| (run.experiment_title.as_str(), &run.status))
+        .collect();
+    assert_eq!(ran, [("stays-up", &ExperimentStatus::Completed)]);
+    assert_the_load_was_cut(&journal);
+}
+
+#[test]
+fn a_game_day_cancelled_before_it_starts_runs_no_step_and_cuts_its_load() {
+    let _oha = oha_stand_in();
+    let lab = tempfile::TempDir::new().expect("lab directory");
+    let token = CancellationToken::new();
+    token.cancel();
+    let experiments = [
+        experiment("first", &["touch ran"], 1),
+        experiment("second", &["touch ran"], 1),
+    ];
+
+    let journal = run_in(
+        lab.path(),
+        &experiments,
+        Some(load(30.0, None)),
+        30.0,
+        Some(token),
+    );
+
+    assert!(
+        journal.experiment_journals.is_empty(),
+        "{} runs started",
+        journal.experiment_journals.len()
+    );
+    assert!(!lab.path().join("ran").exists(), "a step ran");
+    assert!(
+        journal.duration_s < 10.0,
+        "the game day took {}s",
+        journal.duration_s
+    );
+    // The load is cut as it starts, so it may have measured nothing yet.
+    let load = journal.load_result.expect("the load left its result");
+    assert!(load.execution.aborted, "{:?}", load.execution);
+}
+
+fn wait_for(path: &Path) {
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while !path.exists() {
+        assert!(Instant::now() < deadline, "{} never came", path.display());
+        // sleep: interval of the bounded poll for a file of another process.
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+#[test]
+fn a_cancelled_game_day_cuts_its_load_and_keeps_what_it_measured() {
+    let _oha = oha_stand_in();
+    let lab = tempfile::TempDir::new().expect("lab directory");
+    let token = CancellationToken::new();
+    // The game day is cancelled while its one step runs.
+    let canceller = {
+        let started = lab.path().join("started");
+        let token = token.clone();
+        std::thread::spawn(move || {
+            wait_for(&started);
+            token.cancel();
+        })
+    };
+
+    let journal = run_in(
+        lab.path(),
+        &[experiment("cancelled", &["touch started; sleep 1"], 1)],
+        Some(load(30.0, None)),
+        30.0,
+        Some(token),
+    );
+
+    canceller.join().expect("the canceller");
+    let ended: Vec<&ExperimentStatus> = journal
+        .experiment_journals
+        .iter()
+        .map(|run| &run.status)
+        .collect();
+    assert_eq!(ended, [&ExperimentStatus::Interrupted]);
+    assert_the_load_was_cut(&journal);
 }

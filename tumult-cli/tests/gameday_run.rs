@@ -8,8 +8,13 @@
 
 mod lab;
 
-use lab::{count, indented, step, Lab};
-use tumult_core::types::GameDayJournal;
+use std::io::{BufRead, BufReader, Read};
+use std::process::{Child, Command, Stdio};
+use std::time::{Duration, Instant};
+
+use lab::{count, indented, step, step_within, wait_for, Lab};
+use serde_json::Value;
+use tumult_core::types::{ExperimentStatus, GameDayJournal};
 
 /// The target `$1` says `ok` until a fault writes `down` to its state file.
 /// Once it is down it heals itself on read number `$2`.
@@ -173,37 +178,65 @@ fn the_recovery_score_is_the_share_of_runs_that_came_back_within_the_target() {
 
 /// A stand-in for the `oha` binary, which the machines that run these tests
 /// do not have: it runs for the time `-z` asks for and prints the summary of
-/// 40 answered requests. The adapter, its process and the wait of the game
-/// day are the real ones.
+/// 40 answered requests. As `oha` does, it takes a time in `s` or in `ms`,
+/// and prints that summary at once when it is interrupted. It leaves its
+/// process id in `load.pid`. The adapter, its process and the wait of the
+/// game day are the real ones.
 const OHA_STAND_IN: &str = r#"#!/bin/sh
 [ "$1" = "--version" ] && exit 0
 while [ $# -gt 0 ]; do
   if [ "$1" = "-z" ]; then shift; length="$1"; fi
   shift
 done
-sleep "${length%s}"
-printf '%s' '{"summary":{"successRate":1.0,"total":3.0,"slowest":0.2,"fastest":0.01,"average":0.05,"requestsPerSec":13.3,"totalData":1,"sizePerRequest":1,"sizePerSec":1},"responseTimeHistogram":{},"latencyPercentiles":{"p50":0.02,"p95":0.08,"p99":0.1},"rps":{},"details":{},"statusCodeDistribution":{"200":40},"errorDistribution":{}}'
+summary() {
+  printf '%s' '{"summary":{"successRate":1.0,"total":3.0,"slowest":0.2,"fastest":0.01,"average":0.05,"requestsPerSec":13.3,"totalData":1,"sizePerRequest":1,"sizePerSec":1},"responseTimeHistogram":{},"latencyPercentiles":{"p50":0.02,"p95":0.08,"p99":0.1},"rps":{},"details":{},"statusCodeDistribution":{"200":40},"errorDistribution":{}}'
+}
+trap 'summary; exit 0' INT
+echo $$ > load.pid
+case "$length" in
+  *ms) sleep "$(awk "BEGIN { print ${length%ms} / 1000 }")" ;;
+  *) sleep "${length%s}" ;;
+esac
+summary
 "#;
+
+/// A load block of two users for `duration_s`, with `profile` as its shape.
+fn load_block(duration_s: f64, profile: &str) -> String {
+    format!(
+        "load:\n  tool: oha\n  script: \"http://127.0.0.1:9/health\"\n  vus: 2\n  \
+         duration_s: {duration_s:.1}\n{profile}"
+    )
+}
+
+/// `tumult gameday run lab.gameday.toon` with the stand-in in the place of
+/// `oha`.
+fn gameday_run(lab: &Lab) -> Command {
+    let oha = lab.path("oha-stand-in.sh");
+    tumult_test_utils::write_executable(&oha, OHA_STAND_IN);
+    let mut command = lab.command(&["gameday", "run", "lab.gameday.toon"]);
+    command.env("TUMULT_OHA_BINARY", &oha);
+    command
+}
 
 #[test]
 fn a_game_day_waits_for_its_load_and_no_longer() {
     let lab = Lab::with_state("ok");
-    // The one run takes under a second; the load is planned for three.
+    // The one run takes under a second. The load is planned for three: a
+    // second of two users, a second of four, a second of two again. Each
+    // second is a window of its own, and a load that is stopped starts no
+    // further window.
     let fault = step("fault", "action", "sleep 0.7");
+    let spike = "  profile:\n    type: spike\n    peak_vus: 4\n    after_s: 1.0\n    hold_s: 1.0\n";
     write_gameday(
         &lab,
         &[("stays-up", experiment("stays-up", &fault, 1))],
-        "load:\n  tool: oha\n  script: \"http://127.0.0.1:9/health\"\n  vus: 2\n  duration_s: 3.0\n",
-    );
-    let oha = lab.path("oha-stand-in.sh");
-    tumult_test_utils::write_executable(&oha, OHA_STAND_IN);
-
-    let printed = gameday(
-        &lab,
-        "run",
-        &[("TUMULT_OHA_BINARY", oha.to_str().expect("utf-8 path"))],
+        &load_block(3.0, spike),
     );
 
+    let output = gameday_run(&lab).output().expect("run tumult");
+
+    let printed = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success(), "{printed}");
     let journal = journal(&lab);
     assert!(
         (3.0..4.0).contains(&journal.duration_s),
@@ -211,9 +244,140 @@ fn a_game_day_waits_for_its_load_and_no_longer() {
         journal.duration_s
     );
     let load = journal.load_result.expect("the load left its result");
-    assert_eq!(load.total_requests, 40);
+    assert_eq!(load.execution.planned_windows, Some(3));
+    assert_eq!(load.execution.completed_windows, Some(3));
+    assert!(!load.execution.aborted, "{:?}", load.execution);
+    assert_eq!(load.total_requests, 120);
     assert!(
-        printed.contains("\nLoad (oha): 40 requests, p95=80ms, error_rate=0.0000\n"),
+        printed.contains("\nLoad (oha): 120 requests, p95=80ms, error_rate=0.0000\n"),
+        "{printed}"
+    );
+}
+
+/// Start the game day with the events of the runner on stderr.
+fn start(lab: &Lab) -> Child {
+    gameday_run(lab)
+        .env("RUST_LOG", "tumult_core=info")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("start tumult")
+}
+
+fn send_sigint(child: &Child) {
+    let sent = Command::new("kill")
+        .args(["-INT", &child.id().to_string()])
+        .status()
+        .expect("send SIGINT");
+    assert!(sent.success(), "SIGINT was not sent");
+}
+
+/// Whether the process whose id is in `file` still runs.
+fn is_running(lab: &Lab, file: &str) -> bool {
+    let pid = std::fs::read_to_string(lab.path(file)).expect("process id");
+    Command::new("kill")
+        .args(["-0", pid.trim()])
+        .stderr(Stdio::null())
+        .status()
+        .expect("probe the process")
+        .success()
+}
+
+/// How each run of the game day ended. The game day ended long before the
+/// minute of its load: the load says that it was cut and what it had
+/// measured by then, and its process is gone.
+fn ended_with_its_load_cut(lab: &Lab, started: Instant) -> Vec<ExperimentStatus> {
+    let took = started.elapsed();
+    assert!(took < Duration::from_secs(30), "the game day took {took:?}");
+    let journal = journal(lab);
+    let load = journal.load_result.expect("the load left its result");
+    assert!(load.execution.aborted, "{:?}", load.execution);
+    assert_eq!(load.total_requests, 40);
+    assert!(!is_running(lab, "load.pid"), "the load runs on");
+    journal
+        .experiment_journals
+        .into_iter()
+        .map(|run| run.status)
+        .collect()
+}
+
+#[test]
+fn a_game_day_that_gets_sigint_stops_its_step_and_cuts_its_load() {
+    let lab = Lab::with_state("ok");
+    // The step and the load would both run for a minute.
+    let fault = step_within(
+        "fault",
+        "action",
+        "sleep 60 & echo $! > sleep.pid; touch started; wait",
+        90.0,
+    );
+    write_gameday(
+        &lab,
+        &[("long", experiment("long", &fault, 1))],
+        &load_block(60.0, ""),
+    );
+    let started = Instant::now();
+    let child = start(&lab);
+    wait_for(&lab.path("started"));
+    wait_for(&lab.path("load.pid"));
+
+    send_sigint(&child);
+
+    let output = child.wait_with_output().expect("wait for tumult");
+    let printed = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success(), "{printed}");
+    let ended = ended_with_its_load_cut(&lab, started);
+    assert_eq!(ended, [ExperimentStatus::Interrupted]);
+    assert!(!is_running(&lab, "sleep.pid"), "the step runs on");
+    assert!(
+        printed.contains("Status:  0/1 PASS (NON-COMPLIANT)\n"),
+        "{printed}"
+    );
+}
+
+/// Read the events on `stderr` until the one whose message is `message`.
+fn await_event(stderr: &mut impl BufRead, message: &str) {
+    for line in stderr.lines() {
+        let line = line.expect("a line of stderr");
+        let event: Value = serde_json::from_str(&line).unwrap_or_default();
+        if event["message"] == message {
+            return;
+        }
+    }
+    panic!("tumult ended without the event {message:?}");
+}
+
+#[test]
+fn a_game_day_that_gets_sigint_while_it_waits_for_its_load_cuts_the_load() {
+    let lab = Lab::with_state("ok");
+    // The one run is over at once. The load is planned for a minute.
+    write_gameday(
+        &lab,
+        &[(
+            "stays-up",
+            experiment("stays-up", &step("fault", "action", "true"), 1),
+        )],
+        &load_block(60.0, ""),
+    );
+    let started = Instant::now();
+    let mut child = start(&lab);
+    let mut stderr = BufReader::new(child.stderr.take().expect("stderr"));
+    await_event(&mut stderr, "gameday waits for its load to end");
+    wait_for(&lab.path("load.pid"));
+
+    send_sigint(&child);
+
+    let mut rest = String::new();
+    stderr
+        .read_to_string(&mut rest)
+        .expect("the rest of stderr");
+    let output = child.wait_with_output().expect("wait for tumult");
+    let printed = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success(), "{printed}{rest}");
+    let ended = ended_with_its_load_cut(&lab, started);
+    assert_eq!(ended, [ExperimentStatus::Completed]);
+    assert!(
+        printed.contains("Status:  1/1 PASS (COMPLIANT)\n"),
         "{printed}"
     );
 }

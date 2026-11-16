@@ -11,7 +11,9 @@ mod lab;
 use std::process::{Command, Output, Stdio};
 use std::time::{Duration, Instant};
 
-use lab::{experiment, heal, inject, leave_marker, reads, result, step, step_within, Lab};
+use lab::{
+    experiment, heal, inject, leave_marker, reads, result, step, step_within, wait_for, Lab,
+};
 use serde_json::Value;
 use tumult_core::types::{ActivityStatus, ExperimentStatus, Journal};
 
@@ -101,15 +103,6 @@ fn run_and_interrupt(lab: &Lab, definition: &str) -> Ending {
     assert!(killed.success(), "SIGINT was not sent");
     let output = child.wait_with_output().expect("wait for tumult");
     ending(lab, &output, started)
-}
-
-fn wait_for(path: &std::path::Path) {
-    let deadline = Instant::now() + Duration::from_secs(20);
-    while !path.exists() {
-        assert!(Instant::now() < deadline, "{} never came", path.display());
-        // sleep: interval of the bounded poll for a file of another process.
-        std::thread::sleep(Duration::from_millis(20));
-    }
 }
 
 /// Whether the `sleep` of the long step is still running.

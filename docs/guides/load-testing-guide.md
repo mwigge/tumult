@@ -219,7 +219,9 @@ and the recovery check are done, k6 has 10 seconds to end by itself and oha
 is stopped after the window it is in. Give the load the length of the method.
 A GameDay shares one load between its experiments. When every experiment has
 run and the load has time left, the GameDay waits for the load to end, so
-its journal holds the whole load. A cancelled GameDay does not wait.
+its journal holds the whole load. A GameDay that is cancelled, or that an
+experiment error stops, does not wait: it aborts the load as in the table
+above, and the load result is marked `execution.aborted: true`.
 
 **Status precedence.** When several things went wrong, the first that
 applies names the run: `interrupted` (cancelled), `aborted` (the hypothesis
