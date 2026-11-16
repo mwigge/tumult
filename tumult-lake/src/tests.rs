@@ -185,6 +185,68 @@ fn writer_ingests_journal_visible_to_reader() {
     assert_eq!(activities[0]["n"], serde_json::json!(1));
 }
 
+/// The log record a run leaves when it ends, with `status` as the run
+/// spelled it.
+fn completed_log(experiment_id: &str, status: &str) -> LogRow {
+    LogRow {
+        ts_ns: 1_774_980_300_000_000_000,
+        severity_text: "INFO".into(),
+        body: "experiment.completed".into(),
+        trace_id: Some("abc123".into()),
+        span_id: None,
+        service_name: "tumult".into(),
+        log_attrs: vec![
+            ("experiment_id".into(), experiment_id.into()),
+            ("status".into(), status.into()),
+        ],
+        resource_attrs: vec![],
+        ..LogRow::default()
+    }
+}
+
+#[test]
+fn the_outcome_rule_gives_one_spelling_and_reads_the_span_first() {
+    let d = tempfile::TempDir::new().unwrap();
+    let store = Store::open(&d.path().join("kronika.duckdb")).unwrap();
+    let writer = store.writer().unwrap();
+    // One run has its outcome on its log record only, the other on both.
+    let mut on_log = sample_span("exp-log");
+    on_log.outcome_status = None;
+    let mut on_span = sample_span("exp-span");
+    on_span.outcome_status = Some("Halted".into());
+    writer.insert_spans(&[on_log, on_span]).unwrap();
+    writer
+        .insert_logs(&[
+            completed_log("exp-log", "Deviated"),
+            completed_log("exp-span", "Completed"),
+        ])
+        .unwrap();
+
+    let rows = store
+        .read_only()
+        .unwrap()
+        .query_json_rows(&format!(
+            "SELECT s.experiment_id, {outcome} AS outcome \
+             FROM spans s LEFT JOIN logs l \
+               ON l.log_attrs['experiment_id'] = s.experiment_id \
+              AND l.body = 'experiment.completed' \
+             ORDER BY s.experiment_id",
+            outcome = crate::run_outcome_sql("s", "l")
+        ))
+        .unwrap();
+
+    let outcomes: Vec<(&str, &str)> = rows
+        .iter()
+        .map(|row| {
+            (
+                row["experiment_id"].as_str().unwrap_or_default(),
+                row["outcome"].as_str().unwrap_or_default(),
+            )
+        })
+        .collect();
+    assert_eq!(outcomes, [("exp-log", "deviated"), ("exp-span", "halted")]);
+}
+
 #[test]
 fn experiment_runs_resolves_outcome_from_completed_log() {
     // A run stored before 3.0.2 has no outcome on its root span; it is on
@@ -197,20 +259,7 @@ fn experiment_runs_resolves_outcome_from_completed_log() {
     span.outcome_status = None;
     writer.insert_spans(&[span]).unwrap();
     writer
-        .insert_logs(&[LogRow {
-            ts_ns: 1_774_980_300_000_000_000,
-            severity_text: "INFO".into(),
-            body: "experiment.completed".into(),
-            trace_id: Some("abc123".into()),
-            span_id: None,
-            service_name: "tumult".into(),
-            log_attrs: vec![
-                ("experiment_id".into(), "exp-log".into()),
-                ("status".into(), "Deviated".into()),
-            ],
-            resource_attrs: vec![],
-            ..LogRow::default()
-        }])
+        .insert_logs(&[completed_log("exp-log", "Deviated")])
         .unwrap();
     let reader = store.read_only().unwrap();
     let runs = reader.experiment_runs().unwrap();
@@ -227,21 +276,6 @@ fn experiment_runs_resolves_outcome_from_completed_log() {
         )
         .unwrap();
     assert_eq!(rows[1]["outcome_status"], serde_json::json!("completed"));
-}
-
-#[test]
-fn the_runs_view_reads_the_outcome_by_the_shared_rule() {
-    let rule = crate::run_outcome_sql("s", "l");
-
-    assert_eq!(
-        rule,
-        "lower(coalesce(s.outcome_status, l.log_attrs['status']))"
-    );
-    let view = crate::schema::CREATE_VIEWS
-        .iter()
-        .find(|view| view.contains("VIEW experiment_runs"))
-        .expect("the runs view");
-    assert!(view.contains(&rule), "{view}");
 }
 
 #[test]

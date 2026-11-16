@@ -1079,3 +1079,43 @@ async fn ask_names_the_runs_that_did_not_complete_in_either_spelling() {
         "{body}"
     );
 }
+
+#[tokio::test]
+async fn ask_lists_the_recent_runs_with_how_each_ended_in_one_spelling() {
+    let srv = spawn_server().await;
+    // The runs of the seed have their status on the log, with a capital.
+    // This one has it on its root span.
+    let row = root_span("run-halted", Some("halted"));
+    exec_write(&srv, move |w| {
+        w.insert_spans(&[row]).map_err(|e| e.to_string())
+    })
+    .await;
+
+    let resp = reqwest::Client::new()
+        .post(format!("{}/api/ask", srv.base))
+        .json(&json!({"question": "Show recent experiments"}))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), 200);
+    let body: Value = resp.json().await.unwrap();
+    let found: Vec<(&str, &str)> = rows_of(&body, "rows")
+        .iter()
+        .map(|row| {
+            (
+                row["experiment_id"].as_str().unwrap(),
+                row["status"].as_str().unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        found,
+        [
+            ("run-halted", "halted"),
+            ("exp-fail", "deviated"),
+            ("exp-pass", "completed")
+        ],
+        "{body}"
+    );
+}

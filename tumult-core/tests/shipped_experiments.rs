@@ -253,10 +253,52 @@ fn every_load_sends_real_requests() {
     assert!(broken.is_empty(), "broken loads:\n{}", broken.join("\n"));
 }
 
-/// The routes of the demo app (`demo/app/src/app.rs`), which listens on
-/// port 8080 when the demo stack is up.
-const DEMO_APP_ROUTES: &[&str] = &["/health", "/orders", "/checkout/"];
+/// The demo app listens on port 8080 when the demo stack is up.
 const DEMO_APP: &str = "http://127.0.0.1:8080";
+const DEMO_APP_ROUTER: &str = "demo/app/src/app.rs";
+
+/// The routes in the text of a router: the first argument of each `.route(`.
+fn routes_of(router: &str) -> Vec<String> {
+    router
+        .split(".route(\"")
+        .skip(1)
+        .filter_map(|rest| rest.split_once('"'))
+        .map(|(route, _)| route.to_string())
+        .collect()
+}
+
+/// Whether `route` serves `path`: the same segments one by one, where a
+/// `{name}` segment of the route takes any segment that is not empty. What
+/// follows a `?` is not part of the path.
+fn serves(route: &str, path: &str) -> bool {
+    let path = path.split('?').next().unwrap_or(path);
+    let asked: Vec<&str> = path.split('/').collect();
+    let served: Vec<&str> = route.split('/').collect();
+    asked.len() == served.len()
+        && served.iter().zip(&asked).all(|(served, asked)| {
+            served == asked || (served.starts_with('{') && !asked.is_empty())
+        })
+}
+
+#[test]
+fn routes_are_read_from_the_text_of_a_router() {
+    let router = r#"Router::new()
+        .route("/health", get(health))
+        .route("/orders/{id}", get(get_order))
+        .with_state(state)"#;
+    assert_eq!(routes_of(router), ["/health", "/orders/{id}"]);
+}
+
+#[test]
+fn a_route_serves_a_path_segment_by_segment() {
+    assert!(serves("/health", "/health"));
+    assert!(serves("/orders", "/orders?limit=5"));
+    assert!(serves("/checkout/{id}", "/checkout/1"));
+    assert!(!serves("/checkout/{id}", "/checkout/"));
+    assert!(!serves("/checkout/{id}", "/checkout/1/items"));
+    assert!(!serves("/orders", "/orders-of-today"));
+    assert!(!serves("/orders/{id}", "/orders"));
+}
 
 /// The paths asked of the demo app in a text.
 fn demo_app_paths(text: &str) -> Vec<String> {
@@ -279,10 +321,12 @@ fn demo_app_paths_are_read_from_a_text() {
 
 #[test]
 fn examples_ask_the_demo_app_only_for_routes_it_serves() {
+    let routes = routes_of(&read(&workspace_root().join(DEMO_APP_ROUTER)));
+    assert!(!routes.is_empty(), "no route in {DEMO_APP_ROUTER}");
     let mut wrong = Vec::new();
     for file in toon_files("examples") {
         for path in demo_app_paths(&read(&file)) {
-            let served = DEMO_APP_ROUTES.iter().any(|route| path.starts_with(route));
+            let served = routes.iter().any(|route| serves(route, &path));
             if !path.is_empty() && !served {
                 wrong.push(format!("{}: {path}", shown(&file)));
             }
@@ -290,7 +334,7 @@ fn examples_ask_the_demo_app_only_for_routes_it_serves() {
     }
     assert!(
         wrong.is_empty(),
-        "the demo app does not serve:\n{}",
+        "the demo app serves {routes:?}, not:\n{}",
         wrong.join("\n")
     );
 }

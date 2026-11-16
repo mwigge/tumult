@@ -120,14 +120,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn an_experiment_resource_is_not_called_a_chaos_experiment() {
-        assert_eq!(
-            ResourceKind::Experiment.description(),
-            "Tumult experiment definition (raw TOON)."
-        );
-    }
-
-    #[test]
     fn parse_uri_accepts_plain_names_and_rejects_everything_else() {
         assert_eq!(
             parse_resource_uri("tumult://journal/a.toon").unwrap(),

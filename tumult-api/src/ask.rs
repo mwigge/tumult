@@ -346,20 +346,9 @@ mod tests {
     }
 
     #[test]
-    fn the_outcome_of_a_run_is_read_by_the_rule_of_the_lake() {
+    fn the_prompt_gives_the_model_the_rule_for_the_outcome_of_a_run() {
         let rule = tumult_lake::run_outcome_sql("s", "l");
-        let reads_a_status = |sql: &&str| sql.contains("AS status");
 
-        let canned: Vec<&str> = GOLDEN
-            .iter()
-            .map(|(_, sql)| *sql)
-            .filter(reads_a_status)
-            .collect();
-
-        assert_eq!(canned.len(), 2);
-        for sql in canned {
-            assert!(sql.contains(&format!("{rule} AS status")), "{sql}");
-        }
         assert!(schema_prompt().contains(&rule));
     }
 
