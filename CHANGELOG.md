@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [3.0.1] - 2026-11-16
 
-A patch release: the product is named the same way everywhere, three
+A patch release: the product is named the same way everywhere, a few
 web UI fixes, and the open dependency updates. No schema change and no
 upgrade steps from 3.0.0. See the
 [3.0.1 release notes](docs/releases/3.0.1.md).
@@ -17,9 +17,9 @@ upgrade steps from 3.0.0. See the
 
 - `tumult --help`, `tumultd --help`, the footer of the HTML report, the MCP server title and instructions, and two model prompts described a chaos engineering platform. They now say resilience intelligence platform, like the README and the website. The workspace description and keywords follow. Commands, API paths and file formats are unchanged.
 - Web: the line under the product name (sidebar, login page, page title) reads "resilience intelligence".
-- Web: the experiments list and the experiment page showed two different durations for one run (root span against journal). Both now show the journal duration; the experiment page shows the longer trace span next to it with its own label.
-- Web: the time axis of the Logs volume chart ran past the current time with wide buckets. It now ends at now.
-- Web: names of runs that start close together were drawn over each other on the Metrics chart. A name is hidden when it would touch the last shown one; the line and the hover text stay.
+- Web: the experiments list and the experiment page showed two different durations for one run (root span against journal). Both now show the journal duration, and so does the run list in the Star Map drawer; the experiment page shows the longer trace span next to it with its own label.
+- Web: the time axis of the Logs volume chart ran past the current time with wide buckets. It now ends at now, and a bucket outside the window (the clocks of browser and server differ) widens the axis instead of being lost.
+- Web: names of runs that start close together were drawn over each other on the Metrics chart. A name is hidden when it would touch the last shown one; the line and the hover text stay. The time axis of that chart now shows the selected range up to now; with a single bucket it used to run days into the future.
 - Docs: the README and the landing page of the website link to the release notes, the website has a Releases section, and the 3.0.0 changelog entry marks its two breaking changes (delta metrics by default, `tumult perf` inconclusive verdict) as breaking.
 
 ### Changed
