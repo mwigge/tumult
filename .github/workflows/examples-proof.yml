@@ -116,6 +116,8 @@ jobs:
             "${run[@]}" < /dev/null || echo "$name ended with exit code $?"
             echo "::endgroup::"
           done < "$RUNNER_TEMP/experiments"
+          # The run as root leaves a journal only root can read.
+          sudo chown -R "$(id -u):$(id -g)" examples/recorded
 
       # A GameDay writes its journal next to its definition. The journal in
       # the checkout is removed first, so the gate cannot read one that this
@@ -157,7 +159,10 @@ jobs:
   proof-scripts:
     name: Proof scripts
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # A build of tumultd without a cache takes 45 minutes on a runner.
+    timeout-minutes: 120
+    env:
+      CARGO_PROFILE_DEV_DEBUG: line-tables-only
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
