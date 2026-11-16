@@ -798,7 +798,8 @@ fn game_day_renders_full_run_context() {
     assert_eq!(get("Scenario"), "injection / process-kill");
     assert_eq!(get("Severity"), "high");
     assert_eq!(get("Hypothesis"), "Met");
-    assert_eq!(get("Outcome"), "Completed");
+    // The completed log of a stored run has the old spelling, `Completed`.
+    assert_eq!(get("Outcome"), "completed");
 
     // Blast radius section: rollback exercised, recovery recorded.
     assert!(doc.blocks.iter().any(|b| matches!(
@@ -918,12 +919,13 @@ fn game_day_handles_missing_outcome_and_failed_rollback() {
             .map(|(_, v)| row_text(std::slice::from_ref(v)))
             .unwrap()
     };
-    // No completion log: incomplete outcome; no hypothesis recorded;
-    // fault type without a subtype stands alone.
+    // No outcome on the root span and no completion log: incomplete
+    // outcome; no hypothesis and no severity recorded; fault type without a
+    // subtype stands alone.
     assert_eq!(get("Outcome"), "incomplete");
     assert_eq!(get("Hypothesis"), "Not recorded");
     assert_eq!(get("Scenario"), "network");
-    assert_eq!(get("Severity"), "medium"); // default
+    assert_eq!(get("Severity"), "not recorded");
 
     // A failed rollback is flagged for investigation.
     assert!(doc.blocks.iter().any(|b| matches!(

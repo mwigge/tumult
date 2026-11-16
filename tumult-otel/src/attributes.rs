@@ -37,7 +37,10 @@ pub const PROBE_NAME: &str = "resilience.probe.name";
 pub const PLUGIN_NAME: &str = "resilience.plugin.name";
 
 // Outcome
-/// Span attribute key for the outcome status (`success`/`failure`).
+/// Attribute key for the outcome status. On the root span of a run it is the
+/// status of the journal (`completed`, `deviated`, `aborted`, `failed`,
+/// `interrupted`, `halted`); on the outcome metrics it is `success` or
+/// `failure`.
 pub const OUTCOME: &str = "resilience.outcome.status";
 /// Span attribute key recording whether the steady-state hypothesis held.
 pub const HYPOTHESIS_MET: &str = "resilience.outcome.hypothesis_met";

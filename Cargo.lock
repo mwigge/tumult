@@ -8167,6 +8167,8 @@ dependencies = [
 name = "tumult-compliance"
 version = "3.0.1"
 dependencies = [
+ "opentelemetry-proto",
+ "opentelemetry_sdk",
  "serde",
  "serde_json",
  "serde_yaml",
@@ -8176,6 +8178,8 @@ dependencies = [
  "tracing",
  "tumult-core",
  "tumult-lake",
+ "tumult-otlp",
+ "tumult-test-utils",
  "typst",
  "typst-pdf",
 ]

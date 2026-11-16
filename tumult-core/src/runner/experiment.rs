@@ -613,10 +613,11 @@ fn build_blast_radius(
 }
 
 /// Close a run that had a root span, whichever way it ended: freeze the
-/// version of the target it measured, and record the per-experiment
-/// metrics — outcome counter, lifecycle duration, and a deviation count
-/// tagged with the experiment title when the steady state was breached.
-/// Must run while the root span is still current.
+/// version of the target it measured, write the outcome on the root span,
+/// and record the per-experiment metrics — outcome counter, lifecycle
+/// duration, and a deviation count tagged with the experiment title when
+/// the steady state was breached. Must run while the root span is still
+/// current.
 fn seal(
     mut journal: Journal,
     experiment: &Experiment,
@@ -627,6 +628,7 @@ fn seal(
         journal.target_version = observed_target_version(experiment, config, &journal);
         record_observed_version(journal.target_version.as_ref());
     }
+    record_outcome_on_root_span(&journal);
     record_experiment_outcome(started, journal.status == ExperimentStatus::Completed);
     if journal.status == ExperimentStatus::Deviated {
         tumult_otel::instrument::record_deviation(
@@ -725,6 +727,17 @@ fn record_observed_version(version: Option<&TargetVersion>) {
     for attribute in super::telemetry::target_version_attributes(version) {
         cx.span().set_attribute(attribute);
     }
+}
+
+/// Put how the run ended on the current (root) span, where reports and the
+/// recovery numbers read it.
+fn record_outcome_on_root_span(journal: &Journal) {
+    let cx = opentelemetry::Context::current();
+    for attribute in super::telemetry::outcome_attributes(journal) {
+        cx.span().set_attribute(attribute);
+    }
+    cx.span()
+        .set_status(super::telemetry::outcome_span_status(&journal.status));
 }
 
 /// Record the outcome of a finished experiment: the `tumult.experiments.total`

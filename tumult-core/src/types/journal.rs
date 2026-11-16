@@ -323,6 +323,28 @@ impl Journal {
             target_version: TargetVersion::declared(experiment),
         }
     }
+
+    /// Whether the steady state held, as far as the run judged it: the
+    /// verdict after the method when the run got that far, and `false` when
+    /// the hypothesis failed before the method. `None` when the definition
+    /// has no hypothesis, or when it held before the method and the run
+    /// ended without judging it again.
+    #[must_use]
+    pub fn hypothesis_met(&self) -> Option<bool> {
+        if let Some(after) = &self.steady_state_after {
+            return Some(after.met);
+        }
+        let before = self.steady_state_before.as_ref()?;
+        (!before.met).then_some(false)
+    }
+
+    /// The measured recovery time: seconds from the end of the method until
+    /// every hypothesis probe was back within tolerance. `None` when the
+    /// run did not see the target recover.
+    #[must_use]
+    pub fn recovery_time_s(&self) -> Option<f64> {
+        self.post_result.as_ref()?.mttr_s
+    }
 }
 
 #[cfg(test)]
@@ -589,5 +611,51 @@ mod tests {
         };
         let decoded: Journal = toon_round_trip(&journal);
         assert_eq!(decoded, journal);
+    }
+
+    fn judged(met: bool) -> HypothesisResult {
+        HypothesisResult {
+            title: "steady".into(),
+            met,
+            probe_results: vec![],
+        }
+    }
+
+    /// A journal whose hypothesis was judged before and after the method
+    /// with these verdicts; `None` where it was not judged.
+    fn journal_judged(before: Option<bool>, after: Option<bool>) -> Journal {
+        Journal {
+            steady_state_before: before.map(judged),
+            steady_state_after: after.map(judged),
+            ..Journal::for_experiment(
+                &Experiment::default(),
+                "id-1".into(),
+                ExperimentStatus::Completed,
+                0,
+            )
+        }
+    }
+
+    #[test]
+    fn the_verdict_after_the_method_is_the_verdict_on_the_hypothesis() {
+        let held = journal_judged(Some(true), Some(true));
+        let broke = journal_judged(Some(true), Some(false));
+
+        assert_eq!(held.hypothesis_met(), Some(true));
+        assert_eq!(broke.hypothesis_met(), Some(false));
+    }
+
+    #[test]
+    fn a_hypothesis_that_failed_before_the_method_is_not_met() {
+        assert_eq!(
+            journal_judged(Some(false), None).hypothesis_met(),
+            Some(false)
+        );
+    }
+
+    #[test]
+    fn a_hypothesis_that_only_held_before_the_method_has_no_verdict() {
+        assert_eq!(journal_judged(Some(true), None).hypothesis_met(), None);
+        assert_eq!(journal_judged(None, None).hypothesis_met(), None);
     }
 }

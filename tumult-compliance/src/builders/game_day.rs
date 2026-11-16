@@ -7,6 +7,24 @@ use crate::html::fmt_datetime;
 use crate::model::{Block, Cell, ReportDoc, TemplateKind};
 use crate::scoring;
 
+/// How the run ended, in the spelling of the journal: the status on the root
+/// span, or for a run stored before the runner wrote it there, the status of
+/// its completed log. `incomplete` when the run recorded neither.
+fn run_outcome(reader: &Reader, root: &serde_json::Value, id: &str) -> Result<String, String> {
+    if let Some(status) = cell(root, "outcome_status") {
+        return Ok(status.to_string());
+    }
+    let logged = reader
+        .query_json_rows(&format!(
+            "SELECT lower(log_attrs['status']) AS status FROM logs \
+             WHERE log_attrs['experiment_id'] = {id} AND body = 'experiment.completed' \
+             ORDER BY ts_ns DESC LIMIT 1"
+        ))
+        .map_err(|e| e.to_string())?;
+    let status = logged.first().and_then(|row| cell(row, "status"));
+    Ok(status.unwrap_or("incomplete").to_string())
+}
+
 /// Build the R3 game-day report for one experiment run (tumult
 /// `experiment_id`). Returns `Ok(None)` when the id is unknown — or when
 /// `envs` is scoped and the run's root span sits outside those environments
@@ -26,7 +44,7 @@ pub fn build_game_day(
         .query_json_rows(&format!(
             "SELECT ts_ns, experiment_id, experiment_name, target_system, target_environment, \
              fault_type, fault_subtype, fault_severity, blast_radius, hypothesis_met, \
-             recovery_time_s, service_name, duration_ns, span_attrs \
+             recovery_time_s, outcome_status, service_name, duration_ns, span_attrs \
              FROM spans WHERE span_name = 'resilience.experiment' AND experiment_id = {id}{} \
              ORDER BY ts_ns DESC LIMIT 1",
             scoring::and_env(scoring::env_in("target_environment", envs)),
@@ -36,17 +54,7 @@ pub fn build_game_day(
         return Ok(None);
     };
 
-    let outcome = reader
-        .query_json_rows(&format!(
-            "SELECT log_attrs['status'] AS status FROM logs \
-             WHERE log_attrs['experiment_id'] = {id} AND body = 'experiment.completed' \
-             ORDER BY ts_ns DESC LIMIT 1"
-        ))
-        .map_err(|e| e.to_string())?
-        .first()
-        .and_then(|r| cell(r, "status"))
-        .unwrap_or("incomplete")
-        .to_string();
+    let outcome = run_outcome(reader, &root, &id)?;
 
     // The run's span tree shares the root span's trace_id.
     let spans = reader
@@ -130,7 +138,7 @@ pub fn build_game_day(
             ),
             (
                 "Severity".into(),
-                Cell::status(cell(&root, "fault_severity").unwrap_or("medium")),
+                cell(&root, "fault_severity").map_or(Cell::text("not recorded"), Cell::status),
             ),
             (
                 "Hypothesis".into(),
