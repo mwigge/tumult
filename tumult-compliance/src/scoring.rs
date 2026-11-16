@@ -91,6 +91,8 @@ pub struct ExperimentScore {
     pub runs: u64,
     /// `automated` (OTLP telemetry) or `manual` (verified manual evidence).
     pub origin: String,
+    /// The latest run is in the lake as a journal only: it sent no trace.
+    pub journal_only: bool,
 }
 
 /// One scored target (mean of its experiment scores).
@@ -114,9 +116,11 @@ pub struct Scorecard {
     pub experiments: Vec<ExperimentScore>,
 }
 
-/// Latest run per experiment: (ts_ns, outcome) for the most recent root
-/// span, plus run counts. `{STATUS}` takes the outcome of the run, by the
-/// rule of [`tumult_lake::run_outcome_sql`].
+/// Latest run per experiment: (ts_ns, outcome) for the most recent run
+/// root, plus run counts. A run root is the root span of a run, or a row
+/// built from its journal when the run sent no trace (`journal_only`).
+/// `{STATUS}` takes the outcome of the run, by the rule of
+/// [`tumult_lake::run_outcome_sql`].
 /// Verified manual records (excluding inconclusive outcomes) are UNIONed in
 /// with `origin = 'manual'`; the latest row is picked per (name, target, environment, origin).
 /// Display names cannot merge distinct deployment targets or environments.
@@ -127,19 +131,20 @@ const LATEST_SQL: &str = "SELECT * FROM ( \
      SELECT s.experiment_name AS name, s.target_system AS target, \
      s.ts_ns AS ts, s.fault_severity AS severity, {STATUS} AS status, \
      'automated' AS origin, s.target_environment AS environment, s.experiment_id AS evidence_id, \
-     (SELECT COUNT(*) FROM spans r WHERE r.span_name = 'resilience.experiment' \
-      AND r.experiment_name = s.experiment_name \
+     (SELECT COUNT(*) FROM run_roots r \
+      WHERE r.experiment_name = s.experiment_name \
       AND r.target_system IS NOT DISTINCT FROM s.target_system \
       AND r.target_environment IS NOT DISTINCT FROM s.target_environment \
-      AND r.ts_ns <= {AS_OF}{ENV_R}) AS runs \
-     FROM spans s LEFT JOIN logs l \
+      AND r.ts_ns <= {AS_OF}{ENV_R}) AS runs, \
+     s.journal_only \
+     FROM run_roots s LEFT JOIN logs l \
        ON l.log_attrs['experiment_id'] = s.experiment_id \
       AND l.body = 'experiment.completed' \
-     WHERE s.span_name = 'resilience.experiment' AND s.experiment_name IS NOT NULL \
+     WHERE s.experiment_name IS NOT NULL \
        AND s.ts_ns <= {AS_OF}{ENV_S} \
      UNION ALL \
      SELECT m.experiment_name, m.target_system, m.executed_at_ns, NULL, \
-     m.outcome_status, 'manual', m.target_environment, m.id, 1 \
+     m.outcome_status, 'manual', m.target_environment, m.id, 1, false \
      FROM manual_experiments m \
      WHERE m.status = 'verified' AND m.outcome_status != 'inconclusive' \
        AND m.executed_at_ns <= {AS_OF}{ENV_M} \
@@ -279,6 +284,10 @@ fn compute_as_of(reader: &Reader, as_of_ns: i64, envs: &[String]) -> Result<Scor
             severity,
             runs,
             origin,
+            journal_only: row
+                .get("journal_only")
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(false),
         });
     }
     experiments.sort_by(|a, b| a.score.cmp(&b.score).then_with(|| a.name.cmp(&b.name)));

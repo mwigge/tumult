@@ -16,8 +16,13 @@ use crate::sql_util::{
 };
 use crate::ApiState;
 
-/// Span-name predicate selecting one row per experiment run.
+/// Span-name predicate selecting the root span of a run.
 const ROOT: &str = "span_name = 'resilience.experiment'";
+
+/// Environment predicate for `run_roots`: a root names its own environment.
+fn and_root_env(scopes: &[String]) -> String {
+    and_pred(env_scope_where("target_environment", scopes))
+}
 
 // ---------------------------------------------------------------------------
 // GET /api/overview
@@ -48,18 +53,18 @@ struct Kpi {
 
 fn sql_experiments_value(f: i64, t: i64, scopes: &[String]) -> String {
     format!(
-        "SELECT COUNT(*) AS v FROM spans WHERE {ROOT} AND {}{}",
+        "SELECT COUNT(*) AS v FROM run_roots WHERE {}{}",
         w(f, t),
-        and_pred(env_trace_exists("spans", scopes))
+        and_root_env(scopes)
     )
 }
 
 fn sql_experiments_spark(f: i64, t: i64, b: i64, scopes: &[String]) -> String {
     format!(
-        "SELECT {} AS ts, COUNT(*) AS v FROM spans WHERE {ROOT} AND {}{} GROUP BY 1 ORDER BY 1",
+        "SELECT {} AS ts, COUNT(*) AS v FROM run_roots WHERE {}{} GROUP BY 1 ORDER BY 1",
         bucket_expr(b),
         w(f, t),
-        and_pred(env_trace_exists("spans", scopes))
+        and_root_env(scopes)
     )
 }
 
@@ -239,11 +244,11 @@ pub(crate) async fn overview(
         let per_day = series(
             reader,
             &format!(
-                "SELECT {} AS ts, COUNT(*) AS v FROM spans WHERE {ROOT} AND {}{} \
+                "SELECT {} AS ts, COUNT(*) AS v FROM run_roots WHERE {}{} \
                  GROUP BY 1 ORDER BY 1",
                 bucket_expr(86_400),
                 w(cur.0, cur.1),
-                and_pred(env_trace_exists("spans", &scopes))
+                and_root_env(&scopes)
             ),
         )?;
 
@@ -252,11 +257,10 @@ pub(crate) async fn overview(
                 "SELECT s.target_system AS target, COUNT(*) AS experiments, \
                  COUNT(*) FILTER (WHERE {} = 'completed') \
                  / NULLIF(COUNT(*), 0) AS pass_rate \
-                 FROM spans s LEFT JOIN logs l \
+                 FROM run_roots s LEFT JOIN logs l \
                    ON l.log_attrs['experiment_id'] = s.experiment_id \
                   AND l.body = 'experiment.completed' \
-                 WHERE s.span_name = 'resilience.experiment' \
-                   AND s.target_system IS NOT NULL \
+                 WHERE s.target_system IS NOT NULL \
                    AND s.ts_ns >= {} AND s.ts_ns < {}{} \
                  GROUP BY 1 ORDER BY experiments DESC LIMIT 10",
                 tumult_lake::run_outcome_sql("s", "l"),

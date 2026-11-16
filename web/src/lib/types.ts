@@ -36,6 +36,8 @@ export interface ExperimentRow {
     status: string | null;
     deviations: string | null;
     duration_ms: string | null;
+    /** The run sent no trace: the lake holds its journal only. */
+    journal_only: boolean;
     faults: string | null;
     origin: 'automated' | 'manual' | null;
     review_status: string | null;
@@ -345,6 +347,8 @@ export interface ExperimentScore {
     last_run_ns: number | null;
     last_outcome: string | null;
     runs: number;
+    /** The latest run sent no trace: the lake holds its journal only. */
+    journal_only: boolean;
 }
 
 export interface TargetScore {

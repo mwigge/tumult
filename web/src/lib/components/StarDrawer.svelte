@@ -270,6 +270,7 @@
                             <span class="meta">
                                 {fmtAgo(r.started_ns)} · {fmtDuration(experimentDurationNs(r))}
                                 {#if r.origin === 'manual'}· manual{/if}
+                                {#if r.journal_only}· journal only{/if}
                             </span>
                         </li>
                     {/each}

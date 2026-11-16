@@ -543,6 +543,7 @@ mod tests {
             severity: None,
             runs,
             origin: "automated".into(),
+            journal_only: false,
         }
     }
 

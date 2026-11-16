@@ -230,8 +230,7 @@ pub(crate) fn scoped_experiment_names(
     };
     let rows = reader
         .query_json_rows(&format!(
-            "SELECT experiment_name AS name FROM spans \
-             WHERE span_name = 'resilience.experiment' AND {env} \
+            "SELECT experiment_name AS name FROM run_roots WHERE {env} \
              UNION SELECT experiment_name AS name FROM manual_experiments WHERE {env}"
         ))
         .map_err(|e| e.to_string())?;

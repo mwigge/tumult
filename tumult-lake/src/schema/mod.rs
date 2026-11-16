@@ -143,7 +143,7 @@ pub const CREATE_TABLES: &[&str] = &[
 /// tumult emits as `resilience.experiment`. The outcome is read by the rule
 /// of [`run_outcome_sql`].
 /// CREATE OR REPLACE so existing databases pick up view changes on startup.
-pub const CREATE_VIEWS: &[&str] = &[EXPERIMENT_RUNS_VIEW, entities::VIEW];
+pub const CREATE_VIEWS: &[&str] = &[RUN_ROOTS_VIEW, EXPERIMENT_RUNS_VIEW, entities::VIEW];
 
 /// Additive changes to tables of this version that an earlier build of the
 /// same version may have created without them. Run after
@@ -163,6 +163,91 @@ pub fn run_outcome_sql(span: &str, log: &str) -> String {
     format!("lower(coalesce({span}.outcome_status, {log}.log_attrs['status']))")
 }
 
+/// The root of every run, in the columns of `spans`, with `journal_only`.
+///
+/// A run that sent its trace has its `resilience.experiment` span here as it
+/// is. A run stored only as a journal (a plain `tumult run`, a journal
+/// import) left no span: its row is built from the journal, says
+/// `journal_only`, has no trace id, and takes its target from the run node
+/// of the graph, which holds what the definition declared. The hypothesis verdict follows
+/// `Journal::hypothesis_met`. Every column of `spans` is named, so a new
+/// one has to be added here.
+const RUN_ROOTS_VIEW: &str = "
+CREATE OR REPLACE VIEW run_roots AS
+SELECT
+    s.ts_ns,
+    s.trace_id,
+    s.span_id,
+    s.parent_span_id,
+    s.span_name,
+    s.span_kind,
+    s.duration_ns,
+    s.status_code,
+    s.status_message,
+    s.service_name,
+    s.service_version,
+    s.experiment_id,
+    s.experiment_name,
+    s.outcome_status,
+    s.fault_type,
+    s.fault_subtype,
+    s.fault_severity,
+    s.blast_radius,
+    s.target_system,
+    s.target_technology,
+    s.target_environment,
+    s.plugin_name,
+    s.hypothesis_met,
+    s.recovery_time_s,
+    s.span_attrs,
+    s.resource_attrs,
+    s.events,
+    FALSE AS journal_only
+FROM spans AS s
+WHERE s.span_name = 'resilience.experiment'
+UNION ALL
+SELECT
+    e.started_at_ns AS ts_ns,
+    NULL AS trace_id,
+    NULL AS span_id,
+    NULL AS parent_span_id,
+    'resilience.experiment' AS span_name,
+    'Internal' AS span_kind,
+    e.ended_at_ns - e.started_at_ns AS duration_ns,
+    CASE WHEN lower(e.status) = 'completed' THEN 'Ok' ELSE 'Error' END AS status_code,
+    '' AS status_message,
+    'tumult' AS service_name,
+    NULL AS service_version,
+    e.experiment_id,
+    e.title AS experiment_name,
+    lower(e.status) AS outcome_status,
+    NULL AS fault_type,
+    NULL AS fault_subtype,
+    NULL AS fault_severity,
+    NULL AS blast_radius,
+    json_extract_string(g.attrs, '$.target_system') AS target_system,
+    json_extract_string(g.attrs, '$.target_technology') AS target_technology,
+    json_extract_string(g.attrs, '$.target_environment') AS target_environment,
+    NULL AS plugin_name,
+    coalesce(
+        e.hypothesis_after_met,
+        CASE WHEN NOT e.hypothesis_before_met THEN FALSE END
+    ) AS hypothesis_met,
+    e.rto_measured_s AS recovery_time_s,
+    NULL AS span_attrs,
+    NULL AS resource_attrs,
+    NULL AS events,
+    TRUE AS journal_only
+FROM experiments AS e
+LEFT JOIN graph_nodes AS g ON g.id = 'run:' || e.experiment_id
+WHERE NOT EXISTS (
+    SELECT 1 FROM spans AS r
+    WHERE
+        r.span_name = 'resilience.experiment'
+        AND r.experiment_id = e.experiment_id
+);
+";
+
 const EXPERIMENT_RUNS_VIEW: &str = "
 CREATE OR REPLACE VIEW experiment_runs AS
 SELECT
@@ -173,11 +258,10 @@ SELECT
     max(s.duration_ns) AS duration_ns,
     any_value(lower(coalesce(s.outcome_status, l.log_attrs['status']))) AS outcome_status,
     any_value(s.hypothesis_met) AS hypothesis_met
-FROM spans AS s
+FROM run_roots AS s
 LEFT JOIN logs AS l
     ON
         l.log_attrs['experiment_id'] = s.experiment_id
         AND l.body = 'experiment.completed'
-WHERE s.span_name = 'resilience.experiment'
 GROUP BY s.experiment_id;
 ";

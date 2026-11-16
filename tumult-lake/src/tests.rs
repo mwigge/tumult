@@ -237,11 +237,11 @@ fn the_runs_view_reads_the_outcome_by_the_shared_rule() {
         rule,
         "lower(coalesce(s.outcome_status, l.log_attrs['status']))"
     );
-    assert!(
-        crate::schema::CREATE_VIEWS[0].contains(&rule),
-        "{}",
-        crate::schema::CREATE_VIEWS[0]
-    );
+    let view = crate::schema::CREATE_VIEWS
+        .iter()
+        .find(|view| view.contains("VIEW experiment_runs"))
+        .expect("the runs view");
+    assert!(view.contains(&rule), "{view}");
 }
 
 #[test]
@@ -350,4 +350,178 @@ fn v2_store_migrates_forward_without_data_loss() {
         .query_json_rows("SELECT count(*) AS c FROM graph_nodes WHERE kind = 'compliance_article'")
         .unwrap();
     assert!(articles[0]["c"].as_u64().unwrap() > 0);
+}
+
+/// A journal of a deviated run of an experiment that declares its target.
+fn journal_with_target(id: &str) -> (tumult_core::types::Journal, tumult_core::types::Experiment) {
+    use tumult_core::types::{Experiment, ExperimentStatus, ExperimentTarget, HypothesisResult};
+    let mut journal = crate::duckdb_store::sample_journal(id, ExperimentStatus::Deviated);
+    journal.steady_state_after = Some(HypothesisResult {
+        title: "the target answers".into(),
+        met: false,
+        probe_results: vec![],
+    });
+    let experiment = Experiment {
+        title: journal.experiment_title.clone(),
+        target: Some(ExperimentTarget {
+            system: "payments-api".into(),
+            technology: Some("postgresql".into()),
+            environment: Some("staging".into()),
+            criticality: None,
+            namespace: None,
+            version: None,
+        }),
+        ..Experiment::default()
+    };
+    (journal, experiment)
+}
+
+fn run_roots(store: &Store) -> Vec<serde_json::Value> {
+    store
+        .read_only()
+        .unwrap()
+        .query_json_rows(
+            "SELECT experiment_id, experiment_name, span_name, ts_ns, duration_ns, \
+             trace_id, outcome_status, status_code, hypothesis_met, target_system, \
+             target_technology, target_environment, journal_only \
+             FROM run_roots ORDER BY experiment_id",
+        )
+        .unwrap()
+}
+
+#[test]
+fn a_run_stored_only_as_a_journal_has_a_root_built_from_the_journal() {
+    let d = tempfile::TempDir::new().unwrap();
+    let store = Store::open(&d.path().join("kronika.duckdb")).unwrap();
+    let (journal, experiment) = journal_with_target("cli-run");
+    let writer = store.writer().unwrap();
+    assert!(writer.ingest_journal(&journal, Some(&experiment)).unwrap());
+
+    let roots = run_roots(&store);
+
+    assert_eq!(roots.len(), 1, "{roots:?}");
+    let root = &roots[0];
+    assert_eq!(root["journal_only"], serde_json::json!(true));
+    assert_eq!(root["experiment_id"], "cli-run");
+    assert_eq!(root["experiment_name"], "Test cli-run");
+    assert_eq!(root["span_name"], "resilience.experiment");
+    assert_eq!(root["trace_id"], serde_json::Value::Null);
+    assert_eq!(root["ts_ns"], serde_json::json!(journal.started_at_ns));
+    assert_eq!(root["duration_ns"], serde_json::json!(300_000_000_000_i64));
+    assert_eq!(root["outcome_status"], "deviated");
+    assert_eq!(root["status_code"], "Error");
+    assert_eq!(root["hypothesis_met"], serde_json::json!(false));
+    assert_eq!(root["target_system"], "payments-api");
+    assert_eq!(root["target_technology"], "postgresql");
+    assert_eq!(root["target_environment"], "staging");
+}
+
+#[test]
+fn a_journal_stored_without_its_definition_has_a_root_without_a_target() {
+    let d = tempfile::TempDir::new().unwrap();
+    let store = Store::open(&d.path().join("kronika.duckdb")).unwrap();
+    let journal = crate::duckdb_store::sample_journal(
+        "bare",
+        tumult_core::types::ExperimentStatus::Completed,
+    );
+    let writer = store.writer().unwrap();
+    assert!(writer.ingest_journal(&journal, None).unwrap());
+
+    let roots = run_roots(&store);
+
+    assert_eq!(roots.len(), 1, "{roots:?}");
+    assert_eq!(roots[0]["journal_only"], serde_json::json!(true));
+    assert_eq!(roots[0]["outcome_status"], "completed");
+    assert_eq!(roots[0]["status_code"], "Ok");
+    assert_eq!(roots[0]["hypothesis_met"], serde_json::Value::Null);
+    assert_eq!(roots[0]["target_system"], serde_json::Value::Null);
+    assert_eq!(roots[0]["target_environment"], serde_json::Value::Null);
+}
+
+#[test]
+fn a_journal_whose_hypothesis_failed_before_the_method_says_not_met() {
+    use tumult_core::types::{ExperimentStatus, HypothesisResult};
+    let d = tempfile::TempDir::new().unwrap();
+    let store = Store::open(&d.path().join("kronika.duckdb")).unwrap();
+    let verdict = |met| HypothesisResult {
+        title: "the target answers".into(),
+        met,
+        probe_results: vec![],
+    };
+    let mut aborted = crate::duckdb_store::sample_journal("aborted", ExperimentStatus::Aborted);
+    aborted.steady_state_before = Some(verdict(false));
+    let mut cut_short =
+        crate::duckdb_store::sample_journal("cut-short", ExperimentStatus::Interrupted);
+    cut_short.steady_state_before = Some(verdict(true));
+    let writer = store.writer().unwrap();
+    assert!(writer.ingest_journal(&aborted, None).unwrap());
+    assert!(writer.ingest_journal(&cut_short, None).unwrap());
+
+    let roots = run_roots(&store);
+
+    assert_eq!(roots[0]["experiment_id"], "aborted");
+    assert_eq!(roots[0]["hypothesis_met"], serde_json::json!(false));
+    assert_eq!(roots[1]["experiment_id"], "cut-short");
+    assert_eq!(roots[1]["hypothesis_met"], serde_json::Value::Null);
+}
+
+#[test]
+fn a_run_with_a_root_span_is_one_root_and_the_span_is_what_it_says() {
+    let d = tempfile::TempDir::new().unwrap();
+    let store = Store::open(&d.path().join("kronika.duckdb")).unwrap();
+    let (journal, experiment) = journal_with_target("daemon-run");
+    let writer = store.writer().unwrap();
+    writer.insert_spans(&[sample_span("daemon-run")]).unwrap();
+    assert!(writer.ingest_journal(&journal, Some(&experiment)).unwrap());
+
+    let roots = run_roots(&store);
+
+    assert_eq!(roots.len(), 1, "{roots:?}");
+    assert_eq!(roots[0]["journal_only"], serde_json::json!(false));
+    assert_eq!(roots[0]["trace_id"], "abc123");
+    assert_eq!(roots[0]["experiment_name"], "pg-failover");
+    assert_eq!(roots[0]["outcome_status"], "completed");
+    assert_eq!(roots[0]["target_system"], "database");
+}
+
+#[test]
+fn the_runs_view_lists_a_run_stored_only_as_a_journal() {
+    let d = tempfile::TempDir::new().unwrap();
+    let store = Store::open(&d.path().join("kronika.duckdb")).unwrap();
+    let (journal, experiment) = journal_with_target("cli-run");
+    let writer = store.writer().unwrap();
+    writer.insert_spans(&[sample_span("daemon-run")]).unwrap();
+    assert!(writer.ingest_journal(&journal, Some(&experiment)).unwrap());
+
+    let runs = store.read_only().unwrap().experiment_runs().unwrap();
+
+    assert_eq!(runs.len(), 2);
+    let cli = runs
+        .iter()
+        .find(|run| run.experiment_id.as_deref() == Some("cli-run"))
+        .expect("the journal run is listed");
+    assert_eq!(cli.experiment_name.as_deref(), Some("Test cli-run"));
+    assert_eq!(cli.outcome_status.as_deref(), Some("deviated"));
+    assert_eq!(cli.hypothesis_met, Some(false));
+    assert_eq!(cli.started_at_ns, Some(journal.started_at_ns));
+    assert_eq!(cli.ended_at_ns, Some(journal.ended_at_ns));
+}
+
+#[test]
+fn the_run_roots_have_every_column_of_a_span() {
+    let d = tempfile::TempDir::new().unwrap();
+    let store = Store::open(&d.path().join("kronika.duckdb")).unwrap();
+    let _writer = store.writer().unwrap();
+
+    let missing = store
+        .read_only()
+        .unwrap()
+        .query_json_rows(
+            "SELECT column_name FROM information_schema.columns WHERE table_name = 'spans' \
+             EXCEPT \
+             SELECT column_name FROM information_schema.columns WHERE table_name = 'run_roots'",
+        )
+        .unwrap();
+
+    assert!(missing.is_empty(), "{missing:?}");
 }

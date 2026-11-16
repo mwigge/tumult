@@ -47,6 +47,11 @@
         <a href="/experiments" style="color: var(--text-dim)">← experiments</a>
         <h1>{exp.name ?? exp.id}</h1>
         <StatusBadge status={exp.status} />
+        {#if exp.journal_only}
+            <span class="badge neutral" title="This run sent no trace. The lake holds its journal."
+                >journal only</span
+            >
+        {/if}
         <span class="sub mono">{exp.id}</span>
     </div>
 
@@ -77,7 +82,11 @@
 
     <div class="panel" style="margin-bottom: 14px">
         <h2>Trace waterfall — {detail.spans.length} spans</h2>
-        {#if detail.spans.length === 0}
+        {#if exp.journal_only}
+            <div class="state" data-testid="no-trace">
+                This run sent no trace. What you see here comes from its journal.
+            </div>
+        {:else if detail.spans.length === 0}
             <div class="state">No spans recorded for this experiment.</div>
         {:else}
             <Waterfall spans={detail.spans} onselect={(s) => (selected = s)} />

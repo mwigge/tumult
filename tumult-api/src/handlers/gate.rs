@@ -185,6 +185,7 @@ mod tests {
             severity: None,
             runs: 1,
             origin: "automated".into(),
+            journal_only: false,
         }
     }
 

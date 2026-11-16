@@ -376,10 +376,11 @@ fn calls(reader: &Reader, window: &Window) -> Result<Vec<CallRow>, String> {
         .collect())
 }
 
-/// Runs and verified manual records that started inside the window. The
-/// outcome of a run is on its root span or its completion log; a run
-/// completes after it starts, so only logs since the window opened are
-/// joined.
+/// Runs and verified manual records that started inside the window. A run
+/// is read from its root, which is built from the journal when the run
+/// sent no trace. The outcome of a run is on its root or its completion
+/// log; a run completes after it starts, so only logs since the window
+/// opened are joined.
 fn runs_sql(window: &Window) -> String {
     let span_scope = and_pred(env_scope_where("s.target_environment", &window.envs));
     let manual_scope = and_pred(env_scope_where("m.target_environment", &window.envs));
@@ -391,10 +392,10 @@ fn runs_sql(window: &Window) -> String {
          MIN(s.ts_ns) AS started_ns, \
          any_value({status}) AS status, \
          false AS manual \
-         FROM spans s LEFT JOIN logs l \
+         FROM run_roots s LEFT JOIN logs l \
            ON l.log_attrs['experiment_id'] = s.experiment_id \
           AND l.body = 'experiment.completed' AND l.ts_ns >= {from} \
-         WHERE s.span_name = 'resilience.experiment' AND s.experiment_id IS NOT NULL \
+         WHERE s.experiment_id IS NOT NULL \
            AND s.experiment_name IS NOT NULL \
            AND s.ts_ns >= {from} AND s.ts_ns < {to}{span_scope} \
          GROUP BY s.experiment_id \

@@ -137,7 +137,16 @@
                     {:else}
                         <tr class="clickable" onclick={() => goto(`/experiments/${row.id}`)}>
                             <td><StatusBadge status={row.status} /></td>
-                            <td>{row.name ?? '—'}</td>
+                            <td>
+                                {row.name ?? '—'}
+                                {#if row.journal_only}
+                                    <span
+                                        class="badge neutral origin"
+                                        title="This run sent no trace. The lake holds its journal."
+                                        >journal only</span
+                                    >
+                                {/if}
+                            </td>
                             <td class="mono" style="color: var(--text-dim)">{shortId(row.id)}</td>
                             <td title={new Date(row.started_ns / 1e6).toISOString()}
                                 >{fmtAgo(row.started_ns)}</td

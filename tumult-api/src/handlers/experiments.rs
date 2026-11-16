@@ -43,8 +43,10 @@ fn short_enough(field: &str, value: &str) -> Result<(), ApiError> {
     )))
 }
 
-/// The root-span ↔ completed-log join used by the list and detail queries.
-const EXPERIMENT_FROM: &str = "FROM spans s LEFT JOIN logs l \
+/// The run-root ↔ completed-log join used by the list and detail queries.
+/// `run_roots` holds the root span of a run, or a root built from its
+/// journal when the run sent no trace.
+const EXPERIMENT_FROM: &str = "FROM run_roots s LEFT JOIN logs l \
      ON l.log_attrs['experiment_id'] = s.experiment_id \
     AND l.body = 'experiment.completed'";
 
@@ -56,7 +58,8 @@ fn experiment_cols() -> String {
          s.target_system, s.target_technology, s.target_environment, \
          {} AS status, \
          l.log_attrs['deviations'] AS deviations, \
-         l.log_attrs['duration_ms'] AS duration_ms",
+         l.log_attrs['duration_ms'] AS duration_ms, \
+         s.journal_only",
         tumult_lake::run_outcome_sql("s", "l")
     )
 }
@@ -173,7 +176,8 @@ pub(crate) async fn experiments(
              CAST(m.duration_s * 1000000000 AS BIGINT) AS duration_ns, \
              NULL AS trace_id, m.target_system, NULL AS target_technology, \
              m.target_environment, m.outcome_status AS status, \
-             NULL AS deviations, NULL AS duration_ms, NULL AS faults, \
+             NULL AS deviations, NULL AS duration_ms, false AS journal_only, \
+             NULL AS faults, \
              'manual' AS origin, m.status AS review_status \
              FROM manual_experiments m WHERE {}",
             mwheres.join(" AND ")
@@ -225,12 +229,12 @@ pub(crate) async fn experiment_windows(
             .into());
     }
     // The rollup view has no environment column; scope binds through the
-    // root span's `target_environment` by experiment_id.
+    // `target_environment` of the run's root by experiment_id.
     let env = env_scope_where("se.target_environment", &principal.env_scopes).map_or_else(
         String::new,
         |env| {
             format!(
-                " AND EXISTS (SELECT 1 FROM spans se \
+                " AND EXISTS (SELECT 1 FROM run_roots se \
                  WHERE se.experiment_id = experiment_runs.experiment_id AND {env})"
             )
         },
@@ -271,7 +275,7 @@ pub(crate) async fn experiment_detail(
         let info = reader
             .query_json_rows(&format!(
                 "SELECT {} {EXPERIMENT_FROM} \
-                 WHERE s.span_name = 'resilience.experiment' AND s.experiment_id = {id_sql}{env_where}",
+                 WHERE s.experiment_id = {id_sql}{env_where}",
                 experiment_cols()
             ))
             .map_err(|e| e.to_string())?;
@@ -355,8 +359,9 @@ pub(crate) async fn dimensions(
 ) -> Result<Json<Value>, ApiError> {
     let scopes = principal.env_scopes.clone();
     let body = with_reader(&state.db_path, move |reader| {
-        // outcomes/targets/experiments bind the root span's own environment
-        // column; faults (child spans) reach it by correlation.
+        // outcomes/targets/experiments bind the environment column of the
+        // row itself; faults (child spans) reach it by correlation. A run
+        // that sent no trace names its target only on its run root.
         let and_root = and_pred(env_scope_where("target_environment", &scopes));
         let and_run = and_pred(env_scope_where("s.target_environment", &scopes));
         let and_trace = and_pred(env_trace_exists("spans", &scopes));
@@ -371,18 +376,20 @@ pub(crate) async fn dimensions(
         Ok(json!({
             "outcomes": distinct(&format!(
                 "SELECT DISTINCT {status} AS v {EXPERIMENT_FROM} \
-                 WHERE s.span_name = 'resilience.experiment' AND {status} IS NOT NULL{and_run} \
+                 WHERE {status} IS NOT NULL{and_run} \
                  ORDER BY 1"))?,
             "targets": distinct(&format!(
-                "SELECT DISTINCT target_system AS v FROM spans \
+                "SELECT DISTINCT target_system AS v FROM ( \
+                 SELECT target_system, target_environment FROM spans \
+                 UNION ALL \
+                 SELECT target_system, target_environment FROM run_roots WHERE journal_only) \
                  WHERE target_system IS NOT NULL{and_root} ORDER BY 1"))?,
             "faults": distinct(&format!(
                 "SELECT DISTINCT fault_type AS v FROM spans \
                  WHERE fault_type IS NOT NULL{and_trace} ORDER BY 1"))?,
             "experiments": distinct(&format!(
-                "SELECT DISTINCT experiment_name AS v FROM spans \
-                 WHERE span_name = 'resilience.experiment' \
-                   AND experiment_name IS NOT NULL{and_root} ORDER BY 1"))?,
+                "SELECT DISTINCT experiment_name AS v FROM run_roots \
+                 WHERE experiment_name IS NOT NULL{and_root} ORDER BY 1"))?,
         }))
     })
     .await?;
