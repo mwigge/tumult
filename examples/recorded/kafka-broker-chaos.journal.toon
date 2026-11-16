@@ -1,0 +1,61 @@
+experiment_title: Kafka broker chaos — verify the broker recovers after a pause
+experiment_id: "776ca061-81f1-4e53-ad28-3cbb5d2b70d6"
+status: completed
+started_at_ns: 1794852761489530404
+ended_at_ns: 1794852772145219224
+duration_ms: 10655
+steady_state_before:
+  title: Kafka broker answers API version requests
+  met: true
+  probe_results[1]{name,activity_type,status,started_at_ns,duration_ms,output,trace_id,span_id}:
+    "kafka-broker-up",probe,succeeded,1794852761489556584,1265,"kafka:9092 (id: 1 rack: null) -> (","",""
+steady_state_after:
+  title: Kafka broker answers API version requests
+  met: true
+  probe_results[1]{name,activity_type,status,started_at_ns,duration_ms,output,trace_id,span_id}:
+    "kafka-broker-up",probe,succeeded,1794852770901128747,1244,"kafka:9092 (id: 1 rack: null) -> (","",""
+method_results[2]:
+  - name: "pause-broker"
+    activity_type: action
+    status: succeeded
+    started_at_ns: 1794852762755135079
+    duration_ms: 3264
+    trace_id: ""
+    span_id: ""
+  - name: "verify-broker-recovered"
+    activity_type: probe
+    status: succeeded
+    started_at_ns: 1794852766019859660
+    duration_ms: 3565
+    output: "kafka:9092 (id: 1 rack: null) -> ("
+    trace_id: ""
+    span_id: ""
+rollback_results[0]:
+rollback_failures: 0
+estimate: null
+baseline_result: null
+during_result:
+  started_at_ns: 1794852762755077051
+  ended_at_ns: 1794852769678840049
+  fault_active_s: 6.923762998
+  sample_interval_s: 1
+  probes[1]{name,samples,mean,max,min,error_rate,breach_count}:
+    "kafka-broker-up",2,2961,4337,1585,0,0
+post_result:
+  started_at_ns: 1794852769678912353
+  ended_at_ns: 1794852770901116559
+  duration_s: 1.222204206
+  samples: 1
+  probes[1]{name,mean,p95,error_rate,returned_to_baseline,recovery_time_s}:
+    "kafka-broker-up",1222,1222,0,true,0
+  recovery_time_s: 0
+  full_recovery: true
+  mttr_s: 0
+load_result: null
+analysis: null
+regulatory: null
+kind: chaos
+probe_samples[3]{probe,phase,ts_ns,duration_ms,ok}:
+  "kafka-broker-up",during,1794852762755194604,4337,true
+  "kafka-broker-up",during,1794852768092854873,1585,true
+  "kafka-broker-up",post,1794852769678919904,1222,true

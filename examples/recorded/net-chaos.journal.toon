@@ -1,0 +1,49 @@
+experiment_title: "TCP latency chaos via native tokio-netem proxy"
+experiment_id: "c99560e8-d8be-4a5d-b947-69925495ceba"
+status: completed
+started_at_ns: 1794852792001221184
+ended_at_ns: 1794852795056442829
+duration_ms: 3055
+steady_state_before:
+  title: System check
+  met: true
+  probe_results[1]{name,activity_type,status,started_at_ns,duration_ms,output,trace_id,span_id}:
+    "system-alive",probe,succeeded,1794852792001245470,1,ready,"",""
+steady_state_after:
+  title: System check
+  met: true
+  probe_results[1]{name,activity_type,status,started_at_ns,duration_ms,output,trace_id,span_id}:
+    "system-alive",probe,succeeded,1794852795055717325,0,ready,"",""
+method_results[1]{name,activity_type,status,started_at_ns,duration_ms,output,trace_id,span_id}:
+  "inject-latency",action,succeeded,1794852792002354697,52,"latency fault active on 127.0.0.1:18080: 200ms +25ms jitter (pid 38595)","",""
+rollback_results[0]:
+rollback_failures: 0
+estimate: null
+baseline_result: null
+during_result:
+  started_at_ns: 1794852792002310410
+  ended_at_ns: 1794852795054502083
+  fault_active_s: 3.052191673
+  sample_interval_s: 1
+  probes[1]{name,samples,mean,max,min,error_rate,breach_count}:
+    "system-alive",4,0.75,1,0,0,0
+post_result:
+  started_at_ns: 1794852795054598599
+  ended_at_ns: 1794852795055711126
+  duration_s: 0.001112527
+  samples: 1
+  probes[1]{name,mean,p95,error_rate,returned_to_baseline,recovery_time_s}:
+    "system-alive",1,1,0,true,0
+  recovery_time_s: 0
+  full_recovery: true
+  mttr_s: 0
+load_result: null
+analysis: null
+regulatory: null
+kind: chaos
+probe_samples[5]{probe,phase,ts_ns,duration_ms,ok}:
+  "system-alive",during,1794852792002386611,0,true
+  "system-alive",during,1794852793003417897,1,true
+  "system-alive",during,1794852794004635920,1,true
+  "system-alive",during,1794852795005888334,1,true
+  "system-alive",post,1794852795054605940,1,true

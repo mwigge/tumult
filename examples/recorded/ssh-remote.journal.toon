@@ -1,0 +1,49 @@
+experiment_title: SSH remote execution — stress test via SSH
+experiment_id: "a7681e9a-3684-4e1f-ac46-819c1f1aa5e8"
+status: completed
+started_at_ns: 1794852772386708121
+ended_at_ns: 1794852776380917887
+duration_ms: 3994
+steady_state_before:
+  title: SSH host is reachable
+  met: true
+  probe_results[1]{name,activity_type,status,started_at_ns,duration_ms,output,error,trace_id,span_id}:
+    "ssh-check",probe,succeeded,1794852772386733048,219,alive,"Warning: Permanently added '[localhost]:12222' (ED25519) to the list of known hosts.","",""
+steady_state_after:
+  title: SSH host is reachable
+  met: true
+  probe_results[1]{name,activity_type,status,started_at_ns,duration_ms,output,error,trace_id,span_id}:
+    "ssh-check",probe,succeeded,1794852776187421567,193,alive,"Warning: Permanently added '[localhost]:12222' (ED25519) to the list of known hosts.","",""
+method_results[2]{name,activity_type,status,started_at_ns,duration_ms,output,error,trace_id,span_id}:
+  "ssh-uname",probe,succeeded,1794852772606809600,183,"Linux 91d340e544e5 7.0.0-1017-azure #17~24.04.1-Ubuntu SMP PREEMPT Thu Sep 24 18:46:57 UTC 2026 x86_64 GNU/Linux","Warning: Permanently added '[localhost]:12222' (ED25519) to the list of known hosts.","",""
+  "ssh-cpu-stress",action,succeeded,1794852772790756517,3208,"stress-ng: info:  [319] failed: 0\nstress-ng: info:  [319] metrics untrustworthy: 0\nstress-ng: info:  [319] successful run completed in 3.00 secs","Warning: Permanently added '[localhost]:12222' (ED25519) to the list of known hosts.","",""
+rollback_results[0]:
+rollback_failures: 0
+estimate: null
+baseline_result: null
+during_result:
+  started_at_ns: 1794852772606754337
+  ended_at_ns: 1794852775998847174
+  fault_active_s: 3.392092837
+  sample_interval_s: 1
+  probes[1]{name,samples,mean,max,min,error_rate,breach_count}:
+    "ssh-check",3,176,182,171,0,0
+post_result:
+  started_at_ns: 1794852775998912267
+  ended_at_ns: 1794852776187409148
+  duration_s: 0.188496881
+  samples: 1
+  probes[1]{name,mean,p95,error_rate,returned_to_baseline,recovery_time_s}:
+    "ssh-check",188,188,0,true,0
+  recovery_time_s: 0
+  full_recovery: true
+  mttr_s: 0
+load_result: null
+analysis: null
+regulatory: null
+kind: robustness
+probe_samples[4]{probe,phase,ts_ns,duration_ms,ok}:
+  "ssh-check",during,1794852772606860132,182,true
+  "ssh-check",during,1794852773789781843,171,true
+  "ssh-check",during,1794852774961803570,175,true
+  "ssh-check",post,1794852775998919097,188,true

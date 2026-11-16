@@ -1,0 +1,59 @@
+experiment_title: CPU stress — a new process still starts fast when every core is busy
+experiment_id: "5be804e2-3963-4956-9557-3b55ac0b3925"
+status: completed
+started_at_ns: 1794852776390408401
+ended_at_ns: 1794852787417428870
+duration_ms: 11027
+steady_state_before:
+  title: A new process starts within 500 ms
+  met: true
+  probe_results[1]{name,activity_type,status,started_at_ns,duration_ms,output,trace_id,span_id}:
+    "process-start-ms",probe,succeeded,1794852776390437334,5,"2","",""
+steady_state_after:
+  title: A new process starts within 500 ms
+  met: true
+  probe_results[1]{name,activity_type,status,started_at_ns,duration_ms,output,trace_id,span_id}:
+    "process-start-ms",probe,succeeded,1794852787414692101,2,"1","",""
+method_results[2]{name,activity_type,status,started_at_ns,duration_ms,output,trace_id,span_id}:
+  "process-start-ms-under-stress",probe,succeeded,1794852779396551962,14,"6","",""
+  "cpu-stress",action,succeeded,1794852776396536327,10049,"stress-ng: info:  [37672] successful run completed in 10.01 secs","",""
+rollback_results[0]:
+rollback_failures: 0
+estimate: null
+baseline_result: null
+during_result:
+  started_at_ns: 1794852776396399280
+  ended_at_ns: 1794852787411167844
+  fault_active_s: 11.014768564
+  sample_interval_s: 1
+  probes[1]{name,samples,mean,max,min,error_rate,breach_count}:
+    "process-start-ms",11,10.909090909090908,16,3,0,0
+post_result:
+  started_at_ns: 1794852787411257048
+  ended_at_ns: 1794852787414684079
+  duration_s: 0.003427031
+  samples: 1
+  probes[1]{name,mean,p95,error_rate,returned_to_baseline,recovery_time_s}:
+    "process-start-ms",3,3,0,true,0
+  recovery_time_s: 0
+  full_recovery: true
+  mttr_s: 0
+load_result: null
+analysis: null
+regulatory: null
+blast_radius:
+  peak_concurrent_faults: 1
+kind: robustness
+probe_samples[12]{probe,phase,ts_ns,duration_ms,ok}:
+  "process-start-ms",during,1794852776396532691,5,true
+  "process-start-ms",during,1794852777403010133,12,true
+  "process-start-ms",during,1794852778415446353,16,true
+  "process-start-ms",during,1794852779432021850,16,true
+  "process-start-ms",during,1794852780448290224,14,true
+  "process-start-ms",during,1794852781462638635,9,true
+  "process-start-ms",during,1794852782472153398,14,true
+  "process-start-ms",during,1794852783486337469,12,true
+  "process-start-ms",during,1794852784499343055,10,true
+  "process-start-ms",during,1794852785510311597,9,true
+  "process-start-ms",during,1794852786520319741,3,true
+  "process-start-ms",post,1794852787411263367,3,true

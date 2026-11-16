@@ -1,0 +1,250 @@
+experiment_title: Checkout API sheds load instead of collapsing at saturation
+experiment_id: "532dbd1e-9a90-497f-829b-da03a2630666"
+status: completed
+started_at_ns: 1794852855197254855
+ended_at_ns: 1794852977881358039
+duration_ms: 122684
+steady_state_before:
+  title: Checkout answers
+  met: true
+  probe_results[1]{name,activity_type,status,started_at_ns,duration_ms,trace_id,span_id}:
+    health,probe,succeeded,1794852855197276839,6,"",""
+steady_state_after:
+  title: Checkout answers
+  met: true
+  probe_results[1]{name,activity_type,status,started_at_ns,duration_ms,trace_id,span_id}:
+    health,probe,succeeded,1794852977875675429,5,"",""
+method_results[2]:
+  - name: "process-still-up"
+    activity_type: probe
+    status: succeeded
+    started_at_ns: 1794852855205520877
+    duration_ms: 120023
+    output: "true"
+    trace_id: ""
+    span_id: ""
+  - name: "cpu-stress"
+    activity_type: action
+    status: succeeded
+    started_at_ns: 1794852855205556085
+    duration_ms: 122663
+    trace_id: ""
+    span_id: ""
+rollback_results[0]:
+rollback_failures: 0
+estimate: null
+baseline_result: null
+during_result:
+  started_at_ns: 1794852855205442619
+  ended_at_ns: 1794852977869582292
+  fault_active_s: 122.664139673
+  sample_interval_s: 1
+  probes[1]{name,samples,mean,max,min,error_rate,breach_count}:
+    health,121,21.322314049586776,97,6,0,0
+post_result:
+  started_at_ns: 1794852977869647600
+  ended_at_ns: 1794852977875652485
+  duration_s: 0.006004885
+  samples: 1
+  probes[1]{name,mean,p95,error_rate,returned_to_baseline,recovery_time_s}:
+    health,5,5,0,true,0
+  recovery_time_s: 0
+  full_recovery: true
+  mttr_s: 0
+load_result:
+  tool: oha
+  started_at_ns: 1794852855205404862
+  ended_at_ns: 1794852977875657392
+  duration_s: 122.67025253
+  vus: 400
+  throughput_rps: 2466.927934954826
+  latency_p50_ms: 100.74230740238949
+  latency_p95_ms: 145.01354599302528
+  latency_p99_ms: 166.26329286467848
+  error_rate: 0
+  total_requests: 296213
+  thresholds_met: true
+  samples[2]:
+    - ts_ns: 1794852945411409201
+      duration_s: 90.127207317
+      vus: 205
+      throughput_rps: 2128.3917000257184
+      latency_p50_ms: 96.254047
+      latency_p95_ms: 132.84605499999998
+      latency_p99_ms: 142.556951
+      error_rate: 0
+      requests: 191826
+      counts:
+        sent: 191826
+        ok: 191826
+        timed_out: 0
+        transport: 0
+        http_4xx: 0
+        http_5xx: 0
+        http_other: 0
+        unclassified: 0
+      request_timeout_ms: 30000
+    - ts_ns: 1794852975411375618
+      duration_s: 29.946425886
+      vus: 400
+      throughput_rps: 3485.7916065636764
+      latency_p50_ms: 108.990126
+      latency_p95_ms: 167.373046
+      latency_p99_ms: 209.827077
+      error_rate: 0
+      requests: 104387
+      counts:
+        sent: 104387
+        ok: 104387
+        timed_out: 0
+        transport: 0
+        http_4xx: 0
+        http_5xx: 0
+        http_other: 0
+        unclassified: 0
+      request_timeout_ms: 30000
+  execution:
+    planned_windows: 2
+    completed_windows: 2
+    requests:
+      sent: 296213
+      ok: 296213
+      timed_out: 0
+      transport: 0
+      http_4xx: 0
+      http_5xx: 0
+      http_other: 0
+      unclassified: 0
+analysis: null
+regulatory: null
+blast_radius:
+  peak_concurrent_faults: 1
+kind: robustness
+objectives:
+  rto_measured_s: 0
+  verdicts[2]{nfr_id,kind,metric,operator,threshold,observed,state,margin,criticality}:
+    "health-survives",availability,during.availability,gte,0.95,1,met,0.050000000000000044,blocking
+    recovers,availability,post.availability,gte,0.999,1,met,0.0010000000000000009,major
+probe_samples[122]{probe,phase,ts_ns,duration_ms,ok}:
+  health,during,1794852855205512394,16,true
+  health,during,1794852856221946107,19,true
+  health,during,1794852857241393370,18,true
+  health,during,1794852858260142910,16,true
+  health,during,1794852859277217448,19,true
+  health,during,1794852860297011735,12,true
+  health,during,1794852861309379466,14,true
+  health,during,1794852862323472871,21,true
+  health,during,1794852863345539977,16,true
+  health,during,1794852864362013734,21,true
+  health,during,1794852865383286554,16,true
+  health,during,1794852866399602478,12,true
+  health,during,1794852867412261592,10,true
+  health,during,1794852868422792194,65,true
+  health,during,1794852869487987758,79,true
+  health,during,1794852870567682152,18,true
+  health,during,1794852871586649590,33,true
+  health,during,1794852872620358955,25,true
+  health,during,1794852873646183389,14,true
+  health,during,1794852874660653197,17,true
+  health,during,1794852875678377605,14,true
+  health,during,1794852876693374383,12,true
+  health,during,1794852877706293925,13,true
+  health,during,1794852878719702761,14,true
+  health,during,1794852879734708719,16,true
+  health,during,1794852880751382940,16,true
+  health,during,1794852881768186487,24,true
+  health,during,1794852882792431274,27,true
+  health,during,1794852883820399175,14,true
+  health,during,1794852884835233965,17,true
+  health,during,1794852885852352021,13,true
+  health,during,1794852886865643498,17,true
+  health,during,1794852887882821029,17,true
+  health,during,1794852888900316940,18,true
+  health,during,1794852889919182419,12,true
+  health,during,1794852890931336323,11,true
+  health,during,1794852891943332879,15,true
+  health,during,1794852892959379592,11,true
+  health,during,1794852893971314781,21,true
+  health,during,1794852894993234478,21,true
+  health,during,1794852896014503590,15,true
+  health,during,1794852897030196237,18,true
+  health,during,1794852898048536045,16,true
+  health,during,1794852899064696509,14,true
+  health,during,1794852900079352021,14,true
+  health,during,1794852901094012249,13,true
+  health,during,1794852902107794980,17,true
+  health,during,1794852903125612069,23,true
+  health,during,1794852904149201410,15,true
+  health,during,1794852905165006529,13,true
+  health,during,1794852906178367752,21,true
+  health,during,1794852907200214652,18,true
+  health,during,1794852908218938939,15,true
+  health,during,1794852909234846011,28,true
+  health,during,1794852910263462496,13,true
+  health,during,1794852911277318745,14,true
+  health,during,1794852912292337005,10,true
+  health,during,1794852913302626238,18,true
+  health,during,1794852914320989010,10,true
+  health,during,1794852915331890545,16,true
+  health,during,1794852916348157438,12,true
+  health,during,1794852917360426680,11,true
+  health,during,1794852918372478485,16,true
+  health,during,1794852919389367780,21,true
+  health,during,1794852920410996135,15,true
+  health,during,1794852921426350941,15,true
+  health,during,1794852922442402281,16,true
+  health,during,1794852923458595366,19,true
+  health,during,1794852924478287473,13,true
+  health,during,1794852925492361522,13,true
+  health,during,1794852926505563206,16,true
+  health,during,1794852927522137083,14,true
+  health,during,1794852928536387547,14,true
+  health,during,1794852929551331671,15,true
+  health,during,1794852930566758516,10,true
+  health,during,1794852931577603516,10,true
+  health,during,1794852932588188498,23,true
+  health,during,1794852933611698602,19,true
+  health,during,1794852934631420745,12,true
+  health,during,1794852935644324610,9,true
+  health,during,1794852936654323300,8,true
+  health,during,1794852937663380744,11,true
+  health,during,1794852938674815254,17,true
+  health,during,1794852939692715566,14,true
+  health,during,1794852940706970022,15,true
+  health,during,1794852941722367138,13,true
+  health,during,1794852942736363027,11,true
+  health,during,1794852943748082338,12,true
+  health,during,1794852944761124387,11,true
+  health,during,1794852945772828067,19,true
+  health,during,1794852946792578434,80,true
+  health,during,1794852947873383140,32,true
+  health,during,1794852948905738319,16,true
+  health,during,1794852949922471826,15,true
+  health,during,1794852950937742902,38,true
+  health,during,1794852951976824209,37,true
+  health,during,1794852953017017349,37,true
+  health,during,1794852954054440247,81,true
+  health,during,1794852955135935517,21,true
+  health,during,1794852956157285990,17,true
+  health,during,1794852957175197254,23,true
+  health,during,1794852958198680190,47,true
+  health,during,1794852959246392162,30,true
+  health,during,1794852960277389813,97,true
+  health,during,1794852961375195164,33,true
+  health,during,1794852962408466805,19,true
+  health,during,1794852963428365629,20,true
+  health,during,1794852964449306516,28,true
+  health,during,1794852965477865914,27,true
+  health,during,1794852966505684262,24,true
+  health,during,1794852967530628067,22,true
+  health,during,1794852968553450240,68,true
+  health,during,1794852969622390144,15,true
+  health,during,1794852970637555175,12,true
+  health,during,1794852971650072471,97,true
+  health,during,1794852972747392534,42,true
+  health,during,1794852973790295625,27,true
+  health,during,1794852974817796696,22,true
+  health,during,1794852975840154994,9,true
+  health,during,1794852976849466887,9,true
+  health,during,1794852977859190962,6,true
+  health,post,1794852977869652617,5,true

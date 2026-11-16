@@ -1,0 +1,77 @@
+experiment_title: Pumba network latency injection on Redis
+experiment_id: "8a2760d4-5b2e-4e7f-9f0e-310a132400c2"
+status: completed
+started_at_ns: 1794852712596481101
+ended_at_ns: 1794852722811635162
+duration_ms: 10215
+steady_state_before:
+  title: Redis responds normally
+  met: true
+  probe_results[1]{name,activity_type,status,started_at_ns,duration_ms,output,trace_id,span_id}:
+    "redis-alive",probe,succeeded,1794852712596505147,38,PONG,"",""
+steady_state_after:
+  title: Redis responds normally
+  met: true
+  probe_results[1]{name,activity_type,status,started_at_ns,duration_ms,output,trace_id,span_id}:
+    "redis-alive",probe,succeeded,1794852722773780764,37,PONG,"",""
+method_results[3]:
+  - name: "packet-stats-before"
+    activity_type: probe
+    status: succeeded
+    started_at_ns: 1794852712635098614
+    duration_ms: 45
+    output: "{\"rx_packets\":30,\"rx_errors\":0,\"rx_drops\":0,\"tx_packets\":8,\"tx_errors\":0,\"tx_drops\":0}"
+    trace_id: ""
+    span_id: ""
+  - name: "inject-200ms-latency"
+    activity_type: action
+    status: succeeded
+    started_at_ns: 1794852712680217265
+    duration_ms: 10016
+    trace_id: ""
+    span_id: ""
+  - name: "packet-stats-after"
+    activity_type: probe
+    status: succeeded
+    started_at_ns: 1794852722696322880
+    duration_ms: 39
+    output: "{\"rx_packets\":30,\"rx_errors\":0,\"rx_drops\":0,\"tx_packets\":8,\"tx_errors\":0,\"tx_drops\":0}"
+    trace_id: ""
+    span_id: ""
+rollback_results[0]:
+rollback_failures: 0
+estimate: null
+baseline_result: null
+during_result:
+  started_at_ns: 1794852712635056420
+  ended_at_ns: 1794852722735478920
+  fault_active_s: 10.1004225
+  sample_interval_s: 1
+  probes[1]{name,samples,mean,max,min,error_rate,breach_count}:
+    "redis-alive",10,39.8,45,37,0,0
+post_result:
+  started_at_ns: 1794852722735529652
+  ended_at_ns: 1794852722773768866
+  duration_s: 0.038239214
+  samples: 1
+  probes[1]{name,mean,p95,error_rate,returned_to_baseline,recovery_time_s}:
+    "redis-alive",38,38,0,true,0
+  recovery_time_s: 0
+  full_recovery: true
+  mttr_s: 0
+load_result: null
+analysis: null
+regulatory: null
+kind: chaos
+probe_samples[11]{probe,phase,ts_ns,duration_ms,ok}:
+  "redis-alive",during,1794852712635148584,45,true
+  "redis-alive",during,1794852713680647448,39,true
+  "redis-alive",during,1794852714720003830,39,true
+  "redis-alive",during,1794852715759133748,38,true
+  "redis-alive",during,1794852716797940960,40,true
+  "redis-alive",during,1794852717838895459,39,true
+  "redis-alive",during,1794852718878488018,39,true
+  "redis-alive",during,1794852719917630946,40,true
+  "redis-alive",during,1794852720958104759,42,true
+  "redis-alive",during,1794852722000820348,37,true
+  "redis-alive",post,1794852722735535461,38,true

@@ -1,0 +1,53 @@
+experiment_title: PostgreSQL failover — kill connections and verify recovery
+experiment_id: "07869393-6435-451a-8686-2684fbe031de"
+status: completed
+started_at_ns: 1794852722817688068
+ended_at_ns: 1794852723041560568
+duration_ms: 223
+steady_state_before:
+  title: PostgreSQL accepts queries
+  met: true
+  probe_results[1]{name,activity_type,status,started_at_ns,duration_ms,output,trace_id,span_id}:
+    "pg-query",probe,succeeded,1794852722817714287,41,"PostgreSQL 16.16 on x86_64-pc-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit","",""
+steady_state_after:
+  title: PostgreSQL accepts queries
+  met: true
+  probe_results[1]{name,activity_type,status,started_at_ns,duration_ms,output,trace_id,span_id}:
+    "pg-query",probe,succeeded,1794852722998034739,43,"PostgreSQL 16.16 on x86_64-pc-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit","",""
+method_results[2]{name,activity_type,status,started_at_ns,duration_ms,output,trace_id,span_id}:
+  "pg-connection-count",probe,succeeded,1794852722859640460,52,"6","",""
+  "pg-kill-idle",action,succeeded,1794852722912499281,43,"pg_terminate_backend \n----------------------\n(0 rows)","",""
+rollback_results[0]:
+rollback_failures: 0
+estimate: null
+baseline_result: null
+during_result:
+  started_at_ns: 1794852722859593139
+  ended_at_ns: 1794852722955984279
+  fault_active_s: 0.09639114
+  sample_interval_s: 1
+  probes[1]{name,samples,mean,max,min,error_rate,breach_count}:
+    "pg-query",1,53,53,53,0,0
+post_result:
+  started_at_ns: 1794852722956039852
+  ended_at_ns: 1794852722998021849
+  duration_s: 0.041981997
+  samples: 1
+  probes[1]{name,mean,p95,error_rate,returned_to_baseline,recovery_time_s}:
+    "pg-query",41,41,0,true,0
+  recovery_time_s: 0
+  full_recovery: true
+  mttr_s: 0
+load_result: null
+analysis: null
+regulatory: null
+kind: dr
+objectives:
+  rto_target_s: 30
+  rto_measured_s: 0
+  verdicts[2]{nfr_id,kind,metric,operator,threshold,observed,state,margin,criticality}:
+    "post-availability",availability,post.availability,gte,0.9,1,met,0.09999999999999998,blocking
+    rto,rto,recovery.mttr_s,lte,30,0,met,30,blocking
+probe_samples[2]{probe,phase,ts_ns,duration_ms,ok}:
+  "pg-query",during,1794852722859677386,53,true
+  "pg-query",post,1794852722956046863,41,true
