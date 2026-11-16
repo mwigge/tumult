@@ -9,7 +9,7 @@
     import { CHART } from '#lib/echarts.js';
     import type { EChartsCoreOption } from '#lib/echarts.js';
     import { experimentOverlay, labelGap, overlayRunId } from '#lib/overlays.js';
-    import { RANGE_SECONDS } from '#lib/ranges.js';
+    import { RANGE_SECONDS, rangeAxis } from '#lib/ranges.js';
 
     const INTERVALS = ['5m', '1h', '1d'];
     const CHART_TYPES = ['line', 'area', 'bar'] as const;
@@ -110,7 +110,10 @@
         if (series.length === 0) return {};
         const stacked = filters.chart === 'area' && series.length > 1;
         const xs = series.flatMap((s) => s.data.map(([x]) => x));
-        const overlay = experimentOverlay(runs, undefined, labelGap(xs));
+        // The selected range up to now: one bucket alone would leave the
+        // axis to guess, and it guessed days into the future.
+        const axis = rangeAxis(filters.range, Date.now(), xs);
+        const overlay = experimentOverlay(runs, undefined, labelGap([axis.min, axis.max]));
         return {
             // Room under the legend for the upright run labels.
             grid: { left: 56, right: 20, top: 48, bottom: 24 },
@@ -118,6 +121,7 @@
             legend: { textStyle: { color: CHART.text }, top: 0 },
             xAxis: {
                 type: 'time',
+                ...axis,
                 axisLine: { lineStyle: { color: CHART.axis } },
                 axisLabel: { color: CHART.text },
             },

@@ -111,7 +111,12 @@
                 type: 'time',
                 // Bars would otherwise widen the axis by half a bucket,
                 // past now.
-                ...bucketAxis(filters.range, volume.bucket_s, Date.now()),
+                ...bucketAxis(
+                    filters.range,
+                    volume.bucket_s,
+                    Date.now(),
+                    buckets.map((ts) => ts * 1000),
+                ),
                 containShape: false,
                 axisLine: { lineStyle: { color: CHART.axis } },
                 axisLabel: { color: CHART.text },
