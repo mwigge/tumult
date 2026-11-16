@@ -26,12 +26,14 @@ const RECOVERY_TIME_S: &str = "resilience.outcome.recovery_time_s";
 const BLAST_RADIUS: &str = "resilience.fault.blast_radius";
 
 /// What the scripted target does: a probe prints `before` until an action
-/// has run and `after` from then on. An action cancels `cancel`, when given.
+/// has run and `after` from then on. An action cancels `cancel`, when given,
+/// and fails when `action_fails`.
 struct Target {
     before: &'static str,
     after: &'static str,
     acted: AtomicBool,
     cancel: Option<CancellationToken>,
+    action_fails: bool,
 }
 
 impl Target {
@@ -41,6 +43,7 @@ impl Target {
             after,
             acted: AtomicBool::new(false),
             cancel: None,
+            action_fails: false,
         }
     }
 }
@@ -58,8 +61,9 @@ impl ActivityExecutor for Target {
                 "done"
             }
         };
+        let failed = self.action_fails && activity.activity_type == ActivityType::Action;
         ActivityOutcome {
-            success: true,
+            success: !failed,
             output: Some(output.into()),
             error: None,
             duration_ms: 1,
@@ -275,4 +279,26 @@ fn a_run_that_declares_no_blast_radius_has_none_on_the_root_span() {
     );
 
     assert_eq!(text(&root, BLAST_RADIUS), None);
+}
+
+#[test]
+fn a_run_whose_method_failed_measures_no_recovery() {
+    let experiment = Experiment {
+        rto_target_s: Some(30.0),
+        ..with_hypothesis("failed method")
+    };
+    let target = Target {
+        action_fails: true,
+        ..Target::answers("ok", "ok")
+    };
+
+    let (journal, root) = run(&experiment, target, &RunConfig::default());
+
+    assert_eq!(journal.status, ExperimentStatus::Failed);
+    assert_eq!(journal.recovery_time_s(), None);
+    assert_eq!(seconds(&root, RECOVERY_TIME_S), None);
+    let objectives = journal.objectives.expect("the run has a recovery target");
+    assert_eq!(objectives.rto_measured_s, None);
+    assert_eq!(objectives.verdicts[0].nfr_id, "rto");
+    assert_eq!(objectives.verdicts[0].state, NfrState::Inconclusive);
 }

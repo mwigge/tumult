@@ -149,8 +149,9 @@ pub struct PostResult {
     ///
     /// Measured as elapsed time from `started_at_ns` (method end) until the
     /// first probe sample that falls within baseline tolerance. `None` if
-    /// recovery was never observed in the post-phase window or no samples
-    /// were taken.
+    /// recovery was never observed in the post-phase window, no samples
+    /// were taken, or a step of the method failed: such a run did not apply
+    /// its fault as written, so it does not measure recovery from it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mttr_s: Option<f64>,
 }

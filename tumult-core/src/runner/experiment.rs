@@ -10,7 +10,7 @@ use crate::engine::{conclude, Conclusion, RunFacts};
 use crate::execution::all_succeeded;
 use crate::types::{
     ActivityStatus, ActivityType, BlastRadiusRecord, Experiment, ExperimentStatus,
-    HypothesisResult, Journal, ObjectiveOutcome, SamplePhase, TargetVersion,
+    HypothesisResult, Journal, ObjectiveOutcome, PostResult, SamplePhase, TargetVersion,
 };
 
 use opentelemetry::trace::{TraceContextExt, Tracer};
@@ -448,7 +448,8 @@ pub fn run_experiment_with_sampling(
             let ended_at_ns = epoch_nanos_now();
             probe_samples.extend(samples_for_journal(SamplePhase::Post, &samples));
             build_post_result(started_at_ns, ended_at_ns, &samples)
-        });
+        })
+        .map(|post| recovery_measured(post, actions_succeeded));
 
     // -- Stop load test, collect results, and enrich the span
     let load_result = load::stop_load(load_handle, config.load_executor.as_ref(), LoadEnd::Stop);
@@ -610,6 +611,19 @@ fn build_blast_radius(
         max_concurrent_faults,
         peak_concurrent_faults,
     })
+}
+
+/// A run whose method failed did not apply its fault as written, so what the
+/// probes did afterwards is not a recovery from it. The samples stay in the
+/// journal; the run reports no time to recovery.
+fn recovery_measured(post: PostResult, method_succeeded: bool) -> PostResult {
+    if method_succeeded {
+        return post;
+    }
+    PostResult {
+        mttr_s: None,
+        ..post
+    }
 }
 
 /// Close a run that had a root span, whichever way it ended: freeze the

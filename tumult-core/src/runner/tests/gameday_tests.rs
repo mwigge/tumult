@@ -301,3 +301,55 @@ fn gameday_cancelled_token_skips_experiments_and_stops_load() {
         "the shared load process must be stopped on the cancellation path"
     );
 }
+
+/// Probes answer; every action of the method fails.
+struct FailingMethodExecutor;
+
+impl ActivityExecutor for FailingMethodExecutor {
+    fn execute(&self, activity: &Activity) -> ActivityOutcome {
+        let is_probe = activity.activity_type == ActivityType::Probe;
+        ActivityOutcome {
+            success: is_probe,
+            output: Some("200".into()),
+            error: None,
+            duration_ms: 1,
+        }
+    }
+}
+
+#[test]
+fn a_run_whose_method_failed_is_not_a_recovery_within_target() {
+    use crate::types::{GameDay, GameDayExperiment, ScoringConfig};
+
+    let gameday = GameDay {
+        title: "Failed method".into(),
+        description: None,
+        tags: vec![],
+        regulatory: None,
+        load: None,
+        experiments: vec![GameDayExperiment {
+            path: "fail.toon".into(),
+            compliance_maps: vec![],
+        }],
+        scoring: ScoringConfig::default(),
+    };
+    let executor: Arc<dyn ActivityExecutor> = Arc::new(FailingMethodExecutor);
+
+    let result = run_gameday(
+        &gameday,
+        &[experiment_with_hypothesis()],
+        &executor,
+        &Arc::new(ControlRegistry::new()),
+        &default_config(),
+    )
+    .expect("gameday should run");
+
+    let journal = &result.experiment_journals[0];
+    assert_eq!(journal.status, ExperimentStatus::Failed);
+    assert!(journal.post_result.is_some(), "the probes were sampled");
+    assert!(
+        result.resilience_score.recovery_compliance.abs() < f64::EPSILON,
+        "got {}",
+        result.resilience_score.recovery_compliance
+    );
+}

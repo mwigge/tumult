@@ -284,17 +284,24 @@ pub fn run_gameday_with_wiring(
     })
 }
 
-/// Computes recovery compliance score from MTTR data in journals.
+/// Computes recovery compliance score from MTTR data in journals: of the
+/// runs that watched for recovery, the share that measured one within the
+/// target. A run that measured none, because the target did not come back or
+/// its method failed, is not within the target.
 fn compute_recovery_compliance(journals: &[Journal], mttr_target_s: f64) -> f64 {
     let mut total_recovery = 0;
     let mut compliant_recovery = 0;
 
     for journal in journals {
-        if let Some(ref post) = journal.post_result {
-            total_recovery += 1;
-            if post.recovery_time_s <= mttr_target_s && post.full_recovery {
-                compliant_recovery += 1;
-            }
+        if journal.post_result.is_none() {
+            continue;
+        }
+        total_recovery += 1;
+        if journal
+            .recovery_time_s()
+            .is_some_and(|seconds| seconds <= mttr_target_s)
+        {
+            compliant_recovery += 1;
         }
     }
 
