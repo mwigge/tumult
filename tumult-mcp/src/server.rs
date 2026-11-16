@@ -58,7 +58,7 @@ fn server_details() -> InitializeResult {
         server_info: Implementation {
             name: "tumult-mcp".into(),
             version: env!("CARGO_PKG_VERSION").into(),
-            title: Some("Tumult Chaos Engineering MCP Server".into()),
+            title: Some("Tumult Resilience Intelligence MCP Server".into()),
             description: Some(
                 "Run chaos experiments, analyze journals, discover plugins via MCP tools".into(),
             ),
@@ -77,9 +77,9 @@ fn server_details() -> InitializeResult {
         },
         protocol_version: ProtocolVersion::V2025_11_25.into(),
         instructions: Some(
-            "Tumult is a Rust-native chaos engineering platform. Use these tools to run \
-             resilience experiments, query results with SQL, and discover available chaos \
-             actions and probes."
+            "Tumult is a Rust-native resilience intelligence platform. Use these tools to \
+             run resilience experiments, query results with SQL, and discover available \
+             chaos actions and probes."
                 .into(),
         ),
         meta: None,
@@ -464,7 +464,25 @@ mod tests {
         assert!(details.capabilities.tools.is_some());
         assert!(details.capabilities.resources.is_some());
         let instructions = details.instructions.expect("instructions must be set");
-        assert!(instructions.contains("chaos engineering"), "{instructions}");
+        assert!(
+            instructions.contains("resilience intelligence platform"),
+            "{instructions}"
+        );
+    }
+
+    #[test]
+    fn server_details_do_not_present_a_chaos_only_product() {
+        let details = server_details();
+        let info = details.server_info;
+        let shown = [
+            info.title.unwrap_or_default(),
+            info.description.unwrap_or_default(),
+            details.instructions.unwrap_or_default(),
+        ]
+        .join("\n");
+        assert!(shown.contains("Tumult Resilience Intelligence MCP Server"));
+        assert!(!shown.contains("Chaos Engineering"), "{shown}");
+        assert!(!shown.contains("chaos engineering"), "{shown}");
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

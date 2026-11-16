@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [3.0.1] - 2026-11-16
+
+A patch release: the product is named the same way everywhere, a few
+web UI fixes, and the open dependency updates. No schema change and no
+upgrade steps from 3.0.0. See the
+[3.0.1 release notes](docs/releases/3.0.1.md).
+
+### Fixed
+
+- `tumult --help`, `tumultd --help`, the footer of the HTML report, the MCP server title and instructions, and two model prompts described a chaos engineering platform. They now say resilience intelligence platform, like the README and the website. The workspace description and keywords follow. Commands, API paths and file formats are unchanged.
+- Web: the line under the product name (sidebar, login page, page title) reads "resilience intelligence".
+- Web: the experiments list and the experiment page showed two different durations for one run (root span against journal). Both now show the journal duration, and so does the run list in the Star Map drawer; the experiment page shows the longer trace span next to it with its own label.
+- Web: the time axis of the Logs volume chart ran past the current time with wide buckets. It now ends at now, and a bucket outside the window (the clocks of browser and server differ) widens the axis instead of being lost.
+- Web: names of runs that start close together were drawn over each other on the Metrics chart. A name is hidden when it would touch the last shown one; the line and the hover text stay. A name at the edge of the chart is anchored to its line, so the border no longer cuts it off. The time axis of that chart now shows the selected range up to now; with a single bucket it used to run days into the future.
+- Docs: the README and the landing page of the website link to the release notes, the website has a Releases section, and the 3.0.0 changelog entry marks its two breaking changes (delta metrics by default, `tumult perf` inconclusive verdict) as breaking.
+
+### Changed
+
+- Dependencies: argon2 0.6.0 (off the release candidate), hmac 0.13 with sha2 0.11 in the Tumult crates, crossterm 0.29 for the terminal UI, http-body-util 0.1.5. Password hashes, SigV4 and webhook signatures, backup checksums, execution fingerprints and preview tokens keep their format; known-vector tests pin them. Third-party crates still bring sha2 0.10 and crossterm 0.28 into the lock file.
+- CI: actions/checkout 7.0.1, Swatinem/rust-cache 2.9.2, dependabot/fetch-metadata 3.1.0, all pinned by commit SHA.
+
 ## [3.0.0] - 2026-11-16
 
 Tumult moves from chaos testing to resilience intelligence. Runs of every
@@ -26,7 +47,7 @@ moves to v21 and cannot be opened by an older binary.
 - OpenTelemetry contract: `resilience.target.*` carried as resource attributes (how an auto-instrumented application declares its target once, at deploy time) now promote to the lake's target columns, and the semconv `deployment.environment(.name)` stands in for the target environment. `GET /api/otel/conformance` reports per service which contract attributes every span carried, the level (`none`, `target`, `spine`) and what is missing. A guide (`docs/guides/otel-autoinstrumentation.md`) and `examples/otel/` show auto-instrumentation for Java, Python, Node.js, .NET and Kubernetes with the naming standard, and a Collector pipeline that enforces it.
 - Risk to experiment to autopilot: `POST /api/risks/{id}/recommend` turns a finding into a registered experiment (scaffolded from the live fault catalog with the discipline and target attached, or the experiment the finding is about) and an autopilot candidate with a `risk` trigger; when a policy is loaded the gate evaluates it and the decision is recorded on the single writer.
 - `examples/k8s-zone-failover.toon`: a `kind: dr` zone-failover drill (cordon and drain one zone's node, verify recovery inside `rto_target_s`, uncordon) using the native Kubernetes plugin, with availability objectives for the during and post phases.
-- Kronika demo: the seeded experiments carry disciplines and targets, and the stack mounts demo workload manifests (`KRONIKA_MANIFESTS_DIR`) so the posture page shows coverage and manifest findings out of the box.
+- Kronika demo: the seeded experiments carry disciplines and targets, and the stack mounts demo workload manifests (`KRONIKA_MANIFESTS_DIR`) so the Resilience page shows coverage and manifest findings out of the box.
 - Web: a `/posture` page that opens with ranked risks and coverage gaps, then the posture score per target; operators accept findings inline. ECharts light and dark themes (`data-theme` on `<html>`: `dark` default, `light`, or `auto` for the OS preference), a forecast fan-chart component, and Playwright coverage that asserts on chart options.
 - Forecasting: the new `tumult-forecast` crate defines a provider interface (quantile forecasts with model, version and weights-hash provenance), a built-in deterministic Holt-Winters provider with empirical residual bands, a series resampler (regular step, gaps kept, 32,768 points at most) and pure functions for counterfactual impact, recovery time and steady-state checks. Under eight observed points the forecast is flat and flagged `insufficient_history`.
 - `GET /api/forecast?metric=&target=&env=&range=&horizon=` returns a semantic metric's series with a forecast band, cached in the new `forecasts` lake table (schema v19) together with its provenance. `GET /api/runs/{id}/impact` compares each probe's samples with a counterfactual and reports normalised impact and recovery time per probe; runs without pre-fault samples are backcast from the post phase and say so (`reference`).
@@ -67,7 +88,7 @@ moves to v21 and cannot be opened by an older binary.
 
 ### Fixed
 
-- Counts no longer grow by themselves on a long-running daemon. Tumult exported its counters as cumulative totals every interval, and the store added every export up, so each run that the daemon executed (GameDay steps, schedules, API runs) was counted again each minute. The Overview pass rate drifted, and long CLI runs were affected the same way. Tumult now exports counters and histograms as deltas. A Prometheus or Mimir pipeline needs the collector's `deltatocumulative` processor (added to the collector configs here) or `OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE=cumulative`. Rows already stored are not corrected.
+- **BREAKING for Prometheus and Mimir pipelines (delta metrics):** counts no longer grow by themselves on a long-running daemon. Tumult exported its counters as cumulative totals every interval, and the store added every export up, so each run that the daemon executed (GameDay steps, schedules, API runs) was counted again each minute. The Overview pass rate drifted, and long CLI runs were affected the same way. Tumult now exports counters and histograms as deltas. A Prometheus or Mimir pipeline needs the collector's `deltatocumulative` processor (added to the collector configs here) or `OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE=cumulative`. Rows already stored are not corrected.
 - The Krönika demo GameDay no longer stops at `pending_approval`. Unbound executions are T3, and the approval queue cannot release a T3 operator request, so no autopilot policy could help. The demo seed now registers the GameDay, binds its four reviewed experiments to `dev` and runs one campaign that `bob` approves. Approving an unbound run now answers `422` with `"missing": "execution_binding"` and says what to do, and every refused approval is logged.
 - `tumultd`: a slow start no longer loses the daemon's first telemetry and logs `BatchLogProcessor.ExportError`. The daemon exported to its own OTLP listener before that address was bound; export now begins once it is. Events logged before that point (opening the store, the bind guard) are on stderr only.
 - The one-command demo starts its MCP server again: the compose command replaced the image arguments and dropped `--transport http`, so since 2.22.0 the container spoke stdio, exited and never became healthy.
@@ -106,7 +127,7 @@ moves to v21 and cannot be opened by an older binary.
 - Web: the Posture page is now called Resilience, at `/resilience`. Old `/posture` links redirect to it.
 - Web: the Star Map reads like a graph. Every node is a round, captioned circle coloured by its kind, every relation is an arrow with its name on it (`OWNS`, `IMPLEMENTS`, `RUNS_ON`, `TESTED_BY` and so on), and a node that only sits under its parent points to it with a thin grey `PART_OF` arrow. Each relation has its own colour and dash (`BROKE` thick and red, `PART_OF` thin and grey), so an arrow without a name still tells its relation. A relation name is written where the arrow has room for it and lands on no other caption, in the middle, nearer one end or below the line; hovering or selecting a node writes it on every one of its links; node captions sit on a small panel so a line under them never hides them, and two neighbours with the same name show their kind under it. A lens now changes the ring and the mark of a node, not its fill; no evidence, stale evidence and suppressed-only risks are a dashed, dotted or faded ring. The legend is one chip per kind and one per relation, with its line and count (click to hide the kind or the relation), and a short key. A node tooltip opens above the node, clear of its caption, and a faded node keeps its caption readable. Hovering or selecting a node keeps its links and neighbours and dims the rest; nodes with no link sit on a row below the map.
 - Documentation and website are repositioned from chaos engineering to resilience intelligence: the README, landing page, quick start and guides index describe chaos experiments as one evidence source among several, the architecture document gains container and data-flow diagrams, and the platform walkthrough lists every Krönika page with its charts and evidence. No behaviour changes.
-- **`tumult perf` fails on `inconclusive` by default, with exit codes of its own.** The default is now `--fail-on regressed,inconclusive`: `regressed` exits 3 and `inconclusive` exits 4 (it exited 0 before, and a regression exited 1); 1 remains a failed command and 2 a usage error. A gate that passes because nothing could be measured is not a gate. `--fail-on regressed` restores the old pass on `inconclusive`. `--range` and `--include partial` are passed on to the daemon.
+- **BREAKING:** **`tumult perf` fails on `inconclusive` by default, with exit codes of its own.** The default is now `--fail-on regressed,inconclusive`: `regressed` exits 3 and `inconclusive` exits 4 (it exited 0 before, and a regression exited 1); 1 remains a failed command and 2 a usage error. A gate that passes because nothing could be measured is not a gate. `--fail-on regressed` restores the old pass on `inconclusive`. `--range` and `--include partial` are passed on to the daemon.
 - **A version that fails to answer is worse, not unknown.** The performance verdict looks at what became of the requests before it looks at latency. A candidate that left more than a tenth of its load windows unanswered while the baseline did not is `regressed` (`candidate_unanswered`; it was `inconclusive`); a baseline that did is `inconclusive` (`baseline_unanswered`, `both_unanswered`). A candidate whose share of failed requests is above the baseline's by more than one percentage point, and by more than chance (one-sided two-proportion test, z ≥ 1.645), is `regressed` (`failure_share`) whatever its latencies; the requests of partial runs count. The answer carries `reason`, `reason_codes`, per-side `requests` and `comparison.failure_share`; runs without request counts are named (`failure_data_missing`).
 - **Timed-out requests count into the load percentiles.** The oha adapter reads a request given up on at its timeout as a latency of at least the timeout, so a window whose percentile falls among them reports the timeout and is marked censored instead of reporting the latency of the survivors. Each window records its requests sent, answered, timed out and errored (transport, status); k6 records its totals from `http_reqs` and `http_req_failed`. A verdict that would rest on a censored value being no more than it reads is `inconclusive` (`censored`). All additive columns; the schema stays at v18.
 - **Performance verdicts resample whole runs.** The interval is a cluster bootstrap over runs (a run's windows stay together), percentiles weigh a window by the seconds it sampled, and a side needs three runs (`min_runs`) as well as twenty windows; fewer is `inconclusive`. The generator is seeded (`seed=`), so the same runs give the same interval. One or two runs per build no longer give a verdict.
@@ -146,7 +167,7 @@ moves to v21 and cannot be opened by an older binary.
 - Lake schema v20 has no downgrade: a lake opened by this release is not readable by older binaries. Take `tumult store backup` before upgrading; `docs/guides/dora-score.md` (Upgrading and rolling back) has the steps.
 - **BREAKING** `GET /api/topology` node ids changed: a target is `sys:<environment>/<system>` (the id the Star Map uses) instead of `tgt:<name>`, and a target known only by `resilience.target.name` is `sys:-/<name>`. Clients that stored or matched `tgt:` ids must switch. The endpoint is now always bounded in time: without `range` it covers `7d`, and an unknown `range` is `400`.
 - Every ranged endpoint accepts the same ranges (`24h`, `7d`, `14d`, `30d`) from one table, so `/api/experiments` and the others answer `30d` like the Star Map does. An unknown range is `400` everywhere.
-- `GET /api/risks` and `GET /api/posture` keep a target tested in two environments as two coverage rows (keyed on target and environment); the posture page labels such rows `target (environment)`.
+- `GET /api/risks` and `GET /api/posture` keep a target tested in two environments as two coverage rows (keyed on target and environment); the Resilience page labels such rows `target (environment)`.
 - `org.yaml`: an empty `targets` or `entities` glob is rejected when the file is loaded. Until now it was accepted and matched every name, so one empty entry assigned everything to that team. The Star Map and the score tree resolve owners through the same matcher.
 - `docker/docker-compose.kronika.yml` takes its host ports from `KRONIKA_HOST_GRPC_PORT` and `KRONIKA_HOST_HTTP_PORT`, its container names from `KRONIKA_NAME_PREFIX` and its image tag from `KRONIKA_IMAGE` (defaults unchanged: 14317 and 14318, `tumult-kronika`, `tumult-kronika:latest`). `make demo-check` sets all four, so it no longer replaces the containers or retags the image of a Krönika demo that is already up, and it removes its own stack when it is interrupted. Two runs at once take turns on a lock file instead of removing each other's stack (`STARMAP_LOCK_WAIT`, 900 seconds by default), a missing `docker` is one message before anything runs, and a Star Map check that prints nothing or prints a failed line fails whatever its exit status.
 - tumultd exits when either of its listeners (OTLP/gRPC or HTTP) fails, instead of staying up on the other one. Both addresses are bound before the writer, the run queue or any background task is started, so a taken address ends the daemon before it has reconciled a run or started anything (`gRPC server: bind <addr>` or `HTTP server: bind <addr>`). A listener that fails later still ends the daemon with that error, after the background tasks are stopped and the ingest writer has persisted what was queued; that wait is limited to 10 seconds, because a connection of the failed listener can hold the writer open.
@@ -202,7 +223,7 @@ moves to v21 and cannot be opened by an older binary.
 - Review the [execution binding](docs/guides/execution-bindings.md) and [data portability](docs/guides/data-portability.md) guides before upgrading. Restore is offline and never overwrites an existing database.
 - Baseline-only is one observation round; integrated statistical baseline acquisition, automatic degradation classification and data-integrity verification are not claimed.
 
-## [2.21.0] — 2026-08-06
+## [2.21.0] - 2026-08-06
 
 **The GUI grows up, and Krönika becomes the analytics half for real.** The
 web UI is now a full chaos console: author experiments in the browser from
@@ -501,7 +522,7 @@ finding shipped in this release.
   `X-Tumult-Signature` header is byte-for-byte unchanged, so existing
   receivers keep working.
 
-## [2.20.0] — 2026-07-31
+## [2.20.0] - 2026-07-31
 
 **Security hardening across the board, and one product everywhere.** A
 full code and security review drove this release: every finding is either
@@ -597,7 +618,7 @@ language.
   and the vulnerable reader paths are unreachable (trusted bundled
   templates only). Re-checked every dependency release.
 
-## [2.19.0] — 2026-07-31
+## [2.19.0] - 2026-07-31
 
 **The analytics platform lands in Tumult.** The daemon, OTLP ingestion,
 DuckDB lake, compliance reports, query API and SvelteKit UI now ship as
@@ -771,7 +792,7 @@ approval queue to compliance-grade R1/R2/R3 reports.
   rollback is now attempted even when the state/audit writes fail — fault
   cleanup is never skipped because the store is degraded.
 
-## [2.18.0] — 2026-07-28
+## [2.18.0] - 2026-07-28
 
 Full OTLP observability: all three signals (traces, metrics, logs) now
 export, and every experiment operation is measured and traceable end to end.
@@ -804,7 +825,7 @@ export, and every experiment operation is measured and traceable end to end.
 - The MCP server telemetry init now relies on the always-stderr fmt layer —
   no configuration needed to keep the stdio protocol stream clean.
 
-## [2.17.0] — 2026-07-23
+## [2.17.0] - 2026-07-23
 
 A full-platform review (code, docs, blog, website) drove this release:
 execution robustness for the fault path, wiring for model features that
@@ -945,7 +966,7 @@ truthfulness sweep across every published number and example.
 - `--load jmeter` (it silently ran k6) and the jmeter loadtest drivers.
 - `serve.out` runtime log from the repository root.
 
-## [2.16.1] — 2026-07-22
+## [2.16.1] - 2026-07-22
 
 ### Changed
 - Raised the minimum supported Rust version to 1.91.1 and aligned local,
@@ -973,7 +994,7 @@ truthfulness sweep across every published number and example.
   iterator API.
 - Removed unused dependencies from the demo control panel and cloud executor.
 
-## [2.16.0] — 2026-07-07
+## [2.16.0] - 2026-07-07
 
 ### Added
 - **Dynamic guard-telemetry pre-flight**: before enacting, the autopilot
@@ -1002,7 +1023,7 @@ truthfulness sweep across every published number and example.
   decision, criticality-weighted recommendation); release gate: three
   consecutive clean 16-proof suite runs.
 
-## [2.15.0] — 2026-07-07
+## [2.15.0] - 2026-07-07
 
 ### Added
 - **Autopilot: policy-gated autonomous fault injection.** The deterministic
@@ -1028,7 +1049,7 @@ truthfulness sweep across every published number and example.
   asserted. Release gate: three consecutive clean 12-proof suite runs.
 - Docs: autopilot guide + blog post with the real gate transcripts.
 
-## [2.14.1] — 2026-07-07
+## [2.14.1] - 2026-07-07
 
 ### Fixed
 - `resolve_citation` now matches control ids on their alphanumeric skeleton
@@ -1040,7 +1061,7 @@ truthfulness sweep across every published number and example.
   committed gameday journal artifact is left untouched as a historical
   record.
 
-## [2.14.0] — 2026-07-07
+## [2.14.0] - 2026-07-07
 
 ### Added
 - **Service topology & compliance lineage.** Declare your service topology in
@@ -1076,7 +1097,7 @@ truthfulness sweep across every published number and example.
   declared topology metadata survives experiment runs.
 - `AnalyticsStore::default_path()` honors `TUMULT_ANALYTICS_PATH`.
 
-## [2.13.1] — 2026-07-05
+## [2.13.1] - 2026-07-05
 
 ### Changed
 - Internal refactor: split the largest modules into cohesive submodules for
@@ -1084,7 +1105,7 @@ truthfulness sweep across every published number and example.
   resource/schema handlers, the demo control-panel). Behavior-preserving — no
   functional change; all tests + clippy green.
 
-## [2.13.0] — 2026-07-05
+## [2.13.0] - 2026-07-05
 
 ### Added
 - **`tumult tui` (alias `dashboard`) — an interactive analytics TUI** over the
@@ -1638,7 +1659,7 @@ closes entirely over MCP.
   (`tumult replay` takes a fixture path, not a trace). The captured error text
   and the trace column remain as the actionable signal.
 
-## [1.5.0] — 2026-07-03 — Privilege-free network chaos + CI-ready reporting
+## [1.5.0] - 2026-07-03 - Privilege-free network chaos + CI-ready reporting
 
 ### Added
 
@@ -1671,7 +1692,7 @@ closes entirely over MCP.
 - **Internal refactor**: every Rust source file over 400 lines was split into
   `mod.rs` submodules (public APIs preserved via re-exports); no behavior change.
 
-## [1.4.0] — Code review hardening pass
+## [1.4.0] - Code review hardening pass
 
 ### Added
 
@@ -1720,7 +1741,7 @@ closes entirely over MCP.
   statements and forbidden keywords as standalone tokens (not substrings),
   closing gaps in the read-only query guard.
 
-## [1.3.0] — Cross-client agentic observability
+## [1.3.0] - Cross-client agentic observability
 
 ### Added
 
@@ -1759,7 +1780,7 @@ closes entirely over MCP.
   noted in 1.2.0 follow-up work) and `tumult-agentic` no longer defines its own
   OTel attribute constants (now sourced from `tumult-otel`).
 
-## [1.2.2] — Dependency upgrades + CI action bumps
+## [1.2.2] - Dependency upgrades + CI action bumps
 
 ### Changed
 
@@ -1780,7 +1801,7 @@ closes entirely over MCP.
   maintenance and verifies the bumped release-workflow actions produce a working
   release.
 
-## [1.2.1] — Release test fix
+## [1.2.1] - Release test fix
 
 ### Fixed
 
@@ -1792,7 +1813,7 @@ closes entirely over MCP.
   `x86_64-unknown-linux-gnu` and macOS targets (the musl targets skip test
   execution when cross-compiling, which is why they passed).
 
-## [1.2.0] — Live agentic fault injection + real fault-execution engine
+## [1.2.0] - Live agentic fault injection + real fault-execution engine
 
 ### Added
 
@@ -1830,7 +1851,7 @@ closes entirely over MCP.
   just the `retrieved_documents` list, so the body-based safety contracts
   (citation, PII, secret leakage) actually observe the poisoning.
 
-## [1.1.2] — Docker image build fix
+## [1.1.2] - Docker image build fix
 
 ### Fixed
 
@@ -1840,7 +1861,7 @@ closes entirely over MCP.
   (added in 1.1.0) were never copied into the Docker build context, so
   `cargo build` could not load their manifests as workspace members.
 
-## [1.1.1] — Release build fix
+## [1.1.1] - Release build fix
 
 ### Fixed
 
@@ -1854,7 +1875,7 @@ closes entirely over MCP.
   else in the workspace and removes ~155 lines of `native-tls`/OpenSSL
   transitive dependencies from `Cargo.lock`.
 
-## [1.1.0] — Agentic Fault Injection
+## [1.1.0] - Agentic Fault Injection
 
 ### Added
 
@@ -1890,7 +1911,7 @@ closes entirely over MCP.
 - **Docs**: Agentic Quickstart, Agentic Observability, and Agentic Scenarios
   guides, plus runnable examples under `examples/agentic/`.
 
-## [1.0.3] — Release workflow fix
+## [1.0.3] - Release workflow fix
 
 ### Fixed
 
@@ -1901,19 +1922,19 @@ closes entirely over MCP.
 - No runtime or API changes. This release exists to land the CI fix and produce a working GitHub Release with binary assets.
 - All changes accumulated under tags v1.0.0, v1.0.1, and v1.0.2 (none of which published successfully) are included. v1.0.2 was blocked by GitHub's immutable-releases feature locking the tag after a partial release creation.
 
-## [1.0.2] — Unreleased
+## [1.0.2] - Unreleased
 
 Tag exists but no GitHub Release published — the immutable-releases feature locked the tag after a partial release creation. See 1.0.3 for the fix.
 
-## [1.0.1] — Unreleased
+## [1.0.1] - Unreleased
 
 Tag exists but no GitHub Release was ever published — the release workflow failed at the "Download all artifacts" step. See 1.0.2 for the fix.
 
-## [1.0.0] — Unreleased
+## [1.0.0] - Unreleased
 
 Tag exists but no GitHub Release was ever published — same root cause. See 1.0.2 for the fix.
 
-## [0.3.0] — Phase 2: Platform Plugins + Analytics
+## [0.3.0] - Phase 2: Platform Plugins + Analytics
 
 ### Added
 
@@ -1961,7 +1982,7 @@ Tag exists but no GitHub Release was ever published — same root cause. See 1.0
 - Credential protection: MYSQL_PWD and REDISCLI_AUTH env vars
 - Container runtime allowlist validation
 
-## [0.2.0] — Phase 1: Essential Plugins
+## [0.2.0] - Phase 1: Essential Plugins
 
 ### Added
 
@@ -2001,7 +2022,7 @@ Tag exists but no GitHub Release was ever published — same root cause. See 1.0
 
 - RSA timing side-channel (RUSTSEC-2023-0071) documented with Ed25519 mitigation
 
-## [0.1.0] — Phase 0: Foundation
+## [0.1.0] - Phase 0: Foundation
 
 ### Added
 
@@ -2070,7 +2091,7 @@ Release history of what is now Tumult's analytics platform. Version
 numbers below (≤0.6.0) follow that component's old numbering, not the
 Tumult release line.
 
-## [0.6.0] — 2026-07-29
+## [0.6.0] - 2026-07-29
 
 ### Added
 - **Parquet lake export + retention** (`kronika_store::lake`, ADR 0005):
@@ -2115,7 +2136,7 @@ Tumult release line.
   long-lived `Reader` pins its snapshot at open and does not observe later
   commits — open a fresh reader per unit of work.
 
-## [0.5.0] — 2026-07-29
+## [0.5.0] - 2026-07-29
 
 ### Added
 - **Org hierarchy rollups** (`kronika_docs::org`, ADR 0004): a
@@ -2191,7 +2212,7 @@ Tumult release line.
 
 ---
 
-## [0.4.0] — 2026-07-28
+## [0.4.0] - 2026-07-28
 
 ### Added
 - **Compliance-grade report pipeline** (`kronika-docs` crate, ADR 0003): a
@@ -2285,7 +2306,7 @@ Tumult release line.
 
 ---
 
-## [0.2.0] — 2026-07-28
+## [0.2.0] - 2026-07-28
 
 ### Added
 - `kronika-api`: read-only JSON query API backing the UI, mounted on the
@@ -2322,7 +2343,7 @@ Tumult release line.
 
 ---
 
-## [0.1.0] — 2026-07-28
+## [0.1.0] - 2026-07-28
 
 ### Added
 - Scaffold: Rust workspace with six library crates and the `kronikad` daemon.

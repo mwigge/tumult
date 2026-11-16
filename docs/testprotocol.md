@@ -2,7 +2,8 @@
 
 **Version:** 1.2  
 **Date:** 2026-07-22  
-**Platform version:** tumult 2.16.1 · Rust 1.96  
+**Platform version:** tumult 2.16.1 · Rust 1.96 (the last full run of this protocol)  
+**Later releases:** the gates of each release, 3.0 included, are in [Quality and release](guides/quality-and-release.md).  
 **Scope:** Full platform functional validation — CLI, crates, plugins, data pipelines, observability, containers, analytics, reporting, and **agentic fault injection** (cross-client proxy, contracts, two-sided observability, orchestrator).  
 **Methodology:** Output-driven verification. We verify that each component produces the correct output, not that the code is correct internally.
 

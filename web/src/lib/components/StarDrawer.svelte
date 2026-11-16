@@ -14,6 +14,7 @@
         StarNode,
     } from '#lib/types.js';
     import { disciplineLabel } from '#lib/coverage.js';
+    import { experimentDurationNs } from '#lib/duration.js';
     import { flagText, rollupLines } from '#lib/starmap/style.js';
 
     let {
@@ -267,7 +268,7 @@
                             <span class="badge {statusClass(r.status)}">{r.status ?? '–'}</span>
                             <a href="/experiments/{encodeURIComponent(r.id)}">{r.name ?? r.id}</a>
                             <span class="meta">
-                                {fmtAgo(r.started_ns)} · {fmtDuration(r.duration_ns)}
+                                {fmtAgo(r.started_ns)} · {fmtDuration(experimentDurationNs(r))}
                                 {#if r.origin === 'manual'}· manual{/if}
                             </span>
                         </li>

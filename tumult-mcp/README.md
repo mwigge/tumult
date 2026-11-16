@@ -1,6 +1,6 @@
 # tumult-mcp
 
-MCP (Model Context Protocol) server adapter exposing Tumult chaos engineering capabilities as tools for LLM agents.
+MCP (Model Context Protocol) server adapter exposing Tumult resilience testing and intelligence as tools for LLM agents.
 
 ## Key Types
 

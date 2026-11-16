@@ -3,6 +3,7 @@
     import { goto } from '$app/navigation';
     import { page } from '$app/state';
     import { api } from '#lib/api.js';
+    import { TAGLINE } from '#lib/brand.js';
     import type { MeResponse } from '#lib/types.js';
 
     let { children } = $props();
@@ -123,7 +124,7 @@
         <aside class="side">
             <div class="brand">
                 <div class="name">Tumult</div>
-                <div class="tag">analytics for your resilience work</div>
+                <div class="tag">{TAGLINE}</div>
             </div>
             <nav class="nav">
                 {#each NAV as item (item.href)}

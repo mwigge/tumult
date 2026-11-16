@@ -43,7 +43,7 @@ pub(crate) use topology::TopologyFormat;
     name = "tumult",
     version,
     propagate_version = true,
-    about = "Rust-native chaos engineering platform"
+    about = "Rust-native resilience intelligence platform"
 )]
 pub(crate) struct Cli {
     #[command(subcommand)]

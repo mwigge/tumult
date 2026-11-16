@@ -228,9 +228,9 @@ dependencies = [
 
 [[package]]
 name = "argon2"
-version = "0.6.0-rc.8"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7af50940b73bf4e16c15c448a2b121c63f2d68e3e54b6a8731673cb4aa0cdff5"
+checksum = "134c52ddac6d63c576bef8168db10c83c49c26444ecbc68060fef078925a901c"
 dependencies = [
  "base64ct",
  "blake2",
@@ -807,9 +807,9 @@ dependencies = [
 
 [[package]]
 name = "blake2"
-version = "0.11.0-rc.6"
+version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "061f1a09225e328e1ffbb378d2d49923c0ca5fee19fb5ac1cc9c1e9d52b93690"
+checksum = "5b5d4d889834ee8ecfc0f8426ad30faf7cdcb10f741a8e6d7224d95325479f6f"
 dependencies = [
  "digest 0.11.3",
 ]
@@ -1874,7 +1874,6 @@ checksum = "9ed9a281f7bc9b7576e61468ba615a66a5c8cfdff42420a70aa82701a3b1e292"
 dependencies = [
  "block-buffer 0.10.4",
  "crypto-common 0.1.7",
- "subtle",
 ]
 
 [[package]]
@@ -3000,16 +2999,7 @@ version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4aaa26c720c68b866f2c96ef5c1264b3e6f473fe5d4ce61cd44bbe913e553018"
 dependencies = [
- "hmac 0.13.0",
-]
-
-[[package]]
-name = "hmac"
-version = "0.12.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6c49c37c09c17a53d937dfbb742eb3a961d65a994e6bcdcf37e7399d0cc8ab5e"
-dependencies = [
- "digest 0.10.7",
+ "hmac",
 ]
 
 [[package]]
@@ -3054,9 +3044,9 @@ dependencies = [
 
 [[package]]
 name = "http-body-util"
-version = "0.1.4"
+version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e9f41fd6a08e4d4ec69df65976da761afd5ad5e58a9d4acb46bd1c953a9e3ff2"
+checksum = "23169fe34a5fbcdd3f3862e78fb9b6fccd5f02a6dc6f732547005d45631ce71c"
 dependencies = [
  "bytes",
  "futures-core",
@@ -4895,7 +4885,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "112d82ceb8c5bf524d9af484d4e4970c9fd5a0cc15ba14ad93dccd28873b0629"
 dependencies = [
  "digest 0.11.3",
- "hmac 0.13.0",
+ "hmac",
 ]
 
 [[package]]
@@ -6032,7 +6022,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b4a459cddafb3fe76b31fd8f1108007566c40301feb64dc7b54656eb7388172b"
 dependencies = [
  "crypto-bigint",
- "hmac 0.13.0",
+ "hmac",
 ]
 
 [[package]]
@@ -6110,7 +6100,7 @@ dependencies = [
  "getrandom 0.4.3",
  "ghash",
  "hex-literal",
- "hmac 0.13.0",
+ "hmac",
  "inout",
  "keccak",
  "log",
@@ -7033,7 +7023,7 @@ dependencies = [
  "ctutils",
  "ed25519-dalek",
  "hex",
- "hmac 0.13.0",
+ "hmac",
  "p256",
  "p384",
  "p521",
@@ -7272,7 +7262,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.4.3",
+ "getrandom 0.3.4",
  "once_cell",
  "rustix 1.1.6",
  "windows-sys 0.61.2",
@@ -7993,7 +7983,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-agent-cli"
-version = "3.0.0"
+version = "3.0.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -8006,7 +7996,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-agentic"
-version = "3.0.0"
+version = "3.0.1"
 dependencies = [
  "axum",
  "opentelemetry",
@@ -8024,7 +8014,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-api"
-version = "3.0.0"
+version = "3.0.1"
 dependencies = [
  "async-trait",
  "axum",
@@ -8033,7 +8023,7 @@ dependencies = [
  "reqwest 0.12.28",
  "serde",
  "serde_json",
- "sha2 0.10.9",
+ "sha2 0.11.0",
  "tempfile",
  "tokio",
  "toon-format",
@@ -8059,17 +8049,17 @@ dependencies = [
 
 [[package]]
 name = "tumult-auth"
-version = "3.0.0"
+version = "3.0.1"
 dependencies = [
  "argon2",
  "getrandom 0.4.3",
- "sha2 0.10.9",
+ "sha2 0.11.0",
  "subtle",
 ]
 
 [[package]]
 name = "tumult-authoring"
-version = "3.0.0"
+version = "3.0.1"
 dependencies = [
  "indexmap",
  "serde",
@@ -8082,17 +8072,17 @@ dependencies = [
 
 [[package]]
 name = "tumult-autopilot"
-version = "3.0.0"
+version = "3.0.1"
 dependencies = [
  "serde",
  "serde_json",
- "sha2 0.10.9",
+ "sha2 0.11.0",
  "toml 1.1.4+spec-1.1.0",
 ]
 
 [[package]]
 name = "tumult-baseline"
-version = "3.0.0"
+version = "3.0.1"
 dependencies = [
  "criterion",
  "opentelemetry",
@@ -8106,7 +8096,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-cli"
-version = "3.0.0"
+version = "3.0.1"
 dependencies = [
  "anyhow",
  "arrow",
@@ -8139,7 +8129,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-clickhouse"
-version = "3.0.0"
+version = "3.0.1"
 dependencies = [
  "chrono",
  "clickhouse",
@@ -8156,17 +8146,17 @@ dependencies = [
 
 [[package]]
 name = "tumult-cloud"
-version = "3.0.0"
+version = "3.0.1"
 dependencies = [
  "async-trait",
  "axum",
  "chrono",
  "hex",
- "hmac 0.12.1",
+ "hmac",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
- "sha2 0.10.9",
+ "sha2 0.11.0",
  "thiserror 2.0.19",
  "tokio",
  "tumult-plugin",
@@ -8175,12 +8165,12 @@ dependencies = [
 
 [[package]]
 name = "tumult-compliance"
-version = "3.0.0"
+version = "3.0.1"
 dependencies = [
  "serde",
  "serde_json",
  "serde_yaml",
- "sha2 0.10.9",
+ "sha2 0.11.0",
  "tempfile",
  "thiserror 2.0.19",
  "tracing",
@@ -8192,7 +8182,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-core"
-version = "3.0.0"
+version = "3.0.1"
 dependencies = [
  "chrono",
  "indexmap",
@@ -8215,7 +8205,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-cypher"
-version = "3.0.0"
+version = "3.0.1"
 dependencies = [
  "grafeo",
  "opentelemetry",
@@ -8229,7 +8219,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-exec"
-version = "3.0.0"
+version = "3.0.1"
 dependencies = [
  "libc",
  "serde_json",
@@ -8246,14 +8236,14 @@ dependencies = [
 
 [[package]]
 name = "tumult-forecast"
-version = "3.0.0"
+version = "3.0.1"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "tumult-graph"
-version = "3.0.0"
+version = "3.0.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -8263,7 +8253,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-ingest"
-version = "3.0.0"
+version = "3.0.1"
 dependencies = [
  "arrow",
  "axum",
@@ -8272,14 +8262,15 @@ dependencies = [
  "dirs-next",
  "flatbuffers",
  "flate2",
- "hmac 0.12.1",
+ "hex",
+ "hmac",
  "hyper-util",
  "opentelemetry-proto",
  "prost",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
- "sha2 0.10.9",
+ "sha2 0.11.0",
  "socket2 0.6.5",
  "tempfile",
  "thiserror 2.0.19",
@@ -8305,7 +8296,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-intelligence"
-version = "3.0.0"
+version = "3.0.1"
 dependencies = [
  "async-trait",
  "duckdb",
@@ -8324,7 +8315,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-kubernetes"
-version = "3.0.0"
+version = "3.0.1"
 dependencies = [
  "async-trait",
  "http",
@@ -8347,7 +8338,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-lake"
-version = "3.0.0"
+version = "3.0.1"
 dependencies = [
  "arrow",
  "chrono",
@@ -8357,7 +8348,7 @@ dependencies = [
  "parquet",
  "serde",
  "serde_json",
- "sha2 0.10.9",
+ "sha2 0.11.0",
  "tempfile",
  "thiserror 2.0.19",
  "tracing",
@@ -8369,7 +8360,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-mcp"
-version = "3.0.0"
+version = "3.0.1"
 dependencies = [
  "async-trait",
  "chrono",
@@ -8410,7 +8401,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-metrics"
-version = "3.0.0"
+version = "3.0.1"
 dependencies = [
  "serde",
  "serde_yaml",
@@ -8420,7 +8411,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-net"
-version = "3.0.0"
+version = "3.0.1"
 dependencies = [
  "async-trait",
  "opentelemetry",
@@ -8437,7 +8428,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-otel"
-version = "3.0.0"
+version = "3.0.1"
 dependencies = [
  "chrono",
  "opentelemetry",
@@ -8459,7 +8450,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-otlp"
-version = "3.0.0"
+version = "3.0.1"
 dependencies = [
  "opentelemetry-proto",
  "serde_json",
@@ -8470,7 +8461,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-perf"
-version = "3.0.0"
+version = "3.0.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -8478,7 +8469,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-plugin"
-version = "3.0.0"
+version = "3.0.1"
 dependencies = [
  "async-trait",
  "libc",
@@ -8496,7 +8487,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-query"
-version = "3.0.0"
+version = "3.0.1"
 dependencies = [
  "duckdb",
  "serde",
@@ -8508,7 +8499,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-report"
-version = "3.0.0"
+version = "3.0.1"
 dependencies = [
  "serde_json",
  "tempfile",
@@ -8523,17 +8514,17 @@ dependencies = [
 
 [[package]]
 name = "tumult-risk"
-version = "3.0.0"
+version = "3.0.1"
 dependencies = [
  "serde",
  "serde_json",
  "serde_yaml",
- "sha2 0.10.9",
+ "sha2 0.11.0",
 ]
 
 [[package]]
 name = "tumult-ssh"
-version = "3.0.0"
+version = "3.0.1"
 dependencies = [
  "async-trait",
  "dirs-next",
@@ -8552,7 +8543,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-test-utils"
-version = "3.0.0"
+version = "3.0.1"
 dependencies = [
  "indexmap",
  "opentelemetry",
@@ -8564,10 +8555,10 @@ dependencies = [
 
 [[package]]
 name = "tumult-tui"
-version = "3.0.0"
+version = "3.0.1"
 dependencies = [
  "chrono",
- "crossterm 0.28.1",
+ "crossterm 0.29.0",
  "ratatui 0.30.2",
  "tempfile",
  "thiserror 2.0.19",
@@ -8578,7 +8569,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-windows"
-version = "3.0.0"
+version = "3.0.1"
 dependencies = [
  "async-trait",
  "serde_json",
@@ -8589,7 +8580,7 @@ dependencies = [
 
 [[package]]
 name = "tumultd"
-version = "3.0.0"
+version = "3.0.1"
 dependencies = [
  "anyhow",
  "async-trait",

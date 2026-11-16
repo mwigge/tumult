@@ -26,7 +26,7 @@ do.
 A JSON line:
 
 ```json
-{"timestamp":"2026-11-13T09:14:02.118334Z","level":"WARN","target":"tumult_clickhouse::store","event.name":"clickhouse.connect.retrying","message":"ClickHouse connection failed, retrying","service.name":"tumultd","service.version":"2.22.0","trace_id":"4bf92f3577b34da6a3ce929d0e0e4736","span_id":"00f067aa0ba902b7","url.full":"http://clickhouse.internal:8123","attempt":2,"max_attempts":3,"backoff_s":4,"error.message":"connection refused"}
+{"timestamp":"2026-11-13T09:14:02.118334Z","level":"WARN","target":"tumult_clickhouse::store","event.name":"clickhouse.connect.retrying","message":"ClickHouse connection failed, retrying","service.name":"tumultd","service.version":"3.0.1","trace_id":"4bf92f3577b34da6a3ce929d0e0e4736","span_id":"00f067aa0ba902b7","url.full":"http://clickhouse.internal:8123","attempt":2,"max_attempts":3,"backoff_s":4,"error.message":"connection refused"}
 ```
 
 Keys the formatter owns:
@@ -102,7 +102,7 @@ than refusing to start.
 An error that ends the process is the last event on stderr:
 
 ```json
-{"timestamp":"...","level":"ERROR","target":"tumult_otel::logging","event.name":"process.fatal","message":"exiting because of an unrecoverable error","service.name":"tumult","service.version":"2.22.0","error.message":"reading experiment missing.toon: No such file or directory (os error 2)"}
+{"timestamp":"...","level":"ERROR","target":"tumult_otel::logging","event.name":"process.fatal","message":"exiting because of an unrecoverable error","service.name":"tumult","service.version":"3.0.1","error.message":"reading experiment missing.toon: No such file or directory (os error 2)"}
 ```
 
 The exit code is non-zero. A panic is reported the same way, as

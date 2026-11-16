@@ -24,5 +24,21 @@ pub(crate) fn checksum(path: &Path) -> Result<String, StoreError> {
         }
         hash.update(&buffer[..n]);
     }
-    Ok(format!("{:x}", hash.finalize()))
+    Ok(hash.finalize().iter().map(|b| format!("{b:02x}")).collect())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::checksum;
+
+    #[test]
+    fn checksum_is_the_lowercase_hex_sha256_of_the_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("abc.bin");
+        std::fs::write(&path, b"abc").unwrap();
+        assert_eq!(
+            checksum(&path).unwrap(),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+    }
 }

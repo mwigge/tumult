@@ -192,7 +192,7 @@ const run = (id: string, name: string, status: string) => ({
     id,
     name,
     started_ns: NOW_NS - DAY_NS,
-    duration_ns: 2_000_000_000,
+    duration_ns: 5_400_000_000,
     trace_id: null,
     target_system: 'message-queue',
     target_technology: 'queue',
@@ -840,6 +840,18 @@ test('Escape in the filter box leaves the drawer open', async ({ page }) => {
     await list.getByRole('button').first().focus();
     await page.keyboard.press('Escape');
     await expect(drawer).toHaveCount(0);
+});
+
+test('the drawer shows the journal duration of a run, like the experiments list', async ({
+    page,
+}) => {
+    await mock(page, []);
+    await page.goto('/starmap?range=30d&sel=def%3Aname%2Fqueue-dependency-loss');
+    const drawer = page.getByTestId('starmap-drawer');
+    await expect(drawer.getByRole('link', { name: 'queue-dependency-loss' })).toHaveCount(1);
+    // The run took 2.0s; its trace span (5.4s) also covers the seal wait.
+    await expect(drawer).toContainText('2.0s');
+    await expect(drawer).not.toContainText('5.4s');
 });
 
 test('the drawer shows only the runs of the selected definition', async ({ page }) => {

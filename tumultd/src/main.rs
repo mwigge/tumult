@@ -71,7 +71,7 @@ use tumult_otel::logging;
 #[command(
     name = "tumultd",
     version,
-    about = "Tumult — analytics for your resilience work"
+    about = "Tumult daemon — resilience intelligence platform"
 )]
 struct Cli {
     #[command(subcommand)]
@@ -167,6 +167,16 @@ async fn run(cli: Cli) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use std::time::{Duration, Instant};
+
+    #[test]
+    fn help_headline_names_resilience_intelligence() {
+        use clap::CommandFactory;
+        let about = super::Cli::command().get_about().map(ToString::to_string);
+        assert_eq!(
+            about.as_deref(),
+            Some("Tumult daemon — resilience intelligence platform")
+        );
+    }
 
     /// A telemetry flush that hangs was given up on (`flush_within`), but
     /// its thread is still there when the daemon is done.

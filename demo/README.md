@@ -1,4 +1,4 @@
-# Tumult 2.2 — One-command demo
+# Tumult one-command demo
 
 For guided browser lessons with an optional AI tutor, start with the
 [Chaos Lab](../chaos-lab/README.md). It needs only Docker to run the experiments.

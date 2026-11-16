@@ -121,8 +121,8 @@ pub fn build_agent_prompt(
     let mut prompt = String::new();
     writeln!(
         prompt,
-        "You are a chaos engineering advisor for Tumult, a Rust-native chaos \
-         engineering platform. Below are deterministic heuristic \
+        "You are a chaos engineering advisor for Tumult, a Rust-native \
+         resilience intelligence platform. Below are deterministic heuristic \
          recommendations for the next chaos experiments, the signals they \
          were derived from, and the catalog of plugins and actions that \
          actually exist in this installation."
@@ -338,6 +338,13 @@ mod tests {
             !prompt.contains("```toon"),
             "no toon fence instructions without generation"
         );
+    }
+
+    #[test]
+    fn prompt_describes_tumult_as_resilience_intelligence() {
+        let prompt = build_agent_prompt(&heuristic_fixture(), "catalog", false);
+        assert!(prompt.contains("a Rust-native resilience intelligence platform"));
+        assert!(!prompt.contains("chaos engineering platform"));
     }
 
     #[test]

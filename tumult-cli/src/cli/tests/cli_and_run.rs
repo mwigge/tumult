@@ -14,6 +14,15 @@ fn cli_debug_assert() {
 }
 
 #[test]
+fn help_headline_names_the_resilience_intelligence_platform() {
+    let about = Cli::command().get_about().map(ToString::to_string);
+    assert_eq!(
+        about.as_deref(),
+        Some("Rust-native resilience intelligence platform")
+    );
+}
+
+#[test]
 fn no_subcommand_is_error() {
     assert!(Cli::try_parse_from(["tumult"]).is_err());
 }

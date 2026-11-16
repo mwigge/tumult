@@ -1,6 +1,7 @@
 <script lang="ts">
     import { page } from '$app/state';
     import { api, fmtAgo, fmtDuration, fmtTs } from '#lib/api.js';
+    import { experimentDurationNs } from '#lib/duration.js';
     import type { ExperimentDetail, Span } from '#lib/types.js';
     import StatusBadge from '#lib/components/StatusBadge.svelte';
     import Waterfall from '#lib/components/Waterfall.svelte';
@@ -41,6 +42,7 @@
     <div class="skeleton" style="height: 320px"></div>
 {:else}
     {@const exp = detail.experiment}
+    {@const ranNs = experimentDurationNs(exp)}
     <div class="page-head">
         <a href="/experiments" style="color: var(--text-dim)">← experiments</a>
         <h1>{exp.name ?? exp.id}</h1>
@@ -53,9 +55,12 @@
             <span>Started</span><b>{fmtTs(exp.started_ns)} ({fmtAgo(exp.started_ns)})</b>
         </div>
         <div class="panel meta">
-            <span>Duration</span><b class="mono"
-                >{exp.duration_ms ? `${exp.duration_ms}ms` : fmtDuration(exp.duration_ns)}</b
-            >
+            <span>Duration</span><b class="mono">{fmtDuration(ranNs)}</b>
+            {#if exp.duration_ns !== null && exp.duration_ns !== ranNs}
+                <small title="The trace span also covers the wait that seals the run."
+                    >trace span {fmtDuration(exp.duration_ns)}</small
+                >
+            {/if}
         </div>
         <div class="panel meta">
             <span>Deviations</span><b class="mono">{exp.deviations ?? '—'}</b>
@@ -139,6 +144,12 @@
     .meta b {
         font-weight: 600;
         font-size: 13.5px;
+    }
+    .meta small {
+        display: block;
+        color: var(--text-dim);
+        font-size: 11px;
+        margin-top: 2px;
     }
     .logs {
         max-height: 420px;

@@ -9,9 +9,8 @@ description = "Pure decision logic for the Tumult autopilot: policy, anti-hollow
 [dependencies]
 serde = { workspace = true }
 toml = { workspace = true }
-# Policy-hash only (sha256 of the raw policy text). Not a workspace dep;
-# pinned to the 0.10 line already resolved in the lockfile via tumult-cloud.
-sha2 = "0.10"
+# Policy-hash only (sha256 of the raw policy text).
+sha2 = { workspace = true }
 
 [dev-dependencies]
 serde_json = { workspace = true }

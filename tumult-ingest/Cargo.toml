@@ -14,7 +14,8 @@ tumult-autopilot = { path = "../tumult-autopilot" }
 opentelemetry-proto.workspace = true
 reqwest.workspace = true
 sha2.workspace = true
-hmac = "0.12"
+hmac = "0.13"
+hex = "0.4"
 # zstd/gzip: the Collector's otelarrow exporter compresses at the gRPC level.
 tonic = { workspace = true, features = ["tls-aws-lc", "zstd", "gzip"] }
 tonic-prost.workspace = true

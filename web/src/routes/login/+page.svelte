@@ -1,6 +1,7 @@
 <script lang="ts">
     import { goto } from '$app/navigation';
     import { api } from '#lib/api.js';
+    import { TAGLINE } from '#lib/brand.js';
 
     let username = $state('');
     let password = $state('');
@@ -54,7 +55,7 @@
     <div class="panel login-panel">
         <div class="brand">
             <div class="name">Tumult</div>
-            <div class="tag">analytics for your resilience work</div>
+            <div class="tag">{TAGLINE}</div>
         </div>
 
         {#if !mustChange}

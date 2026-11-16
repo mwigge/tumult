@@ -42,7 +42,7 @@ members = [
     "tumult-agent-cli",
     # 2.15 — autopilot (pure decision logic: policy, validator, gate, ladder)
     "tumult-autopilot",
-    # Passive risk scanning and the continuous posture score (pure logic)
+    # Passive risk scanning and the continuous resilience score (pure logic)
     "tumult-risk",
     # Performance-regression verdicts: percentiles, bootstrap CI, verdict (pure logic)
     "tumult-perf",
@@ -50,7 +50,7 @@ members = [
     "tumult-forecast",
     # Imported from kronika but versioned with the workspace (version.workspace = true).
     "tumult-query",
-    # Analytics platform (imported from kronika; crates keep their 0.7.x versions)
+    # Analytics platform (imported from kronika)
     "tumult-otlp",
     "tumult-lake",
     "tumult-ingest",
@@ -61,13 +61,13 @@ members = [
 ]
 
 [workspace.package]
-version = "3.0.0"
+version = "3.0.1"
 edition = "2021"
 rust-version = "1.92.0"
 license = "Apache-2.0"
 repository = "https://github.com/mwigge/tumult"
-description = "Rust-native chaos engineering platform with TOON format and OpenTelemetry observability"
-keywords = ["chaos-engineering", "resilience", "observability", "opentelemetry", "toon"]
+description = "Rust-native resilience intelligence platform with TOON format and OpenTelemetry observability"
+keywords = ["resilience", "chaos-engineering", "observability", "opentelemetry", "toon"]
 categories = ["command-line-utilities", "development-tools::testing"]
 
 [workspace.dependencies]
@@ -161,10 +161,10 @@ clickhouse = { version = "0.15", features = ["time", "uuid"] }
 # SSH known-hosts path resolution (used in tumult-lake, tumult-ssh)
 dirs-next = "2"
 
-# Terminal UI (used by tumult-tui). ratatui bundles a crossterm backend; both
-# stay pinned to the versions already resolved in the workspace lockfile.
+# Terminal UI (used by tumult-tui). ratatui bundles a crossterm backend;
+# crossterm stays on the version that backend resolves.
 ratatui = "0.30"
-crossterm = "0.28"
+crossterm = "0.29"
 
 # Temporary file/directory creation (dev-dependency across all crates)
 tempfile = "3"
@@ -200,7 +200,7 @@ serde_yaml = "0.9"
 csv = "1"
 typst = "0.15"
 typst-pdf = "0.15"
-sha2 = "0.10"
+sha2 = "0.11"
 rust-embed = "8"
 mime_guess = "2"
 

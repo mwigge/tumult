@@ -1,6 +1,6 @@
 //! Tumult MCP Server — Library crate for tool definitions and handlers.
 //!
-//! Exposes Tumult chaos engineering as MCP tools:
+//! Exposes Tumult resilience testing and intelligence as MCP tools:
 //! - `tumult_run_experiment` — execute a chaos experiment
 //! - `tumult_validate` — validate experiment syntax
 //! - `tumult_discover` — list plugins and capabilities
