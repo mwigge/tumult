@@ -77,6 +77,9 @@ counter up, so this keeps every count right however long the daemon runs.
   configs in this repository do), or set
   `OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE=cumulative`. Do not
   set `cumulative` for a process that exports to Krönika.
+  The processor forgets a counter after five minutes without data
+  (`max_stale`). The count then starts again from zero, which Prometheus
+  reads as a counter reset.
 - Other applications that send cumulative counters to Krönika are still
   added up point by point. Send deltas, or put the collector's
   `cumulativetodelta` processor in front.
