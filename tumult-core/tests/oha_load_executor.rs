@@ -286,6 +286,42 @@ fn soak_profile_streams_one_sample_per_interval() {
     assert_eq!(result.total_requests, 15);
 }
 
+// `date +%s%N` is GNU date.
+#[cfg(target_os = "linux")]
+#[test]
+fn a_sample_is_stamped_with_the_start_of_its_window() {
+    let mut env = EnvGuard::lock();
+    let dir = tempfile::tempdir().expect("tempdir");
+    // Each window writes down the time at which it is about to answer.
+    let stamping = FAKE_OHA_JSON.replacen(
+        "#BEFORE_SUMMARY",
+        r#"date +%s%N >> "$(dirname "$0")/answered""#,
+        1,
+    );
+    install_fake_oha(&mut env, &dir, &stamping);
+    let before = chrono::Utc::now().timestamp_nanos_opt().expect("now");
+
+    let executor = OhaLoadExecutor::default();
+    let handle = executor.start(&soak(3.0)).expect("starts");
+    wait_for_calls(&dir, 3);
+    let result = executor.stop(handle).expect("stops");
+
+    let answered: Vec<i64> = recorded(&dir, "answered")
+        .iter()
+        .map(|ns| ns.parse().expect("a time in nanoseconds"))
+        .collect();
+    let stamps: Vec<i64> = result.samples.iter().map(|s| s.ts_ns).collect();
+    assert_eq!(stamps.len(), 3, "{stamps:?}");
+    assert_eq!(answered.len(), 3, "{answered:?}");
+    assert!(before <= stamps[0], "{before} is after {}", stamps[0]);
+    for (stamp, answered) in stamps.iter().zip(&answered) {
+        assert!(
+            stamp <= answered,
+            "a window stamped at {stamp} was about to answer at {answered}"
+        );
+    }
+}
+
 #[test]
 fn ramp_profile_steps_the_concurrency_per_window() {
     let mut env = EnvGuard::lock();

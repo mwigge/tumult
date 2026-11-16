@@ -617,10 +617,12 @@ fn drive(
             skip(&mut run, i + 1, behind_unanswered);
             continue;
         };
+        // A sample is stamped with the start of its window.
+        let started_ns = super::epoch_nanos_now();
         let end = host.run_window(window, length_s);
         behind_unanswered = end.unanswered();
         run.outcomes.push(WindowOutcome {
-            ts_ns: super::epoch_nanos_now(),
+            ts_ns: started_ns,
             vus: window.vus,
             end,
         });
