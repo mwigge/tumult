@@ -57,7 +57,7 @@ pub fn cmd_compliance(
                         store.ingest_journal(&journal)?;
                         count += 1;
                     }
-                    Err(e) => eprintln!("warning: skipping {}: {}", path.display(), e),
+                    Err(e) => super::events::journal_skipped(&path, &e),
                 }
             }
         }
@@ -71,10 +71,10 @@ pub fn cmd_compliance(
     }
 
     let full_name = core_framework.full_name();
-    println!("=== {full_name} ===\n");
-    println!("{}\n", tumult_core::compliance::EVIDENCE_DISCLAIMER);
-    println!("Journals analyzed: {count}");
-    println!(
+    crate::outln!("=== {full_name} ===\n");
+    crate::outln!("{}\n", tumult_core::compliance::EVIDENCE_DISCLAIMER);
+    crate::outln!("Journals analyzed: {count}");
+    crate::outln!(
         "With regulatory tagging: {}\n",
         signals.journals_with_regulatory
     );
@@ -83,9 +83,9 @@ pub fn cmd_compliance(
     let rows = store.query(
         "SELECT status, count(*) as runs FROM experiments GROUP BY status ORDER BY runs DESC",
     )?;
-    println!("Experiment Results:");
+    crate::outln!("Experiment Results:");
     for row in &rows {
-        println!("  {}: {} run(s)", row[0], row[1]);
+        crate::outln!("  {}: {} run(s)", row[0], row[1]);
     }
 
     // Compliance verdict derived from journal-level pass_rate + a
@@ -96,27 +96,29 @@ pub fn cmd_compliance(
     let recovery_compliance: Option<f64> = signals.recovery_compliance(MTTR_TARGET_S);
     let verdict = compliance_verdict(pass_rate, recovery_compliance);
 
-    println!("\nEvidence summary (NOT a compliance determination):");
-    println!("  Pass rate: {:.1}%", pass_rate * 100.0);
+    crate::outln!("\nEvidence summary (NOT a compliance determination):");
+    crate::outln!("  Pass rate: {:.1}%", pass_rate * 100.0);
     if let Some(rc) = recovery_compliance {
-        println!(
+        crate::outln!(
             "  Recovery compliance: {:.1}% (MTTR<={MTTR_TARGET_S}s, or avg resilience proxy)",
             rc * 100.0
         );
     } else {
-        println!("  Recovery compliance: N/A — no MTTR or resilience_score present in journals;");
-        println!("  verdict based on pass rate ONLY (reduced assurance).");
+        crate::outln!(
+            "  Recovery compliance: N/A — no MTTR or resilience_score present in journals;"
+        );
+        crate::outln!("  verdict based on pass rate ONLY (reduced assurance).");
     }
-    println!("  Evidence verdict: {verdict}");
+    crate::outln!("  Evidence verdict: {verdict}");
 
     // Framework-specific control citations, rendered from the single sourced,
     // dated registry in `tumult_core::compliance` (no hardcoded article
     // strings — edit the registry to update every surface at once).
-    println!("\nSource: {}", core_framework.source_url());
-    println!("Mapped controls (evidence toward, not proof of, compliance):\n");
+    crate::outln!("\nSource: {}", core_framework.source_url());
+    crate::outln!("Mapped controls (evidence toward, not proof of, compliance):\n");
     print_citations(core_framework);
 
-    println!("\n=== End Report ===");
+    crate::outln!("\n=== End Report ===");
     Ok(())
 }
 
@@ -124,17 +126,18 @@ pub fn cmd_compliance(
 /// evidence note, evidence-strength grade, source URL and last-verified date.
 fn print_citations(framework: tumult_core::compliance::ComplianceFramework) {
     for c in framework.citations() {
-        println!("  {} — {}", c.control_id, c.title);
-        println!("    Requires: {}", c.summary);
-        println!(
+        crate::outln!("  {} — {}", c.control_id, c.title);
+        crate::outln!("    Requires: {}", c.summary);
+        crate::outln!(
             "    Evidence [{} / {}]: {}",
             c.strength.as_str(),
             c.evidence_type.as_str(),
             c.evidence_note
         );
-        println!(
+        crate::outln!(
             "    Source: {} (last verified {})",
-            c.source_url, c.last_verified
+            c.source_url,
+            c.last_verified
         );
     }
 }
@@ -143,11 +146,11 @@ fn print_citations(framework: tumult_core::compliance::ComplianceFramework) {
 fn print_sources(framework: tumult_core::compliance::ComplianceFramework) {
     use tumult_core::compliance::REGISTRY_VERSION;
 
-    println!("=== {} — citation registry ===\n", framework.full_name());
-    println!("Registry version: {REGISTRY_VERSION}");
-    println!("{}\n", tumult_core::compliance::EVIDENCE_DISCLAIMER);
+    crate::outln!("=== {} — citation registry ===\n", framework.full_name());
+    crate::outln!("Registry version: {REGISTRY_VERSION}");
+    crate::outln!("{}\n", tumult_core::compliance::EVIDENCE_DISCLAIMER);
     print_citations(framework);
-    println!("\n=== End registry ===");
+    crate::outln!("\n=== End registry ===");
 }
 
 // FIX 5: recovery-aware compliance verdict — now owned by

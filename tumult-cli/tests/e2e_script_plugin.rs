@@ -4,7 +4,6 @@
 //! through the CLI command layer, and verifies the journal output.
 
 use std::collections::HashMap;
-use std::os::unix::fs::PermissionsExt;
 use std::sync::Arc;
 
 use indexmap::IndexMap;
@@ -12,6 +11,7 @@ use tempfile::TempDir;
 use tumult_core::controls::ControlRegistry;
 use tumult_core::runner::{run_experiment, ActivityExecutor, RunConfig};
 use tumult_core::types::*;
+use tumult_test_utils::{write_executable, EnvGuard};
 
 /// Create a script plugin in a temp directory that:
 /// - Has an action that echoes "injected"
@@ -34,14 +34,12 @@ fn setup_script_plugin(dir: &std::path::Path) {
     // Action script
     let action_script = "#!/bin/sh\necho injected\nexit 0\n";
     let action_path = plugin_dir.join("actions/inject.sh");
-    std::fs::write(&action_path, action_script).unwrap();
-    std::fs::set_permissions(&action_path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    write_executable(&action_path, action_script);
 
     // Probe script
     let probe_script = "#!/bin/sh\necho 200\nexit 0\n";
     let probe_path = plugin_dir.join("probes/check.sh");
-    std::fs::write(&probe_path, probe_script).unwrap();
-    std::fs::set_permissions(&probe_path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    write_executable(&probe_path, probe_script);
 }
 
 /// Create an experiment that uses process providers (shell scripts).
@@ -119,6 +117,11 @@ fn create_experiment(action_script: &str, probe_script: &str) -> Experiment {
         guards: vec![],
         blast_radius: None,
         max_concurrent_faults: None,
+        kind: tumult_core::types::TestKind::default(),
+        target: None,
+        nfr: vec![],
+        rto_target_s: None,
+        rpo_target_s: None,
     }
 }
 
@@ -224,12 +227,10 @@ async fn e2e_failing_script_marks_failed() {
 
     // Create a script that fails
     let fail_script = dir.path().join("fail.sh");
-    std::fs::write(&fail_script, "#!/bin/sh\nexit 1\n").unwrap();
-    std::fs::set_permissions(&fail_script, std::fs::Permissions::from_mode(0o755)).unwrap();
+    write_executable(&fail_script, "#!/bin/sh\nexit 1\n");
 
     let probe_script = dir.path().join("probe.sh");
-    std::fs::write(&probe_script, "#!/bin/sh\necho 200\nexit 0\n").unwrap();
-    std::fs::set_permissions(&probe_script, std::fs::Permissions::from_mode(0o755)).unwrap();
+    write_executable(&probe_script, "#!/bin/sh\necho 200\nexit 0\n");
 
     let experiment = create_experiment(
         fail_script.to_str().unwrap(),
@@ -247,30 +248,6 @@ async fn e2e_failing_script_marks_failed() {
 }
 
 // ── type: script provider dispatch ────────────────────────────
-
-/// Serializes the env-mutating tests in this binary: `TUMULT_PLUGIN_PATH`
-/// is process-global, and tests run on parallel threads.
-static ENV_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
-
-/// Restore an env var to its prior value on drop (test env hygiene).
-struct EnvGuard(&'static str, Option<String>);
-
-impl EnvGuard {
-    fn set(key: &'static str, value: &std::path::Path) -> Self {
-        let prior = std::env::var(key).ok();
-        std::env::set_var(key, value);
-        Self(key, prior)
-    }
-}
-
-impl Drop for EnvGuard {
-    fn drop(&mut self) {
-        match &self.1 {
-            Some(value) => std::env::set_var(self.0, value),
-            None => std::env::remove_var(self.0),
-        }
-    }
-}
 
 /// Script plugin fixture: an action that echoes its `TUMULT_BROKER_ID`
 /// argument (proving args → TUMULT_* env propagation), a cleanup action,
@@ -310,8 +287,7 @@ probes[1]:
     ];
     for (name, content) in scripts {
         let path = plugin_dir.join(name);
-        std::fs::write(&path, content).unwrap();
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        write_executable(&path, content);
     }
 }
 
@@ -363,12 +339,12 @@ fn script_provider_experiment() -> Experiment {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn e2e_script_provider_dispatches_through_discovery() {
-    let _lock = ENV_LOCK.lock().await;
+    let mut env = EnvGuard::lock();
     let dir = TempDir::new().unwrap();
     setup_script_provider_plugin(dir.path());
     // Point discovery at the fixture plugin dir (TUMULT_PLUGIN_PATH is one of
     // the default search paths).
-    let _guard = EnvGuard::set("TUMULT_PLUGIN_PATH", &dir.path().join("plugins"));
+    env.set("TUMULT_PLUGIN_PATH", dir.path().join("plugins"));
 
     let experiment = script_provider_experiment();
     tumult_core::engine::validate_experiment(&experiment).unwrap();
@@ -405,10 +381,10 @@ async fn e2e_script_provider_dispatches_through_discovery() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn e2e_script_provider_unknown_plugin_and_action_name_available() {
-    let _lock = ENV_LOCK.lock().await;
+    let mut env = EnvGuard::lock();
     let dir = TempDir::new().unwrap();
     setup_script_provider_plugin(dir.path());
-    let _guard = EnvGuard::set("TUMULT_PLUGIN_PATH", &dir.path().join("plugins"));
+    env.set("TUMULT_PLUGIN_PATH", dir.path().join("plugins"));
 
     let executor = tumult_cli::commands::ProviderExecutor::new();
 

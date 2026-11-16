@@ -1,0 +1,325 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Performance verdicts",
+    "output": "flow-performance-verdict.html",
+    "quality_profile": "showcase",
+    "locale": "en",
+    "repository": {
+      "url": "https://github.com/mwigge/tumult",
+      "revision": "b8304ddd84ea7522550cf84687aa0c7c784438e7"
+    },
+    "legend": {
+      "entries": {
+        "frontend": {
+          "label": "Web page or API"
+        },
+        "backend": {
+          "label": "Tumult step"
+        },
+        "database": {
+          "label": "Stored data"
+        },
+        "external": {
+          "label": "Outside Tumult"
+        }
+      }
+    }
+  },
+  "lanes": [
+    {
+      "id": "run",
+      "label": "In each run"
+    },
+    {
+      "id": "store",
+      "label": "Store"
+    },
+    {
+      "id": "compare",
+      "label": "Compare two versions"
+    },
+    {
+      "id": "show",
+      "label": "Show"
+    }
+  ],
+  "mainPath": [
+    "declare",
+    "sample",
+    "check",
+    "state",
+    "lake"
+  ],
+  "nodes": [
+    {
+      "id": "declare",
+      "lane": "run",
+      "col": 0,
+      "type": "frontend",
+      "label": "Set objectives",
+      "sublabel": "in the experiment",
+      "sources": [
+        {
+          "path": "tumult-core/src/types/definition.rs",
+          "line": 252,
+          "end_line": 271
+        },
+        {
+          "path": "tumult-core/src/types/definition.rs",
+          "line": 338,
+          "end_line": 346
+        }
+      ]
+    },
+    {
+      "id": "sample",
+      "lane": "run",
+      "col": 1,
+      "type": "backend",
+      "label": "Sample the run",
+      "sublabel": "probes and load",
+      "sources": [
+        {
+          "path": "tumult-core/src/runner/experiment.rs",
+          "line": 290,
+          "end_line": 292
+        },
+        {
+          "path": "tumult-core/src/runner/experiment.rs",
+          "line": 440,
+          "end_line": 451
+        }
+      ]
+    },
+    {
+      "id": "check",
+      "lane": "run",
+      "col": 2,
+      "type": "backend",
+      "label": "Check objectives",
+      "sublabel": "at end of run",
+      "sources": [
+        {
+          "path": "tumult-core/src/runner/nfr.rs",
+          "line": 34,
+          "end_line": 126
+        }
+      ]
+    },
+    {
+      "id": "state",
+      "lane": "run",
+      "col": 3,
+      "type": "backend",
+      "label": "Objective verdict",
+      "sublabel": "met or breached",
+      "tag": "or inconclusive",
+      "sources": [
+        {
+          "path": "tumult-core/src/types/enums.rs",
+          "line": 188,
+          "end_line": 238
+        }
+      ]
+    },
+    {
+      "id": "lake",
+      "lane": "store",
+      "col": 3,
+      "type": "database",
+      "label": "DuckDB lake",
+      "sublabel": "samples, verdicts",
+      "sources": [
+        {
+          "path": "tumult-lake/src/schema/objectives.rs",
+          "line": 11,
+          "end_line": 31
+        },
+        {
+          "path": "tumult-lake/src/duckdb_store/ingest.rs",
+          "line": 74,
+          "end_line": 114
+        }
+      ]
+    },
+    {
+      "id": "pick",
+      "lane": "compare",
+      "col": 3,
+      "type": "backend",
+      "label": "Pick two versions",
+      "sublabel": "newest vs previous",
+      "sources": [
+        {
+          "path": "tumult-api/src/handlers/perf/select.rs",
+          "line": 234,
+          "end_line": 240
+        },
+        {
+          "path": "tumult-api/src/handlers/perf/select.rs",
+          "line": 405,
+          "end_line": 455
+        }
+      ]
+    },
+    {
+      "id": "compare",
+      "lane": "compare",
+      "col": 4,
+      "type": "backend",
+      "label": "Compare the two",
+      "sublabel": "failures, then p95",
+      "sources": [
+        {
+          "path": "tumult-api/src/handlers/perf/mod.rs",
+          "line": 875,
+          "end_line": 933
+        },
+        {
+          "path": "tumult-perf/src/lib.rs",
+          "line": 196,
+          "end_line": 305
+        }
+      ]
+    },
+    {
+      "id": "rule",
+      "lane": "compare",
+      "col": 5,
+      "type": "backend",
+      "label": "Version verdict",
+      "sublabel": "improved, unchanged",
+      "tag": "regressed, inconclusive",
+      "sources": [
+        {
+          "path": "tumult-perf/src/lib.rs",
+          "line": 28,
+          "end_line": 36
+        },
+        {
+          "path": "tumult-perf/src/lib.rs",
+          "line": 307,
+          "end_line": 353
+        }
+      ]
+    },
+    {
+      "id": "posture",
+      "lane": "show",
+      "col": 2,
+      "type": "frontend",
+      "label": "Resilience page",
+      "sublabel": "objective heatmap",
+      "sources": [
+        {
+          "path": "web/src/routes/resilience/+page.svelte",
+          "line": 176,
+          "end_line": 180
+        },
+        {
+          "path": "tumult-api/src/handlers/risks.rs",
+          "line": 163,
+          "end_line": 178
+        }
+      ]
+    },
+    {
+      "id": "perfpage",
+      "lane": "show",
+      "col": 5,
+      "type": "frontend",
+      "label": "Performance page",
+      "sublabel": "verdict per target",
+      "sources": [
+        {
+          "path": "web/src/routes/performance/+page.svelte",
+          "line": 136,
+          "end_line": 153
+        }
+      ]
+    },
+    {
+      "id": "cli",
+      "lane": "show",
+      "col": 4,
+      "type": "external",
+      "label": "tumult perf in CI",
+      "sublabel": "fails the build",
+      "sources": [
+        {
+          "path": "tumult-cli/src/commands/perf.rs",
+          "line": 1,
+          "end_line": 40
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "d-s",
+      "from": "declare",
+      "to": "sample",
+      "variant": "emphasis"
+    },
+    {
+      "id": "s-c",
+      "from": "sample",
+      "to": "check",
+      "variant": "emphasis"
+    },
+    {
+      "id": "c-st",
+      "from": "check",
+      "to": "state",
+      "variant": "emphasis"
+    },
+    {
+      "id": "st-l",
+      "from": "state",
+      "to": "lake",
+      "label": "saved with run",
+      "variant": "emphasis"
+    },
+    {
+      "id": "l-p",
+      "from": "lake",
+      "to": "pick",
+      "label": "samples",
+      "variant": "emphasis"
+    },
+    {
+      "id": "p-c",
+      "from": "pick",
+      "to": "compare",
+      "variant": "emphasis"
+    },
+    {
+      "id": "c-r",
+      "from": "compare",
+      "to": "rule",
+      "variant": "emphasis"
+    },
+    {
+      "id": "r-pp",
+      "from": "rule",
+      "to": "perfpage",
+      "variant": "emphasis"
+    },
+    {
+      "id": "r-cli",
+      "from": "rule",
+      "to": "cli",
+      "label": "exit code"
+    },
+    {
+      "id": "l-po",
+      "from": "lake",
+      "to": "posture",
+      "label": "objectives",
+      "variant": "dashed",
+      "role": "branch"
+    }
+  ]
+}

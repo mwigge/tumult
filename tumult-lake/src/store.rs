@@ -116,9 +116,23 @@ impl Store {
     /// read-write connection to the same file. (Within one process,
     /// `duckdb-rs` shares a single instance per path, so the daemon keeps
     /// exactly one `Writer` by construction — one channel, one task.)
+    /// Returns [`StoreError::SchemaTooNew`] for a lake that a later build
+    /// wrote.
     pub fn writer(&self) -> Result<Writer, StoreError> {
         let conn = open_with_retry(&self.path, || Connection::open(&self.path))?;
-        Ok(Writer { conn })
+        // Also for a writer that is opened without a migration, as the
+        // ingest task does when it rebuilds its connection.
+        if let Some(stored) = newer_schema(&conn)? {
+            return Err(StoreError::SchemaTooNew {
+                stored,
+                supported: schema::CURRENT_SCHEMA_VERSION,
+            });
+        }
+        Ok(Writer {
+            conn,
+            clock: crate::lake::now_ns,
+            entities: crate::entities::EntityBook::default(),
+        })
     }
 
     /// Open a read-only connection (`access_mode = READ_ONLY`). Multiple
@@ -163,6 +177,27 @@ pub(crate) fn with_tx<T, E: From<StoreError>>(
     }
 }
 
+/// The schema version the lake records when it is later than the one this
+/// build writes, `None` otherwise. A lake without `schema_meta` is a new
+/// one and has no version to compare.
+///
+/// Tables gain columns with a version and most inserts name no columns, so
+/// an older build would fail on every write to a newer lake. The callers
+/// refuse to open one before [`migrate`] changes anything.
+pub(crate) fn newer_schema(conn: &Connection) -> Result<Option<i64>, duckdb::Error> {
+    let has_meta: bool = conn.query_row(
+        "SELECT count(*) > 0 FROM information_schema.tables WHERE table_name = 'schema_meta'",
+        params![],
+        |row| row.get(0),
+    )?;
+    if !has_meta {
+        return Ok(None);
+    }
+    let mut stmt = conn.prepare("SELECT max(value) FROM schema_meta WHERE key = 'version'")?;
+    let stored: Option<i64> = stmt.query_row(params![], |row| row.get(0))?;
+    Ok(stored.filter(|version| *version > schema::CURRENT_SCHEMA_VERSION))
+}
+
 /// Shared schema migration: the full v3 DDL (telemetry + manual-evidence +
 /// analytics families), the ChaosGraph tables, the `experiment_runs` view,
 /// the static compliance-article seed, and the `schema_meta` version.
@@ -173,6 +208,7 @@ pub(crate) fn migrate(conn: &Connection) -> Result<(), duckdb::Error> {
     for ddl in schema::CREATE_TABLES {
         conn.execute_batch(ddl)?;
     }
+    crate::sightings::backfill(conn, crate::lake::now_ns())?;
     // v4 → v5: rebuild the run tables index-free (crash-robustness — see
     // schema.rs). Conditional on the stored version actually being 4: older
     // databases have no run tables to rebuild, and fresh ones got the v5
@@ -210,7 +246,12 @@ pub(crate) fn migrate(conn: &Connection) -> Result<(), duckdb::Error> {
     // pre-existing databases.
     conn.execute_batch(tumult_graph::sql::CREATE_TABLES)?;
     conn.execute_batch(tumult_graph::sql::MIGRATE_EDGES_ADD_ATTRS)?;
-    conn.execute_batch(schema::CREATE_VIEWS)?;
+    for amendment in schema::AMEND_TABLES {
+        conn.execute_batch(amendment)?;
+    }
+    for view in schema::CREATE_VIEWS {
+        conn.execute_batch(view)?;
+    }
     // Static `ComplianceArticle` nodes from the citation registry:
     // deterministic and run-independent, seeded at migrate time.
     // Idempotent — nodes upsert on their primary key.
@@ -252,9 +293,52 @@ pub(crate) fn query_json_rows(
     conn: &Connection,
     sql: &str,
 ) -> Result<Vec<serde_json::Value>, StoreError> {
+    query_json_rows_bound(conn, sql, &[] as &[&str])
+}
+
+/// A value bound to a `$n` placeholder of a query: it reaches the engine
+/// as data and is never part of the statement's text.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SqlParam {
+    Null,
+    Int(i64),
+    Text(String),
+}
+
+impl SqlParam {
+    /// A list of texts as one parameter: a JSON array, read back in the
+    /// statement with `from_json(CAST($n AS VARCHAR), '["VARCHAR"]')`.
+    #[must_use]
+    pub fn text_list(items: &[String]) -> Self {
+        Self::Text(serde_json::Value::from(items).to_string())
+    }
+}
+
+impl duckdb::ToSql for SqlParam {
+    fn to_sql(&self) -> duckdb::Result<duckdb::types::ToSqlOutput<'_>> {
+        use duckdb::types::{ToSqlOutput, Value};
+        Ok(match self {
+            Self::Null => ToSqlOutput::Owned(Value::Null),
+            Self::Int(n) => ToSqlOutput::Owned(Value::BigInt(*n)),
+            Self::Text(text) => ToSqlOutput::from(text.as_str()),
+        })
+    }
+}
+
+/// [`query_json_rows`] with `params` bound to the statement's
+/// placeholders, in order: `?`, or `$1`, `$2`, …, every one of which the
+/// statement must use. A value from a request or a file goes here, never
+/// into the statement text.
+pub(crate) fn query_json_rows_bound<P: duckdb::ToSql>(
+    conn: &Connection,
+    sql: &str,
+    params: &[P],
+) -> Result<Vec<serde_json::Value>, StoreError> {
     let wrapped = format!("SELECT row_to_json(t) AS j FROM ({sql}) AS t");
     let mut stmt = conn.prepare(&wrapped)?;
-    let rows = stmt.query_map([], |r| r.get::<usize, String>(0))?;
+    let rows = stmt.query_map(duckdb::params_from_iter(params.iter()), |r| {
+        r.get::<usize, String>(0)
+    })?;
     let mut out = Vec::new();
     for row in rows {
         out.push(serde_json::from_str(&row?)?);
@@ -313,6 +397,63 @@ mod tests {
         let rows = query_json_rows(&conn, "SELECT 1 AS v, 'x' AS s").unwrap();
         assert_eq!(rows, vec![serde_json::json!({"v": 1, "s": "x"})]);
         assert!(query_json_rows(&conn, "SELECT FROM nonsense").is_err());
+    }
+
+    /// A bound value is data whatever it holds: a quote or a statement
+    /// in it is compared, not run.
+    #[test]
+    fn a_bound_value_is_compared_as_text_and_never_parsed() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch("CREATE TABLE t (name VARCHAR); INSERT INTO t VALUES ('a'), ('o''b')")
+            .unwrap();
+        let named = |name: &str| {
+            query_json_rows_bound(&conn, "SELECT name FROM t WHERE name = ?", &[name]).unwrap()
+        };
+        assert_eq!(named("o'b"), vec![serde_json::json!({"name": "o'b"})]);
+        assert_eq!(named("x' OR '1'='1"), Vec::<serde_json::Value>::new());
+        let both = query_json_rows_bound(
+            &conn,
+            "SELECT name FROM t WHERE name IN (?, ?) ORDER BY 1",
+            &["o'b", "a"],
+        )
+        .unwrap();
+        assert_eq!(both.len(), 2);
+    }
+
+    #[test]
+    fn a_bound_parameter_is_a_value_and_never_part_of_the_statement() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE t (name VARCHAR, n BIGINT);
+             INSERT INTO t VALUES ('a', 1), ('b', 2), ('it''s', 3);",
+        )
+        .unwrap();
+        let hostile = "a' OR '1'='1";
+        let rows = query_json_rows_bound(
+            &conn,
+            "SELECT name, n FROM t WHERE name = $1 OR n = $2 ORDER BY n",
+            &[SqlParam::Text(hostile.into()), SqlParam::Int(2)],
+        )
+        .unwrap();
+        assert_eq!(rows, vec![serde_json::json!({"name": "b", "n": 2})]);
+        // The text comes back as it went in, quote and all.
+        let rows = query_json_rows_bound(
+            &conn,
+            "SELECT $1 AS s, $1 = 'it''s' AS same",
+            &[SqlParam::Text("it's".into())],
+        )
+        .unwrap();
+        assert_eq!(rows, vec![serde_json::json!({"s": "it's", "same": true})]);
+        // A null parameter switches a filter off; a JSON list of texts is
+        // a list to match against.
+        let listed = "SELECT name FROM t WHERE $1 IS NULL \
+                      OR list_contains(from_json(CAST($1 AS VARCHAR), '[\"VARCHAR\"]'), name) \
+                      ORDER BY n";
+        let all = query_json_rows_bound(&conn, listed, &[SqlParam::Null]).unwrap();
+        assert_eq!(all.len(), 3);
+        let some =
+            query_json_rows_bound(&conn, listed, &[SqlParam::text_list(&["it's".into()])]).unwrap();
+        assert_eq!(some, vec![serde_json::json!({"name": "it's"})]);
     }
 
     #[test]

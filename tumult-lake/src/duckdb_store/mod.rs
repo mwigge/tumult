@@ -252,6 +252,13 @@ impl AnalyticsStore {
         // ChaosGraph tables, experiment_runs view, compliance-article seed,
         // schema_meta version) — identical to what `Store::open` runs, so a
         // database opened through either write path has the same schema.
+        // A lake that a later build wrote is refused the same way too.
+        if let Some(stored) = crate::store::newer_schema(&self.conn)? {
+            return Err(AnalyticsError::SchemaTooNew {
+                stored,
+                supported: crate::CURRENT_SCHEMA_VERSION,
+            });
+        }
         crate::migrate(&self.conn)?;
         Ok(())
     }
@@ -288,6 +295,7 @@ pub fn sample_journal(
 ) -> tumult_core::types::Journal {
     use tumult_core::types::*;
     Journal {
+        target_version: None,
         experiment_title: format!("Test {id}"),
         experiment_id: id.into(),
         status,
@@ -309,6 +317,9 @@ pub fn sample_journal(
         }],
         rollback_results: vec![],
         rollback_failures: 0,
+        kind: tumult_core::types::TestKind::default(),
+        objectives: None,
+        probe_samples: vec![],
         halt: None,
         blast_radius: None,
         estimate: None,

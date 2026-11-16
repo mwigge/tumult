@@ -10,7 +10,8 @@ use tokio_util::sync::CancellationToken;
 
 use crate::types::{
     ActivityResult, ActivityStatus, ActivityType, AnalysisResult, DuringResult, ExpectedOutcome,
-    Experiment, ExperimentStatus, Hypothesis, PostResult, ProbeDuring, ProbePost,
+    Experiment, ExperimentStatus, Hypothesis, PostResult, ProbeDuring, ProbePost, ProbeSample,
+    SamplePhase,
 };
 
 use opentelemetry::trace::{TraceContextExt, Tracer};
@@ -140,6 +141,23 @@ fn sample_probe_round(
     }
 
     (round, all_within_tolerance)
+}
+
+/// Flatten per-probe samples into journal [`ProbeSample`]s tagged with
+/// `phase`, in collection order per probe.
+pub(crate) fn samples_for_journal(phase: SamplePhase, samples: &ProbeSamples) -> Vec<ProbeSample> {
+    samples
+        .iter()
+        .flat_map(|(name, results)| {
+            results.iter().map(move |r| ProbeSample {
+                probe: name.clone(),
+                phase,
+                ts_ns: r.started_at_ns,
+                duration_ms: r.duration_ms,
+                ok: r.status == ActivityStatus::Succeeded,
+            })
+        })
+        .collect()
 }
 
 /// Append one round of samples to the per-probe map.

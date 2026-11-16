@@ -6,6 +6,7 @@
 
 use clickhouse::Client;
 use tumult_lake::error::AnalyticsError;
+use tumult_otel::logging::{redact_credentials, sanitize_url};
 
 use crate::config::ClickHouseConfig;
 
@@ -18,6 +19,38 @@ mod rows;
 mod tests;
 
 const SCHEMA_VERSION: i64 = 1;
+
+/// Table behind [`rows::ExperimentRow`]; the columns must match its fields.
+const EXPERIMENTS_DDL: &str = "CREATE TABLE IF NOT EXISTS experiments (
+                experiment_id String,
+                title String,
+                status String,
+                started_at_ns Int64,
+                ended_at_ns Int64,
+                duration_ms UInt64,
+                method_step_count Int64,
+                rollback_count Int64,
+                hypothesis_before_met Nullable(UInt8),
+                hypothesis_after_met Nullable(UInt8),
+                estimate_accuracy Nullable(Float64),
+                resilience_score Nullable(Float64)
+            ) ENGINE = ReplacingMergeTree()
+            ORDER BY (experiment_id)
+            PRIMARY KEY (experiment_id)";
+
+/// Table behind [`rows::ActivityRow`]; the columns must match its fields.
+const ACTIVITY_RESULTS_DDL: &str = "CREATE TABLE IF NOT EXISTS activity_results (
+                experiment_id String,
+                name String,
+                activity_type String,
+                status String,
+                started_at_ns Int64,
+                duration_ms UInt64,
+                output Nullable(String),
+                error Nullable(String),
+                phase String
+            ) ENGINE = MergeTree()
+            ORDER BY (experiment_id, started_at_ns)";
 
 /// Retry configuration for `ClickHouse` connection attempts.
 pub struct RetryConfig {
@@ -47,6 +80,38 @@ pub struct ClickHouseStore {
     query_timeout: std::time::Duration,
 }
 
+/// Logs a failed connection attempt that will be retried.
+///
+/// The URL is logged without userinfo or query, and the error text has the
+/// credentials of the URL and the configured user name and password
+/// removed: a client error may quote any of them.
+fn log_connect_retry(
+    config: &ClickHouseConfig,
+    attempt: u32,
+    max_attempts: u32,
+    backoff: std::time::Duration,
+    error: &AnalyticsError,
+) {
+    tracing::warn!(
+        name: "clickhouse.connect.retrying",
+        {
+            url.full = %sanitize_url(&config.url),
+            db.namespace = %config.database,
+            attempt,
+            max_attempts,
+            backoff_s = backoff.as_secs(),
+            error.message = %without_credentials(&error.to_string(), config),
+        },
+        "ClickHouse connection failed, retrying"
+    );
+}
+
+/// `text` without the credentials of the configured URL, the user name and
+/// the password, in any spelling.
+fn without_credentials(text: &str, config: &ClickHouseConfig) -> String {
+    redact_credentials(text, &config.url, &config.user, &config.password)
+}
+
 impl ClickHouseStore {
     /// Connect to `ClickHouse` with retry and exponential backoff.
     ///
@@ -64,19 +129,16 @@ impl ClickHouseStore {
         for attempt in 0..retry_config.max_attempts {
             match Self::connect(config).await {
                 Ok(store) => return Ok(store),
+                // Nothing follows the last attempt, so there is nothing to
+                // wait for.
+                Err(e) if attempt + 1 == retry_config.max_attempts => last_err = Some(e),
                 Err(e) => {
                     let backoff = retry_config
                         .backoff_durations
                         .get(attempt as usize)
                         .copied()
                         .unwrap_or(std::time::Duration::from_secs(8));
-                    tracing::warn!(
-                        attempt = attempt + 1,
-                        max_attempts = retry_config.max_attempts,
-                        backoff_s = backoff.as_secs(),
-                        error = %e,
-                        "ClickHouse connection failed, retrying"
-                    );
+                    log_connect_retry(config, attempt + 1, retry_config.max_attempts, backoff, &e);
                     last_err = Some(e);
                     tokio::time::sleep(backoff).await;
                 }
@@ -131,41 +193,9 @@ impl ClickHouseStore {
         ))
         .await?;
 
-        self.execute_ddl(
-            "CREATE TABLE IF NOT EXISTS experiments (
-                experiment_id String,
-                title String,
-                status String,
-                started_at_ns Int64,
-                ended_at_ns Int64,
-                duration_ms UInt64,
-                method_step_count Int64,
-                rollback_count Int64,
-                hypothesis_before_met Nullable(UInt8),
-                hypothesis_after_met Nullable(UInt8),
-                estimate_accuracy Nullable(Float64),
-                resilience_score Nullable(Float64)
-            ) ENGINE = ReplacingMergeTree()
-            ORDER BY (experiment_id)
-            PRIMARY KEY (experiment_id)",
-        )
-        .await?;
+        self.execute_ddl(EXPERIMENTS_DDL).await?;
 
-        self.execute_ddl(
-            "CREATE TABLE IF NOT EXISTS activity_results (
-                experiment_id String,
-                name String,
-                activity_type String,
-                status String,
-                started_at_ns Int64,
-                duration_ms UInt64,
-                output Nullable(String),
-                error Nullable(String),
-                phase String
-            ) ENGINE = MergeTree()
-            ORDER BY (experiment_id, started_at_ns)",
-        )
-        .await?;
+        self.execute_ddl(ACTIVITY_RESULTS_DDL).await?;
 
         self.execute_ddl(
             "CREATE TABLE IF NOT EXISTS schema_meta (

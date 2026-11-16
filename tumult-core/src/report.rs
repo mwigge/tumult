@@ -117,6 +117,7 @@ mod tests {
     #[test]
     fn junit_report_emits_suite_and_cases() {
         let journal = Journal {
+            target_version: None,
             experiment_title: "Report & test".into(),
             experiment_id: "exp-1".into(),
             status: crate::types::ExperimentStatus::Completed,
@@ -151,6 +152,9 @@ mod tests {
             ],
             rollback_results: vec![],
             rollback_failures: 0,
+            kind: crate::types::TestKind::default(),
+            objectives: None,
+            probe_samples: vec![],
             estimate: None,
             baseline_result: None,
             during_result: None,

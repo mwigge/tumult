@@ -26,6 +26,7 @@ tumult run <experiment.toon> [OPTIONS]
 | `--no-ingest` | `false` | Skip auto-ingestion into persistent analytics store |
 | `--output-format <f>` | — | `json` — print journal as JSON to stdout after run |
 | `--var KEY=VALUE` | — | Template variable substitution (repeatable) |
+| `--target-version <v>` | — | The version of the target this run measures, recorded in the journal as `declared` (overrides `target.version`; an error when the definition has no `target` block). Without it and without `target.version`, a run that auto-ingests asks the daemon (or the local lake) once at its end which `service.version` the target's spans carried during the run and records it as `observed` |
 | `--load <tool>` | — | Run a load test concurrently with the method (`k6` or `none`) |
 | `--load-script <path>` | — | Path to load test script (k6 `.js`) |
 | `--load-vus <n>` | — | Number of virtual users for the load test |
@@ -310,14 +311,21 @@ tumult report <journal.toon> [OPTIONS]
 
 ## tumult import
 
-Import the legacy two-table Parquet analytics export. This does not restore a
-complete operational backup; use `tumult store restore` for that.
+Import the Parquet directory `tumult store export` writes: the experiments
+and activities, and with them, when the directory holds them, the load
+evidence (`load_results.parquet` and `probe_samples.parquet`, both or
+neither) and the run roots with the version history (`run_roots.parquet`
+and `version_sightings.parquet`, both or neither), so that a performance
+verdict can be computed from the imported runs. Rows the store already
+holds are left as they are; importing a directory twice adds nothing. This
+does not restore a complete operational backup; use `tumult store restore`
+for that.
 
 ```
 tumult import <parquet-dir>
 ```
 
-Transactional import — data is committed only if all files load successfully.
+Transactional import — each pair of files is committed only if both load successfully.
 
 ## tumult store
 
@@ -331,6 +339,7 @@ tumult store <subcommand>
 |------------|-------------|
 | `stats` | Show experiment/activity counts and store file size |
 | `backup [--output <dir>]` | Copy the complete database and checksum manifest; stop writers first, protect credentials in backup |
+| `export [--output <dir>]` | Write the Parquet directory `tumult import` reads (experiments, activities, load results, probe samples, run roots, version history); refuses a directory that already holds one |
 | `restore --input <dir> --output <new-db>` | Verify a complete backup and restore into a new database; never overwrite an existing destination |
 | `purge --older-than-days <N>` | Delete experiments older than N days |
 | `path` | Print the store file path |
@@ -592,6 +601,67 @@ tumult autopilot <once|status|approve|deny|notify-change|export>
 | `export` | Export the decision and event tables as Parquet files |
 
 See the [Autopilot guide](autopilot.md).
+
+## tumult gate
+
+Ask the daemon's CI gate (`GET /api/gate/{target}`) for a target's resilience verdict and exit non-zero when it does not pass. Meant for a pipeline step before promotion.
+
+```bash
+export TUMULT_DAEMON_URL=http://tumultd.internal:4318
+export TUMULT_DAEMON_TOKEN=kro_...   # viewer role is enough
+tumult gate payments-api --min-score 70 --max-age-days 30 --env prod
+```
+
+| Flag | Description |
+|------|-------------|
+| `--min-score <0-100>` | Score floor (daemon default 70, the `good` band) |
+| `--max-age-days <n>` | Evidence older than this is stale (daemon default 30) |
+| `--env <name>` | Restrict the verdict to one environment (403 outside a scoped token's environments) |
+| `--daemon-url <url>` | Overrides `TUMULT_DAEMON_URL` |
+| `--fail-on fail\|warn\|never` | Which verdicts exit non-zero (default `fail`) |
+| `--json` | Print the daemon's JSON answer |
+
+Verdicts: `pass` (score at or above the floor, fresh evidence, no failing experiment), `warn` (stale evidence or a failed experiment on the latest run), `fail` (below the floor or no evidence). An unknown target is an error, never a silent pass. Pipeline templates for GitHub Actions and GitLab CI live in `deploy/ci/`.
+
+## tumult perf
+
+Ask the daemon for a target's performance regression verdict (`GET /api/perf/{target}`; with `--store`, `POST /api/perf/{target}/verdicts`): the latency samples of two of its `service.version`s inside one environment — by default the two deployed last — compared with a bootstrap confidence interval over whole runs, after what became of the requests. Exits 3 on a regression and, by default, 4 when the evidence gives no verdict. Meant for the pipeline step after a build has been deployed and exercised.
+
+```bash
+export TUMULT_DAEMON_URL=http://tumultd.internal:4318
+export TUMULT_DAEMON_TOKEN=kro_...   # viewer reads; --store needs operator
+tumult perf checkout --quantile p95 --margin-pct 5 --env staging --store
+```
+
+| Flag | Description |
+|------|-------------|
+| `--probe <series>` | The `probe_samples` series compared (daemon default `load.latency_p95_ms`) |
+| `--quantile p50\|p95\|p99` | Quantile the verdict is keyed on (daemon default p95) |
+| `--min-samples <n>` | Fewer samples on either side is inconclusive (daemon default 20; the daemon also asks for three runs a side) |
+| `--min-runs <n>` | Fewer runs with samples on either side is inconclusive (daemon default 3; from 1 to 1000). An interval from fewer than 5 runs a side says so in the headline and among the reasons |
+| `--seed <n>` | Seed of the resampling; the same runs and seed give the same interval (daemon default fixed) |
+| `--margin-pct <n>` | Noise margin as a percentage of the baseline quantile (daemon default 5) |
+| `--env <name>` | The environment the verdict is for, matched exactly (403 outside a scoped token's environments; 404 when the target has no telemetry tagged with it). Required when the target has versions in several environments and the named versions do not single one out |
+| `--candidate <version>` | The version judged, instead of the one deployed latest. At most 128 characters, no control characters |
+| `--baseline <version>` | The version compared against, instead of the one deployed just before the candidate. Same bounds |
+| `--range <span>` | How far back runs and samples are read, such as `30d` or `12h` (daemon default `30d`). The order of the versions does not depend on it |
+| `--include partial` | Keep the latency samples of aborted and truncated runs, which are left out by default |
+| `--store` | Append the verdict to the daemon's `perf_verdicts` history (`POST`, operator role); without it the command only reads. A retry with the same evidence appends nothing and still counts as stored. Exits non-zero when the daemon did not store, whatever `--fail-on` says |
+| `--daemon-url <url>` | Overrides `TUMULT_DAEMON_URL` |
+| `--fail-on <verdicts>` | Which verdicts exit non-zero, comma-separated: `regressed`, `inconclusive`, or `never` alone (default `regressed,inconclusive`). Given without `--candidate`, the command warns on stderr that it gates on the version deployed latest |
+| `--json` | Print the daemon's JSON answer |
+
+| Exit code | Meaning |
+|-----------|---------|
+| `0` | `improved` or `unchanged`, or a verdict `--fail-on` lets pass |
+| `1` | The command failed: daemon unreachable, an HTTP error, `--store` that did not store, or a verdict this build does not know |
+| `2` | Usage error |
+| `3` | `regressed` |
+| `4` | `inconclusive` |
+
+**Behaviour change.** The default was `--fail-on regressed`, under which `inconclusive` exited 0 and a regression exited 1. A pipeline that relied on that now fails on `inconclusive` with exit 4 and on a regression with exit 3. Pass `--fail-on regressed` to let `inconclusive` through again; a gate that passes because nothing could be measured is seldom what a pipeline wants.
+
+Verdicts: `improved`, `unchanged`, `regressed` (slower beyond the margin, a failure share above the baseline's, or a candidate that left more than a tenth of its load windows unanswered while the baseline did not), `inconclusive` (fewer than three runs or twenty samples on a side, one version only, an interval too wide to tell, a significant shift whose size against the margin is unresolved, a baseline that lost more than a tenth of its load windows to silence, or a result that rests on a latency censored at the request timeout). With `--store` the verdict is appended to the lake's `perf_verdicts` table. See the [Performance Regression guide](performance-regression.md) for the rules.
 
 ## tumult tui
 

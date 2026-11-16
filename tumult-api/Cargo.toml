@@ -1,7 +1,7 @@
 [package]
 name = "tumult-api"
 description = "Control-plane API for the Tumult daemon — analytics reads plus runs, schedules, webhooks, gamedays, users and tokens"
-version = "0.7.0"
+version.workspace = true
 edition.workspace = true
 license.workspace = true
 
@@ -11,21 +11,32 @@ toon-format.workspace = true
 tumult-auth = { path = "../tumult-auth" }
 tumult-authoring = { path = "../tumult-authoring" }
 tumult-autopilot = { path = "../tumult-autopilot" }
+tumult-perf = { path = "../tumult-perf" }
 tumult-lake.workspace = true
 tumult-metrics.workspace = true
 tumult-intelligence.workspace = true
 tumult-report.workspace = true
 tumult-compliance.workspace = true
 tumult-ingest.workspace = true
+tumult-risk = { path = "../tumult-risk" }
+tumult-forecast = { path = "../tumult-forecast" }
+tumult-graph = { path = "../tumult-graph" }
 sha2.workspace = true
 uuid.workspace = true
 axum.workspace = true
 tokio.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+reqwest.workspace = true
 tracing.workspace = true
+opentelemetry.workspace = true
 
 [dev-dependencies]
-reqwest.workspace = true
+tokio = { workspace = true, features = ["test-util"] }
 tempfile.workspace = true
 async-trait.workspace = true
+opentelemetry_sdk = { workspace = true, features = ["testing"] }
+# Captures what a request logs (`logging::testing`).
+tumult-otel = { path = "../tumult-otel" }
+# `EnvGuard` for the tests that read configuration from the environment.
+tumult-test-utils = { path = "../tumult-test-utils", default-features = false }

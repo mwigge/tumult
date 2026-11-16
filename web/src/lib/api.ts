@@ -19,6 +19,7 @@ import type {
     GameDayEntry,
     ExperimentRow,
     ExperimentWindow,
+    ForecastResponse,
     LogEntry,
     LoginResponse,
     LogVolume,
@@ -30,6 +31,13 @@ import type {
     MetricDefInfo,
     MetricQueryResult,
     Overview,
+    ConformanceReport,
+    DoraArticleReport,
+    DoraReport,
+    MaturityReport,
+    PostureResponse,
+    RiskReport,
+    SuppressionRow,
     RegistryDefinition,
     RegistryEntry,
     ReportFile,
@@ -37,14 +45,19 @@ import type {
     ReportTemplate,
     RunDetail,
     RunEvent,
+    RunImpact,
     RunRow,
     ScaffoldRequest,
     ScaffoldResponse,
     Schedule,
     Scorecard,
+    StarMap,
+    GateVerdict,
+    PerfParams,
+    PerfTargets,
+    PerfVerdict,
     ScoreTree,
     Timeseries,
-    Topology,
     TraceDetail,
     TraceDurations,
     TraceRow,
@@ -66,12 +79,38 @@ function redirectOnUnauthorized(resp: Response, path: string): void {
     }
 }
 
+/** The query string of the perf read and of the store; empty values are omitted. */
+function perfQuery(params: PerfParams): string {
+    const q = new URLSearchParams();
+    if (params.probe) q.set('probe', params.probe);
+    if (params.quantile) q.set('quantile', params.quantile);
+    if (params.env) q.set('env', params.env);
+    if (params.baseline) q.set('baseline', params.baseline);
+    if (params.candidate) q.set('candidate', params.candidate);
+    if (params.range) q.set('range', params.range);
+    if (params.include) q.set('include', params.include);
+    const qs = q.toString();
+    return qs ? `?${qs}` : '';
+}
+
+/** A request the API answered with an error status. `status` lets a caller
+    tell "nothing there" (404) from "not allowed" (403) and "it broke" (5xx). */
+export class ApiError extends Error {
+    readonly status: number;
+
+    constructor(message: string, status: number) {
+        super(message);
+        this.name = 'ApiError';
+        this.status = status;
+    }
+}
+
 async function get<T>(path: string): Promise<T> {
     const resp = await fetch(path);
     const body = await resp.json().catch(() => ({}));
     if (!resp.ok) {
         redirectOnUnauthorized(resp, path);
-        throw new Error(body.error ?? `HTTP ${resp.status}`);
+        throw new ApiError(body.error ?? `HTTP ${resp.status}`, resp.status);
     }
     return body as T;
 }
@@ -85,7 +124,7 @@ async function send<T>(method: string, path: string, payload: unknown): Promise<
     const body = await resp.json().catch(() => ({}));
     if (!resp.ok) {
         redirectOnUnauthorized(resp, path);
-        throw new Error(body.error ?? `HTTP ${resp.status}`);
+        throw new ApiError(body.error ?? `HTTP ${resp.status}`, resp.status);
     }
     return body as T;
 }
@@ -133,6 +172,67 @@ export const api = {
 
     scores: (range: string) => get<Scorecard>(`/api/scores?range=${range}`),
 
+    // --- Passive risk scan + posture ---------------------------------------
+
+    risks: (env = '') =>
+        get<RiskReport>(`/api/risks${env ? `?env=${encodeURIComponent(env)}` : ''}`),
+
+    posture: (env = '') =>
+        get<PostureResponse>(`/api/posture${env ? `?env=${encodeURIComponent(env)}` : ''}`),
+
+    otelConformance: (range = '24h', env = '') =>
+        get<ConformanceReport>(
+            `/api/otel/conformance?range=${range}${env ? `&env=${encodeURIComponent(env)}` : ''}`,
+        ),
+
+    // --- DORA coverage and the internal maturity level -----------------------
+
+    dora: (lei = '', by: 'entity' | 'org' = 'entity') =>
+        get<DoraReport>(`/api/dora?by=${by}${lei ? `&lei=${encodeURIComponent(lei)}` : ''}`),
+
+    doraArticle: (article: string, lei = '') =>
+        get<DoraArticleReport>(
+            `/api/dora/${encodeURIComponent(article)}${lei ? `?lei=${encodeURIComponent(lei)}` : ''}`,
+        ),
+
+    maturity: (lei = '', by: 'node' | 'entity' | 'org' = 'node') =>
+        get<MaturityReport>(
+            `/api/maturity?by=${by}${lei ? `&lei=${encodeURIComponent(lei)}` : ''}`,
+        ),
+
+    suppressRisk: (id: string, reason: string, expiresInDays?: number, actor?: string) =>
+        send<SuppressionRow>('POST', `/api/risks/${encodeURIComponent(id)}/suppress`, {
+            reason,
+            ...(expiresInDays ? { expires_in_days: expiresInDays } : {}),
+            ...(actor ? { actor } : {}),
+        }),
+
+    gate: (
+        target: string,
+        params: { min_score?: number; max_age_days?: number; env?: string } = {},
+    ) => {
+        const q = new URLSearchParams();
+        if (params.min_score !== undefined) q.set('min_score', String(params.min_score));
+        if (params.max_age_days !== undefined) q.set('max_age_days', String(params.max_age_days));
+        if (params.env) q.set('env', params.env);
+        const qs = q.toString();
+        return get<GateVerdict>(`/api/gate/${encodeURIComponent(target)}${qs ? `?${qs}` : ''}`);
+    },
+
+    perfTargets: (range = '') =>
+        get<PerfTargets>(`/api/perf${range ? `?range=${encodeURIComponent(range)}` : ''}`),
+
+    perf: (target: string, params: PerfParams = {}) =>
+        get<PerfVerdict>(`/api/perf/${encodeURIComponent(target)}${perfQuery(params)}`),
+
+    /** Stores the verdict of the same query; `duplicate` tells 200 from 201. */
+    storePerfVerdict: (target: string, params: PerfParams = {}) =>
+        send<PerfVerdict>(
+            'POST',
+            `/api/perf/${encodeURIComponent(target)}/verdicts${perfQuery(params)}`,
+            {},
+        ),
+
     reportsV2: () => get<{ reports: ReportMetaV2[] }>('/api/reports/v2'),
 
     generateReportV2: (req: {
@@ -179,7 +279,12 @@ export const api = {
         return get<MetricQueryResult>(`/api/metrics/query${qs ? `?${qs}` : ''}`);
     },
 
-    topology: (range: string) => get<Topology>(`/api/topology?range=${range}`),
+    starmap: (params: Record<string, string>) => {
+        const qs = new URLSearchParams(
+            Object.entries(params).filter(([, v]) => v !== ''),
+        ).toString();
+        return get<StarMap>(`/api/starmap${qs ? `?${qs}` : ''}`);
+    },
 
     ask: async (question: string): Promise<AskResponse> => {
         // Deliberately not routed through send(): a non-ok response whose body
@@ -281,6 +386,21 @@ export const api = {
     },
 
     run: (id: string) => get<RunDetail>(`/api/runs/${encodeURIComponent(id)}`),
+
+    // Counterfactual impact of a run; rejects (404) when it has no samples.
+    runImpact: (id: string) => get<RunImpact>(`/api/runs/${encodeURIComponent(id)}/impact`),
+
+    forecast: (
+        metric: string,
+        opts: { target?: string; env?: string; range?: string; horizon?: number } = {},
+    ) => {
+        const qs = new URLSearchParams({ metric });
+        if (opts.target) qs.set('target', opts.target);
+        if (opts.env) qs.set('env', opts.env);
+        if (opts.range) qs.set('range', opts.range);
+        if (opts.horizon) qs.set('horizon', String(opts.horizon));
+        return get<ForecastResponse>(`/api/forecast?${qs}`);
+    },
 
     stopRun: (id: string) =>
         send<{ run_id: string; stop: string }>(

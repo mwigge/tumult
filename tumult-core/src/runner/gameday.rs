@@ -33,7 +33,8 @@ impl LoadGuard<'_> {
 impl Drop for LoadGuard<'_> {
     fn drop(&mut self) {
         if let (Some(handle), Some(executor)) = (self.handle.take(), self.executor) {
-            if let Err(e) = executor.stop(handle) {
+            // Reached only on an early exit: nothing is left to measure.
+            if let Err(e) = executor.abort(handle) {
                 tracing::error!(error = %e, "failed to stop gameday load on exit");
             }
         }
@@ -200,6 +201,7 @@ pub fn run_gameday_with_wiring(
             parent_context: Some(opentelemetry::Context::current()),
             load_executor: None, // load is managed at GameDay level
             max_concurrent_faults: config.max_concurrent_faults,
+            version_resolver: config.version_resolver.clone(),
         };
         let wiring = wiring(index, experiment);
         match run_experiment(experiment, &wiring.executor, &wiring.controls, &exp_config) {

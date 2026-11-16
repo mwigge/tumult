@@ -12,9 +12,11 @@ thiserror = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
+tumult-otel = { path = "../tumult-otel" }
 
 [dev-dependencies]
 tempfile = { workspace = true }
+tumult-test-utils = { path = "../tumult-test-utils", default-features = false }
 
 [lints]
 workspace = true

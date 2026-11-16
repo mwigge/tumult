@@ -166,20 +166,12 @@ impl SshPool {
             if e.session.execute("true").await.is_ok() {
                 (e.session, e.config)
             } else {
-                tracing::debug!(
-                    host = %key.host,
-                    port = key.port,
-                    "cached SSH session stale — reconnecting"
-                );
+                log_session_stale(&key);
                 let new_session = SshSession::connect((*e.config).clone()).await?;
                 (new_session, e.config)
             }
         } else {
-            tracing::debug!(
-                host = %key.host,
-                port = key.port,
-                "opening new SSH session"
-            );
+            log_session_opening(&key);
             let arc = Arc::new(config.clone());
             let new_session = SshSession::connect((*arc).clone()).await?;
             (new_session, arc)
@@ -225,6 +217,24 @@ impl SshPool {
     }
 }
 
+/// The cached session for `key` no longer answers; a new one replaces it.
+fn log_session_stale(key: &PoolKey) {
+    tracing::debug!(
+        name: "ssh.session.stale",
+        { server.address = %key.host, server.port = key.port },
+        "cached SSH session stale, reconnecting"
+    );
+}
+
+/// No session is cached for `key`; one is being opened.
+fn log_session_opening(key: &PoolKey) {
+    tracing::debug!(
+        name: "ssh.session.opening",
+        { server.address = %key.host, server.port = key.port },
+        "opening new SSH session"
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -235,10 +245,13 @@ mod tests {
     }
 
     #[test]
-    fn pool_starts_empty() {
-        let pool = SshPool::new();
-        assert!(pool.is_empty());
-        assert_eq!(pool.len(), 0);
+    fn new_and_default_pools_hold_no_sessions_and_clear_keeps_them_empty() {
+        for pool in [SshPool::new(), SshPool::default()] {
+            assert!(pool.is_empty());
+            assert_eq!(pool.len(), 0);
+            pool.clear();
+            assert_eq!(pool.len(), 0);
+        }
     }
 
     #[test]
@@ -246,13 +259,6 @@ mod tests {
         let pool = SshPool::new();
         let config = dummy_config("host-a");
         assert!(!pool.evict(&config));
-    }
-
-    #[test]
-    fn clear_on_empty_pool_does_not_panic() {
-        let pool = SshPool::new();
-        pool.clear();
-        assert!(pool.is_empty());
     }
 
     #[test]
@@ -319,12 +325,6 @@ mod tests {
     }
 
     #[test]
-    fn default_creates_empty_pool() {
-        let pool = SshPool::default();
-        assert!(pool.is_empty());
-    }
-
-    #[test]
     fn poisoned_lock_does_not_kill_pool_operations() {
         let pool = SshPool::new();
 
@@ -342,5 +342,22 @@ mod tests {
         assert!(!pool.evict(&dummy_config("host-a")));
         pool.clear();
         assert!(pool.is_empty());
+    }
+
+    #[test]
+    fn session_lifecycle_events_name_the_endpoint() {
+        let key = PoolKey::from_config(&dummy_config("db-1.internal"));
+        let logs = tumult_otel::logging::testing::capture_json(tracing::Level::DEBUG, || {
+            log_session_stale(&key);
+            log_session_opening(&key);
+        });
+
+        for name in ["ssh.session.stale", "ssh.session.opening"] {
+            let event = &logs.named(name)[0];
+            assert_eq!(event["level"], "DEBUG");
+            assert_eq!(event["server.address"], "db-1.internal");
+            assert_eq!(event["server.port"], 22);
+            assert!(event.get("host").is_none(), "legacy field: {event}");
+        }
     }
 }

@@ -31,3 +31,10 @@ async-trait = { workspace = true }
 tracing = { workspace = true }
 opentelemetry = { workspace = true }
 
+# The daemon's log directory is opened once and used through that handle
+# (openat, unlinkat, fstat); see src/startup_log.rs.
+[target.'cfg(unix)'.dependencies]
+rustix = { version = "1", features = ["fs", "process"] }
+
+[dev-dependencies]
+tumult-test-utils = { path = "../tumult-test-utils", default-features = false, features = ["otel"] }

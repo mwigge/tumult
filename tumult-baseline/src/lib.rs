@@ -126,8 +126,9 @@ mod tests {
     #[test]
     fn p95_of_known_dataset() {
         let data = sample_data();
+        // Rank 0.95 * 9 = 8.55: 55% of the way from 90 to 100.
         let p95 = percentile(&data, 95.0);
-        assert!((90.0..=100.0).contains(&p95));
+        assert!((p95 - 95.5).abs() < 1e-9, "p95 = {p95}");
     }
 
     #[test]
@@ -180,11 +181,11 @@ mod tests {
     fn iqr_bounds_of_known_dataset() {
         let data = sample_data();
         let bounds = derive_iqr_bounds(&data);
-        // Q1 ≈ 30, Q3 ≈ 80, IQR = 50
-        // Lower = Q1 - 1.5*IQR = 30 - 75 = -45
-        // Upper = Q3 + 1.5*IQR = 80 + 75 = 155
-        assert!(bounds.lower < 0.0);
-        assert!(bounds.upper > 100.0);
+        // Q1 = 32.5 (rank 2.25), Q3 = 77.5 (rank 6.75), IQR = 45
+        // Lower = Q1 - 1.5*IQR = 32.5 - 67.5 = -35
+        // Upper = Q3 + 1.5*IQR = 77.5 + 67.5 = 145
+        assert!((bounds.lower - -35.0).abs() < 1e-9, "{bounds:?}");
+        assert!((bounds.upper - 145.0).abs() < 1e-9, "{bounds:?}");
     }
 
     #[test]

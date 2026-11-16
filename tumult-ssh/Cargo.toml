@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "SSH remote execution for the Tumult chaos engineering platform"
+description = "SSH remote execution for the Tumult resilience intelligence platform"
 
 [dependencies]
 tumult-otel = { path = "../tumult-otel" }
@@ -26,3 +26,4 @@ tempfile = { workspace = true }
 # In-process russh test server for execution-path integration tests.
 tokio = { version = "1", features = ["rt", "time", "fs", "io-util", "macros", "net"] }
 tumult-plugin = { path = "../tumult-plugin" }
+tumult-test-utils = { path = "../tumult-test-utils", default-features = false, features = ["otel"] }

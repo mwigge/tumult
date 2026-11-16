@@ -42,7 +42,7 @@ fn internal(msg: String) -> (StatusCode, Json<Value>) {
 /// paths/manifests to warnings rather than failing wholesale; if it still
 /// errors, serve an empty catalog — the UI's empty state explains how
 /// plugin discovery is configured.
-fn load_catalog() -> FaultCatalog {
+pub(crate) fn load_catalog() -> FaultCatalog {
     match tumult_authoring::build_catalog() {
         Ok(catalog) => catalog,
         Err(e) => {

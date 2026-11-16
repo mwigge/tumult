@@ -42,6 +42,7 @@ jobs:
       # checkout has no .svelte-kit, so bare svelte-check fails.
       - run: npx svelte-kit sync
       - run: npx svelte-check --tsconfig ./tsconfig.json
+      - run: npm test
       - run: npm run build
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
@@ -81,13 +82,18 @@ jobs:
     runs-on: ubuntu-latest
     # The 2.22 cold-cache run needed 65 min before cache saving. Bundled
     # JSON/Parquet add native compilation; allow that work and cache upload
-    # to finish so the next run does not repeat another cold build.
-    timeout-minutes: 105
+    # to finish so the next run does not repeat another cold build. The
+    # 3.0 workspace (35 crates, DuckDB 2.0) was still linking after 66 min.
+    timeout-minutes: 150
     env:
       # Linking the big test binaries (duckdb/parquet static libs) with full
       # debuginfo nearly fills the runner disk and ld dies with SIGBUS —
       # same fix as the Coverage job: line tables suffice.
       CARGO_PROFILE_TEST_DEBUG: line-tables-only
+      # About a hundred test executables each link the bundled DuckDB. Its
+      # C++ debug data in every one of them filled the disk again in 3.0;
+      # the tests need Rust line tables only.
+      CXXFLAGS: -g0
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
       - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9  # master
@@ -102,11 +108,13 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: web/package-lock.json
-      # Reclaim ~15 GB so linking the duckdb/parquet test binaries cannot
-      # die with SIGBUS from disk pressure.
+      # Reclaim ~25 GB so linking the duckdb/parquet test binaries cannot
+      # die with SIGBUS from disk pressure (same list as the Coverage job).
       - name: Free runner disk space
         run: |
-          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android \
+            /usr/share/swift /usr/share/miniconda /opt/az /usr/lib/jvm
+          sudo docker system prune -af || true
           df -h /
       # tumultd rust-embeds web/build/ at compile time; without this the
       # workspace cargo steps below fail on the tumultd crate.
@@ -116,11 +124,34 @@ jobs:
       # No separate `cargo check`: clippy --all-targets already type-checks
       # every target including tests, so a check pass first only recompiles
       # the workspace crates a second time.
-      - run: cargo clippy --all-targets --all-features -- -D warnings -W clippy::pedantic
+      # print_stdout/print_stderr/dbg_macro: diagnostics are structured log
+      # events (docs/guides/logging.md); output that is the product of a
+      # command carries a commented #[allow].
+      - run: cargo clippy --all-targets --all-features -- -D warnings -W clippy::pedantic -D clippy::print_stdout -D clippy::print_stderr -D clippy::dbg_macro
+      # tumult-clickhouse depends on tumult-lake without the duckdb feature;
+      # --all-features never builds that shape.
+      - run: cargo check -p tumult-lake --no-default-features
       # Fail on unused dependencies declared in Cargo.toml (respects
       # [package.metadata.cargo-machete] ignore lists).
       - run: cargo machete --with-metadata
       - run: cargo nextest run --all-features
+      - name: Show disk use after the test build
+        if: always()
+        run: df -h /
+      # The checked-in OTel-Arrow gRPC code must be what arrow_service.proto
+      # generates (the only step that needs protoc). protoc is the pinned
+      # upstream release, checked against its SHA-256, not the runner's.
+      - name: OTel-Arrow generated code is in sync with its proto
+        env:
+          PROTOC_VERSION: "36.1"
+          PROTOC_SHA256: c4bc672d9d49214dc8cafdceadf4df92182d6ca8e3ec65a56b2d7de5602669b4
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/protoc.zip" \
+            "https://github.com/protocolbuffers/protobuf/releases/download/v${PROTOC_VERSION}/protoc-${PROTOC_VERSION}-linux-x86_64.zip"
+          echo "${PROTOC_SHA256}  $RUNNER_TEMP/protoc.zip" | sha256sum -c -
+          unzip -q "$RUNNER_TEMP/protoc.zip" -d "$RUNNER_TEMP/protoc"
+          PROTOC="$RUNNER_TEMP/protoc/bin/protoc" PROTOC_INCLUDE="$RUNNER_TEMP/protoc/include" \
+            cargo test -p tumult-ingest --test otap_proto_drift -- --ignored
 
   doc:
     name: Documentation
@@ -155,6 +186,37 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
       - run: python3 scripts/check-docs.py
+      # Regulatory citation wordings that were found wrong (a DORA paragraph
+      # that does not exist, a retention period DORA does not set) must not
+      # come back in docs, seeds or fixtures.
+      - run: python3 scripts/check-citations.py
+
+  forecastd:
+    name: Forecast sidecar (stub model)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      # The minor version the image runs (forecastd/Dockerfile) and the lock
+      # was compiled for; the runner's own python3 moves with the runner.
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
+        with:
+          python-version: "3.12"
+      - run: python -m venv .forecastd-venv
+      # Exactly what the image installs: every package of the lock, each
+      # checked against its hash. The Timestral code is not in the lock (it
+      # is built from git in the image) and the weights are not here, so the
+      # real-model suite skips; the rest runs against the stub model, the
+      # ASGI app and the load order of the weights (a fake loader) included.
+      - run: .forecastd-venv/bin/pip install --require-hashes --no-deps -r forecastd/requirements.lock
+      - run: .forecastd-venv/bin/pip check
+      # The linter is not part of the runtime, so it is not in the lock.
+      - run: .forecastd-venv/bin/pip install --no-deps ruff==0.16.10
+      - run: .forecastd-venv/bin/ruff check forecastd
+      - name: Unit tests
+        working-directory: forecastd
+        run: ../.forecastd-venv/bin/python -m unittest discover -s tests -t . -v
+      - run: bash -n scripts/proof/rip-phase3-forecast/proof.sh
 
   scripts-quality:
     name: Python, SQL and distribution checks
@@ -167,7 +229,17 @@ jobs:
       - run: .quality-venv/bin/black --check scripts demo/proof
       - run: .quality-venv/bin/ruff check scripts demo/proof
       - run: .quality-venv/bin/sqlfluff lint docker/init-postgres.sql
+      - run: bash scripts/lint-embedded-sql.sh
+      # Log events have a constant message, a stable name and vocabulary
+      # field names (docs/guides/logging.md). Crates not converted yet are
+      # listed in DEFERRED inside the script.
+      - run: python3 scripts/test-check-log-messages.py
+      - run: python3 scripts/check-log-messages.py
       - run: python3 scripts/test-distribution.py
       - run: bash -n scripts/smoke-daemon-image.sh
       - run: python3 scripts/test-smoke-daemon-image.py
       - run: python3 scripts/test-smoke-daemon-binary.py
+      - run: bash -n scripts/demo-check.sh
+      - run: python3 scripts/test-starmap-check.py
+      - run: python3 scripts/test-check-test-hygiene.py
+      - run: python3 scripts/check-test-hygiene.py

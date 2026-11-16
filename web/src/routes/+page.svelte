@@ -149,7 +149,7 @@
 
 <div class="page-head">
     <h1>Overview</h1>
-    <span class="sub">resilience posture for the selected window</span>
+    <span class="sub">resilience for the selected window</span>
     <div style="margin-left: auto">
         <RangeSwitch value={range} onchange={setRange} />
     </div>
@@ -178,7 +178,9 @@
                 <div class="state">No experiments in this window.</div>
             {:else}
                 <EChart
+                    id="per-day"
                     option={perDayOption}
+                    label="Experiments per day by outcome"
                     height={range === '24h' ? 220 : 200}
                     onclick={onOverlayClick}
                 />
@@ -189,7 +191,12 @@
             {#if data.faults.length === 0}
                 <div class="state">No fault-injection spans recorded in this window.</div>
             {:else}
-                <EChart option={faultsOption} height={220} />
+                <EChart
+                    id="faults"
+                    option={faultsOption}
+                    height={220}
+                    label="Runs per fault type"
+                />
             {/if}
         </div>
     </div>

@@ -24,6 +24,7 @@ use tumult_tui::ui;
 fn journal(id: &str, title: &str, status: ExperimentStatus, start_ns: i64, dur_ms: u64) -> Journal {
     let failed = status != ExperimentStatus::Completed;
     Journal {
+        target_version: None,
         experiment_title: title.into(),
         experiment_id: id.into(),
         status,
@@ -62,6 +63,9 @@ fn journal(id: &str, title: &str, status: ExperimentStatus, start_ns: i64, dur_m
         ],
         rollback_results: vec![],
         rollback_failures: 0,
+        kind: tumult_core::types::TestKind::default(),
+        objectives: None,
+        probe_samples: vec![],
         halt: None,
         blast_radius: None,
         estimate: None,

@@ -264,18 +264,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn metadata_names_plugin_and_functions() {
+    fn executor_names_the_plugin_and_registers_every_function() {
         let executor = KubernetesExecutor;
         assert_eq!(executor.name(), "tumult-kubernetes");
-        assert!(executor.functions().contains(&"delete_pod"));
-        assert!(executor.functions().contains(&"node_status"));
-        assert!(executor.functions().contains(&"pod_network_latency"));
-        assert!(executor.functions().contains(&"pod_stress"));
-    }
-
-    #[test]
-    fn registry_covers_every_implemented_function() {
-        let executor = KubernetesExecutor;
         let expected = [
             "delete_pod",
             "scale_deployment",

@@ -49,7 +49,7 @@ pub fn cmd_export(journal_path: &Path, format: ExportFormat) -> Result<()> {
             std::fs::write(&out_path, json)?;
         }
     }
-    println!("Exported to: {}", out_path.display());
+    crate::outln!("Exported to: {}", out_path.display());
     Ok(())
 }
 
@@ -81,7 +81,7 @@ pub fn cmd_trend(
                         store.ingest_journal(&journal)?;
                         count += 1;
                     }
-                    Err(e) => eprintln!("warning: skipping {}: {}", path.display(), e),
+                    Err(e) => super::events::journal_skipped(&path, &e),
                 }
             }
         }
@@ -93,7 +93,7 @@ pub fn cmd_trend(
         bail!("path does not exist: {}", journals_path.display());
     }
 
-    println!("Loaded {count} journal(s)\n");
+    crate::outln!("Loaded {count} journal(s)\n");
 
     let valid_metrics = [
         "resilience_score",
@@ -150,21 +150,21 @@ pub fn cmd_trend(
     };
 
     if rows.is_empty() {
-        println!("No data points for metric: {metric}");
+        crate::outln!("No data points for metric: {metric}");
         return Ok(());
     }
 
-    println!("Trend: {} ({} data points)\n", metric, rows.len());
-    println!(
+    crate::outln!("Trend: {} ({} data points)\n", metric, rows.len());
+    crate::outln!(
         "{}",
         columns.iter().fold(String::new(), |mut s, c| {
             let _ = write!(s, "{c:<20}");
             s
         })
     );
-    println!("{}", "-".repeat(columns.len() * 20));
+    crate::outln!("{}", "-".repeat(columns.len() * 20));
     for row in &rows {
-        println!(
+        crate::outln!(
             "{}",
             row.iter().fold(String::new(), |mut s, v| {
                 let _ = write!(s, "{v:<20}");
@@ -183,9 +183,12 @@ pub fn cmd_trend(
     };
     let stats = store.query(stats_sql)?;
     if let Some(row) = stats.first() {
-        println!(
+        crate::outln!(
             "\nSummary: {} runs, min={}, max={}, avg={}",
-            row[0], row[1], row[2], row[3]
+            row[0],
+            row[1],
+            row[2],
+            row[3]
         );
     }
 

@@ -38,4 +38,4 @@ The backup destination must not already exist. A successful backup contains `sto
 
 Restore verifies the manifest and checksum, then publishes a new database file without replacing any existing database or WAL. It rejects incomplete or modified backups. Point `TUMULT_LAKE_PATH` at the restored database, review restored schedules and outbound integrations, then start the daemon. External secrets supplied through the environment, TLS private keys, plugin installations, external attachment bytes and the Parquet archive directory are deployment assets and must be backed up separately. Test recovery into an isolated installation before relying on a backup policy.
 
-`tumult import <directory>` remains the legacy two-table analytics importer; it is not the restore command for operational backups.
+`tumult store export --output <directory>` writes the analytics tables as Parquet and `tumult import <directory>` reads them into another store, adding each row once; the pair moves runs and the evidence of performance verdicts between stores and is not the operational backup (no spans, no credentials, no schedules).

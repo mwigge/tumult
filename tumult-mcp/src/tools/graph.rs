@@ -316,6 +316,7 @@ mod tests {
             ..Default::default()
         };
         let journal = Journal {
+            target_version: None,
             experiment_title: "Latency drill".into(),
             experiment_id: "run-1".into(),
             status: ExperimentStatus::Completed,
@@ -327,6 +328,9 @@ mod tests {
             method_results: vec![],
             rollback_results: vec![],
             rollback_failures: 0,
+            kind: tumult_core::types::TestKind::default(),
+            objectives: None,
+            probe_samples: vec![],
             estimate: None,
             baseline_result: None,
             during_result: None,
@@ -404,6 +408,7 @@ mod tests {
             ..Default::default()
         };
         let journal = Journal {
+            target_version: None,
             experiment_title: "Demo — PostgreSQL connection kill".into(),
             experiment_id: "demo-postgres-1".into(),
             status: ExperimentStatus::Completed,
@@ -415,6 +420,9 @@ mod tests {
             method_results: vec![],
             rollback_results: vec![],
             rollback_failures: 0,
+            kind: tumult_core::types::TestKind::default(),
+            objectives: None,
+            probe_samples: vec![],
             estimate: None,
             baseline_result: None,
             during_result: None,
@@ -549,6 +557,7 @@ mod tests {
             ..Default::default()
         };
         let journal = Journal {
+            target_version: None,
             experiment_title: "DORA drill".into(),
             experiment_id: "run-dora-1".into(),
             status: ExperimentStatus::Completed,
@@ -560,6 +569,9 @@ mod tests {
             method_results: vec![],
             rollback_results: vec![],
             rollback_failures: 0,
+            kind: tumult_core::types::TestKind::default(),
+            objectives: None,
+            probe_samples: vec![],
             estimate: None,
             baseline_result: None,
             during_result: None,

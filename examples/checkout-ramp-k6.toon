@@ -1,0 +1,68 @@
+title: Checkout API ramps from 5 to 50 users while the payments hop is slow
+description: A ramp profile rendered as k6 stages. Load climbs linearly for 60 s, then holds 50 VUs while 150 ms of latency is injected through a tumult-net proxy in front of payments; p95 must stay under 400 ms and the health probe must keep answering.
+
+tags[3]: load, ramp, checkout
+kind: performance
+target:
+  system: checkout
+  technology: http
+  environment: staging
+nfr[2]:
+  - id: p95-under-load
+    kind: latency
+    metric: load.latency_p95_ms
+    operator: lte
+    threshold: 400
+    criticality: blocking
+  - id: errors
+    kind: availability
+    metric: load.error_rate
+    operator: lte
+    threshold: 0.01
+    criticality: major
+
+load:
+  tool: k6
+  script: examples/k6/smoke-test.js
+  vus: 50
+  duration_s: 180
+  profile:
+    type: ramp
+    start_vus: 5
+    ramp_up_s: 60
+
+steady_state_hypothesis:
+  title: Checkout answers
+  probes[1]:
+    - name: health
+      activity_type: probe
+      provider:
+        type: process
+        path: sh
+        arguments[2]: "-c", "curl -fsS -o /dev/null http://127.0.0.1:8080/health"
+        timeout_s: 5.0
+
+method[1]:
+  - name: slow-payments
+    activity_type: action
+    provider:
+      type: native
+      plugin: tumult-net
+      function: inject_latency
+      arguments:
+        listen: 127.0.0.1:18443
+        upstream: 127.0.0.1:8443
+        delay_ms: 150
+        jitter_ms: 20
+        seed: 7
+    pause_after_s: 180.0
+
+rollbacks[1]:
+  - name: stop-proxy
+    activity_type: action
+    provider:
+      type: native
+      plugin: tumult-net
+      function: stop_proxy
+      arguments:
+        listen: 127.0.0.1:18443

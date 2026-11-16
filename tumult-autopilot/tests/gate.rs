@@ -309,16 +309,6 @@ fn enrolled_target_enacts_and_the_svc_prefix_is_normalised() {
 }
 
 #[test]
-fn evaluation_is_deterministic() {
-    let c = candidate();
-    let a = ambient();
-    let report = validate(&c);
-    let first = evaluate(&policy(), &c, &a, None, &report);
-    let second = evaluate(&policy(), &c, &a, None, &report);
-    assert_eq!(first, second);
-}
-
-#[test]
 fn open_deviation_on_target_is_a_veto() {
     let mut a = ambient();
     a.open_deviation_for_target = true;

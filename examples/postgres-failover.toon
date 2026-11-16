@@ -2,6 +2,19 @@ title: PostgreSQL failover — kill connections and verify recovery
 description: Verify PG handles connection termination gracefully
 
 tags[2]: postgres, resilience
+kind: dr
+target:
+  system: postgres
+  technology: postgresql
+  environment: demo
+rto_target_s: 30
+nfr[1]:
+  - id: post-availability
+    kind: availability
+    metric: post.availability
+    operator: gte
+    threshold: 0.9
+    criticality: blocking
 
 steady_state_hypothesis:
   title: PostgreSQL accepts queries

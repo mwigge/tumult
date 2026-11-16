@@ -3,8 +3,11 @@
 # deliberately NOT assigned so the demo shows the synthetic (unassigned)
 # bucket under the root. edge-team's targets only match the seeded manual
 # evidence record (cdn failover) — a unit whose score comes from manual
-# evidence alone. Loaded by tumultd from /data/org.yaml (the default
-# `<db dir>/org.yaml`; override with KRONIKA_ORG_FILE).
+# evidence alone. `entities` assigns ICT entities (the `ict.entity.id` on
+# telemetry and on the demo manifests) to teams for the Star Map; cif-0005
+# (session-cache) is deliberately left out. Loaded by tumultd from
+# /data/org.yaml (the default `<db dir>/org.yaml`; override with
+# KRONIKA_ORG_FILE).
 nodes:
   - {name: platform, kind: domain}
   - {name: edge, kind: unit, parent: platform}
@@ -16,15 +19,50 @@ nodes:
 assignments:
   - team: edge-team
     targets: ["cdn*"]
+    entities: ["cif-0006"]
     criticality:
       "cdn failover — edge PoP loss": critical
   - team: runtime-team
     targets: ["api-worker*", "worker-process*", "host cpu*", "disk pressure*", "batch worker*"]
+    entities: ["cif-0001", "cif-0003"]
     criticality:
       "api-worker freeze — heartbeat recovers after SIGSTOP injection": critical
       "host cpu burn — shell stays responsive": high
   - team: data-team
     targets: ["message-queue*", "config corruption*"]
+    entities: ["cif-0002", "cif-0004"]
     criticality:
       "message-queue dependency loss — restart fails": high
 defaults: {weight: 1.0, stale_days: 30}
+
+# Function register for the DORA score (docs/guides/dora-score.md): one
+# legal entity under the simplified framework and three functions bound to
+# the demo systems by service name. "order-archive" is declared on the
+# critical function but nothing in the demo reports under that name: it is
+# deliberately uninstrumented, so the score page shows the level capped by
+# svc:order-archive until telemetry or a test for it arrives. No feed is
+# ingested, so incident rows (Art. 19) read "unknown". Listing a feed
+# under `feeds` records the declaration and changes no score.
+legal_entities:
+  - lei: 529900T8BM49AURSDO55
+    name: Demo Firm
+    profile: simplified
+    feeds: []
+functions:
+  - id: cif-0001
+    name: Order processing
+    tier: critical
+    licensed_activities: [payment-services]
+    org_unit: platform/compute
+    rto_s: 3600
+    services: ["api-worker*", order-archive]
+  - id: cif-0002
+    name: Messaging
+    tier: important
+    org_unit: platform/data
+    services: ["message-queue*", "config-service*"]
+  - id: cif-0003
+    name: Batch settlement
+    tier: important
+    org_unit: platform/compute
+    services: ["batch-worker*"]

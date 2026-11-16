@@ -4,8 +4,8 @@
 //! Plugin discovery scans `./plugins` (absent in this crate), `$HOME/.tumult/
 //! plugins`, and `$TUMULT_PLUGIN_PATH`. This file overrides both environment
 //! variables to point at temp directories, making the catalog exactly the
-//! one manifest written below. Env vars are process-wide, so this binary
-//! deliberately contains a single test.
+//! one manifest written below. Env vars are process-wide, so the test holds
+//! the shared environment guard, which restores both when it ends.
 
 use tumult_core::types::{
     ActivityResult, ActivityStatus, ActivityType, ExperimentStatus, Journal, SpanId, TraceId,
@@ -19,8 +19,9 @@ fn coverage_counts_tested_actions_and_lists_only_untested_ones() {
     // Hermetic discovery: empty $HOME, catalog only via TUMULT_PLUGIN_PATH.
     let home = tempfile::TempDir::new().unwrap();
     let plugin_root = tempfile::TempDir::new().unwrap();
-    std::env::set_var("HOME", home.path());
-    std::env::set_var("TUMULT_PLUGIN_PATH", plugin_root.path());
+    let mut env = tumult_test_utils::EnvGuard::lock();
+    env.set("HOME", home.path())
+        .set("TUMULT_PLUGIN_PATH", plugin_root.path());
 
     let manifest = ScriptPluginManifest {
         name: "ztest-plugin".to_string(),
@@ -54,6 +55,7 @@ fn coverage_counts_tested_actions_and_lists_only_untested_ones() {
     {
         let store = AnalyticsStore::open(&store_path).expect("create store");
         let journal = Journal {
+            target_version: None,
             experiment_title: "exercise covered action".into(),
             experiment_id: "exp-1".into(),
             status: ExperimentStatus::Completed,
@@ -75,6 +77,9 @@ fn coverage_counts_tested_actions_and_lists_only_untested_ones() {
             }],
             rollback_results: vec![],
             rollback_failures: 0,
+            kind: tumult_core::types::TestKind::default(),
+            objectives: None,
+            probe_samples: vec![],
             estimate: None,
             baseline_result: None,
             during_result: None,

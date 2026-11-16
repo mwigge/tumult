@@ -18,14 +18,32 @@ pub const ROUTE_TABLE: &[(&str, &str, Role)] = &[
     ("GET", "/api/metrics", Role::Viewer),
     ("GET", "/api/logs", Role::Viewer),
     ("GET", "/api/logs/volume", Role::Viewer),
+    ("GET", "/api/entities", Role::Viewer),
+    ("GET", "/api/entities/{key}/history", Role::Viewer),
     ("GET", "/api/traces", Role::Viewer),
     ("GET", "/api/traces/durations", Role::Viewer),
     ("GET", "/api/traces/{id}", Role::Viewer),
     ("GET", "/api/metrics/catalog", Role::Viewer),
     ("GET", "/api/metrics/query", Role::Viewer),
     ("GET", "/api/topology", Role::Viewer),
+    ("GET", "/api/starmap", Role::Viewer),
     ("GET", "/api/scores", Role::Viewer),
     ("GET", "/api/scores/tree", Role::Viewer),
+    ("GET", "/api/gate/{target}", Role::Viewer),
+    ("GET", "/api/risks", Role::Viewer),
+    ("POST", "/api/risks/{id}/suppress", Role::Operator),
+    ("POST", "/api/risks/{id}/recommend", Role::Operator),
+    ("GET", "/api/posture", Role::Viewer),
+    ("GET", "/api/otel/conformance", Role::Viewer),
+    ("GET", "/api/perf", Role::Viewer),
+    ("GET", "/api/dora", Role::Viewer),
+    ("GET", "/api/dora/{article}", Role::Viewer),
+    ("GET", "/api/maturity", Role::Viewer),
+    ("GET", "/api/perf/{target}", Role::Viewer),
+    ("GET", "/api/perf/{target}/version", Role::Viewer),
+    ("POST", "/api/perf/{target}/verdicts", Role::Operator),
+    ("GET", "/api/forecast", Role::Viewer),
+    ("GET", "/api/runs/{id}/impact", Role::Viewer),
     ("GET", "/api/manual/experiments", Role::Viewer),
     ("GET", "/api/manual/experiments/{id}", Role::Viewer),
     ("GET", "/api/authoring/catalog", Role::Viewer),
@@ -106,6 +124,8 @@ pub const ROUTE_TABLE: &[(&str, &str, Role)] = &[
     ("POST", "/api/runs/{id}/approve", Role::Approver),
     ("POST", "/api/runs/{id}/reject", Role::Approver),
     ("POST", "/api/runs/{id}/break-glass", Role::Admin),
+    // Admin: removing stored entities with their history.
+    ("DELETE", "/api/entities", Role::Admin),
     // Admin: user and token management.
     ("POST", "/api/users", Role::Admin),
     ("POST", "/api/users/{id}/role", Role::Admin),
@@ -172,6 +192,22 @@ mod tests {
             Role::Operator
         );
         assert_eq!(required_role("GET", "/api/gamedays/x"), Role::Viewer);
+        assert_eq!(required_role("GET", "/api/risks"), Role::Viewer);
+        assert_eq!(required_role("GET", "/api/posture"), Role::Viewer);
+        assert_eq!(required_role("GET", "/api/otel/conformance"), Role::Viewer);
+        assert_eq!(required_role("GET", "/api/dora"), Role::Viewer);
+        assert_eq!(required_role("GET", "/api/dora/24"), Role::Viewer);
+        assert_eq!(required_role("GET", "/api/maturity"), Role::Viewer);
+        assert_eq!(required_role("GET", "/api/forecast"), Role::Viewer);
+        assert_eq!(required_role("GET", "/api/runs/x/impact"), Role::Viewer);
+        assert_eq!(
+            required_role("POST", "/api/risks/r_1/suppress"),
+            Role::Operator
+        );
+        assert_eq!(
+            required_role("POST", "/api/risks/r_1/recommend"),
+            Role::Operator
+        );
         assert_eq!(
             required_role("POST", "/api/gamedays/x/runs"),
             Role::Operator
@@ -209,6 +245,17 @@ mod tests {
     #[test]
     fn table_roles_match_the_design() {
         assert_eq!(required_role("GET", "/api/experiments"), Role::Viewer);
+        assert_eq!(required_role("GET", "/api/gate/payments-api"), Role::Viewer);
+        assert_eq!(required_role("GET", "/api/perf"), Role::Viewer);
+        assert_eq!(required_role("GET", "/api/perf/payments-api"), Role::Viewer);
+        assert_eq!(
+            required_role("GET", "/api/perf/payments-api/version"),
+            Role::Viewer
+        );
+        assert_eq!(
+            required_role("POST", "/api/perf/payments-api/verdicts"),
+            Role::Operator
+        );
         assert_eq!(required_role("GET", "/api/users"), Role::Admin);
         assert_eq!(required_role("POST", "/api/runs"), Role::Operator);
         assert_eq!(
@@ -222,6 +269,8 @@ mod tests {
         assert_eq!(required_role("POST", "/api/users"), Role::Admin);
         assert_eq!(required_role("GET", "/api/tokens"), Role::Admin);
         assert_eq!(required_role("POST", "/api/tokens/x/revoke"), Role::Admin);
+        // Removing stored evidence is not an operator's to do.
+        assert_eq!(required_role("DELETE", "/api/entities"), Role::Admin);
     }
 
     #[test]

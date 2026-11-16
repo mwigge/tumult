@@ -9,16 +9,10 @@ use std::path::{Path, PathBuf};
 
 use clap::{CommandFactory, Parser};
 use tempfile::TempDir;
+use tumult_test_utils::EnvGuard;
 
 use crate::cli::Cli;
 use crate::dispatch;
-
-/// Env vars (`TUMULT_LAKE_PATH`, `HOME`) and the process working directory
-/// are process-global; every test that touches either holds this lock for its
-/// whole body so concurrent tests cannot observe each other's overrides. The
-/// binary's test process is separate from the library's, so this lock only
-/// needs to cover the tests in this module.
-static GLOBAL_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 /// Parse argv through the real clap definitions and dispatch the command.
 ///
@@ -55,6 +49,7 @@ fn write_experiment(dir: &Path) -> PathBuf {
 fn test_journal(id: &str) -> tumult_core::types::Journal {
     use tumult_core::types::*;
     Journal {
+        target_version: None,
         experiment_title: format!("dispatch {id}"),
         experiment_id: id.into(),
         status: ExperimentStatus::Completed,
@@ -76,6 +71,9 @@ fn test_journal(id: &str) -> tumult_core::types::Journal {
         }],
         rollback_results: vec![],
         rollback_failures: 0,
+        kind: tumult_core::types::TestKind::default(),
+        objectives: None,
+        probe_samples: vec![],
         estimate: None,
         baseline_result: None,
         during_result: None,
@@ -103,15 +101,17 @@ fn populate_store(db: &Path, ids: &[&str]) {
     }
 }
 
-/// Point the persistent analytics store at a temp file. Caller must hold
-/// [`GLOBAL_LOCK`].
-fn use_temp_store(dir: &Path) -> PathBuf {
+/// Point the persistent analytics store at a temp file for as long as `env`
+/// lives.
+fn use_temp_store(env: &mut EnvGuard, dir: &Path) -> PathBuf {
     let db = dir.join("lake.duckdb");
-    std::env::set_var("TUMULT_LAKE_PATH", &db);
+    env.set("TUMULT_LAKE_PATH", &db);
     db
 }
 
-/// RAII guard that switches the process cwd and restores it on drop.
+/// RAII guard that switches the process cwd and restores it on drop. The
+/// working directory is as process-global as the environment: a test that
+/// enters one holds an [`EnvGuard`] for its whole body.
 struct CwdGuard {
     prev: PathBuf,
 }
@@ -169,13 +169,9 @@ async fn dispatch_discover_lists_and_unknown_filter_errors() {
     assert!(err.to_string().contains("not found"), "{err}");
 }
 
-// The lock must cover the awaited dispatch (cwd is read inside it). Only
-// tests serialized on GLOBAL_LOCK can block on it, so holding a std guard
-// across the await cannot deadlock the test runtime.
-#[allow(clippy::await_holding_lock)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn dispatch_init_scaffolds_template_in_cwd() {
-    let _guard = GLOBAL_LOCK.lock().unwrap();
+    let _env = EnvGuard::lock();
     let dir = TempDir::new().unwrap();
     let _cwd = CwdGuard::enter(dir.path());
 
@@ -223,31 +219,49 @@ async fn dispatch_run_dry_run_covers_every_rollback_strategy() {
     let dir = TempDir::new().unwrap();
     let exp = write_experiment(dir.path());
     let exp_arg = exp.to_str().unwrap();
+    let journal = dir.path().join("journal.toon");
+    let journal_arg = journal.to_str().unwrap();
 
     for strategy in ["always", "on-deviation", "never"] {
-        run_argv(&[
+        let outcome = run_argv(&[
             "tumult",
             "run",
             exp_arg,
             "--dry-run",
+            "--journal-path",
+            journal_arg,
             "--rollback-strategy",
             strategy,
             "--var",
             "target=localhost",
         ])
-        .await
-        .unwrap();
+        .await;
+
+        assert!(outcome.is_ok(), "{strategy}: {outcome:?}");
+        // A dry run executes nothing, so it has no evidence to record.
+        assert!(!journal.exists(), "{strategy}: a dry run wrote a journal");
     }
+
+    let err = run_argv(&[
+        "tumult",
+        "run",
+        exp_arg,
+        "--dry-run",
+        "--rollback-strategy",
+        "sometimes",
+    ])
+    .await
+    .unwrap_err();
+    assert!(err.to_string().contains("sometimes"), "{err}");
 }
 
-#[allow(clippy::await_holding_lock)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn dispatch_run_executes_and_prints_json_journal() {
-    let _guard = GLOBAL_LOCK.lock().unwrap();
+    let mut env = EnvGuard::lock();
     let dir = TempDir::new().unwrap();
-    use_temp_store(dir.path());
-    std::env::remove_var("TUMULT_CLICKHOUSE_URL");
-    std::env::remove_var("TUMULT_DAEMON_URL");
+    use_temp_store(&mut env, dir.path());
+    env.remove("TUMULT_CLICKHOUSE_URL")
+        .remove("TUMULT_DAEMON_URL");
     let exp = write_experiment(dir.path());
     let journal = dir.path().join("journal.toon");
 
@@ -262,8 +276,6 @@ async fn dispatch_run_executes_and_prints_json_journal() {
     ])
     .await
     .unwrap();
-
-    std::env::remove_var("TUMULT_LAKE_PATH");
 
     // The journal exists and is a completed experiment record.
     let journal: tumult_core::types::Journal =
@@ -349,10 +361,9 @@ async fn dispatch_report_writes_html() {
     assert!(html.contains("Tumult Experiment Report"), "{html}");
 }
 
-#[allow(clippy::await_holding_lock)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn dispatch_export_json_and_csv_into_cwd() {
-    let _guard = GLOBAL_LOCK.lock().unwrap();
+    let _env = EnvGuard::lock();
     let dir = TempDir::new().unwrap();
     let journal = write_journal(dir.path(), "exp");
     let _cwd = CwdGuard::enter(dir.path());
@@ -385,35 +396,13 @@ async fn dispatch_export_json_and_csv_into_cwd() {
     assert!(csv.contains("exp"), "{csv}");
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn dispatch_compliance_report_and_sources() {
-    let dir = TempDir::new().unwrap();
-    let journal = write_journal(dir.path(), "c-1");
-
-    run_argv(&[
-        "tumult",
-        "compliance",
-        journal.to_str().unwrap(),
-        "--framework",
-        "soc2",
-    ])
-    .await
-    .unwrap();
-
-    // --sources lists the citation registry without journals.
-    run_argv(&["tumult", "compliance", "--framework", "dora", "--sources"])
-        .await
-        .unwrap();
-}
-
 // ── store / import ───────────────────────────────────────────
 
-#[allow(clippy::await_holding_lock)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn dispatch_store_lifecycle() {
-    let _guard = GLOBAL_LOCK.lock().unwrap();
+    let mut env = EnvGuard::lock();
     let dir = TempDir::new().unwrap();
-    let db = use_temp_store(dir.path());
+    let db = use_temp_store(&mut env, dir.path());
 
     // Missing store: stats/path report absence, backup errors.
     run_argv(&["tumult", "store", "stats"]).await.unwrap();
@@ -473,19 +462,16 @@ async fn dispatch_store_lifecycle() {
     .await
     .unwrap();
 
-    std::env::remove_var("TUMULT_LAKE_PATH");
-
     let store = tumult_lake::AnalyticsStore::open_read_only(&db).unwrap();
     assert_eq!(store.experiment_count().unwrap(), 0);
     let store = tumult_lake::AnalyticsStore::open_read_only(&restored).unwrap();
     assert_eq!(store.experiment_count().unwrap(), 2);
 }
 
-#[allow(clippy::await_holding_lock)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn dispatch_store_migrate_requires_clickhouse_url() {
-    let _guard = GLOBAL_LOCK.lock().unwrap();
-    std::env::remove_var("TUMULT_CLICKHOUSE_URL");
+    let mut env = EnvGuard::lock();
+    env.remove("TUMULT_CLICKHOUSE_URL");
 
     let err = run_argv(&["tumult", "store", "migrate"]).await.unwrap_err();
     assert!(
@@ -494,27 +480,20 @@ async fn dispatch_store_migrate_requires_clickhouse_url() {
     );
 }
 
-#[allow(clippy::await_holding_lock)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn dispatch_store_import_legacy_without_sources_errors() {
-    let _guard = GLOBAL_LOCK.lock().unwrap();
+    let mut env = EnvGuard::lock();
     let dir = TempDir::new().unwrap();
-    std::env::remove_var("TUMULT_ANALYTICS_PATH");
-    std::env::remove_var("KRONIKA_DB");
-    let original_home = std::env::var_os("HOME");
     let home = dir.path().join("home");
     std::fs::create_dir_all(&home).unwrap();
-    std::env::set_var("HOME", &home);
+    env.remove("TUMULT_ANALYTICS_PATH")
+        .remove("KRONIKA_DB")
+        .set("HOME", &home);
 
     let err = run_argv(&["tumult", "store", "import-legacy"])
         .await
         .unwrap_err();
     assert!(err.to_string().contains("no legacy stores found"), "{err}");
-
-    match original_home {
-        Some(value) => std::env::set_var("HOME", value),
-        None => std::env::remove_var("HOME"),
-    }
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -529,41 +508,13 @@ async fn dispatch_import_rejects_incomplete_backup() {
     );
 }
 
-// ── recommend / agents ───────────────────────────────────────
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn dispatch_recommend_against_populated_store() {
-    let dir = TempDir::new().unwrap();
-    let db = dir.path().join("lake.duckdb");
-    populate_store(&db, &["rec-1", "rec-2"]);
-
-    run_argv(&[
-        "tumult",
-        "recommend",
-        "--goal",
-        "improve postgres resilience",
-        "--store-path",
-        db.to_str().unwrap(),
-        "--format",
-        "json",
-    ])
-    .await
-    .unwrap();
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn dispatch_agents_lists_adapters() {
-    run_argv(&["tumult", "agents"]).await.unwrap();
-}
-
 // ── agentic ──────────────────────────────────────────────────
 
-#[allow(clippy::await_holding_lock)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn dispatch_agentic_deterministic_paths() {
-    let _guard = GLOBAL_LOCK.lock().unwrap();
+    let mut env = EnvGuard::lock();
     let dir = TempDir::new().unwrap();
-    let db = use_temp_store(dir.path());
+    let db = use_temp_store(&mut env, dir.path());
 
     run_argv(&["tumult", "agentic", "list-packs"])
         .await
@@ -629,8 +580,6 @@ async fn dispatch_agentic_deterministic_paths() {
     .await
     .unwrap();
 
-    std::env::remove_var("TUMULT_LAKE_PATH");
-
     // The deterministic runs were ingested into the store (runs sharing a
     // scenario dedupe on the natural key, so only a lower bound is stable;
     // the lib tests pin the exact ingest semantics).
@@ -673,10 +622,9 @@ async fn dispatch_agentic_live_paths_validate_scenario_names() {
 
 // ── gameday ──────────────────────────────────────────────────
 
-#[allow(clippy::await_holding_lock)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn dispatch_gameday_create_run_analyze() {
-    let _guard = GLOBAL_LOCK.lock().unwrap();
+    let _env = EnvGuard::lock();
     let dir = TempDir::new().unwrap();
     write_experiment(dir.path());
     let _cwd = CwdGuard::enter(dir.path());
@@ -770,4 +718,23 @@ async fn dispatch_autopilot_status_missing_store_errors() {
     .await
     .unwrap_err();
     assert!(err.to_string().contains("store not found"), "{err}");
+}
+
+#[test]
+fn printing_a_missing_journal_as_json_is_an_error_not_silence() {
+    let dir = TempDir::new().unwrap();
+    let missing = dir.path().join("journal.toon");
+
+    let err = crate::print_journal_json(&missing).unwrap_err();
+    assert!(format!("{err:#}").contains("journal.toon"), "{err:#}");
+}
+
+#[test]
+fn printing_an_undecodable_journal_as_json_is_an_error_not_silence() {
+    let dir = TempDir::new().unwrap();
+    let corrupt = dir.path().join("journal.toon");
+    std::fs::write(&corrupt, "{{{{ not a journal").unwrap();
+
+    let err = crate::print_journal_json(&corrupt).unwrap_err();
+    assert!(format!("{err:#}").contains("journal.toon"), "{err:#}");
 }

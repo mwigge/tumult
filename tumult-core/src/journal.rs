@@ -118,6 +118,7 @@ mod tests {
 
     fn minimal_journal() -> Journal {
         Journal {
+            target_version: None,
             experiment_title: "test experiment".into(),
             experiment_id: "test-id-001".into(),
             status: ExperimentStatus::Completed,
@@ -129,6 +130,9 @@ mod tests {
             method_results: vec![],
             rollback_results: vec![],
             rollback_failures: 0,
+            kind: TestKind::default(),
+            objectives: None,
+            probe_samples: vec![],
             estimate: None,
             baseline_result: None,
             during_result: None,

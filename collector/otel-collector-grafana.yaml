@@ -34,6 +34,10 @@ receivers:
         endpoint: 0.0.0.0:4318
 
 processors:
+  # Tumult exports counters and histograms as deltas. A Prometheus-style
+  # exporter needs running totals, so add the deltas up first.
+  deltatocumulative:
+
   batch:
     timeout: 5s
     send_batch_size: 1024
@@ -70,7 +74,7 @@ service:
       exporters: [otlp_grpc/tempo]
     metrics:
       receivers: [otlp]
-      processors: [memory_limiter, resource, batch]
+      processors: [memory_limiter, resource, deltatocumulative, batch]
       exporters: [prometheus_remote_write/mimir]
     logs:
       receivers: [otlp]

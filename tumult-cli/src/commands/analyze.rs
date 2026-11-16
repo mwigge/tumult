@@ -93,7 +93,7 @@ fn print_experiment_summary(store: &tumult_lake::AnalyticsStore, last_n: usize) 
     ))?;
 
     if experiments.is_empty() {
-        println!("No experiments found.");
+        crate::outln!("No experiments found.");
         return Ok(());
     }
 
@@ -104,7 +104,7 @@ fn print_experiment_summary(store: &tumult_lake::AnalyticsStore, last_n: usize) 
         let duration_ms = &exp[3];
 
         if i > 0 {
-            println!("\n{}", "─".repeat(60));
+            crate::outln!("\n{}", "─".repeat(60));
         }
 
         let status_marker = match status.as_str() {
@@ -115,8 +115,8 @@ fn print_experiment_summary(store: &tumult_lake::AnalyticsStore, last_n: usize) 
             _ => status.as_str(),
         };
 
-        println!("Experiment: {title}");
-        println!("Status:     {status_marker} ({duration_ms}ms)");
+        crate::outln!("Experiment: {title}");
+        crate::outln!("Status:     {status_marker} ({duration_ms}ms)");
 
         // Method timeline — the experiment id comes from the store itself,
         // but bind it as a parameter rather than interpolating it into SQL.
@@ -129,7 +129,7 @@ fn print_experiment_summary(store: &tumult_lake::AnalyticsStore, last_n: usize) 
         )?;
 
         if !activities.is_empty() {
-            println!("\nTimeline:");
+            crate::outln!("\nTimeline:");
             let total = activities.len();
             for (j, act) in activities.iter().enumerate() {
                 let connector = if j == total - 1 { "└─" } else { "├─" };
@@ -171,7 +171,7 @@ fn print_experiment_summary(store: &tumult_lake::AnalyticsStore, last_n: usize) 
                     }
                 };
 
-                println!(
+                crate::outln!(
                     "  {connector} {name} ({type_label}){phase_label}  {act_dur}ms{status_icon}{output_preview}"
                 );
             }
@@ -187,18 +187,22 @@ fn print_experiment_summary(store: &tumult_lake::AnalyticsStore, last_n: usize) 
 
         if !load.is_empty() {
             let lr = &load[0];
-            println!("\nLoad Test ({}):", lr[0]);
-            println!(
+            crate::outln!("\nLoad Test ({}):", lr[0]);
+            crate::outln!(
                 "  VUs: {}  Duration: {}s  Requests: {}",
-                lr[1], lr[9], lr[7]
+                lr[1],
+                lr[9],
+                lr[7]
             );
-            println!(
+            crate::outln!(
                 "  Latency: p50={}ms  p95={}ms  p99={}ms",
-                lr[3], lr[4], lr[5]
+                lr[3],
+                lr[4],
+                lr[5]
             );
-            println!("  Throughput: {} req/s  Error rate: {}", lr[2], lr[6]);
+            crate::outln!("  Throughput: {} req/s  Error rate: {}", lr[2], lr[6]);
             let met = if lr[8] == "true" { "PASS" } else { "FAIL" };
-            println!("  Thresholds: {met}");
+            crate::outln!("  Thresholds: {met}");
         }
     }
 
@@ -211,10 +215,12 @@ fn print_experiment_summary(store: &tumult_lake::AnalyticsStore, last_n: usize) 
              FROM experiments",
         )?;
         if !agg.is_empty() {
-            println!("\n{}", "═".repeat(60));
-            println!(
+            crate::outln!("\n{}", "═".repeat(60));
+            crate::outln!(
                 "Store: {} experiments, {} completed, avg {}ms",
-                agg[0][0], agg[0][1], agg[0][2]
+                agg[0][0],
+                agg[0][1],
+                agg[0][2]
             );
         }
     }
@@ -230,10 +236,12 @@ fn print_store_aggregate(store: &tumult_lake::AnalyticsStore) -> Result<()> {
     // which would otherwise render as `Duration: avg=NULLms`. Surface a clean
     // message instead of a wall of NULLs.
     if total == 0 {
-        println!("Analytics Store Summary");
-        println!("{}", "═".repeat(60));
-        println!("  No experiments recorded yet.");
-        println!("  Run an experiment (e.g. `tumult run experiment.toon`) to populate the store.");
+        crate::outln!("Analytics Store Summary");
+        crate::outln!("{}", "═".repeat(60));
+        crate::outln!("  No experiments recorded yet.");
+        crate::outln!(
+            "  Run an experiment (e.g. `tumult run experiment.toon`) to populate the store."
+        );
         return Ok(());
     }
 
@@ -244,10 +252,10 @@ fn print_store_aggregate(store: &tumult_lake::AnalyticsStore) -> Result<()> {
         .and_then(|s| s.parse::<usize>().ok())
         .unwrap_or(0);
 
-    println!("Analytics Store Summary");
-    println!("{}", "═".repeat(60));
-    println!("  Experiments: {total}");
-    println!("  Activities:  {activities}");
+    crate::outln!("Analytics Store Summary");
+    crate::outln!("{}", "═".repeat(60));
+    crate::outln!("  Experiments: {total}");
+    crate::outln!("  Activities:  {activities}");
 
     // Status breakdown
     let statuses = store.query(
@@ -258,7 +266,7 @@ fn print_store_aggregate(store: &tumult_lake::AnalyticsStore) -> Result<()> {
             .iter()
             .map(|r| format!("{}={}", r[0], r[1]))
             .collect();
-        println!("  By status:   {}", status_line.join("  "));
+        crate::outln!("  By status:   {}", status_line.join("  "));
     }
 
     // Duration stats
@@ -269,9 +277,11 @@ fn print_store_aggregate(store: &tumult_lake::AnalyticsStore) -> Result<()> {
          FROM experiments",
     )?;
     if !dur.is_empty() && !dur[0][0].is_empty() && dur[0][0] != "NULL" {
-        println!(
+        crate::outln!(
             "  Duration:    avg={}ms  min={}ms  max={}ms",
-            dur[0][0], dur[0][1], dur[0][2]
+            dur[0][0],
+            dur[0][1],
+            dur[0][2]
         );
     }
 
@@ -281,9 +291,11 @@ fn print_store_aggregate(store: &tumult_lake::AnalyticsStore) -> Result<()> {
          FROM load_results",
     )?;
     if !load.is_empty() && load[0][0] != "0" {
-        println!(
+        crate::outln!(
             "  Load tests:  {} (avg p95={}ms, avg error_rate={})",
-            load[0][0], load[0][1], load[0][2]
+            load[0][0],
+            load[0][1],
+            load[0][2]
         );
     }
 
@@ -293,10 +305,10 @@ fn print_store_aggregate(store: &tumult_lake::AnalyticsStore) -> Result<()> {
          FROM experiments ORDER BY duration_ms DESC LIMIT 5",
     )?;
     if !top.is_empty() {
-        println!("\nTop 5 by duration:");
+        crate::outln!("\nTop 5 by duration:");
         for row in &top {
             let dur_s = row[0].parse::<f64>().unwrap_or(0.0) / 1000.0;
-            println!("  {dur_s:>7.1}s  {} ({})", row[1], row[2]);
+            crate::outln!("  {dur_s:>7.1}s  {} ({})", row[1], row[2]);
         }
     }
 
@@ -306,7 +318,7 @@ fn print_store_aggregate(store: &tumult_lake::AnalyticsStore) -> Result<()> {
          FROM experiments ORDER BY started_at_ns DESC LIMIT 5",
     )?;
     if !recent.is_empty() {
-        println!("\nLast 5 experiments:");
+        crate::outln!("\nLast 5 experiments:");
         for row in &recent {
             let status_icon = match row[1].as_str() {
                 "completed" => "PASS",
@@ -315,7 +327,7 @@ fn print_store_aggregate(store: &tumult_lake::AnalyticsStore) -> Result<()> {
                 "failed" => "FAIL",
                 _ => &row[1],
             };
-            println!("  [{status_icon}] {}ms  {}", row[2], row[0]);
+            crate::outln!("  [{status_icon}] {}ms  {}", row[2], row[0]);
         }
     }
 
@@ -364,7 +376,7 @@ pub fn cmd_analyze(
                                 .and_then(|c| tumult_core::engine::parse_experiment(&c).ok())
                                 .is_some();
                             if !is_experiment {
-                                eprintln!("warning: skipping {}: {}", entry_path.display(), e);
+                                crate::errln!("warning: skipping {}: {}", entry_path.display(), e);
                             }
                         }
                     }
@@ -393,14 +405,14 @@ pub fn cmd_analyze(
         (store, count)
     };
 
-    println!("Loaded {count} journal(s) into analytics store\n");
+    crate::outln!("Loaded {count} journal(s) into analytics store\n");
 
     if let Some(sql) = query {
         validate_select_only(sql)?;
         let columns = store.query_columns(sql)?;
         let rows = store.query(sql)?;
-        println!("{}", columns.join("\t"));
-        println!(
+        crate::outln!("{}", columns.join("\t"));
+        crate::outln!(
             "{}",
             columns
                 .iter()
@@ -409,9 +421,9 @@ pub fn cmd_analyze(
                 .join("\t")
         );
         for row in &rows {
-            println!("{}", row.join("\t"));
+            crate::outln!("{}", row.join("\t"));
         }
-        println!("\n{} row(s)", rows.len());
+        crate::outln!("\n{} row(s)", rows.len());
     } else if all {
         print_store_aggregate(&store)?;
     } else {
@@ -423,18 +435,24 @@ pub fn cmd_analyze(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::output::testing::capture;
 
     // ── validate_select_only ──────────────────────────────────
 
     #[test]
     fn select_only_allows_plain_select() {
-        validate_select_only("SELECT experiment_id, title FROM experiments").unwrap();
-        validate_select_only("  select count(*) from activity_results").unwrap();
-        validate_select_only("WITH cte AS (SELECT 1) SELECT * FROM cte").unwrap();
-        // A single trailing semicolon is tolerated.
-        validate_select_only("SELECT * FROM experiments;").unwrap();
-        // Identifiers merely containing a forbidden token stay allowed.
-        validate_select_only("SELECT alter_ego, globe_count, loader FROM experiments").unwrap();
+        for sql in [
+            "SELECT experiment_id, title FROM experiments",
+            "  select count(*) from activity_results",
+            "WITH cte AS (SELECT 1) SELECT * FROM cte",
+            // A single trailing semicolon is tolerated.
+            "SELECT * FROM experiments;",
+            // Identifiers merely containing a forbidden token stay allowed.
+            "SELECT alter_ego, globe_count, loader FROM experiments",
+        ] {
+            let outcome = validate_select_only(sql);
+            assert!(outcome.is_ok(), "{sql} must be allowed, got: {outcome:?}");
+        }
     }
 
     #[test]
@@ -508,6 +526,7 @@ mod tests {
 
     fn sample_journal() -> tumult_core::types::Journal {
         tumult_core::types::Journal {
+            target_version: None,
             experiment_title: "analyze test".into(),
             experiment_id: "exp-analyze-1".into(),
             status: tumult_core::types::ExperimentStatus::Completed,
@@ -519,6 +538,9 @@ mod tests {
             method_results: vec![],
             rollback_results: vec![],
             rollback_failures: 0,
+            kind: tumult_core::types::TestKind::default(),
+            objectives: None,
+            probe_samples: vec![],
             estimate: None,
             baseline_result: None,
             during_result: None,
@@ -534,13 +556,25 @@ mod tests {
     #[test]
     fn query_runs_normal_select() {
         let dir = journal_dir(&sample_journal());
-        cmd_analyze(
-            Some(dir.path()),
-            Some("SELECT experiment_id, title FROM experiments"),
-            None,
-            false,
-        )
-        .unwrap();
+
+        let (result, printed) = capture(|| {
+            cmd_analyze(
+                Some(dir.path()),
+                Some("SELECT experiment_id, title FROM experiments"),
+                None,
+                false,
+            )
+        });
+
+        result.unwrap();
+        assert_eq!(
+            printed.stdout,
+            "Loaded 1 journal(s) into analytics store\n\n\
+             experiment_id\ttitle\n\
+             -------------\t--------\n\
+             exp-analyze-1\tanalyze test\n\n\
+             1 row(s)\n"
+        );
     }
 
     #[test]
@@ -600,6 +634,7 @@ mod tests {
     /// phase, and a load result block.
     fn rich_journal(id: &str, started_at_ns: i64) -> Journal {
         Journal {
+            target_version: None,
             experiment_title: format!("rich {id}"),
             experiment_id: id.into(),
             status: ExperimentStatus::Deviated,
@@ -643,6 +678,9 @@ mod tests {
                 None,
             )],
             rollback_failures: 0,
+            kind: tumult_core::types::TestKind::default(),
+            objectives: None,
+            probe_samples: vec![],
             estimate: None,
             baseline_result: None,
             during_result: None,
@@ -660,6 +698,8 @@ mod tests {
                 error_rate: 0.01,
                 total_requests: 3000,
                 thresholds_met: true,
+                samples: vec![],
+                execution: tumult_core::types::LoadExecution::default(),
             }),
             analysis: None,
             regulatory: None,
@@ -682,26 +722,102 @@ mod tests {
         )
         .unwrap();
 
-        // last > 1 with multiple experiments also renders the store aggregate.
-        cmd_analyze(Some(dir.path()), None, Some(5), false).unwrap();
+        let (result, printed) = capture(|| cmd_analyze(Some(dir.path()), None, Some(5), false));
+
+        result.unwrap();
+        let out = printed.stdout;
+        // Newest first.
+        let newer = out.find("Experiment: rich rich-2\n").expect("rich-2");
+        let older = out.find("Experiment: rich rich-1\n").expect("rich-1");
+        assert!(newer < older, "{out}");
+        assert!(out.contains("Status:     DEVIATED (60000ms)\n"), "{out}");
+        assert!(
+            out.contains("health (probe) (hypothesis before)  250ms  → ok\n"),
+            "{out}"
+        );
+        assert!(
+            out.contains("health (probe) (hypothesis after)  250ms FAILED\n"),
+            "{out}"
+        );
+        // A long output is cut to 57 characters and an ellipsis.
+        let preview = format!("inject (action)  250ms  → {}…\n", "x".repeat(57));
+        assert!(out.contains(&preview), "{out}");
+        assert!(
+            out.contains("└─ undo (action) (rollback)  250ms\n"),
+            "{out}"
+        );
+        assert!(out.contains("\nLoad Test (k6):\n"), "{out}");
+        assert!(
+            out.contains("  Latency: p50=12.0000ms  p95=45.0000ms  p99=80.0000ms\n"),
+            "{out}"
+        );
+        assert!(out.contains("  Thresholds: PASS\n"), "{out}");
+        // last > 1 with several experiments also prints the store aggregate.
+        assert!(
+            out.contains("Store: 2 experiments, 0 completed, avg "),
+            "{out}"
+        );
+    }
+
+    #[test]
+    fn a_summary_of_one_experiment_has_no_store_aggregate() {
+        let dir = journal_dir(&rich_journal("only", 1_774_980_000_000_000_000));
+
+        let (result, printed) = capture(|| cmd_analyze(Some(dir.path()), None, Some(5), false));
+
+        result.unwrap();
+        let out = printed.stdout;
+        assert!(out.contains("Experiment: rich only\n"), "{out}");
+        assert!(!out.contains("Store: "), "{out}");
     }
 
     #[test]
     fn summary_on_empty_store_reports_no_experiments() {
         let dir = tempfile::TempDir::new().unwrap();
-        cmd_analyze(Some(dir.path()), None, None, false).unwrap();
+
+        let (result, printed) = capture(|| cmd_analyze(Some(dir.path()), None, None, false));
+
+        result.unwrap();
+        assert_eq!(
+            printed.stdout,
+            "Loaded 0 journal(s) into analytics store\n\nNo experiments found.\n"
+        );
     }
 
     #[test]
     fn aggregate_renders_store_wide_stats() {
         let dir = journal_dir(&rich_journal("agg-1", 1_774_980_000_000_000_000));
-        cmd_analyze(Some(dir.path()), None, None, true).unwrap();
+
+        let (result, printed) = capture(|| cmd_analyze(Some(dir.path()), None, None, true));
+
+        result.unwrap();
+        let out = printed.stdout;
+        assert!(out.contains("Analytics Store Summary\n"), "{out}");
+        assert!(out.contains("  Experiments: 1\n"), "{out}");
+        // Two hypothesis probes, two method steps and one rollback.
+        assert!(out.contains("  Activities:  5\n"), "{out}");
+        assert!(out.contains("  By status:   deviated=1\n"), "{out}");
+        assert!(
+            out.contains("  Duration:    avg=60000ms  min=60000ms  max=60000ms\n"),
+            "{out}"
+        );
+        assert!(out.contains("  Load tests:  1 (avg p95=45"), "{out}");
+        assert!(out.contains("   60.0s  rich agg-1 (deviated)\n"), "{out}");
+        assert!(out.contains("  [DEV ] 60000ms  rich agg-1\n"), "{out}");
     }
 
     #[test]
     fn aggregate_on_empty_store_reports_absence() {
         let dir = tempfile::TempDir::new().unwrap();
-        cmd_analyze(Some(dir.path()), None, None, true).unwrap();
+
+        let (result, printed) = capture(|| cmd_analyze(Some(dir.path()), None, None, true));
+
+        result.unwrap();
+        let out = printed.stdout;
+        assert!(out.contains("  No experiments recorded yet.\n"), "{out}");
+        // No aggregate over nothing: that would print NULLs.
+        assert!(!out.contains("Duration:"), "{out}");
+        assert!(!out.contains("NULL"), "{out}");
     }
 
     #[test]
@@ -710,7 +826,15 @@ mod tests {
         let path = dir.path().join("single.toon");
         tumult_core::journal::write_journal(&sample_journal(), &path).unwrap();
 
-        cmd_analyze(Some(&path), None, None, false).unwrap();
+        let (result, printed) = capture(|| cmd_analyze(Some(&path), None, None, false));
+
+        result.unwrap();
+        assert_eq!(
+            printed.stdout,
+            "Loaded 1 journal(s) into analytics store\n\n\
+             Experiment: analyze test\n\
+             Status:     PASS (1ms)\n"
+        );
     }
 
     #[test]
@@ -732,8 +856,25 @@ mod tests {
         )
         .unwrap();
         // Neither journal nor experiment: skipped with a warning.
-        std::fs::write(dir.path().join("broken.toon"), "not valid {{{").unwrap();
+        let broken = dir.path().join("broken.toon");
+        std::fs::write(&broken, "not valid {{{").unwrap();
 
-        cmd_analyze(Some(dir.path()), None, None, false).unwrap();
+        let (result, printed) = capture(|| cmd_analyze(Some(dir.path()), None, None, false));
+
+        result.unwrap();
+        assert!(
+            printed
+                .stdout
+                .starts_with("Loaded 1 journal(s) into analytics store\n"),
+            "{}",
+            printed.stdout
+        );
+        let warnings: Vec<&str> = printed.stderr.lines().collect();
+        assert_eq!(warnings.len(), 1, "{}", printed.stderr);
+        assert!(
+            warnings[0].starts_with(&format!("warning: skipping {}: ", broken.display())),
+            "{}",
+            printed.stderr
+        );
     }
 }

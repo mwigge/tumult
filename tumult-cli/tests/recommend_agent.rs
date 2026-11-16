@@ -4,58 +4,13 @@
 //! `tumult-agent-cli/tests/adapters.rs`.
 #![cfg(unix)]
 
-use std::env;
-use std::ffi::OsString;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
 
 use tumult_cli::commands::{cmd_agents, cmd_recommend, AgentArgs};
 use tumult_core::engine::{parse_experiment, validate_experiment};
 use tumult_intelligence::{OutputFormat, RecommendOptions};
-
-/// Serializes tests that mutate process-global env vars.
-static ENV_LOCK: Mutex<()> = Mutex::new(());
-
-fn env_lock() -> std::sync::MutexGuard<'static, ()> {
-    ENV_LOCK
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-}
-
-/// Restores an env var to its previous state on drop.
-struct EnvGuard {
-    key: &'static str,
-    prev: Option<OsString>,
-}
-
-impl EnvGuard {
-    fn set(key: &'static str, value: impl AsRef<std::ffi::OsStr>) -> Self {
-        let prev = env::var_os(key);
-        env::set_var(key, value);
-        Self { key, prev }
-    }
-}
-
-impl Drop for EnvGuard {
-    fn drop(&mut self) {
-        match self.prev.take() {
-            Some(prev) => env::set_var(self.key, prev),
-            None => env::remove_var(self.key),
-        }
-    }
-}
-
-/// Write an executable `#!/bin/sh` script into `dir`.
-fn fake_bin(dir: &Path, name: &str, body: &str) -> PathBuf {
-    use std::os::unix::fs::PermissionsExt;
-    let path = dir.join(name);
-    fs::write(&path, format!("#!/bin/sh\n{body}\n")).expect("write fake binary");
-    let mut perms = fs::metadata(&path).expect("stat fake binary").permissions();
-    perms.set_mode(0o755);
-    fs::set_permissions(&path, perms).expect("chmod fake binary");
-    path
-}
+use tumult_test_utils::{fake_bin, EnvGuard};
 
 const VALID_TOON: &str = r#"title: Process retry validation
 description: Verify process execution path stays healthy
@@ -84,8 +39,9 @@ fn canned_response() -> String {
 }
 
 /// Install a fake `claude` that answers the version probe and emits a JSON
-/// result envelope whose `result` is the canned agent response.
-fn install_fake_claude(dir: &Path) -> (PathBuf, EnvGuard) {
+/// result envelope whose `result` is the canned agent response. `env` points
+/// the adapter at it for as long as the guard lives.
+fn install_fake_claude(env: &mut EnvGuard, dir: &Path) {
     let envelope = serde_json::json!({
         "type": "result",
         "subtype": "success",
@@ -103,8 +59,7 @@ cat "{fixture}""#,
         fixture = fixture.display(),
     );
     let bin = fake_bin(dir, "claude", &body);
-    let guard = EnvGuard::set("CLAUDE_CODE_BIN", &bin);
-    (bin, guard)
+    env.set("CLAUDE_CODE_BIN", &bin);
 }
 
 fn recommend_options(dir: &Path, format: OutputFormat) -> RecommendOptions {
@@ -124,9 +79,9 @@ fn agent_args(generate_dir: Option<PathBuf>) -> AgentArgs {
 
 #[test]
 fn recommend_agent_text_end_to_end_writes_valid_and_rejects_invalid() {
-    let _lock = env_lock();
+    let mut env = EnvGuard::lock();
     let dir = tempfile::tempdir().expect("tempdir");
-    let (_bin, _guard) = install_fake_claude(dir.path());
+    install_fake_claude(&mut env, dir.path());
     let out_dir = dir.path().join("generated");
 
     let output = cmd_recommend(
@@ -168,9 +123,9 @@ fn recommend_agent_text_end_to_end_writes_valid_and_rejects_invalid() {
 
 #[test]
 fn recommend_agent_does_not_overwrite_on_slug_collision() {
-    let _lock = env_lock();
+    let mut env = EnvGuard::lock();
     let dir = tempfile::tempdir().expect("tempdir");
-    let (_bin, _guard) = install_fake_claude(dir.path());
+    install_fake_claude(&mut env, dir.path());
     let out_dir = dir.path().join("generated");
     fs::create_dir_all(&out_dir).expect("create out dir");
     let existing = out_dir.join("process-retry-validation.toon");
@@ -193,9 +148,9 @@ fn recommend_agent_does_not_overwrite_on_slug_collision() {
 
 #[test]
 fn recommend_agent_json_includes_agent_object() {
-    let _lock = env_lock();
+    let mut env = EnvGuard::lock();
     let dir = tempfile::tempdir().expect("tempdir");
-    let (_bin, _guard) = install_fake_claude(dir.path());
+    install_fake_claude(&mut env, dir.path());
     let out_dir = dir.path().join("generated");
 
     let output = cmd_recommend(
@@ -239,9 +194,9 @@ fn recommend_agent_json_includes_agent_object() {
 
 #[test]
 fn recommend_agent_without_generate_dir_writes_nothing() {
-    let _lock = env_lock();
+    let mut env = EnvGuard::lock();
     let dir = tempfile::tempdir().expect("tempdir");
-    let (_bin, _guard) = install_fake_claude(dir.path());
+    install_fake_claude(&mut env, dir.path());
 
     let output = cmd_recommend(
         &recommend_options(dir.path(), OutputFormat::Text),
@@ -276,16 +231,16 @@ fn recommend_unknown_agent_lists_available_adapters() {
 
 #[test]
 fn agents_table_reports_installed_and_missing_adapters() {
-    let _lock = env_lock();
+    let mut env = EnvGuard::lock();
     let dir = tempfile::tempdir().expect("tempdir");
     let claude = fake_bin(
         dir.path(),
         "claude",
         r#"if [ "$1" = "--version" ]; then echo "2.0.13 (Claude Code)"; exit 0; fi"#,
     );
-    let _claude = EnvGuard::set("CLAUDE_CODE_BIN", &claude);
-    let _codex = EnvGuard::set("CODEX_BIN", dir.path().join("does-not-exist"));
-    let _path = EnvGuard::set("PATH", dir.path()); // PATH fallback finds nothing
+    env.set("CLAUDE_CODE_BIN", &claude)
+        .set("CODEX_BIN", dir.path().join("does-not-exist"))
+        .set("PATH", dir.path()); // PATH fallback finds nothing
 
     let output = cmd_agents();
 

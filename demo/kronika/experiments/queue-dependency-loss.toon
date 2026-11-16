@@ -2,6 +2,12 @@ title: message-queue dependency loss — restart fails
 description: Simulate losing a queue dependency's data dir and a failing restart script — designed to FAIL so the rollback restores the dependency
 
 tags[2]: dependency, resilience
+kind: dr
+target:
+  system: message-queue
+  technology: queue
+  environment: demo
+rto_target_s: 30
 
 steady_state_hypothesis:
   title: Queue dependency data dir is present

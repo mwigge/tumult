@@ -6,35 +6,70 @@ has_children: true
 
 # Guides
 
-Step-by-step guides covering all major aspects of Tumult.
+Tumult collects resilience evidence, stores it, and tells you what it means.
+The guides follow that loop.
 
-| Guide | Description |
+![The evidence loop](../images/3.0/diagrams/flow-evidence-loop.png)
+
+New here? Start with the [Platform Walkthrough](platform-walkthrough.md).
+
+## 1. Create evidence
+
+| Guide | What you learn |
 |---|---|
-| [Experiment Format](experiment-format.md) | TOON experiment structure, all fields and provider types |
-| [Execution Flow](execution-flow.md) | Five-phase lifecycle, orchestration internals |
-| [CLI Reference](cli-reference.md) | All commands: `run`, `validate`, `analyze`, `export`, `compliance` |
-| [Statistical Baselines](baseline-guide.md) | Data-derived tolerance methods: percentile, IQR, mean/stddev |
-| [Analytics Guide](analytics-guide.md) | DuckDB SQL queries over experiment journals, Parquet export |
-| [SigNoz Bulk Import](signoz-bulk-import.md) | Backfill lake Parquet spans into SigNoz's ClickHouse, bypassing the collector |
-| [Observability Setup](observability-setup.md) | OTel env vars, collector configs, Jaeger, Grafana, SigNoz |
-| [Grafana Stack](grafana-stack.md) | Reference Tempo + Mimir + Loki stack: one compose file, translated metric names, LogQL/TraceQL examples |
-| [Load Testing Guide](load-testing-guide.md) | k6 integration with chaos experiments |
-| [MCP Guide](mcp-guide.md) | The MCP server: annotations, structured output, `tumult://` resources, and the run-to-ingest-to-recommend loop |
-| [ChaosGraph](chaosgraph.md) | The typed chaos knowledge graph served to agents over MCP: node/edge model, the two query tools, and compact agent context that stays within token budgets (reproducible via make demo-proof) |
-| [Agentic Quickstart](agentic-quickstart.md) | Fault injection for AI agents: scenario packs, contracts, replay |
-| [Agentic Live Clients](agentic-live-clients.md) | Inject faults into Claude Code, Codex, OpenCode, and Copilot traffic |
-| [Agentic Cross-Client Observability](agentic-cross-client-observability.md) | Normalize agent telemetry onto one schema; two-sided spans and trace-nesting tiers per client |
-| [Agentic Recommendations](agentic-recommendations.md) | Enhance `tumult recommend` with a local agent CLI (Claude Code, Codex); generate validated experiments |
-| [Agentic Observability](agentic-observability.md) | OTel instrumentation for agent runs: spans, metrics, and trace capture for agentic scenarios |
-| [Agentic Scenarios](agentic-scenarios.md) | Author and run agentic fault-injection scenario packs |
-| [Token Efficiency](token-efficiency.md) | TOON vs JSON token costs; keeping agent context small |
-| [Topology](topology.md) | Declared service topology, compliance lineage, and injection recommendations |
-| [Autopilot](autopilot.md) | Policy-gated autonomous fault injection with audit-before-act decisions |
-| [Experiment Scheduling](scheduling.md) | Recurring experiments and GameDays on a schedule |
-| [Data portability and recovery](data-portability.md) | Manifest archives, retention limits, complete backup and restore |
-| [Execution bindings](execution-bindings.md) | Authoritative environment and target bindings for daemon execution |
-| [Functional hardening review](hardening-review.md) | 2.22.0 finding coverage, acceptance scenarios and remaining limits |
-| [Quality and release checks](quality-and-release.md) | Source gates, dependency policy and release-artifact verification |
-| [Production Deployment](production-deployment.md) | Deploy Tumult in production: binaries, containers, hardening |
-| [Platform Walkthrough](platform-walkthrough.md) | Click-through of the Tumult web UI on the seeded demo: login → register → approve → run → e-stop → evidence pack, with screenshots |
-| [Windows Faults](windows-faults.md) | `tumult-windows`: native process-kill, CPU-stress, and firewall-blackhole faults, validated live against a Windows 11 guest |
+| [Experiment Format](experiment-format.md) | How to write an experiment file |
+| [Execution Flow](execution-flow.md) | The five phases of a run |
+| [CLI Reference](cli-reference.md) | Every command |
+| [Load Testing Guide](load-testing-guide.md) | Ramp, spike and soak tests with k6 and oha |
+| [Statistical Baselines](baseline-guide.md) | Let data set the pass limits |
+| [Experiment Scheduling](scheduling.md) | Run experiments and GameDays on a timer |
+| [Autopilot](autopilot.md) | Automatic fault injection behind a policy |
+| [Windows Faults](windows-faults.md) | Faults on Windows hosts |
+
+## 2. Send and store telemetry
+
+| Guide | What you learn |
+|---|---|
+| [Observability Setup](observability-setup.md) | OTLP, OTel-Arrow, collectors and backends |
+| [OpenTelemetry Auto-instrumentation](otel-autoinstrumentation.md) | Name your services so Tumult can match them |
+| [Entity Events](entity-events.md) | Track what exists and for how long |
+| [Logging](logging.md) | Structured JSON logs |
+| [Grafana Stack](grafana-stack.md) | A ready Tempo, Mimir and Loki setup |
+| [SigNoz Bulk Import](signoz-bulk-import.md) | Load old spans into SigNoz |
+| [Data portability and recovery](data-portability.md) | Export, back up and restore |
+
+## 3. Read what the evidence says
+
+| Guide | What you learn |
+|---|---|
+| [Star Map](star-map.md) | One graph from organisation to workload |
+| [DORA Coverage and Maturity Score](dora-score.md) | Coverage per article and a 1 to 5 level |
+| [Performance Regression](performance-regression.md) | Is the new version slower? |
+| [Forecasting and run impact](forecasting.md) | Expected ranges and how far a run pushed them |
+| [Analytics Guide](analytics-guide.md) | SQL over your results |
+| [Topology](topology.md) | Service maps and where to inject next |
+| [ChaosGraph](chaosgraph.md) | The knowledge graph for agents |
+
+## 4. Work with AI agents
+
+| Guide | What you learn |
+|---|---|
+| [MCP Guide](mcp-guide.md) | The 40 tools and how to connect |
+| [Agentic Quickstart](agentic-quickstart.md) | Inject faults into AI agents |
+| [Agentic Scenarios](agentic-scenarios.md) | Write scenario packs |
+| [Agentic Live Clients](agentic-live-clients.md) | Faults for Claude Code, Codex, OpenCode and Copilot traffic |
+| [Agentic Observability](agentic-observability.md) | Spans and metrics for agent runs |
+| [Agentic Cross-Client Observability](agentic-cross-client-observability.md) | One telemetry schema across clients |
+| [Agentic Recommendations](agentic-recommendations.md) | Let a local agent suggest experiments |
+| [Token Efficiency](token-efficiency.md) | Keep agent context small |
+
+## 5. Run it for real
+
+| Guide | What you learn |
+|---|---|
+| [Platform Walkthrough](platform-walkthrough.md) | Every page of the web UI, with pictures |
+| [Production Deployment](production-deployment.md) | Binaries, containers and hardening |
+| [Execution bindings](execution-bindings.md) | Which targets the daemon may touch |
+| [Quality and release checks](quality-and-release.md) | The checks before a release |
+| [Testing policy](testing.md) | What a test must prove |
+| [Functional hardening review](hardening-review.md) | The 2.22.0 review and its limits |

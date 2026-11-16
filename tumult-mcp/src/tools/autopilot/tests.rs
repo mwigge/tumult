@@ -63,6 +63,7 @@ fn seed_broken_store(dir: &std::path::Path) -> std::path::PathBuf {
         ..Default::default()
     };
     let journal = Journal {
+        target_version: None,
         experiment_title: "DB failover drill".into(),
         experiment_id: "run-broken-1".into(),
         status: ExperimentStatus::Deviated,
@@ -74,6 +75,9 @@ fn seed_broken_store(dir: &std::path::Path) -> std::path::PathBuf {
         method_results: vec![],
         rollback_results: vec![],
         rollback_failures: 0,
+        kind: tumult_core::types::TestKind::default(),
+        objectives: None,
+        probe_samples: vec![],
         estimate: None,
         baseline_result: None,
         during_result: None,
@@ -100,7 +104,8 @@ fn seed_broken_store(dir: &std::path::Path) -> std::path::PathBuf {
 
 /// Point script-plugin discovery at a temp catalog with one action so the
 /// recommender has a non-empty catalog regardless of the host machine.
-fn with_plugin_catalog(dir: &std::path::Path) {
+/// Discovery stays pinned there for as long as the returned guard lives.
+fn with_plugin_catalog(dir: &std::path::Path) -> tumult_test_utils::EnvGuard {
     let plugin_dir = dir.join("catalog").join("test-topology-plugin");
     std::fs::create_dir_all(&plugin_dir).unwrap();
     let manifest = tumult_plugin::manifest::ScriptPluginManifest {
@@ -116,7 +121,7 @@ fn with_plugin_catalog(dir: &std::path::Path) {
     };
     let toon = toon_format::encode_default(&manifest).unwrap();
     std::fs::write(plugin_dir.join("plugin.toon"), toon).unwrap();
-    std::env::set_var("TUMULT_PLUGIN_PATH", dir.join("catalog"));
+    crate::tools::test_support::plugin_path_guard(&dir.join("catalog"))
 }
 
 /// Write an enabled policy binding the test catalog's action to a trivial
@@ -177,7 +182,7 @@ fn once_without_execute_records_decisions_and_graph_lineage() {
     let dir = tempfile::TempDir::new().unwrap();
     let db = seed_broken_store(dir.path());
     crate::tools::topology_import(db.to_str().unwrap(), Some(TOPOLOGY_TOML), None).unwrap();
-    with_plugin_catalog(dir.path());
+    let _plugins = with_plugin_catalog(dir.path());
     let policy_path = write_enabled_policy(dir.path());
 
     let report = autopilot_once(
@@ -330,7 +335,7 @@ fn once_with_enactment_in_flight_vetoes_enact_verdicts() {
     let dir = tempfile::TempDir::new().unwrap();
     let db = seed_broken_store(dir.path());
     crate::tools::topology_import(db.to_str().unwrap(), Some(TOPOLOGY_TOML), None).unwrap();
-    with_plugin_catalog(dir.path());
+    let _plugins = with_plugin_catalog(dir.path());
     let policy_path = write_enabled_policy(dir.path());
 
     // The same pass that yields decisions with no enactment in flight must

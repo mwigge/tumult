@@ -30,6 +30,14 @@ pub enum StoreError {
     #[error("json error: {0}")]
     Json(#[from] serde_json::Error),
 
+    /// The lake was written by a build with a later schema. This build
+    /// would fail on its tables, so it does not open it for writing.
+    #[error(
+        "lake schema v{stored} is newer than this build supports (v{supported}); \
+         start the build that wrote it, or restore a backup taken before the upgrade"
+    )]
+    SchemaTooNew { stored: i64, supported: i64 },
+
     #[error("internal store error: {0}")]
     Internal(String),
 }
@@ -69,6 +77,14 @@ pub enum AnalyticsError {
 
     #[error("clickhouse error: {0}")]
     ClickHouse(String),
+
+    /// The lake was written by a build with a later schema. This build
+    /// would fail on its tables, so it does not open it for writing.
+    #[error(
+        "lake schema v{stored} is newer than this build supports (v{supported}); \
+         start the build that wrote it, or restore a backup taken before the upgrade"
+    )]
+    SchemaTooNew { stored: i64, supported: i64 },
 
     #[error("internal analytics error: {0}")]
     Internal(String),

@@ -47,18 +47,28 @@ pub mod auth;
 pub mod backend;
 #[cfg(feature = "duckdb")]
 pub mod duckdb_store;
+#[cfg(feature = "duckdb")]
+mod entities;
 pub mod error;
 #[cfg(feature = "duckdb")]
 pub mod export;
 #[cfg(feature = "duckdb")]
 mod file_integrity;
 #[cfg(feature = "duckdb")]
+mod forecast;
+#[cfg(feature = "duckdb")]
+mod ict;
+#[cfg(feature = "duckdb")]
 pub mod lake;
 #[cfg(feature = "duckdb")]
 mod manual;
+#[cfg(feature = "duckdb")]
+mod perf;
 pub mod query_row;
 #[cfg(feature = "duckdb")]
 mod reader;
+#[cfg(feature = "duckdb")]
+mod risk;
 #[cfg(feature = "duckdb")]
 mod rows;
 #[cfg(feature = "duckdb")]
@@ -68,8 +78,12 @@ mod schedules;
 #[cfg(feature = "duckdb")]
 mod schema;
 #[cfg(feature = "duckdb")]
+mod sightings;
+#[cfg(feature = "duckdb")]
 mod store;
 pub mod telemetry;
+#[cfg(feature = "duckdb")]
+mod version_order;
 #[cfg(feature = "duckdb")]
 mod webhooks;
 #[cfg(feature = "duckdb")]
@@ -80,16 +94,36 @@ pub use approvals::{approval_pin, ApprovalDecision, ApprovalRequest, CanonicalPi
 #[cfg(feature = "duckdb")]
 pub use auth::{SessionRow, TokenRow, UserRow};
 pub use backend::{AnalyticsBackend, StoreStats};
+#[cfg(feature = "duckdb")]
+pub use entities::{
+    entity_key, EntityApplied, EntityEventKind, EntityEventRow, EntityEvictions, EntityLimits,
+    EntityOutcome, EntityPurge, EvictionReason, WireForm, ENTITIES_PER_ENVIRONMENT,
+    ENTITY_INTERVAL_MAX_S, ENTITY_UNREPORTED_AFTER_S, ENTITY_VERSIONS_PER_ENTITY,
+};
 pub use error::AnalyticsError;
 #[cfg(feature = "duckdb")]
 pub use error::StoreError;
 #[cfg(feature = "duckdb")]
+pub use forecast::{
+    ForecastLookup, ForecastRow, ModelFilter, FORECAST_PRUNE_BATCH, FORECAST_RETENTION_NS,
+    FORECAST_ROWS_PER_SERIES,
+};
+#[cfg(feature = "duckdb")]
+pub use ict::{
+    is_critical_or_important, IctFunction, IctFunctionService, IctLegalEntity, IctRegister,
+    MaturityDailyRow, PlannedTest, RequirementStatusRow,
+};
+#[cfg(feature = "duckdb")]
 pub use manual::{
     AttachmentKind, ExerciseType, ManualDetail, ManualError, ManualOutcome, NewManualExperiment,
 };
+#[cfg(feature = "duckdb")]
+pub use perf::PerfVerdictRow;
 pub use query_row::QueryRow;
 #[cfg(feature = "duckdb")]
 pub use reader::Reader;
+#[cfg(feature = "duckdb")]
+pub use risk::RiskSuppressionRow;
 #[cfg(feature = "duckdb")]
 pub use rows::{
     ExperimentRun, ImportBatch, LogRow, MetricGaugeRow, MetricHistogramRow, MetricSumRow, SpanRow,
@@ -101,9 +135,13 @@ pub use schedules::ScheduleRow;
 #[cfg(feature = "duckdb")]
 pub use schema::CURRENT_SCHEMA_VERSION;
 #[cfg(feature = "duckdb")]
-pub use store::Store;
+pub use sightings::{StoredVersions, VersionSighting, REDEPLOY_GAP};
 #[cfg(feature = "duckdb")]
-pub(crate) use store::{migrate, query_json_rows, with_tx};
+pub(crate) use store::{migrate, query_json_rows, query_json_rows_bound, with_tx};
+#[cfg(feature = "duckdb")]
+pub use store::{SqlParam, Store};
+#[cfg(feature = "duckdb")]
+pub use version_order::version_cmp;
 #[cfg(feature = "duckdb")]
 pub use webhooks::{WebhookDeadLetter, WebhookRow};
 #[cfg(feature = "duckdb")]

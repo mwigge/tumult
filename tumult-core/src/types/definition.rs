@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use super::enums::{
     ActivityType, BaselineMethod, Confidence, DegradationLevel, ExpectedOutcome, LoadTool,
+    NfrCriticality, NfrKind, NfrOperator, TestKind,
 };
 use super::target::{ConfigValue, Provider, SecretValue, Tolerance};
 
@@ -161,13 +162,48 @@ pub struct BaselineConfig {
 
 // ── Load Config ────────────────────────────────────────────────
 
+/// Shape of the traffic a load generator produces over `duration_s`. Every
+/// profile is turned into the same tool-agnostic plan of stages (see
+/// `runner::load_profile`), which each load adapter renders in its own
+/// vocabulary; a profile therefore requires `duration_s`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+pub enum LoadProfile {
+    /// Linear ramp from `start_vus` up to `vus` over `ramp_up_s`, then hold
+    /// `vus` for the rest of the duration.
+    Ramp {
+        /// Virtual users at the start of the ramp.
+        start_vus: u32,
+        /// Seconds the ramp takes to reach `vus`.
+        ramp_up_s: f64,
+    },
+    /// Steady `vus`, a sudden jump to `peak_vus` after `after_s` held for
+    /// `hold_s`, then back to `vus` for the remainder.
+    Spike {
+        /// Virtual users during the spike.
+        peak_vus: u32,
+        /// Seconds of steady load before the spike.
+        after_s: f64,
+        /// Seconds the spike is held.
+        hold_s: f64,
+    },
+    /// Constant `vus` for the whole (long) duration, with the tool's
+    /// summary sampled every `sample_interval_s` so the run streams a time
+    /// series instead of one end-of-run summary.
+    Soak {
+        /// Seconds between streamed samples.
+        sample_interval_s: f64,
+    },
+}
+
 /// Load test configuration: a load generator run alongside the experiment.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct LoadConfig {
     /// Load tool to run.
     pub tool: LoadTool,
-    /// Path to the load script executed by the tool.
+    /// Path to the load script executed by the tool. For `oha`, which
+    /// takes no script, this is the URL to hit.
     pub script: PathBuf,
     /// Virtual users (passed to the tool when set).
     pub vus: Option<u32>,
@@ -176,6 +212,9 @@ pub struct LoadConfig {
     /// Tool-specific metric thresholds (metric name → bound).
     #[serde(default)]
     pub thresholds: HashMap<String, f64>,
+    /// Traffic shape; `None` is a flat `vus` for `duration_s`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile: Option<LoadProfile>,
 }
 
 // ── Regulatory Mapping ─────────────────────────────────────────
@@ -201,6 +240,79 @@ pub struct RegulatoryMapping {
     pub requirements: Vec<RegulatoryRequirement>,
 }
 
+// ── Non-functional objectives ──────────────────────────────────
+
+/// One non-functional objective the run is verified against. `metric` names
+/// a measurement the runner produces (see `runner::nfr` for the catalogue:
+/// `load.latency_p95_ms`, `recovery.mttr_s`, `probe.<name>.error_rate`, …);
+/// an objective whose metric was not measured is reported `inconclusive`,
+/// never silently met.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NfrObjective {
+    /// Stable identifier, unique within the experiment (e.g. `nfr-p95`).
+    pub id: String,
+    /// What the objective constrains.
+    pub kind: NfrKind,
+    /// Measurement the objective is evaluated on.
+    pub metric: String,
+    /// Comparison against `threshold`.
+    pub operator: NfrOperator,
+    pub threshold: f64,
+    /// Evaluation window in seconds (documentation for now; the runner
+    /// evaluates over the phase that produced the metric).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub window_s: Option<f64>,
+    /// How much a breach matters; defaults to `major`.
+    #[serde(default)]
+    pub criticality: NfrCriticality,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
+// ── Target ────────────────────────────────────────────────────
+
+/// The system under test, carried on the experiment root span as
+/// `resilience.target.*` so the lake can score, scope and gate by target.
+/// `system` is the name the scorecard, the gate and compliance reports
+/// group by; `environment` is what environment-scoped tokens see.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ExperimentTarget {
+    /// Target system or service name (e.g. `payments-api`).
+    pub system: String,
+    /// Technology behind it (e.g. `postgresql`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub technology: Option<String>,
+    /// Environment the run executes in (e.g. `prod`, `staging`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub environment: Option<String>,
+    /// Business criticality tier (e.g. `critical`, `important`, `standard`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub criticality: Option<String>,
+    /// The target's `service.namespace`, when two services of one name
+    /// report to the same store. It narrows which telemetry the observed
+    /// version is read from.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub namespace: Option<String>,
+    /// The version of the target this run measures (its `service.version`,
+    /// e.g. `1.5.0`). Declared here it is recorded on the run as it is;
+    /// left out, the runner asks the target's own telemetry at run end.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+}
+
+impl ExperimentTarget {
+    /// The declared version, when it says anything.
+    #[must_use]
+    pub fn declared_version(&self) -> Option<&str> {
+        self.version
+            .as_deref()
+            .map(str::trim)
+            .filter(|version| !version.is_empty())
+    }
+}
+
 // ── Experiment (the top-level definition) ──────────────────────
 
 /// Top-level experiment definition: identity, configuration, steady-state
@@ -217,6 +329,21 @@ pub struct Experiment {
     pub description: Option<String>,
     #[serde(default)]
     pub tags: Vec<String>,
+    /// Resilience discipline; defaults to `chaos`.
+    #[serde(default)]
+    pub kind: TestKind,
+    /// System under test, emitted as `resilience.target.*` on the root span.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target: Option<ExperimentTarget>,
+    /// Non-functional objectives verified against the run's measurements.
+    #[serde(default)]
+    pub nfr: Vec<NfrObjective>,
+    /// Recovery time objective in seconds (`dr` runs measure against it).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rto_target_s: Option<f64>,
+    /// Recovery point objective in seconds of tolerated data loss.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rpo_target_s: Option<f64>,
     /// Configuration values resolved from the environment (or inlined) at
     /// load time and substituted into provider arguments.
     #[serde(default)]
@@ -272,6 +399,11 @@ impl Default for Experiment {
             title: String::new(),
             description: None,
             tags: vec![],
+            kind: TestKind::default(),
+            target: None,
+            nfr: vec![],
+            rto_target_s: None,
+            rpo_target_s: None,
             configuration: IndexMap::new(),
             secrets: IndexMap::new(),
             controls: vec![],
@@ -438,6 +570,7 @@ mod tests {
                 ("http_req_duration_p95".into(), 500.0),
                 ("http_req_failed_rate".into(), 0.01),
             ]),
+            profile: None,
         };
         let decoded: LoadConfig = toon_round_trip(&config);
         assert_eq!(decoded, config);
@@ -471,6 +604,11 @@ mod tests {
             guards: vec![],
             blast_radius: None,
             max_concurrent_faults: None,
+            kind: TestKind::default(),
+            target: None,
+            nfr: vec![],
+            rto_target_s: None,
+            rpo_target_s: None,
             method: vec![],
             rollbacks: vec![],
             estimate: None,
@@ -543,5 +681,120 @@ mod tests {
         };
         let decoded: Experiment = toon_round_trip(&exp);
         assert_eq!(decoded, exp);
+    }
+
+    #[test]
+    fn kind_defaults_to_chaos_when_omitted() {
+        let exp: Experiment = toon_format::decode_default("title: plain\n").expect("parse");
+        assert_eq!(exp.kind, TestKind::Chaos);
+        assert!(exp.nfr.is_empty());
+        assert_eq!(exp.rto_target_s, None);
+    }
+
+    #[test]
+    fn kind_nfr_and_recovery_targets_parse_and_round_trip() {
+        let toon = "title: failover\nkind: dr\nrto_target_s: 900\nrpo_target_s: 60\nnfr[2]:\n  - id: p95\n    kind: latency\n    metric: load.latency_p95_ms\n    operator: lte\n    threshold: 250\n    criticality: blocking\n  - id: avail\n    kind: availability\n    metric: during.availability\n    operator: gte\n    threshold: 0.999\n";
+        let exp: Experiment = toon_format::decode_default(toon).expect("parse");
+        assert_eq!(exp.kind, TestKind::Dr);
+        assert_eq!(exp.rto_target_s, Some(900.0));
+        assert_eq!(exp.rpo_target_s, Some(60.0));
+        assert_eq!(exp.nfr.len(), 2);
+        assert_eq!(exp.nfr[0].criticality, NfrCriticality::Blocking);
+        assert_eq!(exp.nfr[1].criticality, NfrCriticality::Major);
+        assert_eq!(exp.nfr[1].operator, NfrOperator::Gte);
+        let back = toon_round_trip(&exp);
+        assert_eq!(back, exp);
+    }
+
+    #[test]
+    fn a_target_may_declare_the_version_it_measures() {
+        let toon = "title: t\ntarget:\n  system: checkout\n  environment: demo\n  version: 1.5.0\n";
+        let exp: Experiment = toon_format::decode_default(toon).expect("parse");
+        let target = exp.target.clone().expect("target");
+        assert_eq!(target.version.as_deref(), Some("1.5.0"));
+        assert_eq!(target.declared_version(), Some("1.5.0"));
+        assert_eq!(toon_round_trip(&exp), exp);
+
+        // A blank version declares nothing.
+        let blank = ExperimentTarget {
+            version: Some("  ".into()),
+            ..target.clone()
+        };
+        assert_eq!(blank.declared_version(), None);
+        let none = ExperimentTarget {
+            version: None,
+            ..target
+        };
+        assert_eq!(none.declared_version(), None);
+    }
+
+    #[test]
+    fn target_block_parses_and_round_trips() {
+        let toon = "title: t\ntarget:\n  system: payments-api\n  technology: postgresql\n  environment: prod\n";
+        let exp: Experiment = toon_format::decode_default(toon).expect("parse");
+        let target = exp.target.as_ref().expect("target");
+        assert_eq!(target.system, "payments-api");
+        assert_eq!(target.environment.as_deref(), Some("prod"));
+        assert_eq!(target.criticality, None);
+        assert_eq!(toon_round_trip(&exp), exp);
+        assert!(
+            toon_format::decode_default::<Experiment>("title: t\ntarget:\n  name: x\n").is_err()
+        );
+    }
+
+    #[test]
+    fn load_profiles_parse_and_round_trip() {
+        let ramp = "title: t\nload:\n  tool: k6\n  script: load.js\n  vus: 50\n  duration_s: 120\n  profile:\n    type: ramp\n    start_vus: 5\n    ramp_up_s: 30\n";
+        let exp: Experiment = toon_format::decode_default(ramp).expect("parse ramp");
+        let load = exp.load.as_ref().expect("load");
+        assert_eq!(
+            load.profile,
+            Some(LoadProfile::Ramp {
+                start_vus: 5,
+                ramp_up_s: 30.0
+            })
+        );
+        assert_eq!(toon_round_trip(&exp), exp);
+
+        let spike = "title: t\nload:\n  tool: oha\n  script: http://localhost:8080/health\n  vus: 10\n  duration_s: 60\n  profile:\n    type: spike\n    peak_vus: 200\n    after_s: 20\n    hold_s: 10\n";
+        let exp: Experiment = toon_format::decode_default(spike).expect("parse spike");
+        let load = exp.load.as_ref().expect("load");
+        assert_eq!(load.tool, LoadTool::Oha);
+        assert!(matches!(
+            load.profile,
+            Some(LoadProfile::Spike { peak_vus: 200, .. })
+        ));
+        assert_eq!(toon_round_trip(&exp), exp);
+
+        let soak = "title: t\nload:\n  tool: oha\n  script: http://localhost:8080/\n  vus: 20\n  duration_s: 3600\n  profile:\n    type: soak\n    sample_interval_s: 10\n";
+        let exp: Experiment = toon_format::decode_default(soak).expect("parse soak");
+        assert!(matches!(
+            exp.load.as_ref().and_then(|l| l.profile.as_ref()),
+            Some(LoadProfile::Soak { .. })
+        ));
+    }
+
+    #[test]
+    fn load_without_profile_still_parses_and_omits_the_field() {
+        let toon = "title: t\nload:\n  tool: k6\n  script: load.js\n";
+        let exp: Experiment = toon_format::decode_default(toon).expect("parse");
+        assert_eq!(exp.load.as_ref().and_then(|l| l.profile.clone()), None);
+        let encoded = toon_format::encode_default(&exp).expect("encode");
+        assert!(!encoded.contains("profile"), "{encoded}");
+    }
+
+    #[test]
+    fn unknown_load_profile_field_or_type_is_rejected() {
+        let bogus_field = "title: t\nload:\n  tool: k6\n  script: load.js\n  duration_s: 60\n  profile:\n    type: ramp\n    start_vus: 1\n    ramp_up_s: 5\n    bogus: 1\n";
+        assert!(toon_format::decode_default::<Experiment>(bogus_field).is_err());
+        let bogus_type =
+            "title: t\nload:\n  tool: k6\n  script: load.js\n  profile:\n    type: burst\n";
+        assert!(toon_format::decode_default::<Experiment>(bogus_type).is_err());
+    }
+
+    #[test]
+    fn unknown_nfr_field_is_rejected() {
+        let toon = "title: x\nnfr[1]:\n  - id: a\n    kind: latency\n    metric: m\n    operator: lte\n    threshold: 1\n    bogus: 2\n";
+        assert!(toon_format::decode_default::<Experiment>(toon).is_err());
     }
 }

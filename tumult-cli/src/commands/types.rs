@@ -81,6 +81,8 @@ impl ComplianceFramework {
 pub enum LoadToolArg {
     /// k6 load testing tool
     K6,
+    /// oha HTTP load generator (the script argument is the URL to hit)
+    Oha,
     /// Explicitly disable load testing even if the experiment defines it
     None,
 }
@@ -160,6 +162,7 @@ pub fn build_load_override(
 
     let load_tool = match tool {
         LoadToolArg::K6 => tumult_core::types::LoadTool::K6,
+        LoadToolArg::Oha => tumult_core::types::LoadTool::Oha,
         LoadToolArg::None => unreachable!(),
     };
 
@@ -169,5 +172,6 @@ pub fn build_load_override(
         vus: Some(vus.unwrap_or(10)),
         duration_s: duration_s.or(Some(30.0)),
         thresholds: std::collections::HashMap::new(),
+        profile: None,
     }))
 }

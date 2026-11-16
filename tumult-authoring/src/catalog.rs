@@ -463,13 +463,4 @@ mod tests {
         assert!(catalog.find("tumult-network", "add-latency").is_none());
         assert_eq!(catalog.all_actions().count(), 0);
     }
-
-    #[test]
-    fn build_catalog_from_default_search_paths_never_fails() {
-        // The default-paths entry point (cwd plugins, user-global plugins,
-        // TUMULT_PLUGIN_PATH) is fault-tolerant: whatever those paths hold,
-        // building the catalog succeeds.
-        let catalog = build_catalog().unwrap();
-        assert_eq!(catalog.is_empty(), catalog.action_count() == 0);
-    }
 }

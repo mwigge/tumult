@@ -2,6 +2,25 @@ title: PostgreSQL under real load — container pause disruption
 description: k6 hammers PG with real inserts/selects. Pumba pauses PG container for 5s. Measure the disruption in k6 error rates.
 
 tags[4]: postgres, load, pumba, resilience
+kind: performance
+target:
+  system: postgres
+  technology: postgresql
+  environment: demo
+nfr[2]:
+  - id: pg-responds-p95
+    kind: latency
+    metric: probe.pg-responds.p95_ms
+    operator: lte
+    threshold: 2000
+    criticality: major
+    description: the health probe stays under 2 s at p95 while PG is paused
+  - id: availability
+    kind: availability
+    metric: during.availability
+    operator: gte
+    threshold: 0.5
+    criticality: minor
 
 steady_state_hypothesis:
   title: PostgreSQL accepts queries

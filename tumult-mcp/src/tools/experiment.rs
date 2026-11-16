@@ -150,14 +150,16 @@ pub fn run_experiment(request: RunExperimentRequest<'_>) -> Result<StructuredRep
     let (secret_env, skipped_secrets) = build_secret_env(&secrets_flat);
     for key in &skipped_config {
         tracing::warn!(
-            key = %key,
+            name: "mcp.experiment.config_key.skipped",
+            { config.key = %key },
             "configuration key does not form a valid env var name after uppercasing; \
              usable in templates but not injected as TUMULT_CONFIG_*"
         );
     }
     for key in &skipped_secrets {
         tracing::warn!(
-            key = %key,
+            name: "mcp.experiment.secret_key.skipped",
+            { config.key = %key },
             "secret key does not form a valid env var name after uppercasing; \
              usable in templates but not injected as TUMULT_SECRET_*"
         );
@@ -181,11 +183,17 @@ pub fn run_experiment(request: RunExperimentRequest<'_>) -> Result<StructuredRep
     }
     let controls = Arc::new(controls_registry);
     let config = RunConfig {
+        version_resolver: None,
         baseline_mode: tumult_core::runner::BaselineMode::default(),
         rollback_strategy: strategy,
         cancellation_token: None,
         parent_context: request.parent_context,
-        load_executor: Some(Arc::new(tumult_core::runner::k6::K6LoadExecutor)),
+        load_executor: experiment
+            .load
+            .as_ref()
+            .map(|load| tumult_core::runner::load_executor_for(&load.tool))
+            .transpose()
+            .map_err(ToolError::InvalidInput)?,
         max_concurrent_faults: None,
     };
 

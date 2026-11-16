@@ -6,10 +6,11 @@ use anyhow::{Context, Result};
 use tumult_ingest::Config;
 
 /// Validated TLS materials for both servers: the rustls config for the
-/// HTTPS (axum) listener and the PEM identity for the tonic gRPC server.
+/// HTTPS (axum) listener and the one for the gRPC listener, which does
+/// the handshake itself.
 pub(super) struct TlsMaterials {
     pub http: axum_server::tls_rustls::RustlsConfig,
-    pub grpc_identity: tonic::transport::Identity,
+    pub grpc: std::sync::Arc<tumult_ingest::listener::TlsConfig>,
 }
 
 /// Load the optional TLS configuration (`KRONIKA_TLS_CERT` /
@@ -38,15 +39,20 @@ pub(super) async fn load_tls(config: &Config) -> Result<Option<TlsMaterials>> {
         .with_context(|| format!("read KRONIKA_TLS_CERT ({})", cert.display()))?;
     let key_pem =
         std::fs::read(key).with_context(|| format!("read KRONIKA_TLS_KEY ({})", key.display()))?;
-    let grpc_identity = tonic::transport::Identity::from_pem(cert_pem, key_pem);
+    let grpc = tumult_ingest::listener::tls_config(&cert_pem, &key_pem).with_context(|| {
+        format!(
+            "invalid TLS certificate chain or key for the gRPC server (KRONIKA_TLS_CERT {}, \
+             KRONIKA_TLS_KEY {})",
+            cert.display(),
+            key.display()
+        )
+    })?;
     tracing::info!(
-        cert = %cert.display(),
+        name: "daemon.tls.enabled",
+        { file.path = %cert.display() },
         "TLS enabled for the HTTP and gRPC servers"
     );
-    Ok(Some(TlsMaterials {
-        http,
-        grpc_identity,
-    }))
+    Ok(Some(TlsMaterials { http, grpc }))
 }
 
 /// Loud startup warning when a network-exposed listener serves plaintext:
@@ -57,7 +63,11 @@ pub(super) fn warn_if_plaintext_on_network(config: &Config, tls_enabled: bool) {
     }
     if !config.otlp_http_addr.ip().is_loopback() {
         tracing::warn!(
-            addr = %config.otlp_http_addr,
+            name: "daemon.tls.http_plaintext",
+            {
+                server.address = %config.otlp_http_addr.ip(),
+                server.port = config.otlp_http_addr.port(),
+            },
             "TLS is OFF: the API, web UI and OTLP/HTTP ingest are served in plaintext on a \
              network interface — bearer tokens and telemetry cross the wire unencrypted; \
              set KRONIKA_TLS_CERT/KRONIKA_TLS_KEY or terminate TLS at a reverse proxy"
@@ -65,7 +75,11 @@ pub(super) fn warn_if_plaintext_on_network(config: &Config, tls_enabled: bool) {
     }
     if !config.otlp_grpc_addr.ip().is_loopback() {
         tracing::warn!(
-            addr = %config.otlp_grpc_addr,
+            name: "daemon.tls.grpc_plaintext",
+            {
+                server.address = %config.otlp_grpc_addr.ip(),
+                server.port = config.otlp_grpc_addr.port(),
+            },
             "TLS is OFF: OTLP/gRPC ingest is served in plaintext on a network interface; \
              set KRONIKA_TLS_CERT/KRONIKA_TLS_KEY or terminate TLS at a reverse proxy"
         );

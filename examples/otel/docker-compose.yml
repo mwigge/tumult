@@ -1,0 +1,61 @@
+# An auto-instrumented service feeding the resilience platform through a
+# Collector that enforces the naming contract and exports over OTel-Arrow
+# (the otelarrow exporter, contrib distribution only). Pair it with the
+# Kronika stack (docker/docker-compose.kronika.yml), which publishes OTLP
+# and OTel-Arrow on 127.0.0.1:14317.
+#
+#   KRONIKA_INGEST_TOKEN=... docker compose -f examples/otel/docker-compose.yml up --build
+#   curl -s localhost:18080/checkout
+#   curl -s -H "Authorization: Bearer $KRONIKA_BOOTSTRAP_TOKEN" localhost:14318/api/otel/conformance
+services:
+  otel-collector:
+    # contrib, not core: the otelarrow exporter lives in contrib. 0.157.0 is
+    # the version the OTel-Arrow ingest path was verified against.
+    image: otel/opentelemetry-collector-contrib:0.157.0
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    volumes:
+      - ./otel-collector.yaml:/etc/otelcol-contrib/config.yaml:ro
+    environment:
+      KRONIKA_INGEST_TOKEN: ${KRONIKA_INGEST_TOKEN:?set the daemon's ingest token}
+      TUMULTD_OTLP_ENDPOINT: ${TUMULTD_OTLP_ENDPOINT:-tumultd.host:14317}
+    extra_hosts:
+      - "tumultd.host:host-gateway"
+
+  checkout:
+    build: ./python-app
+    ports:
+      - "127.0.0.1:18080:8080"
+    environment:
+      # --- the contract, set once at deploy time, no code change ----------
+      OTEL_SERVICE_NAME: checkout
+      OTEL_RESOURCE_ATTRIBUTES: >-
+        service.version=1.4.2,
+        deployment.environment.name=staging,
+        resilience.target.system=api,
+        resilience.target.technology=python,
+        resilience.target.component=shop/checkout,
+        resilience.target.environment=staging,
+        resilience.target.tier=backend,
+        resilience.target.criticality=high,
+        ict.schema.version=0.1.0,
+        ict.entity.id=cif-0042,
+        ict.entity.tier=critical,
+        ict.entity.owner=team-checkout
+      # --- transport ------------------------------------------------------
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+      OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+      OTEL_TRACES_EXPORTER: otlp
+      OTEL_METRICS_EXPORTER: otlp
+      OTEL_LOGS_EXPORTER: otlp
+      OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED: "true"
+      # Propagate the experiment id as baggage so spans emitted during a
+      # run carry it (tumult sets TRACEPARENT/BAGGAGE on child processes).
+      OTEL_PROPAGATORS: tracecontext,baggage
+    depends_on:
+      - otel-collector
+
+  traffic:
+    image: curlimages/curl:8.11.1
+    command: ["sh", "-c", "while true; do curl -s -o /dev/null http://checkout:8080/checkout; sleep 0.5; done"]
+    depends_on:
+      - checkout

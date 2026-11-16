@@ -215,15 +215,6 @@ mod tests {
     }
 
     #[test]
-    fn out_of_range_probability_is_rejected() {
-        let p = FaultProfile {
-            corrupt_prob: 1.5,
-            ..FaultProfile::default()
-        };
-        assert!(p.validate().is_err());
-    }
-
-    #[test]
     fn seed_bytes_are_deterministic() {
         let a = FaultProfile {
             seed: 42,

@@ -35,6 +35,10 @@ receivers:
       filesystem: {}
 
 processors:
+  # Tumult exports counters and histograms as deltas. A Prometheus-style
+  # exporter needs running totals, so add the deltas up first.
+  deltatocumulative:
+
   batch:
     send_batch_size: 1024
     timeout: 5s
@@ -153,7 +157,7 @@ service:
     # Metrics: OTLP/Arrow + host metrics -> SigNoz + Prometheus
     metrics:
       receivers: [otlp, otelarrow, hostmetrics]
-      processors: [memory_limiter, resourcedetection, attributes/tumult, transform/normalize, batch]
+      processors: [memory_limiter, resourcedetection, attributes/tumult, transform/normalize, deltatocumulative, batch]
       exporters: [otlp/signoz, prometheus]
 
     # APM: Span-derived RED metrics -> Prometheus

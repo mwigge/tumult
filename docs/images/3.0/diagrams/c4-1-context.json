@@ -1,0 +1,357 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "C4 level 1: Tumult system context",
+    "output": "c4-1-context.html",
+    "quality_profile": "showcase",
+    "locale": "en",
+    "repository": {
+      "url": "https://github.com/mwigge/tumult",
+      "revision": "8c24680b94cbab9d5b2011d99b53623618608a22"
+    },
+    "legend": {
+      "entries": {
+        "frontend": {
+          "label": "Person"
+        },
+        "backend": {
+          "label": "Software system"
+        },
+        "external": {
+          "label": "External system"
+        },
+        "cloud": {
+          "label": "Files on disk"
+        }
+      }
+    }
+  },
+  "components": [
+    {
+      "id": "operator",
+      "type": "frontend",
+      "label": "Operator",
+      "sublabel": "writes and runs tests",
+      "pos": [
+        250,
+        40
+      ],
+      "size": [
+        180,
+        64
+      ],
+      "icon": "person",
+      "sources": [
+        {
+          "path": "tumult-auth/src/lib.rs",
+          "line": 23,
+          "end_line": 38
+        },
+        {
+          "path": "tumult-api/src/auth/route_table.rs",
+          "line": 82,
+          "end_line": 88
+        }
+      ]
+    },
+    {
+      "id": "approver",
+      "type": "frontend",
+      "label": "Approver",
+      "sublabel": "approves risky runs",
+      "pos": [
+        520,
+        40
+      ],
+      "size": [
+        180,
+        64
+      ],
+      "icon": "person",
+      "sources": [
+        {
+          "path": "tumult-auth/src/lib.rs",
+          "line": 23,
+          "end_line": 38
+        },
+        {
+          "path": "tumult-api/src/auth/route_table.rs",
+          "line": 121,
+          "end_line": 126
+        }
+      ]
+    },
+    {
+      "id": "viewer",
+      "type": "frontend",
+      "label": "Viewer",
+      "sublabel": "reads scores, reports",
+      "pos": [
+        790,
+        40
+      ],
+      "size": [
+        180,
+        64
+      ],
+      "icon": "person",
+      "sources": [
+        {
+          "path": "tumult-auth/src/lib.rs",
+          "line": 23,
+          "end_line": 38
+        },
+        {
+          "path": "tumult-api/src/auth/route_table.rs",
+          "line": 10,
+          "end_line": 30
+        }
+      ]
+    },
+    {
+      "id": "otel",
+      "type": "external",
+      "label": "OTel Collector",
+      "sublabel": "or your services",
+      "pos": [
+        40,
+        300
+      ],
+      "size": [
+        180,
+        64
+      ],
+      "sources": [
+        {
+          "path": "docker/otel-collector-kronika.yaml",
+          "line": 1,
+          "end_line": 35
+        },
+        {
+          "path": "examples/otel/otel-collector.yaml",
+          "line": 66,
+          "end_line": 105
+        }
+      ]
+    },
+    {
+      "id": "tumult",
+      "type": "backend",
+      "label": "Tumult",
+      "sublabel": "resilience intelligence",
+      "pos": [
+        480,
+        290
+      ],
+      "size": [
+        260,
+        90
+      ],
+      "tag": "experiments, lake, evidence",
+      "sources": [
+        {
+          "path": "Cargo.toml",
+          "line": 3,
+          "end_line": 61
+        },
+        {
+          "path": "tumultd/src/serve/mod.rs",
+          "line": 538,
+          "end_line": 591
+        }
+      ]
+    },
+    {
+      "id": "obs",
+      "type": "external",
+      "label": "Observability backend",
+      "sublabel": "for example SigNoz",
+      "pos": [
+        1000,
+        300
+      ],
+      "size": [
+        180,
+        64
+      ],
+      "sources": [
+        {
+          "path": "tumult-otel/src/config.rs",
+          "line": 34,
+          "end_line": 57
+        },
+        {
+          "path": "docker/docker-compose.observability.yml",
+          "line": 1,
+          "end_line": 25
+        }
+      ]
+    },
+    {
+      "id": "sut",
+      "type": "external",
+      "label": "Systems under test",
+      "sublabel": "your services",
+      "pos": [
+        100,
+        560
+      ],
+      "size": [
+        180,
+        64
+      ],
+      "sources": [
+        {
+          "path": "tumult-exec/src/lib.rs",
+          "line": 1,
+          "end_line": 45
+        },
+        {
+          "path": "tumult-core/src/runner/experiment.rs",
+          "line": 245,
+          "end_line": 295
+        }
+      ]
+    },
+    {
+      "id": "manifests",
+      "type": "cloud",
+      "label": "Kubernetes manifests",
+      "sublabel": "files in a folder",
+      "pos": [
+        380,
+        560
+      ],
+      "size": [
+        180,
+        64
+      ],
+      "sources": [
+        {
+          "path": "tumult-api/src/handlers/risks.rs",
+          "line": 306,
+          "end_line": 336
+        },
+        {
+          "path": "tumult-risk/src/manifests.rs",
+          "line": 143,
+          "end_line": 155
+        }
+      ]
+    },
+    {
+      "id": "ci",
+      "type": "external",
+      "label": "CI pipeline",
+      "sublabel": "release gate, perf check",
+      "pos": [
+        660,
+        560
+      ],
+      "size": [
+        180,
+        64
+      ],
+      "sources": [
+        {
+          "path": "tumult-cli/src/commands/gate.rs",
+          "line": 1,
+          "end_line": 35
+        },
+        {
+          "path": "tumult-cli/src/commands/perf.rs",
+          "line": 287,
+          "end_line": 296
+        }
+      ]
+    },
+    {
+      "id": "mcpc",
+      "type": "external",
+      "label": "MCP clients",
+      "sublabel": "call Tumult tools",
+      "pos": [
+        940,
+        560
+      ],
+      "size": [
+        180,
+        64
+      ],
+      "sources": [
+        {
+          "path": "tumult-mcp/src/server.rs",
+          "line": 330,
+          "end_line": 365
+        },
+        {
+          "path": "tumult-mcp/src/handler/dispatch.rs",
+          "line": 353,
+          "end_line": 395
+        }
+      ]
+    }
+  ],
+  "boundaries": [],
+  "connections": [
+    {
+      "id": "op-t",
+      "from": "operator",
+      "to": "tumult",
+      "label": "runs tests",
+      "variant": "emphasis"
+    },
+    {
+      "id": "ap-t",
+      "from": "approver",
+      "to": "tumult",
+      "label": "approves"
+    },
+    {
+      "id": "vi-t",
+      "from": "viewer",
+      "to": "tumult",
+      "label": "reads results"
+    },
+    {
+      "id": "otel-t",
+      "from": "otel",
+      "to": "tumult",
+      "label": "OTLP, OTel-Arrow",
+      "variant": "emphasis"
+    },
+    {
+      "id": "t-obs",
+      "from": "tumult",
+      "to": "obs",
+      "label": "run traces (OTLP)",
+      "variant": "dashed"
+    },
+    {
+      "id": "t-sut",
+      "from": "tumult",
+      "to": "sut",
+      "label": "faults, load, probes",
+      "variant": "emphasis"
+    },
+    {
+      "id": "man-t",
+      "from": "manifests",
+      "to": "tumult",
+      "label": "read for risks"
+    },
+    {
+      "id": "ci-t",
+      "from": "ci",
+      "to": "tumult",
+      "label": "asks for verdict"
+    },
+    {
+      "id": "mcp-t",
+      "from": "mcpc",
+      "to": "tumult",
+      "label": "MCP"
+    }
+  ]
+}

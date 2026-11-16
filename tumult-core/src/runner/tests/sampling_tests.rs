@@ -10,13 +10,15 @@ use std::time::Duration;
 
 // -- Tests: during-phase samples interleave with method execution
 
-/// Method actions sleep and record their execution window; probes record
-/// their execution timestamps. Lets the test assert that during-phase
-/// samples were taken *while* the method was running.
+/// Method actions record their execution window and stay in it until two
+/// probes have run (or a deadline passes); probes record their execution
+/// timestamps. Lets the test assert that during-phase samples were taken
+/// *while* the method was running.
 struct InterleavingExecutor {
     method_started: AtomicI64,
     method_ended: AtomicI64,
     probe_times: Mutex<Vec<i64>>,
+    probed: std::sync::Condvar,
 }
 
 impl InterleavingExecutor {
@@ -25,6 +27,7 @@ impl InterleavingExecutor {
             method_started: AtomicI64::new(0),
             method_ended: AtomicI64::new(0),
             probe_times: Mutex::new(Vec::new()),
+            probed: std::sync::Condvar::new(),
         }
     }
 }
@@ -35,17 +38,26 @@ impl ActivityExecutor for InterleavingExecutor {
             ActivityType::Action => {
                 self.method_started
                     .store(epoch_nanos_now(), Ordering::SeqCst);
-                std::thread::sleep(Duration::from_millis(300));
+                let probes = self.probe_times.lock().unwrap();
+                let enough = probes.len() + 2;
+                // Without sampling during the method nothing wakes this up:
+                // the deadline ends the wait and the test fails on the count.
+                let waited = self
+                    .probed
+                    .wait_timeout_while(probes, Duration::from_secs(20), |p| p.len() < enough)
+                    .unwrap();
+                drop(waited);
                 self.method_ended.store(epoch_nanos_now(), Ordering::SeqCst);
                 ActivityOutcome {
                     success: true,
                     output: None,
                     error: None,
-                    duration_ms: 300,
+                    duration_ms: 1,
                 }
             }
             ActivityType::Probe => {
                 self.probe_times.lock().unwrap().push(epoch_nanos_now());
+                self.probed.notify_all();
                 ActivityOutcome {
                     success: true,
                     output: Some("200".into()),
@@ -86,8 +98,7 @@ fn during_samples_interleave_with_method_execution() {
         .count();
     assert!(
         during_count >= 2,
-        "expected at least 2 probe samples taken while the 300ms method ran \
-         (20ms interval), got {during_count}"
+        "expected at least 2 probe samples taken while the method ran, got {during_count}"
     );
     let after_count = probe_times.iter().filter(|&&t| t >= method_end).count();
     assert!(

@@ -208,6 +208,7 @@ fn experiment_runs_resolves_outcome_from_completed_log() {
                 ("status".into(), "Deviated".into()),
             ],
             resource_attrs: vec![],
+            ..LogRow::default()
         }])
         .unwrap();
     let reader = store.read_only().unwrap();

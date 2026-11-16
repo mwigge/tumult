@@ -162,8 +162,7 @@ async fn http_post_logs_preserves_or_assigns_timestamps() {
         .unwrap();
     assert_eq!(response.status(), 200);
 
-    // The write travels a channel; give the writer task a beat to land it.
-    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    // The handler answers after the writer acknowledged the batch.
     let reader = store.read_only().unwrap();
     let rows = reader
         .query_json_rows("SELECT ts_ns, body FROM logs ORDER BY ts_ns")

@@ -7,8 +7,8 @@
 //! - A panicking background thread produces a `Failed` `ActivityResult`
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
 use tumult_core::controls::ControlRegistry;
@@ -21,20 +21,13 @@ use tumult_test_utils::{action, background_action, minimal_experiment};
 /// Records the wall-clock instant at which each activity starts executing.
 struct TimestampExecutor {
     timestamps: Arc<Mutex<HashMap<String, Instant>>>,
-    durations: HashMap<String, Duration>,
 }
 
 impl TimestampExecutor {
     fn new() -> Self {
         Self {
             timestamps: Arc::new(Mutex::new(HashMap::new())),
-            durations: HashMap::new(),
         }
-    }
-
-    fn with_duration(mut self, name: &str, duration: Duration) -> Self {
-        self.durations.insert(name.into(), duration);
-        self
     }
 
     fn timestamps(&self) -> Arc<Mutex<HashMap<String, Instant>>> {
@@ -49,10 +42,6 @@ impl ActivityExecutor for TimestampExecutor {
             .unwrap()
             .insert(activity.name.clone(), Instant::now());
 
-        if let Some(dur) = self.durations.get(&activity.name) {
-            std::thread::sleep(*dur);
-        }
-
         ActivityOutcome {
             success: true,
             output: Some("ok".into()),
@@ -62,27 +51,45 @@ impl ActivityExecutor for TimestampExecutor {
     }
 }
 
-/// Executor that records a counter increment per execution call.
-#[allow(dead_code)] // Reserved for future concurrency count tests
-struct CountingExecutor {
-    count: Arc<AtomicUsize>,
+/// The activity named `waiter` does not finish before the one named
+/// `awaited` has started, or a deadline has passed. `overlapped` says which.
+struct OverlapExecutor {
+    waiter: &'static str,
+    awaited: &'static str,
+    awaited_started: Mutex<bool>,
+    changed: Condvar,
+    overlapped: Arc<AtomicBool>,
 }
 
-#[allow(dead_code)]
-impl CountingExecutor {
-    fn new() -> Self {
+impl OverlapExecutor {
+    fn new(waiter: &'static str, awaited: &'static str) -> Self {
         Self {
-            count: Arc::new(AtomicUsize::new(0)),
+            waiter,
+            awaited,
+            awaited_started: Mutex::new(false),
+            changed: Condvar::new(),
+            overlapped: Arc::new(AtomicBool::new(false)),
         }
     }
 }
 
-impl ActivityExecutor for CountingExecutor {
-    fn execute(&self, _activity: &Activity) -> ActivityOutcome {
-        self.count.fetch_add(1, Ordering::Relaxed);
+impl ActivityExecutor for OverlapExecutor {
+    fn execute(&self, activity: &Activity) -> ActivityOutcome {
+        if activity.name == self.awaited {
+            *self.awaited_started.lock().unwrap() = true;
+            self.changed.notify_all();
+        }
+        if activity.name == self.waiter {
+            let started = self.awaited_started.lock().unwrap();
+            let (started, _) = self
+                .changed
+                .wait_timeout_while(started, Duration::from_secs(20), |started| !*started)
+                .unwrap();
+            self.overlapped.store(*started, Ordering::SeqCst);
+        }
         ActivityOutcome {
             success: true,
-            output: None,
+            output: Some("ok".into()),
             error: None,
             duration_ms: 0,
         }
@@ -134,20 +141,13 @@ fn with_pause_after(mut activity: Activity, secs: f64) -> Activity {
 // Test: background activities run concurrently with foreground
 // ═══════════════════════════════════════════════════════════════
 
-/// Verify that a background activity starts before a slow foreground activity
-/// completes — demonstrating true concurrency.
-///
-/// Layout:
-///   - foreground: "fg-slow" sleeps 80 ms
-///   - background: "bg-fast" sleeps 0 ms
-///
-/// If execution is concurrent, "bg-fast" should record a start timestamp
-/// that is earlier than `fg-slow`'s start + 80 ms (i.e. bg doesn't wait
-/// for fg to finish before starting).
+/// A background activity starts while a foreground activity is still
+/// executing: the foreground one does not return before it has seen the
+/// background one start.
 #[test]
 fn background_activities_run_concurrently() {
-    let executor = TimestampExecutor::new().with_duration("fg-slow", Duration::from_millis(80));
-    let timestamps = executor.timestamps();
+    let executor = OverlapExecutor::new("fg-slow", "bg-fast");
+    let overlapped = Arc::clone(&executor.overlapped);
     let executor: Arc<dyn ActivityExecutor> = Arc::new(executor);
     let controls = Arc::new(ControlRegistry::new());
 
@@ -156,18 +156,9 @@ fn background_activities_run_concurrently() {
     let journal = run_experiment(&exp, &executor, &controls, &RunConfig::default()).unwrap();
 
     assert_eq!(journal.method_results.len(), 2);
-
-    let ts = timestamps.lock().unwrap();
-    let fg_start = *ts.get("fg-slow").expect("fg-slow should have run");
-    let bg_start = *ts.get("bg-fast").expect("bg-fast should have run");
-
-    // If background ran concurrently, it should start before fg-slow completes
-    // (i.e. within the 80 ms window of fg-slow executing).
-    let bg_relative_to_fg = bg_start.saturating_duration_since(fg_start);
     assert!(
-        bg_relative_to_fg < Duration::from_millis(80),
-        "background activity should start before foreground completes; \
-         bg started {bg_relative_to_fg:?} after fg"
+        overlapped.load(Ordering::SeqCst),
+        "the background activity should start before the foreground one completes"
     );
 }
 

@@ -27,6 +27,7 @@ pub(crate) fn sample_journal(
 ) -> tumult_core::types::Journal {
     use tumult_core::types::*;
     Journal {
+        target_version: None,
         experiment_title: format!("Test {id}"),
         experiment_id: id.into(),
         status,
@@ -48,6 +49,9 @@ pub(crate) fn sample_journal(
         }],
         rollback_results: vec![],
         rollback_failures: 0,
+        kind: tumult_core::types::TestKind::default(),
+        objectives: None,
+        probe_samples: vec![],
         halt: None,
         blast_radius: None,
         estimate: None,

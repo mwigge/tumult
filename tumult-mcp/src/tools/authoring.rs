@@ -109,19 +109,17 @@ mod tests {
     use super::*;
 
     /// Scaffolding resolves actions against the live catalog, so tests point
-    /// discovery at the workspace's real `plugins/` directory (every test
-    /// sets the same value, so parallel test threads cannot race on it).
-    fn point_discovery_at_workspace_plugins() {
-        let plugins = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../plugins")
-            .canonicalize()
-            .unwrap();
-        std::env::set_var("TUMULT_PLUGIN_PATH", plugins);
+    /// discovery at the workspace's real `plugins/` directory for as long as
+    /// the returned guard lives.
+    fn point_discovery_at_workspace_plugins() -> tumult_test_utils::EnvGuard {
+        crate::tools::test_support::plugin_path_guard(
+            &crate::tools::test_support::workspace_plugins_dir(),
+        )
     }
 
     #[test]
     fn scaffold_produces_valid_toon() {
-        point_discovery_at_workspace_plugins();
+        let _plugins = point_discovery_at_workspace_plugins();
         let mut args = serde_json::Map::new();
         args.insert("delay_ms".into(), serde_json::json!(100));
         let report = scaffold_experiment(&ScaffoldArgs {
@@ -148,7 +146,7 @@ mod tests {
 
     #[test]
     fn scaffold_accepts_qualified_action() {
-        point_discovery_at_workspace_plugins();
+        let _plugins = point_discovery_at_workspace_plugins();
         let args = serde_json::Map::new();
         let report = scaffold_experiment(&ScaffoldArgs {
             plugin: None,
@@ -166,7 +164,7 @@ mod tests {
 
     #[test]
     fn scaffold_reports_invalid_regex_probe() {
-        point_discovery_at_workspace_plugins();
+        let _plugins = point_discovery_at_workspace_plugins();
         let args = serde_json::Map::new();
         let report = scaffold_experiment(&ScaffoldArgs {
             plugin: Some("tumult-network"),
@@ -185,7 +183,7 @@ mod tests {
 
     #[test]
     fn scaffold_rejects_probe_kind_catalog_entries() {
-        point_discovery_at_workspace_plugins();
+        let _plugins = point_discovery_at_workspace_plugins();
         let args = serde_json::Map::new();
         let err = scaffold_experiment(&ScaffoldArgs {
             plugin: Some("tumult-network"),

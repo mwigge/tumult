@@ -2,8 +2,8 @@
 //! evidence and writing that evidence to disk.
 
 use tumult_agentic::journal::{
-    encode_result, metadata_evidence_from_result, metadata_evidence_from_trajectory,
-    write_metadata_journal_file,
+    encode_metadata_journal, encode_result, metadata_evidence_from_result,
+    metadata_evidence_from_trajectory, write_metadata_journal_file, AgenticJournalToolCall,
 };
 use tumult_agentic::model::{AgenticError, AgenticRunResult, ContractOutcome, FaultApplication};
 use tumult_agentic::scoring::agentic_score;
@@ -102,6 +102,36 @@ fn run_result_encodes_to_toon() {
 
     assert!(encoded.contains("latency-spike"));
     assert!(encoded.contains("resilience_score"));
+}
+
+#[test]
+fn encoded_journal_carries_trace_correlation_and_tool_calls_as_hashes() {
+    let mut evidence = metadata_evidence_from_result(
+        "exp-1",
+        "run-1",
+        &run_result(Some("4bf92f3577b34da6a3ce929d0e0e4736".to_string())),
+    );
+    evidence.tool_calls.push(AgenticJournalToolCall {
+        tool_name: "search_docs".to_string(),
+        operation: "execute_tool".to_string(),
+        payload_sha256: "sha256:tool".to_string(),
+        status: "timeout".to_string(),
+    });
+
+    let encoded = encode_metadata_journal(&evidence).expect("journal encodes");
+
+    for expected in [
+        "4bf92f3577b34da6a3ce929d0e0e4736",
+        "span-agentic-local",
+        "metadata_only",
+        "search_docs",
+        "sha256:tool",
+    ] {
+        assert!(
+            encoded.contains(expected),
+            "missing {expected:?} in:\n{encoded}"
+        );
+    }
 }
 
 #[test]

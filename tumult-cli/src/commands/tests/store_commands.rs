@@ -3,12 +3,15 @@
 //! temp analytics stores.
 
 use super::super::*;
-use super::helpers::{use_temp_store, ENV_LOCK};
+use super::helpers::use_temp_store;
+use crate::output::testing::capture;
 use tempfile::TempDir;
 use tumult_core::types::{ExperimentStatus, Journal};
+use tumult_test_utils::EnvGuard;
 
 fn journal(id: &str, started_at_ns: i64) -> Journal {
     Journal {
+        target_version: None,
         experiment_title: format!("store test {id}"),
         experiment_id: id.into(),
         status: ExperimentStatus::Completed,
@@ -20,6 +23,9 @@ fn journal(id: &str, started_at_ns: i64) -> Journal {
         method_results: vec![],
         rollback_results: vec![],
         rollback_failures: 0,
+        kind: tumult_core::types::TestKind::default(),
+        objectives: None,
+        probe_samples: vec![],
         estimate: None,
         baseline_result: None,
         during_result: None,
@@ -47,26 +53,40 @@ fn populated_store(db_path: &std::path::Path, ids: &[&str]) {
 
 #[test]
 fn store_stats_without_store_reports_absence() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let mut env = EnvGuard::lock();
     let dir = TempDir::new().unwrap();
-    use_temp_store(dir.path()); // not created on disk
+    let db = use_temp_store(&mut env, dir.path()); // not created on disk
 
-    cmd_store_stats().unwrap();
+    let (result, printed) = capture(cmd_store_stats);
 
-    std::env::remove_var("TUMULT_LAKE_PATH");
+    result.unwrap();
+    assert_eq!(
+        printed.stdout,
+        format!(
+            "No persistent store found at: {}\nRun an experiment to create it automatically.\n",
+            db.display()
+        )
+    );
+    assert!(!db.exists(), "reporting must not create the store");
 }
 
 #[test]
 fn store_stats_reports_schema_and_counts() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let mut env = EnvGuard::lock();
     let dir = TempDir::new().unwrap();
-    let db = use_temp_store(dir.path());
+    let db = use_temp_store(&mut env, dir.path());
     populated_store(&db, &["s-1", "s-2"]);
 
-    cmd_store_stats().unwrap();
+    let (result, printed) = capture(cmd_store_stats);
 
-    std::env::remove_var("TUMULT_LAKE_PATH");
-
+    result.unwrap();
+    let out = printed.stdout;
+    assert!(
+        out.starts_with(&format!("Store: {}\nSchema version: ", db.display())),
+        "{out}"
+    );
+    assert!(out.contains("\nExperiments: 2\n"), "{out}");
+    assert!(out.contains("\nFile size: "), "{out}");
     let store = tumult_lake::AnalyticsStore::open_read_only(&db).unwrap();
     assert_eq!(store.experiment_count().unwrap(), 2);
 }
@@ -75,24 +95,22 @@ fn store_stats_reports_schema_and_counts() {
 
 #[test]
 fn store_backup_requires_existing_store() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let mut env = EnvGuard::lock();
     let dir = TempDir::new().unwrap();
-    use_temp_store(dir.path()); // not created on disk
+    use_temp_store(&mut env, dir.path()); // not created on disk
 
     let err = cmd_store_backup(&dir.path().join("backup")).unwrap_err();
     assert!(
         err.to_string().contains("no persistent store found"),
         "{err}"
     );
-
-    std::env::remove_var("TUMULT_LAKE_PATH");
 }
 
 #[test]
 fn store_backup_writes_complete_operational_bundle() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let mut env = EnvGuard::lock();
     let dir = TempDir::new().unwrap();
-    let db = use_temp_store(dir.path());
+    let db = use_temp_store(&mut env, dir.path());
     populated_store(&db, &["b-1"]);
     let backup = dir.path().join("backup");
 
@@ -100,32 +118,28 @@ fn store_backup_writes_complete_operational_bundle() {
 
     assert!(backup.join("store.duckdb").exists());
     assert!(backup.join("manifest.json").exists());
-
-    std::env::remove_var("TUMULT_LAKE_PATH");
 }
 
 // ── purge ────────────────────────────────────────────────────
 
 #[test]
 fn store_purge_requires_existing_store() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let mut env = EnvGuard::lock();
     let dir = TempDir::new().unwrap();
-    use_temp_store(dir.path());
+    use_temp_store(&mut env, dir.path());
 
     let err = cmd_store_purge(30).unwrap_err();
     assert!(
         err.to_string().contains("no persistent store found"),
         "{err}"
     );
-
-    std::env::remove_var("TUMULT_LAKE_PATH");
 }
 
 #[test]
 fn store_purge_removes_only_old_experiments() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let mut env = EnvGuard::lock();
     let dir = TempDir::new().unwrap();
-    let db = use_temp_store(dir.path());
+    let db = use_temp_store(&mut env, dir.path());
     let store = tumult_lake::AnalyticsStore::open(&db).unwrap();
     // 2020 — older than any sane purge window.
     store
@@ -137,25 +151,21 @@ fn store_purge_removes_only_old_experiments() {
 
     cmd_store_purge(30).unwrap();
 
-    std::env::remove_var("TUMULT_LAKE_PATH");
-
     let store = tumult_lake::AnalyticsStore::open_read_only(&db).unwrap();
     assert_eq!(store.experiment_count().unwrap(), 1);
 }
 
 #[test]
 fn store_purge_with_nothing_old_keeps_everything() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let mut env = EnvGuard::lock();
     let dir = TempDir::new().unwrap();
-    let db = use_temp_store(dir.path());
+    let db = use_temp_store(&mut env, dir.path());
     let now_ns = chrono::Utc::now().timestamp_nanos_opt().unwrap();
     let store = tumult_lake::AnalyticsStore::open(&db).unwrap();
     store.ingest_journal(&journal("recent-1", now_ns)).unwrap();
     drop(store);
 
     cmd_store_purge(30).unwrap();
-
-    std::env::remove_var("TUMULT_LAKE_PATH");
 
     let store = tumult_lake::AnalyticsStore::open_read_only(&db).unwrap();
     assert_eq!(store.experiment_count().unwrap(), 1);
@@ -165,25 +175,35 @@ fn store_purge_with_nothing_old_keeps_everything() {
 
 #[test]
 fn store_path_reports_missing_store() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let mut env = EnvGuard::lock();
     let dir = TempDir::new().unwrap();
-    use_temp_store(dir.path());
+    let db = use_temp_store(&mut env, dir.path());
 
-    cmd_store_path().unwrap();
+    let (result, printed) = capture(cmd_store_path);
 
-    std::env::remove_var("TUMULT_LAKE_PATH");
+    result.unwrap();
+    assert_eq!(
+        printed.stdout,
+        format!("{}\n(not yet created)\n", db.display())
+    );
 }
 
 #[test]
 fn store_path_reports_existing_store() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let mut env = EnvGuard::lock();
     let dir = TempDir::new().unwrap();
-    let db = use_temp_store(dir.path());
+    let db = use_temp_store(&mut env, dir.path());
     populated_store(&db, &["p-1"]);
 
-    cmd_store_path().unwrap();
+    let (result, printed) = capture(cmd_store_path);
 
-    std::env::remove_var("TUMULT_LAKE_PATH");
+    result.unwrap();
+    let out = printed.stdout;
+    assert!(
+        out.starts_with(&format!("{}\nSize: ", db.display())),
+        "{out}"
+    );
+    assert!(out.ends_with(" MB\n"), "{out}");
 }
 
 // ── import (happy path) ──────────────────────────────────────
@@ -202,7 +222,7 @@ fn import_rejects_directory_missing_activities_parquet() {
 
 #[test]
 fn import_loads_backup_into_fresh_store() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let mut env = EnvGuard::lock();
     let dir = TempDir::new().unwrap();
 
     // Produce a parquet export from a source store.
@@ -221,42 +241,240 @@ fn import_loads_backup_into_fresh_store() {
     }
 
     // Import it into the (fresh) default store.
-    let db = use_temp_store(dir.path());
+    let db = use_temp_store(&mut env, dir.path());
     cmd_import(&export_dir).unwrap();
-
-    std::env::remove_var("TUMULT_LAKE_PATH");
 
     let store = tumult_lake::AnalyticsStore::open_read_only(&db).unwrap();
     assert_eq!(store.experiment_count().unwrap(), 2);
+}
+
+/// A run with a load result of two windows.
+fn load_run(id: &str) -> Journal {
+    use tumult_core::types::{LoadExecution, LoadResult, LoadSample, LoadTool};
+    let started = 1_774_980_000_000_000_000;
+    let window = |ts_ns: i64| LoadSample {
+        ts_ns,
+        duration_s: 5.0,
+        vus: 4,
+        throughput_rps: 40.0,
+        latency_p50_ms: 20.0,
+        latency_p95_ms: 70.0,
+        latency_p99_ms: 90.0,
+        error_rate: 0.0,
+        requests: 200,
+        counts: None,
+        request_timeout_ms: Some(2000.0),
+    };
+    let mut run = journal(id, started);
+    run.load_result = Some(LoadResult {
+        tool: LoadTool::Oha,
+        started_at_ns: started,
+        ended_at_ns: started + 10_000_000_000,
+        duration_s: 10.0,
+        vus: 4,
+        throughput_rps: 40.0,
+        latency_p50_ms: 20.0,
+        latency_p95_ms: 70.0,
+        latency_p99_ms: 90.0,
+        error_rate: 0.0,
+        total_requests: 400,
+        thresholds_met: true,
+        samples: vec![window(started), window(started + 5_000_000_000)],
+        execution: LoadExecution::default(),
+    });
+    run
+}
+
+/// Export `tables` of a store holding one load run into `dir`.
+fn exported_load_run(dir: &std::path::Path, with_loads: bool, with_samples: bool) {
+    let src_db = dir.join("src.duckdb");
+    let store = tumult_lake::AnalyticsStore::open(&src_db).unwrap();
+    store.ingest_journal(&load_run("imp-load")).unwrap();
+    let export_dir = dir.join("export");
+    std::fs::create_dir_all(&export_dir).unwrap();
+    let file = |name: &str| export_dir.join(name);
+    store
+        .export_tables(&file("experiments.parquet"), &file("activities.parquet"))
+        .unwrap();
+    store
+        .export_load_tables(
+            &file("load_results.parquet"),
+            &file("probe_samples.parquet"),
+        )
+        .unwrap();
+    if !with_loads {
+        std::fs::remove_file(file("load_results.parquet")).unwrap();
+    }
+    if !with_samples {
+        std::fs::remove_file(file("probe_samples.parquet")).unwrap();
+    }
+}
+
+fn count(store: &tumult_lake::AnalyticsStore, table: &str) -> String {
+    let rows = store
+        .query(&format!("SELECT count(*) FROM {table}"))
+        .unwrap();
+    rows[0].join("|")
+}
+
+#[test]
+fn import_takes_the_load_evidence_a_backup_holds() {
+    let mut env = EnvGuard::lock();
+    let dir = TempDir::new().unwrap();
+    exported_load_run(dir.path(), true, true);
+
+    let db = use_temp_store(&mut env, dir.path());
+    cmd_import(&dir.path().join("export")).unwrap();
+
+    let store = tumult_lake::AnalyticsStore::open_read_only(&db).unwrap();
+    assert_eq!(store.experiment_count().unwrap(), 1);
+    assert_eq!(count(&store, "load_results"), "1");
+    // Three series for each of the two windows, at the least.
+    let samples: u64 = count(&store, "probe_samples").parse().unwrap();
+    assert!(samples >= 6, "{samples}");
+}
+
+#[test]
+fn import_refuses_a_backup_with_half_of_the_load_evidence() {
+    let mut env = EnvGuard::lock();
+    for (with_loads, with_samples, missing) in [
+        (true, false, "probe_samples.parquet"),
+        (false, true, "load_results.parquet"),
+    ] {
+        let dir = TempDir::new().unwrap();
+        exported_load_run(dir.path(), with_loads, with_samples);
+        let db = use_temp_store(&mut env, dir.path());
+        let err = cmd_import(&dir.path().join("export")).unwrap_err();
+        assert!(err.to_string().contains(missing), "{err}");
+        assert!(!db.exists(), "nothing was imported");
+    }
+}
+
+#[test]
+fn import_of_a_backup_without_load_evidence_still_works() {
+    let mut env = EnvGuard::lock();
+    let dir = TempDir::new().unwrap();
+    exported_load_run(dir.path(), false, false);
+    let db = use_temp_store(&mut env, dir.path());
+    cmd_import(&dir.path().join("export")).unwrap();
+    let store = tumult_lake::AnalyticsStore::open_read_only(&db).unwrap();
+    assert_eq!(store.experiment_count().unwrap(), 1);
+    assert_eq!(count(&store, "load_results"), "0");
+}
+
+/// A span of `service`: the root of run `id` when it names one.
+fn span(service: &str, version: Option<&str>, id: Option<&str>) -> tumult_lake::SpanRow {
+    tumult_lake::SpanRow {
+        ts_ns: 1_774_980_000_000_000_000,
+        trace_id: format!("trace-{service}"),
+        span_id: format!("span-{service}"),
+        span_name: id.map_or("GET /cart", |_| "resilience.experiment").into(),
+        span_kind: id.map_or("Server", |_| "Internal").into(),
+        duration_ns: 1_000_000,
+        status_code: "Unset".into(),
+        service_name: service.into(),
+        service_version: version.map(Into::into),
+        experiment_id: id.map(Into::into),
+        target_system: id.map(|_| "checkout".into()),
+        events: "[]".into(),
+        ..tumult_lake::SpanRow::default()
+    }
+}
+
+#[test]
+fn store_export_writes_the_backup_import_reads() {
+    let mut env = EnvGuard::lock();
+    let dir = TempDir::new().unwrap();
+    let source = dir.path().join("source.duckdb");
+    {
+        let writer = tumult_lake::Store::open(&source).unwrap().writer().unwrap();
+        writer
+            .insert_spans(&[
+                span("tumult", None, Some("exp-load")),
+                span("checkout", Some("1.5.0"), None),
+            ])
+            .unwrap();
+        writer.ingest_journal(&load_run("exp-load"), None).unwrap();
+    }
+    let backup = dir.path().join("backup");
+    env.set("TUMULT_LAKE_PATH", &source);
+    cmd_store_export(&backup).unwrap();
+    // A backup is not written over another.
+    let again = cmd_store_export(&backup).unwrap_err();
+    for file in [
+        "experiments.parquet",
+        "activities.parquet",
+        "load_results.parquet",
+        "probe_samples.parquet",
+        "run_roots.parquet",
+        "version_sightings.parquet",
+    ] {
+        assert!(backup.join(file).is_file(), "{file}");
+    }
+
+    let db = use_temp_store(&mut env, dir.path());
+    cmd_import(&backup).unwrap();
+    cmd_import(&backup).unwrap();
+    assert!(again.to_string().contains("already holds"), "{again}");
+
+    let store = tumult_lake::AnalyticsStore::open_read_only(&db).unwrap();
+    assert_eq!(count(&store, "experiments"), "1");
+    assert_eq!(count(&store, "load_results"), "1");
+    // The run's root and no other span; the target's version history.
+    assert_eq!(count(&store, "spans"), "1");
+    let versions = store
+        .query("SELECT service_name, service_version FROM service_version_sightings")
+        .unwrap();
+    assert_eq!(versions.len(), 1);
+    assert_eq!(versions[0].join("|"), "checkout|1.5.0");
+}
+
+#[test]
+fn store_export_without_a_store_says_so() {
+    let mut env = EnvGuard::lock();
+    let dir = TempDir::new().unwrap();
+    use_temp_store(&mut env, dir.path());
+    let err = cmd_store_export(&dir.path().join("backup")).unwrap_err();
+    assert!(err.to_string().contains("no persistent store"), "{err}");
+}
+
+#[test]
+fn import_refuses_a_backup_with_half_of_the_version_history() {
+    let mut env = EnvGuard::lock();
+    let dir = TempDir::new().unwrap();
+    exported_load_run(dir.path(), true, true);
+    std::fs::write(dir.path().join("export/run_roots.parquet"), b"").unwrap();
+    let db = use_temp_store(&mut env, dir.path());
+    let err = cmd_import(&dir.path().join("export")).unwrap_err();
+    assert!(
+        err.to_string().contains("version_sightings.parquet"),
+        "{err}"
+    );
+    assert!(!db.exists(), "nothing was imported");
 }
 
 // ── import-legacy ────────────────────────────────────────────
 
 #[test]
 fn store_import_legacy_without_any_source_errors() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let mut env = EnvGuard::lock();
     let dir = TempDir::new().unwrap();
     // Isolate every implicit source: no legacy env vars, and a HOME whose
     // ~/.tumult/analytics.duckdb cannot exist.
-    std::env::remove_var("TUMULT_ANALYTICS_PATH");
-    std::env::remove_var("KRONIKA_DB");
-    let original_home = std::env::var_os("HOME");
     let home = dir.path().join("home");
     std::fs::create_dir_all(&home).unwrap();
-    std::env::set_var("HOME", &home);
+    env.remove("TUMULT_ANALYTICS_PATH")
+        .remove("KRONIKA_DB")
+        .set("HOME", &home);
 
     let err = cmd_store_import_legacy(None, None, None).unwrap_err();
     assert!(err.to_string().contains("no legacy stores found"), "{err}");
-
-    match original_home {
-        Some(value) => std::env::set_var("HOME", value),
-        None => std::env::remove_var("HOME"),
-    }
 }
 
 #[test]
 fn store_import_legacy_merges_explicit_source() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    // The command reads the legacy store variables.
+    let _env = EnvGuard::lock();
     let dir = TempDir::new().unwrap();
     let legacy = dir.path().join("legacy.duckdb");
     populated_store(&legacy, &["leg-1"]);
@@ -270,7 +488,8 @@ fn store_import_legacy_merges_explicit_source() {
 
 #[test]
 fn store_import_legacy_skips_self_import() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    // The command reads the legacy store variables.
+    let _env = EnvGuard::lock();
     let dir = TempDir::new().unwrap();
     let db = dir.path().join("unified.duckdb");
     populated_store(&db, &["self-1"]);
@@ -284,7 +503,8 @@ fn store_import_legacy_skips_self_import() {
 
 #[test]
 fn store_import_legacy_missing_source_file_errors() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    // The command reads the legacy store variables.
+    let _env = EnvGuard::lock();
     let dir = TempDir::new().unwrap();
     let target = dir.path().join("unified.duckdb");
 
@@ -299,14 +519,11 @@ fn store_import_legacy_missing_source_file_errors() {
 
 // ── migrate ──────────────────────────────────────────────────
 
-// The env guard must cover the awaited migrate call (the env var is read
-// inside it). Only tests serialized on ENV_LOCK can block on it, so holding a
-// std guard across the await cannot deadlock the test runtime.
-#[allow(clippy::await_holding_lock)]
+// The guard covers the awaited migrate call: the variable is read inside it.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn store_migrate_requires_clickhouse_url() {
-    let _guard = ENV_LOCK.lock().unwrap();
-    std::env::remove_var("TUMULT_CLICKHOUSE_URL");
+    let mut env = EnvGuard::lock();
+    env.remove("TUMULT_CLICKHOUSE_URL");
 
     let err = cmd_store_migrate().await.unwrap_err();
     assert!(

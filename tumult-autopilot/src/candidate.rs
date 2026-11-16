@@ -72,6 +72,13 @@ pub enum Trigger {
         /// Optional human-readable detail about what changed.
         detail: Option<String>,
     },
+    /// A passive risk-scan finding asked for an experiment (`/api/risks`).
+    Risk {
+        /// The scanner's stable finding id.
+        risk_id: String,
+        /// The rule that produced the finding.
+        rule: String,
+    },
 }
 
 /// Recommendation confidence, gate-relevant only in two buckets: `High` is

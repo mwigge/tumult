@@ -1,12 +1,13 @@
 [package]
 name = "tumult-compliance"
 description = "Compliance-grade report documents: content model, HTML preview, Typst PDF pipeline, resilience scoring"
-version = "0.7.0"
+version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [dependencies]
 tumult-lake.workspace = true
+tumult-core = { path = "../tumult-core" }
 typst.workspace = true
 typst-pdf.workspace = true
 sha2.workspace = true

@@ -6,6 +6,8 @@ use tumult_core::types::{Experiment, Journal};
 
 use crate::arrow_convert::{
     journal_to_activity_batch, journal_to_experiment_batch, journal_to_load_batch,
+    journal_to_nfr_verdicts_batch, journal_to_probe_samples_batch,
+    load_samples_to_probe_samples_batch,
 };
 use crate::error::AnalyticsError;
 use crate::telemetry;
@@ -84,6 +86,27 @@ fn ingest_journal_inner(
     if let Some(ref load_result) = journal.load_result {
         let load_batch = journal_to_load_batch(&journal.experiment_id, load_result)?;
         insert_batch(conn, "load_results", &load_batch)?;
+        // v17: a streaming adapter's windows land next to the probe
+        // samples as `load.*` series.
+        if !load_result.samples.is_empty() {
+            insert_batch(
+                conn,
+                "probe_samples",
+                &load_samples_to_probe_samples_batch(&journal.experiment_id, load_result)?,
+            )?;
+        }
+    }
+    // v16: raw probe samples and objective verdicts.
+    if !journal.probe_samples.is_empty() {
+        insert_batch(
+            conn,
+            "probe_samples",
+            &journal_to_probe_samples_batch(journal)?,
+        )?;
+    }
+    let verdicts = journal_to_nfr_verdicts_batch(journal)?;
+    if verdicts.num_rows() > 0 {
+        insert_batch(conn, "nfr_verdicts", &verdicts)?;
     }
     // ChaosGraph: upsert this run's nodes/edges (schema v2).
     super::graph::populate_graph(conn, journal, experiment)?;
@@ -129,6 +152,10 @@ impl AnalyticsStore {
     ///     rollback_failures: 0,
     ///     halt: None,
     ///     blast_radius: None,
+    ///     kind: TestKind::default(),
+    ///     objectives: None,
+    ///     probe_samples: vec![],
+    ///     target_version: None,
     /// };
     ///
     /// store.ingest_journal(&journal).unwrap();
@@ -371,6 +398,8 @@ mod tests {
             error_rate: 0.02,
             total_requests: 1000,
             thresholds_met: true,
+            samples: vec![],
+            execution: tumult_core::types::LoadExecution::default(),
         });
         s.ingest_journal(&journal).unwrap();
 
@@ -381,6 +410,341 @@ mod tests {
         assert_eq!(rows[0][0], "load-test-1");
         assert_eq!(rows[0][1], "k6");
         assert_eq!(rows[0][2], "5");
+    }
+
+    #[test]
+    fn probe_samples_and_verdicts_ingested_into_duckdb() {
+        use tumult_core::types::{
+            NfrCriticality, NfrKind, NfrOperator, NfrState, NfrVerdict, ObjectiveOutcome,
+            ProbeSample, SamplePhase, TestKind,
+        };
+
+        let s = AnalyticsStore::in_memory().unwrap();
+        let mut journal = sample_journal("dr-1", ExperimentStatus::Completed);
+        journal.kind = TestKind::Dr;
+        journal.probe_samples = vec![
+            ProbeSample {
+                probe: "health".into(),
+                phase: SamplePhase::During,
+                ts_ns: 1_000,
+                duration_ms: 120,
+                ok: true,
+            },
+            ProbeSample {
+                probe: "health".into(),
+                phase: SamplePhase::Post,
+                ts_ns: 2_000,
+                duration_ms: 900,
+                ok: false,
+            },
+        ];
+        journal.objectives = Some(ObjectiveOutcome {
+            rto_target_s: Some(900.0),
+            rpo_target_s: None,
+            rto_measured_s: Some(42.5),
+            rpo_measured_s: None,
+            verdicts: vec![NfrVerdict {
+                nfr_id: "rto".into(),
+                kind: NfrKind::Rto,
+                metric: "recovery.mttr_s".into(),
+                operator: NfrOperator::Lte,
+                threshold: 900.0,
+                observed: Some(42.5),
+                state: NfrState::Met,
+                margin: Some(857.5),
+                criticality: NfrCriticality::Blocking,
+            }],
+        });
+        s.ingest_journal(&journal).unwrap();
+
+        let rows = s
+            .query("SELECT test_kind, rto_target_s, rto_measured_s FROM experiments WHERE experiment_id = 'dr-1'")
+            .unwrap();
+        assert_eq!(rows[0][0], "dr");
+        assert_eq!(rows[0][1].parse::<f64>().unwrap(), 900.0);
+        assert_eq!(rows[0][2].parse::<f64>().unwrap(), 42.5);
+
+        let rows = s
+            .query("SELECT probe_name, phase, ts_ns, value, ok FROM probe_samples ORDER BY ts_ns")
+            .unwrap();
+        assert_eq!(rows.len(), 2, "{rows:?}");
+        assert_eq!(rows[0][1], "during");
+        assert_eq!(rows[1][1], "post");
+        assert_eq!(rows[1][3].parse::<f64>().unwrap(), 900.0);
+        assert_eq!(rows[1][4], "false");
+
+        let rows = s
+            .query("SELECT nfr_id, kind, state, margin, criticality FROM nfr_verdicts")
+            .unwrap();
+        assert_eq!(rows.len(), 1, "{rows:?}");
+        assert_eq!(rows[0][0], "rto");
+        assert_eq!(rows[0][1], "rto");
+        assert_eq!(rows[0][2], "met");
+        assert_eq!(rows[0][4], "blocking");
+    }
+
+    #[test]
+    fn plain_journal_writes_no_samples_or_verdicts() {
+        let s = AnalyticsStore::in_memory().unwrap();
+        s.ingest_journal(&sample_journal("plain", ExperimentStatus::Completed))
+            .unwrap();
+        assert_eq!(
+            s.query("SELECT count(*) FROM probe_samples").unwrap()[0][0],
+            "0"
+        );
+        assert_eq!(
+            s.query("SELECT count(*) FROM nfr_verdicts").unwrap()[0][0],
+            "0"
+        );
+        let rows = s
+            .query("SELECT test_kind FROM experiments WHERE experiment_id = 'plain'")
+            .unwrap();
+        assert_eq!(rows[0][0], "chaos");
+    }
+
+    #[test]
+    fn load_samples_ingested_as_probe_series() {
+        use tumult_core::types::{LoadResult, LoadSample, LoadTool};
+
+        let s = AnalyticsStore::in_memory().unwrap();
+        let mut journal = sample_journal("soak-1", ExperimentStatus::Completed);
+        let window = |ts_ns: i64, p95: f64| LoadSample {
+            ts_ns,
+            duration_s: 10.0,
+            vus: 4,
+            throughput_rps: 40.0,
+            latency_p50_ms: 20.0,
+            latency_p95_ms: p95,
+            latency_p99_ms: 90.0,
+            error_rate: 0.0,
+            requests: 400,
+            counts: None,
+            request_timeout_ms: None,
+        };
+        journal.load_result = Some(LoadResult {
+            tool: LoadTool::Oha,
+            started_at_ns: 1_000_000_000,
+            ended_at_ns: 21_000_000_000,
+            duration_s: 20.0,
+            vus: 4,
+            throughput_rps: 40.0,
+            latency_p50_ms: 20.0,
+            latency_p95_ms: 75.0,
+            latency_p99_ms: 90.0,
+            error_rate: 0.0,
+            total_requests: 800,
+            thresholds_met: true,
+            samples: vec![window(1_000_000_000, 70.0), window(11_000_000_000, 80.0)],
+            execution: tumult_core::types::LoadExecution::default(),
+        });
+        s.ingest_journal(&journal).unwrap();
+
+        let rows = s
+            .query(
+                "SELECT ts_ns, value FROM probe_samples \
+                 WHERE probe_name = 'load.latency_p95_ms' AND phase = 'during' ORDER BY ts_ns",
+            )
+            .unwrap();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0][1].parse::<f64>().unwrap(), 70.0);
+        assert_eq!(rows[1][1].parse::<f64>().unwrap(), 80.0);
+        let count = s.query("SELECT count(*) FROM probe_samples").unwrap();
+        assert_eq!(count[0][0], "12");
+        let summary = s.query("SELECT tool FROM load_results").unwrap();
+        assert_eq!(summary[0][0], "oha");
+    }
+
+    fn lines(rows: &[crate::QueryRow]) -> Vec<String> {
+        rows.iter().map(|row| row.join("|")).collect()
+    }
+
+    #[test]
+    fn the_version_a_run_recorded_is_kept_with_its_source() {
+        let s = AnalyticsStore::in_memory().unwrap();
+        let recorded = |id: &str, version: &str, version_source: VersionSource| Journal {
+            target_version: Some(TargetVersion {
+                version: version.into(),
+                version_source,
+                shares: Vec::new(),
+            }),
+            ..sample_journal(id, ExperimentStatus::Completed)
+        };
+        let share = |version: &str, requests: u64| VersionShare {
+            version: version.into(),
+            requests,
+        };
+        let mixed = Journal {
+            target_version: TargetVersion::observed(vec![share("1.5.1", 60), share("1.6.0", 40)]),
+            ..sample_journal("v-mixed", ExperimentStatus::Completed)
+        };
+        s.ingest_journals(&[
+            recorded("v-declared", "1.5.0", VersionSource::Declared),
+            recorded("v-observed", "1.5.1", VersionSource::Observed),
+            mixed,
+            sample_journal("v-unknown", ExperimentStatus::Completed),
+        ])
+        .unwrap();
+
+        // A window more than one version served is kept with its shares.
+        let shares = s
+            .query(
+                "SELECT experiment_id, target_version, version_source, version_shares \
+                 FROM experiments WHERE version_shares IS NOT NULL",
+            )
+            .unwrap();
+        assert_eq!(
+            lines(&shares),
+            [concat!(
+                "v-mixed|1.5.1|mixed|",
+                r#"[{"version":"1.5.1","requests":60},{"version":"1.6.0","requests":40}]"#
+            )]
+        );
+
+        let rows = s
+            .query(
+                "SELECT experiment_id, target_version, version_source FROM experiments \
+                 WHERE version_shares IS NULL AND target_version IS NOT NULL \
+                 ORDER BY experiment_id",
+            )
+            .unwrap();
+        assert_eq!(
+            lines(&rows),
+            ["v-declared|1.5.0|declared", "v-observed|1.5.1|observed"]
+        );
+        let unknown = s
+            .query(
+                "SELECT experiment_id FROM experiments \
+                 WHERE target_version IS NULL AND version_source IS NULL",
+            )
+            .unwrap();
+        assert_eq!(lines(&unknown), ["v-unknown"]);
+    }
+
+    #[test]
+    fn how_a_load_was_executed_is_kept_with_its_result() {
+        use tumult_core::types::{LoadExecution, LoadResult, LoadSample, LoadTool, RequestCounts};
+
+        let s = AnalyticsStore::in_memory().unwrap();
+        let counts = RequestCounts {
+            sent: 800,
+            ok: 500,
+            timed_out: 200,
+            transport: 10,
+            http_4xx: 20,
+            http_5xx: 60,
+            http_other: 5,
+            unclassified: 5,
+        };
+        let window = |ts_ns: i64, duration_s: f64| LoadSample {
+            ts_ns,
+            duration_s,
+            vus: 4,
+            throughput_rps: 40.0,
+            latency_p50_ms: 20.0,
+            latency_p95_ms: 70.0,
+            latency_p99_ms: 90.0,
+            error_rate: 0.0,
+            requests: 400,
+            counts: Some(RequestCounts {
+                sent: 400,
+                ok: 250,
+                timed_out: 100,
+                ..RequestCounts::default()
+            }),
+            request_timeout_ms: Some(2000.0),
+        };
+        let load = |samples: Vec<LoadSample>, execution: LoadExecution| LoadResult {
+            tool: LoadTool::Oha,
+            started_at_ns: 1_000_000_000,
+            ended_at_ns: 61_000_000_000,
+            duration_s: 60.0,
+            vus: 4,
+            throughput_rps: 40.0,
+            latency_p50_ms: 20.0,
+            latency_p95_ms: 75.0,
+            latency_p99_ms: 90.0,
+            error_rate: 0.0,
+            total_requests: 800,
+            thresholds_met: false,
+            samples,
+            execution,
+        };
+        let mut cut_short = sample_journal("cut-short", ExperimentStatus::Halted);
+        cut_short.load_result = Some(load(
+            vec![window(1_000_000_000, 10.0), window(11_000_000_000, 2.5)],
+            LoadExecution {
+                planned_windows: Some(24),
+                completed_windows: Some(20),
+                unanswered_windows: 3,
+                lost_to_unanswered: 2,
+                aborted: true,
+                reasons: vec!["2 of 24 windows skipped".into()],
+                requests: Some(counts),
+                censored_windows: 1,
+            },
+        ));
+        // A tool that counts no windows and streamed none.
+        let mut plain = sample_journal("plain", ExperimentStatus::Completed);
+        plain.load_result = Some(load(vec![], LoadExecution::default()));
+        s.ingest_journals(&[cut_short, plain]).unwrap();
+
+        let rows = s
+            .query(
+                "SELECT CAST(aborted AS INTEGER), CAST(truncated AS INTEGER), planned_windows, \
+                 completed_windows, unanswered_windows, lost_to_unanswered, \
+                 CAST(sampled_duration_s * 10 AS INTEGER) \
+                 FROM load_results WHERE experiment_id = 'cut-short'",
+            )
+            .unwrap();
+        assert_eq!(lines(&rows), ["1|1|24|20|3|2|125"]);
+        let plain = s
+            .query(
+                "SELECT count(*) FROM load_results WHERE experiment_id = 'plain' \
+                 AND NOT aborted AND NOT truncated AND planned_windows IS NULL \
+                 AND completed_windows IS NULL AND unanswered_windows = 0 \
+                 AND lost_to_unanswered = 0 AND sampled_duration_s IS NULL",
+            )
+            .unwrap();
+        assert_eq!(plain[0][0], "1");
+
+        // What became of the requests, by class, and the censored windows.
+        let requests = s
+            .query(
+                "SELECT requests_sent, requests_ok, requests_timed_out, requests_transport, \
+                 requests_http_4xx, requests_http_5xx, requests_http_other, \
+                 requests_unclassified, censored_windows \
+                 FROM load_results WHERE experiment_id = 'cut-short'",
+            )
+            .unwrap();
+        assert_eq!(lines(&requests), ["800|500|200|10|20|60|5|5|1"]);
+        // A tool that does not say leaves them unknown, not zero.
+        let unknown = s
+            .query(
+                "SELECT count(*) FROM load_results WHERE experiment_id = 'plain' \
+                 AND requests_sent IS NULL AND requests_ok IS NULL \
+                 AND requests_timed_out IS NULL AND requests_unclassified IS NULL \
+                 AND censored_windows = 0",
+            )
+            .unwrap();
+        assert_eq!(unknown[0][0], "1");
+        // Each window keeps its own counts and timeout as series.
+        let windows = s
+            .query(
+                "SELECT probe_name, count(*), CAST(sum(value) AS BIGINT) FROM probe_samples \
+                 WHERE experiment_id = 'cut-short' AND (probe_name LIKE 'load.request%' \
+                 OR probe_name = 'load.window_s') GROUP BY probe_name ORDER BY probe_name",
+            )
+            .unwrap();
+        assert_eq!(
+            lines(&windows),
+            [
+                "load.request_timeout_ms|2|4000",
+                "load.requests_ok|2|500",
+                "load.requests_sent|2|800",
+                "load.requests_timed_out|2|200",
+                "load.window_s|2|12",
+            ]
+        );
     }
 
     #[test]

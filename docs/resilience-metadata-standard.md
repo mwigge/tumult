@@ -89,6 +89,7 @@ Identity and lineage of a single experiment run.
 | `resilience.experiment.version` | `string` | Recommended | Semantic version of the experiment definition (e.g. `2.1.0`). |
 | `resilience.experiment.suite` | `string` | Optional | Parent campaign or suite that groups related experiments. |
 | `resilience.experiment.tags` | `string[]` | Optional | Free-form tags for filtering and grouping (e.g. `["network", "critical-path", "dora"]`). |
+| `resilience.test.kind` | `string` | Recommended | Resilience discipline of the run: `chaos`, `performance` (load and performance), `robustness`, `dr`, `security`. A reader counts `load` as `performance`, and counts `dr` towards the robustness discipline. Emitted on the experiment root span; drives per-discipline coverage. |
 | `resilience.experiment.created_by` | `string` | Recommended | Identity of the user or system that initiated the run. |
 | `resilience.experiment.run_number` | `int` | Recommended | Monotonically increasing run counter for this experiment name. Enables trend analysis across runs. |
 
@@ -505,6 +506,8 @@ used across tumult telemetry:
 | `tumult.*` | Metrics (counters, histograms, gauges) | `tumult.experiments.total`, `tumult.experiment.duration` |
 | `resilience.*` | Experiment/runner spans and their attributes | `resilience.experiment`, `resilience.probe`, `resilience.analytics.ingest` |
 | `<component>.*` | Component and client spans, one prefix per subsystem | `k8s.*`, `clickhouse.*`, `cypher.*` |
+
+Log events follow the same idea: the event name is `<component>.<thing>.<what happened>` (`daemon.starting`, `cli.journal.skipped`), control-plane identifiers on a log event use the `resilience.*` attribute names (`resilience.run.id`, `resilience.experiment.id`), and errors are `error.message` and `error.type`. The full table is in [the logging guide](guides/logging.md).
 
 **Known quirk — duplicate root span names.** The core runner's experiment
 root span is `resilience.experiment`, while the agentic runner

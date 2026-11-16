@@ -28,6 +28,7 @@ fn journal(
     actions: &[&str],
 ) -> Journal {
     Journal {
+        target_version: None,
         experiment_title: title.into(),
         experiment_id: id.into(),
         status,
@@ -52,6 +53,9 @@ fn journal(
             .collect(),
         rollback_results: vec![],
         rollback_failures: 0,
+        kind: tumult_core::types::TestKind::default(),
+        objectives: None,
+        probe_samples: vec![],
         estimate: None,
         baseline_result: None,
         during_result: None,

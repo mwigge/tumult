@@ -12,8 +12,8 @@ use tumult_lake::Reader;
 
 use crate::auth::Principal;
 use crate::sql_util::{
-    and_pred, bucket_expr, env_metric_exists, env_table_predicate, internal, parse_interval,
-    sql_string, w, windows, with_reader,
+    and_pred, bucket_expr, env_metric_exists, env_table_predicate, internal, invalid_range,
+    parse_interval, sql_string, w, windows, with_reader,
 };
 use crate::ApiState;
 
@@ -48,7 +48,7 @@ pub(crate) async fn timeseries(
     };
     let range = params.range.unwrap_or_else(|| "24h".into());
     let Some((cur, _)) = windows(&range) else {
-        return Err(bad(format!("invalid range {range:?}; expected 24h|7d|14d")));
+        return Err(bad(invalid_range(&range)));
     };
 
     let metrics_dir = state.metrics_dir.as_ref().clone();
@@ -257,7 +257,7 @@ pub(crate) async fn metrics_query(
     };
     let range = params.range.unwrap_or_else(|| "24h".into());
     let Some((cur, _)) = windows(&range) else {
-        return Err(bad(format!("invalid range {range:?}; expected 24h|7d|14d")));
+        return Err(bad(invalid_range(&range)));
     };
     let group_by = match params.group_by.as_deref().filter(|g| !g.is_empty()) {
         Some(g) if valid_attr_key(g) => Some(g.to_string()),

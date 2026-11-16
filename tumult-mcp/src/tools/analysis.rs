@@ -4,8 +4,21 @@ use std::fmt::Write as _;
 use std::path::Path;
 
 use crate::error::ToolError;
+use crate::tools::reporting::journal_skipped;
 use crate::tools::validation::validate_select_only;
 use crate::tools::StructuredReport;
+
+/// Loads one journal of a directory walk into `store`. A journal that cannot
+/// be read or ingested is left out and reported, never fatal.
+fn ingest_or_skip(store: &tumult_lake::AnalyticsStore, path: &Path) {
+    let journal = match tumult_core::journal::read_journal(path) {
+        Ok(journal) => journal,
+        Err(error) => return journal_skipped(path, &error),
+    };
+    if let Err(error) = store.ingest_journal(&journal) {
+        journal_skipped(path, &error);
+    }
+}
 
 /// Analyze journals with a SQL query via `DuckDB`.
 ///
@@ -29,11 +42,9 @@ pub fn analyze(journals_path: &str, query: &str) -> Result<String, ToolError> {
             .map_err(|e| ToolError::Store(e.to_string()))?;
     } else if path.is_dir() {
         for entry in std::fs::read_dir(path)? {
-            let entry = entry?;
-            if entry.path().extension().and_then(|e| e.to_str()) == Some("toon") {
-                if let Ok(journal) = read_journal(&entry.path()) {
-                    let _ = store.ingest_journal(&journal);
-                }
+            let entry_path = entry?.path();
+            if entry_path.extension().and_then(|e| e.to_str()) == Some("toon") {
+                ingest_or_skip(&store, &entry_path);
             }
         }
     }
@@ -239,5 +250,30 @@ mod tests {
         assert!(result.is_ok());
         let output = result.unwrap();
         assert!(output.contains("1 row(s)"));
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn analyze_reports_journals_it_could_not_load_from_a_directory() {
+        // The run leaves its experiment definition beside the journal, so
+        // the journal is copied to a directory of its own.
+        let run = TempDir::new().unwrap();
+        let dir = TempDir::new().unwrap();
+        std::fs::copy(write_run_journal(run.path()), dir.path().join("run.toon")).unwrap();
+        let corrupt = dir.path().join("corrupt.toon");
+        std::fs::write(&corrupt, "{{{{ not a journal").unwrap();
+
+        let capture = tumult_otel::logging::testing::LogCapture::start(tracing::Level::INFO);
+        let output = analyze(
+            dir.path().to_str().unwrap(),
+            "SELECT count(*) FROM experiments",
+        )
+        .unwrap();
+        let logs = capture.snapshot();
+
+        assert!(output.contains("1 row(s)"), "{output}");
+        let skipped = logs.named("mcp.journal.skipped");
+        assert_eq!(skipped.len(), 1, "{}", logs.raw);
+        assert_eq!(skipped[0]["file.path"], corrupt.to_str().unwrap());
+        assert!(skipped[0]["error.message"].is_string(), "{}", logs.raw);
     }
 }

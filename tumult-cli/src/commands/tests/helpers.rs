@@ -5,18 +5,17 @@ use tumult_core::types::{Activity, ActivityType};
 
 // ── Process-global env access ───────────────────────────────
 
-/// Env vars are process-global; every test that reads or mutates
-/// `TUMULT_LAKE_PATH`, `TUMULT_CLICKHOUSE_URL`, `TUMULT_DAEMON_URL`, or `HOME`
-/// must hold this lock for the whole test body so concurrent tests cannot
-/// observe each other's overrides.
-pub(crate) static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
 /// Point the persistent analytics store at a temp file and return that path,
 /// so command handlers that resolve `AnalyticsStore::default_path()` never
-/// touch the real `~/.tumult/lake.duckdb`. Caller must hold [`ENV_LOCK`].
-pub(crate) fn use_temp_store(dir: &std::path::Path) -> std::path::PathBuf {
+/// touch the real `~/.tumult/lake.duckdb`. The guard puts the variable back
+/// when the test ends, and keeps every other test that reads or changes the
+/// environment out while it lasts.
+pub(crate) fn use_temp_store(
+    env: &mut tumult_test_utils::EnvGuard,
+    dir: &std::path::Path,
+) -> std::path::PathBuf {
     let db = dir.join("lake.duckdb");
-    std::env::set_var("TUMULT_LAKE_PATH", &db);
+    env.set("TUMULT_LAKE_PATH", &db);
     db
 }
 
@@ -83,6 +82,11 @@ pub(crate) fn write_valid_experiment(dir: &Path) -> std::path::PathBuf {
         guards: vec![],
         blast_radius: None,
         max_concurrent_faults: None,
+        kind: tumult_core::types::TestKind::default(),
+        target: None,
+        nfr: vec![],
+        rto_target_s: None,
+        rpo_target_s: None,
     };
     let toon = toon_format::encode_default(&exp).unwrap();
     std::fs::write(&path, toon).unwrap();
@@ -133,6 +137,11 @@ pub(crate) fn write_empty_method_experiment(dir: &Path) -> std::path::PathBuf {
         guards: vec![],
         blast_radius: None,
         max_concurrent_faults: None,
+        kind: tumult_core::types::TestKind::default(),
+        target: None,
+        nfr: vec![],
+        rto_target_s: None,
+        rpo_target_s: None,
     };
     let toon = toon_format::encode_default(&exp).unwrap();
     std::fs::write(&path, toon).unwrap();
@@ -246,6 +255,11 @@ pub(crate) fn write_config_secrets_experiment(dir: &Path) -> std::path::PathBuf 
         guards: vec![],
         blast_radius: None,
         max_concurrent_faults: None,
+        kind: tumult_core::types::TestKind::default(),
+        target: None,
+        nfr: vec![],
+        rto_target_s: None,
+        rpo_target_s: None,
     };
     let toon = toon_format::encode_default(&exp).unwrap();
     std::fs::write(&path, toon).unwrap();
@@ -304,6 +318,11 @@ pub(crate) fn write_control_experiment(dir: &Path) -> (std::path::PathBuf, std::
         guards: vec![],
         blast_radius: None,
         max_concurrent_faults: None,
+        kind: tumult_core::types::TestKind::default(),
+        target: None,
+        nfr: vec![],
+        rto_target_s: None,
+        rpo_target_s: None,
     };
     let toon = toon_format::encode_default(&exp).unwrap();
     std::fs::write(&path, toon).unwrap();
@@ -315,6 +334,7 @@ pub(crate) fn write_control_experiment(dir: &Path) -> (std::path::PathBuf, std::
 pub(crate) fn journal_with_failure() -> tumult_core::types::Journal {
     use tumult_core::types::*;
     Journal {
+        target_version: None,
         experiment_title: "Failure & <recovery>".into(),
         experiment_id: "exp-fail-1".into(),
         status: ExperimentStatus::Deviated,
@@ -349,6 +369,9 @@ pub(crate) fn journal_with_failure() -> tumult_core::types::Journal {
         steady_state_after: None,
         rollback_results: vec![],
         rollback_failures: 0,
+        kind: tumult_core::types::TestKind::default(),
+        objectives: None,
+        probe_samples: vec![],
         estimate: None,
         baseline_result: None,
         during_result: None,

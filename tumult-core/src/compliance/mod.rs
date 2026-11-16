@@ -8,16 +8,30 @@
 
 mod citations;
 mod dates;
+mod dora_refs;
 mod evidence;
 mod framework;
+mod ids;
+mod requirements;
 mod signals;
 
 pub use citations::{
     Citation, CITATIONS, CITATION_MAX_AGE_MONTHS, EVIDENCE_DISCLAIMER, REGISTRY_VERSION,
 };
 pub use dates::{current_year_month, months_since_verified, parse_year_month, stale_citations};
+pub use dora_refs::{dora_paragraph_count, dora_ref_exists, parse_dora_ref, DoraRef};
 pub use evidence::{EvidenceStrength, EvidenceType};
 pub use framework::ComplianceFramework;
+pub use ids::{
+    check_entity_id, entity_id_is_valid, lei_is_valid, truncated, EntityIdError, ENTITY_ID_ATTR,
+    ENTITY_ID_MALFORMED_ATTR, ENTITY_ID_MAX_LEN, ENTITY_ID_PATTERN, ENTITY_ID_TRUNCATION_MARK,
+};
+pub use requirements::{
+    applicable, article_title, requirement, EntityFlags, EntityProfile, EvidenceClass, Feed,
+    FlagRule, FunctionScope, MicroRule, Profile, ProfileSet, Requirement, ScopeBasis, Selector,
+    ARTICLES, CORE_WEIGHT_MIN, EXPECTED_STATUS_DESIGNED, EXPECTED_STATUS_EXISTING,
+    EXPECTED_STATUS_OPERATING, FLAG_NAMES, GATING_WEIGHT, REQUIREMENTS, REQUIREMENTS_VERSION,
+};
 pub use signals::{compliance_verdict, ComplianceSignals, DEFAULT_MTTR_TARGET_S};
 
 #[cfg(test)]
@@ -111,6 +125,7 @@ mod tests {
 
     fn bare_journal(status: crate::types::ExperimentStatus) -> Journal {
         Journal {
+            target_version: None,
             experiment_title: "compliance test".into(),
             experiment_id: "exp-1".into(),
             status,
@@ -122,6 +137,9 @@ mod tests {
             method_results: vec![],
             rollback_results: vec![],
             rollback_failures: 0,
+            kind: crate::types::TestKind::default(),
+            objectives: None,
+            probe_samples: vec![],
             estimate: None,
             baseline_result: None,
             during_result: None,
@@ -162,6 +180,69 @@ mod tests {
                 c.control_id,
                 c.last_verified
             );
+        }
+    }
+
+    fn dora_citation(control_id: &str) -> &'static Citation {
+        CITATIONS
+            .iter()
+            .find(|c| c.framework == ComplianceFramework::Dora && c.control_id == control_id)
+            .unwrap_or_else(|| panic!("no DORA row for {control_id}"))
+    }
+
+    #[test]
+    fn dora_art25_states_no_test_frequency() {
+        let art25 = dora_citation("Art. 25");
+        for text in [art25.summary, art25.evidence_note] {
+            assert!(
+                !text.to_ascii_lowercase().contains("yearly"),
+                "Art. 25 sets no frequency: {text}"
+            );
+        }
+    }
+
+    #[test]
+    fn dora_yearly_testing_is_cited_as_art24_paragraph_6() {
+        let summary = dora_citation("Art. 24(6)").summary;
+        assert!(summary.contains("at least yearly"), "{summary}");
+        assert!(
+            summary.contains("critical or important functions"),
+            "{summary}"
+        );
+        assert!(summary.contains("microenterprises"), "{summary}");
+    }
+
+    #[test]
+    fn dora_backup_and_restoration_is_cited_under_art12_not_art11() {
+        let art12 = dora_citation("Art. 12").summary.to_ascii_lowercase();
+        assert!(art12.contains("backup"), "{art12}");
+        assert!(art12.contains("restoration"), "{art12}");
+        let art11 = dora_citation("Art. 11");
+        for text in [art11.summary, art11.evidence_note] {
+            let lowered = text.to_ascii_lowercase();
+            assert!(!lowered.contains("backup"), "{text}");
+            assert!(!lowered.contains("integrity"), "{text}");
+        }
+    }
+
+    #[test]
+    fn dora_art26_applies_to_entities_identified_by_the_authority() {
+        let summary = dora_citation("Art. 26").summary;
+        assert!(
+            summary.contains("identified by the competent authority"),
+            "{summary}"
+        );
+        assert!(
+            !summary.to_ascii_lowercase().contains("systemically"),
+            "{summary}"
+        );
+    }
+
+    #[test]
+    fn registry_version_and_dora_review_date_follow_the_citation_fixes() {
+        assert_eq!(REGISTRY_VERSION, "2026.11");
+        for c in ComplianceFramework::Dora.citations() {
+            assert_eq!(c.last_verified, "2026-11-13", "{}", c.control_id);
         }
     }
 

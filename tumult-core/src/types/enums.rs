@@ -108,6 +108,8 @@ pub enum BaselineMethod {
 pub enum LoadTool {
     K6,
     Jmeter,
+    /// `oha` HTTP load generator (JSON summary, one process per window).
+    Oha,
 }
 
 /// Where baseline data came from.
@@ -129,6 +131,119 @@ pub enum Trend {
     Improving,
     Stable,
     Degrading,
+}
+
+// ── Resilience disciplines and objectives ─────────────────────
+
+/// The resilience discipline an experiment belongs to. Drives coverage
+/// reporting per discipline and which measurements the run is expected to
+/// produce (a `dr` run measures RTO/RPO, a `load` run produces load results).
+/// Defaults to `chaos` so pre-existing definitions keep their meaning.
+/// Non-functional objectives are not a discipline: the `nfr` block of a
+/// definition is verified by a run of any kind.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TestKind {
+    /// Fault injection against a steady-state hypothesis.
+    #[default]
+    Chaos,
+    /// Load and performance: traffic generation to measure behaviour
+    /// under load, and latency/throughput regression against a previous
+    /// build. `load` is accepted as another name for it.
+    #[serde(alias = "load")]
+    Performance,
+    /// Soak, saturation and malformed-input profiles.
+    Robustness,
+    /// Disaster recovery: failover with RTO/RPO targets. Counts towards
+    /// the robustness discipline.
+    Dr,
+    /// Security testing (scans, pentest evidence, misuse cases).
+    Security,
+}
+
+/// The name a recorded kind is kept under. `load` is another name for
+/// `performance` (a manual exercise type, a `resilience.test.kind`
+/// attribute from another emitter); every other value is returned as it
+/// is.
+#[must_use]
+pub fn canonical_kind(kind: &str) -> &str {
+    if kind == "load" {
+        return "performance";
+    }
+    kind
+}
+
+/// The discipline a recorded kind counts towards in coverage and scores.
+/// There are four: chaos, performance (load included), robustness and
+/// security. Disaster recovery is part of robustness: a `dr` run keeps
+/// its kind and its recovery targets, and is robustness evidence.
+#[must_use]
+pub fn discipline(kind: &str) -> &str {
+    match canonical_kind(kind) {
+        "dr" => "robustness",
+        other => other,
+    }
+}
+
+/// What a non-functional objective constrains.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NfrKind {
+    Latency,
+    Availability,
+    Throughput,
+    ErrorRate,
+    /// Recovery time objective (seconds).
+    Rto,
+    /// Recovery point objective (seconds of data loss).
+    Rpo,
+    Capacity,
+    Recovery,
+    DataIntegrity,
+}
+
+/// Comparison between the observed value and the threshold.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NfrOperator {
+    /// Observed must be less than or equal to the threshold.
+    Lte,
+    /// Observed must be greater than or equal to the threshold.
+    Gte,
+    /// Observed must equal the threshold (within `f64::EPSILON`).
+    Eq,
+}
+
+/// How much a breached objective matters to the run verdict.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NfrCriticality {
+    /// A breach fails the run outright.
+    Blocking,
+    /// A breach is reported as a deviation.
+    #[default]
+    Major,
+    /// A breach is informational.
+    Minor,
+}
+
+/// Outcome of evaluating one objective against a run.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NfrState {
+    Met,
+    Breached,
+    /// The metric the objective names was not measured in this run.
+    Inconclusive,
+}
+
+/// Which phase a raw probe sample was taken in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SamplePhase {
+    Baseline,
+    During,
+    Post,
 }
 
 // ── Display impls ─────────────────────────────────────────────
@@ -224,6 +339,7 @@ impl std::fmt::Display for LoadTool {
         match self {
             Self::K6 => write!(f, "k6"),
             Self::Jmeter => write!(f, "jmeter"),
+            Self::Oha => write!(f, "oha"),
         }
     }
 }
@@ -245,6 +361,80 @@ impl std::fmt::Display for Trend {
             Self::Stable => write!(f, "stable"),
             Self::Degrading => write!(f, "degrading"),
         }
+    }
+}
+
+impl std::fmt::Display for TestKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            Self::Chaos => "chaos",
+            Self::Performance => "performance",
+            Self::Robustness => "robustness",
+            Self::Dr => "dr",
+            Self::Security => "security",
+        };
+        f.write_str(s)
+    }
+}
+
+impl std::fmt::Display for NfrKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            Self::Latency => "latency",
+            Self::Availability => "availability",
+            Self::Throughput => "throughput",
+            Self::ErrorRate => "error_rate",
+            Self::Rto => "rto",
+            Self::Rpo => "rpo",
+            Self::Capacity => "capacity",
+            Self::Recovery => "recovery",
+            Self::DataIntegrity => "data_integrity",
+        };
+        f.write_str(s)
+    }
+}
+
+impl std::fmt::Display for NfrOperator {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            Self::Lte => "lte",
+            Self::Gte => "gte",
+            Self::Eq => "eq",
+        };
+        f.write_str(s)
+    }
+}
+
+impl std::fmt::Display for NfrCriticality {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            Self::Blocking => "blocking",
+            Self::Major => "major",
+            Self::Minor => "minor",
+        };
+        f.write_str(s)
+    }
+}
+
+impl std::fmt::Display for NfrState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            Self::Met => "met",
+            Self::Breached => "breached",
+            Self::Inconclusive => "inconclusive",
+        };
+        f.write_str(s)
+    }
+}
+
+impl std::fmt::Display for SamplePhase {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            Self::Baseline => "baseline",
+            Self::During => "during",
+            Self::Post => "post",
+        };
+        f.write_str(s)
     }
 }
 
@@ -376,7 +566,7 @@ mod tests {
 
     #[test]
     fn load_tool_all_variants_round_trip() {
-        for tool in [LoadTool::K6, LoadTool::Jmeter] {
+        for tool in [LoadTool::K6, LoadTool::Jmeter, LoadTool::Oha] {
             let decoded: LoadTool = toon_round_trip(&tool);
             assert_eq!(decoded, tool);
         }
@@ -424,6 +614,7 @@ mod tests {
 
         assert_eq!(LoadTool::K6.to_string(), "k6");
         assert_eq!(LoadTool::Jmeter.to_string(), "jmeter");
+        assert_eq!(LoadTool::Oha.to_string(), "oha");
 
         assert_eq!(BaselineSource::Live.to_string(), "live");
         assert_eq!(BaselineSource::Historical.to_string(), "historical");
@@ -432,6 +623,13 @@ mod tests {
         assert_eq!(Trend::Improving.to_string(), "improving");
         assert_eq!(Trend::Stable.to_string(), "stable");
         assert_eq!(Trend::Degrading.to_string(), "degrading");
+    }
+
+    /// Non-functional objectives are verified by a run of every discipline;
+    /// they are not a discipline of their own.
+    #[test]
+    fn nfr_is_not_a_test_kind() {
+        assert!(serde_json::from_str::<TestKind>("\"nfr\"").is_err());
     }
 
     #[test]
@@ -445,5 +643,67 @@ mod tests {
         let method = BaselineMethod::MeanStddev;
         let json = serde_json::to_string(&method).expect("serialize");
         assert_eq!(json, format!("\"{method}\""));
+
+        for kind in [
+            TestKind::Chaos,
+            TestKind::Performance,
+            TestKind::Robustness,
+            TestKind::Dr,
+            TestKind::Security,
+        ] {
+            let json = serde_json::to_string(&kind).expect("serialize");
+            assert_eq!(json, format!("\"{kind}\""));
+        }
+        for nfr in [NfrKind::ErrorRate, NfrKind::Rto, NfrKind::DataIntegrity] {
+            let json = serde_json::to_string(&nfr).expect("serialize");
+            assert_eq!(json, format!("\"{nfr}\""));
+        }
+        for op in [NfrOperator::Lte, NfrOperator::Gte, NfrOperator::Eq] {
+            let json = serde_json::to_string(&op).expect("serialize");
+            assert_eq!(json, format!("\"{op}\""));
+        }
+        let state = NfrState::Inconclusive;
+        assert_eq!(
+            serde_json::to_string(&state).unwrap(),
+            format!("\"{state}\"")
+        );
+        let phase = SamplePhase::During;
+        assert_eq!(
+            serde_json::to_string(&phase).unwrap(),
+            format!("\"{phase}\"")
+        );
+    }
+
+    /// Load and performance are one discipline: a definition may say
+    /// either, the run is recorded as performance.
+    #[test]
+    fn load_is_another_name_for_performance() {
+        let kind = serde_json::from_str::<TestKind>("\"load\"").expect("load parses");
+        assert_eq!(kind, TestKind::Performance);
+        assert_eq!(kind.to_string(), "performance");
+        assert_eq!(discipline("load"), "performance");
+        assert_eq!(discipline("performance"), "performance");
+        assert_eq!(canonical_kind("load"), "performance");
+    }
+
+    /// Disaster recovery is part of robustness: a dr run keeps its kind
+    /// (and its recovery targets) and counts towards robustness.
+    #[test]
+    fn dr_is_part_of_the_robustness_discipline() {
+        assert_eq!(TestKind::Dr.to_string(), "dr");
+        assert_eq!(canonical_kind("dr"), "dr");
+        assert_eq!(discipline("dr"), "robustness");
+        assert_eq!(discipline("robustness"), "robustness");
+        assert_eq!(discipline("chaos"), "chaos");
+    }
+
+    #[test]
+    fn test_kind_defaults_to_chaos_and_rejects_unknown() {
+        assert_eq!(TestKind::default(), TestKind::Chaos);
+        assert_eq!(
+            serde_json::from_str::<TestKind>("\"dr\"").unwrap(),
+            TestKind::Dr
+        );
+        assert!(serde_json::from_str::<TestKind>("\"smoke\"").is_err());
     }
 }

@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "Core engine for Tumult chaos engineering platform"
+description = "Core engine for the Tumult resilience intelligence platform"
 
 [dependencies]
 tumult-otel = { path = "../tumult-otel" }
@@ -24,6 +24,10 @@ tokio = { version = "1", features = ["rt", "rt-multi-thread"] }
 tokio-util = { workspace = true }
 # k6 load executor (`runner::k6`) writes its --summary-export JSON to a tempfile.
 tempfile = { workspace = true }
+
+# oha load executor (`runner::oha`) kills a window's whole process group.
+[target.'cfg(unix)'.dependencies]
+libc = { workspace = true }
 
 [dev-dependencies]
 opentelemetry_sdk = { workspace = true, features = ["testing"] }

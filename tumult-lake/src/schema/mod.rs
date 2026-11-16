@@ -68,21 +68,58 @@
 //!
 //! v15 keeps private execution fingerprints out of public audit chains.
 //!
+//! v16 adds the objectives family (`objectives.rs`): `experiments.test_kind`
+//! plus RTO/RPO target and measured columns (additive ALTERs), the raw
+//! `probe_samples` time series, and `nfr_verdicts` (one row per objective
+//! evaluated against a run).
+//!
+//! v17 adds `risk_suppressions` (`risk.rs`): the hash-chained record of
+//! passive-scan findings an operator accepted, with an optional expiry.
+//! v18 adds `perf_verdicts` (`perf.rs`): one row per performance
+//! regression verdict between two `service.version`s of a target —
+//! additive and index-free apart from the target lookup index.
+//!
+//! v19 adds `forecasts` (`forecast.rs`): the cache of quantile forecasts
+//! with model provenance (model, version, weights hash, context window),
+//! indexed by series key for the cache lookup and pruned after 30 days.
+//!
+//! v20 adds the function register (`ict.rs`): `ict_legal_entities`,
+//! `ict_functions`, `ict_function_services` and the daily
+//! `requirement_status_daily` and `maturity_daily` snapshots — additive
+//! and index-free. Every statement is `IF NOT EXISTS`, so a database at
+//! v18 or at v19 migrates to v20 the same way.
+//!
+//! v21 adds `logs.event_name` and `logs.scope_attrs` (additive ALTERs like
+//! v9): the OTLP `EventName` and the instrumentation-scope attributes of a
+//! log record, NULL on rows stored before v21. It also adds
+//! `entity_versions` (`entities.rs`): one row per distinct state of an
+//! entity reported through entity events, index-free under the v5 rule
+//! because heartbeats and deletes UPDATE it, with the `entities_current`
+//! view over the latest row of each entity. Every statement is
+//! `IF NOT EXISTS` or `CREATE OR REPLACE`, so a database at v20 migrates on
+//! open.
+//!
 //! The DDL is split by feature area: [`telemetry`] (v1), [`manual`] (v2/v8
 //! shape), [`analytics`] (v3), [`runs`] (v4–v7), [`auth`] (v6/v9),
 //! [`table_stakes`] (v10–v13), [`migrations`] (the versioned rebuilds).
 
 mod analytics;
 mod auth;
+mod entities;
+mod forecast;
+mod ict;
 mod manual;
 mod migrations;
+mod objectives;
+mod perf;
+mod risk;
 mod runs;
 mod table_stakes;
 mod telemetry;
 
 pub use migrations::{MIGRATE_V5_RUN_TABLES_INDEX_FREE, MIGRATE_V8_MANUAL_EXPERIMENTS_INDEX_FREE};
 
-pub const CURRENT_SCHEMA_VERSION: i64 = 15;
+pub const CURRENT_SCHEMA_VERSION: i64 = 21;
 
 /// The full DDL, one batch per feature area, executed in order. All DDL is
 /// `IF NOT EXISTS`, so this doubles as the idempotent v0 → v1 migration on
@@ -94,6 +131,12 @@ pub const CREATE_TABLES: &[&str] = &[
     runs::DDL,
     auth::DDL,
     table_stakes::DDL,
+    objectives::DDL,
+    risk::DDL,
+    perf::DDL,
+    forecast::DDL,
+    ict::DDL,
+    entities::DDL,
 ];
 
 /// Rollup view: one row per experiment run, over the experiment root spans
@@ -101,7 +144,14 @@ pub const CREATE_TABLES: &[&str] = &[
 /// `experiment.completed` log record (capitalised `status` attr), not on the
 /// span, so it is resolved via the same join the API list query uses.
 /// CREATE OR REPLACE so existing databases pick up view changes on startup.
-pub const CREATE_VIEWS: &str = "
+pub const CREATE_VIEWS: &[&str] = &[EXPERIMENT_RUNS_VIEW, entities::VIEW];
+
+/// Additive changes to tables of this version that an earlier build of the
+/// same version may have created without them. Run after
+/// [`CREATE_TABLES`] and before [`CREATE_VIEWS`].
+pub const AMEND_TABLES: &[&str] = &[entities::ADD_RECEIPT_COLUMN];
+
+const EXPERIMENT_RUNS_VIEW: &str = "
 CREATE OR REPLACE VIEW experiment_runs AS
 SELECT
     s.experiment_id,
@@ -111,10 +161,11 @@ SELECT
     max(s.duration_ns) AS duration_ns,
     any_value(coalesce(s.outcome_status, l.log_attrs['status'])) AS outcome_status,
     any_value(s.hypothesis_met) AS hypothesis_met
-FROM spans s
-LEFT JOIN logs l
-    ON l.log_attrs['experiment_id'] = s.experiment_id
-    AND l.body = 'experiment.completed'
+FROM spans AS s
+LEFT JOIN logs AS l
+    ON
+        l.log_attrs['experiment_id'] = s.experiment_id
+        AND l.body = 'experiment.completed'
 WHERE s.span_name = 'resilience.experiment'
 GROUP BY s.experiment_id;
 ";

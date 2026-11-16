@@ -56,58 +56,70 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+
+    use tumult_test_utils::EnvGuard;
+
     use super::*;
 
     #[test]
     fn tick_from_env_parses_seconds_with_floor_and_fallback() {
         let key = "TUMULT_TEST_TICK_FROM_ENV_S";
-        std::env::remove_var(key);
-        assert_eq!(
-            tick_from_env(key, Duration::from_secs(30)),
-            Duration::from_secs(30)
-        );
-        std::env::set_var(key, "5");
-        assert_eq!(
-            tick_from_env(key, Duration::from_secs(30)),
-            Duration::from_secs(5)
-        );
-        std::env::set_var(key, "0");
-        assert_eq!(
-            tick_from_env(key, Duration::from_secs(30)),
-            Duration::from_secs(30)
-        );
-        std::env::set_var(key, "garbage");
-        assert_eq!(
-            tick_from_env(key, Duration::from_secs(30)),
-            Duration::from_secs(30)
-        );
-        std::env::remove_var(key);
+        let fallback = Duration::from_secs(30);
+        let mut env = EnvGuard::lock();
+
+        env.remove(key);
+        assert_eq!(tick_from_env(key, fallback), fallback);
+        env.set(key, "5");
+        assert_eq!(tick_from_env(key, fallback), Duration::from_secs(5));
+        env.set(key, " 7 ");
+        assert_eq!(tick_from_env(key, fallback), Duration::from_secs(7));
+        env.set(key, "0");
+        assert_eq!(tick_from_env(key, fallback), fallback);
+        env.set(key, "garbage");
+        assert_eq!(tick_from_env(key, fallback), fallback);
     }
 
-    #[tokio::test]
-    async fn ticker_ticks_until_shutdown() {
-        let ticks = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-        let shutdown = CancellationToken::new();
-        let counter = std::sync::Arc::clone(&ticks);
+    /// A ticker that counts its ticks and fails every one of them.
+    fn failing_ticker(
+        shutdown: &CancellationToken,
+    ) -> (Arc<AtomicUsize>, tokio::task::JoinHandle<()>) {
+        let ticks = Arc::new(AtomicUsize::new(0));
+        let counter = Arc::clone(&ticks);
         let task = spawn_ticker(
             "test ticker",
             Duration::from_millis(10),
             shutdown.clone(),
             move || {
-                let counter = std::sync::Arc::clone(&counter);
+                let counter = Arc::clone(&counter);
                 async move {
-                    counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                    Ok(())
+                    counter.fetch_add(1, Ordering::SeqCst);
+                    Err("tick failed".to_string())
                 }
             },
         );
+        (ticks, task)
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn ticker_ticks_once_per_interval_until_shutdown() {
+        let shutdown = CancellationToken::new();
+        let (ticks, task) = failing_ticker(&shutdown);
+
+        // Ticks land at 0, 10, 20, 30, 40 and 50 ms.
         tokio::time::sleep(Duration::from_millis(55)).await;
-        shutdown.cancel();
-        task.await.unwrap();
-        assert!(
-            ticks.load(std::sync::atomic::Ordering::SeqCst) >= 2,
-            "expected several ticks, got {}",
-            ticks.load(std::sync::atomic::Ordering::SeqCst)
+        assert_eq!(
+            ticks.load(Ordering::SeqCst),
+            6,
+            "a failed tick does not stop the ticker"
         );
+
+        shutdown.cancel();
+        tokio::time::timeout(Duration::from_secs(1), task)
+            .await
+            .expect("the ticker ends on shutdown")
+            .unwrap();
+        assert_eq!(ticks.load(Ordering::SeqCst), 6, "no tick after shutdown");
     }
 }

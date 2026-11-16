@@ -1,0 +1,53 @@
+title: RIP phase-1 proof — DR run with objectives
+description: Self-contained run that exercises kind, nfr verdicts, RTO measurement and raw probe samples
+
+tags[2]: proof, dr
+kind: dr
+rto_target_s: 5
+target:
+  system: proof-service
+  environment: demo
+nfr[3]:
+  - id: during-availability
+    kind: availability
+    metric: during.availability
+    operator: gte
+    threshold: 0.5
+    criticality: major
+  - id: health-p95
+    kind: latency
+    metric: probe.health.p95_ms
+    operator: lte
+    threshold: 1000
+    criticality: minor
+  - id: post-availability
+    kind: availability
+    metric: post.availability
+    operator: gte
+    threshold: 0.9
+    criticality: blocking
+
+steady_state_hypothesis:
+  title: Health probe answers ok
+  probes[1]:
+    - name: health
+      activity_type: probe
+      provider:
+        type: process
+        path: sh
+        arguments[2]: "-c", "sleep 0.05; echo ok"
+        timeout_s: 5.0
+      tolerance:
+        type: regex
+        pattern: "ok"
+
+method[1]:
+  - name: hold-fault
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "sleep 3; echo done"
+      timeout_s: 10.0
+
+rollbacks[0]:

@@ -9,7 +9,9 @@ use axum::routing::get;
 use axum::Router;
 use tumult_ingest::Config;
 use tumult_lake::Store;
+use tumult_otel::logging::err;
 
+#[allow(clippy::print_stdout)] // the rendered report is this subcommand's output, not a log event
 pub(crate) fn report(metric: String, out: Option<PathBuf>) -> Result<()> {
     let config = Config::from_env().map_err(anyhow::Error::msg)?;
     match render_metric_report(&config.db_path, &config.metrics_dir, &metric)? {
@@ -17,7 +19,11 @@ pub(crate) fn report(metric: String, out: Option<PathBuf>) -> Result<()> {
             Some(path) => {
                 std::fs::write(&path, &html)
                     .with_context(|| format!("write report to {}", path.display()))?;
-                eprintln!("wrote {}", path.display());
+                tracing::info!(
+                    name: "report.file.written",
+                    { file.path = %path.display() },
+                    "report written"
+                );
             }
             None => print!("{html}"),
         },
@@ -136,12 +142,17 @@ pub(crate) fn report_interval_from_env() -> Option<std::time::Duration> {
     }
     match parse_interval(raw) {
         Some(d) => {
-            tracing::info!(interval = ?d, "automatic reporting enabled");
+            tracing::info!(
+                name: "report.schedule.enabled",
+                { interval_s = d.as_secs() },
+                "automatic reporting enabled"
+            );
             Some(d)
         }
         None => {
             tracing::warn!(
-                value = raw,
+                name: "report.interval.invalid",
+                { config.key = "KRONIKA_REPORT_INTERVAL", config.value = raw },
                 "invalid KRONIKA_REPORT_INTERVAL (want e.g. 30m or 1h); automatic reporting disabled"
             );
             None
@@ -217,9 +228,17 @@ pub(crate) fn spawn_report_scheduler(
             );
             match write_digest(&db, &mdir, &rdir, interval, llm).await {
                 Ok(path) => {
-                    tracing::info!(path = %path.display(), "scheduled digest written")
+                    tracing::info!(
+                        name: "report.digest.written",
+                        { file.path = %path.display() },
+                        "scheduled digest written"
+                    )
                 }
-                Err(e) => tracing::warn!(error = %format!("{e:#}"), "scheduled digest failed"),
+                Err(e) => tracing::warn!(
+                    name: "report.digest.failed",
+                    { error.message = %err(&e) },
+                    "scheduled digest failed"
+                ),
             }
         }
     });
@@ -230,10 +249,12 @@ pub(crate) fn spawn_report_scheduler(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::test_support::ENV_LOCK;
     use std::sync::Arc;
     use std::time::Duration;
+
+    use tumult_test_utils::EnvGuard;
+
+    use super::*;
 
     /// One metric definition over the `spans` table, mirroring
     /// `metrics/experiment_count.yaml`.
@@ -258,10 +279,6 @@ condition: { column: span_name, equals: "resilience.experiment" }
         std::fs::create_dir_all(&metrics_dir).unwrap();
         std::fs::write(metrics_dir.join("experiment_count.yaml"), METRIC_YAML).unwrap();
         (dir, db_path, metrics_dir)
-    }
-
-    fn env_lock() -> std::sync::MutexGuard<'static, ()> {
-        ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner())
     }
 
     async fn body_string(resp: Response) -> String {
@@ -306,19 +323,18 @@ condition: { column: span_name, equals: "resilience.experiment" }
 
     #[test]
     fn report_interval_from_env_off_unless_set_to_a_valid_interval() {
-        let _guard = env_lock();
-        std::env::remove_var("KRONIKA_REPORT_INTERVAL");
+        let mut env = EnvGuard::lock();
+        env.remove("KRONIKA_REPORT_INTERVAL");
         assert_eq!(report_interval_from_env(), None);
         for off in ["", "0", "off", "OFF", "Off"] {
-            std::env::set_var("KRONIKA_REPORT_INTERVAL", off);
+            env.set("KRONIKA_REPORT_INTERVAL", off);
             assert_eq!(report_interval_from_env(), None, "{off:?} must disable");
         }
-        std::env::set_var("KRONIKA_REPORT_INTERVAL", "30m");
+        env.set("KRONIKA_REPORT_INTERVAL", "30m");
         assert_eq!(report_interval_from_env(), Some(Duration::from_secs(1_800)));
         // Invalid values disable reporting rather than guessing.
-        std::env::set_var("KRONIKA_REPORT_INTERVAL", "bogus");
+        env.set("KRONIKA_REPORT_INTERVAL", "bogus");
         assert_eq!(report_interval_from_env(), None);
-        std::env::remove_var("KRONIKA_REPORT_INTERVAL");
     }
 
     // -- render_metric_report -------------------------------------------------
@@ -516,10 +532,10 @@ condition: { column: span_name, equals: "resilience.experiment" }
 
     #[test]
     fn report_subcommand_writes_out_file_and_rejects_unknown_metrics() {
-        let _guard = env_lock();
+        let mut env = EnvGuard::lock();
         let (dir, db_path, metrics_dir) = fixture();
-        std::env::set_var("TUMULT_LAKE_PATH", &db_path);
-        std::env::set_var("KRONIKA_METRICS_DIR", &metrics_dir);
+        env.set("TUMULT_LAKE_PATH", &db_path)
+            .set("KRONIKA_METRICS_DIR", &metrics_dir);
 
         let out = dir.path().join("report.html");
         report("experiment_count".to_string(), Some(out.clone())).unwrap();
@@ -531,9 +547,6 @@ condition: { column: span_name, equals: "resilience.experiment" }
 
         let err = report("nope".to_string(), None).unwrap_err();
         assert!(format!("{err:#}").contains("not found"), "{err:#}");
-
-        std::env::remove_var("TUMULT_LAKE_PATH");
-        std::env::remove_var("KRONIKA_METRICS_DIR");
     }
 
     // -- scheduled digests -----------------------------------------------------
@@ -600,6 +613,7 @@ condition: { column: span_name, equals: "resilience.experiment" }
                 "no digest appeared in {} within 30s",
                 reports_dir.display()
             );
+            // sleep: poll interval, bounded by the deadline above
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
     }

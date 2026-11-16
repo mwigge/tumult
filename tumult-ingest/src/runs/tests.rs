@@ -8,6 +8,7 @@ use tokio_util::sync::CancellationToken;
 use tumult_core::runner::{ActivityExecutor, ActivityOutcome};
 use tumult_core::types::Activity;
 use tumult_lake::{rollback_status, run_state, NewRun, RegisteredDefinition, Store};
+use tumult_test_utils::EnvGuard;
 
 use super::worker::{process, sweep_expired_approvals};
 use super::*;
@@ -53,6 +54,7 @@ struct RecordingExecutor {
 impl ActivityExecutor for RecordingExecutor {
     fn execute(&self, activity: &Activity) -> ActivityOutcome {
         self.executed.lock().unwrap().push(activity.name.clone());
+        // sleep: stands in for the time the activity takes to run
         std::thread::sleep(self.delay);
         ActivityOutcome {
             success: true,
@@ -103,7 +105,8 @@ struct ActivityGate {
 
 impl ActivityGate {
     async fn wait(&self) {
-        tokio::time::timeout(Duration::from_secs(10), self.started.notified())
+        // A minute: a traced run under coverage is slow to get here.
+        tokio::time::timeout(Duration::from_secs(60), self.started.notified())
             .await
             .expect("run must enter the gated activity");
     }
@@ -140,10 +143,15 @@ struct Fixture {
 }
 
 async fn fixture() -> Fixture {
+    fixture_for(TEST_TOON).await
+}
+
+/// A queue fixture whose registered, bound definition is `toon`.
+async fn fixture_for(toon: &'static str) -> Fixture {
     let tmp = tempfile::TempDir::new().unwrap();
     let db_path = tmp.path().join("kronika.duckdb");
     let store = Store::open(&db_path).unwrap();
-    let (experiment, injected) = prepare_run(TEST_TOON, &HashMap::new()).unwrap();
+    let (experiment, injected) = prepare_run(toon, &HashMap::new()).unwrap();
     let fingerprint = crate::execution_policy::execution_hash(&experiment, &injected).unwrap();
     let bindings: Vec<_> = ["dev", "staging", "prod", "production"]
         .iter()
@@ -163,7 +171,7 @@ async fn fixture() -> Fixture {
             .register_definition(&RegisteredDefinition {
                 id: "reg-1".into(),
                 name: "queue test experiment".into(),
-                definition_toon: TEST_TOON.into(),
+                definition_toon: toon.into(),
                 content_hash: "hash-1".into(),
                 registered_at_ns: 1,
                 registered_by: Some("test".into()),
@@ -218,6 +226,7 @@ async fn await_state(fx: &Fixture, run_id: &str, want: &str) -> String {
                 return state;
             }
         }
+        // sleep: poll interval, the loop gives up after 100 attempts
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
     panic!("run {run_id} never reached state {want}");
@@ -230,6 +239,7 @@ async fn await_terminal(fx: &Fixture, run_id: &str) -> String {
                 return state;
             }
         }
+        // sleep: poll interval, the loop gives up after 100 attempts
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
     panic!("run {run_id} never reached a terminal state");
@@ -860,17 +870,18 @@ method[1]:
 
 #[test]
 fn run_queue_config_reads_env_with_fallbacks() {
-    std::env::set_var("TUMULTD_RUN_CONCURRENCY", "7");
-    std::env::set_var("TUMULTD_RUN_QUEUE_DEPTH", "notanumber");
-    std::env::set_var("TUMULTD_APPROVAL_SWEEP_S", "0");
+    let mut env = EnvGuard::lock();
+    env.set("TUMULTD_RUN_CONCURRENCY", "7");
+    env.set("TUMULTD_RUN_QUEUE_DEPTH", "notanumber");
+    env.set("TUMULTD_APPROVAL_SWEEP_S", "0");
     let cfg = RunQueueConfig::from_env();
     assert_eq!(cfg.concurrency, 7);
     // Unparseable and zero values fall back to the defaults.
     assert_eq!(cfg.queue_depth, 32);
     assert_eq!(cfg.sweep_interval, Duration::from_secs(60));
-    std::env::remove_var("TUMULTD_RUN_CONCURRENCY");
-    std::env::remove_var("TUMULTD_RUN_QUEUE_DEPTH");
-    std::env::remove_var("TUMULTD_APPROVAL_SWEEP_S");
+    env.remove("TUMULTD_RUN_CONCURRENCY");
+    env.remove("TUMULTD_RUN_QUEUE_DEPTH");
+    env.remove("TUMULTD_APPROVAL_SWEEP_S");
     let cfg = RunQueueConfig::from_env();
     assert_eq!(cfg.concurrency, 2);
 }
@@ -1456,4 +1467,79 @@ async fn late_approval_rejection_cannot_erase_running_cleanup_ownership() {
         assert!(result.is_err());
         assert_eq!(run_row(&fx, "reject-race")["state"], run_state::RUNNING);
     }
+}
+
+/// One action against a declared target that names no version.
+const TARGETED_TOON: &str = r"
+title: versioned queue experiment
+target:
+  system: checkout
+  environment: dev
+method[1]:
+  - name: action-1
+    activity_type: action
+    provider:
+      type: native
+      plugin: test
+      function: noop
+";
+
+/// A daemon run of a target that declares no version records the version
+/// the target's telemetry carried while the run was executing.
+#[tokio::test]
+async fn a_daemon_run_records_the_version_its_target_served_during_the_run() {
+    let fx = fixture_for(TARGETED_TOON).await;
+    let (factory, gate) = gated_recording_factory(&fx.executed, "action-1");
+    let queue = RunQueue::spawn(
+        fx.ingest.clone(),
+        fx.db_path.clone(),
+        RunQueueConfig {
+            concurrency: 1,
+            queue_depth: 4,
+            sweep_interval: Duration::from_secs(3600),
+        },
+        factory,
+    );
+    let run_id = queue
+        .enqueue(
+            RunRequest {
+                definition_toon: TARGETED_TOON.into(),
+                ..request()
+            },
+            None,
+        )
+        .await
+        .unwrap();
+
+    // The target speaks while the run holds its only action open.
+    gate.wait().await;
+    exec_write(&fx.ingest, |writer| {
+        let spoke = tumult_lake::SpanRow {
+            ts_ns: now_ns(),
+            trace_id: "t-checkout".into(),
+            span_id: "s-checkout".into(),
+            span_name: "GET /".into(),
+            span_kind: "SERVER".into(),
+            status_code: "OK".into(),
+            service_name: "checkout".into(),
+            service_version: Some("1.5.0".into()),
+            target_environment: Some("dev".into()),
+            events: "[]".into(),
+            ..tumult_lake::SpanRow::default()
+        };
+        writer.insert_spans(&[spoke]).map_err(|e| e.to_string())
+    })
+    .await
+    .unwrap();
+    gate.release();
+    assert_eq!(await_terminal(&fx, &run_id).await, run_state::PASSED);
+
+    let rows = Store::at(&fx.db_path)
+        .read_only()
+        .unwrap()
+        .query_json_rows("SELECT target_version, version_source FROM experiments")
+        .unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["target_version"], serde_json::json!("1.5.0"));
+    assert_eq!(rows[0]["version_source"], serde_json::json!("observed"));
 }

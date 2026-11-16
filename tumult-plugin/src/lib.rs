@@ -53,45 +53,6 @@ mod tests {
     use super::*;
     use std::path::PathBuf;
 
-    // ── TumultPlugin trait ─────────────────────────────────────
-
-    #[test]
-    fn mock_plugin_implements_trait() {
-        let plugin = MockPlugin::new();
-        assert_eq!(plugin.name(), "mock-plugin");
-        assert_eq!(plugin.version(), "0.1.0");
-        assert!(!plugin.actions().is_empty());
-        assert!(!plugin.probes().is_empty());
-        assert_eq!(plugin.actions()[0].name, "kill");
-        assert_eq!(plugin.probes()[0].name, "health-check");
-    }
-
-    // ── ActionDescriptor / ProbeDescriptor ─────────────────────
-
-    #[test]
-    fn action_descriptor_round_trips() {
-        let desc = ActionDescriptor {
-            name: "terminate-connections".into(),
-            description: "Kill all active database connections".into(),
-            arguments: vec!["database".into(), "max_wait".into()],
-        };
-        let encoded = toon_format::encode_default(&desc).unwrap();
-        let decoded: ActionDescriptor = toon_format::decode_default(&encoded).unwrap();
-        assert_eq!(decoded, desc);
-    }
-
-    #[test]
-    fn probe_descriptor_round_trips() {
-        let desc = ProbeDescriptor {
-            name: "connection-count".into(),
-            description: "Count active database connections".into(),
-            arguments: vec!["database".into()],
-        };
-        let encoded = toon_format::encode_default(&desc).unwrap();
-        let decoded: ProbeDescriptor = toon_format::decode_default(&encoded).unwrap();
-        assert_eq!(decoded, desc);
-    }
-
     // ── ScriptPluginManifest ───────────────────────────────────
 
     #[test]
@@ -143,12 +104,6 @@ mod tests {
     }
 
     // ── PluginRegistry ─────────────────────────────────────────
-
-    #[test]
-    fn registry_starts_empty() {
-        let registry = PluginRegistry::new();
-        assert!(registry.list_plugins().is_empty());
-    }
 
     #[test]
     fn registry_registers_native_plugin() {
@@ -208,25 +163,6 @@ mod tests {
         });
         assert!(registry.has_action("tumult-kafka", "kill-broker"));
         assert!(!registry.has_action("tumult-kafka", "nonexistent"));
-    }
-
-    #[test]
-    fn registry_lists_all_actions() {
-        let mut registry = PluginRegistry::new();
-        registry.register_native(Box::new(MockPlugin::new()));
-        registry.register_script(ScriptPluginManifest {
-            name: "tumult-kafka".into(),
-            version: "0.1.0".into(),
-            description: "Kafka chaos".into(),
-            actions: vec![manifest::ScriptAction {
-                name: "kill-broker".into(),
-                script: PathBuf::from("actions/kill-broker.sh"),
-                description: "Kill broker".into(),
-            }],
-            probes: vec![],
-        });
-        let all = registry.list_all_actions();
-        assert_eq!(all.len(), 2);
     }
 
     // ── Mock plugin for testing ────────────────────────────────

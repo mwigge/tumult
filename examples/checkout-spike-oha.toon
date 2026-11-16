@@ -1,0 +1,57 @@
+title: Checkout API absorbs a 20x traffic spike (oha)
+description: A spike profile on the oha adapter. 10 concurrent users for 20 s, a jump to 200 for 10 s, then back to 10 for the rest of the minute — one oha process per window, each window a sample in the lake. The spike must not push p99 past a second or lose more than 2 % of requests.
+
+tags[3]: load, spike, checkout
+kind: performance
+target:
+  system: checkout
+  technology: http
+  environment: staging
+nfr[2]:
+  - id: p99-spike
+    kind: latency
+    metric: load.latency_p99_ms
+    operator: lte
+    threshold: 1000
+    criticality: blocking
+  - id: spike-errors
+    kind: availability
+    metric: load.error_rate
+    operator: lte
+    threshold: 0.02
+    criticality: major
+
+load:
+  tool: oha
+  script: http://127.0.0.1:8080/api/checkout
+  vus: 10
+  duration_s: 60
+  profile:
+    type: spike
+    peak_vus: 200
+    after_s: 20
+    hold_s: 10
+  thresholds:
+    error_rate: 0.02
+
+steady_state_hypothesis:
+  title: Checkout answers
+  probes[1]:
+    - name: health
+      activity_type: probe
+      provider:
+        type: process
+        path: sh
+        arguments[2]: "-c", "curl -fsS -o /dev/null http://127.0.0.1:8080/health"
+        timeout_s: 5.0
+
+method[1]:
+  - name: hold-for-the-spike
+    activity_type: probe
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "sleep 60 && curl -fsS -o /dev/null http://127.0.0.1:8080/health"
+      timeout_s: 70.0
+
+rollbacks[0]:

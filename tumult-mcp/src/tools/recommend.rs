@@ -458,10 +458,11 @@ mod tests {
         };
         let toon = toon_format::encode_default(&manifest).unwrap();
         std::fs::write(plugin_dir.join("plugin.toon"), toon).unwrap();
-        std::env::set_var("TUMULT_PLUGIN_PATH", dir.path().join("catalog"));
+        let _plugins = crate::tools::test_support::plugin_path_guard(&dir.path().join("catalog"));
 
         // A completed run that exercised exactly one of the two actions.
         let journal = tumult_core::types::Journal {
+            target_version: None,
             experiment_title: "coverage drill".into(),
             experiment_id: "run-cov-1".into(),
             status: tumult_core::types::ExperimentStatus::Completed,
@@ -483,6 +484,9 @@ mod tests {
             }],
             rollback_results: vec![],
             rollback_failures: 0,
+            kind: tumult_core::types::TestKind::default(),
+            objectives: None,
+            probe_samples: vec![],
             estimate: None,
             baseline_result: None,
             during_result: None,

@@ -137,6 +137,11 @@ async fn dry_run_renders_all_optional_sections_without_executing() {
         guards: vec![],
         blast_radius: None,
         max_concurrent_faults: None,
+        kind: tumult_core::types::TestKind::default(),
+        target: None,
+        nfr: vec![],
+        rto_target_s: None,
+        rpo_target_s: None,
     };
     let exp_path = dir.path().join("rich.toon");
     std::fs::write(&exp_path, toon_format::encode_default(&experiment).unwrap()).unwrap();

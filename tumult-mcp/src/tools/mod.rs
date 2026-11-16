@@ -124,6 +124,27 @@ mod cap_text_tests {
 
 #[cfg(test)]
 pub(crate) mod test_support {
+    const PLUGIN_PATH_ENV: &str = "TUMULT_PLUGIN_PATH";
+
+    /// Point plugin discovery at `path` for the life of the returned guard.
+    ///
+    /// The guard is the process-wide environment lock, so a test that changes
+    /// more variables does it through the returned guard instead of taking a
+    /// second one.
+    pub(crate) fn plugin_path_guard(path: &std::path::Path) -> tumult_test_utils::EnvGuard {
+        let mut env = tumult_test_utils::EnvGuard::lock();
+        env.set(PLUGIN_PATH_ENV, path);
+        env
+    }
+
+    /// The workspace's real `plugins/` directory (the live fault catalog).
+    pub(crate) fn workspace_plugins_dir() -> std::path::PathBuf {
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../plugins")
+            .canonicalize()
+            .unwrap()
+    }
+
     /// Write a minimal valid experiment TOON file into `dir` and return its path.
     pub(crate) fn write_valid_experiment(dir: &std::path::Path) -> String {
         let exp = tumult_core::types::Experiment {

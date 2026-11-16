@@ -42,7 +42,7 @@ pub struct Citation {
 
 /// Version of the citation registry. Bump on any citation change so audit
 /// exports can be pinned to a known mapping set.
-pub const REGISTRY_VERSION: &str = "2026.07";
+pub const REGISTRY_VERSION: &str = "2026.11";
 
 /// Number of months after which a citation is considered stale and must be
 /// re-verified against its official source. Enforced by a test so drift fails
@@ -62,7 +62,7 @@ official source before relying on them.";
 /// truth. Every citation traces to an official source verified on
 /// `last_verified`; see `docs/regulatory-mapping.md` for the narrative.
 pub const CITATIONS: &[Citation] = &[
-    // ── DORA — Regulation (EU) 2022/2554, Chapter IV (Arts. 24–27) + Art. 11 ──
+    // ── DORA — Regulation (EU) 2022/2554, Chapter IV (Arts. 24–27) + Arts. 11–12 ──
     Citation {
         framework: ComplianceFramework::Dora,
         control_id: "Art. 24",
@@ -74,49 +74,78 @@ programme, proportionate to risk and covering ICT systems supporting critical or
         evidence_note: "Experiment definitions (hypothesis, method, rollbacks) and a run history of \
 executed journals evidence a maintained, risk-based testing programme.",
         source_url: "https://eur-lex.europa.eu/eli/reg/2022/2554/oj",
-        last_verified: "2026-07-04",
+        last_verified: "2026-11-13",
+    },
+    Citation {
+        framework: ComplianceFramework::Dora,
+        control_id: "Art. 24(6)",
+        title: "Yearly testing of ICT systems supporting critical or important functions",
+        summary: "Financial entities other than microenterprises ensure that appropriate tests are \
+conducted at least yearly on ICT systems supporting critical or important functions.",
+        evidence_type: EvidenceType::ResilienceTesting,
+        strength: EvidenceStrength::Supporting,
+        evidence_note: "Journal timestamps evidence when tests ran and how often. Whether every \
+system supporting a critical or important function was tested within the year depends on the \
+entity's own inventory of functions and systems.",
+        source_url: "https://eur-lex.europa.eu/eli/reg/2022/2554/oj",
+        last_verified: "2026-11-13",
     },
     Citation {
         framework: ComplianceFramework::Dora,
         control_id: "Art. 25",
         title: "Testing of ICT tools and systems",
-        summary: "Perform appropriate tests — including scenario-based tests, performance testing \
-and end-to-end testing — on systems supporting critical or important functions at least yearly.",
+        summary: "The testing programme provides for the execution of appropriate tests, such as \
+scenario-based tests, performance testing and end-to-end testing. The list is illustrative and \
+Art. 25 sets no test frequency; the frequency is in Art. 24(6).",
         evidence_type: EvidenceType::ResilienceTesting,
         strength: EvidenceStrength::Direct,
         evidence_note: "Scenario-based fault-injection experiments with baseline/during-fault \
-statistics are direct evidence of scenario-based and performance testing; journal timestamps prove \
-at-least-yearly cadence.",
+statistics are direct evidence of scenario-based and performance testing.",
         source_url: "https://eur-lex.europa.eu/eli/reg/2022/2554/oj",
-        last_verified: "2026-07-04",
+        last_verified: "2026-11-13",
     },
     Citation {
         framework: ComplianceFramework::Dora,
         control_id: "Art. 26",
         title: "Advanced testing of ICT tools, systems and processes based on TLPT",
-        summary: "Systemically important entities carry out threat-led penetration testing (TLPT) \
-on live production systems at least every three years, per the TLPT RTS and TIBER-EU.",
+        summary: "Financial entities identified by the competent authority, other than Art. 16(1) \
+entities and microenterprises, carry out threat-led penetration testing (TLPT) on live production \
+systems at least every three years, per the TLPT RTS and TIBER-EU.",
         evidence_type: EvidenceType::ResilienceTesting,
         strength: EvidenceStrength::Indirect,
         evidence_note: "NOTE: Tumult experiments are resilience tests, NOT threat-led penetration \
 tests, and do not satisfy TLPT. They can inform TLPT scenario design and evidence recovery under \
 the scenarios a red team might trigger, nothing more.",
         source_url: "https://eur-lex.europa.eu/eli/reg/2022/2554/oj",
-        last_verified: "2026-07-04",
+        last_verified: "2026-11-13",
     },
     Citation {
         framework: ComplianceFramework::Dora,
         control_id: "Art. 11",
         title: "Response and recovery",
-        summary: "Put in place ICT business continuity plans and ICT response and recovery plans, \
-including backup and restoration procedures, and test them.",
+        summary: "Put in place, maintain and periodically test ICT business continuity plans and \
+ICT response and recovery plans.",
         evidence_type: EvidenceType::RecoveryValidation,
         strength: EvidenceStrength::Direct,
-        evidence_note: "Phase-3 recovery measurement (recovery duration/MTTR, rollback verification, \
-data-integrity checks) against a declared RTO is direct evidence that response and recovery plans \
-were exercised and measured.",
+        evidence_note: "Phase-3 recovery measurement (recovery duration/MTTR, rollback \
+verification) against a declared RTO is direct evidence that response and recovery plans were \
+exercised and measured.",
         source_url: "https://eur-lex.europa.eu/eli/reg/2022/2554/oj",
-        last_verified: "2026-07-04",
+        last_verified: "2026-11-13",
+    },
+    Citation {
+        framework: ComplianceFramework::Dora,
+        control_id: "Art. 12",
+        title: "Backup, restoration and recovery",
+        summary: "Have backup and restoration procedures, test them periodically, and check data \
+integrity when recovering.",
+        evidence_type: EvidenceType::RecoveryValidation,
+        strength: EvidenceStrength::Supporting,
+        evidence_note: "Experiments that exercise a restore or recovery path, with data-integrity \
+checks after recovery, evidence periodic testing of restoration (Art. 12(2)) and integrity checks \
+on recovery (Art. 12(7)). Runs that restore nothing are not evidence toward this article.",
+        source_url: "https://eur-lex.europa.eu/eli/reg/2022/2554/oj",
+        last_verified: "2026-11-13",
     },
     // ── NIS2 — Directive (EU) 2022/2555, Art. 21(2) ──
     Citation {

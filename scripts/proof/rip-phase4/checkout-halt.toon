@@ -1,0 +1,51 @@
+title: RIP phase-4 proof — a guard halts a ten-minute load
+description: A flat six-hundred-second oha load behind a guard that breaches as soon as the first method step raises its flag. The halt must end the load at once and run the rollback, not sit out the remaining plan.
+
+tags[2]: proof, performance
+kind: performance
+target:
+  system: checkout-halt
+  technology: http
+  environment: demo
+
+load:
+  tool: oha
+  script: http://127.0.0.1:44380/
+  vus: 2
+  duration_s: 600
+  profile:
+    type: soak
+    sample_interval_s: 1
+
+guards[1]:
+  - name: stop-flag
+    probe:
+      name: flag-is-down
+      activity_type: probe
+      provider:
+        type: process
+        path: sh
+        arguments[2]: "-c", "test -e \"$PROOF_BREACH_FLAG\" && echo breached || echo safe"
+        timeout_s: 5.0
+      tolerance:
+        type: regex
+        pattern: "safe"
+
+method[1]:
+  - name: raise-the-flag-then-hold-for-ten-minutes
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "sleep 3 && touch \"$PROOF_BREACH_FLAG\""
+      timeout_s: 10.0
+    pause_after_s: 600.0
+
+rollbacks[1]:
+  - name: mark-the-rollback
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "date +%s%N > \"$PROOF_ROLLBACK_MARK\""
+      timeout_s: 5.0

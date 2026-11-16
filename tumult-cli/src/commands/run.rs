@@ -14,7 +14,9 @@ use tumult_core::types::{Experiment, ExperimentStatus, Journal};
 
 use tumult_exec::ProviderExecutor;
 
-use super::load::K6LoadExecutor;
+use tumult_otel::logging::{err_sources, sanitize_url};
+
+use super::events::{self, EnvKey};
 use super::print_dry_run;
 
 // ── Run command ───────────────────────────────────────────────
@@ -45,11 +47,14 @@ pub async fn cmd_run<S: ::std::hash::BuildHasher>(
         vars,
         load_override,
         tumult_core::runner::BaselineMode::Full,
+        None,
     )
     .await
 }
 
 /// Runs an experiment with an explicitly enforced measurement mode.
+/// `target_version` declares the version of the target the run measures,
+/// over one the file declares.
 ///
 /// # Errors
 /// Returns an error when validation, measurement, execution or journal writing fails.
@@ -64,6 +69,7 @@ pub async fn cmd_run_with_baseline_mode<S: ::std::hash::BuildHasher>(
     vars: std::collections::HashMap<String, String, S>,
     load_override: Option<tumult_core::types::LoadConfig>,
     baseline_mode: tumult_core::runner::BaselineMode,
+    target_version: Option<&str>,
 ) -> Result<()> {
     // S-C3: File size limit before deserialization (10MB max)
     let file_size = tokio::fs::metadata(experiment_path)
@@ -119,6 +125,7 @@ pub async fn cmd_run_with_baseline_mode<S: ::std::hash::BuildHasher>(
             .with_context(|| "failed to apply template variables to experiment")?
     };
 
+    super::target_version::declare(&mut experiment, target_version)?;
     validate_experiment(&experiment)?;
 
     if dry_run {
@@ -133,18 +140,8 @@ pub async fn cmd_run_with_baseline_mode<S: ::std::hash::BuildHasher>(
     // logs, and analytics must never see a secret value.
     let (config_env, skipped_config) = build_config_env(&config);
     let (secret_env, skipped_secrets) = build_secret_env(&secrets_flat);
-    for key in &skipped_config {
-        eprintln!(
-            "warning: configuration key '{key}' does not form a valid env var name after \
-             uppercasing; usable in templates but not injected as TUMULT_CONFIG_*"
-        );
-    }
-    for key in &skipped_secrets {
-        eprintln!(
-            "warning: secret key '{key}' does not form a valid env var name after \
-             uppercasing; usable in templates but not injected as TUMULT_SECRET_*"
-        );
-    }
+    events::env_keys_skipped(EnvKey::Config, &skipped_config);
+    events::env_keys_skipped(EnvKey::Secret, &skipped_secrets);
     let mut injected_env = config_env;
     injected_env.extend(secret_env);
 
@@ -169,7 +166,11 @@ pub async fn cmd_run_with_baseline_mode<S: ::std::hash::BuildHasher>(
     let cancel_token_for_signal = cancel_token.clone();
     tokio::spawn(async move {
         if tokio::signal::ctrl_c().await.is_ok() {
-            tracing::warn!("SIGINT received — cancelling experiment");
+            tracing::warn!(
+                name: "cli.run.cancelled",
+                { signal = "SIGINT" },
+                "cancelling experiment"
+            );
             cancel_token_for_signal.cancel();
         }
     });
@@ -179,15 +180,24 @@ pub async fn cmd_run_with_baseline_mode<S: ::std::hash::BuildHasher>(
         experiment.load = Some(override_config.clone());
     }
 
-    // Create K6 load executor if experiment has a load config
-    let load_executor: Option<std::sync::Arc<dyn tumult_core::runner::LoadExecutor>> =
-        if experiment.load.is_some() {
-            Some(std::sync::Arc::new(K6LoadExecutor))
-        } else {
-            None
-        };
+    // Create the load adapter for the experiment's load tool, if any
+    let load_executor = experiment
+        .load
+        .as_ref()
+        .map(|load| tumult_core::runner::load_executor_for(&load.tool))
+        .transpose()
+        .map_err(|e| anyhow::anyhow!(e))?;
 
+    // The version that served the run is asked of the daemon, or of the
+    // local store the run reports to; a run nobody observes says so.
+    let version_resolver = super::target_version::resolver(auto_ingest);
+    if let Some(notice) =
+        super::target_version::unobserved_notice(&experiment, version_resolver.is_some())
+    {
+        crate::errln!("{notice}");
+    }
     let run_config = RunConfig {
+        version_resolver,
         baseline_mode,
         rollback_strategy,
         cancellation_token: Some(cancel_token),
@@ -196,30 +206,40 @@ pub async fn cmd_run_with_baseline_mode<S: ::std::hash::BuildHasher>(
         max_concurrent_faults: None,
     };
 
-    println!("Running experiment: {}", experiment.title);
+    crate::outln!("Running experiment: {}", experiment.title);
 
     let output = JournalOutput::prepare(journal_path)?;
     let journal = run_experiment(&experiment, &executor_arc, &controls_arc, &run_config)?;
 
     output.write(&encode_journal(&journal)?)?;
 
-    println!("Status: {:?}", journal.status);
-    println!("Duration: {}ms", journal.duration_ms);
-    println!("Method steps: {} executed", journal.method_results.len());
-    if !journal.rollback_results.is_empty() {
-        println!("Rollbacks: {} executed", journal.rollback_results.len());
+    crate::outln!("Status: {:?}", journal.status);
+    if let Some(measured) = &journal.target_version {
+        crate::outln!(
+            "Target version: {} ({})",
+            measured.version,
+            measured.version_source
+        );
     }
-    println!("Journal written to: {}", journal_path.display());
+    crate::outln!("Duration: {}ms", journal.duration_ms);
+    crate::outln!("Method steps: {} executed", journal.method_results.len());
+    if !journal.rollback_results.is_empty() {
+        crate::outln!("Rollbacks: {} executed", journal.rollback_results.len());
+    }
+    crate::outln!("Journal written to: {}", journal_path.display());
 
     // Auto-ingest into persistent analytics store
     if auto_ingest && baseline_mode != tumult_core::runner::BaselineMode::Only {
         match auto_ingest_journal(&journal, &experiment).await {
-            Ok((true, via)) => println!(
+            Ok((true, via)) => crate::outln!(
                 "Ingested into persistent analytics store{}",
-                via.map_or_else(String::new, |url| format!(" via daemon ({url})"))
+                via.map_or_else(String::new, |url| format!(
+                    " via daemon ({})",
+                    sanitize_url(&url)
+                ))
             ),
-            Ok((false, _)) => println!("Already in analytics store (duplicate)"),
-            Err(e) => eprintln!("warning: auto-ingest failed: {e}"),
+            Ok((false, _)) => crate::outln!("Already in analytics store (duplicate)"),
+            Err(e) => events::auto_ingest_failed(&e),
         }
     }
 
@@ -278,9 +298,7 @@ async fn auto_ingest_journal(
         match post_journal_to_daemon(&base, journal, experiment).await {
             Ok(ingested) => return Ok((ingested, Some(base))),
             Err(DaemonPostError::Unreachable(reason)) => {
-                eprintln!(
-                    "warning: daemon at {base} unreachable ({reason}); writing the store directly"
-                );
+                events::daemon_unreachable(&base, &reason);
             }
             Err(DaemonPostError::Rejected(reason)) => {
                 bail!("daemon rejected journal import: {reason}");
@@ -311,7 +329,7 @@ async fn post_journal_to_daemon(
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(3))
         .build()
-        .map_err(|e| DaemonPostError::Unreachable(e.to_string()))?;
+        .map_err(unreachable)?;
     let url = format!("{}/api/import/journal", base.trim_end_matches('/'));
     let mut request = client
         .post(&url)
@@ -321,10 +339,7 @@ async fn post_journal_to_daemon(
             request = request.bearer_auth(token);
         }
     }
-    let resp = request
-        .send()
-        .await
-        .map_err(|e| DaemonPostError::Unreachable(e.to_string()))?;
+    let resp = request.send().await.map_err(unreachable)?;
     let status = resp.status();
     let body: serde_json::Value = resp
         .json()
@@ -341,6 +356,13 @@ async fn post_journal_to_daemon(
         .get("ingested")
         .and_then(serde_json::Value::as_bool)
         .unwrap_or(false))
+}
+
+/// The transport failure behind an unreachable daemon, with its cause chain
+/// and without the request URL: `TUMULT_DAEMON_URL` may carry credentials,
+/// and the caller reports the (sanitised) URL separately.
+fn unreachable(error: reqwest::Error) -> DaemonPostError {
+    DaemonPostError::Unreachable(err_sources(&error.without_url()).to_string())
 }
 
 fn emit_store_metrics(db_path: &Path, store: &tumult_lake::AnalyticsStore) {
@@ -386,13 +408,14 @@ fn emit_store_metrics(db_path: &Path, store: &tumult_lake::AnalyticsStore) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::commands::tests::helpers::ENV_LOCK;
+    use tumult_test_utils::EnvGuard;
 
     // Env vars are process-global; serialize every test that touches them on
     // the shared lock so command-handler tests in sibling modules cannot
     // observe this test's overrides.
     fn test_journal(id: &str) -> Journal {
         Journal {
+            target_version: None,
             experiment_title: format!("Test {id}"),
             experiment_id: id.into(),
             status: ExperimentStatus::Completed,
@@ -404,6 +427,9 @@ mod tests {
             method_results: vec![],
             rollback_results: vec![],
             rollback_failures: 0,
+            kind: tumult_core::types::TestKind::default(),
+            objectives: None,
+            probe_samples: vec![],
             halt: None,
             blast_radius: None,
             estimate: None,
@@ -416,22 +442,51 @@ mod tests {
         }
     }
 
+    /// A loopback "daemon" that closes every connection without answering.
+    ///
+    /// The port stays bound for as long as the stub lives, so nothing that
+    /// would answer can take it: a port that merely happened to be free
+    /// when it was picked gives no such guarantee.
+    struct SilentDaemon {
+        port: u16,
+        accepting: tokio::task::JoinHandle<()>,
+    }
+
+    impl SilentDaemon {
+        async fn start() -> Self {
+            let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+                .await
+                .unwrap();
+            let port = listener.local_addr().unwrap().port();
+            let accepting = tokio::spawn(async move {
+                while let Ok((connection, _peer)) = listener.accept().await {
+                    drop(connection);
+                }
+            });
+            Self { port, accepting }
+        }
+    }
+
+    impl Drop for SilentDaemon {
+        fn drop(&mut self) {
+            self.accepting.abort();
+        }
+    }
+
     /// An unreachable daemon must fall back to the direct `DuckDB` write: a
     /// connection-level failure means the journal never left the process, so
     /// writing the store directly cannot double-write.
-    // The env guard must cover the awaited ingest (env vars are read inside
-    // it). Only tests serialized on ENV_LOCK can block on it, so holding a
-    // std guard across the await cannot deadlock the test runtime.
-    #[allow(clippy::await_holding_lock)]
+    // The guard covers the awaited ingest: the variables are read inside it.
     #[tokio::test]
     async fn unreachable_daemon_falls_back_to_direct_write() {
-        let _guard = ENV_LOCK.lock().unwrap();
+        let mut env = EnvGuard::lock();
         let tmp = tempfile::TempDir::new().unwrap();
         let db_path = tmp.path().join("lake.duckdb");
-        std::env::set_var("TUMULT_LAKE_PATH", &db_path);
-        // Port 1 is never listening: connection refused, no HTTP response.
-        std::env::set_var(DAEMON_URL_ENV, "http://127.0.0.1:1");
-        std::env::remove_var("TUMULT_CLICKHOUSE_URL");
+        // The connection is closed without an HTTP response.
+        let daemon = SilentDaemon::start().await;
+        env.set("TUMULT_LAKE_PATH", &db_path)
+            .set(DAEMON_URL_ENV, format!("http://127.0.0.1:{}", daemon.port))
+            .remove("TUMULT_CLICKHOUSE_URL");
 
         let journal = test_journal("fallback-e1");
         let experiment = Experiment::default();
@@ -439,10 +494,45 @@ mod tests {
         assert!(ingested);
         assert_eq!(via, None, "unreachable daemon must not claim the ingest");
 
-        std::env::remove_var(DAEMON_URL_ENV);
-        std::env::remove_var("TUMULT_LAKE_PATH");
-
         let store = tumult_lake::AnalyticsStore::open_read_only(&db_path).unwrap();
         assert_eq!(store.experiment_count().unwrap(), 1);
+    }
+
+    #[tokio::test]
+    async fn an_unreachable_daemon_is_reported_without_its_url_credentials() {
+        // The daemon never answers; the URL carries userinfo the way a
+        // misconfigured TUMULT_DAEMON_URL can.
+        let daemon = SilentDaemon::start().await;
+        let base = &format!(
+            "http://operator:hunter2-daemon-pw@127.0.0.1:{}",
+            daemon.port
+        );
+        let journal = test_journal("unreachable-1");
+        let experiment: Experiment = toon_format::decode_default(
+            &std::fs::read_to_string(crate::commands::tests::helpers::write_valid_experiment(
+                tempfile::TempDir::new().unwrap().path(),
+            ))
+            .unwrap(),
+        )
+        .unwrap();
+
+        let Err(DaemonPostError::Unreachable(reason)) =
+            post_journal_to_daemon(base, &journal, &experiment).await
+        else {
+            panic!("a daemon that never answers must be unreachable");
+        };
+        assert!(!reason.contains("hunter2-daemon-pw"), "{reason}");
+
+        let logs = tumult_otel::logging::testing::capture_json(tracing::Level::WARN, || {
+            super::super::events::daemon_unreachable(base, &reason);
+        });
+        let event = &logs.named("cli.daemon.unreachable")[0];
+        assert_eq!(event["level"], "WARN");
+        assert_eq!(
+            event["url.full"],
+            format!("http://127.0.0.1:{}", daemon.port)
+        );
+        assert_eq!(event["error.message"], reason.as_str());
+        assert!(!logs.raw.contains("hunter2-daemon-pw"), "{}", logs.raw);
     }
 }

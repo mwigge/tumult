@@ -1,6 +1,7 @@
 // Imported from kronika. Pedantic lints are scoped to tumult-native
 // crates; this file predates the pedantic gate (see crate lib.rs).
 #![allow(clippy::pedantic)]
+#![allow(clippy::print_stdout)] // an example: the list of rendered files is its output
 
 //! Render sample R1/R3/R2 PDFs from a seeded fixture store into
 //! `/tmp/krk/out/` — the visual-iteration loop for the report pipeline.
@@ -113,6 +114,7 @@ fn run(
             .flatten()
             .collect(),
             resource_attrs: vec![],
+            ..LogRow::default()
         });
     }
 }
@@ -321,6 +323,7 @@ fn main() {
         service_name: "tumult".into(),
         log_attrs: vec![("experiment_id".into(), gd.into())],
         resource_attrs: vec![],
+        ..LogRow::default()
     });
     logs.push(LogRow {
         ts_ns: base + 700_000_000,
@@ -331,6 +334,7 @@ fn main() {
         service_name: "app".into(),
         log_attrs: vec![],
         resource_attrs: vec![],
+        ..LogRow::default()
     });
 
     let store = Store::open(&db).unwrap();
@@ -358,7 +362,7 @@ fn main() {
         entered_by: by.into(),
         attestation: "I attest this record reflects the exercise as executed.".into(),
         renewal_due_ns: Some(now + 90 * DAY),
-        framework_refs: vec!["DORA Art. 24(7)".into(), "ISO 27001 A.5.30".into()],
+        framework_refs: vec!["DORA Art. 24(6)".into(), "ISO 27001 A.5.30".into()],
     };
     let verified = writer
         .create_manual_draft(&manual(

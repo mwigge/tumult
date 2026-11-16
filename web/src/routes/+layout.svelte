@@ -7,6 +7,33 @@
 
     let { children } = $props();
 
+    // Theme: dark is the default; `light` forces light, `auto` follows the
+    // OS preference. Persisted per browser; applied as data-theme on <html>
+    // so lib/theme.css and the ECharts themes pick it up.
+    type Theme = 'dark' | 'light' | 'auto';
+    const THEMES: Theme[] = ['dark', 'light', 'auto'];
+    const THEME_GLYPH: Record<Theme, string> = { dark: '◐', light: '○', auto: '◑' };
+    let theme = $state<Theme>('dark');
+    $effect(() => {
+        try {
+            const saved = localStorage.getItem('tumult.theme');
+            if (saved === 'light' || saved === 'auto' || saved === 'dark') theme = saved;
+        } catch {
+            /* storage unavailable: stay dark */
+        }
+    });
+    $effect(() => {
+        document.documentElement.dataset.theme = theme;
+        try {
+            localStorage.setItem('tumult.theme', theme);
+        } catch {
+            /* storage unavailable */
+        }
+    });
+    function cycleTheme() {
+        theme = THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length];
+    }
+
     const NAV: {
         href: string;
         label: string;
@@ -15,7 +42,10 @@
         operator?: boolean;
     }[] = [
         { href: '/', label: 'Overview', icon: '◧' },
+        { href: '/resilience', label: 'Resilience', icon: '◎' },
+        { href: '/performance', label: 'Performance', icon: '◭' },
         { href: '/scores', label: 'Scores', icon: '▦' },
+        { href: '/scores?view=dora', label: 'DORA', icon: '⚖' },
         { href: '/experiments', label: 'Experiments', icon: '⚗' },
         { href: '/runs', label: 'Runs', icon: '▶' },
         { href: '/author', label: 'Author', icon: '✚' },
@@ -25,7 +55,7 @@
         { href: '/logs', label: 'Logs', icon: '≣' },
         { href: '/traces', label: 'Traces', icon: '⌁' },
         { href: '/metrics', label: 'Metrics', icon: '∿' },
-        { href: '/topology', label: 'Topology', icon: '✳' },
+        { href: '/starmap', label: 'Star Map', icon: '✳' },
         { href: '/ask', label: 'Ask', icon: '✦' },
         { href: '/reports', label: 'Reports', icon: '▤' },
         { href: '/events', label: 'Events', icon: '◔' },
@@ -34,8 +64,19 @@
         { href: '/schedules', label: 'Schedules', icon: '↻', operator: true },
     ];
 
-    function active(pathname: string, href: string): boolean {
-        return href === '/' ? pathname === '/' : pathname.startsWith(href);
+    // An entry with a query (`/scores?view=dora`) is active only when the
+    // page carries that `view`; its plain sibling (`/scores`) only when not.
+    function active(
+        url: { pathname: string; searchParams: { get(name: string): string | null } },
+        href: string,
+    ): boolean {
+        const [path, query] = href.split('?');
+        if (path === '/') return url.pathname === '/';
+        if (!url.pathname.startsWith(path)) return false;
+        const wanted = new URLSearchParams(query ?? '').get('view');
+        const viewed = url.searchParams.get('view');
+        if (wanted) return viewed === wanted;
+        return !NAV.some((n) => n.href === `${path}?view=${viewed}`);
     }
 
     // Session state for the user chip. me() never breaks the layout: any
@@ -87,12 +128,16 @@
             <nav class="nav">
                 {#each NAV as item (item.href)}
                     {#if (!item.admin || isAdmin) && (!item.operator || isOperator)}
-                        <a href={item.href} class:active={active(page.url.pathname, item.href)}>
+                        <a href={item.href} class:active={active(page.url, item.href)}>
                             <span>{item.icon}</span>{item.label}
                         </a>
                     {/if}
                 {/each}
             </nav>
+            <button class="theme" onclick={cycleTheme} title="theme: {theme} (click to change)">
+                {THEME_GLYPH[theme]}
+                {theme}
+            </button>
             {#if me?.auth_required && me.authenticated}
                 <div class="user-chip">
                     <div class="who">
@@ -114,6 +159,22 @@
 {/if}
 
 <style>
+    .theme {
+        margin: 8px 18px 0;
+        align-self: flex-start;
+        background: none;
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        color: var(--text-dim);
+        font: inherit;
+        font-size: 11.5px;
+        padding: 2px 8px;
+        cursor: pointer;
+    }
+    .theme:hover {
+        color: var(--text);
+        border-color: var(--border-strong);
+    }
     .user-chip {
         margin-top: auto;
         padding: 12px 18px 0;

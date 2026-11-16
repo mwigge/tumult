@@ -59,6 +59,49 @@ pub(crate) enum RollbackStrategy {
     Never,
 }
 
+#[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum GateFailOn {
+    /// Exit non-zero on a `fail` verdict only (default)
+    Fail,
+    /// Exit non-zero on `warn` or `fail`
+    Warn,
+    /// Always exit zero; print the verdict only
+    Never,
+}
+
+#[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum PerfFailOnArg {
+    /// Exit 3 on a `regressed` verdict
+    Regressed,
+    /// Exit 4 on an `inconclusive` verdict, and 3 on a `regressed` one
+    Inconclusive,
+    /// Always exit zero; print the verdict only
+    Never,
+}
+
+#[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum PerfIncludeArg {
+    /// Count the samples of aborted and truncated runs too
+    Partial,
+}
+
+#[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum PerfQuantileArg {
+    P50,
+    P95,
+    P99,
+}
+
+impl PerfQuantileArg {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::P50 => "p50",
+            Self::P95 => "p95",
+            Self::P99 => "p99",
+        }
+    }
+}
+
 #[derive(clap::ValueEnum, Clone, Debug, PartialEq, Eq)]
 pub(crate) enum OutputFormat {
     /// Print journal as JSON to stdout
@@ -120,10 +163,16 @@ pub(crate) enum Commands {
         /// Template variable substitution: KEY=VALUE (may be repeated)
         #[arg(long = "var", value_name = "KEY=VALUE", action = clap::ArgAction::Append)]
         vars: Vec<String>,
+        /// The version of the target this run measures (its
+        /// `service.version`), recorded on the run as declared; without
+        /// it and without `target.version` in the file, the version is
+        /// observed from the target's telemetry when the run ends
+        #[arg(long, value_name = "VERSION")]
+        target_version: Option<String>,
         /// Run a load test concurrently with the experiment method
         #[arg(long, value_enum)]
         load: Option<LoadToolArg>,
-        /// Path to load test script (k6 `.js`)
+        /// Path to load test script (k6 `.js`), or the URL to hit for oha
         #[arg(long)]
         load_script: Option<PathBuf>,
         /// Number of virtual users for load test
@@ -318,6 +367,92 @@ pub(crate) enum Commands {
     Autopilot {
         #[command(subcommand)]
         action: AutopilotAction,
+    },
+    /// CI gate: ask the daemon for a target's resilience verdict and exit
+    /// non-zero when it does not pass (`GET /api/gate/{target}`)
+    Gate {
+        /// Target system as recorded on the experiments (e.g. `payments-api`)
+        target: String,
+        /// Minimum acceptable score, 0-100 (daemon default 70)
+        #[arg(long)]
+        min_score: Option<f64>,
+        /// Evidence older than this many days is stale (daemon default 30)
+        #[arg(long)]
+        max_age_days: Option<u32>,
+        /// Restrict the verdict to one environment
+        #[arg(long)]
+        env: Option<String>,
+        /// Daemon base URL (default: `TUMULT_DAEMON_URL`)
+        #[arg(long)]
+        daemon_url: Option<String>,
+        /// Which verdicts make the command exit non-zero
+        #[arg(long, value_enum, default_value_t = GateFailOn::Fail)]
+        fail_on: GateFailOn,
+        /// Print the daemon's JSON answer instead of the summary
+        #[arg(long)]
+        json: bool,
+    },
+    /// Performance gate: ask the daemon for a target's regression verdict
+    /// between its latest two service.versions (`GET /api/perf/{target}`;
+    /// `--store` posts to `/api/perf/{target}/verdicts`)
+    Perf {
+        /// Target system as recorded on the experiments (e.g. `payments-api`)
+        target: String,
+        /// Probe series to compare (daemon default `load.latency_p95_ms`)
+        #[arg(long)]
+        probe: Option<String>,
+        /// Quantile the verdict is keyed on (daemon default p95)
+        #[arg(long, value_enum)]
+        quantile: Option<PerfQuantileArg>,
+        /// Fewer samples on either side is inconclusive (daemon default 20)
+        #[arg(long)]
+        min_samples: Option<u32>,
+        /// Fewer runs with samples on either side is inconclusive (daemon
+        /// default 3, at most 1000); an interval from fewer than 5 is
+        /// flagged as resting on few runs
+        #[arg(long, value_parser = clap::value_parser!(u32).range(1..=1000))]
+        min_runs: Option<u32>,
+        /// Seed of the resampling (daemon default fixed): the same runs
+        /// and seed give the same interval
+        #[arg(long)]
+        seed: Option<u64>,
+        /// Noise margin as a percentage of the baseline quantile (daemon default 5)
+        #[arg(long)]
+        margin_pct: Option<f64>,
+        /// The environment to compare in; needed when the target has
+        /// versions in more than one
+        #[arg(long)]
+        env: Option<String>,
+        /// Version to compare against (default: the one deployed just
+        /// before the candidate)
+        #[arg(long)]
+        baseline: Option<String>,
+        /// Version to judge (default: the one deployed last)
+        #[arg(long)]
+        candidate: Option<String>,
+        /// Append the verdict to the daemon's `perf_verdicts` history
+        /// (needs the operator role; a retry with the same evidence
+        /// appends nothing and still succeeds); the default only reads
+        #[arg(long)]
+        store: bool,
+        /// Daemon base URL (default: `TUMULT_DAEMON_URL`)
+        #[arg(long)]
+        daemon_url: Option<String>,
+        /// How far back samples are read, such as `30d` or `12h` (daemon
+        /// default 30d); the order of the versions does not depend on it
+        #[arg(long)]
+        range: Option<String>,
+        /// Runs left out by default that are to be counted
+        #[arg(long, value_enum)]
+        include: Option<PerfIncludeArg>,
+        /// Which verdicts make the command exit non-zero, comma-separated:
+        /// `regressed` exits 3, `inconclusive` exits 4
+        /// [default: regressed,inconclusive]
+        #[arg(long, value_enum, value_delimiter = ',')]
+        fail_on: Vec<PerfFailOnArg>,
+        /// Print the daemon's JSON answer instead of the summary
+        #[arg(long)]
+        json: bool,
     },
     /// Open the interactive analytics TUI over the store (read-only dashboard)
     #[command(alias = "dashboard")]

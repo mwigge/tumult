@@ -115,7 +115,6 @@ impl ClickHouseStore {
         act_insert.end().await.map_err(|e| Self::ch_err(&e))?;
 
         telemetry::event_journal_ingested(&journal.experiment_id, activity_count);
-        crate::telemetry::record_store_gauges(0, 0); // will be updated on next stats call
         Ok(true)
     }
 

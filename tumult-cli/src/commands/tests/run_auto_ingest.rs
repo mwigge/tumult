@@ -2,7 +2,7 @@
 //! experiments) and the auto-ingest happy path into a temp analytics store.
 
 use super::super::*;
-use super::helpers::{use_temp_store, write_valid_experiment, ENV_LOCK};
+use super::helpers::{use_temp_store, write_valid_experiment};
 use tempfile::TempDir;
 use tumult_core::execution::RollbackStrategy;
 use tumult_core::types::{Activity, ActivityType, Experiment, Provider};
@@ -32,17 +32,14 @@ async fn run_rejects_oversized_experiment_file() {
     );
 }
 
-// The env guard must cover the awaited run (env vars are read inside it).
-// Only tests serialized on ENV_LOCK can block on it, so holding a std guard
-// across the await cannot deadlock the test runtime.
-#[allow(clippy::await_holding_lock)]
+// The guard covers the awaited run: the variables are read inside it.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn run_auto_ingests_completed_journal_into_store() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let mut env = tumult_test_utils::EnvGuard::lock();
     let dir = TempDir::new().unwrap();
-    let db = use_temp_store(dir.path());
-    std::env::remove_var("TUMULT_CLICKHOUSE_URL");
-    std::env::remove_var("TUMULT_DAEMON_URL");
+    let db = use_temp_store(&mut env, dir.path());
+    env.remove("TUMULT_CLICKHOUSE_URL")
+        .remove("TUMULT_DAEMON_URL");
     let exp_path = write_valid_experiment(dir.path());
     let journal_path = dir.path().join("out.toon");
 
@@ -58,8 +55,6 @@ async fn run_auto_ingests_completed_journal_into_store() {
     )
     .await
     .unwrap();
-
-    std::env::remove_var("TUMULT_LAKE_PATH");
 
     let store = tumult_lake::AnalyticsStore::open_read_only(&db).unwrap();
     assert_eq!(store.experiment_count().unwrap(), 1);
@@ -103,6 +98,11 @@ async fn run_bails_when_experiment_does_not_complete() {
         guards: vec![],
         blast_radius: None,
         max_concurrent_faults: None,
+        kind: tumult_core::types::TestKind::default(),
+        target: None,
+        nfr: vec![],
+        rto_target_s: None,
+        rpo_target_s: None,
     };
     let exp_path = dir.path().join("failing.toon");
     std::fs::write(&exp_path, toon_format::encode_default(&experiment).unwrap()).unwrap();

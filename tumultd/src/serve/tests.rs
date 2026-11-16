@@ -1,10 +1,13 @@
 use super::serve;
 use super::tls::load_tls;
-use super::ui::{ui_handler, UiAssets};
+use super::ui::{metrics_page_for_browsers, ui_handler, wants_html, UiAssets};
+use super::until_both_stop;
+use super::{finish, Workers};
 use axum::http::StatusCode;
 use axum::response::Response;
 use std::path::PathBuf;
 use tumult_ingest::Config;
+use tumult_test_utils::EnvGuard;
 
 /// Throwaway self-signed `localhost` certificate/key pair (generated with
 /// `openssl req -x509`), used to exercise the TLS load path.
@@ -127,6 +130,71 @@ async fn tls_valid_pair_loads() {
         .is_some());
 }
 
+// -- /metrics: Prometheus for scrapers, the web page for a browser ---------
+
+const EXPOSITION: &str = "tumultd_runs_started_total 0";
+
+/// A `/metrics` route that answers with Prometheus text, behind the
+/// browser check, served on a loopback port.
+async fn metrics_behind_the_browser_check() -> u16 {
+    let app = axum::Router::new()
+        .route("/metrics", axum::routing::get(|| async { EXPOSITION }))
+        .layer(axum::middleware::from_fn(metrics_page_for_browsers));
+    let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+        .await
+        .unwrap();
+    let port = listener.local_addr().unwrap().port();
+    tokio::spawn(async move { axum::serve(listener, app).await });
+    port
+}
+
+#[tokio::test]
+async fn a_browser_opening_metrics_gets_the_web_page() {
+    let port = metrics_behind_the_browser_check().await;
+    let resp = http_get_accepting(port, "/metrics", Some(BROWSER_ACCEPT))
+        .await
+        .unwrap();
+    assert!(resp.contains(" 200 OK"), "{resp}");
+    assert!(resp.contains("content-type: text/html"), "{resp}");
+    assert!(!resp.contains(EXPOSITION), "{resp}");
+    let shell = UiAssets::get("200.html").expect("the app shell is embedded");
+    assert!(
+        resp.ends_with(&*String::from_utf8_lossy(&shell.data)),
+        "{resp}"
+    );
+}
+
+#[tokio::test]
+async fn a_scraper_or_curl_on_metrics_gets_prometheus_text() {
+    let port = metrics_behind_the_browser_check().await;
+    for accept in [
+        Some(PROMETHEUS_ACCEPT),
+        Some("text/plain"),
+        Some("*/*"),
+        None,
+    ] {
+        let resp = http_get_accepting(port, "/metrics", accept).await.unwrap();
+        assert!(resp.contains(" 200 OK"), "{accept:?}: {resp}");
+        assert!(resp.ends_with(EXPOSITION), "{accept:?}: {resp}");
+    }
+}
+
+#[test]
+fn only_a_request_that_asks_for_html_first_wants_html() {
+    let accepts = |value: &str| {
+        let mut headers = axum::http::HeaderMap::new();
+        headers.insert(axum::http::header::ACCEPT, value.parse().unwrap());
+        wants_html(&headers)
+    };
+    assert!(accepts(BROWSER_ACCEPT));
+    assert!(accepts("TEXT/HTML; charset=utf-8"));
+    assert!(!accepts(PROMETHEUS_ACCEPT));
+    assert!(!accepts("*/*"));
+    assert!(!accepts("text/plain, text/html"));
+    assert!(!accepts(""));
+    assert!(!wants_html(&axum::http::HeaderMap::new()));
+}
+
 // -- ui_handler (embedded SPA) --------------------------------------------
 
 async fn body_bytes(resp: Response) -> Vec<u8> {
@@ -220,33 +288,607 @@ async fn http_get(port: u16, path: &str) -> std::io::Result<String> {
     Ok(String::from_utf8_lossy(&buf).into_owned())
 }
 
+/// `GET path` with an `Accept` header, or none.
+async fn http_get_accepting(
+    port: u16,
+    path: &str,
+    accept: Option<&str>,
+) -> std::io::Result<String> {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let mut stream = tokio::net::TcpStream::connect(("127.0.0.1", port)).await?;
+    let accept = accept.map_or_else(String::new, |a| format!("Accept: {a}\r\n"));
+    stream
+        .write_all(format!("GET {path} HTTP/1.0\r\nHost: localhost\r\n{accept}\r\n").as_bytes())
+        .await?;
+    let mut buf = Vec::new();
+    stream.read_to_end(&mut buf).await?;
+    Ok(String::from_utf8_lossy(&buf).into_owned())
+}
+
+/// What Chrome sends when the address bar or a reload opens a page.
+const BROWSER_ACCEPT: &str =
+    "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8";
+/// What Prometheus 2.x/3.x sends to a scrape target.
+const PROMETHEUS_ACCEPT: &str = "application/openmetrics-text;version=1.0.0;q=0.5,application/openmetrics-text;version=0.0.1;q=0.4,text/plain;version=0.0.4;q=0.3,*/*;q=0.2";
+
+type Listener = tokio::task::JoinHandle<std::io::Result<()>>;
+
+/// A listener task that serves until it is stopped, and a receiver that
+/// resolves once the task is gone.
+fn serving() -> (Listener, tokio::sync::oneshot::Receiver<()>) {
+    let (alive, gone) = tokio::sync::oneshot::channel::<()>();
+    let task = tokio::spawn(async move {
+        let _alive = alive;
+        std::future::pending::<std::io::Result<()>>().await
+    });
+    (task, gone)
+}
+
+fn failing(why: &'static str) -> Listener {
+    tokio::spawn(async move { Err(std::io::Error::other(why)) })
+}
+
+/// What was true at the moment the telemetry was flushed.
+#[derive(Debug, PartialEq, Eq)]
+struct Flushed {
+    /// The listener that did not fail was still serving.
+    survivor_serving: bool,
+    /// The `process.fatal` event had been logged.
+    fatal_logged: bool,
+}
+
+/// Stands in for the daemon's telemetry and records each flush.
+#[derive(Default)]
+struct FlushProbe {
+    /// Resolves once the listener that did not fail is gone.
+    survivor_gone: std::sync::Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
+    /// What the test thread has logged.
+    log: tumult_otel::logging::testing::Sink,
+    flushes: std::sync::Mutex<Vec<Flushed>>,
+}
+
+impl FlushProbe {
+    fn watching(
+        survivor_gone: tokio::sync::oneshot::Receiver<()>,
+        capture: &tumult_otel::logging::testing::LogCapture,
+    ) -> std::sync::Arc<Self> {
+        std::sync::Arc::new(Self {
+            survivor_gone: std::sync::Mutex::new(Some(survivor_gone)),
+            log: capture.sink(),
+            flushes: std::sync::Mutex::default(),
+        })
+    }
+}
+
+impl super::Flush for FlushProbe {
+    fn flush(&self) {
+        let survivor_serving = self
+            .survivor_gone
+            .lock()
+            .unwrap()
+            .as_mut()
+            .is_some_and(|gone| {
+                gone.try_recv() == Err(tokio::sync::oneshot::error::TryRecvError::Empty)
+            });
+        let fatal_logged = self.log.text().contains("\"process.fatal\"");
+        self.flushes.lock().unwrap().push(Flushed {
+            survivor_serving,
+            fatal_logged,
+        });
+    }
+}
+
+/// Telemetry nobody looks at.
+fn unwatched() -> std::sync::Arc<FlushProbe> {
+    std::sync::Arc::default()
+}
+
+#[tokio::test]
+async fn a_failed_listener_is_reported_and_flushed_while_the_other_still_serves() {
+    let capture = tumult_otel::logging::testing::LogCapture::start(tracing::Level::INFO);
+    let (grpc, grpc_gone) = serving();
+    let telemetry = FlushProbe::watching(grpc_gone, &capture);
+
+    let outcome = until_both_stop(grpc, failing("address in use"), &telemetry).await;
+
+    assert_eq!(
+        *telemetry.flushes.lock().unwrap(),
+        [Flushed {
+            survivor_serving: true,
+            fatal_logged: true,
+        }]
+    );
+    // Stopped all the same, once the flush is done.
+    let grpc_gone = telemetry.survivor_gone.lock().unwrap().take().unwrap();
+    assert!(grpc_gone.await.is_err());
+    let logs = capture.snapshot();
+    let fatal = logs.named("process.fatal");
+    assert_eq!(fatal.len(), 1, "{}", logs.raw);
+    let message = fatal[0]["error.message"].as_str().unwrap();
+    assert!(message.contains("HTTP server"), "{message}");
+    assert!(message.contains("address in use"), "{message}");
+    let error = outcome.expect_err("a failed listener is an error");
+    assert!(crate::events::fatal_was_reported(&error));
+}
+
+#[tokio::test]
+async fn a_clean_stop_leaves_the_flush_to_the_shutdown_signal() {
+    let stopped = || -> Listener { tokio::spawn(async { Ok(()) }) };
+    let telemetry = unwatched();
+
+    until_both_stop(stopped(), stopped(), &telemetry)
+        .await
+        .expect("clean stop");
+
+    assert!(telemetry.flushes.lock().unwrap().is_empty());
+}
+
+/// Telemetry whose exporter hangs until the test lets go of it.
+struct StuckFlush(std::sync::Mutex<std::sync::mpsc::Receiver<()>>);
+
+impl super::Flush for StuckFlush {
+    fn flush(&self) {
+        // Ends when the sender is dropped.
+        let _ = self.0.lock().unwrap().recv();
+    }
+}
+
+#[tokio::test]
+async fn a_flush_that_hangs_is_given_up_on_and_reported() {
+    let capture = tumult_otel::logging::testing::LogCapture::start(tracing::Level::INFO);
+    let (release, held) = std::sync::mpsc::channel::<()>();
+    let telemetry = std::sync::Arc::new(StuckFlush(std::sync::Mutex::new(held)));
+    let limit = std::time::Duration::from_millis(50);
+
+    let started = std::time::Instant::now();
+    super::flush_within(telemetry, limit).await;
+
+    assert!(started.elapsed() < std::time::Duration::from_secs(5));
+    let logs = capture.snapshot();
+    let timed_out = logs.named("daemon.telemetry.flush.timed_out");
+    assert_eq!(timed_out.len(), 1, "{}", logs.raw);
+    assert_eq!(timed_out[0]["level"], "WARN");
+    assert_eq!(timed_out[0]["timeout_ms"], 50);
+    drop(release);
+}
+
+#[tokio::test]
+async fn a_flush_that_finishes_in_time_is_not_reported() {
+    let capture = tumult_otel::logging::testing::LogCapture::start(tracing::Level::INFO);
+    let telemetry = unwatched();
+
+    super::flush_within(std::sync::Arc::clone(&telemetry), super::FLUSH_TIMEOUT).await;
+
+    assert_eq!(telemetry.flushes.lock().unwrap().len(), 1);
+    assert!(capture.snapshot().events.is_empty());
+}
+
+/// A batch the store refuses.
+fn refused_batch() -> tumult_ingest::Batch {
+    tumult_ingest::Batch::Exec(Box::new(|_| Err("disk full".to_string())))
+}
+
+/// How many records from the ingest path the daemon has exported.
+fn exported_from_the_ingest_path(capture: &tumult_otel::logging::testing::ExportCapture) -> usize {
+    capture
+        .exported()
+        .iter()
+        .filter(|event| {
+            crate::events::INGEST_PATH
+                .iter()
+                .any(|module| event.target.starts_with(module))
+        })
+        .count()
+}
+
+/// The daemon exports its own log events to its own ingest. With a store
+/// that refuses every write, each record exported from the ingest path
+/// would come back as one more refused write, and one more record.
+#[tokio::test]
+async fn a_failing_store_never_feeds_the_daemons_own_export() {
+    let capture =
+        tumult_otel::logging::testing::ExportCapture::start(&crate::events::log_options("tumultd"));
+    let Daemon {
+        _dir,
+        ingest,
+        workers: _workers,
+        ..
+    } = daemon();
+
+    let mut refused_writes = 0;
+    // The first refused write comes from outside; later ones are whatever
+    // the previous flush exported.
+    let mut arriving = 1;
+    for _flush in 0..5 {
+        let exported_before = exported_from_the_ingest_path(&capture);
+        for _ in 0..arriving {
+            ingest
+                .write(refused_batch())
+                .await
+                .expect_err("the store refuses the batch");
+            refused_writes += 1;
+        }
+        arriving = (exported_from_the_ingest_path(&capture) - exported_before).max(1);
+    }
+
+    let local = capture.local();
+    let logged = local
+        .events
+        .iter()
+        .filter(|event| event["message"] == "failed to persist ingest batch")
+        .count();
+    assert_eq!(refused_writes, 5, "one refused write per flush, no echo");
+    assert_eq!(logged, refused_writes, "every refusal is on stderr");
+    assert_eq!(exported_from_the_ingest_path(&capture), 0);
+    // The daemon's other events are still exported.
+    crate::events::server_stopped("grpc", &Ok::<(), std::io::Error>(()));
+    let exported = capture.exported();
+    assert_eq!(exported.len(), 1, "{exported:?}");
+    assert_eq!(
+        exported[0].event_name.as_deref(),
+        Some("daemon.server.stopped")
+    );
+}
+
+// The two tests below wait on tasks only, so they run on the paused
+// clock: their bound costs no time, and a wait that never ends fails at
+// once instead of after the bound.
+#[tokio::test(start_paused = true)]
+async fn a_failed_http_listener_stops_the_grpc_one() {
+    let (grpc, grpc_gone) = serving();
+    let outcome = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        until_both_stop(grpc, failing("address in use"), &unwatched()),
+    )
+    .await
+    .expect("the wait ends with the first failure");
+    let error = format!("{:#}", outcome.expect_err("a failed listener is an error"));
+    assert!(error.contains("HTTP server"), "{error}");
+    assert!(error.contains("address in use"), "{error}");
+    // The receiver errors because the task, and the sender in it, is gone.
+    assert!(grpc_gone.await.is_err());
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_failed_grpc_listener_stops_the_http_one() {
+    let (http, http_gone) = serving();
+    let outcome = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        until_both_stop(failing("no certificate"), http, &unwatched()),
+    )
+    .await
+    .expect("the wait ends with the first failure");
+    let error = format!("{:#}", outcome.expect_err("a failed listener is an error"));
+    assert!(error.contains("gRPC server"), "{error}");
+    assert!(http_gone.await.is_err());
+}
+
+#[tokio::test]
+async fn two_listeners_that_stop_cleanly_are_a_clean_stop() {
+    let stopped = || -> Listener { tokio::spawn(async { Ok(()) }) };
+    let outcome = until_both_stop(stopped(), stopped(), &unwatched()).await;
+    assert!(outcome.is_ok(), "{outcome:?}");
+}
+
+/// The daemon's workers on a new lake, as `serve` starts them: the
+/// writer, the run queue and one background task holding the writer
+/// open until it is told to stop.
+struct Daemon {
+    _dir: tempfile::TempDir,
+    store: tumult_lake::Store,
+    ingest: tumult_ingest::IngestWriter,
+    workers: Workers,
+}
+
+fn daemon() -> Daemon {
+    let dir = tempfile::tempdir().unwrap();
+    let db = dir.path().join("lake.duckdb");
+    let store = tumult_lake::Store::open(&db).unwrap();
+    let (ingest, writer) = tumult_ingest::IngestWriter::spawn(store.writer().unwrap(), 16);
+    let factory: tumult_ingest::runs::ExecutorFactory = std::sync::Arc::new(|env| {
+        std::sync::Arc::new(tumult_exec::ProviderExecutor::with_injected_env(env))
+    });
+    let run_queue = tumult_ingest::RunQueue::spawn(
+        ingest.clone(),
+        db,
+        tumult_ingest::RunQueueConfig::from_env(),
+        factory,
+    );
+    let shutdown = tokio_util::sync::CancellationToken::new();
+    let (held, stop) = (ingest.clone(), shutdown.clone());
+    let background = tokio::spawn(async move {
+        stop.cancelled().await;
+        drop(held);
+    });
+    let workers = Workers {
+        shutdown,
+        tasks: vec![("background", background)],
+        run_queue,
+        writer,
+    };
+    Daemon {
+        _dir: dir,
+        store,
+        ingest,
+        workers,
+    }
+}
+
+/// Hand the writer one batch, as a request in flight does: the batch is
+/// on its way and nothing has waited for it.
+fn write_in_flight(ingest: tumult_ingest::IngestWriter) {
+    let batch = tumult_ingest::Batch::Exec(Box::new(|writer| {
+        writer
+            .execute("CREATE TABLE drained AS SELECT 42 AS answer", ())
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    }));
+    tokio::spawn(async move { ingest.write(batch).await });
+}
+
+/// What the batch of [`write_in_flight`] left in the lake, one row per
+/// line.
+fn persisted(store: &tumult_lake::Store) -> Result<String, String> {
+    let reader = store.read_only().map_err(|e| e.to_string())?;
+    let rows = reader
+        .query_json_rows("SELECT answer FROM drained")
+        .map_err(|e| e.to_string())?;
+    Ok(rows.iter().map(|row| format!("{row}\n")).collect())
+}
+
+/// The one row [`write_in_flight`] writes.
+const WRITTEN: &str = "{\"answer\":42}\n";
+
+/// Longer than any drain here takes. The drain tests stay on the wall
+/// clock: the writer works on its own thread, which a paused clock does
+/// not wait for, so a bound would fire before the write it bounds.
+const AMPLE: std::time::Duration = std::time::Duration::from_secs(30);
+
+fn listener_failed() -> anyhow::Result<()> {
+    Err(anyhow::anyhow!("HTTP server: connection reset"))
+}
+
+#[tokio::test]
+async fn a_failed_listener_still_has_the_writer_drained() {
+    let Daemon {
+        _dir,
+        store,
+        ingest,
+        workers,
+    } = daemon();
+    write_in_flight(ingest);
+
+    let outcome = finish(listener_failed(), None::<Listener>, workers, AMPLE).await;
+
+    // Read at once: whatever `finish` did not wait for is lost with the
+    // process.
+    let rows = persisted(&store).expect("the batch in flight was written");
+    assert_eq!(rows, WRITTEN);
+    let error = format!(
+        "{:#}",
+        outcome.expect_err("the failure is still the outcome")
+    );
+    assert!(error.contains("connection reset"), "{error}");
+}
+
+#[tokio::test]
+async fn a_connection_left_open_does_not_hold_a_failed_daemon_up() {
+    let Daemon {
+        _dir,
+        store,
+        ingest,
+        workers,
+    } = daemon();
+    write_in_flight(ingest.clone());
+    // A connection that outlived its listener keeps a writer handle.
+    let _connection = ingest;
+
+    let brief = std::time::Duration::from_millis(300);
+    let ended = finish(listener_failed(), None::<Listener>, workers, brief);
+    let outcome = tokio::time::timeout(AMPLE, ended)
+        .await
+        .expect("the wait for the writer is bounded");
+
+    let error = format!("{:#}", outcome.expect_err("the failure is the outcome"));
+    assert!(error.contains("connection reset"), "{error}");
+    let rows = persisted(&store).expect("what was queued is written all the same");
+    assert_eq!(rows, WRITTEN);
+}
+
+#[tokio::test]
+async fn a_failed_listener_stops_the_loopback_one() {
+    let Daemon { _dir, workers, .. } = daemon();
+    let (loopback, loopback_gone) = serving();
+
+    let outcome = finish(listener_failed(), Some(loopback), workers, AMPLE).await;
+
+    assert!(outcome.is_err());
+    // The receiver errors because the task, and the sender in it, is gone.
+    assert!(loopback_gone.await.is_err());
+}
+
+#[tokio::test]
+async fn a_failed_loopback_listener_still_has_the_writer_drained() {
+    let Daemon {
+        _dir,
+        store,
+        ingest,
+        workers,
+    } = daemon();
+    write_in_flight(ingest);
+
+    let outcome = finish(Ok(()), Some(failing("broken pipe")), workers, AMPLE).await;
+
+    let rows = persisted(&store).expect("the batch in flight was written");
+    assert_eq!(rows, WRITTEN);
+    let error = format!("{:#}", outcome.expect_err("the failure is the outcome"));
+    assert!(error.contains("loopback"), "{error}");
+    assert!(error.contains("broken pipe"), "{error}");
+}
+
+#[tokio::test]
+async fn a_clean_stop_waits_for_the_loopback_listener_and_the_writer() {
+    let Daemon {
+        _dir,
+        store,
+        ingest,
+        workers,
+    } = daemon();
+    write_in_flight(ingest);
+    let loopback: Listener = tokio::spawn(async { Ok(()) });
+
+    finish(Ok(()), Some(loopback), workers, AMPLE)
+        .await
+        .expect("clean stop");
+    assert_eq!(persisted(&store).expect("written"), WRITTEN);
+}
+
+/// Point `serve` at a lake of its own in `dir` and at these loopback
+/// ports, until `env` is dropped.
+fn daemon_env(env: &mut EnvGuard, dir: &std::path::Path, grpc_port: u16, http_port: u16) {
+    env.set("TUMULT_LAKE_PATH", dir.join("lake.duckdb"))
+        .set("KRONIKA_METRICS_DIR", dir.join("metrics"))
+        .set("KRONIKA_OTLP_GRPC_ADDR", format!("127.0.0.1:{grpc_port}"))
+        .set("KRONIKA_OTLP_HTTP_ADDR", format!("127.0.0.1:{http_port}"))
+        .set("KRONIKA_LAKE_INTERVAL", "off")
+        .remove("KRONIKA_INGEST_TOKEN")
+        .remove("KRONIKA_REPORT_INTERVAL")
+        .remove("KRONIKA_BOOTSTRAP_ADMIN_PASSWORD")
+        .remove("KRONIKA_BOOTSTRAP_TOKEN");
+}
+
+/// A run an earlier daemon left queued. Reconciling it is the first work
+/// a starting daemon does, before any background task exists.
+fn leave_a_queued_run(db: &std::path::Path) {
+    let store = tumult_lake::Store::open(db).unwrap();
+    let writer = store.writer().unwrap();
+    writer
+        .register_definition(&tumult_lake::RegisteredDefinition {
+            id: "def-1".into(),
+            name: "left behind".into(),
+            definition_toon: String::new(),
+            content_hash: "hash-1".into(),
+            registered_at_ns: 1,
+            registered_by: None,
+        })
+        .unwrap();
+    writer
+        .insert_run(&tumult_lake::NewRun {
+            id: "run-1".into(),
+            registry_id: "def-1".into(),
+            params_json: None,
+            queued_at_ns: 1,
+            actor: None,
+        })
+        .unwrap();
+}
+
+fn state_of_the_queued_run(db: &std::path::Path) -> String {
+    let reader = tumult_lake::Store::at(db).read_only().unwrap();
+    let run = reader.run_get("run-1").unwrap().expect("the run is there");
+    run["state"].to_string()
+}
+
+fn alive_tasks() -> usize {
+    tokio::runtime::Handle::current()
+        .metrics()
+        .num_alive_tasks()
+}
+
+/// The number of alive tasks once it is back at `expected`, or what it
+/// still is after a few seconds.
+///
+/// The tests from here on run the whole daemon on real sockets and a
+/// multi-threaded runtime, where the clock cannot be paused and nothing
+/// signals "serving" or "all tasks gone": they poll, and their 30 s
+/// bounds are only there to turn a hang into a failure.
+async fn alive_tasks_settled(expected: usize) -> usize {
+    for _ in 0..100 {
+        if alive_tasks() == expected {
+            return expected;
+        }
+        // sleep: poll interval, the loop gives up after 100 attempts
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    alive_tasks()
+}
+
+/// A daemon that cannot have both its addresses says so before it starts
+/// anything: no run is reconciled, no queue, scheduler or listener runs.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_daemon_that_cannot_bind_starts_no_work() {
+    let mut env = EnvGuard::lock();
+    for taken_address in ["gRPC", "HTTP"] {
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("lake.duckdb");
+        leave_a_queued_run(&db);
+        let taken = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let taken_port = taken.local_addr().unwrap().port();
+        let (grpc_port, http_port) = match taken_address {
+            "gRPC" => (taken_port, free_port()),
+            _ => (free_port(), taken_port),
+        };
+        daemon_env(&mut env, dir.path(), grpc_port, http_port);
+        let before = alive_tasks();
+
+        let outcome = tokio::time::timeout(std::time::Duration::from_secs(30), serve())
+            .await
+            .expect("the daemon exits");
+
+        let error = format!("{:#}", outcome.expect_err("a taken address is an error"));
+        let expected = format!("{taken_address} server: bind 127.0.0.1:{taken_port}");
+        assert!(error.contains(&expected), "{error}");
+        assert_eq!(
+            state_of_the_queued_run(&db),
+            "\"queued\"",
+            "{taken_address} address taken: no run was touched"
+        );
+        assert_eq!(
+            alive_tasks_settled(before).await,
+            before,
+            "{taken_address} address taken: no task is left running"
+        );
+        drop(taken);
+    }
+}
+
+/// A daemon whose HTTP address is taken must not stay up serving gRPC
+/// only: whoever holds the port would answer its health checks.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn serve_exits_when_the_http_address_is_taken() {
+    let mut env = EnvGuard::lock();
+    let dir = tempfile::tempdir().unwrap();
+    let taken = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let http_port = taken.local_addr().unwrap().port();
+    let grpc_port = free_port();
+    daemon_env(&mut env, dir.path(), grpc_port, http_port);
+
+    let outcome = tokio::time::timeout(std::time::Duration::from_secs(30), serve())
+        .await
+        .expect("the daemon exits instead of serving gRPC alone");
+    let error = format!("{:#}", outcome.expect_err("a taken address is an error"));
+    assert!(error.contains("HTTP server"), "{error}");
+    // Nothing of the daemon is left listening.
+    let grpc = tokio::net::TcpStream::connect(("127.0.0.1", grpc_port)).await;
+    assert!(grpc.is_err(), "the gRPC listener is closed");
+    drop(taken);
+}
+
 /// The whole daemon in-process: bind both listeners on loopback, serve
 /// the health and live-report endpoints, then stop cleanly on SIGTERM.
-/// Holds the env lock for its whole lifetime — the configuration is
-/// process-global. Holding a std mutex guard across awaits is deliberate
-/// here: the guard only ever blocks other env-mutating tests, and this
-/// test's own progress never depends on them.
-#[allow(clippy::await_holding_lock)]
+/// Holds the env guard for its whole lifetime: the configuration is
+/// process-global, and the guard only ever blocks other tests that change
+/// the environment, on which this test's own progress never depends.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn serve_binds_serves_and_shuts_down_cleanly_on_sigterm() {
-    let _guard = crate::test_support::ENV_LOCK
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
+    let mut env = EnvGuard::lock();
     let dir = tempfile::tempdir().unwrap();
     let metrics_dir = dir.path().join("metrics");
     std::fs::create_dir_all(&metrics_dir).unwrap();
     std::fs::write(metrics_dir.join("experiment_count.yaml"), METRIC_YAML).unwrap();
     let grpc_port = free_port();
     let http_port = free_port();
-    std::env::set_var("TUMULT_LAKE_PATH", dir.path().join("lake.duckdb"));
-    std::env::set_var("KRONIKA_METRICS_DIR", &metrics_dir);
-    std::env::set_var("KRONIKA_OTLP_GRPC_ADDR", format!("127.0.0.1:{grpc_port}"));
-    std::env::set_var("KRONIKA_OTLP_HTTP_ADDR", format!("127.0.0.1:{http_port}"));
-    std::env::set_var("KRONIKA_LAKE_INTERVAL", "off");
-    std::env::remove_var("KRONIKA_INGEST_TOKEN");
-    std::env::remove_var("KRONIKA_REPORT_INTERVAL");
-    std::env::remove_var("KRONIKA_BOOTSTRAP_ADMIN_PASSWORD");
-    std::env::remove_var("KRONIKA_BOOTSTRAP_TOKEN");
+    daemon_env(&mut env, dir.path(), grpc_port, http_port);
 
     let mut daemon = tokio::spawn(serve());
 
@@ -270,6 +912,7 @@ async fn serve_binds_serves_and_shuts_down_cleanly_on_sigterm() {
             std::time::Instant::now() < deadline,
             "daemon did not start serving within 30s"
         );
+        // sleep: poll interval, bounded by the deadline above
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     };
     assert!(health.contains(" 200 OK"), "{health}");
@@ -288,6 +931,14 @@ async fn serve_binds_serves_and_shuts_down_cleanly_on_sigterm() {
         metrics.contains("tumultd_runs_started_total"),
         "metrics endpoint did not expose daemon SLIs"
     );
+    // Reloading the Metrics page asks for HTML first: that is the web UI,
+    // not the exposition, on the same path.
+    let page = http_get_accepting(http_port, "/metrics", Some(BROWSER_ACCEPT))
+        .await
+        .expect("metrics page request failed");
+    assert!(page.contains(" 200 OK"), "{page}");
+    assert!(page.contains("content-type: text/html"), "{page}");
+    assert!(!page.contains("tumultd_runs_started_total"), "{page}");
 
     let report = http_get(http_port, "/report?metric=experiment_count")
         .await
@@ -310,11 +961,138 @@ async fn serve_binds_serves_and_shuts_down_cleanly_on_sigterm() {
         .await
         .expect("daemon did not stop within 30s of SIGTERM")
         .expect("daemon task panicked");
-    result.expect("daemon returned an error");
+    assert!(result.is_ok(), "daemon returned an error: {result:?}");
+}
 
-    std::env::remove_var("TUMULT_LAKE_PATH");
-    std::env::remove_var("KRONIKA_METRICS_DIR");
-    std::env::remove_var("KRONIKA_OTLP_GRPC_ADDR");
-    std::env::remove_var("KRONIKA_OTLP_HTTP_ADDR");
-    std::env::remove_var("KRONIKA_LAKE_INTERVAL");
+#[test]
+fn plaintext_network_listeners_are_reported_with_address_and_port() {
+    let mut config = config_with_tls(None, None);
+    config.otlp_http_addr = "0.0.0.0:4318".parse().unwrap();
+    config.otlp_grpc_addr = "192.0.2.7:4317".parse().unwrap();
+
+    let logs = tumult_otel::logging::testing::capture_json(tracing::Level::INFO, || {
+        super::tls::warn_if_plaintext_on_network(&config, false);
+    });
+
+    let http = logs.named("daemon.tls.http_plaintext");
+    assert_eq!(http.len(), 1, "{}", logs.raw);
+    assert_eq!(http[0]["level"], "WARN");
+    assert_eq!(http[0]["server.address"], "0.0.0.0");
+    assert_eq!(http[0]["server.port"], 4318);
+    let grpc = logs.named("daemon.tls.grpc_plaintext");
+    assert_eq!(grpc.len(), 1, "{}", logs.raw);
+    assert_eq!(grpc[0]["server.address"], "192.0.2.7");
+    assert_eq!(grpc[0]["server.port"], 4317);
+}
+
+#[test]
+fn tls_or_loopback_listeners_raise_no_plaintext_warning() {
+    let mut exposed = config_with_tls(None, None);
+    exposed.otlp_http_addr = "0.0.0.0:4318".parse().unwrap();
+    let loopback = config_with_tls(None, None);
+
+    let logs = tumult_otel::logging::testing::capture_json(tracing::Level::INFO, || {
+        super::tls::warn_if_plaintext_on_network(&exposed, true);
+        super::tls::warn_if_plaintext_on_network(&loopback, false);
+    });
+
+    assert!(logs.events.is_empty(), "{}", logs.raw);
+}
+
+/// Whether the daemon closes `client` without sending anything.
+async fn closed_by_the_daemon(client: &mut tokio::net::TcpStream) -> bool {
+    use tokio::io::AsyncReadExt;
+    let mut byte = [0u8; 1];
+    let read = tokio::time::timeout(std::time::Duration::from_secs(5), client.read(&mut byte));
+    matches!(read.await, Ok(Ok(0) | Err(_)))
+}
+
+/// The gRPC listener is bound early and handed to the server; the
+/// connection limits must still apply to it. With room for one connection
+/// the second one is closed, and its place comes back when the first ends.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn the_pre_bound_grpc_listener_enforces_the_connection_limits() {
+    let mut env = EnvGuard::lock();
+    let dir = tempfile::tempdir().unwrap();
+    let (grpc_port, http_port) = (free_port(), free_port());
+    daemon_env(&mut env, dir.path(), grpc_port, http_port);
+    env.set("KRONIKA_GRPC_MAX_CONNECTIONS", "1");
+
+    let mut daemon = tokio::spawn(serve());
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    while http_get(http_port, "/healthz").await.is_err() {
+        assert!(!daemon.is_finished(), "daemon exited before serving");
+        assert!(std::time::Instant::now() < deadline, "daemon not serving");
+        tokio::task::yield_now().await;
+    }
+
+    let grpc = ("127.0.0.1", grpc_port);
+    let first = tokio::net::TcpStream::connect(grpc).await.unwrap();
+    let mut second = tokio::net::TcpStream::connect(grpc).await.unwrap();
+    let second_closed = closed_by_the_daemon(&mut second).await;
+    drop((first, second));
+    // The freed place is taken by a connection that speaks HTTP/2: the
+    // server answers its preface with a SETTINGS frame (type 4).
+    let reused = async {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        loop {
+            let mut next = tokio::net::TcpStream::connect(grpc).await.unwrap();
+            let preface = b"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n\0\0\0\x04\0\0\0\0\0";
+            let mut frame = [0u8; 9];
+            if next.write_all(preface).await.is_ok() && next.read_exact(&mut frame).await.is_ok() {
+                return frame[3];
+            }
+            tokio::task::yield_now().await;
+        }
+    };
+    let settings = tokio::time::timeout(std::time::Duration::from_secs(10), reused).await;
+
+    let status = std::process::Command::new("kill")
+        .arg("-TERM")
+        .arg(std::process::id().to_string())
+        .status()
+        .unwrap();
+    assert!(status.success());
+    let result = tokio::time::timeout(std::time::Duration::from_secs(30), &mut daemon)
+        .await
+        .expect("daemon did not stop within 30s of SIGTERM")
+        .expect("daemon task panicked");
+    assert!(result.is_ok(), "daemon returned an error: {result:?}");
+    assert!(second_closed, "a connection over the limit stayed open");
+    assert_eq!(settings.ok(), Some(4), "the freed place was not reused");
+}
+
+/// The daemon stores entity events as entities only when the operator
+/// sets the flag; the label allow-list comes from the environment too.
+#[test]
+fn entity_events_follow_the_environment_flag() {
+    let config = config_with_tls(None, None);
+    let mut env = tumult_test_utils::EnvGuard::lock();
+    env.remove("KRONIKA_ENTITY_EVENTS")
+        .remove("KRONIKA_ENTITY_LABEL_ALLOW")
+        .remove("KRONIKA_ENTITY_ATTRIBUTE_ALLOW")
+        .remove("KRONIKA_ENTITY_MAX_PER_ENVIRONMENT");
+    assert!(super::entity_events(&config).is_none(), "off by default");
+    env.set("KRONIKA_ENTITY_EVENTS", "0");
+    assert!(super::entity_events(&config).is_none());
+    env.set("KRONIKA_ENTITY_EVENTS", "1")
+        .set("KRONIKA_ENTITY_LABEL_ALLOW", "team, app.kubernetes.io/name")
+        .set(
+            "KRONIKA_ENTITY_ATTRIBUTE_ALLOW",
+            "k8s.service.annotation.owner",
+        );
+    let on = super::entity_events(&config).expect("the flag switches entity events on");
+    assert_eq!(on.limits().entities_per_environment, 50_000);
+    env.set("KRONIKA_ENTITY_MAX_PER_ENVIRONMENT", "120");
+    let capped = super::entity_events(&config).expect("still on");
+    assert_eq!(capped.limits().entities_per_environment, 120);
+    assert_eq!(
+        on.options().label_allow,
+        vec!["team", "app.kubernetes.io/name"]
+    );
+    assert_eq!(
+        on.options().attribute_allow,
+        vec!["k8s.service.annotation.owner"]
+    );
+    assert_eq!(on.options().observer, "anonymous");
 }

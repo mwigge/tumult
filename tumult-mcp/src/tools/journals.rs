@@ -436,6 +436,7 @@ mod tests {
             span_id: SpanId::from(span),
         };
         let journal = Journal {
+            target_version: None,
             experiment_title: "traced drill".into(),
             experiment_id: "run-traced".into(),
             status: ExperimentStatus::Completed,
@@ -455,6 +456,9 @@ mod tests {
             method_results: vec![result("fault", "trace-fault", "span-fault")],
             rollback_results: vec![result("undo-fault", "trace-undo", "span-undo")],
             rollback_failures: 0,
+            kind: tumult_core::types::TestKind::default(),
+            objectives: None,
+            probe_samples: vec![],
             estimate: None,
             baseline_result: None,
             during_result: None,

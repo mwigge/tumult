@@ -7,7 +7,7 @@
 
 use std::path::Path;
 
-use super::{LoadExecutor, LoadHandle};
+use super::{load_profile, LoadExecutor, LoadHandle};
 use crate::types::{LoadConfig, LoadResult, LoadTool};
 
 /// K6 load test executor.
@@ -91,10 +91,7 @@ fn wait_with_timeout(
 
 impl LoadExecutor for K6LoadExecutor {
     fn start(&self, config: &LoadConfig) -> Result<LoadHandle, String> {
-        let vus = config.vus.unwrap_or(10);
-        let duration = config
-            .duration_s
-            .map_or_else(|| "30s".to_string(), |s| format!("{s}s"));
+        let vus = config.vus.unwrap_or(load_profile::DEFAULT_VUS);
 
         let k6_binary = std::env::var("TUMULT_K6_BINARY").unwrap_or_else(|_| "k6".to_string());
 
@@ -105,12 +102,11 @@ impl LoadExecutor for K6LoadExecutor {
             .map_err(|e| format!("failed to create k6 summary file: {e}"))?;
 
         let mut cmd = std::process::Command::new(&k6_binary);
-        cmd.arg("run")
-            .arg("--vus")
-            .arg(vus.to_string())
-            .arg("--duration")
-            .arg(&duration)
-            .arg("--summary-export")
+        cmd.arg("run");
+        for arg in k6_shape_args(config) {
+            cmd.arg(arg);
+        }
+        cmd.arg("--summary-export")
             .arg(summary_file.path())
             .arg(config.script.as_os_str())
             .stdout(std::process::Stdio::piped())
@@ -219,8 +215,93 @@ impl LoadExecutor for K6LoadExecutor {
             error_rate,
             total_requests: iterations,
             thresholds_met: output.status.success(),
+            // k6 reports one end-of-run summary; its per-request stream
+            // (`--out json`) is far too heavy to keep, so no windows here.
+            samples: vec![],
+            execution: crate::types::LoadExecution {
+                requests: k6_request_counts(summary.as_ref()),
+                ..crate::types::LoadExecution::default()
+            },
         })
     }
+
+    /// A k6 that has already exited is collected as on a normal stop; one
+    /// still running is killed at once and leaves a result marked aborted
+    /// with no measurements, since k6 writes its summary only on a clean
+    /// exit.
+    fn abort(&self, handle: LoadHandle) -> Result<LoadResult, String> {
+        let mut k6 = handle
+            .inner
+            .downcast::<K6Handle>()
+            .map_err(|_| "invalid load handle")?;
+        match k6.child.try_wait() {
+            Ok(Some(_)) => self.stop(LoadHandle { inner: k6 }),
+            Ok(None) => Ok(Self::cut_short(*k6)),
+            Err(e) => Err(format!("k6 wait failed: {e}")),
+        }
+    }
+}
+
+impl K6LoadExecutor {
+    /// Kill a running k6 and say so in the result.
+    fn cut_short(mut k6: K6Handle) -> LoadResult {
+        // Both fail only when the process is already gone.
+        let _ = k6.child.kill();
+        let _ = k6.child.wait();
+        tracing::warn!(tool = "k6", reason = "cut_before_summary", "load.aborted");
+        let ended_at_ns = super::epoch_nanos_now();
+        #[allow(clippy::cast_precision_loss)]
+        let duration_s = (ended_at_ns - k6.started_at_ns) as f64 / 1_000_000_000.0;
+        LoadResult {
+            tool: k6.tool,
+            started_at_ns: k6.started_at_ns,
+            ended_at_ns,
+            duration_s,
+            vus: k6.vus,
+            throughput_rps: 0.0,
+            latency_p50_ms: 0.0,
+            latency_p95_ms: 0.0,
+            latency_p99_ms: 0.0,
+            error_rate: 0.0,
+            total_requests: 0,
+            thresholds_met: false,
+            samples: vec![],
+            execution: crate::types::LoadExecution {
+                aborted: true,
+                reasons: vec![
+                    "load aborted before k6 finished; k6 writes its summary only on a clean exit"
+                        .into(),
+                ],
+                ..crate::types::LoadExecution::default()
+            },
+        }
+    }
+}
+
+/// The k6 arguments that shape the traffic: a flat config is `--vus N
+/// --duration Ds` as before; a profile becomes `--vus <start>` plus one
+/// `--stage` per rendered plan stage (k6 reads `--vus` as the starting
+/// level when stages are present).
+#[must_use]
+pub fn k6_shape_args(config: &LoadConfig) -> Vec<String> {
+    let plan = load_profile::plan(config);
+    if config.profile.is_none() {
+        let duration = config
+            .duration_s
+            .map_or_else(|| "30s".to_string(), |s| format!("{s}s"));
+        return vec![
+            "--vus".into(),
+            plan.start_vus.to_string(),
+            "--duration".into(),
+            duration,
+        ];
+    }
+    let mut args = vec!["--vus".to_string(), plan.start_vus.to_string()];
+    for stage in load_profile::k6_stages(&plan) {
+        args.push("--stage".into());
+        args.push(stage);
+    }
+    args
 }
 
 /// Reads and parses a k6 `--summary-export` JSON file.
@@ -259,6 +340,30 @@ pub fn k6_summary_metric(
 #[must_use]
 pub fn k6_summary_count(summary: Option<&serde_json::Value>, metric: &str) -> Option<u64> {
     summary?.get("metrics")?.get(metric)?.get("count")?.as_u64()
+}
+
+/// What became of the requests, as far as a k6 summary says: `http_reqs`
+/// sent, and of those the `http_req_failed` ones failed (k6 does not say
+/// how, nor which timed out). `None` when the script made no HTTP
+/// request or the summary lacks either metric.
+#[must_use]
+pub fn k6_request_counts(
+    summary: Option<&serde_json::Value>,
+) -> Option<crate::types::RequestCounts> {
+    let sent = k6_summary_count(summary, "http_reqs")?;
+    // A rate metric's `passes` are the samples that were non-zero: here,
+    // the requests that failed.
+    let failed = summary?
+        .get("metrics")?
+        .get("http_req_failed")?
+        .get("passes")?
+        .as_u64()?;
+    Some(crate::types::RequestCounts {
+        sent,
+        ok: sent.saturating_sub(failed),
+        unclassified: failed.min(sent),
+        ..crate::types::RequestCounts::default()
+    })
 }
 
 /// Returns `value`, or logs a warning and defaults to `0.0` if the metric
@@ -347,6 +452,65 @@ pub fn parse_k6_rate(output: &str, counter_name: &str) -> Option<f64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::LoadProfile;
+
+    fn config(profile: Option<LoadProfile>) -> LoadConfig {
+        LoadConfig {
+            tool: LoadTool::K6,
+            script: "load.js".into(),
+            vus: Some(10),
+            duration_s: Some(60.0),
+            thresholds: std::collections::HashMap::new(),
+            profile,
+        }
+    }
+
+    #[test]
+    fn request_counts_come_from_http_reqs_and_http_req_failed() {
+        let summary = serde_json::json!({"metrics": {
+            "http_reqs": {"count": 200, "rate": 20.0},
+            "http_req_failed": {"passes": 30, "fails": 170, "value": 0.15},
+        }});
+        let counts = k6_request_counts(Some(&summary)).expect("both metrics are there");
+        assert_eq!(
+            counts,
+            crate::types::RequestCounts {
+                sent: 200,
+                ok: 170,
+                unclassified: 30,
+                ..crate::types::RequestCounts::default()
+            }
+        );
+        // A script that makes no HTTP request, or a summary that is
+        // missing: nothing is claimed.
+        let no_http = serde_json::json!({"metrics": {"iterations": {"count": 5}}});
+        assert_eq!(k6_request_counts(Some(&no_http)), None);
+        let half = serde_json::json!({"metrics": {"http_reqs": {"count": 200}}});
+        assert_eq!(k6_request_counts(Some(&half)), None);
+        assert_eq!(k6_request_counts(None), None);
+    }
+
+    #[test]
+    fn flat_config_keeps_the_vus_duration_flags() {
+        assert_eq!(
+            k6_shape_args(&config(None)),
+            vec!["--vus", "10", "--duration", "60s"]
+        );
+    }
+
+    #[test]
+    fn profile_becomes_stages_with_the_start_level() {
+        let spike = LoadProfile::Spike {
+            peak_vus: 100,
+            after_s: 20.0,
+            hold_s: 10.0,
+        };
+        let args = k6_shape_args(&config(Some(spike)));
+        assert_eq!(&args[..2], &["--vus", "10"]);
+        assert!(!args.contains(&"--duration".to_string()));
+        assert_eq!(args.iter().filter(|a| *a == "--stage").count(), 5);
+        assert!(args.contains(&"1s:100".to_string()));
+    }
 
     fn spawn_piped(program: &str, args: &[&str]) -> std::process::Child {
         std::process::Command::new(program)
@@ -364,6 +528,30 @@ mod tests {
             .expect("fast child must succeed");
         assert!(output.status.success());
         assert!(String::from_utf8_lossy(&output.stdout).contains("hello"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_k6_cut_short_is_one_named_event_with_its_reason_as_a_field() {
+        use crate::runner::tests::log_capture::logged;
+
+        let handle = K6Handle {
+            child: spawn_piped("sleep", &["300"]),
+            started_at_ns: crate::runner::epoch_nanos_now(),
+            tool: LoadTool::K6,
+            vus: 2,
+            summary_file: tempfile::NamedTempFile::new().expect("temp file"),
+        };
+
+        let events = logged(|| {
+            let result = K6LoadExecutor::cut_short(handle);
+            assert!(result.execution.aborted);
+        });
+
+        assert_eq!(events.len(), 1, "{events:?}");
+        assert_eq!(events[0].event, "load.aborted");
+        assert_eq!(events[0].field("tool"), Some("k6"));
+        assert_eq!(events[0].field("reason"), Some("cut_before_summary"));
     }
 
     #[cfg(unix)]

@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "MCP server adapter exposing Tumult chaos engineering as tools"
+description = "MCP server adapter exposing Tumult resilience testing and intelligence as tools"
 
 [lib]
 name = "tumult_mcp"
@@ -51,3 +51,6 @@ subtle = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
+# EnvGuard: tests change environment variables only through it.
+# capture_spans: tests assert on the spans a tool call emits.
+tumult-test-utils = { path = "../tumult-test-utils", default-features = false, features = ["otel"] }

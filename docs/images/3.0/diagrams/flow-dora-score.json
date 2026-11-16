@@ -1,0 +1,302 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "DORA coverage and maturity score",
+    "output": "flow-dora-score.html",
+    "quality_profile": "showcase",
+    "locale": "en",
+    "repository": {
+      "url": "https://github.com/mwigge/tumult",
+      "revision": "8c24680b94cbab9d5b2011d99b53623618608a22"
+    },
+    "legend": {
+      "entries": {
+        "frontend": {
+          "label": "Web page or API"
+        },
+        "backend": {
+          "label": "Tumult step"
+        },
+        "database": {
+          "label": "Stored data"
+        },
+        "cloud": {
+          "label": "File on disk"
+        },
+        "messagebus": {
+          "label": "Background job"
+        }
+      }
+    }
+  },
+  "lanes": [
+    {
+      "id": "in",
+      "label": "Inputs"
+    },
+    {
+      "id": "work",
+      "label": "Work out"
+    },
+    {
+      "id": "keep",
+      "label": "Keep history"
+    },
+    {
+      "id": "show",
+      "label": "Show"
+    }
+  ],
+  "mainPath": [
+    "reqs",
+    "rate",
+    "status",
+    "level",
+    "api",
+    "page"
+  ],
+  "nodes": [
+    {
+      "id": "org",
+      "lane": "in",
+      "col": 0,
+      "type": "cloud",
+      "label": "Org file",
+      "sublabel": "org.yaml",
+      "sources": [
+        {
+          "path": "tumult-compliance/src/dora/register.rs",
+          "line": 1,
+          "end_line": 26
+        },
+        {
+          "path": "tumult-api/src/lib.rs",
+          "line": 515,
+          "end_line": 522
+        }
+      ]
+    },
+    {
+      "id": "reqs",
+      "lane": "in",
+      "col": 1,
+      "type": "backend",
+      "label": "Requirement list",
+      "sublabel": "built in, 46 rows",
+      "sources": [
+        {
+          "path": "tumult-core/src/compliance/requirements.rs",
+          "line": 1,
+          "end_line": 21
+        },
+        {
+          "path": "tumult-core/src/compliance/requirements.rs",
+          "line": 339,
+          "end_line": 370
+        }
+      ]
+    },
+    {
+      "id": "evidence",
+      "lane": "in",
+      "col": 2,
+      "type": "database",
+      "label": "Evidence in lake",
+      "sublabel": "runs, manual tests",
+      "sources": [
+        {
+          "path": "tumult-compliance/src/dora/loader.rs",
+          "line": 1,
+          "end_line": 32
+        }
+      ]
+    },
+    {
+      "id": "rate",
+      "lane": "work",
+      "col": 1,
+      "type": "backend",
+      "label": "Rate each one",
+      "sublabel": "fresh, passed, direct",
+      "sources": [
+        {
+          "path": "tumult-compliance/src/dora/coverage.rs",
+          "line": 1,
+          "end_line": 49
+        }
+      ]
+    },
+    {
+      "id": "status",
+      "lane": "work",
+      "col": 2,
+      "type": "backend",
+      "label": "Requirement status",
+      "sublabel": "none to operating",
+      "sources": [
+        {
+          "path": "tumult-compliance/src/dora/status.rs",
+          "line": 1,
+          "end_line": 34
+        },
+        {
+          "path": "tumult-compliance/src/dora/status.rs",
+          "line": 102,
+          "end_line": 121
+        }
+      ]
+    },
+    {
+      "id": "level",
+      "lane": "work",
+      "col": 3,
+      "type": "backend",
+      "label": "Level and index",
+      "sublabel": "level 1 to 5",
+      "sources": [
+        {
+          "path": "tumult-compliance/src/dora/maturity.rs",
+          "line": 143,
+          "end_line": 157
+        },
+        {
+          "path": "tumult-compliance/src/dora/maturity.rs",
+          "line": 940,
+          "end_line": 972
+        }
+      ]
+    },
+    {
+      "id": "job",
+      "lane": "keep",
+      "col": 1,
+      "type": "messagebus",
+      "label": "Daily snapshot job",
+      "sublabel": "once a day",
+      "sources": [
+        {
+          "path": "tumultd/src/score_jobs.rs",
+          "line": 323,
+          "end_line": 393
+        }
+      ]
+    },
+    {
+      "id": "daily",
+      "lane": "keep",
+      "col": 2,
+      "type": "database",
+      "label": "Daily snapshots",
+      "sublabel": "status and level",
+      "sources": [
+        {
+          "path": "tumult-lake/src/schema/ict.rs",
+          "line": 69,
+          "end_line": 87
+        }
+      ]
+    },
+    {
+      "id": "api",
+      "lane": "show",
+      "col": 3,
+      "type": "frontend",
+      "label": "Score API",
+      "sublabel": "/api/dora, /maturity",
+      "sources": [
+        {
+          "path": "tumult-api/src/handlers/dora.rs",
+          "line": 183,
+          "end_line": 267
+        },
+        {
+          "path": "tumult-api/src/lib.rs",
+          "line": 562,
+          "end_line": 564
+        }
+      ]
+    },
+    {
+      "id": "page",
+      "lane": "show",
+      "col": 4,
+      "type": "frontend",
+      "label": "Scores page",
+      "sublabel": "DORA view",
+      "sources": [
+        {
+          "path": "web/src/lib/components/DoraScore.svelte",
+          "line": 62,
+          "end_line": 62
+        },
+        {
+          "path": "web/src/routes/scores/+page.svelte",
+          "line": 164,
+          "end_line": 195
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "o-r",
+      "from": "org",
+      "to": "rate",
+      "label": "who owns what"
+    },
+    {
+      "id": "q-r",
+      "from": "reqs",
+      "to": "rate",
+      "label": "what to prove",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e-r",
+      "from": "evidence",
+      "to": "rate",
+      "label": "proof"
+    },
+    {
+      "id": "r-s",
+      "from": "rate",
+      "to": "status",
+      "variant": "emphasis"
+    },
+    {
+      "id": "s-l",
+      "from": "status",
+      "to": "level",
+      "variant": "emphasis"
+    },
+    {
+      "id": "l-a",
+      "from": "level",
+      "to": "api",
+      "variant": "emphasis"
+    },
+    {
+      "id": "a-p",
+      "from": "api",
+      "to": "page",
+      "variant": "emphasis"
+    },
+    {
+      "id": "j-d",
+      "from": "job",
+      "to": "daily",
+      "label": "stores",
+      "variant": "dashed",
+      "role": "async"
+    },
+    {
+      "id": "d-s",
+      "from": "daily",
+      "to": "status",
+      "label": "day streak",
+      "variant": "dashed",
+      "role": "return"
+    }
+  ]
+}

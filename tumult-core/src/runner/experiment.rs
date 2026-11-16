@@ -6,11 +6,11 @@ use std::time::Instant;
 use tokio_util::sync::CancellationToken;
 
 use crate::controls::{ControlRegistry, LifecycleEvent};
-use crate::engine::determine_status;
+use crate::engine::{conclude, Conclusion, RunFacts};
 use crate::execution::all_succeeded;
 use crate::types::{
     ActivityStatus, ActivityType, BlastRadiusRecord, Experiment, ExperimentStatus,
-    HypothesisResult, Journal,
+    HypothesisResult, Journal, ObjectiveOutcome, SamplePhase, TargetVersion,
 };
 
 use opentelemetry::trace::{TraceContextExt, Tracer};
@@ -18,10 +18,14 @@ use opentelemetry::KeyValue;
 
 use super::activity::{evaluate_hypothesis, execute_activities, run_rollbacks};
 use super::guard::{finish_guard_monitor, spawn_guard_monitor};
-use super::phases::{build_post_result, collect_post_samples, compute_analysis};
+use super::load::{self, LoadEnd};
+use super::nfr;
+use super::phases::{
+    build_post_result, collect_post_samples, compute_analysis, samples_for_journal,
+};
 use super::sampler::{finish_during_sampler, spawn_during_sampler};
 use super::telemetry::{epoch_nanos_now, make_interrupted_journal};
-use super::{load, ActivityExecutor, RunConfig, RunnerError, SamplingConfig, TRACER_NAME};
+use super::{ActivityExecutor, RunConfig, RunnerError, SamplingConfig, TRACER_NAME};
 
 /// Execute only the rollback phase of `experiment` — orphan recovery for a
 /// run whose owning process died mid-fault (e.g. tumultd killed with
@@ -127,12 +131,15 @@ pub fn run_experiment_with_sampling(
     // -- Root span: resilience.experiment wraps the entire lifecycle.
     let tracer = opentelemetry::global::tracer(TRACER_NAME);
     let exp_span = {
+        let mut root_attrs = vec![
+            KeyValue::new("resilience.experiment.title", experiment.title.clone()),
+            KeyValue::new("resilience.experiment.id", experiment_id.clone()),
+            KeyValue::new("resilience.test.kind", experiment.kind.to_string()),
+        ];
+        root_attrs.extend(super::telemetry::experiment_target_attributes(experiment));
         let builder = tracer
             .span_builder("resilience.experiment")
-            .with_attributes(vec![
-                KeyValue::new("resilience.experiment.title", experiment.title.clone()),
-                KeyValue::new("resilience.experiment.id", experiment_id.clone()),
-            ]);
+            .with_attributes(root_attrs);
         // If a parent context was provided (e.g. from an MCP tool span), use it
         // so the experiment span is linked into the caller's trace.
         if let Some(ref parent_cx) = config.parent_context {
@@ -177,7 +184,6 @@ pub fn run_experiment_with_sampling(
         );
 
         controls.emit(&LifecycleEvent::AfterExperiment);
-        record_experiment_outcome(&started, false);
 
         // Rollback failure counts in chaos experiments are always << u32::MAX.
         #[allow(clippy::cast_possible_truncation)]
@@ -186,19 +192,24 @@ pub fn run_experiment_with_sampling(
             .filter(|r| r.status == ActivityStatus::Failed)
             .count() as u32;
 
-        return Ok(Journal {
-            ended_at_ns,
-            duration_ms,
-            steady_state_before: hypothesis_before,
-            rollback_results,
-            rollback_failures: rb_failures,
-            ..Journal::for_experiment(
-                experiment,
-                experiment_id,
-                ExperimentStatus::Aborted,
-                started_at_ns,
-            )
-        });
+        return Ok(seal(
+            Journal {
+                ended_at_ns,
+                duration_ms,
+                steady_state_before: hypothesis_before,
+                rollback_results,
+                rollback_failures: rb_failures,
+                ..Journal::for_experiment(
+                    experiment,
+                    experiment_id,
+                    ExperimentStatus::Aborted,
+                    started_at_ns,
+                )
+            },
+            experiment,
+            config,
+            &started,
+        ));
     }
 
     // -- Check cancellation before method
@@ -209,18 +220,22 @@ pub fn run_experiment_with_sampling(
             #[allow(clippy::cast_possible_truncation)]
             let duration_ms = started.elapsed().as_millis() as u64;
             controls.emit(&LifecycleEvent::AfterExperiment);
-            record_experiment_outcome(&started, false);
-            return Ok(Journal {
-                ended_at_ns,
-                duration_ms,
-                steady_state_before: hypothesis_before,
-                ..Journal::for_experiment(
-                    experiment,
-                    experiment_id,
-                    ExperimentStatus::Interrupted,
-                    started_at_ns,
-                )
-            });
+            return Ok(seal(
+                Journal {
+                    ended_at_ns,
+                    duration_ms,
+                    steady_state_before: hypothesis_before,
+                    ..Journal::for_experiment(
+                        experiment,
+                        experiment_id,
+                        ExperimentStatus::Interrupted,
+                        started_at_ns,
+                    )
+                },
+                experiment,
+                config,
+                &started,
+            ));
         }
     }
 
@@ -272,8 +287,9 @@ pub fn run_experiment_with_sampling(
 
     let actions_succeeded = all_succeeded(&method_results);
 
-    let during_result = during_sampler
-        .and_then(|sampler| finish_during_sampler(sampler, sampling.interval.as_secs_f64()));
+    let (during_result, mut probe_samples) = during_sampler
+        .map(|sampler| finish_during_sampler(sampler, sampling.interval.as_secs_f64()))
+        .unwrap_or_default();
 
     // Stop the guard monitor and learn whether a guard pulled the plug.
     let halt = guard_monitor.and_then(finish_guard_monitor);
@@ -285,10 +301,11 @@ pub fn run_experiment_with_sampling(
     );
 
     // -- Auto-halt path: a guard breached mid-experiment. Skip post-phase and
-    // hypothesis-after (we pulled the plug), stop load, run rollbacks
+    // hypothesis-after (we pulled the plug), end the load at once, run rollbacks
     // (treating the halt as needing rollback), and mark the run `Halted`.
     if let Some(mut halt) = halt {
-        let load_result = load::stop_load(load_handle, config.load_executor.as_ref());
+        let load_result =
+            load::stop_load(load_handle, config.load_executor.as_ref(), LoadEnd::Abort);
         drop(load_span_guard);
 
         let rollback_started = Instant::now();
@@ -333,7 +350,7 @@ pub fn run_experiment_with_sampling(
             "experiment.halted"
         );
 
-        return Ok(Journal {
+        let journal = Journal {
             ended_at_ns,
             duration_ms,
             steady_state_before: hypothesis_before,
@@ -345,16 +362,19 @@ pub fn run_experiment_with_sampling(
             analysis,
             halt: Some(halt),
             blast_radius,
+            probe_samples,
             ..Journal::for_experiment(experiment, experiment_id, status, started_at_ns)
-        });
+        };
+        return Ok(seal(journal, experiment, config, &started));
     }
 
     // -- Mid-method cancellation: the caller's token fired while the method
     // ran (SIGINT broke the foreground loop). The run must never be reported
-    // `Completed` from here on — stop load, run rollbacks (a fault may still
+    // `Completed` from here on — end the load at once, run rollbacks (a fault may still
     // be injected), and mark it `Interrupted`.
     if method_token.is_cancelled() {
-        let load_result = load::stop_load(load_handle, config.load_executor.as_ref());
+        let load_result =
+            load::stop_load(load_handle, config.load_executor.as_ref(), LoadEnd::Abort);
         drop(load_span_guard);
 
         let rollback_results = run_rollbacks(
@@ -389,7 +409,7 @@ pub fn run_experiment_with_sampling(
             "experiment.interrupted"
         );
 
-        return Ok(Journal {
+        let journal = Journal {
             ended_at_ns,
             duration_ms,
             steady_state_before: hypothesis_before,
@@ -400,8 +420,10 @@ pub fn run_experiment_with_sampling(
             load_result,
             analysis,
             blast_radius,
+            probe_samples,
             ..Journal::for_experiment(experiment, experiment_id, status, started_at_ns)
-        });
+        };
+        return Ok(seal(journal, experiment, config, &started));
     }
 
     // -- Phase 3: POST -- recovery measurement, taken immediately after the
@@ -424,11 +446,28 @@ pub fn run_experiment_with_sampling(
                 config.cancellation_token.as_ref(),
             );
             let ended_at_ns = epoch_nanos_now();
+            probe_samples.extend(samples_for_journal(SamplePhase::Post, &samples));
             build_post_result(started_at_ns, ended_at_ns, &samples)
         });
 
     // -- Stop load test, collect results, and enrich the span
-    let load_result = load::stop_load(load_handle, config.load_executor.as_ref());
+    let load_result = load::stop_load(load_handle, config.load_executor.as_ref(), LoadEnd::Stop);
+
+    // -- Objectives: every declared NFR and recovery target gets a verdict
+    // from the measurements above. A breached *blocking* objective turns a
+    // completed run into a deviation below.
+    let objectives = nfr::evaluate(
+        experiment,
+        &nfr::Measurements {
+            during: during_result.as_ref(),
+            post: post_result.as_ref(),
+            load: load_result.as_ref(),
+            samples: &probe_samples,
+        },
+    );
+    let blocking_breach = objectives
+        .as_ref()
+        .is_some_and(ObjectiveOutcome::has_blocking_breach);
 
     // Drop the load span guard so the span is exported
     drop(load_span_guard);
@@ -447,29 +486,27 @@ pub fn run_experiment_with_sampling(
 
     let hypothesis_after_met = hypothesis_after.as_ref().map(|h| h.met);
 
-    // -- Determine status
-    let status = if super::activity::is_cancelled(config.cancellation_token.as_ref()) {
-        ExperimentStatus::Interrupted
-    } else {
-        determine_status(
-            hypothesis_before_met,
-            hypothesis_after_met,
-            actions_succeeded && (experiment.load.is_none() || load_result.is_some()),
-        )
-    };
+    // -- Determine status and whether the rollbacks run. The precedence
+    // lives in `conclude`: a failed status never hides the cleanup a
+    // deviation calls for, and a failure or interrupt after a
+    // fault-injecting (Action) activity started rolls that fault back.
+    let Conclusion {
+        status,
+        needs_rollback,
+    } = conclude(&RunFacts {
+        cancelled: super::activity::is_cancelled(config.cancellation_token.as_ref()),
+        hypothesis_before_met,
+        hypothesis_after_met,
+        actions_succeeded,
+        load_has_evidence: load::load_has_evidence(experiment, load_result.as_ref()),
+        blocking_breach,
+        load_missed_thresholds: load::load_missed_thresholds(load_result.as_ref()),
+        fault_started: method_results
+            .iter()
+            .any(|r| r.activity_type == ActivityType::Action),
+    });
 
     // -- Rollbacks
-    // Deviation calls for cleanup; so does a failure after a fault-injecting
-    // (Action) activity actually started — the injected fault must be rolled
-    // back even though the run "failed" rather than "deviated".
-    let fault_started = method_results
-        .iter()
-        .any(|r| r.activity_type == ActivityType::Action);
-    let needs_rollback = status == ExperimentStatus::Deviated
-        || (matches!(
-            status,
-            ExperimentStatus::Failed | ExperimentStatus::Interrupted
-        ) && fault_started);
     let rollback_results = run_rollbacks(
         experiment,
         executor,
@@ -512,18 +549,7 @@ pub fn run_experiment_with_sampling(
         "experiment.completed"
     );
 
-    // Per-experiment metrics: outcome counter, lifecycle duration, and a
-    // deviation count tagged with the experiment title when the steady
-    // state was breached.
-    record_experiment_outcome(&started, status == ExperimentStatus::Completed);
-    if status == ExperimentStatus::Deviated {
-        tumult_otel::instrument::record_deviation(
-            tumult_otel::TumultMetrics::global(),
-            &experiment.title,
-        );
-    }
-
-    Ok(Journal {
+    let journal = Journal {
         ended_at_ns,
         duration_ms,
         steady_state_before: hypothesis_before,
@@ -536,8 +562,11 @@ pub fn run_experiment_with_sampling(
         load_result,
         analysis,
         blast_radius,
+        objectives,
+        probe_samples,
         ..Journal::for_experiment(experiment, experiment_id, status, started_at_ns)
-    })
+    };
+    Ok(seal(journal, experiment, config, &started))
 }
 
 /// Evaluate the steady-state hypothesis (when present) inside a dedicated
@@ -581,6 +610,121 @@ fn build_blast_radius(
         max_concurrent_faults,
         peak_concurrent_faults,
     })
+}
+
+/// Close a run that had a root span, whichever way it ended: freeze the
+/// version of the target it measured, and record the per-experiment
+/// metrics — outcome counter, lifecycle duration, and a deviation count
+/// tagged with the experiment title when the steady state was breached.
+/// Must run while the root span is still current.
+fn seal(
+    mut journal: Journal,
+    experiment: &Experiment,
+    config: &RunConfig,
+    started: &Instant,
+) -> Journal {
+    if journal.target_version.is_none() {
+        journal.target_version = observed_target_version(experiment, config, &journal);
+        record_observed_version(journal.target_version.as_ref());
+    }
+    record_experiment_outcome(started, journal.status == ExperimentStatus::Completed);
+    if journal.status == ExperimentStatus::Deviated {
+        tumult_otel::instrument::record_deviation(
+            tumult_otel::TumultMetrics::global(),
+            &experiment.title,
+        );
+    }
+    journal
+}
+
+/// The requests the run's load sent, as far as its tool counted them;
+/// 0 for a run without a load.
+fn load_sent(journal: &Journal) -> u64 {
+    let Some(load) = journal.load_result.as_ref() else {
+        return 0;
+    };
+    let counted = load.execution.requests.as_ref().map(|counts| counts.sent);
+    counted.unwrap_or(load.total_requests)
+}
+
+/// What the target's telemetry says of the run's own window, each answer
+/// settled ([`super::settled_versions`]); when it names no version there,
+/// what it says of the window padded for clock skew. The padding is the
+/// fallback and not the rule: read always, it lets one request of the
+/// build before, a second ahead of the run, share the run's window.
+fn seen_in_window(
+    resolver: &dyn super::TargetVersionResolver,
+    target: &crate::types::ExperimentTarget,
+    journal: &Journal,
+    cancelled: Option<&CancellationToken>,
+) -> Result<Vec<crate::types::VersionShare>, String> {
+    let window = |pad_ns: i64| super::RunWindow {
+        system: target.system.clone(),
+        environment: target.environment.clone(),
+        namespace: target.namespace.clone(),
+        started_at_ns: journal.started_at_ns.saturating_sub(pad_ns),
+        ended_at_ns: journal.ended_at_ns.saturating_add(pad_ns),
+    };
+    let own = super::settled_versions_unless(resolver, &window(0), cancelled)?;
+    if TargetVersion::versioned_requests(&own) > 0 {
+        return Ok(own);
+    }
+    let skew_ns = i64::try_from(super::VERSION_WINDOW_SKEW.as_nanos()).unwrap_or(i64::MAX);
+    super::settled_versions_unless(resolver, &window(skew_ns), cancelled)
+}
+
+/// Ask the target's telemetry which version served the run
+/// ([`seen_in_window`]). `None` when the definition names no target, no
+/// resolver is configured, the telemetry does not say, or it counted too
+/// few requests beside what the run's load sent
+/// ([`TargetVersion::observed_under_load`]); a resolver that fails costs
+/// the version, never the run. A window no one version served nearly
+/// alone is recorded as mixed.
+fn observed_target_version(
+    experiment: &Experiment,
+    config: &RunConfig,
+    journal: &Journal,
+) -> Option<TargetVersion> {
+    let target = experiment.target.as_ref()?;
+    let resolver = config.version_resolver.as_ref()?;
+    let cancelled = config.cancellation_token.as_ref();
+    let seen = match seen_in_window(resolver.as_ref(), target, journal, cancelled) {
+        Ok(seen) => seen,
+        Err(error) => {
+            tracing::warn!(
+                experiment_id = %journal.experiment_id,
+                target = %target.system,
+                error = %error,
+                "experiment.target_version_unresolved"
+            );
+            return None;
+        }
+    };
+    let counted = TargetVersion::versioned_requests(&seen);
+    let sent = load_sent(journal);
+    let observed = TargetVersion::observed_under_load(seen, sent);
+    if observed.is_none() && counted > 0 {
+        tracing::warn!(
+            experiment_id = %journal.experiment_id,
+            target = %target.system,
+            requests_seen = counted,
+            requests_sent = sent,
+            "experiment.target_version_thin"
+        );
+    }
+    observed
+}
+
+/// Put an observed version on the current (root) span. A declared one is
+/// there from the start.
+fn record_observed_version(version: Option<&TargetVersion>) {
+    let Some(version) = version else {
+        return;
+    };
+    let cx = opentelemetry::Context::current();
+    for attribute in super::telemetry::target_version_attributes(version) {
+        cx.span().set_attribute(attribute);
+    }
 }
 
 /// Record the outcome of a finished experiment: the `tumult.experiments.total`

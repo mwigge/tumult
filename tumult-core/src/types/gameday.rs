@@ -170,6 +170,7 @@ pub fn gameday_toon_template(spec: &GameDayTemplateSpec<'_>) -> String {
         let tool_str = match tool {
             LoadTool::K6 => "k6",
             LoadTool::Jmeter => "jmeter",
+            LoadTool::Oha => "oha",
         };
         writeln!(content, "load:").ok();
         writeln!(content, "  tool: {tool_str}").ok();
@@ -222,6 +223,7 @@ mod tests {
                 vus: Some(10),
                 duration_s: Some(60.0),
                 thresholds: HashMap::new(),
+                profile: None,
             }),
             experiments: vec![
                 GameDayExperiment {
@@ -277,6 +279,8 @@ mod tests {
                 error_rate: 0.001,
                 total_requests: 7_230,
                 thresholds_met: true,
+                samples: vec![],
+                execution: crate::types::LoadExecution::default(),
             }),
             resilience_score: ResilienceScore::compute(1.0, 1.0, 0.9, 1.0),
             compliance_status: "COMPLIANT".into(),

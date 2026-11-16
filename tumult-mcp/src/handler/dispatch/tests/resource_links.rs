@@ -636,11 +636,6 @@ async fn viewer_rejected_on_topology_import() {
     assert!(result_text(&result).contains("imported 1 services"));
 }
 
-/// Serializes tests that mutate `TUMULT_ANALYTICS_PATH` (viewer store reads
-/// resolve through the configured default store, so the env var must not be
-/// changed concurrently by another test).
-static ANALYTICS_ENV_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
-
 /// A viewer token is rejected on `tumult_autopilot_run` (every pass writes
 /// decision records, and execute=true injects faults) without the pass
 /// being attempted; the same call succeeds for an operator token.
@@ -652,8 +647,8 @@ async fn viewer_rejected_on_autopilot_run() {
     // Viewer store reads ignore `store_path` and resolve through the
     // configured default store — point it at the tmp store so the test does
     // not depend on a real `~/.tumult/analytics.duckdb` existing.
-    let _env_guard = ANALYTICS_ENV_LOCK.lock().await;
-    std::env::set_var("TUMULT_ANALYTICS_PATH", &store);
+    let mut env = tumult_test_utils::EnvGuard::lock();
+    env.set("TUMULT_ANALYTICS_PATH", &store);
     let policy = tmp.path().join("autopilot.toml");
     std::fs::write(&policy, "[autopilot]\nenabled = true\n").unwrap();
     let handler = TumultHandler::with_auth(
@@ -702,7 +697,6 @@ async fn viewer_rejected_on_autopilot_run() {
         .await
         .expect("viewer must reach autopilot status");
     assert!(result.is_error.is_none(), "{}", result_text(&result));
-    std::env::remove_var("TUMULT_ANALYTICS_PATH");
 }
 
 /// An operator token may call both read-only and operator-only tools.
@@ -1083,8 +1077,8 @@ async fn viewer_store_path_override_is_ignored() {
     // The viewer's target deliberately does not exist: if the override were
     // honored the call would error on the missing store.
     let evil = tmp.path().join("evil.duckdb");
-    let _env_guard = ANALYTICS_ENV_LOCK.lock().await;
-    std::env::set_var("TUMULT_ANALYTICS_PATH", &default_store);
+    let mut env = tumult_test_utils::EnvGuard::lock();
+    env.set("TUMULT_ANALYTICS_PATH", &default_store);
     let handler = TumultHandler::with_auth(
         tmp.path().to_path_buf(),
         McpAuth::from_tokens(vec![
@@ -1129,7 +1123,6 @@ async fn viewer_store_path_override_is_ignored() {
         "the operator error must name the honored override: {}",
         result_text(&result)
     );
-    std::env::remove_var("TUMULT_ANALYTICS_PATH");
 }
 
 // ── Server-wide enactment lock (concurrency veto) ──────────────

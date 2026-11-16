@@ -208,5 +208,10 @@ pub(crate) fn experiment_builder() -> Experiment {
         guards: vec![],
         blast_radius: None,
         max_concurrent_faults: None,
+        kind: TestKind::default(),
+        target: None,
+        nfr: vec![],
+        rto_target_s: None,
+        rpo_target_s: None,
     }
 }

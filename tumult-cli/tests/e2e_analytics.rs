@@ -2,11 +2,11 @@
 //! Validates the full data pipeline: TOON → Arrow → `DuckDB` → Parquet
 
 use std::collections::HashMap;
-use std::os::unix::fs::PermissionsExt;
 
 use indexmap::IndexMap;
 use tempfile::TempDir;
 use tumult_core::types::*;
+use tumult_test_utils::write_executable;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 // This test covers the full analytics pipeline in a single function by design;
@@ -17,12 +17,10 @@ async fn e2e_run_analyze_export() {
 
     // Create a simple experiment with process provider
     let probe_script = dir.path().join("probe.sh");
-    std::fs::write(&probe_script, "#!/bin/sh\necho 200\nexit 0\n").unwrap();
-    std::fs::set_permissions(&probe_script, std::fs::Permissions::from_mode(0o755)).unwrap();
+    write_executable(&probe_script, "#!/bin/sh\necho 200\nexit 0\n");
 
     let action_script = dir.path().join("action.sh");
-    std::fs::write(&action_script, "#!/bin/sh\necho injected\nexit 0\n").unwrap();
-    std::fs::set_permissions(&action_script, std::fs::Permissions::from_mode(0o755)).unwrap();
+    write_executable(&action_script, "#!/bin/sh\necho injected\nexit 0\n");
 
     let experiment = Experiment {
         version: "v1".into(),
@@ -83,6 +81,11 @@ async fn e2e_run_analyze_export() {
         guards: vec![],
         blast_radius: None,
         max_concurrent_faults: None,
+        kind: tumult_core::types::TestKind::default(),
+        target: None,
+        nfr: vec![],
+        rto_target_s: None,
+        rpo_target_s: None,
     };
 
     // Run experiment
@@ -156,6 +159,7 @@ fn cmd_export_writes_arrow_ipc_readable_file() {
     let dir = TempDir::new().unwrap();
 
     let journal = Journal {
+        target_version: None,
         experiment_title: "Arrow export fixture".into(),
         experiment_id: "exp-arrow-1".into(),
         status: ExperimentStatus::Completed,
@@ -167,6 +171,9 @@ fn cmd_export_writes_arrow_ipc_readable_file() {
         method_results: vec![],
         rollback_results: vec![],
         rollback_failures: 0,
+        kind: tumult_core::types::TestKind::default(),
+        objectives: None,
+        probe_samples: vec![],
         estimate: None,
         baseline_result: None,
         during_result: None,

@@ -11,7 +11,7 @@
 //! Routes (all under `/api`; reads run against a fresh read-only
 //! connection, mutations ride the daemon's single-writer channel):
 //!
-//! * `GET /api/overview?range=24h|7d|14d` — KPI cards (value, delta vs the
+//! * `GET /api/overview?range=24h|7d|14d|30d` — KPI cards (value, delta vs the
 //!   previous equal window, sparkline), experiments per day, target-system
 //!   leaderboard, fault breakdown.
 //! * `GET /api/timeseries?metric=<name>&interval=5m|1h|1d&range=…` — any
@@ -29,6 +29,26 @@
 //!   contains-match on the body).
 //! * `GET /api/logs/volume?range=&interval=&severity=&service=&q=` — log
 //!   volume bucketed per severity for the explorer's stacked bar.
+//! * `GET /api/entities?type=&liveness=&range=&sort=&limit=&cursor=` —
+//!   the current row of every entity that entity events reported
+//!   (`KRONIKA_ENTITY_EVENTS`), by key and environment, with its
+//!   `liveness` (`live`, `expired`, `gone`). `range` keeps the entities
+//!   last received inside it; left out, all are listed. One page of at
+//!   most 1000 rows (`limit`, default 100) and about 4 MiB, with `total`,
+//!   `truncated` and `next_cursor`; a walk with the cursor returns every
+//!   entity once. `sort=recent` lists the entity received last first,
+//!   without that promise.
+//! * `GET /api/entities/{key}/history?environment=&limit=&cursor=` — the
+//!   stored versions of one entity, newest first and paged the same way,
+//!   each with its environment; `404` for a key that has none in the
+//!   caller's environments. The key is percent-encoded as one path
+//!   segment.
+//! * `DELETE /api/entities?environment=&type=` — remove the entities of
+//!   one environment (required; empty for the entities that name none),
+//!   of one type or of all, with their history (Admin, confined to the
+//!   caller's environment scopes). Runs on the single writer and is
+//!   written to the log, as is a request that was refused or failed;
+//!   answers `entities` and `versions` removed.
 //! * `GET /api/traces?range=&service=&min_duration_ms=&outcome=` — traces
 //!   grouped from spans (root name/service, span/error counts, experiment
 //!   outcome where the trace is an experiment run).
@@ -40,9 +60,14 @@
 //! * `GET /api/metrics/query?name=&group_by=&range=&interval=` — bucketed
 //!   series for one raw metric (sums → SUM, gauges → AVG, histograms →
 //!   avg plus an interpolated p95), optionally split by an attribute key.
-//! * `GET /api/topology?range=` — service/target call graph: nodes from
-//!   `service_name` and tumult's `resilience.target.name` span attribute,
+//! * `GET /api/topology?range=` — service/target call graph, kept as a
+//!   compatibility view of the Star Map: nodes from `service_name` and the
+//!   target system of the naming contract (ids as on the Star Map),
 //!   edges from parent→child span joins and service→target calls.
+//! * `GET /api/starmap?range=&env=&focus=&depth=&kinds=&budget=&include=` —
+//!   the Star Map: organisation, ICT entities, systems, components,
+//!   services, workloads and the evidence against them as one graph,
+//!   assembled per request by `tumult_graph::starmap`.
 //! * `POST /api/ask` — natural-language → SQL → rows, guarded by
 //!   `tumult_intelligence::sql_guard`; degrades to `{configured:false}` when no LLM
 //!   is reachable.
@@ -80,6 +105,56 @@
 //!   retrospective manual-evidence draft as compliance debt.
 //! * `GET /api/scores?range=` — Gremlin-style resilience scorecard
 //!   (freshness-decayed per-experiment scores, target and portfolio rollup).
+//! * `GET /api/gate/{target}?min_score=&max_age_days=&env=` — CI gate: the
+//!   target's score as a `pass|warn|fail` verdict with reasons and evidence.
+//! * `GET /api/risks?env=` — the passive risk scan: ranked findings
+//!   (discipline gaps, stale evidence, breached objectives, untested
+//!   dependencies, workload manifests) with the coverage matrix;
+//!   `POST /api/risks/{id}/suppress {reason, expires_in_days?}` accepts a
+//!   finding for a while (hash-chained, Operator);
+//!   `POST /api/risks/{id}/recommend` turns a finding into a registered
+//!   experiment (scaffolded from the fault catalog, or the experiment the
+//!   finding is about) and an autopilot candidate with a `risk` trigger,
+//!   gated and recorded when a policy is loaded (Operator);
+//!   `GET /api/posture?env=` — the continuous posture score next to the
+//!   risk summary and the top findings.
+//! * `GET /api/dora?lei=&profile=&by=entity|org&env=` — DORA coverage per
+//!   article and function of one legal entity, each number with its
+//!   unknown share, the expectation table (expected against actual
+//!   evidence status) and the reporting-readiness facts;
+//!   `GET /api/dora/{article}?entity=` lists every evidence row behind
+//!   the cells of one article.
+//! * `GET /api/maturity?lei=&profile=&by=node|entity|org&env=` — the
+//!   internal maturity level (1–5, a house scale) with its pillars, gates
+//!   and history, and the per-node roll-up naming the nodes that cap it.
+//! * `GET /api/otel/conformance?range=&env=` — per service, which naming
+//!   contract attributes every span in the window carried (target columns,
+//!   ICT spine), the resulting level (`none|target|spine`) and what is
+//!   missing: the first stop when a target is absent from the posture page.
+//! * `GET /api/perf/{target}?probe=&quantile=&env=&baseline=&candidate=&range=&include=`
+//!   — performance regression verdict
+//!   (`improved|unchanged|regressed|inconclusive`) between two versions of
+//!   the target inside one environment (by default the two deployed last),
+//!   with a bootstrap interval, the evidence quality of each side and the
+//!   stored history; a pure read.
+//!   `POST /api/perf/{target}/verdicts` computes the same verdict and
+//!   appends it to `perf_verdicts` (Operator).
+//!   `GET /api/perf?range=` lists the targets with runs in the lookback;
+//!   `GET /api/perf/{target}/version?env=&from_ns=&to_ns=` is the version
+//!   that served a window.
+//! * `GET /api/forecast?metric=&target=&env=&range=&horizon=` — a semantic
+//!   metric's series resampled onto a regular step and forecast `horizon`
+//!   steps ahead with a 10–90 band; the Timestral sidecar
+//!   (`TUMULTD_FORECAST_URL`) when it answers, the built-in Holt-Winters
+//!   provider otherwise (`fallback_reason` is a coarse code), with the
+//!   model's provenance in the body and the result cached in the lake's
+//!   `forecasts` table per series, model, step, horizon and context window.
+//!   `degenerate_band` marks a band that had no width and was floored.
+//! * `GET /api/runs/{id}/impact` — the run's counterfactual: each probe's
+//!   samples against what the metric would have done without the fault
+//!   (forecast forward from pre-fault samples, or backcast from the post
+//!   phase), the per-sample impact, and the measured recovery time; 404
+//!   when the run has no probe samples.
 //! * `GET /api/authoring/catalog` — the live fault catalog (domains →
 //!   actions → documented args) from plugin discovery;
 //!   `POST /api/authoring/scaffold {plugin?, action, args, target, …}` —
@@ -117,6 +192,7 @@ pub mod authoring;
 pub mod error;
 pub use error::ApiError;
 pub mod events;
+pub mod forecast;
 pub mod gamedays;
 pub mod handlers;
 pub mod import;
@@ -125,6 +201,7 @@ pub mod manual;
 pub mod registry;
 pub mod runs;
 pub mod schedules;
+pub mod score;
 pub mod sql_util;
 pub mod webhooks;
 
@@ -134,6 +211,7 @@ use std::sync::Arc;
 use axum::routing::{get, post};
 use axum::Router;
 
+use handlers::entities::{entities, entity_history, purge_entities};
 use handlers::experiments::{dimensions, experiment_detail, experiment_windows, experiments};
 use handlers::logs::{logs, logs_volume};
 use handlers::metrics::{list_metrics, metrics_catalog, metrics_query, timeseries};
@@ -164,6 +242,20 @@ pub struct ApiState {
     autopilot_policy: Option<Arc<tumult_autopilot::LoadedPolicy>>,
     /// Whether the API is served over TLS: session cookies get `; Secure`.
     secure_cookies: bool,
+    /// Kubernetes manifests the passive risk scanner reads (`KRONIKA_MANIFESTS_DIR`).
+    manifests_dir: Option<Arc<PathBuf>>,
+    /// House parameters, register state, workloads and response cache of
+    /// the DORA coverage and maturity scores.
+    score: Arc<score::ScoreRuntime>,
+    /// The Timestral forecasting sidecar (`TUMULTD_FORECAST_URL`); `None`
+    /// means the built-in Holt-Winters provider.
+    forecast_client: Option<Arc<forecast::client::TimestralClient>>,
+    /// Skips a failing sidecar for a cool-down (`TUMULTD_FORECAST_COOLDOWN_S`).
+    forecast_breaker: Arc<forecast::breaker::Breaker>,
+    /// One permit per call to the sidecar that may be under way.
+    forecast_slots: Arc<tokio::sync::Semaphore>,
+    /// Star Map responses of the last 30 s, by parameters and scopes.
+    starmap_cache: Arc<handlers::starmap_cache::StarMapCache>,
 }
 
 impl ApiState {
@@ -191,7 +283,134 @@ impl ApiState {
             runs,
             autopilot_policy,
             secure_cookies,
+            manifests_dir: None,
+            // No org file, default parameters, no response cache: the
+            // daemon passes its own runtime.
+            score: Arc::new(score::ScoreRuntime::default().with_ttl(std::time::Duration::ZERO)),
+            forecast_client: None,
+            forecast_breaker: Arc::default(),
+            forecast_slots: Arc::new(tokio::sync::Semaphore::new(forecast::SIDECAR_SLOTS)),
+            starmap_cache: Arc::default(),
         }
+    }
+
+    /// Score with this runtime (org file, manifests, response cache).
+    #[must_use]
+    pub fn with_score_runtime(mut self, runtime: Arc<score::ScoreRuntime>) -> Self {
+        self.score = runtime;
+        self
+    }
+
+    /// The shared state of the DORA score endpoints.
+    #[must_use]
+    pub fn score_runtime(&self) -> &Arc<score::ScoreRuntime> {
+        &self.score
+    }
+
+    /// How long a failing forecasting sidecar is skipped before it is
+    /// tried again; zero disables the circuit breaker.
+    #[must_use]
+    pub fn with_forecast_cooldown(mut self, cooldown: std::time::Duration) -> Self {
+        self.forecast_breaker = Arc::new(forecast::breaker::Breaker::new(cooldown));
+        self
+    }
+
+    /// Replace the forecasting sidecar's circuit breaker.
+    #[cfg(test)]
+    pub(crate) fn with_forecast_breaker(mut self, breaker: forecast::breaker::Breaker) -> Self {
+        self.forecast_breaker = Arc::new(breaker);
+        self
+    }
+
+    /// The forecasting sidecar's circuit breaker.
+    #[must_use]
+    pub fn forecast_breaker(&self) -> &forecast::breaker::Breaker {
+        &self.forecast_breaker
+    }
+
+    /// Point the forecasting endpoints at a `tumult-forecastd` sidecar;
+    /// `None` or a blank URL means the built-in provider. The HTTP client
+    /// is built here, once, and shared by every request.
+    ///
+    /// # Errors
+    /// A message naming the problem when the URL is not `http(s)://host…`
+    /// or the HTTP client cannot be built.
+    pub fn with_forecast_url(mut self, url: Option<String>) -> Result<Self, String> {
+        let Some(url) = url.filter(|u| !u.trim().is_empty()) else {
+            self.forecast_client = None;
+            return Ok(self);
+        };
+        let client = forecast::client::TimestralClient::new(&url)?;
+        self.forecast_client = Some(Arc::new(client));
+        Ok(self)
+    }
+
+    /// The forecasting sidecar's base URL, when configured.
+    #[must_use]
+    pub fn forecast_url(&self) -> Option<&str> {
+        self.forecast_client.as_deref().map(|c| c.base())
+    }
+
+    /// The slots for calls to the forecasting sidecar.
+    pub(crate) fn forecast_slots(&self) -> &tokio::sync::Semaphore {
+        &self.forecast_slots
+    }
+
+    /// The forecasting sidecar's client, when configured.
+    pub(crate) fn forecast_client(&self) -> Option<&forecast::client::TimestralClient> {
+        self.forecast_client.as_deref()
+    }
+
+    /// Configure forecasting from the environment: the sidecar from
+    /// `TUMULTD_FORECAST_URL` and the circuit breaker's cool-down from
+    /// `TUMULTD_FORECAST_COOLDOWN_S` (an invalid cool-down logs a warning
+    /// and keeps the default).
+    ///
+    /// # Errors
+    /// A message naming `TUMULTD_FORECAST_URL` when it is set to something
+    /// other than an `http(s)` URL, or the HTTP client cannot be built: a
+    /// daemon told to use a sidecar it can never reach should not start.
+    pub fn forecast_from_env(self) -> Result<Self, String> {
+        let url = std::env::var("TUMULTD_FORECAST_URL").ok();
+        let cooldown_raw = std::env::var("TUMULTD_FORECAST_COOLDOWN_S").ok();
+        let cooldown =
+            forecast::breaker::parse_cooldown(cooldown_raw.as_deref()).unwrap_or_else(|e| {
+                tracing::warn!(
+                    error.type = "invalid_config",
+                    error.message = %e,
+                    "invalid TUMULTD_FORECAST_COOLDOWN_S; using the default"
+                );
+                forecast::breaker::DEFAULT_COOLDOWN
+            });
+        self.with_forecast_cooldown(cooldown)
+            .with_forecast_url(url)
+            .map_err(|e| format!("TUMULTD_FORECAST_URL: {e}"))
+    }
+
+    /// Read the Star Map cache's time from `clock` instead of the
+    /// system's. For tests, which move the clock rather than sleep.
+    #[doc(hidden)]
+    #[must_use]
+    pub fn with_starmap_clock(
+        mut self,
+        clock: Arc<dyn Fn() -> std::time::Instant + Send + Sync>,
+    ) -> Self {
+        let cache = handlers::starmap_cache::StarMapCache::with_clock(clock);
+        self.starmap_cache = Arc::new(cache);
+        self
+    }
+
+    /// Point the passive risk scanner at a directory of Kubernetes manifests.
+    #[must_use]
+    pub fn with_manifests_dir(mut self, dir: Option<PathBuf>) -> Self {
+        self.manifests_dir = dir.map(Arc::new);
+        self
+    }
+
+    /// The manifests directory the risk scanner reads, when configured.
+    #[must_use]
+    pub fn manifests_dir(&self) -> Option<&PathBuf> {
+        self.manifests_dir.as_deref()
     }
 
     /// Daemon constructor: reports live in `<db dir>/reports`, LLM configured
@@ -213,9 +432,8 @@ impl ApiState {
         let reports_dir = db_path
             .parent()
             .map_or_else(|| PathBuf::from("reports"), |d| d.join("reports"));
-        let org_path = std::env::var_os("KRONIKA_ORG_FILE")
-            .map(PathBuf::from)
-            .or_else(|| db_path.parent().map(|d| d.join("org.yaml")));
+        let org_path = org_file_path(&db_path);
+        let score_org_file = org_path.clone();
         let org = org_path
             .filter(|p| p.exists())
             .map_or_else(tumult_compliance::OrgTree::empty, |p| {
@@ -239,6 +457,7 @@ impl ApiState {
                 }
             }
         });
+        let manifests_dir = std::env::var_os("KRONIKA_MANIFESTS_DIR").map(PathBuf::from);
         Self::new(
             db_path,
             metrics_dir,
@@ -250,6 +469,16 @@ impl ApiState {
             autopilot_policy,
             secure_cookies,
         )
+        .with_manifests_dir(manifests_dir.clone())
+        .with_score_runtime(Arc::new(
+            score::ScoreRuntime::open(
+                score_org_file,
+                manifests_dir,
+                score::cache_ttl_from_env(),
+                sql_util::now_ns(),
+            )
+            .with_proof_days(score::proof_days_from_env()),
+        ))
     }
 
     /// Directory the report scheduler writes into and `/api/reports` reads.
@@ -283,6 +512,15 @@ impl ApiState {
     }
 }
 
+/// Where the org file (org tree, function register, score parameters)
+/// is read from: `KRONIKA_ORG_FILE`, else `<db dir>/org.yaml`.
+#[must_use]
+pub fn org_file_path(db_path: &std::path::Path) -> Option<PathBuf> {
+    std::env::var_os("KRONIKA_ORG_FILE")
+        .map(PathBuf::from)
+        .or_else(|| db_path.parent().map(|d| d.join("org.yaml")))
+}
+
 /// Build the API router. Merge into the daemon's HTTP server.
 pub fn router(state: ApiState) -> Router {
     Router::new()
@@ -295,14 +533,38 @@ pub fn router(state: ApiState) -> Router {
         .route("/api/metrics", get(list_metrics))
         .route("/api/logs", get(logs))
         .route("/api/logs/volume", get(logs_volume))
+        .route("/api/entities", get(entities).delete(purge_entities))
+        .route("/api/entities/{key}/history", get(entity_history))
         .route("/api/traces", get(traces))
         .route("/api/traces/durations", get(trace_durations))
         .route("/api/traces/{id}", get(trace_detail))
         .route("/api/metrics/catalog", get(metrics_catalog))
         .route("/api/metrics/query", get(metrics_query))
         .route("/api/topology", get(topology))
+        .route("/api/starmap", get(handlers::starmap::starmap))
         .route("/api/ask", post(ask::ask))
         .route("/api/scores/tree", get(scores_tree))
+        .route("/api/gate/{target}", get(handlers::gate::gate))
+        .route("/api/risks", get(handlers::risks::risks))
+        .route("/api/risks/{id}/suppress", post(handlers::risks::suppress))
+        .route(
+            "/api/risks/{id}/recommend",
+            post(handlers::recommend::recommend),
+        )
+        .route("/api/posture", get(handlers::risks::posture))
+        .route("/api/forecast", get(forecast::forecast))
+        .route("/api/runs/{id}/impact", get(forecast::run_impact))
+        .route(
+            "/api/otel/conformance",
+            get(handlers::conformance::conformance),
+        )
+        .route("/api/perf", get(handlers::perf::targets))
+        .route("/api/dora", get(handlers::dora::dora))
+        .route("/api/dora/{article}", get(handlers::dora::article))
+        .route("/api/maturity", get(handlers::dora::maturity))
+        .route("/api/perf/{target}", get(handlers::perf::perf))
+        .route("/api/perf/{target}/version", get(handlers::perf::version))
+        .route("/api/perf/{target}/verdicts", post(handlers::perf::store))
         .route(
             "/api/manual/experiments",
             get(manual::list).post(manual::create),

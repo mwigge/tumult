@@ -10,6 +10,8 @@
 //!   (`OTEL_EXPORTER_OTLP_ENDPOINT=http://host:4317`, bare host, no path).
 //! * **OTLP/HTTP protobuf** ([`http`]): what smedja's exporter talks
 //!   (`SMEDJA_OTLP_ENDPOINT=http://host:4318`, `/v1/*` paths).
+//! * **OTel-Arrow (OTAP)** ([`otap`]): the Collector's `otelarrow` exporter,
+//!   bidirectional Arrow streams on the same gRPC listener as OTLP/gRPC.
 //! * **Single-writer channel** (`writer`): both servers funnel batches
 //!   through one bounded channel onto the store's single `DuckDB` writer.
 //! * **Manual import** ([`manual`]): CSV and tumult journal JSON files.
@@ -20,23 +22,30 @@ pub mod approvals;
 pub mod config;
 pub mod daemon_metrics;
 pub mod daemon_task;
+pub mod entity_events;
 mod error;
 pub mod execution_policy;
 pub mod gamedays;
 pub mod grpc;
 pub mod http;
+pub mod listener;
+mod log_guard;
 pub mod manual;
+pub mod otap;
 pub mod retention;
 pub mod runs;
 pub mod schedules;
+#[cfg(test)]
+mod test_logs;
 pub mod webhooks;
 mod writer;
 
 pub use config::Config;
+pub use entity_events::{EntityEvents, EntitySettings};
 pub use error::IngestError;
 pub use manual::{ImportSummary, ManualImporter};
 pub use runs::{prepare_run, EnqueueError, RunQueue, RunQueueConfig, RunRequest, StopError};
-pub use writer::{Batch, IngestWriter};
+pub use writer::{Batch, EntityPurgeRequest, IngestWriter};
 
 /// Current time as epoch nanoseconds — the receipt timestamp given to
 /// conversions for telemetry that carries no timestamp of its own.

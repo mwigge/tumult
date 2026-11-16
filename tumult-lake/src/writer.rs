@@ -4,17 +4,36 @@ use duckdb::{params, Connection};
 
 use crate::error::StoreError;
 use crate::rows::{ImportBatch, LogRow, MetricGaugeRow, MetricHistogramRow, MetricSumRow, SpanRow};
-use crate::store::{attrs_json, migrate, query_json_rows, with_tx};
+use crate::store::{attrs_json, migrate, newer_schema, query_json_rows, with_tx};
 
 /// The write side of the store. Hold at most one per process (the ingest
 /// daemon funnels every write through a channel onto a single `Writer`).
 pub struct Writer {
     pub(crate) conn: Connection,
+    /// The wall clock in nanoseconds since the epoch; a test sets its own.
+    pub(crate) clock: fn() -> i64,
+    /// What is remembered about the entity table between batches.
+    pub(crate) entities: crate::entities::EntityBook,
 }
 
 impl Writer {
+    /// Bring the schema up to this build's version, or refuse a lake that
+    /// a later build wrote.
     pub(crate) fn migrate(&self) -> Result<(), StoreError> {
+        if let Some(stored) = newer_schema(&self.conn)? {
+            return Err(StoreError::SchemaTooNew {
+                stored,
+                supported: crate::CURRENT_SCHEMA_VERSION,
+            });
+        }
         migrate(&self.conn).map_err(StoreError::from)
+    }
+
+    /// Have the writer read the time from `clock`: for a test of what it
+    /// does as time passes. The daemon never sets one.
+    #[doc(hidden)]
+    pub fn set_clock(&mut self, clock: fn() -> i64) {
+        self.clock = clock;
     }
 
     /// Recorded schema version.
@@ -60,7 +79,7 @@ impl Writer {
                     r.status_code,
                     r.status_message,
                     r.service_name,
-                    r.service_version,
+                    crate::sightings::stored_version(r).map(|(version, _)| version),
                     r.experiment_id,
                     r.experiment_name,
                     r.outcome_status,
@@ -79,6 +98,7 @@ impl Writer {
                     events,
                 ])?;
             }
+            crate::sightings::note_sightings(&self.conn, rows, (self.clock)())?;
             Ok(())
         })
     }
@@ -88,25 +108,53 @@ impl Writer {
     /// # Errors
     /// Returns an error if the batch fails to insert (the transaction is rolled back).
     pub fn insert_logs(&self, rows: &[LogRow]) -> Result<(), StoreError> {
-        with_tx(&self.conn, || {
-            let mut stmt = self.conn.prepare(
-                "INSERT INTO logs VALUES (?,?,?,?,?,?,
+        with_tx(&self.conn, || self.put_logs(rows))
+    }
+
+    /// The body of [`Writer::insert_logs`], inside the caller's transaction.
+    pub(crate) fn put_logs(&self, rows: &[LogRow]) -> Result<(), StoreError> {
+        let mut stmt = self.conn.prepare(
+            "INSERT INTO logs (ts_ns, severity_text, body, trace_id, span_id,
+                    service_name, log_attrs, resource_attrs, event_name, scope_attrs)
+                 VALUES (?,?,?,?,?,?,
                     CAST(json(?) AS MAP(VARCHAR,VARCHAR)),
+                    CAST(json(?) AS MAP(VARCHAR,VARCHAR)),
+                    ?,
                     CAST(json(?) AS MAP(VARCHAR,VARCHAR)))",
-            )?;
-            for r in rows {
-                stmt.execute(params![
-                    r.ts_ns,
-                    r.severity_text,
-                    r.body,
-                    r.trace_id,
-                    r.span_id,
-                    r.service_name,
-                    attrs_json(&r.log_attrs)?,
-                    attrs_json(&r.resource_attrs)?,
-                ])?;
-            }
-            Ok(())
+        )?;
+        for r in rows {
+            stmt.execute(params![
+                r.ts_ns,
+                r.severity_text,
+                r.body,
+                r.trace_id,
+                r.span_id,
+                r.service_name,
+                attrs_json(&r.log_attrs)?,
+                attrs_json(&r.resource_attrs)?,
+                r.event_name,
+                attrs_json(&r.scope_attrs)?,
+            ])?;
+        }
+        Ok(())
+    }
+
+    /// Insert the sum, gauge and histogram data points of one metrics batch
+    /// in a single transaction: a sender that retries a failed batch must
+    /// not find part of it already stored.
+    ///
+    /// # Errors
+    /// Returns an error if any row fails to insert (nothing is stored).
+    pub fn insert_metrics(
+        &self,
+        sums: &[MetricSumRow],
+        gauges: &[MetricGaugeRow],
+        histograms: &[MetricHistogramRow],
+    ) -> Result<(), StoreError> {
+        with_tx(&self.conn, || {
+            self.put_metric_sums(sums)?;
+            self.put_metric_gauges(gauges)?;
+            self.put_metric_histograms(histograms)
         })
     }
 
@@ -115,26 +163,29 @@ impl Writer {
     /// # Errors
     /// Returns an error if the batch fails to insert (the transaction is rolled back).
     pub fn insert_metric_sums(&self, rows: &[MetricSumRow]) -> Result<(), StoreError> {
-        with_tx(&self.conn, || {
-            let mut stmt = self.conn.prepare(
-                "INSERT INTO metric_sums VALUES (?,?,?,?,?,?,
-                    CAST(json(?) AS MAP(VARCHAR,VARCHAR)),
-                    CAST(json(?) AS MAP(VARCHAR,VARCHAR)))",
-            )?;
-            for r in rows {
-                stmt.execute(params![
-                    r.ts_ns,
-                    r.metric_name,
-                    r.value,
-                    r.experiment_name,
-                    r.outcome_status,
-                    r.plugin_name,
-                    attrs_json(&r.attrs)?,
-                    attrs_json(&r.resource_attrs)?,
-                ])?;
-            }
-            Ok(())
-        })
+        with_tx(&self.conn, || self.put_metric_sums(rows))
+    }
+
+    /// [`Self::insert_metric_sums`] inside the caller's transaction.
+    fn put_metric_sums(&self, rows: &[MetricSumRow]) -> Result<(), StoreError> {
+        let mut stmt = self.conn.prepare(
+            "INSERT INTO metric_sums VALUES (?,?,?,?,?,?,
+                CAST(json(?) AS MAP(VARCHAR,VARCHAR)),
+                CAST(json(?) AS MAP(VARCHAR,VARCHAR)))",
+        )?;
+        for r in rows {
+            stmt.execute(params![
+                r.ts_ns,
+                r.metric_name,
+                r.value,
+                r.experiment_name,
+                r.outcome_status,
+                r.plugin_name,
+                attrs_json(&r.attrs)?,
+                attrs_json(&r.resource_attrs)?,
+            ])?;
+        }
+        Ok(())
     }
 
     /// Insert a batch of gauge data points in one transaction.
@@ -142,26 +193,29 @@ impl Writer {
     /// # Errors
     /// Returns an error if the batch fails to insert (the transaction is rolled back).
     pub fn insert_metric_gauges(&self, rows: &[MetricGaugeRow]) -> Result<(), StoreError> {
-        with_tx(&self.conn, || {
-            let mut stmt = self.conn.prepare(
-                "INSERT INTO metric_gauges VALUES (?,?,?,?,?,?,
-                    CAST(json(?) AS MAP(VARCHAR,VARCHAR)),
-                    CAST(json(?) AS MAP(VARCHAR,VARCHAR)))",
-            )?;
-            for r in rows {
-                stmt.execute(params![
-                    r.ts_ns,
-                    r.metric_name,
-                    r.value,
-                    r.experiment_name,
-                    r.outcome_status,
-                    r.plugin_name,
-                    attrs_json(&r.attrs)?,
-                    attrs_json(&r.resource_attrs)?,
-                ])?;
-            }
-            Ok(())
-        })
+        with_tx(&self.conn, || self.put_metric_gauges(rows))
+    }
+
+    /// [`Self::insert_metric_gauges`] inside the caller's transaction.
+    fn put_metric_gauges(&self, rows: &[MetricGaugeRow]) -> Result<(), StoreError> {
+        let mut stmt = self.conn.prepare(
+            "INSERT INTO metric_gauges VALUES (?,?,?,?,?,?,
+                CAST(json(?) AS MAP(VARCHAR,VARCHAR)),
+                CAST(json(?) AS MAP(VARCHAR,VARCHAR)))",
+        )?;
+        for r in rows {
+            stmt.execute(params![
+                r.ts_ns,
+                r.metric_name,
+                r.value,
+                r.experiment_name,
+                r.outcome_status,
+                r.plugin_name,
+                attrs_json(&r.attrs)?,
+                attrs_json(&r.resource_attrs)?,
+            ])?;
+        }
+        Ok(())
     }
 
     /// Insert a batch of histogram data points in one transaction.
@@ -169,33 +223,36 @@ impl Writer {
     /// # Errors
     /// Returns an error if the batch fails to insert (the transaction is rolled back).
     pub fn insert_metric_histograms(&self, rows: &[MetricHistogramRow]) -> Result<(), StoreError> {
-        with_tx(&self.conn, || {
-            let mut stmt = self.conn.prepare(
-                "INSERT INTO metric_histograms VALUES (?,?,?,?,?,?,
-                    CAST(? AS BIGINT[]), CAST(? AS DOUBLE[]),
-                    CAST(json(?) AS MAP(VARCHAR,VARCHAR)),
-                    CAST(json(?) AS MAP(VARCHAR,VARCHAR)),
-                    ?,?,?)",
-            )?;
-            for r in rows {
-                stmt.execute(params![
-                    r.ts_ns,
-                    r.metric_name,
-                    r.count,
-                    r.sum,
-                    r.min,
-                    r.max,
-                    serde_json::to_string(&r.bucket_counts)?,
-                    serde_json::to_string(&r.explicit_bounds)?,
-                    attrs_json(&r.attrs)?,
-                    attrs_json(&r.resource_attrs)?,
-                    r.experiment_name,
-                    r.outcome_status,
-                    r.plugin_name,
-                ])?;
-            }
-            Ok(())
-        })
+        with_tx(&self.conn, || self.put_metric_histograms(rows))
+    }
+
+    /// [`Self::insert_metric_histograms`] inside the caller's transaction.
+    fn put_metric_histograms(&self, rows: &[MetricHistogramRow]) -> Result<(), StoreError> {
+        let mut stmt = self.conn.prepare(
+            "INSERT INTO metric_histograms VALUES (?,?,?,?,?,?,
+                CAST(? AS BIGINT[]), CAST(? AS DOUBLE[]),
+                CAST(json(?) AS MAP(VARCHAR,VARCHAR)),
+                CAST(json(?) AS MAP(VARCHAR,VARCHAR)),
+                ?,?,?)",
+        )?;
+        for r in rows {
+            stmt.execute(params![
+                r.ts_ns,
+                r.metric_name,
+                r.count,
+                r.sum,
+                r.min,
+                r.max,
+                serde_json::to_string(&r.bucket_counts)?,
+                serde_json::to_string(&r.explicit_bounds)?,
+                attrs_json(&r.attrs)?,
+                attrs_json(&r.resource_attrs)?,
+                r.experiment_name,
+                r.outcome_status,
+                r.plugin_name,
+            ])?;
+        }
+        Ok(())
     }
 
     /// Record a manual import batch in `import_batches`.

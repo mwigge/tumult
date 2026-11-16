@@ -1,0 +1,5 @@
+# Known test-hygiene offenders in crates that other branches are changing.
+# One `path::name::rule  # reason` per line. Do not add entries: fix the test.
+# Delete an entry when its test is fixed: the guard fails on an entry that
+# matches nothing. List the current offenders with:
+#   python3 scripts/check-test-hygiene.py --list

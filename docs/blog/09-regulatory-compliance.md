@@ -2,7 +2,7 @@
 title: "Compliance as Code: DORA, NIS2, and Regulatory Evidence with Tumult"
 parent: Blog
 nav_order: 9
-updated: 2026-07-21
+updated: 2026-11-13
 ---
 
 # <img src="/images/tumult.png" alt="Tumult Logo" width="100" valign="middle"> Compliance as Code: DORA, NIS2, and Regulatory Evidence with Tumult
@@ -268,7 +268,7 @@ ORDER BY started_at_ns;
 
 | Framework | Minimum Retention | Why |
 |-----------|------------------|-----|
-| DORA | 5 years (Art. 28) | Financial supervisory access window |
+| DORA | Not set by DORA | Keep records for the period your competent authority may request |
 | NIS2 | Per member state | Varies, commonly 3-5 years |
 | PCI-DSS | 1 year (Req. 10.7) | Annual audit cycle |
 | ISO 22301 | 3-year certification cycle | Evidence for next audit |

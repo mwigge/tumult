@@ -2,245 +2,157 @@
 
 [![CI](https://github.com/mwigge/tumult/actions/workflows/ci.yml/badge.svg)](https://github.com/mwigge/tumult/actions/workflows/ci.yml)
 [![Coverage](https://github.com/mwigge/tumult/actions/workflows/coverage.yml/badge.svg)](https://github.com/mwigge/tumult/actions/workflows/coverage.yml)
-![Version](https://img.shields.io/badge/version-2.22.0-brightgreen)
+![Version](https://img.shields.io/badge/version-3.0.0-brightgreen)
 ![Rust](https://img.shields.io/badge/rust-1.92.0%2B-orange)
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue)
 
-Tumult is a Rust-native chaos engineering platform for running observable,
-repeatable resilience experiments from a CLI or Model Context Protocol (MCP)
-client — and for governing, storing and reporting them from the bundled
-`tumultd` daemon and web UI.
+Tumult is a resilience intelligence platform, written in Rust.
 
-```mermaid
-flowchart LR
-    accTitle: Tumult architecture and evidence flow
-    accDescr: Operators and MCP clients submit experiments to the Tumult engine, which calls fault providers and writes journals, analytics, graph data, and telemetry.
-    operator[Operator] --> cli[Tumult CLI]
-    client[MCP client] --> mcp[Tumult MCP server]
-    cli --> engine[tumult-core engine]
-    mcp --> engine
-    engine --> providers[Fault and probe providers]
-    providers --> targets[Target systems]
-    engine --> evidence[TOON journals and DuckDB]
-    evidence --> reports[ChaosGraph and reports]
-    engine --> otel[OpenTelemetry exporter]
-```
+It answers one question: **how well does this system cope when things go
+wrong, and how do we know?**
 
-## Quick start
+You test your systems. Tumult keeps the results and tells you what they
+mean.
 
-### Learn in your browser — Docker only
+![The evidence loop: plan, run, observe, store, score, find risks, pick the next test](docs/images/3.0/diagrams/flow-evidence-loop.png)
 
-The [Tumult Chaos Lab](chaos-lab/README.md) runs four guided fault simulations with
-live baseline, fault, and recovery measurements. An optional AI tutor supports
-OpenAI, Claude, and Ollama. Start with Docker running:
+## What it does
 
-```sh
-git clone https://github.com/mwigge/tumult.git
-cd tumult/chaos-lab
-docker compose up -d --build --wait
-```
+| Step | What happens |
+|---|---|
+| **Collect** | Chaos experiments, load and performance runs, telemetry from your services, and manual records of exercises all go in. |
+| **Store** | One daemon, `tumultd`, keeps everything in one DuckDB database, the lake. |
+| **Understand** | Tumult turns the stored evidence into scores, risks, verdicts and forecasts. |
+| **Show** | The web UI, Krönika, shows it. A CI gate and PDF reports use the same data. |
 
-Open **[http://localhost:8089](http://localhost:8089)** and select **Slow responses**.
-Read the hypothesis, tick the sandbox acknowledgement, then click **Run experiment**.
-No AI key is needed for the lessons. To add a tutor, open **AI settings** and enter
-your provider key. See the [lab README](chaos-lab/README.md) for your first experiment,
-Ollama setup, and stopping or resuming the lab.
+Chaos testing is still here. It is now one source of evidence among several.
 
-### Run experiments from the CLI
-
-Prerequisites: Rust 1.92.0 or newer and Docker with Compose.
-
-```bash
-git clone https://github.com/mwigge/tumult.git && cd tumult
-cargo build --release --locked -p tumult-cli -p tumult-net
-docker compose -f docker/docker-compose.yml up -d --wait postgres redis kafka mysql sshd
-target/release/tumult validate examples/redis-chaos.toon
-target/release/tumult run examples/redis-chaos.toon
-```
-
-The run writes a TOON journal and, unless disabled, ingests it into the unified
-DuckDB store, a configured daemon, or the configured ClickHouse backend. Follow
-the [guided walkthrough](QUICKSTART.md) for
-analysis, observability, GameDays, and MCP usage.
-
-## Capabilities
-
-- Steady-state probes, fault actions, controls, post-method sampling and
-  explicit rollback. The [data lifecycle](docs/data-lifecycle.md) distinguishes
-  measured results from reserved baseline and recovery fields.
-- Script plugins for containers, databases, Kafka, load testing, network
-  faults, processes, Pumba, stress, and time-related failure modes.
-- Native Rust executors for SSH, userspace TCP fault injection, Kubernetes,
-  cloud APIs, and Windows.
-- TOON journals, Arrow conversion, DuckDB analytics, and Parquet, CSV, JSON,
-  and Arrow IPC export.
-- OpenTelemetry traces and metrics across experiment execution, plugins,
-  analytics, SSH, Kubernetes, MCP, and agentic test paths.
-- Statistical baselines, cross-run trends, GameDay orchestration, compliance
-  evidence mapping, ChaosGraph, service topology, and policy-gated autopilot.
-- Deterministic and live-proxy fault injection for AI agents, plus adapters for
-  Claude Code and Codex.
-
-Run `tumult discover` to obtain the authoritative plugin and action catalog for
-the installed build.
-
-## How Tumult differs
-
-Against the incumbent chaos tools (Gremlin, Chaos Mesh, LitmusChaos), Tumult
-bets on four things:
-
-- **Agent-first.** A 40-tool MCP server where every tool declares safety
-  annotations and role gating (read-only tools need `viewer`, writers and
-  live fault executors need `operator`) — plus deterministic and live-proxy fault
-  injection for agentic AI systems themselves
-  (`demo/experiments/demo-agentic*.toon`).
-- **Always-on evidence.** The `tumultd` daemon ingests OTLP telemetry
-  (gRPC and HTTP) around the clock into one DuckDB lake (Kronika), so
-  analytics, trends and audit trails accrue without exporting anything.
-- **Governance built in.** Risk-tiered approvals, hash-chained audit trails
-  and compliance evidence packs (`tumult-compliance/`) mapped to DORA, NIS2,
-  ISO 27001 and SOC 2.
-- **One Rust binary.** The daemon embeds the lake, the schedulers and the
-  web UI in a single `tumultd` binary; the CLI is another.
-
-The launch post has the longer story:
-[Introducing Tumult](docs/blog/01-introducing-tumult.md).
-
-## The daemon, lake and web UI
-
-*The chronicle of your resilience work.*
-
-This is the analytics half of Tumult: the `tumultd` daemon, the unified
-DuckDB lake, and the embedded SvelteKit web UI. The CLI is the engine that
-executes experiments. The daemon is where they are registered, approved,
-executed under guardrails, stored, and reported. The crate and binary
-layout is documented in
-[docs/architecture/kronika-architecture.md](docs/architecture/kronika-architecture.md).
-
-```mermaid
-flowchart LR
-    accTitle: Tumult platform: engine, daemon and lake
-    accDescr: The CLI and MCP clients execute experiments through the tumult engine and emit OTLP telemetry. The tumultd daemon ingests that telemetry into one DuckDB lake, executes registered definitions itself behind an approval workflow, and serves the web UI, JSON API and compliance reports from the same store.
-    operator[Operator] --> cli[Tumult CLI / TUI]
-    client[MCP client] --> mcp[Tumult MCP server]
-    cli --> engine[tumult-core engine]
-    mcp --> engine
-    engine --> otel[OTLP exporter]
-    otel -->|gRPC :4317 / HTTP :4318| daemon[tumultd daemon]
-    operator -->|registry, dry-run, start, approve| ui[Web UI :4318]
-    ui --> daemon
-    daemon --> runs[Run queue: validate, execute,<br>e-stop, orphan reconcile]
-    daemon --> approvals[Approvals: risk tiers T0-T3,<br>quorum, TTL, hash pin, break-glass]
-    runs --> lake[(Unified DuckDB lake<br>~/.tumult/lake.duckdb)]
-    approvals --> lake
-    engine -->|journal import| lake
-    lake --> reports[Compliance reports R1/R2/R3,<br>scores, parquet lake export]
-```
-
-- **Run registry and daemon-run execution** — definitions are validated
-  through the CLI's exact pipeline and content-hash-deduped
-  (`POST /api/runs/validate`). You can preview them with a dry run. The
-  daemon executes them itself on a bounded worker pool, with e-stop and
-  crash-time orphan rollback reconciliation (ADR-011).
-- **Approval workflows** — every run is classified into a risk tier (T0–T3)
-  at request time. Gated runs wait behind a hash-pinned, quorum- and
-  TTL-bound approval with segregation of duties. Production-tier runs also
-  sit behind a fail-closed autopilot gate. A break-glass override exists
-  and leaves evidence (ADR-013).
-- **Authentication and RBAC** — server-side sessions (argon2id, opaque
-  cookies) or revocable `kro_`-prefixed API tokens. One route table with
-  `viewer < operator < approver < admin` roles and optional
-  per-environment scopes (ADR-012).
-- **Automatic ingest** — OTLP/gRPC (`:4317`, tumult's exporter) and
-  OTLP/HTTP protobuf (`:4318`, `/v1/*`) on one daemon. You can also import
-  CSV files and tumult journal JSON by hand (`tumultd import <file>`).
-- **Unified DuckDB store + parquet lake** — telemetry, run state, manual
-  evidence and the analytics family in one store behind one writer.
-  Manifest-based Parquet snapshots include late-arriving and changed records
-  (`KRONIKA_LAKE_DIR`, `KRONIKA_LAKE_INTERVAL`, `POST /api/lake/export`).
-  Automatic hot retention is disabled because reports do not yet query the
-  archive. Local files and hash chains do not enforce WORM retention locks.
-  [Data portability and recovery](docs/guides/data-portability.md) describes
-  archive exclusions and complete database backup/restore.
-- **Semantic metrics layer** — YAML metric views (`metrics/*.yaml`)
-  compiled to strictly validated SQL.
-- **Evidence reports** — R1 executive resilience digest (with
-  org-hierarchy rollups), R3 per-run game-day report, and an R2 evidence
-  pack (DORA/NIS2/ISO 27001/SOC 2, including the approval-chain
-  change-management section). Rendered as embedded-Typst PDFs plus
-  print-HTML previews. Includes Gremlin-style resilience scoring and a
-  draft → verified manual-evidence lifecycle (reviewer ≠ enterer,
-  append-only hash-chained audit).
-- **Web UI + query API** — a SvelteKit SPA embedded into the `tumultd`
-  binary (Overview, Scores, Experiments, Runs, Author, GameDays, Approvals,
-  Manual evidence, Logs, Traces, Metrics, Topology, Ask, Reports, Events,
-  Schedules, plus admin-only Users and Webhooks — and a two-click stop-all
-  kill switch on the Runs page). It is backed by a JSON
-  API under `/api/*`, including a guarded NL→SQL ask path
-  (`tumult_intelligence::sql_guard`).
-
-Try it (full platform, demo seed included):
-
-```bash
-cp .env.example .env   # fill in the three KRONIKA_* values — the stack refuses to start without them
-docker compose -f docker/docker-compose.kronika.yml up -d --build
-# open http://localhost:14318/ (log in with the admin password you set in .env)
-```
-
-The compose stack builds the UI and the `tumultd` binary in Docker, seeds a
-demo experiment suite plus manual-evidence records, and exports a report
-into `demo-out/`. To build locally instead, run
-`cd web && npm ci && npm run build` before compiling `tumultd` — the binary
-embeds `web/build/`. The CLI-only path above needs none of this: `tumult
-run` writes its journal and, when no daemon holds the database, ingests into
-the unified store. Set `TUMULT_DAEMON_URL` and `TUMULT_DAEMON_TOKEN` to import
-through a running daemon instead, unless `TUMULT_CLICKHOUSE_URL` selects the
-ClickHouse backend. If you
-have older standalone database files lying around, `tumult store
-import-legacy` pulls their data into that store (see the
-[CLI reference](docs/guides/cli-reference.md)).
-
-### Screenshots
-
-All captured on the seeded demo stack above; the full click path (login →
-register → approve → run → e-stop → evidence pack) is in the
-[platform walkthrough](docs/guides/platform-walkthrough.md).
+## What you see
 
 | | |
 |---|---|
-| ![Overview dashboard — experiment KPIs, pass and deviation rates, fault breakdown](docs/assets/overview-dashboard.png) | ![Org rollup scores — company score with coverage and a domain treemap](docs/assets/scores-rollup.png) |
-| ![Run detail — live telemetry waterfall, consumed approval chain, hash-chained audit trail](docs/assets/run-detail-waterfall.png) | ![Approvals queue — an approver reviews a pending T2 run with its content-hash pin](docs/assets/approvals-queue-review.png) |
-| ![Author — the live plugin fault catalog, one click to scaffold an experiment](docs/assets/author-catalog.png) | ![Runs — state filters and the two-step Halt all e-stop](docs/assets/runs-stop-all.png) |
+| ![Star Map: organisation, systems, services and workloads as one graph](docs/images/3.0/screenshots/starmap.png) | ![Resilience: ranked risks and coverage per discipline](docs/images/3.0/screenshots/posture.png) |
+| **Star Map.** Your organisation, systems and workloads as one graph. Colour shows evidence, risk or telemetry quality. | **Resilience.** A ranked list of risks and the gaps in what you have tested. No fault needs to run. |
+| ![Scores: DORA coverage and maturity level](docs/images/3.0/screenshots/scores-dora.png) | ![Performance: version against version with a verdict](docs/images/3.0/screenshots/performance.png) |
+| **Scores.** DORA coverage per article and function, and a maturity level from 1 to 5. | **Performance.** Did the new version get slower? A verdict per version, with a confidence interval. |
+| ![Star Map focus: one system with its evidence](docs/images/3.0/screenshots/starmap-focus.png) | ![Run detail with the span waterfall](docs/images/3.0/screenshots/run-detail.png) |
+| **Overview.** Pass rate, deviations and fault mix over time. | **Run detail.** Every step of a run as a timeline, with its approvals and audit trail. |
 
-## CLI
+More pictures: [platform walkthrough](docs/guides/platform-walkthrough.md).
+
+## Try it
+
+You need Docker. Pick one.
+
+**1. See the whole platform (about 15 minutes for the first build)**
 
 ```bash
-tumult validate experiment.toon
-tumult run experiment.toon
-tumult analyze --query "SELECT title, status FROM experiments"
-tumult compliance --framework dora .
-tumult gameday run gamedays/q2-postgres-resilience.gameday.toon
-tumult topology map
-tumult autopilot once --policy ~/.tumult/autopilot.toml
+git clone https://github.com/mwigge/tumult.git && cd tumult
+cp .env.example .env   # set the three KRONIKA_* values
+docker compose -f docker/docker-compose.kronika.yml up -d --build
 ```
 
-See the [CLI reference](docs/guides/cli-reference.md) and
-[experiment format reference](docs/guides/experiment-format.md).
+Open <http://localhost:14318/> and sign in as `admin`. The stack runs a demo
+suite, so every page has data.
+
+**2. Run one experiment from the command line**
+
+```bash
+cargo build --release --locked -p tumult-cli -p tumult-net
+docker compose -f docker/docker-compose.yml up -d --wait redis
+target/release/tumult run examples/redis-chaos.toon
+```
+
+Needs Rust 1.92.0 or newer. The [quickstart](QUICKSTART.md) has the next
+steps.
+
+**3. Learn chaos testing in your browser**
+
+```bash
+cd chaos-lab && docker compose up -d --build --wait
+```
+
+Open <http://localhost:8089>. Four guided lessons, no setup. See the
+[Chaos Lab](chaos-lab/README.md).
+
+## How it is built
+
+![C4 level 1: Tumult and the people and systems around it](docs/images/3.0/diagrams/c4-1-context.png)
+
+![C4 level 2: the parts inside Tumult](docs/images/3.0/diagrams/c4-2-containers.png)
+
+| Part | Job |
+|---|---|
+| `tumult` (CLI) | Runs experiments. Works alone, or sends results to the daemon. |
+| `tumultd` (daemon) | Takes in telemetry, runs approved experiments, stores, scores, serves the UI and the API. |
+| Krönika (web UI) | Built into the daemon. No separate install. |
+| Lake | One DuckDB file. One writer, many readers. Exports to Parquet. |
+| `tumult-mcp` | Gives AI agents 40 tools, with roles and safety labels. |
+| Forecast sidecar | Optional. A built-in forecaster works without it. |
+
+Telemetry comes in as OTLP over gRPC (port 4317) and HTTP (port 4318), and
+as OTel-Arrow. More diagrams:
+[architecture](docs/architecture/kronika-architecture.md).
+
+## What is new in 3.0
+
+| Feature | In one line | Guide |
+|---|---|---|
+| Star Map | One graph from organisation to workload | [Star Map](docs/guides/star-map.md) |
+| Risks and resilience score | Ranked findings from evidence you already have | [walkthrough](docs/guides/platform-walkthrough.md) |
+| DORA score | Coverage and maturity. It shows what evidence exists. It does not say you comply. | [DORA score](docs/guides/dora-score.md) |
+| Performance verdicts | Compare two versions of a service | [performance](docs/guides/performance-regression.md) |
+| Load profiles | Ramp, spike and soak on k6 and oha | [load testing](docs/guides/load-testing-guide.md) |
+| Forecasts | Expected range of a metric, and how far a run pushed it | [forecasting](docs/guides/forecasting.md) |
+| OTel-Arrow ingest | A faster way to send telemetry | [observability](docs/guides/observability-setup.md) |
+| Entity events | Track what exists and for how long (off by default) | [entity events](docs/guides/entity-events.md) |
+| Structured logs | JSON logs with stable event names | [logging](docs/guides/logging.md) |
+| CI gate | `tumult gate` gives pass, warn or fail for a target | [CLI](docs/guides/cli-reference.md) |
+
+Not done yet: forecast bands and entities have an API but no page in the UI.
+
+## Safe by design
+
+- Every run gets a risk tier, T0 to T3. Risky runs wait for approval.
+- Nobody can approve their own run.
+- A two-click stop halts all running experiments and rolls them back.
+- Every action goes into a tamper-evident audit trail.
+- Roles: `viewer`, `operator`, `approver`, `admin`.
+
+Chaos actions break things on purpose. Check every experiment, target and
+rollback before you use Tumult outside a test environment.
+
+Reports are summaries of evidence. They are not legal or audit statements.
+See the [regulatory mapping](docs/regulatory-mapping.md).
+
+## Command line
+
+```bash
+tumult validate experiment.toon     # check a file
+tumult run experiment.toon          # run it
+tumult gate my-service              # pass, warn or fail for CI
+tumult perf my-service              # compare versions
+tumult compliance --framework dora .
+tumult discover                     # list all plugins and actions
+```
+
+Full list: [CLI reference](docs/guides/cli-reference.md). File format:
+[experiment format](docs/guides/experiment-format.md).
 
 ## MCP server
 
-Tumult exposes 40 tools over stdio or streamable HTTP:
+Tumult exposes 40 tools over stdio or HTTP.
 
 ```bash
-# Stdio
-tumult-mcp
-
-# HTTP, loopback only when authentication is not configured
-tumult-mcp --transport http --port 3100
-
-# Authenticated HTTP
-TUMULT_MCP_TOKEN='replace-with-a-secret' tumult-mcp --transport http --port 3100
+tumult-mcp                                    # stdio
+TUMULT_MCP_TOKEN=secret tumult-mcp --transport http --port 3100
 ```
+
+Read-only tools need the `viewer` role. Tools that change or break things
+need `operator`. Without a token, HTTP listens on loopback only.
+
+<details>
+<summary>All 40 tools</summary>
 
 | Area | Tools |
 |---|---|
@@ -254,17 +166,19 @@ TUMULT_MCP_TOKEN='replace-with-a-secret' tumult-mcp --transport http --port 3100
 | Autopilot | `tumult_autopilot_run`, `tumult_autopilot_status`, `tumult_autopilot_respond`, `tumult_autopilot_export`, `tumult_autopilot_notify` |
 | Access | `tumult_whoami` |
 
-Thirty tools return structured content with an advertised output schema. Every
-tool declares MCP safety annotations. Read-only tools require the `viewer` role;
-writers and live fault executors require `operator`. The deterministic bundled
-agentic test tools remain viewer-level. The destructive tools are four:
-`tumult_run_experiment`, `tumult_gameday_run`, `tumult_autopilot_run` (when
-`execute=true`), and `tumult_autopilot_respond` (when `approve=true`).
+Thirty tools return structured content with an output schema. Four tools can
+break things: `tumult_run_experiment`, `tumult_gameday_run`,
+`tumult_autopilot_run` (with `execute=true`) and `tumult_autopilot_respond`
+(with `approve=true`).
 
-See the [MCP guide](docs/guides/mcp-guide.md) for configuration, resource URIs,
-authentication, pagination, schemas, and client examples.
+</details>
 
-## Configuration
+More: [MCP guide](docs/guides/mcp-guide.md).
+
+## Settings
+
+<details>
+<summary>Environment variables</summary>
 
 | Variable | Purpose |
 |---|---|
@@ -277,49 +191,31 @@ authentication, pagination, schemas, and client examples.
 | `TUMULT_CLICKHOUSE_URL` | Enable ClickHouse/SigNoz correlation. |
 | `CLAUDE_CODE_BIN`, `CODEX_BIN` | Override local agent adapter binaries. |
 
-Provider-specific credentials use their standard environment variables.
-Keep secrets out of activity arguments and output: journals retain provider
-output, which can contain sensitive data. Restrict access to journals and
-exports. See [execution bindings](docs/guides/execution-bindings.md) for daemon
-execution authorization and [provider prerequisites](docs/guides/production-deployment.md#provider-capabilities)
-for the shipped images.
+</details>
 
-## Safety and evidence scope
+Keep secrets out of experiment arguments. Journals store command output.
 
-Chaos actions are intentionally disruptive. Review every experiment, target,
-rollback, guard, and credential scope before using Tumult outside an isolated
-environment. MCP HTTP binds without authentication are restricted to loopback.
+## Read more
 
-Compliance reports are evidence summaries, not legal or audit attestations.
-Framework mappings and their evidence strength are documented in the
-[regulatory mapping](docs/regulatory-mapping.md).
+| I want to | Go to |
+|---|---|
+| Start quickly | [Quickstart](QUICKSTART.md) |
+| Click through the web UI | [Platform walkthrough](docs/guides/platform-walkthrough.md) |
+| Find a guide | [All guides](docs/guides/index.md) |
+| Understand the design | [Architecture](docs/architecture/kronika-architecture.md) |
+| See the plugins | [Plugin reference](docs/plugins/index.md) |
+| Run it in production | [Deployment](docs/guides/production-deployment.md) |
+| Check the security work | [Security assessment](docs/security-assessment.md) and [SECURITY.md](SECURITY.md) |
+| Read the story | [Introducing Tumult](docs/blog/01-introducing-tumult.md) |
 
-Security issues should be reported through
+Report security issues through
 [GitHub private vulnerability reporting](https://github.com/mwigge/tumult/security/advisories/new).
-See [SECURITY.md](SECURITY.md) for the supported-version policy.
-
-## Documentation
-
-- [Chaos Lab: learn in your browser](chaos-lab/README.md)
-- [Quickstart](QUICKSTART.md)
-- [Guides](docs/guides/index.md)
-- [Plugin reference](docs/plugins/index.md)
-- [Data lifecycle](docs/data-lifecycle.md)
-- [Security assessment](docs/security-assessment.md)
-- [Verification protocol](docs/testprotocol.md)
-- [2.22.0 hardening review](docs/guides/hardening-review.md)
-- [Quality and release checks](docs/guides/quality-and-release.md)
 
 ## Contributing
 
-Before submitting a change, run the
-[quality gates](docs/guides/quality-and-release.md), including the web build
-before Rust compilation, language checks, tests and dependency policy. The
-guide distinguishes advisory exceptions from an exception-free audit and
-source verification from release/deployment verification.
-
-Keep commit messages focused on delivered behavior and evidence. Do not include
-development-tool or review-process metadata in commit messages.
+Run the [quality checks](docs/guides/quality-and-release.md) before you send
+a change. Keep commit messages about what changed and how it was tested. Do
+not include development-tool or review-process metadata in commit messages.
 
 ## License
 

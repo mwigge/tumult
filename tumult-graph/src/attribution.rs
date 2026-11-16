@@ -153,6 +153,7 @@ mod tests {
         halt: Option<HaltRecord>,
     ) -> Journal {
         Journal {
+            target_version: None,
             experiment_title: "t".into(),
             experiment_id: "id1".into(),
             status,
@@ -164,6 +165,9 @@ mod tests {
             method_results: results,
             rollback_results: vec![],
             rollback_failures: 0,
+            kind: tumult_core::types::TestKind::default(),
+            objectives: None,
+            probe_samples: vec![],
             estimate: None,
             baseline_result: None,
             during_result: None,

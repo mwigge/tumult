@@ -73,12 +73,12 @@ fn emit_proposed(toml: &str, service_count: usize, output: Option<&Path>) -> Res
             std::fs::write(path, toml).map_err(|e| {
                 anyhow!("cannot write proposed topology to {}: {e}", path.display())
             })?;
-            println!(
+            crate::outln!(
                 "proposed topology with {service_count} service(s) written to {} — review, fill in depends_on, then `tumult topology import`",
                 path.display()
             );
         }
-        None => print!("{toml}"),
+        None => crate::out!("{toml}"),
     }
     Ok(())
 }
@@ -173,6 +173,7 @@ fn text_or_json(format: &str) -> Result<bool> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::output::testing::capture;
 
     const TOPOLOGY_TOML: &str = "[[service]]\nname = \"api\"\ndepends_on = [\"db\"]\n\n[[service]]\nname = \"db\"\ntier = \"data\"\n";
 
@@ -182,19 +183,106 @@ mod tests {
         db
     }
 
-    #[test]
-    fn import_map_lineage_and_recommend_round_trip() {
-        let dir = tempfile::TempDir::new().unwrap();
-        let db = seeded_store(dir.path());
-        let toml_path = dir.path().join("topology.toml");
+    /// A store with [`TOPOLOGY_TOML`] imported, and what the import printed.
+    fn imported_store(dir: &Path) -> (std::path::PathBuf, String) {
+        let db = seeded_store(dir);
+        let toml_path = dir.join("topology.toml");
         std::fs::write(&toml_path, TOPOLOGY_TOML).unwrap();
+        let (result, printed) = capture(|| cmd_topology_import(Some(&db), &toml_path, false));
+        result.unwrap();
+        (db, printed.stdout)
+    }
 
-        cmd_topology_import(Some(&db), &toml_path, false).unwrap();
-        cmd_topology_map(Some(&db), None, None, "text", true, 3).unwrap();
-        cmd_topology_map(Some(&db), Some("dora"), None, "mermaid", false, 3).unwrap();
-        cmd_topology_map(Some(&db), None, None, "json", true, 3).unwrap();
-        cmd_topology_lineage(Some(&db), Some("nis2"), None, None, "json").unwrap();
-        cmd_topology_recommend(Some(&db), Some("dora"), 3, "text").unwrap();
+    #[test]
+    fn import_reports_the_services_and_dependencies_it_stored() {
+        let dir = tempfile::TempDir::new().unwrap();
+
+        let (db, printed) = imported_store(dir.path());
+
+        assert_eq!(printed, "imported 2 services, 1 dependencies\n");
+        let graph =
+            tumult_mcp::tools::chaosgraph_query(&db.to_string_lossy(), "service", None).unwrap();
+        assert_eq!(graph.structured["count"], 2, "{:?}", graph.structured);
+    }
+
+    #[test]
+    fn map_renders_the_imported_topology_in_each_format() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let (db, _) = imported_store(dir.path());
+
+        let (result, printed) =
+            capture(|| cmd_topology_map(Some(&db), None, None, "text", true, 3));
+        result.unwrap();
+        let text = printed.stdout;
+        // Both declared services, the tier of one, and the edge between them.
+        assert_eq!(text.matches("[UNTESTED] svc:").count(), 2, "{text}");
+        assert!(text.contains("[UNTESTED] svc:db (data)\n"), "{text}");
+        assert!(text.contains("\n[UNTESTED] svc:api\n"), "{text}");
+        assert!(text.contains("  <- api depends on this\n"), "{text}");
+        assert!(
+            text.contains("  compliance:DORA/Art.11 untested\n"),
+            "{text}"
+        );
+
+        let (result, printed) =
+            capture(|| cmd_topology_map(Some(&db), Some("dora"), None, "mermaid", false, 3));
+        result.unwrap();
+        let mermaid = printed.stdout;
+        assert!(mermaid.contains("-->"), "{mermaid}");
+        assert_ne!(mermaid, text);
+
+        // JSON prints the full view, not the one-line note of the report.
+        let (result, printed) =
+            capture(|| cmd_topology_map(Some(&db), None, None, "json", true, 3));
+        result.unwrap();
+        let report: serde_json::Value = serde_json::from_str(&printed.stdout).unwrap();
+        assert_eq!(report["format"], "json");
+        assert_eq!(
+            report["map"]["services"].as_array().map(Vec::len),
+            Some(2),
+            "{report}"
+        );
+        assert_eq!(
+            report["map"]["depends_on"].as_array().map(Vec::len),
+            Some(1),
+            "{report}"
+        );
+    }
+
+    #[test]
+    fn lineage_and_recommend_print_json_or_text_as_asked() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let (db, _) = imported_store(dir.path());
+
+        let (result, printed) =
+            capture(|| cmd_topology_lineage(Some(&db), Some("nis2"), None, None, "json"));
+        result.unwrap();
+        let report: serde_json::Value = serde_json::from_str(&printed.stdout).unwrap();
+        let cells = report["cells"].as_array().expect("cells");
+        assert!(!cells.is_empty(), "{report}");
+        // Nothing has run against the declared services yet.
+        assert_eq!(report["counts"]["untested"], cells.len(), "{report}");
+        assert_eq!(report["counts"]["evidenced"], 0, "{report}");
+
+        let (result, printed) =
+            capture(|| cmd_topology_lineage(Some(&db), Some("nis2"), None, Some("db"), "text"));
+        result.unwrap();
+        let out = printed.stdout;
+        assert!(out.starts_with("lineage: "), "{out}");
+        assert!(out.contains(" on svc:db\n"), "{out}");
+        assert!(!out.contains(" on svc:api\n"), "{out}");
+
+        let (result, printed) =
+            capture(|| cmd_topology_recommend(Some(&db), Some("dora"), 3, "text"));
+        result.unwrap();
+        // Nothing has run, so there is no history to rank an injection by.
+        assert_eq!(printed.stdout, "0 recommendation(s)\n");
+
+        let (result, printed) =
+            capture(|| cmd_topology_recommend(Some(&db), Some("dora"), 3, "json"));
+        result.unwrap();
+        let report: serde_json::Value = serde_json::from_str(&printed.stdout).unwrap();
+        assert_eq!(report, serde_json::json!({ "recommendations": [] }));
     }
 
     #[test]

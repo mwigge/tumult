@@ -1,5 +1,5 @@
 title: PostgreSQL under k6 load — container pause disruption
-description: k6 queries PG with real inserts/selects via --load flag while Pumba pauses the container
+description: k6 queries PG with real inserts/selects for 15 s while Pumba pauses the container; the method (3 s settle, 5 s pause, 8 s recovery) outlasts the load, so every second of it is measured
 
 tags[4]: postgres, load, pumba, resilience
 
@@ -7,7 +7,7 @@ load:
   tool: k6
   script: examples/k6/pg-load.js
   vus: 5
-  duration_s: 20.0
+  duration_s: 15.0
 
 steady_state_hypothesis:
   title: PostgreSQL accepts queries
@@ -38,7 +38,7 @@ method[3]:
       path: sh
       arguments[2]: "-c", "docker run --rm -v /var/run/docker.sock:/var/run/docker.sock ghcr.io/alexei-led/pumba:latest pause -d 5s docker-postgres-1"
       timeout_s: 10.0
-    pause_after_s: 2.0
+    pause_after_s: 8.0
   - name: connection-count-after
     activity_type: probe
     provider:

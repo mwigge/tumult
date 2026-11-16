@@ -1,7 +1,7 @@
 [package]
 name = "tumultd"
 description = "Tumult daemon — OTLP ingest servers, manual import, ad-hoc reports"
-version = "0.7.0"
+version.workspace = true
 edition.workspace = true
 license.workspace = true
 
@@ -16,6 +16,8 @@ tumult-ingest.workspace = true
 tumult-metrics.workspace = true
 tumult-report.workspace = true
 tumult-api.workspace = true
+tumult-compliance.workspace = true
+tumult-core = { path = "../tumult-core" }
 tumult-exec = { path = "../tumult-exec" }
 tumult-otel = { path = "../tumult-otel" }
 tumult-auth = { path = "../tumult-auth" }
@@ -32,12 +34,14 @@ tokio.workspace = true
 tokio-util.workspace = true
 anyhow.workspace = true
 tracing.workspace = true
-tracing-subscriber.workspace = true
 rust-embed.workspace = true
 mime_guess.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+serde_json.workspace = true
+tumult-test-utils = { path = "../tumult-test-utils", default-features = false }
+# The paused clock, for tests that only wait on tasks.
+tokio = { workspace = true, features = ["test-util"] }
 async-trait.workspace = true
-tumult-compliance.workspace = true

@@ -168,6 +168,11 @@ pub(super) async fn process(item: WorkItem, shared: &Shared, factory: &ExecutorF
     let config = RunConfig {
         cancellation_token: Some(token.clone()),
         load_executor: Some(std::sync::Arc::new(tumult_core::runner::k6::K6LoadExecutor)),
+        // A target that declares no version is given the one its own
+        // telemetry carried while the run was executing.
+        version_resolver: Some(std::sync::Arc::new(tumult_lake::StoredVersions::at(
+            &shared.db_path,
+        ))),
         ..RunConfig::default()
     };
     let run_experiment = {

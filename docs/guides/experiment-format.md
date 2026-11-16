@@ -18,6 +18,11 @@ Every experiment has these sections:
 | `title` | Yes | Human-readable experiment name |
 | `description` | No | What this experiment validates |
 | `tags` | No | Classification tags for filtering and analytics |
+| `target` | No | System under test: `system` (required inside the block), `technology`, `environment`, `criticality`, `version` (the build this run measures; `tumult run --target-version` overrides it, and without either the runner records the version the target's own spans carried during the run). Emitted as `resilience.target.*` on the root span; the scorecard, the gate and environment scopes key on it, and performance verdicts compare by the recorded version |
+| `kind` | No | What the run is: `chaos` (default), `performance` (load and performance; `load` is accepted as another name), `robustness`, `dr`, `security`. Coverage and scores count four disciplines: chaos, load / performance, robustness and security. A `dr` run is part of robustness. Non-functional objectives are not a discipline: the `nfr` block below is verified by a run of any kind. Sets the `resilience.test.kind` span attribute |
+| `nfr` | No | Non-functional objectives verified against the run's measurements (see [Objectives](#objectives)) |
+| `rto_target_s` | No | Recovery time objective in seconds; required when `kind: dr`. Measured against post-phase MTTR |
+| `rpo_target_s` | No | Recovery point objective in seconds of tolerated data loss; measured only by an `nfr` entry of `kind: rpo` |
 | `configuration` | No | Non-sensitive key-value pairs (inline or from environment variables) — usable in templates and injected into subprocess environments |
 | `secrets` | No | Sensitive values (from environment variables or files) — env-injected, never journaled |
 | `controls` | No | Lifecycle hooks executed at every lifecycle event (before/after experiment, method, activity, hypothesis, rollback) |
@@ -29,7 +34,7 @@ Every experiment has these sections:
 | `rollbacks` | No | Actions to restore system state after the experiment |
 | `estimate` | No | Phase 0 — prediction of expected outcome |
 | `baseline` | No | Phase 1 — statistical baseline acquisition config |
-| `load` | No | Load tool integration (k6) |
+| `load` | No | Load tool integration (k6 or oha) with an optional traffic profile |
 | `regulatory` | No | Regulatory framework mapping (DORA, NIS2, PCI-DSS) |
 
 ## Activity Types
@@ -172,9 +177,92 @@ Configuration for statistical baseline acquisition:
 | `sigma` | Standard deviations for mean_stddev method |
 | `confidence` | Confidence level (0.0-1.0) |
 
+## Objectives
+
+`nfr` declares the non-functional objectives a run is verified against. Every objective gets a verdict in the journal (`objectives.verdicts`) and in the lake (`nfr_verdicts`): `met`, `breached`, or `inconclusive` when the run did not produce the metric. A breached objective with `criticality: blocking` turns a completed run into a deviation.
+
+| Field | Values | Description |
+|-------|--------|-------------|
+| `id` | string | Unique within the experiment |
+| `kind` | `latency`, `availability`, `throughput`, `error_rate`, `rto`, `rpo`, `capacity`, `recovery`, `data_integrity` | What the objective constrains |
+| `metric` | string | Measurement to evaluate (table below) |
+| `operator` | `lte`, `gte`, `eq` | Comparison against `threshold` |
+| `threshold` | float | |
+| `window_s` | float | Evaluation window (documentation; the runner evaluates over the phase that produced the metric) |
+| `criticality` | `blocking`, `major` (default), `minor` | How much a breach matters |
+| `description` | string | |
+
+Metrics the runner produces:
+
+| Metric | Source |
+|--------|--------|
+| `load.throughput_rps`, `load.latency_p50_ms`, `load.latency_p95_ms`, `load.latency_p99_ms`, `load.error_rate`, `load.total_requests` | the load result |
+| `recovery.mttr_s`, `recovery.time_s` | the post phase |
+| `during.error_rate`, `during.availability`, `post.error_rate`, `post.availability` | raw probe samples of that phase |
+| `probe.<name>.mean_ms`, `probe.<name>.max_ms`, `probe.<name>.p95_ms`, `probe.<name>.error_rate` | raw during-phase samples of one probe |
+| `fault.duration_s` | the during phase |
+
+`rto_target_s` adds an implicit blocking `rto` objective on `recovery.mttr_s`. `rpo_target_s` is recorded with the run; without an `nfr` entry of `kind: rpo` naming a probe-derived metric it is reported `inconclusive`, never silently met.
+
+```yaml
+kind: dr
+rto_target_s: 900
+rpo_target_s: 60
+nfr[2]:
+  - id: p95
+    kind: latency
+    metric: load.latency_p95_ms
+    operator: lte
+    threshold: 250
+    criticality: blocking
+  - id: avail
+    kind: availability
+    metric: during.availability
+    operator: gte
+    threshold: 0.995
+```
+
+Raw probe samples from the during and post phases are kept in the journal (`probe_samples`) and in the lake table `probe_samples` (`experiment_id`, `probe_name`, `phase`, `ts_ns`, `value` in ms, `ok`), so later analysis works on the time series rather than only on the per-phase aggregates.
+
 ## Load
 
-The optional `load` section drives load generation concurrent with the method. **k6 is the only supported driver** — `tool: k6`, and the `--load` CLI override accepts only `k6` or `none`. (The former `--load jmeter` CLI choice was removed: it never invoked JMeter — it silently ran k6.)
+The optional `load` section drives load generation concurrent with the method. Two adapters share one boundary (`runner::LoadExecutor` plus the tool-agnostic plan in `runner::load_profile`): **k6** (`tool: k6`, `script` is the k6 script) and **oha** (`tool: oha`, `script` is the URL to hit). The `--load` CLI override accepts `k6`, `oha` or `none`. `tool: jmeter` still parses for older files but has no adapter and fails at start rather than silently running k6.
+
+| Field | Required | Description |
+|---|---|---|
+| `tool` | Yes | `k6` or `oha` |
+| `script` | Yes | k6 script path, or the URL for oha |
+| `vus` | No | Virtual users / concurrency (default 10) |
+| `duration_s` | No | Seconds of load (default 30); required when a `profile` is set |
+| `thresholds` | No | Metric → bound. k6 scripts enforce their own; for oha the adapter checks `latency_p50_ms`, `latency_p95_ms`, `latency_p99_ms`, `error_rate` (upper bounds) and `throughput_rps` (lower bound) against the aggregate, and an unknown name counts as unmet |
+| `profile` | No | Traffic shape, see below |
+
+### Load profiles
+
+A profile shapes the traffic over `duration_s`; without one the load is flat at `vus`. Every profile is turned into the same plan of stages, which k6 renders as `--stage` arguments and oha as one process per window, so a profile means the same thing whichever tool runs it. The validator rejects a shape that does not fit the duration.
+
+| `type` | Fields | Shape |
+|---|---|---|
+| `ramp` | `start_vus`, `ramp_up_s` | Linear ramp from `start_vus` to `vus` over `ramp_up_s`, then hold `vus` |
+| `spike` | `peak_vus`, `after_s`, `hold_s` | `vus` for `after_s`, a jump to `peak_vus` held for `hold_s`, back to `vus` for the rest |
+| `soak` | `sample_interval_s` | Constant `vus` for the whole (long) duration, with a summary sampled every `sample_interval_s` |
+
+```toon
+load:
+  tool: oha
+  script: http://127.0.0.1:8080/api/checkout
+  vus: 20
+  duration_s: 7200
+  profile:
+    type: soak
+    sample_interval_s: 30
+```
+
+The oha adapter runs the plan window by window (`sample_interval_s` wide for a soak and at least one second, one window per stage otherwise) and records one sample per window in `load_result.samples` (`ts_ns`, `duration_s`, `vus`, `throughput_rps`, `latency_p50_ms`, `latency_p95_ms`, `latency_p99_ms`, `error_rate`, `requests`). The lake stores each field as a `probe_samples` series named `load.<field>` in the `during` phase, next to the probe samples of the same run, so a two-hour soak is a time series you can chart and compare, not one number. The k6 adapter keeps its single end-of-run summary (its per-request stream is too heavy to retain) but honours every profile through stages. Examples: `examples/checkout-ramp-k6.toon`, `examples/checkout-spike-oha.toon`, `examples/checkout-soak-oha.toon`.
+
+### Robustness runs
+
+`kind: robustness` covers the runs where the question is "does it fail safely" rather than "does it recover from a fault": malformed input, saturation and soak. They use the same sections as every other experiment — the method carries the hostile inputs as probes with tolerances, the load section drives the saturation or soak, and `nfr` entries say what must hold. `examples/api-malformed-input.toon` posts oversized, truncated, wrongly typed and deeply nested bodies and expects 4xx while the health probe stays green; `examples/api-saturation.toon` ramps past capacity under cpu stress and expects shed load (429/503) rather than a dead process; `examples/checkout-soak-oha.toon` holds load for two hours and streams samples.
 
 ## Analysis (Phase 4)
 

@@ -3,9 +3,12 @@
 use serde::{Deserialize, Serialize};
 
 use super::definition::{Estimate, Experiment, RegulatoryMapping};
-use super::enums::{ActivityStatus, ActivityType, ExperimentStatus};
+use super::enums::{ActivityStatus, ActivityType, ExperimentStatus, TestKind};
 use super::ids::{SpanId, TraceId};
-use super::results::{AnalysisResult, BaselineResult, DuringResult, LoadResult, PostResult};
+use super::results::{
+    AnalysisResult, BaselineResult, DuringResult, LoadResult, ObjectiveOutcome, PostResult,
+    ProbeSample,
+};
 
 /// Recorded outcome of a single executed activity.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -65,6 +68,150 @@ pub struct HaltRecord {
     pub rollback_ms: u64,
 }
 
+/// Where the version recorded on a run came from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum VersionSource {
+    /// The definition's `target.version`, or `--target-version`.
+    Declared,
+    /// Resolved once at run end from the target's own telemetry inside
+    /// the run's window, in the run's environment.
+    Observed,
+    /// The telemetry inside the run's window named more than one version
+    /// and none served [`OBSERVED_VERSION_MIN_SHARE`] of the requests: the
+    /// run measured a mix, and belongs to no single version.
+    Mixed,
+}
+
+/// The share of a run's requests one version must have served for the
+/// run to be recorded as observed on that version.
+pub const OBSERVED_VERSION_MIN_SHARE: f64 = 0.95;
+
+/// The fewest requests the target's telemetry must have counted inside a
+/// run's window, as a share of the requests the run's load sent, for the
+/// run to record a version from it. Low, because telemetry may be
+/// sampled; not zero, because one request of an old build in a window
+/// whose other telemetry has not arrived says nothing of what served the
+/// load.
+pub const OBSERVED_MIN_LOAD_SHARE: f64 = 0.01;
+
+/// How many of the requests inside a run's window one version served.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct VersionShare {
+    pub version: String,
+    pub requests: u64,
+}
+
+impl std::fmt::Display for VersionSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Declared => "declared",
+            Self::Observed => "observed",
+            Self::Mixed => "mixed",
+        })
+    }
+}
+
+/// The version of the target a run measured, frozen in the journal when
+/// the run ended so that later telemetry cannot move it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TargetVersion {
+    /// The version; for a [`VersionSource::Mixed`] run the one that
+    /// served most, which the run is not attributed to.
+    pub version: String,
+    pub version_source: VersionSource,
+    /// What the telemetry said when it named more than one version, most
+    /// served first. Empty for a declared version and for a window one
+    /// version served alone.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub shares: Vec<VersionShare>,
+}
+
+impl TargetVersion {
+    /// What a run records from the versions its target's telemetry named
+    /// inside its window: `None` when it named none.
+    #[must_use]
+    pub fn observed(seen: Vec<VersionShare>) -> Option<Self> {
+        let mut seen: Vec<VersionShare> = seen
+            .into_iter()
+            .map(|share| VersionShare {
+                version: share.version.trim().to_string(),
+                requests: share.requests,
+            })
+            .filter(|share| !share.version.is_empty() && share.requests > 0)
+            .collect();
+        seen.sort_by(|a, b| {
+            b.requests
+                .cmp(&a.requests)
+                .then_with(|| a.version.cmp(&b.version))
+        });
+        let most = seen.first()?;
+        let all: u64 = seen.iter().map(|share| share.requests).sum();
+        // Request counts are far below 2^53.
+        #[allow(clippy::cast_precision_loss)]
+        let version_source = if most.requests as f64 >= OBSERVED_VERSION_MIN_SHARE * all as f64 {
+            VersionSource::Observed
+        } else {
+            VersionSource::Mixed
+        };
+        Some(Self {
+            version: most.version.clone(),
+            version_source,
+            shares: if seen.len() > 1 { seen } else { Vec::new() },
+        })
+    }
+
+    /// The requests of `seen` that name a version.
+    #[must_use]
+    pub fn versioned_requests(seen: &[VersionShare]) -> u64 {
+        seen.iter()
+            .filter(|share| !share.version.trim().is_empty())
+            .map(|share| share.requests)
+            .sum()
+    }
+
+    /// [`TargetVersion::observed`] for a run whose load sent `sent`
+    /// requests: `None` also when the telemetry counted fewer than
+    /// [`OBSERVED_MIN_LOAD_SHARE`] of them. A load that counted nothing
+    /// asks for nothing.
+    #[must_use]
+    pub fn observed_under_load(seen: Vec<VersionShare>, sent: u64) -> Option<Self> {
+        // Request counts are far below 2^53.
+        #[allow(clippy::cast_precision_loss)]
+        let enough =
+            Self::versioned_requests(&seen) as f64 >= OBSERVED_MIN_LOAD_SHARE * sent as f64;
+        if !enough {
+            return None;
+        }
+        Self::observed(seen)
+    }
+
+    /// The share of the window's requests the recorded version served;
+    /// `None` when no shares were recorded.
+    #[must_use]
+    pub fn share(&self) -> Option<f64> {
+        let own = self
+            .shares
+            .iter()
+            .find(|share| share.version == self.version)?;
+        let all: u64 = self.shares.iter().map(|share| share.requests).sum();
+        // Request counts are far below 2^53.
+        #[allow(clippy::cast_precision_loss)]
+        Some(own.requests as f64 / all as f64)
+    }
+
+    /// The version the definition declares, if it declares one.
+    #[must_use]
+    pub fn declared(experiment: &Experiment) -> Option<Self> {
+        let version = experiment.target.as_ref()?.declared_version()?;
+        Some(Self {
+            version: version.to_string(),
+            version_source: VersionSource::Declared,
+            shares: Vec::new(),
+        })
+    }
+}
+
 /// Blast-radius metadata surfaced in the journal: the author's note, the
 /// enforced concurrent-fault cap, and the peak concurrency actually observed
 /// during method execution.
@@ -119,12 +266,27 @@ pub struct Journal {
     /// background faults ran.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub blast_radius: Option<BlastRadiusRecord>,
+    /// Resilience discipline, copied from the definition.
+    #[serde(default)]
+    pub kind: TestKind,
+    /// Recovery targets, measurements and objective verdicts; `None` when
+    /// the definition declared no objectives or targets.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub objectives: Option<ObjectiveOutcome>,
+    /// Raw probe samples from the during and post phases, in collection
+    /// order. Aggregates live in `during_result` / `post_result`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub probe_samples: Vec<ProbeSample>,
+    /// The version of the target this run measured and how it is known;
+    /// `None` when it was neither declared nor observed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_version: Option<TargetVersion>,
 }
 
 impl Journal {
     /// Build a `Journal` skeleton for `experiment`: fills in the fields
     /// derived from the experiment definition (`experiment_title`,
-    /// `estimate`, `regulatory`) plus the given identity/status/timing, and
+    /// `estimate`, `regulatory`, a declared target version) plus the given identity/status/timing, and
     /// zeroes/empties every execution-result field. Callers use struct
     /// update syntax (`..Journal::for_experiment(...)`) to set whichever
     /// result fields apply to their completion path.
@@ -155,6 +317,10 @@ impl Journal {
             regulatory: experiment.regulatory.clone(),
             halt: None,
             blast_radius: None,
+            kind: experiment.kind,
+            objectives: None,
+            probe_samples: vec![],
+            target_version: TargetVersion::declared(experiment),
         }
     }
 }
@@ -163,6 +329,72 @@ impl Journal {
 mod tests {
     use crate::types::test_support::toon_round_trip;
     use crate::types::*;
+
+    fn share(version: &str, requests: u64) -> VersionShare {
+        VersionShare {
+            version: version.into(),
+            requests,
+        }
+    }
+
+    #[test]
+    fn a_load_s_version_needs_a_share_of_the_requests_it_sent() {
+        let seen = |requests| vec![share("1.4.0", requests), share(" ", 500)];
+        // One request in 4000 says nothing of what served the other 3999.
+        assert_eq!(TargetVersion::observed_under_load(seen(1), 4000), None);
+        assert_eq!(TargetVersion::observed_under_load(seen(39), 4000), None);
+        // 1 % is enough: telemetry may be sampled.
+        let enough = TargetVersion::observed_under_load(seen(40), 4000).unwrap();
+        assert_eq!(enough.version_source, VersionSource::Observed);
+        assert_eq!(
+            TargetVersion::observed_under_load(seen(1), 0),
+            TargetVersion::observed(seen(1))
+        );
+        assert_eq!(TargetVersion::observed_under_load(vec![], 0), None);
+    }
+
+    #[test]
+    fn a_window_is_observed_on_a_version_only_when_it_served_nearly_all_of_it() {
+        assert_eq!(TargetVersion::observed(vec![]), None);
+        // Alone: observed, nothing more to say.
+        let alone = TargetVersion::observed(vec![share("1.5.1", 40)]).unwrap();
+        assert_eq!(
+            (
+                alone.version.as_str(),
+                alone.version_source,
+                alone.shares.len()
+            ),
+            ("1.5.1", VersionSource::Observed, 0)
+        );
+        assert_eq!(alone.share(), None);
+        // 97 %: observed, and the stray is on record. The order given
+        // does not matter, blanks and silent versions are left out.
+        let nearly = TargetVersion::observed(vec![
+            share("1.5.0", 3),
+            share(" ", 50),
+            share("1.4.0", 0),
+            share(" 1.5.1 ", 97),
+        ])
+        .unwrap();
+        assert_eq!(nearly.version, "1.5.1");
+        assert_eq!(nearly.version_source, VersionSource::Observed);
+        assert_eq!(nearly.shares, vec![share("1.5.1", 97), share("1.5.0", 3)]);
+        assert!((nearly.share().unwrap() - 0.97).abs() < 1e-12);
+        // Exactly the bound is enough; a request under it is not.
+        let at = TargetVersion::observed(vec![share("b", 95), share("a", 5)]).unwrap();
+        assert_eq!(at.version_source, VersionSource::Observed);
+        let mixed = TargetVersion::observed(vec![share("b", 94), share("a", 6)]).unwrap();
+        assert_eq!(mixed.version_source, VersionSource::Mixed);
+        assert_eq!(mixed.version, "b");
+        assert_eq!(mixed.shares, vec![share("b", 94), share("a", 6)]);
+        // A tie is broken by the text, so the record is the same each time.
+        let tie = TargetVersion::observed(vec![share("b", 5), share("a", 5)]).unwrap();
+        assert_eq!(
+            (tie.version.as_str(), tie.version_source),
+            ("a", VersionSource::Mixed)
+        );
+        assert_eq!(VersionSource::Mixed.to_string(), "mixed");
+    }
 
     #[test]
     fn activity_result_round_trips() {
@@ -184,6 +416,7 @@ mod tests {
     #[test]
     fn journal_with_all_phases_round_trips() {
         let journal = Journal {
+            target_version: None,
             experiment_title: "Database failover test".into(),
             experiment_id: "550e8400-e29b-41d4-a716-446655440000".into(),
             status: ExperimentStatus::Completed,
@@ -195,6 +428,9 @@ mod tests {
             method_results: vec![],
             rollback_results: vec![],
             rollback_failures: 0,
+            kind: TestKind::default(),
+            objectives: None,
+            probe_samples: vec![],
             estimate: Some(Estimate {
                 expected_outcome: ExpectedOutcome::Recovered,
                 expected_recovery_s: Some(15.0),
@@ -218,8 +454,60 @@ mod tests {
     }
 
     #[test]
+    fn the_recorded_target_version_round_trips_with_its_source() {
+        let experiment = Experiment {
+            title: "t".into(),
+            target: Some(ExperimentTarget {
+                system: "checkout".into(),
+                technology: None,
+                environment: None,
+                criticality: None,
+                namespace: None,
+                version: Some(" 1.5.0 ".into()),
+            }),
+            ..Experiment::default()
+        };
+        let mut journal =
+            Journal::for_experiment(&experiment, "id".into(), ExperimentStatus::Completed, 1);
+        assert_eq!(
+            journal.target_version,
+            Some(TargetVersion {
+                version: "1.5.0".into(),
+                version_source: VersionSource::Declared,
+                shares: Vec::new(),
+            }),
+            "a declared version is on every journal built for the experiment"
+        );
+        let encoded = toon_format::encode_default(&journal).expect("encode");
+        assert!(encoded.contains("version_source: declared"), "{encoded}");
+        assert_eq!(toon_round_trip(&journal), journal);
+
+        journal.target_version = Some(TargetVersion {
+            version: "1.5.1".into(),
+            version_source: VersionSource::Observed,
+            shares: Vec::new(),
+        });
+        let encoded = toon_format::encode_default(&journal).expect("encode");
+        assert!(encoded.contains("version_source: observed"), "{encoded}");
+        assert_eq!(toon_round_trip(&journal), journal);
+
+        journal.target_version =
+            TargetVersion::observed(vec![share("1.5.1", 60), share("1.5.0", 40)]);
+        let encoded = toon_format::encode_default(&journal).expect("encode");
+        assert!(encoded.contains("version_source: mixed"), "{encoded}");
+        assert_eq!(toon_round_trip(&journal), journal);
+
+        // A journal written before the field existed still reads.
+        journal.target_version = None;
+        let encoded = toon_format::encode_default(&journal).expect("encode");
+        assert!(!encoded.contains("target_version"), "{encoded}");
+        assert_eq!(toon_round_trip(&journal), journal);
+    }
+
+    #[test]
     fn journal_minimal_round_trips() {
         let journal = Journal {
+            target_version: None,
             experiment_title: "Database failover test".into(),
             experiment_id: "550e8400-e29b-41d4-a716-446655440000".into(),
             status: ExperimentStatus::Completed,
@@ -231,6 +519,9 @@ mod tests {
             method_results: vec![],
             rollback_results: vec![],
             rollback_failures: 0,
+            kind: TestKind::default(),
+            objectives: None,
+            probe_samples: vec![],
             estimate: None,
             baseline_result: None,
             during_result: None,

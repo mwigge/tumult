@@ -7,6 +7,8 @@ parent: Guides
 
 The daemon no longer trusts a caller's `env` label to lower a fault's approval tier. An unbound execution requires T3 approval, even when labeled `dev` or when its activities are declared as probes. A user with environment scopes cannot launch an unbound definition. This also applies to schedules and GameDay children. Reviewed, bound probe-only plans may receive T0; a caller-supplied probe label is not a sandbox.
 
+The approval queue cannot release an unbound run. Its T3 gate never enacts an operator request, so **Approve** answers `422` with `"missing": "execution_binding"` and names the environment. Add the binding, then reject the request and start the run again, or use break-glass. The Krönika demo seed binds its GameDay experiments this way: see `demo/kronika/gamedays/seed-gameday.sh`.
+
 An administrator must review the actual provider destinations, configuration and credential sources before authorizing a binding. The binding is an operator-owned JSON file; registering or editing a definition through the API cannot create one.
 
 1. Register the experiment, then open **Runs → New run**. Choose its environment and target, fill its parameters, and dry-run the plan. The preview masks environment-derived configuration and secret values.

@@ -188,14 +188,11 @@ async fn dry_run_ignores_existing_journal() {
 /// available to templates (`${config.*}` / `${secrets.*}`) and injected into
 /// process-provider environments as `TUMULT_CONFIG_*` / `TUMULT_SECRET_*`,
 /// while the journal of the run never contains the secret value.
-// The env guard must cover the awaited run (the secret env var is read inside
-// it). Only tests serialized on ENV_LOCK can block on it, so holding a std
-// guard across the await cannot deadlock the test runtime.
-#[allow(clippy::await_holding_lock)]
+// The guard covers the awaited run: the secret's variable is read inside it.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn run_config_secrets_experiment_injects_env_and_journals_no_secret() {
-    let _guard = ENV_LOCK.lock().unwrap();
-    std::env::set_var(SECRET_ENV_VAR, SECRET_MARKER);
+    let mut env = tumult_test_utils::EnvGuard::lock();
+    env.set(SECRET_ENV_VAR, SECRET_MARKER);
     let dir = TempDir::new().unwrap();
     let exp_path = write_config_secrets_experiment(dir.path());
     let journal_path = dir.path().join("journal.toon");
@@ -211,7 +208,6 @@ async fn run_config_secrets_experiment_injects_env_and_journals_no_secret() {
         None,
     )
     .await;
-    std::env::remove_var(SECRET_ENV_VAR);
 
     assert!(result.is_ok(), "run failed: {result:?}");
     let journal = std::fs::read_to_string(&journal_path).unwrap();
@@ -532,6 +528,7 @@ rollbacks[1]:
         std::collections::HashMap::new(),
         None,
         tumult_core::runner::BaselineMode::Only,
+        None,
     )
     .await
     .unwrap();
@@ -542,4 +539,93 @@ rollbacks[1]:
     assert!(journal
         .experiment_title
         .ends_with("[baseline-only observation]"));
+}
+
+const TARGETED: &str = "
+title: Versioned run
+target:
+  system: checkout
+  environment: demo
+method[1]:
+  - name: echo-action
+    activity_type: action
+    provider:
+      type: process
+      path: echo
+      arguments[1]: hello
+";
+
+async fn run_with_version(
+    dir: &Path,
+    toon: &str,
+    version: Option<&str>,
+) -> anyhow::Result<tumult_core::types::Journal> {
+    let experiment = dir.join("versioned.toon");
+    std::fs::write(&experiment, toon).unwrap();
+    let journal = dir.join("journal.toon");
+    cmd_run_with_baseline_mode(
+        &experiment,
+        &journal,
+        true,
+        false,
+        RollbackStrategy::OnDeviation,
+        false,
+        std::collections::HashMap::new(),
+        None,
+        tumult_core::runner::BaselineMode::Full,
+        version,
+    )
+    .await?;
+    Ok(tumult_core::journal::read_journal(&journal).unwrap())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn run_records_the_version_given_on_the_command_line() {
+    use tumult_core::types::VersionSource;
+
+    let dir = TempDir::new().unwrap();
+    let journal = run_with_version(dir.path(), TARGETED, Some("1.5.0"))
+        .await
+        .unwrap();
+    let recorded = journal.target_version.expect("a recorded version");
+    assert_eq!(recorded.version, "1.5.0");
+    assert_eq!(recorded.version_source, VersionSource::Declared);
+
+    // It wins over the file's.
+    let filed = TARGETED.replace("  environment: demo", "  version: 1.4.0");
+    let journal = run_with_version(dir.path(), &filed, Some("1.5.0"))
+        .await
+        .unwrap();
+    assert_eq!(journal.target_version.unwrap().version, "1.5.0");
+    let journal = run_with_version(dir.path(), &filed, None).await.unwrap();
+    assert_eq!(journal.target_version.unwrap().version, "1.4.0");
+
+    // A run that does not report to a store asks nobody: no version.
+    let journal = run_with_version(dir.path(), TARGETED, None).await.unwrap();
+    assert!(journal.target_version.is_none());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn run_refuses_a_version_without_a_target_before_anything_executes() {
+    let dir = TempDir::new().unwrap();
+    let marker = dir.path().join("ran");
+    let targetless = format!(
+        "
+title: No target
+method[1]:
+  - name: touch
+    activity_type: action
+    provider:
+      type: process
+      path: touch
+      arguments[1]: {}
+",
+        marker.display()
+    );
+    let error = run_with_version(dir.path(), &targetless, Some("1.5.0"))
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("no `target` block"), "{error}");
+    assert!(!marker.exists());
+    assert!(!dir.path().join("journal.toon").exists());
 }

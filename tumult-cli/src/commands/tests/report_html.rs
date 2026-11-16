@@ -31,6 +31,7 @@ fn activity(
 /// A journal exercising every HTML section and status branch.
 fn rich_journal() -> Journal {
     Journal {
+        target_version: None,
         experiment_title: "rich report".into(),
         experiment_id: "rich-1".into(),
         status: ExperimentStatus::Deviated,
@@ -72,6 +73,9 @@ fn rich_journal() -> Journal {
         ],
         rollback_results: vec![activity("undo", ActivityStatus::Succeeded, "", None, None)],
         rollback_failures: 0,
+        kind: tumult_core::types::TestKind::default(),
+        objectives: None,
+        probe_samples: vec![],
         estimate: None,
         baseline_result: None,
         during_result: None,

@@ -21,6 +21,62 @@
     --mono: 'SF Mono', 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace;
 }
 
+/* Light theme. Dark stays the default; `data-theme="light"` on <html>
+   forces light and `data-theme="auto"` follows the OS preference. */
+:root[data-theme='light'],
+:root[data-theme='auto']:not([data-theme='dark']) {
+    --light-bg: #f4f6f8;
+    --light-bg-raised: #ffffff;
+    --light-bg-panel: #ffffff;
+    --light-bg-hover: #e9eef2;
+    --light-border: #e3e8ed;
+    --light-border-strong: #c5ced6;
+    --light-text: #1b2329;
+    --light-text-dim: #5b6772;
+    --light-text-faint: #8b98a5;
+    --light-ok: #0f8a5f;
+    --light-warn: #b45309;
+    --light-fail: #c0392b;
+    --light-accent: #1f6fb2;
+    --light-accent-dim: #9cc4e4;
+}
+:root[data-theme='light'] {
+    color-scheme: light;
+    --bg: var(--light-bg);
+    --bg-raised: var(--light-bg-raised);
+    --bg-panel: var(--light-bg-panel);
+    --bg-hover: var(--light-bg-hover);
+    --border: var(--light-border);
+    --border-strong: var(--light-border-strong);
+    --text: var(--light-text);
+    --text-dim: var(--light-text-dim);
+    --text-faint: var(--light-text-faint);
+    --ok: var(--light-ok);
+    --warn: var(--light-warn);
+    --fail: var(--light-fail);
+    --accent: var(--light-accent);
+    --accent-dim: var(--light-accent-dim);
+}
+@media (prefers-color-scheme: light) {
+    :root[data-theme='auto'] {
+        color-scheme: light;
+        --bg: var(--light-bg);
+        --bg-raised: var(--light-bg-raised);
+        --bg-panel: var(--light-bg-panel);
+        --bg-hover: var(--light-bg-hover);
+        --border: var(--light-border);
+        --border-strong: var(--light-border-strong);
+        --text: var(--light-text);
+        --text-dim: var(--light-text-dim);
+        --text-faint: var(--light-text-faint);
+        --ok: var(--light-ok);
+        --warn: var(--light-warn);
+        --fail: var(--light-fail);
+        --accent: var(--light-accent);
+        --accent-dim: var(--light-accent-dim);
+    }
+}
+
 * {
     box-sizing: border-box;
 }
@@ -76,6 +132,19 @@ code,
     height: 100vh;
     display: flex;
     flex-direction: column;
+}
+/* The navigation takes the height that is left and scrolls on its own, so
+   what sits below it (theme, user) stays in view on a short window. */
+.side .nav {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    /* Rows and the height left are not whole pixels while a scroll position
+       is: the spare pixel keeps the last entry whole at the end. */
+    padding-bottom: 1px;
+}
+.side > :not(.nav) {
+    flex: 0 0 auto;
 }
 .brand {
     padding: 0 18px 14px;

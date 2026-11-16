@@ -1,0 +1,16 @@
+[package]
+name = "tumult-risk"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Rules-based passive resilience risk scanner (coverage gaps, stale evidence, breached objectives, untested dependencies, workload manifests) and the continuous posture score"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+sha2 = { workspace = true }
+
+[lints]
+workspace = true

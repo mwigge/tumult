@@ -2,6 +2,7 @@
 //! filtering, and the empty/missing-data paths.
 
 use super::super::*;
+use crate::output::testing::capture;
 use tempfile::TempDir;
 use tumult_core::types::{
     ActivityResult, ActivityStatus, ActivityType, AnalysisResult, ExperimentStatus, Journal,
@@ -10,6 +11,7 @@ use tumult_core::types::{
 
 fn journal(id: &str, title: &str, started_at_ns: i64) -> Journal {
     Journal {
+        target_version: None,
         experiment_title: title.into(),
         experiment_id: id.into(),
         status: ExperimentStatus::Completed,
@@ -31,6 +33,9 @@ fn journal(id: &str, title: &str, started_at_ns: i64) -> Journal {
         }],
         rollback_results: vec![],
         rollback_failures: 0,
+        kind: tumult_core::types::TestKind::default(),
+        objectives: None,
+        probe_samples: vec![],
         estimate: None,
         baseline_result: None,
         during_result: None,
@@ -71,7 +76,20 @@ fn trend_reports_metric_over_journal_dir() {
         journal("t-2", "latency experiment rerun", now_ns - 1_000_000_000),
     ]);
 
-    cmd_trend(dir.path(), "duration_ms", None, None).unwrap();
+    let (result, printed) = capture(|| cmd_trend(dir.path(), "duration_ms", None, None));
+
+    result.unwrap();
+    let out = printed.stdout;
+    assert!(out.starts_with("Loaded 2 journal(s)\n"), "{out}");
+    assert!(out.contains("Trend: duration_ms (2 data points)"), "{out}");
+    // Rows come oldest first.
+    let first = out.find("latency experiment ").expect("first run listed");
+    let second = out.find("latency experiment rerun").expect("rerun listed");
+    assert!(first < second, "{out}");
+    assert!(
+        out.contains("Summary: 2 runs, min=60000, max=60000"),
+        "{out}"
+    );
 }
 
 #[test]
@@ -79,13 +97,25 @@ fn trend_supports_every_documented_metric() {
     let now_ns = chrono::Utc::now().timestamp_nanos_opt().unwrap();
     let dir = journal_dir(&[journal("t-1", "experiment", now_ns)]);
 
-    for metric in [
-        "resilience_score",
-        "duration_ms",
-        "estimate_accuracy",
-        "method_step_count",
+    // The value each metric has in the one journal.
+    for (metric, value) in [
+        ("resilience_score", "0.9500"),
+        ("duration_ms", "60000"),
+        ("estimate_accuracy", "0.9000"),
+        ("method_step_count", "1"),
     ] {
-        cmd_trend(dir.path(), metric, None, None).unwrap();
+        let (result, printed) = capture(|| cmd_trend(dir.path(), metric, None, None));
+
+        result.unwrap();
+        let out = printed.stdout;
+        assert!(
+            out.contains(&format!("Trend: {metric} (1 data points)")),
+            "{out}"
+        );
+        assert!(
+            out.contains(&format!("Summary: 1 runs, min={value}, max={value}")),
+            "{metric}: {out}"
+        );
     }
 }
 
@@ -118,7 +148,24 @@ fn trend_last_window_excludes_old_journals() {
     let dir = journal_dir(&[journal("old-1", "ancient experiment", OLD_NS)]);
 
     // A 30d window filters out the 2020 journal: valid run, no data points.
-    cmd_trend(dir.path(), "duration_ms", Some("30d"), None).unwrap();
+    let (result, printed) = capture(|| cmd_trend(dir.path(), "duration_ms", Some("30d"), None));
+
+    result.unwrap();
+    assert_eq!(
+        printed.stdout,
+        "Loaded 1 journal(s)\n\nNo data points for metric: duration_ms\n"
+    );
+
+    // Without the window the same journal is a data point.
+    let (result, printed) = capture(|| cmd_trend(dir.path(), "duration_ms", None, None));
+    result.unwrap();
+    assert!(
+        printed
+            .stdout
+            .contains("Trend: duration_ms (1 data points)"),
+        "{}",
+        printed.stdout
+    );
 }
 
 #[test]
@@ -129,9 +176,25 @@ fn trend_target_filter_selects_matching_titles() {
         journal("t-2", "redis eviction", now_ns - 1_000_000_000),
     ]);
 
-    // Matching and non-matching targets both run cleanly (LIKE parameter).
-    cmd_trend(dir.path(), "duration_ms", None, Some("postgres")).unwrap();
-    cmd_trend(dir.path(), "duration_ms", None, Some("no-such-target")).unwrap();
+    // The filter is case-insensitive and matches a part of the title.
+    let (result, printed) =
+        capture(|| cmd_trend(dir.path(), "duration_ms", None, Some("Postgres")));
+    result.unwrap();
+    let out = printed.stdout;
+    assert!(out.contains("Trend: duration_ms (1 data points)"), "{out}");
+    assert!(out.contains("postgres failover"), "{out}");
+    assert!(!out.contains("redis eviction"), "{out}");
+
+    let (result, printed) =
+        capture(|| cmd_trend(dir.path(), "duration_ms", None, Some("no-such-target")));
+    result.unwrap();
+    assert!(
+        printed
+            .stdout
+            .ends_with("No data points for metric: duration_ms\n"),
+        "{}",
+        printed.stdout
+    );
 }
 
 #[test]
@@ -141,7 +204,12 @@ fn trend_accepts_a_single_journal_file() {
     let path = dir.path().join("single.toon");
     tumult_core::journal::write_journal(&journal("t-1", "experiment", now_ns), &path).unwrap();
 
-    cmd_trend(&path, "duration_ms", None, None).unwrap();
+    let (result, printed) = capture(|| cmd_trend(&path, "duration_ms", None, None));
+
+    result.unwrap();
+    let out = printed.stdout;
+    assert!(out.starts_with("Loaded 1 journal(s)\n"), "{out}");
+    assert!(out.contains("Trend: duration_ms (1 data points)"), "{out}");
 }
 
 #[test]
@@ -158,7 +226,12 @@ fn trend_skips_malformed_journals_with_warning() {
     std::fs::write(dir.path().join("broken.toon"), "not a journal {{{").unwrap();
 
     // The good journal still loads; the broken one is skipped, not fatal.
-    cmd_trend(dir.path(), "duration_ms", None, None).unwrap();
+    let (result, printed) = capture(|| cmd_trend(dir.path(), "duration_ms", None, None));
+
+    result.unwrap();
+    let out = printed.stdout;
+    assert!(out.starts_with("Loaded 1 journal(s)\n"), "{out}");
+    assert!(out.contains("Trend: duration_ms (1 data points)"), "{out}");
 }
 
 #[test]
@@ -169,5 +242,29 @@ fn trend_without_data_points_reports_absence() {
     j.analysis = None;
     let dir = journal_dir(&[j]);
 
-    cmd_trend(dir.path(), "resilience_score", None, None).unwrap();
+    let (result, printed) = capture(|| cmd_trend(dir.path(), "resilience_score", None, None));
+
+    result.unwrap();
+    assert_eq!(
+        printed.stdout,
+        "Loaded 1 journal(s)\n\nNo data points for metric: resilience_score\n"
+    );
+}
+
+#[test]
+fn trend_reports_a_journal_it_could_not_read_as_a_log_event() {
+    let now_ns = chrono::Utc::now().timestamp_nanos_opt().unwrap();
+    let dir = journal_dir(&[journal("t-1", "experiment", now_ns)]);
+    let corrupt = dir.path().join("corrupt.toon");
+    std::fs::write(&corrupt, "{{{{ not a journal").unwrap();
+
+    let capture = tumult_otel::logging::testing::LogCapture::start(tracing::Level::WARN);
+    cmd_trend(dir.path(), "duration_ms", None, None).unwrap();
+    let logs = capture.snapshot();
+
+    let skipped = logs.named("cli.journal.skipped");
+    assert_eq!(skipped.len(), 1, "{}", logs.raw);
+    assert_eq!(skipped[0]["level"], "WARN");
+    assert_eq!(skipped[0]["file.path"], corrupt.to_str().unwrap());
+    assert!(skipped[0]["error.message"].is_string(), "{}", logs.raw);
 }
