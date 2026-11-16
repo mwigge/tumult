@@ -1040,7 +1040,7 @@ jq type journal.json
 tumult report journal.toon --format html --output /tmp/report.html
 ```
 
-**Expected:** HTML file with experiment summary, activity table, timeline visualization.
+**Expected:** One HTML file with the summary cards, the steady state, the steps table and one section for each part the journal holds.
 
 ### TP-ANALYTICS-05: Compliance report — DORA
 

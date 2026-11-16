@@ -176,30 +176,6 @@ fn the_recovery_score_is_the_share_of_runs_that_came_back_within_the_target() {
     );
 }
 
-/// A stand-in for the `oha` binary, which the machines that run these tests
-/// do not have: it runs for the time `-z` asks for and prints the summary of
-/// 40 answered requests. As `oha` does, it takes a time in `s` or in `ms`,
-/// and prints that summary at once when it is interrupted. It leaves its
-/// process id in `load.pid`. The adapter, its process and the wait of the
-/// game day are the real ones.
-const OHA_STAND_IN: &str = r#"#!/bin/sh
-[ "$1" = "--version" ] && exit 0
-while [ $# -gt 0 ]; do
-  if [ "$1" = "-z" ]; then shift; length="$1"; fi
-  shift
-done
-summary() {
-  printf '%s' '{"summary":{"successRate":1.0,"total":3.0,"slowest":0.2,"fastest":0.01,"average":0.05,"requestsPerSec":13.3,"totalData":1,"sizePerRequest":1,"sizePerSec":1},"responseTimeHistogram":{},"latencyPercentiles":{"p50":0.02,"p95":0.08,"p99":0.1},"rps":{},"details":{},"statusCodeDistribution":{"200":40},"errorDistribution":{}}'
-}
-trap 'summary; exit 0' INT
-echo $$ > load.pid
-case "$length" in
-  *ms) sleep "$(awk "BEGIN { print ${length%ms} / 1000 }")" ;;
-  *) sleep "${length%s}" ;;
-esac
-summary
-"#;
-
 /// A load block of two users for `duration_s`, with `profile` as its shape.
 fn load_block(duration_s: f64, profile: &str) -> String {
     format!(
@@ -211,10 +187,8 @@ fn load_block(duration_s: f64, profile: &str) -> String {
 /// `tumult gameday run lab.gameday.toon` with the stand-in in the place of
 /// `oha`.
 fn gameday_run(lab: &Lab) -> Command {
-    let oha = lab.path("oha-stand-in.sh");
-    tumult_test_utils::write_executable(&oha, OHA_STAND_IN);
     let mut command = lab.command(&["gameday", "run", "lab.gameday.toon"]);
-    command.env("TUMULT_OHA_BINARY", &oha);
+    command.env("TUMULT_OHA_BINARY", lab.oha_stand_in());
     command
 }
 

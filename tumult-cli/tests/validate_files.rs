@@ -6,7 +6,7 @@
 
 mod lab;
 
-use lab::{experiment, heal, inject, leave_marker, with_block, Lab};
+use lab::{experiment, fatal_error, heal, inject, leave_marker, with_block, Lab};
 
 /// The manifest of the plugin `name` with one action and one probe.
 fn manifest(name: &str, action: &str, probe: &str) -> String {
@@ -55,21 +55,6 @@ fn script_step(plugin: &str, function: &str) -> String {
       function: {function}
 "
     )
-}
-
-/// The error the binary ended with: the `error.message` of its last log
-/// line. Empty when it logged nothing.
-fn fatal_error(stderr: &[u8]) -> String {
-    let text = String::from_utf8_lossy(stderr);
-    let Some(last) = text.lines().last() else {
-        return String::new();
-    };
-    let log: serde_json::Value =
-        serde_json::from_str(last).unwrap_or_else(|e| panic!("no log line ({e}): {text}"));
-    log["error.message"]
-        .as_str()
-        .unwrap_or_default()
-        .to_string()
 }
 
 /// Validate `definition`; whether it passed, what was printed and the error.

@@ -1,6 +1,8 @@
 use std::path::Path;
 
 use anyhow::{Context, Result};
+use chrono::{DateTime, Utc};
+use tumult_core::types::Journal;
 
 use super::ReportFormat;
 
@@ -9,8 +11,8 @@ mod html;
 mod junit;
 
 #[cfg(test)]
-pub(crate) use html::format_activity_row;
-pub(crate) use html::generate_html_report;
+pub(crate) use html::step_row;
+pub(crate) use html::{generate_html_report, ReportFrame};
 pub(crate) use junit::generate_junit_report;
 
 use junit::generate_json_report;
@@ -61,16 +63,7 @@ pub fn cmd_report(
             crate::outln!("Report generated: {}", out_path.display());
         }
         ReportFormat::Html | ReportFormat::Pdf => {
-            let source_hash = source_hash(journal_path)?;
-
-            // FIX 2: trace UI base resolves flag > env var, off by default.
-            // This is the trace UI, NOT the OTLP ingest endpoint.
-            let trace_ui_base = trace_ui_base_arg
-                .map(str::to_string)
-                .or_else(|| std::env::var("TUMULT_TRACE_UI_BASE").ok())
-                .filter(|s| !s.is_empty());
-
-            let html = generate_html_report(&journal, trace_ui_base.as_deref(), &source_hash);
+            let html = html_report(&journal, journal_path, trace_ui_base_arg)?;
 
             if matches!(format, ReportFormat::Pdf) {
                 // PDF: write HTML first, then note that wkhtmltopdf or browser print is needed
@@ -93,6 +86,48 @@ pub fn cmd_report(
     }
 
     Ok(())
+}
+
+/// The HTML report of the journal at `journal_path`.
+fn html_report(
+    journal: &Journal,
+    journal_path: &Path,
+    trace_ui_base_arg: Option<&str>,
+) -> Result<String> {
+    let source_hash = source_hash(journal_path)?;
+
+    // The trace UI base resolves flag > env var, off by default. This is
+    // the trace UI, NOT the OTLP ingest endpoint.
+    let trace_ui_base = trace_ui_base_arg
+        .map(str::to_string)
+        .or_else(|| std::env::var("TUMULT_TRACE_UI_BASE").ok())
+        .filter(|s| !s.is_empty());
+
+    let frame = ReportFrame {
+        trace_ui_base: trace_ui_base.as_deref(),
+        source_hash: &source_hash,
+        generated_at: generated_at(std::env::var("SOURCE_DATE_EPOCH").ok().as_deref())?,
+    };
+    Ok(generate_html_report(journal, &frame))
+}
+
+/// The time a report says it was generated at: the time `SOURCE_DATE_EPOCH`
+/// gives, in seconds after the epoch, so that a report can be built again to
+/// the byte, and the time it is now without one.
+///
+/// # Errors
+///
+/// Returns an error when `SOURCE_DATE_EPOCH` is no number of seconds that
+/// is a time.
+pub(crate) fn generated_at(source_date_epoch: Option<&str>) -> Result<DateTime<Utc>> {
+    let Some(given) = source_date_epoch else {
+        return Ok(Utc::now());
+    };
+    given
+        .parse()
+        .ok()
+        .and_then(|seconds| DateTime::from_timestamp(seconds, 0))
+        .with_context(|| format!("SOURCE_DATE_EPOCH is not a number of seconds: {given}"))
 }
 
 /// The SHA-256 of the journal file, shown in the report as provenance. It is

@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tumult report: Checkout API sheds load instead of collapsing at saturation</title>
+<style>
+:root {
+  color-scheme: light dark;
+  --bg: #f4f6f8;
+  --panel: #ffffff;
+  --border: #e3e8ed;
+  --text: #1b2329;
+  --muted: #5b6772;
+  --accent: #1f6fb2;
+  --ok: #0f8a5f;
+  --warn: #b45309;
+  --fail: #c0392b;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0b0e11;
+    --panel: #151b21;
+    --border: #242d36;
+    --text: #d8dee4;
+    --muted: #8b98a5;
+    --accent: #5eb1ef;
+    --ok: #34d399;
+    --warn: #f59e0b;
+    --fail: #ef4444;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+main { max-width: 1040px; margin: 0 auto; padding: 40px 24px 56px; }
+header { margin-bottom: 28px; }
+.eyebrow {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+h1 { margin: 4px 0 10px; font-size: 28px; line-height: 1.25; }
+h2 { margin: 0 0 14px; font-size: 17px; }
+h3 { margin: 18px 0 8px; font-size: 14px; }
+h2 + h3 { margin-top: 0; }
+.lede { margin: 0; color: var(--muted); }
+code { font: 13px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+section, footer {
+  margin-top: 20px;
+  padding: 20px 22px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+section.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px;
+  padding: 0;
+  background: none;
+  border: 0;
+}
+.card {
+  padding: 14px 16px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.label {
+  color: var(--muted);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.value { margin-top: 4px; font-size: 17px; font-weight: 600; }
+section.callout { border-color: var(--fail); border-left-width: 4px; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+table + h3, table + table { margin-top: 18px; }
+th, td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+thead th { color: var(--muted); font-size: 12px; font-weight: 600; }
+tbody tr:last-child > * { border-bottom: 0; }
+table.facts th { width: 240px; color: var(--muted); font-weight: 500; }
+tr.row-failed td:first-child { box-shadow: inset 3px 0 0 var(--fail); }
+.badge {
+  display: inline-block;
+  padding: 1px 9px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  vertical-align: middle;
+}
+.ok { color: var(--ok); }
+.warn { color: var(--warn); }
+.fail { color: var(--fail); }
+.muted { color: var(--muted); }
+.detail-output, .detail-error {
+  display: block;
+  max-height: 12em;
+  overflow: auto;
+  font: 13px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.detail-error { color: var(--fail); }
+.trace-link { font: 13px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+a { color: var(--accent); }
+footer { color: var(--muted); font-size: 13px; }
+footer p { margin: 0; }
+@media print {
+  body { background: #ffffff; }
+  section, footer, .card { break-inside: avoid; }
+}
+</style>
+</head>
+<body>
+<main>
+<header>
+<p class="eyebrow">Tumult run report</p>
+<h1>Checkout API sheds load instead of collapsing at saturation</h1>
+<p class="lede"><span class="badge ok">completed</span> Run <code>532dbd1e-9a90-497f-829b-da03a2630666</code></p>
+</header>
+<section id="summary" class="cards">
+<div class="card"><div class="label">Kind</div><div class="value">robustness</div></div>
+<div class="card"><div class="label">Started</div><div class="value">2026-11-16 18:14:15 UTC</div></div>
+<div class="card"><div class="label">Duration</div><div class="value">2 min 3 s</div></div>
+<div class="card"><div class="label">Steady state before</div><div class="value">met</div></div>
+<div class="card"><div class="label">Steady state after</div><div class="value">met</div></div>
+<div class="card"><div class="label">Objectives</div><div class="value">2 of 2 met</div></div>
+<div class="card"><div class="label">Rollbacks</div><div class="value">none run</div></div>
+</section>
+<section id="steady-state">
+<h2>Steady state</h2>
+<h3>Before the method: Checkout answers <span class="badge ok">met</span></h3>
+<table>
+<thead>
+<tr><th>Probe</th><th>Status</th><th>Duration</th><th>Trace</th><th>Output</th></tr>
+</thead>
+<tbody>
+<tr><td>health</td><td><span class="badge ok">succeeded</span></td><td>6 ms</td><td></td><td></td></tr>
+</tbody>
+</table>
+<h3>After the method: Checkout answers <span class="badge ok">met</span></h3>
+<table>
+<thead>
+<tr><th>Probe</th><th>Status</th><th>Duration</th><th>Trace</th><th>Output</th></tr>
+</thead>
+<tbody>
+<tr><td>health</td><td><span class="badge ok">succeeded</span></td><td>5 ms</td><td></td><td></td></tr>
+</tbody>
+</table>
+</section>
+<section id="steps">
+<h2>Steps</h2>
+<table>
+<thead>
+<tr><th>Phase</th><th>Step</th><th>Type</th><th>Status</th><th>Start</th><th>Duration</th><th>Trace</th><th>Detail</th></tr>
+</thead>
+<tbody>
+<tr><td>method</td><td>process-still-up</td><td>probe</td><td><span class="badge ok">succeeded</span></td><td>+8 ms</td><td>2 min 0 s</td><td></td><td><span class="detail-output">true</span></td></tr>
+<tr><td>method</td><td>cpu-stress</td><td>action</td><td><span class="badge ok">succeeded</span></td><td>+8 ms</td><td>2 min 3 s</td><td></td><td></td></tr>
+</tbody>
+</table>
+</section>
+<section id="objectives">
+<h2>Objectives</h2>
+<table>
+<thead>
+<tr><th>Recovery</th><th>Target</th><th>Measured</th></tr>
+</thead>
+<tbody>
+<tr><td>RTO</td><td>not set</td><td>0 ms</td></tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr><th>Objective</th><th>Kind</th><th>Metric</th><th>Must be</th><th>Observed</th><th>Margin</th><th>State</th><th>Criticality</th></tr>
+</thead>
+<tbody>
+<tr><td>health-survives</td><td>availability</td><td>during.availability</td><td>at least 0.95</td><td>1</td><td>0.05</td><td><span class="badge ok">met</span></td><td>blocking</td></tr>
+<tr><td>recovers</td><td>availability</td><td>post.availability</td><td>at least 0.999</td><td>1</td><td>0.001</td><td><span class="badge ok">met</span></td><td>major</td></tr>
+</tbody>
+</table>
+</section>
+<section id="load">
+<h2>Load</h2>
+<table class="facts">
+<tbody>
+<tr><th>Tool</th><td>oha</td></tr>
+<tr><th>Users</th><td>400</td></tr>
+<tr><th>Duration</th><td>2 min 3 s</td></tr>
+<tr><th>Requests</th><td>296213</td></tr>
+<tr><th>Throughput</th><td>2466.9 requests/s</td></tr>
+<tr><th>Latency p50</th><td>100.7 ms</td></tr>
+<tr><th>Latency p95</th><td>145.0 ms</td></tr>
+<tr><th>Latency p99</th><td>166.3 ms</td></tr>
+<tr><th>Error rate</th><td>0.00 %</td></tr>
+<tr><th>Thresholds</th><td>met</td></tr>
+<tr><th>Windows</th><td>2 of 2 completed</td></tr>
+<tr><th>Requests by outcome</th><td>sent 296213, ok 296213</td></tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr><th>Start</th><th>Length</th><th>Users</th><th>Requests</th><th>Throughput</th><th>p50</th><th>p95</th><th>p99</th><th>Error rate</th></tr>
+</thead>
+<tbody>
+<tr><td>+1 min 30 s</td><td>1 min 30 s</td><td>205</td><td>191826</td><td>2128.4 requests/s</td><td>96.3 ms</td><td>132.8 ms</td><td>142.6 ms</td><td>0.00 %</td></tr>
+<tr><td>+2 min 0 s</td><td>29.9 s</td><td>400</td><td>104387</td><td>3485.8 requests/s</td><td>109.0 ms</td><td>167.4 ms</td><td>209.8 ms</td><td>0.00 %</td></tr>
+</tbody>
+</table>
+</section>
+<section id="measurements">
+<h2>Measurements</h2>
+<h3>During the fault</h3>
+<table class="facts">
+<tbody>
+<tr><th>Fault active</th><td>2 min 3 s</td></tr>
+<tr><th>Sample interval</th><td>1.0 s</td></tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr><th>Probe</th><th>Samples</th><th>Mean</th><th>Min</th><th>Max</th><th>Error rate</th><th>Breaches</th><th>First breach</th></tr>
+</thead>
+<tbody>
+<tr><td>health</td><td>121</td><td>21.3 ms</td><td>6.0 ms</td><td>97.0 ms</td><td>0.00 %</td><td>0</td><td></td></tr>
+</tbody>
+</table>
+<h3>After the fault</h3>
+<table class="facts">
+<tbody>
+<tr><th>Watched for</th><td>6 ms</td></tr>
+<tr><th>Samples</th><td>1</td></tr>
+<tr><th>Recovery time</th><td>0 ms</td></tr>
+<tr><th>Full recovery</th><td>yes</td></tr>
+<tr><th>MTTR</th><td>0 ms</td></tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr><th>Probe</th><th>Mean</th><th>p95</th><th>Error rate</th><th>Back in tolerance</th><th>Recovery time</th></tr>
+</thead>
+<tbody>
+<tr><td>health</td><td>5.0 ms</td><td>5.0 ms</td><td>0.00 %</td><td>yes</td><td>0 ms</td></tr>
+</tbody>
+</table>
+</section>
+<section id="blast-radius">
+<h2>Blast radius</h2>
+<table class="facts">
+<tbody>
+<tr><th>Peak concurrent faults</th><td>1</td></tr>
+</tbody>
+</table>
+</section>
+<footer>
+<p>Generated by <strong>Tumult</strong> v{version}, the Rust-native resilience intelligence platform<br>
+Report generated: 2026-11-17T00:00:00Z<br>
+Source journal SHA-256: <code>2022b4ab688a749964e420f36de39ed52dbbb8bc625de76fccda2ae520158a3e</code></p>
+</footer>
+</main>
+</body>
+</html>

@@ -15,6 +15,29 @@ use std::time::{Duration, Instant};
 use tumult_core::journal::read_journal;
 use tumult_core::types::{ActivityResult, Journal};
 
+/// A stand-in for the `oha` binary, which the machines that run these tests
+/// do not have: it runs for the time `-z` asks for and prints the summary of
+/// 40 answered requests. As `oha` does, it takes a time in `s` or in `ms`,
+/// and prints that summary at once when it is interrupted. It leaves its
+/// process id in `load.pid`. The adapter and its process are the real ones.
+const OHA_STAND_IN: &str = r#"#!/bin/sh
+[ "$1" = "--version" ] && exit 0
+while [ $# -gt 0 ]; do
+  if [ "$1" = "-z" ]; then shift; length="$1"; fi
+  shift
+done
+summary() {
+  printf '%s' '{"summary":{"successRate":1.0,"total":3.0,"slowest":0.2,"fastest":0.01,"average":0.05,"requestsPerSec":13.3,"totalData":1,"sizePerRequest":1,"sizePerSec":1},"responseTimeHistogram":{},"latencyPercentiles":{"p50":0.02,"p95":0.08,"p99":0.1},"rps":{},"details":{},"statusCodeDistribution":{"200":40},"errorDistribution":{}}'
+}
+trap 'summary; exit 0' INT
+echo $$ > load.pid
+case "$length" in
+  *ms) sleep "$(awk "BEGIN { print ${length%ms} / 1000 }")" ;;
+  *) sleep "${length%s}" ;;
+esac
+summary
+"#;
+
 /// A directory with the state file of the target.
 pub struct Lab {
     dir: tempfile::TempDir,
@@ -46,6 +69,14 @@ impl Lab {
             .env_remove("TUMULT_DAEMON_URL")
             .env_remove("OTEL_EXPORTER_OTLP_ENDPOINT");
         command
+    }
+
+    /// Put the stand-in for `oha` in the lab; its path, for
+    /// `TUMULT_OHA_BINARY`.
+    pub fn oha_stand_in(&self) -> PathBuf {
+        let oha = self.path("oha-stand-in.sh");
+        tumult_test_utils::write_executable(&oha, OHA_STAND_IN);
+        oha
     }
 
     pub fn tumult(&self, args: &[&str]) -> Output {
@@ -184,6 +215,21 @@ pub fn result(results: &[ActivityResult], name: &str) -> ActivityResult {
         .find(|result| result.name == name)
         .cloned()
         .unwrap_or_else(|| panic!("no step {name}"))
+}
+
+/// The error the binary ended with: the `error.message` of its last log
+/// line. Empty when it logged nothing.
+pub fn fatal_error(stderr: &[u8]) -> String {
+    let text = String::from_utf8_lossy(stderr);
+    let Some(last) = text.lines().last() else {
+        return String::new();
+    };
+    let log: serde_json::Value =
+        serde_json::from_str(last).unwrap_or_else(|e| panic!("no log line ({e}): {text}"));
+    log["error.message"]
+        .as_str()
+        .unwrap_or_default()
+        .to_string()
 }
 
 /// Wait until another process has left the file `path`.

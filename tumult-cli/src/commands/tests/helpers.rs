@@ -384,6 +384,20 @@ pub(crate) fn journal_with_failure() -> tumult_core::types::Journal {
     }
 }
 
+/// The HTML report of `journal`, generated at 2026-11-17 00:00:00 UTC.
+pub(crate) fn html_report(
+    journal: &tumult_core::types::Journal,
+    trace_ui_base: Option<&str>,
+    source_hash: &str,
+) -> String {
+    let frame = ReportFrame {
+        trace_ui_base,
+        source_hash,
+        generated_at: chrono::DateTime::from_timestamp(1_794_873_600, 0).expect("a time"),
+    };
+    generate_html_report(journal, &frame)
+}
+
 pub(crate) fn sample_k6_summary() -> serde_json::Value {
     serde_json::json!({
         "metrics": {

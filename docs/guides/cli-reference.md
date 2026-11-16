@@ -314,6 +314,12 @@ tumult report <journal.toon> [OPTIONS]
 | `--format <f>` | `html` (default), `pdf`, `json`, or `junit` |
 | `--trace-ui-base <url>` | Base URL of a trace UI (e.g. Jaeger/Tempo) — HTML reports render each activity's `trace_id` as a clickable link (falls back to the `TUMULT_TRACE_UI_BASE` env var) |
 
+The HTML report is one file that shows the whole journal: the halt, the
+steady state, every step, the objectives, the load, the measurements, the
+versions and the analysis. It follows the light or dark setting of the
+browser. Set `SOURCE_DATE_EPOCH` (seconds) to fix the time the report says it
+was generated at, so the same journal always gives the same file.
+
 The JUnit file has one test case per step, and one per check of the steady
 state. A check that did not hold is a failed case, so a deviated run shows as a
 failure in CI.

@@ -358,7 +358,7 @@ async fn dispatch_report_writes_html() {
     .unwrap();
 
     let html = std::fs::read_to_string(&out).unwrap();
-    assert!(html.contains("Tumult Experiment Report"), "{html}");
+    assert!(html.contains("<title>Tumult report: "), "{html}");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
