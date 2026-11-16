@@ -8,6 +8,8 @@
 mod lab;
 
 use lab::{experiment, heal, inject, leave_marker, reads, step, Lab};
+use tumult_lake::lake::{committed_file, export, LakeConfig};
+use tumult_lake::{Reader, Store};
 
 /// Run `method` as the experiment `name` and store its journal; what the
 /// binary printed.
@@ -103,5 +105,73 @@ fn the_store_holds_every_run_as_it_ended() {
             ["steady", "failed", "hypothesis_before"],
             ["leave-marker", "succeeded", "rollback"],
         ]
+    );
+}
+
+/// The tables that hold the evidence of the verdict of a run.
+const EVIDENCE: [&str; 2] = ["probe_samples", "nfr_verdicts"];
+
+/// Every row of `table`, as JSON, in a stable order.
+fn table_rows(reader: &Reader, table: &str) -> Vec<String> {
+    let mut rows: Vec<String> = reader
+        .query_json_rows(&format!("SELECT * FROM {table}"))
+        .expect("the table is read")
+        .iter()
+        .map(ToString::to_string)
+        .collect();
+    rows.sort();
+    rows
+}
+
+#[test]
+fn the_archive_of_the_store_holds_the_samples_and_the_verdict_of_a_run() {
+    let lab = Lab::with_state("ok");
+    // The target is down for more than a second, so a sample of the run
+    // sees it down.
+    let method = [inject(), step("stay-down", "action", "sleep 1.2"), heal()].concat();
+    run_into_the_store(&lab, "down-and-back", &method);
+    let store = Store::open(&lab.path("lake.duckdb")).expect("the store of the run");
+    let reader = store.read_only().expect("reader");
+    let archive = LakeConfig::new(lab.path("archive"), 0);
+
+    export(&reader, &archive).expect("export");
+
+    let other = Store::open(&lab.path("restored.duckdb")).expect("a new store");
+    let restore = other.writer().expect("writer");
+    for table in EVIDENCE {
+        let file = committed_file(&archive, table).expect("the table is in the archive");
+        restore
+            .execute(
+                &format!(
+                    "INSERT INTO {table} BY NAME SELECT * FROM read_parquet('{}')",
+                    file.display()
+                ),
+                [],
+            )
+            .expect("the archive is read");
+    }
+    let restored = other.read_only().expect("reader");
+    for table in EVIDENCE {
+        let stored = table_rows(&reader, table);
+        assert!(!stored.is_empty(), "the run left no {table}");
+        assert_eq!(table_rows(&restored, table), stored, "{table}");
+    }
+    let seen = restored
+        .query_json_rows("SELECT DISTINCT phase, ok FROM probe_samples ORDER BY ALL")
+        .expect("samples");
+    assert!(
+        seen.contains(&serde_json::json!({"phase": "during", "ok": false})),
+        "no sample saw the target down: {seen:?}"
+    );
+    assert!(
+        seen.contains(&serde_json::json!({"phase": "post", "ok": true})),
+        "no sample saw the target back: {seen:?}"
+    );
+    let verdicts = restored
+        .query_json_rows("SELECT nfr_id, state FROM nfr_verdicts")
+        .expect("verdicts");
+    assert_eq!(
+        verdicts,
+        [serde_json::json!({"nfr_id": "rto", "state": "met"})]
     );
 }
