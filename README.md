@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/mwigge/tumult/actions/workflows/ci.yml/badge.svg)](https://github.com/mwigge/tumult/actions/workflows/ci.yml)
 [![Coverage](https://github.com/mwigge/tumult/actions/workflows/coverage.yml/badge.svg)](https://github.com/mwigge/tumult/actions/workflows/coverage.yml)
-![Version](https://img.shields.io/badge/version-3.0.0-brightgreen)
+![Version](https://img.shields.io/badge/version-3.0.1-brightgreen)
 ![Rust](https://img.shields.io/badge/rust-1.92.0%2B-orange)
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue)
 
@@ -109,7 +109,14 @@ as OTel-Arrow. More diagrams:
 | Structured logs | JSON logs with stable event names | [logging](docs/guides/logging.md) |
 | CI gate | `tumult gate` gives pass, warn or fail for a target | [CLI](docs/guides/cli-reference.md) |
 
-Not done yet: forecast bands and entities have an API but no page in the UI.
+Not done yet: forecasts and entities have no page of their own. A run page
+shows the forecast band of that run; the rest is in the API.
+
+Read the [3.0.0 release notes](docs/releases/3.0.0.md) before you upgrade
+from 2.x. The latest release is [3.0.1](docs/releases/3.0.1.md).
+**There is no way back:** the lake moves to schema v21 and DuckDB 2.0, and
+an older Tumult cannot open it afterwards. Back up first with
+`tumult store backup --output <dir>`.
 
 ## Safe by design
 
