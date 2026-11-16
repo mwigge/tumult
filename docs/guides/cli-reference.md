@@ -314,6 +314,10 @@ tumult report <journal.toon> [OPTIONS]
 | `--format <f>` | `html` (default), `pdf`, `json`, or `junit` |
 | `--trace-ui-base <url>` | Base URL of a trace UI (e.g. Jaeger/Tempo) — HTML reports render each activity's `trace_id` as a clickable link (falls back to the `TUMULT_TRACE_UI_BASE` env var) |
 
+The JUnit file has one test case per step, and one per check of the steady
+state. A check that did not hold is a failed case, so a deviated run shows as a
+failure in CI.
+
 ## tumult import
 
 Import the Parquet directory `tumult store export` writes: the experiments

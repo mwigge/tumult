@@ -24,7 +24,7 @@ pub enum ReportFormat {
     Pdf,
     /// JSON (raw journal serialized via `serde_json`)
     Json,
-    /// `JUnit` XML (one testcase per activity across all phases)
+    /// `JUnit` XML (one testcase per step and one per check of the steady state)
     Junit,
 }
 
