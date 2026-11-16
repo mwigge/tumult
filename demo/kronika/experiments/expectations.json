@@ -1,0 +1,12 @@
+{
+  "experiments": {
+    "api-worker-freeze.toon": {"proof": "kronika-seed", "expect": {"status": "completed", "hypothesis_before": true, "hypothesis_after": true, "rollbacks": 0, "objectives": {}}},
+    "batch-worker-pool.toon": {"proof": "kronika-seed", "expect": {"status": "completed", "hypothesis_before": true, "hypothesis_after": true, "rollbacks": 0, "objectives": {}}},
+    "config-corruption.toon": {"proof": "kronika-seed", "expect": {"status": "deviated", "hypothesis_before": true, "hypothesis_after": false, "rollbacks": 1, "objectives": {}}},
+    "disk-pressure.toon": {"proof": "kronika-seed", "expect": {"status": "completed", "hypothesis_before": true, "hypothesis_after": true, "rollbacks": 0, "objectives": {}}},
+    "host-cpu-burn.toon": {"proof": "kronika-seed", "expect": {"status": "completed", "hypothesis_before": true, "hypothesis_after": true, "rollbacks": 0, "objectives": {}}},
+    "queue-dependency-loss.toon": {"proof": "kronika-seed", "expect": {"status": "failed", "hypothesis_before": true, "hypothesis_after": true, "rollbacks": 1, "objectives": {"rto": "met"}}},
+    "service-partition.toon": {"proof": "kronika-seed", "expect": {"status": "completed", "hypothesis_before": true, "hypothesis_after": true, "rollbacks": 0, "objectives": {}}},
+    "worker-process-kill.toon": {"proof": "kronika-seed", "expect": {"status": "completed", "hypothesis_before": true, "hypothesis_after": true, "rollbacks": 0, "objectives": {}}}
+  }
+}

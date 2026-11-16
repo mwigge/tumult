@@ -1,0 +1,17 @@
+{
+  "experiments": {
+    "demo-net.toon": {"proof": "demo-check", "expect": {"status": "completed", "hypothesis_before": true, "hypothesis_after": true, "rollbacks": 0, "objectives": {}}},
+    "demo-postgres.toon": {"proof": "demo-check", "expect": {"status": "completed", "hypothesis_before": true, "hypothesis_after": true, "rollbacks": 0, "objectives": {}}},
+    "demo-container.toon": {"proof": "demo-check", "expect": {"status": "completed", "hypothesis_before": true, "hypothesis_after": true, "rollbacks": 0, "objectives": {}}},
+    "demo-stress.toon": {"proof": "demo-check", "expect": {"status": "completed", "hypothesis_before": true, "hypothesis_after": true, "rollbacks": 0, "objectives": {}}},
+    "demo-process.toon": {"proof": "demo-check", "expect": {"status": "completed", "hypothesis_before": true, "hypothesis_after": true, "rollbacks": 0, "objectives": {}}},
+    "demo-ssh.toon": {"proof": "demo-check", "expect": {"status": "completed", "hypothesis_before": true, "hypothesis_after": true, "rollbacks": 0, "objectives": {}}},
+    "demo-agentic.toon": {"proof": "demo-check", "expect": {"status": "completed", "hypothesis_before": true, "hypothesis_after": true, "rollbacks": 0, "objectives": {}}},
+    "demo-agentic-trajectory.toon": {"proof": "demo-check", "expect": {"status": "completed", "hypothesis_before": true, "hypothesis_after": true, "rollbacks": 0, "objectives": {}}},
+    "demo-timewarp-clock.toon": {"proof": "demo-check", "expect": {"status": "completed", "hypothesis_before": true, "hypothesis_after": true, "rollbacks": 0, "objectives": {}}},
+    "demo-timewarp-entropy.toon": {"proof": "demo-check", "expect": {"status": "completed", "hypothesis_before": true, "hypothesis_after": true, "rollbacks": 0, "objectives": {}}},
+    "demo-guard-halt.toon": {"proof": "demo-check", "expect": {"status": "halted", "hypothesis_before": true, "hypothesis_after": null, "rollbacks": 1, "objectives": {}}},
+    "demo-topo-recommended.toon": {"proof": "demo-check", "expect": {"status": "completed", "hypothesis_before": true, "hypothesis_after": true, "rollbacks": 0, "objectives": {}}},
+    "demo-topo-blind.toon": {"proof": "demo-check", "expect": {"status": "halted", "hypothesis_before": true, "hypothesis_after": null, "rollbacks": 1, "objectives": {}}}
+  }
+}

@@ -270,5 +270,6 @@ jobs:
       - run: python3 scripts/test-smoke-daemon-binary.py
       - run: bash -n scripts/demo-check.sh
       - run: python3 scripts/test-starmap-check.py
+      - run: python3 scripts/test-check-proof-journals.py
       - run: python3 scripts/test-check-test-hygiene.py
       - run: python3 scripts/check-test-hygiene.py
