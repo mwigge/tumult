@@ -52,15 +52,55 @@ function startMarker(x: X, group: ExperimentWindow[]): Record<string, unknown> {
     return { ...base, name: `${shortName(only)} — ${only.outcome ?? 'unknown'}`, runId: only.id };
 }
 
+/** Share of the plot width that one run label needs (160px, truncated). */
+const LABEL_SHARE = 0.15;
+
+/** The smallest distance on a time axis at which two run labels do not touch. */
+export function labelGap(xs: number[]): number {
+    if (xs.length === 0) return 0;
+    const min = xs.reduce((a, b) => Math.min(a, b));
+    const max = xs.reduce((a, b) => Math.max(a, b));
+    return (max - min) * LABEL_SHARE;
+}
+
+/**
+ * Which labels to show so that no two are closer than `minGap`: walking
+ * left to right, a label is shown when it is clear of the last shown one.
+ * The flags keep the order of `xs`.
+ */
+export function spacedLabels(xs: number[], minGap: number): boolean[] {
+    const order = xs.map((_, i) => i).sort((a, b) => (xs[a] ?? 0) - (xs[b] ?? 0));
+    const shown = xs.map(() => true);
+    let last = -Infinity;
+    for (const i of order) {
+        const x = xs[i] ?? 0;
+        shown[i] = x - last >= minGap;
+        if (shown[i]) last = x;
+    }
+    return shown;
+}
+
+/** Hide the labels that would run into a neighbour. Lines and names stay. */
+function thinLabels(markers: Record<string, unknown>[], minGap: number): Record<string, unknown>[] {
+    const xs = markers.map((m) => m.xAxis);
+    if (!xs.every((x) => typeof x === 'number')) return markers;
+    const shown = spacedLabels(xs, minGap);
+    return markers.map((m, i) => (shown[i] ? m : { ...m, label: { show: false } }));
+}
+
 /**
  * A silent series carrying the overlay. `toX` converts epoch ms to the
  * x-axis value (identity for time axes; day-string for category axes).
+ * On a time axis, `labelGap` hides the name of a run that starts closer
+ * than that to the last named one; hovering its line still names it.
  */
 export function experimentOverlay(
     runs: ExperimentWindow[],
     toX: (ms: number) => X = (ms) => ms,
+    labelGap = 0,
 ): Series | null {
     if (runs.length === 0) return null;
+    const markers = [...groupByX(runs, toX)].map(([x, group]) => startMarker(x, group));
     return {
         type: 'line',
         data: [],
@@ -90,7 +130,7 @@ export function experimentOverlay(
                 overflow: 'truncate',
                 formatter: (p: { name?: string }) => p.name ?? '',
             },
-            data: [...groupByX(runs, toX)].map(([x, group]) => startMarker(x, group)),
+            data: labelGap > 0 ? thinLabels(markers, labelGap) : markers,
         },
     } as Series;
 }

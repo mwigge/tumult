@@ -8,7 +8,7 @@
     import EChart from '#lib/components/EChart.svelte';
     import { CHART } from '#lib/echarts.js';
     import type { EChartsCoreOption } from '#lib/echarts.js';
-    import { experimentOverlay, overlayRunId } from '#lib/overlays.js';
+    import { experimentOverlay, labelGap, overlayRunId } from '#lib/overlays.js';
     import { RANGE_SECONDS } from '#lib/ranges.js';
 
     const INTERVALS = ['5m', '1h', '1d'];
@@ -109,7 +109,8 @@
     const chartOption: EChartsCoreOption = $derived.by(() => {
         if (series.length === 0) return {};
         const stacked = filters.chart === 'area' && series.length > 1;
-        const overlay = experimentOverlay(runs);
+        const xs = series.flatMap((s) => s.data.map(([x]) => x));
+        const overlay = experimentOverlay(runs, undefined, labelGap(xs));
         return {
             // Room under the legend for the upright run labels.
             grid: { left: 56, right: 20, top: 48, bottom: 24 },
