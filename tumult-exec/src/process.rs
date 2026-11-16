@@ -1,20 +1,28 @@
 use tokio::io::AsyncReadExt;
+use tokio_util::sync::CancellationToken;
 use tumult_core::runner::ActivityOutcome;
 use tumult_core::sync_bridge::sync_await;
+
+use super::fired;
 
 /// Per-stream capture limit. Excess bytes are drained to avoid pipe deadlock.
 const OUTPUT_CAP: usize = 8 * 1024 * 1024;
 const TRUNCATION_NOTE: &str = "[output truncated at 8 MiB]";
 
+/// The reason in the error of a process that was ended by a stop.
+const STOPPED: &str = "stopped before it finished";
+
 /// Execute a process with one timeout covering both exit and output draining.
 /// The shared bridge also supports the runner's plain background threads.
-/// On Unix, timeout kills the process group, including descendants whose
-/// parent already exited. Pipe readers are cancelled rather than detached.
+/// On Unix, a timeout or a `stop` that fires kills the process group,
+/// including descendants whose parent already exited. Pipe readers are
+/// cancelled rather than detached.
 pub(super) fn execute_process(
     path: &str,
     arguments: &[String],
     env: &std::collections::HashMap<String, String>,
     timeout_s: Option<&f64>,
+    stop: Option<&CancellationToken>,
 ) -> ActivityOutcome {
     let start = std::time::Instant::now();
     let timeout = match timeout_s
@@ -46,15 +54,21 @@ pub(super) fn execute_process(
         let completion = Box::pin(async {
             tokio::try_join!(child.wait(), read_optional(stdout), read_optional(stderr))
         });
-        let result = match timeout {
-            Some(duration) => match tokio::time::timeout(duration, completion).await {
-                Ok(result) => result,
-                Err(_) => Err(std::io::Error::new(
-                    std::io::ErrorKind::TimedOut,
-                    "timed out",
-                )),
-            },
-            None => completion.await,
+        let within_timeout = async {
+            match timeout {
+                Some(duration) => match tokio::time::timeout(duration, completion).await {
+                    Ok(result) => result,
+                    Err(_) => Err(std::io::Error::new(
+                        std::io::ErrorKind::TimedOut,
+                        "timed out",
+                    )),
+                },
+                None => completion.await,
+            }
+        };
+        let result = tokio::select! {
+            result = within_timeout => result,
+            () = fired(stop) => Err(std::io::Error::other(STOPPED)),
         };
         let (status, stdout, stderr) = match result {
             Ok(result) => result,

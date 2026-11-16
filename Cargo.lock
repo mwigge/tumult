@@ -8033,6 +8033,7 @@ dependencies = [
  "tumult-autopilot",
  "tumult-compliance",
  "tumult-core",
+ "tumult-exec",
  "tumult-forecast",
  "tumult-graph",
  "tumult-ingest",
@@ -8227,8 +8228,12 @@ name = "tumult-exec"
 version = "3.0.1"
 dependencies = [
  "libc",
+ "opentelemetry",
+ "opentelemetry_sdk",
  "serde_json",
+ "tempfile",
  "tokio",
+ "tokio-util",
  "tumult-cloud",
  "tumult-core",
  "tumult-kubernetes",
@@ -8379,6 +8384,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.19",
  "tokio",
+ "tokio-util",
  "toml 1.1.4+spec-1.1.0",
  "toon-format",
  "tracing",

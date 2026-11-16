@@ -205,3 +205,63 @@ fn script_provider_scenarios() {
         "unexpected error: {error}"
     );
 }
+
+#[test]
+fn a_stop_ends_a_script_and_the_child_it_started() {
+    let mut env = tumult_test_utils::EnvGuard::lock();
+    let plugins = tempfile::TempDir::new().unwrap();
+    let plugin = plugins.path().join("stop-test-plugin");
+    std::fs::create_dir_all(plugin.join("actions")).unwrap();
+    std::fs::write(
+        plugin.join("plugin.toon"),
+        "name: stop-test-plugin\n\
+         version: 0.1.0\n\
+         description: Plugin whose action runs for a long time\n\
+         actions[1]:\n\
+         \x20 - name: hang\n\
+         \x20   script: actions/hang.sh\n\
+         \x20   description: Start a child, then run for a long time\n\
+         probes[0]:\n",
+    )
+    .unwrap();
+    std::fs::write(
+        plugin.join("actions/hang.sh"),
+        "( sleep 0.6; touch \"$TUMULT_MARKER\" ) &\nsleep 30\n",
+    )
+    .unwrap();
+    env.set("TUMULT_PLUGIN_PATH", plugins.path());
+    let executor = ProviderExecutor::new();
+
+    let marker = plugins.path().join("child-survived");
+    let arguments = HashMap::from([(
+        "marker".to_string(),
+        serde_json::Value::String(marker.display().to_string()),
+    )]);
+    let stop = tokio_util::sync::CancellationToken::new();
+    let trigger = stop.clone();
+    let stopper = std::thread::spawn(move || {
+        // sleep: the stop comes while the script runs, not before it.
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        trigger.cancel();
+    });
+    let started = std::time::Instant::now();
+    let outcome = executor.execute_until(
+        &script_activity("stop-test-plugin", "hang", arguments),
+        &stop,
+    );
+    stopper.join().unwrap();
+    assert!(!outcome.success);
+    assert_eq!(
+        outcome.error.as_deref(),
+        Some("script stopped before it finished")
+    );
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(5),
+        "the stop waited for the script: {:?}",
+        started.elapsed()
+    );
+    // sleep: there is no event for a file that must stay absent; wait past
+    // the time the child would have written it.
+    std::thread::sleep(std::time::Duration::from_millis(1000));
+    assert!(!marker.exists(), "a child of the script outlived the stop");
+}

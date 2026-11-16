@@ -10,6 +10,7 @@
 
 use std::collections::HashMap;
 
+use tokio_util::sync::CancellationToken;
 use tumult_core::runner::{ActivityExecutor, ActivityOutcome};
 use tumult_core::types::{Activity, Provider};
 
@@ -106,8 +107,20 @@ impl std::fmt::Debug for ProviderExecutor {
     }
 }
 
-impl ActivityExecutor for ProviderExecutor {
-    fn execute(&self, activity: &Activity) -> ActivityOutcome {
+/// Completes when `stop` fires. Without a token it never completes.
+async fn fired(stop: Option<&CancellationToken>) {
+    match stop {
+        Some(stop) => stop.cancelled().await,
+        None => std::future::pending().await,
+    }
+}
+
+impl ProviderExecutor {
+    /// Run `activity` with its provider. A `stop` that fires ends a
+    /// `process` or a `script` step and kills its process group. A `native`
+    /// step runs in this process and cannot be ended from outside: it runs
+    /// to its end.
+    fn dispatch(&self, activity: &Activity, stop: Option<&CancellationToken>) -> ActivityOutcome {
         match &activity.provider {
             Provider::Process {
                 path,
@@ -119,6 +132,7 @@ impl ActivityExecutor for ProviderExecutor {
                 arguments,
                 &self.merged_process_env(env),
                 timeout_s.as_ref(),
+                stop,
             ),
             Provider::Script {
                 plugin,
@@ -130,6 +144,7 @@ impl ActivityExecutor for ProviderExecutor {
                 function,
                 &self.merged_script_arguments(arguments),
                 timeout_s.as_ref(),
+                stop,
             ),
             Provider::Native {
                 plugin,
@@ -137,6 +152,16 @@ impl ActivityExecutor for ProviderExecutor {
                 arguments,
             } => execute_native(plugin, function, arguments),
         }
+    }
+}
+
+impl ActivityExecutor for ProviderExecutor {
+    fn execute(&self, activity: &Activity) -> ActivityOutcome {
+        self.dispatch(activity, None)
+    }
+
+    fn execute_until(&self, activity: &Activity, stop: &CancellationToken) -> ActivityOutcome {
+        self.dispatch(activity, Some(stop))
     }
 }
 

@@ -11,7 +11,7 @@ async fn register_run_def(base: &str) -> String {
 
 /// Register an experiment TOON via the validate endpoint; returns its
 /// registry id.
-async fn register_toon(base: &str, toon: &str) -> String {
+pub(crate) async fn register_toon(base: &str, toon: &str) -> String {
     let resp = reqwest::Client::new()
         .post(format!("{base}/api/runs/validate"))
         .json(&json!({"toon": toon}))
@@ -25,7 +25,7 @@ async fn register_toon(base: &str, toon: &str) -> String {
 }
 
 /// Poll a run's detail until it reaches a terminal state (10s budget).
-async fn await_terminal_run(base: &str, run_id: &str) -> Value {
+pub(crate) async fn await_terminal_run(base: &str, run_id: &str) -> Value {
     const TERMINAL: [&str; 8] = [
         "passed",
         "deviated",
@@ -59,7 +59,7 @@ async fn await_terminal_run(base: &str, run_id: &str) -> Value {
 /// "anonymous" approver differs from the "synthetic" requester, so the
 /// segregation-of-duties check passes (RUN_TOON — one fault kind with a
 /// rollback on the default "dev" env — classifies T1 and gates).
-async fn enqueue_approved(base: &str, registry_id: &str) -> String {
+pub(crate) async fn enqueue_approved(base: &str, registry_id: &str) -> String {
     let client = reqwest::Client::new();
     let resp = client
         .post(format!("{base}/api/runs"))

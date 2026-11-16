@@ -1,13 +1,16 @@
 //! Script plugin dispatch: resolve a `type: script` provider through the
 //! plugin discovery search paths and run the manifest-declared script via
-//! [`tumult_plugin::executor::execute_script`].
+//! [`tumult_plugin::executor::execute_script_until`].
 
 use std::collections::HashMap;
 
+use tokio_util::sync::CancellationToken;
 use tumult_core::runner::ActivityOutcome;
 use tumult_core::sync_bridge::sync_await;
 use tumult_plugin::discovery::discover_all_report;
-use tumult_plugin::executor::execute_script;
+use tumult_plugin::executor::execute_script_until;
+
+use super::fired;
 
 /// Dispatch a script provider call to the discovered plugin's script.
 ///
@@ -22,6 +25,8 @@ use tumult_plugin::executor::execute_script;
 /// warnings so a skipped path or malformed manifest is visible instead of
 /// silently shrinking the available set.
 ///
+/// A `stop` that fires ends the script and the children it started.
+///
 /// # Panics
 ///
 /// Panics if called from outside a Tokio multi-threaded runtime context; see
@@ -31,6 +36,7 @@ pub(super) fn execute_script_provider(
     function: &str,
     arguments: &HashMap<String, serde_json::Value>,
     timeout_s: Option<&f64>,
+    stop: Option<&CancellationToken>,
 ) -> ActivityOutcome {
     let start = std::time::Instant::now();
 
@@ -99,11 +105,12 @@ pub(super) fn execute_script_provider(
         .collect();
     let timeout = timeout_s.map(|s| std::time::Duration::from_secs_f64(*s));
 
-    let result = sync_await(execute_script(
+    let result = sync_await(execute_script_until(
         &script_path,
         &discovered.root,
         &args,
         timeout,
+        fired(stop),
     ));
     let duration_ms = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
     match result {

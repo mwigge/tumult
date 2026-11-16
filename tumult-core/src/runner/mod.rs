@@ -105,6 +105,20 @@ pub struct ActivityOutcome {
 pub trait ActivityExecutor: Send + Sync {
     /// Executes a single activity and returns its outcome.
     fn execute(&self, activity: &Activity) -> ActivityOutcome;
+
+    /// Executes a single activity, and ends it early when `stop` fires.
+    ///
+    /// The runner calls this for the steps of the method, with the token
+    /// that a guard halt or a stop of the run cancels. A step that was ended
+    /// this way did not succeed, and its error says that it was stopped.
+    /// Rollbacks and the probes of the steady state go through
+    /// [`execute`](Self::execute): a stop does not end the cleanup.
+    ///
+    /// The default cannot stop a step: it runs the step to its end.
+    fn execute_until(&self, activity: &Activity, stop: &CancellationToken) -> ActivityOutcome {
+        let _ = stop;
+        self.execute(activity)
+    }
 }
 
 /// Handle to a running load test process.

@@ -10,3 +10,12 @@ exclude_globs = [
     "tumult-test-utils/**",
     "demo/**",
 ]
+
+# Mutants no test can catch, each with its reason.
+exclude_re = [
+    # The Windows twins of the script executor are not compiled on Linux,
+    # so a change to them cannot fail a test there. The POSIX functions of
+    # the same name return a type with no default: the same change does not
+    # compile for them.
+    "tumult-plugin/src/executor\\.rs.*replace execute_script(_until)? -> Result<ScriptResult, ExecutorError>",
+]

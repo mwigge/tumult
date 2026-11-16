@@ -20,6 +20,8 @@ mod journal_only;
 mod manual;
 mod perf;
 mod query;
+#[cfg(unix)]
+mod real_runs;
 mod reports;
 mod risks;
 mod runs;

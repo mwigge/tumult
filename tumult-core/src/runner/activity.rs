@@ -90,6 +90,20 @@ fn judged(activity: &Activity, outcome: ActivityOutcome) -> ActivityOutcome {
     }
 }
 
+/// Hand a step to the executor. A step that runs under a token can be ended
+/// by it: a halt or a stop does not wait for the step. Rollbacks and the
+/// probes of the steady state run without one.
+fn dispatch(
+    activity: &Activity,
+    executor: &dyn ActivityExecutor,
+    stop: Option<&CancellationToken>,
+) -> ActivityOutcome {
+    match stop {
+        Some(stop) => executor.execute_until(activity, stop),
+        None => executor.execute(activity),
+    }
+}
+
 /// Execute a single activity with `OTel` instrumentation.
 ///
 /// Extracted so both foreground and background paths share the same logic.
@@ -142,7 +156,7 @@ fn execute_single_activity(
             span_id: current_span_id(),
         };
     }
-    let outcome = judged(activity, executor.execute(activity));
+    let outcome = judged(activity, dispatch(activity, executor, cancellation));
     set_span_status_from_outcome(outcome.success, outcome.error.as_deref());
 
     // Per-operation metrics: every action and probe is counted and timed,
