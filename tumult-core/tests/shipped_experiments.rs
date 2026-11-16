@@ -429,3 +429,20 @@ fn every_experiment_in_the_docs_parses_and_validates() {
         broken.join("\n")
     );
 }
+
+/// The duplicate key check reads the text, so it must also accept the
+/// spelling the encoder chooses (tables, inline lists) for every shipped
+/// experiment: that is what template substitution and the builder feed it.
+#[test]
+fn every_shipped_experiment_is_read_back_from_the_encoder() {
+    let broken: Vec<String> = experiment_files()
+        .iter()
+        .filter_map(|p| {
+            let experiment = load(p).ok()?;
+            let encoded = toon_format::encode_default(&experiment).expect("encode");
+            let error = parse_experiment(&encoded).err()?;
+            Some(format!("{}: {error}", shown(p)))
+        })
+        .collect();
+    assert!(broken.is_empty(), "not read back:\n{}", broken.join("\n"));
+}

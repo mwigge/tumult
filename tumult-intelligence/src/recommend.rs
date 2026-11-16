@@ -50,7 +50,7 @@ pub(crate) fn validate_draft(output: &mut RecommendationOutput) {
         output.draft_validation_error = None;
         return;
     };
-    match toon_format::decode_default::<tumult_core::types::Experiment>(draft) {
+    match tumult_core::engine::parse_experiment(draft) {
         Ok(experiment) => match validate_experiment(&experiment) {
             Ok(()) => {
                 output.draft_valid = Some(true);
