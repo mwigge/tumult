@@ -3,6 +3,7 @@
     import { goto } from '$app/navigation';
     import { onMount } from 'svelte';
     import { api, fmtAgo, fmtDuration, shortId } from '#lib/api.js';
+    import { experimentDurationNs } from '#lib/duration.js';
     import type { Dimensions, ExperimentRow } from '#lib/types.js';
     import StatusBadge from '#lib/components/StatusBadge.svelte';
     import RangeSwitch from '#lib/components/RangeSwitch.svelte';
@@ -129,7 +130,7 @@
                             <td title={new Date(row.started_ns / 1e6).toISOString()}
                                 >{fmtAgo(row.started_ns)}</td
                             >
-                            <td class="mono">{fmtDuration(row.duration_ns)}</td>
+                            <td class="mono">{fmtDuration(experimentDurationNs(row))}</td>
                             <td class="mono" style="color: var(--warn)">{row.faults ?? ''}</td>
                             <td class="mono">{row.target_system ?? '—'}</td>
                         </tr>
@@ -141,7 +142,7 @@
                             <td title={new Date(row.started_ns / 1e6).toISOString()}
                                 >{fmtAgo(row.started_ns)}</td
                             >
-                            <td class="mono">{fmtDuration(row.duration_ns)}</td>
+                            <td class="mono">{fmtDuration(experimentDurationNs(row))}</td>
                             <td class="mono" style="color: var(--warn)">{row.faults ?? ''}</td>
                             <td class="mono">{row.target_system ?? '—'}</td>
                         </tr>
