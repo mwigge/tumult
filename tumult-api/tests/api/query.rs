@@ -1,6 +1,6 @@
 use crate::common::*;
 use serde_json::{json, Value};
-use tumult_lake::Store;
+use tumult_lake::{SpanRow, Store};
 
 #[tokio::test]
 async fn overview_returns_kpis_deltas_and_breakdowns() {
@@ -75,10 +75,11 @@ async fn experiments_lists_filters_and_searches() {
     assert_eq!(status, 200, "{body}");
     let rows = body["experiments"].as_array().unwrap();
     assert_eq!(rows.len(), 2);
-    // Newest first; outcome joined from the completed log.
+    // Newest first. The seed is two runs stored before 3.0.2: the outcome
+    // is on the completed log, spelled with a capital.
     assert_eq!(rows[0]["id"], "exp-fail");
-    assert_eq!(rows[0]["status"], "Deviated");
-    assert_eq!(rows[1]["status"], "Completed");
+    assert_eq!(rows[0]["status"], "deviated");
+    assert_eq!(rows[1]["status"], "completed");
     assert_eq!(rows[0]["faults"], "injection");
 
     let (_, body) = get(&srv.base, "/api/experiments?outcome=deviated").await;
@@ -117,7 +118,7 @@ async fn experiment_detail_returns_spans_logs_metrics() {
     let (status, body) = get(&srv.base, "/api/experiments/exp-pass").await;
     assert_eq!(status, 200, "{body}");
     assert_eq!(body["experiment"]["name"], "pg-failover");
-    assert_eq!(body["experiment"]["status"], "Completed");
+    assert_eq!(body["experiment"]["status"], "completed");
     assert_eq!(body["spans"].as_array().unwrap().len(), 2);
     assert_eq!(body["logs"].as_array().unwrap().len(), 2);
     // Regression: a log's real timestamp must survive ingest → store → API
@@ -145,7 +146,7 @@ async fn dimensions_lists_distinct_filter_values() {
         .map(Value::as_str)
         .collect::<Option<Vec<_>>>()
         .unwrap();
-    assert_eq!(outcomes, ["Completed", "Deviated"]);
+    assert_eq!(outcomes, ["completed", "deviated"]);
     assert_eq!(body["targets"], serde_json::json!(["database"]));
     assert_eq!(body["faults"], serde_json::json!(["injection"]));
     assert_eq!(
@@ -368,9 +369,9 @@ async fn traces_groups_spans_and_filters() {
     assert_eq!(rows[0]["service_name"], "tumult");
     assert_eq!(rows[0]["span_count"], 2);
     assert_eq!(rows[0]["error_count"], 0);
-    assert_eq!(rows[0]["status"], "Deviated");
+    assert_eq!(rows[0]["status"], "deviated");
     assert_eq!(rows[0]["experiment_id"], "exp-fail");
-    assert_eq!(rows[1]["status"], "Completed");
+    assert_eq!(rows[1]["status"], "completed");
     // Trace duration spans the whole tree (5s), not just one span.
     assert_eq!(rows[0]["duration_ns"], serde_json::json!(5 * NS));
 
@@ -875,4 +876,206 @@ async fn a_journal_import_drops_the_cached_star_maps() {
     // A duplicate stores nothing, so the cached map still stands.
     assert_eq!(import().await, false);
     assert_eq!(starmap_as_of(&srv.base).await, after);
+}
+
+/// The endings of a run other than `completed` and `deviated`, which the
+/// seed has.
+const OTHER_ENDINGS: [&str; 4] = ["failed", "aborted", "interrupted", "halted"];
+
+/// The root span of run `id` against the system `queue`, as 3.0.2 stores
+/// it: the span says how the run ended. `None` is a run that has not ended.
+fn root_span(id: &str, status: Option<&str>) -> SpanRow {
+    SpanRow {
+        ts_ns: now_ns() - 300 * NS,
+        trace_id: format!("trace-{id}"),
+        span_id: format!("span-{id}-root"),
+        span_name: "resilience.experiment".into(),
+        span_kind: "Internal".into(),
+        duration_ns: 5 * NS,
+        status_code: "Error".into(),
+        service_name: "tumult".into(),
+        experiment_id: Some(id.into()),
+        experiment_name: Some(format!("name-{id}")),
+        outcome_status: status.map(str::to_string),
+        target_system: Some("queue".into()),
+        target_environment: Some("demo".into()),
+        events: "[]".into(),
+        ..SpanRow::default()
+    }
+}
+
+/// One run for each of [`OTHER_ENDINGS`], named `run-<ending>`. None of
+/// them has a completed log.
+async fn seed_other_endings(srv: &TestServer) {
+    let rows: Vec<SpanRow> = OTHER_ENDINGS
+        .iter()
+        .map(|status| root_span(&format!("run-{status}"), Some(status)))
+        .collect();
+    exec_write(srv, move |w| {
+        w.insert_spans(&rows).map_err(|e| e.to_string())
+    })
+    .await;
+}
+
+fn rows_of<'a>(body: &'a Value, key: &str) -> &'a Vec<Value> {
+    body[key]
+        .as_array()
+        .unwrap_or_else(|| panic!("no {key}: {body}"))
+}
+
+#[tokio::test]
+async fn a_run_is_listed_and_filtered_by_the_status_on_its_root_span() {
+    let srv = spawn_server().await;
+    seed_other_endings(&srv).await;
+
+    for status in OTHER_ENDINGS {
+        let (code, body) = get(&srv.base, &format!("/api/experiments?outcome={status}")).await;
+        assert_eq!(code, 200, "{body}");
+        let rows = rows_of(&body, "experiments");
+        assert_eq!(rows.len(), 1, "{status}: {rows:?}");
+        assert_eq!(rows[0]["id"], format!("run-{status}"));
+        assert_eq!(rows[0]["status"], status);
+
+        let (code, body) = get(&srv.base, &format!("/api/traces?outcome={status}")).await;
+        assert_eq!(code, 200, "{body}");
+        let rows = rows_of(&body, "traces");
+        assert_eq!(rows.len(), 1, "{status}: {rows:?}");
+        assert_eq!(rows[0]["trace_id"], format!("trace-run-{status}"));
+        assert_eq!(rows[0]["status"], status);
+    }
+
+    let (_, body) = get(&srv.base, "/api/experiments/run-halted").await;
+    assert_eq!(body["experiment"]["status"], "halted");
+    let (_, body) = get(&srv.base, "/api/experiments?outcome=incomplete").await;
+    assert_eq!(rows_of(&body, "experiments").len(), 0);
+    let (_, body) = get(&srv.base, "/api/traces?outcome=incomplete").await;
+    assert_eq!(rows_of(&body, "traces").len(), 0);
+}
+
+#[tokio::test]
+async fn the_outcome_filter_takes_either_spelling() {
+    let srv = spawn_server().await;
+
+    for outcome in ["deviated", "Deviated", "DEVIATED"] {
+        let (code, body) = get(&srv.base, &format!("/api/experiments?outcome={outcome}")).await;
+        assert_eq!(code, 200, "{body}");
+        assert_eq!(rows_of(&body, "experiments")[0]["id"], "exp-fail");
+        let (code, body) = get(&srv.base, &format!("/api/traces?outcome={outcome}")).await;
+        assert_eq!(code, 200, "{body}");
+        assert_eq!(rows_of(&body, "traces")[0]["trace_id"], "trace-exp-fail");
+    }
+
+    let (code, body) = get(&srv.base, "/api/experiments?outcome=bogus").await;
+    assert_eq!(code, 400);
+    assert_eq!(
+        body["error"],
+        "invalid outcome \"bogus\"; expected \
+         completed|deviated|failed|aborted|interrupted|halted|incomplete"
+    );
+}
+
+#[tokio::test]
+async fn a_run_that_has_not_ended_is_incomplete() {
+    let srv = spawn_server().await;
+    let row = root_span("run-open", None);
+    exec_write(&srv, move |w| {
+        w.insert_spans(&[row]).map_err(|e| e.to_string())
+    })
+    .await;
+
+    let (_, body) = get(&srv.base, "/api/experiments?outcome=incomplete").await;
+    let rows = rows_of(&body, "experiments");
+    assert_eq!(rows.len(), 1, "{rows:?}");
+    assert_eq!(rows[0]["id"], "run-open");
+    assert!(rows[0]["status"].is_null(), "{}", rows[0]);
+    let (_, body) = get(&srv.base, "/api/traces?outcome=incomplete").await;
+    assert_eq!(rows_of(&body, "traces")[0]["trace_id"], "trace-run-open");
+}
+
+#[tokio::test]
+async fn the_outcome_facet_lists_each_status_once_in_one_spelling() {
+    let srv = spawn_server().await;
+    seed_other_endings(&srv).await;
+    // A completed run stored by 3.0.2 next to the one of the seed, which is
+    // spelled with a capital.
+    let row = root_span("run-completed", Some("completed"));
+    exec_write(&srv, move |w| {
+        w.insert_spans(&[row]).map_err(|e| e.to_string())
+    })
+    .await;
+
+    let (status, body) = get(&srv.base, "/api/dimensions").await;
+
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(
+        body["outcomes"],
+        json!([
+            "aborted",
+            "completed",
+            "deviated",
+            "failed",
+            "halted",
+            "interrupted"
+        ])
+    );
+}
+
+#[tokio::test]
+async fn the_pass_rate_of_a_target_counts_runs_in_either_spelling() {
+    let srv = spawn_server().await;
+    seed_other_endings(&srv).await;
+    let row = root_span("run-completed", Some("completed"));
+    exec_write(&srv, move |w| {
+        w.insert_spans(&[row]).map_err(|e| e.to_string())
+    })
+    .await;
+
+    let (status, body) = get(&srv.base, "/api/overview?range=24h").await;
+
+    assert_eq!(status, 200, "{body}");
+    let pass_rate = |target: &str| {
+        rows_of(&body, "targets")
+            .iter()
+            .find(|row| row["target"] == target)
+            .unwrap_or_else(|| panic!("no target {target}: {body}"))["pass_rate"]
+            .clone()
+    };
+    // The seed: one of two runs against the database completed.
+    assert_eq!(pass_rate("database"), 0.5);
+    // One of the five runs against the queue completed.
+    assert_eq!(pass_rate("queue"), 0.2);
+}
+
+#[tokio::test]
+async fn ask_names_the_runs_that_did_not_complete_in_either_spelling() {
+    let srv = spawn_server().await;
+    let row = root_span("run-halted", Some("halted"));
+    exec_write(&srv, move |w| {
+        w.insert_spans(&[row]).map_err(|e| e.to_string())
+    })
+    .await;
+
+    let resp = reqwest::Client::new()
+        .post(format!("{}/api/ask", srv.base))
+        .json(&json!({"question": "Which experiments failed?"}))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), 200);
+    let body: Value = resp.json().await.unwrap();
+    let found: Vec<(&str, &str)> = rows_of(&body, "rows")
+        .iter()
+        .map(|row| {
+            (
+                row["experiment_id"].as_str().unwrap(),
+                row["status"].as_str().unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        found,
+        [("run-halted", "halted"), ("exp-fail", "deviated")],
+        "{body}"
+    );
 }

@@ -183,6 +183,23 @@ fn a_halt_rolls_back_even_when_the_aborted_load_left_nothing() {
 }
 
 #[test]
+fn a_halted_run_logs_its_status_in_the_completed_event() {
+    let mut journal = None;
+    let events = super::log_capture::logged(|| {
+        journal = Some(halt_with_load(Err("aborted".into())).0);
+    });
+    let journal = journal.expect("the run returned a journal");
+
+    assert_eq!(journal.status, ExperimentStatus::Halted);
+    let completed: Vec<_> = events
+        .iter()
+        .filter(|event| event.event == "experiment.completed")
+        .collect();
+    assert_eq!(completed.len(), 1, "{events:?}");
+    assert_eq!(completed[0].field("status"), Some("halted"));
+}
+
+#[test]
 fn guard_breach_halts_experiment_and_runs_rollback() {
     let mut exp = minimal_experiment();
     exp.guards = vec![health_guard()];

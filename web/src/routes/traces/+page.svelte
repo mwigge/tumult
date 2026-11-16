@@ -136,9 +136,12 @@
             onchange={(e) => setFilter('outcome', e.currentTarget.value)}
         >
             <option value="">all outcomes</option>
-            <option value="completed">Completed</option>
-            <option value="deviated">Deviated</option>
-            <option value="failed">Failed</option>
+            <option value="completed">completed</option>
+            <option value="deviated">deviated</option>
+            <option value="failed">failed</option>
+            <option value="aborted">aborted</option>
+            <option value="interrupted">interrupted</option>
+            <option value="halted">halted</option>
             <option value="incomplete">incomplete</option>
         </select>
         <input

@@ -189,12 +189,13 @@ fn issue_stats(
 ) -> Result<(u64, u64, Option<f64>), String> {
     let rows = reader
         .query_json_rows(&format!(
-            "SELECT s.experiment_name AS name, s.ts_ns AS ts, l.log_attrs['status'] AS status \
+            "SELECT s.experiment_name AS name, s.ts_ns AS ts, {} AS status \
              FROM spans s LEFT JOIN logs l \
                ON l.log_attrs['experiment_id'] = s.experiment_id \
               AND l.body = 'experiment.completed' \
              WHERE s.span_name = 'resilience.experiment' AND s.experiment_name IS NOT NULL \
                AND s.ts_ns >= {from_ns} AND s.ts_ns < {to_ns}{} ORDER BY s.ts_ns",
+            tumult_lake::run_outcome_sql("s", "l"),
             scoring::and_env(scoring::env_in("s.target_environment", envs)),
         ))
         .map_err(|e| e.to_string())?;
@@ -208,7 +209,7 @@ fn issue_stats(
         ) else {
             continue;
         };
-        let ok = cell(row, "status") == Some("Completed");
+        let ok = cell(row, "status") == Some("completed");
         by_name.entry(name.to_string()).or_default().push((ts, ok));
     }
     let mut discovered = 0u64;

@@ -115,7 +115,8 @@ pub struct Scorecard {
 }
 
 /// Latest run per experiment: (ts_ns, outcome) for the most recent root
-/// span, plus run counts. Outcome joins tumult's `experiment.completed` log.
+/// span, plus run counts. `{STATUS}` takes the outcome of the run, by the
+/// rule of [`tumult_lake::run_outcome_sql`].
 /// Verified manual records (excluding inconclusive outcomes) are UNIONed in
 /// with `origin = 'manual'`; the latest row is picked per (name, target, environment, origin).
 /// Display names cannot merge distinct deployment targets or environments.
@@ -124,7 +125,7 @@ pub struct Scorecard {
 /// span, manual rows on the manual record.
 const LATEST_SQL: &str = "SELECT * FROM ( \
      SELECT s.experiment_name AS name, s.target_system AS target, \
-     s.ts_ns AS ts, s.fault_severity AS severity, l.log_attrs['status'] AS status, \
+     s.ts_ns AS ts, s.fault_severity AS severity, {STATUS} AS status, \
      'automated' AS origin, s.target_environment AS environment, s.experiment_id AS evidence_id, \
      (SELECT COUNT(*) FROM spans r WHERE r.span_name = 'resilience.experiment' \
       AND r.experiment_name = s.experiment_name \
@@ -216,6 +217,7 @@ pub fn portfolio_series_scoped(
 
 fn compute_as_of(reader: &Reader, as_of_ns: i64, envs: &[String]) -> Result<Scorecard, String> {
     let sql = LATEST_SQL
+        .replace("{STATUS}", &tumult_lake::run_outcome_sql("s", "l"))
         .replace("{AS_OF}", &as_of_ns.to_string())
         .replace("{ENV_S}", &and_env(env_in("s.target_environment", envs)))
         .replace("{ENV_R}", &and_env(env_in("r.target_environment", envs)))
@@ -244,11 +246,11 @@ fn compute_as_of(reader: &Reader, as_of_ns: i64, envs: &[String]) -> Result<Scor
             .get("severity")
             .and_then(serde_json::Value::as_str)
             .map(str::to_owned);
-        // tumult outcomes: Completed passes; Deviated/Failed fail; a missing
-        // outcome (incomplete run) counts as a failed attempt — conservative.
-        // Manual outcomes (lowercase): passed passes, partial scores 75,
+        // tumult outcomes: completed passes; every other ending fails; a
+        // missing outcome (incomplete run) counts as a failed attempt —
+        // conservative. Manual outcomes: passed passes, partial scores 75,
         // failed fails (inconclusive rows never reach the query).
-        let (score, state) = match outcome.as_deref().map(str::to_ascii_lowercase).as_deref() {
+        let (score, state) = match outcome.as_deref() {
             Some("completed") | Some("passed") => score_run(ts.map(|t| (t, true)), as_of_ns),
             Some("partial") => (75, RunState::Partial),
             _ => score_run(ts.map(|t| (t, false)), as_of_ns),
@@ -411,6 +413,57 @@ mod tests {
         let card = compute(&store.read_only().unwrap(), 10, None).unwrap();
         assert_eq!(card.experiments.len(), 3);
         assert!(card.experiments.iter().all(|e| e.runs == 1));
+    }
+
+    #[test]
+    fn a_run_is_scored_by_its_status_in_either_spelling() {
+        let d = tempfile::TempDir::new().unwrap();
+        let store = tumult_lake::Store::open(&d.path().join("k.duckdb")).unwrap();
+        let now = 100 * DAY;
+        let root = |id: &str, status: Option<&str>| tumult_lake::SpanRow {
+            ts_ns: now - DAY,
+            trace_id: format!("trace-{id}"),
+            span_id: format!("span-{id}"),
+            span_name: "resilience.experiment".into(),
+            experiment_id: Some(id.into()),
+            experiment_name: Some(id.into()),
+            outcome_status: status.map(str::to_string),
+            events: "[]".into(),
+            ..Default::default()
+        };
+        let writer = store.writer().unwrap();
+        // Stored before 3.0.2: the status is on the completed log, with a
+        // capital. Stored since: it is on the root span.
+        writer
+            .insert_spans(&[root("before", None), root("since", Some("completed"))])
+            .unwrap();
+        writer
+            .insert_logs(&[tumult_lake::LogRow {
+                ts_ns: now - DAY,
+                body: "experiment.completed".into(),
+                log_attrs: vec![
+                    ("experiment_id".to_string(), "before".to_string()),
+                    ("status".to_string(), "Completed".to_string()),
+                ],
+                ..tumult_lake::LogRow::default()
+            }])
+            .unwrap();
+
+        let card = compute(&store.read_only().unwrap(), now, None).unwrap();
+
+        let mut seen: Vec<(&str, RunState, Option<&str>)> = card
+            .experiments
+            .iter()
+            .map(|e| (e.name.as_str(), e.state, e.last_outcome.as_deref()))
+            .collect();
+        seen.sort_by_key(|(name, _, _)| *name);
+        assert_eq!(
+            seen,
+            [
+                ("before", RunState::Passed, Some("completed")),
+                ("since", RunState::Passed, Some("completed")),
+            ]
+        );
     }
 
     #[test]

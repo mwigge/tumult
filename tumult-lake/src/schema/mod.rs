@@ -140,9 +140,8 @@ pub const CREATE_TABLES: &[&str] = &[
 ];
 
 /// Rollup view: one row per experiment run, over the experiment root spans
-/// tumult emits as `resilience.experiment`. The outcome lives on tumult's
-/// `experiment.completed` log record (capitalised `status` attr), not on the
-/// span, so it is resolved via the same join the API list query uses.
+/// tumult emits as `resilience.experiment`. The outcome is read by the rule
+/// of [`run_outcome_sql`].
 /// CREATE OR REPLACE so existing databases pick up view changes on startup.
 pub const CREATE_VIEWS: &[&str] = &[EXPERIMENT_RUNS_VIEW, entities::VIEW];
 
@@ -150,6 +149,19 @@ pub const CREATE_VIEWS: &[&str] = &[EXPERIMENT_RUNS_VIEW, entities::VIEW];
 /// same version may have created without them. Run after
 /// [`CREATE_TABLES`] and before [`CREATE_VIEWS`].
 pub const AMEND_TABLES: &[&str] = &[entities::ADD_RECEIPT_COLUMN];
+
+/// The SQL expression for the status a run ended with, in the spelling of
+/// the journal: `completed`, `deviated`, `failed`, `aborted`, `interrupted`
+/// or `halted`. NULL for a run that has not ended.
+///
+/// `span` is the alias of the root span of the run and `log` the alias of
+/// its `experiment.completed` log record. The root span carries the status
+/// since 3.0.2. The log is read for runs stored before that, which spelled
+/// it with a capital, so the result is in lower case.
+#[must_use]
+pub fn run_outcome_sql(span: &str, log: &str) -> String {
+    format!("lower(coalesce({span}.outcome_status, {log}.log_attrs['status']))")
+}
 
 const EXPERIMENT_RUNS_VIEW: &str = "
 CREATE OR REPLACE VIEW experiment_runs AS
@@ -159,7 +171,7 @@ SELECT
     min(s.ts_ns) AS started_at_ns,
     max(s.ts_ns + s.duration_ns) AS ended_at_ns,
     max(s.duration_ns) AS duration_ns,
-    any_value(coalesce(s.outcome_status, l.log_attrs['status'])) AS outcome_status,
+    any_value(lower(coalesce(s.outcome_status, l.log_attrs['status']))) AS outcome_status,
     any_value(s.hypothesis_met) AS hypothesis_met
 FROM spans AS s
 LEFT JOIN logs AS l

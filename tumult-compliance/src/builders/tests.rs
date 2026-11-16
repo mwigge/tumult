@@ -472,7 +472,9 @@ fn evidence_pack_renders_register_provenance_attestation_and_findings() {
         .expect("findings bullets");
     assert_eq!(findings.len(), 1);
     assert!(findings[0].contains("flaky-exp"), "{findings:?}");
-    assert!(findings[0].contains("Deviated"), "{findings:?}");
+    // The seed spells the status with a capital, as a run stored before
+    // 3.0.2 does; the report gives it in the spelling of the journal.
+    assert!(findings[0].contains("deviated"), "{findings:?}");
 }
 
 #[test]
@@ -985,4 +987,52 @@ fn evidence_pack_does_not_assert_unverified_independence_or_clause_coverage() {
     assert!(!text.contains("Testing performed in line with"));
     assert!(text.contains("Independence has not been verified"));
     assert!(text.contains("Unmapped"));
+}
+
+#[test]
+fn a_fixed_issue_is_counted_from_runs_stored_in_either_spelling() {
+    let d = tempfile::TempDir::new().unwrap();
+    let store = tumult_lake::Store::open(&d.path().join("kronika.duckdb")).unwrap();
+    let root = |id: &str, status: Option<&str>, ts: i64| tumult_lake::SpanRow {
+        ts_ns: ts,
+        trace_id: format!("trace-{id}"),
+        span_id: format!("span-{id}"),
+        span_name: "resilience.experiment".into(),
+        experiment_id: Some(id.into()),
+        experiment_name: Some("failover".into()),
+        outcome_status: status.map(str::to_string),
+        events: "[]".into(),
+        ..Default::default()
+    };
+    let done = |id: &str, status: &str| tumult_lake::LogRow {
+        ts_ns: BASE_NS,
+        body: "experiment.completed".into(),
+        log_attrs: vec![
+            ("experiment_id".to_string(), id.to_string()),
+            ("status".to_string(), status.to_string()),
+        ],
+        ..tumult_lake::LogRow::default()
+    };
+    let writer = store.writer().unwrap();
+    // Two runs stored before 3.0.2, with the status on the completed log,
+    // and two stored since, with the status on the root span.
+    writer
+        .insert_spans(&[
+            root("old-deviated", None, BASE_NS),
+            root("old-completed", None, BASE_NS + HOUR_NS),
+            root("new-deviated", Some("deviated"), BASE_NS + 2 * HOUR_NS),
+            root("new-completed", Some("completed"), BASE_NS + 3 * HOUR_NS),
+        ])
+        .unwrap();
+    writer
+        .insert_logs(&[
+            done("old-deviated", "Deviated"),
+            done("old-completed", "Completed"),
+        ])
+        .unwrap();
+
+    let (discovered, fixed, _) =
+        issue_stats(&store.read_only().unwrap(), BASE_NS, BASE_NS + DAY_NS, &[]).unwrap();
+
+    assert_eq!((discovered, fixed), (2, 2));
 }

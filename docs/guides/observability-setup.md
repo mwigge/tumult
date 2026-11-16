@@ -536,8 +536,10 @@ The `experiment.started` and `experiment.completed` events are also emitted as s
 
 ```
 INFO experiment.started experiment_id="abc-123" title="Kill DB connections" triggered_by="cli"
-INFO experiment.completed experiment_id="abc-123" status="Completed" duration_ms=45231
+INFO experiment.completed experiment_id="abc-123" status=completed duration_ms=45231
 ```
+
+`experiment.completed` is written once for every run, however it ended. `status` is spelled as in the journal: `completed`, `deviated`, `failed`, `aborted`, `interrupted` or `halted`.
 
 The sample above is the terminal (text) rendering. Without a terminal the same events are JSON lines on stderr; see [Logging](logging.md) for the format and the field vocabulary.
 

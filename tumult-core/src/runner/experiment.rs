@@ -539,17 +539,6 @@ pub fn run_experiment_with_sampling(
         .filter(|r| r.status == ActivityStatus::Failed)
         .count() as u32;
 
-    // Structured audit log: experiment completion.
-    let deviations = u32::from(status == ExperimentStatus::Deviated);
-    tracing::info!(
-        experiment_id = %experiment_id,
-        experiment_title = %experiment.title,
-        status = ?status,
-        duration_ms = duration_ms,
-        deviations = deviations,
-        "experiment.completed"
-    );
-
     let journal = Journal {
         ended_at_ns,
         duration_ms,
@@ -628,7 +617,7 @@ fn recovery_measured(post: PostResult, method_succeeded: bool) -> PostResult {
 
 /// Close a run that had a root span, whichever way it ended: freeze the
 /// version of the target it measured, write the outcome on the root span,
-/// and record the per-experiment metrics — outcome counter, lifecycle
+/// log `experiment.completed`, and record the per-experiment metrics — outcome counter, lifecycle
 /// duration, and a deviation count tagged with the experiment title when
 /// the steady state was breached. Must run while the root span is still
 /// current.
@@ -643,6 +632,7 @@ fn seal(
         record_observed_version(journal.target_version.as_ref());
     }
     record_outcome_on_root_span(&journal);
+    log_completed(&journal);
     record_experiment_outcome(started, journal.status == ExperimentStatus::Completed);
     if journal.status == ExperimentStatus::Deviated {
         tumult_otel::instrument::record_deviation(
@@ -745,6 +735,20 @@ fn record_observed_version(version: Option<&TargetVersion>) {
 
 /// Put how the run ended on the current (root) span, where reports and the
 /// recovery numbers read it.
+/// Structured audit log: the run ended. Written once for every run that
+/// had a root span, with the status in the spelling of the journal.
+fn log_completed(journal: &Journal) {
+    let deviations = u32::from(journal.status == ExperimentStatus::Deviated);
+    tracing::info!(
+        experiment_id = %journal.experiment_id,
+        experiment_title = %journal.experiment_title,
+        status = %journal.status,
+        duration_ms = journal.duration_ms,
+        deviations = deviations,
+        "experiment.completed"
+    );
+}
+
 fn record_outcome_on_root_span(journal: &Journal) {
     let cx = opentelemetry::Context::current();
     for attribute in super::telemetry::outcome_attributes(journal) {

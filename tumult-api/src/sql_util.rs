@@ -90,6 +90,38 @@ pub(crate) fn sql_string(s: &str) -> String {
     format!("'{}'", s.replace('\'', "''"))
 }
 
+/// How a run can end, in the spelling of the journal.
+const RUN_ENDINGS: [&str; 6] = [
+    "completed",
+    "deviated",
+    "failed",
+    "aborted",
+    "interrupted",
+    "halted",
+];
+
+/// The predicate of the `outcome` filter on a list of runs: one of
+/// [`RUN_ENDINGS`] in any case, or `incomplete` for a run that has not
+/// ended. `span` and `log` are the aliases that
+/// [`tumult_lake::run_outcome_sql`] takes.
+///
+/// # Errors
+/// The message of the `400` answer when `outcome` is neither.
+pub(crate) fn run_outcome_where(outcome: &str, span: &str, log: &str) -> Result<String, String> {
+    let wanted = outcome.to_ascii_lowercase();
+    let status = tumult_lake::run_outcome_sql(span, log);
+    if wanted == "incomplete" {
+        return Ok(format!("{status} IS NULL"));
+    }
+    if RUN_ENDINGS.contains(&wanted.as_str()) {
+        return Ok(format!("{status} = {}", sql_string(&wanted)));
+    }
+    Err(format!(
+        "invalid outcome {wanted:?}; expected {}|incomplete",
+        RUN_ENDINGS.join("|")
+    ))
+}
+
 /// Quote a user-supplied substring for `ILIKE … ESCAPE '\'` (contains-match).
 pub(crate) fn sql_contains(s: &str) -> String {
     let esc = s

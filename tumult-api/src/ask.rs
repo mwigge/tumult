@@ -57,12 +57,13 @@ const GOLDEN: &[(&str, &str)] = &[
     ),
     (
         "which experiments failed",
-        "SELECT s.experiment_id, s.experiment_name, l.log_attrs['status'] AS status \
-         FROM spans s JOIN logs l \
+        "SELECT s.experiment_id, s.experiment_name, \
+         lower(coalesce(s.outcome_status, l.log_attrs['status'])) AS status \
+         FROM spans s LEFT JOIN logs l \
            ON l.log_attrs['experiment_id'] = s.experiment_id \
           AND l.body = 'experiment.completed' \
          WHERE s.span_name = 'resilience.experiment' \
-           AND l.log_attrs['status'] != 'Completed' \
+           AND lower(coalesce(s.outcome_status, l.log_attrs['status'])) != 'completed' \
          ORDER BY s.ts_ns DESC",
     ),
     (
@@ -81,7 +82,7 @@ const GOLDEN: &[(&str, &str)] = &[
     (
         "show recent experiments",
         "SELECT s.experiment_id, s.experiment_name, s.ts_ns AS started_ns, \
-         l.log_attrs['status'] AS status \
+         lower(coalesce(s.outcome_status, l.log_attrs['status'])) AS status \
          FROM spans s LEFT JOIN logs l \
            ON l.log_attrs['experiment_id'] = s.experiment_id \
           AND l.body = 'experiment.completed' \
@@ -128,11 +129,12 @@ fn schema_prompt() -> String {
          \n\
          SEMANTICS\n\
          - One experiment run = one span with span_name = 'resilience.experiment'.\n\
-         - Real tumult runs report their outcome in a logs row with \
-         body = 'experiment.completed'; the status lives in \
-         log_attrs['status'] ('Completed'|'Deviated'|'Failed'), keyed by \
-         log_attrs['experiment_id']. Join spans to it for outcomes — root \
-         spans themselves carry no outcome.\n\
+         - A run says how it ended in outcome_status of its root span: \
+         {endings}. Runs stored by an older version say it only in a logs row \
+         with body = 'experiment.completed', as log_attrs['status'] with a \
+         capital, keyed by log_attrs['experiment_id']. For the outcome of a \
+         run, LEFT JOIN that logs row as l to the root span s and read \
+         {outcome}.\n\
          - Pass/fail counters: metric_sums rows with \
          metric_name = 'tumult.experiments.total' and \
          outcome_status = 'success'|'failure'; deviations: \
@@ -146,7 +148,9 @@ fn schema_prompt() -> String {
          integer division (//).\n\
          \n\
          EXAMPLES\n\
-         {examples}"
+         {examples}",
+        endings = "'completed'|'deviated'|'failed'|'aborted'|'interrupted'|'halted'",
+        outcome = tumult_lake::run_outcome_sql("s", "l")
     )
 }
 
@@ -339,6 +343,24 @@ mod tests {
         let prompt = schema_prompt();
         assert!(prompt.contains("a resilience telemetry store"));
         assert!(!prompt.contains("chaos-engineering"));
+    }
+
+    #[test]
+    fn the_outcome_of_a_run_is_read_by_the_rule_of_the_lake() {
+        let rule = tumult_lake::run_outcome_sql("s", "l");
+        let reads_a_status = |sql: &&str| sql.contains("AS status");
+
+        let canned: Vec<&str> = GOLDEN
+            .iter()
+            .map(|(_, sql)| *sql)
+            .filter(reads_a_status)
+            .collect();
+
+        assert_eq!(canned.len(), 2);
+        for sql in canned {
+            assert!(sql.contains(&format!("{rule} AS status")), "{sql}");
+        }
+        assert!(schema_prompt().contains(&rule));
     }
 
     #[test]

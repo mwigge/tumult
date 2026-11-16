@@ -17,8 +17,9 @@
 //! * `GET /api/timeseries?metric=<name>&interval=5m|1h|1d&range=…` — any
 //!   semantic metric from the metrics directory as a bucketed series.
 //! * `GET /api/experiments?range=&outcome=&target=&fault=&q=` — experiment
-//!   list, newest first (outcome joined from tumult's `experiment.completed`
-//!   log attributes; root spans carry no outcome for real tumult data).
+//!   list, newest first. The outcome is one of completed, deviated, failed,
+//!   aborted, interrupted and halted, read by `tumult_lake::run_outcome_sql`;
+//!   `outcome=incomplete` is a run that has not ended.
 //! * `GET /api/experiments/{id}` — spans (waterfall), correlated logs and
 //!   metric points for one experiment.
 //! * `GET /api/dimensions` — distinct filter values (outcomes, targets,

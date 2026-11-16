@@ -384,11 +384,12 @@ fn runs_sql(window: &Window) -> String {
     let span_scope = and_pred(env_scope_where("s.target_environment", &window.envs));
     let manual_scope = and_pred(env_scope_where("m.target_environment", &window.envs));
     let (from, to) = (window.from_ns, window.to_ns);
+    let status = tumult_lake::run_outcome_sql("s", "l");
     format!(
         "SELECT s.experiment_id AS id, any_value(s.experiment_name) AS experiment, \
          any_value(s.target_system) AS system, any_value(s.target_environment) AS environment, \
          MIN(s.ts_ns) AS started_ns, \
-         any_value(COALESCE(s.outcome_status, l.log_attrs['status'])) AS status, \
+         any_value({status}) AS status, \
          false AS manual \
          FROM spans s LEFT JOIN logs l \
            ON l.log_attrs['experiment_id'] = s.experiment_id \

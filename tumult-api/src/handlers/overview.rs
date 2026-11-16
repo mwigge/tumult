@@ -250,7 +250,7 @@ pub(crate) async fn overview(
         let targets = reader
             .query_json_rows(&format!(
                 "SELECT s.target_system AS target, COUNT(*) AS experiments, \
-                 COUNT(*) FILTER (WHERE l.log_attrs['status'] = 'Completed') \
+                 COUNT(*) FILTER (WHERE {} = 'completed') \
                  / NULLIF(COUNT(*), 0) AS pass_rate \
                  FROM spans s LEFT JOIN logs l \
                    ON l.log_attrs['experiment_id'] = s.experiment_id \
@@ -259,6 +259,7 @@ pub(crate) async fn overview(
                    AND s.target_system IS NOT NULL \
                    AND s.ts_ns >= {} AND s.ts_ns < {}{} \
                  GROUP BY 1 ORDER BY experiments DESC LIMIT 10",
+                tumult_lake::run_outcome_sql("s", "l"),
                 cur.0,
                 cur.1,
                 and_pred(env_scope_where("s.target_environment", &scopes))

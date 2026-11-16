@@ -391,6 +391,7 @@ fn outcome_of(status: Option<&str>) -> Option<Outcome> {
 
 fn runs_sql(as_of_ns: i64, envs: &[String]) -> String {
     let scope = and_env(env_in("s.target_environment", envs));
+    let status = tumult_lake::run_outcome_sql("s", "l");
     format!(
         "SELECT COALESCE(s.experiment_id, s.span_id) AS id, s.experiment_name AS name, \
          s.ts_ns AS ts, s.target_system AS system, s.target_environment AS env, \
@@ -399,7 +400,7 @@ fn runs_sql(as_of_ns: i64, envs: &[String]) -> String {
          COALESCE(s.span_attrs['ict.entity.id'], s.resource_attrs['ict.entity.id']) AS entity, \
          COALESCE(s.span_attrs['ict.entity.tier'], s.resource_attrs['ict.entity.tier']) AS tier, \
          COALESCE(e.test_kind, s.span_attrs['resilience.test.kind']) AS kind, \
-         COALESCE(l.log_attrs['status'], s.outcome_status) AS status, \
+         {status} AS status, \
          e.rto_target_s AS rto_target_s, e.rpo_target_s AS rpo_target_s, \
          COALESCE(e.rto_measured_s, s.recovery_time_s) AS rto_measured_s, \
          e.rpo_measured_s AS rpo_measured_s \
@@ -1167,6 +1168,34 @@ functions:
                 api.env.as_deref()
             ),
             (Some("payments"), Some("api"), Some("prod"))
+        );
+    }
+
+    #[test]
+    fn the_status_of_a_run_is_read_in_either_spelling_and_from_its_root_span() {
+        let (_dir, store) = store_with(ORG);
+        let (before, before_log) = run("r1", "payments-db", "dr", "Completed", NOW - 3 * DAY_NS);
+        let (mut since, _) = run("r2", "payments-db", "dr", "", NOW - 2 * DAY_NS);
+        since.outcome_status = Some("completed".into());
+        let (mut halted, _) = run("r3", "payments-db", "dr", "", NOW - DAY_NS);
+        halted.outcome_status = Some("halted".into());
+        seed(&store, &[before, since, halted], &[before_log]);
+
+        let loaded = loaded(&store, request(&[]));
+
+        let seen: Vec<(&str, Outcome)> = loaded
+            .inputs
+            .evidence
+            .iter()
+            .map(|e| (e.id.as_str(), e.outcome))
+            .collect();
+        assert_eq!(
+            seen,
+            [
+                ("r1", Outcome::Passed),
+                ("r2", Outcome::Passed),
+                ("r3", Outcome::Failed),
+            ]
         );
     }
 

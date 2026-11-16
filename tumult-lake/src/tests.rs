@@ -187,8 +187,9 @@ fn writer_ingests_journal_visible_to_reader() {
 
 #[test]
 fn experiment_runs_resolves_outcome_from_completed_log() {
-    // tumult leaves span.outcome_status NULL; the outcome lives on the
-    // `experiment.completed` log record's capitalised `status` attr.
+    // A run stored before 3.0.2 has no outcome on its root span; it is on
+    // the `experiment.completed` log record, spelled with a capital. The
+    // view gives it in the spelling of the journal.
     let d = tempfile::TempDir::new().unwrap();
     let store = Store::open(&d.path().join("kronika.duckdb")).unwrap();
     let writer = store.writer().unwrap();
@@ -214,7 +215,7 @@ fn experiment_runs_resolves_outcome_from_completed_log() {
     let reader = store.read_only().unwrap();
     let runs = reader.experiment_runs().unwrap();
     assert_eq!(runs.len(), 1);
-    assert_eq!(runs[0].outcome_status.as_deref(), Some("Deviated"));
+    assert_eq!(runs[0].outcome_status.as_deref(), Some("deviated"));
     // The span's own outcome still wins when present.
     let writer = store.writer().unwrap();
     writer.insert_spans(&[sample_span("exp-span")]).unwrap();
@@ -226,6 +227,21 @@ fn experiment_runs_resolves_outcome_from_completed_log() {
         )
         .unwrap();
     assert_eq!(rows[1]["outcome_status"], serde_json::json!("completed"));
+}
+
+#[test]
+fn the_runs_view_reads_the_outcome_by_the_shared_rule() {
+    let rule = crate::run_outcome_sql("s", "l");
+
+    assert_eq!(
+        rule,
+        "lower(coalesce(s.outcome_status, l.log_attrs['status']))"
+    );
+    assert!(
+        crate::schema::CREATE_VIEWS[0].contains(&rule),
+        "{}",
+        crate::schema::CREATE_VIEWS[0]
+    );
 }
 
 #[test]
