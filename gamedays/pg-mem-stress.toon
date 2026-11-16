@@ -29,7 +29,7 @@ method[1]:
       type: process
       path: sh
       arguments[2]: "-c", "docker run --rm -v /var/run/docker.sock:/var/run/docker.sock ghcr.io/alexei-led/pumba:latest stress -d 5s --stressors='--vm 1 --vm-bytes 64M --timeout 5s' docker-postgres-1"
-      timeout_s: 10.0
+      timeout_s: 30.0
     pause_after_s: 2.0
 
 rollbacks[1]:
