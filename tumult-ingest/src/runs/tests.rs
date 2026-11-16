@@ -6,11 +6,11 @@ use std::time::Duration;
 use tokio::sync::Semaphore;
 use tokio_util::sync::CancellationToken;
 use tumult_core::runner::{ActivityExecutor, ActivityOutcome};
-use tumult_core::types::Activity;
+use tumult_core::types::{Activity, Experiment};
 use tumult_lake::{rollback_status, run_state, NewRun, RegisteredDefinition, Store};
 use tumult_test_utils::EnvGuard;
 
-use super::worker::{process, sweep_expired_approvals};
+use super::worker::{complete_or_cleanup, process, sweep_expired_approvals};
 use super::*;
 use crate::IngestWriter;
 
@@ -1467,6 +1467,106 @@ async fn late_approval_rejection_cannot_erase_running_cleanup_ownership() {
         assert!(result.is_err());
         assert_eq!(run_row(&fx, "reject-race")["state"], run_state::RUNNING);
     }
+}
+
+/// Run `TEST_TOON` to its end with no stop: the journal, and the status its
+/// `experiment.completed` log record carries.
+async fn run_to_its_end(
+    experiment: &Experiment,
+    executor: &Arc<dyn ActivityExecutor>,
+    controls: &Arc<tumult_core::controls::ControlRegistry>,
+) -> (tumult_core::types::Journal, String) {
+    let (experiment, executor, controls) = (experiment.clone(), executor.clone(), controls.clone());
+    // The runner blocks, and its log is captured on the thread it runs on.
+    tokio::task::spawn_blocking(move || {
+        let mut journal = None;
+        let logs = tumult_otel::logging::testing::capture_json(tracing::Level::INFO, || {
+            let config = tumult_core::runner::RunConfig::default();
+            journal =
+                tumult_core::runner::run_experiment(&experiment, &executor, &controls, &config)
+                    .ok();
+        });
+        let completed: Vec<_> = logs
+            .events
+            .iter()
+            .filter(|event| event["message"] == "experiment.completed")
+            .collect();
+        assert_eq!(completed.len(), 1, "{}", logs.raw);
+        let status = completed[0]["status"].as_str().expect("status").to_string();
+        (journal.expect("the run returned a journal"), status)
+    })
+    .await
+    .unwrap()
+}
+
+/// The one journal in the lake: its status, its end and its rollback count.
+fn stored_journal(fx: &Fixture) -> serde_json::Value {
+    let mut rows = Store::at(&fx.db_path)
+        .read_only()
+        .unwrap()
+        .query_json_rows("SELECT status, ended_at_ns, rollback_count FROM experiments")
+        .unwrap();
+    assert_eq!(rows.len(), 1, "{rows:?}");
+    rows.remove(0)
+}
+
+/// A stop that is accepted after the runner has returned comes too late to
+/// interrupt the run. The log and the root span of the run already say how
+/// it ended, so the journal in the lake must say the same. The stop still
+/// gets the cleanup it asks for.
+#[tokio::test]
+async fn a_late_stop_stores_the_status_the_run_logged() {
+    let fx = fixture().await;
+    exec_write(&fx.ingest, |writer| {
+        writer
+            .insert_run(&NewRun {
+                id: "late-stop".into(),
+                registry_id: "reg-1".into(),
+                params_json: None,
+                queued_at_ns: 1,
+                actor: None,
+            })
+            .and_then(|()| writer.mark_run_started("late-stop", None))
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .unwrap();
+    let (experiment, _) = prepare_run(TEST_TOON, &HashMap::new()).unwrap();
+    let executor: Arc<dyn ActivityExecutor> = Arc::new(RecordingExecutor {
+        executed: Arc::clone(&fx.executed),
+        delay: Duration::ZERO,
+    });
+    let controls = Arc::new(tumult_core::controls::ControlRegistry::new());
+    let (journal, logged) = run_to_its_end(&experiment, &executor, &controls).await;
+    assert_eq!(logged, "completed");
+
+    let ended_at_ns = journal.ended_at_ns;
+
+    let stop = CancellationToken::new();
+    stop.cancel();
+    complete_or_cleanup(
+        &fx.ingest,
+        "late-stop",
+        &experiment,
+        executor,
+        controls,
+        &stop,
+        journal,
+    )
+    .await;
+
+    let stored = stored_journal(&fx);
+    assert_eq!(stored["status"], serde_json::json!(logged));
+    assert_eq!(stored["ended_at_ns"], serde_json::json!(ended_at_ns));
+    assert_eq!(stored["rollback_count"], serde_json::json!(1));
+    let run = run_row(&fx, "late-stop");
+    assert_eq!(run["state"], serde_json::json!(run_state::PASSED));
+    assert_eq!(
+        run["rollback_status"],
+        serde_json::json!(rollback_status::COMPLETED)
+    );
+    let executed = fx.executed.lock().unwrap();
+    assert!(executed.contains(&"rollback-1".to_string()), "{executed:?}");
 }
 
 /// One action against a declared target that names no version.

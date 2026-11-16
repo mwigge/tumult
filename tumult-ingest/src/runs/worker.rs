@@ -243,7 +243,14 @@ fn verify_approval(
     Ok(())
 }
 
-async fn complete_or_cleanup(
+/// Store the outcome of a run the runner has returned from.
+///
+/// A stop can be accepted after the runner returns and before this write.
+/// The writer refuses the write then. Such a stop comes too late to interrupt
+/// anything: the log and the root span of the run already say how it ended,
+/// so the journal keeps that status. The stop still gets the cleanup it asks
+/// for: the rollbacks run here when the run did not run them itself.
+pub(super) async fn complete_or_cleanup(
     ingest: &IngestWriter,
     run_id: &str,
     experiment: &Experiment,
@@ -252,59 +259,62 @@ async fn complete_or_cleanup(
     token: &CancellationToken,
     mut journal: Journal,
 ) {
-    let completion = record_completion(ingest, run_id, experiment, &journal, token).await;
-    if completion.is_ok() {
+    let first = record_completion(ingest, run_id, experiment, &journal, token, false).await;
+    let Err(error) = first else {
         return;
-    }
-    // A stop can arrive after the runner returns but before its terminal write.
-    // The writer rejects that completion; perform cleanup, then retry once.
-    if token.is_cancelled() && journal.status != ExperimentStatus::Interrupted {
-        journal.status = ExperimentStatus::Interrupted;
-        journal.analysis = None;
-        if journal.rollback_results.is_empty() {
-            let cleanup_experiment = experiment.clone();
-            match tokio::task::spawn_blocking(move || {
-                tumult_core::runner::run_orphan_rollback(&cleanup_experiment, &executor, &controls)
-            })
-            .await
-            {
-                Ok(results) => {
-                    journal.rollback_failures = u32::try_from(
-                        results
-                            .iter()
-                            .filter(|r| r.status != tumult_core::types::ActivityStatus::Succeeded)
-                            .count(),
-                    )
-                    .unwrap_or(u32::MAX);
-                    journal.rollback_results = results;
-                }
-                Err(error) => {
-                    record_failure(ingest, run_id, &format!("late-stop cleanup: {error}")).await;
-                    return;
-                }
-            }
-        }
-        journal.ended_at_ns = now_ns();
-        journal.duration_ms =
-            u64::try_from(journal.ended_at_ns.saturating_sub(journal.started_at_ns) / 1_000_000)
-                .unwrap_or(0);
-        if let Err(error) = record_completion(ingest, run_id, experiment, &journal, token).await {
-            tracing::error!(%run_id, %error, "stopped-run completion failed; leaving run recoverable");
-        }
-        return;
-    }
-    if let Err(error) = completion {
+    };
+    let late_stop = token.is_cancelled() && journal.status != ExperimentStatus::Interrupted;
+    if !late_stop {
         tracing::error!(%run_id, %error, "completion persistence failed; leaving run recoverable");
+        return;
+    }
+    if journal.rollback_results.is_empty() {
+        let rolled_back =
+            roll_back_after_late_stop(experiment, executor, controls, &mut journal).await;
+        if let Err(error) = rolled_back {
+            record_failure(ingest, run_id, &format!("late-stop cleanup: {error}")).await;
+            return;
+        }
+    }
+    if let Err(error) = record_completion(ingest, run_id, experiment, &journal, token, true).await {
+        tracing::error!(%run_id, %error, "stopped-run completion failed; leaving run recoverable");
     }
 }
 
+/// Run the rollbacks a late stop asks for and add their results to the
+/// journal. The run itself had ended: its status, end time and duration stay
+/// as the runner wrote them, and each rollback result carries its own times.
+async fn roll_back_after_late_stop(
+    experiment: &Experiment,
+    executor: std::sync::Arc<dyn tumult_core::runner::ActivityExecutor>,
+    controls: std::sync::Arc<tumult_core::controls::ControlRegistry>,
+    journal: &mut Journal,
+) -> Result<(), tokio::task::JoinError> {
+    let experiment = experiment.clone();
+    let results = tokio::task::spawn_blocking(move || {
+        tumult_core::runner::run_orphan_rollback(&experiment, &executor, &controls)
+    })
+    .await?;
+    let failures = results
+        .iter()
+        .filter(|result| result.status != tumult_core::types::ActivityStatus::Succeeded)
+        .count();
+    journal.rollback_failures = u32::try_from(failures).unwrap_or(u32::MAX);
+    journal.rollback_results = results;
+    Ok(())
+}
+
 /// Terminal state + journal ingest for a finished run.
+///
+/// Refused when a stop was accepted that the runner did not see, until
+/// `stop_cleaned_up` says the cleanup of that stop is done.
 async fn record_completion(
     ingest: &IngestWriter,
     run_id: &str,
     experiment: &Experiment,
     journal: &Journal,
     token: &CancellationToken,
+    stop_cleaned_up: bool,
 ) -> Result<(), String> {
     let state = if journal.rollback_failures > 0 {
         run_state::ROLLBACK_PENDING
@@ -326,7 +336,8 @@ async fn record_completion(
     let journal = journal.clone();
     let token = token.clone();
     let result = exec_write(ingest, move |writer| {
-        if token.is_cancelled() && journal.status != ExperimentStatus::Interrupted {
+        let stop_unseen = token.is_cancelled() && journal.status != ExperimentStatus::Interrupted;
+        if stop_unseen && !stop_cleaned_up {
             return Err("stop accepted before completion; cleanup required".into());
         }
         // Evidence must commit before a terminal state excludes this run from
