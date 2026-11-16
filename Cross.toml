@@ -1,0 +1,8 @@
+# The musl images of cross 0.2.5 ship GCC 9.2, which cannot compile the
+# bundled DuckDB 2.0 sources. These are the cross `main` images (GCC 14),
+# pinned by digest so a release build does not change under us.
+[target.x86_64-unknown-linux-musl]
+image = "ghcr.io/cross-rs/x86_64-unknown-linux-musl@sha256:4043a111de4bdb21628be33eb1a9e90dcfcb07ea96ed9df43bb2e9be53b32a05"
+
+[target.aarch64-unknown-linux-musl]
+image = "ghcr.io/cross-rs/aarch64-unknown-linux-musl@sha256:8b7fd8ef9ea82f0687baeeec281e1bc2667d84d5f4d65c8720636f1a2daf9c2f"
