@@ -25,38 +25,62 @@ if [ -z "${TUMULT_DEMO_NS:-}" ]; then
 fi
 
 STORE="${TUMULT_TOPOLOGY_DEMO_STORE:-$PWD/demo/proof/topology/store.duckdb}"
-export TUMULT_ANALYTICS_PATH="$STORE"
+# `tumult run` writes each run to the store the maps below read.
+export TUMULT_LAKE_PATH="$STORE"
 PROOF=demo/proof/topology
 BIN="${TUMULT_BIN:-./target/debug/tumult}"
 export TUMULT_NET_PROXYD="${TUMULT_NET_PROXYD:-$PWD/target/debug/tumult-net-proxyd}"
-mkdir -p "$PROOF"
+JOURNALS="$PROOF/journals"
+mkdir -p "$PROOF" "$JOURNALS"
 
 step() { printf '\n=== %s ===\n' "$*"; }
+
+# One proof line: the command after the message must succeed. `set -e` does
+# not see a failing `check && echo` line, so every check goes through here.
+check() {
+  local number=$1 message=$2
+  shift 2
+  if ! "$@"; then
+    echo "PROOF ${number} FAIL: ${message}" >&2
+    exit 1
+  fi
+  echo "PROOF ${number} OK: ${message}"
+}
 
 import_topology() {
   "$BIN" topology import demo/topology/topology.toml --store "$STORE"
 }
 
+# Run one demo experiment. Each keeps its own journal, and --force replaces
+# the one of an earlier demo: the CLI does not write over a journal otherwise.
+run_experiment() {
+  "$BIN" run "demo/experiments/$1.toon" --journal-path "$JOURNALS/$1.journal.toon" --force
+}
+
 demo1() {
   step "demo 1: green lineage (DORA Art. 25 on demo-app)"
   import_topology
-  "$BIN" run demo/experiments/demo-net.toon
+  run_experiment demo-net
   "$BIN" topology map --store "$STORE" --framework DORA > "$PROOF/1-map-after-green.txt"
   # The scoped view is the story shot: one control, evidence visible.
   "$BIN" topology map --store "$STORE" --framework DORA --control "Art.25" --format mermaid > "$PROOF/1-map-after-green.mmd"
   "$BIN" topology lineage --store "$STORE" --framework DORA --format json > "$PROOF/1-lineage.json"
-  grep -q "evidenced" "$PROOF/1-map-after-green.txt" && echo "PROOF 1 OK: Art.25 evidenced on demo-app"
+  # The legend of a map holds the word too, so the check reads the cell line.
+  check 1 "Art.25 evidenced on demo-app" grep -q "DORA/Art.25 evidenced" "$PROOF/1-map-after-green.txt"
 }
 
 demo2() {
   step "demo 2: break + attribution (guard halt on demo-postgres)"
   import_topology
-  "$BIN" run demo/experiments/demo-guard-halt.toon || true  # halt = non-zero exit, expected
+  # The guard halts the run, so it ends non-zero. Its status line is the proof.
+  run_output=$(run_experiment demo-guard-halt 2>&1) || true
+  echo "$run_output"
+  check 2 "the guard halted the run" grep -q "^Status: Halted" <<< "$run_output"
   "$BIN" topology map --store "$STORE" --framework DORA > "$PROOF/2-map-after-break.txt"
   "$BIN" topology map --store "$STORE" --framework DORA --format mermaid > "$PROOF/2-map-after-break.mmd"
   "$BIN" topology lineage --store "$STORE" --framework DORA --format json > "$PROOF/2-lineage.json"
-  grep -q "BROKEN" "$PROOF/2-map-after-break.txt" && echo "PROOF 2 OK: break visible on map"
-  grep -q "pause-database" "$PROOF/2-lineage.json" && echo "PROOF 2 OK: cause attributed to pause-database"
+  check 2 "break visible on map" grep -q "^\[BROKEN\] svc:demo-postgres" "$PROOF/2-map-after-break.txt"
+  check 2 "cause attributed to pause-database" grep -q "pause-database" "$PROOF/2-lineage.json"
 }
 
 demo3() {
@@ -72,7 +96,7 @@ assert recs[0]["article_id"] == "compliance:DORA/Art.11", "top pick must be the 
 assert any("21(2)(c)" in r["article_id"] for r in recs), "NIS2 BC/DR gap must be flagged"
 print("PROOF 3 OK: top pick = broken DORA/Art.11; NIS2 21(2)(c) gap flagged")
 PY
-  "$BIN" run demo/experiments/demo-topo-recommended.toon
+  run_experiment demo-topo-recommended
   "$BIN" topology map --store "$STORE" > "$PROOF/3-map-after.txt"
   "$BIN" topology map --store "$STORE" --framework NIS2 --control "Art.21(2)(c)" --format mermaid > "$PROOF/3-map-after.mmd"
   "$BIN" topology lineage --store "$STORE" --framework NIS2 --format json > "$PROOF/3-lineage-after.json"
@@ -96,16 +120,16 @@ demo4() {
   # broken service is the revalidation of the break itself.
   "$BIN" autopilot once --policy "$POLICY" --execute --limit 4 --store "$STORE" \
     | tee "$PROOF/4-autopilot-pass1.txt"
-  grep -q "\[enact\]" "$PROOF/4-autopilot-pass1.txt" && echo "PROOF 4 OK: gate enacted the pretrusted class"
-  grep -qiE "run_completed|-> completed" "$PROOF/4-autopilot-pass1.txt" && echo "PROOF 4 OK: enacted run completed"
-  grep -q "ambient.no_open_deviation" "$PROOF/4-autopilot-pass1.txt" && echo "PROOF 4 OK: gate vetoed new faults into the broken service"
+  check 4 "gate enacted the pretrusted class" grep -q "\[enact\]" "$PROOF/4-autopilot-pass1.txt"
+  check 4 "enacted run completed" grep -qiE "run_completed|-> completed" "$PROOF/4-autopilot-pass1.txt"
+  check 4 "gate vetoed new faults into the broken service" grep -q "ambient.no_open_deviation" "$PROOF/4-autopilot-pass1.txt"
 
   # Pass 2, same policy, minutes later: the same top candidate now hits the
   # per-service cooldown -> downgraded to the human queue with the exact
   # rule recorded. A human denies it with a reason; the denial is feedback.
   "$BIN" autopilot once --policy "$POLICY" --execute --limit 2 --store "$STORE" \
     | tee "$PROOF/4-autopilot-pass2.txt"
-  grep -qE "\[(downgrade|propose)\].*cooldown" "$PROOF/4-autopilot-pass2.txt" && echo "PROOF 4 OK: cooldown downgraded the repeat to the human queue"
+  check 4 "cooldown downgraded the repeat to the human queue" grep -qE "\[(downgrade|propose)\].*cooldown" "$PROOF/4-autopilot-pass2.txt"
 
   "$BIN" autopilot status --store "$STORE" --format json > "$PROOF/4-status.json"
   DENY_ID=$(python3 - "$PROOF/4-status.json" << 'PY'
@@ -120,13 +144,13 @@ PY
   test -n "$DENY_ID"
   "$BIN" autopilot deny "$DENY_ID" --reason "demo: not this quarter" --store "$STORE"
   "$BIN" autopilot status --store "$STORE" --format json > "$PROOF/4-status-after-deny.json"
-  grep -q "human_denied" "$PROOF/4-status-after-deny.json" && echo "PROOF 4 OK: human veto recorded as feedback"
+  check 4 "human veto recorded as feedback" grep -q "human_denied" "$PROOF/4-status-after-deny.json"
 
   # Lineage: decisions are graph citizens; archive: parquet cold store.
   "$BIN" chaosgraph query --kind recommendation --store "$STORE" > "$PROOF/4-graph-recommendations.txt"
-  grep -q "rec:" "$PROOF/4-graph-recommendations.txt" && echo "PROOF 4 OK: decisions are graph nodes"
+  check 4 "decisions are graph nodes" grep -q "rec:" "$PROOF/4-graph-recommendations.txt"
   "$BIN" autopilot export "$PROOF/parquet" --store "$STORE"
-  test -f "$PROOF/parquet/autopilot_decisions.parquet" && echo "PROOF 4 OK: parquet archive written"
+  check 4 "parquet archive written" test -f "$PROOF/parquet/autopilot_decisions.parquet"
 }
 
 demo5() {
@@ -136,13 +160,13 @@ demo5() {
   # gate refuses autonomy for a blast it cannot see.
   "$BIN" autopilot once --policy demo/topology/autopilot-blind.toml --limit 1 --store "$STORE" \
     | tee "$PROOF/5-blind-guard.txt"
-  grep -qE "guard.telemetry|telemetry" "$PROOF/5-blind-guard.txt" && echo "PROOF 5 OK: blind guard caught by dynamic pre-flight"
+  check 5 "blind guard caught by dynamic pre-flight" grep -qE "guard.telemetry|telemetry" "$PROOF/5-blind-guard.txt"
 
   # 5b. Enrollment (structural consent): demo-postgres is not enrolled in
   # this policy variant — injection is structurally impossible, verdict veto.
   "$BIN" autopilot once --policy demo/topology/autopilot-unenrolled.toml --limit 1 --store "$STORE" \
     | tee "$PROOF/5-unenrolled.txt"
-  grep -q "target.enrolled" "$PROOF/5-unenrolled.txt" && echo "PROOF 5 OK: unenrolled target vetoed"
+  check 5 "unenrolled target vetoed" grep -q "target.enrolled" "$PROOF/5-unenrolled.txt"
 
   # 5c. Change-event trigger: a deploy notification invalidates demo-app's
   # evidence; the next pass carries a change_event-triggered decision.
@@ -151,7 +175,7 @@ demo5() {
   "$BIN" autopilot once --policy demo/topology/autopilot.toml --limit 4 --store "$STORE" \
     | tee "$PROOF/5-change-event-pass.txt"
   "$BIN" autopilot status --store "$STORE" --format json > "$PROOF/5-status.json"
-  grep -q "change_event" "$PROOF/5-status.json" && echo "PROOF 5 OK: change event produced a decision"
+  check 5 "change event produced a decision" grep -q "change_event" "$PROOF/5-status.json"
 
   # 5d. OTel-derived criticality: real span counts from the demo's SigNoz
   # ClickHouse, handed to the recommender as a reviewable artifact.
@@ -161,7 +185,7 @@ demo5() {
     > "$PROOF/5-criticality.json"
   TUMULT_CRITICALITY_FILE="$PROOF/5-criticality.json" \
     "$BIN" topology recommend --limit 6 --format json --store "$STORE" > "$PROOF/5-recommend-critical.json"
-  grep -q "observed traffic" "$PROOF/5-recommend-critical.json" && echo "PROOF 5 OK: OTel span rates weighted the recommendation"
+  check 5 "OTel span rates weighted the recommendation" grep -q "observed traffic" "$PROOF/5-recommend-critical.json"
 }
 
 case "${1:-all}" in

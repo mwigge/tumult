@@ -271,5 +271,7 @@ jobs:
       - run: bash -n scripts/demo-check.sh
       - run: python3 scripts/test-starmap-check.py
       - run: python3 scripts/test-check-proof-journals.py
+      - run: bash -n scripts/demo-topology.sh
+      - run: python3 scripts/test-demo-topology.py
       - run: python3 scripts/test-check-test-hygiene.py
       - run: python3 scripts/check-test-hygiene.py

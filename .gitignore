@@ -50,6 +50,7 @@ target-deb/
 target-deb-cp/
 target-win/
 demo/proof/topology/autopilot-journals/
+demo/proof/topology/journals/
 demo/proof/topology/cast-store.duckdb
 demo/proof/topology/store.duckdb
 demo/topology/hosts
