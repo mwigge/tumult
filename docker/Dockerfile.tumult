@@ -1,4 +1,4 @@
-# Tumult — chaos engineering platform (CLI + MCP server)
+# Tumult — resilience intelligence platform (CLI + MCP server)
 #
 # Single image with both binaries, bundled providers, example experiments,
 # and GameDay definitions. Use `tumult discover` for the runtime inventory.

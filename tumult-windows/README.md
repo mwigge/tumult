@@ -1,6 +1,6 @@
 # tumult-windows
 
-Windows-native fault injection for the Tumult chaos-engineering platform.
+Windows-native fault injection for the Tumult resilience intelligence platform.
 
 `tumult-windows` implements the `NativeExecutor` trait (like `tumult-ssh`,
 `tumult-net`, `tumult-kubernetes`, and `tumult-cloud`) and is registered in the

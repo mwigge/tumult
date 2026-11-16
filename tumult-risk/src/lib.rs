@@ -1,4 +1,5 @@
-//! Passive resilience risk scanning and the continuous posture score.
+//! Passive resilience risk scanning and the continuous resilience score
+//! (the `posture` module and `GET /api/posture`).
 //!
 //! Harness and Gremlin lead with *risks and coverage gaps* and only then
 //! with fault injection; this crate gives Tumult the same opening move

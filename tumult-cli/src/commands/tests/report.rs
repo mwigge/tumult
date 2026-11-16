@@ -197,6 +197,13 @@ fn html_footer_has_version_and_hash() {
     assert!(html.contains("<code>0123abcd0123abcd</code>"));
 }
 
+#[test]
+fn html_footer_names_the_resilience_intelligence_platform() {
+    let html = generate_html_report(&journal_with_failure(), None, "hash");
+    assert!(html.contains("Rust-native resilience intelligence platform"));
+    assert!(!html.contains("chaos engineering platform"));
+}
+
 // ── Compliance: recovery-aware verdict ────────────────────
 
 #[test]

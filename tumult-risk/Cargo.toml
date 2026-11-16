@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "Rules-based passive resilience risk scanner (coverage gaps, stale evidence, breached objectives, untested dependencies, workload manifests) and the continuous posture score"
+description = "Rules-based passive resilience risk scanner (coverage gaps, stale evidence, breached objectives, untested dependencies, workload manifests) and the continuous resilience score"
 
 [dependencies]
 serde = { workspace = true }

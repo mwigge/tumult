@@ -114,7 +114,7 @@ fn schema_prompt() -> String {
         .join("\n\n");
     format!(
         "You translate natural-language questions into DuckDB SQL over a \
-         chaos-engineering telemetry store.\n\
+         resilience telemetry store.\n\
          \n\
          TABLES\n\
          - spans(ts_ns BIGINT epoch-ns, trace_id, span_id, parent_span_id, span_name, \
@@ -332,6 +332,13 @@ mod tests {
         assert!(golden_sql("How many experiments ran?").is_some());
         assert!(golden_sql("  what is the pass rate! ").is_some());
         assert!(golden_sql("something entirely different").is_none());
+    }
+
+    #[test]
+    fn schema_prompt_describes_a_resilience_store() {
+        let prompt = schema_prompt();
+        assert!(prompt.contains("a resilience telemetry store"));
+        assert!(!prompt.contains("chaos-engineering"));
     }
 
     #[test]
