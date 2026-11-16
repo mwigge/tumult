@@ -7,7 +7,7 @@
 
 mod lab;
 
-use lab::{experiment, heal, inject, leave_marker, reads, step, Lab};
+use lab::{experiment, heal, inject, leave_marker, reads, step, with_block, Lab};
 use tumult_lake::lake::{committed_file, export, LakeConfig};
 use tumult_lake::{Reader, Store};
 
@@ -173,5 +173,41 @@ fn the_archive_of_the_store_holds_the_samples_and_the_verdict_of_a_run() {
     assert_eq!(
         verdicts,
         [serde_json::json!({"nfr_id": "rto", "state": "met"})]
+    );
+}
+
+/// The target a definition declares.
+const TARGET: &str = "target:
+  system: lab-target
+  technology: file
+  environment: lab
+";
+
+#[test]
+fn a_run_without_a_trace_is_placed_by_the_target_of_its_definition() {
+    let lab = Lab::with_state("ok");
+    let method = [inject(), heal()].concat();
+    let plain = experiment(&method, &leave_marker());
+    let on_a_target = with_block(&plain, TARGET).replacen("Probe tolerance", "On a target", 1);
+    for (name, definition) in [("plain", &plain), ("on-a-target", &on_a_target)] {
+        let file = format!("{name}.toon");
+        std::fs::write(lab.path(&file), definition).expect("experiment");
+        let journal = format!("{name}-journal.toon");
+        let output = lab.tumult(&["run", &file, "--journal-path", &journal]);
+        assert_eq!(output.status.code(), Some(0), "{name}");
+    }
+
+    let roots = rows(
+        &lab,
+        "SELECT experiment_name, target_system, target_technology, target_environment \
+         FROM run_roots ORDER BY experiment_name",
+    );
+
+    assert_eq!(
+        roots,
+        [
+            ["On a target", "lab-target", "file", "lab"],
+            ["Probe tolerance", "NULL", "NULL", "NULL"],
+        ]
     );
 }

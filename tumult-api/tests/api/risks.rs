@@ -232,11 +232,15 @@ async fn recommend_scaffolds_registers_and_proposes_a_candidate() {
         "{body}"
     );
     assert_eq!(exp["registered"], true);
+    // The registered definition is one a run can read: it names the kind
+    // once, and the target of the finding.
     let toon = exp["toon"].as_str().unwrap();
-    assert!(
-        toon.contains("kind: robustness") && toon.contains("system: database"),
-        "{toon}"
-    );
+    let definition =
+        tumult_core::engine::parse_experiment(toon).unwrap_or_else(|e| panic!("{e}:\n{toon}"));
+    assert_eq!(definition.kind, tumult_core::types::TestKind::Robustness);
+    let target = definition.target.expect("the definition names its target");
+    assert_eq!(target.system, "database");
+    assert_eq!(target.environment.as_deref(), Some("demo"));
     let cand = &body["candidate"];
     assert_eq!(cand["trigger"]["type"], "risk");
     assert_eq!(cand["trigger"]["risk_id"], id);

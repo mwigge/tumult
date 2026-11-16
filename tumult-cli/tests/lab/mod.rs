@@ -8,8 +8,9 @@
 // Each test binary uses its own part of this module.
 #![allow(dead_code)]
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
+use std::time::{Duration, Instant};
 
 use tumult_core::journal::read_journal;
 use tumult_core::types::{ActivityResult, Journal};
@@ -157,6 +158,14 @@ rollbacks[{undo}]:
     )
 }
 
+/// `definition` with `block` among the keys of the file, before the steady
+/// state.
+pub fn with_block(definition: &str, block: &str) -> String {
+    let steady = "steady_state_hypothesis:";
+    assert!(definition.contains(steady), "{definition}");
+    definition.replacen(steady, &format!("{block}\n{steady}"), 1)
+}
+
 pub fn leave_marker() -> String {
     step("leave-marker", "action", "touch rolled-back")
 }
@@ -175,4 +184,14 @@ pub fn result(results: &[ActivityResult], name: &str) -> ActivityResult {
         .find(|result| result.name == name)
         .cloned()
         .unwrap_or_else(|| panic!("no step {name}"))
+}
+
+/// Wait until another process has left the file `path`.
+pub fn wait_for(path: &Path) {
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while !path.exists() {
+        assert!(Instant::now() < deadline, "{} never came", path.display());
+        // sleep: interval of the bounded poll for a file of another process.
+        std::thread::sleep(Duration::from_millis(20));
+    }
 }

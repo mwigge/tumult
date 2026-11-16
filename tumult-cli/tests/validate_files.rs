@@ -6,7 +6,7 @@
 
 mod lab;
 
-use lab::{experiment, heal, inject, leave_marker, Lab};
+use lab::{experiment, heal, inject, leave_marker, with_block, Lab};
 
 /// The manifest of the plugin `name` with one action and one probe.
 fn manifest(name: &str, action: &str, probe: &str) -> String {
@@ -148,4 +148,150 @@ fn a_key_written_twice_in_a_step_is_named_with_both_lines() {
          experiment file parse error: key 'name' is written twice in one object \
          (lines 28 and 29); only the last one would be used"
     );
+}
+
+/// The experiment of the lab with `block` among the keys of the file.
+fn experiment_with(block: &str) -> String {
+    let method = [inject(), heal()].concat();
+    with_block(&experiment(&method, &leave_marker()), block)
+}
+
+/// An objective on `metric`.
+fn objective_on(metric: &str) -> String {
+    format!("nfr[1]{{id,kind,metric,operator,threshold}}:\n  fast,latency,{metric},lte,100\n")
+}
+
+/// A guard whose probe is `function` of the script plugin `plugin`.
+fn guard_of(plugin: &str, function: &str) -> String {
+    format!(
+        r#"guards[1]:
+  - name: watch
+    probe:
+      name: watch-read
+      activity_type: probe
+      provider:
+        type: script
+        plugin: {plugin}
+        function: {function}
+      tolerance:
+        type: regex
+        pattern: "^ok$"
+"#
+    )
+}
+
+/// A control that runs `function` of the script plugin `plugin`.
+fn control_of(plugin: &str, function: &str) -> String {
+    format!(
+        "controls[1]:
+  - name: lifecycle
+    provider:
+      type: script
+      plugin: {plugin}
+      function: {function}
+"
+    )
+}
+
+#[test]
+fn an_objective_on_a_probe_of_the_steady_state_passes() {
+    let definition = experiment_with(&objective_on("probe.steady.p95_ms"));
+
+    let (passed, stdout, error) = validate(&Lab::with_state("ok"), &definition);
+
+    assert!(passed, "{stdout}{error}");
+}
+
+#[test]
+fn an_objective_on_a_probe_the_steady_state_does_not_have_is_refused() {
+    let definition = experiment_with(&objective_on("probe.health.p95_ms"));
+
+    let (passed, stdout, error) = validate(&Lab::with_state("ok"), &definition);
+
+    assert!(!passed, "{stdout}");
+    assert_eq!(
+        error,
+        "nfr objective 'fast' is invalid: metric 'probe.health.p95_ms' names the probe \
+         'health', which the steady-state hypothesis does not have (its probes: steady)"
+    );
+}
+
+#[test]
+fn an_objective_on_a_metric_no_run_measures_is_refused_with_the_ones_a_run_does() {
+    let definition = experiment_with(&objective_on("latency.p42"));
+
+    let (passed, stdout, error) = validate(&Lab::with_state("ok"), &definition);
+
+    assert!(!passed, "{stdout}");
+    let known = error
+        .strip_prefix(
+            "nfr objective 'fast' is invalid: metric 'latency.p42' is not in the catalogue (known: ",
+        )
+        .unwrap_or_else(|| panic!("{error}"));
+    assert!(known.starts_with("load.throughput_rps, "), "{known}");
+    assert!(
+        known.ends_with(", probe.<name>.<mean_ms|max_ms|p95_ms|error_rate>)"),
+        "{known}"
+    );
+}
+
+#[test]
+fn a_guard_and_a_control_of_an_installed_script_plugin_pass() {
+    let definition = experiment_with(
+        &[
+            guard_of("lab-target", "read"),
+            control_of("lab-queue", "pause"),
+        ]
+        .concat(),
+    );
+
+    let (passed, stdout, error) = validate(&lab_with_plugins(), &definition);
+
+    assert!(passed, "{stdout}{error}");
+}
+
+#[test]
+fn a_guard_of_a_script_plugin_that_is_not_installed_is_named() {
+    let definition = experiment_with(&guard_of("lab-cache", "read"));
+
+    let (passed, stdout, error) = validate(&lab_with_plugins(), &definition);
+
+    assert!(!passed, "{stdout}");
+    assert_eq!(
+        error,
+        "1 step names something this binary cannot run:\n  \
+         guard 'watch' uses unknown script plugin 'lab-cache' (available: lab-queue, lab-target)"
+    );
+}
+
+#[test]
+fn a_control_of_a_function_its_script_plugin_does_not_have_is_named() {
+    let definition = experiment_with(&control_of("lab-queue", "depth-of"));
+
+    let (passed, stdout, error) = validate(&lab_with_plugins(), &definition);
+
+    assert!(!passed, "{stdout}");
+    assert_eq!(
+        error,
+        "1 step names something this binary cannot run:\n  \
+         control 'lifecycle' uses unknown action 'lab-queue::depth-of' (available: pause, depth)"
+    );
+}
+
+#[test]
+fn a_script_plugin_name_that_is_a_path_is_refused_for_a_guard_and_for_a_control() {
+    let of_guard = experiment_with(&guard_of("../outside", "read"));
+    let of_control = experiment_with(&control_of("../outside", "pause"));
+
+    let (_, _, guard) = validate(&lab_with_plugins(), &of_guard);
+    let (_, _, control) = validate(&lab_with_plugins(), &of_control);
+
+    let refused = |owner: &str| {
+        format!(
+            "invalid script provider in activity '{owner}': \
+             plugin '../outside' must not contain path separators"
+        )
+    };
+    assert_eq!(guard, refused("watch"));
+    assert_eq!(control, refused("lifecycle"));
 }
