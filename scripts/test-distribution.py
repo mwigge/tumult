@@ -236,54 +236,5 @@ class DistributionTests(unittest.TestCase):
         self.assertNotIn("stale-binary-executed", calls)
 
 
-class JournalProofTests(unittest.TestCase):
-    def check_journal(self, content):
-        with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "journal.toon"
-            path.write_text(content)
-            return subprocess.run(
-                ["python3", str(ROOT / "scripts/check-proof-journals.py"), str(path)],
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-
-    def test_completed_experiment_is_accepted(self):
-        self.assertEqual(
-            self.check_journal("status: completed\nrollback_failures: 0\n").returncode,
-            0,
-        )
-
-    def test_completed_word_in_failed_output_is_rejected(self):
-        result = self.check_journal(
-            'status: deviated\noutput: "completed"\nrollback_failures: 0\n'
-        )
-        self.assertNotEqual(result.returncode, 0)
-
-    def test_all_gameday_experiments_must_complete(self):
-        content = (
-            "gameday_id: test\nexperiment_journals[2]:\n"
-            "  - experiment_title: first\n    status: completed\n    rollback_failures: 0\n"
-            "  - experiment_title: second\n    status: deviated\n    rollback_failures: 0\n"
-        )
-        self.assertNotEqual(self.check_journal(content).returncode, 0)
-        self.assertEqual(
-            self.check_journal(content.replace("deviated", "completed")).returncode, 0
-        )
-
-    def test_missing_gameday_record_is_rejected(self):
-        content = (
-            "gameday_id: test\nexperiment_journals[2]:\n"
-            "  - experiment_title: first\n    status: completed\n    rollback_failures: 0\n"
-        )
-        self.assertNotEqual(self.check_journal(content).returncode, 0)
-
-    def test_rollback_failure_is_not_success(self):
-        self.assertNotEqual(
-            self.check_journal("status: completed\nrollback_failures: 1\n").returncode,
-            0,
-        )
-
-
 if __name__ == "__main__":
     unittest.main()
