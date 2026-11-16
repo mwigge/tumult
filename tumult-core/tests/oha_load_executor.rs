@@ -292,12 +292,14 @@ fn ramp_profile_steps_the_concurrency_per_window() {
     let dir = tempfile::tempdir().expect("tempdir");
     install_fake_oha(&mut env, &dir, FAKE_OHA_JSON);
 
+    // Slots of two and one second: a slow first start of the fake must
+    // not make the hold window late enough to be skipped.
     let ramp = LoadProfile::Ramp {
         start_vus: 1,
-        ramp_up_s: 0.2,
+        ramp_up_s: 2.0,
     };
     let executor = OhaLoadExecutor::default();
-    let handle = executor.start(&config(Some(ramp), 0.3)).expect("starts");
+    let handle = executor.start(&config(Some(ramp), 3.0)).expect("starts");
     wait_for_calls(&dir, 2);
     let result = executor.stop(handle).expect("stops");
 
@@ -465,9 +467,11 @@ fn abort_kills_the_in_flight_window_at_once() {
 
 /// A fake oha that, like the real one, prints what it had measured when
 /// it is interrupted, and otherwise runs far longer than any test allows.
+/// It ends its own `sleep` (a background job ignores the interrupt), so
+/// nothing is left holding the output pipe.
 const FAKE_OHA_PARTIAL_ON_SIGINT: &str = r#"#!/bin/sh
 [ "$1" = "--version" ] && exit 0
-trap 'printf "%s" "{\"summary\":{\"total\":3.2},\"latencyPercentiles\":{\"p50\":0.02,\"p95\":0.08,\"p99\":0.1},\"statusCodeDistribution\":{\"200\":64},\"errorDistribution\":{}}"; exit 0' INT
+trap 'kill $!; printf "%s" "{\"summary\":{\"total\":3.2},\"latencyPercentiles\":{\"p50\":0.02,\"p95\":0.08,\"p99\":0.1},\"statusCodeDistribution\":{\"200\":64},\"errorDistribution\":{}}"; exit 0' INT
 echo x >> "$(dirname "$0")/calls"
 sleep 30 &
 wait $!
@@ -613,9 +617,19 @@ fn a_straggler_holding_stdout_does_not_hang_a_finished_window() {
         elapsed < Duration::from_secs(5),
         "the drain hung for {elapsed:?}"
     );
+    // Only Linux can kill the group of a leader that has exited. Elsewhere
+    // the straggler keeps the pipe and the window fails after the bounded
+    // drain.
+    #[cfg(target_os = "linux")]
     assert_eq!(result.samples.len(), 1, "the summary was still read");
+    #[cfg(not(target_os = "linux"))]
+    assert!(result.samples.is_empty(), "{:?}", result.samples);
 }
 
+/// Linux only: the fake leaves the group with the `setsid` command of
+/// util-linux. Elsewhere the straggler inside the group (above) already
+/// takes this path.
+#[cfg(target_os = "linux")]
 #[test]
 fn a_straggler_outside_the_group_fails_the_window_instead_of_hanging() {
     let mut env = EnvGuard::lock();
