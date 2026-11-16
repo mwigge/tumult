@@ -19,7 +19,10 @@ use super::telemetry::{
     current_span_id, current_trace_id, epoch_nanos_now, fault_attributes, plugin_name,
     set_span_status_from_outcome, target_attributes,
 };
-use super::{ActivityExecutor, TRACER_NAME};
+use super::{ActivityExecutor, ActivityOutcome, TRACER_NAME};
+
+/// The error of a probe that ran and read a value outside its tolerance.
+pub(crate) const OUTSIDE_TOLERANCE: &str = "the output is outside the tolerance";
 
 /// Evaluate a steady-state hypothesis by running its probes.
 pub(crate) fn evaluate_hypothesis(
@@ -31,13 +34,10 @@ pub(crate) fn evaluate_hypothesis(
     let mut all_met = true;
 
     for probe in &hypothesis.probes {
+        // The step is judged against its tolerance where it runs.
         let result = execute_single_activity(probe, executor, controls, None);
 
-        if !probe_outcome_ok(
-            probe,
-            result.status == ActivityStatus::Succeeded,
-            result.output.as_deref(),
-        ) {
+        if result.status != ActivityStatus::Succeeded {
             all_met = false;
         }
 
@@ -71,6 +71,23 @@ pub(crate) fn probe_outcome_ok(probe: &Activity, success: bool, output: Option<&
     let value = serde_json::from_str::<serde_json::Value>(output)
         .unwrap_or_else(|_| serde_json::Value::String(output.to_string()));
     evaluate_tolerance(&value, tolerance)
+}
+
+/// Judge the outcome of a step. A probe that ran and read a value outside
+/// its tolerance did not succeed: its span, its metric and its result all
+/// say so. The output is kept, so a reader sees what the probe read.
+fn judged(activity: &Activity, outcome: ActivityOutcome) -> ActivityOutcome {
+    if activity.activity_type != ActivityType::Probe || !outcome.success {
+        return outcome;
+    }
+    if probe_outcome_ok(activity, true, outcome.output.as_deref()) {
+        return outcome;
+    }
+    ActivityOutcome {
+        success: false,
+        error: Some(OUTSIDE_TOLERANCE.into()),
+        ..outcome
+    }
 }
 
 /// Execute a single activity with `OTel` instrumentation.
@@ -125,7 +142,7 @@ fn execute_single_activity(
             span_id: current_span_id(),
         };
     }
-    let outcome = executor.execute(activity);
+    let outcome = judged(activity, executor.execute(activity));
     set_span_status_from_outcome(outcome.success, outcome.error.as_deref());
 
     // Per-operation metrics: every action and probe is counted and timed,

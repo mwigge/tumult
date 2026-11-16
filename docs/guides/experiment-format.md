@@ -46,7 +46,7 @@ Every step in `method`, `rollbacks`, and `steady_state_hypothesis.probes` is an 
 | `name` | string | Unique name for this step |
 | `activity_type` | `action` or `probe` | Actions change state, probes observe |
 | `provider` | Provider | How the activity executes (see below) |
-| `tolerance` | Tolerance | Expected result (for probes in hypothesis) |
+| `tolerance` | Tolerance | What a probe must read (see Tolerance Types) |
 | `pause_before_s` | float | Wait before executing (seconds) |
 | `pause_after_s` | float | Wait after executing (seconds) |
 | `background` | bool | Run concurrently with next step |
@@ -142,13 +142,26 @@ Steps in `rollbacks:` run according to the run's rollback strategy (`tumult run 
 
 ## Tolerance Types
 
-Used in steady-state hypothesis probes to define expected values:
+What a probe must read. A probe with a tolerance is judged wherever it runs:
 
 | Type | Description | Fields |
 |------|-------------|--------|
 | `exact` | Exact value match | `value` (any JSON value) |
 | `range` | Numeric range | `from`, `to` |
 | `regex` | Pattern match on string output | `pattern` |
+
+A probe that reads a value outside its tolerance is a failed step. Its error
+says `the output is outside the tolerance` and its output is kept.
+
+| Where the probe is | What a failed probe does to the run |
+|--------------------|-------------------------------------|
+| Hypothesis, before the method | The run is `aborted` |
+| Method | The run is `deviated`. Rollbacks run and recovery is measured |
+| Hypothesis, after the method | The run is `deviated` |
+| Rollbacks | The rollback counts as failed |
+
+A failed action in the method makes the run `failed`: the fault was not
+applied as written.
 
 ## Estimate (Phase 0)
 

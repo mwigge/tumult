@@ -224,8 +224,8 @@ its journal holds the whole load. A cancelled GameDay does not wait.
 **Status precedence.** When several things went wrong, the first that
 applies names the run: `interrupted` (cancelled), `aborted` (the hypothesis
 did not hold before the method), `failed` (an action failed, or the load
-left no evidence), `deviated` (hypothesis after, a blocking objective, or
-the load's thresholds or plan), `completed`. The status never hides the
+left no evidence), `deviated` (hypothesis after, a probe of the method, a
+blocking objective, or the load's thresholds or plan), `completed`. The status never hides the
 cleanup a lower one calls for: rollbacks run whenever the facts amount to a
 deviation, whatever the status reads — a run that is `failed` because its
 load left no evidence still rolls back as a deviated run would, also when its

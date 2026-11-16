@@ -7,7 +7,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::controls::{ControlRegistry, LifecycleEvent};
 use crate::engine::{conclude, Conclusion, RunFacts};
-use crate::execution::all_succeeded;
+use crate::execution::{actions_succeeded as method_actions_succeeded, probes_held};
 use crate::types::{
     ActivityStatus, ActivityType, BlastRadiusRecord, Experiment, ExperimentStatus,
     HypothesisResult, Journal, ObjectiveOutcome, PostResult, SamplePhase, TargetVersion,
@@ -285,7 +285,10 @@ pub fn run_experiment_with_sampling(
     );
     controls.emit(&LifecycleEvent::AfterMethod);
 
-    let actions_succeeded = all_succeeded(&method_results);
+    // An action that failed means the fault was not applied as written. A
+    // probe that did not hold is a finding about the target under the fault.
+    let actions_succeeded = method_actions_succeeded(&method_results);
+    let method_probes_held = probes_held(&method_results);
 
     let (during_result, mut probe_samples) = during_sampler
         .map(|sampler| finish_during_sampler(sampler, sampling.interval.as_secs_f64()))
@@ -499,6 +502,7 @@ pub fn run_experiment_with_sampling(
         hypothesis_before_met,
         hypothesis_after_met,
         actions_succeeded,
+        method_probes_held,
         load_has_evidence: load::load_has_evidence(experiment, load_result.as_ref()),
         blocking_breach,
         load_missed_thresholds: load::load_missed_thresholds(load_result.as_ref()),

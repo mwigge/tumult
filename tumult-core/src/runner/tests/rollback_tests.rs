@@ -297,9 +297,9 @@ fn failed_run_after_fault_started_rolls_back_under_default_strategy() {
 }
 
 #[test]
-fn failed_run_without_started_fault_skips_rollback_under_default_strategy() {
-    // A method containing only a (failing) observation probe never injected a
-    // fault, so there is nothing to clean up.
+fn a_method_of_one_probe_that_fails_deviates_and_rolls_back() {
+    // A probe of the method that does not hold is a deviation, with or
+    // without a fault before it, and a deviation gets its rollbacks.
     struct FailProbesExecutor;
     impl ActivityExecutor for FailProbesExecutor {
         fn execute(&self, activity: &Activity) -> ActivityOutcome {
@@ -325,11 +325,8 @@ fn failed_run_without_started_fault_skips_rollback_under_default_strategy() {
 
     let journal = run_experiment(&exp, &executor, &controls, &default_config()).unwrap();
 
-    assert_eq!(journal.status, ExperimentStatus::Failed);
-    assert!(
-        journal.rollback_results.is_empty(),
-        "no fault started → no rollback under OnDeviation"
-    );
+    assert_eq!(journal.status, ExperimentStatus::Deviated);
+    assert_eq!(journal.rollback_results.len(), 1);
 }
 
 #[test]
