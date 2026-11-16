@@ -26,8 +26,8 @@ provider:
 | Function | Provider API | HTTP | Required arguments | Optional |
 | --- | --- | --- | --- | --- |
 | `aws_fis_start_experiment` | FIS `StartExperiment` | `POST /experiments` | `experiment_template_id` | `region` |
-| `aws_fis_stop_experiment` | FIS `StopExperiment` | `DELETE /experiments/{id}` | `experiment_id` | `region` |
-| `aws_fis_experiment_status` | FIS `GetExperiment` | `GET /experiments/{id}` | `experiment_id` | `region` |
+| `aws_fis_stop_experiment` | FIS `StopExperiment` | `DELETE /experiments/{id}` | none | `experiment_id`, `region` |
+| `aws_fis_experiment_status` | FIS `GetExperiment` | `GET /experiments/{id}` | none | `experiment_id`, `region` |
 | `aws_ec2_stop_instance` | EC2 `StopInstances` | `POST /` (Query) | `instance_id` | `region` |
 | `aws_ec2_terminate_instance` | EC2 `TerminateInstances` | `POST /` (Query) | `instance_id` | `region` |
 | `azure_chaos_start` | Chaos Studio `Experiments.Start` | `POST …/start` | `subscription`, `resource_group`, `experiment_id` | — |
@@ -36,6 +36,11 @@ provider:
 | `gcp_compute_stop_instance` | Compute `instances.stop` | `POST …/stop` | `project`, `zone`, `instance` | — |
 
 `region` defaults to `AWS_REGION` / `AWS_DEFAULT_REGION` when omitted.
+
+A stop or status step without `experiment_id` means the FIS experiment
+this process started last. The id is not known before the run, so an
+experiment file can leave it out. Name `experiment_id` when one process
+runs more than one FIS experiment at a time.
 
 ## Provider endpoints (verified July 2026)
 

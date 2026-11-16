@@ -36,6 +36,47 @@ fn exec_err(e: crate::error::CloudError) -> NativeError {
     NativeError::execution(e)
 }
 
+/// The FIS experiment this process started last.
+///
+/// A stop or a status step without `experiment_id` means that experiment,
+/// so an experiment file does not have to guess an id before the run.
+#[derive(Default)]
+struct StartedFis(std::sync::Mutex<Option<String>>);
+
+impl StartedFis {
+    const fn new() -> Self {
+        Self(std::sync::Mutex::new(None))
+    }
+
+    fn slot(&self) -> std::sync::MutexGuard<'_, Option<String>> {
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    /// Keep the id of a start. A start that gave no id changes nothing.
+    fn remember(&self, id: Option<String>) {
+        let Some(id) = id else {
+            return;
+        };
+        *self.slot() = Some(id);
+    }
+
+    /// The id a step means: the one it names, or the one started last.
+    fn resolve(&self, args: &NativeArgs) -> Result<String, NativeError> {
+        if let Some(id) = opt_str(args, "experiment_id") {
+            return Ok(id.to_owned());
+        }
+        self.slot()
+            .clone()
+            .ok_or_else(|| NativeError::MissingArgument {
+                argument: "experiment_id".into(),
+            })
+    }
+}
+
+static STARTED_FIS: StartedFis = StartedFis::new();
+
 /// [`NativeExecutor`] for the `tumult-cloud` connectors.
 pub struct CloudExecutor;
 
@@ -64,17 +105,19 @@ impl NativeExecutor for CloudExecutor {
             "aws_fis_start_experiment" => {
                 let template = arg_str(args, "experiment_template_id")?;
                 let client = fis_client(args)?;
-                client.start_experiment(template).await.map_err(exec_err)
+                let started = client.start(template).await.map_err(exec_err)?;
+                STARTED_FIS.remember(started.id);
+                Ok(started.summary)
             }
             "aws_fis_stop_experiment" => {
-                let id = arg_str(args, "experiment_id")?;
+                let id = STARTED_FIS.resolve(args)?;
                 let client = fis_client(args)?;
-                client.stop_experiment(id).await.map_err(exec_err)
+                client.stop_experiment(&id).await.map_err(exec_err)
             }
             "aws_fis_experiment_status" => {
-                let id = arg_str(args, "experiment_id")?;
+                let id = STARTED_FIS.resolve(args)?;
                 let client = fis_client(args)?;
-                client.experiment_status(id).await.map_err(exec_err)
+                client.experiment_status(&id).await.map_err(exec_err)
             }
             "aws_ec2_stop_instance" => {
                 let instance = arg_str(args, "instance_id")?;
@@ -285,6 +328,41 @@ mod tests {
             .unwrap_err();
         assert!(matches!(err, NativeError::MissingArgument { .. }));
         assert!(err.to_string().contains("instance"));
+    }
+
+    fn id_arg(id: &str) -> NativeArgs {
+        NativeArgs::from([("experiment_id".into(), serde_json::json!(id))])
+    }
+
+    #[test]
+    fn a_given_experiment_id_wins_over_the_started_one() {
+        let started = StartedFis::default();
+        started.remember(Some("EXPstarted".into()));
+        assert_eq!(started.resolve(&id_arg("EXPgiven")).unwrap(), "EXPgiven");
+    }
+
+    #[test]
+    fn the_started_experiment_is_used_when_no_id_is_given() {
+        let started = StartedFis::default();
+        started.remember(Some("EXPstarted".into()));
+        assert_eq!(started.resolve(&NativeArgs::new()).unwrap(), "EXPstarted");
+    }
+
+    #[test]
+    fn a_start_without_an_id_keeps_the_one_before() {
+        let started = StartedFis::default();
+        started.remember(Some("EXPfirst".into()));
+        started.remember(None);
+        assert_eq!(started.resolve(&NativeArgs::new()).unwrap(), "EXPfirst");
+    }
+
+    #[test]
+    fn no_id_and_nothing_started_is_a_missing_argument() {
+        let err = StartedFis::default()
+            .resolve(&NativeArgs::new())
+            .unwrap_err();
+        assert!(matches!(err, NativeError::MissingArgument { .. }));
+        assert!(err.to_string().contains("experiment_id"));
     }
 
     #[tokio::test]

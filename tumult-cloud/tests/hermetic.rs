@@ -164,6 +164,39 @@ async fn fis_start_signs_and_posts_experiment() {
 }
 
 #[tokio::test]
+async fn fis_start_returns_the_id_it_started() {
+    let mock = MockServer::start().await;
+    mock.set_response(
+        200,
+        r#"{"experiment":{"id":"EXPabc123","state":{"status":"initiating"}}}"#,
+    );
+    let client = FisClient::with_endpoint(
+        mock.base_url.clone(),
+        "us-east-1".to_string(),
+        fake_aws_creds(),
+    );
+
+    let started = client.start("EXT-template-1").await.unwrap();
+    assert_eq!(started.id.as_deref(), Some("EXPabc123"));
+    assert!(started.summary.contains("initiating"));
+}
+
+#[tokio::test]
+async fn fis_start_has_no_id_when_the_answer_is_not_an_experiment() {
+    let mock = MockServer::start().await;
+    mock.set_response(200, "not json");
+    let client = FisClient::with_endpoint(
+        mock.base_url.clone(),
+        "us-east-1".to_string(),
+        fake_aws_creds(),
+    );
+
+    let started = client.start("EXT-template-1").await.unwrap();
+    assert_eq!(started.id, None);
+    assert!(started.summary.contains("not json"));
+}
+
+#[tokio::test]
 async fn fis_stop_uses_delete_on_experiment_id() {
     let mock = MockServer::start().await;
     mock.set_response(

@@ -166,6 +166,23 @@ fn summarize_fis(verb: &str, text: &str) -> String {
     }
 }
 
+/// The id in an FIS response, when the response is an experiment.
+fn fis_id(text: &str) -> Option<String> {
+    serde_json::from_str::<FisEnvelope>(text)
+        .ok()
+        .map(|envelope| envelope.experiment.id)
+}
+
+/// What a start call gave back.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StartedExperiment {
+    /// The id FIS gave the new experiment. `None` when the answer was not
+    /// an experiment.
+    pub id: Option<String>,
+    /// The one-line summary that goes into the journal.
+    pub summary: String,
+}
+
 /// Connector for the AWS Fault Injection Service control plane.
 pub struct FisClient {
     signer: Signer,
@@ -199,6 +216,17 @@ impl FisClient {
     /// Returns a typed [`CloudError`] on transport failure or a non-2xx
     /// response (auth / not-found / throttled / generic API error).
     pub async fn start_experiment(&self, template_id: &str) -> Result<String, CloudError> {
+        self.start(template_id).await.map(|started| started.summary)
+    }
+
+    /// Start an experiment from a template and keep the id FIS gave it, so
+    /// later steps can ask about that experiment and stop it.
+    ///
+    /// # Errors
+    ///
+    /// Returns a typed [`CloudError`] on transport failure or a non-2xx
+    /// response (auth / not-found / throttled / generic API error).
+    pub async fn start(&self, template_id: &str) -> Result<StartedExperiment, CloudError> {
         // Idempotency token — unique per invocation, no `uuid` dependency.
         let client_token = format!(
             "tumult-{}",
@@ -222,7 +250,10 @@ impl FisClient {
                 Some("application/json"),
             )
             .await?;
-        Ok(summarize_fis("started", &text))
+        Ok(StartedExperiment {
+            id: fis_id(&text),
+            summary: summarize_fis("started", &text),
+        })
     }
 
     /// Stop a running experiment (`StopExperiment`,
