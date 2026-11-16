@@ -4,6 +4,7 @@
     // and the run metadata grid (timestamps, duration, actor, rollback,
     // experiment/registry links).
     import { api, fmtAgo, fmtDuration, fmtTs } from '#lib/api.js';
+    import { runTimeNs, runWaitNs } from '#lib/duration.js';
     import type { RunRow } from '#lib/types.js';
     import StatusBadge from './StatusBadge.svelte';
 
@@ -106,12 +107,12 @@
         >
     </div>
     <div class="panel meta">
-        <span>Duration</span>
-        <b class="mono">
-            {run.started_at_ns !== null
-                ? fmtDuration((run.ended_at_ns ?? Date.now() * 1e6) - run.started_at_ns)
-                : '—'}
-        </b>
+        <span>Waited</span>
+        <b class="mono">{fmtDuration(runWaitNs(run, Date.now() * 1e6))}</b>
+    </div>
+    <div class="panel meta">
+        <span>Run time</span>
+        <b class="mono">{fmtDuration(runTimeNs(run, Date.now() * 1e6))}</b>
     </div>
     <div class="panel meta"><span>Run by</span><b>{triggerActor ?? 'system'}</b></div>
     <div class="panel meta">

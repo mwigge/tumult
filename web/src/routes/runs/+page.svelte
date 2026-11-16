@@ -4,6 +4,7 @@
     import { ACTIVE_RUN_STATES, api, fmtAgo, fmtDuration, fmtTs, shortId } from '#lib/api.js';
     import type { MeResponse, RunRow } from '#lib/types.js';
     import StatusBadge from '#lib/components/StatusBadge.svelte';
+    import { runTimeNs, runWaitNs } from '#lib/duration.js';
 
     // Client-side state filter: '' = all, 'active' = anything in
     // ACTIVE_RUN_STATES, otherwise one terminal state.
@@ -99,8 +100,9 @@
         await refresh();
     }
 
-    function duration(r: RunRow): string {
-        return fmtDuration(r.ended_at_ns !== null ? r.ended_at_ns - r.queued_at_ns : null);
+    // The same rule as the header of a run: see `#lib/duration`.
+    function nowNs(): number {
+        return Date.now() * 1e6;
     }
 </script>
 
@@ -148,7 +150,7 @@
             <thead>
                 <tr>
                     <th>State</th><th>Definition</th><th>ID</th><th>Queued</th>
-                    <th>Duration</th><th>Rollback</th><th>Error</th>
+                    <th>Waited</th><th>Run time</th><th>Rollback</th><th>Error</th>
                 </tr>
             </thead>
             <tbody>
@@ -158,7 +160,8 @@
                         <td>{row.definition_name ?? row.registry_id}</td>
                         <td class="mono" style="color: var(--text-dim)">{shortId(row.id)}</td>
                         <td title={fmtTs(row.queued_at_ns)}>{fmtAgo(row.queued_at_ns)}</td>
-                        <td class="mono">{duration(row)}</td>
+                        <td class="mono">{fmtDuration(runWaitNs(row, nowNs()))}</td>
+                        <td class="mono">{fmtDuration(runTimeNs(row, nowNs()))}</td>
                         <td>
                             {#if row.state === 'rollback_pending'}
                                 <span class="badge warn">rollback pending</span>
