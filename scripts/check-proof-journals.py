@@ -4,6 +4,8 @@
 Each experiment set has an `expectations.json` that names, per experiment,
 the proof that runs it and what its journal must say: status, hypothesis met
 before and after, the number of rollbacks and the state of each objective.
+A load result that is expected must hold requests and a p99 above zero, and
+the load must have run the seconds the definition next to the file plans.
 
     check-proof-journals.py --proof NAME EXPECTATIONS JOURNAL_DIR
     check-proof-journals.py --proof NAME --list EXPECTATIONS
@@ -28,6 +30,7 @@ CELL = re.compile(r"""(?:"(?:[^"\\]|\\.)*"|[^,])+""")
 NUMBER = re.compile(r"-?(?:0|[1-9]\d*)(\.\d+)?([eE][+-]?\d+)?")
 WORDS = {"true": True, "false": False, "null": None}
 FACTS = ("status", "hypothesis_before", "hypothesis_after", "rollbacks", "objectives")
+MEASURED = ("total_requests", "latency_p99_ms")
 COMPARED = (
     "status",
     "hypothesis_before",
@@ -184,6 +187,41 @@ def load_difference(wanted, has):
     return [f"load_result: expected {expected}, journal has {got}"]
 
 
+def measured(value):
+    """True for a number above zero: a load that measured nothing reports 0."""
+    return isinstance(value, (int, float)) and value is not True and value > 0
+
+
+def load_problems(load, planned_s):
+    """One line per thing a load result must show and does not.
+
+    A load that was ended early, or whose numbers were never read, still
+    leaves a load result. So the result must hold requests and a p99, and
+    the load must have run the seconds its definition plans.
+    """
+    if load is None:
+        return []
+    found = [
+        f"load_result: {name} is {shown(load.get(name))}, expected more than 0"
+        for name in MEASURED
+        if not measured(load.get(name))
+    ]
+    ran = load.get("duration_s")
+    if planned_s is not None and not (measured(ran) and ran >= planned_s):
+        found.append(
+            f"load_result: the load ran {shown(ran)}s of a plan of {planned_s}s"
+        )
+    return found
+
+
+def planned_load_s(definition):
+    """The seconds the load of a definition is planned to run, if it says."""
+    if not definition.is_file():
+        return None
+    load = read_toon(definition.read_text()).get("load")
+    return load.get("duration_s") if isinstance(load, dict) else None
+
+
 def differences(expect, seen):
     """One line per fact of the journal that is not what was expected."""
     missing = [name for name in FACTS if name not in expect]
@@ -225,11 +263,15 @@ def journal_name(name):
     return f"{name.removesuffix('.toon')}.journal.toon"
 
 
-def check_experiment(name, entry, journals):
+def check_experiment(name, entry, definition, journals):
     journal, problem = read_journal(journals / journal_name(name))
     if journal is None:
         return result(name, problem)
-    return result(name, differences(entry.get("expect", {}), facts(journal)))
+    expect = entry.get("expect", {})
+    found = differences(expect, facts(journal))
+    if expect.get("load_result"):
+        found += load_problems(journal.get("load_result"), planned_load_s(definition))
+    return result(name, found)
 
 
 def check_gameday(name, entry, experiments, definition, journals):
@@ -239,9 +281,10 @@ def check_gameday(name, entry, experiments, definition, journals):
         return [result(name, problem)]
     paths = [step["path"] for step in read_toon(definition.read_text())["experiments"]]
     records = journal.get("experiment_journals") or []
-    lines = [
-        result(name, gameday_differences(entry, journal, len(records), len(paths)))
-    ]
+    found = gameday_differences(entry, journal, len(records), len(paths))
+    if entry.get("expect", {}).get("load_result"):
+        found += load_problems(journal.get("load_result"), planned_load_s(definition))
+    lines = [result(name, found)]
     for index, path in enumerate(paths):
         found = record_differences(name, experiments.get(path, {}), records, index)
         lines.append(result(f"{name}: {path}", found))
@@ -288,14 +331,15 @@ def check_set(proof, expectations, journals):
     body = json.loads(Path(expectations).read_text())
     experiments = body.get("experiments", {})
     journals = Path(journals)
+    definitions = Path(expectations)
     lines = [
-        check_experiment(name, entry, journals)
+        check_experiment(name, entry, definitions.with_name(name), journals)
         for name, entry in experiments.items()
         if standalone(proof, entry)
     ]
     for name, entry in body.get("gamedays", {}).items():
         if entry.get("proof") == proof:
-            definition = Path(expectations).with_name(name)
+            definition = definitions.with_name(name)
             lines.extend(check_gameday(name, entry, experiments, definition, journals))
     return lines
 

@@ -53,7 +53,10 @@ rollback_failures: 0
 estimate: null
 load_result:
   tool: oha
+  duration_s: 30.2
+  latency_p99_ms: 139.1
   error_rate: 0
+  total_requests: 26283
 kind: robustness
 objectives:
   rto_measured_s: 0
@@ -63,6 +66,22 @@ objectives:
 probe_samples[2]{probe,phase,ts_ns,duration_ms,ok}:
   health,during,1,2,true
   health,post,3,4,false
+"""
+
+LOAD = {
+    "tool": "oha",
+    "duration_s": 30.2,
+    "latency_p99_ms": 139.1,
+    "error_rate": 0,
+    "total_requests": 26283,
+}
+
+EXPERIMENT = """title: Checkout sheds load
+load:
+  tool: oha
+  script: http://127.0.0.1:8080/checkout/1
+  duration_s: 30
+method[0]:
 """
 
 EXPECT = {
@@ -106,14 +125,22 @@ experiment_journals[2]:
     load_result: null
 load_result:
   tool: k6
+  duration_s: 60.5
+  latency_p99_ms: 71.8
   total_requests: 100
 compliance_status: COMPLIANT
 """
+
+GAMEDAY_LOAD = (
+    "load_result:\n  tool: k6\n  duration_s: 60.5\n"
+    "  latency_p99_ms: 71.8\n  total_requests: 100\n"
+)
 
 GAMEDAY = """title: Q2
 load:
   tool: k6
   script: examples/k6/pg-load.js
+  duration_s: 60.0
 experiments[2]:
   - path: first.toon
     compliance_maps[1]: Art. 25
@@ -300,7 +327,46 @@ class DifferencesTests(unittest.TestCase):
         )
 
 
-class ProofSetTests(unittest.TestCase):
+class LoadProblemsTests(unittest.TestCase):
+    def test_a_load_that_ran_its_plan_and_measured_has_no_problem(self):
+        self.assertEqual(checker.load_problems(LOAD, 30), [])
+        self.assertEqual(checker.load_problems(LOAD, 30.2), [])
+
+    def test_a_load_without_a_planned_time_is_not_timed(self):
+        self.assertEqual(checker.load_problems(LOAD, None), [])
+
+    def test_a_load_that_ended_before_its_plan(self):
+        self.assertEqual(
+            checker.load_problems(LOAD, 60),
+            ["load_result: the load ran 30.2s of a plan of 60s"],
+        )
+        self.assertEqual(
+            checker.load_problems({**LOAD, "duration_s": None}, 60),
+            ["load_result: the load ran nulls of a plan of 60s"],
+        )
+
+    def test_a_load_that_measured_nothing(self):
+        self.assertEqual(
+            checker.load_problems({**LOAD, "total_requests": 0}, 30),
+            ["load_result: total_requests is 0, expected more than 0"],
+        )
+        self.assertEqual(
+            checker.load_problems({"tool": "k6", "latency_p99_ms": 0}, None),
+            [
+                "load_result: total_requests is null, expected more than 0",
+                "load_result: latency_p99_ms is 0, expected more than 0",
+            ],
+        )
+        self.assertEqual(
+            checker.load_problems({**LOAD, "total_requests": True}, 30),
+            ["load_result: total_requests is true, expected more than 0"],
+        )
+
+    def test_a_journal_without_a_load_result_has_no_load_problem(self):
+        self.assertEqual(checker.load_problems(None, 60), [])
+
+
+class ProofSetCase(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
@@ -319,6 +385,8 @@ class ProofSetTests(unittest.TestCase):
     def check(self, body, proof="examples-proof"):
         return checker.check_set(proof, self.write_expectations(body), self.journals)
 
+
+class ProofSetTests(ProofSetCase):
     def test_a_matching_journal_is_ok(self):
         self.journal("saturation.journal.toon")
         lines = self.check(
@@ -349,6 +417,54 @@ class ProofSetTests(unittest.TestCase):
                     ["status: expected deviated, journal has completed"],
                 )
             ],
+        )
+
+    def with_load(self, journal, definition=EXPERIMENT):
+        (self.root / "a.toon").write_text(definition)
+        self.journal("a.journal.toon", journal)
+        expect = {**EXPECT, "load_result": True}
+        return self.check(
+            {"experiments": {"a.toon": {"proof": "examples-proof", "expect": expect}}}
+        )
+
+    def test_a_load_that_ran_its_plan_is_ok(self):
+        self.assertEqual(self.with_load(JOURNAL), [("ok", "a.toon", [])])
+
+    def test_a_load_that_ended_before_its_plan_fails(self):
+        early = JOURNAL.replace("duration_s: 30.2", "duration_s: 4.5")
+        self.assertEqual(
+            self.with_load(early),
+            [("FAIL", "a.toon", ["load_result: the load ran 4.5s of a plan of 30s"])],
+        )
+
+    def test_a_load_that_measured_nothing_fails(self):
+        blind = JOURNAL.replace("latency_p99_ms: 139.1", "latency_p99_ms: 0")
+        self.assertEqual(
+            self.with_load(blind),
+            [
+                (
+                    "FAIL",
+                    "a.toon",
+                    ["load_result: latency_p99_ms is 0, expected more than 0"],
+                )
+            ],
+        )
+
+    def test_a_load_nobody_expected_is_not_looked_at(self):
+        (self.root / "a.toon").write_text(EXPERIMENT)
+        self.journal("a.journal.toon", JOURNAL.replace("30.2", "4.5"))
+        body = {
+            "experiments": {"a.toon": {"proof": "examples-proof", "expect": EXPECT}}
+        }
+        self.assertEqual(self.check(body), [("ok", "a.toon", [])])
+
+    def test_a_definition_without_a_load_plan_does_not_time_the_load(self):
+        early = JOURNAL.replace("duration_s: 30.2", "duration_s: 4.5")
+        no_plan = EXPERIMENT.replace("  duration_s: 30\n", "")
+        self.assertEqual(self.with_load(early, no_plan), [("ok", "a.toon", [])])
+        self.assertEqual(
+            self.with_load(early, "title: no load\nmethod[0]:\n"),
+            [("ok", "a.toon", [])],
         )
 
     def test_a_missing_journal_fails(self):
@@ -421,9 +537,7 @@ class ProofSetTests(unittest.TestCase):
 
     def test_a_gameday_without_its_load_result_or_a_record_fails(self):
         (self.root / "q2.gameday.toon").write_text(GAMEDAY)
-        short = GAMEDAY_JOURNAL.replace(
-            "load_result:\n  tool: k6\n  total_requests: 100\n", "load_result: null\n"
-        )
+        short = GAMEDAY_JOURNAL.replace(GAMEDAY_LOAD, "load_result: null\n")
         short = short.replace("experiment_journals[2]:", "experiment_journals[1]:")
         short = (
             short[: short.index("  - experiment_title: second")]
@@ -469,6 +583,62 @@ class ProofSetTests(unittest.TestCase):
                     ["no record 2 in the journal"],
                 ),
             ],
+        )
+
+
+class GameDayLoadTests(ProofSetCase):
+    BODY = {
+        "experiments": {
+            "first.toon": {
+                "proof": "examples-proof",
+                "within": "q2.gameday.toon",
+                "expect": expectation("completed", True, True, 0),
+            },
+            "second.toon": {
+                "proof": "examples-proof",
+                "within": "q2.gameday.toon",
+                "expect": expectation("deviated", True, False, 1),
+            },
+        },
+        "gamedays": {
+            "q2.gameday.toon": {
+                "proof": "examples-proof",
+                "expect": {"load_result": True},
+            }
+        },
+    }
+
+    def gameday_line(self, definition, journal):
+        (self.root / "q2.gameday.toon").write_text(definition)
+        self.journal("q2.gameday.journal.toon", journal)
+        return self.check(self.BODY)[0]
+
+    def test_a_gameday_load_that_ended_before_its_plan_fails(self):
+        early = GAMEDAY_JOURNAL.replace("duration_s: 60.5", "duration_s: 12.25")
+        self.assertEqual(
+            self.gameday_line(GAMEDAY, early),
+            (
+                "FAIL",
+                "q2.gameday.toon",
+                ["load_result: the load ran 12.25s of a plan of 60.0s"],
+            ),
+        )
+
+    def test_a_gameday_load_that_ran_exactly_its_plan_is_ok(self):
+        exact = GAMEDAY_JOURNAL.replace("duration_s: 60.5", "duration_s: 60.0")
+        self.assertEqual(
+            self.gameday_line(GAMEDAY, exact), ("ok", "q2.gameday.toon", [])
+        )
+
+    def test_a_gameday_load_that_measured_nothing_fails(self):
+        blind = GAMEDAY_JOURNAL.replace("latency_p99_ms: 71.8", "latency_p99_ms: 0")
+        self.assertEqual(
+            self.gameday_line(GAMEDAY, blind),
+            (
+                "FAIL",
+                "q2.gameday.toon",
+                ["load_result: latency_p99_ms is 0, expected more than 0"],
+            ),
         )
 
 
