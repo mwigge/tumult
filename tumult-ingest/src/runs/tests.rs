@@ -1569,6 +1569,41 @@ async fn a_late_stop_stores_the_status_the_run_logged() {
     assert!(executed.contains(&"rollback-1".to_string()), "{executed:?}");
 }
 
+/// A completion the store refuses while nobody asked for a stop is left for
+/// recovery: the worker runs no cleanup of its own. The run here has no row
+/// in the store, so the store cannot finish it.
+#[tokio::test]
+async fn a_completion_the_store_refuses_without_a_stop_runs_no_cleanup() {
+    let fx = fixture().await;
+    let (experiment, _) = prepare_run(TEST_TOON, &HashMap::new()).unwrap();
+    let executor: Arc<dyn ActivityExecutor> = Arc::new(RecordingExecutor {
+        executed: Arc::clone(&fx.executed),
+        delay: Duration::ZERO,
+    });
+    let controls = Arc::new(tumult_core::controls::ControlRegistry::new());
+    let (journal, logged) = run_to_its_end(&experiment, &executor, &controls).await;
+
+    complete_or_cleanup(
+        &fx.ingest,
+        "no-such-run",
+        &experiment,
+        executor,
+        controls,
+        &CancellationToken::new(),
+        journal,
+    )
+    .await;
+
+    let stored = stored_journal(&fx);
+    assert_eq!(stored["status"], serde_json::json!(logged));
+    assert_eq!(stored["rollback_count"], serde_json::json!(0));
+    let executed = fx.executed.lock().unwrap();
+    assert!(
+        !executed.contains(&"rollback-1".to_string()),
+        "{executed:?}"
+    );
+}
+
 /// One action against a declared target that names no version.
 const TARGETED_TOON: &str = r"
 title: versioned queue experiment

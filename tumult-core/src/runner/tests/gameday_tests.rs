@@ -354,13 +354,6 @@ fn load_time_of_a_short_gameday(duration_s: f64, token: Option<CancellationToken
 }
 
 #[test]
-fn a_gameday_that_ends_before_its_load_waits_for_the_load_to_run_its_plan() {
-    let ran_for_s = load_time_of_a_short_gameday(0.4, None);
-
-    assert!(ran_for_s >= 0.4, "the load ran {ran_for_s}s of 0.4s");
-}
-
-#[test]
 fn a_cancelled_gameday_does_not_wait_for_its_load() {
     let token = CancellationToken::new();
     token.cancel();

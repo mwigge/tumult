@@ -18,4 +18,10 @@ exclude_re = [
     # the same name return a type with no default: the same change does not
     # compile for them.
     "tumult-plugin/src/executor\\.rs.*replace execute_script(_until)? -> Result<ScriptResult, ExecutorError>",
+    # A list item closes the objects at its own indent and deeper. With `<=`
+    # it would keep an object at its own indent open. A document that
+    # decodes has none: the decoder wants the items of a list two levels
+    # deeper than the last key before them, and `first_duplicate` only reads
+    # documents that decode.
+    "tumult-core/src/engine/duplicate_keys\\.rs.*replace < with <= in enter_line",
 ]

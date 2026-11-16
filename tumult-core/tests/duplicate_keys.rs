@@ -290,3 +290,78 @@ method[2]:
     assert_eq!(read_back.method.len(), 2);
     assert_eq!(read_back.nfr.len(), 2);
 }
+
+#[test]
+fn a_key_of_the_file_written_again_after_a_list_is_refused() {
+    let error = refusal(
+        r"title: t
+
+method[1]:
+  - name: one
+    activity_type: action
+    provider:
+      type: process
+      path: echo
+title: again
+",
+    );
+
+    assert!(error.contains("key 'title'"), "{error}");
+    assert!(error.contains("(lines 1 and 9)"), "{error}");
+}
+
+#[test]
+fn a_key_written_twice_in_a_probe_of_the_hypothesis_is_refused() {
+    let error = refusal(
+        r"title: t
+
+steady_state_hypothesis:
+  title: steady
+  probes[1]:
+    - name: health
+      activity_type: probe
+      name: liveness
+      provider:
+        type: process
+        path: echo
+
+method[1]:
+  - name: one
+    activity_type: action
+    provider:
+      type: process
+      path: echo
+",
+    );
+
+    assert!(error.contains("key 'name'"), "{error}");
+    assert!(error.contains("(lines 6 and 8)"), "{error}");
+}
+
+#[test]
+fn rows_of_a_table_that_start_like_a_key_are_not_keys() {
+    let experiment = accepted(
+        r"title: t
+regulatory:
+  frameworks[1]: DORA
+  requirements[2]{id,description,evidence}:
+    Art: 24,testing programme,one run
+    Art: 24,scenario tests,one run
+
+method[1]:
+  - name: one
+    activity_type: action
+    provider:
+      type: process
+      path: echo
+",
+    );
+
+    let regulatory = experiment.regulatory.expect("the mapping is read");
+    let ids: Vec<&str> = regulatory
+        .requirements
+        .iter()
+        .map(|requirement| requirement.id.as_str())
+        .collect();
+    assert_eq!(ids, ["Art: 24", "Art: 24"]);
+}
