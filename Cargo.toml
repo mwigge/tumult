@@ -161,10 +161,10 @@ clickhouse = { version = "0.15", features = ["time", "uuid"] }
 # SSH known-hosts path resolution (used in tumult-lake, tumult-ssh)
 dirs-next = "2"
 
-# Terminal UI (used by tumult-tui). ratatui bundles a crossterm backend; both
-# stay pinned to the versions already resolved in the workspace lockfile.
+# Terminal UI (used by tumult-tui). ratatui bundles a crossterm backend;
+# crossterm stays on the version that backend resolves.
 ratatui = "0.30"
-crossterm = "0.28"
+crossterm = "0.29"
 
 # Temporary file/directory creation (dev-dependency across all crates)
 tempfile = "3"
@@ -200,7 +200,7 @@ serde_yaml = "0.9"
 csv = "1"
 typst = "0.15"
 typst-pdf = "0.15"
-sha2 = "0.10"
+sha2 = "0.11"
 rust-embed = "8"
 mime_guess = "2"
 

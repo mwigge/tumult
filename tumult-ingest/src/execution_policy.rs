@@ -38,7 +38,7 @@ pub fn execution_hash(
     let value = serde_json::json!({"experiment": experiment, "injected": injected});
     let bytes = serde_json::to_vec(&canonical(value))
         .map_err(|_| "cannot fingerprint execution".to_string())?;
-    Ok(format!("{:x}", Sha256::digest(bytes)))
+    Ok(hex::encode(Sha256::digest(bytes)))
 }
 
 /// An opaque preview token. A fresh process key invalidates previews on restart
@@ -56,11 +56,11 @@ pub fn preview_token(private_hash: &str) -> String {
 }
 
 fn token_for_key(private_hash: &str, key: &[u8; 32]) -> String {
-    use hmac::{Hmac, Mac};
+    use hmac::{Hmac, KeyInit, Mac};
     let mut mac = Hmac::<Sha256>::new_from_slice(key).expect("HMAC accepts a 32-byte key");
     mac.update(b"tumult-execution-preview-v1:");
     mac.update(private_hash.as_bytes());
-    format!("{:x}", mac.finalize().into_bytes())
+    hex::encode(mac.finalize().into_bytes())
 }
 
 /// Read the server-owned JSON binding file. Invalid configuration fails closed.
@@ -216,6 +216,21 @@ mod tests {
         assert_ne!(
             token_for_key(&hash, &[1; 32]),
             token_for_key("changed", &[1; 32])
+        );
+    }
+    #[test]
+    fn execution_hash_is_64_lowercase_hex_chars() {
+        let hash = execution_hash(&fault(), &Default::default()).unwrap();
+        assert_eq!(hash.len(), 64);
+        assert!(hash
+            .chars()
+            .all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c)));
+    }
+    #[test]
+    fn preview_token_matches_known_hmac_vector() {
+        assert_eq!(
+            token_for_key("abc", &[1; 32]),
+            "322f7b23c97dcacfe1b902326fa9c91e61cb591c8e7a5bc93bc38730243cfb3a"
         );
     }
     #[test]

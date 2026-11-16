@@ -17,8 +17,8 @@ chrono = { workspace = true }
 # Minimal, pure-Rust crypto for AWS Signature Version 4. Chosen over the
 # aws-sdk-* / aws-sigv4 crates to keep the single-binary footprint small — see
 # README "SDK vs thin HTTP" for the rationale.
-sha2 = "0.10"
-hmac = "0.12"
+sha2 = { workspace = true }
+hmac = "0.13"
 hex = "0.4"
 zeroize = { workspace = true }
 

@@ -1,7 +1,7 @@
 //! Webhook URL policy (SSRF guard) and payload signing — see the parent
 //! module docs for the delivery semantics.
 
-use hmac::{Hmac, Mac};
+use hmac::{Hmac, KeyInit, Mac};
 
 fn env_flag(key: &str) -> bool {
     std::env::var(key).is_ok_and(|v| v == "1" || v.eq_ignore_ascii_case("true"))
@@ -70,7 +70,7 @@ fn is_local(ip: std::net::IpAddr) -> bool {
 /// `X-Tumult-Signature: sha256=<hex>`.
 #[must_use]
 pub fn hmac_sha256_hex(key: &str, msg: &str) -> String {
-    let mut mac = <Hmac<sha2::Sha256> as Mac>::new_from_slice(key.as_bytes())
+    let mut mac = <Hmac<sha2::Sha256> as KeyInit>::new_from_slice(key.as_bytes())
         .expect("HMAC accepts any key length");
     mac.update(msg.as_bytes());
     let digest = mac.finalize().into_bytes();

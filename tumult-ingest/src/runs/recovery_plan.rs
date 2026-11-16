@@ -58,7 +58,7 @@ fn preparation_error(stage: &str) -> String {
 fn configuration_hash(config: &HashMap<String, String>) -> Result<String, String> {
     let sorted: std::collections::BTreeMap<_, _> = config.iter().collect();
     let bytes = serde_json::to_vec(&sorted).map_err(|e| e.to_string())?;
-    Ok(format!("{:x}", Sha256::digest(bytes)))
+    Ok(hex::encode(Sha256::digest(bytes)))
 }
 
 #[cfg(test)]
@@ -143,6 +143,14 @@ rollbacks[1]:
             &["original-target", "original", "rotated-credential"]
         );
         assert_eq!(env["TUMULT_SECRET_SERVICE_TOKEN"], "rotated-credential");
+    }
+    #[test]
+    fn configuration_hash_matches_known_sha256_vector() {
+        let config = HashMap::from([("a".to_string(), "b".to_string())]);
+        assert_eq!(
+            configuration_hash(&config).unwrap(),
+            "db4a7ecb114bc66c623a06c4ff6fe8daa2f49cc270ebbf7a1f81e22ab061c837"
+        );
     }
     #[test]
     fn environment_configuration_is_hashed_and_drift_refuses_cleanup() {
