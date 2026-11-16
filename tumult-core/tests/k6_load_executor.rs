@@ -208,6 +208,36 @@ fn stop_collects_metrics_from_the_json_summary_export() {
     assert!(result.duration_s >= 0.0);
 }
 
+/// A fake k6 that writes each of its arguments on a line of `<itself>.args`.
+const FAKE_K6_KEEPS_ITS_ARGUMENTS: &str = r#"#!/bin/sh
+printf '%s\n' "$@" > "$0.args"
+exit 0
+"#;
+
+/// k6 leaves the 99th percentile out of its summary unless it is asked for
+/// it, and the result of a load carries one.
+#[test]
+fn k6_is_asked_for_the_percentiles_the_result_carries() {
+    let mut env = EnvGuard::lock();
+    let dir = tempfile::tempdir().expect("tempdir");
+    install_fake_k6(&mut env, &dir, FAKE_K6_KEEPS_ITS_ARGUMENTS);
+
+    let executor = K6LoadExecutor;
+    let handle = executor.start(&config()).expect("fake k6 starts");
+    executor.stop(handle).expect("fake k6 stops");
+
+    let written = std::fs::read_to_string(dir.path().join("fake-k6.args")).expect("arguments");
+    let arguments: Vec<&str> = written.lines().collect();
+    let flag = arguments
+        .iter()
+        .position(|argument| *argument == "--summary-trend-stats")
+        .expect("k6 is told which trend statistics to write");
+    let statistics: Vec<&str> = arguments[flag + 1].split(',').collect();
+    for wanted in ["med", "p(95)", "p(99)"] {
+        assert!(statistics.contains(&wanted), "{wanted} in {statistics:?}");
+    }
+}
+
 #[test]
 fn stop_falls_back_to_text_parsing_without_a_summary_export() {
     let mut env = EnvGuard::lock();

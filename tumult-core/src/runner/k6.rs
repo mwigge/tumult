@@ -29,6 +29,10 @@ struct K6Handle {
     summary_file: tempfile::NamedTempFile,
 }
 
+/// The statistics k6 writes for a trend metric. It leaves the 99th
+/// percentile out of its summary unless it is named here.
+const K6_TREND_STATS: &str = "avg,min,med,max,p(90),p(95),p(99)";
+
 /// Upper bound on how long `stop()` waits for k6 to exit before killing it —
 /// a hung k6 must not hang the whole run forever.
 const K6_STOP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
@@ -106,7 +110,9 @@ impl LoadExecutor for K6LoadExecutor {
         for arg in k6_shape_args(config) {
             cmd.arg(arg);
         }
-        cmd.arg("--summary-export")
+        cmd.arg("--summary-trend-stats")
+            .arg(K6_TREND_STATS)
+            .arg("--summary-export")
             .arg(summary_file.path())
             .arg(config.script.as_os_str())
             .stdout(std::process::Stdio::piped())
