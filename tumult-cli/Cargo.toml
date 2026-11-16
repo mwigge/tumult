@@ -39,6 +39,8 @@ reqwest = { workspace = true }
 opentelemetry = { workspace = true }
 tokio-util = { workspace = true }
 indexmap = { workspace = true }
+# The hash of a journal, printed by `tumult run` and shown in the report.
+sha2 = { workspace = true }
 
 [dev-dependencies]
 indexmap = { workspace = true }

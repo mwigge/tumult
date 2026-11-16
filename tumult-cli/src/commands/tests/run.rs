@@ -29,6 +29,39 @@ async fn run_valid_experiment_produces_journal() {
     assert!(journal_path.exists());
 }
 
+/// `tumult run` prints the SHA-256 of the journal it wrote, so the file can
+/// be checked later with `sha256sum` and matched with the hash in a report.
+#[test]
+fn run_prints_the_sha256_of_the_journal_it_wrote() {
+    let dir = TempDir::new().unwrap();
+    let exp_path = write_valid_experiment(dir.path());
+    let journal_path = dir.path().join("journal.toon");
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(2)
+        .enable_all()
+        .build()
+        .unwrap();
+
+    let (result, printed) = crate::output::testing::capture(|| {
+        runtime.block_on(cmd_run(
+            &exp_path,
+            &journal_path,
+            false,
+            false,
+            RollbackStrategy::OnDeviation,
+            false,
+            std::collections::HashMap::new(),
+            None,
+        ))
+    });
+
+    result.unwrap();
+    let of_the_file = crate::commands::report::source_hash(&journal_path).unwrap();
+    assert_eq!(of_the_file.len(), 64);
+    let line = format!("Journal SHA-256: {of_the_file}\n");
+    assert!(printed.stdout.contains(&line), "{}", printed.stdout);
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn run_dry_run_does_not_create_journal() {
     let dir = TempDir::new().unwrap();

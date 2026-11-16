@@ -77,7 +77,11 @@ Status: Completed
 Duration: 297ms
 Method steps: 3 executed
 Journal written to: journal.toon
+Journal SHA-256: 5f0c…e91a
 ```
+
+The last line is the SHA-256 of the journal file. `sha256sum journal.toon`
+gives the same value, and so does the footer of the HTML report.
 
 This first one only checks that Redis answers. It breaks nothing. Now try
 some that do:

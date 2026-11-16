@@ -95,24 +95,34 @@ pub fn cmd_report(
     Ok(())
 }
 
-/// Stable, non-cryptographic content hash of the raw journal bytes, shown in
-/// the report as provenance. Uses std `DefaultHasher` (no crypto crate in the
-/// workspace): tamper-evidence signalling, not a security guarantee.
+/// The SHA-256 of the journal file, shown in the report as provenance. It is
+/// the value `sha256sum` gives for the file and the one `tumult run` printed
+/// when it wrote the journal.
 ///
 /// # Errors
 ///
 /// Returns an error when the journal cannot be read: a hash of nothing
 /// would be presented as the provenance of a file that was never hashed.
 pub(crate) fn source_hash(journal_path: &Path) -> Result<String> {
-    use std::hash::{Hash, Hasher};
-
     let raw = std::fs::read(journal_path).with_context(|| {
         format!(
             "failed to read journal for its provenance hash: {}",
             journal_path.display()
         )
     })?;
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    raw.hash(&mut hasher);
-    Ok(format!("{:016x}", hasher.finish()))
+    Ok(journal_sha256(&raw))
+}
+
+/// The SHA-256 of the bytes of a journal, in lower-case hex.
+pub(crate) fn journal_sha256(raw: &[u8]) -> String {
+    use sha2::Digest as _;
+    use std::fmt::Write as _;
+
+    let digest = sha2::Sha256::digest(raw);
+    let mut hex = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        // Writing to a String cannot fail.
+        let _ = write!(hex, "{byte:02x}");
+    }
+    hex
 }

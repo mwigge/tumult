@@ -274,10 +274,31 @@ fn the_provenance_hash_of_an_unreadable_journal_is_an_error_not_a_hash() {
 
     let err = crate::commands::report::source_hash(&missing).unwrap_err();
     assert!(format!("{err:#}").contains("gone.toon"), "{err:#}");
+}
 
-    let present = dir.path().join("journal.toon");
-    std::fs::write(&present, b"status: completed\n").unwrap();
-    let hash = crate::commands::report::source_hash(&present).unwrap();
-    assert_eq!(hash.len(), 16);
-    assert!(hash.chars().all(|c| c.is_ascii_hexdigit()), "{hash}");
+/// The digest of `abc` in FIPS 180-2, appendix B.1.
+const SHA256_OF_ABC: &str = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+
+#[test]
+fn the_provenance_hash_is_the_sha256_of_the_bytes_of_the_journal() {
+    let dir = TempDir::new().unwrap();
+    let journal = dir.path().join("journal.toon");
+    std::fs::write(&journal, b"abc").unwrap();
+
+    let hash = crate::commands::report::source_hash(&journal).unwrap();
+
+    assert_eq!(hash, SHA256_OF_ABC);
+}
+
+#[test]
+fn the_report_footer_names_the_hash_as_sha256() {
+    let html = generate_html_report(&journal_with_failure(), None, SHA256_OF_ABC);
+
+    assert!(
+        html.contains(&format!(
+            "Source journal SHA-256: <code>{SHA256_OF_ABC}</code>"
+        )),
+        "{html}"
+    );
+    assert!(!html.contains("non-cryptographic"), "{html}");
 }

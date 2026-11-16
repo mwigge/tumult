@@ -211,7 +211,8 @@ pub async fn cmd_run_with_baseline_mode<S: ::std::hash::BuildHasher>(
     let output = JournalOutput::prepare(journal_path)?;
     let journal = run_experiment(&experiment, &executor_arc, &controls_arc, &run_config)?;
 
-    output.write(&encode_journal(&journal)?)?;
+    let encoded = encode_journal(&journal)?;
+    output.write(&encoded)?;
 
     crate::outln!("Status: {:?}", journal.status);
     if let Some(measured) = &journal.target_version {
@@ -227,6 +228,10 @@ pub async fn cmd_run_with_baseline_mode<S: ::std::hash::BuildHasher>(
         crate::outln!("Rollbacks: {} executed", journal.rollback_results.len());
     }
     crate::outln!("Journal written to: {}", journal_path.display());
+    crate::outln!(
+        "Journal SHA-256: {}",
+        super::report::journal_sha256(encoded.as_bytes())
+    );
 
     // Auto-ingest into persistent analytics store
     if auto_ingest && baseline_mode != tumult_core::runner::BaselineMode::Only {
