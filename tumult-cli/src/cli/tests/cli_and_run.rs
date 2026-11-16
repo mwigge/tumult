@@ -23,6 +23,29 @@ fn help_headline_names_the_resilience_intelligence_platform() {
 }
 
 #[test]
+fn run_help_says_execute_an_experiment() {
+    let command = Cli::command();
+    let run = command.find_subcommand("run").expect("run subcommand");
+
+    let about = run.get_about().map(ToString::to_string);
+
+    assert_eq!(about.as_deref(), Some("Execute an experiment"));
+}
+
+#[test]
+fn no_command_help_calls_every_experiment_a_chaos_experiment() {
+    for sub in Cli::command().get_subcommands() {
+        let about = sub.get_about().map(ToString::to_string).unwrap_or_default();
+
+        assert!(
+            !about.contains("chaos experiment"),
+            "{}: {about}",
+            sub.get_name()
+        );
+    }
+}
+
+#[test]
 fn no_subcommand_is_error() {
     assert!(Cli::try_parse_from(["tumult"]).is_err());
 }

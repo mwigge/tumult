@@ -1,4 +1,4 @@
-# Tumult E2E Chaos Targets
+# Tumult lab targets
 #
 # Infrastructure services that experiments run against.
 # Start alone for minimal testing, or combine with the
@@ -6,7 +6,7 @@
 #
 # Usage:
 #   cd docker/
-#   docker compose up -d                         # chaos targets only
+#   docker compose up -d                         # lab targets only
 #   docker compose -f docker-compose.yml \
 #     -f docker-compose.observability.yml up -d   # full platform
 #

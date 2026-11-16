@@ -135,7 +135,7 @@ pub(crate) enum BaselineMode {
 
 #[derive(clap::Subcommand, Debug)]
 pub(crate) enum Commands {
-    /// Execute a chaos experiment
+    /// Execute an experiment
     Run {
         /// Path to experiment .toon file
         experiment: PathBuf,
@@ -295,7 +295,7 @@ pub(crate) enum Commands {
         #[command(subcommand)]
         action: StoreAction,
     },
-    /// AI-assisted recommendation for the next useful chaos experiment
+    /// AI-assisted recommendation for the next useful experiment
     Recommend {
         /// Recommendation goal or operator intent
         #[arg(long)]

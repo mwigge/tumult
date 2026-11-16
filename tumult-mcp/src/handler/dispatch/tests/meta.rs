@@ -257,6 +257,25 @@ async fn list_tools_every_tool_has_description_and_object_schema() {
     }
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn no_tool_description_calls_every_experiment_a_chaos_experiment() {
+    let tmp = tempfile::tempdir().unwrap();
+    let handler = open_handler(tmp.path());
+    let result = handler
+        .handle_list_tools_request(None, stub_runtime())
+        .await
+        .expect("list_tools must succeed");
+
+    for tool in &result.tools {
+        let description = tool.description.as_deref().unwrap_or_default();
+        assert!(
+            !description.contains("chaos experiment"),
+            "{}: {description}",
+            tool.name
+        );
+    }
+}
+
 #[test]
 fn tool_annotations_reflect_tool_behavior() {
     // Read-only, idempotent, closed-world tools. The agentic tools are

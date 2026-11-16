@@ -10,7 +10,7 @@ Tumult provides a single binary `tumult` with the following commands.
 
 ## tumult run
 
-Execute a chaos experiment.
+Execute an experiment.
 
 ```
 tumult run <experiment.toon> [OPTIONS]
@@ -368,7 +368,7 @@ backup; ordinary queries do not automatically read cold archive files.
 
 ## tumult recommend
 
-Recommend the next useful chaos experiment from deterministic heuristics over the analytics store (coverage gaps, failing experiments, stale experiments), optionally enhanced by a local agent CLI.
+Recommend the next useful experiment from deterministic heuristics over the analytics store (coverage gaps, failing experiments, stale experiments), optionally enhanced by a local agent CLI.
 
 ```
 tumult recommend [OPTIONS]

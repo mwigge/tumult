@@ -11,7 +11,7 @@ use super::{default_list_limit, default_store_path};
 /// unless `no_ingest` is set.
 #[macros::mcp_tool(
     name = "tumult_run_experiment",
-    description = "Execute a Tumult chaos experiment. Persists the journal (journal_path, default journal.toon in the workspace root), auto-ingests it into the analytics store unless no_ingest is set, and returns the run as JSON (format=json, default) or the journal as TOON (format=toon).",
+    description = "Execute a Tumult experiment. Persists the journal (journal_path, default journal.toon in the workspace root), auto-ingests it into the analytics store unless no_ingest is set, and returns the run as JSON (format=json, default) or the journal as TOON (format=toon).",
     destructive_hint = true,
     read_only_hint = false,
     idempotent_hint = false,

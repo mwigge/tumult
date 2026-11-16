@@ -43,7 +43,7 @@ impl ResourceKind {
     pub(super) fn description(self) -> &'static str {
         match self {
             Self::Journal => "Tumult experiment journal (read as JSON: {summary, journal}).",
-            Self::Experiment => "Tumult chaos experiment definition (raw TOON).",
+            Self::Experiment => "Tumult experiment definition (raw TOON).",
             Self::Gameday => "Tumult GameDay campaign definition (raw TOON).",
         }
     }
@@ -118,6 +118,14 @@ pub(super) fn parse_resource_uri(uri: &str) -> Result<(ResourceKind, &str), RpcE
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_experiment_resource_is_not_called_a_chaos_experiment() {
+        assert_eq!(
+            ResourceKind::Experiment.description(),
+            "Tumult experiment definition (raw TOON)."
+        );
+    }
 
     #[test]
     fn parse_uri_accepts_plain_names_and_rejects_everything_else() {
