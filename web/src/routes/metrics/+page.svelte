@@ -113,7 +113,7 @@
         // The selected range up to now: one bucket alone would leave the
         // axis to guess, and it guessed days into the future.
         const axis = rangeAxis(filters.range, Date.now(), xs);
-        const overlay = experimentOverlay(runs, undefined, labelGap([axis.min, axis.max]));
+        const overlay = experimentOverlay(runs, undefined, labelGap([axis.min, axis.max]), axis);
         return {
             // Room under the legend for the upright run labels.
             grid: { left: 56, right: 20, top: 48, bottom: 24 },

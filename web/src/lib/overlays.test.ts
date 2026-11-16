@@ -24,7 +24,7 @@ interface Marker {
     name: string;
     runId: string | null;
     lineStyle: { color: string };
-    label?: { show: boolean };
+    label?: { show?: boolean; align?: string };
 }
 interface Overlay {
     markLine: { label: { position: string }; data: Marker[] };
@@ -35,8 +35,9 @@ function overlayOf(
     runs: ExperimentWindow[],
     toX?: (ms: number) => number | string,
     gap?: number,
+    axis?: { min: number; max: number },
 ): Overlay {
-    const series = experimentOverlay(runs, toX, gap);
+    const series = experimentOverlay(runs, toX, gap, axis);
     if (series === null) throw new Error('no overlay');
     return series as unknown as Overlay;
 }
@@ -131,5 +132,42 @@ describe('experimentOverlay label spacing', () => {
     it('GIVEN a category axis WHEN a gap is given THEN labels are left alone', () => {
         const markers = overlayOf([run(1), run(2)], (ms) => `day-${ms}`, HOUR_MS).markLine.data;
         expect(markers.every((m) => m.label === undefined)).toBe(true);
+    });
+});
+
+describe('experimentOverlay labels at the edge of the axis', () => {
+    const at = (i: number): number => run(i).start_ns / 1e6;
+    // Labels need two hours, so one hour is half a label.
+    const GAP = 2 * HOUR_MS;
+    const axis = { min: at(0), max: at(12) };
+    const labelAt = (i: number) =>
+        overlayOf([run(i)], undefined, GAP, axis).markLine.data[0]?.label;
+
+    it('GIVEN a run closer than half a label to the end WHEN building THEN its name ends at the line', () => {
+        expect(labelAt(12)).toEqual({ align: 'right' });
+    });
+
+    it('GIVEN a run closer than half a label to the start WHEN building THEN its name starts at the line', () => {
+        expect(labelAt(0)).toEqual({ align: 'left' });
+    });
+
+    it('GIVEN a run half a label or more from both ends WHEN building THEN its name stays centred', () => {
+        expect(labelAt(1)).toBeUndefined();
+        expect(labelAt(6)).toBeUndefined();
+        expect(labelAt(11)).toBeUndefined();
+    });
+
+    it('GIVEN a hidden label at the end WHEN building THEN it stays hidden', () => {
+        const late: ExperimentWindow = {
+            ...run(12),
+            id: 'late',
+            start_ns: run(12).start_ns - 60e9,
+        };
+        const markers = overlayOf([late, run(12)], undefined, GAP, axis).markLine.data;
+        expect(markers.map((m) => m.label)).toEqual([{ align: 'right' }, { show: false }]);
+    });
+
+    it('GIVEN no axis WHEN building THEN names stay centred', () => {
+        expect(overlayOf([run(12)], undefined, GAP).markLine.data[0]?.label).toBeUndefined();
     });
 });

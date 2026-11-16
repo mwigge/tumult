@@ -46,6 +46,7 @@ interface Chart {
     min: number | undefined;
     max: number | undefined;
     named: string[];
+    aligned: (string | undefined)[];
     lines: number;
 }
 
@@ -65,7 +66,9 @@ test('metrics: one bucket still shows the whole range and names runs apart', asy
                 | {
                       xAxis?: { min?: number; max?: number }[];
                       series?: {
-                          markLine?: { data?: { name: string; label?: { show?: boolean } }[] };
+                          markLine?: {
+                              data?: { name: string; label?: { show?: boolean; align?: string } }[];
+                          };
                       }[];
                   }
                 | undefined;
@@ -75,6 +78,7 @@ test('metrics: one bucket still shows the whole range and names runs apart', asy
                 min: option?.xAxis?.[0]?.min,
                 max: option?.xAxis?.[0]?.max,
                 named: data.filter((d) => d.label?.show !== false).map((d) => d.name),
+                aligned: data.filter((d) => d.label?.show !== false).map((d) => d.label?.align),
                 lines: data.length,
             };
         });
@@ -83,6 +87,9 @@ test('metrics: one bucket still shows the whole range and names runs apart', asy
     // Every run keeps its line; two minutes apart, only the first is named.
     expect(seen?.lines).toBe(3);
     expect(seen?.named).toEqual(['first — completed']);
+    // Half an hour before the end of 24 hours: the name ends at its line,
+    // so the edge of the chart does not cut it off.
+    expect(seen?.aligned).toEqual(['right']);
     // The axis is the selected 24 hours and ends at now, not past it.
     const end = Date.now();
     expect(seen?.max).toBeGreaterThanOrEqual(NOW_MS);

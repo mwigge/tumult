@@ -80,12 +80,40 @@ export function spacedLabels(xs: number[], minGap: number): boolean[] {
     return shown;
 }
 
-/** Hide the labels that would run into a neighbour. Lines and names stay. */
-function thinLabels(markers: Record<string, unknown>[], minGap: number): Record<string, unknown>[] {
+/** The ends of a time axis, in epoch ms. */
+export interface TimeAxis {
+    min: number;
+    max: number;
+}
+
+/**
+ * How to anchor a label so it stays inside the chart: a label is centred
+ * on its line, so closer than half a label to an end it would be cut off.
+ */
+function edgeAlign(x: number, minGap: number, axis: TimeAxis | undefined): 'left' | 'right' | null {
+    if (axis === undefined) return null;
+    if (axis.max - x < minGap / 2) return 'right';
+    if (x - axis.min < minGap / 2) return 'left';
+    return null;
+}
+
+/**
+ * Hide the labels that would run into a neighbour, and keep the shown
+ * ones inside `axis`. Lines and names stay.
+ */
+function thinLabels(
+    markers: Record<string, unknown>[],
+    minGap: number,
+    axis?: TimeAxis,
+): Record<string, unknown>[] {
     const xs = markers.map((m) => m.xAxis);
     if (!xs.every((x) => typeof x === 'number')) return markers;
     const shown = spacedLabels(xs, minGap);
-    return markers.map((m, i) => (shown[i] ? m : { ...m, label: { show: false } }));
+    return markers.map((m, i) => {
+        if (!shown[i]) return { ...m, label: { show: false } };
+        const align = edgeAlign(xs[i] ?? 0, minGap, axis);
+        return align === null ? m : { ...m, label: { align } };
+    });
 }
 
 /**
@@ -93,11 +121,13 @@ function thinLabels(markers: Record<string, unknown>[], minGap: number): Record<
  * x-axis value (identity for time axes; day-string for category axes).
  * On a time axis, `labelGap` hides the name of a run that starts closer
  * than that to the last named one; hovering its line still names it.
+ * With `axis`, a name at an end of the axis is anchored to stay inside.
  */
 export function experimentOverlay(
     runs: ExperimentWindow[],
     toX: (ms: number) => X = (ms) => ms,
     labelGap = 0,
+    axis?: TimeAxis,
 ): Series | null {
     if (runs.length === 0) return null;
     const markers = [...groupByX(runs, toX)].map(([x, group]) => startMarker(x, group));
@@ -130,7 +160,7 @@ export function experimentOverlay(
                 overflow: 'truncate',
                 formatter: (p: { name?: string }) => p.name ?? '',
             },
-            data: labelGap > 0 ? thinLabels(markers, labelGap) : markers,
+            data: labelGap > 0 ? thinLabels(markers, labelGap, axis) : markers,
         },
     } as Series;
 }
