@@ -49,5 +49,5 @@ tumult-test-utils = { path = "../tumult-test-utils", default-features = false }
 # The k6 executor's tempfile use moved to tumult-core; the CLI now only
 # needs tempfile in tests.
 tempfile = { workspace = true }
-# Reads back Arrow IPC files written by `cmd_export --format arrow` tests.
+# Reads back the Arrow and CSV files `tumult export` writes, in tests.
 arrow = { workspace = true }

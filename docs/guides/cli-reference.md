@@ -290,6 +290,18 @@ tumult export <journal.toon> [OPTIONS]
 |--------|---------|-------------|
 | `--format <f>` | `parquet` | `parquet`, `arrow`, `csv`, or `json` |
 
+`json` writes the whole journal to `<journal>.json`. The other formats write
+two tables in the working directory:
+
+| File | Rows |
+|------|------|
+| `<journal>.<ext>` | The run: one row |
+| `activities/<journal>.<ext>` | The steps of the run: one row per step |
+
+Both tables have the column `experiment_id`. Each table has its own
+directory, so a tool that reads every file of a directory as one table gets
+the runs from the one and the steps from the other.
+
 ## tumult compliance
 
 Generate regulatory compliance reports.

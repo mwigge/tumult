@@ -593,7 +593,7 @@ tumult analyze journal.toon --query "SELECT COUNT(*) FROM activity_results"
 tumult export journal.toon --format arrow
 ```
 
-**Expected:** Produces `journal.arrow` in the current directory (export writes `<journal-stem>.<ext>` next to where you run it). Content matches journal data.
+**Expected:** Produces `journal.arrow` (the run) and `activities/journal.arrow` (the steps of the run) in the current directory (export writes `<journal-stem>.<ext>` next to where you run it). Content matches journal data.
 
 ---
 

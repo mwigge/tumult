@@ -296,7 +296,7 @@ The degradation fields on during/post results (`degradation_onset_s`, `degradati
 
 ## Journal Export
 
-`tumult export <journal> --format <fmt>` writes the journal's experiment record in four formats: `parquet` (Apache Parquet), `csv`, `json` (pretty-printed journal), and `arrow` (Apache Arrow IPC file format, suitable for zero-copy analytics interchange).
+`tumult export <journal> --format <fmt>` writes the journal in four formats. `json` is the whole journal, pretty-printed. `parquet` (Apache Parquet), `csv` and `arrow` (Apache Arrow IPC file format, suitable for zero-copy analytics interchange) are tables: the run is one row of `<journal-stem>.<ext>` and its steps are the rows of `activities/<journal-stem>.<ext>`.
 
 ## Where a step runs
 

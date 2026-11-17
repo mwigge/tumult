@@ -9,6 +9,36 @@ use super::ExportFormat;
 
 // ── Export command ─────────────────────────────────────────────
 
+/// The directory, in the working directory, of the files of steps. The runs
+/// and the steps are two tables, so each has its own directory: a reader that
+/// takes every file of a directory as one table gets the runs from the
+/// working directory and the steps from this one.
+const STEPS_DIR: &str = "activities";
+
+/// The extension of the files `format` writes.
+fn extension(format: ExportFormat) -> &'static str {
+    match format {
+        ExportFormat::Parquet => "parquet",
+        ExportFormat::Csv => "csv",
+        ExportFormat::Json => "json",
+        ExportFormat::Arrow => "arrow",
+    }
+}
+
+/// Write the whole journal as JSON to `out_path`.
+fn export_json(journal: &tumult_core::types::Journal, out_path: &Path) -> Result<()> {
+    std::fs::write(out_path, serde_json::to_string_pretty(journal)?)?;
+    crate::outln!("Exported to: {}", out_path.display());
+    Ok(())
+}
+
+/// Write the journal of a run to the working directory as `<stem>.<ext>`.
+///
+/// JSON is the whole journal in one file. Parquet, CSV and Arrow are tables:
+/// the run is one row of `<stem>.<ext>` and its steps are the rows of
+/// `activities/<stem>.<ext>`, which is written also when the run has no
+/// step.
+///
 /// # Errors
 ///
 /// Returns an error if the journal cannot be read or the export operation fails.
@@ -20,36 +50,30 @@ pub fn cmd_export(journal_path: &Path, format: ExportFormat) -> Result<()> {
 
     let journal = read_journal(journal_path)
         .with_context(|| format!("failed to read journal: {}", journal_path.display()))?;
-
-    let ext = match format {
-        ExportFormat::Parquet => "parquet",
-        ExportFormat::Csv => "csv",
-        ExportFormat::Json => "json",
-        ExportFormat::Arrow => "arrow",
-    };
     let stem = journal_path
         .file_stem()
         .unwrap_or_default()
         .to_str()
         .unwrap_or("journal");
-    let out_path = std::path::PathBuf::from(format!("{stem}.{ext}"));
+    let file = format!("{stem}.{}", extension(format));
 
-    match format {
-        ExportFormat::Parquet | ExportFormat::Csv | ExportFormat::Arrow => {
-            let (exp_batch, _) = journal_to_record_batch(std::slice::from_ref(&journal))?;
-            match format {
-                ExportFormat::Parquet => export_parquet(&exp_batch, &out_path)?,
-                ExportFormat::Csv => export_csv(&exp_batch, &out_path)?,
-                ExportFormat::Arrow => export_arrow_ipc(&exp_batch, &out_path)?,
-                ExportFormat::Json => unreachable!(),
-            }
-        }
-        ExportFormat::Json => {
-            let json = serde_json::to_string_pretty(&journal)?;
-            std::fs::write(&out_path, json)?;
-        }
+    let write_table = match format {
+        ExportFormat::Json => return export_json(&journal, Path::new(&file)),
+        ExportFormat::Parquet => export_parquet,
+        ExportFormat::Csv => export_csv,
+        ExportFormat::Arrow => export_arrow_ipc,
+    };
+    let (run, steps) = journal_to_record_batch(std::slice::from_ref(&journal))?;
+    std::fs::create_dir_all(STEPS_DIR)
+        .with_context(|| format!("failed to create the directory {STEPS_DIR}"))?;
+    let tables = [
+        (run, std::path::PathBuf::from(&file)),
+        (steps, Path::new(STEPS_DIR).join(&file)),
+    ];
+    for (table, out_path) in tables {
+        write_table(&table, &out_path)?;
+        crate::outln!("Exported to: {}", out_path.display());
     }
-    crate::outln!("Exported to: {}", out_path.display());
     Ok(())
 }
 

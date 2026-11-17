@@ -168,7 +168,7 @@ tumult analyze journals/ --query "SELECT * FROM experiments WHERE status = 'Devi
 # Single journal
 tumult analyze journal.toon
 
-# Export to Parquet
+# Export to Parquet: the run in journal.parquet, its steps in activities/journal.parquet
 tumult export journal.toon --format parquet
 
 # Export to CSV
