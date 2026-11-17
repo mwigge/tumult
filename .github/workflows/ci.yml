@@ -152,6 +152,15 @@ jobs:
         run: |
           npx playwright install --with-deps chromium
           npm run test:report
+      # A browser opens the page of a run on the daemon of this build: a
+      # real run hands it its journal, a recorded journal is imported, and
+      # the page shows what the journals say.
+      - name: Run page on a real daemon in a browser
+        working-directory: web
+        env:
+          TUMULT_BIN: ${{ github.workspace }}/target/debug/tumult
+          TUMULTD_BIN: ${{ github.workspace }}/target/debug/tumultd
+        run: npm run test:live
       - name: Show disk use after the test build
         if: always()
         run: df -h /

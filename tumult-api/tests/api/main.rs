@@ -13,6 +13,7 @@ mod dora;
 mod endpoints;
 mod entities;
 mod events;
+mod evidence;
 mod forecast;
 mod gamedays;
 mod gate;

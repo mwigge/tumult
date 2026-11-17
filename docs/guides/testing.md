@@ -58,6 +58,12 @@ real thing runs, and the test reads what a user would read.
 | A command | The `tumult` binary: its exit code, its output, the files it writes |
 | The lake | A store in a temporary directory, written by the code that writes it in production |
 | The API | The real router over a real store |
+| The HTML report | A browser without a network opens the report the `tumult` binary writes: `npm run test:report` in `web/` |
+| The page of a run in Krönika | A browser opens the page on a real `tumultd` with a lake of its own, filled by a real run and an imported journal: `npm run test:live` in `web/` |
+
+The specs in `web/tests` answer `/api` with fixtures. They prove how a page
+draws what it is given, not that what it is given is true: a page that shows
+evidence also has a spec in `web/live-tests`.
 
 A scripted executor (a type that implements `ActivityExecutor` and returns
 what the test tells it to) is a double at an I/O boundary. It is allowed for

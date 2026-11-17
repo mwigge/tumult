@@ -45,6 +45,14 @@ const WINDOW_SERIES: [(&str, WindowAccessor); 5] = [
     (SERIES_REQUEST_TIMEOUT_MS, |s| s.request_timeout_ms),
 ];
 
+/// The name of every `probe_samples` series a load window is stored as.
+#[must_use]
+pub fn load_series_names() -> Vec<&'static str> {
+    let measured = LOAD_SERIES.iter().map(|(name, _)| *name);
+    let told = WINDOW_SERIES.iter().map(|(name, _)| *name);
+    measured.chain(told).collect()
+}
+
 /// A request count as a series value; counts are far below 2^53.
 #[allow(clippy::cast_precision_loss)]
 fn as_value(count: u64) -> f64 {
@@ -335,6 +343,23 @@ mod tests {
                 ("load.request_timeout_ms", 2000.0),
             ]
         );
+    }
+
+    #[test]
+    fn the_names_of_the_load_series_are_the_ones_a_whole_window_is_stored_as() {
+        let mut load = result_with_samples();
+        load.samples.truncate(1);
+        load.samples[0].counts = Some(RequestCounts::default());
+        load.samples[0].request_timeout_ms = Some(2000.0);
+        let batch = load_samples_to_probe_samples_batch("exp-1", &load).unwrap();
+        let names = batch
+            .column(1)
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .unwrap();
+        let stored: Vec<&str> = (0..batch.num_rows()).map(|row| names.value(row)).collect();
+        assert_eq!(stored.len(), 10);
+        assert_eq!(load_series_names(), stored);
     }
 
     #[test]

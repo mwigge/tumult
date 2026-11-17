@@ -7,6 +7,7 @@ use axum::response::IntoResponse;
 use axum::{Extension, Json};
 use serde::Deserialize;
 use serde_json::{json, Value};
+use tumult_lake::{Reader, SqlParam};
 
 use crate::auth::Principal;
 use crate::sql_util::{
@@ -253,6 +254,42 @@ pub(crate) async fn experiment_windows(
     Ok(Json(json!({"count": rows.len(), "runs": rows})))
 }
 
+/// How long after the end of a run a metric point of it may be stamped:
+/// one export interval of the metrics reader.
+const METRIC_EXPORT_GRACE_NS: i64 = 60_000_000_000;
+
+/// The metric points that carry the name of the run `info` and are of its
+/// time. Every run of an experiment has the same name, so the time is
+/// what tells the points of one run from those of the next.
+fn metric_points(reader: &Reader, info: &Value) -> Result<Vec<Value>, String> {
+    let name = info.get("name").and_then(Value::as_str);
+    let started_ns = info.get("started_ns").and_then(Value::as_i64);
+    let (Some(name), Some(started_ns)) = (name, started_ns) else {
+        return Ok(Vec::new());
+    };
+    let duration_ns = info.get("duration_ns").and_then(Value::as_i64);
+    let last_ns = started_ns
+        .saturating_add(duration_ns.unwrap_or(0))
+        .saturating_add(METRIC_EXPORT_GRACE_NS);
+    reader
+        .query_json_rows_bound(
+            "SELECT 'sum' AS kind, ts_ns, metric_name, value, outcome_status, plugin_name \
+             FROM metric_sums \
+             WHERE experiment_name = $1 AND ts_ns BETWEEN $2 AND $3 \
+             UNION ALL \
+             SELECT 'gauge', ts_ns, metric_name, value, outcome_status, plugin_name \
+             FROM metric_gauges \
+             WHERE experiment_name = $1 AND ts_ns BETWEEN $2 AND $3 \
+             ORDER BY 2 LIMIT 1000",
+            &[
+                SqlParam::Text(name.to_string()),
+                SqlParam::Int(started_ns),
+                SqlParam::Int(last_ns),
+            ],
+        )
+        .map_err(|e| e.to_string())
+}
+
 pub(crate) async fn experiment_detail(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
@@ -315,28 +352,15 @@ pub(crate) async fn experiment_detail(
             ))
             .map_err(|e| e.to_string())?;
 
-        let metrics = match info.get("name").and_then(Value::as_str) {
-            Some(name) => {
-                let name = sql_string(name);
-                reader
-                    .query_json_rows(&format!(
-                        "SELECT 'sum' AS kind, ts_ns, metric_name, value, outcome_status, plugin_name \
-                         FROM metric_sums WHERE experiment_name = {name} \
-                         UNION ALL \
-                         SELECT 'gauge', ts_ns, metric_name, value, outcome_status, plugin_name \
-                         FROM metric_gauges WHERE experiment_name = {name} \
-                         ORDER BY 2 LIMIT 1000"
-                    ))
-                    .map_err(|e| e.to_string())?
-            }
-            None => Vec::new(),
-        };
+        let metrics = metric_points(reader, &info)?;
+        let evidence = super::evidence::of_run(reader, &id)?;
 
         Ok(Some(json!({
             "experiment": info,
             "spans": spans,
             "logs": logs,
             "metrics": metrics,
+            "evidence": evidence,
         })))
     })
     .await?;

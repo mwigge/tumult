@@ -307,6 +307,61 @@ const ENDINGS: [Ending; 4] = [
     },
 ];
 
+/// The steps of `phase` on the page of a run: the name and the status of
+/// each, in the order of the page.
+fn shown_steps<'a>(evidence: &'a Value, phase: &str) -> Vec<(&'a str, &'a str)> {
+    let text = |step: &'a Value, key: &str| step[key].as_str().expect("a text");
+    evidence["steps"]
+        .as_array()
+        .expect("steps")
+        .iter()
+        .filter(|step| step["phase"] == phase)
+        .map(|step| (text(step, "name"), text(step, "status")))
+        .collect()
+}
+
+/// The page of a run shows the run of real steps: the steady state that
+/// held before it, the method with how each step ended, the rollback of a
+/// run that had one, and what the samples said once the method was over.
+fn assert_evidence(evidence: &Value, ending: &Ending, samples_after: &[bool]) {
+    let title = ending.title;
+    assert_eq!(evidence["kind"], "chaos", "{title}");
+    assert_eq!(evidence["hypothesis"]["before_met"], true, "{title}");
+    assert_eq!(
+        evidence["steps"][0]["phase"], "hypothesis_before",
+        "{title}"
+    );
+    assert_eq!(
+        shown_steps(evidence, "hypothesis_before"),
+        [("steady", "succeeded")],
+        "{title}"
+    );
+    assert_eq!(
+        shown_steps(evidence, "method"),
+        [("fault", ending.steps[0]), ("check", ending.steps[1])],
+        "{title}"
+    );
+    let rollbacks: &[(&str, &str)] = if ending.rolled_back {
+        &[("heal", "succeeded")]
+    } else {
+        &[]
+    };
+    assert_eq!(shown_steps(evidence, "rollback"), rollbacks, "{title}");
+    let shown_after: Vec<bool> = evidence["probe_samples"]
+        .as_array()
+        .expect("samples")
+        .iter()
+        .filter(|sample| sample["phase"] == "post")
+        .map(|sample| sample["ok"].as_bool().expect("ok"))
+        .collect();
+    assert_eq!(shown_after, samples_after, "{title}");
+    assert_eq!(
+        evidence["probe_samples_total"],
+        evidence["probe_samples"].as_array().expect("samples").len(),
+        "{title}"
+    );
+}
+
 /// The run of one ending is read back as it ended: from the queue, from the
 /// store, from its page and from the list.
 async fn read_back(srv: &TestServer, ending: &Ending, lab: &Lab, definition: &str) {
@@ -327,6 +382,7 @@ async fn read_back(srv: &TestServer, ending: &Ending, lab: &Lab, definition: &st
     assert_eq!(code, 200, "{title}: {page}");
     assert_eq!(page["experiment"]["status"], ending.status, "{title}");
     assert_eq!(page["experiment"]["name"], title, "{page}");
+    assert_evidence(&page["evidence"], ending, &samples);
     let by_name = format!("name={}", title.replace(' ', "%20"));
     assert_eq!(listed(srv, &by_name).await, [id], "{title}");
     let by_both = format!("{by_name}&outcome={}", ending.status);
