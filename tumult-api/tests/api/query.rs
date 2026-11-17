@@ -170,6 +170,47 @@ async fn metrics_lists_semantic_definitions() {
 }
 
 #[tokio::test]
+async fn metrics_say_the_unit_of_their_value() {
+    let srv = spawn_server().await;
+
+    let (status, body) = get(&srv.base, "/api/metrics").await;
+
+    assert_eq!(status, 200, "{body}");
+    let metrics = body["metrics"].as_array().expect("the metrics");
+    let unit_of = |name: &str| {
+        let metric = metrics.iter().find(|metric| metric["name"] == name);
+        metric.map(|metric| metric["unit"].clone())
+    };
+    assert_eq!(
+        unit_of("hypothesis_pass_rate"),
+        Some(serde_json::json!("ratio"))
+    );
+    assert_eq!(
+        unit_of("action_duration_p95"),
+        Some(serde_json::json!("nanoseconds"))
+    );
+    assert_eq!(unit_of("mttr"), Some(serde_json::json!("seconds")));
+    assert_eq!(
+        unit_of("experiment_count"),
+        Some(serde_json::json!("count"))
+    );
+}
+
+#[tokio::test]
+async fn a_timeseries_says_the_unit_of_its_points() {
+    let srv = spawn_server().await;
+
+    let (status, body) = get(
+        &srv.base,
+        "/api/timeseries?metric=hypothesis_pass_rate&interval=1h&range=24h",
+    )
+    .await;
+
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["unit"], "ratio");
+}
+
+#[tokio::test]
 async fn ask_answers_golden_questions_without_llm() {
     let srv = spawn_server().await;
     let resp = reqwest::Client::new()

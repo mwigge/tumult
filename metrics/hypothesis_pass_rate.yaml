@@ -6,6 +6,7 @@
 # populated by the synthetic backfill only.
 name: hypothesis_pass_rate
 description: Share of experiment runs that completed without deviation or failure.
+unit: ratio
 source_table: metric_sums
 time_col: ts_ns
 measure:

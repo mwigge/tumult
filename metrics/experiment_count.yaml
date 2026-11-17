@@ -3,6 +3,7 @@
 # resilience.experiment.title, promoted to experiment_name at ingest).
 name: experiment_count
 description: Count of experiment runs in the window, per experiment.
+unit: count
 source_table: spans
 time_col: ts_ns
 measure:

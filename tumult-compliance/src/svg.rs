@@ -1,4 +1,4 @@
-//! Minimal hand-rolled SVG charts (bars, donut, trend) in the Okabe-Ito
+//! Minimal hand-rolled SVG charts (bars, donut, trend, sparkline) in the Okabe-Ito
 //! colorblind-safe palette. Kept deliberately small: direct labels, no
 //! gridline machinery.
 
@@ -25,6 +25,7 @@ pub fn render_svg(spec: &ChartSpec) -> String {
         ChartSpec::Bars(rows) => bars(rows),
         ChartSpec::Donut(slices) => donut(slices),
         ChartSpec::Trend { y_name, series } => trend(y_name, series),
+        ChartSpec::Sparkline(points) => sparkline(points),
     }
 }
 
@@ -287,6 +288,54 @@ fn trend(y_name: &str, series: &[(String, Vec<(i64, f64)>)]) -> String {
     out
 }
 
+/// A small line of values over time with a marker on the last one. It has
+/// no axes and no text: the card it sits in says what it shows.
+fn sparkline(points: &[(i64, f64)]) -> String {
+    const WIDTH: f64 = 120.0;
+    const HEIGHT: f64 = 28.0;
+    const PAD: f64 = 3.0;
+    let (Some(first), Some(last)) = (points.first(), points.last()) else {
+        return String::new();
+    };
+    let low = points.iter().map(|p| p.1).fold(f64::INFINITY, f64::min);
+    let high = points.iter().map(|p| p.1).fold(f64::NEG_INFINITY, f64::max);
+    // One point has no time to run over: it sits at the end, where the
+    // last point of a line is.
+    let sx = |t: i64| {
+        if last.0 == first.0 {
+            return WIDTH - PAD;
+        }
+        PAD + (t - first.0) as f64 / (last.0 - first.0) as f64 * (WIDTH - 2.0 * PAD)
+    };
+    // Equal values have no range to fill: they sit in the middle.
+    let sy = |v: f64| {
+        if high == low {
+            return HEIGHT / 2.0;
+        }
+        HEIGHT - PAD - (v - low) / (high - low) * (HEIGHT - 2.0 * PAD)
+    };
+    let color = PALETTE[0];
+    let mut out = format!(
+        "<svg xmlns='http://www.w3.org/2000/svg' width='{WIDTH:.0}' height='{HEIGHT:.0}' viewBox='0 0 {WIDTH:.0} {HEIGHT:.0}'>"
+    );
+    if points.len() > 1 {
+        let path: Vec<String> = points
+            .iter()
+            .map(|p| format!("{:.1},{:.1}", sx(p.0), sy(p.1)))
+            .collect();
+        out.push_str(&format!(
+            "<polyline points='{}' fill='none' stroke='{color}' stroke-width='1.4'/>",
+            path.join(" ")
+        ));
+    }
+    out.push_str(&format!(
+        "<circle cx='{:.1}' cy='{:.1}' r='2' fill='{color}'/></svg>",
+        sx(last.0),
+        sy(last.1)
+    ));
+    out
+}
+
 /// Trim trailing zeros for compact chart labels.
 fn fmt_num(v: f64) -> String {
     if v.fract() == 0.0 && v.abs() < 1e15 {
@@ -478,6 +527,106 @@ mod tests {
         assert!(svg.contains(">2026-11-04</text>"), "{svg}");
         assert!(svg.contains(">2026-11-05</text>"), "{svg}");
         assert!(!svg.contains(">2026-11-02</text>"), "{svg}");
+    }
+
+    #[test]
+    fn each_series_of_a_trend_has_its_own_colour_until_the_palette_starts_again() {
+        let series = (0..=PALETTE.len())
+            .map(|number| (format!("s{number}"), vec![(NOV_1, 1.0), (NOV_1 + DAY, 2.0)]))
+            .collect();
+
+        let svg = render_svg(&trend_of(series));
+
+        let strokes: Vec<&str> = svg
+            .split("<polyline")
+            .skip(1)
+            .map(|line| {
+                let stroke = line.split("stroke='").nth(1).expect("a stroke");
+                &stroke[..stroke.find('\'').expect("the end of the stroke")]
+            })
+            .collect();
+        assert_eq!(strokes[..PALETTE.len()], PALETTE);
+        assert_eq!(strokes[PALETTE.len()], PALETTE[0]);
+    }
+
+    /// The points of the line of `svg`, as text.
+    fn line_points(svg: &str) -> Vec<String> {
+        let line = svg.split("<polyline points='").nth(1).expect("a line");
+        line[..line.find('\'').expect("the end of the points")]
+            .split(' ')
+            .map(str::to_string)
+            .collect()
+    }
+
+    #[test]
+    fn a_sparkline_runs_from_its_lowest_to_its_highest_value_across_its_canvas() {
+        let points = vec![(NOV_1, 2.0), (NOV_1 + DAY, 4.0), (NOV_1 + 2 * DAY, 6.0)];
+
+        let svg = render_svg(&ChartSpec::Sparkline(points));
+
+        // 120 by 28 with 3 at each side: the lowest value is at the bottom
+        // left, the highest at the top right, the middle one in the middle.
+        assert!(svg.contains("width='120' height='28'"), "{svg}");
+        assert_eq!(line_points(&svg), ["3.0,25.0", "60.0,14.0", "117.0,3.0"]);
+    }
+
+    #[test]
+    fn a_sparkline_places_its_points_by_their_time() {
+        // The second point is a quarter of the way, not half of it.
+        let points = vec![(NOV_1, 0.0), (NOV_1 + DAY, 1.0), (NOV_1 + 4 * DAY, 4.0)];
+
+        let svg = render_svg(&ChartSpec::Sparkline(points));
+
+        assert_eq!(line_points(&svg), ["3.0,25.0", "31.5,19.5", "117.0,3.0"]);
+    }
+
+    #[test]
+    fn a_sparkline_marks_its_last_point_and_has_no_text() {
+        let points = vec![(NOV_1, 5.0), (NOV_1 + DAY, 1.0)];
+
+        let svg = render_svg(&ChartSpec::Sparkline(points));
+
+        assert_eq!(svg.matches("<circle").count(), 1, "{svg}");
+        assert!(svg.contains("<circle cx='117.0' cy='25.0'"), "{svg}");
+        assert!(!svg.contains("<text"), "{svg}");
+    }
+
+    #[test]
+    fn a_sparkline_is_a_thin_line_in_the_first_colour_with_a_small_marker() {
+        let points = vec![(NOV_1, 5.0), (NOV_1 + DAY, 1.0)];
+
+        let svg = render_svg(&ChartSpec::Sparkline(points));
+
+        let first = PALETTE[0];
+        assert!(
+            svg.contains(&format!(
+                "fill='none' stroke='{first}' stroke-width='1.4'/>"
+            )),
+            "{svg}"
+        );
+        assert!(svg.contains(&format!(" r='2' fill='{first}'/>")), "{svg}");
+    }
+
+    #[test]
+    fn a_sparkline_of_equal_values_is_a_level_line_in_the_middle() {
+        let points = vec![(NOV_1, 7.0), (NOV_1 + DAY, 7.0)];
+
+        let svg = render_svg(&ChartSpec::Sparkline(points));
+
+        assert_eq!(line_points(&svg), ["3.0,14.0", "117.0,14.0"]);
+    }
+
+    #[test]
+    fn a_sparkline_of_one_point_is_its_marker_at_the_end() {
+        let svg = render_svg(&ChartSpec::Sparkline(vec![(NOV_1, 7.0)]));
+
+        assert!(!svg.contains("<polyline"), "{svg}");
+        assert!(svg.contains("<circle cx='117.0' cy='14.0'"), "{svg}");
+    }
+
+    #[test]
+    fn a_sparkline_without_a_point_renders_nothing() {
+        assert!(render_svg(&ChartSpec::Sparkline(Vec::new())).is_empty());
     }
 
     #[test]

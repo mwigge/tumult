@@ -3,7 +3,8 @@
 # Each tumult run is its own process, so cumulative-temporality data
 # points do not overlap and summing across runs is exact.
 name: experiment_duration_s
-description: Mean experiment lifecycle duration in seconds.
+description: Mean experiment lifecycle duration.
+unit: seconds
 source_table: metric_histograms
 time_col: ts_ns
 measure:

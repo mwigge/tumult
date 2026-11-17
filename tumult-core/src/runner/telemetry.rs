@@ -117,7 +117,8 @@ pub(crate) fn target_attributes(activity: &Activity) -> Vec<KeyValue> {
     }
 }
 
-/// Extract fault attributes from an activity.
+/// The fault attributes of an activity, and the plugin that serves it: the
+/// span of a step names its plugin the way the metrics of the step do.
 pub(crate) fn fault_attributes(activity: &Activity) -> Vec<KeyValue> {
     let fault_type = match activity.activity_type {
         ActivityType::Action => "injection",
@@ -126,6 +127,7 @@ pub(crate) fn fault_attributes(activity: &Activity) -> Vec<KeyValue> {
     vec![
         KeyValue::new("resilience.fault.type", fault_type),
         KeyValue::new("resilience.fault.name", activity.name.clone()),
+        KeyValue::new(attributes::PLUGIN_NAME, plugin_name(activity)),
     ]
 }
 

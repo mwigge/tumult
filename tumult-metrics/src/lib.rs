@@ -16,7 +16,7 @@
 
 use std::path::Path;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// Errors from loading, validating or compiling metric definitions.
 #[derive(Debug, thiserror::Error)]
@@ -35,6 +35,9 @@ pub enum MetricsError {
 
     #[error("invalid literal {0:?} in a condition: strings must not contain NUL")]
     InvalidLiteral(String),
+
+    #[error("invalid quantile {0}: a quantile is a share from 0 to 1")]
+    InvalidQuantile(f64),
 }
 
 /// One side of a [`Measure::Rate`]: a column to aggregate, optionally
@@ -80,6 +83,20 @@ pub enum Measure {
     CountDistinct { column: String },
     /// `num / NULLIF(den, 0)` where each side is a [`Term`].
     Rate { num: Term, den: Term },
+    /// `quantile_cont(column, quantile)` — e.g. the p95 of a duration is
+    /// the quantile 0.95.
+    Quantile { column: String, quantile: f64 },
+}
+
+/// What the value of a metric measures. It says how to show the value: a
+/// duration with its unit, a ratio as a percentage, a count as it is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Unit {
+    Seconds,
+    Nanoseconds,
+    Ratio,
+    Count,
 }
 
 /// A semantic metric definition, one per YAML file.
@@ -88,6 +105,9 @@ pub struct MetricDef {
     pub name: String,
     #[serde(default)]
     pub description: Option<String>,
+    /// What the value measures; a metric without a unit is a plain number.
+    #[serde(default)]
+    pub unit: Option<Unit>,
     pub source_table: String,
     pub measure: Measure,
     #[serde(default)]
@@ -187,6 +207,13 @@ fn render_measure(measure: &Measure) -> Result<String, MetricsError> {
         }
         Measure::Rate { num, den } => {
             format!("{} / NULLIF({}, 0)", render_term(num)?, render_term(den)?)
+        }
+        Measure::Quantile { column, quantile } => {
+            check_ident(column)?;
+            if !(0.0..=1.0).contains(quantile) {
+                return Err(MetricsError::InvalidQuantile(*quantile));
+            }
+            format!("quantile_cont(CAST({column} AS DOUBLE), {quantile})")
         }
     })
 }
@@ -590,6 +617,147 @@ measure: { type: count_distinct, column: target_system }
             );
             assert!(err.to_string().contains("bucket_ns must be positive"));
         }
+    }
+
+    fn quantile_def(quantile: f64) -> MetricDef {
+        MetricDef {
+            name: "action_duration_p95".into(),
+            description: None,
+            unit: Some(Unit::Nanoseconds),
+            source_table: "spans".into(),
+            measure: Measure::Quantile {
+                column: "duration_ns".into(),
+                quantile,
+            },
+            dimensions: Vec::new(),
+            time_col: "ts_ns".into(),
+            condition: None,
+        }
+    }
+
+    #[test]
+    fn a_quantile_measure_compiles_to_the_quantile_of_its_column() {
+        let sql = to_sql(&quantile_def(0.95), &[], None).unwrap();
+
+        assert_eq!(
+            sql,
+            "SELECT quantile_cont(CAST(duration_ns AS DOUBLE), 0.95) AS value\nFROM spans"
+        );
+    }
+
+    #[test]
+    fn a_quantile_measure_is_read_from_yaml() {
+        let def: MetricDef = serde_yaml::from_str(
+            r"
+name: action_duration_p95
+source_table: spans
+measure: { type: quantile, column: duration_ns, quantile: 0.95 }
+",
+        )
+        .unwrap();
+
+        assert!(to_sql(&def, &[], None)
+            .unwrap()
+            .contains("quantile_cont(CAST(duration_ns AS DOUBLE), 0.95)"));
+    }
+
+    #[test]
+    fn a_quantile_is_a_share_from_zero_to_one() {
+        for inside in [0.0, 0.5, 1.0] {
+            assert!(validate(&quantile_def(inside)).is_ok(), "{inside}");
+        }
+        for outside in [-0.001, 1.001, f64::NAN, f64::INFINITY] {
+            let refused = validate(&quantile_def(outside)).unwrap_err();
+            assert!(
+                matches!(refused, MetricsError::InvalidQuantile(_)),
+                "{outside}: {refused:?}"
+            );
+            assert!(refused.to_string().contains("from 0 to 1"), "{refused}");
+        }
+    }
+
+    #[test]
+    fn the_column_of_a_quantile_is_checked_like_every_identifier() {
+        let mut def = quantile_def(0.5);
+        def.measure = Measure::Quantile {
+            column: "duration_ns; DROP TABLE spans".into(),
+            quantile: 0.5,
+        };
+
+        assert!(matches!(
+            validate(&def),
+            Err(MetricsError::InvalidIdentifier(_))
+        ));
+    }
+
+    #[test]
+    fn a_metric_says_the_unit_of_its_value() {
+        let unit_of = |line: &str| {
+            serde_yaml::from_str::<MetricDef>(&format!(
+                "name: m\nsource_table: spans\nmeasure: {{ type: count }}\n{line}\n"
+            ))
+            .map(|def| def.unit)
+        };
+
+        assert_eq!(unit_of("unit: seconds").unwrap(), Some(Unit::Seconds));
+        assert_eq!(
+            unit_of("unit: nanoseconds").unwrap(),
+            Some(Unit::Nanoseconds)
+        );
+        assert_eq!(unit_of("unit: ratio").unwrap(), Some(Unit::Ratio));
+        assert_eq!(unit_of("unit: count").unwrap(), Some(Unit::Count));
+        // A metric without a unit is a plain number.
+        assert_eq!(unit_of("").unwrap(), None);
+        // A unit nobody knows is a mistake in the file, not a plain number.
+        assert!(unit_of("unit: furlongs").is_err());
+    }
+
+    #[test]
+    fn every_metric_shipped_with_tumult_says_its_unit() {
+        let shipped = Path::new(env!("CARGO_MANIFEST_DIR")).join("../metrics");
+
+        let metrics = load_dir(&shipped).unwrap();
+
+        let mut units: Vec<(&str, Option<Unit>)> = metrics
+            .iter()
+            .map(|metric| (metric.name.as_str(), metric.unit))
+            .collect();
+        units.sort_by_key(|(name, _)| *name);
+        assert_eq!(
+            units,
+            [
+                ("action_duration_p95", Some(Unit::Nanoseconds)),
+                ("action_duration_s", Some(Unit::Seconds)),
+                ("coverage", Some(Unit::Count)),
+                ("deviation_rate", Some(Unit::Ratio)),
+                ("experiment_count", Some(Unit::Count)),
+                ("experiment_coverage", Some(Unit::Count)),
+                ("experiment_duration_s", Some(Unit::Seconds)),
+                ("hypothesis_pass_rate", Some(Unit::Ratio)),
+                ("mttr", Some(Unit::Seconds)),
+            ]
+        );
+        for metric in &metrics {
+            assert!(metric.description.is_some(), "{} says nothing", metric.name);
+        }
+    }
+
+    #[test]
+    fn the_shipped_p95_of_the_action_duration_is_a_p95() {
+        let shipped = Path::new(env!("CARGO_MANIFEST_DIR")).join("../metrics");
+        let metrics = load_dir(&shipped).unwrap();
+        let p95 = metrics
+            .iter()
+            .find(|metric| metric.name == "action_duration_p95")
+            .expect("the metric");
+
+        let sql = to_sql(p95, &[], None).unwrap();
+
+        assert!(
+            sql.contains("quantile_cont(CAST(duration_ns AS DOUBLE), 0.95)"),
+            "{sql}"
+        );
+        assert_eq!(p95.unit, Some(Unit::Nanoseconds));
     }
 
     #[test]

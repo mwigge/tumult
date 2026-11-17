@@ -9,13 +9,13 @@
 //! `TUMULT_BLESS=1` writes the file.
 
 use std::path::Path;
+use std::time::Duration;
 
 use tumult_lake::Store;
-use tumult_report::{build_report, render_html};
+use tumult_report::{build_report, digest_title, render_html};
 use tumult_test_utils::{assert_kept, recorded};
 
-const WEEK_S: i64 = 7 * 86_400;
-const SECOND_NS: i64 = 1_000_000_000;
+const WEEK: Duration = Duration::from_secs(7 * 86_400);
 
 #[test]
 fn the_weekly_digest_of_the_recorded_runs_is_the_one_kept_with_the_tests() {
@@ -26,11 +26,13 @@ fn the_weekly_digest_of_the_recorded_runs_is_the_one_kept_with_the_tests() {
     let shipped = Path::new(env!("CARGO_MANIFEST_DIR")).join("../metrics");
     let metrics = tumult_metrics::load_dir(&shipped).expect("the shipped metrics");
 
+    let week_ns = i64::try_from(WEEK.as_nanos()).expect("a week in nanoseconds");
+
     let mut digest = build_report(
         &store.read_only().expect("a reader"),
         &metrics,
-        &format!("Tumult digest — last {WEEK_S}s"),
-        Some((made_at - WEEK_S * SECOND_NS, made_at)),
+        &digest_title(WEEK),
+        Some((made_at - week_ns, made_at)),
     )
     .expect("the digest");
     // The builder stamps the digest with the time of the clock.

@@ -118,6 +118,9 @@ pub enum ChartSpec {
         y_name: String,
         series: Vec<(String, Vec<(i64, f64)>)>,
     },
+    /// A small line without axes, for the card of one number: the
+    /// (time in epoch ns, value) points, the oldest first.
+    Sparkline(Vec<(i64, f64)>),
 }
 
 /// A complete report document.

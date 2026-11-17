@@ -3,6 +3,7 @@
 # resilience.experiment.title — is what its root spans carry).
 name: experiment_coverage
 description: Number of distinct experiments run in the window.
+unit: count
 source_table: spans
 time_col: ts_ns
 measure:

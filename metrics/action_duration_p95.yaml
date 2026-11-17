@@ -1,15 +1,14 @@
-# PLACEHOLDER — action duration p95.
-# TODO(metrics): compute a real p95 once the semantic layer supports
-# quantiles (DuckDB quantile_cont / histogram re-aggregation from
-# metric_histograms). Until then this reports the MEAN action duration
-# in nanoseconds over resilience.action spans; treat it as a trend
-# signal only, not a percentile.
+# The 95th percentile of the fault-action duration, over the
+# resilience.action spans in the window, grouped by the tumult plugin that
+# served the action. The duration of a span is kept in nanoseconds.
 name: action_duration_p95
-description: Placeholder (mean, not p95) action duration in nanoseconds.
+description: 95th percentile of the action duration, per plugin.
+unit: nanoseconds
 source_table: spans
 time_col: ts_ns
 measure:
-  type: avg
+  type: quantile
   column: duration_ns
+  quantile: 0.95
 dimensions: [plugin_name]
 condition: { column: span_name, equals: "resilience.action" }

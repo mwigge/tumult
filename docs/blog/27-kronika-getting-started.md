@@ -98,12 +98,13 @@ construction. The repository ships nine definitions:
 | `experiment_coverage` | Distinct experiments run in the window |
 | `coverage` | Distinct target systems under test |
 | `action_duration_s` | Mean action duration, per plugin |
-| `action_duration_p95` | Tail action latency (currently a placeholder: mean, not p95) |
+| `action_duration_p95` | 95th percentile of the action duration, per plugin |
 | `mttr` | Mean time to recovery across runs |
 
 Each definition names a source table, a measure (`count`, `sum`, `avg`,
-`count_distinct`, or a `rate` of two filtered terms), dimensions, and
-conditions — for example
+`count_distinct`, a `quantile` of a column, or a `rate` of two filtered
+terms), a `unit` (`seconds`, `nanoseconds`, `ratio` or `count`) that says
+how to show the value, dimensions, and conditions — for example
 `hypothesis_pass_rate` is a rate over the `tumult.experiments.total` counter
 where `outcome_status = success`. Render one from the live daemon with
 `GET /report?metric=<name>`, or set `KRONIKA_REPORT_INTERVAL` (e.g. `1h`) to

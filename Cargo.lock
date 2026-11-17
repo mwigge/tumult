@@ -8520,6 +8520,7 @@ dependencies = [
  "thiserror 2.0.19",
  "tokio",
  "tracing",
+ "tumult-compliance",
  "tumult-intelligence",
  "tumult-lake",
  "tumult-metrics",

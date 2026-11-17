@@ -1,7 +1,8 @@
 # Mean time to recovery: average resilience.outcome.recovery_time_s
 # over experiment runs.
 name: mttr
-description: Mean time to recovery (seconds) across experiment runs.
+description: Mean time to recovery across experiment runs.
+unit: seconds
 source_table: spans
 time_col: ts_ns
 measure:

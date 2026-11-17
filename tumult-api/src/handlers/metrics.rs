@@ -82,11 +82,13 @@ pub(crate) async fn timeseries(
         None => sql,
     };
     let description = def.description.clone();
+    let unit = def.unit;
     let body = with_reader(&state.db_path, move |reader| {
         let rows = reader.query_json_rows(&sql).map_err(|e| e.to_string())?;
         Ok(json!({
             "metric": metric,
             "description": description,
+            "unit": unit,
             "interval": interval,
             "range": range,
             "points": rows,
@@ -104,7 +106,7 @@ pub(crate) async fn list_metrics(State(state): State<ApiState>) -> Result<Json<V
         .map_err(|e| internal(format!("load metrics: {e}")))?;
     let metrics: Vec<Value> = defs
         .iter()
-        .map(|d| json!({"name": d.name, "description": d.description}))
+        .map(|d| json!({"name": d.name, "description": d.description, "unit": d.unit}))
         .collect();
     Ok(Json(json!({"metrics": metrics})))
 }

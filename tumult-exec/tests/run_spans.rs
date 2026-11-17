@@ -28,6 +28,7 @@ const HYPOTHESIS_MET: &str = "resilience.outcome.hypothesis_met";
 const RECOVERY_TIME_S: &str = "resilience.outcome.recovery_time_s";
 const BLAST_RADIUS: &str = "resilience.fault.blast_radius";
 const OUTSIDE: &str = "the output is outside the tolerance";
+const PLUGIN: &str = "resilience.plugin.name";
 
 const INJECT: &str = "echo down > \"$STATE\"";
 const HEAL: &str = "echo ok > \"$STATE\"";
@@ -277,4 +278,23 @@ fn a_run_without_a_steady_state_gives_no_verdict_on_it() {
     assert_eq!(flag(&root, HYPOTHESIS_MET), None);
     assert_eq!(seconds(&root, RECOVERY_TIME_S), None);
     assert_eq!(text(&root, BLAST_RADIUS), None);
+}
+
+#[test]
+fn the_span_of_each_step_names_the_plugin_that_served_it() {
+    let lab = Lab::with_state("ok");
+    let experiment = lab.experiment(vec![lab.action("inject", INJECT), lab.action("heal", HEAL)]);
+
+    let (_, spans) = run(&experiment);
+
+    // A command is served by the built-in executor, the plugin `process`:
+    // the same name the metrics of the step carry.
+    assert_eq!(
+        text(&step_span(&spans, "inject"), PLUGIN).as_deref(),
+        Some("process")
+    );
+    assert_eq!(
+        text(&step_span(&spans, "steady"), PLUGIN).as_deref(),
+        Some("process")
+    );
 }
