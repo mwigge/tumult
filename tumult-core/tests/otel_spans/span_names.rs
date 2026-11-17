@@ -286,3 +286,75 @@ fn runner_emits_the_target_version_and_its_source_on_the_root_span() {
 
     let _ = provider.shutdown();
 }
+
+fn text(span: &SpanData, key: &str) -> Option<String> {
+    span.attributes
+        .iter()
+        .find(|kv| kv.key.as_str() == key)
+        .map(|kv| kv.value.as_str().into_owned())
+}
+
+fn step_span(exporter: &InMemorySpanExporter, step: &str) -> SpanData {
+    exporter
+        .get_finished_spans()
+        .unwrap_or_default()
+        .into_iter()
+        .find(|s| text(s, "resilience.fault.name").as_deref() == Some(step))
+        .expect("a span that names the step")
+}
+
+/// The span of a step says what the step did, under which name, and which
+/// plugin served it: the lake groups the durations of steps by these.
+#[test]
+fn the_span_of_a_step_says_what_it_did_and_which_plugin_served_it() {
+    let (provider, exporter, _lock) = setup_in_memory_provider();
+
+    let exp = Experiment {
+        title: "step attributes".into(),
+        method: vec![
+            Activity {
+                name: "cut-the-ledger-link".into(),
+                activity_type: ActivityType::Action,
+                provider: Provider::Native {
+                    plugin: "tumult-network".into(),
+                    function: "partition".into(),
+                    arguments: std::collections::HashMap::new(),
+                },
+                ..Default::default()
+            },
+            Activity {
+                name: "read-the-ledger-lag".into(),
+                activity_type: ActivityType::Probe,
+                ..Default::default()
+            },
+        ],
+        ..Default::default()
+    };
+    let executor: Arc<dyn ActivityExecutor> = Arc::new(MockExecutor);
+    let controls = Arc::new(ControlRegistry::new());
+    run_experiment(&exp, &executor, &controls, &RunConfig::default()).unwrap();
+
+    let action = step_span(&exporter, "cut-the-ledger-link");
+    assert_eq!(action.name, "resilience.action");
+    assert_eq!(
+        text(&action, "resilience.fault.type").as_deref(),
+        Some("injection")
+    );
+    assert_eq!(
+        text(&action, "resilience.plugin.name").as_deref(),
+        Some("tumult-network")
+    );
+    // A command is served by the built-in executor, the plugin `process`.
+    let probe = step_span(&exporter, "read-the-ledger-lag");
+    assert_eq!(probe.name, "resilience.probe");
+    assert_eq!(
+        text(&probe, "resilience.fault.type").as_deref(),
+        Some("observation")
+    );
+    assert_eq!(
+        text(&probe, "resilience.plugin.name").as_deref(),
+        Some("process")
+    );
+
+    let _ = provider.shutdown();
+}
