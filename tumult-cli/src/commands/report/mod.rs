@@ -7,7 +7,7 @@ use tumult_core::types::Journal;
 use super::ReportFormat;
 
 mod escape;
-mod html;
+pub(super) mod html;
 mod junit;
 
 #[cfg(test)]

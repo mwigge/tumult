@@ -83,12 +83,40 @@ tumult run template.toon --var env=production --var cluster=us-east-1
 
 Undefined variables cause a hard error at startup, not at execution time.
 
+### Summary
+
+When a run ends, it prints what it found.
+
+```
+Running experiment: Checkout answers while a slow job runs
+Status: Completed
+Duration: 3169ms
+Method steps: 1 executed
+Hypothesis: met before, met after
+Objectives: 3 met, 1 breached, 1 inconclusive
+  breached: a-million-requests: load.total_requests must be at least 1000000, observed 10611
+  inconclusive: rpo: rpo must be at most 5, not measured
+Load (oha): 10611 requests, 3531.4 requests/s, p50 0.5 ms, p95 0.8 ms, p99 1.4 ms, error rate 0.00 %, thresholds met
+Journal written to: journal.toon
+Journal SHA-256: e97edc233991dfdebf733d0af92a92e83b29c9710320016b7e814cfc2c80f474
+Ingested into persistent analytics store
+```
+
+| Line | What it says |
+|------|--------------|
+| `Hypothesis` | Whether the steady state was `met`, `not met` or `not checked`, before and after the method |
+| `Objectives` | How many [objectives](experiment-format.md) were met, breached or inconclusive. Each one that was not met gets a line with its rule and the value the run observed |
+| `Load` | What the load measured in all. The line ends with `cut before its planned end` when the load was stopped early |
+| `Journal SHA-256` | The hash of the journal file, the same value `sha256sum` prints |
+
+A run without a steady state, objectives or a load has no line about it.
+
 ### Exit Codes
 
 | Code | Meaning |
 |------|---------|
 | 0 | Experiment completed successfully |
-| 1 | Experiment failed, deviated, interrupted, or aborted |
+| 1 | Experiment failed, deviated, halted, interrupted, or aborted |
 
 ### Auto-Ingest
 
@@ -584,6 +612,15 @@ tumult gameday <create|run|analyze>
 | `create` | Create a `.gameday.toon` file from experiment paths |
 | `run` | Run all experiments in a GameDay under shared load |
 | `analyze` | Show aggregate analysis of a completed GameDay |
+
+`tumult gameday run` writes its journal first and then exits with a code that says how the GameDay went.
+
+| Code | Meaning |
+|------|---------|
+| 0 | The GameDay is `COMPLIANT` |
+| 1 | The GameDay is `PARTIAL` or `NON-COMPLIANT`, or it could not run |
+
+Before 3.0.2 the command exited with 0 for every GameDay that wrote a journal.
 
 See the [Experiment Scheduling guide](scheduling.md) for recurring GameDays.
 

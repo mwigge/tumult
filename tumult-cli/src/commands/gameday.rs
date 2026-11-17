@@ -7,6 +7,9 @@ use super::{ComplianceFramework, LoadToolArg};
 
 // ── GameDay commands ────────────────────────────────────────
 
+/// The status of a game day that reached its score.
+const COMPLIANT: &str = "COMPLIANT";
+
 /// Creates a `.gameday.toon` file from experiment paths.
 ///
 /// # Errors
@@ -67,7 +70,8 @@ pub fn cmd_gameday_create(
 ///
 /// # Errors
 ///
-/// Returns an error if the `GameDay` file cannot be read, parsed, or experiments fail.
+/// Returns an error if the `GameDay` file cannot be read, parsed, or experiments fail,
+/// and when the game day ends with a status other than `COMPLIANT`.
 #[allow(clippy::too_many_lines)] // GameDay orchestration spans load setup, multi-experiment execution, and scoring summary
 #[must_use = "callers must handle gameday run errors"]
 pub fn cmd_gameday_run(gameday_path: &std::path::Path) -> Result<()> {
@@ -243,13 +247,7 @@ pub fn cmd_gameday_run(gameday_path: &std::path::Path) -> Result<()> {
     );
 
     if let Some(ref lr) = journal.load_result {
-        crate::outln!(
-            "\nLoad ({}): {} requests, p95={}ms, error_rate={:.4}",
-            lr.tool,
-            lr.total_requests,
-            lr.latency_p95_ms,
-            lr.error_rate
-        );
+        crate::out!("\n{}", super::summary::load(lr));
     }
 
     // Write gameday journal
@@ -259,6 +257,14 @@ pub fn cmd_gameday_run(gameday_path: &std::path::Path) -> Result<()> {
     std::fs::write(&journal_path, &toon)
         .with_context(|| format!("failed to write {}", journal_path.display()))?;
     crate::outln!("\nJournal: {}", journal_path.display());
+
+    // Exit with non-zero if the game day did not reach its score
+    if journal.compliance_status != COMPLIANT {
+        bail!(
+            "game day finished with status: {}",
+            journal.compliance_status
+        );
+    }
 
     Ok(())
 }

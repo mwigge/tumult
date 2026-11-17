@@ -12,7 +12,7 @@ use std::io::{BufRead, BufReader, Read};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
-use lab::{count, indented, step, step_within, wait_for, Lab};
+use lab::{count, fatal_error, indented, step, step_within, wait_for, Lab};
 use serde_json::Value;
 use tumult_core::types::{ExperimentStatus, GameDayJournal};
 
@@ -96,19 +96,25 @@ fn journal(lab: &Lab) -> GameDayJournal {
     toon_format::decode_default(&toon).expect("the journal is read")
 }
 
+/// A method that takes the target `name` down. The run reads its target
+/// once when the method starts. The fault comes half a second later, so
+/// every read of a target that is down is a read of the recovery that
+/// follows the method.
+fn down(name: &str) -> String {
+    [
+        step("settle", "action", "sleep 0.5"),
+        step("fault", "action", &format!("echo down > {name}.state")),
+    ]
+    .concat()
+}
+
+/// A game day passes when two thirds of its runs come back in two seconds.
+const SCORING: &str =
+    "scoring:\n  pass_threshold: 0.75\n  mttr_target_s: 2.0\n  recovery_required: true\n";
+
 #[test]
 fn the_recovery_score_is_the_share_of_runs_that_came_back_within_the_target() {
     let lab = Lab::with_state("ok");
-    // The run reads its target once when the method starts. The fault
-    // comes half a second later, so every read of a target that is down
-    // is a read of the recovery that follows the method.
-    let down = |name: &str| {
-        [
-            step("settle", "action", "sleep 0.5"),
-            step("fault", "action", &format!("echo down > {name}.state")),
-        ]
-        .concat()
-    };
     write_gameday(
         &lab,
         &[
@@ -122,7 +128,7 @@ fn the_recovery_score_is_the_share_of_runs_that_came_back_within_the_target() {
             // Down on three reads, back on the fourth, three seconds later.
             ("back-slow", experiment("back-slow", &down("back-slow"), 3)),
         ],
-        "scoring:\n  pass_threshold: 0.75\n  mttr_target_s: 2.0\n  recovery_required: true\n",
+        SCORING,
     );
 
     let printed = gameday(&lab, "run", &[]);
@@ -176,6 +182,45 @@ fn the_recovery_score_is_the_share_of_runs_that_came_back_within_the_target() {
     );
 }
 
+#[test]
+fn a_game_day_that_is_not_compliant_ends_with_an_error_after_it_wrote_its_journal() {
+    let lab = Lab::with_state("ok");
+    // One of the two runs comes back within the target: half of the
+    // recovery score, and 0.875 in all.
+    write_gameday(
+        &lab,
+        &[
+            (
+                "stays-up",
+                experiment("stays-up", &step("fault", "action", "true"), 1),
+            ),
+            ("back-slow", experiment("back-slow", &down("back-slow"), 3)),
+        ],
+        SCORING,
+    );
+
+    let output = lab
+        .command(&["gameday", "run", "lab.gameday.toon"])
+        .output()
+        .expect("run tumult");
+
+    let printed = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(output.status.code(), Some(1), "{printed}");
+    assert_eq!(
+        fatal_error(&output.stderr),
+        "game day finished with status: PARTIAL"
+    );
+    assert!(
+        printed.contains("Status:  2/2 PASS (PARTIAL)\n"),
+        "{printed}"
+    );
+    assert!(
+        printed.ends_with("\nJournal: lab.gameday.journal.toon\n"),
+        "{printed}"
+    );
+    assert_eq!(journal(&lab).compliance_status, "PARTIAL");
+}
+
 /// A load block of two users for `duration_s`, with `profile` as its shape.
 fn load_block(duration_s: f64, profile: &str) -> String {
     format!(
@@ -223,10 +268,16 @@ fn a_game_day_waits_for_its_load_and_no_longer() {
     assert!(!load.execution.aborted, "{:?}", load.execution);
     assert_eq!(load.total_requests, 120);
     assert!(
-        printed.contains("\nLoad (oha): 120 requests, p95=80ms, error_rate=0.0000\n"),
+        printed.contains(
+            "\n\nLoad (oha): 120 requests, 13.3 requests/s, p50 20.0 ms, p95 80.0 ms, \
+             p99 100.0 ms, error rate 0.00 %, thresholds met\n\nJournal: "
+        ),
         "{printed}"
     );
 }
+
+/// How the line about a load ends when the load was cut.
+const CUT: &str = ", thresholds not met, cut before its planned end\n\nJournal: ";
 
 /// Start the game day with the events of the runner on stderr.
 fn start(lab: &Lab) -> Child {
@@ -299,7 +350,11 @@ fn a_game_day_that_gets_sigint_stops_its_step_and_cuts_its_load() {
 
     let output = child.wait_with_output().expect("wait for tumult");
     let printed = String::from_utf8_lossy(&output.stdout);
-    assert!(output.status.success(), "{printed}");
+    assert_eq!(output.status.code(), Some(1), "{printed}");
+    assert_eq!(
+        fatal_error(&output.stderr),
+        "game day finished with status: NON-COMPLIANT"
+    );
     let ended = ended_with_its_load_cut(&lab, started);
     assert_eq!(ended, [ExperimentStatus::Interrupted]);
     assert!(!is_running(&lab, "sleep.pid"), "the step runs on");
@@ -307,6 +362,7 @@ fn a_game_day_that_gets_sigint_stops_its_step_and_cuts_its_load() {
         printed.contains("Status:  0/1 PASS (NON-COMPLIANT)\n"),
         "{printed}"
     );
+    assert!(printed.contains(CUT), "{printed}");
 }
 
 /// Read the events on `stderr` until the one whose message is `message`.
@@ -354,4 +410,5 @@ fn a_game_day_that_gets_sigint_while_it_waits_for_its_load_cuts_the_load() {
         printed.contains("Status:  1/1 PASS (COMPLIANT)\n"),
         "{printed}"
     );
+    assert!(printed.contains(CUT), "{printed}");
 }

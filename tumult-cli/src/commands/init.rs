@@ -142,6 +142,15 @@ fn recovery_targets_line(experiment: &Experiment) -> Option<String> {
     (!targets.is_empty()).then(|| format!("Recovery targets: {}", targets.join(", ")))
 }
 
+/// `count` of a thing, with the word for `one` of it or for `many`.
+fn counted<N>(count: N, one: &str, many: &str) -> String
+where
+    N: Copy + std::fmt::Display + PartialEq + From<u8>,
+{
+    let word = if count == N::from(1) { one } else { many };
+    format!("{count} {word}")
+}
+
 fn load_line(load: &LoadConfig) -> String {
     let shape = match load.profile {
         None => "flat",
@@ -149,7 +158,7 @@ fn load_line(load: &LoadConfig) -> String {
         Some(LoadProfile::Spike { .. }) => "spike",
         Some(LoadProfile::Soak { .. }) => "soak",
     };
-    let users = load.vus.map(|vus| format!("{vus} users"));
+    let users = load.vus.map(|vus| counted(vus, "user", "users"));
     let duration = load.duration_s.map(|s| format!("{s}s"));
     let parts: Vec<String> = users
         .into_iter()
@@ -204,16 +213,19 @@ pub(crate) fn print_dry_run(experiment: &Experiment) {
         crate::outln!("Guards ({}):", experiment.guards.len());
         for guard in &experiment.guards {
             crate::outln!(
-                "  - {}: probe {}, halts after {} breaches",
+                "  - {}: probe {}, halts after {}",
                 guard.name,
                 guard.probe.name,
-                guard.min_breaches
+                counted(guard.min_breaches, "breach", "breaches")
             );
         }
         crate::outln!();
     }
 
-    crate::outln!("Phase 2 — Method ({} steps):", experiment.method.len());
+    crate::outln!(
+        "Phase 2 — Method ({}):",
+        counted(experiment.method.len(), "step", "steps")
+    );
     for (i, activity) in experiment.method.iter().enumerate() {
         let bg = if activity.background {
             " [background]"
@@ -231,7 +243,10 @@ pub(crate) fn print_dry_run(experiment: &Experiment) {
     crate::outln!();
 
     if !experiment.rollbacks.is_empty() {
-        crate::outln!("Rollbacks ({} steps):", experiment.rollbacks.len());
+        crate::outln!(
+            "Rollbacks ({}):",
+            counted(experiment.rollbacks.len(), "step", "steps")
+        );
         for activity in &experiment.rollbacks {
             crate::outln!("  - {} ({:?})", activity.name, activity.activity_type);
         }

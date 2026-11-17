@@ -3,8 +3,8 @@
 
 mod charts;
 mod context;
-mod fmt;
-mod measures;
+pub(in crate::commands) mod fmt;
+pub(in crate::commands) mod measures;
 mod steps;
 
 use chrono::{DateTime, SecondsFormat, Utc};

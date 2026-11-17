@@ -9,7 +9,7 @@ pub(super) use super::super::escape::html_escape as text;
 
 /// A number as short as it can be written: three decimals at most, and
 /// none that say nothing.
-pub(super) fn number(value: f64) -> String {
+pub(in crate::commands) fn number(value: f64) -> String {
     let written = format!("{value:.3}");
     let short = written.trim_end_matches('0').trim_end_matches('.');
     if short == "-0" {
@@ -37,16 +37,16 @@ pub(super) fn millis(value: u64) -> String {
     seconds(Duration::from_millis(value).as_secs_f64())
 }
 
-pub(super) fn latency(ms: f64) -> String {
+pub(in crate::commands) fn latency(ms: f64) -> String {
     format!("{ms:.1} ms")
 }
 
 /// A share between 0 and 1, in percent.
-pub(super) fn percent(share: f64) -> String {
+pub(in crate::commands) fn percent(share: f64) -> String {
     format!("{:.2} %", share * 100.0)
 }
 
-pub(super) fn rate(requests_per_s: f64) -> String {
+pub(in crate::commands) fn rate(requests_per_s: f64) -> String {
     format!("{requests_per_s:.1} requests/s")
 }
 

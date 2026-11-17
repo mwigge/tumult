@@ -62,7 +62,7 @@ Phase 2 — Method (2 steps):
   1. inject (Action)
   2. heal (Action)
 
-Rollbacks (1 steps):
+Rollbacks (1 step):
   - leave-marker (Action)
 
 === END DRY RUN ===
@@ -88,6 +88,47 @@ fn a_dry_run_prints_the_plan_and_what_it_is_judged_by() {
 
     assert!(passed, "{stdout}");
     assert_eq!(stdout, PLAN);
+}
+
+/// One guard that halts on its first breach, and a load of one user.
+const ONE_OF_EACH: &str = r#"guards[1]:
+  - name: watch
+    probe:
+      name: watch-read
+      activity_type: probe
+      provider:
+        type: process
+        path: sh
+        arguments[2]: "-c", "cat state"
+        timeout_s: 5.0
+      tolerance:
+        type: regex
+        pattern: "^ok$"
+    min_breaches: 1
+
+load:
+  tool: oha
+  script: "http://127.0.0.1:9/health"
+  vus: 1
+  duration_s: 3.0
+"#;
+
+#[test]
+fn a_dry_run_counts_one_of_a_thing_in_the_singular() {
+    let lab = Lab::with_state("ok");
+    let definition = with_block(&experiment(&inject(), &leave_marker()), ONE_OF_EACH);
+
+    let (passed, stdout) = dry_run(&lab, &definition);
+
+    assert!(passed, "{stdout}");
+    for line in [
+        "\nLoad: oha http://127.0.0.1:9/health (1 user, 3s, flat)\n",
+        "\n  - watch: probe watch-read, halts after 1 breach\n",
+        "\nPhase 2 — Method (1 step):\n",
+        "\nRollbacks (1 step):\n",
+    ] {
+        assert!(stdout.contains(line), "no {line:?} in:\n{stdout}");
+    }
 }
 
 /// The `Load:` line of the dry run of a load with `profile` as its shape.

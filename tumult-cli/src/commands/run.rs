@@ -227,6 +227,7 @@ pub async fn cmd_run_with_baseline_mode<S: ::std::hash::BuildHasher>(
     if !journal.rollback_results.is_empty() {
         crate::outln!("Rollbacks: {} executed", journal.rollback_results.len());
     }
+    crate::out!("{}", super::summary::of_run(&journal));
     crate::outln!("Journal written to: {}", journal_path.display());
     crate::outln!(
         "Journal SHA-256: {}",

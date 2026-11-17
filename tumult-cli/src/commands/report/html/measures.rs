@@ -60,7 +60,7 @@ fn verdicts(verdicts: &[NfrVerdict]) -> String {
 }
 
 /// How a value must compare to its threshold, in words.
-pub(super) fn must_be(operator: NfrOperator) -> &'static str {
+pub(in crate::commands) fn must_be(operator: NfrOperator) -> &'static str {
     match operator {
         NfrOperator::Lte => "at most",
         NfrOperator::Gte => "at least",
