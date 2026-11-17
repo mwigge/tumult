@@ -313,6 +313,19 @@ fn as_an_older_build_left_it(db: &Path) {
         .unwrap();
 }
 
+/// Open the lake and let its backfill end. Opening gives a backfill
+/// [`BACKFILL_OPEN_BUDGET`] of wall clock and leaves the rest to later
+/// turns, so a busy machine can open the lake with the last step undone.
+fn open_and_let_the_backfill_end(db: &Path) -> Store {
+    let store = Store::open(db).unwrap();
+    assert!(store
+        .writer()
+        .unwrap()
+        .continue_version_backfill(Duration::from_secs(600))
+        .unwrap());
+    store
+}
+
 #[test]
 fn a_lake_written_before_the_rollup_is_backfilled_once_on_open() {
     let dir = tempfile::TempDir::new().unwrap();
@@ -332,7 +345,7 @@ fn a_lake_written_before_the_rollup_is_backfilled_once_on_open() {
     }
     as_an_older_build_left_it(&db);
 
-    let store = Store::open(&db).unwrap();
+    let store = open_and_let_the_backfill_end(&db);
     assert_eq!(
         seen(&store, "checkout"),
         vec![demo("1.0.0", 10, 9000), demo("1.1.0", 60, 5000)]
@@ -412,11 +425,19 @@ fn a_backfill_reads_a_day_at_a_step_and_says_while_it_is_running() {
     })
     .unwrap();
     assert_eq!(versions(&conn), ["0.9.0", "1.0.0", "1.1.0"]);
+    let before_opening = backfill_state(&conn).unwrap();
     drop(conn);
 
-    // Opening the lake carries it to the end. The spans of the batch
-    // above were never stored, so 2.0.0 is not there to find.
+    // Opening the lake carries it on, and a later turn takes what the
+    // budget of the opening left. The spans of the batch above were
+    // never stored, so 2.0.0 is not there to find.
     let store = Store::open(&db).unwrap();
+    let writer = store.writer().unwrap();
+    assert_ne!(backfill_state(&writer.conn).unwrap(), before_opening);
+    assert!(writer
+        .continue_version_backfill(Duration::from_secs(600))
+        .unwrap());
+    drop(writer);
     let reader = store.read_only().unwrap();
     assert!(!reader.version_backfill_running().unwrap());
     let all: Vec<String> = reader
