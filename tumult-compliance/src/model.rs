@@ -112,8 +112,12 @@ pub enum ChartSpec {
     Bars(Vec<(String, f64)>),
     /// (label, value) donut slices.
     Donut(Vec<(String, f64)>),
-    /// (series name, (x, y) points) lines.
-    Lines(Vec<(String, Vec<(f64, f64)>)>),
+    /// Lines over time: what the y axis measures, and for each series its
+    /// name and its (time in epoch ns, value) points.
+    Trend {
+        y_name: String,
+        series: Vec<(String, Vec<(i64, f64)>)>,
+    },
 }
 
 /// A complete report document.

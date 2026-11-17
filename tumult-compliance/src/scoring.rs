@@ -185,8 +185,8 @@ pub fn compute_scoped(
 }
 
 /// Portfolio score sampled at `points` evenly spaced instants across
-/// `(as_of_ns - period_ns, as_of_ns]` — the R1 trend chart. X values are
-/// bucket indices `1..=points`.
+/// `(as_of_ns - period_ns, as_of_ns]` — the R1 trend chart. Each point is
+/// the time of its instant and the score at that time.
 ///
 /// # Errors
 /// Returns the store error string when a query fails.
@@ -195,7 +195,7 @@ pub fn portfolio_series(
     as_of_ns: i64,
     period_ns: i64,
     points: usize,
-) -> Result<Vec<(f64, f64)>, String> {
+) -> Result<Vec<(i64, f64)>, String> {
     portfolio_series_scoped(reader, as_of_ns, period_ns, points, &[])
 }
 
@@ -209,13 +209,13 @@ pub fn portfolio_series_scoped(
     period_ns: i64,
     points: usize,
     envs: &[String],
-) -> Result<Vec<(f64, f64)>, String> {
+) -> Result<Vec<(i64, f64)>, String> {
     let points = points.max(2) as i64;
     let step = period_ns / points;
     let mut out = Vec::with_capacity(points as usize);
     for i in 1..=points {
         let t = as_of_ns - period_ns + step * i;
-        out.push((i as f64, compute_as_of(reader, t, envs)?.portfolio));
+        out.push((t, compute_as_of(reader, t, envs)?.portfolio));
     }
     Ok(out)
 }
@@ -611,10 +611,14 @@ mod tests {
 
         let series = portfolio_series(&reader, now, 7 * DAY, 5).unwrap();
         assert_eq!(series.len(), 5);
-        // Bucket indices run 1..=points. The only run sits at now-1d, so
-        // samples before it see an empty store (0) and the last sample sees
-        // the run with no outcome log (failed → 50).
-        assert_eq!(series[0].0, 1.0);
+        // The instants end at `now` and are a fifth of the week apart. The
+        // only run sits at now-1d, so samples before it see an empty store
+        // (0) and the last sample sees the run with no outcome log
+        // (failed → 50).
+        let step = 7 * DAY / 5;
+        let instants: Vec<i64> = series.iter().map(|(t, _)| *t).collect();
+        let expected: Vec<i64> = (0..5).rev().map(|back| now - back * step).collect();
+        assert_eq!(instants, expected);
         assert!(series[..4].iter().all(|(_, v)| *v == 0.0));
         assert_eq!(series[4].1, 50.0);
 

@@ -86,10 +86,10 @@ pub fn build_executive(
     // Score trend across the period (portfolio sampled at 10 instants).
     let trend = scoring::portfolio_series_scoped(reader, as_of_ns, period_ns, 10, envs)?;
     blocks.push(Block::H2("Score trend".into()));
-    blocks.push(Block::Chart(ChartSpec::Lines(vec![(
-        "portfolio".into(),
-        trend,
-    )])));
+    blocks.push(Block::Chart(ChartSpec::Trend {
+        y_name: "Portfolio score".into(),
+        series: vec![("portfolio".into(), trend)],
+    }));
 
     // Per-experiment bars, weakest first (experiments are sorted by score).
     blocks.push(Block::H2("Experiment scores".into()));
