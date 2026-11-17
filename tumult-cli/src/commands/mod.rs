@@ -32,7 +32,7 @@ pub use gate::{cmd_gate, FailOn, GateArgs};
 pub use perf::{cmd_perf, exit_code_of, PerfArgs, PerfFailOn};
 pub use recommend::{cmd_agents, cmd_recommend, AgentArgs};
 pub use report::cmd_report;
-pub use run::{cmd_run, cmd_run_with_baseline_mode};
+pub use run::{cmd_run, cmd_run_with_baseline_mode, NotCompleted};
 pub use store::{
     cmd_import, cmd_store_backup, cmd_store_export, cmd_store_import_legacy, cmd_store_migrate,
     cmd_store_path, cmd_store_purge, cmd_store_restore, cmd_store_stats,

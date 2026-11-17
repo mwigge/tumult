@@ -19,6 +19,11 @@ use tumult_otel::logging::{err_sources, sanitize_url};
 use super::events::{self, EnvKey};
 use super::print_dry_run;
 
+/// The error of a run that wrote its journal and did not complete.
+#[derive(Debug, thiserror::Error)]
+#[error("experiment finished with status: {0:?}")]
+pub struct NotCompleted(pub ExperimentStatus);
+
 // ── Run command ───────────────────────────────────────────────
 
 /// # Errors
@@ -251,7 +256,7 @@ pub async fn cmd_run_with_baseline_mode<S: ::std::hash::BuildHasher>(
 
     // Exit with non-zero if experiment did not complete successfully
     if journal.status != ExperimentStatus::Completed {
-        bail!("experiment finished with status: {:?}", journal.status);
+        return Err(NotCompleted(journal.status).into());
     }
 
     Ok(())

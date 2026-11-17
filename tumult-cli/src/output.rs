@@ -55,11 +55,29 @@ macro_rules! errln {
 static STDOUT: Stream = Stream::new("stdout");
 static STDERR: Stream = Stream::new("stderr");
 
+/// Whether stdout is kept for data; see [`keep_stdout_for_data`].
+static STDOUT_IS_FOR_DATA: AtomicBool = AtomicBool::new(false);
+
+/// Keeps stdout for the data another program reads. From here on, what
+/// [`outln!`](crate::outln) and [`out!`](crate::out) say to a person goes
+/// to stderr, and only [`data`] writes to stdout.
+pub fn keep_stdout_for_data() {
+    STDOUT_IS_FOR_DATA.store(true, Ordering::Relaxed);
+}
+
+/// Writes `args` to stdout as the data the command was asked for.
+pub fn data(args: Arguments<'_>) {
+    STDOUT.write(&mut io::stdout().lock(), args);
+}
+
 /// Writes `args` to stdout; see [`outln!`](crate::outln).
 pub fn stdout(args: Arguments<'_>) {
     #[cfg(test)]
     if testing::captured(testing::Target::Stdout, args) {
         return;
+    }
+    if STDOUT_IS_FOR_DATA.load(Ordering::Relaxed) {
+        return stderr(args);
     }
     STDOUT.write(&mut io::stdout().lock(), args);
 }

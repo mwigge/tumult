@@ -158,7 +158,7 @@ pub(crate) enum Commands {
         #[arg(long)]
         no_ingest: bool,
         /// Output format for journal (human-readable summary or JSON to stdout)
-        #[arg(long, value_enum)]
+        #[arg(long, value_enum, conflicts_with = "dry_run")]
         output_format: Option<OutputFormat>,
         /// Template variable substitution: KEY=VALUE (may be repeated)
         #[arg(long = "var", value_name = "KEY=VALUE", action = clap::ArgAction::Append)]

@@ -73,7 +73,7 @@ fn print_journal_json(path: &Path) -> anyhow::Result<()> {
         .with_context(|| format!("failed to decode journal: {}", path.display()))?;
     let json = serde_json::to_string_pretty(&journal)
         .with_context(|| format!("failed to encode journal as JSON: {}", path.display()))?;
-    tumult_cli::outln!("{json}");
+    tumult_cli::output::data(format_args!("{json}\n"));
     Ok(())
 }
 
@@ -108,7 +108,12 @@ async fn dispatch(command: Commands) -> anyhow::Result<()> {
             };
             let var_map = parse_var_args(&vars)?;
             let load_override = build_load_override(load, load_script, load_vus, load_duration)?;
-            commands::cmd_run_with_baseline_mode(
+            let json = matches!(output_format, Some(OutputFormat::Json));
+            if json {
+                // Stdout is for the journal: what the run says goes to stderr.
+                tumult_cli::output::keep_stdout_for_data();
+            }
+            let ended = commands::cmd_run_with_baseline_mode(
                 &experiment,
                 &journal_path,
                 force,
@@ -124,11 +129,16 @@ async fn dispatch(command: Commands) -> anyhow::Result<()> {
                 },
                 target_version.as_deref(),
             )
-            .await?;
-            // If --output-format json was specified, print the journal as JSON to stdout
-            if matches!(output_format, Some(OutputFormat::Json)) {
+            .await;
+            // A run that did not complete wrote a journal too. Any other
+            // error ended the run before it had one.
+            let wrote_journal = ended
+                .as_ref()
+                .map_or_else(anyhow::Error::is::<commands::NotCompleted>, |()| true);
+            if json && wrote_journal {
                 print_journal_json(&journal_path)?;
             }
+            ended?;
         }
         Commands::Validate { experiment } => {
             commands::cmd_validate(&experiment)?;

@@ -24,7 +24,7 @@ tumult run <experiment.toon> [OPTIONS]
 | `--rollback-strategy <s>` | `on-deviation` | `always`, `on-deviation`, or `never` (`deviated` is accepted as an alias for `on-deviation`) |
 | `--baseline-mode <m>` | `full` | `full`/`skip`: declared tolerances; `only`: one probe-only observation, no fault/load/control/rollback |
 | `--no-ingest` | `false` | Skip auto-ingestion into persistent analytics store |
-| `--output-format <f>` | — | `json` — print journal as JSON to stdout after run |
+| `--output-format <f>` | — | `json`: print the journal as JSON on stdout when the run has ended, also when it did not complete. Stdout then holds the journal only; the [summary](#summary) goes to stderr. Not with `--dry-run` |
 | `--var KEY=VALUE` | — | Template variable substitution (repeatable) |
 | `--target-version <v>` | — | The version of the target this run measures, recorded in the journal as `declared` (overrides `target.version`; an error when the definition has no `target` block). Without it and without `target.version`, a run that auto-ingests asks the daemon (or the local lake) once at its end which `service.version` the target's spans carried during the run and records it as `observed` |
 | `--load <tool>` | — | Run a load test concurrently with the method (`k6` or `none`) |
