@@ -247,6 +247,23 @@ impl AnalyticsStore {
         Ok(Self { conn })
     }
 
+    /// Turn off every access of this connection outside the database:
+    /// host files, the network, other databases and extensions
+    /// (`enable_external_access = false`, the setting
+    /// `tumult_intelligence::locked_reader` opens with). Call it before
+    /// running SQL that a caller wrote. Tables already loaded stay
+    /// readable, so an in-memory store can load journals first. `DuckDB`
+    /// refuses a later `SET` that turns the access back on.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `DuckDB` refuses the setting.
+    pub fn deny_external_access(&self) -> Result<(), AnalyticsError> {
+        self.conn
+            .execute_batch("SET enable_external_access = false")?;
+        Ok(())
+    }
+
     fn init_schema(&self) -> Result<(), AnalyticsError> {
         // The unified v3 migration (telemetry + manual + analytics families,
         // ChaosGraph tables, experiment_runs view, compliance-article seed,

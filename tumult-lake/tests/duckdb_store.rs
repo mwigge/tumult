@@ -215,3 +215,103 @@ fn experiment_id_has_unique_index() {
     let idx_count: usize = result[0][0].parse().unwrap_or(0);
     assert!(idx_count >= 1, "experiments table should have an index");
 }
+
+/// The value the host files of the tests below hold.
+const HOST_SECRET: &str = "host-secret-7f3a";
+
+/// Writes `secret.csv` and `secret.json`, both holding [`HOST_SECRET`],
+/// into `dir` and returns their paths.
+fn host_files(dir: &std::path::Path) -> (String, String) {
+    let csv = dir.join("secret.csv");
+    std::fs::write(&csv, format!("value\n{HOST_SECRET}\n")).unwrap();
+    let json = dir.join("secret.json");
+    std::fs::write(&json, format!("{{\"value\": \"{HOST_SECRET}\"}}\n")).unwrap();
+    (csv.display().to_string(), json.display().to_string())
+}
+
+#[test]
+fn external_access_turned_off_after_loading_keeps_the_loaded_journals() {
+    let host = tempfile::TempDir::new().unwrap();
+    let (csv, _) = host_files(host.path());
+    let read_csv = format!("SELECT value FROM read_csv_auto('{csv}')");
+    let s = AnalyticsStore::in_memory().unwrap();
+    s.ingest_journal(&sample_journal("e1", ExperimentStatus::Completed))
+        .unwrap();
+    // The file is readable before the switch, so a refusal below is the
+    // switch and not a missing file.
+    assert_eq!(s.query(&read_csv).unwrap()[0][0], HOST_SECRET);
+
+    s.deny_external_access().unwrap();
+
+    let rows = s.query("SELECT experiment_id FROM experiments").unwrap();
+    assert_eq!(rows[0][0], "e1");
+    let setting = s
+        .query("SELECT current_setting('enable_external_access')")
+        .unwrap();
+    assert_eq!(setting[0][0], "false");
+    assert!(s.query(&read_csv).is_err(), "{read_csv} must be refused");
+}
+
+#[test]
+fn a_store_without_external_access_refuses_files_extensions_and_turning_it_back_on() {
+    let host = tempfile::TempDir::new().unwrap();
+    let (csv, json) = host_files(host.path());
+    let other = host.path().join("other.duckdb");
+    duckdb::Connection::open(&other)
+        .unwrap()
+        .execute_batch(&format!(
+            "CREATE TABLE secrets AS SELECT '{HOST_SECRET}' AS value"
+        ))
+        .unwrap();
+    let copied = host.path().join("copied.csv");
+    let extension = host.path().join("fake.duckdb_extension");
+    std::fs::write(&extension, "not an extension").unwrap();
+    let reach_out = [
+        format!("SELECT * FROM read_csv_auto('{csv}')"),
+        format!("SELECT * FROM read_json_auto('{json}')"),
+        format!("SELECT * FROM '{csv}'"),
+        format!("COPY experiments TO '{}'", copied.display()),
+        format!("ATTACH '{}' AS other", other.display()),
+        "INSTALL httpfs".to_string(),
+        format!("LOAD '{}'", extension.display()),
+    ];
+    let turn_back_on = [
+        "SET enable_external_access = true",
+        "RESET enable_external_access",
+        "SET allowed_directories = ['/']",
+    ];
+
+    let db_path = host.path().join("analytics.duckdb");
+    drop(AnalyticsStore::open(&db_path).unwrap());
+    let loaded = AnalyticsStore::in_memory().unwrap();
+    loaded
+        .ingest_journal(&sample_journal("e1", ExperimentStatus::Completed))
+        .unwrap();
+    let read_only = AnalyticsStore::open_read_only(&db_path).unwrap();
+
+    for (kind, s) in [("in-memory", loaded), ("read-only", read_only)] {
+        // If the switch ever fails, INSTALL lands in the temp dir and not
+        // in the extension cache of the user.
+        let extensions = host.path().join(format!("extensions-{kind}"));
+        s.query(&format!(
+            "SET extension_directory = '{}'",
+            extensions.display()
+        ))
+        .unwrap();
+        s.deny_external_access().unwrap();
+        for sql in &reach_out {
+            let error = s.query(sql).expect_err(sql).to_string();
+            assert!(error.contains("Permission Error"), "{kind}: {sql}: {error}");
+            assert!(!error.contains(HOST_SECRET), "{kind}: {sql}: {error}");
+        }
+        for sql in turn_back_on {
+            assert!(s.query(sql).is_err(), "{kind}: {sql} must be refused");
+        }
+        let setting = s
+            .query("SELECT current_setting('enable_external_access')")
+            .unwrap();
+        assert_eq!(setting[0][0], "false", "{kind}");
+        assert!(!copied.exists(), "{kind}: COPY must not write the file");
+        assert!(!extensions.exists(), "{kind}: INSTALL must not write");
+    }
+}

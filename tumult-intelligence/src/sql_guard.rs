@@ -162,49 +162,13 @@ fn is_identifier_start(token: &str) -> bool {
         .is_some_and(|c| c.is_alphabetic() || c == '_')
 }
 
-/// Split SQL into word tokens, tracking single-quoted string literals.
-/// String-literal *contents* are dropped (returned as the token `?str?`) so
-/// that punctuation inside literals cannot trip the structural checks.
+/// The token texts of [`tokenize_positions`], which owns the splitting
+/// rule, so the validator checks the tokens that [`scope_tables`] rewrites.
 fn tokenize(sql: &str) -> Vec<String> {
-    let mut tokens = Vec::new();
-    let mut current = String::new();
-    let mut chars = sql.chars().peekable();
-    let mut in_string = false;
-    while let Some(c) = chars.next() {
-        if in_string {
-            if c == '\'' {
-                // '' inside a string is an escaped quote — stay in the string.
-                if chars.peek() == Some(&'\'') {
-                    chars.next();
-                } else {
-                    in_string = false;
-                    tokens.push("?str?".to_string());
-                }
-            }
-            continue;
-        }
-        match c {
-            '\'' => {
-                if !current.is_empty() {
-                    tokens.push(std::mem::take(&mut current));
-                }
-                in_string = true;
-            }
-            c if c.is_alphanumeric() || c == '_' || c == '.' => current.push(c),
-            _ => {
-                if !current.is_empty() {
-                    tokens.push(std::mem::take(&mut current));
-                }
-                if !c.is_whitespace() {
-                    tokens.push(c.to_string());
-                }
-            }
-        }
-    }
-    if !current.is_empty() {
-        tokens.push(current);
-    }
-    tokens
+    tokenize_positions(sql)
+        .into_iter()
+        .map(|t| t.text)
+        .collect()
 }
 
 /// Scan for comment markers and semicolons outside string literals.
@@ -310,8 +274,11 @@ struct PosTok {
     word: bool,
 }
 
-/// [`tokenize`], but keeping byte spans. String literals become non-word
-/// `?str?` placeholders (their contents stay invisible to the rewriter).
+/// Split SQL into word tokens with their byte spans, tracking single-quoted
+/// string literals (`''` inside one is an escaped quote). String literals
+/// become non-word `?str?` placeholders, so punctuation inside them cannot
+/// trip the structural checks and their contents stay invisible to the
+/// rewriter. An unterminated literal yields no token.
 fn tokenize_positions(sql: &str) -> Vec<PosTok> {
     let mut tokens = Vec::new();
     let mut current = String::new();
@@ -684,6 +651,34 @@ mod tests {
             scope_tables("SELECT * FROM spans JOIN logs ON true", SCOPE),
             Err(SqlGuardError::TableNotScopable("logs".into()))
         );
+    }
+
+    #[test]
+    fn the_validator_and_the_scoper_split_sql_into_the_same_tokens() {
+        // A quoted string, an escaped quote and a string that never ends:
+        // `validate_generated_sql` and `scope_tables` must see one stream.
+        for (sql, expected) in [
+            (
+                "SELECT 'a, b' FROM spans",
+                vec!["SELECT", "?str?", "FROM", "spans"],
+            ),
+            (
+                "SELECT 'it''s' FROM spans",
+                vec!["SELECT", "?str?", "FROM", "spans"],
+            ),
+            (
+                "SELECT * FROM spans WHERE x = 'from logs",
+                vec!["SELECT", "*", "FROM", "spans", "WHERE", "x", "="],
+            ),
+        ] {
+            let positioned = tokenize_positions(sql);
+            let texts: Vec<&str> = positioned.iter().map(|t| t.text.as_str()).collect();
+            assert_eq!(tokenize(sql), texts, "{sql}");
+            assert_eq!(texts, expected, "{sql}");
+            for token in positioned.iter().filter(|t| t.word) {
+                assert_eq!(&sql[token.start..token.end], token.text, "{sql}");
+            }
+        }
     }
 
     #[test]
