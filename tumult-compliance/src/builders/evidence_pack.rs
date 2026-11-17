@@ -2,7 +2,7 @@
 
 use tumult_lake::Reader;
 
-use super::{base_meta, cell};
+use super::{base_meta, cell, counted};
 use crate::html::fmt_date;
 use crate::model::{Block, Cell, ReportDoc, TemplateKind};
 use crate::scoring::{self, RunState};
@@ -93,8 +93,9 @@ pub fn build_evidence_pack(
         Block::H1("Scope and methodology".into()),
         Block::Paragraph(format!(
             "This pack summarises the resilience testing evidence Tumult recorded \
-             for the {} framework{}{}. Experiments are chaos/continuity tests \
-             executed via tumult; outcomes are taken from each run's completion log.",
+             for the {} framework{}{}. An automated experiment is a chaos or continuity \
+             test that Tumult ran. The outcome of a run is the status that run recorded; \
+             a manual exercise has the outcome of its verified record.",
             key.to_uppercase(),
             from_ns.map_or(String::new(), |f| format!(
                 " over the period {} – {}",
@@ -104,7 +105,11 @@ pub fn build_evidence_pack(
             if card.experiments.is_empty() {
                 ". No experiments are on record in the store".into()
             } else {
-                format!("; {} experiments are on record", card.experiments.len())
+                let on_record = card.experiments.len();
+                format!(
+                    "; {}",
+                    counted(on_record, "experiment is on record", "experiments are on record")
+                )
             },
         )),
         Block::H2("Independence".into()),
@@ -187,7 +192,7 @@ pub fn build_evidence_pack(
                     let verifier = manual.and_then(|m| cell(m, "reviewed_by"));
                     vec![
                         Cell::text(e.name.clone()),
-                        Cell::status(e.origin.clone()),
+                        Cell::text(e.origin.clone()),
                         Cell::text(format!(
                             "{} / {}",
                             e.target.as_deref().unwrap_or("—"),

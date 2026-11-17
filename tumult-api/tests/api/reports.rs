@@ -33,10 +33,51 @@ async fn scores_returns_freshness_decayed_card() {
     assert_eq!(targets[0]["score"], 75.0);
     assert_eq!(body["portfolio"], 75.0);
     assert_eq!(body["band"], "good");
-    assert!(body["delta"].is_number(), "delta should compare windows");
+    // Every seeded run is from the last half hour. A week ago nothing was
+    // on record, and a first score is not a change.
+    assert!(body["delta"].is_null(), "{body}");
 
     let (status, _) = get(&srv.base, "/api/scores?range=1y").await;
     assert_eq!(status, 400);
+}
+
+/// One passed run of `queue-drain` on the target `queue`, ten days ago.
+async fn seed_a_pass_from_ten_days_ago(srv: &TestServer) {
+    let ts = now_ns() - 10 * 86_400 * NS;
+    exec_write(srv, move |writer| {
+        writer
+            .insert_spans(&[tumult_lake::SpanRow {
+                ts_ns: ts,
+                trace_id: "trace-exp-old".into(),
+                span_id: "span-exp-old-root".into(),
+                span_name: "resilience.experiment".into(),
+                span_kind: "Internal".into(),
+                duration_ns: 5 * NS,
+                service_name: "tumult".into(),
+                experiment_id: Some("exp-old".into()),
+                experiment_name: Some("queue-drain".into()),
+                outcome_status: Some("completed".into()),
+                target_system: Some("queue".into()),
+                target_environment: Some("demo".into()),
+                events: "[]".into(),
+                ..Default::default()
+            }])
+            .map_err(|e| e.to_string())
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn the_change_of_the_scores_is_against_what_was_on_record_a_period_ago() {
+    let srv = spawn_server().await;
+    seed_a_pass_from_ten_days_ago(&srv).await;
+
+    let (status, body) = get(&srv.base, "/api/scores").await;
+    assert_eq!(status, 200, "{body}");
+
+    // Now: `database` at 75 and `queue` at 100. A week ago: `queue` alone.
+    assert_eq!(body["portfolio"], 87.5);
+    assert_eq!(body["delta"], -12.5);
 }
 
 #[tokio::test]

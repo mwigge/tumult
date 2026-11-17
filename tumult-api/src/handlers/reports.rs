@@ -210,7 +210,8 @@ pub(crate) struct ScoresQuery {
 }
 
 /// `GET /api/scores?range=24h|7d|14d|30d` — resilience scorecard as of now,
-/// with the portfolio delta against the previous equal window. Scoped
+/// with the portfolio delta against the previous equal window (`null` when
+/// nothing was on record at the start of the window). Scoped
 /// principals get the card of their own environments only (rollups
 /// recomputed over the visible experiments).
 pub(crate) async fn scores(
@@ -239,7 +240,7 @@ pub(crate) async fn scores(
             tumult_compliance::scoring::compute(reader, from, None)?,
             &scopes,
         )?;
-        card.delta = Some(card.portfolio - prev.portfolio);
+        card.delta = tumult_compliance::scoring::change_since(&card, &prev);
         Ok(card)
     })
     .await?;

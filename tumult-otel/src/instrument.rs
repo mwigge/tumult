@@ -88,17 +88,38 @@ pub fn record_action(
     }
 }
 
-/// Record the execution of a probe in `OTel` spans and metrics.
+/// How a probe ended.
+///
+/// A probe that ran and read a value outside its tolerance did its work:
+/// the target failed the check, the plugin did not.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProbeEnd {
+    /// The probe ran and read what it expects.
+    Passed,
+    /// The probe ran and read a value outside its tolerance.
+    OutsideTolerance,
+    /// The plugin could not run the probe.
+    PluginFailed,
+}
+
+/// Record the execution of a probe in `OTel` metrics.
+///
+/// The probe is counted and timed as a success only when it passed. Only a
+/// probe its plugin could not run adds to the plugin errors.
 pub fn record_probe(
     metrics: &TumultMetrics,
     plugin_name: &str,
     probe_name: &str,
     start: Instant,
-    success: bool,
+    end: ProbeEnd,
 ) {
     let duration = start.elapsed();
     let duration_s = duration.as_secs_f64();
-    let outcome = if success { "success" } else { "failure" };
+    let outcome = if end == ProbeEnd::Passed {
+        "success"
+    } else {
+        "failure"
+    };
 
     let attrs = &[
         KeyValue::new(attributes::PLUGIN_NAME, plugin_name.to_string()),
@@ -109,7 +130,7 @@ pub fn record_probe(
     metrics.probes_total.add(1, attrs);
     metrics.probe_duration_seconds.record(duration_s, attrs);
 
-    if !success {
+    if end == ProbeEnd::PluginFailed {
         metrics.plugin_errors_total.add(1, attrs);
     }
 }
@@ -249,33 +270,44 @@ mod tests {
     }
 
     #[test]
-    fn record_probe_success_does_not_increment_plugin_errors_total() {
-        let (meter, exporter, provider) = sdk_harness();
-        let metrics = TumultMetrics::new(&meter);
-        let start = Instant::now();
-        record_probe(&metrics, "tumult-http", "health-check", start, true);
-        let names = flush_and_names(&provider, &exporter);
-        assert!(
-            names.iter().any(|n| n == "tumult.probes.total"),
-            "expected tumult.probes.total in {names:?}"
-        );
-        assert!(
-            !names.iter().any(|n| n == "tumult.plugin.errors.total"),
-            "plugin_errors_total must not be emitted on probe success"
-        );
-    }
+    fn a_probe_is_counted_by_how_it_ended_and_only_a_plugin_that_failed_is_a_plugin_error() {
+        use tumult_test_utils::{attribute, MetricCapture};
 
-    #[test]
-    fn record_probe_failure_increments_plugin_errors_total() {
-        let (meter, exporter, provider) = sdk_harness();
-        let metrics = TumultMetrics::new(&meter);
-        let start = Instant::now();
-        record_probe(&metrics, "tumult-http", "health-check", start, false);
-        let names = flush_and_names(&provider, &exporter);
-        assert!(
-            names.iter().any(|n| n == "tumult.plugin.errors.total"),
-            "expected tumult.plugin.errors.total on probe failure in {names:?}"
-        );
+        for (end, outcome, plugin_errors) in [
+            (ProbeEnd::Passed, "success", 0.0),
+            (ProbeEnd::OutsideTolerance, "failure", 0.0),
+            (ProbeEnd::PluginFailed, "failure", 1.0),
+        ] {
+            let capture = MetricCapture::new();
+            let metrics = TumultMetrics::new(&capture.meter("test"));
+
+            record_probe(&metrics, "tumult-http", "health-check", Instant::now(), end);
+
+            let of_the_probe = [
+                (attributes::PLUGIN_NAME, "tumult-http"),
+                (attributes::PROBE_NAME, "health-check"),
+                (attributes::OUTCOME, outcome),
+            ];
+            assert_eq!(
+                (
+                    capture.total("tumult.probes.total", &[]),
+                    capture.total("tumult.probes.total", &of_the_probe),
+                    capture.total("tumult.plugin.errors.total", &[]),
+                    capture.total("tumult.plugin.errors.total", &of_the_probe),
+                ),
+                (1.0, 1.0, plugin_errors, plugin_errors),
+                "{end:?}"
+            );
+            let timed = capture.histogram_points("tumult.probe.duration");
+            assert_eq!(timed.len(), 1, "{end:?}");
+            assert_eq!(timed[0].count, 1, "{end:?}");
+            assert_eq!(
+                attribute(&timed[0].attributes, attributes::OUTCOME)
+                    .map(|found| found.as_str().into_owned()),
+                Some(outcome.to_string()),
+                "{end:?}"
+            );
+        }
     }
 
     #[test]

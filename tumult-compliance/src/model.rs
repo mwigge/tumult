@@ -64,7 +64,7 @@ impl Cell {
     pub fn glyph(status: &str) -> (&'static str, &'static str) {
         match status.to_ascii_lowercase().as_str() {
             "completed" | "passed" | "ok" | "low" | "good" | "met" => ("●", "#009E73"),
-            "deviated" | "stale" | "medium" | "warning" | "fair" => ("▲", "#E69F00"),
+            "deviated" | "partial" | "stale" | "medium" | "warning" | "fair" => ("▲", "#E69F00"),
             "failed" | "error" | "high" | "critical" | "poor" | "not met" => ("×", "#D55E00"),
             _ => ("○", "#6B7280"),
         }
@@ -147,7 +147,7 @@ mod tests {
         ] {
             assert_eq!(Cell::glyph(good), ("●", "#009E73"), "{good}");
         }
-        for warn in ["deviated", "stale", "medium", "warning", "fair"] {
+        for warn in ["deviated", "partial", "stale", "medium", "warning", "fair"] {
             assert_eq!(Cell::glyph(warn), ("▲", "#E69F00"), "{warn}");
         }
         for bad in ["failed", "error", "high", "critical", "poor", "not met"] {

@@ -438,6 +438,12 @@ fn evidence_pack_renders_register_provenance_attestation_and_findings() {
         .expect("manual row");
     let text = row_text(manual_row);
     assert!(text.contains("manual"), "{text}");
+    // Where the evidence comes from is a word, and no status with a mark.
+    assert_eq!(manual_row[1], Cell::text("manual"));
+    assert!(
+        register.iter().all(|row| matches!(row[1], Cell::Text(_))),
+        "{register:?}"
+    );
     assert!(text.contains("bob"), "{text}");
     assert!(text.contains("partial"), "{text}");
     assert!(text.contains("|75"), "{text}");
@@ -475,6 +481,31 @@ fn evidence_pack_renders_register_provenance_attestation_and_findings() {
     // The seed spells the status with a capital, as a run stored before
     // 3.0.2 does; the report gives it in the spelling of the journal.
     assert!(findings[0].contains("deviated"), "{findings:?}");
+}
+
+#[test]
+fn the_evidence_pack_says_where_an_outcome_comes_from() {
+    let (_d, store) = findings_fixture();
+    let reader = store.read_only().unwrap();
+    let doc = build_evidence_pack(&reader, "dora", None, BASE_NS + 6 * HOUR_NS, &[]).unwrap();
+
+    let scope = doc
+        .blocks
+        .iter()
+        .find_map(|b| match b {
+            Block::Paragraph(p) => Some(p.as_str()),
+            _ => None,
+        })
+        .expect("scope paragraph");
+
+    assert!(
+        scope.ends_with(
+            "; 2 experiments are on record. An automated experiment is a chaos or continuity \
+             test that Tumult ran. The outcome of a run is the status that run recorded; a \
+             manual exercise has the outcome of its verified record."
+        ),
+        "{scope}"
+    );
 }
 
 #[test]
@@ -517,6 +548,222 @@ fn evidence_pack_does_not_infer_clause_coverage_from_many_experiments() {
     );
 }
 
+/// The paragraph under the "Bottom line" heading.
+fn bottom_line(doc: &ReportDoc) -> &str {
+    doc.blocks
+        .iter()
+        .skip_while(|b| !matches!(b, Block::H1(t) if t == "Bottom line"))
+        .find_map(|b| match b {
+            Block::Paragraph(p) => Some(p.as_str()),
+            _ => None,
+        })
+        .expect("bottom line")
+}
+
+/// The first paragraph under the heading `title`.
+fn paragraph_under<'a>(doc: &'a ReportDoc, title: &str) -> &'a str {
+    doc.blocks
+        .iter()
+        .skip_while(|b| !matches!(b, Block::H2(t) if t == title))
+        .find_map(|b| match b {
+            Block::Paragraph(p) => Some(p.as_str()),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("no paragraph under {title}"))
+}
+
+/// The value of the KPI card `label` and the line under it.
+fn kpi(doc: &ReportDoc, label: &str) -> (String, Option<String>) {
+    doc.blocks
+        .iter()
+        .find_map(|b| match b {
+            Block::Kpis(cards) => cards.iter().find(|card| card.0 == label),
+            _ => None,
+        })
+        .map(|card| (card.1.clone(), card.2.clone()))
+        .unwrap_or_else(|| panic!("no KPI card {label}"))
+}
+
+/// A store with one run of `name` on the target `queue`, which ended with
+/// `status` at `BASE_NS`.
+fn one_run(name: &str, status: &str) -> (tempfile::TempDir, tumult_lake::Store) {
+    let d = tempfile::TempDir::new().unwrap();
+    let store = tumult_lake::Store::open(&d.path().join("kronika.duckdb")).unwrap();
+    store
+        .writer()
+        .unwrap()
+        .insert_spans(&[tumult_lake::SpanRow {
+            ts_ns: BASE_NS,
+            trace_id: "trace-one".into(),
+            span_id: "span-one".into(),
+            span_name: "resilience.experiment".into(),
+            span_kind: "Internal".into(),
+            duration_ns: HOUR_NS,
+            service_name: "tumult".into(),
+            experiment_id: Some("exp-one".into()),
+            experiment_name: Some(name.into()),
+            outcome_status: Some(status.into()),
+            target_system: Some("queue".into()),
+            events: "[]".into(),
+            ..Default::default()
+        }])
+        .unwrap();
+    (d, store)
+}
+
+/// The digest of the day up to an hour after `BASE_NS`.
+fn digest_of_the_day(store: &tumult_lake::Store) -> ReportDoc {
+    let reader = store.read_only().unwrap();
+    let as_of = BASE_NS + HOUR_NS;
+    build_executive(&reader, &OrgTree::empty(), as_of, DAY_NS, as_of, &[]).unwrap()
+}
+
+#[test]
+fn a_change_of_half_a_point_or_less_is_flat() {
+    for (delta, text) in [
+        (Some(12.0), " and improving (+12.0 vs the previous period)."),
+        (Some(0.6), " and improving (+0.6 vs the previous period)."),
+        (Some(0.5), " and flat (+0.5 vs the previous period)."),
+        (Some(-0.5), " and flat (-0.5 vs the previous period)."),
+        (Some(-0.6), " and declining (-0.6 vs the previous period)."),
+        (None, ". There is no earlier period to compare it with."),
+    ] {
+        assert_eq!(direction(delta), text);
+    }
+}
+
+#[test]
+fn the_bottom_line_names_three_weakest_targets_at_most() {
+    let target = |name: &str, score: f64| scoring::TargetScore {
+        target: name.into(),
+        score,
+        band: scoring::band(score).into(),
+        runs: 1,
+        last_run_ns: None,
+    };
+    let card = Scorecard {
+        portfolio: 60.0,
+        band: "fair".into(),
+        delta: None,
+        as_of_ns: BASE_NS,
+        targets: vec![
+            target("a", 0.0),
+            target("b", 50.0),
+            target("c", 75.0),
+            target("d", 75.0),
+            target("e", 100.0),
+        ],
+        experiments: vec![],
+    };
+
+    assert_eq!(
+        weakest_targets(&card),
+        "Weakest targets: a (0.0), b (50.0), c (75.0)."
+    );
+}
+
+#[test]
+fn a_count_of_one_takes_the_name_for_one() {
+    assert_eq!(counted(0, "run", "runs"), "0 runs");
+    assert_eq!(counted(1, "run", "runs"), "1 run");
+    assert_eq!(counted(2, "run", "runs"), "2 runs");
+}
+
+#[test]
+fn a_digest_of_one_deviation_says_it_in_the_singular() {
+    let (_d, store) = one_run("lone-exp", "deviated");
+
+    let doc = digest_of_the_day(&store);
+
+    assert_eq!(
+        bottom_line(&doc),
+        "Portfolio resilience is fair (50.0/100). There is no earlier period to compare it \
+         with. Weakest targets: queue (50.0). 1 open weakness needs a decision: re-run, \
+         remediate, or accept."
+    );
+    let issues = paragraph_under(&doc, "Issues discovered and fixed");
+    assert!(
+        issues.contains(", 1 experiment run deviated or failed; 0 were later fixed (a later"),
+        "{issues}"
+    );
+}
+
+#[test]
+fn a_digest_of_a_green_day_names_no_weakest_target_and_no_deviation() {
+    let (_d, store) = one_run("green-exp", "completed");
+
+    let doc = digest_of_the_day(&store);
+
+    assert_eq!(
+        bottom_line(&doc),
+        "Portfolio resilience is good (100.0/100). There is no earlier period to compare it \
+         with. Every target scores 100. No open weaknesses; keep the current experiment \
+         cadence."
+    );
+    assert_eq!(kpi(&doc, "Δ vs previous period").0, "—");
+    let issues = paragraph_under(&doc, "Issues discovered and fixed");
+    assert!(
+        issues.ends_with(", no experiment run deviated or failed."),
+        "{issues}"
+    );
+    assert_eq!(
+        paragraph_under(&doc, "Outlook"),
+        "Coverage is green across the board; maintain cadence and consider widening fault \
+         scenarios."
+    );
+}
+
+#[test]
+fn a_digest_of_an_empty_store_claims_no_score() {
+    let d = tempfile::TempDir::new().unwrap();
+    let store = tumult_lake::Store::open(&d.path().join("kronika.duckdb")).unwrap();
+
+    let doc = digest_of_the_day(&store);
+
+    assert_eq!(
+        bottom_line(&doc),
+        "No experiment is on record, so there is no resilience score yet."
+    );
+    assert_eq!(kpi(&doc, "Portfolio score"), ("—".to_string(), None));
+    assert_eq!(kpi(&doc, "Δ vs previous period").0, "—");
+    assert_eq!(
+        paragraph_under(&doc, "Score trend"),
+        "No score on record in the period."
+    );
+    assert!(
+        !doc.blocks
+            .iter()
+            .any(|b| matches!(b, Block::Chart(ChartSpec::Trend { .. }))),
+        "a trend with no point is not drawn"
+    );
+    assert_eq!(
+        paragraph_under(&doc, "Outlook"),
+        "Next period priorities: run a first experiment to put a score on record."
+    );
+}
+
+#[test]
+fn the_digest_counts_the_experiments_tested_in_its_period() {
+    let (_d, store) = findings_fixture();
+    let reader = store.read_only().unwrap();
+    let tested = |as_of: i64| {
+        let doc =
+            build_executive(&reader, &OrgTree::empty(), as_of, 7 * DAY_NS, as_of, &[]).unwrap();
+        kpi(&doc, "Experiments tested")
+    };
+    let in_the_period = Some("in the period".to_string());
+
+    assert_eq!(
+        tested(BASE_NS + 6 * HOUR_NS),
+        ("2 / 2".to_string(), in_the_period.clone())
+    );
+    // A month on both are still on record, and neither ran in the week.
+    assert_eq!(
+        tested(BASE_NS + 6 * HOUR_NS + 30 * DAY_NS),
+        ("0 / 2".to_string(), in_the_period)
+    );
+}
+
 #[test]
 fn executive_digest_reports_declining_trend_open_weaknesses_and_mttr() {
     let (_d, store) = findings_fixture();
@@ -544,8 +791,29 @@ fn executive_digest_reports_declining_trend_open_weaknesses_and_mttr() {
             _ => None,
         })
         .expect("bluf paragraph");
-    assert!(bluf.contains("declining"), "{bluf}");
-    assert!(bluf.contains("open weakness"), "{bluf}");
+    assert_eq!(
+        bluf,
+        "Portfolio resilience is fair (62.5/100) and declining (-37.5 vs the previous \
+         period). Weakest targets: database (50.0), cdn (75.0). 2 open weaknesses need a \
+         decision: re-run, remediate, or accept."
+    );
+    let issues = paragraph_under(&doc, "Issues discovered and fixed");
+    assert!(
+        issues.contains(", 2 experiment runs deviated or failed; 1 was later fixed (a later"),
+        "{issues}"
+    );
+    let footnote = doc
+        .blocks
+        .iter()
+        .find_map(|b| match b {
+            Block::Footnote(text) => Some(text.as_str()),
+            _ => None,
+        })
+        .expect("footnote");
+    assert!(
+        footnote.contains("Evidence mix: 1 automated, 1 verified manual experiment (manual"),
+        "{footnote}"
+    );
 
     // KPIs: 1 of 2 issues fixed, MTTR from the two recovery_time_s spans.
     let kpis = doc
@@ -838,11 +1106,11 @@ fn game_day_renders_full_run_context() {
     assert_eq!(findings.len(), 2);
     assert!(findings[0].contains("[WARN] replica lag climbing"));
 
-    // Rollback section counts the clean rollback spans.
-    assert!(doc.blocks.iter().any(|b| matches!(
-        b,
-        Block::Paragraph(p) if p == "1 rollback span(s) executed; status: all clean."
-    )));
+    // The rollback of this run has no step under it.
+    assert_eq!(
+        paragraph_under(&doc, "Rollback"),
+        "The rollback ran; status: all clean."
+    );
 
     // Config appendix merges root span attrs and started-log attrs.
     assert!(doc.blocks.iter().any(|b| matches!(
@@ -860,6 +1128,20 @@ fn game_day_renders_full_run_context() {
     // Both renderers accept the full document.
     let html = crate::html::render_html(&doc);
     assert!(html.contains("pg-failover-drill"));
+    // The cover names the id as what it is, and its title line has no id.
+    assert!(
+        html.contains("<tr><th>Run id</th><td>exp-gd</td></tr>"),
+        "{html}"
+    );
+    assert!(
+        html.contains("<div class='cover-sub'>Game-Day Experiment Report</div>"),
+        "{html}"
+    );
+    let (typst, _) = crate::markup::doc_to_typst(&doc);
+    assert!(
+        typst.contains("[#smallcaps[Run id]]], [#text(size: 10pt)[exp\\-gd]],"),
+        "{typst}"
+    );
     let pdf = crate::typst_pdf::render_pdf(&doc).expect("pdf render");
     assert!(pdf.starts_with(b"%PDF"));
 }
@@ -934,11 +1216,11 @@ fn game_day_handles_missing_outcome_and_failed_rollback() {
         b,
         Block::Paragraph(p) if p.contains("errors present — investigate")
     )));
-    // No WARN/ERROR logs: the quiet-run message.
-    assert!(doc.blocks.iter().any(|b| matches!(
-        b,
-        Block::Paragraph(p) if p == "No warnings or errors were logged during this run."
-    )));
+    // The failed rollback is a finding, though the run logged nothing.
+    assert_eq!(
+        bullets_under(&doc, "Findings"),
+        ["[ERROR] resilience.rollback: boom"]
+    );
     // The error span's timeline row renders the readable status.
     let timeline = doc
         .blocks
@@ -1035,4 +1317,1443 @@ fn a_fixed_issue_is_counted_from_runs_stored_in_either_spelling() {
         issue_stats(&store.read_only().unwrap(), BASE_NS, BASE_NS + DAY_NS, &[]).unwrap();
 
     assert_eq!((discovered, fixed), (2, 2));
+}
+
+/// The bullets under the heading `title`.
+fn bullets_under<'a>(doc: &'a ReportDoc, title: &str) -> &'a [String] {
+    doc.blocks
+        .iter()
+        .skip_while(|b| !matches!(b, Block::H2(t) if t == title))
+        .find_map(|b| match b {
+            Block::Bullets(items) => Some(items.as_slice()),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("no bullets under {title}"))
+}
+
+/// The value of `key` in the first block of keys and values that has it.
+fn value_of(doc: &ReportDoc, key: &str) -> String {
+    doc.blocks
+        .iter()
+        .filter_map(|b| match b {
+            Block::KeyValues(pairs) => Some(pairs),
+            _ => None,
+        })
+        .flatten()
+        .find(|(name, _)| name == key)
+        .map_or_else(
+            || panic!("the report has no {key}"),
+            |(_, value)| row_text(std::slice::from_ref(value)),
+        )
+}
+
+/// The headers of the timeline of a run report, and its rows as text.
+fn timeline_of(doc: &ReportDoc) -> (Vec<String>, Vec<String>) {
+    doc.blocks
+        .iter()
+        .skip_while(|b| !matches!(b, Block::H2(t) if t == "Timeline"))
+        .find_map(|b| match b {
+            Block::Table { headers, rows, .. } => Some((
+                headers.clone(),
+                rows.iter().map(|row| row_text(row)).collect(),
+            )),
+            _ => None,
+        })
+        .expect("timeline table")
+}
+
+const OUTSIDE: &str = "the output is outside the tolerance";
+
+/// One span of the run `exp-steps`: it started `at_ms` after the run did,
+/// took `took_ms`, and ended in `error` when one is given. A span without a
+/// parent is the root span of the run.
+fn span_of(
+    id: &str,
+    parent: Option<&str>,
+    name: &str,
+    step: Option<&str>,
+    at_ms: i64,
+    took_ms: i64,
+    error: Option<&str>,
+) -> tumult_lake::SpanRow {
+    tumult_lake::SpanRow {
+        ts_ns: BASE_NS + at_ms * 1_000_000,
+        trace_id: "trace-steps".into(),
+        span_id: id.into(),
+        parent_span_id: parent.map(Into::into),
+        span_name: name.into(),
+        span_kind: "Internal".into(),
+        duration_ns: took_ms * 1_000_000,
+        status_code: if error.is_some() { "Error" } else { "Unset" }.into(),
+        status_message: error.unwrap_or_default().into(),
+        service_name: "tumult".into(),
+        experiment_id: parent.is_none().then(|| "exp-steps".into()),
+        experiment_name: parent.is_none().then(|| "ledger-slowdown".into()),
+        span_attrs: step
+            .map(|step| ("resilience.action.name".to_string(), step.to_string()))
+            .into_iter()
+            .collect(),
+        events: "[]".into(),
+        ..Default::default()
+    }
+}
+
+/// The root span of the run `exp-steps`, which ended in `error` when one is
+/// given.
+fn run_span(error: Option<&str>) -> tumult_lake::SpanRow {
+    span_of(
+        "root",
+        None,
+        "resilience.experiment",
+        None,
+        0,
+        40_000,
+        error,
+    )
+}
+
+/// A step of the method of the run `exp-steps` that acted on the target.
+fn action(id: &str, step: &str, at_ms: i64) -> tumult_lake::SpanRow {
+    span_of(
+        id,
+        Some("root"),
+        "resilience.action",
+        Some(step),
+        at_ms,
+        250,
+        None,
+    )
+}
+
+/// A line the run `exp-steps` logged.
+fn logged(severity: &str, body: &str, attrs: &[(&str, &str)]) -> tumult_lake::LogRow {
+    tumult_lake::LogRow {
+        ts_ns: BASE_NS,
+        severity_text: severity.into(),
+        body: body.into(),
+        trace_id: Some("trace-steps".into()),
+        service_name: "tumult".into(),
+        log_attrs: attrs
+            .iter()
+            .map(|(key, value)| ((*key).to_string(), (*value).to_string()))
+            .collect(),
+        ..tumult_lake::LogRow::default()
+    }
+}
+
+/// The report of the run `exp-steps`, from a store that holds `spans` and
+/// `logs`.
+fn report_of_steps(spans: &[tumult_lake::SpanRow], logs: &[tumult_lake::LogRow]) -> ReportDoc {
+    let d = tempfile::TempDir::new().unwrap();
+    let store = tumult_lake::Store::open(&d.path().join("kronika.duckdb")).unwrap();
+    let writer = store.writer().unwrap();
+    writer.insert_spans(spans).unwrap();
+    if !logs.is_empty() {
+        writer.insert_logs(logs).unwrap();
+    }
+    report_in(&store)
+}
+
+/// The report of the run `exp-steps` as `store` has it now.
+fn report_in(store: &tumult_lake::Store) -> ReportDoc {
+    let reader = store.read_only().unwrap();
+    build_game_day(&reader, "exp-steps", BASE_NS + HOUR_NS, &[])
+        .unwrap()
+        .expect("run exists")
+}
+
+/// A run that slowed a ledger, polled a probe three times while it was
+/// slow, saw the probe fail twice after it, and rolled back in two steps.
+fn slowed_ledger() -> Vec<tumult_lake::SpanRow> {
+    let poll = |id: &str, at_ms: i64, took_ms: i64| {
+        let step = Some("payments-answer");
+        span_of(
+            id,
+            Some("root"),
+            "resilience.probe",
+            step,
+            at_ms,
+            took_ms,
+            None,
+        )
+    };
+    let failed = |id: &str, at_ms: i64| {
+        let step = Some("payments-answer");
+        span_of(
+            id,
+            Some("after"),
+            "resilience.probe",
+            step,
+            at_ms,
+            5,
+            Some(OUTSIDE),
+        )
+    };
+    let undo = |id: &str, step: &str, at_ms: i64| {
+        span_of(
+            id,
+            Some("undo"),
+            "resilience.action",
+            Some(step),
+            at_ms,
+            100,
+            None,
+        )
+    };
+    vec![
+        run_span(Some("deviated")),
+        action("fault", "slow-ledger", 1_000),
+        poll("poll-1", 2_000, 10),
+        poll("poll-2", 3_000, 30),
+        poll("poll-3", 4_000, 20),
+        span_of(
+            "after",
+            Some("root"),
+            "resilience.hypothesis.after",
+            None,
+            4_900,
+            1_200,
+            None,
+        ),
+        failed("after-1", 5_000),
+        failed("after-2", 6_000),
+        span_of(
+            "undo",
+            Some("root"),
+            "resilience.rollback",
+            None,
+            7_000,
+            900,
+            None,
+        ),
+        undo("undo-1", "restore-ledger", 7_100),
+        undo("undo-2", "flush-cache", 7_500),
+    ]
+}
+
+#[test]
+fn a_step_that_ran_several_times_in_a_row_is_one_line_of_the_timeline() {
+    let doc = report_of_steps(&slowed_ledger(), &[]);
+
+    let (headers, rows) = timeline_of(&doc);
+
+    assert_eq!(
+        headers,
+        ["t+ (s)", "Span", "Step", "Duration (ms)", "Status"]
+    );
+    assert_eq!(
+        rows,
+        [
+            "0.0|resilience.experiment|—|40000.0|error",
+            "1.0|resilience.action|slow-ledger|250.0|—",
+            "2.0 – 4.0|resilience.probe|payments-answer × 3|10.0 – 30.0|—",
+            "4.9|resilience.hypothesis.after|—|1200.0|—",
+            "5.0 – 6.0|resilience.probe|payments-answer × 2|5.0|error",
+            "7.0|resilience.rollback|—|900.0|—",
+            "7.1|resilience.action|restore-ledger|100.0|—",
+            "7.5|resilience.action|flush-cache|100.0|—",
+        ]
+    );
+}
+
+#[test]
+fn spans_that_name_no_step_are_a_line_each() {
+    let phase = |id: &str, at_ms: i64| {
+        span_of(
+            id,
+            Some("root"),
+            "resilience.hypothesis.before",
+            None,
+            at_ms,
+            10,
+            None,
+        )
+    };
+    let doc = report_of_steps(&[run_span(None), phase("one", 100), phase("two", 200)], &[]);
+
+    let (_, rows) = timeline_of(&doc);
+
+    assert_eq!(
+        rows,
+        [
+            "0.0|resilience.experiment|—|40000.0|—",
+            "0.1|resilience.hypothesis.before|—|10.0|—",
+            "0.2|resilience.hypothesis.before|—|10.0|—",
+        ]
+    );
+}
+
+#[test]
+fn the_findings_name_the_steps_that_failed_and_then_what_the_run_logged() {
+    let logs = [
+        logged("INFO", "experiment.started", &[]),
+        logged("WARN", "the ledger is slow", &[]),
+    ];
+
+    let doc = report_of_steps(&slowed_ledger(), &logs);
+
+    assert_eq!(
+        bullets_under(&doc, "Findings"),
+        [
+            "[ERROR] payments-answer (resilience.probe): the output is outside the tolerance \
+             (× 2)",
+            "[WARN] the ledger is slow",
+        ]
+    );
+}
+
+#[test]
+fn a_span_that_failed_without_a_word_is_still_a_finding() {
+    let silent = span_of(
+        "undo",
+        Some("root"),
+        "resilience.rollback",
+        None,
+        1_000,
+        10,
+        Some(""),
+    );
+
+    let doc = report_of_steps(&[run_span(None), silent], &[]);
+
+    assert_eq!(
+        bullets_under(&doc, "Findings"),
+        ["[ERROR] resilience.rollback"]
+    );
+}
+
+#[test]
+fn how_the_run_ended_is_the_verdict_and_not_a_finding() {
+    for ended in [None, Some("deviated")] {
+        let doc = report_of_steps(
+            &[run_span(ended), action("fault", "slow-ledger", 1_000)],
+            &[],
+        );
+
+        assert_eq!(
+            paragraph_under(&doc, "Findings"),
+            "No step failed and no warnings or errors were logged during this run.",
+            "{ended:?}"
+        );
+    }
+}
+
+#[test]
+fn the_scenario_of_a_run_that_names_no_fault_is_what_its_method_did() {
+    let mut spans = slowed_ledger();
+    spans.push(action("fault-2", "drop-cache", 1_300));
+    spans.push(action("fault-3", "slow-ledger", 1_600));
+
+    let doc = report_of_steps(&spans, &[]);
+
+    // Each fault once, in the order of the run. A probe is no fault, and
+    // neither is a step of the rollback.
+    assert_eq!(value_of(&doc, "Scenario"), "slow-ledger, drop-cache");
+}
+
+#[test]
+fn a_run_that_did_nothing_to_its_target_has_no_scenario() {
+    let probe = span_of(
+        "probe",
+        Some("root"),
+        "resilience.probe",
+        Some("ping"),
+        1_000,
+        10,
+        None,
+    );
+
+    let doc = report_of_steps(&[run_span(None), probe], &[]);
+
+    assert_eq!(value_of(&doc, "Scenario"), "—");
+}
+
+#[test]
+fn the_rollback_names_the_steps_it_ran() {
+    let rollback = |error| {
+        span_of(
+            "undo",
+            Some("root"),
+            "resilience.rollback",
+            None,
+            7_000,
+            900,
+            error,
+        )
+    };
+    let restore = |error| {
+        let step = Some("restore-ledger");
+        span_of(
+            "undo-1",
+            Some("undo"),
+            "resilience.action",
+            step,
+            7_100,
+            100,
+            error,
+        )
+    };
+
+    let two_steps = report_of_steps(&slowed_ledger(), &[]);
+    assert_eq!(
+        paragraph_under(&two_steps, "Rollback"),
+        "The rollback ran 2 steps (restore-ledger, flush-cache); status: all clean."
+    );
+
+    for (spans, said) in [
+        (
+            vec![run_span(None), rollback(None), restore(None)],
+            "The rollback ran 1 step (restore-ledger); status: all clean.",
+        ),
+        (
+            vec![run_span(None), rollback(None), restore(Some("exit 1"))],
+            "The rollback ran 1 step (restore-ledger); status: errors present — investigate.",
+        ),
+        (
+            vec![run_span(None), rollback(Some("timed out")), restore(None)],
+            "The rollback ran 1 step (restore-ledger); status: errors present — investigate.",
+        ),
+        (
+            vec![run_span(None), action("fault", "slow-ledger", 1_000)],
+            "No rollback action was exercised in this run.",
+        ),
+    ] {
+        let doc = report_of_steps(&spans, &[]);
+
+        assert_eq!(paragraph_under(&doc, "Rollback"), said);
+    }
+}
+
+#[test]
+fn a_step_of_the_rollback_that_failed_is_a_finding_too() {
+    let spans = [
+        run_span(None),
+        span_of(
+            "undo",
+            Some("root"),
+            "resilience.rollback",
+            None,
+            7_000,
+            900,
+            None,
+        ),
+        span_of(
+            "undo-1",
+            Some("undo"),
+            "resilience.action",
+            Some("restore-ledger"),
+            7_100,
+            100,
+            Some("exit 1"),
+        ),
+    ];
+
+    let doc = report_of_steps(&spans, &[]);
+
+    assert_eq!(
+        bullets_under(&doc, "Findings"),
+        ["[ERROR] restore-ledger (resilience.action): exit 1"]
+    );
+}
+
+#[test]
+fn a_time_in_the_appendix_is_a_date_and_a_time_of_day() {
+    let started_at = BASE_NS.to_string();
+    let started = logged(
+        "INFO",
+        "experiment.started",
+        &[
+            ("experiment_id", "exp-steps"),
+            ("started_at_ns", &started_at),
+            ("planned_at_ns", "soon"),
+            ("retries", "3"),
+        ],
+    );
+
+    let doc = report_of_steps(&[run_span(None)], &[started]);
+
+    assert_eq!(
+        value_of(&doc, "start.started_at_ns"),
+        "2026-07-25 17:20 UTC"
+    );
+    // What is not a time stays as the run wrote it.
+    assert_eq!(value_of(&doc, "start.planned_at_ns"), "soon");
+    assert_eq!(value_of(&doc, "start.retries"), "3");
+}
+
+/// The run `exp-steps` as one of the two runs of a game day. Both hang
+/// under the span of the game day and share its trace. The other run
+/// failed a step, logged an error and rolled back.
+fn game_day_of_two() -> (Vec<tumult_lake::SpanRow>, Vec<tumult_lake::LogRow>) {
+    let under_the_day = |span: tumult_lake::SpanRow| tumult_lake::SpanRow {
+        parent_span_id: Some("day".into()),
+        ..span
+    };
+    let day = tumult_lake::SpanRow {
+        experiment_id: None,
+        experiment_name: None,
+        ..span_of("day", None, "resilience.gameday", None, 0, 90_000, None)
+    };
+    let other = tumult_lake::SpanRow {
+        experiment_id: Some("exp-other".into()),
+        experiment_name: Some("cache-flush".into()),
+        ..span_of(
+            "other",
+            None,
+            "resilience.experiment",
+            None,
+            50_000,
+            30_000,
+            Some("deviated"),
+        )
+    };
+    let flush = Some("flush-cache");
+    let warm = Some("warm-cache");
+    let spans = vec![
+        day,
+        under_the_day(run_span(None)),
+        action("fault", "slow-ledger", 1_000),
+        under_the_day(other),
+        span_of(
+            "other-1",
+            Some("other"),
+            "resilience.action",
+            flush,
+            51_000,
+            100,
+            Some("exit 1"),
+        ),
+        span_of(
+            "other-undo",
+            Some("other"),
+            "resilience.rollback",
+            None,
+            60_000,
+            500,
+            None,
+        ),
+        span_of(
+            "other-undo-1",
+            Some("other-undo"),
+            "resilience.action",
+            warm,
+            60_100,
+            100,
+            None,
+        ),
+        // A span that lost its parent on the way: no run can claim it.
+        span_of(
+            "stray",
+            Some("lost"),
+            "resilience.action",
+            Some("stray"),
+            70_000,
+            100,
+            Some("exit 9"),
+        ),
+    ];
+    let logs = vec![
+        logged_on("fault", 1, "WARN", "the ledger is slow"),
+        logged_on("other-1", 2, "ERROR", "the cache did not flush"),
+        logged_on("lost", 3, "ERROR", "a line of a span that never arrived"),
+    ];
+    (spans, logs)
+}
+
+/// A line logged on the span `span` of the trace of `exp-steps`, `at_ms`
+/// after the run started.
+fn logged_on(span: &str, at_ms: i64, severity: &str, body: &str) -> tumult_lake::LogRow {
+    tumult_lake::LogRow {
+        ts_ns: BASE_NS + at_ms * 1_000_000,
+        span_id: Some(span.into()),
+        ..logged(severity, body, &[])
+    }
+}
+
+#[test]
+fn the_report_of_a_run_of_a_game_day_leaves_the_other_runs_out() {
+    let (spans, logs) = game_day_of_two();
+
+    let doc = report_of_steps(&spans, &logs);
+
+    assert_eq!(
+        timeline_of(&doc).1,
+        [
+            "0.0|resilience.experiment|—|40000.0|—",
+            "1.0|resilience.action|slow-ledger|250.0|—",
+        ]
+    );
+    assert_eq!(value_of(&doc, "Scenario"), "slow-ledger");
+    assert_eq!(
+        bullets_under(&doc, "Findings"),
+        [
+            "[WARN] 1 span of this trace names a parent that is not on record. It and the spans \
+             under it are not in this report.",
+            "[WARN] the ledger is slow",
+        ]
+    );
+    assert_eq!(
+        paragraph_under(&doc, "Rollback"),
+        "No rollback action was exercised in this run."
+    );
+}
+
+#[test]
+fn a_run_of_a_game_day_is_not_alone_while_the_root_spans_of_the_others_are_on_their_way() {
+    // A span is sent when it ends. While the second run of a game day runs,
+    // its steps are in the store, and its root span and the span of the game
+    // day are not.
+    let (spans, logs) = game_day_of_two();
+    let arrived = |span: &tumult_lake::SpanRow| span.span_id != "day" && span.span_id != "other";
+    let spans: Vec<_> = spans.into_iter().filter(arrived).collect();
+
+    let doc = report_of_steps(&spans, &logs);
+
+    assert_eq!(
+        timeline_of(&doc).1,
+        [
+            "0.0|resilience.experiment|—|40000.0|—",
+            "1.0|resilience.action|slow-ledger|250.0|—",
+        ]
+    );
+    assert_eq!(value_of(&doc, "Scenario"), "slow-ledger");
+    assert_eq!(
+        bullets_under(&doc, "Findings"),
+        [
+            "[WARN] 3 spans of this trace name a parent that is not on record. They and the \
+             spans under them are not in this report.",
+            "[WARN] the ledger is slow",
+        ]
+    );
+    assert_eq!(
+        paragraph_under(&doc, "Rollback"),
+        "No rollback action was exercised in this run."
+    );
+    assert_eq!(value_of(&doc, "Rollback exercised"), "no");
+}
+
+#[test]
+fn a_run_alone_in_its_trace_keeps_what_lost_its_parent() {
+    let mut spans = slowed_ledger();
+    spans.push(span_of(
+        "late",
+        Some("lost"),
+        "resilience.action",
+        Some("restore-ledger"),
+        8_000,
+        100,
+        Some("exit 1"),
+    ));
+    let logs = [logged_on("lost", 8_050, "WARN", "the ledger is still slow")];
+
+    let doc = report_of_steps(&spans, &logs);
+
+    assert_eq!(
+        timeline_of(&doc).1.last().map(String::as_str),
+        Some("8.0|resilience.action|restore-ledger|100.0|error")
+    );
+    assert_eq!(
+        bullets_under(&doc, "Findings"),
+        [
+            "[ERROR] payments-answer (resilience.probe): the output is outside the tolerance \
+             (× 2)",
+            "[ERROR] restore-ledger (resilience.action): exit 1",
+            "[WARN] the ledger is still slow",
+        ]
+    );
+}
+
+#[test]
+fn a_step_that_carries_the_id_of_its_run_does_not_make_the_run_alone() {
+    // A sender can put the id of the run on the resource. Then every span
+    // of the run carries it, not only the span of the run.
+    let (mut spans, logs) = game_day_of_two();
+    let fault = spans.iter_mut().find(|span| span.span_id == "fault");
+    fault.unwrap().experiment_id = Some("exp-steps".into());
+
+    let doc = report_of_steps(&spans, &logs);
+
+    assert_eq!(
+        timeline_of(&doc).1,
+        [
+            "0.0|resilience.experiment|—|40000.0|—",
+            "1.0|resilience.action|slow-ledger|250.0|—",
+        ]
+    );
+}
+
+#[test]
+fn a_run_under_the_span_of_a_tool_call_is_alone_in_its_trace() {
+    // A run that a tool call started is under the span of the call. That
+    // span is stored when the call is over.
+    let call = tumult_lake::SpanRow {
+        experiment_id: None,
+        experiment_name: None,
+        ..span_of("call", None, "mcp.tool.call", None, 0, 1, None)
+    };
+    let root = tumult_lake::SpanRow {
+        parent_span_id: Some("call".into()),
+        ..run_span(None)
+    };
+    let late = span_of(
+        "late",
+        Some("lost"),
+        "resilience.action",
+        Some("restore-ledger"),
+        8_000,
+        100,
+        Some("exit 1"),
+    );
+    let logs = [logged_on("lost", 8_050, "WARN", "the ledger is still slow")];
+
+    let doc = report_of_steps(&[call, root, late], &logs);
+
+    assert_eq!(
+        timeline_of(&doc).1.last().map(String::as_str),
+        Some("8.0|resilience.action|restore-ledger|100.0|error")
+    );
+    assert_eq!(
+        bullets_under(&doc, "Findings"),
+        [
+            "[ERROR] restore-ledger (resilience.action): exit 1",
+            "[WARN] the ledger is still slow",
+        ]
+    );
+}
+
+#[test]
+fn a_line_logged_anywhere_in_a_run_of_a_game_day_is_a_finding() {
+    let (mut spans, mut logs) = game_day_of_two();
+    let restore = Some("restore-ledger");
+    spans.push(span_of(
+        "undo",
+        Some("root"),
+        "resilience.rollback",
+        None,
+        7_000,
+        900,
+        None,
+    ));
+    spans.push(span_of(
+        "undo-1",
+        Some("undo"),
+        "resilience.action",
+        restore,
+        7_100,
+        100,
+        None,
+    ));
+    logs.extend([
+        // On a step of the rollback, two spans below the root span.
+        logged_on("undo-1", 7_200, "WARN", "the ledger took long to restore"),
+        // After the run, outside its trace, with the id of the run.
+        tumult_lake::LogRow {
+            ts_ns: BASE_NS + 41_000_000_000,
+            trace_id: None,
+            span_id: None,
+            ..logged(
+                "ERROR",
+                "the journal was not written",
+                &[("experiment_id", "exp-steps")],
+            )
+        },
+    ]);
+
+    let doc = report_of_steps(&spans, &logs);
+
+    assert_eq!(
+        bullets_under(&doc, "Findings"),
+        [
+            "[WARN] 1 span of this trace names a parent that is not on record. It and the spans \
+             under it are not in this report.",
+            "[WARN] the ledger is slow",
+            "[WARN] the ledger took long to restore",
+            "[ERROR] the journal was not written",
+        ]
+    );
+    assert_eq!(
+        paragraph_under(&doc, "Rollback"),
+        "The rollback ran 1 step (restore-ledger); status: all clean."
+    );
+}
+
+/// What the plugin of a step did inside it: a span under the span `step`.
+fn inside(
+    id: &str,
+    step: &str,
+    name: &str,
+    at_ms: i64,
+    error: Option<&str>,
+) -> tumult_lake::SpanRow {
+    span_of(id, Some(step), name, None, at_ms, 5, error)
+}
+
+#[test]
+fn what_a_plugin_did_inside_a_step_is_no_line_of_the_timeline() {
+    let poll = |id: &str, at_ms: i64| {
+        let step = Some("payments-answer");
+        span_of(id, Some("root"), "resilience.probe", step, at_ms, 10, None)
+    };
+    let spans = [
+        run_span(None),
+        poll("poll-1", 2_000),
+        inside("run-1", "poll-1", "script.execute", 2_001, None),
+        inside("call-1", "run-1", "http.request", 2_002, None),
+        poll("poll-2", 3_000),
+        inside("run-2", "poll-2", "script.execute", 3_001, None),
+        poll("poll-3", 4_000),
+        inside("run-3", "poll-3", "script.execute", 4_001, None),
+    ];
+
+    let doc = report_of_steps(&spans, &[]);
+
+    assert_eq!(
+        timeline_of(&doc).1,
+        [
+            "0.0|resilience.experiment|—|40000.0|—",
+            "2.0 – 4.0|resilience.probe|payments-answer × 3|10.0|—",
+        ]
+    );
+}
+
+#[test]
+fn spans_that_name_each_other_as_parent_do_not_hang_the_report() {
+    let odd = |id: &str, parent: &str, at_ms: i64| {
+        span_of(id, Some(parent), "script.execute", None, at_ms, 5, None)
+    };
+    let spans = [
+        run_span(None),
+        odd("a", "b", 500),
+        odd("b", "a", 600),
+        odd("alone", "alone", 700),
+    ];
+
+    let doc = report_of_steps(&spans, &[]);
+
+    assert_eq!(
+        timeline_of(&doc).1,
+        [
+            "0.0|resilience.experiment|—|40000.0|—",
+            "0.5|script.execute|—|5.0|—",
+            "0.6|script.execute|—|5.0|—",
+            "0.7|script.execute|—|5.0|—",
+        ]
+    );
+}
+
+#[test]
+fn a_root_span_under_its_own_step_does_not_hang_the_report() {
+    let root = tumult_lake::SpanRow {
+        parent_span_id: Some("fault".into()),
+        ..run_span(None)
+    };
+    let spans = [root, action("fault", "slow-ledger", 1_000)];
+
+    let doc = report_of_steps(&spans, &[]);
+
+    assert_eq!(timeline_of(&doc).1, Vec::<String>::new());
+    assert_eq!(value_of(&doc, "Scenario"), "slow-ledger");
+}
+
+#[test]
+fn probes_sampled_in_turns_are_a_line_each() {
+    let poll = |id: &str, step: &str, at_ms: i64, error: Option<&str>| {
+        let name = "resilience.probe";
+        span_of(id, Some("root"), name, Some(step), at_ms, 5, error)
+    };
+    let spans = [
+        run_span(None),
+        poll("latency-1", "latency", 2_000, None),
+        poll("errors-1", "errors", 2_100, None),
+        poll("latency-2", "latency", 3_000, None),
+        poll("errors-2", "errors", 3_100, Some(OUTSIDE)),
+        poll("latency-3", "latency", 4_000, None),
+        poll("errors-3", "errors", 4_100, Some(OUTSIDE)),
+        poll("latency-4", "latency", 5_000, None),
+        poll("errors-4", "errors", 5_100, None),
+    ];
+
+    let doc = report_of_steps(&spans, &[]);
+
+    assert_eq!(
+        timeline_of(&doc).1,
+        [
+            "0.0|resilience.experiment|—|40000.0|—",
+            "2.0 – 5.0|resilience.probe|latency × 4|5.0|—",
+            "2.1|resilience.probe|errors|5.0|—",
+            "3.1 – 4.1|resilience.probe|errors × 2|5.0|error",
+            "5.1|resilience.probe|errors|5.0|—",
+        ]
+    );
+}
+
+#[test]
+fn an_action_folds_only_into_the_line_right_before_it() {
+    let spans = [
+        run_span(None),
+        action("first", "slow-ledger", 1_000),
+        action("between", "restart-cache", 2_000),
+        action("again", "slow-ledger", 3_000),
+        action("once-more", "slow-ledger", 4_000),
+    ];
+
+    let doc = report_of_steps(&spans, &[]);
+
+    assert_eq!(
+        timeline_of(&doc).1,
+        [
+            "0.0|resilience.experiment|—|40000.0|—",
+            "1.0|resilience.action|slow-ledger|250.0|—",
+            "2.0|resilience.action|restart-cache|250.0|—",
+            "3.0 – 4.0|resilience.action|slow-ledger × 2|250.0|—",
+        ]
+    );
+}
+
+#[test]
+fn a_probe_before_and_after_an_action_is_a_line_each_time() {
+    let probe = |id: &str, at_ms: i64| {
+        let name = "resilience.probe";
+        span_of(id, Some("root"), name, Some("answers"), at_ms, 5, None)
+    };
+    let spans = [
+        run_span(None),
+        probe("before", 100),
+        action("fault", "slow-ledger", 1_000),
+        probe("after-1", 2_000),
+        probe("after-2", 3_000),
+    ];
+
+    let doc = report_of_steps(&spans, &[]);
+
+    assert_eq!(
+        timeline_of(&doc).1,
+        [
+            "0.0|resilience.experiment|—|40000.0|—",
+            "0.1|resilience.probe|answers|5.0|—",
+            "1.0|resilience.action|slow-ledger|250.0|—",
+            "2.0 – 3.0|resilience.probe|answers × 2|5.0|—",
+        ]
+    );
+}
+
+#[test]
+fn a_span_inside_a_step_that_failed_is_still_a_finding() {
+    let spans = [
+        run_span(None),
+        action("fault", "slow-ledger", 1_000),
+        inside("run-1", "fault", "script.execute", 1_001, Some("exit 7")),
+    ];
+
+    let doc = report_of_steps(&spans, &[]);
+
+    assert_eq!(timeline_of(&doc).1.len(), 2);
+    assert_eq!(
+        bullets_under(&doc, "Findings"),
+        ["[ERROR] script.execute: exit 7"]
+    );
+}
+
+#[test]
+fn a_step_that_ended_another_way_starts_a_new_line() {
+    let poll = |id: &str, at_ms: i64, error: Option<&str>| {
+        let step = Some("payments-answer");
+        span_of(id, Some("root"), "resilience.probe", step, at_ms, 5, error)
+    };
+    let spans = [
+        run_span(None),
+        poll("poll-1", 2_000, None),
+        poll("poll-2", 3_000, Some(OUTSIDE)),
+        poll("poll-3", 4_000, Some(OUTSIDE)),
+    ];
+
+    let doc = report_of_steps(&spans, &[]);
+
+    assert_eq!(
+        timeline_of(&doc).1,
+        [
+            "0.0|resilience.experiment|—|40000.0|—",
+            "2.0|resilience.probe|payments-answer|5.0|—",
+            "3.0 – 4.0|resilience.probe|payments-answer × 2|5.0|error",
+        ]
+    );
+}
+
+#[test]
+fn an_action_and_a_probe_of_one_name_are_a_line_each() {
+    let spans = [
+        run_span(None),
+        action("act", "ledger", 1_000),
+        span_of(
+            "probe",
+            Some("root"),
+            "resilience.probe",
+            Some("ledger"),
+            2_000,
+            250,
+            None,
+        ),
+    ];
+
+    let doc = report_of_steps(&spans, &[]);
+
+    assert_eq!(
+        timeline_of(&doc).1,
+        [
+            "0.0|resilience.experiment|—|40000.0|—",
+            "1.0|resilience.action|ledger|250.0|—",
+            "2.0|resilience.probe|ledger|250.0|—",
+        ]
+    );
+}
+
+#[test]
+fn the_same_step_in_two_phases_is_a_line_for_each_phase() {
+    let probe = |id: &str, parent: &str, at_ms: i64| {
+        let step = Some("payments-answer");
+        span_of(id, Some(parent), "resilience.probe", step, at_ms, 5, None)
+    };
+    let spans = [
+        run_span(None),
+        span_of(
+            "before",
+            Some("root"),
+            "resilience.hypothesis.before",
+            None,
+            100,
+            50,
+            None,
+        ),
+        probe("before-1", "before", 110),
+        probe("poll-1", "root", 200),
+        probe("poll-2", "root", 300),
+    ];
+
+    let doc = report_of_steps(&spans, &[]);
+
+    assert_eq!(
+        timeline_of(&doc).1,
+        [
+            "0.0|resilience.experiment|—|40000.0|—",
+            "0.1|resilience.hypothesis.before|—|50.0|—",
+            "0.1|resilience.probe|payments-answer|5.0|—",
+            "0.2 – 0.3|resilience.probe|payments-answer × 2|5.0|—",
+        ]
+    );
+}
+
+/// The run `exp-steps` with `polls` polls of one probe a millisecond
+/// apart, and at its end a rollback that timed out.
+fn polled(polls: usize) -> Vec<tumult_lake::SpanRow> {
+    let poll = |n: i64| {
+        let step = Some("payments-answer");
+        span_of(
+            &format!("poll-{n}"),
+            Some("root"),
+            "resilience.probe",
+            step,
+            1_000 + n,
+            5,
+            None,
+        )
+    };
+    let mut spans = vec![run_span(None)];
+    spans.extend((0..i64::try_from(polls).unwrap()).map(poll));
+    spans.push(span_of(
+        "undo",
+        Some("root"),
+        "resilience.rollback",
+        None,
+        39_000,
+        900,
+        Some("timed out"),
+    ));
+    spans
+}
+
+/// Store the polls `from` to `to` of a run that has its first poll: each
+/// is that poll a millisecond after the one before. One statement, because
+/// the writer takes most of a minute for 20,000 spans.
+fn store_polls(writer: &tumult_lake::Writer, from: usize, to: usize) {
+    let sql = format!(
+        "INSERT INTO spans \
+         SELECT first.* REPLACE ( \
+             first.ts_ns + n * 1000000 AS ts_ns, 'poll-' || n AS span_id \
+         ) \
+         FROM spans AS first, range({from}, {to} + 1) AS more (n) \
+         WHERE first.span_id = 'poll-0'"
+    );
+    writer.execute(&sql, []).unwrap();
+}
+
+#[test]
+fn a_run_is_read_to_its_end_up_to_the_most_spans_and_says_so_beyond() {
+    let d = tempfile::TempDir::new().unwrap();
+    let store = tumult_lake::Store::open(&d.path().join("kronika.duckdb")).unwrap();
+    let writer = store.writer().unwrap();
+    // The root span, the polls and the rollback are the most spans a report reads.
+    let polls = game_day::MOST_SPANS - 2;
+    writer.insert_spans(&polled(1)).unwrap();
+    store_polls(&writer, 1, polls - 1);
+
+    let whole = report_in(&store);
+
+    assert_eq!(
+        timeline_of(&whole).1[1],
+        "1.0 – 21.0|resilience.probe|payments-answer × 19998|5.0|—"
+    );
+    assert_eq!(
+        bullets_under(&whole, "Findings"),
+        ["[ERROR] resilience.rollback: timed out"]
+    );
+    assert_eq!(
+        paragraph_under(&whole, "Rollback"),
+        "The rollback ran; status: errors present — investigate."
+    );
+    assert_eq!(value_of(&whole, "Rollback exercised"), "yes");
+
+    // One more poll before the rollback, and the rollback is not read.
+    store_polls(&writer, polls, polls);
+
+    let cut = report_in(&store);
+
+    assert_eq!(
+        bullets_under(&cut, "Findings"),
+        [
+            "[WARN] The run has more than 20000 spans. This report reads the first 20000, so it \
+             may miss a step that failed later."
+        ]
+    );
+    assert_eq!(
+        paragraph_under(&cut, "Rollback"),
+        "This report did not read the run to its end, so it cannot say whether a rollback ran."
+    );
+    assert_eq!(value_of(&cut, "Rollback exercised"), "not read");
+}
+
+#[test]
+fn a_rollback_that_was_not_read_to_its_end_is_not_called_clean() {
+    let d = tempfile::TempDir::new().unwrap();
+    let store = tumult_lake::Store::open(&d.path().join("kronika.duckdb")).unwrap();
+    let writer = store.writer().unwrap();
+    let undo = |id: &str, step: &str, at_ms: i64, error: Option<&str>| {
+        let name = "resilience.action";
+        span_of(id, Some("undo"), name, Some(step), at_ms, 100, error)
+    };
+    let mut spans = polled(1);
+    spans.pop();
+    spans.extend([
+        span_of(
+            "undo",
+            Some("root"),
+            "resilience.rollback",
+            None,
+            39_000,
+            900,
+            None,
+        ),
+        undo("undo-1", "restore-ledger", 39_100, None),
+        undo("undo-2", "warm-cache", 39_200, Some("exit 1")),
+    ]);
+    writer.insert_spans(&spans).unwrap();
+    // The root span, the polls, the rollback and its first step are the most
+    // spans a report reads. The step that failed is the one beyond.
+    store_polls(&writer, 1, game_day::MOST_SPANS - 4);
+
+    let doc = report_in(&store);
+
+    assert_eq!(
+        paragraph_under(&doc, "Rollback"),
+        "The rollback ran 1 step (restore-ledger); status: not read to its end."
+    );
+    assert_eq!(value_of(&doc, "Rollback exercised"), "yes");
+}
+
+#[test]
+fn a_run_that_sent_no_trace_counts_as_tested_in_the_period() {
+    use tumult_core::types::ExperimentStatus;
+    let d = tempfile::TempDir::new().unwrap();
+    let store = tumult_lake::Store::open(&d.path().join("kronika.duckdb")).unwrap();
+    let journal = tumult_core::types::Journal {
+        started_at_ns: BASE_NS,
+        ended_at_ns: BASE_NS + 300_000_000_000,
+        ..tumult_lake::duckdb_store::sample_journal("exp-plain", ExperimentStatus::Completed)
+    };
+    assert!(store
+        .writer()
+        .unwrap()
+        .ingest_journal(&journal, None)
+        .unwrap());
+
+    let doc = digest_of_the_day(&store);
+
+    assert_eq!(
+        kpi(&doc, "Experiments tested"),
+        ("1 / 1".to_string(), Some("in the period".to_string()))
+    );
+}
+
+/// The rows of the first table under the heading `title`, as text.
+fn rows_under(doc: &ReportDoc, title: &str) -> Vec<String> {
+    doc.blocks
+        .iter()
+        .skip_while(|b| !matches!(b, Block::H2(t) if t == title))
+        .skip(1)
+        .take_while(|b| !matches!(b, Block::H2(_)))
+        .find_map(|b| match b {
+            Block::Table { rows, .. } => Some(rows.iter().map(|row| row_text(row)).collect()),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("no table under {title}"))
+}
+
+/// The blocks between the heading `title` and the next heading.
+fn blocks_under<'a>(doc: &'a ReportDoc, title: &str) -> Vec<&'a Block> {
+    doc.blocks
+        .iter()
+        .skip_while(|b| !matches!(b, Block::H2(t) if t == title))
+        .skip(1)
+        .take_while(|b| !matches!(b, Block::H2(_)))
+        .collect()
+}
+
+const TWO_DOMAINS: &str = "
+nodes:
+  - {name: commerce, kind: domain}
+  - {name: platform, kind: domain}
+  - {name: checkout-team, parent: commerce}
+  - {name: search-team, parent: platform}
+assignments:
+  - team: checkout-team
+    targets: [\"checkout-*\"]
+  - team: search-team
+    targets: [\"search-*\"]
+";
+
+/// A store with one run for each `(name, status)`, all at `BASE_NS`.
+fn runs_of(runs: &[(&str, &str)]) -> (tempfile::TempDir, tumult_lake::Store) {
+    let d = tempfile::TempDir::new().unwrap();
+    let store = tumult_lake::Store::open(&d.path().join("kronika.duckdb")).unwrap();
+    let spans: Vec<tumult_lake::SpanRow> = runs
+        .iter()
+        .map(|(name, status)| tumult_lake::SpanRow {
+            ts_ns: BASE_NS,
+            trace_id: format!("trace-{name}"),
+            span_id: format!("span-{name}"),
+            span_name: "resilience.experiment".into(),
+            span_kind: "Internal".into(),
+            duration_ns: HOUR_NS,
+            service_name: "tumult".into(),
+            experiment_id: Some(format!("exp-{name}")),
+            experiment_name: Some((*name).into()),
+            outcome_status: Some((*status).into()),
+            events: "[]".into(),
+            ..Default::default()
+        })
+        .collect();
+    store.writer().unwrap().insert_spans(&spans).unwrap();
+    (d, store)
+}
+
+/// The digest of the day up to an hour after `BASE_NS`, by `TWO_DOMAINS`.
+fn digest_by_domain(store: &tumult_lake::Store) -> ReportDoc {
+    let reader = store.read_only().unwrap();
+    let org = OrgTree::from_yaml(TWO_DOMAINS).unwrap();
+    let as_of = BASE_NS + HOUR_NS;
+    build_executive(&reader, &org, as_of, DAY_NS, as_of, &[]).unwrap()
+}
+
+#[test]
+fn a_domain_at_the_full_score_has_no_weakest_member() {
+    let (_d, store) = runs_of(&[
+        ("checkout-restart", "completed"),
+        ("search-node-loss", "deviated"),
+        ("billing-export", "completed"),
+    ]);
+
+    let doc = digest_by_domain(&store);
+
+    assert_eq!(
+        rows_under(&doc, "By domain"),
+        [
+            "platform|50.0|fair|1/1|search-node-loss",
+            "(unassigned)|100.0|good|1/1|—",
+            "commerce|100.0|good|1/1|—",
+        ]
+    );
+}
+
+#[test]
+fn a_domain_with_nothing_scored_shows_no_score() {
+    use tumult_lake::{ExerciseType, ManualOutcome, NewManualExperiment};
+    let (_d, store) = runs_of(&[("checkout-restart", "completed")]);
+    // A drill of the platform domain that is written down and not yet verified.
+    store
+        .writer()
+        .unwrap()
+        .create_manual_draft(&NewManualExperiment {
+            experiment_name: "search-failover-drill".into(),
+            exercise_type: ExerciseType::GameDay,
+            executed_at_ns: BASE_NS,
+            hypothesis: "search answers from the second region".into(),
+            method: "took the first region out of the pool".into(),
+            outcome: ManualOutcome::Passed,
+            hypothesis_met: Some(true),
+            findings: None,
+            action_items: vec![],
+            target_system: Some("search".into()),
+            target_environment: None,
+            blast_radius: None,
+            recovery_time_s: None,
+            duration_s: None,
+            entered_by: "alice".into(),
+            attestation: "I attest this record reflects the exercise.".into(),
+            renewal_due_ns: None,
+            framework_refs: vec![],
+        })
+        .unwrap();
+
+    let doc = digest_by_domain(&store);
+
+    assert_eq!(
+        rows_under(&doc, "By domain"),
+        [
+            "(unassigned)|—|—|0/0|—",
+            "platform|—|—|0/1|—",
+            "commerce|100.0|good|1/1|—",
+        ]
+    );
+}
+
+#[test]
+fn a_digest_of_an_empty_store_draws_no_empty_chart_or_table() {
+    let d = tempfile::TempDir::new().unwrap();
+    let store = tumult_lake::Store::open(&d.path().join("kronika.duckdb")).unwrap();
+
+    let doc = digest_of_the_day(&store);
+
+    for title in [
+        "Experiment scores",
+        "Coverage",
+        "Target scores",
+        "Open weaknesses and decisions needed",
+    ] {
+        let said: Vec<String> = blocks_under(&doc, title)
+            .into_iter()
+            .map(|block| match block {
+                Block::Paragraph(text) => text.clone(),
+                other => format!("{other:?}"),
+            })
+            .collect();
+
+        assert_eq!(said, ["No experiments on record."], "{title}");
+    }
+}
+
+#[test]
+fn an_evidence_pack_of_one_experiment_says_one_experiment() {
+    let (_d, store) = one_run("queue-restart", "completed");
+    let reader = store.read_only().unwrap();
+
+    let doc = build_evidence_pack(&reader, "dora", None, BASE_NS + HOUR_NS, &[]).unwrap();
+
+    let scope = doc
+        .blocks
+        .iter()
+        .find_map(|b| match b {
+            Block::Paragraph(p) => Some(p.as_str()),
+            _ => None,
+        })
+        .expect("scope paragraph");
+    assert!(
+        scope.contains("framework; 1 experiment is on record. An automated experiment is"),
+        "{scope}"
+    );
+}
+
+/// An experiment that has no run on record.
+fn never_run(name: &str) -> crate::scoring::ExperimentScore {
+    crate::scoring::ExperimentScore {
+        name: name.into(),
+        target: None,
+        environment: None,
+        evidence_id: None,
+        score: 0,
+        state: crate::scoring::RunState::NeverRun,
+        band: "poor".into(),
+        last_run_ns: None,
+        last_outcome: None,
+        severity: None,
+        runs: 0,
+        origin: "automated".into(),
+        journal_only: false,
+    }
+}
+
+#[test]
+fn the_outlook_counts_the_experiments_that_never_ran() {
+    let card_of = |experiments| crate::scoring::Scorecard {
+        portfolio: 0.0,
+        band: "poor".into(),
+        delta: None,
+        as_of_ns: BASE_NS,
+        targets: Vec::new(),
+        experiments,
+    };
+
+    assert_eq!(
+        outlook(&card_of(vec![never_run("a")])),
+        "Next period priorities: schedule first runs for 1 untested experiment."
+    );
+    assert_eq!(
+        outlook(&card_of(vec![never_run("a"), never_run("b")])),
+        "Next period priorities: schedule first runs for 2 untested experiments."
+    );
+}
+
+#[test]
+fn a_run_that_recorded_no_blast_radius_says_so() {
+    let doc = report_of_steps(&[run_span(None)], &[]);
+
+    assert_eq!(value_of(&doc, "Blast radius"), "not recorded");
+}
+
+#[test]
+fn the_appendix_holds_the_first_forty_attributes_by_name() {
+    let root = tumult_lake::SpanRow {
+        span_attrs: (1..=45)
+            .map(|n| (format!("key-{n:02}"), n.to_string()))
+            .collect(),
+        ..run_span(None)
+    };
+
+    let doc = report_of_steps(&[root], &[]);
+
+    let appendix = blocks_under(&doc, "Configuration appendix");
+    let Some(Block::KeyValues(pairs)) = appendix.first() else {
+        panic!("the appendix is no list of pairs");
+    };
+    assert_eq!(pairs.len(), 40);
+    assert_eq!(pairs[39].0, "key-40");
+}
+
+#[test]
+fn what_a_report_left_out_is_said_before_the_steps_that_failed() {
+    let (mut spans, logs) = game_day_of_two();
+    let fault = spans.iter_mut().find(|span| span.span_id == "fault");
+    let fault = fault.unwrap();
+    fault.status_code = "Error".into();
+    fault.status_message = "exit 1".into();
+
+    let doc = report_of_steps(&spans, &logs);
+
+    assert_eq!(
+        bullets_under(&doc, "Findings"),
+        [
+            "[WARN] 1 span of this trace names a parent that is not on record. It and the spans \
+             under it are not in this report.",
+            "[ERROR] slow-ledger (resilience.action): exit 1",
+            "[WARN] the ledger is slow",
+        ]
+    );
 }

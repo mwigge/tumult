@@ -52,7 +52,7 @@
 = Scope and methodology
 
 
-This pack summarises the resilience testing evidence Tumult recorded for the SOC2 framework over the period 2026\-10\-19 – 2026\-11\-18; 5 experiments are on record. Experiments are chaos\/continuity tests executed via tumult; outcomes are taken from each run's completion log.
+This pack summarises the resilience testing evidence Tumult recorded for the SOC2 framework over the period 2026\-10\-19 – 2026\-11\-18; 5 experiments are on record. An automated experiment is a chaos or continuity test that Tumult ran. The outcome of a run is the status that run recorded; a manual exercise has the outcome of its verified record.
 
 
 == Independence
@@ -123,7 +123,7 @@ Independence has not been verified by this report. Organizational separation of 
   ),
   table.hline(stroke: 0.5pt + luma(200)),
   [Payments tolerate a slow ledger],
-  [#text(fill: rgb("#6B7280"))[○] #text(number-width: "tabular")[automated]],
+  [automated],
   [payments \/ prod],
   [2026\-11\-17],
   [—],
@@ -131,15 +131,15 @@ Independence has not been verified by this report. Organizational separation of 
   [#text(fill: rgb("#E69F00"))[▲] #text(number-width: "tabular")[deviated]],
   [#text(number-width: "tabular")[50]],
   [Regional failover drill],
-  [#text(fill: rgb("#6B7280"))[○] #text(number-width: "tabular")[manual]],
+  [manual],
   [checkout \/ prod],
   [2026\-11\-17],
   [\{entered\}],
   [bob],
-  [#text(fill: rgb("#6B7280"))[○] #text(number-width: "tabular")[partial]],
+  [#text(fill: rgb("#E69F00"))[▲] #text(number-width: "tabular")[partial]],
   [#text(number-width: "tabular")[75]],
   [Billing export resumes after a restart],
-  [#text(fill: rgb("#6B7280"))[○] #text(number-width: "tabular")[automated]],
+  [automated],
   [billing \/ staging],
   [2026\-11\-17],
   [—],
@@ -147,7 +147,7 @@ Independence has not been verified by this report. Organizational separation of 
   [#text(fill: rgb("#009E73"))[●] #text(number-width: "tabular")[completed]],
   [#text(number-width: "tabular")[100]],
   [Checkout survives a cache restart],
-  [#text(fill: rgb("#6B7280"))[○] #text(number-width: "tabular")[automated]],
+  [automated],
   [checkout \/ prod],
   [2026\-11\-17],
   [—],
@@ -155,7 +155,7 @@ Independence has not been verified by this report. Organizational separation of 
   [#text(fill: rgb("#009E73"))[●] #text(number-width: "tabular")[completed]],
   [#text(number-width: "tabular")[100]],
   [Search answers after the loss of a node],
-  [#text(fill: rgb("#6B7280"))[○] #text(number-width: "tabular")[automated]],
+  [automated],
   [search \/ staging],
   [2026\-11\-17],
   [—],

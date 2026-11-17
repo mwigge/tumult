@@ -185,7 +185,7 @@ fn cover(out: &mut String, meta: &DocMeta) {
         rows.push(("Framework".into(), f.clone()));
     }
     if let Some(e) = &meta.experiment_id {
-        rows.push(("Experiment".into(), e.clone()));
+        rows.push(("Run id".into(), e.clone()));
     }
     out.push_str(
         "#table(\n  columns: (30%, 70%),\n  stroke: none,\n  inset: (x: 0pt, y: 5.5pt),\n",

@@ -19,7 +19,7 @@ use opentelemetry::KeyValue;
 
 use super::activity::probe_outcome_ok;
 use super::telemetry::{
-    current_span_id, current_trace_id, epoch_nanos_now, fault_attributes, plugin_name,
+    current_span_id, current_trace_id, epoch_nanos_now, fault_attributes, plugin_name, probe_end,
     set_span_status_from_outcome, target_attributes,
 };
 use super::{ActivityExecutor, TRACER_NAME};
@@ -103,12 +103,13 @@ fn sample_probe_round(
         let started_at_ns = epoch_nanos_now();
         let outcome = executor.execute(probe);
         set_span_status_from_outcome(outcome.success, outcome.error.as_deref());
+        let within_tolerance = probe_outcome_ok(probe, outcome.success, outcome.output.as_deref());
         tumult_otel::instrument::record_probe(
             tumult_otel::TumultMetrics::global(),
             &plugin_name(probe),
             &probe.name,
             start,
-            outcome.success,
+            probe_end(outcome.success, within_tolerance),
         );
         let trace_id = current_trace_id();
         let span_id = current_span_id();
@@ -117,7 +118,6 @@ fn sample_probe_round(
         #[allow(clippy::cast_possible_truncation)]
         let elapsed = start.elapsed().as_millis() as u64;
 
-        let within_tolerance = probe_outcome_ok(probe, outcome.success, outcome.output.as_deref());
         if !within_tolerance {
             all_within_tolerance = false;
         }

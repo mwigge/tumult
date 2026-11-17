@@ -178,15 +178,27 @@ pub fn compute_scoped(
 ) -> Result<Scorecard, String> {
     let mut card = compute_as_of(reader, as_of_ns, envs)?;
     if let Some(period) = period_ns {
-        let prev = compute_as_of(reader, as_of_ns - period, envs)?;
-        card.delta = Some(card.portfolio - prev.portfolio);
+        let before = compute_as_of(reader, as_of_ns - period, envs)?;
+        card.delta = change_since(&card, &before);
     }
     Ok(card)
 }
 
+/// How far the portfolio score of `card` is from the one of `before`, the
+/// card of an earlier instant. `None` when nothing was on record then: a
+/// first score is not a change.
+#[must_use]
+pub fn change_since(card: &Scorecard, before: &Scorecard) -> Option<f64> {
+    if before.experiments.is_empty() {
+        return None;
+    }
+    Some(card.portfolio - before.portfolio)
+}
+
 /// Portfolio score sampled at `points` evenly spaced instants across
 /// `(as_of_ns - period_ns, as_of_ns]` — the R1 trend chart. Each point is
-/// the time of its instant and the score at that time.
+/// the time of its instant and the score at that time. An instant before
+/// anything was on record has no point: no score is not a score of 0.
 ///
 /// # Errors
 /// Returns the store error string when a query fails.
@@ -215,7 +227,11 @@ pub fn portfolio_series_scoped(
     let mut out = Vec::with_capacity(points as usize);
     for i in 1..=points {
         let t = as_of_ns - period_ns + step * i;
-        out.push((t, compute_as_of(reader, t, envs)?.portfolio));
+        let card = compute_as_of(reader, t, envs)?;
+        if card.experiments.is_empty() {
+            continue;
+        }
+        out.push((t, card.portfolio));
     }
     Ok(out)
 }
@@ -583,10 +599,13 @@ mod tests {
         assert_eq!(card.delta, Some(-50.0));
         // Without a period there is no comparison point.
         assert_eq!(compute(&reader, now, None).unwrap().delta, None);
+        // Nor with a period that reaches back before the first run: a
+        // first score is not a change.
+        assert_eq!(compute(&reader, now, Some(30 * DAY)).unwrap().delta, None);
     }
 
     #[test]
-    fn portfolio_series_samples_evenly_spaced_instants() {
+    fn the_portfolio_series_starts_when_something_is_on_record() {
         let d = tempfile::TempDir::new().unwrap();
         let store = tumult_lake::Store::open(&d.path().join("k.duckdb")).unwrap();
         let now = 100 * DAY;
@@ -594,7 +613,7 @@ mod tests {
             .writer()
             .unwrap()
             .insert_spans(&[tumult_lake::SpanRow {
-                ts_ns: now - DAY,
+                ts_ns: now - 4 * DAY,
                 trace_id: "trace-s".into(),
                 span_id: "span-s".into(),
                 span_name: "resilience.experiment".into(),
@@ -610,23 +629,20 @@ mod tests {
         let reader = store.read_only().unwrap();
 
         let series = portfolio_series(&reader, now, 7 * DAY, 5).unwrap();
-        assert_eq!(series.len(), 5);
         // The instants end at `now` and are a fifth of the week apart. The
-        // only run sits at now-1d, so samples before it see an empty store
-        // (0) and the last sample sees the run with no outcome log
-        // (failed → 50).
+        // only run is from four days ago, so the two instants before it
+        // have no point: nothing was on record, which is not a score of 0.
+        // The run has no outcome log (failed → 50).
         let step = 7 * DAY / 5;
-        let instants: Vec<i64> = series.iter().map(|(t, _)| *t).collect();
-        let expected: Vec<i64> = (0..5).rev().map(|back| now - back * step).collect();
-        assert_eq!(instants, expected);
-        assert!(series[..4].iter().all(|(_, v)| *v == 0.0));
-        assert_eq!(series[4].1, 50.0);
+        assert_eq!(
+            series,
+            [(now - 2 * step, 50.0), (now - step, 50.0), (now, 50.0)]
+        );
 
-        // Scoped to an environment with no spans, every sample is zero.
+        // Scoped to an environment with no spans, there is no point at all.
         let scoped =
             portfolio_series_scoped(&reader, now, 7 * DAY, 3, &["elsewhere".to_string()]).unwrap();
-        assert_eq!(scoped.len(), 3);
-        assert!(scoped.iter().all(|(_, v)| *v == 0.0));
+        assert!(scoped.is_empty(), "{scoped:?}");
     }
 
     #[test]

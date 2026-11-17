@@ -138,3 +138,82 @@ fn the_run_that_sent_no_telemetry_has_only_its_journal() {
         assert_eq!(rows, 0, "{rows_of_the_run}");
     }
 }
+
+#[test]
+fn the_line_that_a_run_started_carries_the_trace_of_that_run() {
+    let (_dir, reader, journals) = loaded();
+
+    for journal in &journals[..4] {
+        let id = &journal.experiment_id;
+        let linked = count(
+            &reader,
+            &format!(
+                "SELECT count(*) AS n FROM logs \
+                 WHERE body = 'experiment.started' AND log_attrs['experiment_id'] = '{id}' \
+                 AND trace_id IN (SELECT trace_id FROM spans \
+                 WHERE span_name = 'resilience.experiment' AND experiment_id = '{id}')"
+            ),
+        );
+        assert_eq!(linked, 1, "{}", journal.experiment_title);
+    }
+}
+
+/// How many probes of a run its journal has as failed: the checks of the
+/// steady state, the probes of the method, and the samples.
+fn failed_probes(journal: &tumult_core::types::Journal) -> usize {
+    use tumult_core::types::{ActivityStatus, ActivityType};
+    let checks = [&journal.steady_state_before, &journal.steady_state_after];
+    let checked = checks
+        .into_iter()
+        .flatten()
+        .flat_map(|check| &check.probe_results);
+    let probed = journal
+        .method_results
+        .iter()
+        .filter(|step| step.activity_type == ActivityType::Probe);
+    let failed = checked
+        .chain(probed)
+        .filter(|probe| probe.status != ActivityStatus::Succeeded)
+        .count();
+    failed + journal.probe_samples.iter().filter(|s| !s.ok).count()
+}
+
+#[test]
+fn a_probe_that_read_a_target_that_is_down_is_no_error_of_its_plugin() {
+    let (_dir, reader, journals) = loaded();
+
+    // Two of the runs found their target down: the check after the fault
+    // failed, and so did each sample taken while they waited for it to
+    // come back. The last run sent no telemetry.
+    let sent_telemetry = &journals[..journals.len() - 1];
+    let failed_in_the_journals: usize = sent_telemetry.iter().map(failed_probes).sum();
+    assert!(failed_in_the_journals > 2, "{failed_in_the_journals}");
+    let failed_probes = count(
+        &reader,
+        "SELECT CAST(coalesce(sum(value), 0) AS BIGINT) AS n FROM metric_sums \
+         WHERE metric_name = 'tumult.probes.total' \
+         AND outcome_status = 'failure'",
+    );
+    assert_eq!(usize::try_from(failed_probes), Ok(failed_in_the_journals));
+    let plugin_errors = count(
+        &reader,
+        "SELECT CAST(coalesce(sum(value), 0) AS BIGINT) AS n FROM metric_sums \
+         WHERE metric_name = 'tumult.plugin.errors.total'",
+    );
+    assert_eq!(plugin_errors, 0);
+}
+
+#[test]
+fn the_span_of_every_step_names_the_plugin_that_served_it() {
+    let (_dir, reader, _journals) = loaded();
+    let steps = "spans WHERE span_name IN ('resilience.action', 'resilience.probe')";
+
+    let all = count(&reader, &format!("SELECT count(*) AS n FROM {steps}"));
+    let named = count(
+        &reader,
+        &format!("SELECT count(*) AS n FROM {steps} AND plugin_name IS NOT NULL"),
+    );
+
+    assert!(all > 0);
+    assert_eq!(named, all);
+}

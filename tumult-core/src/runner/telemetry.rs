@@ -10,6 +10,7 @@ use crate::types::{
 use opentelemetry::trace::{Status, TraceContextExt};
 use opentelemetry::KeyValue;
 use tumult_otel::attributes;
+use tumult_otel::instrument::ProbeEnd;
 
 /// Build a Journal for an experiment interrupted before it started.
 pub(crate) fn make_interrupted_journal(experiment: &Experiment, now_ns: i64) -> Journal {
@@ -141,6 +142,18 @@ pub(crate) fn plugin_name(activity: &Activity) -> String {
         Provider::Native { plugin, .. } | Provider::Script { plugin, .. } => plugin.clone(),
         Provider::Process { .. } => "process".to_string(),
     }
+}
+
+/// How a probe ended, for its metric. A probe the plugin ran is no error
+/// of the plugin, whatever the probe read.
+pub(crate) fn probe_end(plugin_ran: bool, within_tolerance: bool) -> ProbeEnd {
+    if !plugin_ran {
+        return ProbeEnd::PluginFailed;
+    }
+    if within_tolerance {
+        return ProbeEnd::Passed;
+    }
+    ProbeEnd::OutsideTolerance
 }
 
 /// Set span error status if the outcome failed.

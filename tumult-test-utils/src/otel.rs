@@ -170,6 +170,41 @@ impl MetricCapture {
         self.provider.meter(name)
     }
 
+    /// The capture that is the meter provider of the whole process,
+    /// installed on first use and never replaced.
+    ///
+    /// For code that records on the global meter. The values add up over
+    /// the whole test binary, so a test reads what its own code added, and
+    /// the tests that do so run one at a time.
+    #[must_use]
+    pub fn global() -> &'static Self {
+        static GLOBAL: OnceLock<MetricCapture> = OnceLock::new();
+        GLOBAL.get_or_init(|| {
+            let capture = Self::new();
+            global::set_meter_provider(capture.provider.clone());
+            capture
+        })
+    }
+
+    /// The sum of the points of the counter or gauge called `name` that
+    /// carry every attribute of `with`, each a key and its text.
+    ///
+    /// # Panics
+    ///
+    /// As [`MetricCapture::points`].
+    #[must_use]
+    pub fn total(&self, name: &str, with: &[(&str, &str)]) -> f64 {
+        self.points(name)
+            .iter()
+            .filter(|point| {
+                with.iter().all(|(key, text)| {
+                    attribute(&point.attributes, key).is_some_and(|found| found.as_str() == *text)
+                })
+            })
+            .map(|point| point.value)
+            .sum()
+    }
+
     /// The current data points of the counter or gauge called `name`, from
     /// every meter that has an instrument of that name; empty when nothing
     /// was recorded under it.
@@ -310,6 +345,36 @@ mod tests {
             .start(&tracer);
         span.add_event("happened", vec![KeyValue::new("n", 1_i64)]);
         span.set_status(Status::error("boom"));
+    }
+
+    #[test]
+    fn the_global_capture_reads_what_is_recorded_on_the_global_meter() {
+        let capture = MetricCapture::global();
+        let counter = global::meter("unit")
+            .u64_counter("unit.global.total")
+            .build();
+        counter.add(2, &[KeyValue::new("kind", "a")]);
+        counter.add(
+            3,
+            &[KeyValue::new("kind", "b"), KeyValue::new("side", "left")],
+        );
+        counter.add(
+            4,
+            &[KeyValue::new("kind", "b"), KeyValue::new("side", "right")],
+        );
+
+        assert_eq!(
+            (
+                capture.total("unit.global.total", &[]),
+                capture.total("unit.global.total", &[("kind", "b")]),
+                capture.total("unit.global.total", &[("kind", "b"), ("side", "left")]),
+                capture.total("unit.global.total", &[("kind", "c")]),
+                capture.total("unit.global.total", &[("side", "a")]),
+                capture.total("unit.absent.total", &[]),
+            ),
+            (9.0, 7.0, 3.0, 0.0, 0.0, 0.0)
+        );
+        assert!(std::ptr::eq(capture, MetricCapture::global()));
     }
 
     #[test]

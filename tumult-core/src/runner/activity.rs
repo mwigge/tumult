@@ -16,7 +16,7 @@ use opentelemetry::KeyValue;
 use tokio_util::sync::CancellationToken;
 
 use super::telemetry::{
-    current_span_id, current_trace_id, epoch_nanos_now, fault_attributes, plugin_name,
+    current_span_id, current_trace_id, epoch_nanos_now, fault_attributes, plugin_name, probe_end,
     set_span_status_from_outcome, target_attributes,
 };
 use super::{ActivityExecutor, ActivityOutcome, TRACER_NAME};
@@ -156,7 +156,9 @@ fn execute_single_activity(
             span_id: current_span_id(),
         };
     }
-    let outcome = judged(activity, dispatch(activity, executor, cancellation));
+    let ran = dispatch(activity, executor, cancellation);
+    let plugin_ran = ran.success;
+    let outcome = judged(activity, ran);
     set_span_status_from_outcome(outcome.success, outcome.error.as_deref());
 
     // Per-operation metrics: every action and probe is counted and timed,
@@ -175,7 +177,7 @@ fn execute_single_activity(
             &plugin_name(activity),
             &activity.name,
             start,
-            outcome.success,
+            probe_end(plugin_ran, outcome.success),
         ),
     }
 

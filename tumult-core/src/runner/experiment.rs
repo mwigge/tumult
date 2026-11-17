@@ -115,19 +115,6 @@ pub fn run_experiment_with_sampling(
     let started_at_ns = epoch_nanos_now();
     let experiment_id = uuid::Uuid::new_v4().to_string();
 
-    // Structured audit log: experiment start.  Fields are consumed by SIEM
-    // pipelines and audit tooling for compliance / change traceability.
-    let audit_user = std::env::var("USER")
-        .or_else(|_| std::env::var("LOGNAME"))
-        .unwrap_or_else(|_| "unknown".to_string());
-    tracing::info!(
-        experiment_id = %experiment_id,
-        experiment_title = %experiment.title,
-        user = %audit_user,
-        started_at_ns = started_at_ns,
-        "experiment.started"
-    );
-
     // -- Root span: resilience.experiment wraps the entire lifecycle.
     let tracer = opentelemetry::global::tracer(TRACER_NAME);
     let exp_span = {
@@ -150,6 +137,20 @@ pub fn run_experiment_with_sampling(
     };
     let exp_cx = opentelemetry::Context::current_with_span(exp_span);
     let _exp_guard = exp_cx.attach();
+
+    // Structured audit log: experiment start.  Fields are consumed by SIEM
+    // pipelines and audit tooling for compliance / change traceability.
+    // Logged under the root span, so the line carries the trace of its run.
+    let audit_user = std::env::var("USER")
+        .or_else(|_| std::env::var("LOGNAME"))
+        .unwrap_or_else(|_| "unknown".to_string());
+    tracing::info!(
+        experiment_id = %experiment_id,
+        experiment_title = %experiment.title,
+        user = %audit_user,
+        started_at_ns = started_at_ns,
+        "experiment.started"
+    );
 
     // -- Phase 0: Record Estimate
     controls.emit(&LifecycleEvent::BeforeExperiment);

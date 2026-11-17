@@ -1,55 +1,55 @@
 experiment_title: Payments tolerate a slow ledger
-experiment_id: "181ded0c-116a-4b6e-8240-fb28f2142a69"
+experiment_id: "309cf8a8-74ec-4702-bd73-d416afa10d00"
 status: deviated
-started_at_ns: 1794888680300994831
-ended_at_ns: 1794888709486022010
-duration_ms: 29185
+started_at_ns: 1794916015388973983
+ended_at_ns: 1794916044446687401
+duration_ms: 29057
 steady_state_before:
   title: Payments answer
   met: true
   probe_results[1]{name,activity_type,status,started_at_ns,duration_ms,output,trace_id,span_id}:
-    "payments-answer",probe,succeeded,1794888680301106232,2,ok,b5cd7220a01a080470c7608ad8f85e5d,ff1cd53c49bb92c6
+    "payments-answer",probe,succeeded,1794916015389078654,1,ok,bde5d4bf306908d66452967aeee785e3,f7ac363010e8db30
 steady_state_after:
   title: Payments answer
   met: false
   probe_results[1]{name,activity_type,status,started_at_ns,duration_ms,output,error,trace_id,span_id}:
-    "payments-answer",probe,failed,1794888709475878438,3,down,the output is outside the tolerance,b5cd7220a01a080470c7608ad8f85e5d,20c814dee8ea4f02
+    "payments-answer",probe,failed,1794916044444231839,1,down,the output is outside the tolerance,bde5d4bf306908d66452967aeee785e3,ffeb9fa98c470bc5
 method_results[2]:
   - name: "slow-ledger"
     activity_type: action
     status: succeeded
-    started_at_ns: 1794888680303634462
-    duration_ms: 2
-    trace_id: b5cd7220a01a080470c7608ad8f85e5d
-    span_id: a3445c5a6e664b94
+    started_at_ns: 1794916015391062943
+    duration_ms: 1
+    trace_id: bde5d4bf306908d66452967aeee785e3
+    span_id: 1dde275d8a9a111a
   - name: "payments-during-fault"
     activity_type: probe
     status: succeeded
-    started_at_ns: 1794888680305784569
-    duration_ms: 2
+    started_at_ns: 1794916015392417109
+    duration_ms: 1
     output: down
-    trace_id: b5cd7220a01a080470c7608ad8f85e5d
-    span_id: c1971a43f0d6b99e
+    trace_id: bde5d4bf306908d66452967aeee785e3
+    span_id: 30a4d572eeb7656d
 rollback_results[1]{name,activity_type,status,started_at_ns,duration_ms,trace_id,span_id}:
-  "restore-ledger",action,succeeded,1794888709482402211,3,b5cd7220a01a080470c7608ad8f85e5d,60c3a60f80d0a246
+  "restore-ledger",action,succeeded,1794916044445635606,1,bde5d4bf306908d66452967aeee785e3,25b0a58fbb9eb0ad
 rollback_failures: 0
 estimate: null
 baseline_result: null
 during_result:
-  started_at_ns: 1794888680303570722
-  ended_at_ns: 1794888680308437671
-  fault_active_s: 0.004866949
+  started_at_ns: 1794916015391005693
+  ended_at_ns: 1794916015394062507
+  fault_active_s: 0.003056814
   sample_interval_s: 1
   probes[1]{name,samples,mean,max,min,error_rate,breached_at_ns,breach_count}:
-    "payments-answer",1,2,2,2,1,1794888680303724183,1
+    "payments-answer",1,1,1,1,1,1794916015391114743,1
 post_result:
-  started_at_ns: 1794888680308565412
-  ended_at_ns: 1794888709455819527
-  duration_s: 29.147254115
+  started_at_ns: 1794916015394123758
+  ended_at_ns: 1794916044444184409
+  duration_s: 29.050060651
   samples: 30
   probes[1]{name,mean,p95,error_rate,returned_to_baseline,recovery_time_s}:
-    "payments-answer",4.333333333333333,9,1,false,29.142774639
-  recovery_time_s: 29.142774639
+    "payments-answer",1,1,1,false,29.048542414
+  recovery_time_s: 29.048542414
   full_recovery: false
 load_result: null
 analysis: null
@@ -63,37 +63,43 @@ objectives:
   verdicts[1]{nfr_id,kind,metric,operator,threshold,state,criticality}:
     rto,rto,recovery.mttr_s,lte,2,inconclusive,blocking
 probe_samples[31]{probe,phase,ts_ns,duration_ms,ok}:
-  "payments-answer",during,1794888680303724183,2,false
-  "payments-answer",post,1794888680308589952,2,false
-  "payments-answer",post,1794888681311180601,3,false
-  "payments-answer",post,1794888682314436535,3,false
-  "payments-answer",post,1794888683317949061,4,false
-  "payments-answer",post,1794888684322408414,4,false
-  "payments-answer",post,1794888685326895307,3,false
-  "payments-answer",post,1794888686330105631,4,false
-  "payments-answer",post,1794888687335118178,3,false
-  "payments-answer",post,1794888688338606603,5,false
-  "payments-answer",post,1794888689344062784,7,false
-  "payments-answer",post,1794888690351739562,5,false
-  "payments-answer",post,1794888691357907389,7,false
-  "payments-answer",post,1794888692365912530,3,false
-  "payments-answer",post,1794888693369310493,3,false
-  "payments-answer",post,1794888694372945399,3,false
-  "payments-answer",post,1794888695376604654,3,false
-  "payments-answer",post,1794888696380477852,3,false
-  "payments-answer",post,1794888697383872405,3,false
-  "payments-answer",post,1794888698387136607,9,false
-  "payments-answer",post,1794888699396408797,7,false
-  "payments-answer",post,1794888700403877513,3,false
-  "payments-answer",post,1794888701407353967,4,false
-  "payments-answer",post,1794888702412358732,9,false
-  "payments-answer",post,1794888703421945135,7,false
-  "payments-answer",post,1794888704429480571,3,false
-  "payments-answer",post,1794888705433388097,4,false
-  "payments-answer",post,1794888706438266571,3,false
-  "payments-answer",post,1794888707441589733,4,false
-  "payments-answer",post,1794888708446001863,5,false
-  "payments-answer",post,1794888709451340051,4,false
+  "payments-answer",during,1794916015391114743,1,false
+  "payments-answer",post,1794916015394131398,1,false
+  "payments-answer",post,1794916016395697418,1,false
+  "payments-answer",post,1794916017397305823,1,false
+  "payments-answer",post,1794916018398942712,1,false
+  "payments-answer",post,1794916019400784075,1,false
+  "payments-answer",post,1794916020402684983,1,false
+  "payments-answer",post,1794916021404254643,1,false
+  "payments-answer",post,1794916022405953178,1,false
+  "payments-answer",post,1794916023407682457,1,false
+  "payments-answer",post,1794916024409261688,1,false
+  "payments-answer",post,1794916025410971945,1,false
+  "payments-answer",post,1794916026412661215,1,false
+  "payments-answer",post,1794916027414244949,1,false
+  "payments-answer",post,1794916028415862326,1,false
+  "payments-answer",post,1794916029417507828,1,false
+  "payments-answer",post,1794916030419184693,1,false
+  "payments-answer",post,1794916031420833833,1,false
+  "payments-answer",post,1794916032422383396,1,false
+  "payments-answer",post,1794916033424001812,1,false
+  "payments-answer",post,1794916034425714633,1,false
+  "payments-answer",post,1794916035427304458,1,false
+  "payments-answer",post,1794916036428897916,1,false
+  "payments-answer",post,1794916037430708719,1,false
+  "payments-answer",post,1794916038432675036,1,false
+  "payments-answer",post,1794916039434354326,1,false
+  "payments-answer",post,1794916040436127680,1,false
+  "payments-answer",post,1794916041437807738,1,false
+  "payments-answer",post,1794916042439428418,1,false
+  "payments-answer",post,1794916043441069963,1,false
+  "payments-answer",post,1794916044442666172,1,false
 target_version:
   version: "5.1.3"
   version_source: declared
+target:
+  system: payments
+  technology: postgresql
+  environment: prod
+  criticality: high
+  version: "5.1.3"

@@ -67,45 +67,70 @@ fn f1(v: f64) -> String {
     format!("{v:.1}")
 }
 
-fn bluf(card: &Scorecard, open: &[&scoring::ExperimentScore]) -> String {
-    let trend = card.delta.map_or("no prior-period baseline".into(), |d| {
-        if d > 0.5 {
-            format!("improving ({d:+.1} vs the previous period)")
-        } else if d < -0.5 {
-            format!("declining ({d:+.1} vs the previous period)")
-        } else {
-            format!("flat ({d:+.1} vs the previous period)")
-        }
-    });
+/// `n` of a thing, by its name for one and its name for more: "1 run",
+/// "3 runs".
+fn counted(n: usize, one: &str, many: &str) -> String {
+    format!("{n} {}", if n == 1 { one } else { many })
+}
+
+/// Where the portfolio score went against the period before, as the end
+/// of the sentence that gives the score.
+fn direction(delta: Option<f64>) -> String {
+    let Some(d) = delta else {
+        return ". There is no earlier period to compare it with.".into();
+    };
+    let word = if d > 0.5 {
+        "improving"
+    } else if d < -0.5 {
+        "declining"
+    } else {
+        "flat"
+    };
+    format!(" and {word} ({d:+.1} vs the previous period).")
+}
+
+/// The three lowest targets, of those below a full score.
+fn weakest_targets(card: &Scorecard) -> String {
     let weakest: Vec<String> = card
         .targets
         .iter()
+        .filter(|t| t.score < 100.0)
         .take(3)
         .map(|t| format!("{} ({})", t.target, f1(t.score)))
         .collect();
-    let mut s = format!(
-        "Portfolio resilience is {} ({}/100) and {}. Weakest targets: {}. ",
+    if weakest.is_empty() {
+        return "Every target scores 100.".into();
+    }
+    format!("Weakest targets: {}.", weakest.join(", "))
+}
+
+/// What the open weaknesses ask of the reader.
+fn decisions(open: usize) -> String {
+    match open {
+        0 => "No open weaknesses; keep the current experiment cadence.".into(),
+        1 => "1 open weakness needs a decision: re-run, remediate, or accept.".into(),
+        n => format!("{n} open weaknesses need a decision: re-run, remediate, or accept."),
+    }
+}
+
+fn bluf(card: &Scorecard, open: &[&scoring::ExperimentScore]) -> String {
+    if card.experiments.is_empty() {
+        return "No experiment is on record, so there is no resilience score yet.".into();
+    }
+    format!(
+        "Portfolio resilience is {} ({}/100){} {} {}",
         card.band,
         f1(card.portfolio),
-        trend,
-        if weakest.is_empty() {
-            "none — no targets on record".into()
-        } else {
-            weakest.join(", ")
-        },
-    );
-    if open.is_empty() {
-        s.push_str("No open weaknesses; keep the current experiment cadence.");
-    } else {
-        s.push_str(&format!(
-            "{} open weakness(es) need a decision: re-run, remediate, or accept.",
-            open.len()
-        ));
-    }
-    s
+        direction(card.delta),
+        weakest_targets(card),
+        decisions(open.len()),
+    )
 }
 
 fn outlook(card: &Scorecard) -> String {
+    if card.experiments.is_empty() {
+        return "Next period priorities: run a first experiment to put a score on record.".into();
+    }
     let untested = card
         .experiments
         .iter()
@@ -119,15 +144,17 @@ fn outlook(card: &Scorecard) -> String {
     let mut pts = Vec::new();
     if untested > 0 {
         pts.push(format!(
-            "schedule first runs for {untested} untested experiment(s)"
+            "schedule first runs for {}",
+            counted(untested, "untested experiment", "untested experiments")
         ));
     }
     if stale > 0 {
         pts.push(format!(
-            "re-run {stale} experiment(s) whose last pass is over 30 days old"
+            "re-run {} whose last pass is over 30 days old",
+            counted(stale, "experiment", "experiments")
         ));
     }
-    if let Some(w) = card.targets.first() {
+    if let Some(w) = card.targets.first().filter(|w| w.score < 100.0) {
         pts.push(format!(
             "focus next game-day on {}, the weakest target",
             w.target
@@ -140,8 +167,6 @@ fn outlook(card: &Scorecard) -> String {
     }
 }
 
-/// Count deviated/failed runs in `[from, to)` and how many later ran green;
-/// plus MTTR from spans that report `recovery_time_s`.
 /// The decision an open weakness asks of the reader, by run state.
 fn decision_for(state: RunState) -> String {
     match state {
@@ -154,8 +179,8 @@ fn decision_for(state: RunState) -> String {
 }
 
 /// Experiment names with at least one run in `[from_ns, to_ns)` — automated
-/// runs plus verified manual executions in the window. Scoped to `envs`
-/// (empty = unscoped).
+/// runs, with or without a trace, plus verified manual executions in the
+/// window. Scoped to `envs` (empty = unscoped).
 fn runs_in_window(
     reader: &Reader,
     from_ns: i64,
@@ -164,8 +189,8 @@ fn runs_in_window(
 ) -> Result<std::collections::BTreeSet<String>, String> {
     let rows = reader
         .query_json_rows(&format!(
-            "SELECT DISTINCT experiment_name AS name FROM spans \
-             WHERE span_name = 'resilience.experiment' AND experiment_name IS NOT NULL \
+            "SELECT DISTINCT experiment_name AS name FROM run_roots \
+             WHERE experiment_name IS NOT NULL \
                AND ts_ns >= {from_ns} AND ts_ns < {to_ns}{} \
              UNION \
              SELECT DISTINCT experiment_name FROM manual_experiments \
@@ -181,6 +206,8 @@ fn runs_in_window(
         .collect())
 }
 
+/// Count deviated/failed runs in `[from, to)` and how many later ran green;
+/// plus MTTR from spans that report `recovery_time_s`.
 fn issue_stats(
     reader: &Reader,
     from_ns: i64,

@@ -163,21 +163,45 @@ fn paragraphs(doc: &ReportDoc) -> Vec<&str> {
         .collect()
 }
 
-/// The status cell of the timeline row of span `name`.
-fn timeline_status(doc: &ReportDoc, name: &str) -> String {
-    let rows = doc
-        .blocks
+fn bullets(doc: &ReportDoc) -> Vec<&str> {
+    doc.blocks
         .iter()
-        .find_map(|block| match block {
-            Block::Table { rows, .. } => Some(rows),
+        .filter_map(|block| match block {
+            Block::Bullets(items) => Some(items),
             _ => None,
         })
-        .expect("timeline table");
-    let row = rows
+        .flatten()
+        .map(String::as_str)
+        .collect()
+}
+
+fn timeline(doc: &ReportDoc) -> &[Vec<Cell>] {
+    doc.blocks
+        .iter()
+        .find_map(|block| match block {
+            Block::Table { rows, .. } => Some(rows.as_slice()),
+            _ => None,
+        })
+        .expect("timeline table")
+}
+
+/// The status cell of the timeline row of span `name`.
+fn timeline_status(doc: &ReportDoc, name: &str) -> String {
+    let row = timeline(doc)
         .iter()
         .find(|row| cell_text(&row[1]) == name)
         .unwrap_or_else(|| panic!("no timeline row {name}"));
     cell_text(&row[4])
+}
+
+/// The step cells of the timeline rows of span `name`, in the order of the
+/// run.
+fn timeline_steps(doc: &ReportDoc, name: &str) -> Vec<String> {
+    timeline(doc)
+        .iter()
+        .filter(|row| cell_text(&row[1]) == name)
+        .map(|row| cell_text(&row[2]))
+        .collect()
 }
 
 #[test]
@@ -192,6 +216,52 @@ fn the_report_of_a_completed_run_shows_what_the_run_measured() {
     let recovery = journal.recovery_time_s().expect("the run saw recovery");
     assert_eq!(value(&doc, "Recovery time"), format!("{recovery:.1}s"));
     assert_eq!(timeline_status(&doc, "resilience.experiment"), "ok");
+}
+
+#[test]
+fn the_report_of_a_completed_run_names_its_steps_and_finds_nothing_wrong() {
+    let (_, doc) = report_of_a_run("replica loss", "ok");
+
+    assert_eq!(value(&doc, "Scenario"), "kill-replica");
+    assert_eq!(timeline_steps(&doc, "resilience.action"), ["kill-replica"]);
+    assert_eq!(bullets(&doc), [""; 0]);
+    let said = paragraphs(&doc);
+    assert!(
+        said.contains(&"No step failed and no warnings or errors were logged during this run."),
+        "{said:?}"
+    );
+    assert!(
+        said.contains(&"No rollback action was exercised in this run."),
+        "{said:?}"
+    );
+}
+
+#[test]
+fn the_report_of_a_deviated_run_names_the_probe_that_failed_and_the_rollback_step() {
+    let (_, doc) = report_of_a_run("replica loss, no recovery", "down");
+
+    // The fault is the scenario. The step that undid it is not.
+    assert_eq!(value(&doc, "Scenario"), "kill-replica");
+    assert_eq!(
+        timeline_steps(&doc, "resilience.action"),
+        ["kill-replica", "restart-replica"]
+    );
+    assert_eq!(
+        bullets(&doc),
+        ["[ERROR] steady (resilience.probe): the output is outside the tolerance"]
+    );
+    let said = paragraphs(&doc);
+    assert!(
+        said.contains(&"The rollback ran 1 step (restart-replica); status: all clean."),
+        "{said:?}"
+    );
+    // The probe that watched for recovery polled many times: one line.
+    let probes = timeline_steps(&doc, "resilience.probe");
+    assert!(
+        probes.iter().any(|step| step.starts_with("steady × ")),
+        "{probes:?}"
+    );
+    assert!(probes.len() < 8, "{probes:?}");
 }
 
 #[test]

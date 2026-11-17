@@ -1,53 +1,53 @@
 experiment_title: Checkout survives a cache restart
-experiment_id: "96474586-63b1-4138-b797-1d7dd9254be2"
+experiment_id: "8e8066ef-8d04-49dc-98ab-9cbc7e4de670"
 status: completed
-started_at_ns: 1794888679966036642
-ended_at_ns: 1794888680182967010
-duration_ms: 216
+started_at_ns: 1794916015159991210
+ended_at_ns: 1794916015368120265
+duration_ms: 208
 steady_state_before:
   title: Checkout answers
   met: true
   probe_results[1]{name,activity_type,status,started_at_ns,duration_ms,output,trace_id,span_id}:
-    "checkout-answers",probe,succeeded,1794888679966219184,2,ok,99050704f981968e88c65f6b20b6c816,ab35e45139c8071c
+    "checkout-answers",probe,succeeded,1794916015160061480,1,ok,fd8eb39cc597a265a67cdd4510294c6d,7507d49a39c4655a
 steady_state_after:
   title: Checkout answers
   met: true
   probe_results[1]{name,activity_type,status,started_at_ns,duration_ms,output,trace_id,span_id}:
-    "checkout-answers",probe,succeeded,1794888680179853795,3,ok,99050704f981968e88c65f6b20b6c816,8ea68a3b93c6e866
+    "checkout-answers",probe,succeeded,1794916015366891499,1,ok,fd8eb39cc597a265a67cdd4510294c6d,826626848002f146
 method_results[2]:
   - name: "restart-cache"
     activity_type: action
     status: succeeded
-    started_at_ns: 1794888679969630011
-    duration_ms: 203
-    trace_id: 99050704f981968e88c65f6b20b6c816
-    span_id: 9186ebf84a5cc45f
+    started_at_ns: 1794916015161776218
+    duration_ms: 202
+    trace_id: fd8eb39cc597a265a67cdd4510294c6d
+    span_id: 1688e128a4a7dc95
   - name: "cache-is-back"
     activity_type: probe
     status: succeeded
-    started_at_ns: 1794888680173553194
-    duration_ms: 3
+    started_at_ns: 1794916015364125706
+    duration_ms: 1
     output: ok
-    trace_id: 99050704f981968e88c65f6b20b6c816
-    span_id: aee90530231b99bc
+    trace_id: fd8eb39cc597a265a67cdd4510294c6d
+    span_id: b82608eff4da8802
 rollback_results[0]:
 rollback_failures: 0
 estimate: null
 baseline_result: null
 during_result:
-  started_at_ns: 1794888679969512390
-  ended_at_ns: 1794888680176819160
-  fault_active_s: 0.20730677
+  started_at_ns: 1794916015161730768
+  ended_at_ns: 1794916015365579073
+  fault_active_s: 0.203848305
   sample_interval_s: 1
   probes[1]{name,samples,mean,max,min,error_rate,breached_at_ns,breach_count}:
-    "checkout-answers",1,2,2,2,1,1794888679969643791,1
+    "checkout-answers",1,1,1,1,1,1794916015161819788,1
 post_result:
-  started_at_ns: 1794888680176958661
-  ended_at_ns: 1794888680179785154
-  duration_s: 0.002826493
+  started_at_ns: 1794916015365655133
+  ended_at_ns: 1794916015366869399
+  duration_s: 0.001214266
   samples: 1
   probes[1]{name,mean,p95,error_rate,returned_to_baseline,recovery_time_s}:
-    "checkout-answers",2,2,0,true,0
+    "checkout-answers",1,1,0,true,0
   recovery_time_s: 0
   full_recovery: true
   mttr_s: 0
@@ -64,8 +64,14 @@ objectives:
   verdicts[1]{nfr_id,kind,metric,operator,threshold,observed,state,margin,criticality}:
     rto,rto,recovery.mttr_s,lte,2,0,met,2,blocking
 probe_samples[2]{probe,phase,ts_ns,duration_ms,ok}:
-  "checkout-answers",during,1794888679969643791,2,false
-  "checkout-answers",post,1794888680176984372,2,true
+  "checkout-answers",during,1794916015161819788,1,false
+  "checkout-answers",post,1794916015365662013,1,true
 target_version:
   version: "2.8.0"
   version_source: declared
+target:
+  system: checkout
+  technology: redis
+  environment: prod
+  criticality: critical
+  version: "2.8.0"
