@@ -3,7 +3,7 @@ use tokio_util::sync::CancellationToken;
 use tumult_core::runner::ActivityOutcome;
 use tumult_core::sync_bridge::sync_await;
 
-use super::fired;
+use super::{fired, timeout_of};
 
 /// Per-stream capture limit. Excess bytes are drained to avoid pipe deadlock.
 const OUTPUT_CAP: usize = 8 * 1024 * 1024;
@@ -25,12 +25,9 @@ pub(super) fn execute_process(
     stop: Option<&CancellationToken>,
 ) -> ActivityOutcome {
     let start = std::time::Instant::now();
-    let timeout = match timeout_s
-        .map(|seconds| std::time::Duration::try_from_secs_f64(*seconds))
-        .transpose()
-    {
+    let timeout = match timeout_of(timeout_s) {
         Ok(timeout) => timeout,
-        Err(error) => return failure(path, &format!("invalid timeout: {error}"), start),
+        Err(reason) => return failure(path, &reason, start),
     };
     sync_await(async {
         let mut command = tokio::process::Command::new(path);

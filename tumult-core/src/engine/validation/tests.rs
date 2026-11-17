@@ -765,3 +765,190 @@ fn validate_checks_the_script_provider_of_a_control() {
     assert!(err.to_string().contains("invalid script provider"), "{err}");
     assert!(err.to_string().contains("audit"), "{err}");
 }
+
+// ── Seconds the runner waits on: timeouts, pauses, a flat load ─
+
+/// An experiment file with a step in every place a step can sit. Each
+/// `{place}` holds a number of seconds.
+const EVERY_PLACE: &str = "\
+title: seconds in every place
+controls[1]:
+  - name: logging
+    provider:
+      type: script
+      plugin: logger
+      function: record
+      timeout_s: {control}
+steady_state_hypothesis:
+  title: the target answers
+  probes[1]:
+    - name: answers
+      activity_type: probe
+      provider:
+        type: process
+        path: sh
+        timeout_s: {probe}
+      pause_before_s: {probe_pause}
+guards[1]:
+  - name: safety
+    probe:
+      name: watch
+      activity_type: probe
+      provider:
+        type: script
+        plugin: health
+        function: check
+        timeout_s: {guard}
+      tolerance:
+        type: regex
+        pattern: ok
+      pause_after_s: {guard_pause}
+method[2]:
+  - name: inject
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      timeout_s: {method}
+    pause_before_s: {pause_before}
+    pause_after_s: {pause_after}
+  - name: load-in-background
+    activity_type: action
+    background: true
+    provider:
+      type: process
+      path: sh
+      timeout_s: {background}
+rollbacks[1]:
+  - name: heal
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      timeout_s: {rollback}
+";
+
+/// The places of [`EVERY_PLACE`].
+const PLACES: &[&str] = &[
+    "control",
+    "probe",
+    "probe_pause",
+    "guard",
+    "guard_pause",
+    "method",
+    "pause_before",
+    "pause_after",
+    "background",
+    "rollback",
+];
+
+/// [`EVERY_PLACE`] read by the real parser, with `value` in `place` and
+/// `others` in every other place.
+fn file_with(place: &str, value: &str, others: &str) -> Experiment {
+    let text = PLACES.iter().fold(EVERY_PLACE.to_string(), |text, p| {
+        let seconds = if *p == place { value } else { others };
+        text.replace(&format!("{{{p}}}"), seconds)
+    });
+    crate::engine::parse_experiment(&text).expect("the file parses")
+}
+
+fn seconds_error(exp: &Experiment) -> String {
+    validate_experiment(exp)
+        .expect_err("a bad number of seconds must be refused")
+        .to_string()
+}
+
+#[test]
+fn a_negative_timeout_is_refused_with_the_step_and_the_value_in_every_place() {
+    for (place, owner) in [
+        ("method", "activity 'inject'"),
+        ("background", "activity 'load-in-background'"),
+        ("rollback", "activity 'heal'"),
+        ("probe", "activity 'answers'"),
+        ("guard", "guard 'safety'"),
+        ("control", "control 'logging'"),
+    ] {
+        assert_eq!(
+            seconds_error(&file_with(place, "-1", "5")),
+            format!(
+                "invalid timeout_s in {owner}: -1 is not a number of seconds from 0 up to 2^64"
+            ),
+            "{place}"
+        );
+    }
+}
+
+#[test]
+fn a_negative_pause_is_refused_with_the_step_and_the_value_in_every_place() {
+    for (place, owner, field) in [
+        ("pause_before", "activity 'inject'", "pause_before_s"),
+        ("pause_after", "activity 'inject'", "pause_after_s"),
+        ("probe_pause", "activity 'answers'", "pause_before_s"),
+        ("guard_pause", "guard 'safety'", "pause_after_s"),
+    ] {
+        assert_eq!(
+            seconds_error(&file_with(place, "-0.5", "5")),
+            format!(
+                "invalid {field} in {owner}: -0.5 is not a number of seconds from 0 up to 2^64"
+            ),
+            "{place}"
+        );
+    }
+}
+
+#[test]
+fn a_timeout_too_large_to_wait_on_is_refused() {
+    let error = seconds_error(&file_with("method", "1e20", "5"));
+    assert!(
+        error.starts_with("invalid timeout_s in activity 'inject': 100000000000000000000 is not"),
+        "{error}"
+    );
+}
+
+#[test]
+fn a_timeout_that_is_not_a_number_or_is_infinite_is_refused() {
+    // A file cannot spell these: the parser reads them as text or refuses
+    // them. A caller that builds the experiment in code can.
+    for (seconds, shown) in [
+        (f64::NAN, "NaN"),
+        (f64::INFINITY, "inf"),
+        (f64::NEG_INFINITY, "-inf"),
+    ] {
+        let mut exp = file_with("method", "5", "5");
+        exp.method[0].provider = Provider::Process {
+            path: "sh".into(),
+            arguments: vec![],
+            env: HashMap::new(),
+            timeout_s: Some(seconds),
+        };
+        assert_eq!(
+            seconds_error(&exp),
+            format!("invalid timeout_s in activity 'inject': {shown} is not a number of seconds from 0 up to 2^64")
+        );
+    }
+}
+
+#[test]
+fn zero_and_a_fraction_of_a_second_are_accepted_in_every_place() {
+    // Guard: these pass today and must keep passing. A zero timeout times
+    // the step out at once, and a zero pause does not wait.
+    for seconds in ["0", "0.5", "5"] {
+        let exp = file_with("method", seconds, seconds);
+        let outcome = validate_experiment(&exp);
+        assert!(outcome.is_ok(), "{seconds}: {outcome:?}");
+    }
+}
+
+#[test]
+fn a_flat_load_with_a_duration_that_is_not_a_number_of_seconds_is_refused() {
+    for (seconds, shown) in [(-30.0, "-30"), (f64::NAN, "NaN"), (f64::INFINITY, "inf")] {
+        assert_eq!(
+            seconds_error(&with_load(None, None, Some(seconds))),
+            format!(
+                "invalid duration_s in load: {shown} is not a number of seconds from 0 up to 2^64"
+            )
+        );
+    }
+    assert!(validate_experiment(&with_load(None, None, Some(0.0))).is_ok());
+    assert!(validate_experiment(&with_load(None, None, Some(30.0))).is_ok());
+}

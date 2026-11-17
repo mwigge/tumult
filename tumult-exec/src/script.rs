@@ -10,7 +10,7 @@ use tumult_core::sync_bridge::sync_await;
 use tumult_plugin::discovery::discover_all_report;
 use tumult_plugin::executor::execute_script_until;
 
-use super::fired;
+use super::{fired, timeout_of};
 
 /// Dispatch a script provider call to the discovered plugin's script.
 ///
@@ -39,6 +39,17 @@ pub(super) fn execute_script_provider(
     stop: Option<&CancellationToken>,
 ) -> ActivityOutcome {
     let start = std::time::Instant::now();
+    let timeout = match timeout_of(timeout_s) {
+        Ok(timeout) => timeout,
+        Err(reason) => {
+            return ActivityOutcome {
+                success: false,
+                output: None,
+                error: Some(reason),
+                duration_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
+            };
+        }
+    };
 
     let report = discover_all_report();
     let warnings = if report.warnings.is_empty() {
@@ -103,7 +114,6 @@ pub(super) fn execute_script_provider(
         .iter()
         .map(|(k, v)| (k.clone(), argument_value_to_string(v)))
         .collect();
-    let timeout = timeout_s.map(|s| std::time::Duration::from_secs_f64(*s));
 
     let result = sync_await(execute_script_until(
         &script_path,

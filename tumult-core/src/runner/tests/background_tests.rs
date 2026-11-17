@@ -146,6 +146,24 @@ fn pause_before_and_after_emits_span_events_without_panic() {
     assert_eq!(journal.method_results[0].status, ActivityStatus::Succeeded);
 }
 
+#[test]
+fn a_pause_too_long_to_wait_on_is_skipped_and_does_not_panic() {
+    // Validation refuses such a pause, but a caller of the runner may not
+    // validate. A pause that no duration can hold is skipped, as an
+    // infinite one is.
+    let mut exp = minimal_experiment();
+    let mut activity = test_action("paused-step");
+    activity.pause_before_s = Some(1e20);
+    exp.method = vec![activity];
+
+    let executor: Arc<dyn ActivityExecutor> = Arc::new(MockExecutor::always_succeed());
+    let controls = Arc::new(ControlRegistry::new());
+
+    let journal = run_experiment(&exp, &executor, &controls, &default_config()).unwrap();
+    assert_eq!(journal.method_results.len(), 1);
+    assert_eq!(journal.method_results[0].status, ActivityStatus::Succeeded);
+}
+
 // -- Tests: during-phase sampling and MTTR (F4)
 
 #[test]

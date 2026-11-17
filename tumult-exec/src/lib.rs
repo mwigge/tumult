@@ -115,6 +115,17 @@ async fn fired(stop: Option<&CancellationToken>) {
     }
 }
 
+/// The timeout of a `process` or a `script` step. A number of seconds that
+/// no duration can hold (negative, not a number, infinite or too large) is
+/// an error, not a panic: validation refuses it, but a caller of the
+/// executor may not validate.
+fn timeout_of(timeout_s: Option<&f64>) -> Result<Option<std::time::Duration>, String> {
+    timeout_s
+        .map(|seconds| std::time::Duration::try_from_secs_f64(*seconds))
+        .transpose()
+        .map_err(|error| format!("invalid timeout: {error}"))
+}
+
 impl ProviderExecutor {
     /// Run `activity` with its provider. A `stop` that fires ends a
     /// `process` or a `script` step and kills its process group. A `native`

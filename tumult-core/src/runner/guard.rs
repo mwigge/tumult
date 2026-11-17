@@ -7,11 +7,12 @@ use std::time::Instant;
 
 use tokio_util::sync::CancellationToken;
 
+use crate::controls::panic_message;
 use crate::types::{Guard, HaltRecord, Tolerance};
 
 use super::activity::probe_outcome_ok;
 use super::telemetry::epoch_nanos_now;
-use super::ActivityExecutor;
+use super::{ActivityExecutor, ActivityOutcome};
 
 /// Handle to the background thread that evaluates auto-halt guards while the
 /// method runs.
@@ -72,7 +73,7 @@ fn run_guard_monitor(
     let mut consecutive = vec![0u32; guards.len()];
     loop {
         for (idx, guard) in guards.iter().enumerate() {
-            let outcome = executor.execute(&guard.probe);
+            let outcome = run_guard_probe(guard, executor);
             let safe = probe_outcome_ok(&guard.probe, outcome.success, outcome.output.as_deref());
             if safe {
                 consecutive[idx] = 0;
@@ -108,6 +109,29 @@ fn run_guard_monitor(
             Ok(()) | Err(mpsc::RecvTimeoutError::Disconnected) => return None,
         }
     }
+}
+
+/// Run the probe of `guard`. A probe that panics did not run: it reads as a
+/// failed probe, so the guard counts a breach instead of dying quietly and
+/// leaving the method unguarded.
+fn run_guard_probe(guard: &Guard, executor: &dyn ActivityExecutor) -> ActivityOutcome {
+    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        executor.execute(&guard.probe)
+    }));
+    outcome.unwrap_or_else(|panic| {
+        let message = panic_message(&*panic);
+        tracing::error!(
+            guard = %guard.name,
+            panic = %message,
+            "guard probe panicked"
+        );
+        ActivityOutcome {
+            success: false,
+            output: None,
+            error: Some(format!("guard probe panicked: {message}")),
+            duration_ms: 0,
+        }
+    })
 }
 
 /// Stop the guard monitor and return its halt record (if any). A panicked

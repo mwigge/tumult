@@ -1,6 +1,6 @@
 //! Static validation of experiment definitions before execution.
 
-use crate::types::{Experiment, LoadProfile, Provider, TestKind, Tolerance};
+use crate::types::{Activity, Experiment, LoadProfile, Provider, TestKind, Tolerance};
 
 use super::EngineError;
 
@@ -20,6 +20,8 @@ use super::EngineError;
 /// Returns [`EngineError::InvalidScriptProvider`] if a script provider's plugin or
 /// function is empty or contains path separators, `..`, null bytes, or whitespace.
 /// This holds for every step: method, rollbacks, hypothesis probes, guards and controls.
+/// Returns [`EngineError::InvalidSeconds`] if a timeout or a pause of any of those steps,
+/// or the duration of a flat load, is not a number of seconds from 0 up to 2^64.
 /// Returns [`EngineError::NfrInvalid`] if an objective names a metric no run can measure.
 ///
 /// # Examples
@@ -162,10 +164,12 @@ pub fn validate_experiment(experiment: &Experiment) -> Result<(), EngineError> {
             Some(_) => {}
         }
         validate_script_provider(&guard.name, &guard.probe.provider)?;
+        validate_step_seconds(&format!("guard '{}'", guard.name), &guard.probe)?;
     }
 
     for control in &experiment.controls {
         validate_script_provider(&control.name, &control.provider)?;
+        validate_timeout(&format!("control '{}'", control.name), &control.provider)?;
     }
 
     // Validate all regex tolerance patterns compile, and every script
@@ -203,9 +207,44 @@ pub fn validate_experiment(experiment: &Experiment) -> Result<(), EngineError> {
         }
 
         validate_script_provider(&activity.name, &activity.provider)?;
+        validate_step_seconds(&format!("activity '{}'", activity.name), activity)?;
     }
 
     Ok(())
+}
+
+/// The seconds of a step: its timeout and its pauses. `owner` names the
+/// step in the error.
+fn validate_step_seconds(owner: &str, activity: &Activity) -> Result<(), EngineError> {
+    validate_timeout(owner, &activity.provider)?;
+    validate_seconds(owner, "pause_before_s", activity.pause_before_s)?;
+    validate_seconds(owner, "pause_after_s", activity.pause_after_s)
+}
+
+/// The timeout of a process or a script provider. A native provider has none.
+fn validate_timeout(owner: &str, provider: &Provider) -> Result<(), EngineError> {
+    let (Provider::Process { timeout_s, .. } | Provider::Script { timeout_s, .. }) = provider
+    else {
+        return Ok(());
+    };
+    validate_seconds(owner, "timeout_s", *timeout_s)
+}
+
+/// A number of seconds the runner waits on must be one a `Duration` can
+/// hold: zero or more, finite, and below 2^64. Where the runner turns any
+/// other value into a `Duration`, it panics or the wait is dropped.
+fn validate_seconds(owner: &str, field: &str, seconds: Option<f64>) -> Result<(), EngineError> {
+    let Some(value) = seconds else {
+        return Ok(());
+    };
+    if std::time::Duration::try_from_secs_f64(value).is_ok() {
+        return Ok(());
+    }
+    Err(EngineError::InvalidSeconds {
+        owner: owner.to_string(),
+        field: field.to_string(),
+        value,
+    })
 }
 
 /// Check the plugin and function names of a script provider. `owner` is the
@@ -341,7 +380,7 @@ fn validate_load(experiment: &Experiment) -> Result<(), EngineError> {
         return Err(invalid("vus must be at least 1"));
     }
     let Some(profile) = load.profile.as_ref() else {
-        return Ok(());
+        return validate_seconds("load", "duration_s", load.duration_s);
     };
     let Some(duration_s) = load.duration_s else {
         return Err(invalid("a profile requires duration_s"));

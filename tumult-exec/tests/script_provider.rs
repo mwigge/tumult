@@ -265,3 +265,50 @@ fn a_stop_ends_a_script_and_the_child_it_started() {
     std::thread::sleep(std::time::Duration::from_millis(1000));
     assert!(!marker.exists(), "a child of the script outlived the stop");
 }
+
+#[test]
+fn a_timeout_that_is_not_a_number_of_seconds_fails_the_step_without_a_panic() {
+    let mut env = tumult_test_utils::EnvGuard::lock();
+    let plugins = tempfile::TempDir::new().unwrap();
+    let plugin = plugins.path().join("timeout-test-plugin");
+    std::fs::create_dir_all(plugin.join("actions")).unwrap();
+    std::fs::write(
+        plugin.join("plugin.toon"),
+        "name: timeout-test-plugin\n\
+         version: 0.1.0\n\
+         description: Plugin whose action leaves a mark\n\
+         actions[1]:\n\
+         \x20 - name: mark\n\
+         \x20   script: actions/mark.sh\n\
+         \x20   description: Write the marker file\n\
+         probes[0]:\n",
+    )
+    .unwrap();
+    std::fs::write(plugin.join("actions/mark.sh"), "touch \"$TUMULT_MARKER\"\n").unwrap();
+    env.set("TUMULT_PLUGIN_PATH", plugins.path());
+    env.set("HOME", plugins.path());
+    let executor = ProviderExecutor::new();
+
+    let marker = plugins.path().join("script-ran");
+    let arguments = HashMap::from([(
+        "marker".to_string(),
+        serde_json::Value::String(marker.display().to_string()),
+    )]);
+    for seconds in [-1.0, f64::NAN, f64::INFINITY, 1e20] {
+        let mut activity = script_activity("timeout-test-plugin", "mark", arguments.clone());
+        let Provider::Script { timeout_s, .. } = &mut activity.provider else {
+            unreachable!("script_activity builds a script step");
+        };
+        *timeout_s = Some(seconds);
+
+        let outcome = executor.execute(&activity);
+
+        assert!(!outcome.success, "timeout {seconds}: the step succeeded");
+        let error = outcome.error.unwrap_or_default();
+        assert!(
+            error.starts_with("invalid timeout"),
+            "timeout {seconds}: unexpected error: {error}"
+        );
+    }
+    assert!(!marker.exists(), "a step with a bad timeout ran its script");
+}

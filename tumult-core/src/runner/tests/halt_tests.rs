@@ -380,3 +380,46 @@ fn a_halted_run_observes_its_version_when_it_ends() {
         })
     );
 }
+
+#[test]
+fn a_guard_whose_probe_panics_halts_the_run() {
+    // A guard that cannot run its probe cannot see the target. The run
+    // stops as on a breach, instead of going on without its guard.
+    struct PanickingProbe;
+    impl ActivityExecutor for PanickingProbe {
+        fn execute(&self, activity: &Activity) -> ActivityOutcome {
+            match activity.activity_type {
+                ActivityType::Probe => panic!("the guard probe broke"),
+                ActivityType::Action => ActivityOutcome {
+                    success: true,
+                    output: Some("done".into()),
+                    error: None,
+                    duration_ms: 1,
+                },
+            }
+        }
+    }
+
+    // A guard with no tolerance is safe when its probe succeeds, so the
+    // probe that panicked must not read as one that succeeded.
+    let mut no_tolerance = health_guard();
+    no_tolerance.probe.tolerance = None;
+    for guard in [health_guard(), no_tolerance] {
+        let mut exp = minimal_experiment();
+        exp.guards = vec![guard];
+        exp.method = vec![test_action("action-1")];
+
+        let executor: Arc<dyn ActivityExecutor> = Arc::new(PanickingProbe);
+        let journal = run_experiment_with_sampling(
+            &exp,
+            &executor,
+            &Arc::new(ControlRegistry::new()),
+            &default_config(),
+            &fast_sampling(),
+        )
+        .unwrap();
+
+        assert_eq!(journal.status, ExperimentStatus::Halted);
+        assert_eq!(journal.halt.expect("a halt record").guard_name, "safety");
+    }
+}

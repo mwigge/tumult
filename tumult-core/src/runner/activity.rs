@@ -443,7 +443,15 @@ pub(super) fn wait_pause(seconds: Option<f64>, token: Option<&CancellationToken>
     let Some(seconds) = seconds.filter(|s| *s > 0.0 && s.is_finite()) else {
         return !is_cancelled(token);
     };
-    let duration = std::time::Duration::from_secs_f64(seconds);
+    // Validation refuses a pause longer than a duration can hold. For a
+    // caller that does not validate, it is skipped, as an infinite one is.
+    let duration = match std::time::Duration::try_from_secs_f64(seconds) {
+        Ok(duration) => duration,
+        Err(error) => {
+            tracing::warn!(pause_s = seconds, error = %error, "pause skipped");
+            return !is_cancelled(token);
+        }
+    };
     let started = std::time::Instant::now();
     while started.elapsed() < duration {
         if is_cancelled(token) {
