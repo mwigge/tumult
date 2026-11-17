@@ -120,7 +120,9 @@
                 </b>
             </div>
             <div>
-                <span>Quorum</span><b class="mono">{req.approved_count}/{req.quorum_required}</b>
+                <span>Quorum</span><b class="mono" data-testid="approval-quorum"
+                    >{req.approved_count}/{req.quorum_required}</b
+                >
             </div>
             <div>
                 <span>Pin</span>

@@ -18,8 +18,10 @@
     let me = $state<MeResponse | null>(null);
     let telemetry = $state<ExperimentDetail | null>(null);
     let selected = $state<Span | null>(null);
-    // Blast-radius summary from the run's own definition+vars, fetched once
-    // via the dry-run endpoint (Viewer-level; executes nothing).
+    // The planned blast radius: the definition of the run with its vars,
+    // fetched once via the dry-run endpoint (Viewer-level; executes nothing).
+    // A registered definition never changes, so this is the plan the run
+    // had. It is not what the run did: a run can end before its method.
     let scope = $state<DryRunScope | null>(null);
     let scopeFailed = $state(false);
 
@@ -156,9 +158,13 @@
     <RunHeader {run} runId={id} {active} {canStop} {awaitingTier} {triggerActor} />
 
     {#if scope}
-        <div class="panel" style="margin-bottom: 14px">
-            <h2>Blast radius</h2>
+        <div class="panel" style="margin-bottom: 14px" data-testid="run-scope">
+            <h2>Planned blast radius</h2>
             <ScopeSummary {scope} />
+            <div class="plan-note" data-testid="run-scope-plan">
+                What the definition of this run plans to hit. It is a plan, not a measure of what
+                the run did.
+            </div>
         </div>
     {/if}
 
@@ -201,5 +207,10 @@
     .exp-link {
         margin-top: 10px;
         font-size: 12.5px;
+    }
+    .plan-note {
+        color: var(--text-faint);
+        font-size: 12.5px;
+        margin-top: 8px;
     }
 </style>

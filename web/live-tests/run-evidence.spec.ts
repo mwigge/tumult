@@ -3,15 +3,15 @@
 // experiment and hands the daemon its journal, and a recorded journal is
 // imported as a user imports one. What the page shows is compared with
 // what the journals say.
-import { spawn, spawnSync } from 'node:child_process';
-import type { ChildProcess } from 'node:child_process';
-import { copyFileSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
-import { createServer } from 'node:net';
-import { tmpdir } from 'node:os';
+import { spawnSync } from 'node:child_process';
+import { copyFileSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
 import type { Locator, Page } from '@playwright/test';
+
+import { binary, startDaemon } from './daemon';
+import type { Daemon } from './daemon';
 
 const RECORDED = fileURLToPath(
     new URL('../../examples/recorded/api-saturation.journal.toon', import.meta.url),
@@ -121,74 +121,19 @@ interface Journal {
     probe_samples?: { probe: string; phase: string; ts_ns: number; ok: boolean }[];
 }
 
-function binary(name: 'TUMULT_BIN' | 'TUMULTD_BIN'): string {
-    const path = process.env[name];
-    if (!path) throw new Error(`${name} must name the binary this test runs`);
-    return path;
-}
-
-// A port of the loopback that is free now.
-function freePort(): Promise<number> {
-    return new Promise((resolve, reject) => {
-        const server = createServer();
-        server.once('error', reject);
-        server.listen(0, '127.0.0.1', () => {
-            const address = server.address();
-            const port = typeof address === 'object' && address !== null ? address.port : 0;
-            server.close(() => resolve(port));
-        });
-    });
-}
-
-let home = '';
-let base = '';
-let daemon: ChildProcess | null = null;
-let daemonLog = '';
+let daemon: Daemon;
 let real: Journal;
 let recorded: Journal;
-
-// The environment of a binary: a home and a lake of its own, and nothing
-// of the machine but its PATH.
-function env(more: Record<string, string> = {}): Record<string, string> {
-    return { PATH: process.env.PATH ?? '', HOME: home, ...more };
-}
-
-async function startDaemon() {
-    const [grpc, http] = [await freePort(), await freePort()];
-    base = `http://127.0.0.1:${http}`;
-    const child = spawn(binary('TUMULTD_BIN'), [], {
-        cwd: home,
-        env: env({
-            TUMULT_LAKE_PATH: join(home, 'lake.duckdb'),
-            KRONIKA_OTLP_GRPC_ADDR: `127.0.0.1:${grpc}`,
-            KRONIKA_OTLP_HTTP_ADDR: `127.0.0.1:${http}`,
-        }),
-        stdio: ['ignore', 'pipe', 'pipe'],
-    });
-    child.stdout?.on('data', (chunk) => (daemonLog += String(chunk)));
-    child.stderr?.on('data', (chunk) => (daemonLog += String(chunk)));
-    daemon = child;
-    await expect
-        .poll(
-            async () => {
-                if (child.exitCode !== null) throw new Error(`tumultd ended:\n${daemonLog}`);
-                const answer = await fetch(`${base}/api/me`).catch(() => null);
-                return answer?.status ?? 0;
-            },
-            { message: 'the daemon answers', timeout: 60_000 },
-        )
-        .toBe(200);
-}
 
 // A real run of the experiment. It hands its journal to the daemon, and
 // prints it: that print is what the page is compared with.
 function runExperiment(): Journal {
-    writeFileSync(join(home, 'state'), 'ok\n');
-    writeFileSync(join(home, 'experiment.toon'), EXPERIMENT);
+    writeFileSync(join(daemon.home, 'state'), 'ok\n');
+    writeFileSync(join(daemon.home, 'experiment.toon'), EXPERIMENT);
     const run = spawnSync(
         binary('TUMULT_BIN'),
         ['run', 'experiment.toon', '--output-format', 'json'],
-        { cwd: home, env: env({ TUMULT_DAEMON_URL: base }), encoding: 'utf8' },
+        { cwd: daemon.home, env: daemon.env({ TUMULT_DAEMON_URL: daemon.base }), encoding: 'utf8' },
     );
     expect(run.stdout, `the run printed its journal:\n${run.stderr}`).toContain('experiment_id');
     return JSON.parse(run.stdout) as Journal;
@@ -196,21 +141,21 @@ function runExperiment(): Journal {
 
 // The recorded journal as JSON, and in the lake of the daemon.
 async function importRecorded(): Promise<Journal> {
-    copyFileSync(RECORDED, join(home, 'recorded.toon'));
+    copyFileSync(RECORDED, join(daemon.home, 'recorded.toon'));
     const exported = spawnSync(
         binary('TUMULT_BIN'),
         ['export', 'recorded.toon', '--format', 'json'],
         {
-            cwd: home,
-            env: env({ TUMULT_LAKE_PATH: join(home, 'unused.duckdb') }),
+            cwd: daemon.home,
+            env: daemon.env({ TUMULT_LAKE_PATH: join(daemon.home, 'unused.duckdb') }),
             encoding: 'utf8',
         },
     );
     expect(exported.status, exported.stderr).toBe(0);
-    const text = readFileSync(join(home, 'recorded.json'), 'utf8');
+    const text = readFileSync(join(daemon.home, 'recorded.json'), 'utf8');
     // The text goes to the daemon as it is: a number of nanoseconds is
     // larger than a number of this language holds exactly.
-    const answer = await fetch(`${base}/api/import/journal`, {
+    const answer = await fetch(`${daemon.base}/api/import/journal`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: `{"journal": ${text}}`,
@@ -224,14 +169,13 @@ test.beforeAll(async () => {
     // A run that ends out of its steady state waits for it to come back:
     // about half a minute.
     test.setTimeout(180_000);
-    home = mkdtempSync(join(tmpdir(), 'tumult-live-'));
-    await startDaemon();
+    daemon = await startDaemon();
     real = runExperiment();
     recorded = await importRecorded();
 });
 
 test.afterAll(() => {
-    daemon?.kill('SIGTERM');
+    daemon?.stop();
 });
 
 const PHASES: [string, (journal: Journal) => StepResult[]][] = [
@@ -303,7 +247,7 @@ async function open(page: Page, journal: Journal) {
     await page.addInitScript(() => {
         (window as Window & { __tumultCharts?: object }).__tumultCharts = {};
     });
-    await page.goto(`${base}/experiments/${journal.experiment_id}`);
+    await page.goto(`${daemon.base}/experiments/${journal.experiment_id}`);
     await expect(page.locator('.page-head')).toContainText(journal.experiment_title);
 }
 
@@ -316,7 +260,7 @@ const short = (value: number | null) =>
 const SIGNS: Record<string, string> = { lte: '≤', gte: '≥', eq: '=' };
 
 test('a real run is in the list of runs and opens from it', async ({ page }) => {
-    await page.goto(`${base}/experiments`);
+    await page.goto(`${daemon.base}/experiments`);
     const row = page.locator('table.data tbody tr').filter({ hasText: real.experiment_title });
     await expect(row).toHaveCount(1);
     await expect(row).toContainText(real.status);

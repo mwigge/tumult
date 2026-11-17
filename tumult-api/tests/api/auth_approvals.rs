@@ -128,6 +128,7 @@ async fn approval_t1_flow_end_to_end() {
     assert_eq!(body["approval"]["request"]["run_id"], json!(run_id));
     assert_eq!(body["approval"]["request"]["tier"], "T1");
     assert!(body["approval"]["request"]["consumed_at_ns"].is_null());
+    assert_eq!(body["approval"]["request"]["approved_count"], 0, "{body}");
     assert_eq!(body["approval"]["decisions"], json!([]));
 
     // Segregation of duties: the requester (an admin, role-wise allowed to
@@ -178,6 +179,7 @@ async fn approval_t1_flow_end_to_end() {
     assert_eq!(decisions[0]["approver"], "anna");
     assert_eq!(decisions[0]["decision"], "approved");
     assert_eq!(decisions[0]["note"], "looks safe");
+    assert_eq!(detail["approval"]["request"]["approved_count"], 1);
 }
 
 /// Rejection by a second approver flips the run terminal `rejected`.
@@ -211,6 +213,8 @@ async fn approval_reject_makes_run_terminal() {
     assert_eq!(decisions.len(), 1);
     assert_eq!(decisions[0]["decision"], "rejected");
     assert_eq!(decisions[0]["approver"], "anna");
+    // A rejection is a decision that is not an approval.
+    assert_eq!(detail["approval"]["request"]["approved_count"], 0);
 
     // A rejected run cannot be approved afterwards.
     let (status, body) = post_auth(

@@ -99,9 +99,22 @@ pub async fn list(
     Ok(Json(json!({"count": rows.len(), "runs": rows})))
 }
 
+/// The approval request of a run with the number of approvals it has so
+/// far, as a row of the approval queue has it.
+fn with_approved_count(request: Option<Value>, decisions: &[Value]) -> Option<Value> {
+    let mut request = request?;
+    let approved = decisions
+        .iter()
+        .filter(|decision| decision["decision"] == "approved")
+        .count();
+    request["approved_count"] = json!(approved);
+    Some(request)
+}
+
 /// `GET /api/runs/{id}` — one run plus its audit trail (oldest first) and
-/// its approval chain: `approval.request` (the pinned request, `null` for
-/// T0 runs that never gate) and `approval.decisions` (oldest first).
+/// its approval chain: `approval.request` (the pinned request with its
+/// `approved_count`, `null` for T0 runs that never gate) and
+/// `approval.decisions` (oldest first).
 /// Runs in an environment outside the principal's scopes 404 (same rule as
 /// the list, including runs that have not produced telemetry yet).
 pub async fn detail(
@@ -140,6 +153,7 @@ pub async fn detail(
         let decisions = reader
             .approval_decisions(&lookup)
             .map_err(|e| e.to_string())?;
+        let request = with_approved_count(request, &decisions);
         Ok(run.map(|run| {
             json!({
                 "run": run,
