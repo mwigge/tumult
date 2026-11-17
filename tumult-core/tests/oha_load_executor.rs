@@ -6,11 +6,17 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use tumult_core::controls::ControlRegistry;
 use tumult_core::runner::oha::OhaLoadExecutor;
-use tumult_core::runner::{load_executor_for, LoadExecutor};
-use tumult_core::types::{LoadConfig, LoadProfile, LoadTool};
+use tumult_core::runner::{
+    load_executor_for, run_experiment, ActivityExecutor, ActivityOutcome, LoadExecutor, RunConfig,
+};
+use tumult_core::types::{
+    Activity, ActivityType, Experiment, ExperimentStatus, LoadConfig, LoadProfile, LoadTool,
+};
 use tumult_test_utils::EnvGuard;
 
 fn config(profile: Option<LoadProfile>, duration_s: f64) -> LoadConfig {
@@ -716,4 +722,63 @@ fn adapter_selector_covers_k6_and_oha_but_not_jmeter() {
         panic!("jmeter must have no adapter");
     };
     assert!(err.contains("jmeter"), "{err}");
+}
+
+/// Every step succeeds at once.
+struct EveryStepSucceeds;
+
+impl ActivityExecutor for EveryStepSucceeds {
+    fn execute(&self, _activity: &Activity) -> ActivityOutcome {
+        ActivityOutcome {
+            success: true,
+            output: None,
+            error: None,
+            duration_ms: 0,
+        }
+    }
+}
+
+/// An oha load with a threshold name the adapter does not check can never
+/// meet its thresholds, so the run deviates. This is why validation may
+/// refuse such a name: the refusal only moves the failure before the run.
+#[test]
+fn an_oha_run_with_an_unknown_threshold_name_deviates() {
+    let mut env = EnvGuard::lock();
+    let dir = tempfile::tempdir().expect("tempdir");
+    install_fake_oha(&mut env, &dir, FAKE_OHA_JSON);
+    let run_with_threshold = |name: &str| {
+        let mut load = config(None, 1.0);
+        load.thresholds.insert(name.into(), 60_000.0);
+        let experiment = Experiment {
+            title: "a threshold".into(),
+            method: vec![Activity {
+                name: "noop".into(),
+                activity_type: ActivityType::Action,
+                ..Activity::default()
+            }],
+            load: Some(load),
+            ..Experiment::default()
+        };
+        let executor: Arc<dyn ActivityExecutor> = Arc::new(EveryStepSucceeds);
+        run_experiment(
+            &experiment,
+            &executor,
+            &Arc::new(ControlRegistry::new()),
+            &RunConfig::default(),
+        )
+        .expect("the run ends")
+    };
+
+    // The same bound under a name oha checks holds.
+    let known = run_with_threshold("latency_p95_ms");
+    assert_eq!(known.status, ExperimentStatus::Completed);
+
+    let unknown = run_with_threshold("latency_p90_ms");
+    let load = unknown
+        .load_result
+        .as_ref()
+        .expect("the load left a result");
+    assert!(load.total_requests > 0, "{load:?}");
+    assert!(!load.thresholds_met);
+    assert_eq!(unknown.status, ExperimentStatus::Deviated);
 }

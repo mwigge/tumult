@@ -165,7 +165,8 @@ pub trait LoadExecutor: Send + Sync {
 
 /// The adapter for a configured load tool. `jmeter` is accepted by the
 /// definition format but has no adapter, so asking for it is an error
-/// rather than a silent fallback to k6.
+/// rather than a silent fallback to k6. Validation asks here too, so such
+/// a load is refused before the run.
 ///
 /// # Errors
 ///

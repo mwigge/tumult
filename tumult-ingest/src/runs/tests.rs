@@ -1782,27 +1782,105 @@ async fn a_daemon_run_drives_its_load_with_the_tool_the_definition_names() {
     assert_eq!(fx.executed.lock().unwrap().as_slice(), ["action-1"]);
 }
 
-/// A daemon run of a definition whose load names a tool without an adapter
-/// fails with a reason that names the tool, before any step runs and
-/// without starting another tool in its place. The runner refused it after
-/// the durable start, so the daemon keeps the run for recovery, as it does
-/// for every runner error.
+/// A definition whose load names a tool without an adapter can never run.
+/// The daemon refuses it at enqueue, with the reason the runner gives, so
+/// no run row is left to recover, no step runs and no other tool starts in
+/// its place.
 #[tokio::test]
-async fn a_daemon_run_refuses_a_load_tool_that_has_no_adapter_before_any_step() {
+async fn a_daemon_refuses_a_load_tool_that_has_no_adapter_at_enqueue() {
     let mut env = EnvGuard::lock();
     let tools = tempfile::TempDir::new().unwrap();
     load_tool_stand_ins(&mut env, tools.path());
-
-    let (fx, run_id) = queued_run_of(JMETER_LOAD_TOON).await;
-
-    await_state(&fx, &run_id, run_state::ROLLBACK_PENDING).await;
-    let error = run_row(&fx, &run_id)["error"].clone();
-    assert!(
-        error
-            .as_str()
-            .is_some_and(|reason| reason.contains("jmeter")),
-        "{error}"
+    let fx = fixture().await;
+    let queue = RunQueue::spawn(
+        fx.ingest.clone(),
+        fx.db_path.clone(),
+        RunQueueConfig {
+            concurrency: 1,
+            queue_depth: 4,
+            sweep_interval: Duration::from_secs(3600),
+        },
+        recording_factory(&fx.executed, Duration::ZERO),
     );
+
+    let refused = queue
+        .enqueue(
+            RunRequest {
+                definition_toon: JMETER_LOAD_TOON.into(),
+                ..request()
+            },
+            None,
+        )
+        .await;
+
+    assert!(
+        matches!(refused, Err(EnqueueError::Store(_))),
+        "{refused:?}"
+    );
+    let reason = prepare_run(JMETER_LOAD_TOON, &HashMap::new()).unwrap_err();
+    assert!(reason.contains("no load adapter for jmeter"), "{reason}");
+    let runs = Store::at(&fx.db_path)
+        .read_only()
+        .unwrap()
+        .runs(None, 10)
+        .unwrap();
+    assert!(runs.is_empty(), "{runs:?}");
     assert!(fx.executed.lock().unwrap().is_empty());
     assert_eq!(load_tools_asked(tools.path()), Vec::<String>::new());
+}
+
+/// A stored run gets its rollbacks after a restart also when its load can
+/// no longer run. An older daemon started such a run, and recovery starts
+/// no load. This holds for a run with a snapshot and for one without.
+#[tokio::test]
+async fn a_stored_run_whose_load_can_no_longer_run_is_still_rolled_back() {
+    let fx = fixture().await;
+    let load = "load:\n  tool: jmeter\n  script: plan.jmx\n  vus: 1\n  duration_s: 1.0\nmethod[3]:";
+    let toon = TEST_TOON.replacen("method[3]:", load, 1);
+    let refused = prepare_run(&toon, &HashMap::new()).unwrap_err();
+    assert!(refused.contains("no load adapter for jmeter"), "{refused}");
+    let plan = super::recovery_plan::RecoveryPlan::capture(&toon, &HashMap::new()).unwrap();
+    let snapshot = serde_json::to_string(&plan).unwrap();
+    let stored = |id: &str| NewRun {
+        id: id.into(),
+        registry_id: "reg-jmeter".into(),
+        params_json: None,
+        queued_at_ns: 1,
+        actor: None,
+    };
+    exec_write(&fx.ingest, move |writer| {
+        writer
+            .register_definition(&RegisteredDefinition {
+                id: "reg-jmeter".into(),
+                name: "jmeter".into(),
+                definition_toon: toon,
+                content_hash: "h-jmeter".into(),
+                registered_at_ns: 1,
+                registered_by: None,
+            })
+            .and_then(|()| writer.insert_run(&stored("with-snapshot")))
+            .and_then(|()| writer.claim_run("with-snapshot"))
+            .and_then(|()| writer.begin_run_execution("with-snapshot", &snapshot, None))
+            .and_then(|()| writer.insert_run(&stored("without-snapshot")))
+            .and_then(|()| writer.mark_run_started("without-snapshot", None))
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .unwrap();
+
+    let factory = recording_factory(&fx.executed, Duration::ZERO);
+    let count = reconcile_orphans(&fx.ingest, &fx.db_path, &factory)
+        .await
+        .unwrap();
+
+    assert_eq!(count, 2);
+    for run in ["with-snapshot", "without-snapshot"] {
+        let row = run_row(&fx, run);
+        assert_eq!(row["state"], run_state::ABORTED, "{row}");
+        assert_eq!(row["rollback_status"], rollback_status::COMPLETED, "{row}");
+    }
+    assert_eq!(
+        fx.executed.lock().unwrap().as_slice(),
+        ["rollback-1", "rollback-1"]
+    );
 }

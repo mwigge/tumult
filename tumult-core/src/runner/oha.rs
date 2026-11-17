@@ -1383,24 +1383,17 @@ fn thresholds_hold(
     result: &LoadResult,
     thresholds: &std::collections::HashMap<String, f64>,
 ) -> bool {
-    // No answer, no latency: an unknown figure is never within a bound.
-    let answered = !result.samples.is_empty();
     let mut held = true;
     for (metric, bound) in thresholds {
-        let ok = match metric.as_str() {
-            "latency_p50_ms" => answered && result.latency_p50_ms <= *bound,
-            "latency_p95_ms" => answered && result.latency_p95_ms <= *bound,
-            "latency_p99_ms" => answered && result.latency_p99_ms <= *bound,
-            "error_rate" => result.error_rate <= *bound,
-            "throughput_rps" => result.throughput_rps >= *bound,
-            other => {
-                tracing::warn!(
-                    tool = "oha",
-                    metric = %bounded_log_text(other),
-                    "load.threshold.unknown_metric"
-                );
-                false
-            }
+        let ok = if let Some(holds) = threshold_check(metric) {
+            holds(result, *bound)
+        } else {
+            tracing::warn!(
+                tool = "oha",
+                metric = %bounded_log_text(metric),
+                "load.threshold.unknown_metric"
+            );
+            false
         };
         if !ok {
             tracing::warn!(
@@ -1413,6 +1406,27 @@ fn thresholds_hold(
         }
     }
     held
+}
+
+/// How oha checks a threshold named `metric` against a result and its
+/// bound; `None` for a name oha does not check.
+fn threshold_check(metric: &str) -> Option<fn(&LoadResult, f64) -> bool> {
+    // No answer, no latency: an unknown figure is never within a bound.
+    let check: fn(&LoadResult, f64) -> bool = match metric {
+        "latency_p50_ms" => |r, bound| !r.samples.is_empty() && r.latency_p50_ms <= bound,
+        "latency_p95_ms" => |r, bound| !r.samples.is_empty() && r.latency_p95_ms <= bound,
+        "latency_p99_ms" => |r, bound| !r.samples.is_empty() && r.latency_p99_ms <= bound,
+        "error_rate" => |r, bound| r.error_rate <= bound,
+        "throughput_rps" => |r, bound| r.throughput_rps >= bound,
+        _ => return None,
+    };
+    Some(check)
+}
+
+/// Whether oha checks a threshold named `metric`. Validation asks here,
+/// so a name the adapter would count as unmet is refused before the run.
+pub(crate) fn checks_threshold(metric: &str) -> bool {
+    threshold_check(metric).is_some()
 }
 
 #[cfg(test)]

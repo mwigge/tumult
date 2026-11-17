@@ -30,6 +30,13 @@ impl RecoveryPlan {
         })
     }
 
+    /// The plan without its load, for a recovery: it runs the rollbacks
+    /// only, as [`prepare_rollback`](super::queue::prepare_rollback) says.
+    pub(super) fn without_load(mut self) -> Self {
+        self.definition.load = None;
+        self
+    }
+
     pub(super) fn prepare(&self) -> Result<PreparedRun, String> {
         let resolved = resolve_config(&self.definition.configuration)
             .map_err(|_| preparation_error("config"))?;

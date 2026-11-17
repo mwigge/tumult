@@ -172,6 +172,37 @@ fn a_dry_run_names_the_shape_of_the_load() {
     }
 }
 
+/// A load given on the command line takes the place of the file's before
+/// the file is validated. A file whose own load can never run (its tool
+/// has no adapter) still runs with the load given.
+#[test]
+fn a_load_given_on_the_command_line_replaces_the_load_of_the_file_before_validation() {
+    let lab = Lab::with_state("ok");
+    let jmeter = "load:\n  tool: jmeter\n  script: plan.jmx\n  vus: 1\n  duration_s: 3.0\n";
+    let definition = with_block(&experiment(&inject(), &leave_marker()), jmeter);
+    std::fs::write(lab.path("experiment.toon"), definition).expect("experiment");
+
+    let output = lab.tumult(&[
+        "run",
+        "experiment.toon",
+        "--dry-run",
+        "--load",
+        "oha",
+        "--load-script",
+        "http://127.0.0.1:9/health",
+        "--load-vus",
+        "2",
+        "--load-duration",
+        "3s",
+    ]);
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(output.status.success(), "{stdout}{stderr}");
+    let line = "\nLoad: oha http://127.0.0.1:9/health (2 users, 3s, flat)\n";
+    assert!(stdout.contains(line), "no {line:?} in:\n{stdout}");
+}
+
 #[test]
 fn a_dry_run_runs_no_step_and_leaves_no_journal_and_no_store() {
     let lab = Lab::with_state("ok");

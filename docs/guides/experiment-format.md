@@ -243,7 +243,7 @@ Raw probe samples from the during and post phases are kept in the journal (`prob
 
 ## Load
 
-The optional `load` section drives load generation concurrent with the method. Two adapters share one boundary (`runner::LoadExecutor` plus the tool-agnostic plan in `runner::load_profile`): **k6** (`tool: k6`, `script` is the k6 script) and **oha** (`tool: oha`, `script` is the URL to hit). The `--load` CLI override accepts `k6`, `oha` or `none`. `tool: jmeter` still parses for older files but has no adapter and fails at start rather than silently running k6.
+The optional `load` section drives load generation concurrent with the method. Two adapters share one boundary (`runner::LoadExecutor` plus the tool-agnostic plan in `runner::load_profile`): **k6** (`tool: k6`, `script` is the k6 script) and **oha** (`tool: oha`, `script` is the URL to hit). The `--load` CLI override accepts `k6`, `oha` or `none`, and takes the place of the file's load before validation. `tool: jmeter` still parses for older files, but it has no adapter, so validation refuses it.
 
 | Field | Required | Description |
 |---|---|---|
@@ -251,7 +251,7 @@ The optional `load` section drives load generation concurrent with the method. T
 | `script` | Yes | k6 script path, or the URL for oha |
 | `vus` | No | Virtual users / concurrency (default 10) |
 | `duration_s` | No | Seconds of load (default 30); required when a `profile` is set |
-| `thresholds` | No | Metric → bound. k6 scripts enforce their own; for oha the adapter checks `latency_p50_ms`, `latency_p95_ms`, `latency_p99_ms`, `error_rate` (upper bounds) and `throughput_rps` (lower bound) against the aggregate, and an unknown name counts as unmet |
+| `thresholds` | No | Metric → bound. k6 applies the thresholds of its script, not these: validation accepts them and logs a warning (`load.thresholds.not_applied`). For oha the adapter checks `latency_p50_ms`, `latency_p95_ms`, `latency_p99_ms`, `error_rate` (upper bounds) and `throughput_rps` (lower bound) against the aggregate; validation refuses any other name |
 | `profile` | No | Traffic shape, see below |
 
 ### Load profiles

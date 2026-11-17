@@ -24,8 +24,8 @@ A system that handles faults at idle may fail under production traffic. Load tes
 
 Both adapters implement the same `LoadExecutor` boundary and consume the same
 traffic plan, so a load profile (ramp, spike, soak) means the same thing on
-either tool. `load_executor_for(tool)` picks the adapter; JMeter is accepted
-by the format for older files but has no adapter and fails at start.
+either tool. `load_executor_for(tool)` picks the adapter; JMeter still
+parses for older files, but it has no adapter, so validation refuses it.
 
 ## Load Profiles
 
@@ -210,9 +210,9 @@ depends on:
 `thresholds_met` is true only when at least one request was sent, the whole
 plan ran, and every declared bound holds. A window nobody answered (a
 blackout while the fault is injected) is recorded and is not a deviation by
-itself, with oha as with k6: declare `thresholds.error_rate` when it should
-be one. An interrupted k6 is killed at once and leaves a result marked
-aborted with no measurements.
+itself, with oha as with k6: declare `thresholds.error_rate` (oha) or a
+threshold in the k6 script when it should be one. An interrupted k6 is
+killed at once and leaves a result marked aborted with no measurements.
 
 **When the load ends.** A run does not wait for its load: when the method
 and the recovery check are done, k6 has 10 seconds to end by itself and oha

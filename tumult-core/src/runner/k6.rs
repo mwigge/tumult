@@ -186,16 +186,19 @@ impl LoadExecutor for K6LoadExecutor {
             "iteration_duration.p(99)",
         );
 
-        // Check failure rate and total iterations are derived from custom
-        // counters that scripts may legitimately omit, so a missing value
-        // is treated as zero without a warning.
+        // A script that sends HTTP requests is measured by k6's own
+        // `http_reqs` and `http_req_failed`, whether or not it calls
+        // `check()`. One that sends none (an xk6-sql script, say) keeps its
+        // failed checks and its iterations, which a script may lack: a
+        // missing value is treated as zero without a warning.
+        let requests = k6_request_counts(summary.as_ref());
         let checks_total = k6_summary_count(summary.as_ref(), "checks_total")
             .or_else(|| parse_k6_counter(&combined, "checks_total"))
             .unwrap_or(0);
         let checks_failed = k6_summary_count(summary.as_ref(), "checks_failed")
             .or_else(|| parse_k6_counter(&combined, "checks_failed"))
             .unwrap_or(0);
-        let error_rate = if checks_total > 0 {
+        let check_error_rate = if checks_total > 0 {
             #[allow(clippy::cast_precision_loss)]
             {
                 checks_failed as f64 / checks_total as f64
@@ -203,10 +206,15 @@ impl LoadExecutor for K6LoadExecutor {
         } else {
             0.0
         };
+        let error_rate = requests
+            .as_ref()
+            .and_then(crate::types::RequestCounts::failure_share)
+            .unwrap_or(check_error_rate);
 
         let iterations = k6_summary_count(summary.as_ref(), "iterations")
             .or_else(|| parse_k6_counter(&combined, "iterations"))
             .unwrap_or(0);
+        let total_requests = requests.map_or(iterations, |counts| counts.sent);
 
         Ok(LoadResult {
             tool: k6.tool,
@@ -219,13 +227,13 @@ impl LoadExecutor for K6LoadExecutor {
             latency_p95_ms: latency_p95,
             latency_p99_ms: latency_p99,
             error_rate,
-            total_requests: iterations,
+            total_requests,
             thresholds_met: output.status.success(),
             // k6 reports one end-of-run summary; its per-request stream
             // (`--out json`) is far too heavy to keep, so no windows here.
             samples: vec![],
             execution: crate::types::LoadExecution {
-                requests: k6_request_counts(summary.as_ref()),
+                requests,
                 ..crate::types::LoadExecution::default()
             },
         })
@@ -356,7 +364,7 @@ pub fn k6_summary_count(summary: Option<&serde_json::Value>, metric: &str) -> Op
 pub fn k6_request_counts(
     summary: Option<&serde_json::Value>,
 ) -> Option<crate::types::RequestCounts> {
-    let sent = k6_summary_count(summary, "http_reqs")?;
+    let sent = k6_summary_count(summary, "http_reqs").filter(|sent| *sent > 0)?;
     // A rate metric's `passes` are the samples that were non-zero: here,
     // the requests that failed.
     let failed = summary?
@@ -412,6 +420,9 @@ pub fn parse_k6_metric(output: &str, metric_name: &str, stat: &str) -> Option<f6
 /// k6 outputs lines like:
 ///   `iterations...........: 1025 51.006998/s`
 ///   `checks_total.......: 1025    51.006998/s`
+///   `checks_failed......: 2.52%   32 out of 1268`
+///
+/// A line of checks gives a share first: its count is the column after.
 #[must_use]
 pub fn parse_k6_counter(output: &str, counter_name: &str) -> Option<u64> {
     for line in output.lines() {
@@ -419,8 +430,14 @@ pub fn parse_k6_counter(output: &str, counter_name: &str) -> Option<u64> {
         if trimmed.starts_with(counter_name) {
             // After the dots and colons, find the first number
             if let Some(colon_pos) = trimmed.find(':') {
-                let after = trimmed[colon_pos + 1..].trim();
-                let num_str: String = after.chars().take_while(char::is_ascii_digit).collect();
+                let mut columns = trimmed[colon_pos + 1..].split_whitespace();
+                let first = columns.next()?;
+                let count = if first.ends_with('%') {
+                    columns.next()?
+                } else {
+                    first
+                };
+                let num_str: String = count.chars().take_while(char::is_ascii_digit).collect();
                 return num_str.parse().ok();
             }
         }

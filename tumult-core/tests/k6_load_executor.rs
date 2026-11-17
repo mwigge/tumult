@@ -208,6 +208,139 @@ fn stop_collects_metrics_from_the_json_summary_export() {
     assert!(result.duration_s >= 0.0);
 }
 
+/// A fake k6 whose summary is that of a script that sends two HTTP
+/// requests per iteration and calls no `check()`: k6 writes no check rows
+/// then. A quarter of the requests failed. The metrics have the shape of
+/// k6's `--summary-export`: a counter has a `count`, a rate has `passes`
+/// (here the failed requests) and `fails`.
+const FAKE_K6_HTTP_WITHOUT_CHECKS: &str = r#"#!/bin/sh
+while [ $# -gt 0 ]; do
+  if [ "$1" = "--summary-export" ]; then
+    shift
+    printf '%s' '{"metrics":{"iterations":{"count":100,"rate":10.0},"iteration_duration":{"med":63.81,"p(95)":148.01,"p(99)":201.09},"http_reqs":{"count":200,"rate":20.0},"http_req_failed":{"passes":50,"fails":150,"value":0.25}}}' > "$1"
+  fi
+  shift
+done
+exit 0
+"#;
+
+/// A script that sends HTTP requests is measured by k6's own count of
+/// requests and of failed requests, whether or not it calls `check()`.
+#[test]
+fn the_error_rate_of_an_http_script_counts_its_failed_requests_not_its_checks() {
+    let mut env = EnvGuard::lock();
+    let dir = tempfile::tempdir().expect("tempdir");
+    install_fake_k6(&mut env, &dir, FAKE_K6_HTTP_WITHOUT_CHECKS);
+
+    let executor = K6LoadExecutor;
+    let handle = executor.start(&config()).expect("fake k6 starts");
+    let result = executor.stop(handle).expect("fake k6 stops");
+
+    // 50 of 200 requests failed.
+    assert!(
+        (result.error_rate - 0.25).abs() < f64::EPSILON,
+        "{result:?}"
+    );
+    assert_eq!(result.total_requests, 200);
+}
+
+/// The end of a k6 1.x text summary, as recorded from a run of
+/// `examples/k6/pg-load.js`, with 32 of its checks failed: a line of
+/// checks gives a share first and the count after it.
+const K6_TEXT_WITH_SHARES: &str = r"
+    checks_total.......: 1268    63.212282/s
+    checks_succeeded...: 97.48%  1236 out of 1268
+    checks_failed......: 2.52%   32 out of 1268
+
+    iteration_duration.....: avg=78.95ms   min=54.73ms med=57.46ms max=5.08s p(90)=62.35ms p(95)=67.15ms
+    iterations.............: 1268 63.212282/s
+";
+
+#[test]
+fn parse_k6_counter_reads_the_count_after_a_share() {
+    assert_eq!(
+        parse_k6_counter(K6_TEXT_WITH_SHARES, "checks_failed"),
+        Some(32)
+    );
+    assert_eq!(
+        parse_k6_counter(K6_TEXT_WITH_SHARES, "checks_total"),
+        Some(1268)
+    );
+    assert_eq!(
+        parse_k6_counter(K6_TEXT_WITH_SHARES, "iterations"),
+        Some(1268)
+    );
+    // A share with no count after it has no count to extract.
+    assert_eq!(
+        parse_k6_counter("checks_failed......: 2.52%", "checks_failed"),
+        None
+    );
+}
+
+/// A fake k6 that writes no summary file and prints the summary of k6 1.x.
+const FAKE_K6_TEXT_WITH_SHARES: &str = r#"#!/bin/sh
+echo "    checks_total.......: 1268    63.212282/s"
+echo "    checks_succeeded...: 97.48%  1236 out of 1268"
+echo "    checks_failed......: 2.52%   32 out of 1268"
+echo "    iteration_duration.....: avg=78.95ms   min=54.73ms med=57.46ms max=5.08s p(90)=62.35ms p(95)=67.15ms"
+echo "    iterations.............: 1268 63.212282/s"
+exit 0
+"#;
+
+/// A script that sends no HTTP request is measured by its checks. Its
+/// error rate is the count of failed checks over the count of checks, not
+/// the whole part of the share k6 prints before the count.
+#[test]
+fn the_error_rate_of_a_text_summary_counts_the_failed_checks() {
+    let mut env = EnvGuard::lock();
+    let dir = tempfile::tempdir().expect("tempdir");
+    install_fake_k6(&mut env, &dir, FAKE_K6_TEXT_WITH_SHARES);
+
+    let executor = K6LoadExecutor;
+    let handle = executor.start(&config()).expect("fake k6 starts");
+    let result = executor.stop(handle).expect("fake k6 stops");
+
+    // 32 of 1268 checks failed.
+    assert!(
+        (result.error_rate - 32.0 / 1268.0).abs() < f64::EPSILON,
+        "{result:?}"
+    );
+    assert_eq!(result.total_requests, 1268);
+}
+
+/// A fake k6 whose summary names the HTTP metrics although the script sent
+/// no HTTP request: 25 of its 100 checks failed in 100 iterations.
+const FAKE_K6_NO_HTTP_REQUEST_SENT: &str = r#"#!/bin/sh
+while [ $# -gt 0 ]; do
+  if [ "$1" = "--summary-export" ]; then
+    shift
+    printf '%s' '{"metrics":{"iterations":{"count":100,"rate":10.0},"iteration_duration":{"med":63.81,"p(95)":148.01,"p(99)":201.09},"http_reqs":{"count":0,"rate":0.0},"http_req_failed":{"passes":0,"fails":0,"value":0},"checks_total":{"count":100},"checks_failed":{"count":25}}}' > "$1"
+  fi
+  shift
+done
+exit 0
+"#;
+
+/// A script that sent no HTTP request has no request counts, also when its
+/// summary names the HTTP metrics. It keeps its checks and its iterations.
+#[test]
+fn a_script_that_sent_no_http_request_is_measured_by_its_checks_and_iterations() {
+    let mut env = EnvGuard::lock();
+    let dir = tempfile::tempdir().expect("tempdir");
+    install_fake_k6(&mut env, &dir, FAKE_K6_NO_HTTP_REQUEST_SENT);
+
+    let executor = K6LoadExecutor;
+    let handle = executor.start(&config()).expect("fake k6 starts");
+    let result = executor.stop(handle).expect("fake k6 stops");
+
+    assert!(
+        (result.error_rate - 0.25).abs() < f64::EPSILON,
+        "{result:?}"
+    );
+    assert_eq!(result.total_requests, 100);
+    assert_eq!(result.execution.requests, None);
+}
+
 /// A fake k6 that writes each of its arguments on a line of `<itself>.args`.
 const FAKE_K6_KEEPS_ITS_ARGUMENTS: &str = r#"#!/bin/sh
 printf '%s\n' "$@" > "$0.args"

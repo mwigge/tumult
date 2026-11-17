@@ -131,6 +131,11 @@ pub async fn cmd_run_with_baseline_mode<S: ::std::hash::BuildHasher>(
     };
 
     super::target_version::declare(&mut experiment, target_version)?;
+    // Apply load override from CLI flags, or use experiment's load config.
+    // Before validation, so the load that is checked is the one that runs.
+    if let Some(override_config) = load_override {
+        experiment.load = Some(override_config);
+    }
     validate_experiment(&experiment)?;
 
     if dry_run {
@@ -179,11 +184,6 @@ pub async fn cmd_run_with_baseline_mode<S: ::std::hash::BuildHasher>(
             cancel_token_for_signal.cancel();
         }
     });
-
-    // Apply load override from CLI flags, or use experiment's load config
-    if let Some(ref override_config) = load_override {
-        experiment.load = Some(override_config.clone());
-    }
 
     // The version that served the run is asked of the daemon, or of the
     // local store the run reports to; a run nobody observes says so.

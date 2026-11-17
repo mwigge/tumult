@@ -607,6 +607,84 @@ fn validate_rejects_zero_users_anywhere() {
     assert!(load_error(&with_load(Some(spike), None, Some(60.0))).contains("peak_vus"));
 }
 
+/// A flat load of `tool` with `thresholds`.
+fn with_tool(tool: LoadTool, thresholds: &[(&str, f64)]) -> Experiment {
+    let mut exp = with_load(None, None, None);
+    let load = exp.load.as_mut().expect("a load");
+    load.tool = tool;
+    load.thresholds = thresholds
+        .iter()
+        .map(|(name, bound)| ((*name).to_string(), *bound))
+        .collect();
+    exp
+}
+
+/// A load whose tool has no adapter can never run. Validation refuses it
+/// with the reason the runner gives, which it asks of the same function.
+#[test]
+fn a_load_tool_without_an_adapter_is_refused_with_the_reason_of_the_runner() {
+    let Err(runner_reason) = crate::runner::load_executor_for(&LoadTool::Jmeter) else {
+        panic!("jmeter has no adapter");
+    };
+    assert_eq!(load_error(&with_tool(LoadTool::Jmeter, &[])), runner_reason);
+    assert!(validate_experiment(&with_tool(LoadTool::K6, &[])).is_ok());
+    assert!(validate_experiment(&with_tool(LoadTool::Oha, &[])).is_ok());
+}
+
+/// oha checks five threshold names; a run with any other name deviates.
+/// Validation refuses such a name before the run and names it.
+#[test]
+fn an_oha_threshold_name_the_adapter_does_not_check_is_refused_and_named() {
+    let reason = load_error(&with_tool(LoadTool::Oha, &[("latency_p90_ms", 200.0)]));
+    assert!(reason.contains("latency_p90_ms"), "{reason}");
+    assert!(reason.contains("oha"), "{reason}");
+
+    let every_known_name = [
+        ("latency_p50_ms", 100.0),
+        ("latency_p95_ms", 200.0),
+        ("latency_p99_ms", 300.0),
+        ("error_rate", 0.01),
+        ("throughput_rps", 10.0),
+    ];
+    let outcome = validate_experiment(&with_tool(LoadTool::Oha, &every_known_name));
+    assert!(outcome.is_ok(), "{outcome:?}");
+
+    // Of several unknown names the first in order is named, so the reason
+    // reads the same on every run.
+    let several = [("zz_ms", 1.0), ("aa_ms", 1.0), ("mm_ms", 1.0)];
+    let reason = load_error(&with_tool(LoadTool::Oha, &several));
+    assert!(reason.contains("'aa_ms'"), "{reason}");
+}
+
+/// k6 applies the thresholds of its script, not those of the file. A k6
+/// load with thresholds stays valid, and validation says once that they
+/// are not applied.
+#[test]
+fn k6_thresholds_are_accepted_with_one_warning_that_they_are_not_applied() {
+    let warnings_of = |exp: &Experiment| {
+        let captured = tumult_otel::logging::testing::capture_json(tracing::Level::TRACE, || {
+            let outcome = validate_experiment(exp);
+            assert!(outcome.is_ok(), "{outcome:?}");
+        });
+        captured
+            .events
+            .into_iter()
+            .filter(|event| event["message"] == "load.thresholds.not_applied")
+            .collect::<Vec<_>>()
+    };
+
+    let bounded = with_tool(
+        LoadTool::K6,
+        &[("latency_p95_ms", 200.0), ("http_req_failed", 0.01)],
+    );
+    let warnings = warnings_of(&bounded);
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    assert_eq!(warnings[0]["tool"], "k6");
+    assert_eq!(warnings[0]["level"], "WARN");
+
+    assert!(warnings_of(&with_tool(LoadTool::K6, &[])).is_empty());
+}
+
 #[test]
 fn a_target_version_beyond_the_bounds_is_refused() {
     let with_version = |version: &str| Experiment {

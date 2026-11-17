@@ -1,6 +1,8 @@
 //! Static validation of experiment definitions before execution.
 
-use crate::types::{Activity, Experiment, LoadProfile, Provider, TestKind, Tolerance};
+use crate::types::{
+    Activity, Experiment, LoadConfig, LoadProfile, LoadTool, Provider, TestKind, Tolerance,
+};
 
 use super::EngineError;
 
@@ -23,6 +25,8 @@ use super::EngineError;
 /// Returns [`EngineError::InvalidSeconds`] if a timeout or a pause of any of those steps,
 /// or the duration of a flat load, is not a number of seconds from 0 up to 2^64.
 /// Returns [`EngineError::NfrInvalid`] if an objective names a metric no run can measure.
+/// Returns [`EngineError::LoadProfileInvalid`] if the load names a tool with no adapter,
+/// an oha threshold the adapter does not check, or a profile that does not fit the run.
 ///
 /// # Examples
 ///
@@ -373,6 +377,12 @@ fn validate_load(experiment: &Experiment) -> Result<(), EngineError> {
     let Some(load) = experiment.load.as_ref() else {
         return Ok(());
     };
+    // A tool without an adapter can never run: the runner's choice of
+    // adapter decides it, and its reason is the one given here.
+    if let Err(reason) = crate::runner::load_executor_for(&load.tool) {
+        return Err(EngineError::LoadProfileInvalid { reason });
+    }
+    validate_thresholds(load)?;
     let invalid = |reason: &str| EngineError::LoadProfileInvalid {
         reason: reason.to_string(),
     };
@@ -443,6 +453,34 @@ fn validate_load(experiment: &Experiment) -> Result<(), EngineError> {
         }
     }
     Ok(())
+}
+
+/// k6 applies the thresholds of its script, not those of the file: they
+/// stay valid and are said to be unused. oha checks the file's, and a run
+/// with a name it does not check deviates, so such a name is refused.
+fn validate_thresholds(load: &LoadConfig) -> Result<(), EngineError> {
+    if load.thresholds.is_empty() {
+        return Ok(());
+    }
+    if load.tool == LoadTool::K6 {
+        tracing::warn!(
+            tool = "k6",
+            thresholds = load.thresholds.len(),
+            "load.thresholds.not_applied"
+        );
+        return Ok(());
+    }
+    let Some(unknown) = load
+        .thresholds
+        .keys()
+        .filter(|name| !crate::runner::oha::checks_threshold(name))
+        .min()
+    else {
+        return Ok(());
+    };
+    Err(EngineError::LoadProfileInvalid {
+        reason: format!("oha checks no threshold named '{unknown}'"),
+    })
 }
 
 #[cfg(test)]
