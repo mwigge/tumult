@@ -312,6 +312,18 @@ tumult compliance <journals-dir> --framework <name>
 
 Supported frameworks: `dora`, `nis2`, `pci-dss`, `iso-22301`, `iso-27001`, `soc2`, `basel-iii`
 
+The evidence summary counts two things:
+
+| Line | What it counts |
+|------|----------------|
+| `Pass rate` | Of all the journals, the share whose run completed |
+| `Recovery within 30s` | Of the runs that watched for recovery, the share whose target came back within 30 seconds |
+
+A run watches for recovery when it has a steady state to probe after the
+fault. A watched run whose target did not come back counts against the
+share. When no run watched, the line says so, and the verdict ends with
+`(pass-rate only)`.
+
 ### Example
 
 ```bash
@@ -330,8 +342,15 @@ tumult trend <journals-dir> [OPTIONS]
 | Option | Default | Description |
 |--------|---------|-------------|
 | `--metric <m>` | `resilience_score` | Metric to trend (`resilience_score`, `duration_ms`, `estimate_accuracy`, `method_step_count`) |
-| `--last <window>` | — | Time window: `30d`, `90d`, etc. |
-| `--target <tech>` | — | Filter by target system (matches experiment title) |
+| `--last <window>` | — | Only the runs that started in this window: `30d`, `90d`, etc. |
+| `--target <name>` | — | Only the runs on this target: the system or the technology the journal names (whole name, any case) |
+
+The points and the summary line are over the same runs: the ones of the
+window and of the target.
+
+A journal names the target its experiment declares (since 3.0.2). With
+`--target`, a journal that names no target is left out, and the output says
+how many were.
 
 ### Examples
 

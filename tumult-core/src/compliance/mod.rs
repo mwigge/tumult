@@ -82,39 +82,102 @@ mod tests {
         assert_eq!(compliance_verdict(0.50, None), "NON-COMPLIANT");
     }
 
+    /// A completed run that watched for recovery and saw it after `mttr_s`
+    /// seconds, or did not see it.
+    fn watched(mttr_s: Option<f64>) -> Journal {
+        let mut journal = bare_journal(crate::types::ExperimentStatus::Completed);
+        journal.post_result = Some(crate::types::PostResult {
+            started_at_ns: 0,
+            ended_at_ns: 0,
+            duration_s: 0.0,
+            samples: 0,
+            probes: vec![],
+            recovery_time_s: mttr_s.unwrap_or(0.0),
+            full_recovery: mttr_s.is_some(),
+            residual_degradation: None,
+            data_integrity_verified: None,
+            data_loss_detected: None,
+            mttr_s,
+        });
+        journal
+    }
+
+    fn signals_of(journals: &[Journal]) -> ComplianceSignals {
+        let mut signals = ComplianceSignals::default();
+        for journal in journals {
+            signals.accumulate(journal);
+        }
+        signals
+    }
+
+    /// Two recoveries within 30 s, one of them at 30 s exactly, a slower
+    /// one, a run that saw none, and a run that did not watch.
+    fn mixed_runs() -> ComplianceSignals {
+        signals_of(&[
+            watched(Some(10.0)),
+            watched(Some(30.0)),
+            watched(Some(30.5)),
+            watched(None),
+            bare_journal(crate::types::ExperimentStatus::Completed),
+        ])
+    }
+
     #[test]
-    fn signals_prefer_mttr_over_resilience_scores() {
-        let signals = ComplianceSignals {
-            total_journals: 4,
-            completed_journals: 3,
-            journals_with_regulatory: 0,
-            mttrs: vec![10.0, 40.0],
-            resilience_scores: vec![0.1],
-        };
-        assert!((signals.pass_rate() - 0.75).abs() < f64::EPSILON);
-        // 1 of 2 MTTRs under target; resilience scores are ignored.
+    fn recovery_is_the_share_of_the_watched_runs_that_came_back_within_the_target() {
+        let signals = mixed_runs();
+
+        assert!((signals.pass_rate() - 1.0).abs() < f64::EPSILON);
+        assert_eq!(signals.recovery_watched, 4);
+        assert_eq!(signals.mttrs, [10.0, 30.0, 30.5]);
+        assert_eq!(signals.recovered_within(DEFAULT_MTTR_TARGET_S), 2);
         assert_eq!(
             signals.recovery_compliance(DEFAULT_MTTR_TARGET_S),
             Some(0.5)
         );
+        assert_eq!(signals.recovery_compliance(30.5), Some(0.75));
+        assert_eq!(signals.recovery_compliance(1.0), Some(0.0));
     }
 
     #[test]
-    fn signals_fall_back_to_resilience_scores_then_none() {
-        let mut signals = ComplianceSignals {
-            total_journals: 2,
-            completed_journals: 2,
-            journals_with_regulatory: 1,
-            mttrs: vec![],
-            resilience_scores: vec![0.8, 0.6],
-        };
-        let rc = signals
-            .recovery_compliance(DEFAULT_MTTR_TARGET_S)
-            .expect("resilience fallback");
-        assert!((rc - 0.7).abs() < 1e-9);
+    fn a_run_that_completed_is_no_sign_of_recovery() {
+        let mut journal = bare_journal(crate::types::ExperimentStatus::Completed);
+        journal.analysis = Some(crate::types::AnalysisResult {
+            estimate_accuracy: None,
+            estimate_recovery_delta_s: None,
+            trend: None,
+            resilience_score: Some(1.0),
+        });
 
-        signals.resilience_scores.clear();
+        let signals = signals_of(&[journal]);
+
+        assert!((signals.pass_rate() - 1.0).abs() < f64::EPSILON);
+        assert_eq!(signals.recovery_watched, 0);
         assert_eq!(signals.recovery_compliance(DEFAULT_MTTR_TARGET_S), None);
+    }
+
+    #[test]
+    fn the_recovery_line_says_the_share_and_the_runs_it_is_of() {
+        let signals = mixed_runs();
+
+        assert_eq!(
+            signals.recovery_line(DEFAULT_MTTR_TARGET_S),
+            "Recovery within 30s: 50.0% of the runs that watched for recovery (2 of 4)"
+        );
+        assert_eq!(
+            signals.recovery_line(30.5),
+            "Recovery within 30.5s: 75.0% of the runs that watched for recovery (3 of 4)"
+        );
+    }
+
+    #[test]
+    fn the_recovery_line_says_when_no_run_watched_for_recovery() {
+        let signals = signals_of(&[bare_journal(crate::types::ExperimentStatus::Completed)]);
+
+        assert_eq!(
+            signals.recovery_line(DEFAULT_MTTR_TARGET_S),
+            "Recovery within 30s: not measured, no run watched for recovery. \
+             The verdict rests on the pass rate only (reduced assurance)."
+        );
     }
 
     #[test]
@@ -126,6 +189,7 @@ mod tests {
     fn bare_journal(status: crate::types::ExperimentStatus) -> Journal {
         Journal {
             target_version: None,
+            target: None,
             experiment_title: "compliance test".into(),
             experiment_id: "exp-1".into(),
             status,
@@ -305,6 +369,6 @@ mod tests {
         assert_eq!(signals.completed_journals, 1);
         assert_eq!(signals.journals_with_regulatory, 0);
         assert!(signals.mttrs.is_empty());
-        assert!(signals.resilience_scores.is_empty());
+        assert_eq!(signals.recovery_watched, 0);
     }
 }

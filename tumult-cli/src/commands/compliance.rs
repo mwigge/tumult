@@ -37,14 +37,12 @@ pub fn cmd_compliance(
     let store = AnalyticsStore::in_memory()?;
     let mut count = 0;
 
-    // FIX 5: accumulate journal-level recovery/resilience signals directly
-    // from the Journals via tumult_core::compliance::ComplianceSignals (the
-    // single source of truth shared with the MCP server). The analytics
-    // `experiments` table has no MTTR column, and a true `ResilienceScore`
-    // (with recovery_compliance) is a GameDay-only aggregate — it is NOT
-    // persisted on single-experiment Journals — so recovery_compliance is
-    // derived from PostResult.mttr_s, falling back to
-    // AnalysisResult.resilience_score, then to pass-rate-only.
+    // The signals are counted from the journals themselves, by
+    // tumult_core::compliance::ComplianceSignals (the single source of truth
+    // shared with the MCP server): the analytics `experiments` table has no
+    // MTTR column. Recovery is counted from the runs that watched for it,
+    // the ones with a post phase. A run that only completed is in the pass
+    // rate and is no sign of recovery.
     let mut signals = ComplianceSignals::default();
 
     if journals_path.is_dir() {
@@ -88,9 +86,9 @@ pub fn cmd_compliance(
         crate::outln!("  {}: {} run(s)", row[0], row[1]);
     }
 
-    // Compliance verdict derived from journal-level pass_rate + a
-    // recovery_compliance proxy (MTTR-under-target, or avg resilience_score
-    // fallback, or pass-rate-only). The verdict token is an EVIDENCE-strength
+    // Compliance verdict derived from the journal-level pass rate and the
+    // share of the watched runs that recovered within the target (pass rate
+    // only when no run watched). The verdict token is an EVIDENCE-strength
     // signal, not a compliance attestation — see EVIDENCE_DISCLAIMER above.
     let pass_rate = signals.pass_rate();
     let recovery_compliance: Option<f64> = signals.recovery_compliance(MTTR_TARGET_S);
@@ -98,17 +96,7 @@ pub fn cmd_compliance(
 
     crate::outln!("\nEvidence summary (NOT a compliance determination):");
     crate::outln!("  Pass rate: {:.1}%", pass_rate * 100.0);
-    if let Some(rc) = recovery_compliance {
-        crate::outln!(
-            "  Recovery compliance: {:.1}% (MTTR<={MTTR_TARGET_S}s, or avg resilience proxy)",
-            rc * 100.0
-        );
-    } else {
-        crate::outln!(
-            "  Recovery compliance: N/A — no MTTR or resilience_score present in journals;"
-        );
-        crate::outln!("  verdict based on pass rate ONLY (reduced assurance).");
-    }
+    crate::outln!("  {}", signals.recovery_line(MTTR_TARGET_S));
     crate::outln!("  Evidence verdict: {verdict}");
 
     // Framework-specific control citations, rendered from the single sourced,
@@ -153,7 +141,7 @@ fn print_sources(framework: tumult_core::compliance::ComplianceFramework) {
     crate::outln!("\n=== End registry ===");
 }
 
-// FIX 5: recovery-aware compliance verdict — now owned by
+// The recovery-aware compliance verdict is owned by
 // `tumult_core::compliance` so the CLI and MCP server share one source of
 // truth. Re-exported here for the existing test surface.
 pub(crate) use tumult_core::compliance::compliance_verdict;

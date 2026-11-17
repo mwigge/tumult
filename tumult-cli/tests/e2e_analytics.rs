@@ -160,6 +160,7 @@ fn cmd_export_writes_arrow_ipc_readable_file() {
 
     let journal = Journal {
         target_version: None,
+        target: None,
         experiment_title: "Arrow export fixture".into(),
         experiment_id: "exp-arrow-1".into(),
         status: ExperimentStatus::Completed,

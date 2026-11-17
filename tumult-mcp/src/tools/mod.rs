@@ -147,7 +147,23 @@ pub(crate) mod test_support {
 
     /// Write a minimal valid experiment TOON file into `dir` and return its path.
     pub(crate) fn write_valid_experiment(dir: &std::path::Path) -> String {
-        let exp = tumult_core::types::Experiment {
+        write_experiment(dir, &valid_experiment())
+    }
+
+    /// Write `experiment` as `test.toon` into `dir` and return its path.
+    fn write_experiment(
+        dir: &std::path::Path,
+        experiment: &tumult_core::types::Experiment,
+    ) -> String {
+        let toon = toon_format::encode_default(experiment).unwrap();
+        let path = dir.join("test.toon");
+        std::fs::write(&path, toon).unwrap();
+        path.to_str().unwrap().to_string()
+    }
+
+    /// A minimal valid experiment: one action that echoes.
+    fn valid_experiment() -> tumult_core::types::Experiment {
+        tumult_core::types::Experiment {
             title: "MCP test experiment".into(),
             method: vec![tumult_core::types::Activity {
                 name: "echo-action".into(),
@@ -165,11 +181,7 @@ pub(crate) mod test_support {
                 label_selector: None,
             }],
             ..Default::default()
-        };
-        let toon = toon_format::encode_default(&exp).unwrap();
-        let path = dir.join("test.toon");
-        std::fs::write(&path, toon).unwrap();
-        path.to_str().unwrap().to_string()
+        }
     }
 
     /// Run the minimal valid experiment and write its journal into `dir`.
@@ -177,16 +189,51 @@ pub(crate) mod test_support {
     pub(crate) fn write_run_journal(dir: &std::path::Path) -> std::path::PathBuf {
         let exp_path = write_valid_experiment(dir);
         let journal_path = dir.join("journal.toon");
+        run_to_journal(&exp_path, &journal_path);
+        journal_path
+    }
+
+    /// Run the minimal valid experiment, named `title`, on the target
+    /// `system` of the technology `technology`, and write its journal into
+    /// `journals` as `<system>.toon`. Returns the journal path. The
+    /// definition is kept out of `journals`, which holds journals only.
+    pub(crate) fn write_run_journal_on(
+        journals: &std::path::Path,
+        title: &str,
+        system: &str,
+        technology: &str,
+    ) -> std::path::PathBuf {
+        let definitions = tempfile::TempDir::new().unwrap();
+        let experiment = tumult_core::types::Experiment {
+            title: title.into(),
+            target: Some(tumult_core::types::ExperimentTarget {
+                system: system.into(),
+                technology: Some(technology.into()),
+                environment: None,
+                criticality: None,
+                namespace: None,
+                version: None,
+            }),
+            ..valid_experiment()
+        };
+        let exp_path = write_experiment(definitions.path(), &experiment);
+        let journal_path = journals.join(format!("{system}.toon"));
+        run_to_journal(&exp_path, &journal_path);
+        journal_path
+    }
+
+    /// Run the experiment at `exp_path` and write its journal to
+    /// `journal_path`. Ingestion is skipped.
+    fn run_to_journal(exp_path: &str, journal_path: &std::path::Path) {
         crate::tools::run_experiment(crate::tools::RunExperimentRequest {
-            experiment_path: &exp_path,
+            experiment_path: exp_path,
             rollback_strategy: "always",
-            journal_path: &journal_path,
+            journal_path,
             store_path: "unused.duckdb",
             no_ingest: true,
             format: "toon",
             parent_context: None,
         })
         .unwrap();
-        journal_path
     }
 }

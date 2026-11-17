@@ -257,7 +257,8 @@ pub(crate) enum Commands {
         /// Time window (e.g., 30d, 90d)
         #[arg(long)]
         last: Option<String>,
-        /// Filter by target technology (matches experiment title)
+        /// Only the runs on this target: the system or the technology the
+        /// journal names
         #[arg(long)]
         target: Option<String>,
     },

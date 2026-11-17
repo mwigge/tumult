@@ -25,6 +25,7 @@ fn journal(id: &str, title: &str, status: ExperimentStatus, start_ns: i64, dur_m
     let failed = status != ExperimentStatus::Completed;
     Journal {
         target_version: None,
+        target: None,
         experiment_title: title.into(),
         experiment_id: id.into(),
         status,

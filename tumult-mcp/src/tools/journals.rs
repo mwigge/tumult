@@ -437,6 +437,7 @@ mod tests {
         };
         let journal = Journal {
             target_version: None,
+            target: None,
             experiment_title: "traced drill".into(),
             experiment_id: "run-traced".into(),
             status: ExperimentStatus::Completed,

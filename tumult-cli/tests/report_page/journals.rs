@@ -42,6 +42,7 @@ pub fn journal() -> Journal {
         objectives: None,
         probe_samples: vec![],
         target_version: None,
+        target: None,
     }
 }
 

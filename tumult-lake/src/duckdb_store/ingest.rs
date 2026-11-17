@@ -156,6 +156,7 @@ impl AnalyticsStore {
     ///     objectives: None,
     ///     probe_samples: vec![],
     ///     target_version: None,
+    ///     target: None,
     /// };
     ///
     /// store.ingest_journal(&journal).unwrap();

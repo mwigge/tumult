@@ -178,6 +178,7 @@ mod tests {
     fn junit_report_emits_suite_and_cases() {
         let journal = Journal {
             target_version: None,
+            target: None,
             experiment_title: "Report & test".into(),
             experiment_id: "exp-1".into(),
             status: crate::types::ExperimentStatus::Completed,

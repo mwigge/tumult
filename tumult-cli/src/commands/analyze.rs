@@ -527,6 +527,7 @@ mod tests {
     fn sample_journal() -> tumult_core::types::Journal {
         tumult_core::types::Journal {
             target_version: None,
+            target: None,
             experiment_title: "analyze test".into(),
             experiment_id: "exp-analyze-1".into(),
             status: tumult_core::types::ExperimentStatus::Completed,
@@ -635,6 +636,7 @@ mod tests {
     fn rich_journal(id: &str, started_at_ns: i64) -> Journal {
         Journal {
             target_version: None,
+            target: None,
             experiment_title: format!("rich {id}"),
             experiment_id: id.into(),
             status: ExperimentStatus::Deviated,

@@ -87,25 +87,7 @@ pub fn compliance(journals_path: &str, framework: &str) -> Result<StructuredRepo
     writeln!(text).ok();
     writeln!(text, "Evidence summary (NOT a compliance determination):").ok();
     writeln!(text, "  Pass rate: {:.1}%", pass_rate * 100.0).ok();
-    if let Some(rc) = recovery_compliance {
-        writeln!(
-            text,
-            "  Recovery compliance: {:.1}% (MTTR<={DEFAULT_MTTR_TARGET_S}s, or avg resilience proxy)",
-            rc * 100.0
-        )
-        .ok();
-    } else {
-        writeln!(
-            text,
-            "  Recovery compliance: N/A — no MTTR or resilience_score present in journals;"
-        )
-        .ok();
-        writeln!(
-            text,
-            "  verdict based on pass rate ONLY (reduced assurance)."
-        )
-        .ok();
-    }
+    writeln!(text, "  {}", signals.recovery_line(DEFAULT_MTTR_TARGET_S)).ok();
     writeln!(text, "  Evidence verdict: {verdict}").ok();
 
     writeln!(text).ok();
@@ -169,10 +151,22 @@ mod tests {
         assert_eq!(result.structured["journals_evaluated"], 1);
         let pass_rate = result.structured["pass_rate"].as_f64().unwrap();
         assert!((pass_rate - 1.0).abs() < f64::EPSILON);
-        let verdict = result.structured["verdict"].as_str().unwrap();
+        // The run completed and watched nothing come back: its pass is in
+        // the pass rate, and there is no recovery to speak of.
+        assert_eq!(
+            result.structured["recovery_compliance"],
+            serde_json::Value::Null
+        );
+        assert_eq!(result.structured["verdict"], "COMPLIANT (pass-rate only)");
         assert!(
-            verdict.starts_with("COMPLIANT"),
-            "one completed journal must be compliant: {verdict}"
+            result.text.contains(
+                "  Pass rate: 100.0%\n  \
+                 Recovery within 30s: not measured, no run watched for recovery. \
+                 The verdict rests on the pass rate only (reduced assurance).\n  \
+                 Evidence verdict: COMPLIANT (pass-rate only)\n"
+            ),
+            "{}",
+            result.text
         );
         assert!(result.text.contains("Digital Operational Resilience Act"));
     }

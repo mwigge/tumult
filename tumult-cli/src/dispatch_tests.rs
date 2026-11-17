@@ -50,6 +50,7 @@ fn test_journal(id: &str) -> tumult_core::types::Journal {
     use tumult_core::types::*;
     Journal {
         target_version: None,
+        target: None,
         experiment_title: format!("dispatch {id}"),
         experiment_id: id.into(),
         status: ExperimentStatus::Completed,

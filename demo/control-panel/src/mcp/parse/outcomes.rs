@@ -95,7 +95,8 @@ pub struct ComplianceOutcome {
     pub framework: String,
     /// Fraction of journals that completed (0.0-1.0).
     pub pass_rate: f64,
-    /// Recovery-compliance proxy (0.0-1.0); `None` for a pass-rate-only verdict.
+    /// Share of the watched runs that recovered in time (0.0-1.0); `None`
+    /// for a pass-rate-only verdict.
     pub recovery_compliance: Option<f64>,
     /// Evidence-strength verdict (`COMPLIANT` / `PARTIAL` / `NON-COMPLIANT`,
     /// possibly with a `(pass-rate only)` suffix). NOT a compliance attestation.

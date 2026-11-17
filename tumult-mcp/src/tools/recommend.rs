@@ -463,6 +463,7 @@ mod tests {
         // A completed run that exercised exactly one of the two actions.
         let journal = tumult_core::types::Journal {
             target_version: None,
+            target: None,
             experiment_title: "coverage drill".into(),
             experiment_id: "run-cov-1".into(),
             status: tumult_core::types::ExperimentStatus::Completed,

@@ -154,6 +154,7 @@ mod tests {
     ) -> Journal {
         Journal {
             target_version: None,
+            target: None,
             experiment_title: "t".into(),
             experiment_id: "id1".into(),
             status,

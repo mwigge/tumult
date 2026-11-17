@@ -225,6 +225,7 @@ mod tests {
     fn sample_journal() -> Journal {
         Journal {
             target_version: None,
+            target: None,
             experiment_title: "DB failover test".into(),
             experiment_id: "test-001".into(),
             status: ExperimentStatus::Completed,

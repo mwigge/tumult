@@ -79,10 +79,109 @@ pub fn cmd_export(journal_path: &Path, format: ExportFormat) -> Result<()> {
 
 // ── Trend command ─────────────────────────────────────────────
 
+/// The metrics a trend can be of.
+const TREND_METRICS: [&str; 4] = [
+    "resilience_score",
+    "duration_ms",
+    "estimate_accuracy",
+    "method_step_count",
+];
+
+/// The queries of a trend of `metric`: its points, oldest first, and their
+/// summary. `None` for a metric a trend cannot be of.
+///
+/// They read every run of the store, which holds the journals of the scope
+/// only (see [`load_in_scope`]): the points and their summary are over the
+/// same runs.
+fn trend_queries(metric: &str) -> Option<(&'static str, &'static str)> {
+    // Pre-built queries keyed by metric — no format! interpolation (DB-03)
+    Some(match metric {
+        "resilience_score" => (
+            "SELECT experiment_id, title, status, resilience_score, started_at_ns FROM experiments WHERE resilience_score IS NOT NULL ORDER BY started_at_ns",
+            "SELECT count(*) as runs, min(resilience_score) as min, max(resilience_score) as max, avg(resilience_score) as avg FROM experiments WHERE resilience_score IS NOT NULL",
+        ),
+        "duration_ms" => (
+            "SELECT experiment_id, title, status, duration_ms, started_at_ns FROM experiments WHERE duration_ms IS NOT NULL ORDER BY started_at_ns",
+            "SELECT count(*) as runs, min(duration_ms) as min, max(duration_ms) as max, avg(duration_ms) as avg FROM experiments WHERE duration_ms IS NOT NULL",
+        ),
+        "estimate_accuracy" => (
+            "SELECT experiment_id, title, status, estimate_accuracy, started_at_ns FROM experiments WHERE estimate_accuracy IS NOT NULL ORDER BY started_at_ns",
+            "SELECT count(*) as runs, min(estimate_accuracy) as min, max(estimate_accuracy) as max, avg(estimate_accuracy) as avg FROM experiments WHERE estimate_accuracy IS NOT NULL",
+        ),
+        "method_step_count" => (
+            "SELECT experiment_id, title, status, method_step_count, started_at_ns FROM experiments WHERE method_step_count IS NOT NULL ORDER BY started_at_ns",
+            "SELECT count(*) as runs, min(method_step_count) as min, max(method_step_count) as max, avg(method_step_count) as avg FROM experiments WHERE method_step_count IS NOT NULL",
+        ),
+        _ => return None,
+    })
+}
+
+/// The start of the window `--last` asks for, in epoch nanoseconds. `None`
+/// when it asks for none.
+fn window_start_ns(last: Option<&str>) -> Result<Option<i64>> {
+    const DAY_NS: i64 = 86_400 * 1_000_000_000;
+
+    let Some(window) = last else {
+        return Ok(None);
+    };
+    let days: i64 = window
+        .trim_end_matches('d')
+        .parse()
+        .with_context(|| format!("--last must be a number of days (e.g., 30d), got: {window}"))?;
+    let now_ns = chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0);
+    Ok(Some(now_ns.saturating_sub(days.saturating_mul(DAY_NS))))
+}
+
+/// Read the journals at `journals_path`, one journal or a directory of
+/// them, and put the ones in `scope` into `store`. The number of journals
+/// read, in the scope or not.
+fn load_in_scope(
+    journals_path: &Path,
+    scope: &mut tumult_core::journal::JournalScope,
+    store: &tumult_lake::AnalyticsStore,
+) -> Result<usize> {
+    use tumult_core::journal::read_journal;
+
+    if journals_path.is_file() {
+        let journal = read_journal(journals_path)?;
+        if scope.admit(&journal) {
+            store.ingest_journal(&journal)?;
+        }
+        return Ok(1);
+    }
+    if !journals_path.is_dir() {
+        bail!("path does not exist: {}", journals_path.display());
+    }
+    let mut count = 0;
+    for entry in std::fs::read_dir(journals_path)? {
+        let path = entry?.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("toon") {
+            continue;
+        }
+        match read_journal(&path) {
+            Ok(journal) => {
+                count += 1;
+                if scope.admit(&journal) {
+                    store.ingest_journal(&journal)?;
+                }
+            }
+            Err(e) => super::events::journal_skipped(&path, &e),
+        }
+    }
+    Ok(count)
+}
+
+/// One line of a table: each cell in a column 20 wide.
+fn table_line(cells: &[String]) -> String {
+    cells.iter().fold(String::new(), |mut line, cell| {
+        let _ = write!(line, "{cell:<20}");
+        line
+    })
+}
+
 /// # Errors
 ///
 /// Returns an error if journals cannot be read or the analytics query fails.
-#[allow(clippy::too_many_lines)] // Multi-probe trend analysis output requires verbose formatting across multiple metric types
 #[must_use = "callers must handle trend analysis errors"]
 pub fn cmd_trend(
     journals_path: &Path,
@@ -90,88 +189,28 @@ pub fn cmd_trend(
     last: Option<&str>,
     target: Option<&str>,
 ) -> Result<()> {
-    use tumult_core::journal::read_journal;
+    use tumult_core::journal::JournalScope;
     use tumult_lake::AnalyticsStore;
 
+    let mut scope = JournalScope::new(window_start_ns(last)?, target);
     let store = AnalyticsStore::in_memory()?;
-    let mut count = 0;
+    let count = load_in_scope(journals_path, &mut scope, &store)?;
 
-    if journals_path.is_dir() {
-        for entry in std::fs::read_dir(journals_path)? {
-            let path = entry?.path();
-            if path.extension().and_then(|e| e.to_str()) == Some("toon") {
-                match read_journal(&path) {
-                    Ok(journal) => {
-                        store.ingest_journal(&journal)?;
-                        count += 1;
-                    }
-                    Err(e) => super::events::journal_skipped(&path, &e),
-                }
-            }
-        }
-    } else if journals_path.is_file() {
-        let journal = read_journal(journals_path)?;
-        store.ingest_journal(&journal)?;
-        count = 1;
-    } else {
-        bail!("path does not exist: {}", journals_path.display());
+    crate::outln!("Loaded {count} journal(s)");
+    if let Some(note) = scope.left_out_note() {
+        crate::outln!("{note}");
     }
+    crate::outln!();
 
-    crate::outln!("Loaded {count} journal(s)\n");
-
-    let valid_metrics = [
-        "resilience_score",
-        "duration_ms",
-        "estimate_accuracy",
-        "method_step_count",
-    ];
-    if !valid_metrics.contains(&metric) {
+    let Some((points_sql, summary_sql)) = trend_queries(metric) else {
         bail!(
             "unknown metric: {}. Valid: {}",
             metric,
-            valid_metrics.join(", ")
+            TREND_METRICS.join(", ")
         );
-    }
-
-    // Parse --last flag into nanosecond cutoff
-    let time_filter = if let Some(window) = last {
-        let days: i64 = window.trim_end_matches('d').parse().with_context(|| {
-            format!("--last must be a number of days (e.g., 30d), got: {window}")
-        })?;
-        let cutoff_ns =
-            chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0) - (days * 86400 * 1_000_000_000);
-        format!(" AND started_at_ns >= {cutoff_ns}")
-    } else {
-        String::new()
     };
-
-    // Pre-built queries keyed by metric — no format! interpolation (DB-03)
-    let base_sql = match metric {
-        "resilience_score" => "SELECT experiment_id, title, status, resilience_score, started_at_ns FROM experiments WHERE resilience_score IS NOT NULL",
-        "duration_ms" => "SELECT experiment_id, title, status, duration_ms, started_at_ns FROM experiments WHERE duration_ms IS NOT NULL",
-        "estimate_accuracy" => "SELECT experiment_id, title, status, estimate_accuracy, started_at_ns FROM experiments WHERE estimate_accuracy IS NOT NULL",
-        "method_step_count" => "SELECT experiment_id, title, status, method_step_count, started_at_ns FROM experiments WHERE method_step_count IS NOT NULL",
-        _ => unreachable!("validated above"),
-    };
-    let target_filter = if target.is_some() {
-        // Bind the LIKE pattern as a query parameter to prevent SQL injection.
-        " AND lower(title) LIKE ?"
-    } else {
-        ""
-    };
-    let sql = format!("{base_sql}{time_filter}{target_filter} ORDER BY started_at_ns");
-
-    let (columns, rows) = if let Some(t) = target {
-        let like_pattern = format!("%{}%", t.to_lowercase());
-        // Fetch column names from the base SQL (schema is identical regardless of filter).
-        let columns = store.query_columns(base_sql)?;
-        let rows = store.query_with_param(&sql, &like_pattern)?;
-        (columns, rows)
-    } else {
-        let columns = store.query_columns(&sql)?;
-        let rows = store.query(&sql)?;
-        (columns, rows)
-    };
+    let columns = store.query_columns(points_sql)?;
+    let rows = store.query(points_sql)?;
 
     if rows.is_empty() {
         crate::outln!("No data points for metric: {metric}");
@@ -179,34 +218,14 @@ pub fn cmd_trend(
     }
 
     crate::outln!("Trend: {} ({} data points)\n", metric, rows.len());
-    crate::outln!(
-        "{}",
-        columns.iter().fold(String::new(), |mut s, c| {
-            let _ = write!(s, "{c:<20}");
-            s
-        })
-    );
+    crate::outln!("{}", table_line(&columns));
     crate::outln!("{}", "-".repeat(columns.len() * 20));
     for row in &rows {
-        crate::outln!(
-            "{}",
-            row.iter().fold(String::new(), |mut s, v| {
-                let _ = write!(s, "{v:<20}");
-                s
-            })
-        );
+        crate::outln!("{}", table_line(row));
     }
 
-    // Summary stats — pre-built per metric
-    let stats_sql = match metric {
-        "resilience_score" => "SELECT count(*) as runs, min(resilience_score) as min, max(resilience_score) as max, avg(resilience_score) as avg FROM experiments WHERE resilience_score IS NOT NULL",
-        "duration_ms" => "SELECT count(*) as runs, min(duration_ms) as min, max(duration_ms) as max, avg(duration_ms) as avg FROM experiments WHERE duration_ms IS NOT NULL",
-        "estimate_accuracy" => "SELECT count(*) as runs, min(estimate_accuracy) as min, max(estimate_accuracy) as max, avg(estimate_accuracy) as avg FROM experiments WHERE estimate_accuracy IS NOT NULL",
-        "method_step_count" => "SELECT count(*) as runs, min(method_step_count) as min, max(method_step_count) as max, avg(method_step_count) as avg FROM experiments WHERE method_step_count IS NOT NULL",
-        _ => unreachable!("validated above"),
-    };
-    let stats = store.query(stats_sql)?;
-    if let Some(row) = stats.first() {
+    let summary = store.query(summary_sql)?;
+    if let Some(row) = summary.first() {
         crate::outln!(
             "\nSummary: {} runs, min={}, max={}, avg={}",
             row[0],

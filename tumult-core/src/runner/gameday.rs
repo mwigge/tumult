@@ -327,32 +327,15 @@ pub fn run_gameday_with_wiring(
 /// Computes recovery compliance score from MTTR data in journals: of the
 /// runs that watched for recovery, the share that measured one within the
 /// target. A run that measured none, because the target did not come back or
-/// its method failed, is not within the target.
+/// its method failed, is not within the target. The rule is the one of
+/// [`ComplianceSignals`](crate::compliance::ComplianceSignals).
 fn compute_recovery_compliance(journals: &[Journal], mttr_target_s: f64) -> f64 {
-    let mut total_recovery = 0;
-    let mut compliant_recovery = 0;
-
+    let mut signals = crate::compliance::ComplianceSignals::default();
     for journal in journals {
-        if journal.post_result.is_none() {
-            continue;
-        }
-        total_recovery += 1;
-        if journal
-            .recovery_time_s()
-            .is_some_and(|seconds| seconds <= mttr_target_s)
-        {
-            compliant_recovery += 1;
-        }
+        signals.accumulate(journal);
     }
-
-    if total_recovery == 0 {
-        1.0 // No recovery data → assume compliant
-    } else {
-        #[allow(clippy::cast_precision_loss)]
-        {
-            f64::from(compliant_recovery) / f64::from(total_recovery)
-        }
-    }
+    // No run watched for recovery: nothing speaks against the game day.
+    signals.recovery_compliance(mttr_target_s).unwrap_or(1.0)
 }
 
 /// Computes compliance coverage from article mappings.

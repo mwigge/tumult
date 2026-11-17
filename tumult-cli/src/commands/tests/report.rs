@@ -258,13 +258,14 @@ fn compliance_runs_over_journal_with_mttr() {
 
     result.unwrap();
     let out = printed.stdout;
-    assert!(out.contains("  Pass rate: 100.0%\n"), "{out}");
     assert!(
-        out.contains("  Recovery compliance: 100.0% (MTTR<="),
+        out.contains(
+            "  Pass rate: 100.0%\n  \
+             Recovery within 30s: 100.0% of the runs that watched for recovery (1 of 1)\n  \
+             Evidence verdict: COMPLIANT\n"
+        ),
         "{out}"
     );
-    assert!(out.contains("  Evidence verdict: COMPLIANT\n"), "{out}");
-    assert!(!out.contains("pass rate ONLY"), "{out}");
 }
 
 #[test]

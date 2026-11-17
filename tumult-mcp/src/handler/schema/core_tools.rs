@@ -252,7 +252,7 @@ pub struct ComplianceTool {
 /// Arguments for the `tumult_trend` tool.
 #[macros::mcp_tool(
     name = "tumult_trend",
-    description = "Cross-run metric trend over journals (a .toon journal file or a directory of them): metric one of resilience_score (default), duration_ms, estimate_accuracy, method_step_count; optional last window (e.g. 30d) and target title filter. Returns time-ordered points and a direction verdict.",
+    description = "Cross-run metric trend over journals (a .toon journal file or a directory of them): metric one of resilience_score (default), duration_ms, estimate_accuracy, method_step_count; optional last window (e.g. 30d) and target (the system or the technology the journal names). Returns time-ordered points and a direction verdict.",
     read_only_hint = true,
     idempotent_hint = true,
     open_world_hint = false
@@ -267,7 +267,8 @@ pub struct TrendTool {
     pub metric: String,
     /// Time window in days (e.g. `30d`).
     pub last: Option<String>,
-    /// Case-insensitive experiment-title substring filter.
+    /// Only the runs on this target: the system or the technology the
+    /// journal names, whole and in any case.
     pub target: Option<String>,
 }
 fn default_trend_metric() -> String {

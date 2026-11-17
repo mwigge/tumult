@@ -110,15 +110,150 @@ pub fn read_journal(path: &Path) -> Result<Journal, JournalError> {
     toon_format::decode_default(&content).map_err(|e| JournalError::DecodeError(e.to_string()))
 }
 
+/// Which journals a view over many of them is about: the runs that started
+/// at or after a time, on one target. Without either bound it is about all
+/// of them.
+#[derive(Debug, Default)]
+pub struct JournalScope {
+    since_ns: Option<i64>,
+    target: Option<String>,
+    without_target: usize,
+}
+
+impl JournalScope {
+    /// The scope of the runs that started at or after `since_ns`, in epoch
+    /// nanoseconds, on `target`: the system or the technology a journal
+    /// names (see [`Journal::is_on`]).
+    #[must_use]
+    pub fn new(since_ns: Option<i64>, target: Option<&str>) -> Self {
+        Self {
+            since_ns,
+            target: target.map(str::to_owned),
+            without_target: 0,
+        }
+    }
+
+    /// Whether `journal` is in the scope. When a target is asked for, a
+    /// journal of the time window that names no target cannot be placed: it
+    /// is left out, and counted in [`without_target`](Self::without_target).
+    pub fn admit(&mut self, journal: &Journal) -> bool {
+        if self
+            .since_ns
+            .is_some_and(|since_ns| journal.started_at_ns < since_ns)
+        {
+            return false;
+        }
+        let Some(target) = &self.target else {
+            return true;
+        };
+        let Some(on_target) = journal.is_on(target) else {
+            self.without_target += 1;
+            return false;
+        };
+        on_target
+    }
+
+    /// How many journals were left out for naming no target.
+    #[must_use]
+    pub fn without_target(&self) -> usize {
+        self.without_target
+    }
+
+    /// The line that says how many journals were left out for naming no
+    /// target. `None` when none was.
+    #[must_use]
+    pub fn left_out_note(&self) -> Option<String> {
+        if self.without_target == 0 {
+            return None;
+        }
+        Some(format!(
+            "Left out: {} journal(s) that name no target (a journal names the target its \
+             experiment declares, since 3.0.2)",
+            self.without_target
+        ))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::types::*;
     use tempfile::TempDir;
 
+    /// A journal of a run that started at `started_at_ns`, on the target
+    /// `system` when one is given.
+    fn started_on(started_at_ns: i64, system: Option<&str>) -> Journal {
+        let mut journal = minimal_journal();
+        journal.started_at_ns = started_at_ns;
+        journal.target = system.map(|system| ExperimentTarget {
+            system: system.into(),
+            technology: Some("mysql".into()),
+            environment: None,
+            criticality: None,
+            namespace: None,
+            version: None,
+        });
+        journal
+    }
+
+    #[test]
+    fn a_scope_without_bounds_admits_every_journal() {
+        let mut scope = JournalScope::new(None, None);
+
+        assert!(scope.admit(&started_on(i64::MIN, None)));
+        assert!(scope.admit(&started_on(1, Some("orders"))));
+        assert_eq!(scope.without_target(), 0);
+        assert_eq!(scope.left_out_note(), None);
+    }
+
+    #[test]
+    fn a_scope_admits_the_runs_that_started_at_or_after_its_start() {
+        let mut scope = JournalScope::new(Some(1_000), None);
+
+        assert!(!scope.admit(&started_on(999, None)));
+        assert!(scope.admit(&started_on(1_000, None)));
+        assert!(scope.admit(&started_on(1_001, None)));
+    }
+
+    #[test]
+    fn a_scope_on_a_target_admits_the_runs_on_it() {
+        let mut scope = JournalScope::new(None, Some("Orders"));
+
+        assert!(scope.admit(&started_on(1, Some("orders"))));
+        assert!(!scope.admit(&started_on(1, Some("sessions"))));
+        // A run on another target is known not to be on this one: it is
+        // not a journal that names no target.
+        assert_eq!(scope.without_target(), 0);
+
+        let mut by_technology = JournalScope::new(None, Some("mysql"));
+        assert!(by_technology.admit(&started_on(1, Some("sessions"))));
+    }
+
+    #[test]
+    fn a_scope_on_a_target_leaves_out_and_counts_the_journals_that_name_none() {
+        let mut scope = JournalScope::new(Some(1_000), Some("orders"));
+
+        assert!(!scope.admit(&started_on(1_000, None)));
+        assert!(!scope.admit(&started_on(2_000, None)));
+        // Before the window: out of the scope whatever it was on.
+        assert!(!scope.admit(&started_on(999, None)));
+        assert!(!scope.admit(&started_on(999, Some("orders"))));
+        assert!(scope.admit(&started_on(1_000, Some("orders"))));
+
+        assert_eq!(scope.without_target(), 2);
+        assert_eq!(
+            scope.left_out_note().as_deref(),
+            Some(
+                "Left out: 2 journal(s) that name no target (a journal names the target its \
+                 experiment declares, since 3.0.2)"
+            )
+        );
+    }
+
     fn minimal_journal() -> Journal {
         Journal {
             target_version: None,
+            target: None,
             experiment_title: "test experiment".into(),
             experiment_id: "test-id-001".into(),
             status: ExperimentStatus::Completed,

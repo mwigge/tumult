@@ -12,6 +12,7 @@ use tumult_test_utils::EnvGuard;
 fn journal(id: &str, started_at_ns: i64) -> Journal {
     Journal {
         target_version: None,
+        target: None,
         experiment_title: format!("store test {id}"),
         experiment_id: id.into(),
         status: ExperimentStatus::Completed,

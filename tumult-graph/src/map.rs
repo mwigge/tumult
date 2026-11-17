@@ -287,6 +287,7 @@ mod tests {
     fn base_journal(id: &str, status: ExperimentStatus) -> Journal {
         Journal {
             target_version: None,
+            target: None,
             experiment_title: "Latency drill".into(),
             experiment_id: id.into(),
             status,
