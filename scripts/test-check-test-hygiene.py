@@ -184,6 +184,25 @@ class RustHelpers(unittest.TestCase):
             keys = [key for key, _rule, _line, _msg in guard.scan(root)]
         self.assertEqual(keys, ["two/tests/it.rs::t::no-assert"])
 
+    def test_the_helpers_of_the_shared_test_crate_count_in_every_crate(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for rel, text in {
+                "tumult-test-utils/src/golden.rs": (
+                    "pub fn assert_kept(x: u8) { assert!(x > 0); }\n"
+                    "pub fn assert_nothing(x: u8) { log(x); }\n"
+                ),
+                "one/tests/it.rs": test_fn("assert_kept(1);"),
+                "two/tests/common/mod.rs": "pub fn assert_report_kept(x: u8) { assert_kept(x); }\n",
+                "two/tests/it.rs": test_fn("common::assert_report_kept(1);"),
+                "three/tests/it.rs": test_fn("assert_nothing(1);"),
+            }.items():
+                path = root / rel
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(text, encoding="utf-8")
+            keys = [key for key, _rule, _line, _msg in guard.scan(root)]
+        self.assertEqual(keys, ["three/tests/it.rs::t::no-assert"])
+
 
 class RustResultTests(unittest.TestCase):
     signature = "fn t() -> Result<(), Box<dyn std::error::Error>>"
