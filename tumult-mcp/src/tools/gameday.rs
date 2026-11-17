@@ -212,19 +212,9 @@ pub fn gameday_run(gameday_path: &str) -> Result<String, ToolError> {
         experiments.push(experiment);
     }
 
-    // Same load adapter as `tumult gameday run` (CLI parity): a declared
-    // load config runs through the shared executor for its tool instead of
-    // being silently dropped.
-    let load_executor = gameday
-        .load
-        .as_ref()
-        .map(|load| tumult_core::runner::load_executor_for(&load.tool))
-        .transpose()
-        .map_err(ToolError::InvalidInput)?;
-    let config = RunConfig {
-        load_executor,
-        ..RunConfig::default()
-    };
+    // The runner runs a declared load with the adapter of its tool, as for
+    // `tumult gameday run`.
+    let config = RunConfig::default();
 
     let journal_path = path.with_extension("journal.toon");
     let journal_output = tumult_core::journal::JournalOutput::prepare(&journal_path)
@@ -273,11 +263,11 @@ pub fn gameday_run(gameday_path: &str) -> Result<String, ToolError> {
         )
         .ok();
     } else if gameday.load.is_some() {
-        // Report the gap rather than stay silent: the campaign declared load but no result
-        // came back (e.g. the k6 binary is not installed on this host).
+        // Report the gap rather than stay silent: the campaign declared load, the load
+        // started, but no result came back. A load that does not start ends the campaign.
         writeln!(
             output,
-            "Load: declared but produced no result (load tool failed to start; see server logs)"
+            "Load: declared but produced no result (the load started but left none; see server logs)"
         )
         .ok();
     }

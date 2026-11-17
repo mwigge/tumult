@@ -202,3 +202,115 @@ fn a_run_whose_method_failed_is_not_a_recovery_within_target() {
         result.resilience_score.recovery_compliance
     );
 }
+
+// -- The shared load of a game day
+
+/// A game day of one experiment under `load`.
+fn gameday_under(load: Option<LoadConfig>) -> crate::types::GameDay {
+    use crate::types::{GameDay, GameDayExperiment, ScoringConfig};
+
+    GameDay {
+        title: "Under load".into(),
+        description: None,
+        tags: vec![],
+        regulatory: None,
+        load,
+        experiments: vec![GameDayExperiment {
+            path: "exp.toon".into(),
+            compliance_maps: vec![],
+        }],
+        scoring: ScoringConfig::default(),
+    }
+}
+
+/// A short load of `tool`.
+fn short_load(tool: LoadTool) -> LoadConfig {
+    LoadConfig {
+        tool,
+        script: std::path::PathBuf::from("http://127.0.0.1:9/health"),
+        vus: Some(1),
+        duration_s: Some(0.2),
+        thresholds: HashMap::new(),
+        profile: None,
+    }
+}
+
+/// Run `gameday` with its one experiment; the outcome and the number of
+/// steps the experiment ran.
+fn run_one(
+    gameday: &crate::types::GameDay,
+    config: &RunConfig,
+) -> (Result<GameDayJournal, RunnerError>, usize) {
+    let mock = MockExecutor::always_succeed();
+    let calls = mock.call_count.clone();
+    let executor: Arc<dyn ActivityExecutor> = Arc::new(mock);
+    let result = run_gameday(
+        gameday,
+        &[minimal_experiment()],
+        &executor,
+        &Arc::new(ControlRegistry::new()),
+        config,
+    );
+    (result, calls.load(Ordering::SeqCst))
+}
+
+#[test]
+fn a_game_day_whose_load_does_not_start_ends_with_the_error_before_any_step() {
+    let config = RunConfig {
+        load_executor: Some(Arc::new(super::load_tests::NoStart)),
+        ..RunConfig::default()
+    };
+
+    let (result, steps) = run_one(&gameday_under(Some(short_load(LoadTool::Oha))), &config);
+
+    assert!(
+        matches!(&result, Err(RunnerError::LoadStart(reason)) if reason == super::load_tests::NO_START),
+        "{result:?}"
+    );
+    assert_eq!(steps, 0);
+}
+
+#[test]
+fn a_game_day_whose_load_tool_has_no_adapter_ends_with_the_error_before_any_step() {
+    let gameday = gameday_under(Some(short_load(LoadTool::Jmeter)));
+
+    let (result, steps) = run_one(&gameday, &RunConfig::default());
+
+    assert!(
+        matches!(&result, Err(RunnerError::LoadStart(reason)) if reason.contains("jmeter")),
+        "{result:?}"
+    );
+    assert_eq!(steps, 0);
+}
+
+#[test]
+fn a_game_day_that_declares_no_load_scores_full_load_impact() {
+    let (result, _) = run_one(&gameday_under(None), &RunConfig::default());
+
+    let journal = result.expect("the game day runs");
+    assert!(journal.load_result.is_none());
+    assert!(
+        (journal.resilience_score.load_impact_tolerance - 1.0).abs() < f64::EPSILON,
+        "{:?}",
+        journal.resilience_score
+    );
+}
+
+#[test]
+fn a_game_day_whose_load_left_no_result_scores_no_load_impact() {
+    let (load, _) = super::load_tests::ScriptedLoad::answering(Err("no summary".into()));
+    let config = RunConfig {
+        load_executor: Some(Arc::new(load)),
+        ..RunConfig::default()
+    };
+
+    let (result, _) = run_one(&gameday_under(Some(short_load(LoadTool::Oha))), &config);
+
+    let journal = result.expect("the game day runs");
+    assert!(journal.load_result.is_none());
+    assert!(
+        journal.resilience_score.load_impact_tolerance.abs() < f64::EPSILON,
+        "{:?}",
+        journal.resilience_score
+    );
+}

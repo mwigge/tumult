@@ -1678,3 +1678,131 @@ async fn a_daemon_run_records_the_version_its_target_served_during_the_run() {
     assert_eq!(rows[0]["target_version"], serde_json::json!("1.5.0"));
     assert_eq!(rows[0]["version_source"], serde_json::json!("observed"));
 }
+
+/// One action under an oha load. Nobody listens on the port: the stand-ins
+/// below send no request.
+const OHA_LOAD_TOON: &str = r#"
+title: oha load queue experiment
+load:
+  tool: oha
+  script: "http://127.0.0.1:9/health"
+  vus: 1
+  duration_s: 1.0
+method[1]:
+  - name: action-1
+    activity_type: action
+    provider:
+      type: native
+      plugin: test
+      function: noop
+"#;
+
+/// One action under a load of a tool that has no adapter.
+const JMETER_LOAD_TOON: &str = r"
+title: jmeter load queue experiment
+load:
+  tool: jmeter
+  script: plan.jmx
+  vus: 1
+  duration_s: 1.0
+method[1]:
+  - name: action-1
+    activity_type: action
+    provider:
+      type: native
+      plugin: test
+      function: noop
+";
+
+/// Put a stand-in in the place of `oha` and of `k6`. Each writes its name
+/// to `calls` next to itself. The oha one prints the summary of one window
+/// of 40 answered requests, as oha 1.x does; the k6 one ends at once.
+fn load_tool_stand_ins(env: &mut EnvGuard, dir: &std::path::Path) {
+    let summary = r#"{"summary":{"successRate":1.0,"total":1.0,"slowest":0.2,"fastest":0.01,"average":0.05,"requestsPerSec":40.0,"totalData":1,"sizePerRequest":1,"sizePerSec":1},"responseTimeHistogram":{},"latencyPercentiles":{"p50":0.02,"p95":0.08,"p99":0.1},"rps":{},"details":{},"statusCodeDistribution":{"200":40},"errorDistribution":{}}"#;
+    let oha = tumult_test_utils::fake_bin(
+        dir,
+        "oha",
+        &format!(
+            "echo oha >> \"$(dirname \"$0\")/calls\"\n[ \"$1\" = \"--version\" ] && exit 0\nprintf '%s' '{summary}'"
+        ),
+    );
+    let k6 = tumult_test_utils::fake_bin(dir, "k6", "echo k6 >> \"$(dirname \"$0\")/calls\"");
+    env.set("TUMULT_OHA_BINARY", &oha);
+    env.set("TUMULT_K6_BINARY", &k6);
+}
+
+/// The load tools the stand-ins in `dir` say were started, in order.
+fn load_tools_asked(dir: &std::path::Path) -> Vec<String> {
+    std::fs::read_to_string(dir.join("calls"))
+        .map(|text| text.lines().map(str::to_string).collect())
+        .unwrap_or_default()
+}
+
+/// Queue `toon` on a fresh daemon queue; the fixture and the id of the run.
+async fn queued_run_of(toon: &'static str) -> (Fixture, String) {
+    let fx = fixture_for(toon).await;
+    let queue = RunQueue::spawn(
+        fx.ingest.clone(),
+        fx.db_path.clone(),
+        RunQueueConfig {
+            concurrency: 1,
+            queue_depth: 4,
+            sweep_interval: Duration::from_secs(3600),
+        },
+        recording_factory(&fx.executed, Duration::ZERO),
+    );
+    let run_id = queue
+        .enqueue(
+            RunRequest {
+                definition_toon: toon.into(),
+                ..request()
+            },
+            None,
+        )
+        .await
+        .unwrap();
+    (fx, run_id)
+}
+
+/// A daemon run of a definition whose load names oha runs its load with
+/// oha, as `tumult run` does.
+#[tokio::test]
+async fn a_daemon_run_drives_its_load_with_the_tool_the_definition_names() {
+    let mut env = EnvGuard::lock();
+    let tools = tempfile::TempDir::new().unwrap();
+    load_tool_stand_ins(&mut env, tools.path());
+
+    let (fx, run_id) = queued_run_of(OHA_LOAD_TOON).await;
+
+    let state = await_terminal(&fx, &run_id).await;
+    let asked = load_tools_asked(tools.path());
+    assert!(asked.iter().any(|tool| tool == "oha"), "{asked:?}");
+    assert!(!asked.iter().any(|tool| tool == "k6"), "{asked:?}");
+    assert_eq!(state, run_state::PASSED);
+    assert_eq!(fx.executed.lock().unwrap().as_slice(), ["action-1"]);
+}
+
+/// A daemon run of a definition whose load names a tool without an adapter
+/// fails with a reason that names the tool, before any step runs and
+/// without starting another tool in its place. The runner refused it after
+/// the durable start, so the daemon keeps the run for recovery, as it does
+/// for every runner error.
+#[tokio::test]
+async fn a_daemon_run_refuses_a_load_tool_that_has_no_adapter_before_any_step() {
+    let mut env = EnvGuard::lock();
+    let tools = tempfile::TempDir::new().unwrap();
+    load_tool_stand_ins(&mut env, tools.path());
+
+    let (fx, run_id) = queued_run_of(JMETER_LOAD_TOON).await;
+
+    await_state(&fx, &run_id, run_state::ROLLBACK_PENDING).await;
+    let error = run_row(&fx, &run_id)["error"].clone();
+    assert!(
+        error
+            .as_str()
+            .is_some_and(|reason| reason.contains("jmeter")),
+        "{error}"
+    );
+    assert!(fx.executed.lock().unwrap().is_empty());
+    assert_eq!(load_tools_asked(tools.path()), Vec::<String>::new());
+}

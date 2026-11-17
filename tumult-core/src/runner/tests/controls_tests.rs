@@ -167,3 +167,27 @@ fn full_lifecycle_event_order() {
     assert!(method_idx < rollback_idx);
     assert!(rollback_idx < exp_end_idx);
 }
+
+#[test]
+fn controls_hear_after_experiment_when_the_load_does_not_start() {
+    let exp = super::load_tests::experiment_with_load();
+    let executor: Arc<dyn ActivityExecutor> = Arc::new(MockExecutor::always_succeed());
+    let mut controls = ControlRegistry::new();
+    let (recorder, events) = EventRecorder::new();
+    controls.register(Box::new(recorder));
+    let config = RunConfig {
+        load_executor: Some(Arc::new(super::load_tests::NoStart)),
+        ..RunConfig::default()
+    };
+
+    let run = run_experiment(&exp, &executor, &Arc::new(controls), &config);
+
+    assert!(matches!(run, Err(RunnerError::LoadStart(_))), "{run:?}");
+    let events = events.lock().unwrap();
+    assert_eq!(events.first(), Some(&LifecycleEvent::BeforeExperiment));
+    assert_eq!(events.last(), Some(&LifecycleEvent::AfterExperiment));
+    assert!(
+        !events.contains(&LifecycleEvent::BeforeMethod),
+        "{events:?}"
+    );
+}

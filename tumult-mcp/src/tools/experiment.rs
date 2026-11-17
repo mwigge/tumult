@@ -188,12 +188,8 @@ pub fn run_experiment(request: RunExperimentRequest<'_>) -> Result<StructuredRep
         rollback_strategy: strategy,
         cancellation_token: None,
         parent_context: request.parent_context,
-        load_executor: experiment
-            .load
-            .as_ref()
-            .map(|load| tumult_core::runner::load_executor_for(&load.tool))
-            .transpose()
-            .map_err(ToolError::InvalidInput)?,
+        // The runner runs a declared load with the adapter of its tool.
+        load_executor: None,
         max_concurrent_faults: None,
     };
 

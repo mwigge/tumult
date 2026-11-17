@@ -239,11 +239,11 @@ fn baseline_only_requires_probes() {
 }
 
 #[test]
-fn declared_load_without_executor_fails_before_faults() {
+fn a_declared_load_whose_tool_has_no_adapter_fails_before_faults() {
     let mut exp = minimal_experiment();
     exp.load = Some(LoadConfig {
-        tool: LoadTool::K6,
-        script: "unused.js".into(),
+        tool: LoadTool::Jmeter,
+        script: "unused.jmx".into(),
         vus: None,
         duration_s: None,
         thresholds: HashMap::new(),
@@ -252,13 +252,16 @@ fn declared_load_without_executor_fails_before_faults() {
     let mock = MockExecutor::always_succeed();
     let calls = mock.call_count.clone();
     let executor: Arc<dyn ActivityExecutor> = Arc::new(mock);
-    assert!(run_experiment(
+    let run = run_experiment(
         &exp,
         &executor,
         &Arc::new(ControlRegistry::new()),
-        &RunConfig::default()
-    )
-    .is_err());
+        &RunConfig::default(),
+    );
+    assert!(
+        matches!(&run, Err(RunnerError::LoadStart(reason)) if reason.contains("jmeter")),
+        "{run:?}"
+    );
     assert_eq!(calls.load(Ordering::SeqCst), 0);
 }
 

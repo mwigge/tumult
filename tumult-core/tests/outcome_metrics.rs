@@ -290,3 +290,48 @@ fn a_halted_run_is_counted_in_the_experiment_outcome_metrics() {
     assert_eq!(status, ExperimentStatus::Halted);
     assert_eq!(added, ONE_FAILURE);
 }
+
+#[test]
+fn a_run_whose_load_did_not_start_is_counted_and_timed_as_a_failure() {
+    let mut env = tumult_test_utils::EnvGuard::lock();
+    let tools = tempfile::TempDir::new().expect("tools directory");
+    env.set("TUMULT_OHA_BINARY", tools.path().join("no-oha"));
+    let experiment = Experiment {
+        load: Some(LoadConfig {
+            tool: LoadTool::Oha,
+            script: "http://127.0.0.1:9/health".into(),
+            vus: Some(1),
+            duration_s: Some(1.0),
+            thresholds: std::collections::HashMap::new(),
+            profile: None,
+        }),
+        ..one_action("load did not start")
+    };
+    let config = RunConfig {
+        load_executor: Some(Arc::new(
+            tumult_core::runner::oha::OhaLoadExecutor::default(),
+        )),
+        ..RunConfig::default()
+    };
+    let (provider, exporter, _one_run) = meter();
+    let before = outcomes(provider, exporter);
+    let executor: Arc<dyn ActivityExecutor> = Arc::new(Scripted {
+        probe: "ok",
+        action: Duration::ZERO,
+        cancel: None,
+    });
+
+    let run = run_experiment_with_sampling(
+        &experiment,
+        &executor,
+        &Arc::new(ControlRegistry::new()),
+        &config,
+        &SamplingConfig::default(),
+    );
+
+    assert!(
+        matches!(&run, Err(tumult_core::runner::RunnerError::LoadStart(_))),
+        "{run:?}"
+    );
+    assert_eq!(outcomes(provider, exporter).since(before), ONE_FAILURE);
+}

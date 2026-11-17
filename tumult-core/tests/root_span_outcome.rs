@@ -302,3 +302,118 @@ fn a_run_whose_method_failed_measures_no_recovery() {
     assert_eq!(objectives.verdicts[0].nfr_id, "rto");
     assert_eq!(objectives.verdicts[0].state, NfrState::Inconclusive);
 }
+
+/// One action under an oha load whose binary is missing.
+fn under_missing_oha(title: &str) -> (Experiment, RunConfig) {
+    let experiment = Experiment {
+        load: Some(LoadConfig {
+            tool: LoadTool::Oha,
+            script: "http://127.0.0.1:9/health".into(),
+            vus: Some(1),
+            duration_s: Some(1.0),
+            thresholds: std::collections::HashMap::new(),
+            profile: None,
+        }),
+        ..one_action(title)
+    };
+    let config = RunConfig {
+        load_executor: Some(Arc::new(
+            tumult_core::runner::oha::OhaLoadExecutor::default(),
+        )),
+        ..RunConfig::default()
+    };
+    (experiment, config)
+}
+
+#[test]
+fn a_run_whose_load_did_not_start_says_failed_and_its_load_span_says_why() {
+    let mut env = tumult_test_utils::EnvGuard::lock();
+    let tools = tempfile::TempDir::new().expect("tools directory");
+    env.set("TUMULT_OHA_BINARY", tools.path().join("no-oha"));
+    let (experiment, config) = under_missing_oha("load did not start");
+    let executor: Arc<dyn ActivityExecutor> = Arc::new(Target::answers("ok", "ok"));
+
+    let (run, spans) = capture_spans(|| {
+        run_experiment_with_sampling(
+            &experiment,
+            &executor,
+            &Arc::new(ControlRegistry::new()),
+            &config,
+            &SamplingConfig::default(),
+        )
+    });
+
+    assert!(
+        matches!(&run, Err(tumult_core::runner::RunnerError::LoadStart(_))),
+        "{run:?}"
+    );
+    let span = |name: &str| {
+        spans
+            .iter()
+            .find(|span| span.name == name)
+            .unwrap_or_else(|| panic!("no {name} span"))
+    };
+    let root = span("resilience.experiment");
+    assert_eq!(text(root, STATUS).as_deref(), Some("failed"));
+    assert_eq!(root.status, Status::error("failed"));
+    let load = span("resilience.load");
+    assert!(
+        matches!(&load.status, Status::Error { description } if description.contains("failed to start oha")),
+        "{:?}",
+        load.status
+    );
+    let why = text(load, "resilience.load.error");
+    assert!(
+        why.as_deref()
+            .is_some_and(|why| why.contains("failed to start oha")),
+        "{why:?}"
+    );
+}
+
+#[test]
+fn a_game_day_whose_load_did_not_start_says_why_on_its_span_and_runs_nothing() {
+    let mut env = tumult_test_utils::EnvGuard::lock();
+    let tools = tempfile::TempDir::new().expect("tools directory");
+    env.set("TUMULT_OHA_BINARY", tools.path().join("no-oha"));
+    let (experiment, config) = under_missing_oha("game day load did not start");
+    let gameday = GameDay {
+        title: "load did not start".into(),
+        description: None,
+        tags: vec![],
+        regulatory: None,
+        load: experiment.load.clone(),
+        experiments: vec![GameDayExperiment {
+            path: "one.toon".into(),
+            compliance_maps: vec![],
+        }],
+        scoring: ScoringConfig::default(),
+    };
+    let executor: Arc<dyn ActivityExecutor> = Arc::new(Target::answers("ok", "ok"));
+
+    let (run, spans) = capture_spans(|| {
+        tumult_core::runner::run_gameday(
+            &gameday,
+            &[one_action("one")],
+            &executor,
+            &Arc::new(ControlRegistry::new()),
+            &config,
+        )
+    });
+
+    assert!(
+        matches!(&run, Err(tumult_core::runner::RunnerError::LoadStart(_))),
+        "{run:?}"
+    );
+    let campaign = spans
+        .iter()
+        .find(|span| span.name == "resilience.gameday")
+        .expect("the span of the game day");
+    assert!(
+        matches!(&campaign.status, Status::Error { description } if description.contains("failed to start oha")),
+        "{:?}",
+        campaign.status
+    );
+    assert!(spans
+        .iter()
+        .all(|span| span.name != "resilience.experiment"));
+}

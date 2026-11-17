@@ -143,3 +143,39 @@ fn an_interrupted_run_logs_interrupted() {
     assert_eq!(journal.status, ExperimentStatus::Interrupted);
     assert_logged_once(&journal, &events, "interrupted");
 }
+
+#[test]
+fn a_run_whose_load_did_not_start_logs_failed_and_why() {
+    let executor: Arc<dyn ActivityExecutor> = Arc::new(Scripted::answers("200", "200"));
+    let config = RunConfig {
+        load_executor: Some(Arc::new(super::load_tests::NoStart)),
+        ..default_config()
+    };
+    let mut run = None;
+
+    let events = logged(|| {
+        run = Some(run_experiment_with_sampling(
+            &super::load_tests::experiment_with_load(),
+            &executor,
+            &Arc::new(ControlRegistry::new()),
+            &config,
+            &fast_sampling(),
+        ));
+    });
+
+    assert!(
+        matches!(run, Some(Err(RunnerError::LoadStart(_)))),
+        "{run:?}"
+    );
+    let completed: Vec<_> = events
+        .iter()
+        .filter(|event| event.event == "experiment.completed")
+        .collect();
+    assert_eq!(completed.len(), 1, "{events:?}");
+    assert_eq!(completed[0].field("status"), Some("failed"));
+    let refused = events
+        .iter()
+        .find(|event| event.event == "failed to start load test")
+        .unwrap_or_else(|| panic!("the reason is not logged: {events:?}"));
+    assert_eq!(refused.field("error"), Some(super::load_tests::NO_START));
+}

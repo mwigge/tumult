@@ -185,14 +185,6 @@ pub async fn cmd_run_with_baseline_mode<S: ::std::hash::BuildHasher>(
         experiment.load = Some(override_config.clone());
     }
 
-    // Create the load adapter for the experiment's load tool, if any
-    let load_executor = experiment
-        .load
-        .as_ref()
-        .map(|load| tumult_core::runner::load_executor_for(&load.tool))
-        .transpose()
-        .map_err(|e| anyhow::anyhow!(e))?;
-
     // The version that served the run is asked of the daemon, or of the
     // local store the run reports to; a run nobody observes says so.
     let version_resolver = super::target_version::resolver(auto_ingest);
@@ -207,7 +199,8 @@ pub async fn cmd_run_with_baseline_mode<S: ::std::hash::BuildHasher>(
         rollback_strategy,
         cancellation_token: Some(cancel_token),
         parent_context: None,
-        load_executor,
+        // The runner runs a declared load with the adapter of its tool.
+        load_executor: None,
         max_concurrent_faults: None,
     };
 

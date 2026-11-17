@@ -420,9 +420,10 @@ scrape_configs:
 A provider appearing in `discover` means its implementation is available; it
 does not establish access to a target or prove that dependencies are installed.
 Docker actions require access to a Docker daemon; Podman actions need Podman.
-CLI, MCP and daemon wire the k6 load executor. Load experiments still need a
-compatible k6 binary and a readable script; missing tools or startup failures
-reject execution before the fault method runs. Cloud and Windows
+CLI, MCP and daemon run a declared load with the adapter of its `load.tool`
+(k6 or oha). Load experiments still need that tool installed and, for k6, a
+readable script; missing tools or startup failures reject execution before
+the fault method runs. Cloud and Windows
 providers require their own credentials, platform and reachability. The demo
 stack does not grant host Docker control automatically.
 

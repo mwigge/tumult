@@ -155,14 +155,6 @@ pub fn cmd_gameday_run(gameday_path: &std::path::Path) -> Result<()> {
         experiments.push(experiment);
     }
 
-    // Create the load adapter for the gameday's load tool, if any
-    let load_executor = gameday
-        .load
-        .as_ref()
-        .map(|load| tumult_core::runner::load_executor_for(&load.tool))
-        .transpose()
-        .map_err(|e| anyhow::anyhow!(e))?;
-
     // Spawn a task that cancels the gameday if SIGINT (Ctrl-C) is received.
     let cancel_token = tokio_util::sync::CancellationToken::new();
     let cancel_token_for_signal = cancel_token.clone();
@@ -183,7 +175,8 @@ pub fn cmd_gameday_run(gameday_path: &std::path::Path) -> Result<()> {
         rollback_strategy: tumult_core::execution::RollbackStrategy::OnDeviation,
         cancellation_token: Some(cancel_token),
         parent_context: None,
-        load_executor,
+        // The runner runs a declared load with the adapter of its tool.
+        load_executor: None,
         max_concurrent_faults: None,
     };
 

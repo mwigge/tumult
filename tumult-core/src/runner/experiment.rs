@@ -58,7 +58,9 @@ pub fn run_orphan_rollback(
 ///
 /// # Errors
 ///
-/// Returns [`RunnerError::EmptyMethod`] if the experiment has no method steps.
+/// Returns [`RunnerError::EmptyMethod`] if the experiment has no method steps,
+/// and [`RunnerError::LoadStart`] if the declared load has no adapter or does
+/// not start; no fault runs then.
 pub fn run_experiment(
     experiment: &Experiment,
     executor: &Arc<dyn ActivityExecutor>,
@@ -82,7 +84,9 @@ pub fn run_experiment(
 ///
 /// # Errors
 ///
-/// Returns [`RunnerError::EmptyMethod`] if the experiment has no method steps.
+/// Returns [`RunnerError::EmptyMethod`] if the experiment has no method steps,
+/// and [`RunnerError::LoadStart`] if the declared load has no adapter or does
+/// not start; no fault runs then.
 #[allow(clippy::too_many_lines)]
 // run_experiment_with_sampling is a top-level orchestrator; splitting it
 // further would harm readability.
@@ -96,9 +100,11 @@ pub fn run_experiment_with_sampling(
     if config.baseline_mode == super::BaselineMode::Only {
         return run_probe_only(experiment, executor, config);
     }
-    if experiment.load.is_some() && config.load_executor.is_none() {
-        return Err(RunnerError::MissingLoadExecutor);
-    }
+    let load_executor = experiment
+        .load
+        .as_ref()
+        .map(|declared| load::executor_for(declared, config))
+        .transpose()?;
     if experiment.method.is_empty() {
         return Err(RunnerError::EmptyMethod);
     }
@@ -111,16 +117,21 @@ pub fn run_experiment_with_sampling(
         }
     }
 
-    let started = Instant::now();
-    let started_at_ns = epoch_nanos_now();
-    let experiment_id = uuid::Uuid::new_v4().to_string();
+    let run = RunStart {
+        experiment,
+        controls,
+        config,
+        experiment_id: uuid::Uuid::new_v4().to_string(),
+        started: Instant::now(),
+        started_at_ns: epoch_nanos_now(),
+    };
 
     // -- Root span: resilience.experiment wraps the entire lifecycle.
     let tracer = opentelemetry::global::tracer(TRACER_NAME);
     let exp_span = {
         let mut root_attrs = vec![
             KeyValue::new("resilience.experiment.title", experiment.title.clone()),
-            KeyValue::new("resilience.experiment.id", experiment_id.clone()),
+            KeyValue::new("resilience.experiment.id", run.experiment_id.clone()),
             KeyValue::new("resilience.test.kind", experiment.kind.to_string()),
         ];
         root_attrs.extend(super::telemetry::experiment_target_attributes(experiment));
@@ -145,10 +156,10 @@ pub fn run_experiment_with_sampling(
         .or_else(|_| std::env::var("LOGNAME"))
         .unwrap_or_else(|_| "unknown".to_string());
     tracing::info!(
-        experiment_id = %experiment_id,
+        experiment_id = %run.experiment_id,
         experiment_title = %experiment.title,
         user = %audit_user,
-        started_at_ns = started_at_ns,
+        started_at_ns = run.started_at_ns,
         "experiment.started"
     );
 
@@ -170,10 +181,7 @@ pub fn run_experiment_with_sampling(
 
     // If hypothesis before failed, abort -- skip method, go to rollbacks
     if hypothesis_before_met == Some(false) {
-        let ended_at_ns = epoch_nanos_now();
-        // Experiment durations never exceed u64::MAX milliseconds (~585M years).
-        #[allow(clippy::cast_possible_truncation)]
-        let duration_ms = started.elapsed().as_millis() as u64;
+        let ended = run.ended(ExperimentStatus::Aborted);
 
         // Run rollbacks if strategy says so and there are rollbacks to run
         let rollback_results = run_rollbacks(
@@ -184,64 +192,38 @@ pub fn run_experiment_with_sampling(
             true,
         );
 
-        controls.emit(&LifecycleEvent::AfterExperiment);
-
-        // Rollback failure counts in chaos experiments are always << u32::MAX.
-        #[allow(clippy::cast_possible_truncation)]
-        let rb_failures = rollback_results
-            .iter()
-            .filter(|r| r.status == ActivityStatus::Failed)
-            .count() as u32;
-
-        return Ok(seal(
-            Journal {
-                ended_at_ns,
-                duration_ms,
-                steady_state_before: hypothesis_before,
-                rollback_results,
-                rollback_failures: rb_failures,
-                ..Journal::for_experiment(
-                    experiment,
-                    experiment_id,
-                    ExperimentStatus::Aborted,
-                    started_at_ns,
-                )
-            },
-            experiment,
-            config,
-            &started,
-        ));
+        return Ok(run.finish(Journal {
+            steady_state_before: hypothesis_before,
+            rollback_results,
+            ..ended
+        }));
     }
 
     // -- Check cancellation before method
     if let Some(ref token) = config.cancellation_token {
         if token.is_cancelled() {
-            let ended_at_ns = epoch_nanos_now();
-            // Experiment durations never exceed u64::MAX milliseconds (~585M years).
-            #[allow(clippy::cast_possible_truncation)]
-            let duration_ms = started.elapsed().as_millis() as u64;
-            controls.emit(&LifecycleEvent::AfterExperiment);
-            return Ok(seal(
-                Journal {
-                    ended_at_ns,
-                    duration_ms,
-                    steady_state_before: hypothesis_before,
-                    ..Journal::for_experiment(
-                        experiment,
-                        experiment_id,
-                        ExperimentStatus::Interrupted,
-                        started_at_ns,
-                    )
-                },
-                experiment,
-                config,
-                &started,
-            ));
+            return Ok(run.finish(Journal {
+                steady_state_before: hypothesis_before,
+                ..run.ended(ExperimentStatus::Interrupted)
+            }));
         }
     }
 
-    // -- Start load test (background, if configured)
-    let (load_span_guard, load_handle) = load::start_load(experiment, config)?;
+    // -- Start load test (background, if configured). A load that does not
+    // start ends the run before the method, as a failed run: the controls
+    // hear the end, and the root span, the log and the metric get the
+    // outcome. The caller gets the error.
+    let (load_span_guard, load_handle) = match load::start_load(experiment, load_executor.as_ref())
+    {
+        Ok(running) => running,
+        Err(error) => {
+            run.finish(Journal {
+                steady_state_before: hypothesis_before,
+                ..run.ended(ExperimentStatus::Failed)
+            });
+            return Err(error);
+        }
+    };
 
     // -- Phase 2: Execute Method (DURING)
     controls.emit(&LifecycleEvent::BeforeMethod);
@@ -308,8 +290,7 @@ pub fn run_experiment_with_sampling(
     // hypothesis-after (we pulled the plug), end the load at once, run rollbacks
     // (treating the halt as needing rollback), and mark the run `Halted`.
     if let Some(mut halt) = halt {
-        let load_result =
-            load::stop_load(load_handle, config.load_executor.as_ref(), LoadEnd::Abort);
+        let load_result = load::stop_load(load_handle, load_executor.as_ref(), LoadEnd::Abort);
         drop(load_span_guard);
 
         let rollback_started = Instant::now();
@@ -320,31 +301,15 @@ pub fn run_experiment_with_sampling(
             &config.rollback_strategy,
             true,
         );
-        // Rollback durations never exceed u64::MAX milliseconds.
-        #[allow(clippy::cast_possible_truncation)]
-        {
-            halt.rollback_ms = rollback_started.elapsed().as_millis() as u64;
-        }
+        halt.rollback_ms = elapsed_ms(&rollback_started);
 
         let status = ExperimentStatus::Halted;
         let analysis = compute_analysis(experiment, &status);
-
-        let ended_at_ns = epoch_nanos_now();
-        // Experiment durations never exceed u64::MAX milliseconds.
-        #[allow(clippy::cast_possible_truncation)]
-        let duration_ms = started.elapsed().as_millis() as u64;
-
-        controls.emit(&LifecycleEvent::AfterExperiment);
-
-        // Rollback failure counts in chaos experiments are always << u32::MAX.
-        #[allow(clippy::cast_possible_truncation)]
-        let rb_failures = rollback_results
-            .iter()
-            .filter(|r| r.status == ActivityStatus::Failed)
-            .count() as u32;
+        let ended = run.ended(status);
+        run.tell_controls_it_ended();
 
         tracing::warn!(
-            experiment_id = %experiment_id,
+            experiment_id = %run.experiment_id,
             experiment_title = %experiment.title,
             guard = %halt.guard_name,
             observed = ?halt.observed,
@@ -354,22 +319,18 @@ pub fn run_experiment_with_sampling(
             "experiment.halted"
         );
 
-        let journal = Journal {
-            ended_at_ns,
-            duration_ms,
+        return Ok(run.seal(Journal {
             steady_state_before: hypothesis_before,
             method_results,
             rollback_results,
-            rollback_failures: rb_failures,
             during_result,
             load_result,
             analysis,
             halt: Some(halt),
             blast_radius,
             probe_samples,
-            ..Journal::for_experiment(experiment, experiment_id, status, started_at_ns)
-        };
-        return Ok(seal(journal, experiment, config, &started));
+            ..ended
+        }));
     }
 
     // -- Mid-method cancellation: the caller's token fired while the method
@@ -377,8 +338,7 @@ pub fn run_experiment_with_sampling(
     // `Completed` from here on — end the load at once, run rollbacks (a fault may still
     // be injected), and mark it `Interrupted`.
     if method_token.is_cancelled() {
-        let load_result =
-            load::stop_load(load_handle, config.load_executor.as_ref(), LoadEnd::Abort);
+        let load_result = load::stop_load(load_handle, load_executor.as_ref(), LoadEnd::Abort);
         drop(load_span_guard);
 
         let rollback_results = run_rollbacks(
@@ -391,43 +351,27 @@ pub fn run_experiment_with_sampling(
 
         let status = ExperimentStatus::Interrupted;
         let analysis = compute_analysis(experiment, &status);
-
-        let ended_at_ns = epoch_nanos_now();
-        // Experiment durations never exceed u64::MAX milliseconds.
-        #[allow(clippy::cast_possible_truncation)]
-        let duration_ms = started.elapsed().as_millis() as u64;
-
-        controls.emit(&LifecycleEvent::AfterExperiment);
-
-        // Rollback failure counts in chaos experiments are always << u32::MAX.
-        #[allow(clippy::cast_possible_truncation)]
-        let rb_failures = rollback_results
-            .iter()
-            .filter(|r| r.status == ActivityStatus::Failed)
-            .count() as u32;
+        let ended = run.ended(status);
+        run.tell_controls_it_ended();
 
         tracing::warn!(
-            experiment_id = %experiment_id,
+            experiment_id = %run.experiment_id,
             experiment_title = %experiment.title,
-            duration_ms = duration_ms,
+            duration_ms = ended.duration_ms,
             "experiment.interrupted"
         );
 
-        let journal = Journal {
-            ended_at_ns,
-            duration_ms,
+        return Ok(run.seal(Journal {
             steady_state_before: hypothesis_before,
             method_results,
             rollback_results,
-            rollback_failures: rb_failures,
             during_result,
             load_result,
             analysis,
             blast_radius,
             probe_samples,
-            ..Journal::for_experiment(experiment, experiment_id, status, started_at_ns)
-        };
-        return Ok(seal(journal, experiment, config, &started));
+            ..ended
+        }));
     }
 
     // -- Phase 3: POST -- recovery measurement, taken immediately after the
@@ -456,7 +400,7 @@ pub fn run_experiment_with_sampling(
         .map(|post| recovery_measured(post, actions_succeeded));
 
     // -- Stop load test, collect results, and enrich the span
-    let load_result = load::stop_load(load_handle, config.load_executor.as_ref(), LoadEnd::Stop);
+    let load_result = load::stop_load(load_handle, load_executor.as_ref(), LoadEnd::Stop);
 
     // -- Objectives: every declared NFR and recovery target gets a verdict
     // from the measurements above. A breached *blocking* objective turns a
@@ -530,28 +474,11 @@ pub fn run_experiment_with_sampling(
     // -- Phase 4: Analysis
     let analysis = compute_analysis(experiment, &status);
 
-    let ended_at_ns = epoch_nanos_now();
-    // Experiment durations never exceed u64::MAX milliseconds (~585M years).
-    #[allow(clippy::cast_possible_truncation)]
-    let duration_ms = started.elapsed().as_millis() as u64;
-
-    controls.emit(&LifecycleEvent::AfterExperiment);
-
-    // Rollback failure counts in chaos experiments are always << u32::MAX.
-    #[allow(clippy::cast_possible_truncation)]
-    let rb_failures = rollback_results
-        .iter()
-        .filter(|r| r.status == ActivityStatus::Failed)
-        .count() as u32;
-
-    let journal = Journal {
-        ended_at_ns,
-        duration_ms,
+    Ok(run.finish(Journal {
         steady_state_before: hypothesis_before,
         steady_state_after: hypothesis_after,
         method_results,
         rollback_results,
-        rollback_failures: rb_failures,
         during_result,
         post_result,
         load_result,
@@ -559,9 +486,65 @@ pub fn run_experiment_with_sampling(
         blast_radius,
         objectives,
         probe_samples,
-        ..Journal::for_experiment(experiment, experiment_id, status, started_at_ns)
-    };
-    Ok(seal(journal, experiment, config, &started))
+        ..run.ended(status)
+    }))
+}
+
+/// A run that has a root span: what every way it ends needs.
+struct RunStart<'a> {
+    experiment: &'a Experiment,
+    controls: &'a ControlRegistry,
+    config: &'a RunConfig,
+    experiment_id: String,
+    started: Instant,
+    started_at_ns: i64,
+}
+
+impl RunStart<'_> {
+    /// The journal of the run with `status`, ended now: the times are set,
+    /// the results are still empty.
+    fn ended(&self, status: ExperimentStatus) -> Journal {
+        Journal {
+            ended_at_ns: epoch_nanos_now(),
+            duration_ms: elapsed_ms(&self.started),
+            ..Journal::for_experiment(
+                self.experiment,
+                self.experiment_id.clone(),
+                status,
+                self.started_at_ns,
+            )
+        }
+    }
+
+    /// End the run with `journal`: tell the controls, then [`seal`](Self::seal).
+    fn finish(&self, journal: Journal) -> Journal {
+        self.tell_controls_it_ended();
+        self.seal(journal)
+    }
+
+    fn tell_controls_it_ended(&self) {
+        self.controls.emit(&LifecycleEvent::AfterExperiment);
+    }
+
+    /// Count the failed rollbacks of `journal`, and close the run with it
+    /// ([`seal`]).
+    fn seal(&self, journal: Journal) -> Journal {
+        let failed = journal
+            .rollback_results
+            .iter()
+            .filter(|r| r.status == ActivityStatus::Failed)
+            .count();
+        let journal = Journal {
+            rollback_failures: u32::try_from(failed).unwrap_or(u32::MAX),
+            ..journal
+        };
+        seal(journal, self.experiment, self.config, &self.started)
+    }
+}
+
+/// Milliseconds since `started`.
+fn elapsed_ms(started: &Instant) -> u64 {
+    u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX)
 }
 
 /// Evaluate the steady-state hypothesis (when present) inside a dedicated
@@ -814,7 +797,7 @@ fn run_probe_only(
         .experiment_title
         .push_str(" [baseline-only observation]");
     journal.ended_at_ns = epoch_nanos_now();
-    journal.duration_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+    journal.duration_ms = elapsed_ms(&started);
     journal.steady_state_before = Some(result);
     Ok(journal)
 }

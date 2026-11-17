@@ -49,8 +49,8 @@ pub enum RunnerError {
     EmptyMethod,
     #[error("baseline-only requires at least one steady-state probe")]
     MissingBaselineProbes,
-    #[error("declared load requires a load executor")]
-    MissingLoadExecutor,
+    /// A declared load could not start, or its tool has no adapter. No
+    /// fault ran.
     #[error("load startup failed: {0}")]
     LoadStart(String),
     /// A `GameDay` declares a different number of experiments than were provided.
@@ -322,9 +322,10 @@ pub struct RunConfig {
     /// `resilience.experiment` span is created as a child of this context,
     /// enabling cross-service trace linking (e.g. from an MCP tool span).
     pub parent_context: Option<opentelemetry::Context>,
-    /// Optional load test executor. When provided and the experiment has
-    /// a `load` config, the runner starts the load tool in the background
-    /// during method execution.
+    /// Optional load test executor for the declared `load`. When `None`,
+    /// the runner uses the adapter of the tool the load names
+    /// ([`load_executor_for`]); tests give a stand-in here. The runner
+    /// starts the load in the background during method execution.
     pub load_executor: Option<std::sync::Arc<dyn LoadExecutor>>,
     /// Optional override for the experiment's `max_concurrent_faults`
     /// blast-radius cap. When `Some`, it takes precedence over the value
