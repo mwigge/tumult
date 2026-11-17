@@ -6,22 +6,23 @@
 
 mod lab;
 
+use std::path::Path;
+
 use lab::{experiment, heal, inject, leave_marker, Lab};
 use sha2::{Digest, Sha256};
+use tumult_test_utils::assert_kept;
 
 const STEADY: &str = "The target says ok";
 
 /// Write the report of `journal.toon` in `format` and read it.
 fn report(lab: &Lab, format: &str) -> String {
+    report_of(lab, "journal.toon", format)
+}
+
+/// Write the report of the journal at `journal` in `format` and read it.
+fn report_of(lab: &Lab, journal: &str, format: &str) -> String {
     let file = format!("report.{format}");
-    let output = lab.tumult(&[
-        "report",
-        "journal.toon",
-        "--format",
-        format,
-        "--output",
-        &file,
-    ]);
+    let output = lab.tumult(&["report", journal, "--format", format, "--output", &file]);
     assert!(
         output.status.success(),
         "{}",
@@ -121,6 +122,20 @@ fn a_steady_state_that_did_not_hold_is_a_failed_case_of_its_own() {
     let suite = xml.split("<testsuite ").nth(1).expect("a suite");
     assert_eq!(attribute(suite, "tests"), "3");
     assert_eq!(attribute(suite, "failures"), "2");
+}
+
+#[test]
+fn the_junit_report_of_a_recorded_run_is_the_one_kept_with_the_tests() {
+    let lab = Lab::with_state("ok");
+    let workspace = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("the workspace");
+    let recorded = workspace.join("examples/recorded/api-saturation.journal.toon");
+    let kept_at = workspace.join("tumult-cli/tests/golden/api-saturation.report.junit.xml");
+
+    let xml = report_of(&lab, recorded.to_str().expect("a path"), "junit");
+
+    assert_kept(&kept_at, &xml);
 }
 
 #[test]

@@ -8524,6 +8524,7 @@ dependencies = [
  "tumult-lake",
  "tumult-metrics",
  "tumult-otel",
+ "tumult-test-utils",
 ]
 
 [[package]]
@@ -8561,10 +8562,16 @@ version = "3.0.1"
 dependencies = [
  "indexmap",
  "opentelemetry",
+ "opentelemetry-proto",
  "opentelemetry_sdk",
+ "serde",
+ "serde_json",
  "tempfile",
  "tokio",
+ "tonic",
  "tumult-core",
+ "tumult-lake",
+ "tumult-otlp",
 ]
 
 [[package]]

@@ -14,13 +14,33 @@ default = ["builders"]
 builders = ["dep:tumult-core", "dep:indexmap"]
 # Span and metric capture.
 otel = ["dep:opentelemetry", "dep:opentelemetry_sdk"]
+# The telemetry and journals of real runs, loaded into a store.
+recorded = [
+    "dep:tumult-core",
+    "dep:tumult-lake",
+    "dep:tumult-otlp",
+    "dep:opentelemetry-proto",
+    "dep:serde_json",
+]
 
 [dependencies]
 tumult-core = { path = "../tumult-core", optional = true }
 indexmap = { workspace = true, optional = true }
 opentelemetry = { workspace = true, optional = true }
 opentelemetry_sdk = { workspace = true, features = ["testing"], optional = true }
+opentelemetry-proto = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
+tumult-lake = { workspace = true, optional = true }
+tumult-otlp = { workspace = true, optional = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
 tokio = { workspace = true }
+# The recorder receives what the binary sends over OTLP.
+serde = { workspace = true }
+tonic = { workspace = true }
+
+# Makes the recording in `recorded`; see the head of the file.
+[[example]]
+name = "record_telemetry"
+required-features = ["recorded"]

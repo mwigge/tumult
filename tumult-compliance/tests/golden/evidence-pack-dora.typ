@@ -1,0 +1,236 @@
+#set page(
+  paper: "a4",
+  margin: (top: 20mm, bottom: 20mm, left: 18mm, right: 18mm),
+  header: context [
+    #text(size: 7.5pt, fill: luma(110))[#smallcaps[Evidence pack — DORA] #h(1fr) Internal]
+    #v(2pt)
+    #line(length: 100%, stroke: 0.5pt + luma(200))
+  ],
+  footer: context [
+    #text(size: 7.5pt, fill: luma(110))[KRK\-R2\-20261118\-2418da #h(1fr) Page #counter(page).display("1 of 1", both: true)]
+  ],
+)
+#set text(font: "Inter", size: 10.5pt, lang: "en")
+#set par(justify: true, leading: 0.6em)
+#show heading: set text(font: "Source Serif 4", weight: "regular")
+#show heading.where(level: 1): set text(size: 16pt)
+#show heading.where(level: 2): set text(size: 12.5pt)
+#show heading.where(level: 3): set text(size: 11pt)
+#text(size: 9pt, weight: "bold", tracking: 0.3em)[KRÖNIKA]
+#v(6pt)
+#line(length: 100%, stroke: 1.2pt + rgb("#0072B2"))
+#v(96pt)
+#box(stroke: 0.6pt + luma(110), radius: 9pt, inset: (x: 9pt, y: 3.5pt))[#text(size: 7.5pt, tracking: 0.18em, fill: luma(70))[#smallcaps[Internal]]]
+#v(16pt)
+#text(font: "Source Serif 4", size: 27pt)[Evidence pack — DORA]
+#v(12pt)
+#text(size: 12pt, fill: luma(80))[R2 \u{2014} Compliance evidence pack]
+#v(8pt)
+#text(size: 11.5pt, weight: "semibold")[Reporting period: 2026\-10\-19 – 2026\-11\-18]
+#v(1fr)
+#table(
+  columns: (30%, 70%),
+  stroke: none,
+  inset: (x: 0pt, y: 5.5pt),
+  table.hline(stroke: 0.8pt + luma(140)),
+  [#text(size: 8.5pt, fill: luma(100))[#smallcaps[Document]]], [#text(size: 10pt)[KRK\-R2\-20261118\-2418da]],
+  table.hline(stroke: 0.5pt + luma(215)),
+  [#text(size: 8.5pt, fill: luma(100))[#smallcaps[Version]]], [#text(size: 10pt)[\{version\}]],
+  table.hline(stroke: 0.5pt + luma(215)),
+  [#text(size: 8.5pt, fill: luma(100))[#smallcaps[Generated]]], [#text(size: 10pt)[2026\-11\-18 00:00 UTC]],
+  table.hline(stroke: 0.5pt + luma(215)),
+  [#text(size: 8.5pt, fill: luma(100))[#smallcaps[Data as of]]], [#text(size: 10pt)[2026\-11\-18]],
+  table.hline(stroke: 0.5pt + luma(215)),
+  [#text(size: 8.5pt, fill: luma(100))[#smallcaps[Period]]], [#text(size: 10pt)[2026\-10\-19 – 2026\-11\-18]],
+  table.hline(stroke: 0.5pt + luma(215)),
+  [#text(size: 8.5pt, fill: luma(100))[#smallcaps[Framework]]], [#text(size: 10pt)[DORA]],
+  table.hline(stroke: 0.5pt + luma(215)),
+)
+#pagebreak()
+
+#v(6pt)
+= Scope and methodology
+
+
+This pack summarises the resilience testing evidence Tumult recorded for the DORA framework over the period 2026\-10\-19 – 2026\-11\-18; 5 experiments are on record. Experiments are chaos\/continuity tests executed via tumult; outcomes are taken from each run's completion log.
+
+
+== Independence
+
+
+Independence has not been verified by this report. Organizational separation of test design\/execution from service operation requires a reviewed attestation. Manual evidence review records identify the enterer and verifier; those identities alone do not prove organizational independence.
+
+
+== Traceability matrix
+
+
+#[
+#set par(justify: false)
+#set text(hyphenate: false)
+#table(
+  columns: (3.2fr, 2.2fr, 1fr, 0.9fr, 1.1fr),
+  stroke: none,
+  inset: (x: 6pt, y: 4.5pt),
+  align: (left, left, left, left, left),
+  table.hline(stroke: 0.8pt + luma(140)),
+  table.header(
+    [#text(size: 8.5pt, fill: luma(90))[#smallcaps[Clause]]],
+    [#text(size: 8.5pt, fill: luma(90))[#smallcaps[Evidence]]],
+    [#text(size: 8.5pt, fill: luma(90))[#smallcaps[Result]]],
+    [#text(size: 8.5pt, fill: luma(90))[#smallcaps[Finding]]],
+    [#text(size: 8.5pt, fill: luma(90))[#smallcaps[Remediation]]],
+  ),
+  table.hline(stroke: 0.5pt + luma(200)),
+  [Art. 11(3), 11(4), 11(6) — response and recovery plans],
+  [No reviewed clause mapping],
+  [#text(fill: rgb("#6B7280"))[○] #text(number-width: "tabular")[Unmapped]],
+  [Clause applicability and coverage not verified],
+  [Map evidence and obtain independent review],
+  [Art. 12(2) — backup, restoration and recovery],
+  [No reviewed clause mapping],
+  [#text(fill: rgb("#6B7280"))[○] #text(number-width: "tabular")[Unmapped]],
+  [Clause applicability and coverage not verified],
+  [Map evidence and obtain independent review],
+  [Art. 24–25 — resilience testing programme],
+  [No reviewed clause mapping],
+  [#text(fill: rgb("#6B7280"))[○] #text(number-width: "tabular")[Unmapped]],
+  [Clause applicability and coverage not verified],
+  [Map evidence and obtain independent review],
+  table.hline(stroke: 0.8pt + luma(140)),
+)
+]
+
+#v(6pt)
+#text(size: 8pt, fill: luma(110))[Clause references should be verified against the licensed framework text before submission.]
+
+
+== Test register
+
+
+#[
+#set par(justify: false)
+#set text(hyphenate: false)
+#table(
+  columns: (1.8fr, 0.8fr, 0.7fr, 1.2fr, 1.2fr, 0.9fr, 1fr, 0.6fr),
+  stroke: none,
+  inset: (x: 6pt, y: 4.5pt),
+  align: (left, left, left, left, left, left, left, right),
+  table.hline(stroke: 0.8pt + luma(140)),
+  table.header(
+    [#text(size: 8.5pt, fill: luma(90))[#smallcaps[Experiment]]],
+    [#text(size: 8.5pt, fill: luma(90))[#smallcaps[Origin]]],
+    [#text(size: 8.5pt, fill: luma(90))[#smallcaps[Target \/ environment]]],
+    [#text(size: 8.5pt, fill: luma(90))[#smallcaps[Executed]]],
+    [#text(size: 8.5pt, fill: luma(90))[#smallcaps[Entered]]],
+    [#text(size: 8.5pt, fill: luma(90))[#smallcaps[Verifier]]],
+    [#text(size: 8.5pt, fill: luma(90))[#smallcaps[Outcome]]],
+    [#text(size: 8.5pt, fill: luma(90))[#smallcaps[Score]]],
+  ),
+  table.hline(stroke: 0.5pt + luma(200)),
+  [Payments tolerate a slow ledger],
+  [#text(fill: rgb("#6B7280"))[○] #text(number-width: "tabular")[automated]],
+  [payments \/ prod],
+  [2026\-11\-17],
+  [—],
+  [—],
+  [#text(fill: rgb("#E69F00"))[▲] #text(number-width: "tabular")[deviated]],
+  [#text(number-width: "tabular")[50]],
+  [Regional failover drill],
+  [#text(fill: rgb("#6B7280"))[○] #text(number-width: "tabular")[manual]],
+  [checkout \/ prod],
+  [2026\-11\-17],
+  [\{entered\}],
+  [bob],
+  [#text(fill: rgb("#6B7280"))[○] #text(number-width: "tabular")[partial]],
+  [#text(number-width: "tabular")[75]],
+  [Billing export resumes after a restart],
+  [#text(fill: rgb("#6B7280"))[○] #text(number-width: "tabular")[automated]],
+  [billing \/ staging],
+  [2026\-11\-17],
+  [—],
+  [—],
+  [#text(fill: rgb("#009E73"))[●] #text(number-width: "tabular")[completed]],
+  [#text(number-width: "tabular")[100]],
+  [Checkout survives a cache restart],
+  [#text(fill: rgb("#6B7280"))[○] #text(number-width: "tabular")[automated]],
+  [checkout \/ prod],
+  [2026\-11\-17],
+  [—],
+  [—],
+  [#text(fill: rgb("#009E73"))[●] #text(number-width: "tabular")[completed]],
+  [#text(number-width: "tabular")[100]],
+  [Search answers after the loss of a node],
+  [#text(fill: rgb("#6B7280"))[○] #text(number-width: "tabular")[automated]],
+  [search \/ staging],
+  [2026\-11\-17],
+  [—],
+  [—],
+  [#text(fill: rgb("#009E73"))[●] #text(number-width: "tabular")[completed]],
+  [#text(number-width: "tabular")[100]],
+  table.hline(stroke: 0.8pt + luma(140)),
+)
+]
+
+== Approval chain (change management)
+
+
+Approval\-gated runs (tiers T1–T3) execute only after explicit human approval — the change\-management evidence for SOC 2 CC8.1. Each request pins the exact change content by hash, enforces an approver quorum with segregation of duties, and lapses on a TTL; approvals are single\-use and break\-glass overrides carry a mandatory justification. Pin hashes are re\-verified at dispatch, and the full per\-run, hash\-chained \`run\_audit\` trail is available via the API. Runs are shown by their id prefix; the full id and pin hash are available via the run\-detail API.
+
+
+Approval\-chain appendix: at most the 500 newest installation records are sampled, then filtered to this scope and period. This appendix is not a complete approval export; use the portable run\_audit and approval tables for complete evidence.
+
+
+No approval\-gated runs in the selected sample for this scope and period.
+
+
+== Manual attestation appendix
+
+
+Each manually executed test below was entered under the quoted attestation and verified by a reviewer other than the person who entered it. Entries are immutable once verified; corrections require a new record.
+
+
+=== Regional failover drill — 2026\-11\-17
+
+
+#table(
+  columns: (auto, 1fr),
+  stroke: none,
+  inset: (x: 0pt, y: 3.5pt),
+  column-gutter: 16pt,
+  [#text(size: 9pt, fill: luma(100))[#smallcaps[Exercise type]]], [failover],
+  [#text(size: 9pt, fill: luma(100))[#smallcaps[Executed]]], [2026\-11\-17],
+  [#text(size: 9pt, fill: luma(100))[#smallcaps[Entered by]]], [alice on \{entered\}],
+  [#text(size: 9pt, fill: luma(100))[#smallcaps[Verified by]]], [bob on \{verified\}],
+  [#text(size: 9pt, fill: luma(100))[#smallcaps[Frameworks]]], [DORA Art. 24(6), ISO 27001 A.5.29],
+  [#text(size: 9pt, fill: luma(100))[#smallcaps[Attestation]]], [I attest that this record reflects the exercise.],
+)
+
+== Findings log
+
+
+#list(
+  [Payments tolerate a slow ledger (payments): deviated — last run 2026\-11\-17],
+)
+
+#v(6pt)
+#text(size: 8pt, fill: luma(110))[Clause references should be verified against the licensed framework text before submission.]
+
+
+#v(12pt)
+#grid(
+  columns: (1fr, 1fr),
+  gutter: 28pt,
+  [
+    #v(20pt)
+    #line(length: 100%, stroke: 0.6pt + luma(110))
+    #v(2pt)
+    #text(size: 8pt, fill: luma(100))[#smallcaps[Prepared by]]
+    #text(size: 9.5pt)[Tumult]
+  ],
+  [
+    #v(20pt)
+    #line(length: 100%, stroke: 0.6pt + luma(110))
+    #v(2pt)
+    #text(size: 8pt, fill: luma(100))[#smallcaps[Compliance officer]]
+  ],
+)

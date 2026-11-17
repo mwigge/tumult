@@ -1,0 +1,43 @@
+title: Billing export resumes after a restart
+description: The export job of billing restarts in the middle of a run and must resume.
+
+tags[2]: restart, billing
+target:
+  system: billing
+  technology: batch
+  environment: staging
+  version: 0.9.4
+rto_target_s: 2.0
+blast_radius: the export job
+
+steady_state_hypothesis:
+  title: The export answers
+  probes[1]:
+    - name: export-answers
+      activity_type: probe
+      provider:
+        type: process
+        path: sh
+        arguments[2]: "-c", "cat state"
+        timeout_s: 5.0
+      tolerance:
+        type: regex
+        pattern: "^ok$"
+
+method[1]:
+  - name: restart-export
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "echo down > state; sleep 0.1; echo ok > state"
+      timeout_s: 5.0
+
+rollbacks[1]:
+  - name: start-export
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "echo ok > state"
+      timeout_s: 5.0

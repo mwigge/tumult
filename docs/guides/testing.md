@@ -59,6 +59,7 @@ real thing runs, and the test reads what a user would read.
 | The lake | A store in a temporary directory, written by the code that writes it in production |
 | The API | The real router over a real store |
 | The HTML report | A browser without a network opens the report the `tumult` binary writes: `npm run test:report` in `web/` |
+| A report (per run, executive digest, evidence pack, run report, metric digest) | The builder and the renderer over a store filled with the recorded runs in `tumult-test-utils/recorded`; the text is compared with the file kept in `tests/golden` |
 | The page of a run in Krönika | A browser opens the page on a real `tumultd` with a lake of its own, filled by a real run and an imported journal: `npm run test:live` in `web/` |
 
 The specs in `web/tests` answer `/api` with fixtures. They prove how a page
@@ -74,6 +75,20 @@ test from the table above.
 Rows written by hand into a store prove the reader, not the writer. Use them
 for data the current code no longer writes, such as old spellings. For
 everything else the rows come from a real run.
+
+## Kept files
+
+A report test compares the whole text with a file kept next to the test, so
+every word and number of the report is under test.
+
+- `tumult_test_utils::assert_kept(path, text)` does the comparison and names
+  the first line that differs.
+- `TUMULT_BLESS=1 cargo test -p <crate>` writes the files again. Read the
+  difference before you commit it: the difference is the review.
+- The recorded runs are real runs of the `tumult` binary. The README in
+  `tumult-test-utils/recorded` says how to record them again.
+- What changes from run to run (the version, a time of the clock) is
+  asserted first and then replaced by a name such as `{version}`.
 
 ## Mutation tests
 
@@ -192,8 +207,8 @@ What counts as an assertion:
 - `ensure!`, `bail!` or `return Err(..)` in a test that returns `Result`;
 - clap's `debug_assert()` and the `assert()` and `assert_async()` of mockito
   and assert_cmd;
-- a call to an `assert_*` function that is defined in the same crate and
-  itself asserts.
+- a call to an `assert_*` function that is defined in the same crate, or in
+  `tumult-test-utils`, and itself asserts.
 
 A `_does_not_panic` test with a comment above it that names the panic is
 exempt.
@@ -213,7 +228,8 @@ The guard is a text scan, so it has limits:
 
 - It cannot tell whether an assertion is meaningful. Review against this page
   does that.
-- Helpers are matched by name within a top-level directory. An assertion
+- Helpers are matched by name within a top-level directory and in
+  `tumult-test-utils`. An assertion
   inside a helper that is not named `assert_*` is not seen, and such a test
   is reported.
 - A test file pulled in with `#[cfg(test)] mod x;` under another name than

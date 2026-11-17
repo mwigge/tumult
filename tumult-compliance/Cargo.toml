@@ -19,7 +19,7 @@ tracing.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
-tumult-test-utils = { path = "../tumult-test-utils", features = ["otel"] }
+tumult-test-utils = { path = "../tumult-test-utils", features = ["otel", "recorded"] }
 # The executor of `tumult run`, for the report of a run of real steps.
 tumult-exec = { path = "../tumult-exec" }
 tumult-otlp.workspace = true

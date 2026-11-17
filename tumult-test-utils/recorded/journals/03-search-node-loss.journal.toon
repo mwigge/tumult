@@ -1,0 +1,99 @@
+experiment_title: Search answers after the loss of a node
+experiment_id: "fbf3c58b-e786-4578-ab0c-4a4b00c6375e"
+status: deviated
+started_at_ns: 1794888709627574020
+ended_at_ns: 1794888738762121827
+duration_ms: 29134
+steady_state_before:
+  title: Search answers
+  met: true
+  probe_results[1]{name,activity_type,status,started_at_ns,duration_ms,output,trace_id,span_id}:
+    "search-answers",probe,succeeded,1794888709627835092,2,ok,ca930008cd961d1df618147ed7bd7fce,4836896d2f87a429
+steady_state_after:
+  title: Search answers
+  met: false
+  probe_results[1]{name,activity_type,status,started_at_ns,duration_ms,output,error,trace_id,span_id}:
+    "search-answers",probe,failed,1794888738752680971,4,down,the output is outside the tolerance,ca930008cd961d1df618147ed7bd7fce,b31a40608ce585eb
+method_results[2]:
+  - name: "lose-node"
+    activity_type: action
+    status: succeeded
+    started_at_ns: 1794888709631257260
+    duration_ms: 2
+    trace_id: ca930008cd961d1df618147ed7bd7fce
+    span_id: 4c0f33333785c3d6
+  - name: "search-after-loss"
+    activity_type: probe
+    status: succeeded
+    started_at_ns: 1794888709633775520
+    duration_ms: 2
+    output: down
+    trace_id: ca930008cd961d1df618147ed7bd7fce
+    span_id: 9553d72a217287f0
+rollback_results[1]{name,activity_type,status,started_at_ns,duration_ms,trace_id,span_id}:
+  "start-node",action,succeeded,1794888738757455480,4,ca930008cd961d1df618147ed7bd7fce,e6593b1638acd6cc
+rollback_failures: 0
+estimate: null
+baseline_result: null
+during_result:
+  started_at_ns: 1794888709631146749
+  ended_at_ns: 1794888709636247260
+  fault_active_s: 0.005100511
+  sample_interval_s: 1
+  probes[1]{name,samples,mean,max,min,error_rate,breached_at_ns,breach_count}:
+    "search-answers",1,3,3,3,1,1794888709631305930,1
+post_result:
+  started_at_ns: 1794888709636373681
+  ended_at_ns: 1794888738752541990
+  duration_s: 29.116168309
+  samples: 30
+  probes[1]{name,mean,p95,error_rate,returned_to_baseline,recovery_time_s}:
+    "search-answers",3.1333333333333333,5,1,false,29.111465181
+  recovery_time_s: 29.111465181
+  full_recovery: false
+load_result: null
+analysis: null
+regulatory: null
+blast_radius:
+  note: one search node
+  peak_concurrent_faults: 0
+kind: chaos
+objectives:
+  rto_target_s: 2
+  verdicts[1]{nfr_id,kind,metric,operator,threshold,state,criticality}:
+    rto,rto,recovery.mttr_s,lte,2,inconclusive,blocking
+probe_samples[31]{probe,phase,ts_ns,duration_ms,ok}:
+  "search-answers",during,1794888709631305930,3,false
+  "search-answers",post,1794888709636396751,2,false
+  "search-answers",post,1794888710639180568,2,false
+  "search-answers",post,1794888711642608680,3,false
+  "search-answers",post,1794888712645815060,5,false
+  "search-answers",post,1794888713651327468,3,false
+  "search-answers",post,1794888714654778200,3,false
+  "search-answers",post,1794888715658752186,4,false
+  "search-answers",post,1794888716664591067,3,false
+  "search-answers",post,1794888717668232620,2,false
+  "search-answers",post,1794888718671380649,2,false
+  "search-answers",post,1794888719674500917,2,false
+  "search-answers",post,1794888720677578125,2,false
+  "search-answers",post,1794888721680146309,3,false
+  "search-answers",post,1794888722683373608,3,false
+  "search-answers",post,1794888723686562057,3,false
+  "search-answers",post,1794888724690354150,2,false
+  "search-answers",post,1794888725693495029,3,false
+  "search-answers",post,1794888726697240551,3,false
+  "search-answers",post,1794888727700773352,3,false
+  "search-answers",post,1794888728704931388,3,false
+  "search-answers",post,1794888729709075444,3,false
+  "search-answers",post,1794888730712315762,3,false
+  "search-answers",post,1794888731715876563,4,false
+  "search-answers",post,1794888732720283770,3,false
+  "search-answers",post,1794888733724156194,3,false
+  "search-answers",post,1794888734727426912,7,false
+  "search-answers",post,1794888735735558499,3,false
+  "search-answers",post,1794888736738864047,4,false
+  "search-answers",post,1794888737743577307,4,false
+  "search-answers",post,1794888738747838862,4,false
+target_version:
+  version: "1.12.0"
+  version_source: declared

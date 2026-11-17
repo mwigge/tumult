@@ -16,6 +16,7 @@ use report_page::{
     report_command, report_of, row, rows, section, words, written, GENERATED_TEXT,
 };
 use tumult_core::types::{ExperimentStatus, HypothesisResult, Journal};
+use tumult_test_utils::assert_kept;
 
 fn workspace() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -46,18 +47,13 @@ fn the_report_of_a_recorded_run_is_the_one_kept_with_the_tests() {
     let kept_at = workspace().join("tumult-cli/tests/golden/api-saturation.report.html");
     let version = concat!("<strong>Tumult</strong> v", env!("CARGO_PKG_VERSION"));
 
-    // The script of the charts is kept in a file of its own.
-    let html = report_of(&lab, &recorded).replace(&chart_script(), "{report-charts.js}");
+    // The script of the charts is kept in a file of its own, and the report
+    // of the next version is the same report.
+    let html = report_of(&lab, &recorded)
+        .replace(&chart_script(), "{report-charts.js}")
+        .replace(version, "<strong>Tumult</strong> v{version}");
 
-    // Read the new report before you keep it: TUMULT_BLESS=1 writes it.
-    if std::env::var_os("TUMULT_BLESS").is_some() {
-        let unversioned = html.replace(version, "<strong>Tumult</strong> v{version}");
-        std::fs::write(&kept_at, unversioned).expect("keep the report");
-    }
-    let kept = std::fs::read_to_string(&kept_at)
-        .unwrap_or_default()
-        .replace("<strong>Tumult</strong> v{version}", version);
-    assert!(html == kept, "{}", first_difference(&html, &kept));
+    assert_kept(&kept_at, &html);
 }
 
 #[test]

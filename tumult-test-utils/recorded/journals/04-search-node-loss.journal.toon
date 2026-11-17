@@ -1,0 +1,71 @@
+experiment_title: Search answers after the loss of a node
+experiment_id: "c3dc2029-0177-4530-bdf6-116ea02501d6"
+status: completed
+started_at_ns: 1794888738898602856
+ended_at_ns: 1794888738919661266
+duration_ms: 21
+steady_state_before:
+  title: Search answers
+  met: true
+  probe_results[1]{name,activity_type,status,started_at_ns,duration_ms,output,trace_id,span_id}:
+    "search-answers",probe,succeeded,1794888738898793448,3,ok,38ab647654af34127f95941629959eb7,275d7e352efafb0e
+steady_state_after:
+  title: Search answers
+  met: true
+  probe_results[1]{name,activity_type,status,started_at_ns,duration_ms,output,trace_id,span_id}:
+    "search-answers",probe,succeeded,1794888738915840745,3,ok,38ab647654af34127f95941629959eb7,f45d6b9a6601c84c
+method_results[2]:
+  - name: "lose-node"
+    activity_type: action
+    status: succeeded
+    started_at_ns: 1794888738902801340
+    duration_ms: 3
+    trace_id: 38ab647654af34127f95941629959eb7
+    span_id: bec16d72854f7e63
+  - name: "search-after-loss"
+    activity_type: probe
+    status: succeeded
+    started_at_ns: 1794888738906915023
+    duration_ms: 5
+    output: ok
+    trace_id: 38ab647654af34127f95941629959eb7
+    span_id: 0dd0ec1849b739f4
+rollback_results[0]:
+rollback_failures: 0
+estimate: null
+baseline_result: null
+during_result:
+  started_at_ns: 1794888738902691699
+  ended_at_ns: 1794888738912802890
+  fault_active_s: 0.010111191
+  sample_interval_s: 1
+  probes[1]{name,samples,mean,max,min,error_rate,breach_count}:
+    "search-answers",1,4,4,4,0,0
+post_result:
+  started_at_ns: 1794888738912914961
+  ended_at_ns: 1794888738915773404
+  duration_s: 0.002858443
+  samples: 1
+  probes[1]{name,mean,p95,error_rate,returned_to_baseline,recovery_time_s}:
+    "search-answers",2,2,0,true,0
+  recovery_time_s: 0
+  full_recovery: true
+  mttr_s: 0
+load_result: null
+analysis: null
+regulatory: null
+blast_radius:
+  note: one search node
+  peak_concurrent_faults: 0
+kind: chaos
+objectives:
+  rto_target_s: 2
+  rto_measured_s: 0
+  verdicts[1]{nfr_id,kind,metric,operator,threshold,observed,state,margin,criticality}:
+    rto,rto,recovery.mttr_s,lte,2,0,met,2,blocking
+probe_samples[2]{probe,phase,ts_ns,duration_ms,ok}:
+  "search-answers",during,1794888738903626747,4,true
+  "search-answers",post,1794888738912946052,2,true
+target_version:
+  version: "1.12.0"
+  version_source: declared
