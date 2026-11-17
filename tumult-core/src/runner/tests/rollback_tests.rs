@@ -470,3 +470,78 @@ fn orphan_rollback_without_rollbacks_is_a_noop() {
     assert!(results.is_empty());
     assert_eq!(call_count.load(Ordering::Relaxed), 0);
 }
+
+/// Cancels the run from inside the first step of `kind` it is asked to run.
+/// Every probe holds.
+struct CancelIn {
+    kind: ActivityType,
+    token: CancellationToken,
+}
+
+impl ActivityExecutor for CancelIn {
+    fn execute(&self, activity: &Activity) -> ActivityOutcome {
+        if activity.activity_type == self.kind {
+            self.token.cancel();
+        }
+        ActivityOutcome {
+            success: true,
+            output: Some("200".into()),
+            error: None,
+            duration_ms: 1,
+        }
+    }
+}
+
+/// Run an experiment with a steady state that is cancelled in its first
+/// step of `kind`.
+fn cancelled_in(kind: ActivityType) -> Journal {
+    let token = CancellationToken::new();
+    let executor: Arc<dyn ActivityExecutor> = Arc::new(CancelIn {
+        kind,
+        token: token.clone(),
+    });
+    let config = RunConfig {
+        cancellation_token: Some(token),
+        ..RunConfig::default()
+    };
+    run_experiment_with_sampling(
+        &experiment_with_hypothesis(),
+        &executor,
+        &Arc::new(ControlRegistry::new()),
+        &config,
+        &fast_sampling(),
+    )
+    .unwrap()
+}
+
+#[test]
+fn a_run_cancelled_while_it_measured_the_steady_state_keeps_the_measurement() {
+    let journal = cancelled_in(ActivityType::Probe);
+
+    assert_eq!(journal.status, ExperimentStatus::Interrupted);
+    assert!(journal.method_results.is_empty());
+    let before = journal
+        .steady_state_before
+        .expect("the steady state before the method");
+    assert_eq!(before.probe_results.len(), 1, "{before:?}");
+}
+
+#[test]
+fn a_run_interrupted_in_its_method_keeps_what_its_probes_saw_under_the_fault() {
+    let journal = cancelled_in(ActivityType::Action);
+
+    assert_eq!(journal.status, ExperimentStatus::Interrupted);
+    assert_eq!(journal.method_results.len(), 1);
+    let during = journal
+        .during_result
+        .expect("the during result of an interrupted run");
+    assert!(during.probes[0].samples > 0, "{during:?}");
+    assert!(
+        journal
+            .probe_samples
+            .iter()
+            .any(|sample| sample.phase == SamplePhase::During),
+        "{:?}",
+        journal.probe_samples
+    );
+}

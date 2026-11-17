@@ -423,3 +423,57 @@ fn a_guard_whose_probe_panics_halts_the_run() {
         assert_eq!(journal.halt.expect("a halt record").guard_name, "safety");
     }
 }
+
+/// [`HaltingExecutor`] for a run with a steady state: the probe of the
+/// hypothesis holds, every other step is the inner executor to answer.
+struct SteadyUnderHalt(HaltingExecutor);
+
+impl ActivityExecutor for SteadyUnderHalt {
+    fn execute(&self, activity: &Activity) -> ActivityOutcome {
+        if activity.name != "health-check" {
+            return self.0.execute(activity);
+        }
+        ActivityOutcome {
+            success: true,
+            output: Some("200".into()),
+            error: None,
+            duration_ms: 1,
+        }
+    }
+}
+
+#[test]
+fn a_halted_run_keeps_what_its_probes_saw_under_the_fault() {
+    let mut exp = experiment_with_hypothesis();
+    exp.guards = vec![health_guard()];
+    let (guard_exit_sender, guard_exit_receiver) = mpsc::channel();
+    let executor: Arc<dyn ActivityExecutor> = Arc::new(SteadyUnderHalt(HaltingExecutor {
+        method_calls: Arc::default(),
+        rollback_ran: Arc::default(),
+        guard_exit_sender: Mutex::new(Some(guard_exit_sender)),
+        guard_exit_receiver: Mutex::new(guard_exit_receiver),
+    }));
+
+    let journal = run_experiment_with_sampling(
+        &exp,
+        &executor,
+        &Arc::new(ControlRegistry::new()),
+        &default_config(),
+        &fast_sampling(),
+    )
+    .unwrap();
+
+    assert_eq!(journal.status, ExperimentStatus::Halted);
+    let during = journal
+        .during_result
+        .expect("the during result of a halted run");
+    assert!(during.probes[0].samples > 0, "{during:?}");
+    assert!(
+        journal
+            .probe_samples
+            .iter()
+            .any(|sample| sample.phase == SamplePhase::During),
+        "{:?}",
+        journal.probe_samples
+    );
+}

@@ -217,10 +217,7 @@ pub fn run_experiment_with_sampling(
     {
         Ok(running) => running,
         Err(error) => {
-            run.finish(Journal {
-                steady_state_before: hypothesis_before,
-                ..run.ended(ExperimentStatus::Failed)
-            });
+            run.finish(run.ended(ExperimentStatus::Failed));
             return Err(error);
         }
     };

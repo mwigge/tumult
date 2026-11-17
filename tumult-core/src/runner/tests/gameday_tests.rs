@@ -314,3 +314,25 @@ fn a_game_day_whose_load_left_no_result_scores_no_load_impact() {
         journal.resilience_score
     );
 }
+
+#[test]
+fn a_game_day_scores_its_load_by_the_share_of_requests_without_error() {
+    let measured = LoadResult {
+        error_rate: 0.25,
+        ..super::load_tests::load_result(100, true)
+    };
+    let (load, _) = super::load_tests::ScriptedLoad::answering(Ok(measured));
+    let config = RunConfig {
+        load_executor: Some(Arc::new(load)),
+        ..RunConfig::default()
+    };
+
+    let (result, _) = run_one(&gameday_under(Some(short_load(LoadTool::Oha))), &config);
+
+    let journal = result.expect("the game day runs");
+    assert!(
+        (journal.resilience_score.load_impact_tolerance - 0.75).abs() < 1e-9,
+        "{:?}",
+        journal.resilience_score
+    );
+}
