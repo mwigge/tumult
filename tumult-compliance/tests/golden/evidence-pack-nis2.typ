@@ -205,6 +205,7 @@ Each manually executed test below was entered under the quoted attestation and v
 
 #list(
   [Payments tolerate a slow ledger (payments): deviated — last run 2026\-11\-17],
+  [Regional failover drill (checkout): partial — last run 2026\-11\-17],
 )
 
 #v(6pt)

@@ -211,7 +211,8 @@ pub(crate) struct ScoresQuery {
 
 /// `GET /api/scores?range=24h|7d|14d|30d` — resilience scorecard as of now,
 /// with the portfolio delta against the previous equal window (`null` when
-/// nothing was on record at the start of the window). Scoped
+/// nothing was on record at the start of the window). With nothing on
+/// record now, `portfolio` is `null` and `band` is `unknown`. Scoped
 /// principals get the card of their own environments only (rollups
 /// recomputed over the visible experiments).
 pub(crate) async fn scores(

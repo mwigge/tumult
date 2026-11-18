@@ -4,7 +4,9 @@
 //! 30 days decays to 75 (stale), a failed/deviated/halted run scores 50, an
 //! aborted or interrupted run proves nothing and is left out, and never
 //! run scores 0. Bands: > 70 good, 50–70 fair, < 50 poor. The portfolio
-//! rollup is the mean of target scores with a period-over-period delta.
+//! rollup is the mean of target scores with a period-over-period delta;
+//! with nothing on record there is no portfolio score and its band is
+//! `unknown`.
 //!
 //! Verified manual evidence scores exactly like automated telemetry
 //! (passed 100 / partial 75 / failed 50; inconclusive outcomes are excluded
@@ -61,6 +63,15 @@ pub fn score_run(latest: Option<(i64, bool)>, as_of_ns: i64) -> (u32, RunState) 
     }
 }
 
+impl RunState {
+    /// An open weakness: the latest run failed, worked in part or never
+    /// happened. A stale pass is not one: it asks for a re-run instead.
+    #[must_use]
+    pub const fn is_open(self) -> bool {
+        matches!(self, Self::Failed | Self::Partial | Self::NeverRun)
+    }
+}
+
 /// Band for a score: > 70 good, 50–70 fair, < 50 poor.
 #[must_use]
 pub fn band(score: f64) -> &'static str {
@@ -71,6 +82,23 @@ pub fn band(score: f64) -> &'static str {
     } else {
         "poor"
     }
+}
+
+/// The portfolio score of `targets`: the mean of their scores, each target
+/// of equal weight. `None` with no target: no score is not a score of 0.
+#[must_use]
+pub fn portfolio_score(targets: &[TargetScore]) -> Option<f64> {
+    if targets.is_empty() {
+        return None;
+    }
+    Some(targets.iter().map(|t| t.score).sum::<f64>() / targets.len() as f64)
+}
+
+/// Band for a portfolio score; `unknown` with no score, as a DORA band
+/// without a value ([`crate::dora::report::band`]).
+#[must_use]
+pub fn portfolio_band(portfolio: Option<f64>) -> &'static str {
+    portfolio.map_or("unknown", band)
 }
 
 /// One scored experiment (latest run decides).
@@ -109,7 +137,9 @@ pub struct TargetScore {
 /// Full scorecard for `GET /api/scores` and the executive digest.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct Scorecard {
-    pub portfolio: f64,
+    /// `None` (`null` in JSON) when nothing is on record ([`portfolio_score`]).
+    pub portfolio: Option<f64>,
+    /// [`portfolio_band`] of the portfolio score.
     pub band: String,
     pub delta: Option<f64>,
     pub as_of_ns: i64,
@@ -184,14 +214,11 @@ pub fn compute_scoped(
 }
 
 /// How far the portfolio score of `card` is from the one of `before`, the
-/// card of an earlier instant. `None` when nothing was on record then: a
-/// first score is not a change.
+/// card of an earlier instant. `None` when either has no score: a first
+/// score is not a change.
 #[must_use]
 pub fn change_since(card: &Scorecard, before: &Scorecard) -> Option<f64> {
-    if before.experiments.is_empty() {
-        return None;
-    }
-    Some(card.portfolio - before.portfolio)
+    Some(card.portfolio? - before.portfolio?)
 }
 
 /// Portfolio score sampled at `points` evenly spaced instants across
@@ -226,11 +253,9 @@ pub fn portfolio_series_scoped(
     let mut out = Vec::with_capacity(points as usize);
     for i in 1..=points {
         let t = as_of_ns - period_ns + step * i;
-        let card = compute_as_of(reader, t, envs)?;
-        if card.experiments.is_empty() {
-            continue;
+        if let Some(score) = compute_as_of(reader, t, envs)?.portfolio {
+            out.push((t, score));
         }
-        out.push((t, card.portfolio));
     }
     Ok(out)
 }
@@ -338,14 +363,10 @@ fn compute_as_of(reader: &Reader, as_of_ns: i64, envs: &[String]) -> Result<Scor
             .partial_cmp(&b.score)
             .unwrap_or(std::cmp::Ordering::Equal)
     });
-    let portfolio = if targets.is_empty() {
-        0.0
-    } else {
-        targets.iter().map(|t| t.score).sum::<f64>() / targets.len() as f64
-    };
+    let portfolio = portfolio_score(&targets);
     Ok(Scorecard {
         portfolio,
-        band: band(portfolio).to_string(),
+        band: portfolio_band(portfolio).to_string(),
         delta: None,
         as_of_ns,
         targets,
@@ -414,6 +435,57 @@ mod tests {
             score_run(Some((now - DAY, false)), now),
             (50, RunState::Failed)
         );
+    }
+
+    #[test]
+    fn a_failed_partial_or_never_run_experiment_is_open_and_a_pass_is_not() {
+        for (state, open) in [
+            (RunState::Passed, false),
+            // Stale evidence is listed apart: it asks for a re-run.
+            (RunState::Stale, false),
+            (RunState::Partial, true),
+            (RunState::Failed, true),
+            (RunState::NeverRun, true),
+        ] {
+            assert_eq!(state.is_open(), open, "{state:?}");
+        }
+    }
+
+    #[test]
+    fn a_card_with_nothing_on_record_has_no_score_and_no_band() {
+        let d = tempfile::TempDir::new().unwrap();
+        let store = tumult_lake::Store::open(&d.path().join("k.duckdb")).unwrap();
+        let now = 100 * DAY;
+        store
+            .writer()
+            .unwrap()
+            .insert_spans(&[tumult_lake::SpanRow {
+                ts_ns: now - DAY,
+                trace_id: "trace-one".into(),
+                span_id: "span-one".into(),
+                span_name: "resilience.experiment".into(),
+                experiment_id: Some("one".into()),
+                experiment_name: Some("one".into()),
+                outcome_status: Some("completed".into()),
+                target_system: Some("db".into()),
+                target_environment: Some("prod".into()),
+                events: "[]".into(),
+                ..Default::default()
+            }])
+            .unwrap();
+        let reader = store.read_only().unwrap();
+
+        // Before the run nothing is on record, and nothing ever is in an
+        // environment the run did not touch.
+        for card in [
+            compute(&reader, now - 2 * DAY, Some(7 * DAY)).unwrap(),
+            compute_scoped(&reader, now, Some(7 * DAY), &["staging".to_string()]).unwrap(),
+        ] {
+            let json = serde_json::to_value(&card).unwrap();
+            assert!(json["portfolio"].is_null(), "{json}");
+            assert_eq!(card.band, "unknown");
+            assert_eq!(card.delta, None);
+        }
     }
 
     #[test]
@@ -538,7 +610,7 @@ mod tests {
             [("drill", RunState::Passed, Some("completed"), 1)],
             "neither a pass nor a failure"
         );
-        assert_eq!(card.portfolio, 100.0);
+        assert_eq!(card.portfolio, Some(100.0));
     }
 
     #[test]
@@ -689,8 +761,8 @@ mod tests {
         let reader = store.read_only().unwrap();
 
         let card = compute(&reader, now, Some(7 * DAY)).unwrap();
-        assert_eq!(card.portfolio, 50.0); // latest run deviated
-                                          // A week ago the latest run was the pass: portfolio 100 → delta -50.
+        assert_eq!(card.portfolio, Some(50.0)); // latest run deviated
+                                                // A week ago the latest run was the pass: portfolio 100 → delta -50.
         assert_eq!(card.delta, Some(-50.0));
         // Without a period there is no comparison point.
         assert_eq!(compute(&reader, now, None).unwrap().delta, None);

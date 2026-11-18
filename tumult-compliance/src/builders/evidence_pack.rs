@@ -5,7 +5,7 @@ use tumult_lake::Reader;
 use super::{base_meta, cell, counted};
 use crate::html::fmt_date;
 use crate::model::{Block, Cell, ReportDoc, TemplateKind};
-use crate::scoring::{self, RunState};
+use crate::scoring;
 
 /// Clause lists per framework (skeleton — must be verified against the
 /// licensed framework text; see the mandatory footnote on every R2).
@@ -395,7 +395,7 @@ pub fn build_evidence_pack(
     let open: Vec<&scoring::ExperimentScore> = card
         .experiments
         .iter()
-        .filter(|e| matches!(e.state, RunState::Failed | RunState::NeverRun))
+        .filter(|e| e.state.is_open())
         .collect();
     blocks.push(Block::H2("Findings log".into()));
     if open.is_empty() {

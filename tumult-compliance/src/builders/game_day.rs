@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use serde_json::Value;
 use tumult_lake::Reader;
 
-use super::{base_meta, cell, counted, q};
+use super::{base_meta, cell, counted, q, severity_cell};
 use crate::html::fmt_datetime;
 use crate::model::{Block, Cell, ReportDoc, TemplateKind};
 use crate::scoring;
@@ -394,7 +394,7 @@ fn summary(root: &Value, run_id: &str, scenario: String, outcome: &str) -> Block
         ("Scenario".into(), Cell::text(scenario)),
         (
             "Severity".into(),
-            cell(root, "fault_severity").map_or(Cell::text("not recorded"), Cell::status),
+            severity_cell(cell(root, "fault_severity")),
         ),
         (
             "Hypothesis".into(),

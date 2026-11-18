@@ -80,6 +80,73 @@ async fn the_change_of_the_scores_is_against_what_was_on_record_a_period_ago() {
     assert_eq!(body["delta"], -12.5);
 }
 
+/// The server on a store that holds nothing; returns its base URL.
+async fn spawn_on_an_empty_store() -> (String, tempfile::TempDir) {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let db_path = tmp.path().join("k.duckdb");
+    tumult_lake::Store::open(&db_path).unwrap();
+    let metrics_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../metrics")
+        .canonicalize()
+        .unwrap();
+    // An LLM at a closed port: the scores never ask it.
+    let llm = std::sync::Arc::new(tumult_intelligence::llm::OpenAiCompatClient::new(
+        "http://127.0.0.1:1".into(),
+        None,
+        "test-model".into(),
+    ));
+    let state = tumult_api::ApiState::new(
+        db_path,
+        metrics_dir,
+        tmp.path().join("reports"),
+        llm,
+        tumult_compliance::OrgTree::empty(),
+        None,
+        None,
+        None,
+        false,
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, tumult_api::router(state))
+            .await
+            .unwrap();
+    });
+    (format!("http://{addr}"), tmp)
+}
+
+/// A card with nothing on record has no score, no change and no band of
+/// a score.
+fn assert_no_score(body: &Value) {
+    assert!(body["portfolio"].is_null(), "{body}");
+    assert!(body["delta"].is_null(), "{body}");
+    assert_eq!(body["band"], "unknown", "{body}");
+    assert_eq!(body["experiments"], serde_json::json!([]), "{body}");
+}
+
+#[tokio::test]
+async fn a_store_with_nothing_on_record_has_no_score() {
+    let (base, _tmp) = spawn_on_an_empty_store().await;
+
+    let (status, body) = get(&base, "/api/scores").await;
+
+    assert_eq!(status, 200, "{body}");
+    assert_no_score(&body);
+}
+
+#[tokio::test]
+async fn a_reader_whose_scope_holds_no_run_has_no_score() {
+    // Every seeded run is in `demo`.
+    let srv = spawn_server().await;
+    let token = add_scoped_token(&srv, "stg-viewer", "viewer", &["staging"]).await;
+
+    let (status, body) = get_auth(&srv.base, "/api/scores", &token).await;
+
+    assert_eq!(status, 200, "{body}");
+    assert_no_score(&body);
+}
+
 #[tokio::test]
 async fn reports_v2_executive_digest_roundtrip() {
     let srv = spawn_server().await;

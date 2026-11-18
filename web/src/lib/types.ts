@@ -456,7 +456,8 @@ export interface TargetScore {
 }
 
 export interface Scorecard {
-    portfolio: number;
+    /** Null when nothing is on record; its band is then `unknown`. */
+    portfolio: number | null;
     band: string;
     delta: number | null;
     as_of_ns: number;

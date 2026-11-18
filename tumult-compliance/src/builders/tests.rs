@@ -476,11 +476,60 @@ fn evidence_pack_renders_register_provenance_attestation_and_findings() {
             _ => None,
         })
         .expect("findings bullets");
-    assert_eq!(findings.len(), 1);
+    // The failed run and the partial drill are both open.
+    assert_eq!(findings.len(), 2, "{findings:?}");
     assert!(findings[0].contains("flaky-exp"), "{findings:?}");
     // The seed spells the status with a capital, as a run stored before
     // 3.0.2 does; the report gives it in the spelling of the journal.
     assert!(findings[0].contains("deviated"), "{findings:?}");
+    assert!(findings[1].contains("drill-exp"), "{findings:?}");
+}
+
+#[test]
+fn a_verified_manual_partial_is_open_in_the_digest_and_in_the_evidence_pack() {
+    let (_d, store) = findings_fixture();
+    let reader = store.read_only().unwrap();
+    let now = BASE_NS + 6 * HOUR_NS;
+
+    let digest = build_executive(&reader, &OrgTree::empty(), now, 7 * DAY_NS, now, &[]).unwrap();
+    let pack = build_evidence_pack(&reader, "dora", Some(12 * HOUR_NS), now, &[]).unwrap();
+
+    let open = rows_under(&digest, "Open weaknesses and decisions needed");
+    assert!(
+        open.iter().any(|row| row.contains("|drill-exp|")),
+        "{open:?}"
+    );
+    let findings = bullets_under(&pack, "Findings log");
+    assert!(
+        findings
+            .iter()
+            .any(|finding| finding.starts_with("drill-exp (cdn): partial — last run ")),
+        "{findings:?}"
+    );
+}
+
+#[test]
+fn an_open_weakness_with_no_severity_on_record_says_not_recorded() {
+    let (_d, store) = findings_fixture();
+    let reader = store.read_only().unwrap();
+    let now = BASE_NS + 6 * HOUR_NS;
+
+    let doc = build_executive(&reader, &OrgTree::empty(), now, 7 * DAY_NS, now, &[]).unwrap();
+
+    // Neither the manual drill nor the run recorded a severity.
+    let severities: Vec<Cell> = blocks_under(&doc, "Open weaknesses and decisions needed")
+        .into_iter()
+        .find_map(|block| match block {
+            Block::Table { rows, .. } => Some(rows.iter().map(|row| row[0].clone()).collect()),
+            _ => None,
+        })
+        .expect("open weaknesses table");
+    assert_eq!(
+        severities,
+        [Cell::text("not recorded"), Cell::text("not recorded")]
+    );
+    let html = crate::html::render_html(&doc);
+    assert!(!html.contains("medium"), "a severity nobody recorded");
 }
 
 #[test]
@@ -642,7 +691,7 @@ fn the_bottom_line_names_three_weakest_targets_at_most() {
         last_run_ns: None,
     };
     let card = Scorecard {
-        portfolio: 60.0,
+        portfolio: Some(60.0),
         band: "fair".into(),
         delta: None,
         as_of_ns: BASE_NS,
@@ -740,6 +789,10 @@ fn a_digest_of_an_empty_store_claims_no_score() {
         paragraph_under(&doc, "Outlook"),
         "Next period priorities: run a first experiment to put a score on record."
     );
+    // No score is not a score of 0: in no block, and so in neither output.
+    let blocks = format!("{:?}", doc.blocks);
+    assert!(!blocks.contains("0.0"), "{blocks}");
+    assert!(!crate::html::render_html(&doc).contains("0.0"));
 }
 
 #[test]
@@ -2805,7 +2858,7 @@ fn never_run(name: &str) -> crate::scoring::ExperimentScore {
 #[test]
 fn the_outlook_counts_the_experiments_that_never_ran() {
     let card_of = |experiments| crate::scoring::Scorecard {
-        portfolio: 0.0,
+        portfolio: Some(0.0),
         band: "poor".into(),
         delta: None,
         as_of_ns: BASE_NS,

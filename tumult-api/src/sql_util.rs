@@ -258,9 +258,10 @@ pub(crate) fn scoped_experiment_names(
     ))
 }
 
-/// Restrict a scorecard to in-scope experiments, recomputing the target and
-/// portfolio rollups with scoring's equal-weight algorithm (the scoring
-/// crate has no scope hook, so the rollup is replayed here).
+/// Restrict a scorecard to in-scope experiments, recomputing the target
+/// rollup with scoring's equal-weight algorithm (the scoring crate has no
+/// scope hook, so the rollup is replayed here) and the portfolio score and
+/// band by scoring's own rule (`portfolio_score`, `portfolio_band`).
 pub(crate) fn scope_scorecard(
     reader: &Reader,
     mut card: tumult_compliance::scoring::Scorecard,
@@ -298,12 +299,8 @@ pub(crate) fn scope_scorecard(
             .partial_cmp(&b.score)
             .unwrap_or(std::cmp::Ordering::Equal)
     });
-    card.portfolio = if targets.is_empty() {
-        0.0
-    } else {
-        targets.iter().map(|t| t.score).sum::<f64>() / targets.len() as f64
-    };
-    card.band = tumult_compliance::scoring::band(card.portfolio).to_string();
+    card.portfolio = tumult_compliance::scoring::portfolio_score(&targets);
+    card.band = tumult_compliance::scoring::portfolio_band(card.portfolio).to_string();
     card.targets = targets;
     Ok(card)
 }

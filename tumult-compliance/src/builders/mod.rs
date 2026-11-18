@@ -14,7 +14,7 @@ use sha2::{Digest, Sha256};
 use tumult_lake::{Reader, RunVerdict};
 
 use crate::html::fmt_date;
-use crate::model::{DocMeta, TemplateKind};
+use crate::model::{Cell, DocMeta, TemplateKind};
 use crate::scoring::{self, RunState, Scorecard};
 
 pub use evidence_pack::{build_evidence_pack, CLAUSE_VERIFY_FOOTNOTE, FRAMEWORK_CLAUSES};
@@ -114,13 +114,13 @@ fn decisions(open: usize) -> String {
 }
 
 fn bluf(card: &Scorecard, open: &[&scoring::ExperimentScore]) -> String {
-    if card.experiments.is_empty() {
+    let Some(portfolio) = card.portfolio else {
         return "No experiment is on record, so there is no resilience score yet.".into();
-    }
+    };
     format!(
         "Portfolio resilience is {} ({}/100){} {} {}",
         card.band,
-        f1(card.portfolio),
+        f1(portfolio),
         direction(card.delta),
         weakest_targets(card),
         decisions(open.len()),
@@ -165,6 +165,12 @@ fn outlook(card: &Scorecard) -> String {
     } else {
         format!("Next period priorities: {}.", pts.join("; "))
     }
+}
+
+/// The cell of a fault severity: the word with its mark, or `not recorded`
+/// in plain text when the run or the record has none.
+fn severity_cell(severity: Option<&str>) -> Cell {
+    severity.map_or(Cell::text("not recorded"), Cell::status)
 }
 
 /// The decision an open weakness asks of the reader, by run state.

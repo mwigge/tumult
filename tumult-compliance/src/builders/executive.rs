@@ -3,12 +3,13 @@
 use tumult_lake::Reader;
 
 use super::{
-    base_meta, bluf, counted, decision_for, f1, issue_stats, outlook, runs_in_window, DAY_NS,
+    base_meta, bluf, counted, decision_for, f1, issue_stats, outlook, runs_in_window,
+    severity_cell, DAY_NS,
 };
 use crate::html::fmt_date;
 use crate::model::{Block, Cell, ChartSpec, ReportDoc, TemplateKind};
 use crate::org::{OrgNodeScore, OrgTree, ScoredLeaf};
-use crate::scoring::{self, RunState};
+use crate::scoring;
 
 /// What deviated or failed in the period `from` to `to`, and what was fixed
 /// since.
@@ -51,7 +52,7 @@ pub fn build_executive(
     let open: Vec<&scoring::ExperimentScore> = card
         .experiments
         .iter()
-        .filter(|e| e.state != RunState::Passed && e.state != RunState::Stale)
+        .filter(|e| e.state.is_open())
         .collect();
     // Experiments with at least one run inside the period.
     let in_window = runs_in_window(reader, from_ns, as_of_ns, envs)?;
@@ -85,12 +86,8 @@ pub fn build_executive(
     blocks.push(Block::Kpis(vec![
         (
             "Portfolio score".into(),
-            if scored {
-                f1(card.portfolio)
-            } else {
-                "—".into()
-            },
-            scored.then(|| card.band.clone()),
+            card.portfolio.map_or("—".into(), f1),
+            card.portfolio.map(|_| card.band.clone()),
         ),
         (
             "Δ vs previous period".into(),
@@ -321,7 +318,7 @@ fn open_weaknesses(open: &[&scoring::ExperimentScore], as_of_ns: i64) -> Block {
             .iter()
             .map(|e| {
                 vec![
-                    Cell::status(e.severity.clone().unwrap_or_else(|| "medium".into())),
+                    severity_cell(e.severity.as_deref()),
                     Cell::text(e.name.clone()),
                     Cell::text(e.last_run_ns.map_or("never".into(), fmt_date)),
                     Cell::text(
