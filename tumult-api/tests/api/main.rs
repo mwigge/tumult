@@ -23,6 +23,7 @@ mod perf;
 mod query;
 #[cfg(unix)]
 mod real_runs;
+mod recovery;
 mod reports;
 mod risks;
 mod runs;

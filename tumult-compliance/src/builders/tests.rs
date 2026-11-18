@@ -1484,6 +1484,70 @@ fn a_run_that_sent_no_trace_is_an_issue_like_a_run_that_did() {
     assert_eq!((discovered, fixed), (2, 0));
 }
 
+#[test]
+fn the_mean_time_to_recover_is_of_the_runs_with_or_without_a_trace_and_not_of_inner_spans() {
+    use tumult_core::types::{ExperimentStatus, ObjectiveOutcome};
+    let d = tempfile::TempDir::new().unwrap();
+    let store = tumult_lake::Store::open(&d.path().join("kronika.duckdb")).unwrap();
+    let writer = store.writer().unwrap();
+    // A traced run that recovered in 20 s, and a span inside its trace
+    // that carries a recovery time of its own.
+    let root = tumult_lake::SpanRow {
+        ts_ns: BASE_NS,
+        trace_id: "trace-traced".into(),
+        span_id: "span-traced".into(),
+        span_name: "resilience.experiment".into(),
+        experiment_id: Some("traced".into()),
+        experiment_name: Some("failover".into()),
+        outcome_status: Some("completed".into()),
+        recovery_time_s: Some(20.0),
+        events: "[]".into(),
+        ..Default::default()
+    };
+    let inner = tumult_lake::SpanRow {
+        ts_ns: BASE_NS + 1,
+        span_id: "span-inner".into(),
+        parent_span_id: Some("span-traced".into()),
+        span_name: "resilience.action".into(),
+        experiment_id: None,
+        experiment_name: None,
+        recovery_time_s: Some(80.0),
+        ..root.clone()
+    };
+    // Two runs outside the window: one that started a moment before it,
+    // and one that started as it ended.
+    let outside = |id: &str, ts_ns: i64| tumult_lake::SpanRow {
+        ts_ns,
+        trace_id: format!("trace-{id}"),
+        span_id: format!("span-{id}"),
+        experiment_id: Some(id.into()),
+        recovery_time_s: Some(500.0),
+        ..root.clone()
+    };
+    let before = outside("before", BASE_NS - 1);
+    let after = outside("after", BASE_NS + DAY_NS);
+    writer.insert_spans(&[root, inner, before, after]).unwrap();
+    // A plain `tumult run` an hour later: the lake holds its journal, which
+    // measured a recovery time of 40 s, and no span.
+    let journal = tumult_core::types::Journal {
+        experiment_title: "failover".into(),
+        started_at_ns: BASE_NS + HOUR_NS,
+        ended_at_ns: BASE_NS + HOUR_NS + 300_000_000_000,
+        objectives: Some(ObjectiveOutcome {
+            rto_target_s: Some(300.0),
+            rto_measured_s: Some(40.0),
+            ..ObjectiveOutcome::default()
+        }),
+        ..tumult_lake::duckdb_store::sample_journal("journal-only", ExperimentStatus::Completed)
+    };
+    assert!(writer.ingest_journal(&journal, None).unwrap());
+
+    let (_, _, mttr) =
+        issue_stats(&store.read_only().unwrap(), BASE_NS, BASE_NS + DAY_NS, &[]).unwrap();
+
+    assert_eq!(mttr, Some(30.0));
+}
+
 /// The bullets under the heading `title`.
 fn bullets_under<'a>(doc: &'a ReportDoc, title: &str) -> &'a [String] {
     doc.blocks

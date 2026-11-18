@@ -174,6 +174,20 @@ pub fn run_outcome_sql(span: &str, log: &str) -> String {
     format!("lower(coalesce({span}.outcome_status, {log}.log_attrs['status']))")
 }
 
+/// The SQL aggregate for the mean time to recover, in seconds: the mean
+/// recovery time of the runs that report one. NULL when no run reports
+/// one, never 0.
+///
+/// `root` is the alias of a row of `run_roots`, one row a run. A traced run
+/// reports the recovery time on its root span; a run stored only as a
+/// journal reports the recovery time its journal measured, which is there
+/// only when its definition declares an objective. A span that is no root
+/// of a run is not read.
+#[must_use]
+pub fn mean_recovery_time_sql(root: &str) -> String {
+    format!("avg({root}.recovery_time_s)")
+}
+
 /// What the way a run ended says about the system it tested.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RunVerdict {

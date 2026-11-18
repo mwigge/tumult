@@ -1818,7 +1818,7 @@ functions:
                 "INSERT INTO manual_experiments (id, experiment_name, exercise_type, \
                  executed_at_ns, hypothesis, method, outcome_status, target_system, \
                  target_environment, entered_by, entered_at_ns, attestation, status, \
-                 framework_refs, content_hash) VALUES ('{id}', '{id}', '{exercise}', {at}, \
+                 framework_refs, content_hash) VALUES ('{id}', 'name-{id}', '{exercise}', {at}, \
                  'h', 'm', 'passed', {target}, 'prod', 'ada', {at}, 'a', 'verified', \
                  CAST('{refs}' AS VARCHAR[]), 'hash')",
                 at = NOW - DAY_NS
@@ -1852,6 +1852,14 @@ functions:
                 ("m2", vec!["cif-0001".to_string()], Some("dr"), Vec::new()),
             ]
         );
+        // A record is shown by its name, not by its id.
+        let names: Vec<&str> = loaded
+            .inputs
+            .evidence
+            .iter()
+            .map(|e| e.experiment.as_str())
+            .collect();
+        assert_eq!(names, ["name-m1", "name-m2"]);
         assert!(loaded
             .inputs
             .evidence

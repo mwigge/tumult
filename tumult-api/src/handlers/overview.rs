@@ -25,6 +25,15 @@ fn and_root_env(scopes: &[String]) -> String {
     scope::and(scope::in_list("target_environment", scopes))
 }
 
+/// The roots `s` of the runs that started in `[f, t)` in the scopes, as a
+/// predicate on `run_roots`.
+fn roots_in(f: i64, t: i64, scopes: &[String]) -> String {
+    format!(
+        "s.ts_ns >= {f} AND s.ts_ns < {t}{}",
+        scope::and(scope::in_list("s.target_environment", scopes))
+    )
+}
+
 /// The runs that started in `[f, t)` in the scopes, as the FROM and WHERE
 /// of a query: each root `s` with its completion log `l`, for
 /// [`run_pass_rate_sql`]. A run completes after it starts, so only the
@@ -33,9 +42,9 @@ fn runs_from(f: i64, t: i64, scopes: &[String]) -> String {
     format!(
         "FROM run_roots AS s \
          LEFT JOIN ({}) AS l ON s.experiment_id = l.experiment_id \
-         WHERE s.ts_ns >= {f} AND s.ts_ns < {t}{}",
+         WHERE {}",
         tumult_lake::run_completions_sql(Some(f)),
-        scope::and(scope::in_list("s.target_environment", scopes))
+        roots_in(f, t, scopes)
     )
 }
 
@@ -142,19 +151,18 @@ fn sql_deviation_num(f: i64, t: i64, b: i64, scopes: &[String]) -> String {
 
 fn sql_mttr_value(f: i64, t: i64, scopes: &[String]) -> String {
     format!(
-        "SELECT AVG(recovery_time_s) AS v FROM spans WHERE recovery_time_s IS NOT NULL AND {}{}",
-        w(f, t),
-        scope::and(env_trace_exists("spans", scopes))
+        "SELECT {} AS v FROM run_roots AS s WHERE {}",
+        tumult_lake::mean_recovery_time_sql("s"),
+        roots_in(f, t, scopes)
     )
 }
 
 fn sql_mttr_spark(f: i64, t: i64, b: i64, scopes: &[String]) -> String {
     format!(
-        "SELECT {} AS ts, AVG(recovery_time_s) AS v FROM spans \
-         WHERE recovery_time_s IS NOT NULL AND {}{} GROUP BY 1 ORDER BY 1",
-        bucket_expr(b),
-        w(f, t),
-        scope::and(env_trace_exists("spans", scopes))
+        "SELECT {} AS ts, {} AS v FROM run_roots AS s WHERE {} GROUP BY 1 ORDER BY 1",
+        bucket_of("s.ts_ns", b),
+        tumult_lake::mean_recovery_time_sql("s"),
+        roots_in(f, t, scopes)
     )
 }
 

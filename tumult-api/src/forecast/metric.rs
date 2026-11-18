@@ -158,11 +158,11 @@ fn window(secs: i64, now_ns: i64) -> Window {
 }
 
 /// Predicate confining a metric definition's source rows to one target:
-/// `spans` carry `target_system`; the metric tables reach it through the
-/// root span's `experiment_name`.
+/// `spans` and `run_roots` carry `target_system`; the metric tables reach
+/// it through the root span's `experiment_name`.
 fn target_table_predicate(table: &str, target: &str) -> String {
     let t = sql_string(target);
-    if table == "spans" {
+    if table == "spans" || table == "run_roots" {
         return format!("target_system = {t}");
     }
     format!(

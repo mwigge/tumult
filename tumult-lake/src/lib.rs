@@ -135,8 +135,8 @@ pub use runs::{rollback_status, run_state, NewRun, RegisteredDefinition};
 pub use schedules::ScheduleRow;
 #[cfg(feature = "duckdb")]
 pub use schema::{
-    run_completions_sql, run_outcome_sql, run_verdict, run_verdict_sql, RunVerdict,
-    CURRENT_SCHEMA_VERSION,
+    mean_recovery_time_sql, run_completions_sql, run_outcome_sql, run_verdict, run_verdict_sql,
+    RunVerdict, CURRENT_SCHEMA_VERSION,
 };
 #[cfg(feature = "duckdb")]
 pub use sightings::{StoredVersions, VersionSighting, REDEPLOY_GAP};

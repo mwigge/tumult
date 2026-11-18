@@ -213,9 +213,9 @@ fn runs_in_window(
 }
 
 /// Count the runs in `[from, to)` that did not pass and how many later ran
-/// green, with or without a trace; plus MTTR from spans that report
-/// `recovery_time_s`. A run that proves nothing is neither
-/// ([`tumult_lake::run_verdict`]).
+/// green, with or without a trace; plus the mean time to recover of the
+/// runs that report a recovery time ([`tumult_lake::mean_recovery_time_sql`]).
+/// A run that proves nothing is neither ([`tumult_lake::run_verdict`]).
 fn issue_stats(
     reader: &Reader,
     from_ns: i64,
@@ -266,9 +266,10 @@ fn issue_stats(
 
     let mttr = reader
         .query_json_rows(&format!(
-            "SELECT AVG(recovery_time_s) AS v FROM spans \
-             WHERE recovery_time_s IS NOT NULL AND ts_ns >= {from_ns} AND ts_ns < {to_ns}{}",
-            scope::and(scope::in_list("target_environment", envs)),
+            "SELECT {} AS v FROM run_roots s \
+             WHERE s.ts_ns >= {from_ns} AND s.ts_ns < {to_ns}{}",
+            tumult_lake::mean_recovery_time_sql("s"),
+            scope::and(scope::in_list("s.target_environment", envs)),
         ))
         .map_err(|e| e.to_string())?
         .first()

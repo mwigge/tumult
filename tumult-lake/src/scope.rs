@@ -27,14 +27,15 @@ pub fn and(predicate: Option<String>) -> String {
     predicate.map_or_else(String::new, |p| format!(" AND {p}"))
 }
 
-/// The scope of the rows of `table`, one of `spans` and the `metric_*`
-/// tables. `spans` binds its own `target_environment` (it lives on the
-/// root span); a metric point has no environment, so it reaches the one of
-/// the root spans of its experiment through `experiment_name`. `None` when
-/// `envs` is empty.
+/// The scope of the rows of `table`, one of `spans`, `run_roots` and the
+/// `metric_*` tables. `spans` binds its own `target_environment` (it lives
+/// on the root span), and so does `run_roots`, where a run stored only as a
+/// journal has no span; a metric point has no environment, so it reaches
+/// the one of the root spans of its experiment through `experiment_name`.
+/// `None` when `envs` is empty.
 #[must_use]
 pub fn table_predicate(table: &str, envs: &[String]) -> Option<String> {
-    if table == "spans" {
+    if table == "spans" || table == "run_roots" {
         return in_list("target_environment", envs);
     }
     in_list("se.target_environment", envs).map(|env| {
@@ -85,6 +86,16 @@ mod tests {
             table_predicate("spans", &envs(&["dev"])).as_deref(),
             Some("target_environment IN ('dev')")
         );
+    }
+
+    #[test]
+    fn the_roots_of_the_runs_bind_their_own_environment() {
+        // A run stored only as a journal has no span to reach it through.
+        assert_eq!(
+            table_predicate("run_roots", &envs(&["dev"])).as_deref(),
+            Some("target_environment IN ('dev')")
+        );
+        assert_eq!(table_predicate("run_roots", &[]), None);
     }
 
     #[test]

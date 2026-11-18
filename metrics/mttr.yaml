@@ -1,12 +1,13 @@
-# Mean time to recovery: average resilience.outcome.recovery_time_s
-# over experiment runs.
+# Mean time to recovery: the mean recovery time of the runs that report
+# one, over the root of every run, traced or stored only as a journal. It
+# is the rule of `tumult_lake::mean_recovery_time_sql`, as the card of the
+# home page and the executive digest read it.
 name: mttr
 description: Mean time to recovery across experiment runs.
 unit: seconds
-source_table: spans
+source_table: run_roots
 time_col: ts_ns
 measure:
   type: avg
   column: recovery_time_s
 dimensions: []
-condition: { column: span_name, equals: "resilience.experiment" }

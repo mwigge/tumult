@@ -420,6 +420,80 @@ fn a_run_with_two_completion_logs_is_one_run_that_ended_as_the_later_says() {
     assert_eq!(runs[0].outcome_status.as_deref(), Some("completed"));
 }
 
+/// A run stored only as a journal, whose journal measured a recovery time
+/// of `rto_s`, or none.
+fn journal_measuring(id: &str, rto_s: Option<f64>) -> tumult_core::types::Journal {
+    let mut journal =
+        crate::duckdb_store::sample_journal(id, tumult_core::types::ExperimentStatus::Completed);
+    journal.objectives = rto_s.map(|rto| tumult_core::types::ObjectiveOutcome {
+        rto_measured_s: Some(rto),
+        ..Default::default()
+    });
+    journal
+}
+
+/// The mean recovery time of the runs in `store`, by the rule of the lake.
+fn mean_recovery_time(store: &Store) -> serde_json::Value {
+    let rows = store
+        .read_only()
+        .unwrap()
+        .query_json_rows(&format!(
+            "SELECT {} AS v FROM run_roots AS s",
+            crate::mean_recovery_time_sql("s")
+        ))
+        .unwrap();
+    rows[0]["v"].clone()
+}
+
+#[test]
+fn the_mean_recovery_time_is_of_the_runs_that_report_one_traced_or_not() {
+    let d = tempfile::TempDir::new().unwrap();
+    let store = Store::open(&d.path().join("kronika.duckdb")).unwrap();
+    let writer = store.writer().unwrap();
+    // A traced run that recovered in 20 s, and a span inside its trace that
+    // carries a recovery time of its own.
+    let root = SpanRow {
+        recovery_time_s: Some(20.0),
+        ..sample_span("traced")
+    };
+    let inner = SpanRow {
+        span_id: "span-2".into(),
+        parent_span_id: Some("span-1".into()),
+        span_name: "resilience.action".into(),
+        experiment_id: None,
+        recovery_time_s: Some(80.0),
+        ..sample_span("traced")
+    };
+    writer.insert_spans(&[root, inner]).unwrap();
+    // Two runs stored only as journals: one measured 40 s, one nothing.
+    for (id, rto_s) in [("journal-40", Some(40.0)), ("journal-none", None)] {
+        assert!(writer
+            .ingest_journal(&journal_measuring(id, rto_s), None)
+            .unwrap());
+    }
+
+    assert_eq!(mean_recovery_time(&store), serde_json::json!(30.0));
+}
+
+#[test]
+fn with_no_run_that_reports_a_recovery_time_the_mean_is_no_value_and_not_zero() {
+    let d = tempfile::TempDir::new().unwrap();
+    let store = Store::open(&d.path().join("kronika.duckdb")).unwrap();
+    assert!(mean_recovery_time(&store).is_null(), "no run at all");
+
+    let writer = store.writer().unwrap();
+    let root = SpanRow {
+        recovery_time_s: None,
+        ..sample_span("traced")
+    };
+    writer.insert_spans(&[root]).unwrap();
+    assert!(writer
+        .ingest_journal(&journal_measuring("journal-none", None), None)
+        .unwrap());
+
+    assert!(mean_recovery_time(&store).is_null(), "no run reports one");
+}
+
 /// A reader that asks about the runs since a time reads the completion
 /// logs since then, and still one for each run.
 #[test]
