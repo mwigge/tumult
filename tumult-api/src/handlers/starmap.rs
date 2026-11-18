@@ -40,7 +40,7 @@ use tumult_graph::starmap::{
     StarMap, StarQuery, SuppressionRow, SystemRow, WorkloadRow, DEFAULT_BUDGET, MAX_BUDGET,
     MAX_DEPTH,
 };
-use tumult_lake::Reader;
+use tumult_lake::{Reader, RunVerdict};
 use tumult_risk::{CoverageStatus, Inputs, Report, Risk};
 
 use crate::auth::Principal;
@@ -380,21 +380,20 @@ fn calls(reader: &Reader, window: &Window) -> Result<Vec<CallRow>, String> {
 /// is read from its root, which is built from the journal when the run
 /// sent no trace. The outcome of a run is on its root or its completion
 /// log; a run completes after it starts, so only logs since the window
-/// opened are joined.
+/// opened are read.
 fn runs_sql(window: &Window) -> String {
     let span_scope = and_pred(env_scope_where("s.target_environment", &window.envs));
     let manual_scope = and_pred(env_scope_where("m.target_environment", &window.envs));
     let (from, to) = (window.from_ns, window.to_ns);
     let status = tumult_lake::run_outcome_sql("s", "l");
+    let completions = tumult_lake::run_completions_sql(Some(from));
     format!(
         "SELECT s.experiment_id AS id, any_value(s.experiment_name) AS experiment, \
          any_value(s.target_system) AS system, any_value(s.target_environment) AS environment, \
          MIN(s.ts_ns) AS started_ns, \
          any_value({status}) AS status, \
          false AS manual \
-         FROM run_roots s LEFT JOIN logs l \
-           ON l.log_attrs['experiment_id'] = s.experiment_id \
-          AND l.body = 'experiment.completed' AND l.ts_ns >= {from} \
+         FROM run_roots s LEFT JOIN ({completions}) l ON s.experiment_id = l.experiment_id \
          WHERE s.experiment_id IS NOT NULL \
            AND s.experiment_name IS NOT NULL \
            AND s.ts_ns >= {from} AND s.ts_ns < {to}{span_scope} \
@@ -408,11 +407,19 @@ fn runs_sql(window: &Window) -> String {
     )
 }
 
-/// The scorecard's rule: completed, passed and partial pass; anything
-/// else, including a run that never reported an outcome, failed.
-fn failed(status: Option<&str>) -> bool {
+/// The scorecard's rule: a run fails by its verdict
+/// ([`tumult_lake::run_verdict`]), a manual record unless it passed or
+/// partly passed, and so does a run that never reported an outcome.
+/// `None` for a run that proves nothing: it is no evidence at all.
+fn failed(status: Option<&str>) -> Option<bool> {
     let status = status.map(str::to_ascii_lowercase);
-    !matches!(status.as_deref(), Some("completed" | "passed" | "partial"))
+    if matches!(status.as_deref(), Some("passed" | "partial")) {
+        return Some(false);
+    }
+    match status.as_deref().and_then(tumult_lake::run_verdict) {
+        Some(RunVerdict::NoEvidence) => None,
+        verdict => Some(verdict != Some(RunVerdict::Pass)),
+    }
 }
 
 fn runs(reader: &Reader, window: &Window) -> Result<Vec<RunRow>, String> {
@@ -426,7 +433,7 @@ fn runs(reader: &Reader, window: &Window) -> Result<Vec<RunRow>, String> {
                 system: text(row, "system"),
                 environment: text(row, "environment"),
                 started_ns: row.get("started_ns").and_then(Value::as_i64)?,
-                failed: failed(row.get("status").and_then(Value::as_str)),
+                failed: failed(row.get("status").and_then(Value::as_str))?,
                 manual: row.get("manual").and_then(Value::as_bool).unwrap_or(false),
             })
         })
@@ -975,12 +982,19 @@ mod tests {
     #[test]
     fn outcome_rule_matches_the_scorecard() {
         for passed in ["Completed", "completed", "passed", "partial"] {
-            assert!(!failed(Some(passed)), "{passed}");
+            assert_eq!(failed(Some(passed)), Some(false), "{passed}");
         }
-        for broke in ["Deviated", "Failed", "failed", "Aborted", ""] {
-            assert!(failed(Some(broke)), "{broke}");
+        for broke in ["Deviated", "Failed", "failed", "Halted", ""] {
+            assert_eq!(failed(Some(broke)), Some(true), "{broke}");
         }
-        assert!(failed(None), "a run with no outcome did not pass");
+        for nothing in ["Aborted", "interrupted"] {
+            assert_eq!(failed(Some(nothing)), None, "{nothing} is no evidence");
+        }
+        assert_eq!(
+            failed(None),
+            Some(true),
+            "a run with no outcome did not pass"
+        );
     }
 
     #[test]
@@ -1192,7 +1206,7 @@ mod tests {
         );
         let q = runs_sql(&window);
         assert!(
-            q.contains(&format!("l.ts_ns >= {}", 2 * hour)),
+            q.contains(&tumult_lake::run_completions_sql(Some(2 * hour))),
             "the completion log join is bounded: {q}"
         );
     }

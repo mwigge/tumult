@@ -37,7 +37,9 @@ use std::fmt;
 use serde_json::Value;
 use tumult_core::compliance::{entity_id_is_valid, truncated, EntityProfile};
 use tumult_core::types::canonical_kind;
-use tumult_lake::{IctFunction, IctFunctionService, IctLegalEntity, IctRegister, Reader};
+use tumult_lake::{
+    IctFunction, IctFunctionService, IctLegalEntity, IctRegister, Reader, RunVerdict,
+};
 
 use super::model::{
     day_of, parse_day, Evidence, Facts, Function, IncidentFeed, Inputs, Outcome, PlannedTest,
@@ -378,14 +380,20 @@ impl Mapper {
 }
 
 /// Outcome of a completion status; `None` for a run that proves nothing
-/// either way. A run with no completion record counts as failed.
+/// either way. A run takes the outcome of its verdict
+/// ([`tumult_lake::run_verdict`]), a manual record that of its outcome. A
+/// run with no completion record counts as failed.
 fn outcome_of(status: Option<&str>) -> Option<Outcome> {
     let status = status.map(str::to_ascii_lowercase);
     match status.as_deref() {
-        Some("completed" | "passed") => Some(Outcome::Passed),
+        Some("passed") => Some(Outcome::Passed),
         Some("partial") => Some(Outcome::Partial),
-        Some("inconclusive" | "aborted" | "interrupted") => None,
-        _ => Some(Outcome::Failed),
+        Some("inconclusive") => None,
+        run => match run.and_then(tumult_lake::run_verdict) {
+            Some(RunVerdict::Pass) => Some(Outcome::Passed),
+            Some(RunVerdict::NoEvidence) => None,
+            Some(RunVerdict::Fail) | None => Some(Outcome::Failed),
+        },
     }
 }
 
@@ -405,8 +413,7 @@ fn runs_sql(as_of_ns: i64, envs: &[String]) -> String {
          COALESCE(e.rto_measured_s, s.recovery_time_s) AS rto_measured_s, \
          e.rpo_measured_s AS rpo_measured_s \
          FROM spans s \
-         LEFT JOIN logs l ON l.log_attrs['experiment_id'] = s.experiment_id \
-         AND l.body = 'experiment.completed' \
+         LEFT JOIN run_completions l ON s.experiment_id = l.experiment_id \
          LEFT JOIN experiments e ON e.experiment_id = s.experiment_id \
          WHERE s.span_name = 'resilience.experiment' AND s.experiment_name IS NOT NULL \
          AND s.ts_ns <= {as_of_ns}{scope} \
@@ -1196,6 +1203,33 @@ functions:
                 ("r2", Outcome::Passed),
                 ("r3", Outcome::Failed),
             ]
+        );
+    }
+
+    #[test]
+    fn a_run_with_two_completion_logs_is_one_piece_of_evidence() {
+        let (_dir, store) = store_with(ORG);
+        let (span, first) = run("r1", "payments-db", "dr", "Deviated", NOW - DAY_NS);
+        let again = LogRow {
+            ts_ns: first.ts_ns + 1,
+            log_attrs: pairs(&[("experiment_id", "r1"), ("status", "Completed")]),
+            ..first.clone()
+        };
+        // The later log is stored first.
+        seed(&store, &[span], &[again, first]);
+
+        let loaded = loaded(&store, request(&[]));
+
+        let seen: Vec<(&str, Outcome)> = loaded
+            .inputs
+            .evidence
+            .iter()
+            .map(|e| (e.id.as_str(), e.outcome))
+            .collect();
+        assert_eq!(
+            seen,
+            [("r1", Outcome::Passed)],
+            "the later log says how it ended"
         );
     }
 

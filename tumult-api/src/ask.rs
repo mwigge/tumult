@@ -10,6 +10,7 @@
 //! execution is bounded by a wall-clock timeout around the blocking task
 //! instead.
 
+use std::sync::LazyLock;
 use std::time::Duration;
 
 use axum::extract::State;
@@ -21,6 +22,7 @@ use serde_json::json;
 use tumult_intelligence::llm::{AiError, Message, Role};
 use tumult_intelligence::locked_reader::LockedReader;
 use tumult_intelligence::sql_guard;
+use tumult_lake::RunVerdict;
 
 use crate::auth::Principal;
 use crate::ApiState;
@@ -33,6 +35,7 @@ const ALLOWED_TABLES: &[&str] = &[
     "metric_gauges",
     "metric_histograms",
     "experiment_runs",
+    "run_completions",
     "import_batches",
 ];
 
@@ -43,53 +46,66 @@ const QUERY_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// Curated question → SQL pairs. These answer the demo's showcase questions
 /// with zero LLM involvement and double as few-shot examples in the prompt.
-const GOLDEN: &[(&str, &str)] = &[
-    (
-        "how many experiments ran",
-        "SELECT COUNT(*) AS experiments FROM spans \
-         WHERE span_name = 'resilience.experiment'",
-    ),
-    (
-        "what is the pass rate",
-        "SELECT SUM(CAST(value AS DOUBLE)) FILTER (WHERE outcome_status = 'success') \
-         / NULLIF(SUM(CAST(value AS DOUBLE)), 0) AS pass_rate \
-         FROM metric_sums WHERE metric_name = 'tumult.experiments.total'",
-    ),
-    (
-        "which experiments failed",
-        "SELECT s.experiment_id, s.experiment_name, \
-         lower(coalesce(s.outcome_status, l.log_attrs['status'])) AS status \
-         FROM spans s LEFT JOIN logs l \
-           ON l.log_attrs['experiment_id'] = s.experiment_id \
-          AND l.body = 'experiment.completed' \
-         WHERE s.span_name = 'resilience.experiment' \
-           AND lower(coalesce(s.outcome_status, l.log_attrs['status'])) != 'completed' \
-         ORDER BY s.ts_ns DESC",
-    ),
-    (
-        "what faults were injected",
-        "SELECT fault_type, COUNT(*) AS count FROM spans \
-         WHERE fault_type IS NOT NULL \
-         GROUP BY fault_type ORDER BY count DESC",
-    ),
-    (
-        "experiments per day",
-        "SELECT (ts_ns // 86400000000000) * 86400000000000 // 1000000000 AS day_s, \
-         COUNT(*) AS experiments FROM spans \
-         WHERE span_name = 'resilience.experiment' \
-         GROUP BY 1 ORDER BY 1",
-    ),
-    (
-        "show recent experiments",
-        "SELECT s.experiment_id, s.experiment_name, s.ts_ns AS started_ns, \
-         lower(coalesce(s.outcome_status, l.log_attrs['status'])) AS status \
-         FROM spans s LEFT JOIN logs l \
-           ON l.log_attrs['experiment_id'] = s.experiment_id \
-          AND l.body = 'experiment.completed' \
-         WHERE s.span_name = 'resilience.experiment' \
-         ORDER BY s.ts_ns DESC LIMIT 20",
-    ),
-];
+/// A run says how it ended by the rule of [`tumult_lake::run_outcome_sql`],
+/// and failed by its verdict ([`tumult_lake::run_verdict_sql`]).
+static GOLDEN: LazyLock<[(&str, String); 6]> = LazyLock::new(|| {
+    let outcome = tumult_lake::run_outcome_sql("s", "l");
+    [
+        (
+            "how many experiments ran",
+            "SELECT COUNT(*) AS experiments FROM spans \
+             WHERE span_name = 'resilience.experiment'"
+                .into(),
+        ),
+        (
+            "what is the pass rate",
+            "SELECT SUM(CAST(value AS DOUBLE)) FILTER (WHERE outcome_status = 'success') \
+             / NULLIF(SUM(CAST(value AS DOUBLE)), 0) AS pass_rate \
+             FROM metric_sums WHERE metric_name = 'tumult.experiments.total'"
+                .into(),
+        ),
+        (
+            "which experiments failed",
+            format!(
+                "SELECT s.experiment_id, s.experiment_name, {outcome} AS status \
+                 FROM spans s {COMPLETION_JOIN} \
+                 WHERE s.span_name = 'resilience.experiment' \
+                   AND {} = '{}' \
+                 ORDER BY s.ts_ns DESC",
+                tumult_lake::run_verdict_sql(&outcome),
+                RunVerdict::Fail.as_str()
+            ),
+        ),
+        (
+            "what faults were injected",
+            "SELECT fault_type, COUNT(*) AS count FROM spans \
+             WHERE fault_type IS NOT NULL \
+             GROUP BY fault_type ORDER BY count DESC"
+                .into(),
+        ),
+        (
+            "experiments per day",
+            "SELECT (ts_ns // 86400000000000) * 86400000000000 // 1000000000 AS day_s, \
+             COUNT(*) AS experiments FROM spans \
+             WHERE span_name = 'resilience.experiment' \
+             GROUP BY 1 ORDER BY 1"
+                .into(),
+        ),
+        (
+            "show recent experiments",
+            format!(
+                "SELECT s.experiment_id, s.experiment_name, s.ts_ns AS started_ns, \
+                 {outcome} AS status \
+                 FROM spans s {COMPLETION_JOIN} \
+                 WHERE s.span_name = 'resilience.experiment' \
+                 ORDER BY s.ts_ns DESC LIMIT 20"
+            ),
+        ),
+    ]
+});
+
+/// The join that gives the root span `s` of a run its completion log `l`.
+const COMPLETION_JOIN: &str = "LEFT JOIN run_completions l ON s.experiment_id = l.experiment_id";
 
 /// Lowercase, collapse whitespace, strip trailing punctuation.
 fn normalize(question: &str) -> String {
@@ -102,7 +118,10 @@ fn normalize(question: &str) -> String {
 /// Exact-match a question against the golden bank (after normalisation).
 fn golden_sql(question: &str) -> Option<&'static str> {
     let q = normalize(question);
-    GOLDEN.iter().find(|(gq, _)| *gq == q).map(|(_, sql)| *sql)
+    GOLDEN
+        .iter()
+        .find(|(gq, _)| *gq == q)
+        .map(|(_, sql)| sql.as_str())
 }
 
 /// System prompt: schema, tumult data semantics, output rules and the golden
@@ -123,6 +142,7 @@ fn schema_prompt() -> String {
          outcome_status, fault_type, fault_subtype, target_system, target_technology, \
          hypothesis_met BOOL, recovery_time_s DOUBLE, span_attrs MAP(VARCHAR,VARCHAR))\n\
          - logs(ts_ns, severity_text, body, trace_id, span_id, log_attrs MAP(VARCHAR,VARCHAR))\n\
+         - run_completions(experiment_id, ts_ns, log_attrs MAP(VARCHAR,VARCHAR))\n\
          - metric_sums(ts_ns, metric_name, value DOUBLE, experiment_name, outcome_status, plugin_name)\n\
          - metric_gauges(same shape as metric_sums)\n\
          - metric_histograms(ts_ns, metric_name, count, sum, min, max, experiment_name, outcome_status)\n\
@@ -130,11 +150,11 @@ fn schema_prompt() -> String {
          SEMANTICS\n\
          - One experiment run = one span with span_name = 'resilience.experiment'.\n\
          - A run says how it ended in outcome_status of its root span: \
-         {endings}. Runs stored by an older version say it only in a logs row \
-         with body = 'experiment.completed', as log_attrs['status'] with a \
-         capital, keyed by log_attrs['experiment_id']. For the outcome of a \
-         run, LEFT JOIN that logs row as l to the root span s and read \
-         {outcome}.\n\
+         {endings}. Runs stored by an older version say it only in their \
+         completion log, as log_attrs['status'] with a capital; \
+         run_completions holds the last completion log of each run. For the \
+         outcome of a run, {COMPLETION_JOIN} to the root span s and read \
+         {outcome}. A run failed where {verdict} = '{failed}'.\n\
          - Pass/fail counters: metric_sums rows with \
          metric_name = 'tumult.experiments.total' and \
          outcome_status = 'success'|'failure'; deviations: \
@@ -150,7 +170,9 @@ fn schema_prompt() -> String {
          EXAMPLES\n\
          {examples}",
         endings = "'completed'|'deviated'|'failed'|'aborted'|'interrupted'|'halted'",
-        outcome = tumult_lake::run_outcome_sql("s", "l")
+        outcome = tumult_lake::run_outcome_sql("s", "l"),
+        verdict = tumult_lake::run_verdict_sql(&tumult_lake::run_outcome_sql("s", "l")),
+        failed = RunVerdict::Fail.as_str(),
     )
 }
 
@@ -354,7 +376,7 @@ mod tests {
 
     #[test]
     fn golden_sql_passes_the_guard() {
-        for (_, sql) in GOLDEN {
+        for (_, sql) in GOLDEN.iter() {
             sql_guard::validate_generated_sql(sql, ALLOWED_TABLES)
                 .unwrap_or_else(|e| panic!("golden SQL rejected: {e}\n{sql}"));
         }

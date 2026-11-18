@@ -1,7 +1,8 @@
 //! Gremlin-style resilience scoring with freshness decay.
 //!
 //! Per experiment/target: a passed run scores 100, a passed run older than
-//! 30 days decays to 75 (stale), a failed/deviated run scores 50, and never
+//! 30 days decays to 75 (stale), a failed/deviated/halted run scores 50, an
+//! aborted or interrupted run proves nothing and is left out, and never
 //! run scores 0. Bands: > 70 good, 50–70 fair, < 50 poor. The portfolio
 //! rollup is the mean of target scores with a period-over-period delta.
 //!
@@ -10,7 +11,7 @@
 //! from scoring entirely). Draft/submitted manual records carry no score
 //! weight — they surface via [`pending_manual_leaves`] for coverage.
 
-use tumult_lake::Reader;
+use tumult_lake::{Reader, RunVerdict};
 
 /// Staleness threshold: a pass older than this decays from 100 to 75.
 pub const STALE_NS: i64 = 30 * 86_400 * 1_000_000_000;
@@ -120,7 +121,9 @@ pub struct Scorecard {
 /// root, plus run counts. A run root is the root span of a run, or a row
 /// built from its journal when the run sent no trace (`journal_only`).
 /// `{STATUS}` takes the outcome of the run, by the rule of
-/// [`tumult_lake::run_outcome_sql`].
+/// [`tumult_lake::run_outcome_sql`], and `{VERDICT}` its
+/// [`tumult_lake::run_verdict_sql`]: a run that proves nothing is neither
+/// the latest run nor counted.
 /// Verified manual records (excluding inconclusive outcomes) are UNIONed in
 /// with `origin = 'manual'`; the latest row is picked per (name, target, environment, origin).
 /// Display names cannot merge distinct deployment targets or environments.
@@ -131,17 +134,13 @@ const LATEST_SQL: &str = "SELECT * FROM ( \
      SELECT s.experiment_name AS name, s.target_system AS target, \
      s.ts_ns AS ts, s.fault_severity AS severity, {STATUS} AS status, \
      'automated' AS origin, s.target_environment AS environment, s.experiment_id AS evidence_id, \
-     (SELECT COUNT(*) FROM run_roots r \
-      WHERE r.experiment_name = s.experiment_name \
-      AND r.target_system IS NOT DISTINCT FROM s.target_system \
-      AND r.target_environment IS NOT DISTINCT FROM s.target_environment \
-      AND r.ts_ns <= {AS_OF}{ENV_R}) AS runs, \
+     COUNT(*) OVER (PARTITION BY s.experiment_name, s.target_system, s.target_environment) \
+     AS runs, \
      s.journal_only \
-     FROM run_roots s LEFT JOIN logs l \
-       ON l.log_attrs['experiment_id'] = s.experiment_id \
-      AND l.body = 'experiment.completed' \
+     FROM run_roots s LEFT JOIN run_completions l ON s.experiment_id = l.experiment_id \
      WHERE s.experiment_name IS NOT NULL \
        AND s.ts_ns <= {AS_OF}{ENV_S} \
+       AND {VERDICT} IS DISTINCT FROM '{NO_EVIDENCE}' \
      UNION ALL \
      SELECT m.experiment_name, m.target_system, m.executed_at_ns, NULL, \
      m.outcome_status, 'manual', m.target_environment, m.id, 1, false \
@@ -237,11 +236,13 @@ pub fn portfolio_series_scoped(
 }
 
 fn compute_as_of(reader: &Reader, as_of_ns: i64, envs: &[String]) -> Result<Scorecard, String> {
+    let status = tumult_lake::run_outcome_sql("s", "l");
     let sql = LATEST_SQL
-        .replace("{STATUS}", &tumult_lake::run_outcome_sql("s", "l"))
+        .replace("{VERDICT}", &tumult_lake::run_verdict_sql(&status))
+        .replace("{NO_EVIDENCE}", RunVerdict::NoEvidence.as_str())
+        .replace("{STATUS}", &status)
         .replace("{AS_OF}", &as_of_ns.to_string())
         .replace("{ENV_S}", &and_env(env_in("s.target_environment", envs)))
-        .replace("{ENV_R}", &and_env(env_in("r.target_environment", envs)))
         .replace("{ENV_M}", &and_env(env_in("m.target_environment", envs)));
     let rows = reader.query_json_rows(&sql).map_err(|e| e.to_string())?;
 
@@ -267,14 +268,18 @@ fn compute_as_of(reader: &Reader, as_of_ns: i64, envs: &[String]) -> Result<Scor
             .get("severity")
             .and_then(serde_json::Value::as_str)
             .map(str::to_owned);
-        // tumult outcomes: completed passes; every other ending fails; a
-        // missing outcome (incomplete run) counts as a failed attempt —
-        // conservative. Manual outcomes: passed passes, partial scores 75,
-        // failed fails (inconclusive rows never reach the query).
+        // tumult outcomes pass by their verdict (a run that proves nothing
+        // never reaches here); a missing outcome (incomplete run) counts as
+        // a failed attempt — conservative. Manual outcomes: passed passes,
+        // partial scores 75, failed fails (inconclusive rows never reach
+        // the query).
         let (score, state) = match outcome.as_deref() {
-            Some("completed") | Some("passed") => score_run(ts.map(|t| (t, true)), as_of_ns),
+            Some("passed") => score_run(ts.map(|t| (t, true)), as_of_ns),
             Some("partial") => (75, RunState::Partial),
-            _ => score_run(ts.map(|t| (t, false)), as_of_ns),
+            status => {
+                let passed = status.and_then(tumult_lake::run_verdict) == Some(RunVerdict::Pass);
+                score_run(ts.map(|t| (t, passed)), as_of_ns)
+            }
         };
         let origin = row
             .get("origin")
@@ -489,6 +494,96 @@ mod tests {
                 ("since", RunState::Passed, Some("completed")),
             ]
         );
+    }
+
+    #[test]
+    fn a_run_that_was_aborted_or_interrupted_is_left_out_of_the_score() {
+        let d = tempfile::TempDir::new().unwrap();
+        let store = tumult_lake::Store::open(&d.path().join("k.duckdb")).unwrap();
+        let now = 100 * DAY;
+        let root = |id: &str, name: &str, status: &str, ts: i64| tumult_lake::SpanRow {
+            ts_ns: ts,
+            trace_id: format!("trace-{id}"),
+            span_id: format!("span-{id}"),
+            span_name: "resilience.experiment".into(),
+            experiment_id: Some(id.into()),
+            experiment_name: Some(name.into()),
+            outcome_status: Some(status.into()),
+            target_system: Some("db".into()),
+            events: "[]".into(),
+            ..Default::default()
+        };
+        // The drill passed, then was aborted and interrupted. The other
+        // experiment never got past its first check.
+        store
+            .writer()
+            .unwrap()
+            .insert_spans(&[
+                root("drill-1", "drill", "completed", now - 3 * DAY),
+                root("drill-2", "drill", "aborted", now - 2 * DAY),
+                root("drill-3", "drill", "interrupted", now - DAY),
+                root("check-1", "check", "aborted", now - DAY),
+            ])
+            .unwrap();
+
+        let card = compute(&store.read_only().unwrap(), now, None).unwrap();
+
+        let seen: Vec<(&str, RunState, Option<&str>, u64)> = card
+            .experiments
+            .iter()
+            .map(|e| (e.name.as_str(), e.state, e.last_outcome.as_deref(), e.runs))
+            .collect();
+        assert_eq!(
+            seen,
+            [("drill", RunState::Passed, Some("completed"), 1)],
+            "neither a pass nor a failure"
+        );
+        assert_eq!(card.portfolio, 100.0);
+    }
+
+    #[test]
+    fn a_run_with_two_completion_logs_is_one_run_that_ended_as_the_later_says() {
+        let d = tempfile::TempDir::new().unwrap();
+        let store = tumult_lake::Store::open(&d.path().join("k.duckdb")).unwrap();
+        let now = 100 * DAY;
+        let done = |status: &str, ts: i64| tumult_lake::LogRow {
+            ts_ns: ts,
+            body: "experiment.completed".into(),
+            log_attrs: vec![
+                ("experiment_id".to_string(), "twice".to_string()),
+                ("status".to_string(), status.to_string()),
+            ],
+            ..tumult_lake::LogRow::default()
+        };
+        let writer = store.writer().unwrap();
+        writer
+            .insert_spans(&[tumult_lake::SpanRow {
+                ts_ns: now - DAY,
+                trace_id: "trace-twice".into(),
+                span_id: "span-twice".into(),
+                span_name: "resilience.experiment".into(),
+                experiment_id: Some("twice".into()),
+                experiment_name: Some("twice".into()),
+                events: "[]".into(),
+                ..Default::default()
+            }])
+            .unwrap();
+        // The later log is stored first.
+        writer
+            .insert_logs(&[
+                done("Completed", now - DAY + 2),
+                done("Deviated", now - DAY + 1),
+            ])
+            .unwrap();
+
+        let card = compute(&store.read_only().unwrap(), now, None).unwrap();
+
+        let seen: Vec<(RunState, Option<&str>, u64)> = card
+            .experiments
+            .iter()
+            .map(|e| (e.state, e.last_outcome.as_deref(), e.runs))
+            .collect();
+        assert_eq!(seen, [(RunState::Passed, Some("completed"), 1)]);
     }
 
     #[test]

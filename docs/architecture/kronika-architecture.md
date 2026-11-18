@@ -502,8 +502,9 @@ Wide, ClickHouse-exporter-aligned tables: `spans`, `logs`, `metric_sums`,
 `metric_gauges`, `metric_histograms` (+ `import_batches` for manual imports,
 `schema_meta` versioning). View `run_roots` holds the root of every run: its
 `resilience.experiment` span, or a row built from its journal when the run
-sent no trace (`journal_only`). Rollup view `experiment_runs` projects one row
-per run root.
+sent no trace (`journal_only`). View `run_completions` holds the last
+`experiment.completed` log of each run, so a run that logged its end twice is
+one row. Rollup view `experiment_runs` projects one row per run root.
 
 v2 adds manual evidence: `manual_experiments` (content + draft → submitted →
 verified/rejected lifecycle + provenance + `content_hash`),

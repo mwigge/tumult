@@ -28,34 +28,22 @@ const STEP_NAME: &str = "resilience.action.name";
 /// probes.
 pub(super) const MOST_SPANS: usize = 20_000;
 
-/// How the run ended, in the spelling of the journal: the status on the root
-/// span, or for a run stored before the runner wrote it there, the status of
-/// its completed log. `incomplete` when the run recorded neither.
-fn run_outcome(reader: &Reader, root: &Value, id: &str) -> Result<String, String> {
-    if let Some(status) = cell(root, "outcome_status") {
-        return Ok(status.to_string());
-    }
-    let logged = reader
-        .query_json_rows(&format!(
-            "SELECT lower(log_attrs['status']) AS status FROM logs \
-             WHERE log_attrs['experiment_id'] = {id} AND body = 'experiment.completed' \
-             ORDER BY ts_ns DESC LIMIT 1"
-        ))
-        .map_err(|e| e.to_string())?;
-    let status = logged.first().and_then(|row| cell(row, "status"));
-    Ok(status.unwrap_or("incomplete").to_string())
-}
-
 /// The root span of the run `id`, when it is in `envs` (empty = unscoped).
+/// `outcome` says how the run ended, by the rule of
+/// [`tumult_lake::run_outcome_sql`], and is `incomplete` when the run
+/// recorded no status.
 fn root_of(reader: &Reader, id: &str, envs: &[String]) -> Result<Option<Value>, String> {
     let rows = reader
         .query_json_rows(&format!(
-            "SELECT ts_ns, experiment_id, experiment_name, target_system, target_environment, \
-             fault_type, fault_subtype, fault_severity, blast_radius, hypothesis_met, \
-             recovery_time_s, outcome_status, service_name, duration_ns, span_attrs \
-             FROM spans WHERE span_name = 'resilience.experiment' AND experiment_id = {id}{} \
-             ORDER BY ts_ns DESC LIMIT 1",
-            scoring::and_env(scoring::env_in("target_environment", envs)),
+            "SELECT s.ts_ns, s.experiment_id, s.experiment_name, s.target_system, \
+             s.target_environment, s.fault_type, s.fault_subtype, s.fault_severity, \
+             s.blast_radius, s.hypothesis_met, s.recovery_time_s, s.service_name, \
+             s.duration_ns, s.span_attrs, coalesce({}, 'incomplete') AS outcome \
+             FROM spans AS s LEFT JOIN run_completions AS l ON s.experiment_id = l.experiment_id \
+             WHERE s.span_name = 'resilience.experiment' AND s.experiment_id = {id}{} \
+             ORDER BY s.ts_ns DESC LIMIT 1",
+            tumult_lake::run_outcome_sql("s", "l"),
+            scoring::and_env(scoring::env_in("s.target_environment", envs)),
         ))
         .map_err(|e| e.to_string())?;
     Ok(rows.into_iter().next())
@@ -678,7 +666,7 @@ pub fn build_game_day(
     let Some(root) = root_of(reader, &id, envs)? else {
         return Ok(None);
     };
-    let outcome = run_outcome(reader, &root, &id)?;
+    let outcome = cell(&root, "outcome").unwrap_or_default();
     let read = spans_of(reader, &id)?;
     let spans = &read.spans;
     let rollback = Rollback::of(&read);
@@ -702,14 +690,14 @@ pub fn build_game_day(
             &root,
             experiment_id,
             scenario(&root, spans, &rollback),
-            &outcome,
+            outcome,
         ),
         Block::H2("Blast radius and safety".into()),
         safety(&root, &rollback),
         Block::H2("Timeline".into()),
         timeline(spans, root_at_ns),
         Block::H2("Verdict".into()),
-        Block::Paragraph(verdict(&root, &outcome)),
+        Block::Paragraph(verdict(&root, outcome)),
         Block::H2("Findings".into()),
         if findings.is_empty() {
             Block::Paragraph(

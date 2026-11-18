@@ -8,6 +8,7 @@ use axum::response::IntoResponse;
 use axum::{Extension, Json};
 use serde::Deserialize;
 use serde_json::{json, Value};
+use tumult_lake::RunVerdict;
 
 use crate::auth::Principal;
 use crate::sql_util::{
@@ -252,18 +253,20 @@ pub(crate) async fn overview(
             ),
         )?;
 
+        // The share of all runs of a target that passed, as the pass rate
+        // of this page counts it from the counters of the runner: a run
+        // that proves nothing is a run that did not pass.
+        let verdict = tumult_lake::run_verdict_sql(&tumult_lake::run_outcome_sql("s", "l"));
         let targets = reader
             .query_json_rows(&format!(
                 "SELECT s.target_system AS target, COUNT(*) AS experiments, \
-                 COUNT(*) FILTER (WHERE {} = 'completed') \
+                 COUNT(*) FILTER (WHERE {verdict} = '{}') \
                  / NULLIF(COUNT(*), 0) AS pass_rate \
-                 FROM run_roots s LEFT JOIN logs l \
-                   ON l.log_attrs['experiment_id'] = s.experiment_id \
-                  AND l.body = 'experiment.completed' \
+                 FROM run_roots s LEFT JOIN run_completions l ON s.experiment_id = l.experiment_id \
                  WHERE s.target_system IS NOT NULL \
                    AND s.ts_ns >= {} AND s.ts_ns < {}{} \
                  GROUP BY 1 ORDER BY experiments DESC LIMIT 10",
-                tumult_lake::run_outcome_sql("s", "l"),
+                RunVerdict::Pass.as_str(),
                 cur.0,
                 cur.1,
                 and_pred(env_scope_where("s.target_environment", &scopes))

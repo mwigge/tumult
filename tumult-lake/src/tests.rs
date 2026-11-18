@@ -278,6 +278,162 @@ fn experiment_runs_resolves_outcome_from_completed_log() {
     assert_eq!(rows[1]["outcome_status"], serde_json::json!("completed"));
 }
 
+/// Every status a run can end with, read from the spellings a journal may
+/// hold, so that a status added to `ExperimentStatus` is in the list.
+fn every_status() -> Vec<tumult_core::types::ExperimentStatus> {
+    let refused = serde_json::from_str::<tumult_core::types::ExperimentStatus>("\"none\"")
+        .expect_err("no run ends as none")
+        .to_string();
+    let names = refused
+        .split_once("expected one of ")
+        .and_then(|(_, rest)| rest.split_once(" at line"))
+        .map(|(names, _)| names)
+        .unwrap_or_else(|| panic!("the refusal does not list the statuses: {refused}"));
+    names
+        .split(", ")
+        .map(|name| serde_json::from_value(serde_json::json!(name.trim_matches('`'))).unwrap())
+        .collect()
+}
+
+/// The spelling of a run stored before 3.0.2: the status with a capital.
+fn with_capital(status: &str) -> String {
+    let mut letters = status.chars();
+    letters.next().map_or_else(String::new, |first| {
+        first.to_ascii_uppercase().to_string() + letters.as_str()
+    })
+}
+
+#[test]
+fn every_status_a_run_ends_with_has_one_verdict() {
+    use tumult_core::types::ExperimentStatus as Status;
+    // The rule. A status added to the journal does not compile here until
+    // it has a verdict.
+    let rule = |status: &Status| match status {
+        Status::Completed => RunVerdict::Pass,
+        Status::Deviated | Status::Failed | Status::Halted => RunVerdict::Fail,
+        Status::Aborted | Status::Interrupted => RunVerdict::NoEvidence,
+    };
+    let statuses = every_status();
+    assert_eq!(statuses.len(), 6, "{statuses:?}");
+
+    for status in &statuses {
+        let name = status.to_string();
+        assert_eq!(run_verdict(&name), Some(rule(status)), "{name}");
+        let old = with_capital(&name);
+        assert_eq!(run_verdict(&old), Some(rule(status)), "{old}");
+    }
+    for no_status in ["", "incomplete", "passed"] {
+        assert_eq!(run_verdict(no_status), None, "{no_status:?}");
+    }
+}
+
+#[test]
+fn the_verdict_in_sql_is_the_verdict_in_rust() {
+    let d = tempfile::TempDir::new().unwrap();
+    let store = Store::open(&d.path().join("kronika.duckdb")).unwrap();
+    let reader = store.read_only().unwrap();
+    let mut spellings: Vec<String> = every_status()
+        .iter()
+        .flat_map(|status| [status.to_string(), with_capital(&status.to_string())])
+        .collect();
+    spellings.extend([String::new(), "incomplete".to_string()]);
+
+    for spelling in &spellings {
+        let rows = reader
+            .query_json_rows(&format!(
+                "SELECT {} AS verdict",
+                run_verdict_sql(&format!("'{spelling}'"))
+            ))
+            .unwrap();
+        assert_eq!(
+            rows[0]["verdict"].as_str(),
+            run_verdict(spelling).map(RunVerdict::as_str),
+            "{spelling:?}"
+        );
+    }
+    let rows = reader
+        .query_json_rows(&format!("SELECT {} AS verdict", run_verdict_sql("NULL")))
+        .unwrap();
+    assert!(
+        rows[0]["verdict"].is_null(),
+        "a run with no status has no verdict"
+    );
+}
+
+#[test]
+fn a_run_with_two_completion_logs_is_one_run_that_ended_as_the_later_says() {
+    let d = tempfile::TempDir::new().unwrap();
+    let store = Store::open(&d.path().join("kronika.duckdb")).unwrap();
+    let writer = store.writer().unwrap();
+    let mut span = sample_span("exp-twice");
+    span.outcome_status = None;
+    writer.insert_spans(&[span]).unwrap();
+    let earlier = completed_log("exp-twice", "Deviated");
+    let later = LogRow {
+        ts_ns: earlier.ts_ns + 1,
+        ..completed_log("exp-twice", "Completed")
+    };
+    writer.insert_logs(&[earlier, later]).unwrap();
+    let reader = store.read_only().unwrap();
+
+    let rows = reader
+        .query_json_rows(&format!(
+            "SELECT s.experiment_id, {outcome} AS outcome FROM spans AS s \
+             LEFT JOIN run_completions AS l ON l.experiment_id = s.experiment_id \
+             WHERE s.span_name = 'resilience.experiment'",
+            outcome = crate::run_outcome_sql("s", "l")
+        ))
+        .unwrap();
+    assert_eq!(rows.len(), 1, "{rows:?}");
+    assert_eq!(rows[0]["outcome"], "completed");
+    let runs = reader.experiment_runs().unwrap();
+    assert_eq!(runs.len(), 1);
+    assert_eq!(runs[0].outcome_status.as_deref(), Some("completed"));
+}
+
+/// A reader that asks about the runs since a time reads the completion
+/// logs since then, and still one for each run.
+#[test]
+fn the_completion_logs_since_a_time_are_the_later_rows_of_the_view() {
+    let d = tempfile::TempDir::new().unwrap();
+    let store = Store::open(&d.path().join("kronika.duckdb")).unwrap();
+    let writer = store.writer().unwrap();
+    let old = completed_log("exp-old", "Completed");
+    let at = |ts_ns: i64, status: &str| LogRow {
+        ts_ns,
+        ..completed_log("exp-new", status)
+    };
+    let since = old.ts_ns + 10;
+    let logs = [
+        at(since, "Deviated"),
+        at(since + 5, "Completed"),
+        at(since - 1, "Failed"),
+        old,
+    ];
+    writer.insert_logs(&logs).unwrap();
+    let reader = store.read_only().unwrap();
+    let rows = |sql: String| {
+        reader
+            .query_json_rows(&format!(
+                "SELECT experiment_id, ts_ns, log_attrs['status'] AS status \
+                 FROM ({sql}) ORDER BY experiment_id"
+            ))
+            .unwrap()
+    };
+
+    let all = rows(crate::run_completions_sql(None));
+    assert_eq!(all, rows("SELECT * FROM run_completions".into()));
+    assert_eq!(all.len(), 2, "{all:?}");
+    let later = rows(crate::run_completions_sql(Some(since)));
+    assert_eq!(later.len(), 1, "{later:?}");
+    assert_eq!(later[0]["experiment_id"], "exp-new");
+    assert_eq!(later[0]["status"], "Completed");
+    // The record at the bound itself is read.
+    let at_the_bound = rows(crate::run_completions_sql(Some(since + 5)));
+    assert_eq!(at_the_bound, later);
+    assert_eq!(rows(crate::run_completions_sql(Some(since + 6))).len(), 0);
+}
+
 #[test]
 fn read_only_reader_coexists_with_open_writer() {
     let d = tempfile::TempDir::new().unwrap();

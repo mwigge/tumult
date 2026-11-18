@@ -1,6 +1,6 @@
 use crate::common::*;
 use serde_json::{json, Value};
-use tumult_lake::{SpanRow, Store};
+use tumult_lake::{LogRow, SpanRow, Store};
 
 #[tokio::test]
 async fn overview_returns_kpis_deltas_and_breakdowns() {
@@ -1083,8 +1083,14 @@ async fn the_pass_rate_of_a_target_counts_runs_in_either_spelling() {
     };
     // The seed: one of two runs against the database completed.
     assert_eq!(pass_rate("database"), 0.5);
-    // One of the five runs against the queue completed.
+    // One of the five runs against the queue completed. The page counts
+    // every run, as its run count and its pass rate do.
     assert_eq!(pass_rate("queue"), 0.2);
+    let queue = rows_of(&body, "targets")
+        .iter()
+        .find(|row| row["target"] == "queue")
+        .unwrap();
+    assert_eq!(queue["experiments"], 5, "{queue}");
 }
 
 #[tokio::test]
@@ -1158,5 +1164,91 @@ async fn ask_lists_the_recent_runs_with_how_each_ended_in_one_spelling() {
             ("exp-pass", "completed")
         ],
         "{body}"
+    );
+}
+
+#[tokio::test]
+async fn ask_leaves_the_runs_that_prove_nothing_out_of_the_failed_runs() {
+    let srv = spawn_server().await;
+    let rows = vec![
+        root_span("run-aborted", Some("aborted")),
+        root_span("run-interrupted", Some("Interrupted")),
+    ];
+    exec_write(&srv, move |w| {
+        w.insert_spans(&rows).map_err(|e| e.to_string())
+    })
+    .await;
+
+    let resp = reqwest::Client::new()
+        .post(format!("{}/api/ask", srv.base))
+        .json(&json!({"question": "Which experiments failed?"}))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), 200);
+    let body: Value = resp.json().await.unwrap();
+    let found: Vec<&str> = rows_of(&body, "rows")
+        .iter()
+        .map(|row| row["experiment_id"].as_str().unwrap())
+        .collect();
+    assert_eq!(found, ["exp-fail"], "{body}");
+}
+
+#[tokio::test]
+async fn a_run_with_two_completion_logs_is_listed_and_counted_once() {
+    let srv = spawn_server().await;
+    let again = LogRow {
+        ts_ns: now_ns() - 1790 * NS,
+        severity_text: "INFO".into(),
+        body: "experiment.completed".into(),
+        service_name: "tumult".into(),
+        log_attrs: vec![
+            ("experiment_id".to_string(), "exp-pass".to_string()),
+            ("status".to_string(), "Completed".to_string()),
+        ],
+        ..LogRow::default()
+    };
+    exec_write(&srv, move |w| {
+        w.insert_logs(&[again]).map_err(|e| e.to_string())
+    })
+    .await;
+    let listed = |body: &Value, key: &str, id: &str| -> Vec<String> {
+        rows_of(body, key)
+            .iter()
+            .map(|row| row[id].as_str().unwrap_or_default().to_string())
+            .collect()
+    };
+
+    let (_, experiments) = get(&srv.base, "/api/experiments").await;
+    let (_, traces) = get(&srv.base, "/api/traces").await;
+    let (_, overview) = get(&srv.base, "/api/overview?range=24h").await;
+    let database = rows_of(&overview, "targets")
+        .iter()
+        .find(|row| row["target"] == "database")
+        .unwrap_or_else(|| panic!("no database: {overview}"));
+    let asked: Value = reqwest::Client::new()
+        .post(format!("{}/api/ask", srv.base))
+        .json(&json!({"question": "Show recent experiments"}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+
+    assert_eq!(
+        (
+            listed(&experiments, "experiments", "id"),
+            listed(&traces, "traces", "trace_id"),
+            (&database["experiments"], &database["pass_rate"]),
+            listed(&asked, "rows", "experiment_id"),
+        ),
+        (
+            vec!["exp-fail".to_string(), "exp-pass".to_string()],
+            vec!["trace-exp-fail".to_string(), "trace-exp-pass".to_string()],
+            (&json!(2), &json!(0.5)),
+            vec!["exp-fail".to_string(), "exp-pass".to_string()],
+        )
     );
 }

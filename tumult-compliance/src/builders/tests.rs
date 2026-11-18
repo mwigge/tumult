@@ -1147,6 +1147,36 @@ fn game_day_renders_full_run_context() {
 }
 
 #[test]
+fn the_run_report_says_how_a_run_ended_in_the_spelling_of_the_journal() {
+    let d = tempfile::TempDir::new().unwrap();
+    let store = tumult_lake::Store::open(&d.path().join("kronika.duckdb")).unwrap();
+    store
+        .writer()
+        .unwrap()
+        .insert_spans(&[tumult_lake::SpanRow {
+            ts_ns: BASE_NS,
+            trace_id: "trace-h".into(),
+            span_id: "span-h-root".into(),
+            span_name: "resilience.experiment".into(),
+            span_kind: "Internal".into(),
+            duration_ns: NS_MIN,
+            service_name: "tumult".into(),
+            experiment_id: Some("exp-h".into()),
+            experiment_name: Some("halted-run".into()),
+            outcome_status: Some("Halted".into()),
+            events: "[]".into(),
+            ..Default::default()
+        }])
+        .unwrap();
+
+    let doc = build_game_day(&store.read_only().unwrap(), "exp-h", BASE_NS + NS_MIN, &[])
+        .unwrap()
+        .expect("run exists");
+
+    assert_eq!(value_of(&doc, "Outcome"), "halted");
+}
+
+#[test]
 fn game_day_handles_missing_outcome_and_failed_rollback() {
     let d = tempfile::TempDir::new().unwrap();
     let store = tumult_lake::Store::open(&d.path().join("kronika.duckdb")).unwrap();
@@ -1317,6 +1347,53 @@ fn a_fixed_issue_is_counted_from_runs_stored_in_either_spelling() {
         issue_stats(&store.read_only().unwrap(), BASE_NS, BASE_NS + DAY_NS, &[]).unwrap();
 
     assert_eq!((discovered, fixed), (2, 2));
+}
+
+#[test]
+fn a_run_that_proves_nothing_is_no_issue_and_a_run_logged_twice_is_one() {
+    let d = tempfile::TempDir::new().unwrap();
+    let store = tumult_lake::Store::open(&d.path().join("kronika.duckdb")).unwrap();
+    let root = |id: &str, ts: i64| tumult_lake::SpanRow {
+        ts_ns: ts,
+        trace_id: format!("trace-{id}"),
+        span_id: format!("span-{id}"),
+        span_name: "resilience.experiment".into(),
+        experiment_id: Some(id.into()),
+        experiment_name: Some("failover".into()),
+        events: "[]".into(),
+        ..Default::default()
+    };
+    let done = |id: &str, status: &str, ts: i64| tumult_lake::LogRow {
+        ts_ns: ts,
+        body: "experiment.completed".into(),
+        log_attrs: vec![
+            ("experiment_id".to_string(), id.to_string()),
+            ("status".to_string(), status.to_string()),
+        ],
+        ..tumult_lake::LogRow::default()
+    };
+    let writer = store.writer().unwrap();
+    writer
+        .insert_spans(&[
+            root("aborted", BASE_NS),
+            root("interrupted", BASE_NS + HOUR_NS),
+            root("deviated", BASE_NS + 2 * HOUR_NS),
+        ])
+        .unwrap();
+    // The deviated run left its completion log twice.
+    writer
+        .insert_logs(&[
+            done("aborted", "Aborted", BASE_NS),
+            done("interrupted", "Interrupted", BASE_NS + HOUR_NS),
+            done("deviated", "Deviated", BASE_NS + 2 * HOUR_NS),
+            done("deviated", "Deviated", BASE_NS + 2 * HOUR_NS + 1),
+        ])
+        .unwrap();
+
+    let (discovered, fixed, _) =
+        issue_stats(&store.read_only().unwrap(), BASE_NS, BASE_NS + DAY_NS, &[]).unwrap();
+
+    assert_eq!((discovered, fixed), (1, 0));
 }
 
 /// The bullets under the heading `title`.

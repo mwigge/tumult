@@ -46,10 +46,10 @@ fn short_enough(field: &str, value: &str) -> Result<(), ApiError> {
 
 /// The run-root ↔ completed-log join used by the list and detail queries.
 /// `run_roots` holds the root span of a run, or a root built from its
-/// journal when the run sent no trace.
-const EXPERIMENT_FROM: &str = "FROM run_roots s LEFT JOIN logs l \
-     ON l.log_attrs['experiment_id'] = s.experiment_id \
-    AND l.body = 'experiment.completed'";
+/// journal when the run sent no trace, and `run_completions` the last
+/// completion log of each run.
+const EXPERIMENT_FROM: &str =
+    "FROM run_roots s LEFT JOIN run_completions l ON s.experiment_id = l.experiment_id";
 
 /// The columns of one run over [`EXPERIMENT_FROM`].
 fn experiment_cols() -> String {

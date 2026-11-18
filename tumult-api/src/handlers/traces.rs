@@ -136,8 +136,7 @@ pub(crate) async fn traces(
                   ROW_NUMBER() OVER (PARTITION BY trace_id ORDER BY ts_ns) AS rn \
            FROM spans WHERE parent_span_id IS NULL \
          ) r ON r.trace_id = t.trace_id AND r.rn = 1 \
-         LEFT JOIN logs l ON l.log_attrs['experiment_id'] = t.experiment_id \
-            AND l.body = 'experiment.completed' \
+         LEFT JOIN run_completions l ON t.experiment_id = l.experiment_id \
          {trace_where} ORDER BY t.started_ns DESC LIMIT 200"
     );
     let rows = with_reader(&state.db_path, move |reader| {

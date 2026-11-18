@@ -11,7 +11,7 @@ mod game_day;
 mod tests;
 
 use sha2::{Digest, Sha256};
-use tumult_lake::Reader;
+use tumult_lake::{Reader, RunVerdict};
 
 use crate::html::fmt_date;
 use crate::model::{DocMeta, TemplateKind};
@@ -206,8 +206,9 @@ fn runs_in_window(
         .collect())
 }
 
-/// Count deviated/failed runs in `[from, to)` and how many later ran green;
-/// plus MTTR from spans that report `recovery_time_s`.
+/// Count the runs in `[from, to)` that did not pass and how many later ran
+/// green; plus MTTR from spans that report `recovery_time_s`. A run that
+/// proves nothing is neither ([`tumult_lake::run_verdict`]).
 fn issue_stats(
     reader: &Reader,
     from_ns: i64,
@@ -217,9 +218,7 @@ fn issue_stats(
     let rows = reader
         .query_json_rows(&format!(
             "SELECT s.experiment_name AS name, s.ts_ns AS ts, {} AS status \
-             FROM spans s LEFT JOIN logs l \
-               ON l.log_attrs['experiment_id'] = s.experiment_id \
-              AND l.body = 'experiment.completed' \
+             FROM spans s LEFT JOIN run_completions l ON s.experiment_id = l.experiment_id \
              WHERE s.span_name = 'resilience.experiment' AND s.experiment_name IS NOT NULL \
                AND s.ts_ns >= {from_ns} AND s.ts_ns < {to_ns}{} ORDER BY s.ts_ns",
             tumult_lake::run_outcome_sql("s", "l"),
@@ -236,7 +235,11 @@ fn issue_stats(
         ) else {
             continue;
         };
-        let ok = cell(row, "status") == Some("completed");
+        let verdict = cell(row, "status").and_then(tumult_lake::run_verdict);
+        if verdict == Some(RunVerdict::NoEvidence) {
+            continue;
+        }
+        let ok = verdict == Some(RunVerdict::Pass);
         by_name.entry(name.to_string()).or_default().push((ts, ok));
     }
     let mut discovered = 0u64;
