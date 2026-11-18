@@ -245,7 +245,7 @@ fn nothing_on_record() -> Block {
 /// member is below the full score.
 fn domain_row(domain: &OrgNodeScore, leaves: &[ScoredLeaf]) -> Vec<Cell> {
     let coverage = Cell::text(format!("{}/{}", domain.scored, domain.expected));
-    if domain.scored == 0 {
+    let Some(score) = domain.score else {
         return vec![
             Cell::text(domain.name.clone()),
             Cell::text("—"),
@@ -253,7 +253,7 @@ fn domain_row(domain: &OrgNodeScore, leaves: &[ScoredLeaf]) -> Vec<Cell> {
             coverage,
             Cell::text("—"),
         ];
-    }
+    };
     let below_full = |name: &String| {
         let scores = leaves.iter().filter(|leaf| leaf.name == *name);
         scores
@@ -263,7 +263,7 @@ fn domain_row(domain: &OrgNodeScore, leaves: &[ScoredLeaf]) -> Vec<Cell> {
     let weakest = domain.weakest.clone().filter(below_full);
     vec![
         Cell::text(domain.name.clone()),
-        Cell::text(f1(domain.score)),
+        Cell::text(f1(score)),
         Cell::status(domain.band.clone()),
         coverage,
         Cell::text(weakest.unwrap_or("—".into())),

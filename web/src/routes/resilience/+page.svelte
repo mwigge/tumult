@@ -7,6 +7,7 @@
     import type { EChartsCoreOption } from '#lib/echarts.js';
     import { chartTokens } from '#lib/echarts.js';
     import { coverageLabels, disciplineLabel, stackedLabel } from '#lib/coverage.js';
+    import { sparkTrend } from '#lib/org-score.js';
     import { strong, tip, tipFormatter } from '#lib/tooltip.js';
     import type {
         ConformanceReport,
@@ -224,15 +225,9 @@
     });
 
     // Score trend over the range: bucket indices become timestamps ending now.
-    const trend: FanSeries | null = $derived.by(() => {
-        if (!tree || tree.sparkline.length === 0) return null;
-        const n = tree.sparkline.length;
-        const now = Date.now();
-        return {
-            ts: tree.sparkline.map((p) => now - TREND_MS + (TREND_MS * p[0]) / n),
-            observed: tree.sparkline.map((p) => p[1]),
-        };
-    });
+    const trend: FanSeries | null = $derived.by(() =>
+        tree ? sparkTrend(tree.sparkline, TREND_MS, Date.now()) : null,
+    );
 </script>
 
 <div class="page-head">

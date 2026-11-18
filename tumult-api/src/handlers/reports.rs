@@ -241,7 +241,7 @@ pub(crate) async fn scores(
             tumult_compliance::scoring::compute(reader, from, None)?,
             &scopes,
         )?;
-        card.delta = tumult_compliance::scoring::change_since(&card, &prev);
+        card.delta = tumult_compliance::scoring::change_since(card.portfolio, prev.portfolio);
         Ok(card)
     })
     .await?;
@@ -259,6 +259,9 @@ pub(crate) struct TreeParams {
 /// `GET /api/scores/tree?node=<path>&range=24h|7d|14d|30d` — org rollup for one
 /// node: criticality-weighted score recomputed from all leaves in its
 /// subtree, coverage, a period sparkline, and one level of child rollups.
+/// With no scored leaf, `score` is `null` and `band` is `unknown`; `delta`
+/// is `null` when the node has no score now or had none a period ago, and
+/// the sparkline has no point for an instant with nothing scored.
 pub(crate) async fn scores_tree(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
@@ -330,8 +333,10 @@ pub(crate) async fn scores_tree(
             let t = as_of - period_ns + step * i;
             let score = org
                 .compute_node(&node, &leaves_at(t)?)
-                .map_or(0.0, |n| n.score);
-            sparkline.push(vec![json!(i), json!(score)]);
+                .and_then(|n| n.score);
+            if let Some(score) = score {
+                sparkline.push(vec![json!(i), json!(score)]);
+            }
         }
 
         Ok(json!({
@@ -340,7 +345,7 @@ pub(crate) async fn scores_tree(
             "kind": current.kind,
             "score": current.score,
             "band": current.band,
-            "delta": current.score - previous.score,
+            "delta": tumult_compliance::scoring::change_since(current.score, previous.score),
             "coverage": current.coverage,
             "scored": current.scored,
             "expected": current.expected,

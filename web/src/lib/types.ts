@@ -685,7 +685,8 @@ export interface OrgNodeScore {
     path: string;
     name: string;
     kind: string;
-    score: number;
+    /** Null when no leaf of the subtree is scored; its band is then `unknown`. */
+    score: number | null;
     band: string;
     coverage: number;
     scored: number;
@@ -696,7 +697,9 @@ export interface OrgNodeScore {
 }
 
 export interface ScoreTree extends OrgNodeScore {
-    delta: number;
+    /** Null when the node has no score now or had none a period ago. */
+    delta: number | null;
+    /** `[instant, score]`; an instant with nothing scored has no point. */
     sparkline: [number, number][];
 }
 

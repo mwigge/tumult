@@ -148,6 +148,63 @@ async fn a_reader_whose_scope_holds_no_run_has_no_score() {
 }
 
 #[tokio::test]
+async fn the_tree_of_a_store_with_nothing_on_record_has_no_score() {
+    let (base, _tmp) = spawn_on_an_empty_store().await;
+
+    let (status, body) = get(&base, "/api/scores/tree").await;
+
+    assert_eq!(status, 200, "{body}");
+    assert!(body["score"].is_null(), "{body}");
+    assert!(body["delta"].is_null(), "{body}");
+    assert_eq!(body["band"], "unknown", "{body}");
+    assert_eq!(body["sparkline"], serde_json::json!([]), "{body}");
+    // The one child, (unassigned), has no score either.
+    let child = &body["children"][0];
+    assert_eq!(child["name"], "(unassigned)", "{body}");
+    assert!(child["score"].is_null(), "{body}");
+    assert_eq!(child["band"], "unknown", "{body}");
+}
+
+#[tokio::test]
+async fn a_first_score_of_the_tree_inside_the_period_is_not_a_change() {
+    let srv = spawn_server().await;
+    seed_a_pass_from_ten_days_ago(&srv).await;
+
+    let (status, body) = get(&srv.base, "/api/scores/tree?range=14d").await;
+
+    assert_eq!(status, 200, "{body}");
+    // pg-failover (critical, 100), cache-stampede (50) and queue-drain
+    // (100): (3*100 + 50 + 100) / 5 = 90.
+    assert_eq!(body["score"], 90.0, "{body}");
+    // Fourteen days ago nothing was on record.
+    assert!(body["delta"].is_null(), "{body}");
+    // Ten instants 1.4 days apart end now. The third, 9.8 days ago, is the
+    // first after the pass of ten days ago; the runs of the last half hour
+    // join at the last one.
+    let mut sparkline: Vec<Value> = (3..10).map(|i| serde_json::json!([i, 100.0])).collect();
+    sparkline.push(serde_json::json!([10, 90.0]));
+    assert_eq!(body["sparkline"], Value::Array(sparkline), "{body}");
+}
+
+#[tokio::test]
+async fn the_change_of_the_tree_is_against_its_score_a_period_ago() {
+    let srv = spawn_server().await;
+    seed_a_pass_from_ten_days_ago(&srv).await;
+
+    let (status, body) = get(&srv.base, "/api/scores/tree?range=7d").await;
+
+    assert_eq!(status, 200, "{body}");
+    // Seven days ago the pass of ten days ago was all there was: 100. Now
+    // the runs of the last half hour give 90.
+    assert_eq!(body["score"], 90.0, "{body}");
+    assert_eq!(body["delta"], -10.0, "{body}");
+    // Every instant has a score, so every instant has a point.
+    let mut sparkline: Vec<Value> = (1..10).map(|i| serde_json::json!([i, 100.0])).collect();
+    sparkline.push(serde_json::json!([10, 90.0]));
+    assert_eq!(body["sparkline"], Value::Array(sparkline), "{body}");
+}
+
+#[tokio::test]
 async fn reports_v2_executive_digest_roundtrip() {
     let srv = spawn_server().await;
     let resp = reqwest::Client::new()
@@ -291,7 +348,9 @@ async fn scores_tree_rolls_up_org_hierarchy() {
     );
     assert_eq!(body["expected"], 2);
     assert_eq!(body["scored"], 2);
-    assert_eq!(body["sparkline"].as_array().unwrap().len(), 10);
+    // Every seeded run is from the last half hour: of the ten instants of
+    // the week, only the last one has a score.
+    assert_eq!(body["sparkline"], serde_json::json!([[10, 87.5]]), "{body}");
     let children = body["children"].as_array().unwrap();
     assert_eq!(children.len(), 2);
     // Weakest first: (unassigned) 50 before data 100.

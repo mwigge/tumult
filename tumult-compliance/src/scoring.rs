@@ -208,17 +208,17 @@ pub fn compute_scoped(
     let mut card = compute_as_of(reader, as_of_ns, envs)?;
     if let Some(period) = period_ns {
         let before = compute_as_of(reader, as_of_ns - period, envs)?;
-        card.delta = change_since(&card, &before);
+        card.delta = change_since(card.portfolio, before.portfolio);
     }
     Ok(card)
 }
 
-/// How far the portfolio score of `card` is from the one of `before`, the
-/// card of an earlier instant. `None` when either has no score: a first
-/// score is not a change.
+/// How far a score `now` is from the score `before` of an earlier instant:
+/// of a portfolio, or of a node of the org tree. `None` when either is
+/// missing: a first score is not a change.
 #[must_use]
-pub fn change_since(card: &Scorecard, before: &Scorecard) -> Option<f64> {
-    Some(card.portfolio? - before.portfolio?)
+pub fn change_since(now: Option<f64>, before: Option<f64>) -> Option<f64> {
+    Some(now? - before?)
 }
 
 /// Portfolio score sampled at `points` evenly spaced instants across

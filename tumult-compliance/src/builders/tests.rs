@@ -2780,12 +2780,13 @@ fn a_domain_with_nothing_scored_shows_no_score() {
 
     let doc = digest_by_domain(&store);
 
+    // A domain with no score comes after the scored ones.
     assert_eq!(
         rows_under(&doc, "By domain"),
         [
+            "commerce|100.0|good|1/1|—",
             "(unassigned)|—|—|0/0|—",
             "platform|—|—|0/1|—",
-            "commerce|100.0|good|1/1|—",
         ]
     );
 }
