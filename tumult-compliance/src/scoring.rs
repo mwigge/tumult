@@ -13,32 +13,10 @@
 //! from scoring entirely). Draft/submitted manual records carry no score
 //! weight — they surface via [`pending_manual_leaves`] for coverage.
 
-use tumult_lake::{Reader, RunVerdict};
+use tumult_lake::{scope, Reader, RunVerdict};
 
 /// Staleness threshold: a pass older than this decays from 100 to 75.
 pub const STALE_NS: i64 = 30 * 86_400 * 1_000_000_000;
-
-/// `col IN ('a', 'b')` predicate confining a query to a principal's
-/// environment scopes, or `None` when the set is empty (all environments —
-/// the API layer's unscoped-principal case). Values are single-quote
-/// doubled, matching the builders' SQL quoting.
-pub(crate) fn env_in(col: &str, envs: &[String]) -> Option<String> {
-    if envs.is_empty() {
-        return None;
-    }
-    let list = envs
-        .iter()
-        .map(|e| format!("'{}'", e.replace('\'', "''")))
-        .collect::<Vec<_>>()
-        .join(", ");
-    Some(format!("{col} IN ({list})"))
-}
-
-/// `" AND <predicate>"` suffix for a WHERE clause, or empty when the
-/// predicate is `None` (unscoped).
-pub(crate) fn and_env(pred: Option<String>) -> String {
-    pred.map_or_else(String::new, |p| format!(" AND {p}"))
-}
 
 /// Run states driving the score.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
@@ -267,8 +245,14 @@ fn compute_as_of(reader: &Reader, as_of_ns: i64, envs: &[String]) -> Result<Scor
         .replace("{NO_EVIDENCE}", RunVerdict::NoEvidence.as_str())
         .replace("{STATUS}", &status)
         .replace("{AS_OF}", &as_of_ns.to_string())
-        .replace("{ENV_S}", &and_env(env_in("s.target_environment", envs)))
-        .replace("{ENV_M}", &and_env(env_in("m.target_environment", envs)));
+        .replace(
+            "{ENV_S}",
+            &scope::and(scope::in_list("s.target_environment", envs)),
+        )
+        .replace(
+            "{ENV_M}",
+            &scope::and(scope::in_list("m.target_environment", envs)),
+        );
     let rows = reader.query_json_rows(&sql).map_err(|e| e.to_string())?;
 
     let mut experiments = Vec::new();
@@ -374,28 +358,18 @@ fn compute_as_of(reader: &Reader, as_of_ns: i64, envs: &[String]) -> Result<Scor
     })
 }
 
-/// Names of manual records still pending verification (`draft`/`submitted`).
-/// They count toward org coverage as expected-but-unscored leaves.
+/// Names of manual records still pending verification (`draft`/`submitted`)
+/// in the environments `envs` (empty = unscoped). They count toward org
+/// coverage as expected-but-unscored leaves.
 ///
 /// # Errors
 /// Returns the store error string when the query fails.
-pub fn pending_manual_leaves(reader: &Reader) -> Result<Vec<String>, String> {
-    pending_manual_leaves_scoped(reader, &[])
-}
-
-/// Scoped variant of [`pending_manual_leaves`] (empty `envs` = unscoped).
-///
-/// # Errors
-/// Returns the store error string when the query fails.
-pub fn pending_manual_leaves_scoped(
-    reader: &Reader,
-    envs: &[String],
-) -> Result<Vec<String>, String> {
+pub fn pending_manual_leaves(reader: &Reader, envs: &[String]) -> Result<Vec<String>, String> {
     let rows = reader
         .query_json_rows(&format!(
             "SELECT experiment_name AS name FROM manual_experiments \
              WHERE status IN ('draft', 'submitted'){} ORDER BY experiment_name",
-            and_env(env_in("target_environment", envs))
+            scope::and(scope::in_list("target_environment", envs))
         ))
         .map_err(|e| e.to_string())?;
     Ok(rows
@@ -862,16 +836,21 @@ mod tests {
         assert_eq!(exp.origin, "manual");
 
         // Pending records surface as coverage leaves, draft included.
-        assert_eq!(pending_manual_leaves(&reader).unwrap(), ["draft-exp"]);
+        assert_eq!(pending_manual_leaves(&reader, &[]).unwrap(), ["draft-exp"]);
         // …confined to scope when scopes are given.
         assert_eq!(
-            pending_manual_leaves_scoped(&reader, &["prod".to_string()]).unwrap(),
+            pending_manual_leaves(&reader, &["prod".to_string()]).unwrap(),
             ["draft-exp"]
         );
-        assert!(
-            pending_manual_leaves_scoped(&reader, &["staging".to_string()])
-                .unwrap()
-                .is_empty()
-        );
+        assert!(pending_manual_leaves(&reader, &["staging".to_string()])
+            .unwrap()
+            .is_empty());
+
+        // A verified record is in the card of its own environment only.
+        let scoped =
+            |env: &str| compute_scoped(&reader, 100 * DAY, None, &[env.to_string()]).unwrap();
+        assert_eq!(scoped("prod").experiments.len(), 1);
+        assert!(scoped("staging").experiments.is_empty());
+        assert_eq!(scoped("staging").portfolio, None);
     }
 }

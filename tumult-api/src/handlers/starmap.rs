@@ -40,7 +40,7 @@ use tumult_graph::starmap::{
     StarMap, StarQuery, SuppressionRow, SystemRow, WorkloadRow, DEFAULT_BUDGET, MAX_BUDGET,
     MAX_DEPTH,
 };
-use tumult_lake::{Reader, RunVerdict};
+use tumult_lake::{scope, Reader, RunVerdict};
 use tumult_risk::{CoverageStatus, Inputs, Report, Risk};
 
 use crate::auth::Principal;
@@ -49,9 +49,7 @@ use crate::handlers::starmap_cache::{
     CachedMap, Miss, StarMapCache, REFRESH_FLOOR, RETRY_AFTER, TTL,
 };
 use crate::handlers::{conformance, risks};
-use crate::sql_util::{
-    and_pred, env_scope_where, invalid_range, now_ns, parse_range, with_reader, PARENT_LOOKBACK_NS,
-};
+use crate::sql_util::{invalid_range, now_ns, parse_range, with_reader, PARENT_LOOKBACK_NS};
 use crate::ApiState;
 
 const DEFAULT_RANGE: &str = "7d";
@@ -283,7 +281,7 @@ fn capped_rows(
 /// name the system under test, not the system the runner belongs to.
 fn services_sql(window: &Window) -> String {
     let attr = |key: &str| format!("NULLIF(resource_attrs['{key}'], '')");
-    let scope = and_pred(env_scope_where("target_environment", &window.envs));
+    let scope = scope::and(scope::in_list("target_environment", &window.envs));
     format!(
         "SELECT service_name AS service, {} AS entity_id, {} AS entity_tier, \
          {} AS entity_owner, NULLIF(target_system, '') AS system, {} AS component, \
@@ -340,8 +338,8 @@ fn services(
 /// call whose parent started more than an hour before the window opened
 /// is not counted.
 fn calls_sql(window: &Window) -> String {
-    let child = and_pred(env_scope_where("c.target_environment", &window.envs));
-    let parent = and_pred(env_scope_where("p.target_environment", &window.envs));
+    let child = scope::and(scope::in_list("c.target_environment", &window.envs));
+    let parent = scope::and(scope::in_list("p.target_environment", &window.envs));
     format!(
         "SELECT p.service_name AS client, c.service_name AS server, COUNT(*) AS calls, \
          COUNT(*) FILTER (WHERE c.status_code = 'Error') AS errors, \
@@ -382,8 +380,8 @@ fn calls(reader: &Reader, window: &Window) -> Result<Vec<CallRow>, String> {
 /// log; a run completes after it starts, so only logs since the window
 /// opened are read.
 fn runs_sql(window: &Window) -> String {
-    let span_scope = and_pred(env_scope_where("s.target_environment", &window.envs));
-    let manual_scope = and_pred(env_scope_where("m.target_environment", &window.envs));
+    let span_scope = scope::and(scope::in_list("s.target_environment", &window.envs));
+    let manual_scope = scope::and(scope::in_list("m.target_environment", &window.envs));
     let (from, to) = (window.from_ns, window.to_ns);
     let status = tumult_lake::run_outcome_sql("s", "l");
     let completions = tumult_lake::run_completions_sql(Some(from));
@@ -608,7 +606,7 @@ fn covers(reader: &Reader, window: &Window, limit: usize) -> Result<Capped<Cover
             })
         })
         .collect();
-    let scope = and_pred(env_scope_where("m.target_environment", &window.envs));
+    let scope = scope::and(scope::in_list("m.target_environment", &window.envs));
     let manual = rows(
         reader,
         &format!(

@@ -7,12 +7,12 @@ use axum::response::IntoResponse;
 use axum::{Extension, Json};
 use serde::Deserialize;
 use serde_json::{json, Value};
-use tumult_lake::{Reader, SqlParam};
+use tumult_lake::{scope, Reader, SqlParam};
 
 use crate::auth::Principal;
 use crate::sql_util::{
-    and_pred, env_scope_where, env_trace_exists, invalid_range, run_outcome_where, sql_contains,
-    sql_string, windows, with_reader,
+    env_trace_exists, invalid_range, run_outcome_where, sql_contains, sql_string, windows,
+    with_reader,
 };
 use crate::ApiState;
 
@@ -77,7 +77,7 @@ pub(crate) async fn experiments(
     };
     let mut wheres = vec!["s.span_name = 'resilience.experiment'".to_string()];
     // Per-user environment scoping (empty scopes = all environments).
-    if let Some(env) = env_scope_where("s.target_environment", &principal.env_scopes) {
+    if let Some(env) = scope::in_list("s.target_environment", &principal.env_scopes) {
         wheres.push(env);
     }
     if let Some(range) = &params.range {
@@ -147,7 +147,7 @@ pub(crate) async fn experiments(
         // The manual branch mirrors the span columns; range/target/q filters
         // map onto the manual columns.
         let mut mwheres = vec!["1=1".to_string()];
-        if let Some(env) = env_scope_where("m.target_environment", &principal.env_scopes) {
+        if let Some(env) = scope::in_list("m.target_environment", &principal.env_scopes) {
             mwheres.push(env);
         }
         if let Some(range) = &params.range {
@@ -231,7 +231,7 @@ pub(crate) async fn experiment_windows(
     }
     // The rollup view has no environment column; scope binds through the
     // `target_environment` of the run's root by experiment_id.
-    let env = env_scope_where("se.target_environment", &principal.env_scopes).map_or_else(
+    let env = scope::in_list("se.target_environment", &principal.env_scopes).map_or_else(
         String::new,
         |env| {
             format!(
@@ -305,7 +305,7 @@ pub(crate) async fn experiment_detail(
     }
     // Environments outside the principal's scopes look exactly like a
     // missing experiment (404 — no existence leak across scopes).
-    let env_where = env_scope_where("s.target_environment", &principal.env_scopes)
+    let env_where = scope::in_list("s.target_environment", &principal.env_scopes)
         .map_or(String::new(), |e| format!(" AND {e}"));
     let body = with_reader(&state.db_path, move |reader| {
         let id_sql = sql_string(&id);
@@ -386,9 +386,9 @@ pub(crate) async fn dimensions(
         // outcomes/targets/experiments bind the environment column of the
         // row itself; faults (child spans) reach it by correlation. A run
         // that sent no trace names its target only on its run root.
-        let and_root = and_pred(env_scope_where("target_environment", &scopes));
-        let and_run = and_pred(env_scope_where("s.target_environment", &scopes));
-        let and_trace = and_pred(env_trace_exists("spans", &scopes));
+        let and_root = scope::and(scope::in_list("target_environment", &scopes));
+        let and_run = scope::and(scope::in_list("s.target_environment", &scopes));
+        let and_trace = scope::and(env_trace_exists("spans", &scopes));
         let status = tumult_lake::run_outcome_sql("s", "l");
         let distinct = |sql: &str| -> Result<Vec<Value>, String> {
             let rows = reader.query_json_rows(sql).map_err(|e| e.to_string())?;

@@ -21,10 +21,11 @@ use serde_json::Value;
 use tumult_core::compliance::{
     check_entity_id, ENTITY_ID_ATTR, ENTITY_ID_MALFORMED_ATTR, ENTITY_ID_MAX_LEN, ENTITY_ID_PATTERN,
 };
+use tumult_lake::scope;
 
 use crate::auth::Principal;
 use crate::error::{bad_request, ApiError};
-use crate::sql_util::{and_pred, env_scope_where, now_ns, parse_range, with_reader};
+use crate::sql_util::{now_ns, parse_range, with_reader};
 use crate::ApiState;
 
 /// Contract keys, in the order they are reported. The first three decide
@@ -240,7 +241,7 @@ pub(crate) fn levels(
     from_ns: i64,
     envs: &[String],
 ) -> Result<std::collections::BTreeMap<String, &'static str>, String> {
-    let scope = and_pred(env_scope_where("target_environment", envs));
+    let scope = scope::and(scope::in_list("target_environment", envs));
     let rows = reader
         .query_json_rows(&sql(from_ns, &scope))
         .map_err(|e| e.to_string())?;
@@ -271,7 +272,7 @@ pub(crate) async fn conformance(
         None => principal.env_scopes.clone(),
     };
     let as_of_ns = now_ns();
-    let scope = and_pred(env_scope_where("target_environment", &envs));
+    let scope = scope::and(scope::in_list("target_environment", &envs));
     let query = sql(as_of_ns - range_ns, &scope);
     let ids_query = entity_ids_sql(as_of_ns - range_ns, &scope);
     let (services, mut malformed): (Vec<ServiceConformance>, Vec<MalformedEntityId>) =

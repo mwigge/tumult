@@ -11,20 +11,13 @@ use crate::{
 /// Durable request context takes precedence over telemetry supplied by clients.
 /// Legacy runs with no known environment fail closed for scoped principals.
 pub(crate) fn run_scope_sql(scopes: &[String]) -> String {
-    if scopes.is_empty() {
-        return "TRUE".into();
-    }
-    let allowed = scopes
-        .iter()
-        .map(|s| sql_string(s))
-        .collect::<Vec<_>>()
-        .join(", ");
-    format!("COALESCE(\
+    let env = "COALESCE(\
         (SELECT ar.env FROM approval_requests ar WHERE ar.run_id = r.id), \
         (SELECT json_extract_string(ra.detail, '$.env') FROM run_audit ra \
          WHERE ra.run_id = r.id AND ra.event = 'requested_context' ORDER BY ra.at_ns LIMIT 1), \
         (CASE WHEN EXISTS (SELECT 1 FROM run_registry rg WHERE rg.id = r.registry_id AND rg.kind = 'gameday') \
-         THEN json_extract_string(r.params_json, '$.env') END), e.env) IN ({allowed})")
+         THEN json_extract_string(r.params_json, '$.env') END), e.env)";
+    tumult_lake::scope::in_list(env, scopes).unwrap_or_else(|| "TRUE".into())
 }
 
 pub(crate) async fn authorize_run(

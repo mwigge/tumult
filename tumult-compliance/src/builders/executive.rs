@@ -143,7 +143,7 @@ pub fn build_executive(
         })
         .collect();
     leaves.extend(
-        scoring::pending_manual_leaves_scoped(reader, envs)?
+        scoring::pending_manual_leaves(reader, envs)?
             .into_iter()
             .map(|name| ScoredLeaf { name, score: None }),
     );

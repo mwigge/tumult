@@ -8,12 +8,11 @@ use axum::response::IntoResponse;
 use axum::{Extension, Json};
 use serde::Deserialize;
 use serde_json::{json, Value};
-use tumult_lake::Reader;
+use tumult_lake::{scope, Reader};
 
 use crate::auth::Principal;
 use crate::sql_util::{
-    and_pred, bucket_expr, env_metric_exists, env_table_predicate, internal, invalid_range,
-    parse_interval, sql_string, w, windows, with_reader,
+    bucket_expr, internal, invalid_range, parse_interval, sql_string, w, windows, with_reader,
 };
 use crate::ApiState;
 
@@ -73,7 +72,7 @@ pub(crate) async fn timeseries(
     // Scope the source rows before aggregation: the SQL generator has no
     // predicate hook, so the table reference becomes a filtered subquery
     // (the source table is a validated `[a-z0-9_.]` identifier).
-    let sql = match env_table_predicate(&def.source_table, &principal.env_scopes) {
+    let sql = match scope::table_predicate(&def.source_table, &principal.env_scopes) {
         Some(pred) => sql.replacen(
             &format!("FROM {}", def.source_table),
             &format!("FROM (SELECT * FROM {} WHERE {pred})", def.source_table),
@@ -131,7 +130,7 @@ fn load_catalog(reader: &Reader, scopes: &[String]) -> Result<Vec<Value>, String
         (Vec<String>, std::collections::BTreeSet<String>),
     > = std::collections::BTreeMap::new();
     for (table, kind) in METRIC_TABLES {
-        let env = env_metric_exists(table, scopes)
+        let env = scope::table_predicate(table, scopes)
             .map_or_else(String::new, |pred| format!(" WHERE {pred}"));
         let rows = reader
             .query_json_rows(&format!(
@@ -294,7 +293,7 @@ pub(crate) async fn metrics_query(
         });
         let window = w(cur.0, cur.1);
         let name_sql = sql_string(&metric_name);
-        let env = and_pred(env_metric_exists(table, &scopes));
+        let env = scope::and(scope::table_predicate(table, &scopes));
 
         // Pivot (bucket, group) rows into one series per group.
         let mut groups: std::collections::BTreeMap<Option<String>, Vec<Value>> =

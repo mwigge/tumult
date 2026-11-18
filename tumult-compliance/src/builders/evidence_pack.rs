@@ -1,6 +1,6 @@
 //! The R2 compliance evidence pack skeleton, per framework.
 
-use tumult_lake::Reader;
+use tumult_lake::{scope, Reader};
 
 use super::{base_meta, cell, counted};
 use crate::html::fmt_date;
@@ -158,7 +158,7 @@ pub fn build_evidence_pack(
                 "SELECT id, experiment_name AS name, executed_at_ns, entered_by, entered_at_ns, \
                  reviewed_by, reviewed_at_ns FROM manual_experiments \
                  WHERE status = 'verified'{} ORDER BY executed_at_ns DESC",
-                scoring::and_env(scoring::env_in("target_environment", envs)),
+                scope::and(scope::in_list("target_environment", envs)),
             ))
             .map_err(|e| e.to_string())?;
         let mut manual_by_id: std::collections::BTreeMap<String, &serde_json::Value> =
@@ -325,7 +325,7 @@ pub fn build_evidence_pack(
              entered_at_ns, reviewed_by, reviewed_at_ns, attestation, framework_refs \
              FROM manual_experiments WHERE status = 'verified'{} \
              ORDER BY experiment_name, executed_at_ns DESC",
-            scoring::and_env(scoring::env_in("target_environment", envs)),
+            scope::and(scope::in_list("target_environment", envs)),
         ))
         .map_err(|e| e.to_string())?;
     if !attested.is_empty() {

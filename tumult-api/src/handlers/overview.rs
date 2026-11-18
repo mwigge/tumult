@@ -8,11 +8,12 @@ use axum::response::IntoResponse;
 use axum::{Extension, Json};
 use serde::Deserialize;
 use serde_json::{json, Value};
+use tumult_lake::scope;
 
 use crate::auth::Principal;
 use crate::sql_util::{
-    and_pred, bucket_expr, bucket_of, env_metric_exists, env_scope_where, env_trace_exists,
-    invalid_range, ratio_series, run_pass_rate_sql, scalar, series, w, windows, with_reader,
+    bucket_expr, bucket_of, env_trace_exists, invalid_range, ratio_series, run_pass_rate_sql,
+    scalar, series, w, windows, with_reader,
 };
 use crate::ApiState;
 
@@ -21,7 +22,7 @@ const ROOT: &str = "span_name = 'resilience.experiment'";
 
 /// Environment predicate for `run_roots`: a root names its own environment.
 fn and_root_env(scopes: &[String]) -> String {
-    and_pred(env_scope_where("target_environment", scopes))
+    scope::and(scope::in_list("target_environment", scopes))
 }
 
 /// The runs that started in `[f, t)` in the scopes, as the FROM and WHERE
@@ -34,7 +35,7 @@ fn runs_from(f: i64, t: i64, scopes: &[String]) -> String {
          LEFT JOIN ({}) AS l ON s.experiment_id = l.experiment_id \
          WHERE s.ts_ns >= {f} AND s.ts_ns < {t}{}",
         tumult_lake::run_completions_sql(Some(f)),
-        and_pred(env_scope_where("s.target_environment", scopes))
+        scope::and(scope::in_list("s.target_environment", scopes))
     )
 }
 
@@ -45,7 +46,7 @@ fn traced_runs(f: i64, t: i64, scopes: &[String]) -> String {
     format!(
         "{ROOT} AND {}{}",
         w(f, t),
-        and_pred(env_trace_exists("spans", scopes))
+        scope::and(env_trace_exists("spans", scopes))
     )
 }
 
@@ -112,7 +113,7 @@ fn sql_pass_rate_spark(f: i64, t: i64, b: i64, scopes: &[String]) -> String {
 
 fn sql_deviation_value(f: i64, t: i64, scopes: &[String]) -> String {
     let window = w(f, t);
-    let metrics_env = and_pred(env_metric_exists("metric_sums", scopes));
+    let metrics_env = scope::and(scope::table_predicate("metric_sums", scopes));
     format!(
         "SELECT (SELECT COALESCE(SUM(CAST(value AS DOUBLE)), 0) FROM metric_sums \
          WHERE metric_name = 'tumult.hypothesis.deviations.total' AND {window}{metrics_env}) \
@@ -135,7 +136,7 @@ fn sql_deviation_num(f: i64, t: i64, b: i64, scopes: &[String]) -> String {
          WHERE metric_name = 'tumult.hypothesis.deviations.total' AND {}{} GROUP BY 1 ORDER BY 1",
         bucket_expr(b),
         w(f, t),
-        and_pred(env_metric_exists("metric_sums", scopes))
+        scope::and(scope::table_predicate("metric_sums", scopes))
     )
 }
 
@@ -143,7 +144,7 @@ fn sql_mttr_value(f: i64, t: i64, scopes: &[String]) -> String {
     format!(
         "SELECT AVG(recovery_time_s) AS v FROM spans WHERE recovery_time_s IS NOT NULL AND {}{}",
         w(f, t),
-        and_pred(env_trace_exists("spans", scopes))
+        scope::and(env_trace_exists("spans", scopes))
     )
 }
 
@@ -153,7 +154,7 @@ fn sql_mttr_spark(f: i64, t: i64, b: i64, scopes: &[String]) -> String {
          WHERE recovery_time_s IS NOT NULL AND {}{} GROUP BY 1 ORDER BY 1",
         bucket_expr(b),
         w(f, t),
-        and_pred(env_trace_exists("spans", scopes))
+        scope::and(env_trace_exists("spans", scopes))
     )
 }
 
@@ -161,7 +162,7 @@ fn sql_coverage_value(f: i64, t: i64, scopes: &[String]) -> String {
     format!(
         "SELECT COUNT(DISTINCT target_system) AS v FROM spans WHERE target_system IS NOT NULL AND {}{}",
         w(f, t),
-        and_pred(env_trace_exists("spans", scopes))
+        scope::and(env_trace_exists("spans", scopes))
     )
 }
 
@@ -171,7 +172,7 @@ fn sql_coverage_spark(f: i64, t: i64, b: i64, scopes: &[String]) -> String {
          WHERE target_system IS NOT NULL AND {}{} GROUP BY 1 ORDER BY 1",
         bucket_expr(b),
         w(f, t),
-        and_pred(env_trace_exists("spans", scopes))
+        scope::and(env_trace_exists("spans", scopes))
     )
 }
 
@@ -288,7 +289,7 @@ pub(crate) async fn overview(
                  WHERE fault_type IS NOT NULL AND {}{} \
                  GROUP BY 1, 2 ORDER BY count DESC LIMIT 10",
                 w(cur.0, cur.1),
-                and_pred(env_trace_exists("spans", &scopes))
+                scope::and(env_trace_exists("spans", &scopes))
             ))
             .map_err(|e| e.to_string())?;
 

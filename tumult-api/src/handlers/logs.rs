@@ -7,11 +7,12 @@ use axum::response::IntoResponse;
 use axum::{Extension, Json};
 use serde::Deserialize;
 use serde_json::{json, Value};
+use tumult_lake::scope;
 
 use crate::auth::Principal;
 use crate::sql_util::{
-    attr_wheres, bucket_expr, env_scope_where, invalid_range, parse_interval, sql_contains,
-    sql_ieq, sql_string, w, windows, with_reader,
+    attr_wheres, bucket_expr, invalid_range, parse_interval, sql_contains, sql_ieq, sql_string, w,
+    windows, with_reader,
 };
 use crate::ApiState;
 
@@ -58,7 +59,7 @@ fn log_wheres(
         return Err(invalid_range(range));
     };
     let mut wheres = vec![w(cur.0, cur.1)];
-    if let Some(env) = env_scope_where("se.target_environment", scopes) {
+    if let Some(env) = scope::in_list("se.target_environment", scopes) {
         wheres.push(format!(
             "EXISTS (SELECT 1 FROM spans se WHERE {env} AND (\
              se.trace_id = logs.trace_id \

@@ -12,10 +12,7 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 use crate::auth::Principal;
-use crate::sql_util::{
-    internal, invalid_range, now_ns, parse_range, scope_scorecard, scoped_experiment_names,
-    windows, with_reader,
-};
+use crate::sql_util::{internal, invalid_range, now_ns, parse_range, windows, with_reader};
 use crate::ApiState;
 
 // ---------------------------------------------------------------------------
@@ -213,8 +210,7 @@ pub(crate) struct ScoresQuery {
 /// with the portfolio delta against the previous equal window (`null` when
 /// nothing was on record at the start of the window). With nothing on
 /// record now, `portfolio` is `null` and `band` is `unknown`. Scoped
-/// principals get the card of their own environments only (rollups
-/// recomputed over the visible experiments).
+/// principals get the card of their own environments only.
 pub(crate) async fn scores(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
@@ -231,16 +227,8 @@ pub(crate) async fn scores(
     };
     let scopes = principal.env_scopes.clone();
     let card = with_reader(&state.db_path, move |reader| {
-        let mut card = scope_scorecard(
-            reader,
-            tumult_compliance::scoring::compute(reader, to, None)?,
-            &scopes,
-        )?;
-        let prev = scope_scorecard(
-            reader,
-            tumult_compliance::scoring::compute(reader, from, None)?,
-            &scopes,
-        )?;
+        let mut card = tumult_compliance::scoring::compute_scoped(reader, to, None, &scopes)?;
+        let prev = tumult_compliance::scoring::compute_scoped(reader, from, None, &scopes)?;
         card.delta = tumult_compliance::scoring::change_since(card.portfolio, prev.portfolio);
         Ok(card)
     })
@@ -292,14 +280,13 @@ pub(crate) async fn scores_tree(
     let scopes = principal.env_scopes.clone();
 
     let payload = with_reader(&state.db_path, move |reader| {
-        // Scoped principals roll up only the experiments they can see.
-        let in_scope = scoped_experiment_names(reader, &scopes)?;
         // Leaves at an instant: every scored experiment plus pending manual
-        // records (expected but unscored). Pending status is read as of NOW
-        // for every sample point — a documented approximation, since the
-        // lifecycle has no history before the audit trail.
+        // records (expected but unscored), both of the principal's
+        // environments only. Pending status is read as of NOW for every
+        // sample point — a documented approximation, since the lifecycle
+        // has no history before the audit trail.
         let leaves_at = |t: i64| -> Result<Vec<tumult_compliance::ScoredLeaf>, String> {
-            let card = tumult_compliance::scoring::compute(reader, t, None)?;
+            let card = tumult_compliance::scoring::compute_scoped(reader, t, None, &scopes)?;
             let mut leaves: Vec<tumult_compliance::ScoredLeaf> = card
                 .experiments
                 .iter()
@@ -309,13 +296,10 @@ pub(crate) async fn scores_tree(
                 })
                 .collect();
             leaves.extend(
-                tumult_compliance::scoring::pending_manual_leaves(reader)?
+                tumult_compliance::scoring::pending_manual_leaves(reader, &scopes)?
                     .into_iter()
                     .map(|name| tumult_compliance::ScoredLeaf { name, score: None }),
             );
-            if let Some(names) = &in_scope {
-                leaves.retain(|l| names.contains(&l.name));
-            }
             Ok(leaves)
         };
 

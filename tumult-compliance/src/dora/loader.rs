@@ -38,7 +38,7 @@ use serde_json::Value;
 use tumult_core::compliance::{entity_id_is_valid, truncated, EntityProfile};
 use tumult_core::types::canonical_kind;
 use tumult_lake::{
-    IctFunction, IctFunctionService, IctLegalEntity, IctRegister, Reader, RunVerdict,
+    scope, IctFunction, IctFunctionService, IctLegalEntity, IctRegister, Reader, RunVerdict,
 };
 
 use super::model::{
@@ -48,7 +48,6 @@ use super::model::{
 use super::params::HouseParams;
 use super::register::{FEED_NAMES, MAP_ENTITY, MAP_SERVICE};
 use crate::org::glob_match;
-use crate::scoring::{and_env, env_in};
 
 /// Source of a status row computed on its own day.
 pub const SNAPSHOT_SOURCE: &str = "snapshot";
@@ -400,7 +399,7 @@ fn outcome_of(status: Option<&str>) -> Option<Outcome> {
 /// The runs up to `as_of_ns`, with or without a trace: the rows of
 /// `run_roots`, as the scorecard reads them.
 fn runs_sql(as_of_ns: i64, envs: &[String]) -> String {
-    let scope = and_env(env_in("s.target_environment", envs));
+    let scope = scope::and(scope::in_list("s.target_environment", envs));
     let status = tumult_lake::run_outcome_sql("s", "l");
     format!(
         "SELECT COALESCE(s.experiment_id, s.span_id) AS id, s.experiment_name AS name, \
@@ -424,7 +423,7 @@ fn runs_sql(as_of_ns: i64, envs: &[String]) -> String {
 }
 
 fn manual_sql(as_of_ns: i64, envs: &[String]) -> String {
-    let scope = and_env(env_in("m.target_environment", envs));
+    let scope = scope::and(scope::in_list("m.target_environment", envs));
     format!(
         "SELECT m.id AS id, m.experiment_name AS name, m.exercise_type AS exercise_type, \
          m.executed_at_ns AS ts, m.outcome_status AS status, m.target_system AS system, \
@@ -480,7 +479,7 @@ fn window_start(as_of_ns: i64, days: u32) -> i64 {
 fn services_sql(as_of_ns: i64, envs: &[String], params: &HouseParams) -> Sql {
     let mut binds = Vec::new();
     let from_ns = window_start(as_of_ns, params.conformance.window_days);
-    let scope = and_env(env_in("target_environment", envs));
+    let scope = scope::and(scope::in_list("target_environment", envs));
     let levels: Vec<String> = params
         .conformance
         .levels()
@@ -522,7 +521,7 @@ fn services_sql(as_of_ns: i64, envs: &[String], params: &HouseParams) -> Sql {
 
 fn topology_sql(as_of_ns: i64, envs: &[String], params: &HouseParams) -> String {
     let from_ns = window_start(as_of_ns, params.conformance.window_days);
-    let scope = and_env(env_in("c.target_environment", envs));
+    let scope = scope::and(scope::in_list("c.target_environment", envs));
     format!(
         "SELECT COUNT(*) AS edges FROM ( \
          SELECT 1 AS edge FROM spans c \
@@ -534,7 +533,7 @@ fn topology_sql(as_of_ns: i64, envs: &[String], params: &HouseParams) -> String 
 }
 
 fn schedules_sql(envs: &[String]) -> String {
-    let scope = and_env(env_in("env", envs));
+    let scope = scope::and(scope::in_list("env", envs));
     format!(
         "SELECT target AS target FROM run_schedules \
          WHERE enabled AND target IS NOT NULL{scope} ORDER BY 1"

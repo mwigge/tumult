@@ -7,10 +7,11 @@ use axum::response::IntoResponse;
 use axum::{Extension, Json};
 use serde::Deserialize;
 use serde_json::{json, Value};
+use tumult_lake::scope;
 
 use crate::auth::Principal;
 use crate::sql_util::{
-    and_pred, attr_kv, env_trace_exists, invalid_range, run_outcome_where, sql_string, w, windows,
+    attr_kv, env_trace_exists, invalid_range, run_outcome_where, sql_string, w, windows,
     with_reader,
 };
 use crate::ApiState;
@@ -213,7 +214,7 @@ pub(crate) async fn trace_detail(
     }
     // Traces outside the principal's scopes look exactly like a missing
     // trace (404 — no existence leak across scopes).
-    let env = and_pred(env_trace_exists("spans", &principal.env_scopes));
+    let env = scope::and(env_trace_exists("spans", &principal.env_scopes));
     let body = with_reader(&state.db_path, move |reader| {
         let id_sql = sql_string(&id);
         let spans = reader

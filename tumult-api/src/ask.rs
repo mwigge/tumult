@@ -202,14 +202,8 @@ fn extract_sql(reply: &str) -> String {
     inner.trim().trim_end_matches(';').trim().to_string()
 }
 
-/// Quote a string literal for inline SQL (single-quote doubling) — mirrors
-/// `sql_string` in `crate::lib`.
-fn sql_string(s: &str) -> String {
-    format!("'{}'", s.replace('\'', "''"))
-}
-
-/// Confine a validated query to the principal's environment scopes (same
-/// contract as `env_scope_where` in `crate::lib`): every `spans` and
+/// Confine a validated query to the principal's environment scopes (the
+/// rule of [`tumult_lake::scope::in_list`]): every `spans` and
 /// `run_roots` reference — the allow-listed tables with an environment
 /// column — is wrapped in a `target_environment IN (…)` subquery. A run
 /// stored only as a journal names the environment of its definition there,
@@ -218,15 +212,9 @@ fn sql_string(s: &str) -> String {
 /// it.
 /// Empty scopes mean every environment (the query passes through untouched).
 fn apply_env_scopes(sql: &str, scopes: &[String]) -> Result<String, sql_guard::SqlGuardError> {
-    if scopes.is_empty() {
+    let Some(predicate) = tumult_lake::scope::in_list("target_environment", scopes) else {
         return Ok(sql.to_string());
-    }
-    let envs = scopes
-        .iter()
-        .map(|s| sql_string(s))
-        .collect::<Vec<_>>()
-        .join(", ");
-    let predicate = format!("target_environment IN ({envs})");
+    };
     let predicate = predicate.as_str();
     sql_guard::scope_tables(sql, &[("spans", predicate), ("run_roots", predicate)])
 }

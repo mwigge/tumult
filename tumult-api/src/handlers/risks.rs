@@ -23,7 +23,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tumult_compliance::scoring::{ExperimentScore, RunState};
 use tumult_core::types::discipline;
-use tumult_lake::Reader;
+use tumult_lake::{scope, Reader};
 use tumult_risk::{
     Definition, Dependency, ExperimentLatest, Inputs, KindEvidence, Report, Suppression,
     TargetEvidence, Verdict,
@@ -31,7 +31,7 @@ use tumult_risk::{
 
 use crate::auth::Principal;
 use crate::error::{bad_request, forbidden, not_found, unavailable, ApiError};
-use crate::sql_util::{and_pred, env_trace_exists, internal, now_ns, sql_string, with_reader};
+use crate::sql_util::{env_trace_exists, internal, now_ns, sql_string, with_reader};
 use crate::ApiState;
 
 const DAY_NS: i64 = 86_400 * 1_000_000_000;
@@ -257,7 +257,7 @@ fn targets_from(
 /// Callee services in the span call graph with how many distinct services
 /// call them and how often: the "untested dependency" rule's input.
 fn dependencies(reader: &Reader, envs: &[String]) -> Result<Vec<Dependency>, String> {
-    let scope = and_pred(env_trace_exists("c", envs));
+    let scope = scope::and(env_trace_exists("c", envs));
     let sql = format!(
         "SELECT c.service_name AS service, COUNT(DISTINCT p.service_name) AS callers, \
          COUNT(*) AS calls \

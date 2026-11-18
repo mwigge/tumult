@@ -204,6 +204,283 @@ async fn the_change_of_the_tree_is_against_its_score_a_period_ago() {
     assert_eq!(body["sparkline"], Value::Array(sparkline), "{body}");
 }
 
+/// The root span of a run of `db-failover` on the target `payments`, a
+/// minute ago: the run `id` in `env` (no environment for `None`) that
+/// ended with `status`.
+fn payments_run(id: &str, env: Option<&str>, status: &str) -> tumult_lake::SpanRow {
+    tumult_lake::SpanRow {
+        ts_ns: now_ns() - 60 * NS,
+        trace_id: format!("trace-{id}"),
+        span_id: format!("span-{id}-root"),
+        span_name: "resilience.experiment".into(),
+        span_kind: "Internal".into(),
+        duration_ns: 5 * NS,
+        service_name: "tumult".into(),
+        experiment_id: Some(id.into()),
+        experiment_name: Some("db-failover".into()),
+        outcome_status: Some(status.into()),
+        target_system: Some("payments".into()),
+        target_environment: env.map(str::to_string),
+        events: "[]".into(),
+        ..Default::default()
+    }
+}
+
+/// A manual record of `db-failover` on `payments` in `env`, passed a
+/// minute ago, entered by alice.
+fn payments_record(env: Option<&str>) -> tumult_lake::NewManualExperiment {
+    tumult_lake::NewManualExperiment {
+        experiment_name: "db-failover".into(),
+        exercise_type: tumult_lake::ExerciseType::Drill,
+        executed_at_ns: now_ns() - 60 * NS,
+        hypothesis: "the replica takes over".into(),
+        method: "stop the primary".into(),
+        outcome: tumult_lake::ManualOutcome::Passed,
+        hypothesis_met: Some(true),
+        findings: None,
+        action_items: vec![],
+        target_system: Some("payments".into()),
+        target_environment: env.map(str::to_string),
+        blast_radius: None,
+        recovery_time_s: None,
+        duration_s: None,
+        entered_by: "alice".into(),
+        attestation: "attested".into(),
+        renewal_due_ns: None,
+        framework_refs: vec![],
+    }
+}
+
+/// `db-failover` on `payments` ran in two environments and ended
+/// differently: it passed in `staging` (the run `run-stg`) and deviated in
+/// `prod` (the run `run-prd`). The seeded runs are in `demo`. Returns the
+/// token of a viewer scoped to `staging`.
+async fn seed_one_name_in_staging_and_prod(srv: &TestServer) -> String {
+    exec_write(srv, |writer| {
+        writer
+            .insert_spans(&[
+                payments_run("run-stg", Some("staging"), "completed"),
+                payments_run("run-prd", Some("prod"), "deviated"),
+            ])
+            .map_err(|e| e.to_string())
+    })
+    .await;
+    add_scoped_token(srv, "stg-viewer", "viewer", &["staging"]).await
+}
+
+/// The rows of a card: name, environment and evidence id.
+fn card_rows(body: &Value) -> Vec<(String, Option<String>, String)> {
+    let mut rows: Vec<(String, Option<String>, String)> = body["experiments"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| {
+            (
+                e["name"].as_str().unwrap().to_string(),
+                e["environment"].as_str().map(str::to_string),
+                e["evidence_id"].as_str().unwrap().to_string(),
+            )
+        })
+        .collect();
+    rows.sort();
+    rows
+}
+
+#[tokio::test]
+async fn a_staging_reader_gets_only_the_staging_row_of_a_name_that_also_ran_in_prod() {
+    let srv = spawn_server().await;
+    let token = seed_one_name_in_staging_and_prod(&srv).await;
+
+    let (status, body) = get_auth(&srv.base, "/api/scores", &token).await;
+
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(
+        card_rows(&body),
+        [(
+            "db-failover".into(),
+            Some("staging".into()),
+            "run-stg".into()
+        )],
+        "{body}"
+    );
+    let targets = body["targets"].as_array().unwrap();
+    assert_eq!(targets.len(), 1, "{body}");
+    assert_eq!(targets[0]["target"], "payments", "{body}");
+    assert_eq!(targets[0]["score"], 100.0, "{body}");
+    assert_eq!(targets[0]["runs"], 1, "{body}");
+    assert_eq!(body["portfolio"], 100.0, "{body}");
+    assert_eq!(body["band"], "good", "{body}");
+    assert!(!body.to_string().contains("run-prd"), "{body}");
+}
+
+#[tokio::test]
+async fn an_unscoped_reader_gets_the_row_of_every_environment() {
+    let srv = spawn_server().await;
+    seed_one_name_in_staging_and_prod(&srv).await;
+    let token = add_scoped_token(&srv, "all-viewer", "viewer", &[]).await;
+
+    let (status, body) = get_auth(&srv.base, "/api/scores", &token).await;
+
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(
+        card_rows(&body),
+        [
+            (
+                "cache-stampede".into(),
+                Some("demo".into()),
+                "exp-fail".into()
+            ),
+            ("db-failover".into(), Some("prod".into()), "run-prd".into()),
+            (
+                "db-failover".into(),
+                Some("staging".into()),
+                "run-stg".into()
+            ),
+            ("pg-failover".into(), Some("demo".into()), "exp-pass".into()),
+        ],
+        "{body}"
+    );
+    // `database` at (100 + 50) / 2 and `payments` at (100 + 50) / 2.
+    let scores: Vec<(&str, f64)> = body["targets"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| (t["target"].as_str().unwrap(), t["score"].as_f64().unwrap()))
+        .collect();
+    assert_eq!(scores, [("database", 75.0), ("payments", 75.0)], "{body}");
+    assert_eq!(body["portfolio"], 75.0, "{body}");
+}
+
+#[tokio::test]
+async fn the_tree_of_a_staging_reader_scores_the_staging_run_alone() {
+    let srv = spawn_server().await;
+    let token = seed_one_name_in_staging_and_prod(&srv).await;
+
+    let (status, body) = get_auth(&srv.base, "/api/scores/tree", &token).await;
+
+    assert_eq!(status, 200, "{body}");
+    // db-failover lands in (unassigned): the staging pass is its one leaf.
+    assert_eq!(body["score"], 100.0, "{body}");
+    assert_eq!(body["scored"], 1, "{body}");
+    assert_eq!(body["expected"], 1, "{body}");
+    assert_eq!(body["weakest"], "db-failover", "{body}");
+}
+
+#[tokio::test]
+async fn a_pending_manual_record_in_prod_is_no_leaf_for_a_staging_reader() {
+    let srv = spawn_server().await;
+    let staging = seed_one_name_in_staging_and_prod(&srv).await;
+    let prod = add_scoped_token(&srv, "prd-viewer", "viewer", &["prod"]).await;
+    // A draft of the same name waits for review in prod.
+    exec_write(&srv, |writer| {
+        writer
+            .create_manual_draft(&payments_record(Some("prod")))
+            .map(drop)
+            .map_err(|e| e.to_string())
+    })
+    .await;
+
+    let (status, body) = get_auth(&srv.base, "/api/scores/tree", &staging).await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["expected"], 1, "{body}");
+    assert_eq!(body["scored"], 1, "{body}");
+
+    // A prod reader expects it: the prod run and the draft.
+    let (status, body) = get_auth(&srv.base, "/api/scores/tree", &prod).await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["expected"], 2, "{body}");
+    assert_eq!(body["scored"], 1, "{body}");
+}
+
+#[tokio::test]
+async fn a_run_or_a_manual_record_with_no_environment_is_only_in_the_card_of_an_unscoped_reader() {
+    let srv = spawn_server().await;
+    let scoped = seed_one_name_in_staging_and_prod(&srv).await;
+    let unscoped = add_scoped_token(&srv, "all-viewer", "viewer", &[]).await;
+    exec_write(&srv, |writer| {
+        writer
+            .insert_spans(&[payments_run("run-none", None, "completed")])
+            .map_err(|e| e.to_string())?;
+        let id = writer
+            .create_manual_draft(&payments_record(None))
+            .map_err(|e| e.to_string())?;
+        writer
+            .submit_manual(&id, None, "alice")
+            .map_err(|e| e.to_string())?;
+        writer
+            .verify_manual(&id, "bob", None)
+            .map_err(|e| e.to_string())
+    })
+    .await;
+    let without_environment = |body: &Value| -> Vec<String> {
+        card_rows(body)
+            .into_iter()
+            .filter(|(_, env, _)| env.is_none())
+            .map(|(_, _, evidence)| evidence)
+            .collect()
+    };
+
+    let (status, body) = get_auth(&srv.base, "/api/scores", &scoped).await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(
+        card_rows(&body),
+        [(
+            "db-failover".into(),
+            Some("staging".into()),
+            "run-stg".into()
+        )],
+        "{body}"
+    );
+
+    let (status, body) = get_auth(&srv.base, "/api/scores", &unscoped).await;
+    assert_eq!(status, 200, "{body}");
+    let found = without_environment(&body);
+    assert_eq!(found.len(), 2, "{body}");
+    assert!(found.contains(&"run-none".to_string()), "{body}");
+}
+
+#[tokio::test]
+async fn the_portfolio_of_a_scoped_reader_is_the_score_its_gate_judges() {
+    let srv = spawn_server().await;
+    let token = seed_one_name_in_staging_and_prod(&srv).await;
+
+    let (status, card) = get_auth(&srv.base, "/api/scores", &token).await;
+    assert_eq!(status, 200, "{card}");
+    let (status, gate) = get_auth(&srv.base, "/api/gate/payments", &token).await;
+    assert_eq!(status, 200, "{gate}");
+
+    // `payments` is the one target in staging: the portfolio is its score.
+    assert_eq!(gate["score"], 100.0, "{gate}");
+    assert_eq!(card["portfolio"], gate["score"], "{card}");
+}
+
+#[tokio::test]
+async fn the_change_of_a_scoped_card_is_against_its_own_card_a_period_ago() {
+    let srv = spawn_server().await;
+    let token = seed_one_name_in_staging_and_prod(&srv).await;
+    // Twenty days ago the name deviated in staging and passed in prod.
+    let earlier = |id: &str, env: &str, status: &str| tumult_lake::SpanRow {
+        ts_ns: now_ns() - 20 * 86_400 * NS,
+        ..payments_run(id, Some(env), status)
+    };
+    let rows = [
+        earlier("old-stg", "staging", "deviated"),
+        earlier("old-prd", "prod", "completed"),
+    ];
+    exec_write(&srv, move |writer| {
+        writer.insert_spans(&rows).map_err(|e| e.to_string())
+    })
+    .await;
+
+    let (status, body) = get_auth(&srv.base, "/api/scores?range=7d", &token).await;
+
+    assert_eq!(status, 200, "{body}");
+    // Staging alone: 100 now and 50 a week ago. The card of every
+    // environment a week ago holds the prod pass too.
+    assert_eq!(body["portfolio"], 100.0, "{body}");
+    assert_eq!(body["delta"], 50.0, "{body}");
+}
+
 #[tokio::test]
 async fn reports_v2_executive_digest_roundtrip() {
     let srv = spawn_server().await;

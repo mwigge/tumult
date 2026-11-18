@@ -77,6 +77,7 @@ mod runs;
 mod schedules;
 #[cfg(feature = "duckdb")]
 mod schema;
+pub mod scope;
 #[cfg(feature = "duckdb")]
 mod sightings;
 #[cfg(feature = "duckdb")]

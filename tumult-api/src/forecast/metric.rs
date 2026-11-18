@@ -26,7 +26,7 @@ use serde_json::{json, Value};
 use tumult_forecast::resample::{resample, step_for_window, RegularSeries};
 use tumult_forecast::Forecast;
 use tumult_lake::{
-    ForecastLookup, ForecastRow, ModelFilter, FORECAST_PRUNE_BATCH, FORECAST_RETENTION_NS,
+    scope, ForecastLookup, ForecastRow, ModelFilter, FORECAST_PRUNE_BATCH, FORECAST_RETENTION_NS,
     FORECAST_ROWS_PER_SERIES,
 };
 use tumult_metrics::MetricDef;
@@ -37,7 +37,7 @@ use super::{
 };
 use crate::auth::Principal;
 use crate::error::{bad_request, forbidden, not_found, ApiError};
-use crate::sql_util::{env_table_predicate, internal, now_ns, sql_string, with_reader};
+use crate::sql_util::{internal, now_ns, sql_string, with_reader};
 use crate::ApiState;
 
 const DEFAULT_HORIZON: usize = 24;
@@ -178,7 +178,7 @@ fn series_sql(def: &MetricDef, asked: &Asked, window: Window) -> Result<String, 
     let sql = tumult_metrics::to_sql_bucketed(def, window.step_ns, &[], range)
         .map_err(|e| internal(e.to_string()))?;
     let mut preds: Vec<String> = Vec::new();
-    if let Some(env) = env_table_predicate(&def.source_table, &asked.envs) {
+    if let Some(env) = scope::table_predicate(&def.source_table, &asked.envs) {
         preds.push(env);
     }
     if let Some(t) = &asked.target {

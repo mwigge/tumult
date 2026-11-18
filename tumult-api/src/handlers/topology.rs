@@ -19,11 +19,12 @@ use axum::response::IntoResponse;
 use axum::{Extension, Json};
 use serde::Deserialize;
 use serde_json::{json, Value};
+use tumult_lake::scope;
 
 use crate::auth::Principal;
 use crate::sql_util::{
-    and_pred, env_segment_sql, env_trace_exists, id_segment_sql, invalid_range, w, windows,
-    with_reader, PARENT_LOOKBACK_NS,
+    env_segment_sql, env_trace_exists, id_segment_sql, invalid_range, w, windows, with_reader,
+    PARENT_LOOKBACK_NS,
 };
 use crate::ApiState;
 
@@ -88,8 +89,11 @@ pub(crate) async fn topology(
         to = cur.1,
     );
     // Scoped principals see only the graph of their own environments.
-    window.push_str(&and_pred(env_trace_exists("spans", &principal.env_scopes)));
-    cwindow.push_str(&and_pred(env_trace_exists("c", &principal.env_scopes)));
+    window.push_str(&scope::and(env_trace_exists(
+        "spans",
+        &principal.env_scopes,
+    )));
+    cwindow.push_str(&scope::and(env_trace_exists("c", &principal.env_scopes)));
     let body = with_reader(&state.db_path, move |reader| {
         let query = |sql: &str| reader.query_json_rows(sql).map_err(|e| e.to_string());
         // Nodes: one per service and one per tumult target, with health

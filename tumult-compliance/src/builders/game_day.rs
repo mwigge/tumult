@@ -3,12 +3,11 @@
 use std::collections::HashMap;
 
 use serde_json::Value;
-use tumult_lake::Reader;
+use tumult_lake::{scope, Reader};
 
 use super::{base_meta, cell, counted, q, severity_cell};
 use crate::html::fmt_datetime;
 use crate::model::{Block, Cell, ReportDoc, TemplateKind};
-use crate::scoring;
 
 /// The name of the root span of a run.
 const RUN_SPAN: &str = "resilience.experiment";
@@ -43,7 +42,7 @@ fn root_of(reader: &Reader, id: &str, envs: &[String]) -> Result<Option<Value>, 
              WHERE s.span_name = 'resilience.experiment' AND s.experiment_id = {id}{} \
              ORDER BY s.ts_ns DESC LIMIT 1",
             tumult_lake::run_outcome_sql("s", "l"),
-            scoring::and_env(scoring::env_in("s.target_environment", envs)),
+            scope::and(scope::in_list("s.target_environment", envs)),
         ))
         .map_err(|e| e.to_string())?;
     Ok(rows.into_iter().next())

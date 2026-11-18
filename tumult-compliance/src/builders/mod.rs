@@ -11,7 +11,7 @@ mod game_day;
 mod tests;
 
 use sha2::{Digest, Sha256};
-use tumult_lake::{Reader, RunVerdict};
+use tumult_lake::{scope, Reader, RunVerdict};
 
 use crate::html::fmt_date;
 use crate::model::{Cell, DocMeta, TemplateKind};
@@ -202,8 +202,8 @@ fn runs_in_window(
              SELECT DISTINCT experiment_name FROM manual_experiments \
              WHERE status = 'verified' \
                AND executed_at_ns >= {from_ns} AND executed_at_ns < {to_ns}{}",
-            scoring::and_env(scoring::env_in("target_environment", envs)),
-            scoring::and_env(scoring::env_in("target_environment", envs)),
+            scope::and(scope::in_list("target_environment", envs)),
+            scope::and(scope::in_list("target_environment", envs)),
         ))
         .map_err(|e| e.to_string())?;
     Ok(rows
@@ -229,7 +229,7 @@ fn issue_stats(
              WHERE s.experiment_name IS NOT NULL \
                AND s.ts_ns >= {from_ns} AND s.ts_ns < {to_ns}{} ORDER BY s.ts_ns",
             tumult_lake::run_outcome_sql("s", "l"),
-            scoring::and_env(scoring::env_in("s.target_environment", envs)),
+            scope::and(scope::in_list("s.target_environment", envs)),
         ))
         .map_err(|e| e.to_string())?;
 
@@ -268,7 +268,7 @@ fn issue_stats(
         .query_json_rows(&format!(
             "SELECT AVG(recovery_time_s) AS v FROM spans \
              WHERE recovery_time_s IS NOT NULL AND ts_ns >= {from_ns} AND ts_ns < {to_ns}{}",
-            scoring::and_env(scoring::env_in("target_environment", envs)),
+            scope::and(scope::in_list("target_environment", envs)),
         ))
         .map_err(|e| e.to_string())?
         .first()

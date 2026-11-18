@@ -259,38 +259,14 @@ fn shown(unit: Option<Unit>, value: &Value) -> String {
         .map_or_else(|| fmt_value(value), |number| show::value(unit, number))
 }
 
-/// Environment predicate confining a metric query to a principal's
-/// environment scopes, mirroring the API layer: `spans` binds
-/// `target_environment` directly (it lives on the root span), the
-/// `metric_*` tables reach it through `experiment_name` correlation against
-/// the root spans. `None` when unscoped (empty set = all environments).
-fn env_predicate(table: &str, envs: &[String]) -> Option<String> {
-    if envs.is_empty() {
-        return None;
-    }
-    let list = envs
-        .iter()
-        .map(|e| format!("'{}'", e.replace('\'', "''")))
-        .collect::<Vec<_>>()
-        .join(", ");
-    Some(if table == "spans" {
-        format!("target_environment IN ({list})")
-    } else {
-        format!(
-            "EXISTS (SELECT 1 FROM spans se \
-             WHERE se.experiment_name = {table}.experiment_name \
-               AND se.target_environment IN ({list}))"
-        )
-    })
-}
-
-/// Insert an environment predicate into SQL compiled by
+/// Insert the environment predicate of `table`
+/// ([`tumult_lake::scope::table_predicate`]) into SQL compiled by
 /// `tumult_metrics::to_sql` or `to_sql_bucketed` (`SELECT … FROM <table>` +
 /// optional `WHERE` + optional `GROUP BY … ORDER BY …`): appended to the
 /// existing WHERE clause or added as a fresh one, always before any GROUP
 /// BY. Unchanged when `envs` is empty (unscoped).
 fn confine_sql(sql: &str, table: &str, envs: &[String]) -> String {
-    let Some(pred) = env_predicate(table, envs) else {
+    let Some(pred) = tumult_lake::scope::table_predicate(table, envs) else {
         return sql.to_string();
     };
     let (head, tail) = match sql.find("\nGROUP BY") {
@@ -595,6 +571,56 @@ mod tests {
         assert_eq!(kpi_value(&global), "2");
         let scoped = build_report_scoped(&reader, &defs, "t", None, &["dev".to_string()]).unwrap();
         assert_eq!(kpi_value(&scoped), "1");
+    }
+
+    #[test]
+    fn a_scoped_report_counts_the_metric_points_of_its_experiments_only() {
+        let d = tempfile::TempDir::new().unwrap();
+        let store = tumult_lake::Store::open(&d.path().join("k.duckdb")).unwrap();
+        let root = |id: &str, env: &str| tumult_lake::SpanRow {
+            ts_ns: 1,
+            trace_id: format!("trace-{id}"),
+            span_id: format!("span-{id}-root"),
+            span_name: "resilience.experiment".into(),
+            experiment_id: Some(id.into()),
+            experiment_name: Some(id.into()),
+            target_environment: Some(env.into()),
+            events: "[]".into(),
+            ..Default::default()
+        };
+        let point = |experiment: Option<&str>, ts: i64| tumult_lake::MetricSumRow {
+            ts_ns: ts,
+            metric_name: "tumult.experiments.total".into(),
+            value: 1.0,
+            experiment_name: experiment.map(str::to_string),
+            ..Default::default()
+        };
+        let writer = store.writer().unwrap();
+        writer
+            .insert_spans(&[root("exp-dev", "dev"), root("exp-prd", "prod")])
+            .unwrap();
+        // Two points of the dev experiment, one of the prod experiment and
+        // one of no experiment, which no scope reaches.
+        writer
+            .insert_metric_sums(&[
+                point(Some("exp-dev"), 1),
+                point(Some("exp-dev"), 2),
+                point(Some("exp-prd"), 3),
+                point(None, 4),
+            ])
+            .unwrap();
+        let reader = store.read_only().unwrap();
+        let defs = vec![count_def("metric_sums", vec![])];
+        let kpi_value = |report: &Report| match &report.sections[0] {
+            Section::Kpi { value, .. } => value.clone(),
+            other => panic!("expected KPI section, got {other:?}"),
+        };
+
+        let global = build_report(&reader, &defs, "t", None).unwrap();
+        let scoped = build_report_scoped(&reader, &defs, "t", None, &["dev".to_string()]).unwrap();
+
+        assert_eq!(kpi_value(&global), "4");
+        assert_eq!(kpi_value(&scoped), "2");
     }
 
     #[test]
