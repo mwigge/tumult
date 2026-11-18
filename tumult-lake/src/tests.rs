@@ -358,6 +358,13 @@ fn the_verdict_in_sql_is_the_verdict_in_rust() {
         rows[0]["verdict"].is_null(),
         "a run with no status has no verdict"
     );
+    // A reader filters on a verdict by its spelling, so each has its own.
+    let spelled: std::collections::BTreeSet<&str> =
+        [RunVerdict::Pass, RunVerdict::Fail, RunVerdict::NoEvidence]
+            .map(RunVerdict::as_str)
+            .into_iter()
+            .collect();
+    assert_eq!(spelled.len(), 3, "{spelled:?}");
 }
 
 #[test]
