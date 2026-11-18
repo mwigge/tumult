@@ -8,6 +8,7 @@
 use crate::common::*;
 use serde_json::{json, Value};
 use tumult_core::types::{Experiment, ExperimentStatus, ExperimentTarget, Journal};
+use tumult_lake::{MetricSumRow, SpanRow};
 
 const TITLE: &str = "payments-replica-loss";
 
@@ -321,4 +322,128 @@ async fn the_overview_of_a_scoped_reader_counts_only_its_environments() {
 
     assert_eq!(overview_counts(&all), (3.0, 3.0, 3.0), "{all}");
     assert_eq!(overview_counts(&scoped), (1.0, 1.0, 1.0), "{scoped}");
+}
+
+/// The answer of `/api/ask` to `question`, asked with `token` when there
+/// is one.
+async fn asked(srv: &TestServer, question: &str, token: Option<&str>) -> (u16, Value) {
+    let mut request = reqwest::Client::new()
+        .post(format!("{}/api/ask", srv.base))
+        .json(&json!({ "question": question }));
+    if let Some(token) = token {
+        request = request.header("Authorization", format!("Bearer {token}"));
+    }
+    let resp = request.send().await.unwrap();
+    let status = resp.status().as_u16();
+    (status, resp.json().await.unwrap())
+}
+
+#[tokio::test]
+async fn asked_how_many_experiments_ran_the_answer_is_the_experiments_card() {
+    // The seed holds two runs that sent their trace.
+    let srv = spawn_server().await;
+    store(&srv, vec![completed_run("cli-1", Some("staging"))]).await;
+
+    let (status, overview) = get(&srv.base, "/api/overview?range=24h").await;
+    let (asked_status, answer) = asked(&srv, "How many experiments ran?", None).await;
+
+    assert_eq!((status, asked_status), (200, 200), "{overview}\n{answer}");
+    assert_eq!(overview_counts(&overview).0, 3.0, "{overview}");
+    assert_eq!(answer["rows"], json!([{"experiments": 3}]), "{answer}");
+}
+
+#[tokio::test]
+async fn a_scoped_question_counts_only_the_runs_of_its_environments() {
+    // The seed holds two runs in `demo` that sent their trace.
+    let srv = spawn_server().await;
+    let nowhere = (journal("bare", ExperimentStatus::Completed, 600), None);
+    let runs = vec![
+        completed_run("in-staging", Some("staging")),
+        completed_run("in-prod", Some("prod")),
+        completed_run("no-environment", None),
+        nowhere,
+    ];
+    store(&srv, runs).await;
+    let staging = add_scoped_token(&srv, "staging-viewer", "viewer", &["staging"]).await;
+    let demo = add_scoped_token(&srv, "demo-viewer", "viewer", &["demo"]).await;
+
+    let (_, in_staging) = asked(&srv, "How many experiments ran?", Some(&staging)).await;
+    let (_, in_demo) = asked(&srv, "How many experiments ran?", Some(&demo)).await;
+
+    assert_eq!(
+        in_staging["rows"],
+        json!([{"experiments": 1}]),
+        "{in_staging}"
+    );
+    assert_eq!(in_demo["rows"], json!([{"experiments": 2}]), "{in_demo}");
+}
+
+#[tokio::test]
+async fn a_scoped_question_about_the_pass_rate_is_not_answered_for_every_environment() {
+    let srv = spawn_server().await;
+    let demo = add_scoped_token(&srv, "demo-viewer", "viewer", &["demo"]).await;
+
+    let (status, answer) = asked(&srv, "What is the pass rate?", Some(&demo)).await;
+
+    // The completion log of a run names no environment, so the question
+    // cannot be kept to the environments of the reader: it is refused.
+    assert_eq!(status, 422, "{answer}");
+    assert_eq!(answer.get("rows"), None, "{answer}");
+}
+
+#[tokio::test]
+async fn the_deviation_rate_and_its_sparkline_leave_out_a_run_that_sent_no_counter() {
+    let (srv, run) = one_deviated_run().await;
+    // A run that sent its trace and its deviation counter, at the time the
+    // run of the journal started. Only a trace brings the counter.
+    let at = run.started_at_ns;
+    let traced = SpanRow {
+        ts_ns: at,
+        trace_id: "trace-traced".into(),
+        span_id: "span-traced".into(),
+        span_name: "resilience.experiment".into(),
+        span_kind: "Internal".into(),
+        service_name: "tumult".into(),
+        experiment_id: Some("traced".into()),
+        experiment_name: Some("traced-run".into()),
+        outcome_status: Some("deviated".into()),
+        target_system: Some("payments-api".into()),
+        target_environment: Some("staging".into()),
+        events: "[]".into(),
+        ..SpanRow::default()
+    };
+    let deviation = MetricSumRow {
+        ts_ns: at,
+        metric_name: "tumult.hypothesis.deviations.total".into(),
+        value: 1.0,
+        experiment_name: Some("traced-run".into()),
+        ..MetricSumRow::default()
+    };
+    exec_write(&srv, move |w| {
+        w.execute("DELETE FROM metric_sums", ())
+            .map_err(|e| e.to_string())?;
+        w.insert_spans(&[traced]).map_err(|e| e.to_string())?;
+        w.insert_metric_sums(&[deviation])
+            .map_err(|e| e.to_string())
+    })
+    .await;
+
+    let (status, body) = get(&srv.base, "/api/overview?range=24h").await;
+
+    assert_eq!(status, 200, "{body}");
+    let card = body["kpis"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|kpi| kpi["name"] == "deviation_rate")
+        .unwrap_or_else(|| panic!("no deviation card: {body}"));
+    // One deviation of one traced run, on the card and on its one point.
+    assert_eq!(card["value"], 1.0, "{card}");
+    let sparkline: Vec<&Value> = card["spark"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|point| &point["v"])
+        .collect();
+    assert_eq!(sparkline, [&json!(1.0)], "{card}");
 }

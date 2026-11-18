@@ -25,11 +25,13 @@ use tumult_intelligence::sql_guard;
 use tumult_lake::RunVerdict;
 
 use crate::auth::Principal;
+use crate::sql_util::run_pass_rate_sql;
 use crate::ApiState;
 
 /// Tables LLM-generated SQL may touch (enforced by [`sql_guard`]).
 const ALLOWED_TABLES: &[&str] = &[
     "spans",
+    "run_roots",
     "logs",
     "metric_sums",
     "metric_gauges",
@@ -46,23 +48,23 @@ const QUERY_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// Curated question → SQL pairs. These answer the demo's showcase questions
 /// with zero LLM involvement and double as few-shot examples in the prompt.
-/// A run says how it ended by the rule of [`tumult_lake::run_outcome_sql`],
-/// and failed by its verdict ([`tumult_lake::run_verdict_sql`]).
+/// A run is a row of `run_roots`, as the experiments card counts it. A run
+/// says how it ended by the rule of [`tumult_lake::run_outcome_sql`], and
+/// failed by its verdict ([`tumult_lake::run_verdict_sql`]). The pass rate
+/// is the one of the card ([`run_pass_rate_sql`]).
 static GOLDEN: LazyLock<[(&str, String); 6]> = LazyLock::new(|| {
     let outcome = tumult_lake::run_outcome_sql("s", "l");
     [
         (
             "how many experiments ran",
-            "SELECT COUNT(*) AS experiments FROM spans \
-             WHERE span_name = 'resilience.experiment'"
-                .into(),
+            "SELECT COUNT(*) AS experiments FROM run_roots".into(),
         ),
         (
             "what is the pass rate",
-            "SELECT SUM(CAST(value AS DOUBLE)) FILTER (WHERE outcome_status = 'success') \
-             / NULLIF(SUM(CAST(value AS DOUBLE)), 0) AS pass_rate \
-             FROM metric_sums WHERE metric_name = 'tumult.experiments.total'"
-                .into(),
+            format!(
+                "SELECT {} AS pass_rate FROM run_roots s {COMPLETION_JOIN}",
+                run_pass_rate_sql("s", "l")
+            ),
         ),
         (
             "which experiments failed",
@@ -141,6 +143,7 @@ fn schema_prompt() -> String {
          duration_ns, status_code, service_name, experiment_id, experiment_name, \
          outcome_status, fault_type, fault_subtype, target_system, target_technology, \
          hypothesis_met BOOL, recovery_time_s DOUBLE, span_attrs MAP(VARCHAR,VARCHAR))\n\
+         - run_roots(the columns of spans, journal_only BOOL)\n\
          - logs(ts_ns, severity_text, body, trace_id, span_id, log_attrs MAP(VARCHAR,VARCHAR))\n\
          - run_completions(experiment_id, ts_ns, log_attrs MAP(VARCHAR,VARCHAR))\n\
          - metric_sums(ts_ns, metric_name, value DOUBLE, experiment_name, outcome_status, plugin_name)\n\
@@ -148,7 +151,10 @@ fn schema_prompt() -> String {
          - metric_histograms(ts_ns, metric_name, count, sum, min, max, experiment_name, outcome_status)\n\
          \n\
          SEMANTICS\n\
-         - One experiment run = one span with span_name = 'resilience.experiment'.\n\
+         - One experiment run = one row of run_roots: the root span \
+         (span_name = 'resilience.experiment') of a run that sent its trace, \
+         or a row built from the journal of a run that sent none \
+         (journal_only).\n\
          - A run says how it ended in outcome_status of its root span: \
          {endings}. Runs stored by an older version say it only in their \
          completion log, as log_attrs['status'] with a capital; \
@@ -203,10 +209,13 @@ fn sql_string(s: &str) -> String {
 }
 
 /// Confine a validated query to the principal's environment scopes (same
-/// contract as `env_scope_where` in `crate::lib`): every `spans` reference —
-/// the only allow-listed table with an environment column — is wrapped in a
-/// `target_environment IN (…)` subquery. Any other referenced table cannot
-/// be scope-filtered, so [`sql_guard::scope_tables`] fails closed on it.
+/// contract as `env_scope_where` in `crate::lib`): every `spans` and
+/// `run_roots` reference — the allow-listed tables with an environment
+/// column — is wrapped in a `target_environment IN (…)` subquery. A run
+/// stored only as a journal names the environment of its definition there,
+/// or none, and is then out of every scope. Any other referenced table
+/// cannot be scope-filtered, so [`sql_guard::scope_tables`] fails closed on
+/// it.
 /// Empty scopes mean every environment (the query passes through untouched).
 fn apply_env_scopes(sql: &str, scopes: &[String]) -> Result<String, sql_guard::SqlGuardError> {
     if scopes.is_empty() {
@@ -218,7 +227,8 @@ fn apply_env_scopes(sql: &str, scopes: &[String]) -> Result<String, sql_guard::S
         .collect::<Vec<_>>()
         .join(", ");
     let predicate = format!("target_environment IN ({envs})");
-    sql_guard::scope_tables(sql, &[("spans", predicate.as_str())])
+    let predicate = predicate.as_str();
+    sql_guard::scope_tables(sql, &[("spans", predicate), ("run_roots", predicate)])
 }
 
 #[derive(Deserialize)]
@@ -295,9 +305,9 @@ pub async fn ask(
     if let Err(e) = sql_guard::validate_generated_sql(&sql, ALLOWED_TABLES) {
         return internal(format!("internal SQL failed the guard: {e}"), &sql);
     }
-    // Per-user environment scoping: confine `spans` to the principal's
-    // environments; tables without an environment column fail closed for
-    // scoped principals (no cross-environment existence leak).
+    // Per-user environment scoping: confine `spans` and `run_roots` to the
+    // principal's environments; tables without an environment column fail
+    // closed for scoped principals (no cross-environment existence leak).
     let sql = match apply_env_scopes(&sql, &principal.env_scopes) {
         Ok(sql) => sql,
         Err(e) => {

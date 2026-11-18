@@ -1396,6 +1396,41 @@ fn a_run_that_proves_nothing_is_no_issue_and_a_run_logged_twice_is_one() {
     assert_eq!((discovered, fixed), (1, 0));
 }
 
+#[test]
+fn a_run_that_sent_no_trace_is_an_issue_like_a_run_that_did() {
+    use tumult_core::types::ExperimentStatus;
+    let d = tempfile::TempDir::new().unwrap();
+    let store = tumult_lake::Store::open(&d.path().join("kronika.duckdb")).unwrap();
+    let writer = store.writer().unwrap();
+    writer
+        .insert_spans(&[tumult_lake::SpanRow {
+            ts_ns: BASE_NS,
+            trace_id: "trace-traced".into(),
+            span_id: "span-traced".into(),
+            span_name: "resilience.experiment".into(),
+            experiment_id: Some("traced".into()),
+            experiment_name: Some("failover".into()),
+            outcome_status: Some("deviated".into()),
+            events: "[]".into(),
+            ..Default::default()
+        }])
+        .unwrap();
+    // A plain `tumult run` of the same experiment an hour later: the lake
+    // holds its journal and no span.
+    let journal = tumult_core::types::Journal {
+        experiment_title: "failover".into(),
+        started_at_ns: BASE_NS + HOUR_NS,
+        ended_at_ns: BASE_NS + HOUR_NS + 300_000_000_000,
+        ..tumult_lake::duckdb_store::sample_journal("journal-only", ExperimentStatus::Deviated)
+    };
+    assert!(writer.ingest_journal(&journal, None).unwrap());
+
+    let (discovered, fixed, _) =
+        issue_stats(&store.read_only().unwrap(), BASE_NS, BASE_NS + DAY_NS, &[]).unwrap();
+
+    assert_eq!((discovered, fixed), (2, 0));
+}
+
 /// The bullets under the heading `title`.
 fn bullets_under<'a>(doc: &'a ReportDoc, title: &str) -> &'a [String] {
     doc.blocks

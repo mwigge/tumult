@@ -8,12 +8,11 @@ use axum::response::IntoResponse;
 use axum::{Extension, Json};
 use serde::Deserialize;
 use serde_json::{json, Value};
-use tumult_lake::RunVerdict;
 
 use crate::auth::Principal;
 use crate::sql_util::{
-    and_pred, bucket_expr, env_metric_exists, env_scope_where, env_trace_exists, invalid_range,
-    ratio_series, scalar, series, w, windows, with_reader,
+    and_pred, bucket_expr, bucket_of, env_metric_exists, env_scope_where, env_trace_exists,
+    invalid_range, ratio_series, run_pass_rate_sql, scalar, series, w, windows, with_reader,
 };
 use crate::ApiState;
 
@@ -23,6 +22,31 @@ const ROOT: &str = "span_name = 'resilience.experiment'";
 /// Environment predicate for `run_roots`: a root names its own environment.
 fn and_root_env(scopes: &[String]) -> String {
     and_pred(env_scope_where("target_environment", scopes))
+}
+
+/// The runs that started in `[f, t)` in the scopes, as the FROM and WHERE
+/// of a query: each root `s` with its completion log `l`, for
+/// [`run_pass_rate_sql`]. A run completes after it starts, so only the
+/// logs since `f` are read.
+fn runs_from(f: i64, t: i64, scopes: &[String]) -> String {
+    format!(
+        "FROM run_roots AS s \
+         LEFT JOIN ({}) AS l ON s.experiment_id = l.experiment_id \
+         WHERE s.ts_ns >= {f} AND s.ts_ns < {t}{}",
+        tumult_lake::run_completions_sql(Some(f)),
+        and_pred(env_scope_where("s.target_environment", scopes))
+    )
+}
+
+/// The traced runs that started in `[f, t)` in the scopes, as a predicate
+/// on `spans`. The deviation counter comes only with a trace, so a run
+/// stored only as a journal is not one of them.
+fn traced_runs(f: i64, t: i64, scopes: &[String]) -> String {
+    format!(
+        "{ROOT} AND {}{}",
+        w(f, t),
+        and_pred(env_trace_exists("spans", scopes))
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -71,43 +95,37 @@ fn sql_experiments_spark(f: i64, t: i64, b: i64, scopes: &[String]) -> String {
 
 fn sql_pass_rate_value(f: i64, t: i64, scopes: &[String]) -> String {
     format!(
-        "SELECT SUM(CAST(value AS DOUBLE)) FILTER (WHERE outcome_status = 'success') \
-         / NULLIF(SUM(CAST(value AS DOUBLE)), 0) AS v \
-         FROM metric_sums WHERE metric_name = 'tumult.experiments.total' AND {}{}",
-        w(f, t),
-        and_pred(env_metric_exists("metric_sums", scopes))
+        "SELECT {} AS v {}",
+        run_pass_rate_sql("s", "l"),
+        runs_from(f, t, scopes)
     )
 }
 
-fn sql_pass_num(f: i64, t: i64, b: i64, scopes: &[String]) -> String {
+fn sql_pass_rate_spark(f: i64, t: i64, b: i64, scopes: &[String]) -> String {
     format!(
-        "SELECT {} AS ts, SUM(CAST(value AS DOUBLE)) AS v FROM metric_sums \
-         WHERE metric_name = 'tumult.experiments.total' AND outcome_status = 'success' AND {}{} \
-         GROUP BY 1 ORDER BY 1",
-        bucket_expr(b),
-        w(f, t),
-        and_pred(env_metric_exists("metric_sums", scopes))
-    )
-}
-
-fn sql_pass_den(f: i64, t: i64, b: i64, scopes: &[String]) -> String {
-    format!(
-        "SELECT {} AS ts, SUM(CAST(value AS DOUBLE)) AS v FROM metric_sums \
-         WHERE metric_name = 'tumult.experiments.total' AND {}{} GROUP BY 1 ORDER BY 1",
-        bucket_expr(b),
-        w(f, t),
-        and_pred(env_metric_exists("metric_sums", scopes))
+        "SELECT {} AS ts, {} AS v {} GROUP BY 1 ORDER BY 1",
+        bucket_of("s.ts_ns", b),
+        run_pass_rate_sql("s", "l"),
+        runs_from(f, t, scopes)
     )
 }
 
 fn sql_deviation_value(f: i64, t: i64, scopes: &[String]) -> String {
     let window = w(f, t);
     let metrics_env = and_pred(env_metric_exists("metric_sums", scopes));
-    let spans_env = and_pred(env_trace_exists("spans", scopes));
     format!(
         "SELECT (SELECT COALESCE(SUM(CAST(value AS DOUBLE)), 0) FROM metric_sums \
          WHERE metric_name = 'tumult.hypothesis.deviations.total' AND {window}{metrics_env}) \
-         / NULLIF((SELECT COUNT(*) FROM spans WHERE {ROOT} AND {window}{spans_env}), 0) AS v"
+         / NULLIF((SELECT COUNT(*) FROM spans WHERE {}), 0) AS v",
+        traced_runs(f, t, scopes)
+    )
+}
+
+fn sql_traced_runs_spark(f: i64, t: i64, b: i64, scopes: &[String]) -> String {
+    format!(
+        "SELECT {} AS ts, COUNT(*) AS v FROM spans WHERE {} GROUP BY 1 ORDER BY 1",
+        bucket_expr(b),
+        traced_runs(f, t, scopes)
     )
 }
 
@@ -168,11 +186,11 @@ const KPIS: &[Kpi] = &[
     },
     Kpi {
         name: "pass_rate",
-        label: "Hypothesis pass rate",
+        label: "Run pass rate",
         unit: "ratio",
         value: sql_pass_rate_value,
-        spark_num: sql_pass_num,
-        spark_den: Some(sql_pass_den),
+        spark_num: sql_pass_rate_spark,
+        spark_den: None,
     },
     Kpi {
         name: "deviation_rate",
@@ -180,7 +198,7 @@ const KPIS: &[Kpi] = &[
         unit: "ratio",
         value: sql_deviation_value,
         spark_num: sql_deviation_num,
-        spark_den: Some(sql_experiments_spark),
+        spark_den: Some(sql_traced_runs_spark),
     },
     Kpi {
         name: "mttr_s",
@@ -253,23 +271,14 @@ pub(crate) async fn overview(
             ),
         )?;
 
-        // The share of all runs of a target that passed, as the pass rate
-        // of this page counts it from the counters of the runner: a run
-        // that proves nothing is a run that did not pass.
-        let verdict = tumult_lake::run_verdict_sql(&tumult_lake::run_outcome_sql("s", "l"));
+        // Every run of a target, and its run pass rate as the card counts it.
         let targets = reader
             .query_json_rows(&format!(
-                "SELECT s.target_system AS target, COUNT(*) AS experiments, \
-                 COUNT(*) FILTER (WHERE {verdict} = '{}') \
-                 / NULLIF(COUNT(*), 0) AS pass_rate \
-                 FROM run_roots s LEFT JOIN run_completions l ON s.experiment_id = l.experiment_id \
-                 WHERE s.target_system IS NOT NULL \
-                   AND s.ts_ns >= {} AND s.ts_ns < {}{} \
+                "SELECT s.target_system AS target, count(*) AS experiments, \
+                 {} AS pass_rate {} AND s.target_system IS NOT NULL \
                  GROUP BY 1 ORDER BY experiments DESC LIMIT 10",
-                RunVerdict::Pass.as_str(),
-                cur.0,
-                cur.1,
-                and_pred(env_scope_where("s.target_environment", &scopes))
+                run_pass_rate_sql("s", "l"),
+                runs_from(cur.0, cur.1, &scopes)
             ))
             .map_err(|e| e.to_string())?;
 
@@ -295,4 +304,19 @@ pub(crate) async fn overview(
     })
     .await?;
     Ok(Json(body))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_runs_of_a_window_read_the_completion_logs_since_its_start() {
+        let hour = 3_600 * 1_000_000_000_i64;
+        let q = runs_from(2 * hour, 3 * hour, &[]);
+        assert!(
+            q.contains(&tumult_lake::run_completions_sql(Some(2 * hour))),
+            "the completion log join is bounded: {q}"
+        );
+    }
 }

@@ -10,7 +10,7 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::Json;
 use serde_json::{json, Value};
-use tumult_lake::{Reader, SqlParam, Store};
+use tumult_lake::{Reader, RunVerdict, SqlParam, Store};
 
 // ---------------------------------------------------------------------------
 // helpers
@@ -146,6 +146,23 @@ pub(crate) fn sql_ieq(s: &str) -> String {
 /// Time-window predicate on `ts_ns`.
 pub(crate) fn w(from: i64, to: i64) -> String {
     format!("ts_ns >= {from} AND ts_ns < {to}")
+}
+
+/// The run pass rate, as an SQL aggregate over runs: the share of the runs
+/// that passed among the runs that passed or failed. A run that proves
+/// nothing (aborted, interrupted) and a run that has not ended are in
+/// neither part ([`tumult_lake::run_verdict`]). `span` is the alias of a
+/// row of `run_roots` and `log` the alias of its row of `run_completions`,
+/// as for [`tumult_lake::run_outcome_sql`]. The card of the home page, its
+/// sparkline, its targets and the answer of `/api/ask` all read this one.
+pub(crate) fn run_pass_rate_sql(span: &str, log: &str) -> String {
+    let verdict = tumult_lake::run_verdict_sql(&tumult_lake::run_outcome_sql(span, log));
+    format!(
+        "count(*) FILTER (WHERE {verdict} = '{pass}') \
+         / nullif(count(*) FILTER (WHERE {verdict} IN ('{pass}', '{fail}')), 0)",
+        pass = RunVerdict::Pass.as_str(),
+        fail = RunVerdict::Fail.as_str(),
+    )
 }
 
 /// `col IN ('a', 'b')` predicate restricting reads to a principal's
@@ -418,6 +435,12 @@ pub(crate) fn ratio_series(num: &[Value], den: &[Value]) -> Vec<Value> {
 }
 
 pub(crate) fn bucket_expr(bucket_s: i64) -> String {
+    bucket_of("ts_ns", bucket_s)
+}
+
+/// [`bucket_expr`] over the time column `column`, for a query that joins
+/// two tables with a `ts_ns`.
+pub(crate) fn bucket_of(column: &str, bucket_s: i64) -> String {
     let ns = bucket_s * 1_000_000_000;
-    format!("(ts_ns // {ns}) * {ns} // 1000000000")
+    format!("({column} // {ns}) * {ns} // 1000000000")
 }

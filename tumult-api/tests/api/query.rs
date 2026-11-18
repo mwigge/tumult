@@ -1083,14 +1083,287 @@ async fn the_pass_rate_of_a_target_counts_runs_in_either_spelling() {
     };
     // The seed: one of two runs against the database completed.
     assert_eq!(pass_rate("database"), 0.5);
-    // One of the five runs against the queue completed. The page counts
-    // every run, as its run count and its pass rate do.
-    assert_eq!(pass_rate("queue"), 0.2);
+    // One of the three runs against the queue that passed or failed
+    // completed. The aborted and the interrupted run prove nothing: they
+    // are in its run count and not in its pass rate.
+    assert_eq!(pass_rate("queue"), json!(1.0 / 3.0));
     let queue = rows_of(&body, "targets")
         .iter()
         .find(|row| row["target"] == "queue")
         .unwrap();
     assert_eq!(queue["experiments"], 5, "{queue}");
+}
+
+/// The card `name` of an overview.
+fn card<'a>(body: &'a Value, name: &str) -> &'a Value {
+    rows_of(body, "kpis")
+        .iter()
+        .find(|kpi| kpi["name"] == name)
+        .unwrap_or_else(|| panic!("no card {name}: {body}"))
+}
+
+/// The answer of `/api/ask` to `question`.
+async fn asked(base: &str, question: &str) -> Value {
+    let resp = reqwest::Client::new()
+        .post(format!("{base}/api/ask"))
+        .json(&json!({ "question": question }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    resp.json().await.unwrap()
+}
+
+#[tokio::test]
+async fn the_run_pass_rate_counts_runs_and_not_the_points_of_a_cumulative_counter() {
+    let srv = spawn_server().await;
+    // A runner that exports its counters as running totals repeats, after
+    // the failed run of the seed, the one success of the run before it.
+    let repeated = tumult_lake::MetricSumRow {
+        ts_ns: now_ns() - 595 * NS,
+        metric_name: "tumult.experiments.total".into(),
+        value: 1.0,
+        experiment_name: Some("pg-failover".into()),
+        outcome_status: Some("success".into()),
+        ..tumult_lake::MetricSumRow::default()
+    };
+    exec_write(&srv, move |w| {
+        w.insert_metric_sums(&[repeated]).map_err(|e| e.to_string())
+    })
+    .await;
+
+    let (status, overview) = get(&srv.base, "/api/overview?range=24h").await;
+    let answer = asked(&srv.base, "What is the pass rate?").await;
+
+    assert_eq!(status, 200, "{overview}");
+    // One of the two runs of the seed passed.
+    assert_eq!(card(&overview, "pass_rate")["value"], 0.5, "{overview}");
+    assert_eq!(card(&overview, "pass_rate")["label"], "Run pass rate");
+    assert_eq!(answer["rows"][0]["pass_rate"], 0.5, "{answer}");
+}
+
+#[tokio::test]
+async fn the_card_its_sparkline_the_leaderboard_and_ask_give_one_pass_rate() {
+    use tumult_core::types::{Experiment, ExperimentStatus, ExperimentTarget, Journal};
+    let srv = spawn_server().await;
+    let at = now_ns() - 300 * NS;
+    let ended = |id: &str, status: Option<&str>| SpanRow {
+        ts_ns: at,
+        ..root_span(id, status)
+    };
+    // One run for each way a run can end, and one that has not ended.
+    // The halted run was stored before 3.0.2: its completion log says how
+    // it ended. The deviated run sent no trace: the lake holds its journal.
+    let spans = vec![
+        ended("run-completed", Some("completed")),
+        ended("run-failed", Some("failed")),
+        ended("run-halted", None),
+        ended("run-aborted", Some("aborted")),
+        ended("run-interrupted", Some("interrupted")),
+        ended("run-open", None),
+    ];
+    let halted = LogRow {
+        ts_ns: at + NS,
+        body: "experiment.completed".into(),
+        service_name: "tumult".into(),
+        log_attrs: vec![
+            ("experiment_id".to_string(), "run-halted".to_string()),
+            ("status".to_string(), "Halted".to_string()),
+        ],
+        ..LogRow::default()
+    };
+    let journal = Journal {
+        experiment_title: "name-run-deviated".into(),
+        started_at_ns: at,
+        ended_at_ns: at + 5 * NS,
+        ..tumult_lake::duckdb_store::sample_journal("run-deviated", ExperimentStatus::Deviated)
+    };
+    let definition = Experiment {
+        title: journal.experiment_title.clone(),
+        target: Some(ExperimentTarget {
+            system: "queue".into(),
+            technology: None,
+            environment: Some("demo".into()),
+            criticality: None,
+            namespace: None,
+            version: None,
+        }),
+        ..Experiment::default()
+    };
+    exec_write(&srv, move |w| {
+        for table in ["spans", "logs", "metric_sums"] {
+            w.execute(&format!("DELETE FROM {table}"), ())
+                .map_err(|e| e.to_string())?;
+        }
+        w.insert_spans(&spans).map_err(|e| e.to_string())?;
+        w.insert_logs(&[halted]).map_err(|e| e.to_string())?;
+        w.ingest_journal(&journal, Some(&definition))
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    })
+    .await;
+
+    let (status, overview) = get(&srv.base, "/api/overview?range=24h").await;
+    let answer = asked(&srv.base, "What is the pass rate?").await;
+
+    assert_eq!(status, 200, "{overview}");
+    let pass_rate = card(&overview, "pass_rate");
+    let queue = &rows_of(&overview, "targets")[0];
+    let sparkline: Vec<&Value> = rows_of(pass_rate, "spark")
+        .iter()
+        .map(|point| &point["v"])
+        .collect();
+    // One of the four runs that passed or failed completed.
+    let one_in_four = json!(0.25);
+    assert_eq!(
+        (
+            &pass_rate["value"],
+            sparkline,
+            (&queue["target"], &queue["experiments"], &queue["pass_rate"]),
+            &answer["rows"][0]["pass_rate"],
+        ),
+        (
+            &one_in_four,
+            vec![&one_in_four],
+            (&json!("queue"), &json!(7), &one_in_four),
+            &one_in_four,
+        ),
+        "{overview}\n{answer}"
+    );
+}
+
+/// The values of the points of the sparkline of a card.
+fn points(card: &Value) -> Vec<&Value> {
+    rows_of(card, "spark")
+        .iter()
+        .map(|point| &point["v"])
+        .collect()
+}
+
+/// The rows of the targets of an overview: name, runs and run pass rate.
+fn targets(overview: &Value) -> Vec<(&Value, &Value, &Value)> {
+    rows_of(overview, "targets")
+        .iter()
+        .map(|row| (&row["target"], &row["experiments"], &row["pass_rate"]))
+        .collect()
+}
+
+/// One deviation counted five minutes ago for the experiment `name`.
+fn deviation_of(name: &str) -> tumult_lake::MetricSumRow {
+    tumult_lake::MetricSumRow {
+        ts_ns: now_ns() - 300 * NS,
+        metric_name: "tumult.hypothesis.deviations.total".into(),
+        value: 1.0,
+        experiment_name: Some(name.into()),
+        ..tumult_lake::MetricSumRow::default()
+    }
+}
+
+#[tokio::test]
+async fn the_rates_of_the_home_page_keep_to_the_window_and_have_a_point_for_each_hour() {
+    let srv = spawn_server().await;
+    let now = now_ns();
+    let hour = 3_600 * NS;
+    let at = |ts_ns: i64, id: &str, status: &str| SpanRow {
+        ts_ns,
+        ..root_span(id, Some(status))
+    };
+    // Three runs five minutes ago, one five hours ago, and two in the day
+    // before the window. The last run of the list names no target.
+    let spans = vec![
+        at(now - 300 * NS, "now-completed", "completed"),
+        at(now - 300 * NS, "now-failed", "failed"),
+        at(now - 5 * hour, "earlier-completed", "completed"),
+        at(now - 36 * hour, "day-before-failed", "failed"),
+        at(now - 36 * hour, "day-before-deviated", "deviated"),
+        SpanRow {
+            target_system: None,
+            ..at(now - 300 * NS, "no-target", "completed")
+        },
+    ];
+    exec_write(&srv, move |w| {
+        for table in ["spans", "logs", "metric_sums"] {
+            w.execute(&format!("DELETE FROM {table}"), ())
+                .map_err(|e| e.to_string())?;
+        }
+        w.insert_spans(&spans).map_err(|e| e.to_string())?;
+        w.insert_metric_sums(&[deviation_of("name-now-failed")])
+            .map_err(|e| e.to_string())
+    })
+    .await;
+
+    let (status, overview) = get(&srv.base, "/api/overview?range=24h").await;
+
+    assert_eq!(status, 200, "{overview}");
+    let pass_rate = card(&overview, "pass_rate");
+    // Three of the four runs of the window passed, and none of the two of
+    // the day before.
+    assert_eq!(
+        (&pass_rate["value"], &pass_rate["delta"]),
+        (&json!(0.75), &json!(0.75)),
+        "{pass_rate}"
+    );
+    // A point for the hour of the earlier run and a point for the last hour.
+    assert_eq!(
+        points(pass_rate),
+        [&json!(1.0), &json!(2.0 / 3.0)],
+        "{pass_rate}"
+    );
+    // The run without a target is in no row of the targets.
+    assert_eq!(
+        targets(&overview),
+        [(&json!("queue"), &json!(3), &json!(2.0 / 3.0))],
+        "{overview}"
+    );
+    // One deviation over the four traced runs of the window.
+    let deviation_rate = card(&overview, "deviation_rate");
+    assert_eq!(deviation_rate["value"], 0.25, "{deviation_rate}");
+}
+
+#[tokio::test]
+async fn a_scoped_reader_gets_the_rates_of_the_runs_of_its_environments() {
+    let srv = spawn_server().await;
+    // The seed holds two runs in `demo`, and one of them deviated. Two runs
+    // in `staging` completed, with one deviation counted for them.
+    let at = now_ns() - 300 * NS;
+    let in_staging = |id: &str| SpanRow {
+        ts_ns: at,
+        experiment_name: Some("staging-drill".into()),
+        target_environment: Some("staging".into()),
+        ..root_span(id, Some("completed"))
+    };
+    let spans = [in_staging("staging-1"), in_staging("staging-2")];
+    exec_write(&srv, move |w| {
+        w.insert_spans(&spans).map_err(|e| e.to_string())?;
+        w.insert_metric_sums(&[deviation_of("staging-drill")])
+            .map_err(|e| e.to_string())
+    })
+    .await;
+    let token = add_scoped_token(&srv, "staging-viewer", "viewer", &["staging"]).await;
+
+    let (status, scoped) = get_auth(&srv.base, "/api/overview?range=24h", &token).await;
+
+    assert_eq!(status, 200, "{scoped}");
+    let pass_rate = card(&scoped, "pass_rate");
+    let one = json!(1.0);
+    assert_eq!(
+        (&pass_rate["value"], points(pass_rate)),
+        (&one, vec![&one]),
+        "{pass_rate}"
+    );
+    assert_eq!(
+        targets(&scoped),
+        [(&json!("queue"), &json!(2), &one)],
+        "{scoped}"
+    );
+    // One deviation over the two traced runs of staging.
+    let deviation_rate = card(&scoped, "deviation_rate");
+    let half = json!(0.5);
+    assert_eq!(
+        (&deviation_rate["value"], points(deviation_rate)),
+        (&half, vec![&half]),
+        "{deviation_rate}"
+    );
 }
 
 #[tokio::test]

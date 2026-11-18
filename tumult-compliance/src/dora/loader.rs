@@ -397,6 +397,8 @@ fn outcome_of(status: Option<&str>) -> Option<Outcome> {
     }
 }
 
+/// The runs up to `as_of_ns`, with or without a trace: the rows of
+/// `run_roots`, as the scorecard reads them.
 fn runs_sql(as_of_ns: i64, envs: &[String]) -> String {
     let scope = and_env(env_in("s.target_environment", envs));
     let status = tumult_lake::run_outcome_sql("s", "l");
@@ -412,10 +414,10 @@ fn runs_sql(as_of_ns: i64, envs: &[String]) -> String {
          e.rto_target_s AS rto_target_s, e.rpo_target_s AS rpo_target_s, \
          COALESCE(e.rto_measured_s, s.recovery_time_s) AS rto_measured_s, \
          e.rpo_measured_s AS rpo_measured_s \
-         FROM spans s \
+         FROM run_roots s \
          LEFT JOIN run_completions l ON s.experiment_id = l.experiment_id \
          LEFT JOIN experiments e ON e.experiment_id = s.experiment_id \
-         WHERE s.span_name = 'resilience.experiment' AND s.experiment_name IS NOT NULL \
+         WHERE s.experiment_name IS NOT NULL \
          AND s.ts_ns <= {as_of_ns}{scope} \
          ORDER BY s.ts_ns, id"
     )
@@ -1202,6 +1204,55 @@ functions:
                 ("r1", Outcome::Passed),
                 ("r2", Outcome::Passed),
                 ("r3", Outcome::Failed),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_run_that_sent_no_trace_is_evidence_like_a_run_that_did() {
+        use tumult_core::types::{Experiment, ExperimentStatus, ExperimentTarget, Journal};
+        let (_dir, store) = store_with(ORG);
+        let (traced, traced_log) = run("r1", "payments-db", "dr", "Completed", NOW - 2 * DAY_NS);
+        seed(&store, &[traced], &[traced_log]);
+        // A plain `tumult run` against the same system: the lake holds its
+        // journal and no span.
+        let journal = Journal {
+            started_at_ns: NOW - DAY_NS,
+            ended_at_ns: NOW - DAY_NS + 300_000_000_000,
+            ..tumult_lake::duckdb_store::sample_journal("r2", ExperimentStatus::Deviated)
+        };
+        let definition = Experiment {
+            title: journal.experiment_title.clone(),
+            target: Some(ExperimentTarget {
+                system: "payments-db".into(),
+                technology: None,
+                environment: Some("prod".into()),
+                criticality: None,
+                namespace: None,
+                version: None,
+            }),
+            ..Experiment::default()
+        };
+        assert!(store
+            .writer()
+            .unwrap()
+            .ingest_journal(&journal, Some(&definition))
+            .unwrap());
+
+        let loaded = loaded(&store, request(&[]));
+
+        let seen: Vec<(&str, Outcome, Vec<String>)> = loaded
+            .inputs
+            .evidence
+            .iter()
+            .map(|e| (e.id.as_str(), e.outcome, e.functions.clone()))
+            .collect();
+        let payments = vec!["cif-0001".to_string()];
+        assert_eq!(
+            seen,
+            [
+                ("r1", Outcome::Passed, payments.clone()),
+                ("r2", Outcome::Failed, payments),
             ]
         );
     }
