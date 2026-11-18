@@ -15,6 +15,7 @@
     } from '#lib/types.js';
     import { disciplineLabel } from '#lib/coverage.js';
     import { experimentDurationNs } from '#lib/duration.js';
+    import { COMPLIANCE_SCORE, COMPLIANCE_SCORE_LINE } from '#lib/score-names.js';
     import { flagText, rollupLines } from '#lib/starmap/style.js';
 
     let {
@@ -289,8 +290,10 @@
             {:else}
                 <p>
                     <span class="badge {verdictClass(gate.rows.verdict)}">{gate.rows.verdict}</span>
-                    score {gate.rows.score.toFixed(1)} ({gate.rows.band})
+                    {COMPLIANCE_SCORE}
+                    {gate.rows.score.toFixed(1)} ({gate.rows.band})
                 </p>
+                <p class="note">{COMPLIANCE_SCORE_LINE}</p>
                 {#each gate.rows.reasons as reason (reason)}
                     <p class="note">{reason}</p>
                 {/each}

@@ -128,7 +128,7 @@ pub enum SortKey {
     Time,
     Duration,
     Status,
-    Resilience,
+    HypothesisMet,
 }
 
 impl SortKey {
@@ -138,8 +138,8 @@ impl SortKey {
         match self {
             Self::Time => Self::Duration,
             Self::Duration => Self::Status,
-            Self::Status => Self::Resilience,
-            Self::Resilience => Self::Time,
+            Self::Status => Self::HypothesisMet,
+            Self::HypothesisMet => Self::Time,
         }
     }
 
@@ -150,7 +150,7 @@ impl SortKey {
             Self::Time => "time",
             Self::Duration => "duration",
             Self::Status => "status",
-            Self::Resilience => "resilience",
+            Self::HypothesisMet => "hypothesis met",
         }
     }
 }
@@ -166,12 +166,8 @@ pub fn sort_experiments(rows: &mut [ExperimentRow], key: SortKey, ascending: boo
                 .cmp(&b.status)
                 .then(b.started_at_ns.cmp(&a.started_at_ns))
         }),
-        SortKey::Resilience => rows.sort_by(|a, b| {
-            a.resilience
-                .unwrap_or(f64::MIN)
-                .partial_cmp(&b.resilience.unwrap_or(f64::MIN))
-                .unwrap_or(std::cmp::Ordering::Equal)
-        }),
+        // Not known, then not met, then met: descending puts met first.
+        SortKey::HypothesisMet => rows.sort_by_key(|a| a.hypothesis_met),
     }
     if !ascending {
         rows.reverse();
@@ -295,12 +291,14 @@ pub fn duration_series(chronological: &[ExperimentRow]) -> Vec<f64> {
     chronological.iter().map(|r| r.duration_ms as f64).collect()
 }
 
-/// Chronological resilience series; missing scores contribute 0.0.
+/// Chronological hypothesis verdicts: 1.0 when met, 0.0 when not. A run
+/// that judged no hypothesis is left out: it is not a "no".
 #[must_use]
-pub fn resilience_series(chronological: &[ExperimentRow]) -> Vec<f64> {
+pub fn hypothesis_met_series(chronological: &[ExperimentRow]) -> Vec<f64> {
     chronological
         .iter()
-        .map(|r| r.resilience.unwrap_or(0.0))
+        .filter_map(|r| r.hypothesis_met)
+        .map(|met| if met { 1.0 } else { 0.0 })
         .collect()
 }
 
@@ -361,24 +359,30 @@ pub fn format_duration(duration_ms: u64) -> String {
     }
 }
 
-/// Format an optional resilience score as a two-decimal value or a dash.
+/// Whether the hypothesis of a run was met: `yes` or `no`, and a dash for
+/// a run that judged none.
 #[must_use]
-pub fn format_resilience(resilience: Option<f64>) -> String {
-    resilience.map_or_else(|| "—".to_string(), |v| format!("{v:.2}"))
+pub fn format_hypothesis_met(hypothesis_met: Option<bool>) -> String {
+    match hypothesis_met {
+        Some(true) => "yes",
+        Some(false) => "no",
+        None => "—",
+    }
+    .to_string()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn exp(id: &str, status: &str, ns: i64, dur: u64, res: Option<f64>) -> ExperimentRow {
+    fn exp(id: &str, status: &str, ns: i64, dur: u64, met: Option<bool>) -> ExperimentRow {
         ExperimentRow {
             id: id.into(),
             title: format!("Experiment {id}"),
             status: status.into(),
             started_at_ns: ns,
             duration_ms: dur,
-            resilience: res,
+            hypothesis_met: met,
             steps: 1,
             deviations: 0,
         }
@@ -440,15 +444,15 @@ mod tests {
     }
 
     #[test]
-    fn sort_by_resilience_descending_handles_none() {
+    fn sort_by_hypothesis_puts_met_first_then_not_met_then_not_known() {
         let mut rows = vec![
-            exp("a", "completed", 1, 1, Some(0.5)),
+            exp("a", "aborted", 1, 1, Some(false)),
             exp("b", "completed", 2, 1, None),
-            exp("c", "completed", 3, 1, Some(0.9)),
+            exp("c", "failed", 3, 1, Some(true)),
         ];
-        sort_experiments(&mut rows, SortKey::Resilience, false);
-        assert_eq!(rows[0].id, "c");
-        assert_eq!(rows[2].id, "b"); // None sorts lowest
+        sort_experiments(&mut rows, SortKey::HypothesisMet, false);
+        let ids: Vec<&str> = rows.iter().map(|r| r.id.as_str()).collect();
+        assert_eq!(ids, ["c", "a", "b"]);
     }
 
     #[test]
@@ -532,8 +536,9 @@ mod tests {
     fn format_helpers() {
         assert_eq!(format_duration(500), "500ms");
         assert_eq!(format_duration(1500), "1.5s");
-        assert_eq!(format_resilience(Some(0.833)), "0.83");
-        assert_eq!(format_resilience(None), "—");
+        assert_eq!(format_hypothesis_met(Some(true)), "yes");
+        assert_eq!(format_hypothesis_met(Some(false)), "no");
+        assert_eq!(format_hypothesis_met(None), "—");
         assert_eq!(format_time(0), "—");
         // A known epoch instant renders deterministically in UTC.
         assert_eq!(format_time(1_609_459_200_000_000_000), "01-01 00:00:00");

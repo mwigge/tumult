@@ -50,7 +50,7 @@
 = Bottom line
 
 
-Portfolio resilience is fair (68.8\/100) and flat (\+0.0 vs the previous period). Weakest targets: payments (50.0), billing (75.0), checkout (75.0). 2 open weaknesses need a decision: re\-run, remediate, or accept.
+Portfolio compliance score is fair (68.8\/100) and flat (\+0.0 vs the previous period). Weakest targets: payments (50.0), billing (75.0), checkout (75.0). 2 open weaknesses need a decision: re\-run, remediate, or accept.
 
 
 #grid(
@@ -111,6 +111,9 @@ Portfolio resilience is fair (68.8\/100) and flat (\+0.0 vs the previous period)
     #text(size: 16pt, weight: "bold")[0 \/ 0]
   ],
 )
+
+The portfolio score is the compliance score. Latest run of each experiment: pass 100, pass older than 30 days 75, failure 50, never run 0. Averaged per target.
+
 
 == Score trend
 

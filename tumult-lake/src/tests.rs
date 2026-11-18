@@ -759,6 +759,50 @@ fn a_journal_whose_hypothesis_failed_before_the_method_says_not_met() {
 }
 
 #[test]
+fn the_hypothesis_verdict_of_a_journal_is_one_rule_in_the_view_and_in_the_function() {
+    use tumult_core::types::{ExperimentStatus, HypothesisResult};
+    let d = tempfile::TempDir::new().unwrap();
+    let store = Store::open(&d.path().join("kronika.duckdb")).unwrap();
+    let verdict = |met| HypothesisResult {
+        title: "the target answers".into(),
+        met,
+        probe_results: vec![],
+    };
+    // A step failed while the target held after the method; the target
+    // failed before the method; the definition has no hypothesis.
+    let mut held = crate::duckdb_store::sample_journal("a-held", ExperimentStatus::Failed);
+    held.steady_state_before = Some(verdict(true));
+    held.steady_state_after = Some(verdict(true));
+    let mut down = crate::duckdb_store::sample_journal("b-down", ExperimentStatus::Aborted);
+    down.steady_state_before = Some(verdict(false));
+    let unjudged = crate::duckdb_store::sample_journal("c-none", ExperimentStatus::Completed);
+    let journals = [held, down, unjudged];
+    let writer = store.writer().unwrap();
+    for journal in &journals {
+        assert!(writer.ingest_journal(journal, None).unwrap());
+    }
+
+    let by_the_rule = store
+        .read_only()
+        .unwrap()
+        .query_json_rows(&format!(
+            "SELECT {} AS hypothesis_met FROM experiments AS e ORDER BY e.experiment_id",
+            crate::hypothesis_met_sql("e")
+        ))
+        .unwrap();
+    let roots = run_roots(&store);
+
+    assert_eq!(roots.len(), journals.len(), "{roots:?}");
+    assert_eq!(by_the_rule.len(), journals.len(), "{by_the_rule:?}");
+    for ((journal, root), rule) in journals.iter().zip(&roots).zip(&by_the_rule) {
+        let met = serde_json::json!(journal.hypothesis_met());
+        assert_eq!(root["experiment_id"], journal.experiment_id.as_str());
+        assert_eq!(root["hypothesis_met"], met, "{}", journal.experiment_id);
+        assert_eq!(rule["hypothesis_met"], met, "{}", journal.experiment_id);
+    }
+}
+
+#[test]
 fn a_run_with_a_root_span_is_one_root_and_the_span_is_what_it_says() {
     let d = tempfile::TempDir::new().unwrap();
     let store = Store::open(&d.path().join("kronika.duckdb")).unwrap();

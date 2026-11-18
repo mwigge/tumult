@@ -55,10 +55,12 @@ pub fn load_snapshot(path: &Path) -> Result<Snapshot, TuiError> {
 }
 
 /// Load every experiment (most-recent first) joined with its non-succeeded
-/// activity count as the `deviations` column.
+/// activity count as the `deviations` column. Whether the hypothesis was
+/// met follows the rule of the lake, [`tumult_lake::hypothesis_met_sql`].
 fn load_experiments(store: &AnalyticsStore) -> Result<Vec<ExperimentRow>, TuiError> {
-    let sql = "SELECT e.experiment_id, e.title, e.status, e.started_at_ns, e.duration_ms, \
-                      e.resilience_score, e.method_step_count, \
+    let sql = format!(
+        "SELECT e.experiment_id, e.title, e.status, e.started_at_ns, e.duration_ms, \
+                      {} AS hypothesis_met, e.method_step_count, \
                       COALESCE(d.dev, 0) AS deviations \
                FROM experiments e \
                LEFT JOIN ( \
@@ -67,8 +69,10 @@ fn load_experiments(store: &AnalyticsStore) -> Result<Vec<ExperimentRow>, TuiErr
                    WHERE status <> 'succeeded' \
                    GROUP BY experiment_id \
                ) d ON d.experiment_id = e.experiment_id \
-               ORDER BY e.started_at_ns DESC";
-    let rows = store.query(sql).map_err(TuiError::ExperimentsHistory)?;
+               ORDER BY e.started_at_ns DESC",
+        tumult_lake::hypothesis_met_sql("e")
+    );
+    let rows = store.query(&sql).map_err(TuiError::ExperimentsHistory)?;
     Ok(rows
         .iter()
         .filter_map(|r| ExperimentRow::from_columns(r))

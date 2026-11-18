@@ -1,6 +1,6 @@
 //! Org hierarchy rollups: a YAML-driven, single-parent tree of arbitrary
 //! depth (Backstage-style `org.yaml`) that aggregates per-experiment
-//! resilience scores into team/unit/domain/company rollups.
+//! compliance scores into team/unit/domain/company rollups.
 //!
 //! Model rules:
 //!

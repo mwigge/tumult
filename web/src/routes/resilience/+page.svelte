@@ -8,6 +8,12 @@
     import { chartTokens } from '#lib/echarts.js';
     import { coverageLabels, disciplineLabel, stackedLabel } from '#lib/coverage.js';
     import { sparkTrend } from '#lib/org-score.js';
+    import {
+        COMPLIANCE_SCORE,
+        COMPLIANCE_SCORE_LINE,
+        RESILIENCE_SCORE,
+        RESILIENCE_SCORE_LINE,
+    } from '#lib/score-names.js';
     import { strong, tip, tipFormatter } from '#lib/tooltip.js';
     import type {
         ConformanceReport,
@@ -385,13 +391,14 @@
             {/if}
             {#if trend}
                 <section class="panel" data-testid="trend">
-                    <h2>Compliance score, {TREND_RANGE}</h2>
+                    <h2>{COMPLIANCE_SCORE}, {TREND_RANGE}</h2>
+                    <p class="muted meaning">{COMPLIANCE_SCORE_LINE}</p>
                     <FanChart
                         series={trend}
                         unit="score"
                         id="trend"
                         height={220}
-                        label="Compliance score over {TREND_RANGE}"
+                        label="{COMPLIANCE_SCORE} over {TREND_RANGE}"
                     />
                 </section>
             {/if}
@@ -468,14 +475,11 @@
     {/if}
 
     <section class="panel score" data-testid="posture">
-        <h2>Resilience score</h2>
+        <h2>{RESILIENCE_SCORE}</h2>
+        <p class="muted meaning">{RESILIENCE_SCORE_LINE}</p>
         <div class="headline">
             <span class="value mono">{posture.posture.score.toFixed(1)}</span>
             <span class="badge {bandClass(posture.posture.band)}">{posture.posture.band}</span>
-            <span class="muted">
-                continuous score: objective margins, discipline coverage, evidence freshness and
-                recovery against target, per target and criticality weighted
-            </span>
         </div>
         {#if posture.posture.targets.length > 0}
             <table>
@@ -516,6 +520,9 @@
     .muted {
         color: var(--text-dim);
         font-size: 12.5px;
+    }
+    .meaning {
+        margin: 0 0 10px;
     }
     .counts {
         display: flex;

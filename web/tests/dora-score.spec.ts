@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
 
+import { COMPLIANCE_SCORE, COMPLIANCE_SCORE_LINE } from '../src/lib/score-names';
 import { EVIL, expectShownAsText, installChartHooks, showTip } from './charts';
 
 // The API is mocked. Charts render to canvas, so the heatmap, the gauge
@@ -996,10 +997,14 @@ test('the navigation reaches the DORA view and the org scores stay', async ({ pa
     await mockApi(page);
     await page.goto('/scores');
     await expect(page.getByText('Score — company')).toBeVisible();
+    // The org score is the compliance score, and the page says so.
+    const meaning = page.getByTestId('score-meaning');
+    await expect(meaning).toHaveText(`${COMPLIANCE_SCORE}. ${COMPLIANCE_SCORE_LINE}`);
     await expect(page.getByTestId('dora-view')).toHaveCount(0);
     await page.getByRole('link', { name: 'DORA' }).click();
     await expect(page).toHaveURL(/view=dora/);
     await expect(page.getByTestId('dora-view')).toBeVisible();
+    await expect(meaning).toHaveCount(0);
     await page.getByRole('button', { name: 'Org scores' }).click();
     await expect(page.getByText('Score — company')).toBeVisible();
 });

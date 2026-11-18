@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
 
+import { COMPLIANCE_SCORE, COMPLIANCE_SCORE_LINE } from '../src/lib/score-names';
 import { EVIL, expectShownAsText, installChartHooks, showTip } from './charts';
 import { demoStar } from './starmap-demo';
 
@@ -705,6 +706,9 @@ test('lens, selection and focus round-trip through the URL', async ({ page }) =>
     await expect(drawer).toContainText('Latest chaos run failed');
     await expect(drawer.locator('dt', { hasText: 'resilience' })).toHaveCount(1);
     await expect(drawer.locator('dt', { hasText: 'posture' })).toHaveCount(0);
+    // The gate verdict names its score and says what the score measures.
+    await expect(drawer).toContainText(`${COMPLIANCE_SCORE} 41.5 (poor)`);
+    await expect(drawer).toContainText(COMPLIANCE_SCORE_LINE);
     await expect(drawer.getByRole('link', { name: 'Resilience', exact: true })).toHaveAttribute(
         'href',
         '/resilience?env=demo',

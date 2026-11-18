@@ -50,7 +50,7 @@
 = Bottom line
 
 
-Portfolio resilience is good (84.4\/100). There is no earlier period to compare it with. Weakest targets: payments (50.0), checkout (87.5). 2 open weaknesses need a decision: re\-run, remediate, or accept.
+Portfolio compliance score is good (84.4\/100). There is no earlier period to compare it with. Weakest targets: payments (50.0), checkout (87.5). 2 open weaknesses need a decision: re\-run, remediate, or accept.
 
 
 #grid(
@@ -113,6 +113,9 @@ Portfolio resilience is good (84.4\/100). There is no earlier period to compare 
     #text(size: 8pt, fill: luma(100))[MTTR 0.0s]
   ],
 )
+
+The portfolio score is the compliance score. Latest run of each experiment: pass 100, pass older than 30 days 75, failure 50, never run 0. Averaged per target.
+
 
 == Score trend
 

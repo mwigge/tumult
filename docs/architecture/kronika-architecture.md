@@ -287,7 +287,7 @@ semantic layer computes over.
 Everything in this section is computed from rows already in the lake. None
 of it has a store of its own beyond the derived tables named here.
 
-- **Resilience score and gate.** `/api/scores` and `/api/scores/tree` roll
+- **Compliance score and gate.** `/api/scores` and `/api/scores/tree` roll
   the latest run per experiment up the `org.yaml` hierarchy with freshness
   decay; `/api/gate/{target}` returns the same model as a `pass|warn|fail`
   verdict for CI.

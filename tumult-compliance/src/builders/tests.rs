@@ -609,6 +609,27 @@ fn bottom_line(doc: &ReportDoc) -> &str {
         .expect("bottom line")
 }
 
+/// The paragraph right under the KPI cards.
+fn under_the_kpis(doc: &ReportDoc) -> &str {
+    let cards = doc
+        .blocks
+        .iter()
+        .position(|b| matches!(b, Block::Kpis(_)))
+        .expect("KPI cards");
+    match &doc.blocks[cards + 1] {
+        Block::Paragraph(p) => p,
+        other => panic!("{other:?} under the KPI cards"),
+    }
+}
+
+/// What the digest says under its portfolio score.
+fn compliance_score_line() -> String {
+    format!(
+        "The portfolio score is the compliance score. {}",
+        scoring::COMPLIANCE_SCORE_LINE
+    )
+}
+
 /// The first paragraph under the heading `title`.
 fn paragraph_under<'a>(doc: &'a ReportDoc, title: &str) -> &'a str {
     doc.blocks
@@ -726,8 +747,8 @@ fn a_digest_of_one_deviation_says_it_in_the_singular() {
 
     assert_eq!(
         bottom_line(&doc),
-        "Portfolio resilience is fair (50.0/100). There is no earlier period to compare it \
-         with. Weakest targets: queue (50.0). 1 open weakness needs a decision: re-run, \
+        "Portfolio compliance score is fair (50.0/100). There is no earlier period to compare \
+         it with. Weakest targets: queue (50.0). 1 open weakness needs a decision: re-run, \
          remediate, or accept."
     );
     let issues = paragraph_under(&doc, "Issues discovered and fixed");
@@ -745,10 +766,11 @@ fn a_digest_of_a_green_day_names_no_weakest_target_and_no_deviation() {
 
     assert_eq!(
         bottom_line(&doc),
-        "Portfolio resilience is good (100.0/100). There is no earlier period to compare it \
-         with. Every target scores 100. No open weaknesses; keep the current experiment \
+        "Portfolio compliance score is good (100.0/100). There is no earlier period to compare \
+         it with. Every target scores 100. No open weaknesses; keep the current experiment \
          cadence."
     );
+    assert_eq!(under_the_kpis(&doc), compliance_score_line());
     assert_eq!(kpi(&doc, "Δ vs previous period").0, "—");
     let issues = paragraph_under(&doc, "Issues discovered and fixed");
     assert!(
@@ -771,9 +793,10 @@ fn a_digest_of_an_empty_store_claims_no_score() {
 
     assert_eq!(
         bottom_line(&doc),
-        "No experiment is on record, so there is no resilience score yet."
+        "No experiment is on record, so there is no compliance score yet."
     );
     assert_eq!(kpi(&doc, "Portfolio score"), ("—".to_string(), None));
+    assert_eq!(under_the_kpis(&doc), compliance_score_line());
     assert_eq!(kpi(&doc, "Δ vs previous period").0, "—");
     assert_eq!(
         paragraph_under(&doc, "Score trend"),
@@ -840,13 +863,13 @@ fn executive_digest_reports_declining_trend_open_weaknesses_and_mttr() {
         .blocks
         .iter()
         .find_map(|b| match b {
-            Block::Paragraph(p) if p.starts_with("Portfolio resilience") => Some(p.clone()),
+            Block::Paragraph(p) if p.starts_with("Portfolio compliance score") => Some(p.clone()),
             _ => None,
         })
         .expect("bluf paragraph");
     assert_eq!(
         bluf,
-        "Portfolio resilience is fair (62.5/100) and declining (-37.5 vs the previous \
+        "Portfolio compliance score is fair (62.5/100) and declining (-37.5 vs the previous \
          period). Weakest targets: database (50.0), cdn (75.0). 2 open weaknesses need a \
          decision: re-run, remediate, or accept."
     );
@@ -983,7 +1006,7 @@ fn executive_digest_all_green_has_no_weaknesses() {
         .blocks
         .iter()
         .find_map(|b| match b {
-            Block::Paragraph(p) if p.starts_with("Portfolio resilience") => Some(p.clone()),
+            Block::Paragraph(p) if p.starts_with("Portfolio compliance score") => Some(p.clone()),
             _ => None,
         })
         .expect("bluf paragraph");

@@ -848,13 +848,14 @@ fn an_estimate_and_an_analysis_say_all_that_they_hold() {
             row(&["Prior runs", "0"]),
         ]
     );
+    // The value of 0 or 1 of the run is no score: the status of the run
+    // says whether it completed.
     assert_eq!(
         rows(section(&html, "analysis")),
         [
             row(&["Estimate accuracy", "62.50 %"]),
             row(&["Recovery against the estimate", "12.25 s"]),
             row(&["Trend", "degrading"]),
-            row(&["Resilience score", "0.75"]),
         ]
     );
 }

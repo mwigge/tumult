@@ -106,6 +106,10 @@ pub fn build_executive(
             mttr_s.map(|m| format!("MTTR {m:.1}s")),
         ),
     ]));
+    blocks.push(Block::Paragraph(format!(
+        "The portfolio score is the compliance score. {}",
+        scoring::COMPLIANCE_SCORE_LINE
+    )));
 
     // Score trend across the period (portfolio sampled at 10 instants).
     let trend = scoring::portfolio_series_scoped(reader, as_of_ns, period_ns, 10, envs)?;

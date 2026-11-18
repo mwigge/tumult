@@ -1,5 +1,5 @@
 //! `GET /api/reports*` (v1 digests and v2 compliance reports) and
-//! `GET /api/scores*` (resilience scorecard, org tree rollup).
+//! `GET /api/scores*` (compliance scorecard, org tree rollup).
 
 use crate::error::ApiError;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -206,7 +206,7 @@ pub(crate) struct ScoresQuery {
     range: Option<String>,
 }
 
-/// `GET /api/scores?range=24h|7d|14d|30d` — resilience scorecard as of now,
+/// `GET /api/scores?range=24h|7d|14d|30d` — compliance scorecard as of now,
 /// with the portfolio delta against the previous equal window (`null` when
 /// nothing was on record at the start of the window). With nothing on
 /// record now, `portfolio` is `null` and `band` is `unknown`. Scoped

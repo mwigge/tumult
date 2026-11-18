@@ -1,5 +1,11 @@
 import { expect, test } from '@playwright/test';
 
+import {
+    COMPLIANCE_SCORE,
+    COMPLIANCE_SCORE_LINE,
+    RESILIENCE_SCORE,
+    RESILIENCE_SCORE_LINE,
+} from '../src/lib/score-names';
 import { installChartHooks } from './charts';
 
 // The API is mocked; charts render to canvas, so the coverage heatmap is
@@ -245,8 +251,14 @@ test('resilience opens with ranked risks, coverage gaps and the score', async ({
     await page.goto('/resilience');
     await expect(page.getByRole('heading', { level: 1, name: 'Resilience' })).toBeVisible();
     await expect(
-        page.getByTestId('posture').getByRole('heading', { name: 'Resilience score' }),
+        page.getByTestId('posture').getByRole('heading', { name: RESILIENCE_SCORE }),
     ).toBeVisible();
+    // Each of the two scores says in one line what it measures.
+    await expect(page.getByTestId('posture')).toContainText(RESILIENCE_SCORE_LINE);
+    await expect(
+        page.getByTestId('trend').getByRole('heading', { name: `${COMPLIANCE_SCORE}, 14d` }),
+    ).toBeVisible();
+    await expect(page.getByTestId('trend')).toContainText(COMPLIANCE_SCORE_LINE);
     const list = page.getByTestId('risks').locator('ol.risks > li');
     await expect(list).toHaveCount(3);
     await expect(list.nth(0)).toContainText('Latest chaos run failed');

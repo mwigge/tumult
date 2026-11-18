@@ -366,10 +366,7 @@ fn the_report_shows_what_the_run_measured_and_what_it_was_planned_with() {
     );
     assert_eq!(
         rows(section(&html, "analysis")),
-        [
-            row(&["Estimate accuracy", "100.00 %"]),
-            row(&["Resilience score", "1"]),
-        ]
+        [row(&["Estimate accuracy", "100.00 %"])]
     );
     let regulatory = section(&html, "regulatory");
     assert!(
@@ -387,6 +384,46 @@ fn the_report_shows_what_the_run_measured_and_what_it_was_planned_with() {
             ]),
         ]
     );
+}
+
+/// An estimate that the run recovers from its fault.
+const RECOVERS: &str = "estimate:\n  expected_outcome: recovered\n";
+
+/// Run the experiment of `method` with an estimate in a new lab; the
+/// journal of the run and its report.
+fn report_with_estimate(method: &str) -> (Journal, String) {
+    let lab = Lab::with_state("ok");
+    let definition = with_block(&experiment(method, &leave_marker()), RECOVERS);
+    let output = lab.run_command(&definition).output().expect("run tumult");
+    (lab.journal(&output), report(&lab))
+}
+
+#[test]
+fn the_report_says_once_whether_the_hypothesis_held_and_gives_the_run_no_score() {
+    // The fault is not healed, so the run deviates. A step that fails ends
+    // the run as failed while the target still says ok.
+    let deviated = report_with_estimate(&inject());
+    let failed = report_with_estimate(&step("break", "action", "exit 3"));
+
+    for ((journal, html), status, after) in [
+        (deviated, ExperimentStatus::Deviated, "not met"),
+        (failed, ExperimentStatus::Failed, "met"),
+    ] {
+        assert_eq!(journal.status, status);
+        // The run has its value of 0 or 1: 0, as it did not complete.
+        let value = journal
+            .analysis
+            .and_then(|analysis| analysis.resilience_score);
+        assert_eq!(value, Some(0.0), "{status}");
+        // The card says whether the hypothesis held; nothing says it again.
+        assert_eq!(card(&html, "Steady state after"), after, "{status}");
+        assert_eq!(
+            rows(section(&html, "analysis")),
+            [row(&["Estimate accuracy", "0.00 %"])],
+            "{status}"
+        );
+        assert!(!html.contains("Resilience score"), "{html}");
+    }
 }
 
 #[test]

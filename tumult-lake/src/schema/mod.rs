@@ -148,7 +148,7 @@ pub const CREATE_TABLES: &[&str] = &[
 #[must_use]
 pub fn create_views() -> [String; 4] {
     [
-        RUN_ROOTS_VIEW.to_string(),
+        run_roots_view(),
         run_completions_view(),
         experiment_runs_view(),
         entities::VIEW.to_string(),
@@ -186,6 +186,24 @@ pub fn run_outcome_sql(span: &str, log: &str) -> String {
 #[must_use]
 pub fn mean_recovery_time_sql(root: &str) -> String {
     format!("avg({root}.recovery_time_s)")
+}
+
+/// The SQL expression for whether the hypothesis of a run stored as a
+/// journal was met, by the rule of `Journal::hypothesis_met`: the verdict
+/// after the method when the run got that far, FALSE when the hypothesis
+/// failed before the method, and NULL when the run judged none.
+///
+/// `run` is the alias of a row of `experiments`.
+#[must_use]
+pub fn hypothesis_met_sql(run: &str) -> String {
+    // Laid out as the column of `run_roots` it renders, in lines short
+    // enough for the SQL standard of the views.
+    format!(
+        "coalesce(
+        {run}.hypothesis_after_met,
+        CASE WHEN NOT {run}.hypothesis_before_met THEN FALSE END
+    )"
+    )
 }
 
 /// What the way a run ended says about the system it tested.
@@ -254,9 +272,11 @@ pub fn run_verdict_sql(status: &str) -> String {
 /// import) left no span: its row is built from the journal, says
 /// `journal_only`, has no trace id, and takes its target from the run node
 /// of the graph, which holds what the definition declared. The hypothesis verdict follows
-/// `Journal::hypothesis_met`. Every column of `spans` is named, so a new
-/// one has to be added here.
-const RUN_ROOTS_VIEW: &str = "
+/// `Journal::hypothesis_met`, by [`hypothesis_met_sql`]. Every column of
+/// `spans` is named, so a new one has to be added here.
+fn run_roots_view() -> String {
+    format!(
+        "
 CREATE OR REPLACE VIEW run_roots AS
 SELECT
     s.ts_ns,
@@ -313,10 +333,7 @@ SELECT
     json_extract_string(g.attrs, '$.target_technology') AS target_technology,
     json_extract_string(g.attrs, '$.target_environment') AS target_environment,
     NULL AS plugin_name,
-    coalesce(
-        e.hypothesis_after_met,
-        CASE WHEN NOT e.hypothesis_before_met THEN FALSE END
-    ) AS hypothesis_met,
+    {hypothesis_met} AS hypothesis_met,
     e.rto_measured_s AS recovery_time_s,
     NULL AS span_attrs,
     NULL AS resource_attrs,
@@ -330,7 +347,10 @@ WHERE NOT EXISTS (
         r.span_name = 'resilience.experiment'
         AND r.experiment_id = e.experiment_id
 );
-";
+",
+        hypothesis_met = hypothesis_met_sql("e")
+    )
+}
 
 /// The completion log of every run: the last `experiment.completed` record
 /// stored for its id, so a run that logged its end twice is still one row.

@@ -288,7 +288,7 @@ Computed onto the journal after the run, comparing predictions (Phase 0) and mea
 | Field | Description |
 |-------|-------------|
 | `estimate_accuracy` | 0.0–1.0 — how close the outcome was to the estimate |
-| `resilience_score` | 0.0–1.0 composite score |
+| `resilience_score` | 0 or 1: 1 when the run completed |
 | `estimate_recovery_delta_s` | *Reserved — unpopulated in 2.20* |
 | `trend` | *Reserved — unpopulated in 2.20* |
 

@@ -115,10 +115,10 @@ fn decisions(open: usize) -> String {
 
 fn bluf(card: &Scorecard, open: &[&scoring::ExperimentScore]) -> String {
     let Some(portfolio) = card.portfolio else {
-        return "No experiment is on record, so there is no resilience score yet.".into();
+        return "No experiment is on record, so there is no compliance score yet.".into();
     };
     format!(
-        "Portfolio resilience is {} ({}/100){} {} {}",
+        "Portfolio compliance score is {} ({}/100){} {} {}",
         card.band,
         f1(portfolio),
         direction(card.delta),

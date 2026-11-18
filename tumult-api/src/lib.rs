@@ -104,7 +104,7 @@
 //!   the autopilot gate fail-closed); `POST /api/runs/{id}/break-glass`
 //!   (Admin) overrides with a mandatory justification and opens a
 //!   retrospective manual-evidence draft as compliance debt.
-//! * `GET /api/scores?range=` — Gremlin-style resilience scorecard
+//! * `GET /api/scores?range=` — Gremlin-style compliance scorecard
 //!   (freshness-decayed per-experiment scores, target and portfolio rollup).
 //! * `GET /api/gate/{target}?min_score=&max_age_days=&env=` — CI gate: the
 //!   target's score as a `pass|warn|fail` verdict with reasons and evidence.

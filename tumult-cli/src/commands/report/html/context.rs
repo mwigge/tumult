@@ -187,7 +187,9 @@ pub(super) fn estimate(journal: &Journal) -> String {
     section("estimate", "Estimate", &facts(&rows))
 }
 
-/// How the run compares with its estimate.
+/// How the run compares with its estimate. Its value of 0 or 1 is no
+/// score: it is 1 when the run completed, which the badge of the run says,
+/// and whether the hypothesis held is on the cards of the summary.
 pub(super) fn analysis(journal: &Journal) -> String {
     let Some(analysis) = &journal.analysis else {
         return String::new();
@@ -199,7 +201,6 @@ pub(super) fn analysis(journal: &Journal) -> String {
         optional("Estimate accuracy", analysis.estimate_accuracy.map(percent)),
         optional("Recovery against the estimate", delta),
         optional("Trend", analysis.trend.as_ref().map(ToString::to_string)),
-        optional("Resilience score", analysis.resilience_score.map(number)),
     ]
     .concat();
     section("analysis", "Analysis", &facts(&rows))

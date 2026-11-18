@@ -325,7 +325,7 @@ Post-experiment analysis comparing predictions to actuals and tracking trends.
 | `resilience.analysis.estimate_accuracy` | `float` | Recommended | Accuracy of the pre-experiment estimate, `0.0` to `1.0`. `1.0` means the prediction exactly matched the outcome. |  |
 | `resilience.analysis.estimate_recovery_delta` | `float` | Recommended | Difference between predicted and actual recovery time in seconds (`predicted - actual`). Positive means recovery was faster than predicted. |  |
 | `resilience.analysis.trend` | `string` | Recommended | Resilience trend based on comparison with prior runs of the same experiment. | `improving`, `stable`, `degrading` |
-| `resilience.analysis.resilience_score` | `float` | Recommended | Composite resilience score, `0.0` to `1.0`. Computed per the platform's documented score methodology. |  |
+| `resilience.analysis.resilience_score` | `float` | Recommended | `0` or `1`: `1` when the run completed. |  |
 | `resilience.analysis.regulatory_evidence` | `string[]` | Recommended | List of regulatory evidence artefact identifiers produced by this run (e.g. report IDs, audit log references). |  |
 
 ---

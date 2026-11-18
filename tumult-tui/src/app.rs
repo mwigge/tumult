@@ -520,7 +520,7 @@ mod tests {
             status: status.into(),
             started_at_ns: ns,
             duration_ms: 10,
-            resilience: None,
+            hypothesis_met: None,
             steps: 1,
             deviations: 0,
         }

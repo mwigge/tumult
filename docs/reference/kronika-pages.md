@@ -27,6 +27,11 @@ are drawn from. Pages without a chart are tables or forms and say so.
 | **DORA** (`/scores?view=dora`) | Legal entity picker; heatmap of articles against functions or org units with a table alternative; expected and actual evidence status with the largest gap first and an evidence drawer per row; maturity gauge, component bars and a level-and-index line per quarter; maturity per node with the node that caps the level; reporting readiness of the function register | Runs and manual records matched to the DORA requirement registry, the stored daily snapshots, and the function register declared in `org.yaml` | `GET /api/dora`, `GET /api/dora/{article}`, `GET /api/maturity` |
 | **Star Map** (`/starmap`) | One graph of organisation units, ICT entities, systems, components, services, workloads and definitions; lens switch (evidence, risk, conformance); environment and range pickers; focus on a neighbourhood; node list with a filter; evidence drawer with coverage by discipline, runs, gate verdict, objective verdicts, manual records and risks | Spans, runs, verified manual records, risk suppressions, `org.yaml` and the manifests under `KRONIKA_MANIFESTS_DIR`, assembled per request | `GET /api/starmap`, `GET /api/gate/{target}` (drawer) |
 
+The two scores run from 0 to 100, and each says what it measures:
+
+- **Compliance score** (Scores, the gate, the digest). Latest run of each experiment: pass 100, pass older than 30 days 75, failure 50, never run 0. Averaged per target.
+- **Resilience score** (Resilience). Continuous score: objective margins, discipline coverage, evidence freshness and recovery against target, per target and criticality weighted.
+
 The Resilience page was called Posture. It reads `GET /api/posture`, and
 old `/posture` links open it.
 

@@ -1,4 +1,4 @@
-//! Gremlin-style resilience scoring with freshness decay.
+//! Gremlin-style compliance scoring with freshness decay.
 //!
 //! Per experiment/target: a passed run scores 100, a passed run older than
 //! 30 days decays to 75 (stale), a failed/deviated/halted run scores 50, an
@@ -17,6 +17,11 @@ use tumult_lake::{scope, Reader, RunVerdict};
 
 /// Staleness threshold: a pass older than this decays from 100 to 75.
 pub const STALE_NS: i64 = 30 * 86_400 * 1_000_000_000;
+
+/// What the compliance score measures, in one line for a reader. The web
+/// says it in the same words (`web/src/lib/score-names.ts`).
+pub const COMPLIANCE_SCORE_LINE: &str = "Latest run of each experiment: pass 100, pass older \
+     than 30 days 75, failure 50, never run 0. Averaged per target.";
 
 /// Run states driving the score.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
@@ -408,6 +413,24 @@ mod tests {
         assert_eq!(
             score_run(Some((now - DAY, false)), now),
             (50, RunState::Failed)
+        );
+    }
+
+    #[test]
+    fn the_line_of_the_compliance_score_says_the_numbers_it_is_scored_with() {
+        let now = 100 * DAY;
+        let (pass, _) = score_run(Some((now, true)), now);
+        let (stale, _) = score_run(Some((now - STALE_NS - 1, true)), now);
+        let (failure, _) = score_run(Some((now, false)), now);
+        let (never, _) = score_run(None, now);
+        let days = STALE_NS / DAY;
+
+        assert_eq!(
+            COMPLIANCE_SCORE_LINE,
+            format!(
+                "Latest run of each experiment: pass {pass}, pass older than {days} days \
+                 {stale}, failure {failure}, never run {never}. Averaged per target."
+            )
         );
     }
 

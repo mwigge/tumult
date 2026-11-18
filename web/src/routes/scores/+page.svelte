@@ -17,6 +17,7 @@
         tileLabel,
         tileScore,
     } from '#lib/org-score.js';
+    import { COMPLIANCE_SCORE, COMPLIANCE_SCORE_LINE } from '#lib/score-names.js';
     import { strong, tip, tipFormatter } from '#lib/tooltip.js';
     import type { OrgNodeScore, ScoreTree, SparkPoint } from '#lib/types.js';
     import EChart from '#lib/components/EChart.svelte';
@@ -219,6 +220,10 @@
             <div class="hint"><Sparkline points={sparkPoints} color={bandColor(tree.band)} /></div>
         </div>
     </div>
+    <p class="meaning" data-testid="score-meaning">
+        <strong>{COMPLIANCE_SCORE}.</strong>
+        {COMPLIANCE_SCORE_LINE}
+    </p>
 
     {#if node === ''}
         <div class="panel">
@@ -382,6 +387,11 @@
         color: var(--text-faint);
         font-size: 11.5px;
         margin-top: 4px;
+    }
+    .meaning {
+        color: var(--text-dim);
+        font-size: 12.5px;
+        margin: 0 0 12px;
     }
     .kind {
         color: var(--text-faint);

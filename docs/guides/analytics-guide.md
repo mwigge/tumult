@@ -31,7 +31,7 @@ TOON Journal (.toon) → Arrow RecordBatch (columnar) → DuckDB (SQL) → Parqu
 | hypothesis_before_met | BOOLEAN | Steady state before? |
 | hypothesis_after_met | BOOLEAN | Steady state after? |
 | estimate_accuracy | DOUBLE | Estimate vs actual (0-1) |
-| resilience_score | DOUBLE | Overall resilience (0-1) |
+| resilience_score | DOUBLE | 0 or 1: 1 when the run completed |
 
 ### activity_results
 
