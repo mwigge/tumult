@@ -12,7 +12,7 @@ const DAY: i64 = 86_400 * NS;
 
 /// A small firm under the simplified framework: one critical function
 /// with a declared service that sends nothing, one important function.
-const REGISTER: &str = "
+pub(crate) const REGISTER: &str = "
 nodes:
   - {name: platform, kind: domain}
 legal_entities:
@@ -37,7 +37,7 @@ functions:
     services: [reporting]
 ";
 
-async fn register(srv: &TestServer) {
+pub(crate) async fn register(srv: &TestServer) {
     let declared = tumult_compliance::dora::register::parse(REGISTER).unwrap();
     let at = now_ns();
     exec_write(srv, move |w| {

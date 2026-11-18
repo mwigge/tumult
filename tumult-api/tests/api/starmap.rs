@@ -171,7 +171,7 @@ async fn seed_shared_system(srv: &TestServer) {
     .await;
 }
 
-fn node<'a>(body: &'a Value, id: &str) -> Option<&'a Value> {
+pub(crate) fn node<'a>(body: &'a Value, id: &str) -> Option<&'a Value> {
     body["nodes"]
         .as_array()
         .unwrap()

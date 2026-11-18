@@ -468,6 +468,22 @@ pub async fn spawn_server_with_org(org_yaml: &str) -> TestServer {
     .await
 }
 
+/// The test server scoring with the house parameters of the org file at
+/// `org_file`, read once when it starts. Score responses are not cached.
+pub async fn spawn_server_with_score_file(org_file: PathBuf) -> TestServer {
+    let factory: tumult_ingest::runs::ExecutorFactory = Arc::new(|_env| Arc::new(SlowNoopExecutor));
+    spawn(factory, ORG_YAML, &[], move |state| {
+        let runtime = tumult_api::score::ScoreRuntime::open(
+            Some(org_file),
+            None,
+            std::time::Duration::ZERO,
+            now_ns(),
+        );
+        state.with_score_runtime(Arc::new(runtime))
+    })
+    .await
+}
+
 /// A server whose forecasting endpoints use the sidecar at `url`, skipping
 /// it for `cooldown` after a failure.
 pub async fn spawn_server_with_forecast_sidecar(

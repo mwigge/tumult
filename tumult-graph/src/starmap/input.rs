@@ -55,7 +55,8 @@ pub struct PostureRow {
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ExperimentRow {
     pub name: String,
-    pub kind: String,
+    /// The discipline; `None` for a manual record that is not a test.
+    pub kind: Option<String>,
     pub passed: bool,
     pub last_run_ns: i64,
 }

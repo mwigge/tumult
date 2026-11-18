@@ -622,7 +622,7 @@ fn manual_of(row: &Value, functions: Vec<String>, params: &HouseParams) -> Optio
         system,
         env: text(row, "env"),
         experiment: text(row, "name").unwrap_or_else(|| id.clone()),
-        kind: params.manual_kinds.get(&exercise).cloned(),
+        kind: params.manual_kind(&exercise).map(str::to_owned),
         cited: cited(row),
         outcome,
         rto_measured_s: num(row, "rto_measured_s"),

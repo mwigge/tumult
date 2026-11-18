@@ -33,6 +33,7 @@ use axum::response::{IntoResponse, Response};
 use axum::Extension;
 use serde::Deserialize;
 use serde_json::{json, Value};
+use tumult_compliance::dora::HouseParams;
 use tumult_compliance::OrgTree;
 use tumult_graph::starmap::{
     assemble, ArticleRow, CallRow, CoverFrom, CoverRow, DefinitionRow, DependsRow, ExperimentRow,
@@ -694,8 +695,9 @@ fn load(
     manifests_dir: Option<&FsPath>,
     org: &OrgTree,
     caps: Caps,
+    params: &HouseParams,
 ) -> Result<StarInputs, String> {
-    let risk_inputs = risks::gather(reader, window.to_ns, &window.envs, manifests_dir)?;
+    let risk_inputs = risks::gather(reader, window.to_ns, &window.envs, manifests_dir, params)?;
     let report = tumult_risk::scan(&risk_inputs);
     let levels = conformance::levels(reader, window.from_ns, &window.envs)?;
     let (covers, cut_covers) = covers(reader, window, caps.covers)?;
@@ -831,10 +833,18 @@ fn respond(map: &CachedMap, headers: &HeaderMap) -> Response {
 async fn build(state: &ApiState, query: StarQuery, window: Window) -> Result<CachedMap, ApiError> {
     let org = Arc::clone(&state.org);
     let manifests_dir: Option<PathBuf> = state.manifests_dir().cloned();
+    let params = state.score_runtime().params();
     let parent = tracing::Span::current();
     with_reader(&state.db_path, move |reader| {
         let caps = Caps::all(GRAPH_ROW_LIMIT);
-        let inputs = load(reader, &window, manifests_dir.as_deref(), &org, caps)?;
+        let inputs = load(
+            reader,
+            &window,
+            manifests_dir.as_deref(),
+            &org,
+            caps,
+            &params,
+        )?;
         let map = assemble_traced(&parent, &inputs, &query, window.envs.len());
         serde_json::to_vec(&map)
             .map(CachedMap::new)
@@ -1051,7 +1061,8 @@ mod tests {
         let reader = store.read_only().expect("reader");
         let org = OrgTree::empty();
         let read = |caps: Caps| {
-            let inputs = load(&reader, &any_time(), None, &org, caps).expect("load");
+            let params = HouseParams::default();
+            let inputs = load(&reader, &any_time(), None, &org, caps, &params).expect("load");
             (
                 inputs.truncated,
                 assemble(&inputs, &StarQuery::default()).truncated,
