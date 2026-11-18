@@ -73,10 +73,18 @@ pub const DELETE_EDGES_FOR_RUN: &str = "DELETE FROM graph_edges WHERE run_id = ?
 /// derived, recomputable node set (coverage gaps) before re-deriving it.
 pub const DELETE_NODES_BY_KIND: &str = "DELETE FROM graph_nodes WHERE kind = ?";
 
+/// Delete one node. Parameter: `id`. Used to remove the nodes of a purged
+/// run (see [`crate::run_node_ids`]).
+pub const DELETE_NODE: &str = "DELETE FROM graph_nodes WHERE id = ?";
+
 /// Insert one edge. Parameters, in order: `src`, `rel`, `dst`, `run_id`, `ts`,
 /// `attrs` (JSON text).
 pub const INSERT_EDGE: &str =
     "INSERT INTO graph_edges (src, rel, dst, run_id, ts, attrs) VALUES (?, ?, ?, ?, ?, CAST(? AS JSON))";
+
+/// The fault ids the stored runs injected: the destinations of the
+/// `injects` edges. No parameters.
+pub const INJECTED_FAULTS: &str = "SELECT DISTINCT dst FROM graph_edges WHERE rel = 'injects'";
 
 /// Does a node with this id exist? Parameter: `id`. Selects `count(*)`.
 pub const NODE_EXISTS: &str = "SELECT count(*) FROM graph_nodes WHERE id = ?";

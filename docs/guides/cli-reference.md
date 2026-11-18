@@ -422,7 +422,7 @@ tumult store <subcommand>
 | `backup [--output <dir>]` | Copy the complete database and checksum manifest; stop writers first, protect credentials in backup |
 | `export [--output <dir>]` | Write the Parquet directory `tumult import` reads (experiments, activities, load results, probe samples, run roots, version history); refuses a directory that already holds one |
 | `restore --input <dir> --output <new-db>` | Verify a complete backup and restore into a new database; never overwrite an existing destination |
-| `purge --older-than-days <N>` | Delete experiments older than N days |
+| `purge --older-than-days <N>` | Delete experiments older than N days, with their activities, load results, probe samples, NFR verdicts and own graph rows; telemetry, the run registry and audit trail, manual records, forecasts, sightings and autopilot tables are kept |
 | `path` | Print the store file path |
 | `migrate` | Migrate data from DuckDB to ClickHouse backend |
 | `import-legacy [--analytics-db <path>] [--kronika-db <path>] [--store <path>]` | Import databases from older installs (old analytics store and/or kronika lake) into the current store; idempotent |

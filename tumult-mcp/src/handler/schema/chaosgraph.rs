@@ -52,7 +52,7 @@ fn default_graph_depth() -> u32 {
 /// Arguments for the `tumult_chaosgraph_coverage_gaps` tool.
 #[macros::mcp_tool(
     name = "tumult_chaosgraph_coverage_gaps",
-    description = "ChaosGraph: list plugin-catalog actions that have never appeared in a tested run (coverage gaps), optionally filtered by fault domain (plugin substring). When a framework is given (dora, nis2, pci-dss, iso-22301, iso-27001, soc2, basel-iii), also lists that framework's articles still lacking any evidence edge. Refreshes the CoverageGap/FaultDomain nodes + gap_in edges in the store's graph. Structured content is {count, gaps:[{id,plugin,action,domain}], framework?, unevidenced_articles?}.",
+    description = "ChaosGraph: list plugin-catalog actions that no stored run injected (coverage gaps), optionally filtered by fault domain (plugin substring). An action is tested when a run ingested with its experiment definition called that plugin function; a run ingested without its definition closes no gap. When a framework is given (dora, nis2, pci-dss, iso-22301, iso-27001, soc2, basel-iii), also lists that framework's articles still lacking any evidence edge. Read-only: the gaps are derived per call and the store's CoverageGap/FaultDomain nodes are left as they are (`tumult chaosgraph coverage-gaps --refresh` persists them). Structured content is {count, gaps:[{id,plugin,action,domain}], framework?, unevidenced_articles?}.",
     read_only_hint = true,
     idempotent_hint = true,
     open_world_hint = false

@@ -92,7 +92,7 @@ fn fault_id_for_action(action_name: &str, experiment: Option<&Experiment>) -> Op
                 }
                 | Provider::Script {
                     plugin, function, ..
-                } => format!("fault:{plugin}::{function}"),
+                } => crate::map::plugin_fault_id(plugin, function),
                 Provider::Process { .. } => format!("fault:{}", a.name),
             }),
         // Journal-only ingestion keys faults by activity name.

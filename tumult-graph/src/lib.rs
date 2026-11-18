@@ -72,8 +72,8 @@ pub mod starmap;
 pub mod topology;
 
 pub use compliance::{compliance_article_id, compliance_article_nodes, resolve_citation};
-pub use coverage::{coverage_gap_delta, AvailableAction, COVERAGE_GAP_RUN_ID};
-pub use map::journal_to_graph;
+pub use coverage::{coverage_gap_delta, AvailableAction, TestedFaults, COVERAGE_GAP_RUN_ID};
+pub use map::{journal_to_graph, plugin_fault_id, run_node_ids};
 pub use model::{
     Edge, EdgeRecord, EdgeRel, EgoGraph, EgoTuple, GraphDelta, Node, NodeKind, NodeSummary,
 };

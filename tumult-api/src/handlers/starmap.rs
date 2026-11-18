@@ -1055,6 +1055,64 @@ mod tests {
         }
     }
 
+    /// A run of the drill mapped to DORA Art. 25, as its journal says.
+    fn drill_run(id: &str, status: &str, started_at_ns: i64) -> tumult_core::types::Journal {
+        serde_json::from_value(serde_json::json!({
+            "experiment_title": "Purge drill",
+            "experiment_id": id,
+            "status": status,
+            "started_at_ns": started_at_ns,
+            "ended_at_ns": started_at_ns + 1,
+            "duration_ms": 1,
+            "method_results": [],
+            "rollback_results": [],
+        }))
+        .expect("journal")
+    }
+
+    #[test]
+    fn a_purged_run_is_no_longer_evidence() {
+        use tumult_core::types::{Experiment, RegulatoryMapping, RegulatoryRequirement};
+        let dir = tempfile::tempdir().expect("temp dir");
+        let path = dir.path().join("k.duckdb");
+        let drill = Experiment {
+            title: "Purge drill".into(),
+            regulatory: Some(RegulatoryMapping {
+                frameworks: vec!["DORA".into()],
+                requirements: vec![RegulatoryRequirement {
+                    id: "Art. 25".into(),
+                    description: "Testing of ICT tools and systems".into(),
+                    evidence: "scenario-based fault injection".into(),
+                }],
+            }),
+            ..Experiment::default()
+        };
+        // The old run completed and evidences the article; the new one
+        // deviated, so it only maps the drill to it.
+        let store = tumult_lake::AnalyticsStore::open(&path).expect("store");
+        for journal in [
+            drill_run("old-1", "completed", 1_577_836_800_000_000_000),
+            drill_run("new-1", "deviated", now_ns()),
+        ] {
+            store
+                .ingest_journal_with_experiment(&journal, Some(&drill))
+                .expect("ingest");
+        }
+        assert_eq!(store.purge_older_than_days(30).expect("purge"), 1);
+        drop(store);
+
+        let lake = tumult_lake::Store::open(&path).expect("lake");
+        let reader = lake.read_only().expect("reader");
+        let (rows, cut) = covers(&reader, &any_time(), GRAPH_ROW_LIMIT).expect("read");
+        assert!(!cut);
+        let drill_covers: Vec<(&str, bool)> = rows
+            .iter()
+            .filter(|row| row.from == CoverFrom::Experiment("Purge drill".into()))
+            .map(|row| (row.article.as_str(), row.evidenced))
+            .collect();
+        assert_eq!(drill_covers, [("compliance:DORA/Art.25", false)]);
+    }
+
     #[test]
     fn any_one_capped_source_marks_the_map_truncated() {
         let (_dir, store) = graph_lake();

@@ -137,6 +137,103 @@ pub(crate) mod test_support {
         env
     }
 
+    /// Point plugin discovery at a catalog written into `dir`, one script
+    /// plugin per `(name, actions)`, and at an empty home, for the life of
+    /// the returned guard.
+    pub(crate) fn catalog_guard(
+        dir: &std::path::Path,
+        plugins: &[(&str, &[&str])],
+    ) -> tumult_test_utils::EnvGuard {
+        let catalog = dir.join("catalog");
+        for (name, actions) in plugins {
+            let manifest = tumult_plugin::manifest::ScriptPluginManifest {
+                name: (*name).into(),
+                version: "0.1.0".into(),
+                description: "test catalog".into(),
+                actions: actions
+                    .iter()
+                    .map(|action| tumult_plugin::manifest::ScriptAction {
+                        name: (*action).into(),
+                        script: format!("actions/{action}.sh").into(),
+                        description: "test action".into(),
+                    })
+                    .collect(),
+                probes: vec![],
+            };
+            let plugin_dir = catalog.join(name);
+            std::fs::create_dir_all(&plugin_dir).unwrap();
+            let toon = toon_format::encode_default(&manifest).unwrap();
+            std::fs::write(plugin_dir.join("plugin.toon"), toon).unwrap();
+        }
+        let mut env = plugin_path_guard(&catalog);
+        env.set("HOME", dir.join("home"));
+        env
+    }
+
+    /// An action named `name` that calls `function` of the script plugin
+    /// `plugin`.
+    pub(crate) fn script_action(
+        name: &str,
+        plugin: &str,
+        function: &str,
+    ) -> tumult_core::types::Activity {
+        tumult_core::types::Activity {
+            name: name.into(),
+            activity_type: tumult_core::types::ActivityType::Action,
+            provider: tumult_core::types::Provider::Script {
+                plugin: plugin.into(),
+                function: function.into(),
+                arguments: std::collections::HashMap::new(),
+                timeout_s: None,
+            },
+            ..Default::default()
+        }
+    }
+
+    /// The journal of run `id` of `title`, whose method ran the actions
+    /// `method` and whose rollbacks ran the actions `rollbacks`, by
+    /// activity name.
+    pub(crate) fn journal_of(
+        id: &str,
+        title: &str,
+        status: tumult_core::types::ExperimentStatus,
+        method: &[&str],
+        rollbacks: &[&str],
+    ) -> tumult_core::types::Journal {
+        use tumult_core::types::{ActivityResult, ActivityStatus, ActivityType, SpanId, TraceId};
+        let ran = |names: &[&str]| -> Vec<ActivityResult> {
+            names
+                .iter()
+                .map(|name| ActivityResult {
+                    name: (*name).into(),
+                    activity_type: ActivityType::Action,
+                    status: ActivityStatus::Succeeded,
+                    started_at_ns: 1,
+                    duration_ms: 1,
+                    output: None,
+                    error: None,
+                    trace_id: TraceId::empty(),
+                    span_id: SpanId::empty(),
+                })
+                .collect()
+        };
+        let mut journal: tumult_core::types::Journal = serde_json::from_value(serde_json::json!({
+            "experiment_title": title,
+            "experiment_id": id,
+            "status": "completed",
+            "started_at_ns": 1,
+            "ended_at_ns": 2,
+            "duration_ms": 1,
+            "method_results": [],
+            "rollback_results": [],
+        }))
+        .unwrap();
+        journal.status = status;
+        journal.method_results = ran(method);
+        journal.rollback_results = ran(rollbacks);
+        journal
+    }
+
     /// The workspace's real `plugins/` directory (the live fault catalog).
     pub(crate) fn workspace_plugins_dir() -> std::path::PathBuf {
         std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))

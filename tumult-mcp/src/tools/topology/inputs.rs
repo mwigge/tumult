@@ -2,12 +2,12 @@
 //! vs read-write opens, the lineage input bundle, and the catalog/citation
 //! lookups that feed recommendation scoring.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::path::Path;
 
 use tumult_graph::lineage::{LineageCell, LineageInput};
 use tumult_graph::recommend::{recommend, Recommendation, RecommendationInput};
-use tumult_graph::{AvailableAction, EdgeRecord, NodeSummary};
+use tumult_graph::{EdgeRecord, NodeSummary};
 
 use crate::error::ToolError;
 
@@ -169,20 +169,6 @@ fn article_strength() -> HashMap<String, String> {
         .collect()
 }
 
-/// Available actions from the plugin catalog (same mapping `coverage_gaps`
-/// uses).
-fn available_actions() -> Vec<AvailableAction> {
-    let plugins = tumult_plugin::discovery::discover_all_plugins().unwrap_or_default();
-    plugins
-        .iter()
-        .flat_map(|p| {
-            p.actions
-                .iter()
-                .map(move |a| AvailableAction::new(&p.name, &a.name))
-        })
-        .collect()
-}
-
 /// Compute ranked recommendations for a lineage matrix.
 pub(crate) fn recommendations_for(
     store: &tumult_lake::AnalyticsStore,
@@ -190,9 +176,8 @@ pub(crate) fn recommendations_for(
     lineage: &[LineageCell],
     limit: usize,
 ) -> Result<Vec<Recommendation>, ToolError> {
-    let available = available_actions();
-    let tested: HashSet<String> =
-        tumult_query::tested_action_names(store).map_err(|e| ToolError::Store(e.to_string()))?;
+    let available = crate::tools::graph::available_actions();
+    let tested = tumult_query::tested_faults(store).map_err(|e| ToolError::Store(e.to_string()))?;
     let strength = article_strength();
     Ok(recommend(
         &RecommendationInput {
@@ -200,7 +185,7 @@ pub(crate) fn recommendations_for(
             lineage,
             depends_on: &inputs.depends_on,
             available_actions: &available,
-            tested_action_names: &tested,
+            tested_faults: &tested,
             article_strength: &strength,
         },
         limit,

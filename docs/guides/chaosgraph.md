@@ -163,8 +163,8 @@ These are added under **analytics schema v2** — an additive migration. The DDL
 
 Every path that ingests a journal populates the graph in the same transaction:
 
-- `tumult run` and `tumult ingest` → journal-only mapping (faults keyed by the injecting activity's name).
-- `tumult_run_experiment` over MCP → the richest mapping, because it has the experiment definition too: faults become `plugin::function` and services are extracted from the injecting activity's provider arguments.
+- `tumult run`, daemon runs and `tumult_run_experiment` over MCP → the richest mapping, because they have the experiment definition too: faults become `plugin::function` and services are extracted from the injecting activity's provider arguments.
+- A journal ingested without its definition (an API import with no experiment, a store written before v2.14.0) → journal-only mapping (faults keyed by the injecting activity's name). Such a run closes no coverage gap: the store does not know which plugin function ran.
 
 Population is **dedup-safe**. Ingestion skips a journal whose `experiment_id` already exists, node upserts key on the primary id, and a run's edges are deleted by `run_id` before re-insert. Mapping the same run twice yields identical nodes and edges — re-ingesting never duplicates graph rows.
 

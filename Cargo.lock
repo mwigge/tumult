@@ -8321,8 +8321,10 @@ dependencies = [
  "toon-format",
  "tumult-agent-cli",
  "tumult-core",
+ "tumult-graph",
  "tumult-lake",
  "tumult-plugin",
+ "tumult-query",
  "tumult-test-utils",
 ]
 

@@ -7,8 +7,11 @@
 //! one manifest written below. Env vars are process-wide, so the test holds
 //! the shared environment guard, which restores both when it ends.
 
+use std::collections::HashMap;
+
 use tumult_core::types::{
-    ActivityResult, ActivityStatus, ActivityType, ExperimentStatus, Journal, SpanId, TraceId,
+    Activity, ActivityResult, ActivityStatus, ActivityType, Experiment, ExperimentStatus, Journal,
+    Provider, SpanId, TraceId,
 };
 use tumult_intelligence::heuristic_report;
 use tumult_lake::AnalyticsStore;
@@ -49,7 +52,23 @@ fn coverage_counts_tested_actions_and_lists_only_untested_ones() {
     )
     .unwrap();
 
-    // History exercising exactly one of the two actions.
+    // History exercising exactly one of the two actions, through a step
+    // whose name is not the name of the action: the plugin function counts.
+    let definition = Experiment {
+        title: "exercise covered action".into(),
+        method: vec![Activity {
+            name: "exercise-covered".into(),
+            activity_type: ActivityType::Action,
+            provider: Provider::Script {
+                plugin: "ztest-plugin".into(),
+                function: "covered-action".into(),
+                arguments: HashMap::new(),
+                timeout_s: None,
+            },
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
     let store_dir = tempfile::TempDir::new().unwrap();
     let store_path = store_dir.path().join("analytics.duckdb");
     {
@@ -66,7 +85,7 @@ fn coverage_counts_tested_actions_and_lists_only_untested_ones() {
             steady_state_before: None,
             steady_state_after: None,
             method_results: vec![ActivityResult {
-                name: "covered-action".into(),
+                name: "exercise-covered".into(),
                 activity_type: ActivityType::Action,
                 status: ActivityStatus::Succeeded,
                 started_at_ns: 1_700_000_000_000_000_000,
@@ -91,7 +110,9 @@ fn coverage_counts_tested_actions_and_lists_only_untested_ones() {
             halt: None,
             blast_radius: None,
         };
-        assert!(store.ingest_journal(&journal).expect("ingest"));
+        assert!(store
+            .ingest_journal_with_experiment(&journal, Some(&definition))
+            .expect("ingest"));
     }
 
     let report = heuristic_report(&store_path);

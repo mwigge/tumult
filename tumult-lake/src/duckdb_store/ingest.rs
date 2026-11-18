@@ -69,6 +69,72 @@ pub(crate) fn ingest_journal_with_experiment(
     }
 }
 
+/// A table that holds rows of one run beside the run's `experiments` row,
+/// and the column that holds the run's id.
+pub(crate) struct RunTable {
+    pub(crate) table: &'static str,
+    pub(crate) run_key: &'static str,
+}
+
+pub(crate) const ACTIVITY_RESULTS: RunTable = RunTable {
+    table: "activity_results",
+    run_key: "experiment_id",
+};
+pub(crate) const LOAD_RESULTS: RunTable = RunTable {
+    table: "load_results",
+    run_key: "experiment_id",
+};
+pub(crate) const PROBE_SAMPLES: RunTable = RunTable {
+    table: "probe_samples",
+    run_key: "experiment_id",
+};
+const NFR_VERDICTS: RunTable = RunTable {
+    table: "nfr_verdicts",
+    run_key: "experiment_id",
+};
+/// Written by [`super::graph::populate_graph`]: each edge of a run holds
+/// the run's id.
+const GRAPH_EDGES: RunTable = RunTable {
+    table: "graph_edges",
+    run_key: "run_id",
+};
+
+/// Every table [`ingest_journal_inner`] writes rows of one run to, beside
+/// its `experiments` row. The graph nodes are not here: a run shares most
+/// of its nodes with other runs, and owns only the nodes of
+/// [`tumult_graph::run_node_ids`].
+pub(crate) const RUN_TABLES: [RunTable; 5] = [
+    ACTIVITY_RESULTS,
+    LOAD_RESULTS,
+    PROBE_SAMPLES,
+    NFR_VERDICTS,
+    GRAPH_EDGES,
+];
+
+/// Delete what [`ingest_journal_inner`] wrote for run `experiment_id`
+/// beside its `experiments` row, on `conn`, inside the caller's
+/// transaction: its rows of [`RUN_TABLES`] and the graph nodes it owns.
+/// The nodes it shares with other runs stay, also when no edge is left on
+/// them.
+pub(crate) fn delete_run_rows(
+    conn: &Connection,
+    experiment_id: &str,
+) -> Result<(), AnalyticsError> {
+    for run_table in &RUN_TABLES {
+        conn.execute(
+            &format!(
+                "DELETE FROM {} WHERE {} = ?",
+                run_table.table, run_table.run_key
+            ),
+            params![experiment_id],
+        )?;
+    }
+    for node in tumult_graph::run_node_ids(experiment_id) {
+        conn.execute(tumult_graph::sql::DELETE_NODE, params![node])?;
+    }
+    Ok(())
+}
+
 /// The insert half of [`ingest_journal_with_experiment`], run inside the
 /// caller's transaction. Returns the number of activity rows written.
 fn ingest_journal_inner(
@@ -81,17 +147,17 @@ fn ingest_journal_inner(
     let activity_count = act_batch.num_rows();
     insert_batch(conn, "experiments", &exp_batch)?;
     if activity_count > 0 {
-        insert_batch(conn, "activity_results", &act_batch)?;
+        insert_batch(conn, ACTIVITY_RESULTS.table, &act_batch)?;
     }
     if let Some(ref load_result) = journal.load_result {
         let load_batch = journal_to_load_batch(&journal.experiment_id, load_result)?;
-        insert_batch(conn, "load_results", &load_batch)?;
+        insert_batch(conn, LOAD_RESULTS.table, &load_batch)?;
         // v17: a streaming adapter's windows land next to the probe
         // samples as `load.*` series.
         if !load_result.samples.is_empty() {
             insert_batch(
                 conn,
-                "probe_samples",
+                PROBE_SAMPLES.table,
                 &load_samples_to_probe_samples_batch(&journal.experiment_id, load_result)?,
             )?;
         }
@@ -100,13 +166,13 @@ fn ingest_journal_inner(
     if !journal.probe_samples.is_empty() {
         insert_batch(
             conn,
-            "probe_samples",
+            PROBE_SAMPLES.table,
             &journal_to_probe_samples_batch(journal)?,
         )?;
     }
     let verdicts = journal_to_nfr_verdicts_batch(journal)?;
     if verdicts.num_rows() > 0 {
-        insert_batch(conn, "nfr_verdicts", &verdicts)?;
+        insert_batch(conn, NFR_VERDICTS.table, &verdicts)?;
     }
     // ChaosGraph: upsert this run's nodes/edges (schema v2).
     super::graph::populate_graph(conn, journal, experiment)?;

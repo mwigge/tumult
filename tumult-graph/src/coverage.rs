@@ -1,21 +1,23 @@
 //! Coverage-gap derivation: catalog actions never exercised by a tested run.
 //!
 //! An [`AvailableAction`] is a fault primitive advertised by a plugin. A gap is
-//! an available action whose name has never appeared as a tested activity
-//! result. This module owns only the *pure* derivation — the caller supplies
-//! the plugin catalog (from `tumult-plugin` discovery) and the set of tested
-//! activity names (from the analytics store), keeping `tumult-graph` free of
-//! both a database handle and a plugin dependency.
+//! an available action no stored run injected. This module owns only the
+//! *pure* derivation — the caller supplies the plugin catalog (from
+//! `tumult-plugin` discovery) and the [`TestedFaults`] (from the analytics
+//! store), keeping `tumult-graph` free of both a database handle and a plugin
+//! dependency.
 //!
-//! The "tested" test mirrors the existing coverage tooling: an action
-//! `plugin::action` is considered tested when `action` appears among the
-//! distinct `activity_results.name` values.
+//! An action `plugin::action` is tested when a run ingested with its
+//! definition injected the fault `plugin::action`: its method holds an action
+//! that calls that function of that plugin. A step's name, a process
+//! activity, a rollback, and a run ingested without its definition test no
+//! catalog action.
 
 use std::collections::HashSet;
-use std::hash::BuildHasher;
 
 use serde::{Deserialize, Serialize};
 
+use crate::map::plugin_fault_id;
 use crate::model::{Edge, EdgeRel, GraphDelta, Node, NodeKind};
 
 /// A fault primitive advertised by a plugin's manifest.
@@ -37,6 +39,32 @@ impl AvailableAction {
     }
 }
 
+/// The faults the stored runs injected: the fault ids of the graph's
+/// `injects` edges. A run ingested with its definition keys the fault of a
+/// plugin function by [`plugin_fault_id`]; a run ingested without one keys
+/// its faults by activity name, which no catalog action matches.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct TestedFaults(HashSet<String>);
+
+impl TestedFaults {
+    /// The set of the fault ids `ids`, as the `injects` edges name them.
+    pub fn from_fault_ids<I, S>(ids: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        Self(ids.into_iter().map(Into::into).collect())
+    }
+
+    /// Whether a stored run injected the fault `action` names: the function
+    /// `action.action` of the plugin `action.plugin`.
+    #[must_use]
+    pub fn contains(&self, action: &AvailableAction) -> bool {
+        self.0
+            .contains(&plugin_fault_id(&action.plugin, &action.action))
+    }
+}
+
 /// Sentinel `run_id` under which coverage-gap edges are stored, so the whole
 /// coverage-gap sub-graph can be cleared and re-derived on demand.
 pub const COVERAGE_GAP_RUN_ID: &str = "__coverage_gaps__";
@@ -45,16 +73,13 @@ pub const COVERAGE_GAP_RUN_ID: &str = "__coverage_gaps__";
 /// untested action, its owning [`NodeKind::FaultDomain`] node, and a `gap_in`
 /// edge between them. Deterministic and deduplicated.
 #[must_use]
-pub fn coverage_gap_delta<S: BuildHasher>(
-    available: &[AvailableAction],
-    tested_action_names: &HashSet<String, S>,
-) -> GraphDelta {
+pub fn coverage_gap_delta(available: &[AvailableAction], tested: &TestedFaults) -> GraphDelta {
     let mut delta = GraphDelta::default();
     let mut seen_nodes = HashSet::new();
     let mut seen_edges = HashSet::new();
 
     for action in available {
-        if tested_action_names.contains(&action.action) {
+        if tested.contains(action) {
             continue;
         }
         let gap_id = format!("gap:{}::{}", action.plugin, action.action);
@@ -102,7 +127,7 @@ mod tests {
             AvailableAction::new("tumult-net", "drop_packets"),
             AvailableAction::new("tumult-ssh", "execute"),
         ];
-        let tested: HashSet<String> = ["inject_latency".to_string()].into_iter().collect();
+        let tested = TestedFaults::from_fault_ids(["fault:tumult-net::inject_latency"]);
 
         let delta = coverage_gap_delta(&available, &tested);
 
@@ -132,7 +157,7 @@ mod tests {
     #[test]
     fn all_tested_yields_empty_delta() {
         let available = [AvailableAction::new("tumult-net", "inject_latency")];
-        let tested: HashSet<String> = ["inject_latency".to_string()].into_iter().collect();
+        let tested = TestedFaults::from_fault_ids(["fault:tumult-net::inject_latency"]);
         let delta = coverage_gap_delta(&available, &tested);
         assert!(delta.nodes.is_empty());
         assert!(delta.edges.is_empty());
@@ -145,7 +170,7 @@ mod tests {
             AvailableAction::new("tumult-net", "drop_packets"),
             AvailableAction::new("tumult-net", "inject_latency"),
         ];
-        let tested: HashSet<String> = HashSet::new();
+        let tested = TestedFaults::default();
 
         let delta = coverage_gap_delta(&available, &tested);
 
