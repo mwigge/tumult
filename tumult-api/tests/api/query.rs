@@ -1268,12 +1268,15 @@ async fn the_rates_of_the_home_page_keep_to_the_window_and_have_a_point_for_each
         ts_ns,
         ..root_span(id, Some(status))
     };
-    // Three runs five minutes ago, one five hours ago, and two in the day
-    // before the window. The last run of the list names no target.
+    // Three runs five minutes ago, two half an hour apart in one hour of
+    // the clock five hours ago, and two in the day before the window. The
+    // last run of the list names no target.
+    let earlier = (now - 5 * hour) / hour * hour;
     let spans = vec![
         at(now - 300 * NS, "now-completed", "completed"),
         at(now - 300 * NS, "now-failed", "failed"),
-        at(now - 5 * hour, "earlier-completed", "completed"),
+        at(earlier + 60 * NS, "earlier-completed", "completed"),
+        at(earlier + 1_860 * NS, "earlier-failed", "failed"),
         at(now - 36 * hour, "day-before-failed", "failed"),
         at(now - 36 * hour, "day-before-deviated", "deviated"),
         SpanRow {
@@ -1296,28 +1299,34 @@ async fn the_rates_of_the_home_page_keep_to_the_window_and_have_a_point_for_each
 
     assert_eq!(status, 200, "{overview}");
     let pass_rate = card(&overview, "pass_rate");
-    // Three of the four runs of the window passed, and none of the two of
+    // Three of the five runs of the window passed, and none of the two of
     // the day before.
     assert_eq!(
         (&pass_rate["value"], &pass_rate["delta"]),
-        (&json!(0.75), &json!(0.75)),
+        (&json!(0.6), &json!(0.6)),
         "{pass_rate}"
     );
-    // A point for the hour of the earlier run and a point for the last hour.
+    // One point for the hour of the two earlier runs, at the start of that
+    // hour, and one point for the last hour.
     assert_eq!(
         points(pass_rate),
-        [&json!(1.0), &json!(2.0 / 3.0)],
+        [&json!(0.5), &json!(2.0 / 3.0)],
+        "{pass_rate}"
+    );
+    assert_eq!(
+        rows_of(pass_rate, "spark")[0]["ts"],
+        earlier / NS,
         "{pass_rate}"
     );
     // The run without a target is in no row of the targets.
     assert_eq!(
         targets(&overview),
-        [(&json!("queue"), &json!(3), &json!(2.0 / 3.0))],
+        [(&json!("queue"), &json!(4), &json!(0.5))],
         "{overview}"
     );
-    // One deviation over the four traced runs of the window.
+    // One deviation over the five traced runs of the window.
     let deviation_rate = card(&overview, "deviation_rate");
-    assert_eq!(deviation_rate["value"], 0.25, "{deviation_rate}");
+    assert_eq!(deviation_rate["value"], 0.2, "{deviation_rate}");
 }
 
 #[tokio::test]
