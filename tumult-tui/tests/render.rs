@@ -11,15 +11,17 @@
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::backend::TestBackend;
+use ratatui::style::Color;
 use ratatui::Terminal;
 use tempfile::TempDir;
 
 use tumult_core::types::{
     ActivityResult, ActivityStatus, ActivityType, AnalysisResult, ExperimentStatus, Journal,
 };
-use tumult_lake::AnalyticsStore;
+use tumult_lake::{AnalyticsStore, RunVerdict};
 use tumult_tui::app::{App, Tab, View};
-use tumult_tui::ui;
+use tumult_tui::logic::StatusKind;
+use tumult_tui::{data, ui};
 
 fn journal(id: &str, title: &str, status: ExperimentStatus, start_ns: i64, dur_ms: u64) -> Journal {
     let failed = status != ExperimentStatus::Completed;
@@ -118,6 +120,99 @@ fn seed() -> (TempDir, std::path::PathBuf) {
         .unwrap();
     drop(store);
     (dir, path)
+}
+
+/// The names the deserializer of a status expects, read from the error it
+/// gives for a name it does not know.
+fn names_expected(refused: &serde_json::Error) -> Vec<serde_json::Value> {
+    let refused = refused.to_string();
+    let names = refused
+        .split_once("expected one of ")
+        .and_then(|(_, rest)| rest.split_once(" at line"))
+        .map_or_else(
+            || panic!("the refusal does not list the statuses: {refused}"),
+            |(names, _)| names,
+        );
+    names
+        .split(", ")
+        .map(|name| serde_json::json!(name.trim_matches('`')))
+        .collect()
+}
+
+/// Every status a run can end with, so that a status added to
+/// `ExperimentStatus` is in the list.
+fn every_run_status() -> Vec<ExperimentStatus> {
+    let refused =
+        serde_json::from_str::<ExperimentStatus>("\"none\"").expect_err("no run ends as none");
+    names_expected(&refused)
+        .into_iter()
+        .map(|name| serde_json::from_value(name).unwrap())
+        .collect()
+}
+
+/// Every status a step can end with, so that a status added to
+/// `ActivityStatus` is in the list.
+fn every_step_status() -> Vec<ActivityStatus> {
+    let refused =
+        serde_json::from_str::<ActivityStatus>("\"none\"").expect_err("no step ends as none");
+    names_expected(&refused)
+        .into_iter()
+        .map(|name| serde_json::from_value(name).unwrap())
+        .collect()
+}
+
+/// A lake with one run for each of `statuses`, a minute apart. Each run has
+/// one step for each status a step can end with.
+fn seed_every_status(statuses: &[ExperimentStatus]) -> (TempDir, std::path::PathBuf) {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("analytics.duckdb");
+    let store = AnalyticsStore::open(&path).unwrap();
+    let base = 1_700_000_000_000_000_000i64;
+    for (minute, status) in (0i64..).zip(statuses) {
+        let mut run = journal(
+            &format!("run-{status}"),
+            &format!("Run that ended {status}"),
+            status.clone(),
+            base + minute * 60_000_000_000,
+            1000,
+        );
+        let step = run.method_results[0].clone();
+        run.method_results = every_step_status()
+            .into_iter()
+            .map(|status| ActivityResult {
+                name: format!("step-{status}"),
+                status,
+                ..step.clone()
+            })
+            .collect();
+        store.ingest_journal(&run).unwrap();
+    }
+    drop(store);
+    (dir, path)
+}
+
+/// The colour of the first cell of `word` on the line of the screen that
+/// shows `line_with`; `None` when no such line shows `word`.
+fn colour_on_line(term: &Terminal<TestBackend>, line_with: &str, word: &str) -> Option<Color> {
+    let buffer = term.backend().buffer();
+    (0..buffer.area.height).find_map(|y| {
+        let cells: Vec<&ratatui::buffer::Cell> =
+            (0..buffer.area.width).map(|x| &buffer[(x, y)]).collect();
+        let symbols: Vec<&str> = cells.iter().map(|cell| cell.symbol()).collect();
+        if !symbols.concat().contains(line_with) {
+            return None;
+        }
+        (0..symbols.len())
+            .find(|at| {
+                symbols[*at..]
+                    .iter()
+                    .take(word.chars().count())
+                    .copied()
+                    .collect::<String>()
+                    == word
+            })
+            .map(|at| cells[at].fg)
+    })
 }
 
 fn buffer_text(term: &Terminal<TestBackend>) -> String {
@@ -246,4 +341,113 @@ fn compare_view_renders_marked_runs() {
     let text = buffer_text(&term);
     assert!(text.contains("Compare"));
     assert!(text.contains("Duration trend"));
+}
+
+#[test]
+fn every_status_a_run_ends_with_has_its_own_pill_in_the_tone_of_its_verdict() {
+    let statuses = every_run_status();
+    let (_dir, path) = seed_every_status(&statuses);
+    let mut app = App::new(path, 2).unwrap();
+    // The selected row is drawn in the colours of the selection.
+    app.table_state.select(None);
+
+    let mut term = Terminal::new(TestBackend::new(140, 30)).unwrap();
+    term.draw(|f| ui::render(&mut app, f)).unwrap();
+
+    let mut drawn = Vec::new();
+    let mut wanted = Vec::new();
+    for status in &statuses {
+        let pill = match status {
+            ExperimentStatus::Completed => "PASS".to_string(),
+            ExperimentStatus::Failed => "FAIL".to_string(),
+            other => other.to_string().to_ascii_uppercase(),
+        };
+        // A run that passed is green, a run that failed is red, and a run
+        // that proves nothing either way is grey.
+        let tone = match tumult_lake::run_verdict(&status.to_string()) {
+            Some(RunVerdict::Pass) => Color::Green,
+            Some(RunVerdict::Fail) => Color::Red,
+            Some(RunVerdict::NoEvidence) => Color::Gray,
+            None => panic!("{status} has no verdict"),
+        };
+        let title = format!("Run that ended {status}");
+        drawn.push((status, colour_on_line(&term, &title, &pill)));
+        wanted.push((status, Some(tone)));
+    }
+    assert_eq!(drawn, wanted);
+    assert!(!buffer_text(&term).contains("UNKNOWN"));
+}
+
+#[test]
+fn the_compare_view_shows_the_whole_pill_of_every_marked_run() {
+    let statuses = every_run_status();
+    let (_dir, path) = seed_every_status(&statuses);
+    let mut app = App::new(path, 2).unwrap();
+    for _ in &statuses {
+        app.on_key(key(KeyCode::Char(' ')));
+        app.on_key(key(KeyCode::Down));
+    }
+    app.on_key(key(KeyCode::Char('c')));
+    assert_eq!(app.view, View::Compare);
+    assert_eq!(app.marked_experiments().len(), statuses.len());
+
+    let mut term = Terminal::new(TestBackend::new(140, 30)).unwrap();
+    term.draw(|f| ui::render(&mut app, f)).unwrap();
+
+    // The longest pill has eleven letters: the column must not cut it.
+    assert_eq!(
+        colour_on_line(&term, "Run that ended interrupted", "INTERRUPTED"),
+        Some(Color::Gray),
+        "{}",
+        buffer_text(&term)
+    );
+}
+
+#[test]
+fn the_timeline_draws_each_step_in_the_tone_of_how_it_ended() {
+    let (_dir, path) = seed_every_status(&[ExperimentStatus::Completed]);
+    let mut app = App::new(path, 2).unwrap();
+    app.on_key(key(KeyCode::Enter));
+    assert_eq!(app.view, View::Detail);
+
+    let mut term = Terminal::new(TestBackend::new(140, 30)).unwrap();
+    term.draw(|f| ui::render(&mut app, f)).unwrap();
+
+    // The bar of a step is the first thing on its line.
+    let bars: Vec<(String, Option<Color>)> = every_step_status()
+        .iter()
+        .map(|status| {
+            let step = format!("step-{status}");
+            let bar = colour_on_line(&term, &step, "\u{2588}");
+            (step, bar)
+        })
+        .collect();
+    assert_eq!(
+        bars,
+        [
+            ("step-succeeded".to_string(), Some(Color::Green)),
+            ("step-failed".to_string(), Some(Color::Red)),
+            ("step-timeout".to_string(), Some(Color::Red)),
+            ("step-skipped".to_string(), Some(Color::Gray)),
+        ],
+        "{}",
+        buffer_text(&term)
+    );
+}
+
+#[test]
+fn every_status_a_step_ends_with_is_known_to_the_timeline() {
+    let (_dir, path) = seed_every_status(&[ExperimentStatus::Completed]);
+
+    let steps = data::load_activities(&path, "run-completed").unwrap();
+
+    assert_eq!(steps.len(), every_step_status().len());
+    for step in &steps {
+        assert_ne!(
+            StatusKind::of_step(&step.status),
+            StatusKind::OTHER,
+            "{}",
+            step.status
+        );
+    }
 }

@@ -8,22 +8,21 @@
 
 import { CHART } from '#lib/echarts.js';
 import type { EChartsCoreOption } from '#lib/echarts.js';
+import { runTone, type Tone } from '#lib/tone.js';
 import type { ExperimentWindow } from '#lib/types.js';
 
 type Series = EChartsCoreOption['series'] extends Array<infer S> ? S : Record<string, unknown>;
 
-/** Outcome → band color (theme Okabe-Ito hues). */
+const TONE_COLOR: Record<Tone, string> = {
+    ok: CHART.ok,
+    warn: CHART.warn,
+    fail: CHART.fail,
+    neutral: CHART.text,
+};
+
+/** Outcome → band color (theme Okabe-Ito hues), in the tone of its verdict. */
 export function outcomeColor(outcome: string | null): string {
-    switch ((outcome ?? '').toLowerCase()) {
-        case 'completed':
-            return CHART.ok;
-        case 'deviated':
-            return CHART.warn;
-        case 'failed':
-            return CHART.fail;
-        default:
-            return CHART.text;
-    }
+    return TONE_COLOR[runTone(outcome) ?? 'neutral'];
 }
 
 const shortName = (r: ExperimentWindow) => r.name ?? r.id ?? '(run)';

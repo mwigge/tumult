@@ -138,7 +138,7 @@ Independence has not been verified by this report. Organizational separation of 
   [2026\-11\-17],
   [—],
   [—],
-  [#text(fill: rgb("#E69F00"))[▲] #text(number-width: "tabular")[deviated]],
+  [#text(fill: rgb("#D55E00"))[×] #text(number-width: "tabular")[deviated]],
   [#text(number-width: "tabular")[50]],
   [Regional failover drill],
   [manual],

@@ -328,6 +328,28 @@ fn every_status_a_run_ends_with_has_one_verdict() {
 }
 
 #[test]
+fn the_verdicts_the_web_is_checked_against_are_the_verdicts_of_the_lake() {
+    // The web reads this file in `web/src/lib/tone.test.ts`. A status added
+    // to the journal fails here until the file lists it, and the file then
+    // fails the web test until the web gives it a tone.
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/run-verdicts.json");
+    let listed: std::collections::BTreeMap<String, String> =
+        serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+
+    let verdicts: std::collections::BTreeMap<String, String> = every_status()
+        .iter()
+        .map(|status| {
+            let verdict = run_verdict(&status.to_string()).map_or("none", RunVerdict::as_str);
+            (status.to_string(), verdict.to_string())
+        })
+        .collect();
+    assert_eq!(
+        listed, verdicts,
+        "tests/run-verdicts.json is not the table of run_verdict"
+    );
+}
+
+#[test]
 fn the_verdict_in_sql_is_the_verdict_in_rust() {
     let d = tempfile::TempDir::new().unwrap();
     let store = Store::open(&d.path().join("kronika.duckdb")).unwrap();

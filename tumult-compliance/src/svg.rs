@@ -30,6 +30,8 @@ pub fn render_svg(spec: &ChartSpec) -> String {
 }
 
 /// Horizontal bars in caller order, with direct value labels at bar ends.
+/// Every bar has the first colour of the palette: a bar is a number, so it
+/// takes no colour a status cell judges with.
 fn bars(rows: &[(String, f64)]) -> String {
     let label_w = 170.0_f64;
     let bar_max_w = 240.0_f64;
@@ -39,10 +41,10 @@ fn bars(rows: &[(String, f64)]) -> String {
     let mut out = format!(
         "<svg xmlns='http://www.w3.org/2000/svg' width='480' height='{h:.0}' viewBox='0 0 480 {h:.0}'>"
     );
+    let color = PALETTE[0];
     for (i, (label, v)) in rows.iter().enumerate() {
         let y = i as f64 * row_h + 4.0;
         let w = (v / max * bar_max_w).max(1.0);
-        let color = PALETTE[i % PALETTE.len()];
         out.push_str(&format!(
             "<text x='0' y='{ty:.1}' font-size='9.5' fill='#333' {FONT}>{label}</text>\
              <rect x='{label_w}' y='{y:.1}' width='{w:.1}' height='14' fill='{color}'/>\
@@ -369,6 +371,27 @@ mod tests {
         assert!(svg.contains("<rect"));
         assert!(svg.contains("pg"));
         assert!(svg.contains("100"));
+    }
+
+    #[test]
+    fn every_bar_is_drawn_in_one_colour_whatever_its_place() {
+        // A bar shows a number, not a judgement: its place in the list must
+        // not give it the colour a status cell uses for good, warn or bad.
+        let svg = render_svg(&ChartSpec::Bars(
+            (0..PALETTE.len())
+                .map(|number| (format!("experiment {number}"), 100.0))
+                .collect(),
+        ));
+
+        let fills: Vec<&str> = svg
+            .split("<rect")
+            .skip(1)
+            .map(|bar| {
+                let fill = bar.split("fill='").nth(1).expect("a fill");
+                &fill[..fill.find('\'').expect("the end of the fill")]
+            })
+            .collect();
+        assert_eq!(fills, [PALETTE[0]; PALETTE.len()], "{svg}");
     }
 
     #[test]

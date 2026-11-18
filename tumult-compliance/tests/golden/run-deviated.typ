@@ -63,7 +63,7 @@
   [#text(size: 9pt, fill: luma(100))[#smallcaps[Scenario]]], [slow\-ledger],
   [#text(size: 9pt, fill: luma(100))[#smallcaps[Severity]]], [not recorded],
   [#text(size: 9pt, fill: luma(100))[#smallcaps[Hypothesis]]], [#text(fill: rgb("#D55E00"))[×] #text(number-width: "tabular")[Not met]],
-  [#text(size: 9pt, fill: luma(100))[#smallcaps[Outcome]]], [#text(fill: rgb("#E69F00"))[▲] #text(number-width: "tabular")[deviated]],
+  [#text(size: 9pt, fill: luma(100))[#smallcaps[Outcome]]], [#text(fill: rgb("#D55E00"))[×] #text(number-width: "tabular")[deviated]],
 )
 
 == Blast radius and safety

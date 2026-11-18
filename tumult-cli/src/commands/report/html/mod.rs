@@ -8,7 +8,8 @@ pub(in crate::commands) mod measures;
 mod steps;
 
 use chrono::{DateTime, SecondsFormat, Utc};
-use tumult_core::types::{ExperimentStatus, Journal};
+use tumult_core::types::Journal;
+use tumult_lake::RunVerdict;
 
 use fmt::{badge, text};
 
@@ -79,10 +80,11 @@ fn script(sections: &str) -> String {
 }
 
 fn header(journal: &Journal, title: &str) -> String {
-    let class = match journal.status {
-        ExperimentStatus::Completed => "ok",
-        ExperimentStatus::Deviated => "warn",
-        _ => "fail",
+    // The badge has the tone of the verdict of the run, as on every page.
+    let class = match tumult_lake::run_verdict(&journal.status.to_string()) {
+        Some(RunVerdict::Pass) => "ok",
+        Some(RunVerdict::Fail) => "fail",
+        Some(RunVerdict::NoEvidence) | None => "muted",
     };
     format!(
         r#"<header>

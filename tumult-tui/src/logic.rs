@@ -3,50 +3,122 @@
 //! and value formatting. Everything here is deterministic and unit-tested so
 //! the rendering layer stays a thin projection over verified logic.
 
+use tumult_core::types::{ActivityStatus, ExperimentStatus};
+use tumult_lake::RunVerdict;
+
 use crate::model::ExperimentRow;
 
-/// Normalised outcome class for an experiment or activity status string.
+/// The tone a status is drawn in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum StatusKind {
+pub enum Tone {
+    /// A run that passed, or a step that succeeded.
     Pass,
-    Deviated,
-    Failed,
-    Aborted,
+    /// A run that failed, or a step that failed or timed out.
+    Fail,
+    /// A run that proves nothing either way, a step that did not run, or a
+    /// status the TUI does not know.
+    Neutral,
+    /// A run that has not ended.
     Running,
-    Other,
 }
 
-impl StatusKind {
-    /// Classify a raw store status string (case-insensitive).
-    #[must_use]
-    pub fn classify(status: &str) -> Self {
-        match status.to_ascii_lowercase().as_str() {
-            "completed" | "succeeded" | "passed" | "pass" => Self::Pass,
-            "deviated" | "deviation" => Self::Deviated,
-            "failed" | "error" => Self::Failed,
-            "aborted" | "halted" | "cancelled" | "canceled" => Self::Aborted,
-            "running" | "in_progress" | "started" => Self::Running,
-            _ => Self::Other,
+impl From<RunVerdict> for Tone {
+    fn from(verdict: RunVerdict) -> Self {
+        match verdict {
+            RunVerdict::Pass => Self::Pass,
+            RunVerdict::Fail => Self::Fail,
+            RunVerdict::NoEvidence => Self::Neutral,
         }
+    }
+}
+
+/// Normalised outcome class for an experiment or activity status string:
+/// the word of its pill and the tone it is drawn in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StatusKind {
+    label: &'static str,
+    tone: Tone,
+}
+
+/// The pill word of each status a run ends with, in display order.
+const RUN_PILLS: [(ExperimentStatus, &str); 6] = [
+    (ExperimentStatus::Completed, "PASS"),
+    (ExperimentStatus::Deviated, "DEVIATED"),
+    (ExperimentStatus::Failed, "FAIL"),
+    (ExperimentStatus::Halted, "HALTED"),
+    (ExperimentStatus::Aborted, "ABORTED"),
+    (ExperimentStatus::Interrupted, "INTERRUPTED"),
+];
+
+/// The pill of each status a step ends with.
+const STEP_PILLS: [(ActivityStatus, StatusKind); 4] = [
+    (
+        ActivityStatus::Succeeded,
+        StatusKind::new("PASS", Tone::Pass),
+    ),
+    (ActivityStatus::Failed, StatusKind::new("FAIL", Tone::Fail)),
+    (
+        ActivityStatus::Timeout,
+        StatusKind::new("TIMEOUT", Tone::Fail),
+    ),
+    (
+        ActivityStatus::Skipped,
+        StatusKind::new("SKIPPED", Tone::Neutral),
+    ),
+];
+
+impl StatusKind {
+    /// A run that has not ended.
+    pub const RUNNING: Self = Self::new("RUNNING", Tone::Running);
+    /// A status the TUI does not know.
+    pub const OTHER: Self = Self::new("UNKNOWN", Tone::Neutral);
+
+    const fn new(label: &'static str, tone: Tone) -> Self {
+        Self { label, tone }
+    }
+
+    /// The kind of the status a run is stored with (case-insensitive). A
+    /// run that ended has the tone of its verdict
+    /// ([`tumult_lake::run_verdict`]).
+    #[must_use]
+    pub fn of_run(status: &str) -> Self {
+        if let Some(verdict) = tumult_lake::run_verdict(status) {
+            return RUN_PILLS
+                .iter()
+                .find(|(ending, _)| ending.to_string().eq_ignore_ascii_case(status))
+                .map_or(Self::OTHER, |(_, label)| Self::new(label, verdict.into()));
+        }
+        match status.to_ascii_lowercase().as_str() {
+            "running" | "in_progress" | "started" => Self::RUNNING,
+            _ => Self::OTHER,
+        }
+    }
+
+    /// The kind of the status a step is stored with (case-insensitive).
+    #[must_use]
+    pub fn of_step(status: &str) -> Self {
+        STEP_PILLS
+            .iter()
+            .find(|(step, _)| step.to_string().eq_ignore_ascii_case(status))
+            .map_or(Self::OTHER, |(_, kind)| *kind)
     }
 
     /// Short uppercase pill label.
     #[must_use]
     pub fn label(self) -> &'static str {
-        match self {
-            Self::Pass => "PASS",
-            Self::Deviated => "DEVIATED",
-            Self::Failed => "FAIL",
-            Self::Aborted => "ABORTED",
-            Self::Running => "RUNNING",
-            Self::Other => "UNKNOWN",
-        }
+        self.label
+    }
+
+    /// The tone the pill is drawn in.
+    #[must_use]
+    pub fn tone(self) -> Tone {
+        self.tone
     }
 
     /// Whether this outcome counts as a success for success-rate trends.
     #[must_use]
     pub fn is_success(self) -> bool {
-        matches!(self, Self::Pass)
+        self.tone == Tone::Pass
     }
 }
 
@@ -114,7 +186,7 @@ pub fn sort_experiments(rows: &mut [ExperimentRow], key: SortKey, ascending: boo
 #[must_use]
 pub fn matches_filter(row: &ExperimentRow, status_filter: &str, title_query: &str) -> bool {
     let status_ok = status_filter.is_empty()
-        || StatusKind::classify(&row.status)
+        || StatusKind::of_run(&row.status)
             .label()
             .to_ascii_lowercase()
             .contains(&status_filter.to_ascii_lowercase())
@@ -208,7 +280,7 @@ pub fn success_series(chronological: &[ExperimentRow]) -> Vec<f64> {
     chronological
         .iter()
         .map(|r| {
-            if StatusKind::classify(&r.status).is_success() {
+            if StatusKind::of_run(&r.status).is_success() {
                 1.0
             } else {
                 0.0
@@ -240,31 +312,26 @@ pub fn success_rate(rows: &[ExperimentRow]) -> f64 {
     }
     let ok = rows
         .iter()
-        .filter(|r| StatusKind::classify(&r.status).is_success())
+        .filter(|r| StatusKind::of_run(&r.status).is_success())
         .count();
     (ok as f64) / (rows.len() as f64)
 }
 
 /// Count experiments per normalised status kind, returned in a stable display
-/// order (Pass, Deviated, Failed, Aborted, Running, Other), skipping zeros.
+/// order (the endings of a run in the order of [`RUN_PILLS`], then Running,
+/// then Other), skipping zeros.
 #[must_use]
 pub fn status_breakdown(rows: &[ExperimentRow]) -> Vec<(StatusKind, usize)> {
-    const ORDER: [StatusKind; 6] = [
-        StatusKind::Pass,
-        StatusKind::Deviated,
-        StatusKind::Failed,
-        StatusKind::Aborted,
-        StatusKind::Running,
-        StatusKind::Other,
-    ];
-    ORDER
+    RUN_PILLS
         .iter()
+        .map(|(ending, _)| StatusKind::of_run(&ending.to_string()))
+        .chain([StatusKind::RUNNING, StatusKind::OTHER])
         .filter_map(|kind| {
             let n = rows
                 .iter()
-                .filter(|r| StatusKind::classify(&r.status) == *kind)
+                .filter(|r| StatusKind::of_run(&r.status) == kind)
                 .count();
-            (n > 0).then_some((*kind, n))
+            (n > 0).then_some((kind, n))
         })
         .collect()
 }
@@ -319,12 +386,35 @@ mod tests {
 
     #[test]
     fn classify_covers_known_statuses() {
-        assert_eq!(StatusKind::classify("completed"), StatusKind::Pass);
-        assert_eq!(StatusKind::classify("DEVIATED"), StatusKind::Deviated);
-        assert_eq!(StatusKind::classify("failed"), StatusKind::Failed);
-        assert_eq!(StatusKind::classify("aborted"), StatusKind::Aborted);
-        assert_eq!(StatusKind::classify("running"), StatusKind::Running);
-        assert_eq!(StatusKind::classify("weird"), StatusKind::Other);
+        let pill = |kind: StatusKind| (kind.label(), kind.tone());
+        assert_eq!(pill(StatusKind::of_run("completed")), ("PASS", Tone::Pass));
+        assert_eq!(
+            pill(StatusKind::of_run("DEVIATED")),
+            ("DEVIATED", Tone::Fail)
+        );
+        assert_eq!(pill(StatusKind::of_run("failed")), ("FAIL", Tone::Fail));
+        assert_eq!(pill(StatusKind::of_run("Halted")), ("HALTED", Tone::Fail));
+        assert_eq!(
+            pill(StatusKind::of_run("aborted")),
+            ("ABORTED", Tone::Neutral)
+        );
+        assert_eq!(
+            pill(StatusKind::of_run("interrupted")),
+            ("INTERRUPTED", Tone::Neutral)
+        );
+        assert_eq!(StatusKind::of_run("running"), StatusKind::RUNNING);
+        assert_eq!(StatusKind::of_run("weird"), StatusKind::OTHER);
+        assert_eq!(pill(StatusKind::of_step("succeeded")), ("PASS", Tone::Pass));
+        assert_eq!(pill(StatusKind::of_step("Failed")), ("FAIL", Tone::Fail));
+        assert_eq!(
+            pill(StatusKind::of_step("timeout")),
+            ("TIMEOUT", Tone::Fail)
+        );
+        assert_eq!(
+            pill(StatusKind::of_step("skipped")),
+            ("SKIPPED", Tone::Neutral)
+        );
+        assert_eq!(StatusKind::of_step("completed"), StatusKind::OTHER);
     }
 
     #[test]
@@ -429,7 +519,13 @@ mod tests {
             exp("c", "deviated", 3, 1, None),
         ];
         let bd = status_breakdown(&rows);
-        assert_eq!(bd, vec![(StatusKind::Pass, 2), (StatusKind::Deviated, 1)]);
+        assert_eq!(
+            bd,
+            vec![
+                (StatusKind::of_run("completed"), 2),
+                (StatusKind::of_run("deviated"), 1)
+            ]
+        );
     }
 
     #[test]

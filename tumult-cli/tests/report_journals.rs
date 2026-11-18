@@ -78,12 +78,14 @@ fn a_run_that_did_nothing_has_a_summary_and_no_other_section() {
 
 #[test]
 fn every_status_of_a_run_has_its_colour() {
+    // A run that passed is ok, a run that failed is fail, and a run that
+    // proves nothing either way is muted, as its verdict in the lake says.
     let colours = [
         (ExperimentStatus::Completed, "ok", "completed"),
-        (ExperimentStatus::Deviated, "warn", "deviated"),
-        (ExperimentStatus::Aborted, "fail", "aborted"),
+        (ExperimentStatus::Deviated, "fail", "deviated"),
+        (ExperimentStatus::Aborted, "muted", "aborted"),
         (ExperimentStatus::Failed, "fail", "failed"),
-        (ExperimentStatus::Interrupted, "fail", "interrupted"),
+        (ExperimentStatus::Interrupted, "muted", "interrupted"),
         (ExperimentStatus::Halted, "fail", "halted"),
     ];
     for (status, class, word) in colours {

@@ -12,7 +12,7 @@ use ratatui::widgets::{
 use ratatui::Frame;
 
 use crate::app::{App, Tab, View};
-use crate::logic::{self, StatusKind};
+use crate::logic::{self, StatusKind, Tone};
 use crate::theme;
 
 /// Draw the whole frame.
@@ -78,7 +78,7 @@ fn render_header(app: &App, f: &mut Frame, area: Rect) {
                 "success {:.0}%  ",
                 logic::success_rate(&app.experiments) * 100.0
             ),
-            Style::default().fg(theme::status_color(StatusKind::Pass)),
+            Style::default().fg(theme::tone_color(Tone::Pass)),
         ),
     ]);
     let filter_desc = format!(
@@ -111,7 +111,7 @@ fn render_header(app: &App, f: &mut Frame, area: Rect) {
     if let Some(err) = &app.error {
         content.push(Line::from(Span::styled(
             format!("! {err}"),
-            Style::default().fg(theme::status_color(StatusKind::Failed)),
+            Style::default().fg(theme::tone_color(Tone::Fail)),
         )));
     }
     let para = Paragraph::new(content).block(Block::default().borders(Borders::BOTTOM));
@@ -152,7 +152,7 @@ fn render_experiments(app: &mut App, f: &mut Frame, area: Rect) {
         .iter()
         .map(|i| {
             let e = &app.experiments[*i];
-            let kind = StatusKind::classify(&e.status);
+            let kind = StatusKind::of_run(&e.status);
             let mark = if app.marks.contains(&e.id) {
                 "◉"
             } else {
@@ -178,7 +178,7 @@ fn render_experiments(app: &mut App, f: &mut Frame, area: Rect) {
     let widths = [
         Constraint::Length(14),
         Constraint::Min(20),
-        Constraint::Length(9),
+        Constraint::Length(11),
         Constraint::Length(9),
         Constraint::Length(6),
         Constraint::Length(5),
@@ -225,7 +225,7 @@ fn render_detail(app: &App, f: &mut Frame, area: Rect) {
         .constraints([Constraint::Length(5), Constraint::Min(0)])
         .split(area);
 
-    let kind = StatusKind::classify(&exp.status);
+    let kind = StatusKind::of_run(&exp.status);
     let meta = Paragraph::new(vec![
         Line::from(vec![
             Span::styled("Title  ", Style::default().fg(theme::MUTED)),
@@ -273,7 +273,7 @@ fn render_detail(app: &App, f: &mut Frame, area: Rect) {
         app.detail_activities
             .iter()
             .map(|a| {
-                let kind = StatusKind::classify(&a.status);
+                let kind = StatusKind::of_step(&a.status);
                 let bar = logic::microbar(a.duration_ms as f64, max_dur as f64, bar_width);
                 let phase = if a.phase.is_empty() {
                     String::new()
@@ -323,7 +323,7 @@ fn render_compare(app: &App, f: &mut Frame, area: Rect) {
     let rows: Vec<Row> = marked
         .iter()
         .map(|e| {
-            let kind = StatusKind::classify(&e.status);
+            let kind = StatusKind::of_run(&e.status);
             Row::new(vec![
                 Cell::from(logic::format_time(e.started_at_ns)),
                 Cell::from(e.title.clone()),
@@ -336,7 +336,7 @@ fn render_compare(app: &App, f: &mut Frame, area: Rect) {
     let widths = [
         Constraint::Length(14),
         Constraint::Min(20),
-        Constraint::Length(9),
+        Constraint::Length(11),
         Constraint::Length(9),
         Constraint::Length(6),
     ];
@@ -387,7 +387,7 @@ fn render_analytics(app: &App, f: &mut Frame, area: Rect) {
                 .borders(Borders::ALL)
                 .title(" Overall success rate "),
         )
-        .gauge_style(Style::default().fg(theme::status_color(StatusKind::Pass)))
+        .gauge_style(Style::default().fg(theme::tone_color(Tone::Pass)))
         .ratio(rate)
         .label(format!("{:.1}%", rate * 100.0));
     f.render_widget(gauge, chunks[0]);
@@ -405,7 +405,7 @@ fn render_analytics(app: &App, f: &mut Frame, area: Rect) {
         .map(|(kind, n)| {
             let bar = logic::microbar(*n as f64, max_count as f64, 12);
             ListItem::new(Line::from(vec![
-                Span::styled(format!("{:<9}", kind.label()), theme::status_style(*kind)),
+                Span::styled(format!("{:<11}", kind.label()), theme::status_style(*kind)),
                 Span::styled(
                     format!("{bar} "),
                     Style::default().fg(theme::status_color(*kind)),
@@ -431,7 +431,7 @@ fn render_analytics(app: &App, f: &mut Frame, area: Rect) {
         )),
         Line::from(Span::styled(
             succ,
-            Style::default().fg(theme::status_color(StatusKind::Pass)),
+            Style::default().fg(theme::tone_color(Tone::Pass)),
         )),
         Line::from(""),
         Line::from(Span::styled(

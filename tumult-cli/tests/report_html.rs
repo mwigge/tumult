@@ -516,7 +516,7 @@ fn the_report_of_a_run_that_deviated_shows_what_the_probe_read() {
     let html = report(&lab);
 
     assert!(
-        html.contains(r#"<span class="badge warn">deviated</span>"#),
+        html.contains(r#"<span class="badge fail">deviated</span>"#),
         "{html}"
     );
     assert_eq!(card(&html, "Steady state before"), "met");

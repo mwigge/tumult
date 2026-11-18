@@ -8582,6 +8582,7 @@ dependencies = [
  "chrono",
  "crossterm 0.29.0",
  "ratatui 0.30.2",
+ "serde_json",
  "tempfile",
  "thiserror 2.0.19",
  "tumult-core",
