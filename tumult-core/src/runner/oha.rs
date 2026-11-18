@@ -2299,6 +2299,35 @@ mod tests {
         assert!(result.thresholds_met);
     }
 
+    /// Each latency threshold is an upper bound on its own percentile, and
+    /// none of them holds for a load nobody answered.
+    #[test]
+    fn each_latency_threshold_bounds_its_own_percentile() {
+        let answered = || plan(vec![window(1, 100, 0.1)]);
+        let nobody = || plan(vec![unanswered(1, 50)]);
+        for (name, latency_ms) in [
+            ("latency_p50_ms", 10.0),
+            ("latency_p95_ms", 100.0),
+            ("latency_p99_ms", 30.0),
+        ] {
+            let at = thresholds(&[(name, latency_ms)]);
+            assert!(
+                aggregate(&run(10), answered(), &at).thresholds_met,
+                "{name}"
+            );
+            let under = thresholds(&[(name, latency_ms - 1.0)]);
+            assert!(
+                !aggregate(&run(10), answered(), &under).thresholds_met,
+                "{name}"
+            );
+            let any = thresholds(&[(name, f64::MAX)]);
+            assert!(
+                !aggregate(&run(10), nobody(), &any).thresholds_met,
+                "{name}"
+            );
+        }
+    }
+
     #[test]
     fn an_aborted_run_keeps_what_the_cut_window_reported() {
         // A flat load: one planned window, cut after 3.2 s.

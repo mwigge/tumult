@@ -242,6 +242,11 @@ fn the_error_rate_of_an_http_script_counts_its_failed_requests_not_its_checks() 
         "{result:?}"
     );
     assert_eq!(result.total_requests, 200);
+    let counts = result.execution.requests.expect("the request counts");
+    assert_eq!(
+        (counts.sent, counts.ok, counts.unclassified),
+        (200, 150, 50)
+    );
 }
 
 /// The end of a k6 1.x text summary, as recorded from a run of
