@@ -9,16 +9,18 @@
     import type { ChartTheme } from '#lib/echarts.js';
     import {
         COMPONENTS,
-        STATUS_NAMES,
         capText,
         cellLines,
         cellOf,
+        componentsLegend,
         componentsOption,
         coverageText,
         durationText,
         gaugeOption,
         heatmapHeight,
+        heatmapLegend,
         heatmapOption,
+        historyLegend,
         historyOption,
         historyStateText,
         nodeTree,
@@ -27,6 +29,7 @@
     } from '#lib/dora.js';
     import type { HeatmapMode } from '#lib/dora.js';
     import type { DoraExpectation, DoraReport, MaturityReport } from '#lib/types.js';
+    import ChartLegend from './ChartLegend.svelte';
     import DoraEvidence from './DoraEvidence.svelte';
     import DoraNotices from './DoraNotices.svelte';
     import EChart from './EChart.svelte';
@@ -251,20 +254,7 @@
                     </table>
                 </details>
             {/if}
-            <div class="legend">
-                {#if mode === 'coverage'}
-                    <span>cell = coverage in %, hue low → high</span>
-                {:else}
-                    <span
-                        >cell = evidence status {STATUS_NAMES.map((s, i) => `${i} ${s}`).join(
-                            ' · ',
-                        )}</span
-                    >
-                {/if}
-                <span><i class="swatch hatch"></i> hatched = unknown share</span>
-                <span><b>?</b> no source connected</span>
-                <span><b>–</b> no events in window</span>
-            </div>
+            <ChartLegend id="dora-heatmap" items={heatmapLegend(mode)} />
             <table class="data articles">
                 <thead>
                     <tr><th>Article</th><th>Coverage</th><th>Meets</th><th>Gap</th></tr>
@@ -381,6 +371,7 @@
                                     `${c.label} ${maturity?.components[c.key]?.toFixed(1) ?? 'unknown'}`,
                             ).join(', ')}"
                         />
+                        <ChartLegend id="dora-components" items={componentsLegend(theme)} />
                     {/if}
                     <ul class="reasons">
                         {#each COMPONENTS as c (c.key)}
@@ -401,6 +392,7 @@
                             id="dora-history"
                             label="Line chart of level and index per quarter. The same values follow as a table."
                         />
+                        <ChartLegend id="dora-history" items={historyLegend(theme)} />
                         <div class="dim center">
                             level and index per quarter, from the days the daily snapshot stored
                         </div>
@@ -691,24 +683,6 @@
     .alt summary {
         cursor: pointer;
         color: var(--text-dim);
-    }
-    .legend {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 16px;
-        color: var(--text-dim);
-        font-size: 11.5px;
-        margin: 6px 0 10px;
-    }
-    .swatch {
-        display: inline-block;
-        width: 14px;
-        height: 10px;
-        vertical-align: middle;
-        border: 1px solid var(--border-strong);
-    }
-    .swatch.hatch {
-        background: repeating-linear-gradient(135deg, var(--text-dim) 0 1px, transparent 1px 4px);
     }
     .unk {
         color: var(--text-faint);

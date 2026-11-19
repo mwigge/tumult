@@ -852,6 +852,97 @@ test('the toggles say which view is on and every chart has a name', async ({ pag
     }
 });
 
+/** The colour of each swatch of the legend of chart `id`, in order. */
+const swatches = (page: Page, id: string) =>
+    page
+        .locator(`[data-legend="${id}"] .swatch`)
+        .evaluateAll((all) =>
+            all
+                .map((el) => (el as HTMLElement).style.getPropertyValue('--swatch'))
+                .filter((colour) => colour !== ''),
+        );
+
+interface Drawn {
+    bars?: string;
+    barColour?: string;
+    level?: string;
+    lines?: { name?: string; colour?: string }[];
+    fills?: string[];
+}
+
+/** The axis names and the colours of the maturity charts and the heatmap. */
+const drawn = (page: Page) =>
+    page.evaluate((): Drawn => {
+        const w = window as Window & { __tumultCharts?: Record<string, unknown> };
+        type Option = {
+            xAxis?: { name?: string }[];
+            yAxis?: { name?: string }[];
+            series?: {
+                name?: string;
+                lineStyle?: { color?: string };
+                data?: { fill?: string | null; itemStyle?: { color?: string } }[];
+            }[];
+        };
+        const bars = w.__tumultCharts?.['dora-components'] as Option | undefined;
+        const history = w.__tumultCharts?.['dora-history'] as Option | undefined;
+        const heatmap = w.__tumultCharts?.['dora-heatmap'] as Option | undefined;
+        const fills = (heatmap?.series?.[0]?.data ?? []).flatMap((d) => (d.fill ? [d.fill] : []));
+        return {
+            bars: bars?.xAxis?.[0]?.name,
+            barColour: bars?.series?.[0]?.data?.[0]?.itemStyle?.color,
+            level: history?.yAxis?.[0]?.name,
+            lines: history?.series?.map((s) => ({ name: s.name, colour: s.lineStyle?.color })),
+            fills: [...new Set(fills)].sort(),
+        };
+    });
+
+test('the charts name their axes and say what each colour is', async ({ page }) => {
+    await mockApi(page);
+    await page.goto('/scores?view=dora');
+    await expect.poll(async () => (await drawn(page)).fills?.length).toBe(3);
+    const charts = await drawn(page);
+    expect(charts).toMatchObject({ bars: 'score (0 to 100)', level: 'level (1 to 5)' });
+
+    const heatmap = page.locator('[data-legend="dora-heatmap"] .item');
+    await expect(heatmap).toHaveText([
+        'cell = coverage in %',
+        'below 50 %',
+        'from 50 %',
+        'from 80 %',
+        'hatched = unknown share',
+        '? no source connected',
+        '– no events in window',
+    ]);
+    // The three hues the cells are drawn in, and no other.
+    expect([...(await swatches(page, 'dora-heatmap'))].sort()).toEqual(charts.fills);
+    await page.getByRole('button', { name: 'Evidence status' }).click();
+    await expect(heatmap).toHaveText([
+        'cell = evidence status',
+        '0 none',
+        '1 designed',
+        '2 existing',
+        '3 operating',
+        'hatched = unknown share',
+        '? no source connected',
+        '– no events in window',
+    ]);
+    // The cells are drawn in the hues of their rank, each one a swatch.
+    await expect.poll(async () => (await drawn(page)).fills).not.toEqual(charts.fills);
+    const ranks = await swatches(page, 'dora-heatmap');
+    const fills = (await drawn(page)).fills ?? [];
+    expect(fills.length).toBe(3);
+    expect(fills.filter((fill) => !ranks.includes(fill))).toEqual([]);
+
+    await expect(page.locator('[data-legend="dora-components"] .item')).toHaveText([
+        'component score',
+        'the component that caps the level',
+    ]);
+    expect((await swatches(page, 'dora-components'))[0]).toBe(charts.barColour);
+    await expect(page.locator('[data-legend="dora-history"] .item')).toHaveText(['Level', 'Index']);
+    expect(charts.lines?.map((line) => line.name)).toEqual(['Level', 'Index']);
+    expect(await swatches(page, 'dora-history')).toEqual(charts.lines?.map((line) => line.colour));
+});
+
 test('the heatmap has a complete table alternative', async ({ page }) => {
     await mockApi(page);
     await page.goto('/scores?view=dora');

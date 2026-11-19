@@ -12,8 +12,8 @@
 //! connection, mutations ride the daemon's single-writer channel):
 //!
 //! * `GET /api/overview?range=24h|7d|14d|30d` — KPI cards (value, delta vs the
-//!   previous equal window, sparkline), experiments per day, target-system
-//!   leaderboard, fault breakdown.
+//!   previous equal window, sparkline), runs per day, target-system
+//!   leaderboard, fault injection steps.
 //! * `GET /api/timeseries?metric=<name>&interval=5m|1h|1d&range=…` — any
 //!   semantic metric from the metrics directory as a bucketed series.
 //! * `GET /api/experiments?range=&outcome=&target=&fault=&q=` — experiment

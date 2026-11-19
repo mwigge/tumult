@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { CHART } from '#lib/echarts.js';
-import { experimentOverlay, labelGap, outcomeColor, spacedLabels } from './overlays';
+import { experimentOverlay, labelGap, outcomeColor, outcomeLegend, spacedLabels } from './overlays';
 import type { ExperimentWindow } from './types';
 
 const HOUR_MS = 3_600_000;
@@ -169,5 +169,23 @@ describe('experimentOverlay labels at the edge of the axis', () => {
 
     it('GIVEN no axis WHEN building THEN names stay centred', () => {
         expect(overlayOf([run(12)], undefined, GAP).markLine.data[0]?.label).toBeUndefined();
+    });
+});
+
+describe('outcomeLegend', () => {
+    it('names each band colour with the statuses it stands for', () => {
+        expect(outcomeLegend()).toEqual([
+            { label: 'completed', color: CHART.ok },
+            { label: 'deviated, failed, halted', color: CHART.fail },
+            { label: 'aborted, interrupted, not ended', color: CHART.text },
+        ]);
+    });
+
+    it('gives each status the colour its band is drawn in', () => {
+        for (const item of outcomeLegend()) {
+            for (const status of item.label.split(', ')) {
+                expect(outcomeColor(status === 'not ended' ? null : status)).toBe(item.color);
+            }
+        }
     });
 });

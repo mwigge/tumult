@@ -1,5 +1,5 @@
 //! `GET /api/overview` — KPI cards, experiments per day, target
-//! leaderboard, fault breakdown.
+//! leaderboard, fault injection steps.
 
 use crate::error::ApiError;
 use axum::extract::{Query, State};
@@ -19,6 +19,10 @@ use crate::ApiState;
 
 /// Span-name predicate selecting the root span of a run.
 const ROOT: &str = "span_name = 'resilience.experiment'";
+
+/// The span the runner opens over the rollback of a run; the steps of the
+/// rollback are its children.
+const ROLLBACK: &str = "resilience.rollback";
 
 /// Environment predicate for `run_roots`: a root names its own environment.
 fn and_root_env(scopes: &[String]) -> String {
@@ -56,6 +60,25 @@ fn traced_runs(f: i64, t: i64, scopes: &[String]) -> String {
         "{ROOT} AND {}{}",
         w(f, t),
         scope::and(env_trace_exists("spans", scopes))
+    )
+}
+
+/// The fault injection steps of the runs in `[f, t)` in the scopes, per
+/// fault type and subtype, for the pie. The runner marks an action
+/// "injection" and a probe sample "observation", and sets no subtype: the
+/// plugin of the step takes its place. A step of the rollback undoes a
+/// fault and is left out. A span of a manual import counts with the type
+/// and subtype it was given.
+fn sql_faults(f: i64, t: i64, scopes: &[String]) -> String {
+    format!(
+        "SELECT s.fault_type, COALESCE(s.fault_subtype, s.plugin_name) AS fault_subtype, \
+         COUNT(*) AS count FROM spans AS s \
+         WHERE s.fault_type IS NOT NULL AND s.fault_type <> 'observation' \
+         AND NOT EXISTS (SELECT 1 FROM spans AS r WHERE r.trace_id = s.trace_id \
+         AND r.span_id = s.parent_span_id AND r.span_name = '{ROLLBACK}') \
+         AND s.ts_ns >= {f} AND s.ts_ns < {t}{} \
+         GROUP BY 1, 2 ORDER BY 3 DESC LIMIT 10",
+        scope::and(env_trace_exists("s", scopes))
     )
 }
 
@@ -292,13 +315,7 @@ pub(crate) async fn overview(
             .map_err(|e| e.to_string())?;
 
         let faults = reader
-            .query_json_rows(&format!(
-                "SELECT fault_type, fault_subtype, COUNT(*) AS count FROM spans \
-                 WHERE fault_type IS NOT NULL AND {}{} \
-                 GROUP BY 1, 2 ORDER BY count DESC LIMIT 10",
-                w(cur.0, cur.1),
-                scope::and(env_trace_exists("spans", &scopes))
-            ))
+            .query_json_rows(&sql_faults(cur.0, cur.1, &scopes))
             .map_err(|e| e.to_string())?;
 
         Ok(json!({
@@ -318,6 +335,8 @@ pub(crate) async fn overview(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tumult_lake::Store;
+    use tumult_test_utils::recorded;
 
     #[test]
     fn the_runs_of_a_window_read_the_completion_logs_since_its_start() {
@@ -327,5 +346,31 @@ mod tests {
             q.contains(&tumult_lake::run_completions_sql(Some(2 * hour))),
             "the completion log join is bounded: {q}"
         );
+    }
+
+    /// The recording is what the runner sent for real runs: 78 probe
+    /// samples, 4 actions of the methods (2 in prod, 2 in staging) and 2
+    /// steps of rollbacks, every step served by the process plugin.
+    #[test]
+    fn the_fault_pie_of_the_recorded_runs_counts_the_actions_of_their_methods() {
+        let dir = tempfile::tempdir().expect("a directory");
+        let store = Store::open(&dir.path().join("lake.duckdb")).expect("a store");
+        let journals = recorded::load(&store.writer().expect("a writer"));
+        let reader = store.read_only().expect("a reader");
+        let end = recorded::day_after(&journals);
+        let pie = |scopes: &[&str]| {
+            let scopes: Vec<String> = scopes.iter().map(ToString::to_string).collect();
+            reader
+                .query_json_rows(&sql_faults(0, end, &scopes))
+                .expect("the query")
+        };
+        let injections = |count: u64| {
+            vec![json!({"fault_type": "injection", "fault_subtype": "process", "count": count})]
+        };
+
+        assert_eq!(pie(&[]), injections(4));
+        assert_eq!(pie(&["prod"]), injections(2));
+        assert_eq!(pie(&["staging"]), injections(2));
+        assert_eq!(pie(&["lab"]), Vec::<Value>::new());
     }
 }

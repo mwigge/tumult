@@ -8,7 +8,8 @@
 
 import { CHART } from '#lib/echarts.js';
 import type { EChartsCoreOption } from '#lib/echarts.js';
-import { runTone, type Tone } from '#lib/tone.js';
+import type { LegendItem } from '#lib/legend.js';
+import { RUN_TONE, runTone, type Tone } from '#lib/tone.js';
 import type { ExperimentWindow } from '#lib/types.js';
 
 type Series = EChartsCoreOption['series'] extends Array<infer S> ? S : Record<string, unknown>;
@@ -23,6 +24,22 @@ const TONE_COLOR: Record<Tone, string> = {
 /** Outcome → band color (theme Okabe-Ito hues), in the tone of its verdict. */
 export function outcomeColor(outcome: string | null): string {
     return TONE_COLOR[runTone(outcome) ?? 'neutral'];
+}
+
+/** What a run that has not ended is called in the legend; its band is neutral. */
+const NOT_ENDED = 'not ended';
+
+/**
+ * The legend of the band colours: each colour with the statuses of the
+ * runs it is drawn for. A run with no status yet has the neutral colour.
+ */
+export function outcomeLegend(): LegendItem[] {
+    const tones: Tone[] = ['ok', 'warn', 'fail', 'neutral'];
+    return tones.flatMap((tone) => {
+        const statuses = Object.keys(RUN_TONE).filter((status) => RUN_TONE[status] === tone);
+        const words = tone === 'neutral' ? [...statuses, NOT_ENDED] : statuses;
+        return words.length === 0 ? [] : [{ label: words.join(', '), color: TONE_COLOR[tone] }];
+    });
 }
 
 const shortName = (r: ExperimentWindow) => r.name ?? r.id ?? '(run)';

@@ -14,6 +14,7 @@ mod endpoints;
 mod entities;
 mod events;
 mod evidence;
+mod faults;
 mod forecast;
 mod gamedays;
 mod gate;

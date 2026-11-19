@@ -4,6 +4,7 @@
 
 import type { ChartTheme, EChartsCoreOption } from './echarts';
 import { chartTokens } from './echarts';
+import type { LegendItem } from './legend';
 import { strong, tip, tipFormatter } from './tooltip';
 import type { Tip } from './tooltip';
 import type {
@@ -52,6 +53,39 @@ export function coverageHue(coverage: number): string {
 
 export const statusHue = (rank: number) =>
     STATUS_HUES[Math.max(0, Math.min(rank, STATUS_HUES.length - 1))];
+
+/** The signs every heatmap cell can carry, in either view. */
+const CELL_SIGNS: LegendItem[] = [
+    { label: 'hatched = unknown share', mark: 'hatch' },
+    { label: 'no source connected', glyph: '?' },
+    { label: 'no events in window', glyph: '–' },
+];
+
+/**
+ * The legend of the heatmap: what a cell holds, each hue with the
+ * coverage from which it is drawn (or the evidence status it stands for),
+ * and the signs of an unknown share and of a cell without events.
+ */
+export function heatmapLegend(mode: HeatmapMode): LegendItem[] {
+    if (mode === 'status') {
+        return [
+            { label: 'cell = evidence status' },
+            ...STATUS_NAMES.map((name, rank) => ({
+                label: `${rank} ${name}`,
+                color: statusHue(rank),
+            })),
+            ...CELL_SIGNS,
+        ];
+    }
+    const [middle, high] = COVERAGE_STOPS;
+    return [
+        { label: 'cell = coverage in %' },
+        { label: `below ${pct(middle)}`, color: COVERAGE_HUES[0] },
+        { label: `from ${pct(middle)}`, color: COVERAGE_HUES[1] },
+        { label: `from ${pct(high)}`, color: COVERAGE_HUES[2] },
+        ...CELL_SIGNS,
+    ];
+}
 
 /** What a heatmap cell shows: its fill, its text and its hatched share. */
 export interface CellMark {
@@ -257,11 +291,29 @@ export function componentsOption(m: MaturityReport, theme: ChartTheme): EChartsC
     });
     return {
         tooltip: { ...t.tooltip, trigger: 'item' },
-        grid: { left: 8, right: 48, top: 8, bottom: 8, containLabel: true },
-        xAxis: { type: 'value', min: 0, max: 100 },
+        // The grid holds the labels, not the axis name: room for it below.
+        grid: { left: 8, right: 48, top: 8, bottom: 32, containLabel: true },
+        xAxis: {
+            type: 'value',
+            min: 0,
+            max: 100,
+            name: 'score (0 to 100)',
+            nameLocation: 'middle',
+            nameGap: 24,
+            nameTextStyle: { color: t.text },
+        },
         yAxis: { type: 'category', inverse: true, data: names, axisTick: { show: false } },
         series: [{ type: 'bar', name: 'components', barMaxWidth: 16, data }],
     };
+}
+
+/** The legend of the bars: the colour of a score, and of the component that caps the level. */
+export function componentsLegend(theme: ChartTheme): LegendItem[] {
+    const t = chartTokens(theme);
+    return [
+        { label: 'component score', color: t.accent },
+        { label: 'the component that caps the level', color: t.warn },
+    ];
 }
 
 /**
@@ -315,18 +367,29 @@ export function gaugeOption(m: MaturityReport, theme: ChartTheme): EChartsCoreOp
     };
 }
 
+/** The names of the two lines of the history, in the chart and in its legend. */
+const HISTORY_LINES = { level: 'Level', index: 'Index' } as const;
+
 /** Level and index per quarter. */
 export function historyOption(m: MaturityReport, theme: ChartTheme): EChartsCoreOption {
     const t = chartTokens(theme);
     return {
         tooltip: { ...t.tooltip, trigger: 'axis' },
-        grid: { left: 8, right: 12, top: 12, bottom: 8, containLabel: true },
+        // The grid holds the labels, not the axis name: room for it above.
+        grid: { left: 8, right: 12, top: 28, bottom: 8, containLabel: true },
         xAxis: { type: 'category', data: m.history.map((h) => h.quarter) },
-        yAxis: { type: 'value', min: 1, max: 5, interval: 1 },
+        yAxis: {
+            type: 'value',
+            min: 1,
+            max: 5,
+            interval: 1,
+            name: 'level (1 to 5)',
+            nameTextStyle: { color: t.text, align: 'left' },
+        },
         series: [
             {
                 type: 'line',
-                name: 'level',
+                name: HISTORY_LINES.level,
                 step: 'end',
                 symbol: 'circle',
                 data: m.history.map((h) => h.level),
@@ -335,7 +398,7 @@ export function historyOption(m: MaturityReport, theme: ChartTheme): EChartsCore
             },
             {
                 type: 'line',
-                name: 'index',
+                name: HISTORY_LINES.index,
                 symbol: 'circle',
                 data: m.history.map((h) => h.index),
                 lineStyle: { color: t.text, type: 'dashed' },
@@ -343,6 +406,15 @@ export function historyOption(m: MaturityReport, theme: ChartTheme): EChartsCore
             },
         ],
     };
+}
+
+/** The legend of the history: each line in the colour and the stroke it is drawn in. */
+export function historyLegend(theme: ChartTheme): LegendItem[] {
+    const t = chartTokens(theme);
+    return [
+        { label: HISTORY_LINES.level, color: t.accent, mark: 'line' },
+        { label: HISTORY_LINES.index, color: t.text, mark: 'dashed' },
+    ];
 }
 
 /** How a quarter of the history reads in the table next to the chart. */

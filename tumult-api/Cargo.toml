@@ -40,5 +40,8 @@ opentelemetry_sdk = { workspace = true, features = ["testing"] }
 tumult-otel = { path = "../tumult-otel" }
 # The executor of the daemon, for the runs whose steps are real processes.
 tumult-exec = { path = "../tumult-exec" }
-# `EnvGuard` for the tests that read configuration from the environment.
-tumult-test-utils = { path = "../tumult-test-utils", default-features = false }
+# `EnvGuard` for the tests that read configuration from the environment,
+# and the recording of real runs.
+tumult-test-utils = { path = "../tumult-test-utils", default-features = false, features = [
+    "recorded",
+] }
