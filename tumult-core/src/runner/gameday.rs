@@ -47,10 +47,14 @@ impl Drop for LoadGuard<'_> {
 /// The load is evidence for the whole campaign, and k6 gives its numbers
 /// only when it ends by itself. A cancelled campaign does not wait.
 fn await_load_plan(load: &LoadConfig, started: std::time::Instant, config: &RunConfig) {
-    let left_s = load_profile::plan(load).total_duration_s() - started.elapsed().as_secs_f64();
-    if left_s <= 0.0 {
+    // A plan that is no number of seconds has nothing to wait for.
+    let plan = std::time::Duration::try_from_secs_f64(load_profile::plan(load).total_duration_s())
+        .unwrap_or_default();
+    let left = plan.saturating_sub(started.elapsed());
+    if left.is_zero() {
         return;
     }
+    let left_s = left.as_secs_f64();
     tracing::info!(left_s, "gameday waits for its load to end");
     super::activity::wait_pause(Some(left_s), config.cancellation_token.as_ref());
 }
