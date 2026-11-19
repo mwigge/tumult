@@ -21,12 +21,10 @@ invoke the library, and explicitly apply derived tolerances.
 ### Static
 
 Fixed thresholds — compatible with traditional chaos tools.
+The `baseline:` block has no field for the bounds. Give them to the library.
 
-```toon
-baseline:
-  method: static
-  tolerance_lower: 0
-  tolerance_upper: 500
+```rust
+Method::Static { lower: 0.0, upper: 500.0 }
 ```
 
 ### Mean ± Nσ (Mean Standard Deviation)
@@ -46,14 +44,10 @@ With σ=2, approximately 95% of normal values fall within the bounds.
 ### Percentile
 
 Uses a percentile value with a safety multiplier. Best for latency metrics which are typically right-skewed.
+The `baseline:` block has no field for the two values. Give them to the library.
 
-```toon
-baseline:
-  method: percentile
-  duration_s: 120
-  interval_s: 2
-  percentile: 95
-  multiplier: 1.2
+```rust
+Method::Percentile { percentile: 95.0, multiplier: 1.2 }
 ```
 
 The threshold is p95 × 1.2, giving 20% headroom above the observed 95th percentile.
@@ -74,11 +68,14 @@ baseline:
 ### Warmup
 
 The first N seconds of baseline collection are discarded. This accounts for system settling time (cold caches, connection pool initialization).
+The library does not drop them. The caller discards these samples before it calls `derive_baseline`.
 
 ```toon
 baseline:
+  method: iqr
   warmup_s: 15
   duration_s: 120
+  interval_s: 2
 ```
 
 ### Anomaly Detection

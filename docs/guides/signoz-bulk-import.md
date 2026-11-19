@@ -10,7 +10,7 @@ nav_order: 24
 
 ## What it does
 
-- Reads `<lake>/spans/date=YYYY-MM-DD/data-*.parquet` (the lake's incremental span export).
+- Reads `<lake>/spans/date=YYYY-MM-DD/data-*.parquet`, the span layout of the older lake export. The lake export of this release writes one whole snapshot per table instead (`<lake>/snapshots/spans/<hash>.parquet`, named in `<lake>/_meta.json`), and the default glob of the script does not find it.
 - Inserts into `signoz_traces.signoz_index_v3` (through its `Distributed` wrapper when present), with full column mapping: timestamps, status, kind, attributes, and the materialized resilience dimensions.
 - Populates the companion resource table (`traces_v3_resource`) so the SigNoz UI can resolve services — without it your spans land but no service shows up.
 - Keeps a local ledger of imported files so re-runs are safe and incremental: a new lake export produces new files, the script imports just those.
@@ -107,7 +107,7 @@ Synthesized per row: `resource_fingerprint` (`service.name=…;host.name=…;has
 
 ## Troubleshooting
 
-**`no parquet files matched`** — the lake hasn't exported yet. Run `POST /api/lake/export` on tumultd, or point `KRONIKA_LAKE_DIR`/`PARQUET_GLOB` at the right place.
+**`no parquet files matched`** — the lake hasn't exported yet, or it has the snapshot layout (see above). Run `POST /api/lake/export` on tumultd, or point `KRONIKA_LAKE_DIR`/`PARQUET_GLOB` at the right place.
 
 **`cannot reach ClickHouse`** — in Docker mode, check the container name (`docker ps`) and that it's running. In local mode, check host/port and that you're using the native protocol port (9000), not HTTP (8123).
 

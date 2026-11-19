@@ -24,9 +24,10 @@ a Windows host** (they shell out to `taskkill` / `netsh` or spin CPU threads).
 | `cpu_stress` | Saturate CPU with worker threads | `workers` (default: host parallelism), `duration_secs` (default: 10) |
 | `network_blackhole` | Block a port/host via Windows Firewall | `port` **or** `remote_host` (exactly one) |
 
-`network_blackhole` returns the exact rollback command in its result and the
-plugin removes the firewall rule when the experiment's rollback runs
-(`netsh advfirewall firewall delete rule name=<rule>`).
+`network_blackhole` returns the exact rollback command in its result
+(`netsh advfirewall firewall delete rule name=<rule>`). The plugin has no
+rollback function of its own. Run that command as a `process` step in the
+rollbacks of the experiment.
 
 ## Example experiment
 

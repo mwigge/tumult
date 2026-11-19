@@ -12,10 +12,10 @@ Tumult uses TOON as its primary serialization format. One key advantage over JSO
 
 TOON achieves 40-50% fewer tokens than equivalent JSON for typical experiment journals. The savings come from:
 
-- No curly braces or square brackets for structure
-- No quoted keys
+- No curly braces, and square brackets only for the length of a list
+- Keys are quoted only when they hold a character such as `-`
 - Indentation-based nesting instead of delimiters
-- No commas between values
+- No commas between fields
 
 ## Example
 
@@ -49,18 +49,18 @@ The same experiment steady-state hypothesis in both formats:
 ### TOON (approx. 45 tokens)
 
 ```toon
-steady-state-hypothesis
-  title = "API responds within SLA"
-  probes
-    - type = "probe"
-      name = "api-latency-check"
-      provider
-        type = "http"
-        url = "https://api.example.com/health"
-        timeout = 5
-      tolerance
-        type = "range"
-        range = [0, 300]
+"steady-state-hypothesis":
+  title: API responds within SLA
+  probes[1]:
+    - type: probe
+      name: api-latency-check
+      provider:
+        type: http
+        url: "https://api.example.com/health"
+        timeout: 5
+      tolerance:
+        type: range
+        range[2]: 0,300
 ```
 
 ## Rough Numbers
@@ -80,26 +80,26 @@ These numbers vary by journal complexity. Larger experiments with many activitie
 
 ## Sparse Journal Serialization
 
-Tumult journals omit optional fields whose value is `None` (or equivalent zero-value) from
-serialized output. This is enforced via `#[serde(skip_serializing_if = "Option::is_none")]`
-on all optional fields in the journal types:
+Tumult journals omit many optional fields whose value is `None` (or an empty list) from
+serialized output. This is done with `#[serde(skip_serializing_if = ...)]` on the fields
+below. The phase results of `Journal` (`steady_state_before`, `steady_state_after`,
+`estimate`, `baseline_result`, `during_result`, `post_result`, `load_result`, `analysis`,
+`regulatory`) are not among them. When absent, they are written as `null`.
 
 | Type | Optional fields omitted when absent |
 |------|--------------------------------------|
-| `Journal` | `baseline_result`, `during_result`, `post_result`, `analysis` |
-| `ActivityResult` | `output`, `error`, `trace_id`, `span_id` |
-| `BaselineResult` | `anomaly_reason` |
-| `DuringResult` | `recovery_at` |
-| `PostResult` | `mttr_s` |
-| `ProbeDuring` | `output`, `error`, `trace_id`, `span_id` |
-| `AnalysisResult` | `accuracy`, `note` |
+| `Journal` | `halt`, `blast_radius`, `objectives`, `probe_samples` (when empty), `target_version`, `target` |
+| `ActivityResult` | `output`, `error` |
+| `BaselineResult` | `sigma` |
+| `DuringResult` | `degradation_onset_s`, `degradation_peak_s`, `degradation_magnitude`, `graceful_degradation` |
+| `PostResult` | `residual_degradation`, `data_integrity_verified`, `data_loss_detected`, `mttr_s` |
+| `ProbeDuring` | `breached_at_ns` |
+| `AnalysisResult` | `estimate_accuracy`, `estimate_recovery_delta_s`, `trend`, `resilience_score` |
 
 ### Effect on token counts
 
-A minimal successful experiment journal that completes all phases without deviations omits
-all error and anomaly fields. A partial run (e.g. baseline-only mode) omits the `during_result`
-and `post_result` sections entirely, reducing output by roughly 30% compared to a journal
-that serialized every `None` as `null`.
+A minimal successful experiment journal omits the `error` of each step. A phase that did
+not run stays in the journal as one line, such as `baseline_result: null`.
 
 ### Recommendations
 

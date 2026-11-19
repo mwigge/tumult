@@ -130,7 +130,8 @@ A lens changes the ring of a node and the mark before its name, never
 its colour:
 
 - **Evidence** (default): a green ring and a check mark when every run in
-  the window passed, a thick red ring and a cross when one failed. A
+  the window passed, a thick red ring and a cross when one failed. An
+  aborted or interrupted run proves nothing and is not counted. A
   dashed hollow node has no evidence at all; a short amber dash means the
   evidence is stale.
 - **Risk**: an amber ring for an open finding of the passive risk scan, a

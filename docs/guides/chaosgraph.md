@@ -53,10 +53,13 @@ ChaosGraph is intentionally small: eight node kinds, ten edge relations — incl
 | Kind | Id shape | What it is |
 |------|----------|------------|
 | `experiment` | `exp:<title>` | The stable system-under-test identity, keyed by title. Recurs across runs. |
-| `fault` | `fault:<plugin>::<function>` | A fault primitive (e.g. `tumult-net::inject_latency`). Shared by every run that injects it. Falls back to the injecting activity's name when only a journal is available. |
+| `fault` | `fault:<plugin>::<function>` | A fault primitive (e.g. `tumult-net::inject_latency`). Shared by every run that injects it. Falls back to the injecting activity's name when only a journal is available, or when the step runs a process. |
 | `service` | `svc:<host>` | A service/target the experiment acts on (e.g. `demo-app`). Stable across runs. |
 | `journal` | `run:<experiment_id>` | A single run's journal, labelled with its terminal status. Per run. |
 | `deviation` | `dev:<experiment_id>` | Present only when a run did not complete cleanly. Per run. |
+| `compliance_article` | `compliance:<framework>/<control>` | A control of a framework (e.g. `compliance:DORA/Art.25`). |
+| `coverage_gap` | `gap:<plugin>::<action>` | A catalog action that no stored run injected. |
+| `fault_domain` | `domain:<plugin>` | The plugin a coverage gap belongs to. |
 
 ### Edge relations
 
@@ -115,7 +118,7 @@ Structured response — `{kind, count, nodes:[{id,kind,label}]}`:
 }
 ```
 
-`kind` is one of `experiment`, `fault`, `service`, `journal`, `deviation`.
+`kind` is one of `experiment`, `fault`, `service`, `journal`, `deviation`, `compliance_article`, `coverage_gap`, `fault_domain`.
 
 ### `tumult_chaosgraph_neighbors`
 
@@ -187,8 +190,8 @@ This is validated on the live demo: three consecutive runs grew the experiment's
 
 Phase 1 is deliberately narrow:
 
-- **Service nodes and `targets`/`observed_on` edges are extracted only for some experiment shapes today.** A service is derived from a native provider's arguments — the first present of `upstream`, `target`, `host`, `service`, `endpoint`, `address`, `url`, `pod` — with the scheme, path, and `:port` stripped (so `http://demo-app:8080/health`, `demo-app:8080`, and `demo-app` all collapse to `demo-app`). Experiments that name their target differently, or that run through the journal-only path (no experiment definition), get faults but no service/target information yet.
-- **No compliance or coverage overlay.** The graph does not yet carry framework verdicts, resilience scores, or coverage state on its nodes.
+- **Service nodes and `targets`/`observed_on` edges are extracted only for some experiment shapes today.** A service is derived from a native provider's arguments — the first present of `upstream`, `target`, `host`, `service`, `endpoint`, `address`, `url`, `pod` — with the scheme, path, and `:port` stripped (so `http://demo-app:8080/health`, `demo-app:8080`, and `demo-app` all collapse to `demo-app`). A process step gets a service only from the `docker` or `podman` container it acts on, a host in an `http(s)` URL, or an `ssh` host. Experiments that name their target differently, or that run through the journal-only path (no experiment definition), get faults but no service/target information yet.
+- **No verdicts on nodes.** Compliance articles and coverage gaps are nodes of their own, but the graph does not yet carry framework verdicts, resilience scores, or coverage state on its nodes.
 - **No blast-radius or path queries.** Neighbours expand a fixed-depth ego graph; there is no "shortest path between two services" or "everything within N hops of this fault" query surface beyond `depth`.
 
 ## Roadmap (Phase 2)

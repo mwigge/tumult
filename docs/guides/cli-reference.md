@@ -27,10 +27,10 @@ tumult run <experiment.toon> [OPTIONS]
 | `--output-format <f>` | — | `json`: print the journal as JSON on stdout when the run has ended, also when it did not complete. Stdout then holds the journal only; the [summary](#summary) goes to stderr. Not with `--dry-run` |
 | `--var KEY=VALUE` | — | Template variable substitution (repeatable) |
 | `--target-version <v>` | — | The version of the target this run measures, recorded in the journal as `declared` (overrides `target.version`; an error when the definition has no `target` block). Without it and without `target.version`, a run that auto-ingests asks the daemon (or the local lake) once at its end which `service.version` the target's spans carried during the run and records it as `observed` |
-| `--load <tool>` | — | Run a load test concurrently with the method (`k6` or `none`) |
-| `--load-script <path>` | — | Path to load test script (k6 `.js`) |
-| `--load-vus <n>` | — | Number of virtual users for the load test |
-| `--load-duration <d>` | — | Load test duration (e.g. `30s`, `5m`) |
+| `--load <tool>` | — | Run a load test concurrently with the method (`k6`, `oha` or `none`) |
+| `--load-script <path>` | `load.js` | Path to load test script (k6 `.js`), or the URL to hit for oha |
+| `--load-vus <n>` | `10` | Number of virtual users for the load test |
+| `--load-duration <d>` | `30s` | Load test duration (e.g. `30s`, `5m`) |
 
 ### Examples
 
@@ -67,7 +67,7 @@ injected. `always` runs them on every outcome; `never` skips them entirely.
 
 ### Template Variables
 
-The `--var` flag substitutes `${KEY}` placeholders in the experiment's title and activity names before execution. This allows a single experiment template to be reused across environments:
+The `--var` flag substitutes `${KEY}` placeholders in every string field of the experiment before execution. This allows a single experiment template to be reused across environments:
 
 ```toon
 title: Resilience test for ${env} cluster ${cluster}
@@ -144,11 +144,12 @@ Reports:
 - Hypothesis probe count
 - Whether an estimate and a baseline block are present. A run does not use the baseline block, and validate says so
 - Configuration and secret resolution status
-- Template variable references (warns on undefined vars)
+- Whether a regulatory mapping is present
 
 Validation fails when:
 - a step, a guard or a control names a plugin, function or action that this binary does not have. The error lists every such step and what is available.
-- an objective names a metric outside the [metric table](experiment-format.md#objectives).
+- an objective names a metric outside the [metric table](experiment-format.md#objectives), or a `probe.<name>` metric names a probe that the steady-state hypothesis does not have.
+- the file has a key the format does not know (on a step, a provider or a tolerance) or a key written twice, a load tool with no adapter (`jmeter`) or an oha threshold the adapter does not check, or a timeout or a pause that is no number of seconds.
 
 ### Example
 
@@ -308,9 +309,12 @@ Generate regulatory compliance reports.
 
 ```
 tumult compliance <journals-dir> --framework <name>
+tumult compliance --framework <name> --sources
 ```
 
 Supported frameworks: `dora`, `nis2`, `pci-dss`, `iso-22301`, `iso-27001`, `soc2`, `basel-iii`
+
+`--sources` lists every mapped citation with its source URL and the date it was last checked, and reads no journal.
 
 The evidence summary counts two things:
 
@@ -369,7 +373,7 @@ tumult report <journal.toon> [OPTIONS]
 
 | Option | Description |
 |--------|-------------|
-| `--output <path>` | Output file path (default: `report.html`) |
+| `--output <path>` | Output file path (default: the name of the journal with `.html`, or `.xml` for `junit` and `.json` for `json`) |
 | `--format <f>` | `html` (default), `pdf`, `json`, or `junit` |
 | `--trace-ui-base <url>` | Base URL of a trace UI (e.g. Jaeger/Tempo) — HTML reports render each activity's `trace_id` as a clickable link (falls back to the `TUMULT_TRACE_UI_BASE` env var) |
 
@@ -768,6 +772,7 @@ tumult tui [--store <path>] [--refresh-secs <n>]
 | Variable | Description |
 |----------|-------------|
 | `TUMULT_PLUGIN_PATH` | Additional plugin search paths (colon-separated) |
+| `TUMULT_LAKE_PATH` | Path of the persistent store (default: `~/.tumult/lake.duckdb`) |
 | `TUMULT_OTEL_ENABLED` | Enable/disable OTel (default: `true`) |
 | `TUMULT_OTEL_CONSOLE` | Print spans to console (default: `false`) |
 | `RUST_LOG` | Tracing filter. When unset **and** no OTLP endpoint is configured, the CLI defaults it to `warn` to keep interactive output clean; set it explicitly (e.g. `info`) to see audit/telemetry logs |

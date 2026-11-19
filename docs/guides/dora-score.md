@@ -11,7 +11,7 @@ Krönika reads the lake and answers two questions for one legal entity:
 1. **Coverage** — for each DORA article and each business function, is there evidence, how fresh is it, and how much can not be seen at all?
 2. **Maturity** — an internal level from 1 to 5 for every node, from a workload up to the organisation, with the node that holds the level down named.
 
-The page is **Scores → DORA** (`/scores?view=dora`). The API is `GET /api/dora`, `GET /api/dora/{article}` and `GET /api/maturity`.
+The page is **Scores → DORA and maturity** (`/scores?view=dora`). The API is `GET /api/dora`, `GET /api/dora/{article}` and `GET /api/maturity`.
 
 Read this first: the score says what evidence exists. It does not say that the entity complies with the regulation, and the page never uses that word. The 1–5 level is an internal scale. No authority has defined it or set a target for it.
 
@@ -81,7 +81,7 @@ v(f, r) = max over evidence of  freshness · outcome · strength
 ```
 
 - **Freshness** is 1 inside the row's window. After that it halves for every further quarter of the window (`freshness_decay_fraction`, 0.25), so old evidence counts less but never nothing.
-- **Outcome** is 1 for a passed test, 0.75 for a partial one and 0.5 for a failed one. A failed test is still a test.
+- **Outcome** is 1 for a passed test, 0.75 for a partial one and 0.5 for a failed one. A failed test is still a test. An aborted or interrupted run proves nothing and is no evidence.
 - **Strength** is 1 when the evidence is direct for the row, 0.75 when supporting, 0.25 when indirect; a manual record of a test counts 0.75.
 
 Coverage of an article is the mean of `v` over its cells, weighted by row weight and by function criticality (critical 3, important 2, other 1.5). Three states are left out of that ratio and shown on their own:

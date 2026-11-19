@@ -380,7 +380,9 @@ not rejected and do not count. With nothing left out the answer carries
 no `partial_success`; with the flag off it never does, since every record
 is stored as a log record. The Collector logs a partial success as a
 warning and does not retry. OTAP has no such field: there the drops show
-in the metric and in the daemon's log only.
+in the metric and in the daemon's log only. The one exception is a store
+write that fails: that export is answered `503` (OTLP/HTTP) or
+`UNAVAILABLE` (OTLP/gRPC and OTAP), so the Collector sends it again.
 
 One export stores at most 10 000 entity events. The daemon has a single
 writer for all telemetry and folds the entity events of an export in one

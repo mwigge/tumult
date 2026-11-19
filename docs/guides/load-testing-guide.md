@@ -19,7 +19,7 @@ A system that handles faults at idle may fail under production traffic. Load tes
 
 | Tool | Best For | Metrics | Time series |
 |------|----------|---------|-------------|
-| **k6** | HTTP/gRPC APIs, scripted scenarios | req duration, error rate, throughput, VUs | end-of-run summary only |
+| **k6** | HTTP/gRPC APIs, scripted scenarios | iteration duration, error rate, throughput, VUs | end-of-run summary only |
 | **oha** | One HTTP endpoint, no script | req duration percentiles, error rate, throughput | one sample per window (soak: every `sample_interval_s`) |
 
 Both adapters implement the same `LoadExecutor` boundary and consume the same
@@ -111,7 +111,7 @@ tumult run experiment-with-load.toon
 oha needs no script: `load.script` is the URL. The adapter runs
 `oha --no-tui --output-format json -c <vus> -z <window> -w -t <timeout> <url>`
 per window (oha 1.x; older releases that only know `-j` are not supported)
-and reads the JSON summary (`summary.requestsPerSec`,
+and reads the JSON summary (`summary.total`,
 `latencyPercentiles.p50/p95/p99`, `statusCodeDistribution`,
 `errorDistribution`).
 
@@ -149,7 +149,7 @@ plan its place: a ramp reaches its peak when the plan says so, and a
 **Planned against completed.** The load result carries an `execution`
 block in the journal: `planned_windows`, `completed_windows`,
 `unanswered_windows`, `lost_to_unanswered`, `aborted`, and `reasons`; the
-lake keeps them per run, with the time the load really sampled. A slot
+lake keeps all but `reasons` per run, with the time the load really sampled. A slot
 lost behind a window in which nothing answered is part of that blackout
 (`lost_to_unanswered`), not a truncation: it fails the run only through a
 declared threshold, like the unanswered window itself. A plan that fell
@@ -174,6 +174,7 @@ whole run are request-weighted means of the window percentiles, since oha
 does not expose raw latencies; the windows themselves are kept exactly.
 `thresholds` are checked by the adapter against the aggregate (see the
 experiment format), because oha has no threshold language of its own.
+Validation refuses a threshold name the adapter does not check.
 
 **How a load ends.**
 
@@ -194,15 +195,18 @@ that left none still marks its span with `resilience.load.error` and
 `resilience.load.aborted`;
 both an aborted and a truncated load are logged as warnings.
 Cancellation is checked between activities and during
-`pause_before_s` / `pause_after_s`; an activity's own process that is already
-running is not interrupted, so hold a long experiment open with a pause
-rather than a `sleep` command.
+`pause_before_s` / `pause_after_s`. A halt or an interrupt also ends a
+process or script step of the method that is still running. It kills the
+process group of the step, and the journal records a failed step whose
+error says "stopped before it finished". A native step runs to its end, and
+so do the rollbacks and the probes of the steady state.
 
 **What the load does to the run.** A declared load is evidence the run
 depends on:
 
 | The load … | Run status |
 |---|---|
+| did not start (its binary is missing, say) | `failed` before the method runs. The command ends with `load startup failed` and writes no journal |
 | could not be collected (the tool failed, no window completed) or sent no request at all | `failed` |
 | ran but missed a declared `thresholds` bound, or did not run its whole plan | `deviated` |
 | met its thresholds | unchanged |

@@ -171,7 +171,7 @@ Tumult makes three PDF reports from the stored evidence.
 |---|---|---|
 | R1 | Management | A short resilience digest |
 | R2 | Audit and risk | An evidence pack for DORA, NIS2, ISO 27001 and SOC 2, with the approval chain |
-| R3 | The team | One GameDay in detail |
+| R3 | The team | One experiment run in detail |
 
 Reports summarise evidence. They do not certify compliance. Users who may
 see only some environments get reports for those environments only.
@@ -203,7 +203,7 @@ of its own.
 | Scores | `/scores` | Company score, treemap by team | `GET /api/scores/tree` |
 | DORA | `/scores?view=dora` | Article coverage, maturity level | `GET /api/dora`, `GET /api/maturity` |
 | Star Map | `/starmap` | The graph, three lenses, evidence drawer | `GET /api/starmap` |
-| Experiments | `/experiments` | Every experiment run, with a trace timeline | `GET /api/experiments` |
+| Experiments | `/experiments` | Every experiment run, with its journal evidence and trace timeline | `GET /api/experiments` |
 | Runs | `/runs` | Daemon runs, new run, run detail with Impact | `GET /api/runs`, `GET /api/runs/{id}/impact` |
 | Author | `/author` | Fault catalog and wizard | `GET /api/authoring/catalog` |
 | GameDays | `/gamedays` | Campaigns and their runs | `GET /api/gamedays` |

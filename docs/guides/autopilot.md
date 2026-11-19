@@ -86,12 +86,13 @@ reproducible from `(policy hash, recorded inputs)`, forever.
   checked — a run that doesn't recover is `run_failed` and the class loses
   autonomy).
 - **downgrade** — would have enacted, but one bounded condition failed
-  (cooldown, business hours, tier, unverified guard telemetry, directional
-  confidence, autonomy not yet earned). Lands in the human queue with the
-  exact blocker named.
+  (cooldown, business hours, tier, no guard when the policy requires one,
+  unverified guard telemetry, directional confidence, autonomy not yet
+  earned). Lands in the human queue with the exact blocker named.
 - **propose** — never enact-eligible (no playbook, validator blockers).
 - **veto** — hard safety stop: disabled, hollow experiment (or a playbook
-  that cannot be read), open deviation on the target, concurrent
+  that cannot be read), target not enrolled when the policy requires
+  enrollment, open deviation on the target, concurrent
   experiment, budget exhausted. Recorded, never run, names the rule that
   fired and, for a hollow one, why.
 

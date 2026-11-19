@@ -15,10 +15,10 @@ Every experiment has these sections:
 | Section | Required | Description |
 |---------|----------|-------------|
 | `version` | No | Schema version (defaults to `v1` when omitted) |
-| `title` | Yes | Human-readable experiment name |
+| `title` | No | Human-readable experiment name (empty when omitted) |
 | `description` | No | What this experiment validates |
 | `tags` | No | Classification tags for filtering and analytics |
-| `target` | No | System under test: `system` (required inside the block), `technology`, `environment`, `criticality`, `version` (the build this run measures; `tumult run --target-version` overrides it, and without either the runner records the version the target's own spans carried during the run). Emitted as `resilience.target.*` on the root span; the scorecard, the gate and environment scopes key on it, and performance verdicts compare by the recorded version. The journal of the run keeps the block as `target`, and `tumult trend --target` selects runs by its `system` or `technology` |
+| `target` | No | System under test: `system` (required inside the block), `technology`, `environment`, `criticality`, `namespace` (the target's `service.namespace`, when two services of one name report to one store), `version` (the build this run measures; `tumult run --target-version` overrides it, and without either the runner records the version the target's own spans carried during the run). Emitted as `resilience.target.*` on the root span; the scorecard, the gate and environment scopes key on it, and performance verdicts compare by the recorded version. The journal of the run keeps the block as `target`, and `tumult trend --target` selects runs by its `system` or `technology` |
 | `kind` | No | What the run is: `chaos` (default), `performance` (load and performance; `load` is accepted as another name), `robustness`, `dr`, `security`. Coverage and scores count four disciplines: chaos, load / performance, robustness and security. A `dr` run is part of robustness. Non-functional objectives are not a discipline: the `nfr` block below is verified by a run of any kind. Sets the `resilience.test.kind` span attribute |
 | `nfr` | No | Non-functional objectives verified against the run's measurements (see [Objectives](#objectives)) |
 | `rto_target_s` | No | Recovery time objective in seconds; required when `kind: dr`. Measured against post-phase MTTR |
@@ -61,7 +61,7 @@ Give each probe of `steady_state_hypothesis.probes` its own name: the run sample
 | `script` | Dispatch a discovered script plugin action | `plugin`, `function`, `arguments`, `timeout_s` |
 | `process` | Run a script or binary | `path`, `arguments`, `env`, `timeout_s` |
 
-The `native` provider dispatches through a registry of compiled-in executors (`tumult-ssh`, `tumult-net`, `tumult-kubernetes`). Referencing an unknown plugin or function fails with an error listing the available names. To probe an HTTP endpoint, use a `process` provider with `curl` — the former experimental `http` provider type has been removed and now fails validation.
+The `native` provider dispatches through a registry of compiled-in executors (`tumult-ssh`, `tumult-net`, `tumult-kubernetes`, `tumult-cloud`, `tumult-windows`). Referencing an unknown plugin or function fails with an error listing the available names. To probe an HTTP endpoint, use a `process` provider with `curl`. The former experimental `http` provider type has been removed and now fails validation.
 
 ### Script Provider
 
@@ -277,24 +277,24 @@ load:
     sample_interval_s: 30
 ```
 
-The oha adapter runs the plan window by window (`sample_interval_s` wide for a soak and at least one second, one window per stage otherwise) and records one sample per window in `load_result.samples` (`ts_ns`, `duration_s`, `vus`, `throughput_rps`, `latency_p50_ms`, `latency_p95_ms`, `latency_p99_ms`, `error_rate`, `requests`). The lake stores each field as a `probe_samples` series named `load.<field>` in the `during` phase, next to the probe samples of the same run, so a two-hour soak is a time series you can chart and compare, not one number. The k6 adapter keeps its single end-of-run summary (its per-request stream is too heavy to retain) but honours every profile through stages. Examples: `examples/checkout-ramp-k6.toon`, `examples/checkout-spike-oha.toon`, `examples/checkout-soak-oha.toon`.
+The oha adapter runs the plan window by window (`sample_interval_s` wide for a soak and at least one second, one window per stage otherwise) and records one sample per window in `load_result.samples` (`ts_ns`, `duration_s`, `vus`, `throughput_rps`, `latency_p50_ms`, `latency_p95_ms`, `latency_p99_ms`, `error_rate`, `requests`). The lake stores the rate, the three latencies and the error rate of each window as `probe_samples` series named `load.<field>`, and the length of the window as `load.window_s`, in the `during` phase, next to the probe samples of the same run, so a two-hour soak is a time series you can chart and compare, not one number. The k6 adapter keeps its single end-of-run summary (its per-request stream is too heavy to retain) but honours every profile through stages. Examples: `examples/checkout-ramp-k6.toon`, `examples/checkout-spike-oha.toon`, `examples/checkout-soak-oha.toon`.
 
 ### Robustness runs
 
-`kind: robustness` covers the runs where the question is "does it fail safely" rather than "does it recover from a fault": malformed input, saturation and soak. They use the same sections as every other experiment — the method carries the hostile inputs as probes with tolerances, the load section drives the saturation or soak, and `nfr` entries say what must hold. `examples/api-malformed-input.toon` posts oversized, truncated, wrongly typed and deeply nested bodies and expects 4xx while the health probe stays green; `examples/api-saturation.toon` ramps past capacity under cpu stress and expects shed load (429/503) rather than a dead process; `examples/checkout-soak-oha.toon` holds load for two hours and streams samples.
+`kind: robustness` covers the runs where the question is "does it fail safely" rather than "does it recover from a fault": malformed input, saturation and soak. They use the same sections as every other experiment. The method carries the hostile inputs as probes with tolerances, the load section drives the saturation or soak, and `nfr` entries say what must hold. `examples/api-malformed-input.toon` asks the checkout route for order ids that are not a number, too large, badly encoded and far too long, and expects 4xx while the health probe stays green; `examples/api-saturation.toon` ramps past capacity under cpu stress and expects shed load (429/503) rather than a dead process; `examples/checkout-soak-oha.toon` holds load for two hours and streams samples.
 
 ## Analysis (Phase 4)
 
-Computed onto the journal after the run, comparing predictions (Phase 0) and measurements:
+Computed onto the journal after the run when the experiment has an `estimate`, comparing predictions (Phase 0) and measurements:
 
 | Field | Description |
 |-------|-------------|
-| `estimate_accuracy` | 0.0–1.0 — how close the outcome was to the estimate |
+| `estimate_accuracy` | 0 or 1: 1 when the estimate said `recovered` and the run completed, or said another outcome and the run did not complete |
 | `resilience_score` | 0 or 1: 1 when the run completed |
-| `estimate_recovery_delta_s` | *Reserved — unpopulated in 2.20* |
-| `trend` | *Reserved — unpopulated in 2.20* |
+| `estimate_recovery_delta_s` | *Reserved, not populated* |
+| `trend` | *Reserved, not populated* |
 
-The degradation fields on during/post results (`degradation_onset_s`, `degradation_peak_s`, `degradation_magnitude`, `graceful_degradation`, `residual_degradation`) are likewise reserved and unpopulated in 2.20.
+The degradation fields on during/post results (`degradation_onset_s`, `degradation_peak_s`, `degradation_magnitude`, `graceful_degradation`, `residual_degradation`) are likewise reserved and not populated.
 
 ## Journal Export
 

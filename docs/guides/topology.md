@@ -122,8 +122,9 @@ over the whole graph (see the ChaosGraph guide).
 ## Demo proofs
 
 The single demo environment (`make demo`) carries the whole story:
-`make demo-topology` runs three proof scenarios — green lineage, break with
-attribution, and the full recommend→run→improve loop — capturing maps and
-lineage JSON under `demo/proof/topology/`. See the blog post
+`make demo-topology` runs five proof scenarios (green lineage, break with
+attribution, the full recommend→run→improve loop, the autopilot gate, and
+the autopilot pre-flight, enrollment, change events and OTel criticality)
+and captures maps and lineage JSON under `demo/proof/topology/`. See the blog post
 [Where compliance breaks](../blog/24-topology-compliance-lineage.md) for the
 rendered walk-through.

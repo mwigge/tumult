@@ -60,28 +60,28 @@ OTLP metric names use dots; Prometheus doesn't allow them. The collector's remot
 
 | OTLP name (what Tumult emits) | In Mimir / PromQL |
 |---|---|
-| `resilience.experiments.total` | `resilience_experiments_total` |
-| `resilience.actions.total` | `resilience_actions_total` |
-| `resilience.probes.total` | `resilience_probes_total` |
-| `resilience.hypothesis.deviations.total` | `resilience_hypothesis_deviations_total` |
-| `resilience.script.executions.total` | `resilience_script_executions_total` |
-| `resilience.rollbacks.total` | `resilience_rollbacks_total` |
-| `resilience.rollback.failures` | `resilience_rollback_failures_total` |
-| `resilience.action.duration_seconds` | `resilience_action_duration_seconds_bucket` / `_sum` / `_count` |
-| `resilience.probe.duration_seconds` | `resilience_probe_duration_seconds_bucket` / `_sum` / `_count` |
-| `resilience.experiment.duration_seconds` | `resilience_experiment_duration_seconds_bucket` / `_sum` / `_count` |
-| `resilience.baseline.duration_seconds` | `resilience_baseline_duration_seconds_bucket` / `_sum` / `_count` |
+| `tumult.experiments.total` | `tumult_experiments_total` |
+| `tumult.actions.total` | `tumult_actions_total` |
+| `tumult.probes.total` | `tumult_probes_total` |
+| `tumult.hypothesis.deviations.total` | `tumult_hypothesis_deviations_total` |
+| `tumult.plugin.script.executions.total` | `tumult_plugin_script_executions_total` |
+| `tumult.rollbacks.total` | `tumult_rollbacks_total` |
+| `tumult.plugin.errors.total` | `tumult_plugin_errors_total` |
+| `tumult.action.duration` (unit `s`) | `tumult_action_duration_seconds_bucket` / `_sum` / `_count` |
+| `tumult.probe.duration` (unit `s`) | `tumult_probe_duration_seconds_bucket` / `_sum` / `_count` |
+| `tumult.experiment.duration` (unit `s`) | `tumult_experiment_duration_seconds_bucket` / `_sum` / `_count` |
+| `tumult.baseline.samples.total` | `tumult_baseline_samples_total` |
 | `resilience.store.experiments` | `resilience_store_experiments` |
 | `resilience.store.activities` | `resilience_store_activities` |
 | `resilience.store.size_bytes` | `resilience_store_size_bytes` |
-| `resilience.store.disk_usage_pct` | `resilience_store_disk_usage_pct` |
+| `tumult.store.disk_usage_pct` | `tumult_store_disk_usage_pct` |
 
 Rules of thumb, confirmed in practice:
 
 - Dots become underscores.
-- Counters get one `_total` suffix. Names that already end in `.total` (most of Tumult's) end up with a single `_total` — no doubling with the 0.157.0 translator. A counter like `resilience.rollback.failures` (no `.total` in the name) *gains* the suffix.
-- Histograms expand into `_bucket`/`_sum`/`_count` series.
-- Labels survive: `status`, `plugin`, `outcome`, `experiment`. `service.name` becomes the `job` label, and the collector adds `otel_scope_name`.
+- Counters get one `_total` suffix. Names that already end in `.total` (all of Tumult's) end up with a single `_total`. There is no doubling with the 0.157.0 translator. A counter without `.total` in its name *gains* the suffix.
+- Histograms expand into `_bucket`/`_sum`/`_count` series. A histogram with the unit `s` gains `_seconds` first.
+- Labels survive, with dots as underscores: `resilience_outcome_status`, `resilience_plugin_name`, `resilience_action_name`, `resilience_probe_name`, `resilience_experiment_name`. `service.name` becomes the `job` label, and the collector adds `otel_scope_name`.
 
 To see the real list in your running stack:
 
@@ -93,11 +93,11 @@ Example PromQL:
 
 ```promql
 # experiment outcomes
-sum by (status) (resilience_experiments_total)
+sum by (resilience_outcome_status) (tumult_experiments_total)
 
 # action p95 per plugin
 histogram_quantile(0.95,
-  sum by (le, plugin) (rate(resilience_action_duration_seconds_bucket[$__rate_interval])))
+  sum by (le, resilience_plugin_name) (rate(tumult_action_duration_seconds_bucket[$__rate_interval])))
 ```
 
 ## Loki: logs and structured metadata
@@ -121,7 +121,7 @@ Loki 3.x ingests OTLP natively (the collector's `otlp_http/loki` exporter posts 
 {service_name="tumult"} | json | line_format "{{.event}} {{.status}}"
 
 # failures only
-{service_name="tumult"} | json | status="Failed"
+{service_name="tumult"} | json | status="failed"
 
 # count audit events per minute
 sum by (event) (count_over_time({service_name="tumult"} | json [1m]))
@@ -139,10 +139,10 @@ Explore → Tempo → TraceQL:
 
 # failed experiments
 { name = "resilience.experiment" &&
-  span.resilience.experiment.status = "Failed" }
+  span.resilience.outcome.status = "failed" }
 
 # experiments where the hypothesis didn't hold
-{ name = "resilience.experiment" && span.resilience.hypothesis.met = false }
+{ name = "resilience.experiment" && span.resilience.outcome.hypothesis_met = false }
 
 # slow actions
 { name = "resilience.action" && duration > 5s }
@@ -156,7 +156,7 @@ Explore → Tempo → TraceQL:
 This stack is a reference, full stop:
 
 - **No auth, no TLS** on any component. Grafana is anonymous-Viewer with a hardcoded `admin`/`tumult` password. Do not expose any of these ports.
-- **Single-node everything.** Mimir, Loki, and Tempo all run monolithic with filesystem storage; Loki retention is 7 days, Tempo compacts after 24h. Fine for a laptop, not for a team.
+- **Single-node everything.** Mimir, Loki, and Tempo all run monolithic with filesystem storage; Loki retention is 7 days, Tempo keeps blocks for 24h. Fine for a laptop, not for a team.
 - **No remote storage for Grafana itself** — dashboards/datasources come from provisioning files; UI edits are allowed but not durable across `down -v`.
 - The classic observability profile shares `docker/grafana/provisioning`, so this stack's Grafana also shows Jaeger/Prometheus datasources that don't resolve here (and vice versa). Harmless; they only error when queried.
 - Pinned versions (`otelcol 0.157.0`, `tempo 2.9.4`, `mimir 3.1.4`, `loki 3.6.2`, `grafana 12.4.6`) were verified together in August 2026. If you bump them, re-check the collector log for deprecation warnings — exporter kind names changed once already (`otlphttp` → `otlp_http`, etc.).
