@@ -172,7 +172,8 @@ make demo-check    # up, wait for health, run the fault sweep, assert telemetry 
 ```
 
 It brings the stack up, waits for every service to report healthy, runs each
-experiment in the sweep via `docker compose exec tumult-mcp tumult run …`, and
+experiment in the sweep via `docker compose exec tumult-mcp tumult run …`, runs
+the first once more in the same stack (the journal check judges that run), and
 asserts:
 
 1. **Each journal says what is expected** — `demo/experiments/expectations.json`

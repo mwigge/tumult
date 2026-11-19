@@ -245,7 +245,7 @@ Raw probe samples from the during and post phases are kept in the journal (`prob
 
 ## Load
 
-The optional `load` section drives load generation concurrent with the method. Two adapters share one boundary (`runner::LoadExecutor` plus the tool-agnostic plan in `runner::load_profile`): **k6** (`tool: k6`, `script` is the k6 script) and **oha** (`tool: oha`, `script` is the URL to hit). The `--load` CLI override accepts `k6`, `oha` or `none`, and takes the place of the file's load before validation. `tool: jmeter` still parses for older files, but it has no adapter, so validation refuses it.
+The optional `load` section drives load generation concurrent with the method. Two adapters share one boundary (`runner::LoadExecutor` plus the tool-agnostic plan in `runner::load_profile`): **k6** (`tool: k6`, `script` is the k6 script) and **oha** (`tool: oha`, `script` is the URL to hit). The `--load` CLI override accepts `k6`, `oha` or `none`, and takes the place of the file's load before validation. `--load none` runs the experiment without the load of its file. `tool: jmeter` still parses for older files, but it has no adapter, so validation refuses it.
 
 | Field | Required | Description |
 |---|---|---|

@@ -445,7 +445,7 @@ resilience.experiment                    (root — tumult-core runner)
 
 ### Trace Context Propagation
 
-When Tumult executes a script plugin, it injects `TRACEPARENT` and `TRACESTATE` environment variables into the subprocess. This allows scripts that emit their own OTel spans to attach as children of the `script.execute` span:
+When Tumult executes a script plugin, it injects `TRACEPARENT` and `TRACESTATE` environment variables into the subprocess. This allows scripts that emit their own OTel spans to attach as children of the `script.execute` span. With telemetry off there is no span, and a script gets no `TRACEPARENT`:
 
 ```bash
 #!/usr/bin/env bash

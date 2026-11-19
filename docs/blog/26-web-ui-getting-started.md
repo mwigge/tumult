@@ -108,8 +108,8 @@ flowchart LR
   detail page shows the live telemetry waterfall, the consumed approval
   chain, and the per-run hash-chained audit trail.
 - **E-stop** — every run has a two-step stop (`POST /api/runs/{id}/stop`):
-  the first click arms, the confirm halts the run before the next activity
-  and unwinds rollbacks. The Runs page also carries a two-click **stop-all**
+  the first click arms, the confirm ends a running process or script step,
+  starts no further step and runs the rollbacks. The Runs page also carries a two-click **stop-all**
   kill switch (`POST /api/runs/stop-all`) — deliberately never a bare
   one-click action.
 - **Evidence** — the Events page (`/api/events`) is the cross-run audit feed

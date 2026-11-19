@@ -46,7 +46,8 @@ value here without updating every component that references it.
 ## Fault domains (docker-viable — NO k8s in demo)
 `demo/experiments/` holds 13 experiments targeting the demo stack.
 `expectations.json` in that directory says what the journal of each must hold.
-`make demo-check` runs all 13 and compares each journal with it. `make demo`
+`make demo-check` runs all 13, runs the first once more in the same stack, and
+compares each journal with it. `make demo`
 warms the dashboards with one per domain, named `demo-<domain>.toon`:
 - `demo-net.toon` — tumult-net userspace proxy: latency in front of demo-app
 - `demo-postgres.toon` — `pg_terminate_backend` through `docker exec`: kill connections
