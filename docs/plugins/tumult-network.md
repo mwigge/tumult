@@ -35,7 +35,7 @@ Script-based plugin for network fault injection. Covers latency, packet loss, co
 
 | Probe | Description | Output |
 |-------|-------------|--------|
-| `ping-latency` | Round-trip latency (ms) | Float |
+| `ping-latency` | Round-trip latency (ms) | Float. A host that does not answer fails the probe with the message of `ping` |
 | `dns-resolve` | DNS resolution check | IP address or `"failed"` |
 | `dns-latency` | DNS resolution time (ms) | Integer ms or `"error"` |
 

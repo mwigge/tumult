@@ -188,6 +188,13 @@ class DistributionTests(unittest.TestCase):
         self.assertTrue(published)
         self.assertTrue(all(port.startswith("127.0.0.1:") for port in published))
 
+    def test_dashboard_import_defaults_to_the_published_signoz_port(self):
+        compose = (ROOT / "docker/docker-compose.observability.yml").read_text()
+        ui = re.search(r'^\s+- "(\d+):8080"\s+# SigNoz UI$', compose, re.M)[1]
+        script = (ROOT / "docker/signoz/dashboards/import-dashboards.sh").read_text()
+        default = re.search(r'^SIGNOZ_URL="\$\{1:-([^}]+)\}"$', script, re.M)[1]
+        self.assertEqual(default, f"http://localhost:{ui}")
+
     def run_installer(self, failure):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

@@ -156,7 +156,7 @@ e2e: build up
 	TUMULT_KAFKA_BOOTSTRAP=localhost:19092 \
 	OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:14317 \
 	cargo test --workspace -- --ignored e2e 2>&1
-	@echo "E2E tests complete. Check SigNoz at http://localhost:13301"
+	@echo "E2E tests complete. Check SigNoz at http://localhost:3301"
 
 # Mutation tests of the Rust lines changed since origin/main. Needs
 # cargo-mutants (cargo install cargo-mutants --locked). One crate:

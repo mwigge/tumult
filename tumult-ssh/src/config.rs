@@ -45,7 +45,7 @@ pub enum AuthMethod {
         /// bytes are overwritten in memory when the value is dropped.
         passphrase: Option<Zeroizing<String>>,
     },
-    /// Authenticate via SSH agent (ssh-agent / pageant).
+    /// Authenticate via the SSH agent whose socket `SSH_AUTH_SOCK` names.
     Agent,
 }
 

@@ -17,7 +17,7 @@
 //! | Variant | Description |
 //! |---------|-------------------------------------------------------|
 //! | `Key`   | Path to a PEM-encoded private key on disk (optional passphrase, zeroized on drop) |
-//! | `Agent` | Delegates to a running `ssh-agent` / pageant process |
+//! | `Agent` | Delegates to the running `ssh-agent` whose socket `SSH_AUTH_SOCK` names |
 //!
 //! # Usage
 //!

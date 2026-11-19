@@ -246,11 +246,12 @@ fn process_action_requires_target() {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// Scripts that query a service, run against stand-ins
+// Scripts that call a service or a tool of the machine, run against stand-ins
 //
 // The service tools these scripts call (the Kafka tools, docker, mysql, psql
-// and redis-cli) are stand-ins this file writes into a temp dir, and every
-// test checks that its stand-ins ran. No such tool of the machine is started.
+// and redis-cli), the tools that read or change the machine (tc, ping, top)
+// and uname are stand-ins this file writes into a temp dir, and every test
+// checks that its stand-ins ran. No such tool of the machine is started.
 // ═══════════════════════════════════════════════════════════════
 
 const CONSUMER_LAG: &str = "tumult-kafka/probes/consumer-lag.sh";
@@ -261,8 +262,9 @@ const REDIS_INFO: &str = "tumult-db-redis/probes/redis-info.sh";
 const MYSQL_KILL_CONNECTIONS: &str = "tumult-db-mysql/actions/kill-connections.sh";
 const POSTGRES_KILL_CONNECTIONS: &str = "tumult-db-postgres/actions/kill-connections.sh";
 
-/// The service tools the scripts look for on `PATH`.
-const SERVICE_TOOLS: [&str; 10] = [
+/// The service tools the scripts look for on `PATH`, and the tools of the
+/// machine they read or change.
+const SERVICE_TOOLS: [&str; 14] = [
     "docker",
     "mysql",
     "psql",
@@ -273,6 +275,10 @@ const SERVICE_TOOLS: [&str; 10] = [
     "kafka-consumer-groups.sh",
     "kafka-broker-api-versions",
     "kafka-broker-api-versions.sh",
+    "tc",
+    "ping",
+    "top",
+    "uname",
 ];
 
 /// What a service tool does until a test gives it an answer.
@@ -893,4 +899,228 @@ exit 2"#,
         stderr.contains("port 5432 failed: Connection refused"),
         "{stderr}"
     );
+}
+
+// ── tumult-network ────────────────────────────────────────────
+
+const ADD_LATENCY: &str = "tumult-network/actions/add-latency.sh";
+const PING_LATENCY: &str = "tumult-network/probes/ping-latency.sh";
+
+/// Stand-ins for `uname`, which names `os`, and for `tool`, which runs
+/// `answer`.
+fn stubs_on(os: &str, tool: &str, answer: &str) -> Stubs {
+    let stubs = Stubs::new();
+    stubs.tool("bin/uname", &format!("echo {os}"));
+    stubs.tool(&format!("bin/{tool}"), answer);
+    stubs
+}
+
+#[test]
+fn add_latency_delays_the_whole_interface_when_no_target_ip_is_given() {
+    let stubs = stubs_on("Linux", "tc", "exit 0");
+
+    let (code, stdout, stderr) = stubs.run(ADD_LATENCY, &[]);
+
+    assert_eq!(code, 0, "{stderr}");
+    assert_eq!(
+        stubs.calls(),
+        [
+            "uname -s",
+            "tc qdisc add dev eth0 root netem delay 100ms 10ms"
+        ]
+    );
+    assert_eq!(
+        stdout,
+        "adding 100ms (±10ms) latency on eth0\nlatency injection active\n"
+    );
+}
+
+#[test]
+fn add_latency_delays_only_the_traffic_to_the_target_ip() {
+    let stubs = stubs_on("Linux", "tc", "exit 0");
+
+    let (code, stdout, stderr) = stubs.run(
+        ADD_LATENCY,
+        &[
+            ("TUMULT_TARGET_IP", "10.0.1.50"),
+            ("TUMULT_INTERFACE", "ens3"),
+            ("TUMULT_DELAY_MS", "250"),
+            ("TUMULT_JITTER_MS", "0"),
+        ],
+    );
+
+    assert_eq!(code, 0, "{stderr}");
+    assert_eq!(
+        stubs.calls(),
+        [
+            "uname -s",
+            "tc qdisc add dev ens3 root handle 1: prio",
+            "tc qdisc add dev ens3 parent 1:3 handle 30: netem delay 250ms 0ms",
+            "tc filter add dev ens3 parent 1:0 protocol ip u32 match ip dst 10.0.1.50/32 flowid 1:3",
+        ]
+    );
+    assert_eq!(
+        stdout,
+        "adding 250ms (±0ms) latency to 10.0.1.50 on ens3\nlatency injection active\n"
+    );
+}
+
+const PING_CALL: &str = "ping -c 3 -q db";
+
+/// What `ping -c 3 -q` prints on Linux for a host that answers.
+const LINUX_PING: &str = "cat <<'EOF'
+PING db (10.0.1.50) 56(84) bytes of data.
+
+--- db ping statistics ---
+3 packets transmitted, 3 received, 0% packet loss, time 2003ms
+rtt min/avg/max/mdev = 0.045/0.052/0.061/0.007 ms
+EOF";
+
+/// What `ping -c 3 -q` prints on macOS for a host that answers.
+const DARWIN_PING: &str = "cat <<'EOF'
+PING db (10.0.1.50): 56 data bytes
+
+--- db ping statistics ---
+3 packets transmitted, 3 packets received, 0.0% packet loss
+round-trip min/avg/max/stddev = 0.045/0.052/0.061/0.007 ms
+EOF";
+
+/// The line of the summary of Linux `ping` for a host that does not answer.
+const NO_REPLY: &str = "3 packets transmitted, 0 received, 100% packet loss, time 2052ms";
+
+#[test]
+fn ping_latency_probe_reads_the_average_round_trip_on_linux() {
+    let stubs = stubs_on("Linux", "ping", LINUX_PING);
+
+    let (code, stdout, stderr) = stubs.run(PING_LATENCY, &[("TUMULT_TARGET_HOST", "db")]);
+
+    assert_eq!(stubs.calls(), ["uname -s", PING_CALL]);
+    assert_eq!(code, 0, "{stderr}");
+    assert_eq!(stdout, "0.052\n");
+}
+
+#[test]
+fn ping_latency_probe_fails_with_the_message_of_ping_when_the_host_does_not_answer() {
+    // Linux ping writes its summary on stdout, also for a host that is down.
+    let stubs = stubs_on(
+        "Linux",
+        "ping",
+        &format!(
+            "printf 'PING db (10.0.1.50) 56(84) bytes of data.\\n\\n--- db ping statistics ---\\n%s\\n' '{NO_REPLY}'\nexit 1"
+        ),
+    );
+
+    let run = stubs.run(PING_LATENCY, &[("TUMULT_TARGET_HOST", "db")]);
+
+    assert_eq!(stubs.calls(), ["uname -s", PING_CALL]);
+    assert_eq!(run.0, 1, "the status of ping: {}", run.2);
+    assert_failed_with(&run, NO_REPLY);
+}
+
+#[test]
+fn ping_latency_probe_fails_when_ping_prints_no_round_trip_time_on_linux() {
+    let stubs = stubs_on(
+        "Linux",
+        "ping",
+        "echo 'PING db (10.0.1.50) 56(84) bytes of data.'",
+    );
+
+    let run = stubs.run(PING_LATENCY, &[("TUMULT_TARGET_HOST", "db")]);
+
+    assert_eq!(stubs.calls(), ["uname -s", PING_CALL]);
+    assert_failed_with(&run, "PING db (10.0.1.50) 56(84) bytes of data.");
+}
+
+#[test]
+fn ping_latency_probe_reads_the_average_round_trip_on_macos() {
+    let stubs = stubs_on("Darwin", "ping", DARWIN_PING);
+
+    let (code, stdout, stderr) = stubs.run(PING_LATENCY, &[("TUMULT_TARGET_HOST", "db")]);
+
+    assert_eq!(stubs.calls(), ["uname -s", PING_CALL]);
+    assert_eq!(code, 0, "{stderr}");
+    assert_eq!(stdout, "0.052\n");
+}
+
+#[test]
+fn ping_latency_probe_fails_with_the_message_of_ping_when_the_name_is_unknown_on_macos() {
+    let stubs = stubs_on(
+        "Darwin",
+        "ping",
+        "echo 'ping: cannot resolve db: Unknown host' >&2\nexit 68",
+    );
+
+    let run = stubs.run(PING_LATENCY, &[("TUMULT_TARGET_HOST", "db")]);
+
+    assert_eq!(stubs.calls(), ["uname -s", PING_CALL]);
+    assert_eq!(run.0, 68, "the status of ping: {}", run.2);
+    assert_failed_with(&run, "ping: cannot resolve db: Unknown host");
+}
+
+#[test]
+fn ping_latency_probe_fails_when_ping_prints_no_round_trip_time_on_macos() {
+    let stubs = stubs_on(
+        "Darwin",
+        "ping",
+        "echo 'PING db (10.0.1.50): 56 data bytes'",
+    );
+
+    let run = stubs.run(PING_LATENCY, &[("TUMULT_TARGET_HOST", "db")]);
+
+    assert_eq!(stubs.calls(), ["uname -s", PING_CALL]);
+    assert_failed_with(&run, "PING db (10.0.1.50): 56 data bytes");
+}
+
+// ── tumult-stress ─────────────────────────────────────────────
+
+const CPU_UTILIZATION: &str = "tumult-stress/probes/cpu-utilization.sh";
+const TOP_CALL: &str = "top -l 1 -n 0";
+
+#[test]
+fn cpu_utilization_probe_reads_the_busy_share_from_top_on_macos() {
+    let stubs = stubs_on(
+        "Darwin",
+        "top",
+        "cat <<'EOF'
+Processes: 512 total, 3 running, 509 sleeping, 2390 threads
+2026/11/19 12:00:00
+Load Avg: 1.80, 1.86, 1.89
+CPU usage: 5.26% user, 10.52% sys, 84.21% idle
+SharedLibs: 371M resident, 61M data, 25M linkedit.
+EOF",
+    );
+
+    let (code, stdout, stderr) = stubs.run(CPU_UTILIZATION, &[]);
+
+    assert_eq!(stubs.calls(), ["uname -s", TOP_CALL]);
+    assert_eq!(code, 0, "{stderr}");
+    assert_eq!(stdout, "15.79\n");
+}
+
+#[test]
+fn cpu_utilization_probe_fails_with_the_message_of_top_when_top_fails_on_macos() {
+    let stubs = stubs_on(
+        "Darwin",
+        "top",
+        "echo 'top: sysctl: Operation not permitted' >&2\nexit 1",
+    );
+
+    let run = stubs.run(CPU_UTILIZATION, &[]);
+
+    assert_eq!(stubs.calls(), ["uname -s", TOP_CALL]);
+    assert_failed_with(&run, "top: sysctl: Operation not permitted");
+}
+
+#[test]
+fn cpu_utilization_probe_fails_when_top_prints_no_cpu_usage_on_macos() {
+    let stubs = stubs_on(
+        "Darwin",
+        "top",
+        "echo 'Processes: 512 total, 3 running, 509 sleeping, 2390 threads'",
+    );
+
+    let run = stubs.run(CPU_UTILIZATION, &[]);
+
+    assert_eq!(stubs.calls(), ["uname -s", TOP_CALL]);
+    assert_failed_with(&run, "Processes: 512 total");
 }
