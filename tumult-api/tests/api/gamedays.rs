@@ -233,6 +233,95 @@ async fn start_campaign_creates_the_parent_run() {
     assert_eq!(body["count"], 0, "no children yet: {body}");
 }
 
+/// Launch a campaign of `gameday_id` into `env`; returns the parent run id.
+async fn launch(base: &str, gameday_id: &str, env: &str) -> String {
+    let resp = reqwest::Client::new()
+        .post(format!("{base}/api/gamedays/{gameday_id}/runs"))
+        .json(&json!({"env": env}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 202);
+    let body: Value = resp.json().await.unwrap();
+    body["run_id"].as_str().unwrap().to_string()
+}
+
+/// A campaign parent keeps its environment in `params_json`, and the API
+/// sends it as a JSON object, not as a string of JSON: in the run and in
+/// the run list.
+#[tokio::test]
+async fn a_campaign_parent_sends_its_environment_as_an_object() {
+    let srv = spawn_server().await;
+    let (status, body) = validate_gameday(&srv.base, GAMEDAY, experiment_map()).await;
+    assert_eq!(status, 200, "{body}");
+    let gameday_id = body["gameday_registry_id"].as_str().unwrap().to_string();
+    let parent = launch(&srv.base, &gameday_id, "staging").await;
+    let params = json!({"env": "staging"});
+
+    let (status, detail) = get(&srv.base, &format!("/api/runs/{parent}")).await;
+    assert_eq!(status, 200, "{detail}");
+    assert_eq!(detail["run"]["params_json"], params, "{detail}");
+
+    let (status, list) = get(&srv.base, "/api/runs").await;
+    assert_eq!(status, 200, "{list}");
+    assert_eq!(list["runs"][0]["id"], json!(parent), "{list}");
+    assert_eq!(list["runs"][0]["params_json"], params, "{list}");
+}
+
+/// `GET /api/runs?registry_id=` lists the campaigns of a GameDay, however
+/// many runs came after them. An unknown id is an empty list.
+#[tokio::test]
+async fn the_run_list_finds_a_campaign_by_its_gameday() {
+    let srv = spawn_server().await;
+    let (status, body) = validate_gameday(&srv.base, GAMEDAY, experiment_map()).await;
+    assert_eq!(status, 200, "{body}");
+    let gameday_id = body["gameday_registry_id"].as_str().unwrap().to_string();
+    let parent = launch(&srv.base, &gameday_id, "dev").await;
+
+    // 60 runs of another experiment come after the campaign.
+    let other = crate::runs::register_toon(&srv.base, RUN_TOON).await;
+    for _ in 0..60 {
+        let resp = reqwest::Client::new()
+            .post(format!("{}/api/runs", srv.base))
+            .json(&json!({"registry_id": other}))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(resp.status().as_u16(), 202);
+    }
+    let (status, newest) = get(&srv.base, "/api/runs?limit=50").await;
+    assert_eq!(status, 200, "{newest}");
+    let ids: Vec<&str> = newest["runs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|run| run["id"].as_str())
+        .collect();
+    assert!(
+        !ids.contains(&parent.as_str()),
+        "the newest 50 runs hold no campaign"
+    );
+
+    let (status, body) = get(
+        &srv.base,
+        &format!("/api/runs?registry_id={gameday_id}&limit=50"),
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["count"], 1, "{body}");
+    assert_eq!(body["runs"][0]["id"], json!(parent), "{body}");
+    assert_eq!(body["runs"][0]["registry_id"], json!(gameday_id), "{body}");
+
+    let (status, body) = get(&srv.base, "/api/runs?registry_id=reg-nope").await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["count"], 0, "{body}");
+    assert_eq!(body["runs"], json!([]), "{body}");
+
+    let long = "r".repeat(101);
+    let (status, body) = get(&srv.base, &format!("/api/runs?registry_id={long}")).await;
+    assert_eq!(status, 400, "{body}");
+}
+
 /// Two simultaneous launches of the same gameday race; the single-writer
 /// check-and-insert serializes them, so exactly one is accepted (202) and
 /// the other conflicts (409) — never two active campaigns.

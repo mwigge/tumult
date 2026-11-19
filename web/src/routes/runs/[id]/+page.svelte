@@ -2,6 +2,7 @@
     import { page } from '$app/state';
     import { onMount } from 'svelte';
     import { ACTIVE_RUN_STATES, api } from '#lib/api.js';
+    import { planVars } from '#lib/run-params.js';
     import type { DryRunScope, ExperimentDetail, MeResponse, RunDetail, Span } from '#lib/types.js';
     import Waterfall from '#lib/components/Waterfall.svelte';
     import SpanDrawer from '#lib/components/SpanDrawer.svelte';
@@ -90,10 +91,7 @@
                 error = null;
                 if (!scope && !scopeFailed) {
                     try {
-                        const vars = d.run.params_json
-                            ? (JSON.parse(d.run.params_json) as Record<string, string>)
-                            : {};
-                        const r = await api.dryRun(d.run.registry_id, vars);
+                        const r = await api.dryRun(d.run.registry_id, planVars(d.run.params_json));
                         if (cancelled) return;
                         if (r.valid) scope = r.plan.scope;
                         else scopeFailed = true;

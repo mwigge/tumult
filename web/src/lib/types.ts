@@ -1040,7 +1040,8 @@ export interface RunRow {
     state: RunExecState;
     /** Campaign parent when this run is a gameday child (schema v12). */
     gameday_id?: string | null;
-    params_json: string | null;
+    /** A JSON object: the vars of a run, or `env` of a campaign parent; null without either. */
+    params_json: Record<string, unknown> | null;
     experiment_id: string | null;
     rollback_status: string | null;
     error: string | null;
@@ -1072,7 +1073,8 @@ export interface ApprovalRequest {
     run_id: string;
     state: string;
     queued_at_ns: number;
-    params_json: string | null;
+    /** The vars of the run as a JSON object, as in `RunRow`. */
+    params_json: Record<string, unknown> | null;
     definition_name: string | null;
     tier: ApprovalTier;
     /** SHA-256 pin of the approved definition bytes (64 hex chars). */

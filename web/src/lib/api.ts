@@ -507,6 +507,12 @@ export const api = {
             { env },
         ),
 
+    // The runs of a GameDay definition, newest first: its campaign parents.
+    gamedayCampaigns: (gamedayId: string) =>
+        get<{ count: number; runs: RunRow[] }>(
+            `/api/runs?registry_id=${encodeURIComponent(gamedayId)}&limit=10`,
+        ),
+
     campaignRuns: (parentId: string) =>
         get<{ count: number; runs: RunRow[] }>(
             `/api/runs?gameday_id=${encodeURIComponent(parentId)}&limit=100`,

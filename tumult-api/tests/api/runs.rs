@@ -287,6 +287,40 @@ async fn run_audit_verify_reports_chain_validity() {
     assert_eq!(status, 404);
 }
 
+/// The vars of a run come back as a JSON object, not as a string of JSON:
+/// in the run, in the run list and in the approval queue. The web reads
+/// them in this shape.
+#[tokio::test]
+async fn the_vars_of_a_run_are_an_object_on_every_read() {
+    let srv = spawn_server().await;
+    let registry_id = register_run_def(&srv.base).await;
+    let resp = reqwest::Client::new()
+        .post(format!("{}/api/runs", srv.base))
+        .json(&json!({"registry_id": registry_id, "vars": {"region": "eu-north"}}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 202);
+    let body: Value = resp.json().await.unwrap();
+    assert_eq!(body["state"], "pending_approval", "{body}");
+    let run_id = body["run_id"].as_str().unwrap().to_string();
+    let vars = json!({"region": "eu-north"});
+
+    let (status, detail) = get(&srv.base, &format!("/api/runs/{run_id}")).await;
+    assert_eq!(status, 200, "{detail}");
+    assert_eq!(detail["run"]["params_json"], vars, "{detail}");
+
+    let (status, list) = get(&srv.base, "/api/runs").await;
+    assert_eq!(status, 200, "{list}");
+    assert_eq!(list["runs"][0]["id"], json!(run_id), "{list}");
+    assert_eq!(list["runs"][0]["params_json"], vars, "{list}");
+
+    let (status, queue) = get(&srv.base, "/api/approvals").await;
+    assert_eq!(status, 200, "{queue}");
+    assert_eq!(queue["queue"][0]["run_id"], json!(run_id), "{queue}");
+    assert_eq!(queue["queue"][0]["params_json"], vars, "{queue}");
+}
+
 /// A bound probe-only definition classifies T0 and enqueues directly.
 /// The held executor pins its first probe while the backpressure test fills
 /// every waiting slot, independent of HTTP scheduling or machine speed.

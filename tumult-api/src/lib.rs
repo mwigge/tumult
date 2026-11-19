@@ -97,8 +97,11 @@
 //!   with a canonical pin. `POST /api/runs/{id}/stop` e-stops a run
 //!   (mid-method cancel with rollbacks, or cancel-before-start when still
 //!   queued).
-//! * `GET /api/runs?state=&limit=` / `GET /api/runs/{id}` — run list and
-//!   one run with its audit trail and approval chain (request + decisions).
+//! * `GET /api/runs?state=&limit=&gameday_id=&registry_id=` /
+//!   `GET /api/runs/{id}` — run list (`gameday_id`: the children of one
+//!   campaign; `registry_id`: the runs of one definition, for a GameDay its
+//!   campaigns) and one run with its audit trail and approval chain
+//!   (request + decisions).
 //! * `GET /api/approvals` — the pending approval queue;
 //!   `POST /api/runs/{id}/approve` / `POST /api/runs/{id}/reject` record an
 //!   approver's decision (Approver role, approver ≠ requester, T3 re-runs
