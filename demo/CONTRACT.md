@@ -10,8 +10,9 @@ value here without updating every component that references it.
   dashboards populate immediately.
 - `make demo-down` — tear down, remove volumes.
 - `make demo-check` — headless smoke test: bring up, wait for health, run the
-  sweep, assert traces+metrics landed, exit non-zero on any failure. Used as a
-  functional smoke test in development.
+  sweep, assert spans reached the collector, check the Star Map of a Krönika
+  demo, exit non-zero on any failure. Used as a functional smoke test in
+  development.
 
 ## Docker
 - Compose file: `docker/docker-compose.demo.yml`
@@ -22,7 +23,7 @@ value here without updating every component that references it.
 - `demo-postgres` — Postgres 16 the app depends on → 5433:5432
 - `demo-app` — purpose-built axum order service, OTel-instrumented → 8080:8080
 - `demo-sshd` — sshd container as the ssh fault target (reuse docker/Dockerfile.sshd) → 2222:22
-- `signoz` — observability UI (traces+metrics+dashboards) → 3301:3301
+- `signoz` — observability UI (traces+metrics+dashboards) → 3301:8080
 - `tumult-collector` — OTel collector (reuse docker/tumult-collector/config.yaml) → OTLP grpc 4317 (host 14317), http 4318 (host 14318)
 - `tumult-mcp` — Tumult MCP server, HTTP transport → 3100:3100
 - `demo-control-panel` — web control panel (MCP client) → 8088:8088
@@ -38,6 +39,7 @@ value here without updating every component that references it.
 - `GET /health` → 200 `{status:"ok"}` when DB reachable, 503 otherwise
 - `GET /orders` → list orders (DB read; emits a span)
 - `POST /orders` → create order (DB write; emits a span)
+- `GET /orders/:id` → one order (DB read; emits a span), 404 when there is none
 - `GET /checkout/:id` → simulated multi-step op (DB + internal work; the richest trace)
 - Every handler emits OTel spans to the collector; service name `demo-app`.
 
@@ -46,10 +48,10 @@ value here without updating every component that references it.
 `expectations.json` in that directory says what the journal of each must hold.
 `make demo-check` runs all 13 and compares each journal with it. `make demo`
 warms the dashboards with one per domain, named `demo-<domain>.toon`:
-- `demo-net.toon` — tumult-net userspace proxy: latency between demo-app and demo-postgres
-- `demo-postgres.toon` — tumult-db-postgres script plugin: kill connections
-- `demo-container.toon` — tumult-pumba or container pause: pause demo-postgres briefly
-- `demo-stress.toon` — tumult-stress: CPU/memory pressure on demo-app container
+- `demo-net.toon` — tumult-net userspace proxy: latency in front of demo-app
+- `demo-postgres.toon` — `pg_terminate_backend` through `docker exec`: kill connections
+- `demo-container.toon` — container pause (`docker pause`): pause demo-postgres briefly
+- `demo-stress.toon` — Pumba stress: CPU pressure on demo-app container
 - `demo-process.toon` — process fault against demo-app
 - `demo-ssh.toon` — tumult-ssh native execute against demo-sshd
 - `demo-agentic.toon` — an agentic scenario smoke (no external API — bundled fake adapter)
@@ -68,9 +70,9 @@ Each experiment must `validate` clean and run against the live demo stack.
 - Small web app; serves a single dashboard page at `http://localhost:8088`.
 - It is an MCP client of `tumult-mcp` (http://tumult-mcp:3100, bearer TUMULT_MCP_TOKEN).
 - Per-domain cards: name, description, a Run button (calls MCP tumult_run_experiment
-  with the domain's experiment), live status (running/passed/failed + duration),
-  and a "View traces" deep link into SigNoz filtered to service demo-app around
-  the run window.
+  with the domain's experiment), live status (running/passed/deviated/failed +
+  duration), and an "Open traces" link to the SigNoz traces explorer that names
+  the service to filter on (demo-app).
 - Uses the MCP tool annotations to badge destructive actions (a confirm step).
 - No build-time secrets; token from env.
 

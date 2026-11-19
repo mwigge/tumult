@@ -4,16 +4,16 @@ ClickHouse analytics backend for Tumult -- enables shared storage with SigNoz fo
 
 ## Key Types
 
-- `ClickHouseClient` -- connection and query interface
-- `ClickHouseIngester` -- writes experiment data to ClickHouse tables
+- `ClickHouseStore` -- connection and query interface, and writes experiment data to ClickHouse tables
+- `ClickHouseConfig` -- the URL, database and user, read from `TUMULT_CLICKHOUSE_*`
 
 ## Usage
 
 ```rust
-use tumult_clickhouse::ClickHouseClient;
+use tumult_clickhouse::{ClickHouseConfig, ClickHouseStore};
 
-let client = ClickHouseClient::new("http://localhost:8123")?;
-client.ingest_journal(&journal).await?;
+let store = ClickHouseStore::connect(&ClickHouseConfig::from_env()).await?;
+store.ingest_journal_async(&journal).await?;
 ```
 
 ## More Information

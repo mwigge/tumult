@@ -6,7 +6,7 @@
 //! no runner, no clock, and no I/O beyond parsing policy TOML text handed
 //! in by the caller. The engine (triggers, decision store, journal, MCP
 //! surface) lives elsewhere and calls down into these pure functions,
-//! mirroring how `tumult-graph` computes over data that `tumult-analytics`
+//! mirroring how `tumult-graph` computes over data that `tumult-lake`
 //! owns.
 //!
 //! # The pipeline

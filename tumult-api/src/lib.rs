@@ -20,8 +20,9 @@
 //!   list, newest first. The outcome is one of completed, deviated, failed,
 //!   aborted, interrupted and halted, read by `tumult_lake::run_outcome_sql`;
 //!   `outcome=incomplete` is a run that has not ended.
-//! * `GET /api/experiments/{id}` — spans (waterfall), correlated logs and
-//!   metric points for one experiment.
+//! * `GET /api/experiments/{id}` — spans (waterfall), correlated logs,
+//!   metric points and the `evidence` of its journal (`null` for a run
+//!   without one) for one experiment.
 //! * `GET /api/dimensions` — distinct filter values (outcomes, targets,
 //!   faults, experiment names).
 //! * `GET /api/metrics` — semantic metrics available for `/api/timeseries`.

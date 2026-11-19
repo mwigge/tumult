@@ -8,6 +8,8 @@ A worked GameDay campaign against PostgreSQL, runnable end to end.
   four under shared k6 load and maps results to DORA/NIS2 requirements.
 - `q2-postgres-resilience.gameday.journal.toon` — a recorded journal from a
   real campaign run, kept as a reference output.
+- `expectations.json` says what the journals of a proof run must hold, for
+  each experiment and for the campaign.
 
 Run it with `tumult gameday run gamedays/q2-postgres-resilience.gameday.toon`
 (CLI) or from the **GameDays** page of the web UI. The scripted demo in

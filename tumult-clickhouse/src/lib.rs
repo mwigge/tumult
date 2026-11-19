@@ -8,7 +8,7 @@
 //!
 //! | Mode | Backend | When |
 //! |------|---------|------|
-//! | Embedded (default) | `DuckDB` | `~/.tumult/analytics.duckdb` — works offline |
+//! | Embedded (default) | `DuckDB` | `~/.tumult/lake.duckdb` — works offline |
 //! | External | `ClickHouse` | `TUMULT_CLICKHOUSE_URL` set — shared with `SigNoz` |
 //!
 //! # Schema

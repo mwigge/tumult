@@ -20,7 +20,7 @@ The demo tells one cohesive story on one stack. From the control panel at
 tool:
 
 1. **Inject a fault** — click **Run** on any fault card (`tumult_run_experiment`).
-2. **Observe** — follow the trace link into SigNoz, filtered to `service = demo-app`.
+2. **Observe** — follow the trace link into SigNoz and filter on `service = demo-app`.
 3. **Analyze** — the **Analytics** card queries recent runs (`tumult_analyze_store`).
 4. **Check compliance** — the **Compliance** card renders the DORA evidence
    pass rate, verdict, citations and scope disclaimer (`tumult_compliance`).
@@ -103,7 +103,8 @@ smoke-test tick.
 
 A safety-guardrail experiment, `demo-guard-halt.toon`, is **not** in the sweep
 above: it arms an auto-halt guard so its expected outcome is `Halted`, not
-`Completed`. It runs from the control panel's **Safety guardrail** card.
+`Completed`. It runs from the control panel's **Safety guardrail** card and in
+`make demo-check`.
 
 The topology/compliance pair — `demo-topo-blind.toon` and
 `demo-topo-recommended.toon` — is likewise outside the sweep: both validate
@@ -112,6 +113,7 @@ recommender, and they belong to the topology proof flow in
 [`scripts/demo-topology.sh`](../scripts/demo-topology.sh) (the blind variant
 also serves as the autopilot playbook in
 [`demo/topology/autopilot-blind.toml`](./topology/autopilot-blind.toml)).
+`make demo-check` runs both as well.
 
 Validate them yourself:
 
@@ -122,12 +124,12 @@ for f in demo/experiments/*.toon; do ./target/debug/tumult validate "$f"; done
 
 ## Using the control panel
 
-http://localhost:8088 is organised as the golden path, top to bottom:
+http://localhost:8088 has a section in its navigation for each part of the golden path:
 
 - **Fault domains** — one card per domain with a **Run** button that calls the
   MCP `tumult_run_experiment` tool for that domain's experiment. Destructive
   actions are badged (a confirm step) using the tool's MCP annotations. Live
-  status shows running / passed / failed and the run duration, and the trace
+  status shows running / passed / deviated / failed and the run duration, and the trace
   link opens SigNoz with an explicit `filter service = demo-app` instruction
   (the traces-explorer page; SigNoz pre-filter query params vary by version).
 - **Safety guardrail** — runs `demo-guard-halt.toon`. The auto-halt guard pulls
@@ -166,7 +168,7 @@ reach for `gameday-demo.sh` when you want a headless, log-driven run.
 `make demo-check` is the headless functional smoke test used in development:
 
 ```bash
-make demo-check    # up, wait for health, run the fault sweep, assert telemetry, exit code
+make demo-check    # up, wait for health, run the fault sweep, assert telemetry and the Star Map, exit code
 ```
 
 It brings the stack up, waits for every service to report healthy, runs each
@@ -181,6 +183,10 @@ asserts:
 2. **Telemetry landed** — it scrapes the collector's self-telemetry on
    `:18888` and asserts `otelcol_receiver_accepted_spans > 0` (falling back to
    grepping the collector logs for exported spans).
+3. **The Star Map holds.** It brings up a Krönika demo of its own from
+   `docker/docker-compose.kronika.yml`, runs its seed, compares each seed
+   journal with `demo/kronika/experiments/expectations.json` and checks the
+   Star Map with `scripts/starmap-check.py`. Then it removes that stack.
 
 It prints `PASS`/`FAIL` per experiment and a final summary, and **exits non-zero
 on any failure**. When a journal is not as expected, the journals and run logs

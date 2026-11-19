@@ -5,9 +5,9 @@
 //! [`tumult_core::types::Experiment`] definition) into a small set of typed
 //! graph [`Node`]s and [`Edge`]s, and it owns the SQL used to persist and
 //! query those nodes/edges. It holds **no database handle of its own**:
-//! `tumult-analytics` owns the embedded `DuckDB` connection and executes the
+//! `tumult-lake` owns the embedded `DuckDB` connection and executes the
 //! SQL exposed here. That keeps the dependency direction acyclic —
-//! `tumult-graph` depends only on `tumult-core`, and `tumult-analytics`
+//! `tumult-graph` depends only on `tumult-core`, and `tumult-lake`
 //! depends on `tumult-graph`.
 //!
 //! # Why a graph?

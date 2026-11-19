@@ -8,7 +8,7 @@
 //! - Connection pooling with automatic reconnection
 //! - Key-based and SSH agent authentication
 //! - Command execution with stdout/stderr capture
-//! - SCP file transfer for deploying stress scripts
+//! - File upload over an SSH channel (`cat > path`) for deploying stress scripts
 //!
 //! # Authentication methods
 //!

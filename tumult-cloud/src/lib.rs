@@ -10,9 +10,10 @@
 //! - **AWS Fault Injection Service (FIS)** — start / stop / status an
 //!   experiment template, plus direct EC2 instance stop / terminate. Requests
 //!   are SigV4-signed ([`sigv4`]) against `fis.<region>.amazonaws.com` and
-//!   `ec2.<region>.amazonaws.com`. Credentials come from the standard AWS
-//!   environment chain (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, optional
-//!   `AWS_SESSION_TOKEN`).
+//!   `ec2.<region>.amazonaws.com`, or against the endpoint that
+//!   `AWS_ENDPOINT_URL_FIS` or `AWS_ENDPOINT_URL_EC2` names. Credentials come
+//!   from the standard AWS environment chain (`AWS_ACCESS_KEY_ID`,
+//!   `AWS_SECRET_ACCESS_KEY`, optional `AWS_SESSION_TOKEN`).
 //! - **Azure Chaos Studio** — start / cancel / status a Chaos experiment via
 //!   the Azure Resource Manager REST API, authenticated with a bearer token
 //!   (`AZURE_ACCESS_TOKEN`).

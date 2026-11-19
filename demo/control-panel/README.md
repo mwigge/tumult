@@ -123,7 +123,7 @@ spec:
         seccompProfile: { type: RuntimeDefault }
       containers:
         - name: control-panel
-          image: ghcr.io/mwigge/tumult-control-panel:latest
+          image: ghcr.io/mwigge/tumult-control-panel:latest   # not published: build docker/Dockerfile.demo-control-panel and push it
           ports:
             - { name: http, containerPort: 8088 }
           env:

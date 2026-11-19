@@ -72,19 +72,22 @@ tumult run examples/redis-chaos.toon
 ```
 
 ```
-Running experiment: Redis connectivity — verify basic key operations
+Running experiment: Redis freeze — a paused store gives no answer, then comes back with its data
 Status: Completed
-Duration: 297ms
-Method steps: 3 executed
+Duration: 3262ms
+Method steps: 5 executed
+Hypothesis: met before, met after
 Journal written to: journal.toon
 Journal SHA-256: 5f0c…e91a
+Ingested into persistent analytics store
 ```
 
-The last line is the SHA-256 of the journal file. `sha256sum journal.toon`
-gives the same value, and so does the footer of the HTML report.
+The `Journal SHA-256` line is the SHA-256 of the journal file.
+`sha256sum journal.toon` gives the same value, and so does the footer of
+the HTML report.
 
-This first one only checks that Redis answers. It breaks nothing. Now try
-some that do:
+This first one pauses Redis, checks that it gives no answer, and reads its
+key back afterwards. Now try some more:
 
 | Experiment | Command |
 |---|---|

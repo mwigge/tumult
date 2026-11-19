@@ -4,16 +4,17 @@ Kubernetes chaos actions and probes for the Tumult platform -- pod disruption, n
 
 ## Key Types
 
-- `K8sAction` -- chaos actions targeting Kubernetes resources
-- `K8sProbe` -- health and readiness probes for Kubernetes workloads
+- `actions` -- chaos actions targeting Kubernetes resources (`delete_pod`, `drain_node`, ...)
+- `probes` -- health and readiness probes for Kubernetes workloads (`pod_is_ready`, ...)
+- `KubernetesExecutor` -- runs them as the `tumult-kubernetes` native plugin
 
 ## Usage
 
 ```rust
-use tumult_kubernetes::K8sAction;
+use tumult_kubernetes::actions::delete_pod;
 
-let action = K8sAction::delete_pod("my-namespace", "my-pod");
-action.execute(&kube_client).await?;
+let client = kube::Client::try_default().await?;
+let message = delete_pod(client, "my-namespace", "my-pod", None).await?;
 ```
 
 ## In-pod data-plane fault injection (ephemeral containers)

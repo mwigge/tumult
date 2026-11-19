@@ -1,4 +1,4 @@
-//! Tumult Core — Chaos engineering experiment engine.
+//! Tumult Core — Experiment engine of the resilience intelligence platform.
 //!
 //! This crate provides the experiment runner, data model types,
 //! hypothesis evaluation, and journal output for the Tumult platform.
@@ -9,7 +9,8 @@
 //! five-phase experiment lifecycle:
 //!
 //! 1. **Estimate** (Phase 0) — record the operator's predicted outcome.
-//! 2. **Baseline** (Phase 1) — acquire steady-state metrics before injection.
+//! 2. **Baseline** (Phase 1) — not taken by a run. A `baseline:` block is
+//!    declared only, and the tolerances stay as written.
 //! 3. **Method / During** (Phase 2) — execute chaos actions while sampling probes.
 //! 4. **Post** (Phase 3) — measure recovery after actions complete.
 //! 5. **Analysis** (Phase 4) — compare estimate vs. actual, compute resilience score.
@@ -27,7 +28,7 @@
 //!
 //! # Getting started
 //!
-//! See the [data lifecycle guide](https://github.com/tumult-rs/tumult/blob/main/docs/data-lifecycle.md)
+//! See the [data lifecycle guide](https://github.com/mwigge/tumult/blob/main/docs/data-lifecycle.md)
 //! for an end-to-end walkthrough of experiment authoring through journal analysis.
 
 /// Regulatory compliance domain logic shared by the CLI and MCP server.
