@@ -8486,6 +8486,7 @@ dependencies = [
  "async-trait",
  "libc",
  "opentelemetry",
+ "opentelemetry_sdk",
  "serde",
  "serde_json",
  "tempfile",

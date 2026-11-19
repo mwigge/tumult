@@ -107,6 +107,9 @@ jobs:
             --list examples/expectations.json > "$RUNNER_TEMP/experiments"
           while read -r file; do
             name="${file%.toon}"
+            # The journal in the checkout is removed first, so the gate cannot
+            # read one that this run did not write.
+            rm -f "examples/recorded/$name.journal.toon"
             run=("$TUMULT" run "examples/$file" --journal-path "examples/recorded/$name.journal.toon" --no-ingest)
             # dns-redirect-chaos edits /etc/hosts, so it runs as root.
             if [ "$name" = dns-redirect-chaos ]; then

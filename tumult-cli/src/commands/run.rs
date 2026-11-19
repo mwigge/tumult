@@ -18,6 +18,7 @@ use tumult_otel::logging::{err_sources, sanitize_url};
 
 use super::events::{self, EnvKey};
 use super::print_dry_run;
+use super::LoadOverride;
 
 /// The error of a run that wrote its journal and did not complete.
 #[derive(Debug, thiserror::Error)]
@@ -62,7 +63,7 @@ pub async fn cmd_run<S: ::std::hash::BuildHasher>(
         rollback_strategy,
         auto_ingest,
         vars,
-        load_override,
+        load_override.map_or(LoadOverride::Keep, LoadOverride::Replace),
         tumult_core::runner::BaselineMode::Full,
         None,
     )
@@ -84,7 +85,7 @@ pub async fn cmd_run_with_baseline_mode<S: ::std::hash::BuildHasher>(
     rollback_strategy: RollbackStrategy,
     auto_ingest: bool,
     vars: std::collections::HashMap<String, String, S>,
-    load_override: Option<tumult_core::types::LoadConfig>,
+    load_override: LoadOverride,
     baseline_mode: tumult_core::runner::BaselineMode,
     target_version: Option<&str>,
 ) -> Result<()> {
@@ -133,8 +134,10 @@ pub async fn cmd_run_with_baseline_mode<S: ::std::hash::BuildHasher>(
     super::target_version::declare(&mut experiment, target_version)?;
     // Apply load override from CLI flags, or use experiment's load config.
     // Before validation, so the load that is checked is the one that runs.
-    if let Some(override_config) = load_override {
-        experiment.load = Some(override_config);
+    match load_override {
+        LoadOverride::Keep => {}
+        LoadOverride::Remove => experiment.load = None,
+        LoadOverride::Replace(load) => experiment.load = Some(load),
     }
     validate_experiment(&experiment)?;
 

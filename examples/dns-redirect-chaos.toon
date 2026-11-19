@@ -22,7 +22,7 @@ steady_state_hypothesis:
         type: regex
         pattern: "\\d+\\.\\d+\\.\\d+\\.\\d+"
 
-method[3]:
+method[4]:
   - name: dns-latency-before
     activity_type: probe
     provider:
@@ -50,6 +50,13 @@ method[3]:
     tolerance:
       type: regex
       pattern: "^127\\.0\\.0\\.1"
+  - name: remove-redirect
+    activity_type: action
+    provider:
+      type: script
+      plugin: tumult-network
+      function: redirect-dns-rollback
+      timeout_s: 10.0
 
 rollbacks[1]:
   - name: restore-dns

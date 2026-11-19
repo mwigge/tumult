@@ -65,7 +65,7 @@ pub use topology::{
 pub use trend::{cmd_export, cmd_trend};
 pub use types::{
     build_load_override, parse_duration_str, parse_var_args, ComplianceFramework, ExportFormat,
-    LoadToolArg, ReportFormat,
+    LoadOverride, LoadToolArg, ReportFormat,
 };
 pub use validate::{cmd_discover, cmd_validate};
 

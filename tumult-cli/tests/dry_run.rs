@@ -203,6 +203,36 @@ fn a_load_given_on_the_command_line_replaces_the_load_of_the_file_before_validat
     assert!(stdout.contains(line), "no {line:?} in:\n{stdout}");
 }
 
+/// `--load none` takes the load of the file away: the experiment that is
+/// validated and run has none. Without `--load` the load of the file stays.
+#[test]
+fn load_none_on_the_command_line_takes_the_load_of_the_file_away() {
+    let lab = Lab::with_state("ok");
+    let load = "load:\n  tool: oha\n  script: \"http://127.0.0.1:9/health\"\n  vus: 2\n  \
+                duration_s: 3.0\n";
+    let definition = with_block(&experiment(&inject(), &leave_marker()), load);
+    std::fs::write(lab.path("experiment.toon"), definition).expect("experiment");
+    let load_lines = |args: &[&str]| {
+        let output = lab.tumult(args);
+        let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+        assert!(output.status.success(), "{stdout}");
+        stdout
+            .lines()
+            .filter(|line| line.starts_with("Load:"))
+            .map(str::to_string)
+            .collect::<Vec<_>>()
+    };
+
+    let kept = load_lines(&["run", "experiment.toon", "--dry-run"]);
+    let none = load_lines(&["run", "experiment.toon", "--dry-run", "--load", "none"]);
+
+    assert_eq!(
+        kept,
+        ["Load: oha http://127.0.0.1:9/health (2 users, 3s, flat)"]
+    );
+    assert_eq!(none, Vec::<String>::new());
+}
+
 #[test]
 fn a_dry_run_runs_no_step_and_leaves_no_journal_and_no_store() {
     let lab = Lab::with_state("ok");

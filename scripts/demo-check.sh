@@ -265,6 +265,11 @@ sweep() {
   for name in "${SWEEP[@]}"; do
     run_experiment "$name"
   done
+  # The first runs once more in the same stack, and the journal check judges
+  # that run: a run that completes leaves no fault behind to refuse it.
+  if [[ "$MODE" == "full" && ${#SWEEP[@]} -gt 0 ]]; then
+    run_experiment "${SWEEP[0]}"
+  fi
 }
 
 # ── Telemetry assertion ───────────────────────────────────────────

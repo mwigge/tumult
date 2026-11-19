@@ -22,10 +22,10 @@ pub(crate) const GUARD_HALT_DOMAIN: &str = "guard-halt";
 /// display order. Each runs `demo-<id>.toon` and completes on success, so they
 /// double as the fault sweep and the per-domain cards.
 pub(crate) const DOMAINS: &[(&str, &str)] = &[
-    ("net", "Injects latency on the network path between demo-app and demo-postgres (tumult-net userspace proxy)."),
-    ("postgres", "Kills active Postgres connections mid-flight (tumult-db-postgres script plugin)."),
-    ("container", "Pauses the demo-postgres container briefly (tumult-pumba / container pause)."),
-    ("stress", "Applies CPU and memory pressure to the demo-app container (tumult-stress)."),
+    ("net", "Puts a delaying proxy in front of demo-app and checks that requests still succeed through it (tumult-net userspace proxy)."),
+    ("postgres", "Kills active Postgres connections mid-flight (pg_terminate_backend through docker exec)."),
+    ("container", "Pauses the demo-postgres container briefly (docker pause)."),
+    ("stress", "Applies CPU pressure to the demo-app container (Pumba stress)."),
     ("process", "Injects a process fault against demo-app."),
     ("ssh", "Runs a native fault against the demo-sshd target over SSH (tumult-ssh)."),
     ("agentic", "Runs a bundled agentic resilience scenario — no external API (fake adapter)."),

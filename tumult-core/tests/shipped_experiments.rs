@@ -8,7 +8,9 @@
 use std::path::{Path, PathBuf};
 
 use tumult_core::engine::{parse_experiment, validate_experiment};
-use tumult_core::types::{Experiment, GameDay, GameDayJournal, LoadConfig, LoadTool, Provider};
+use tumult_core::types::{
+    Activity, Experiment, GameDay, GameDayJournal, LoadConfig, LoadTool, Provider,
+};
 
 /// Directories that hold experiment files, relative to the workspace root.
 const EXPERIMENT_DIRS: &[&str] = &[
@@ -489,6 +491,217 @@ fn every_shipped_experiment_is_read_back_from_the_encoder() {
         })
         .collect();
     assert!(broken.is_empty(), "not read back:\n{}", broken.join("\n"));
+}
+
+// ── Faults that outlive their step ─────────────────────────────
+
+/// The `listen` of a `tumult-net` step, and whether the step stops the
+/// proxy there. Every other function of `tumult-net` starts a proxy, which
+/// outlives the step.
+fn net_proxy_step(step: &Activity) -> Option<(&str, bool)> {
+    let Provider::Native {
+        plugin,
+        function,
+        arguments,
+    } = &step.provider
+    else {
+        return None;
+    };
+    if plugin != "tumult-net" {
+        return None;
+    }
+    let listen = arguments.get("listen")?.as_str()?;
+    Some((listen, function == "stop_proxy"))
+}
+
+/// The `listen` of each proxy a method starts and does not stop later in
+/// the method. A run that completes runs no rollback, so such a proxy stays
+/// up, and the next start on that `listen` is refused.
+fn proxies_left_running(method: &[Activity]) -> Vec<&str> {
+    method
+        .iter()
+        .enumerate()
+        .filter_map(|(at, step)| {
+            let (listen, stops) = net_proxy_step(step)?;
+            let stopped_later = method[at + 1..]
+                .iter()
+                .any(|later| net_proxy_step(later) == Some((listen, true)));
+            (!stops && !stopped_later).then_some(listen)
+        })
+        .collect()
+}
+
+#[test]
+fn a_proxy_counts_as_stopped_only_on_its_own_listen() {
+    let experiment = parse_experiment(
+        r"title: t
+method[3]:
+  - name: start-a
+    activity_type: action
+    provider:
+      type: native
+      plugin: tumult-net
+      function: inject_latency
+      arguments:
+        listen: 127.0.0.1:1
+        upstream: 127.0.0.1:2
+  - name: start-b
+    activity_type: action
+    provider:
+      type: native
+      plugin: tumult-net
+      function: start_proxy
+      arguments:
+        listen: 127.0.0.1:3
+        upstream: 127.0.0.1:2
+  - name: stop-b
+    activity_type: action
+    provider:
+      type: native
+      plugin: tumult-net
+      function: stop_proxy
+      arguments:
+        listen: 127.0.0.1:3
+",
+    )
+    .unwrap();
+    assert_eq!(proxies_left_running(&experiment.method), ["127.0.0.1:1"]);
+}
+
+#[test]
+fn a_stop_before_the_start_leaves_the_proxy_running() {
+    let experiment = parse_experiment(
+        r"title: t
+method[2]:
+  - name: stop-a
+    activity_type: action
+    provider:
+      type: native
+      plugin: tumult-net
+      function: stop_proxy
+      arguments:
+        listen: 127.0.0.1:1
+  - name: start-a
+    activity_type: action
+    provider:
+      type: native
+      plugin: tumult-net
+      function: inject_latency
+      arguments:
+        listen: 127.0.0.1:1
+        upstream: 127.0.0.1:2
+",
+    )
+    .unwrap();
+    assert_eq!(proxies_left_running(&experiment.method), ["127.0.0.1:1"]);
+}
+
+#[test]
+fn every_proxy_a_method_starts_is_stopped_by_the_method() {
+    let left: Vec<String> = experiment_files()
+        .iter()
+        .filter_map(|p| {
+            let experiment = load(p).ok()?;
+            let listens = proxies_left_running(&experiment.method);
+            (!listens.is_empty()).then(|| format!("{}: {}", shown(p), listens.join(", ")))
+        })
+        .collect();
+    assert!(
+        left.is_empty(),
+        "a run that completes leaves a proxy running:\n{}",
+        left.join("\n")
+    );
+}
+
+/// The action that undoes a script action of a plugin: the one named
+/// `<function>-rollback`, where the plugin ships it.
+fn undo_of(plugin: &str, function: &str) -> Option<String> {
+    let undo = format!("{function}-rollback");
+    let script = workspace_root()
+        .join("plugins")
+        .join(plugin)
+        .join("actions")
+        .join(format!("{undo}.sh"));
+    script.is_file().then_some(undo)
+}
+
+/// Each change a method makes with a script action that has an undo, where
+/// the method does not call the undo later. A run that completes runs no
+/// rollback, so such a change stays.
+fn changes_left_in_place(method: &[Activity]) -> Vec<String> {
+    let script = |step: &Activity| match &step.provider {
+        Provider::Script {
+            plugin, function, ..
+        } => Some((plugin.clone(), function.clone())),
+        _ => None,
+    };
+    method
+        .iter()
+        .enumerate()
+        .filter_map(|(at, step)| {
+            let (plugin, function) = script(step)?;
+            let undo = undo_of(&plugin, &function)?;
+            let undone_later = method[at + 1..]
+                .iter()
+                .any(|later| script(later) == Some((plugin.clone(), undo.clone())));
+            (!undone_later).then(|| format!("{plugin}::{function}"))
+        })
+        .collect()
+}
+
+#[test]
+fn an_undo_before_the_change_leaves_the_change_in_place() {
+    let experiment = parse_experiment(
+        r"title: t
+method[4]:
+  - name: undo-first
+    activity_type: action
+    provider:
+      type: script
+      plugin: tumult-network
+      function: redirect-dns-rollback
+  - name: change
+    activity_type: action
+    provider:
+      type: script
+      plugin: tumult-network
+      function: redirect-dns
+  - name: change-with-undo
+    activity_type: action
+    provider:
+      type: script
+      plugin: tumult-network
+      function: block-dns
+  - name: undo
+    activity_type: action
+    provider:
+      type: script
+      plugin: tumult-network
+      function: block-dns-rollback
+",
+    )
+    .unwrap();
+    assert_eq!(
+        changes_left_in_place(&experiment.method),
+        ["tumult-network::redirect-dns"]
+    );
+}
+
+#[test]
+fn every_change_a_method_makes_with_a_plugin_is_undone_by_the_method() {
+    let left: Vec<String> = experiment_files()
+        .iter()
+        .filter_map(|p| {
+            let experiment = load(p).ok()?;
+            let changes = changes_left_in_place(&experiment.method);
+            (!changes.is_empty()).then(|| format!("{}: {}", shown(p), changes.join(", ")))
+        })
+        .collect();
+    assert!(
+        left.is_empty(),
+        "a run that completes leaves a change in place:\n{}",
+        left.join("\n")
+    );
 }
 
 // ── Examples that change the host ──────────────────────────────

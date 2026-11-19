@@ -94,8 +94,8 @@
             "uid": "tumult-mimir"
           },
           "editorMode": "code",
-          "expr": "sum by (status) (resilience_experiments_total)",
-          "legendFormat": "{{status}}",
+          "expr": "sum by (resilience_outcome_status) (tumult_experiments_total)",
+          "legendFormat": "{{resilience_outcome_status}}",
           "range": true,
           "refId": "A"
         }
@@ -189,8 +189,8 @@
             "uid": "tumult-mimir"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum by (le, plugin) (rate(resilience_action_duration_seconds_bucket[$__rate_interval])))",
-          "legendFormat": "p95 {{plugin}}",
+          "expr": "histogram_quantile(0.95, sum by (le, resilience_plugin_name) (rate(tumult_action_duration_seconds_bucket[$__rate_interval])))",
+          "legendFormat": "p95 {{resilience_plugin_name}}",
           "range": true,
           "refId": "A"
         }

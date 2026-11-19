@@ -4,21 +4,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::time::Duration;
 
-#[cfg(not(windows))]
-use opentelemetry::propagation::Injector;
 use thiserror::Error;
-
-/// A simple `HashMap`-backed carrier for W3C trace-context propagation.
-/// Only the POSIX `execute_script` injects trace context.
-#[cfg(not(windows))]
-struct HashMapCarrier(HashMap<String, String>);
-
-#[cfg(not(windows))]
-impl Injector for HashMapCarrier {
-    fn set(&mut self, key: &str, value: String) {
-        self.0.insert(key.to_uppercase(), value);
-    }
-}
 
 #[derive(Error, Debug)]
 pub enum ExecutorError {
@@ -255,11 +241,16 @@ pub async fn execute_script_until<S: std::hash::BuildHasher>(
 
     // Inject W3C trace context into the subprocess environment so that scripts
     // and child processes can propagate the active trace (TRACEPARENT / TRACESTATE).
-    let mut carrier = HashMapCarrier(HashMap::new());
-    opentelemetry::global::get_text_map_propagator(|propagator| {
-        propagator.inject(&mut carrier);
-    });
-    env_vars.extend(carrier.0);
+    let mut trace_context = HashMap::new();
+    tumult_otel::propagation::inject_traceparent(
+        &opentelemetry::Context::current(),
+        &mut trace_context,
+    );
+    env_vars.extend(
+        trace_context
+            .into_iter()
+            .map(|(key, value)| (key.to_uppercase(), value)),
+    );
 
     let mut cmd = tokio::process::Command::new("/bin/sh");
     cmd.arg(script_path);

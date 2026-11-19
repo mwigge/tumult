@@ -166,8 +166,8 @@ pub fn run_experiment_with_sampling(
     // -- Phase 0: Record Estimate
     controls.emit(&LifecycleEvent::BeforeExperiment);
 
-    // -- Phase 1: Baseline (skipped if configured or no baseline config)
-    // Baseline acquisition is handled externally; we record the estimate.
+    // -- Phase 1: Baseline -- none is acquired: the probes are judged by the
+    // tolerances they declare (`BaselineMode::Only` returned above).
 
     // -- Hypothesis BEFORE
     let hypothesis_before = run_hypothesis_phase(

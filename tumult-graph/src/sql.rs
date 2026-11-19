@@ -1,5 +1,5 @@
 //! The SQL that persists and queries the graph. `tumult-graph` owns these
-//! statements; `tumult-analytics` binds their parameters and executes them
+//! statements; `tumult-lake` binds their parameters and executes them
 //! against its embedded `DuckDB` connection. Keeping the SQL here (rather than
 //! a live connection) is what keeps the dependency direction acyclic.
 //!

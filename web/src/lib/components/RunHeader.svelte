@@ -61,7 +61,8 @@
 {#if confirmingStop && active}
     <div class="panel confirm" style="margin-bottom: 14px">
         <span>
-            Confirm stop? This halts the run before the next activity and unwinds rollbacks.
+            Confirm stop? This ends a running process or script step, starts no further step and
+            runs the rollbacks.
         </span>
         <button class="estop" onclick={stop} disabled={stopping}>
             {stopping ? 'Stopping…' : 'Confirm stop'}

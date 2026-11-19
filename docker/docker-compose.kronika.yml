@@ -148,7 +148,7 @@ services:
         for f in /experiments/*.toon; do
           n=$$(basename "$$f" .toon)
           echo "=== seed: running $$n"
-          if tumult run "$$f" --journal-path "/tmp/journals/$$n.journal.toon"; then
+          if tumult run "$$f" --journal-path "/tmp/journals/$$n.journal.toon" --force; then
             passed=$$((passed + 1))
             echo "=== seed: $$n -> PASSED"
           else

@@ -86,7 +86,7 @@ def run_demo(domain: str, times: int = 1) -> None:
     for _ in range(times):
         structured(
             "tumult_run_experiment",
-            {"experiment_path": f"/demo/experiments/demo-{domain}.toon"},
+            {"experiment_path": f"/demo/experiments/demo-{domain}.toon", "force": True},
         )
 
 

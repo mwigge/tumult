@@ -2,7 +2,7 @@
 //! [`tumult_lake::QueryRow`] results.
 //!
 //! Every field here corresponds to a real column in the `experiments` /
-//! `activity_results` tables (see `tumult-analytics/src/duckdb_store/mod.rs`).
+//! `activity_results` tables (see `tumult-lake/src/schema/analytics.rs`).
 //! The mappers are total: a malformed or short row yields `None` rather than
 //! panicking, so a partially-populated store can never crash the UI.
 

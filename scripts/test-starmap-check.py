@@ -26,7 +26,8 @@ PROJECT = "tumult-demo-check-kronika"
 # Records each call (arguments and the Kronika variables) and plays the
 # compose subcommands demo-check.sh uses. The seed leaves the journals of
 # FAKE_JOURNALS/seed in the directory mounted at /tmp/journals; `exec cat`
-# of a sweep journal prints the one of that name in FAKE_JOURNALS/sweep.
+# of a sweep journal prints the one of that name in FAKE_JOURNALS/sweep, and
+# from its second time on the one with `.again` after its name, if there is one.
 FAKE_DOCKER = r"""
 import json, os, shutil, sys, time
 from pathlib import Path
@@ -43,6 +44,11 @@ if "run" in args and "exec" not in args:
         shutil.copy(journal, mount.rsplit(":", 1)[0])
 if "exec" in args and "cat" in args:
     wanted = journals / "sweep" / Path(args[-1]).name
+    again = wanted.with_name(wanted.name + ".again")
+    with open(os.environ["FAKE_DOCKER_RECORD"]) as record:
+        cats = [line for line in record if json.loads(line)["args"][-2:] == args[-2:]]
+    if len(cats) > 1 and again.is_file():
+        wanted = again
     if not wanted.is_file():
         sys.exit(1)
     sys.stdout.write(wanted.read_text())
@@ -666,12 +672,24 @@ class DemoCheckSweepTests(unittest.TestCase):
             [
                 "/demo/experiments/demo-net.toon",
                 "/demo/experiments/demo-guard-halt.toon",
+                "/demo/experiments/demo-net.toon",
             ],
         )
         self.assertRegex(output, r"PASS.*demo-net\.toon")
         self.assertRegex(output, r"PASS.*demo-guard-halt\.toon")
         self.assertNotIn("FAIL", output)
         self.assertEqual(left, [])
+
+    def test_the_first_runs_again_in_the_same_stack_and_that_run_is_judged(self):
+        with tempfile.TemporaryDirectory() as directory, FakeDaemon() as daemon:
+            checkout = Checkout(directory)
+            first = checkout.journal("sweep", "demo-net.toon")
+            failed = journal({**COMPLETED, "status": "failed"})
+            first.with_name(first.name + ".again").write_text(failed)
+            status, output = checkout.sweep(daemon)
+        self.assertEqual(status, 1, output)
+        self.assertRegex(output, r"FAIL.*demo-net\.toon")
+        self.assertIn("status: expected completed, journal has failed", output)
 
     def test_a_run_is_judged_by_its_journal_not_by_its_exit_status(self):
         with tempfile.TemporaryDirectory() as directory, FakeDaemon() as daemon:

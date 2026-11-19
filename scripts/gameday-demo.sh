@@ -135,7 +135,7 @@ echo "  Compliance: DORA EU 2022/2554 Articles 11, 24, 25"
 echo "  Running... (this takes ~30 seconds)"
 echo ""
 
-GAMEDAY=$(mcp 3 "tools/call" '{"name":"tumult_gameday_run","arguments":{"gameday_path":"gamedays/q2-postgres-resilience.gameday.toon"}}' 120 | extract | tool_text)
+GAMEDAY=$(mcp 3 "tools/call" '{"name":"tumult_gameday_run","arguments":{"gameday_path":"gamedays/q2-postgres-resilience.gameday.toon","force":true}}' 120 | extract | tool_text)
 
 echo "$GAMEDAY" | while IFS= read -r line; do echo "  $line"; done
 echo ""

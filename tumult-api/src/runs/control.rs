@@ -137,9 +137,10 @@ pub async fn create(
 }
 
 /// `POST /api/runs/{id}/stop` — e-stop a run: a running experiment's token
-/// is cancelled (the runner stops before the next activity and runs
-/// rollbacks); a still-queued run is cancelled before it starts. 404 when
-/// the run is unknown, 409 when it already reached a terminal state.
+/// is cancelled (the runner ends a running process or script step, starts
+/// no further step and runs rollbacks); a still-queued run is cancelled
+/// before it starts. 404 when the run is unknown, 409 when it already
+/// reached a terminal state.
 pub async fn stop(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,

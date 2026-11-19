@@ -2,13 +2,15 @@
 # Topology/compliance demo proofs. Runs against the ONE demo environment
 # (docker-compose.demo.yml stack must be up: `make demo`).
 #
-# Usage: scripts/demo-topology.sh [1|2|3|all]
+# Usage: scripts/demo-topology.sh [1|2|3|4|5|all]
 #
 # 1  green lineage: latency drill on demo-app evidences DORA Art. 25
 # 2  break + attribution: guard-halt on demo-postgres breaks DORA Art. 11,
 #    cause attributed to the pause-database fault
 # 3  recommendation loop: recommender flags the NIS2 BC/DR gap, the
 #    recommended run closes it, the map flips — captured before/after
+# 4  autopilot: gated autonomous injection with lineage
+# 5  pre-flight, enrollment, change events and OTel-derived criticality
 set -euo pipefail
 cd "$(dirname "$0")/.."
 

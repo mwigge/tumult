@@ -3,7 +3,8 @@
 //! These are the single home for reading and writing W3C trace context across
 //! HTTP boundaries. The agentic proxy (model-API surface) and the MCP server
 //! (tool surface) both use these so inbound context becomes a span parent and
-//! outbound requests continue the same distributed trace.
+//! outbound requests continue the same distributed trace. The script executor
+//! of `tumult-plugin` uses them to hand a script `TRACEPARENT`.
 #![allow(clippy::doc_markdown)] // module doc names standards (W3C, OpenTelemetry)
 
 use std::collections::HashMap;

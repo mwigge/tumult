@@ -559,7 +559,7 @@ rollbacks[1]:
         RollbackStrategy::Always,
         false,
         std::collections::HashMap::new(),
-        None,
+        LoadOverride::Keep,
         tumult_core::runner::BaselineMode::Only,
         None,
     )
@@ -604,7 +604,7 @@ async fn run_with_version(
         RollbackStrategy::OnDeviation,
         false,
         std::collections::HashMap::new(),
-        None,
+        LoadOverride::Keep,
         tumult_core::runner::BaselineMode::Full,
         version,
     )
