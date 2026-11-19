@@ -167,6 +167,7 @@ differently on purpose, so read the
 - CI: the SQL lint also reads the SQL that functions build, from a kept file that a test holds to the code, and it reads the v5 migration it missed.
 - CI: `cargo deny` passes over the two new notices that chrono and humantime are unmaintained (RUSTSEC-2026-0543 and RUSTSEC-2026-0542). Neither names a vulnerability and neither has a fixed release. `deny.toml` gives the reason and a review date.
 - CI: the Test job installs cargo-machete 0.9.2. The release 0.10.1 does not compile on Rust 1.92, the toolchain of the workspace.
+- CI: the examples proof installs the apt key of k6 as a plain keyring, taken from dl.k6.io and pinned by the fingerprint of its primary key. apt no longer read the keybox that `gpg --keyring` wrote, so the k6 install failed.
 - Docs: the guides, the reference pages (Kronika pages, architecture, test protocol, metadata standard, regulatory mapping), the plugin pages, the demo and docker pages and the READMEs of the crates follow the changes above, and each was checked against the code. The plugin docs no longer show keys the format does not know.
 
 ### Quality

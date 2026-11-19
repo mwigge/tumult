@@ -64,10 +64,16 @@ jobs:
       - name: Build tumult and the network proxy
         run: cargo build --release -p tumult-cli -p tumult-net
 
+      # apt reads a plain OpenPGP keyring, not the keybox that
+      # `gpg --keyring` writes. The key of k6 is taken only when its one
+      # primary key has the pinned fingerprint.
       - name: Install k6, stress-ng and dig
         run: |
-          sudo gpg -k
-          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          curl -fsSL https://dl.k6.io/key.gpg -o "$RUNNER_TEMP/k6.asc"
+          primary=$(gpg --show-keys --with-colons "$RUNNER_TEMP/k6.asc" \
+            | awk -F: '/^pub/ {p = 1; next} p && /^fpr/ {print $10; p = 0}')
+          test "$primary" = C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          sudo gpg --dearmor --yes -o /usr/share/keyrings/k6-archive-keyring.gpg "$RUNNER_TEMP/k6.asc"
           echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends k6 stress-ng dnsutils
