@@ -117,6 +117,7 @@ pub struct ProbePost {
     /// Whether the probe returned within baseline tolerance.
     pub returned_to_baseline: bool,
     /// Seconds from method end until the probe returned within baseline tolerance.
+    /// When it did not return, the seconds until its last failing sample.
     pub recovery_time_s: f64,
 }
 
@@ -133,6 +134,7 @@ pub struct PostResult {
     pub samples: u32,
     pub probes: Vec<ProbePost>,
     /// Seconds from method end until full recovery was observed.
+    /// Without full recovery, the largest time of a probe: a lower bound.
     pub recovery_time_s: f64,
     /// Whether every probe returned to baseline.
     pub full_recovery: bool,

@@ -325,7 +325,10 @@ fn post(post: &PostResult) -> String {
     let rows = [
         fact("Watched for", &seconds(post.duration_s)),
         fact("Samples", &post.samples.to_string()),
-        fact("Recovery time", &seconds(post.recovery_time_s)),
+        fact(
+            "Recovery time",
+            &recovery_time(post.recovery_time_s, post.full_recovery),
+        ),
         fact("Full recovery", &yes_no(post.full_recovery)),
         optional("MTTR", post.mttr_s.map(seconds)),
         optional(
@@ -364,7 +367,16 @@ fn post_row(probe: &ProbePost) -> String {
             latency(probe.p95),
             percent(probe.error_rate),
             yes_no(probe.returned_to_baseline),
-            seconds(probe.recovery_time_s),
+            recovery_time(probe.recovery_time_s, probe.returned_to_baseline),
         ],
     )
+}
+
+/// A recovery time. What did not come back was still failing at the end of
+/// the time measured, so that time is a lower bound, and says so.
+fn recovery_time(time_s: f64, recovered: bool) -> String {
+    if recovered {
+        return seconds(time_s);
+    }
+    format!("at least {}", seconds(time_s))
 }

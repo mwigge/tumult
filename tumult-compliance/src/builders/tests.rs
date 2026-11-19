@@ -1048,7 +1048,7 @@ fn game_day_fixture() -> (tempfile::TempDir, tumult_lake::Store) {
                 trace_id: "trace-gd".into(),
                 span_id: "span-gd-rb".into(),
                 parent_span_id: Some("span-gd-root".into()),
-                span_name: "resilience.rollback.restart".into(),
+                span_name: "resilience.rollback".into(),
                 span_kind: "Internal".into(),
                 duration_ns: NS_MIN,
                 status_code: "Ok".into(),
@@ -2008,6 +2008,52 @@ fn a_step_of_the_rollback_that_failed_is_a_finding_too() {
     );
 }
 
+/// The run `exp-steps`, alone in its trace, slowed the ledger with a step
+/// whose script put a span of the database of the ledger into the trace:
+/// the database rolled back a transaction, and ended in `error` when one is
+/// given.
+fn rolled_back_by_the_database(error: Option<&str>) -> Vec<tumult_lake::SpanRow> {
+    let database = tumult_lake::SpanRow {
+        service_name: "ledger-db".into(),
+        ..span_of(
+            "db-rollback",
+            Some("fault"),
+            "ROLLBACK",
+            None,
+            1_100,
+            2,
+            error,
+        )
+    };
+    vec![
+        run_span(None),
+        action("fault", "slow-ledger", 1_000),
+        database,
+    ]
+}
+
+#[test]
+fn a_rollback_of_another_service_in_the_trace_is_no_rollback_of_the_run() {
+    let doc = report_of_steps(&rolled_back_by_the_database(None), &[]);
+
+    assert_eq!(value_of(&doc, "Rollback exercised"), "no");
+    assert_eq!(
+        paragraph_under(&doc, "Rollback"),
+        "No rollback action was exercised in this run."
+    );
+    assert_eq!(value_of(&doc, "Scenario"), "slow-ledger");
+}
+
+#[test]
+fn a_rollback_of_another_service_that_failed_is_no_rollback_with_errors() {
+    let doc = report_of_steps(&rolled_back_by_the_database(Some("deadlock")), &[]);
+
+    let said = paragraph_under(&doc, "Rollback");
+    assert!(!said.contains("errors present"), "{said}");
+    assert_eq!(said, "No rollback action was exercised in this run.");
+    assert_eq!(value_of(&doc, "Rollback exercised"), "no");
+}
+
 #[test]
 fn a_time_in_the_appendix_is_a_date_and_a_time_of_day() {
     let started_at = BASE_NS.to_string();
@@ -2144,10 +2190,7 @@ fn the_report_of_a_run_of_a_game_day_leaves_the_other_runs_out() {
             "[WARN] the ledger is slow",
         ]
     );
-    assert_eq!(
-        paragraph_under(&doc, "Rollback"),
-        "No rollback action was exercised in this run."
-    );
+    assert_eq!(paragraph_under(&doc, "Rollback"), NOT_KNOWN);
 }
 
 #[test]
@@ -2177,11 +2220,64 @@ fn a_run_of_a_game_day_is_not_alone_while_the_root_spans_of_the_others_are_on_th
             "[WARN] the ledger is slow",
         ]
     );
+    assert_eq!(paragraph_under(&doc, "Rollback"), NOT_KNOWN);
+    assert_eq!(value_of(&doc, "Rollback exercised"), "not known");
+}
+
+/// What a report says of the rollback of a run when it read no rollback
+/// span and left spans of the trace out.
+const NOT_KNOWN: &str = "This report left out spans of this trace, and the rollback may be \
+                         among them, so it cannot say whether a rollback ran.";
+
+#[test]
+fn a_report_that_left_out_spans_of_the_trace_does_not_know_that_no_rollback_ran() {
+    let (spans, logs) = game_day_of_two();
+
+    let left_out = report_of_steps(&spans, &logs);
+
+    assert_eq!(value_of(&left_out, "Rollback exercised"), "not known");
+    assert_eq!(paragraph_under(&left_out, "Rollback"), NOT_KNOWN);
+
+    let (mut spans, logs) = game_day_of_two();
+    spans.extend([
+        span_of(
+            "undo",
+            Some("root"),
+            "resilience.rollback",
+            None,
+            7_000,
+            900,
+            None,
+        ),
+        span_of(
+            "undo-1",
+            Some("undo"),
+            "resilience.action",
+            Some("restore-ledger"),
+            7_100,
+            100,
+            None,
+        ),
+    ]);
+
+    let rolled_back = report_of_steps(&spans, &logs);
+
+    assert_eq!(value_of(&rolled_back, "Rollback exercised"), "yes");
     assert_eq!(
-        paragraph_under(&doc, "Rollback"),
+        paragraph_under(&rolled_back, "Rollback"),
+        "The rollback ran 1 step (restore-ledger); status: all clean."
+    );
+
+    let (mut spans, logs) = game_day_of_two();
+    spans.retain(|span| span.span_id != "stray");
+
+    let nothing_left_out = report_of_steps(&spans, &logs);
+
+    assert_eq!(value_of(&nothing_left_out, "Rollback exercised"), "no");
+    assert_eq!(
+        paragraph_under(&nothing_left_out, "Rollback"),
         "No rollback action was exercised in this run."
     );
-    assert_eq!(value_of(&doc, "Rollback exercised"), "no");
 }
 
 #[test]
@@ -2722,6 +2818,34 @@ fn a_rollback_that_was_not_read_to_its_end_is_not_called_clean() {
 }
 
 #[test]
+fn a_report_that_was_cut_short_and_left_spans_out_says_it_did_not_read_the_rollback() {
+    let d = tempfile::TempDir::new().unwrap();
+    let store = tumult_lake::Store::open(&d.path().join("kronika.duckdb")).unwrap();
+    let writer = store.writer().unwrap();
+    let (mut spans, logs) = game_day_of_two();
+    spans.push(span_of(
+        "poll-0",
+        Some("root"),
+        "resilience.probe",
+        Some("payments-answer"),
+        1_000,
+        5,
+        None,
+    ));
+    writer.insert_spans(&spans).unwrap();
+    writer.insert_logs(&logs).unwrap();
+    store_polls(&writer, 1, game_day::MOST_SPANS);
+
+    let doc = report_in(&store);
+
+    assert_eq!(value_of(&doc, "Rollback exercised"), "not read");
+    assert_eq!(
+        paragraph_under(&doc, "Rollback"),
+        "This report did not read the run to its end, so it cannot say whether a rollback ran."
+    );
+}
+
+#[test]
 fn a_run_that_sent_no_trace_counts_as_tested_in_the_period() {
     use tumult_core::types::ExperimentStatus;
     let d = tempfile::TempDir::new().unwrap();
@@ -3009,4 +3133,131 @@ fn what_a_report_left_out_is_said_before_the_steps_that_failed() {
             "[WARN] the ledger is slow",
         ]
     );
+}
+
+#[test]
+fn a_line_the_run_logged_many_times_is_one_finding_with_the_number_of_times() {
+    let mut logs: Vec<_> = (0..150)
+        .map(|n| logged_on("root", 1_000 + n, "WARN", "the ledger is slow"))
+        .collect();
+    logs.push(logged_on(
+        "root",
+        2_000,
+        "ERROR",
+        "the ledger did not answer",
+    ));
+
+    let doc = report_of_steps(&[run_span(None)], &logs);
+
+    assert_eq!(
+        bullets_under(&doc, "Findings"),
+        [
+            "[WARN] the ledger is slow (× 150)",
+            "[ERROR] the ledger did not answer",
+        ]
+    );
+}
+
+#[test]
+fn a_warning_and_an_error_of_one_text_are_two_findings_in_the_order_they_came_first() {
+    let logs = [
+        logged_on("root", 1_000, "WARN", "the ledger is slow"),
+        logged_on("root", 2_000, "ERROR", "the ledger is slow"),
+        logged_on("root", 3_000, "WARN", "the ledger is slow"),
+    ];
+
+    let doc = report_of_steps(&[run_span(None)], &logs);
+
+    assert_eq!(
+        bullets_under(&doc, "Findings"),
+        [
+            "[WARN] the ledger is slow (× 2)",
+            "[ERROR] the ledger is slow",
+        ]
+    );
+}
+
+#[test]
+fn a_report_shows_the_first_hundred_different_lines_a_run_logged_and_says_how_many_there_were() {
+    let lines = |count: i64| -> Vec<tumult_lake::LogRow> {
+        (0..count)
+            .map(|n| {
+                let body = format!("call {n} to the ledger was slow");
+                logged_on("root", 1_000 + n, "WARN", &body)
+            })
+            .collect()
+    };
+
+    let hundred = report_of_steps(&[run_span(None)], &lines(100));
+
+    let findings = bullets_under(&hundred, "Findings");
+    assert_eq!(findings.len(), 100);
+    assert_eq!(findings[0], "[WARN] call 0 to the ledger was slow");
+    assert_eq!(findings[99], "[WARN] call 99 to the ledger was slow");
+
+    let more = report_of_steps(&[run_span(None)], &lines(101));
+
+    let findings = bullets_under(&more, "Findings");
+    assert_eq!(findings.len(), 101);
+    assert_eq!(
+        findings[0],
+        "[WARN] The run logged 101 different warnings and errors. This report shows the first \
+         100."
+    );
+    assert_eq!(findings[1], "[WARN] call 0 to the ledger was slow");
+    assert_eq!(findings[100], "[WARN] call 99 to the ledger was slow");
+}
+
+#[test]
+fn a_report_that_shows_part_of_the_lines_says_so_before_what_it_left_out_of_the_trace() {
+    let lines: Vec<_> = (0..101)
+        .map(|n| {
+            let body = format!("call {n} to the ledger was slow");
+            logged_on("root", 1_000 + n, "WARN", &body)
+        })
+        .collect();
+    let (spans, _) = game_day_of_two();
+
+    let doc = report_of_steps(&spans, &lines);
+
+    let findings = bullets_under(&doc, "Findings");
+    assert_eq!(
+        findings[..2],
+        [
+            "[WARN] The run logged 101 different warnings and errors. This report shows the \
+             first 100.",
+            "[WARN] 1 span of this trace names a parent that is not on record. It and the spans \
+             under it are not in this report.",
+        ]
+    );
+}
+
+#[test]
+fn a_report_cut_short_in_its_spans_says_so_before_the_lines_it_does_not_show() {
+    let d = tempfile::TempDir::new().unwrap();
+    let store = tumult_lake::Store::open(&d.path().join("kronika.duckdb")).unwrap();
+    let writer = store.writer().unwrap();
+    writer.insert_spans(&polled(1)).unwrap();
+    store_polls(&writer, 1, game_day::MOST_SPANS);
+    let lines: Vec<_> = (0..101)
+        .map(|n| {
+            let body = format!("call {n} to the ledger was slow");
+            logged_on("root", 1_000 + n, "WARN", &body)
+        })
+        .collect();
+    writer.insert_logs(&lines).unwrap();
+
+    let doc = report_in(&store);
+
+    let findings = bullets_under(&doc, "Findings");
+    assert_eq!(
+        findings[..2],
+        [
+            "[WARN] The run has more than 20000 spans. This report reads the first 20000, so it \
+             may miss a step that failed later.",
+            "[WARN] The run logged 101 different warnings and errors. This report shows the \
+             first 100.",
+        ]
+    );
+    assert_eq!(findings.len(), 102);
 }

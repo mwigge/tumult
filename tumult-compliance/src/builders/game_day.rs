@@ -11,6 +11,10 @@ use crate::model::{Block, Cell, ReportDoc, TemplateKind};
 
 /// The name of the root span of a run.
 const RUN_SPAN: &str = "resilience.experiment";
+/// The span of the rollback phase of a run, the one name the runner opens
+/// for it. The steps of the rollback are `resilience.action` spans under
+/// it.
+const ROLLBACK_SPAN: &str = "resilience.rollback";
 /// The span a game day opens. Its experiments run under it, in its trace.
 const GAME_DAY_SPAN: &str = "resilience.gameday";
 /// The span of a probe. The runner samples the probes of a hypothesis in
@@ -26,6 +30,8 @@ const STEP_NAME: &str = "resilience.action.name";
 /// opens one more span each time it runs, so this is room for 33 such
 /// probes.
 pub(super) const MOST_SPANS: usize = 20_000;
+/// The most different lines of warnings and errors a report shows.
+const MOST_LINES: usize = 100;
 
 /// The root span of the run `id`, when it is in `envs` (empty = unscoped).
 /// `outcome` says how the run ended, by the rule of
@@ -156,18 +162,52 @@ fn spans_without_parent(reader: &Reader, id: &str) -> Result<usize, String> {
     usize::try_from(spans).map_err(|e| e.to_string())
 }
 
-/// The warnings and errors the run `id` logged, oldest first: the lines of
-/// its spans, and the lines that carry its id.
-fn logged_findings(reader: &Reader, id: &str) -> Result<Vec<Value>, String> {
-    reader
+/// What a report read of the warnings and errors a run logged.
+struct Logged {
+    /// The lines as findings, oldest first.
+    lines: Vec<String>,
+    /// How many different lines the run logged, also those the report did
+    /// not read.
+    different: usize,
+}
+
+/// The warnings and errors the run `id` logged: the lines of its spans,
+/// and the lines that carry its id. Lines of one severity and one text
+/// are one finding with the number of times, in the place of the first.
+/// Oldest first, and `MOST_LINES` different lines at most.
+fn logged_findings(reader: &Reader, id: &str) -> Result<Logged, String> {
+    let rows = reader
         .query_json_rows(&format!(
-            "{} SELECT ts_ns, severity_text, body FROM logs \
+            "{} SELECT severity_text, body, min(ts_ns) AS first_ns, count(*) AS times, \
+             count(*) OVER () AS different FROM logs \
              WHERE (log_attrs['experiment_id'] = {id} OR {OF_THE_RUN}) \
                AND severity_text IN ('WARN', 'ERROR') \
-             ORDER BY ts_ns LIMIT 100",
+             GROUP BY severity_text, body \
+             ORDER BY first_ns, severity_text, body LIMIT {MOST_LINES}",
             run_tree(id),
         ))
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    let mut lines = Vec::with_capacity(rows.len());
+    for row in &rows {
+        let (Some(severity), Some(body)) = (cell(row, "severity_text"), cell(row, "body")) else {
+            continue;
+        };
+        lines.push(folded(
+            format!("[{severity}] {body}"),
+            count_of(row, "times")?,
+        ));
+    }
+    let different = rows
+        .first()
+        .map_or(Ok(0), |row| count_of(row, "different"))?;
+    Ok(Logged { lines, different })
+}
+
+/// The count `key` of a row.
+fn count_of(row: &Value, key: &str) -> Result<usize, String> {
+    let count = row.get(key).and_then(Value::as_u64);
+    let count = count.ok_or_else(|| format!("the count {key} of a logged line is missing"))?;
+    usize::try_from(count).map_err(|e| e.to_string())
 }
 
 /// The attributes of the started log of the run `id`.
@@ -224,7 +264,7 @@ impl Span {
     }
 
     fn is_rollback(&self) -> bool {
-        self.name.to_ascii_lowercase().contains("rollback")
+        self.name == ROLLBACK_SPAN
     }
 
     /// Whether the span is a child of one of `parents`.
@@ -273,6 +313,9 @@ struct Rollback<'a> {
     /// Whether the report read the run to its end. A rollback is the last
     /// thing a run does, so a report that stopped earlier has not seen it.
     read_to_the_end: bool,
+    /// Whether the report left out spans of the trace that may be of the
+    /// run. The rollback may be among them.
+    left_out: bool,
 }
 
 impl<'a> Rollback<'a> {
@@ -287,6 +330,7 @@ impl<'a> Rollback<'a> {
             phases,
             steps,
             read_to_the_end: !read.cut,
+            left_out: read.without_parent > 0,
         }
     }
 
@@ -299,10 +343,13 @@ impl<'a> Rollback<'a> {
         if self.ran() {
             return "yes";
         }
-        if self.read_to_the_end {
-            return "no";
+        if !self.read_to_the_end {
+            return "not read";
         }
-        "not read"
+        if self.left_out {
+            return "not known";
+        }
+        "no"
     }
 
     /// What the rollback ran, and whether all of it ended clean.
@@ -310,6 +357,11 @@ impl<'a> Rollback<'a> {
         if !self.ran() && !self.read_to_the_end {
             return "This report did not read the run to its end, so it cannot say whether a \
                     rollback ran."
+                .into();
+        }
+        if !self.ran() && self.left_out {
+            return "This report left out spans of this trace, and the rollback may be among \
+                    them, so it cannot say whether a rollback ran."
                 .into();
         }
         if !self.ran() {
@@ -571,6 +623,26 @@ fn left_out(spans: usize) -> Option<String> {
     Some(format!("[WARN] {said} not in this report."))
 }
 
+/// What a report says first when the run logged more different lines than
+/// it shows.
+fn lines_cut_short(different: usize) -> Option<String> {
+    if different <= MOST_LINES {
+        return None;
+    }
+    Some(format!(
+        "[WARN] The run logged {different} different warnings and errors. This report shows \
+         the first {MOST_LINES}."
+    ))
+}
+
+/// A finding that came `times` times, said once with the number of times.
+fn folded(finding: String, times: usize) -> String {
+    if times == 1 {
+        return finding;
+    }
+    format!("{finding} (× {times})")
+}
+
 /// What a report says first when it did not read the whole run.
 fn cut_short() -> String {
     format!(
@@ -582,7 +654,7 @@ fn cut_short() -> String {
 /// What went wrong in the run: the steps that failed, each said once with
 /// the number of times it failed, then the warnings and errors the run
 /// logged. The root span is left out: how the run ended is the verdict.
-fn findings(read: &Read, logs: &[Value]) -> Vec<String> {
+fn findings(read: &Read, logged: Logged) -> Vec<String> {
     let mut failures: Vec<(String, usize)> = Vec::new();
     let failed = |span: &&Span| span.failed() && span.name != RUN_SPAN;
     for span in read.spans.iter().filter(failed) {
@@ -592,22 +664,15 @@ fn findings(read: &Read, logs: &[Value]) -> Vec<String> {
             None => failures.push((failure, 1)),
         }
     }
-    let failed = failures.into_iter().map(|(failure, times)| {
-        if times == 1 {
-            return failure;
-        }
-        format!("{failure} (× {times})")
-    });
-    let logged = logs.iter().filter_map(|log| {
-        Some(format!(
-            "[{}] {}",
-            cell(log, "severity_text")?,
-            cell(log, "body")?
-        ))
-    });
+    let failed = failures
+        .into_iter()
+        .map(|(failure, times)| folded(failure, times));
     let cut = read.cut.then(cut_short);
-    let said_first = cut.into_iter().chain(left_out(read.without_parent));
-    said_first.chain(failed).chain(logged).collect()
+    let said_first = cut
+        .into_iter()
+        .chain(lines_cut_short(logged.different))
+        .chain(left_out(read.without_parent));
+    said_first.chain(failed).chain(logged.lines).collect()
 }
 
 /// A value of the appendix as a reader takes it: a time is a date and a
@@ -669,7 +734,7 @@ pub fn build_game_day(
     let read = spans_of(reader, &id)?;
     let spans = &read.spans;
     let rollback = Rollback::of(&read);
-    let findings = findings(&read, &logged_findings(reader, &id)?);
+    let findings = findings(&read, logged_findings(reader, &id)?);
     let started = started_attrs(reader, &id)?;
 
     let name = cell(&root, "experiment_name").unwrap_or("unknown experiment");

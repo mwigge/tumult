@@ -238,7 +238,7 @@ Measurements captured after fault removal to assess recovery.
 | `resilience.post.ended_at` | `int64` | Required | Epoch nanoseconds when post-fault observation ended. |
 | `resilience.post.duration_s` | `float` | Required | Total post-fault observation duration in seconds. |
 | `resilience.post.samples` | `int` | Required | Total number of samples collected during the post-fault window. |
-| `resilience.post.recovery_time_s` | `float` | Required | Mean Time to Recovery (MTTR) -- seconds from fault removal to all probes returning within baseline thresholds. |
+| `resilience.post.recovery_time_s` | `float` | Required | Mean Time to Recovery (MTTR) -- seconds from fault removal to all probes returning within baseline thresholds. When a probe did not return, the largest value of a probe: recovery takes at least this long. |
 | `resilience.post.full_recovery` | `boolean` | Required | Whether the system fully returned to baseline levels. |
 | `resilience.post.residual_degradation` | `float` | Recommended | Remaining degradation at end of observation, expressed in sigma from baseline mean. `0.0` means fully recovered. |
 | `resilience.post.data_integrity_verified` | `boolean` | Recommended | Whether a data integrity check was performed after recovery. |
@@ -254,7 +254,7 @@ For each probe `{name}`:
 | `resilience.post.probe.{name}.p95` | `float` | Recommended | 95th percentile during the post-fault window. |
 | `resilience.post.probe.{name}.error_rate` | `float` | Recommended | Error rate during the post-fault window, `0.0` to `1.0`. |
 | `resilience.post.probe.{name}.returned_to_baseline` | `boolean` | Required | Whether this probe returned to within baseline thresholds. |
-| `resilience.post.probe.{name}.recovery_time_s` | `float` | Required | Seconds from fault removal until this probe returned to baseline. |
+| `resilience.post.probe.{name}.recovery_time_s` | `float` | Required | Seconds from fault removal until this probe returned to baseline. When it did not return, the seconds until its last failing sample: it was still failing then. |
 
 ---
 

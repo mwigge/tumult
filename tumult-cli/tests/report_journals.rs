@@ -639,7 +639,7 @@ fn the_measurements_of_a_run_are_those_of_each_probe_during_and_after_the_fault(
             row(&["db", "24", "3.0 ms", "1.0 ms", "4.0 ms", "0.00 %", "0", ""]),
             row(&["Watched for", "30.0 s"]),
             row(&["Samples", "30"]),
-            row(&["Recovery time", "30.0 s"]),
+            row(&["Recovery time", "at least 30.0 s"]),
             row(&["Full recovery", "no"]),
             row(&[
                 "Probe",
@@ -650,7 +650,14 @@ fn the_measurements_of_a_run_are_those_of_each_probe_during_and_after_the_fault(
                 "Recovery time"
             ]),
             row(&["api", "10.0 ms", "20.5 ms", "10.00 %", "yes", "4.2 s"]),
-            row(&["db", "3.0 ms", "4.0 ms", "100.00 %", "no", "30.0 s"]),
+            row(&[
+                "db",
+                "3.0 ms",
+                "4.0 ms",
+                "100.00 %",
+                "no",
+                "at least 30.0 s"
+            ]),
         ]
     );
 }

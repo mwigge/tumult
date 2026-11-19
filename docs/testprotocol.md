@@ -713,7 +713,7 @@ For one trace, verify all canonical span names exist:
 | `resilience.hypothesis.after` | Steady-state check after method |
 | `resilience.action` | Each chaos action in method |
 | `resilience.probe` | Each probe execution |
-| `resilience.rollback` | Each rollback action |
+| `resilience.rollback` | One span for the rollback phase of a run; its steps are `resilience.action` spans under it. An imported manual record has one such span for each rollback activity, with no step under it |
 
 **Verification:**
 
