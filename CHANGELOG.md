@@ -37,6 +37,7 @@ differently on purpose, so read the
 - CLI: `tumult gameday run` exits with 1 unless the game day is COMPLIANT, after it writes the journal. It exited with 0 for each game day that wrote a journal.
 - CLI, MCP: `tumult gameday run`, `tumult_run_experiment` and `tumult_gameday_run` refuse a journal that is already at their path before anything runs, as `tumult run` does. Pass `--force` or `force: true` to replace it. The MCP tools replaced it and the CLI game day wrote over it after the whole run. An MCP run to the default `journal.toon` fails the second time.
 - CLI: `tumult run` reads and validates the experiment before it refuses an existing journal, so an experiment error comes first.
+- Demo: the control panel, `demo/proof/validate.py` and the MCP demo scripts pass `force: true`, so a domain can run again and replaces its journal.
 - CLI, MCP: `tumult gameday create` and `tumult_gameday_create` refuse a load tool without a script, a script or a VU count without a tool, and jmeter. `tumult gameday create` keeps an existing game day file and fails. `--load k6` without `--load-script` wrote a file that `tumult gameday run` could not parse.
 - CLI: `tumult run --dry-run` and `--output-format` cannot be used together.
 - Reports: the JUnit report has a case for each check of the steady state, named after the hypothesis, that fails when the check did not hold. A deviated run had no failing case, so a CI job that read the file stayed green.
@@ -76,6 +77,7 @@ differently on purpose, so read the
 - Examples: the shipped experiments name their kind, their target and their environment, and a test fails when a shipped file leaves one out. 34 files named neither, so their runs counted as chaos against no system.
 - Examples: the four examples that change the host carry the tag `host-changing`, and their description starts with what they change. The DNS example resolves the name after the redirect and undoes the change with the rollback of the plugin.
 - Examples: the process kill example matches a command line that is exactly `sleep 300`. It ended its own shell.
+- Examples: `net-chaos`, `dns-redirect-chaos` and the demo experiment `demo-net` remove their fault as the last step of the method. A run that completes runs no rollback, so the proxy or the hosts line stayed after the run. A test holds each shipped experiment to this.
 - Examples: the AWS FIS example names its template in its status, stop and rollback steps. It stopped a made-up id.
 - Examples: `examples/agentic/fake-http-malformed-json.toon` is removed. It was no experiment and failed `tumult validate`.
 - Experiments: the environment of a process provider takes a number or true/false as text, so `WORKERS: 4` needs no quotes.
@@ -86,6 +88,7 @@ differently on purpose, so read the
 - CLI: `tumult run --output-format json` writes the journal and nothing else to stdout, also for a run that did not complete. The lines for a person go to stderr. Text came first, and a run that did not complete printed no JSON.
 - CLI: the dry run writes one of a thing in the singular ("1 step", not "1 steps").
 - CLI: `tumult run --load` replaces the load of the file before validation, so the load that is checked is the load that runs.
+- CLI: `tumult run --load none` runs the experiment without the load of its file. It did the same as no flag.
 - Runs: the root span of a run carries its status, whether the hypothesis was met, the recovery time and the blast radius, and its span status is Ok only for a completed run. The game-day report showed no verdict, recovery time or blast radius for a real run, and the MTTR number stayed empty.
 - Runs: a probe that panics in a sample or in a hypothesis check is a failed probe, and the run goes on to its rollbacks and its journal. A panic left the runner with no journal and no rollback.
 - Runs: a guard probe that panics counts as a breach and halts the run. The guard thread died and the run went on without a guard.
@@ -132,9 +135,14 @@ differently on purpose, so read the
 - Plugins: `under-replicated` and `broker-count` print one number, and `broker-count` counts each broker. A healthy cluster printed two zeros, and three brokers read 1.
 - Plugins: the MySQL and Postgres actions `kill-connections` count the connections they ended. They counted each `KILL`, also one that failed, and each line with a t in it.
 - Plugins: a second `start_proxy` on a listen address that already has a chaos proxy is refused and names the running pid. It replaced the pidfile of the first proxy, which no stop could find again. `tumult-net-proxyd` writes its pidfile after it binds.
-- CI: the examples proof runs what `examples/expectations.json` and `gamedays/expectations.json` name and compares each journal with its entry. It also starts on pull requests that touch an example, a GameDay, a proof script or the lab. It ran eight examples and passed when each journal said completed.
+- Plugins: a script plugin gets `TRACEPARENT` and `TRACESTATE` of the span that runs it, so a script can add spans to the trace of the run. The keys were set in lower case, and no script read them.
+- Plugins: the `add-latency` action of the network plugin works without `TUMULT_TARGET_IP` and then delays the whole interface. The script stopped before any `tc` call.
+- Plugins: the `ping-latency` probe fails with the message of `ping` when the host does not answer or `ping` prints no round-trip line, and on macOS the `cpu-utilization` probe fails when `top` fails. Both printed nothing and ended with 0, so a probe with no tolerance passed for a host that was down.
+- CI: the examples proof runs what `examples/expectations.json` and `gamedays/expectations.json` name and compares each journal with its entry. It also starts on pull requests that touch an example, a GameDay, a proof script or the lab. A recorded journal is removed before its run, so the gate reads only journals of this run. It ran eight examples and passed when each journal said completed.
 - CI: the coverage workflow no longer names a crate outside the workspace.
-- Demo: `make demo-check` compares the journal of each demo run and of the Krönika seed with its expectations file, and runs the guard halt and the two topology experiments. It passed when each run printed a status line.
+- Demo: `make demo-check` compares the journal of each demo run and of the Krönika seed with its expectations file, and runs the guard halt and the two topology experiments. It runs the first experiment once more in the same stack, which a fault that stays in place fails. It passed when each run printed a status line.
+- Demo: the Grafana dashboard reads `tumult_experiments_total` and `tumult_action_duration_seconds_bucket`, the names the platform exports, and the SigNoz dashboard import aims at port 3301, where the compose file publishes SigNoz.
+- CI: `.cargo/audit.toml` no longer ignores RUSTSEC-2023-0071. The `rsa` crate left the lock file, so the ignore covered nothing.
 
 ### Added
 
@@ -156,11 +164,11 @@ differently on purpose, so read the
 - Plugins: a FIS stop or status can name `experiment_template_id` in place of `experiment_id`. A stop by template stops each pending, initiating or running experiment of the template, and a status by template is the status of the newest one. The role needs `fis:ListExperiments` for it.
 - CI: a job "Demo crates" runs `make demo-test`, which runs fmt, clippy and the tests of the three demo crates. `make precommit` runs it too, and Dependabot reads the lock files of the demo crates.
 - CI: the SQL lint also reads the SQL that functions build, from a kept file that a test holds to the code, and it reads the v5 migration it missed.
-- Docs: the experiment format guide, the CLI reference, the load testing, autopilot, observability and testing guides, the Kronika pages reference and the plugin pages follow the changes above. The plugin docs no longer show keys the format does not know.
+- Docs: the guides, the reference pages (Kronika pages, architecture, test protocol, metadata standard, regulatory mapping), the plugin pages, the demo and docker pages and the READMEs of the crates follow the changes above, and each was checked against the code. The plugin docs no longer show keys the format does not know.
 
 ### Quality
 
-- Tests load each shipped experiment and each experiment block in the docs. Each experiment set has an expectations file that the proof gates compare journals with. Each report is compared with a kept file. Mutation tests run on the changed lines (`make mutants` and a workflow), and a behaviour a user can see has at least one test through the binary, the real executor or a store written by the code that writes it in production.
+- Tests load each shipped experiment and each experiment block in the docs. Each experiment set has an expectations file that the proof gates compare journals with. Each report is compared with a kept file. Mutation tests run on the changed lines (`make mutants` and a workflow), and a behaviour a user can see has at least one test through the binary, the real executor or a store written by the code that writes it in production. The recording of five real runs that the tests of the readers, the reports and the charts use was made again with this release.
 
 ## [3.0.1] - 2026-11-16
 
