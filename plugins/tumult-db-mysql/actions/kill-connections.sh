@@ -1,5 +1,6 @@
 #!/bin/sh
 # Kill active MySQL connections to a database
+# Prints how many connections were killed. A failed list fails the action.
 set -eu
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -21,14 +22,18 @@ fi
 export MYSQL_PWD="${TUMULT_MYSQL_PASSWORD:-}"
 
 echo "killing connections to ${DATABASE}"
+# A failed list ends the action with the status and the message of mysql.
 PIDS=$(mysql -h "${HOST}" -P "${PORT}" -u "${USER}" -N -e \
-    "SELECT id FROM information_schema.processlist WHERE db = '${DATABASE}' AND id <> CONNECTION_ID();" 2>/dev/null)
+    "SELECT id FROM information_schema.processlist WHERE db = '${DATABASE}' AND id <> CONNECTION_ID();")
 
+# A connection can end between the list and its KILL. That KILL fails
+# without failing the action, and only the connections killed are counted.
 COUNT=0
 for PID in ${PIDS}; do
     validate_integer "PID" "${PID}"
-    mysql -h "${HOST}" -P "${PORT}" -u "${USER}" -e "KILL ${PID};" 2>/dev/null || true
-    COUNT=$((COUNT + 1))
+    if mysql -h "${HOST}" -P "${PORT}" -u "${USER}" -e "KILL ${PID};"; then
+        COUNT=$((COUNT + 1))
+    fi
 done
 
 echo "killed ${COUNT} connections to ${DATABASE}"

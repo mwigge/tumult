@@ -55,7 +55,7 @@ For continuous during-phase sampling, use probes in the method section with `bac
 
 | Action | Description | Key Variables |
 |--------|-------------|---------------|
-| `kill-connections` | Kill connections via KILL command | `TUMULT_MYSQL_DATABASE` (required) |
+| `kill-connections` | Kill connections via KILL command; counts only the ones it ended | `TUMULT_MYSQL_DATABASE` (required) |
 | `lock-table` | LOCK TABLES WRITE for a duration | `TUMULT_MYSQL_DATABASE`, `TUMULT_MYSQL_TABLE`, `TUMULT_DURATION` |
 
 ### Probes

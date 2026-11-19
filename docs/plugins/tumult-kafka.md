@@ -30,6 +30,8 @@ Script-based plugin for Apache Kafka chaos engineering. Covers broker failures, 
 | `under-replicated` | Under-replicated partition count | Integer (0 = healthy) |
 | `broker-count` | Active brokers in cluster | Integer |
 
+A probe whose query fails exits non-zero with the message of the Kafka tool. It prints no count.
+
 ## Example: Broker Kill with Consumer Lag Monitoring
 
 ```toon
