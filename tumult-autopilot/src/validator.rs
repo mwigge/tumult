@@ -6,12 +6,15 @@
 //! consequences:
 //!
 //! * **hollow** — the experiment cannot falsify anything (no steady-state
-//!   probe, or it injects no fault at all). Hollow candidates are *vetoed*
-//!   by the gate: running one would mint worthless evidence.
+//!   probe, or it injects no fault at all), or its playbook cannot be read,
+//!   so nothing can run. Hollow candidates are *vetoed* by the gate:
+//!   running one would mint worthless evidence.
 //! * **blockers** — the candidate is falsifiable but not safely enactable
 //!   (no playbook resolved, no rollback, more than one fault — v2.15 bounds
 //!   worst-case impact to guard-halting single-fault runs). Blocked
-//!   candidates cap at *propose*: a human may still choose to run them.
+//!   candidates cap at *propose*. They join the human queue, but an
+//!   approval runs a decision only when the gate then answers enact, so a
+//!   blocked candidate does not run.
 //!
 //! When no playbook resolved there is no experiment to introspect, so the
 //! hollow checks are skipped — the `experiment_has_*` flags on the
@@ -45,6 +48,9 @@ pub fn validate(candidate: &Candidate) -> ValidatorReport {
             "no playbook for {}::{}",
             candidate.plugin, candidate.action
         ));
+    } else if let Some(error) = &candidate.playbook_error {
+        // Nothing can run: the reason it cannot is the only finding.
+        hollow.push(format!("playbook unreadable: {error}"));
     } else {
         if !candidate.experiment_has_steady_state {
             hollow
@@ -93,6 +99,7 @@ mod tests {
             experiment_has_rollback: true,
             experiment_has_steady_state: true,
             experiment_fault_count: 1,
+            playbook_error: None,
             trigger: Trigger::Manual,
         }
     }
@@ -119,6 +126,23 @@ mod tests {
             vec!["no playbook for tumult-net::inject_latency".to_string()]
         );
         assert!(report.hollow.is_empty());
+        assert!(!report.enactable);
+    }
+
+    #[test]
+    fn unreadable_playbook_is_hollow_for_that_reason_alone() {
+        let mut c = candidate();
+        c.playbook_error = Some("demo-net.toon: No such file or directory".to_string());
+        // The flags of a file that was never read are worst-case.
+        c.experiment_has_steady_state = false;
+        c.experiment_has_rollback = false;
+        c.experiment_fault_count = 0;
+        let report = validate(&c);
+        assert_eq!(
+            report.hollow,
+            vec!["playbook unreadable: demo-net.toon: No such file or directory".to_string()]
+        );
+        assert!(report.blockers.is_empty());
         assert!(!report.enactable);
     }
 

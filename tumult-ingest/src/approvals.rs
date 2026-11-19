@@ -133,7 +133,8 @@ pub struct Introspection {
     pub has_rollback: bool,
     /// Definition declares at least one guard.
     pub has_guard: bool,
-    /// Definition declares a steady-state hypothesis.
+    /// Definition declares a steady-state hypothesis with at least one
+    /// probe.
     pub has_steady_state: bool,
     /// Method action steps (fault injections), counting repetitions.
     pub fault_count: usize,
@@ -181,12 +182,13 @@ pub fn introspect(experiment: &Experiment) -> Introspection {
             destructive = true;
         }
     }
+    let facts = experiment.structural_facts();
     Introspection {
         probe_only: actions.is_empty(),
-        has_rollback: !experiment.rollbacks.is_empty(),
-        has_guard: !experiment.guards.is_empty(),
-        has_steady_state: experiment.steady_state_hypothesis.is_some(),
-        fault_count: actions.len(),
+        has_rollback: facts.has_rollback,
+        has_guard: facts.has_guard,
+        has_steady_state: facts.has_steady_state,
+        fault_count: facts.fault_count,
         fault_kinds: kinds.len(),
         destructive,
         first_fault,
@@ -308,6 +310,7 @@ pub fn evaluate_t3_gate(
         experiment_has_rollback: introspection.has_rollback,
         experiment_has_steady_state: introspection.has_steady_state,
         experiment_fault_count: introspection.fault_count,
+        playbook_error: None,
         trigger: Trigger::Manual,
     };
     let validator = validate(&candidate);
@@ -482,6 +485,38 @@ method[1]:
         assert_eq!(intro.fault_count, 0);
         assert!(!intro.has_rollback);
         assert!(!intro.destructive);
+    }
+
+    #[test]
+    fn a_steady_state_without_a_probe_is_no_steady_state() {
+        let toon = r#"
+title: observes nothing
+steady_state_hypothesis:
+  title: svc up
+  probes[0]:
+method[1]:
+  - name: kill the thing
+    activity_type: action
+    provider:
+      type: native
+      plugin: chaos
+      function: process_kill
+rollbacks[1]:
+  - name: undo
+    activity_type: action
+    provider:
+      type: process
+      path: /bin/true
+"#;
+        let experiment = tumult_core::engine::parse_experiment(toon).unwrap();
+        assert!(experiment.steady_state_hypothesis.is_some());
+        let intro = introspect(&experiment);
+        assert!(
+            !intro.has_steady_state,
+            "a hypothesis with no probe cannot falsify anything"
+        );
+        assert!(intro.has_rollback);
+        assert_eq!(intro.fault_count, 1);
     }
 
     #[test]

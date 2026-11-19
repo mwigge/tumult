@@ -28,7 +28,7 @@ Tumult searches for plugins in this order — first found wins:
 | **Result** | stdout + exit code | `Result<Value, Error>` |
 | **Examples** | containers, db-postgres, db-mysql, db-redis, kafka, loadtest, network, process, pumba, stress, timewarp | ssh, net, kubernetes, cloud, windows |
 
-Each native crate implements the `NativeExecutor` trait from `tumult-plugin`; the CLI is a pure composition root that registers the executors. Calling an unknown plugin or function fails with an error listing the available names.
+Each native crate implements the `NativeExecutor` trait from `tumult-plugin`. `tumult-exec` is the one composition root that registers the executors: the CLI and the MCP server run and list native plugins through it. Calling an unknown plugin or function fails with an error listing the available names.
 
 Script plugins are dispatched from experiments with the `script` provider —
 `type: script` with `plugin:` and `function:` naming the plugin and action;

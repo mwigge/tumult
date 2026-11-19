@@ -20,7 +20,8 @@ DORA = 90
 NIS2 = 120
 
 # Operator-granted initial trust: connection-kill recovery validation on
-# the demo data tier. Everything else must earn autonomy or be approved.
+# the demo data tier. Everything else must earn autonomy: an approval
+# does not stand in for it.
 [[autopilot.pretrusted]]
 plugin = "tumult-containers"
 action = "kill-container"

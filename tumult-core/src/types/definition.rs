@@ -429,6 +429,43 @@ fn default_version() -> String {
     "v1".to_string()
 }
 
+/// The structural facts of an experiment that decide whether it can serve
+/// as an autopilot playbook. Every gate reads them from
+/// [`Experiment::structural_facts`], so the MCP engine, the daemon and the
+/// API agree on them.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct StructuralFacts {
+    /// A steady-state hypothesis with at least one probe. Without a probe
+    /// the experiment cannot falsify anything.
+    pub has_steady_state: bool,
+    /// At least one rollback activity.
+    pub has_rollback: bool,
+    /// At least one guard.
+    pub has_guard: bool,
+    /// Method actions (fault injections), counting repetitions.
+    pub fault_count: usize,
+}
+
+impl Experiment {
+    /// The [`StructuralFacts`] of this experiment.
+    #[must_use]
+    pub fn structural_facts(&self) -> StructuralFacts {
+        StructuralFacts {
+            has_steady_state: self
+                .steady_state_hypothesis
+                .as_ref()
+                .is_some_and(|h| !h.probes.is_empty()),
+            has_rollback: !self.rollbacks.is_empty(),
+            has_guard: !self.guards.is_empty(),
+            fault_count: self
+                .method
+                .iter()
+                .filter(|a| a.activity_type == ActivityType::Action)
+                .count(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::types::test_support::toon_round_trip;
@@ -823,6 +860,47 @@ mod tests {
         let toon = format!("{STEP}    execution_target:\n      type: ssh\n      host: db\n");
         let error = parse_error(&toon);
         assert!(error.contains("execution_target"), "{error}");
+    }
+
+    #[test]
+    fn structural_facts_count_faults_and_want_a_probe_for_a_steady_state() {
+        let action = |name: &str| Activity {
+            name: name.into(),
+            activity_type: ActivityType::Action,
+            ..Activity::default()
+        };
+        let probe = Activity {
+            activity_type: ActivityType::Probe,
+            ..action("look")
+        };
+        let mut exp = Experiment {
+            steady_state_hypothesis: Some(Hypothesis {
+                title: "up".into(),
+                probes: vec![],
+            }),
+            method: vec![action("a"), probe.clone(), action("a")],
+            rollbacks: vec![action("undo")],
+            ..Experiment::default()
+        };
+        assert_eq!(
+            exp.structural_facts(),
+            StructuralFacts {
+                has_steady_state: false,
+                has_rollback: true,
+                has_guard: false,
+                fault_count: 2,
+            },
+            "a hypothesis without a probe is no steady state"
+        );
+        exp.steady_state_hypothesis = Some(Hypothesis {
+            title: "up".into(),
+            probes: vec![probe],
+        });
+        assert!(exp.structural_facts().has_steady_state);
+        assert_eq!(
+            Experiment::default().structural_facts(),
+            StructuralFacts::default()
+        );
     }
 
     #[test]

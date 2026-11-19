@@ -13,8 +13,6 @@
 pub mod error;
 /// MCP handler: routes tool calls to their implementations.
 pub mod handler;
-/// Composition root registering the native plugins visible to `tumult_discover`.
-pub(crate) mod native;
 /// Programmatic entry point for running the MCP server over stdio or HTTP.
 pub mod server;
 /// `OTel` instrumentation for MCP tool dispatch.

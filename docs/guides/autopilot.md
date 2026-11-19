@@ -19,7 +19,7 @@ anything runs.
 tumult autopilot once --policy autopilot.toml                # dry: decide + record only
 tumult autopilot once --policy autopilot.toml --execute      # enact what the gate allows
 tumult autopilot status [--verdict propose] [--format json]  # queue + history
-tumult autopilot approve <decision-id>                       # run a proposed playbook
+tumult autopilot approve <decision-id> --policy autopilot.toml  # runs if the gate now enacts
 tumult autopilot deny <decision-id> --reason "..."           # veto = ladder feedback
 tumult autopilot export <dir>                                # parquet cold archive
 ```
@@ -90,12 +90,18 @@ reproducible from `(policy hash, recorded inputs)`, forever.
   confidence, autonomy not yet earned). Lands in the human queue with the
   exact blocker named.
 - **propose** — never enact-eligible (no playbook, validator blockers).
-- **veto** — hard safety stop: disabled, hollow experiment, open deviation
-  on the target, concurrent experiment, budget exhausted. Recorded, never
-  run, names the rule that fired.
+- **veto** — hard safety stop: disabled, hollow experiment (or a playbook
+  that cannot be read), open deviation on the target, concurrent
+  experiment, budget exhausted. Recorded, never run, names the rule that
+  fired and, for a hollow one, why.
 
-Approving runs the playbook; denying records feedback. Both are lifecycle
-events on the immutable decision — nothing is ever rewritten.
+Approving runs the gate again on the current state. The playbook runs only
+if the gate now answers enact. So an approval clears a hold that has passed
+(business hours, cooldown, a concurrent run, guard telemetry). It does not
+override tier, confidence, autonomy or a validator blocker. If the re-gate
+refuses, you can approve again later. Denying records feedback and is
+final. Both are lifecycle events on the immutable decision — nothing is
+ever rewritten.
 
 ## Earned autonomy
 

@@ -687,7 +687,7 @@ tumult autopilot <once|status|approve|deny|notify-change|export>
 |------------|-------------|
 | `once` | Run one pass of the decision loop (without `--execute` nothing is injected) |
 | `status` | List recorded decisions with their latest lifecycle event |
-| `approve` | Approve a proposed decision — runs its playbook experiment |
+| `approve` | Approve a proposed decision — its playbook runs only if the re-gate now answers enact |
 | `deny` | Deny a proposed decision — records veto feedback |
 | `notify-change` | Record a deploy/config change event against a service |
 | `export` | Export the decision and event tables as Parquet files |

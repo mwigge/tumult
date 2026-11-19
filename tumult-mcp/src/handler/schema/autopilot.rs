@@ -53,11 +53,12 @@ pub struct AutopilotStatusTool {
 
 /// Arguments for the `tumult_autopilot_respond` tool.
 ///
-/// Approving re-evaluates the full gate against current state before the
-/// playbook experiment runs; a decision takes exactly one response.
+/// Approving re-evaluates the full gate against current state; the
+/// playbook experiment runs only when it answers enact. A deny is final, an
+/// approval the re-gate refused may be given again.
 #[macros::mcp_tool(
     name = "tumult_autopilot_respond",
-    description = "Autopilot: record the human response to a proposed/downgraded decision. approve=true runs the decision's playbook experiment (real fault injection, journaled and ingested like any run) — but only after the FULL gate is re-evaluated against CURRENT state: supply the same policy TOML via policy_path, and if the policy hash changed or any gate rule now vetoes or downgrades (enrollment, concurrency, cooldown, guard telemetry pre-flight, …), execution is refused and the refusal is recorded in the audit trail. No stale approval ever executes. approve=false records the veto feedback the autonomy ladder consumes — denials keep a fault class from graduating to unattended enact. Either response is appended as an event BEFORE any experiment runs, and a decision takes exactly one response. Structured content is {decision_id, action}.",
+    description = "Autopilot: record the human response to a proposed/downgraded decision. approve=true runs the decision's playbook experiment (real fault injection, journaled and ingested like any run) — but only after the FULL gate is re-evaluated against CURRENT state: supply the same policy TOML via policy_path, and if the policy hash changed or the gate now answers anything but enact (a veto, a downgrade or a proposal: enrollment, concurrency, cooldown, guard telemetry pre-flight, …), execution is refused and the refusal is recorded in the audit trail. No stale approval ever executes. An approval clears a hold that has passed (business hours, cooldown, a concurrent run, guard telemetry); it does not override tier, confidence, autonomy or a validator blocker. approve=false records the veto feedback the autonomy ladder consumes — denials keep a fault class from graduating to unattended enact. Either response is appended as an event BEFORE any experiment runs. A deny is final; after a refused approval a new approve is accepted and judged again on the state at that time. Structured content is {decision_id, action}.",
     destructive_hint = true,
     read_only_hint = false,
     idempotent_hint = false,

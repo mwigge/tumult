@@ -105,8 +105,9 @@ pub fn list_journals(
 /// Discover plugins of both kinds and list their actions.
 ///
 /// Script plugins are read from the filesystem search paths; native plugins
-/// come from the server's composition-root registry (`crate::native`), so
-/// the same plugins the runner can dispatch to are the ones reported here.
+/// come from the shared composition root (`tumult_exec::native_registry`)
+/// that MCP runs steps through, so the plugins it can dispatch to are the
+/// ones reported here.
 #[must_use]
 pub fn discover_plugins() -> String {
     use tumult_plugin::discovery::discover_all_plugins;
@@ -118,7 +119,7 @@ pub fn discover_plugins() -> String {
             registry.register_script(manifest);
         }
     }
-    let native = crate::native::registry();
+    let native = tumult_exec::native_registry();
 
     // (name, kind) pairs, merged and sorted by name.
     let mut plugins: Vec<(String, &str)> = registry
@@ -390,6 +391,51 @@ mod tests {
         assert!(output.contains("tumult-ssh (native)"));
         assert!(output.contains("tumult-ssh::execute"));
         assert!(output.contains("tumult-kubernetes::delete_pod"));
+    }
+
+    #[test]
+    fn discover_lists_tumult_windows_with_its_three_functions() {
+        let dir = TempDir::new().unwrap();
+        let _env = crate::tools::test_support::catalog_guard(dir.path(), &[]);
+        let output = discover_plugins();
+        assert!(output.contains("tumult-windows (native)"), "{output}");
+        for function in ["process_kill", "cpu_stress", "network_blackhole"] {
+            assert!(
+                output.contains(&format!("tumult-windows::{function}")),
+                "{function}: {output}"
+            );
+        }
+    }
+
+    #[test]
+    fn discover_lists_every_plugin_and_function_that_mcp_can_run() {
+        let dir = TempDir::new().unwrap();
+        let _env = crate::tools::test_support::catalog_guard(dir.path(), &[]);
+        let output = discover_plugins();
+        let registry = tumult_exec::native_registry();
+        for name in registry.plugin_names() {
+            assert!(
+                output.contains(&format!("  {name} (native)\n")),
+                "{name}: {output}"
+            );
+        }
+        for function in registry.qualified_functions() {
+            assert!(
+                output.contains(&format!("  {function}\n")),
+                "{function}: {output}"
+            );
+        }
+    }
+
+    /// The scaffold builder keeps its own list of native plugin names; it
+    /// must name exactly the plugins the shared registry runs.
+    #[test]
+    fn the_scaffold_list_of_native_plugins_is_the_shared_registry() {
+        let mut listed = tumult_authoring::builder::NATIVE_PLUGINS.to_vec();
+        listed.sort_unstable();
+        let mut registered = tumult_exec::native_registry().plugin_names();
+        registered.sort_unstable();
+        assert_eq!(listed, registered);
     }
 
     // ── query_traces ──────────────────────────────────────────

@@ -14,7 +14,7 @@ mod tests;
 
 use std::{fmt::Write as _, path::Path};
 
-use tumult_autopilot::{LoadedPolicy, Verdict};
+use tumult_autopilot::{validate, Candidate, LoadedPolicy, Verdict};
 
 use crate::error::ToolError;
 use crate::tools::StructuredReport;
@@ -224,7 +224,7 @@ pub fn autopilot_once(
             Verdict::Enact => ("enact", String::new()),
             Verdict::Downgrade { reasons } => ("downgrade", reasons.join("; ")),
             Verdict::Propose { reasons } => ("propose", reasons.join("; ")),
-            Verdict::Veto { rule } => ("veto", rule.clone()),
+            Verdict::Veto { rule } => ("veto", veto_detail(rule, c)),
         };
         lines.push(format!(
             "[{verdict}] {} {}::{} for {} (score {:.2}){}",
@@ -283,9 +283,19 @@ pub fn autopilot_once(
     Ok(StructuredReport { text, structured })
 }
 
+/// The detail of a veto's line: the rule that fired, and for a hollow
+/// candidate the validator's reasons, so the operator sees why.
+fn veto_detail(rule: &str, candidate: &Candidate) -> String {
+    if rule != tumult_autopilot::gate::RULE_NOT_HOLLOW {
+        return rule.to_string();
+    }
+    format!("{rule}: {}", validate(candidate).hollow.join("; "))
+}
+
 /// Approve or deny a proposed/downgraded decision. Approval runs the
-/// playbook; both outcomes are appended as human events (the veto feedback
-/// the autonomy ladder consumes).
+/// playbook only when the re-gate answers enact; both outcomes are appended
+/// as human events (the veto feedback the autonomy ladder consumes). A deny
+/// is final; an approval the re-gate refused may be given again.
 ///
 /// Approval is never stale: before the playbook runs, the full gate is
 /// re-evaluated against CURRENT state (policy supplied via `policy_path`,
@@ -487,7 +497,7 @@ pub fn autopilot_status(
     for row in &rows {
         let r = &row.record;
         lines.push(format!(
-            "{}  [{}] {} {}::{} for {} — {}{}",
+            "{}  [{}] {} {}::{} for {} — {}{}{}",
             &r.id[..8.min(r.id.len())],
             r.verdict,
             r.service_id,
@@ -498,7 +508,8 @@ pub fn autopilot_status(
             row.last_event
                 .as_deref()
                 .map(|e| format!(" · {e}"))
-                .unwrap_or_default()
+                .unwrap_or_default(),
+            validator_findings(&r.validator)
         ));
         items.push(serde_json::json!({
             "id": r.id, "verdict": r.verdict, "service": r.service_id,
@@ -516,6 +527,33 @@ pub fn autopilot_status(
     structured.insert("decisions".into(), serde_json::json!(items));
     structured.insert("count".into(), serde_json::json!(rows.len()));
     Ok(StructuredReport { text, structured })
+}
+
+/// The validator's findings stored with a decision, as the end of its
+/// status line: the hollow reasons, else the blockers, else nothing.
+fn validator_findings(validator: &serde_json::Value) -> String {
+    let reasons = |key: &str| {
+        validator
+            .get(key)
+            .and_then(serde_json::Value::as_array)
+            .map(|items| {
+                items
+                    .iter()
+                    .filter_map(serde_json::Value::as_str)
+                    .collect::<Vec<_>>()
+                    .join("; ")
+            })
+            .unwrap_or_default()
+    };
+    let hollow = reasons("hollow");
+    if !hollow.is_empty() {
+        return format!(" — hollow: {hollow}");
+    }
+    let blockers = reasons("blockers");
+    if blockers.is_empty() {
+        return String::new();
+    }
+    format!(" — blockers: {blockers}")
 }
 
 /// Export the decision tables to Parquet under `dir`.

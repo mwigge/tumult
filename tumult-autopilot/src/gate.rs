@@ -7,8 +7,8 @@
 //! * [`Verdict::Veto`] — a hard safety violation: autopilot disabled, target
 //!   not enrolled when enrollment is required, open deviation on the target,
 //!   another experiment already running, daily budget exhausted, or a hollow
-//!   candidate (cannot falsify anything). Nothing downstream may run; the
-//!   fired rule is named.
+//!   candidate (cannot falsify anything, or its playbook cannot be read).
+//!   Nothing downstream may run; the fired rule is named.
 //! * [`Verdict::Propose`] — the candidate was never enact-eligible: the
 //!   validator found enactability blockers (no playbook, no rollback,
 //!   multi-fault). It joins the human approval queue as-is.
@@ -20,6 +20,12 @@
 //!   specifically blocked autonomy so the operator sees precisely what to
 //!   change.
 //! * [`Verdict::Enact`] — every rule passed; the engine may run.
+//!
+//! A human approval of a queued decision runs the gate again on current
+//! state, and the playbook runs only when that answers `Enact`. So an
+//! approval clears a hold that has passed (business hours, cooldown, a
+//! concurrent run, guard telemetry). It never overrides tier, confidence,
+//! autonomy or a validator blocker.
 //!
 //! # Determinism
 //!

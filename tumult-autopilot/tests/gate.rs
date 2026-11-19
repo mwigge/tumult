@@ -43,6 +43,7 @@ fn candidate() -> Candidate {
         experiment_has_rollback: true,
         experiment_has_steady_state: true,
         experiment_fault_count: 1,
+        playbook_error: None,
         trigger: Trigger::Manual,
     }
 }

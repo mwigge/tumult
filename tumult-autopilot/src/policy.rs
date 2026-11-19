@@ -54,8 +54,8 @@ pub struct AutopilotPolicy {
     /// so no vocabulary is validated here.
     #[serde(default)]
     pub enact_tiers: Vec<String>,
-    /// When `true` (the default), an experiment without a guard caps at
-    /// propose.
+    /// When `true` (the default), an experiment without a guard does not
+    /// enact: the gate downgrades it (`guard.present`).
     #[serde(default = "default_true")]
     pub require_guard: bool,
     /// When `true`, enact is allowed only within business hours. The caller

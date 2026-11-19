@@ -267,6 +267,62 @@ fn status_filters_by_verdict_and_honors_limit() {
     assert_eq!(limited.structured["count"], 1);
 }
 
+/// The end of a status line is what the validator found: the hollow
+/// reasons, else the blockers, else nothing.
+#[test]
+fn a_status_line_ends_with_what_the_validator_found() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let db = empty_store(dir.path());
+    let with = |id: &str, validator: serde_json::Value| {
+        let mut record = decision(id, "propose");
+        record.validator = validator;
+        record
+    };
+    {
+        let store = tumult_lake::AnalyticsStore::open(&db).unwrap();
+        for record in [
+            with(
+                "d-plain",
+                serde_json::json!({"enactable": true, "hollow": [], "blockers": []}),
+            ),
+            with(
+                "d-block",
+                serde_json::json!({"hollow": [], "blockers": ["no rollback declared", "2 faults"]}),
+            ),
+            with(
+                "d-both",
+                serde_json::json!({"hollow": ["no fault"], "blockers": ["no rollback declared"]}),
+            ),
+        ] {
+            store.insert_autopilot_decision(&record).unwrap();
+        }
+    }
+
+    let status = autopilot_status(db.to_str().unwrap(), None, None).unwrap();
+    let line = |id: &str| {
+        status
+            .text
+            .lines()
+            .find(|l| l.starts_with(id))
+            .unwrap_or_else(|| panic!("no line for {id}: {}", status.text))
+    };
+    assert!(
+        line("d-block").ends_with(" — staleness — blockers: no rollback declared; 2 faults"),
+        "{}",
+        line("d-block")
+    );
+    assert!(
+        line("d-both").ends_with(" — staleness — hollow: no fault"),
+        "{}",
+        line("d-both")
+    );
+    assert!(
+        line("d-plain").ends_with(" — staleness"),
+        "{}",
+        line("d-plain")
+    );
+}
+
 #[test]
 fn respond_deny_appends_the_veto_feedback_event() {
     let dir = tempfile::TempDir::new().unwrap();
@@ -375,6 +431,39 @@ fn once_with_enactment_in_flight_vetoes_enact_verdicts() {
         !dir.path().join("autopilot-journals").exists(),
         "no playbook journal may be written when the gate vetoes"
     );
+}
+
+/// A veto names the rule that fired. Only a hollow one adds its reasons.
+#[test]
+fn the_line_of_a_veto_on_another_rule_is_the_rule_alone() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let db = seed_broken_store(dir.path());
+    crate::tools::topology_import(db.to_str().unwrap(), Some(TOPOLOGY_TOML), None).unwrap();
+    let _plugins = with_plugin_catalog(dir.path());
+    let policy_path = write_enabled_policy(dir.path());
+
+    let report = autopilot_once(
+        db.to_str().unwrap(),
+        policy_path.to_str().unwrap(),
+        false,
+        None,
+        1,
+    )
+    .unwrap();
+
+    let vetoes: Vec<&str> = report
+        .text
+        .lines()
+        .filter(|l| l.contains("no_concurrent"))
+        .collect();
+    assert!(!vetoes.is_empty(), "{}", report.text);
+    for line in vetoes {
+        assert!(line.starts_with("[veto] "), "{line}");
+        assert!(
+            line.ends_with(" — ambient.no_concurrent_experiment"),
+            "{line}"
+        );
+    }
 }
 
 // ── Approval re-gate (#2) ──────────────────────────────────────
@@ -543,6 +632,18 @@ fn echo_probe(name: &str) -> Activity {
 /// Write an enact-eligible playbook: a steady-state probe, exactly one
 /// fault, a rollback, and a guard whose pre-flight passes. Returns the path.
 fn write_guarded_playbook(dir: &std::path::Path) -> String {
+    write_playbook(dir, "playbook.toon", &guarded_playbook())
+}
+
+/// Write `exp` as `name` in `dir`; returns the path.
+fn write_playbook(dir: &std::path::Path, name: &str, exp: &Experiment) -> String {
+    let path = dir.join(name);
+    std::fs::write(&path, toon_format::encode_default(exp).unwrap()).unwrap();
+    path.to_str().unwrap().to_string()
+}
+
+/// The enact-eligible playbook of [`write_guarded_playbook`].
+fn guarded_playbook() -> Experiment {
     let fault = Activity {
         name: "inject".into(),
         activity_type: ActivityType::Action,
@@ -554,7 +655,7 @@ fn write_guarded_playbook(dir: &std::path::Path) -> String {
         tolerance: None,
         ..echo_probe("rollback")
     };
-    let exp = Experiment {
+    Experiment {
         title: "enact-eligible playbook".into(),
         steady_state_hypothesis: Some(tumult_core::types::Hypothesis {
             title: "target observable".into(),
@@ -568,11 +669,7 @@ fn write_guarded_playbook(dir: &std::path::Path) -> String {
         }],
         rollbacks: vec![rollback],
         ..Default::default()
-    };
-    let toon = toon_format::encode_default(&exp).unwrap();
-    let path = dir.join("playbook.toon");
-    std::fs::write(&path, toon).unwrap();
-    path.to_str().unwrap().to_string()
+    }
 }
 
 /// A store with the proposed decision `d-prop`, and the policy under which
@@ -672,6 +769,361 @@ fn an_approved_run_keeps_a_journal_that_is_already_at_the_path_of_its_decision()
     assert_eq!(status.last_event.as_deref(), Some("run_failed"));
 }
 
+// ── Approval of a broken-control decision ─────────────────────
+
+const HOUR_NS: i64 = 3_600_000_000_000;
+
+/// A store with a broken control on `svc:db`, a catalog with one script
+/// action, and a policy that binds `playbook` to that action on the data
+/// tier. With `pretrust` the class needs no earned autonomy. Returns the
+/// store, the policy and the guard that keeps discovery on the catalog.
+fn broken_store_with_policy(
+    dir: &std::path::Path,
+    playbook: &str,
+    pretrust: bool,
+) -> (
+    std::path::PathBuf,
+    std::path::PathBuf,
+    tumult_test_utils::EnvGuard,
+) {
+    let db = seed_broken_store(dir);
+    crate::tools::topology_import(db.to_str().unwrap(), Some(TOPOLOGY_TOML), None).unwrap();
+    let env = crate::tools::test_support::catalog_guard(
+        dir,
+        &[("test-topology-plugin", &["test-inject"])],
+    );
+    let mut policy = format!(
+        "[autopilot]\nenabled = true\nenact_tiers = [\"data\"]\n\n\
+         [[autopilot.playbook]]\nplugin = \"test-topology-plugin\"\naction = \"test-inject\"\n\
+         experiment = \"{playbook}\"\n"
+    );
+    if pretrust {
+        policy.push_str(
+            "\n[[autopilot.pretrusted]]\nplugin = \"test-topology-plugin\"\n\
+             action = \"test-inject\"\ntier = \"data\"\n",
+        );
+    }
+    let policy_path = dir.join("autopilot.toml");
+    std::fs::write(&policy_path, policy).unwrap();
+    (db, policy_path, env)
+}
+
+/// One pass at the clock `now`, recorded as `autopilot_once` records it.
+/// Returns the id and the verdict of the broken-control decision.
+fn record_broken_control_decision(
+    db: &std::path::Path,
+    policy_path: &std::path::Path,
+    now: i64,
+) -> (String, Verdict) {
+    let policy = load_policy(policy_path.to_str().unwrap()).unwrap();
+    let store = tumult_lake::AnalyticsStore::open(db).unwrap();
+    let assembled = engine::assemble_candidates(&store, &policy, now, true, 3, 0).unwrap();
+    for item in &assembled {
+        engine::persist_decision(&store, &policy, item, now).unwrap();
+    }
+    let broken = assembled
+        .iter()
+        .find(|a| matches!(a.candidate.trigger, Trigger::BrokenControl { .. }))
+        .expect("the broken control on svc:db must yield a broken-control candidate");
+    assert_eq!(broken.candidate.service_id, "svc:db");
+    (broken.candidate.id.clone(), broken.decision.verdict.clone())
+}
+
+#[test]
+fn an_approved_broken_control_decision_runs_once_the_hold_that_kept_it_back_has_passed() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let playbook = write_guarded_playbook(dir.path());
+    let (db, policy_path, _env) = broken_store_with_policy(dir.path(), &playbook, true);
+    // An autopilot run on svc:db a month ago. The pass came an hour after
+    // it, so the cooldown held the decision back.
+    let last_run = now_ns() - 30 * 24 * HOUR_NS;
+    {
+        let store = tumult_lake::AnalyticsStore::open(&db).unwrap();
+        let mut earlier = decision("d-earlier", "enact");
+        earlier.decided_at_ns = last_run;
+        store.insert_autopilot_decision(&earlier).unwrap();
+    }
+    let (id, verdict) = record_broken_control_decision(&db, &policy_path, last_run + HOUR_NS);
+    let Verdict::Downgrade { reasons } = verdict else {
+        panic!("the cooldown must downgrade the decision: {verdict:?}");
+    };
+    assert_eq!(reasons.len(), 1, "{reasons:?}");
+    assert!(reasons[0].contains("cooldown active"), "{reasons:?}");
+
+    // Now the cooldown has passed and the control is still broken: the
+    // approval revalidates the break, and the playbook runs.
+    let report = autopilot_respond(
+        db.to_str().unwrap(),
+        &id,
+        true,
+        Some("the cooldown has passed"),
+        Some(policy_path.to_str().unwrap()),
+        0,
+    )
+    .unwrap();
+    assert!(report.text.contains("ran "), "{}", report.text);
+    let store = tumult_lake::AnalyticsStore::open(&db).unwrap();
+    let status = tumult_query::autopilot_decision(&store, &id)
+        .unwrap()
+        .unwrap();
+    assert_eq!(status.last_event.as_deref(), Some("run_completed"));
+    drop(store);
+    assert!(dir
+        .path()
+        .join("autopilot-journals")
+        .join(format!("{id}.journal.toon"))
+        .exists());
+}
+
+#[test]
+fn an_approved_decision_of_another_trigger_into_a_broken_service_is_vetoed() {
+    let dir = tempfile::TempDir::new().unwrap();
+    // `d-prop` is a staleness decision on svc:db, and svc:db has a break.
+    let (db, policy_path) = approvable_decision(dir.path());
+    seed_broken_store(dir.path());
+    crate::tools::topology_import(db.to_str().unwrap(), Some(TOPOLOGY_TOML), None).unwrap();
+
+    let err = autopilot_respond(
+        db.to_str().unwrap(),
+        "d-prop",
+        true,
+        None,
+        Some(policy_path.to_str().unwrap()),
+        0,
+    )
+    .expect_err("only the revalidation of the break may inject into a broken service");
+    assert!(
+        err.to_string().contains("ambient.no_open_deviation"),
+        "{err}"
+    );
+    assert!(!dir.path().join("autopilot-journals").exists());
+}
+
+#[test]
+fn an_approval_does_not_stand_in_for_the_autonomy_a_broken_control_decision_lacks() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let playbook = write_guarded_playbook(dir.path());
+    let (db, policy_path, _env) = broken_store_with_policy(dir.path(), &playbook, false);
+    let (id, verdict) = record_broken_control_decision(&db, &policy_path, now_ns());
+    let Verdict::Downgrade { reasons } = verdict else {
+        panic!("unearned autonomy must downgrade the decision: {verdict:?}");
+    };
+    assert!(
+        reasons.iter().any(|r| r.contains("autonomy not earned")),
+        "{reasons:?}"
+    );
+
+    let err = autopilot_respond(
+        db.to_str().unwrap(),
+        &id,
+        true,
+        None,
+        Some(policy_path.to_str().unwrap()),
+        0,
+    )
+    .expect_err("an approval clears a hold that has passed, not unearned autonomy");
+    let msg = err.to_string();
+    assert!(msg.contains("autonomy not earned"), "{msg}");
+    assert!(!msg.contains("no_open_deviation"), "{msg}");
+    assert!(!dir.path().join("autopilot-journals").exists());
+}
+
+#[test]
+fn a_new_approve_after_a_refused_re_gate_is_accepted_and_judged_again() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let (db, policy_path) = approvable_decision(dir.path());
+
+    // Another enactment is in flight: the re-gate refuses.
+    let err = autopilot_respond(
+        db.to_str().unwrap(),
+        "d-prop",
+        true,
+        None,
+        Some(policy_path.to_str().unwrap()),
+        1,
+    )
+    .expect_err("the re-gate must refuse while another enactment runs");
+    assert!(
+        err.to_string().contains("no_concurrent_experiment"),
+        "{err}"
+    );
+
+    // That enactment is over: the same approval is judged again and runs.
+    let report = autopilot_respond(
+        db.to_str().unwrap(),
+        "d-prop",
+        true,
+        None,
+        Some(policy_path.to_str().unwrap()),
+        0,
+    )
+    .unwrap();
+    assert!(report.text.contains("ran "), "{}", report.text);
+    let store = tumult_lake::AnalyticsStore::open(&db).unwrap();
+    let status = tumult_query::autopilot_decision(&store, "d-prop")
+        .unwrap()
+        .unwrap();
+    assert_eq!(status.last_event.as_deref(), Some("run_completed"));
+}
+
+// ── What a playbook is, as the gate reads it ──────────────────
+
+/// One pass that decides and records, then the recorded decisions of the
+/// catalog action with the line each got. Panics when there is none.
+fn pass_decisions_of_the_catalog_action(
+    db: &std::path::Path,
+    policy_path: &std::path::Path,
+) -> Vec<(DecisionRecord, String)> {
+    let report = autopilot_once(
+        db.to_str().unwrap(),
+        policy_path.to_str().unwrap(),
+        true,
+        None,
+        0,
+    )
+    .unwrap();
+    let store = tumult_lake::AnalyticsStore::open(db).unwrap();
+    let rows: Vec<_> = tumult_query::autopilot_decisions(&store, None, 100)
+        .unwrap()
+        .into_iter()
+        .map(|d| d.record)
+        .filter(|r| r.plugin == "test-topology-plugin")
+        .map(|r| {
+            let line = report
+                .text
+                .lines()
+                .find(|l| l.contains(&format!("[{}] {} ", r.verdict, r.service_id)))
+                .unwrap_or_else(|| panic!("no line for {}: {}", r.service_id, report.text))
+                .to_string();
+            (r, line)
+        })
+        .collect();
+    assert!(
+        !rows.is_empty(),
+        "no decision of the catalog action: {}",
+        report.text
+    );
+    rows
+}
+
+/// Every decision of the catalog action is a veto whose one hollow reason
+/// says the playbook cannot be read, and says why (`because`).
+fn assert_unreadable_playbook_veto(
+    db: &std::path::Path,
+    policy_path: &std::path::Path,
+    because: &str,
+) {
+    for (record, line) in pass_decisions_of_the_catalog_action(db, policy_path) {
+        assert_eq!(record.verdict, "veto", "{line}");
+        let hollow = record.validator["hollow"].as_array().unwrap();
+        assert_eq!(hollow.len(), 1, "the only hollow reason: {hollow:?}");
+        let reason = hollow[0].as_str().unwrap();
+        assert!(reason.starts_with("playbook unreadable: "), "{reason}");
+        assert!(reason.contains(because), "{reason}");
+        assert_eq!(record.validator["blockers"], serde_json::json!([]));
+        assert!(
+            line.contains("— validator.not_hollow: playbook unreadable: "),
+            "{line}"
+        );
+        assert!(line.contains(because), "{line}");
+    }
+    let status = autopilot_status(db.to_str().unwrap(), None, None).unwrap();
+    assert!(
+        status
+            .text
+            .lines()
+            .filter(|l| l.contains("test-topology-plugin"))
+            .all(|l| l.contains("playbook unreadable: ")),
+        "{}",
+        status.text
+    );
+}
+
+#[test]
+fn a_playbook_that_is_not_there_is_vetoed_as_unreadable_and_does_not_run() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let missing = dir.path().join("no-such-playbook.toon");
+    let (db, policy_path, _env) =
+        broken_store_with_policy(dir.path(), missing.to_str().unwrap(), true);
+
+    assert_unreadable_playbook_veto(&db, &policy_path, "no-such-playbook.toon");
+    assert!(!dir.path().join("autopilot-journals").exists());
+}
+
+#[test]
+fn a_playbook_that_does_not_parse_is_vetoed_as_unreadable_with_the_parse_error() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let bad = dir.path().join("bad.toon");
+    std::fs::write(&bad, "title: [unterminated").unwrap();
+    let (db, policy_path, _env) = broken_store_with_policy(dir.path(), bad.to_str().unwrap(), true);
+
+    assert_unreadable_playbook_veto(&db, &policy_path, "experiment file parse error");
+    assert!(!dir.path().join("autopilot-journals").exists());
+}
+
+#[test]
+fn a_playbook_with_a_rollback_and_no_guard_is_not_read_as_having_no_rollback() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let unguarded = Experiment {
+        guards: vec![],
+        ..guarded_playbook()
+    };
+    let playbook = write_playbook(dir.path(), "unguarded.toon", &unguarded);
+    let (db, policy_path, _env) = broken_store_with_policy(dir.path(), &playbook, true);
+
+    for (record, line) in pass_decisions_of_the_catalog_action(&db, &policy_path) {
+        assert!(!line.contains("no rollback declared"), "{line}");
+        assert_eq!(
+            record.validator["blockers"],
+            serde_json::json!([]),
+            "{line}"
+        );
+        assert_ne!(record.verdict, "propose", "{line}");
+    }
+}
+
+#[test]
+fn a_steady_state_without_a_probe_is_hollow() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let mut no_probe = guarded_playbook();
+    no_probe.steady_state_hypothesis = Some(tumult_core::types::Hypothesis {
+        title: "nothing observed".into(),
+        probes: vec![],
+    });
+    let playbook = write_playbook(dir.path(), "no-probe.toon", &no_probe);
+    let (db, policy_path, _env) = broken_store_with_policy(dir.path(), &playbook, true);
+
+    for (record, line) in pass_decisions_of_the_catalog_action(&db, &policy_path) {
+        assert_eq!(record.verdict, "veto", "{line}");
+        assert!(line.contains("no steady-state probe"), "{line}");
+    }
+}
+
+#[test]
+fn a_change_event_skips_a_playbook_that_cannot_be_read() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let db = empty_store(dir.path());
+    let missing = dir.path().join("no-such-playbook.toon");
+    let policy = LoadedPolicy::parse(&format!(
+        "[autopilot]\nenabled = true\n\n\
+         [[autopilot.playbook]]\nplugin = \"tumult-db\"\naction = \"kill-primary\"\n\
+         service = \"db\"\nexperiment = \"{}\"\n",
+        missing.display()
+    ))
+    .unwrap();
+    let store = tumult_lake::AnalyticsStore::open(&db).unwrap();
+    let now = now_ns();
+    store
+        .record_change_event("db", now - 1_000, "deploy", None)
+        .unwrap();
+
+    let out = engine::assemble_candidates(&store, &policy, now, true, 3, 0).unwrap();
+    assert!(
+        out.iter().all(|a| a.candidate.service_id != "svc:db"),
+        "a playbook that cannot be read names no article to revalidate"
+    );
+}
+
 // ── Engine helpers ─────────────────────────────────────────────
 
 use tumult_autopilot::{Candidate, ConfidenceTier, GateDecision, Trigger, Verdict};
@@ -711,30 +1163,59 @@ fn confidence_is_high_for_broken_controls_and_strong_scores() {
 }
 
 #[test]
-fn inspect_experiment_reports_structural_facts() {
+fn inspect_experiment_reports_structural_facts_or_why_the_file_cannot_be_read() {
+    use tumult_core::types::StructuralFacts;
     let dir = tempfile::TempDir::new().unwrap();
 
     let missing = dir.path().join("missing.toon");
-    assert_eq!(
-        engine::inspect_experiment(missing.to_str().unwrap()),
-        (false, false, false, 0),
-        "an unreadable file reads as no facts"
-    );
+    let error = engine::inspect_experiment(missing.to_str().unwrap())
+        .expect_err("a file that is not there has no facts");
+    assert!(error.contains("No such file"), "{error}");
     let bad = dir.path().join("bad.toon");
     std::fs::write(&bad, "title: [unterminated").unwrap();
-    assert_eq!(
-        engine::inspect_experiment(bad.to_str().unwrap()),
-        (false, false, false, 0),
-        "an unparseable file reads as no facts"
-    );
+    let error = engine::inspect_experiment(bad.to_str().unwrap())
+        .expect_err("a file that does not parse has no facts");
+    assert!(error.contains("experiment file parse error"), "{error}");
 
     // Plain experiment: one fault, no hypothesis, rollback, or guard.
     let plain = crate::tools::test_support::write_valid_experiment(dir.path());
-    assert_eq!(engine::inspect_experiment(&plain), (false, false, false, 1));
+    assert_eq!(
+        engine::inspect_experiment(&plain),
+        Ok(StructuralFacts {
+            has_steady_state: false,
+            has_rollback: false,
+            has_guard: false,
+            fault_count: 1,
+        })
+    );
 
     // Enact-eligible playbook: steady-state, rollback + guard, one fault.
     let guarded = write_guarded_playbook(dir.path());
-    assert_eq!(engine::inspect_experiment(&guarded), (true, true, true, 1));
+    assert_eq!(
+        engine::inspect_experiment(&guarded),
+        Ok(StructuralFacts {
+            has_steady_state: true,
+            has_rollback: true,
+            has_guard: true,
+            fault_count: 1,
+        })
+    );
+
+    // A rollback is a rollback, with or without a guard.
+    let unguarded = Experiment {
+        guards: vec![],
+        ..guarded_playbook()
+    };
+    let unguarded = write_playbook(dir.path(), "unguarded.toon", &unguarded);
+    assert_eq!(
+        engine::inspect_experiment(&unguarded),
+        Ok(StructuralFacts {
+            has_steady_state: true,
+            has_rollback: true,
+            has_guard: false,
+            fault_count: 1,
+        })
+    );
 }
 
 /// Write a playbook whose only guard runs `probe`; returns the path.
@@ -870,17 +1351,21 @@ fn playbook_article_resolves_the_first_regulatory_citation() {
     let path = dir.path().join("regulated.toon");
     std::fs::write(&path, toon_format::encode_default(&exp).unwrap()).unwrap();
     let article = engine::playbook_article(path.to_str().unwrap())
+        .unwrap()
         .expect("a DORA requirement must resolve to an article");
     assert!(article.starts_with("compliance:DORA/"), "{article}");
     assert!(article.contains("Art"), "{article}");
 
     let missing = dir.path().join("missing.toon");
-    assert_eq!(engine::playbook_article(missing.to_str().unwrap()), None);
+    assert!(
+        engine::playbook_article(missing.to_str().unwrap()).is_err(),
+        "a file that is not there is an error, not an experiment with no article"
+    );
 
     let plain = crate::tools::test_support::write_valid_experiment(dir.path());
     assert_eq!(
         engine::playbook_article(&plain),
-        None,
+        Ok(None),
         "an experiment without regulatory mapping evidences no article"
     );
 }
@@ -901,8 +1386,85 @@ fn candidate_with(id: &str, trigger: Trigger) -> Candidate {
         experiment_has_rollback: false,
         experiment_has_steady_state: false,
         experiment_fault_count: 0,
+        playbook_error: None,
         trigger,
     }
+}
+
+#[test]
+fn a_stored_trigger_reads_back_as_a_broken_control_only_from_a_broken_control_record() {
+    let article = "compliance:DORA/Art.25";
+    let broken = Trigger::BrokenControl {
+        article_id: article.into(),
+    };
+    assert_eq!(
+        engine::trigger_of_record(engine::trigger_token(&broken), article),
+        broken
+    );
+    let others = [
+        Trigger::Staleness {
+            article_id: article.into(),
+            age_days: 42,
+        },
+        Trigger::Manual,
+        Trigger::ChangeEvent {
+            source: "deploy".into(),
+            detail: None,
+        },
+        Trigger::Risk {
+            risk_id: "risk-1".into(),
+            rule: "latest_run_failed".into(),
+        },
+    ];
+    for trigger in others {
+        assert_eq!(
+            engine::trigger_of_record(engine::trigger_token(&trigger), article),
+            Trigger::Manual,
+            "{trigger:?}"
+        );
+    }
+    assert_eq!(
+        engine::trigger_of_record("a-kind-of-a-later-build", article),
+        Trigger::Manual,
+        "an unknown kind is not exempt"
+    );
+}
+
+#[test]
+fn an_open_deviation_blocks_every_trigger_but_the_revalidation_of_the_break() {
+    use tumult_graph::lineage::ControlServiceStatus::{Broken, Evidenced};
+    let cell = |service: &str, status| tumult_graph::lineage::LineageCell {
+        article_id: "compliance:DORA/Art.25".into(),
+        service_id: service.into(),
+        status,
+        evidence_strength: None,
+        cause: None,
+        experiments: vec![],
+    };
+    let lineage = [cell("svc:db", Broken), cell("svc:api", Evidenced)];
+    let broken_control = Trigger::BrokenControl {
+        article_id: "compliance:DORA/Art.11".into(),
+    };
+    let change = Trigger::ChangeEvent {
+        source: "deploy".into(),
+        detail: None,
+    };
+
+    assert!(!engine::open_deviation_blocks(
+        &lineage,
+        "svc:db",
+        &broken_control
+    ));
+    assert!(engine::open_deviation_blocks(&lineage, "svc:db", &change));
+    assert!(engine::open_deviation_blocks(
+        &lineage,
+        "svc:db",
+        &Trigger::Manual
+    ));
+    assert!(
+        !engine::open_deviation_blocks(&lineage, "svc:api", &change),
+        "a break on another service does not block"
+    );
 }
 
 #[test]

@@ -284,6 +284,7 @@ fn candidate_for(risk: &Risk, rec: &Recommendation, reg: &Registered) -> Candida
         experiment_has_rollback: reg.introspection.has_rollback,
         experiment_has_steady_state: reg.introspection.has_steady_state,
         experiment_fault_count: reg.introspection.fault_count,
+        playbook_error: None,
         trigger: Trigger::Risk {
             risk_id: risk.id.clone(),
             rule: risk.rule.clone(),

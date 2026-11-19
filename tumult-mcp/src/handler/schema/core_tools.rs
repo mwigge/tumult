@@ -124,7 +124,7 @@ pub struct ListJournalsTool {
 /// Arguments for the `tumult_discover` tool (takes none).
 #[macros::mcp_tool(
     name = "tumult_discover",
-    description = "List all Tumult plugins, actions, and probes.",
+    description = "List the plugins Tumult can run: each native plugin with its functions, and each script plugin with its actions. Script probes are not listed.",
     read_only_hint = true,
     idempotent_hint = true,
     open_world_hint = false

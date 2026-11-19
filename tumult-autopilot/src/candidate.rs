@@ -43,6 +43,11 @@ pub struct Candidate {
     pub experiment_has_steady_state: bool,
     /// Number of faults the resolved experiment injects.
     pub experiment_fault_count: usize,
+    /// Why the resolved experiment could not be read or parsed. `None` when
+    /// it was read, or when no playbook resolved. When set, the flags above
+    /// are meaningless and the validator reports this reason alone.
+    #[serde(default)]
+    pub playbook_error: Option<String>,
     /// What woke the autopilot up for this candidate.
     pub trigger: Trigger,
 }
