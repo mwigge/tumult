@@ -204,6 +204,20 @@ fn timeline_steps(doc: &ReportDoc, name: &str) -> Vec<String> {
         .collect()
 }
 
+/// How many spans the timeline rows of span `name` that say `status` stand
+/// for: a row of a step that ran several times in a row says how many.
+fn spans_in_timeline(doc: &ReportDoc, name: &str, status: &str) -> usize {
+    timeline(doc)
+        .iter()
+        .filter(|row| cell_text(&row[1]) == name && cell_text(&row[4]) == status)
+        .map(|row| {
+            cell_text(&row[2])
+                .split_once(" × ")
+                .map_or(1, |(_, times)| times.parse().expect("a count"))
+        })
+        .sum()
+}
+
 #[test]
 fn the_report_of_a_completed_run_shows_what_the_run_measured() {
     let (journal, doc) = report_of_a_run("replica loss", "ok");
@@ -238,7 +252,7 @@ fn the_report_of_a_completed_run_names_its_steps_and_finds_nothing_wrong() {
 
 #[test]
 fn the_report_of_a_deviated_run_names_the_probe_that_failed_and_the_rollback_step() {
-    let (_, doc) = report_of_a_run("replica loss, no recovery", "down");
+    let (journal, doc) = report_of_a_run("replica loss, no recovery", "down");
 
     // The fault is the scenario. The step that undid it is not.
     assert_eq!(value(&doc, "Scenario"), "kill-replica");
@@ -246,10 +260,18 @@ fn the_report_of_a_deviated_run_names_the_probe_that_failed_and_the_rollback_ste
         timeline_steps(&doc, "resilience.action"),
         ["kill-replica", "restart-replica"]
     );
+    // The probe failed in every sample that read the target down, and in
+    // the check after the method: one finding that says how many times.
+    let failed_samples = journal.probe_samples.iter().filter(|s| !s.ok).count();
+    assert!(failed_samples >= 1, "{:?}", journal.probe_samples);
+    let failed = failed_samples + 1;
     assert_eq!(
         bullets(&doc),
-        ["[ERROR] steady (resilience.probe): the output is outside the tolerance"]
+        [format!(
+            "[ERROR] steady (resilience.probe): the output is outside the tolerance (× {failed})"
+        )]
     );
+    assert_eq!(spans_in_timeline(&doc, "resilience.probe", "error"), failed);
     let said = paragraphs(&doc);
     assert!(
         said.contains(&"The rollback ran 1 step (restart-replica); status: all clean."),

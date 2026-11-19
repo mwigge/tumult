@@ -105,7 +105,7 @@ pub(super) fn finish_during_sampler(
     let collected: Vec<_> = samples
         .lock()
         .unwrap_or_else(PoisonError::into_inner)
-        .drain()
+        .drain(..)
         .collect();
 
     let raw = samples_for_journal(SamplePhase::During, &collected);

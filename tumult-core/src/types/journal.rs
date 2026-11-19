@@ -273,8 +273,10 @@ pub struct Journal {
     /// the definition declared no objectives or targets.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub objectives: Option<ObjectiveOutcome>,
-    /// Raw probe samples from the during and post phases, in collection
-    /// order. Aggregates live in `during_result` / `post_result`.
+    /// Raw probe samples, those of the during phase before those of the
+    /// post phase. Each phase is grouped by probe, in the order of the
+    /// probes of the hypothesis, and each group is in time order.
+    /// Aggregates live in `during_result` / `post_result`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub probe_samples: Vec<ProbeSample>,
     /// The version of the target this run measured and how it is known;

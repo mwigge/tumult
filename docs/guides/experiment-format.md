@@ -51,6 +51,8 @@ Every step in `method`, `rollbacks`, and `steady_state_hypothesis.probes` is an 
 | `pause_after_s` | float | Wait after executing (seconds) |
 | `background` | bool | Run concurrently with next step |
 
+Give each probe of `steady_state_hypothesis.probes` its own name: the run samples these probes during and after the method, and two probes with one name are recorded as one series.
+
 ## Provider Types
 
 | Type | Description | Key Fields |
@@ -123,12 +125,12 @@ Both sections feed two consumption paths:
 
 ## Controls
 
-Each entry in `controls:` declares a lifecycle hook with a `name` and a `provider`. Declared controls **execute**: the control's provider is invoked once at every lifecycle event — before/after the experiment, the hypothesis evaluations, the method, each activity, and the rollbacks — with the event identity injected so the hook can decide whether to act:
+Each entry in `controls:` declares a lifecycle hook with a `name` and a `provider`. Declared controls **execute**: the control's provider is invoked once at every lifecycle event — before/after the experiment, the hypothesis evaluations, the method, each step (of the method, a hypothesis evaluation or the rollbacks), and the rollbacks — with the event identity injected so the hook can decide whether to act:
 
 - `process` providers receive `TUMULT_CONTROL_EVENT` (e.g. `before_experiment`, `after_activity`) as an environment variable, plus `TUMULT_CONTROL_ACTIVITY` for the per-activity events,
 - `script` and `native` providers receive the same values as `control_event` / `control_activity` arguments (script providers export them as the same `TUMULT_*` env vars).
 
-Entries the declared provider already sets win over the injected ones. Controls are observability/safeguard hooks, not gates: a failing (or panicking) control is logged and the run continues. Controls execute on every event by design — the schema has no event scoping, so a hook that only cares about some events should check `TUMULT_CONTROL_EVENT` and exit early.
+Entries the declared provider already sets win over the injected ones. Controls are observability/safeguard hooks, not gates: a failing (or panicking) control is logged and the run continues. Controls execute on every event by design — the schema has no event scoping, so a hook that only cares about some events should check `TUMULT_CONTROL_EVENT` and exit early. A sample of a hypothesis probe, taken during or after the method, and the read of a guard fire no event.
 
 ## Rollback Strategy
 
