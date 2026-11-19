@@ -164,6 +164,7 @@ differently on purpose, so read the
 - Plugins: a FIS stop or status can name `experiment_template_id` in place of `experiment_id`. A stop by template stops each pending, initiating or running experiment of the template, and a status by template is the status of the newest one. The role needs `fis:ListExperiments` for it.
 - CI: a job "Demo crates" runs `make demo-test`, which runs fmt, clippy and the tests of the three demo crates. `make precommit` runs it too, and Dependabot reads the lock files of the demo crates.
 - CI: the SQL lint also reads the SQL that functions build, from a kept file that a test holds to the code, and it reads the v5 migration it missed.
+- CI: `cargo deny` passes over the two new notices that chrono and humantime are unmaintained (RUSTSEC-2026-0543 and RUSTSEC-2026-0542). Neither names a vulnerability and neither has a fixed release. `deny.toml` gives the reason and a review date.
 - Docs: the guides, the reference pages (Kronika pages, architecture, test protocol, metadata standard, regulatory mapping), the plugin pages, the demo and docker pages and the READMEs of the crates follow the changes above, and each was checked against the code. The plugin docs no longer show keys the format does not know.
 
 ### Quality

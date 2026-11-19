@@ -33,6 +33,16 @@ ignore = [
     # TODO(security): review by 2027-02-14, or sooner on a typst/hayagriva
     # release that drops serde_yaml or on any unsafe-libyaml vulnerability.
     { id = "RUSTSEC-2024-0449", reason = "unsafe-libyaml unmaintained notice, no known vulnerability; via serde_yaml 0.9 (direct and pinned by typst/hayagriva); no safe upgrade available; review by 2027-02-14" },
+    # chrono was declared unmaintained (RUSTSEC-2026-0543), and humantime
+    # with it (RUSTSEC-2026-0542). Both are notices with no known
+    # vulnerability and no patched release. Eight workspace crates use
+    # chrono directly, and arrow (through duckdb) pins it, so moving the
+    # direct users to jiff or time would not clear the notice. humantime
+    # comes in through tokio-netem only (tumult-net).
+    # TODO(security): review by 2027-02-14, or sooner on an arrow or
+    # tokio-netem release that drops them or on any vulnerability in either.
+    { id = "RUSTSEC-2026-0543", reason = "chrono unmaintained notice, no known vulnerability; direct and pinned by arrow/duckdb; no safe upgrade available; review by 2027-02-14" },
+    { id = "RUSTSEC-2026-0542", reason = "humantime unmaintained notice, no known vulnerability; via tokio-netem; no safe upgrade available; review by 2027-02-14" },
 ]
 
 [licenses]
