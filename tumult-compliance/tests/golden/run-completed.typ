@@ -7,7 +7,7 @@
     #line(length: 100%, stroke: 0.5pt + luma(200))
   ],
   footer: context [
-    #text(size: 7.5pt, fill: luma(110))[KRK\-R3\-20261118\-5b82dd #h(1fr) Page #counter(page).display("1 of 1", both: true)]
+    #text(size: 7.5pt, fill: luma(110))[KRK\-R3\-20261120\-d82242 #h(1fr) Page #counter(page).display("1 of 1", both: true)]
   ],
 )
 #set text(font: "Inter", size: 10.5pt, lang: "en")
@@ -26,22 +26,22 @@
 #v(12pt)
 #text(size: 12pt, fill: luma(80))[R3 \u{2014} Game-day report]
 #v(8pt)
-#text(size: 11.5pt, weight: "semibold")[Data as of 2026\-11\-17]
+#text(size: 11.5pt, weight: "semibold")[Data as of 2026\-11\-19]
 #v(1fr)
 #table(
   columns: (30%, 70%),
   stroke: none,
   inset: (x: 0pt, y: 5.5pt),
   table.hline(stroke: 0.8pt + luma(140)),
-  [#text(size: 8.5pt, fill: luma(100))[#smallcaps[Document]]], [#text(size: 10pt)[KRK\-R3\-20261118\-5b82dd]],
+  [#text(size: 8.5pt, fill: luma(100))[#smallcaps[Document]]], [#text(size: 10pt)[KRK\-R3\-20261120\-d82242]],
   table.hline(stroke: 0.5pt + luma(215)),
   [#text(size: 8.5pt, fill: luma(100))[#smallcaps[Version]]], [#text(size: 10pt)[\{version\}]],
   table.hline(stroke: 0.5pt + luma(215)),
-  [#text(size: 8.5pt, fill: luma(100))[#smallcaps[Generated]]], [#text(size: 10pt)[2026\-11\-18 00:00 UTC]],
+  [#text(size: 8.5pt, fill: luma(100))[#smallcaps[Generated]]], [#text(size: 10pt)[2026\-11\-20 00:00 UTC]],
   table.hline(stroke: 0.5pt + luma(215)),
-  [#text(size: 8.5pt, fill: luma(100))[#smallcaps[Data as of]]], [#text(size: 10pt)[2026\-11\-17]],
+  [#text(size: 8.5pt, fill: luma(100))[#smallcaps[Data as of]]], [#text(size: 10pt)[2026\-11\-19]],
   table.hline(stroke: 0.5pt + luma(215)),
-  [#text(size: 8.5pt, fill: luma(100))[#smallcaps[Run id]]], [#text(size: 10pt)[8e8066ef\-8d04\-49dc\-98ab\-9cbc7e4de670]],
+  [#text(size: 8.5pt, fill: luma(100))[#smallcaps[Run id]]], [#text(size: 10pt)[3b27fd1e\-a3a4\-435d\-91d6\-a11840d05fb3]],
   table.hline(stroke: 0.5pt + luma(215)),
 )
 #pagebreak()
@@ -56,8 +56,8 @@
   inset: (x: 0pt, y: 3.5pt),
   column-gutter: 16pt,
   [#text(size: 9pt, fill: luma(100))[#smallcaps[Experiment]]], [Checkout survives a cache restart],
-  [#text(size: 9pt, fill: luma(100))[#smallcaps[Run id]]], [8e8066ef\-8d04\-49dc\-98ab\-9cbc7e4de670],
-  [#text(size: 9pt, fill: luma(100))[#smallcaps[Date]]], [2026\-11\-17 11:46 UTC],
+  [#text(size: 9pt, fill: luma(100))[#smallcaps[Run id]]], [3b27fd1e\-a3a4\-435d\-91d6\-a11840d05fb3],
+  [#text(size: 9pt, fill: luma(100))[#smallcaps[Date]]], [2026\-11\-19 11:13 UTC],
   [#text(size: 9pt, fill: luma(100))[#smallcaps[Target]]], [checkout],
   [#text(size: 9pt, fill: luma(100))[#smallcaps[Environment]]], [prod],
   [#text(size: 9pt, fill: luma(100))[#smallcaps[Scenario]]], [restart\-cache],
@@ -102,42 +102,47 @@
   [#text(number-width: "tabular")[0.0]],
   [resilience.experiment],
   [—],
-  [#text(number-width: "tabular")[208.2]],
+  [#text(number-width: "tabular")[210.6]],
   [#text(fill: rgb("#009E73"))[●] #text(number-width: "tabular")[ok]],
   [#text(number-width: "tabular")[0.0]],
   [resilience.hypothesis.before],
   [—],
-  [#text(number-width: "tabular")[1.7]],
+  [#text(number-width: "tabular")[3.1]],
   [—],
   [#text(number-width: "tabular")[0.0]],
   [resilience.probe],
   [checkout\-answers],
-  [#text(number-width: "tabular")[1.7]],
+  [#text(number-width: "tabular")[3.1]],
   [—],
   [#text(number-width: "tabular")[0.0]],
   [resilience.action],
   [restart\-cache],
   [#text(number-width: "tabular")[202.3]],
   [—],
-  [#text(number-width: "tabular")[0.0 – 0.2]],
+  [#text(number-width: "tabular")[0.0]],
   [resilience.probe],
-  [checkout\-answers × 2],
-  [#text(number-width: "tabular")[1.2 – 1.6]],
-  [—],
+  [checkout\-answers],
+  [#text(number-width: "tabular")[1.8]],
+  [#text(fill: rgb("#D55E00"))[×] #text(number-width: "tabular")[error]],
   [#text(number-width: "tabular")[0.2]],
   [resilience.probe],
   [cache\-is\-back],
-  [#text(number-width: "tabular")[1.4]],
-  [—],
-  [#text(number-width: "tabular")[0.2]],
-  [resilience.hypothesis.after],
-  [—],
-  [#text(number-width: "tabular")[1.2]],
+  [#text(number-width: "tabular")[1.8]],
   [—],
   [#text(number-width: "tabular")[0.2]],
   [resilience.probe],
   [checkout\-answers],
-  [#text(number-width: "tabular")[1.2]],
+  [#text(number-width: "tabular")[1.6]],
+  [—],
+  [#text(number-width: "tabular")[0.2]],
+  [resilience.hypothesis.after],
+  [—],
+  [#text(number-width: "tabular")[1.4]],
+  [—],
+  [#text(number-width: "tabular")[0.2]],
+  [resilience.probe],
+  [checkout\-answers],
+  [#text(number-width: "tabular")[1.4]],
   [—],
   table.hline(stroke: 0.8pt + luma(140)),
 )
@@ -152,8 +157,9 @@ Outcome: completed. Steady\-state hypothesis: met. Service recovered in 0.0s.
 == Findings
 
 
-No step failed and no warnings or errors were logged during this run.
-
+#list(
+  [\[ERROR\] checkout\-answers (resilience.probe): the output is outside the tolerance],
+)
 
 == Rollback
 
@@ -175,9 +181,9 @@ No rollback action was exercised in this run.
   [#text(size: 9pt, fill: luma(100))[#smallcaps[resilience.target.version]]], [2.8.0],
   [#text(size: 9pt, fill: luma(100))[#smallcaps[resilience.target.version\_source]]], [declared],
   [#text(size: 9pt, fill: luma(100))[#smallcaps[resilience.test.kind]]], [chaos],
-  [#text(size: 9pt, fill: luma(100))[#smallcaps[start.experiment\_id]]], [8e8066ef\-8d04\-49dc\-98ab\-9cbc7e4de670],
+  [#text(size: 9pt, fill: luma(100))[#smallcaps[start.experiment\_id]]], [3b27fd1e\-a3a4\-435d\-91d6\-a11840d05fb3],
   [#text(size: 9pt, fill: luma(100))[#smallcaps[start.experiment\_title]]], [Checkout survives a cache restart],
-  [#text(size: 9pt, fill: luma(100))[#smallcaps[start.started\_at\_ns]]], [2026\-11\-17 11:46 UTC],
+  [#text(size: 9pt, fill: luma(100))[#smallcaps[start.started\_at\_ns]]], [2026\-11\-19 11:13 UTC],
   [#text(size: 9pt, fill: luma(100))[#smallcaps[start.user]]], [operator],
 )
 

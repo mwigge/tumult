@@ -7,7 +7,7 @@
     #line(length: 100%, stroke: 0.5pt + luma(200))
   ],
   footer: context [
-    #text(size: 7.5pt, fill: luma(110))[KRK\-R2\-20261118\-99a571 #h(1fr) Page #counter(page).display("1 of 1", both: true)]
+    #text(size: 7.5pt, fill: luma(110))[KRK\-R2\-20261120\-0e246d #h(1fr) Page #counter(page).display("1 of 1", both: true)]
   ],
 )
 #set text(font: "Inter", size: 10.5pt, lang: "en")
@@ -26,22 +26,22 @@
 #v(12pt)
 #text(size: 12pt, fill: luma(80))[R2 \u{2014} Compliance evidence pack]
 #v(8pt)
-#text(size: 11.5pt, weight: "semibold")[Reporting period: 2026\-10\-19 – 2026\-11\-18]
+#text(size: 11.5pt, weight: "semibold")[Reporting period: 2026\-10\-21 – 2026\-11\-20]
 #v(1fr)
 #table(
   columns: (30%, 70%),
   stroke: none,
   inset: (x: 0pt, y: 5.5pt),
   table.hline(stroke: 0.8pt + luma(140)),
-  [#text(size: 8.5pt, fill: luma(100))[#smallcaps[Document]]], [#text(size: 10pt)[KRK\-R2\-20261118\-99a571]],
+  [#text(size: 8.5pt, fill: luma(100))[#smallcaps[Document]]], [#text(size: 10pt)[KRK\-R2\-20261120\-0e246d]],
   table.hline(stroke: 0.5pt + luma(215)),
   [#text(size: 8.5pt, fill: luma(100))[#smallcaps[Version]]], [#text(size: 10pt)[\{version\}]],
   table.hline(stroke: 0.5pt + luma(215)),
-  [#text(size: 8.5pt, fill: luma(100))[#smallcaps[Generated]]], [#text(size: 10pt)[2026\-11\-18 00:00 UTC]],
+  [#text(size: 8.5pt, fill: luma(100))[#smallcaps[Generated]]], [#text(size: 10pt)[2026\-11\-20 00:00 UTC]],
   table.hline(stroke: 0.5pt + luma(215)),
-  [#text(size: 8.5pt, fill: luma(100))[#smallcaps[Data as of]]], [#text(size: 10pt)[2026\-11\-18]],
+  [#text(size: 8.5pt, fill: luma(100))[#smallcaps[Data as of]]], [#text(size: 10pt)[2026\-11\-20]],
   table.hline(stroke: 0.5pt + luma(215)),
-  [#text(size: 8.5pt, fill: luma(100))[#smallcaps[Period]]], [#text(size: 10pt)[2026\-10\-19 – 2026\-11\-18]],
+  [#text(size: 8.5pt, fill: luma(100))[#smallcaps[Period]]], [#text(size: 10pt)[2026\-10\-21 – 2026\-11\-20]],
   table.hline(stroke: 0.5pt + luma(215)),
   [#text(size: 8.5pt, fill: luma(100))[#smallcaps[Framework]]], [#text(size: 10pt)[NIS2]],
   table.hline(stroke: 0.5pt + luma(215)),
@@ -52,7 +52,7 @@
 = Scope and methodology
 
 
-This pack summarises the resilience testing evidence Tumult recorded for the NIS2 framework over the period 2026\-10\-19 – 2026\-11\-18; 5 experiments are on record. An automated experiment is a chaos or continuity test that Tumult ran. The outcome of a run is the status that run recorded; a manual exercise has the outcome of its verified record.
+This pack summarises the resilience testing evidence Tumult recorded for the NIS2 framework over the period 2026\-10\-21 – 2026\-11\-20; 5 experiments are on record. An automated experiment is a chaos or continuity test that Tumult ran. The outcome of a run is the status that run recorded; a manual exercise has the outcome of its verified record.
 
 
 == Independence
@@ -125,7 +125,7 @@ Independence has not been verified by this report. Organizational separation of 
   [Payments tolerate a slow ledger],
   [automated],
   [payments \/ prod],
-  [2026\-11\-17],
+  [2026\-11\-19],
   [—],
   [—],
   [#text(fill: rgb("#D55E00"))[×] #text(number-width: "tabular")[deviated]],
@@ -133,7 +133,7 @@ Independence has not been verified by this report. Organizational separation of 
   [Regional failover drill],
   [manual],
   [checkout \/ prod],
-  [2026\-11\-17],
+  [2026\-11\-19],
   [\{entered\}],
   [bob],
   [#text(fill: rgb("#E69F00"))[▲] #text(number-width: "tabular")[partial]],
@@ -141,7 +141,7 @@ Independence has not been verified by this report. Organizational separation of 
   [Billing export resumes after a restart],
   [automated],
   [billing \/ staging],
-  [2026\-11\-17],
+  [2026\-11\-19],
   [—],
   [—],
   [#text(fill: rgb("#009E73"))[●] #text(number-width: "tabular")[completed]],
@@ -149,7 +149,7 @@ Independence has not been verified by this report. Organizational separation of 
   [Checkout survives a cache restart],
   [automated],
   [checkout \/ prod],
-  [2026\-11\-17],
+  [2026\-11\-19],
   [—],
   [—],
   [#text(fill: rgb("#009E73"))[●] #text(number-width: "tabular")[completed]],
@@ -157,7 +157,7 @@ Independence has not been verified by this report. Organizational separation of 
   [Search answers after the loss of a node],
   [automated],
   [search \/ staging],
-  [2026\-11\-17],
+  [2026\-11\-19],
   [—],
   [—],
   [#text(fill: rgb("#009E73"))[●] #text(number-width: "tabular")[completed]],
@@ -184,7 +184,7 @@ No approval\-gated runs in the selected sample for this scope and period.
 Each manually executed test below was entered under the quoted attestation and verified by a reviewer other than the person who entered it. Entries are immutable once verified; corrections require a new record.
 
 
-=== Regional failover drill — 2026\-11\-17
+=== Regional failover drill — 2026\-11\-19
 
 
 #table(
@@ -193,7 +193,7 @@ Each manually executed test below was entered under the quoted attestation and v
   inset: (x: 0pt, y: 3.5pt),
   column-gutter: 16pt,
   [#text(size: 9pt, fill: luma(100))[#smallcaps[Exercise type]]], [failover],
-  [#text(size: 9pt, fill: luma(100))[#smallcaps[Executed]]], [2026\-11\-17],
+  [#text(size: 9pt, fill: luma(100))[#smallcaps[Executed]]], [2026\-11\-19],
   [#text(size: 9pt, fill: luma(100))[#smallcaps[Entered by]]], [alice on \{entered\}],
   [#text(size: 9pt, fill: luma(100))[#smallcaps[Verified by]]], [bob on \{verified\}],
   [#text(size: 9pt, fill: luma(100))[#smallcaps[Frameworks]]], [DORA Art. 24(6), ISO 27001 A.5.29],
@@ -204,8 +204,8 @@ Each manually executed test below was entered under the quoted attestation and v
 
 
 #list(
-  [Payments tolerate a slow ledger (payments): deviated — last run 2026\-11\-17],
-  [Regional failover drill (checkout): partial — last run 2026\-11\-17],
+  [Payments tolerate a slow ledger (payments): deviated — last run 2026\-11\-19],
+  [Regional failover drill (checkout): partial — last run 2026\-11\-19],
 )
 
 #v(6pt)

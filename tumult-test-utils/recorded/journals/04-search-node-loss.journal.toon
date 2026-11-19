@@ -1,50 +1,50 @@
 experiment_title: Search answers after the loss of a node
-experiment_id: "224f3de9-1805-4250-8eb3-f2f5961b2480"
+experiment_id: "39df4a9c-8931-49f6-ab27-fb792ad872ec"
 status: completed
-started_at_ns: 1794916073534201490
-ended_at_ns: 1794916073541709248
+started_at_ns: 1795086875051623204
+ended_at_ns: 1795086875059447076
 duration_ms: 7
 steady_state_before:
   title: Search answers
   met: true
   probe_results[1]{name,activity_type,status,started_at_ns,duration_ms,output,trace_id,span_id}:
-    "search-answers",probe,succeeded,1794916073534270901,1,ok,5fbfe7fe2a2ce6f7c75a99e273c09333,90b06ef8beddc78e
+    "search-answers",probe,succeeded,1795086875051697254,1,ok,5c80fd78e77f6d5f663d150d090a30bc,7053f587a2df309d
 steady_state_after:
   title: Search answers
   met: true
   probe_results[1]{name,activity_type,status,started_at_ns,duration_ms,output,trace_id,span_id}:
-    "search-answers",probe,succeeded,1794916073540389911,1,ok,5fbfe7fe2a2ce6f7c75a99e273c09333,6a6bf44e54507ecf
+    "search-answers",probe,succeeded,1795086875058000829,1,ok,5c80fd78e77f6d5f663d150d090a30bc,1febd580f6575ada
 method_results[2]:
   - name: "lose-node"
     activity_type: action
     status: succeeded
-    started_at_ns: 1794916073536130990
+    started_at_ns: 1795086875053551104
     duration_ms: 1
-    trace_id: 5fbfe7fe2a2ce6f7c75a99e273c09333
-    span_id: dbb187eec0eb4538
+    trace_id: 5c80fd78e77f6d5f663d150d090a30bc
+    span_id: a05a1f1bfc3e609e
   - name: "search-after-loss"
     activity_type: probe
     status: succeeded
-    started_at_ns: 1794916073537387816
+    started_at_ns: 1795086875054761961
     duration_ms: 1
     output: ok
-    trace_id: 5fbfe7fe2a2ce6f7c75a99e273c09333
-    span_id: a9cc288beca2b7cb
+    trace_id: 5c80fd78e77f6d5f663d150d090a30bc
+    span_id: 58aba2d3c8695120
 rollback_results[0]:
 rollback_failures: 0
 estimate: null
 baseline_result: null
 during_result:
-  started_at_ns: 1794916073536092190
-  ended_at_ns: 1794916073538803423
-  fault_active_s: 0.002711233
+  started_at_ns: 1795086875053502784
+  ended_at_ns: 1795086875056258749
+  fault_active_s: 0.002755965
   sample_interval_s: 1
   probes[1]{name,samples,mean,max,min,error_rate,breach_count}:
     "search-answers",1,1,1,1,0,0
 post_result:
-  started_at_ns: 1794916073538856944
-  ended_at_ns: 1794916073540371131
-  duration_s: 0.001514187
+  started_at_ns: 1795086875056314719
+  ended_at_ns: 1795086875057984208
+  duration_s: 0.001669489
   samples: 1
   probes[1]{name,mean,p95,error_rate,returned_to_baseline,recovery_time_s}:
     "search-answers",1,1,0,true,0
@@ -64,8 +64,8 @@ objectives:
   verdicts[1]{nfr_id,kind,metric,operator,threshold,observed,state,margin,criticality}:
     rto,rto,recovery.mttr_s,lte,2,0,met,2,blocking
 probe_samples[2]{probe,phase,ts_ns,duration_ms,ok}:
-  "search-answers",during,1794916073536170510,1,true
-  "search-answers",post,1794916073538863564,1,true
+  "search-answers",during,1795086875053593264,1,true
+  "search-answers",post,1795086875056322619,1,true
 target_version:
   version: "1.12.0"
   version_source: declared

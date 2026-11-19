@@ -1,55 +1,55 @@
 experiment_title: Search answers after the loss of a node
-experiment_id: "ae3ab10d-d80f-406c-ad2b-36af64a54f9d"
+experiment_id: "5a62a8ea-74ee-4097-897c-c5a76dd44617"
 status: deviated
-started_at_ns: 1794916044460845730
-ended_at_ns: 1794916073520168321
-duration_ms: 29059
+started_at_ns: 1795086845965899419
+ended_at_ns: 1795086875030020026
+duration_ms: 29064
 steady_state_before:
   title: Search answers
   met: true
   probe_results[1]{name,activity_type,status,started_at_ns,duration_ms,output,trace_id,span_id}:
-    "search-answers",probe,succeeded,1794916044460920160,1,ok,83d8e9cee52d4e5fb01d693b8a645864,9e60613cb02c2935
+    "search-answers",probe,succeeded,1795086845965978640,1,ok,70fe7ad87fc6e7546f68315a3992b569,7cc2c363d2309a04
 steady_state_after:
   title: Search answers
   met: false
   probe_results[1]{name,activity_type,status,started_at_ns,duration_ms,output,error,trace_id,span_id}:
-    "search-answers",probe,failed,1794916073517591449,1,down,the output is outside the tolerance,83d8e9cee52d4e5fb01d693b8a645864,b7e4f4e23519b70d
+    "search-answers",probe,failed,1795086875027531292,1,down,the output is outside the tolerance,70fe7ad87fc6e7546f68315a3992b569,792672d36d18992c
 method_results[2]:
   - name: "lose-node"
     activity_type: action
     status: succeeded
-    started_at_ns: 1794916044462612468
+    started_at_ns: 1795086845967886970
     duration_ms: 1
-    trace_id: 83d8e9cee52d4e5fb01d693b8a645864
-    span_id: c8e51b2ba8980d70
+    trace_id: 70fe7ad87fc6e7546f68315a3992b569
+    span_id: "08711563accaadff"
   - name: "search-after-loss"
     activity_type: probe
     status: succeeded
-    started_at_ns: 1794916044463929164
+    started_at_ns: 1795086845969205447
     duration_ms: 1
     output: down
-    trace_id: 83d8e9cee52d4e5fb01d693b8a645864
-    span_id: b48bf7b5f9bc4463
+    trace_id: 70fe7ad87fc6e7546f68315a3992b569
+    span_id: 7b028868a6ee5e8f
 rollback_results[1]{name,activity_type,status,started_at_ns,duration_ms,trace_id,span_id}:
-  "start-node",action,succeeded,1794916073519011275,1,83d8e9cee52d4e5fb01d693b8a645864,f02cc1e23f228a29
+  "start-node",action,succeeded,1795086875028918710,1,70fe7ad87fc6e7546f68315a3992b569,0ea6ea3e8a9b844e
 rollback_failures: 0
 estimate: null
 baseline_result: null
 during_result:
-  started_at_ns: 1794916044462572748
-  ended_at_ns: 1794916044465367671
-  fault_active_s: 0.002794923
+  started_at_ns: 1795086845967846519
+  ended_at_ns: 1795086845970820615
+  fault_active_s: 0.002974096
   sample_interval_s: 1
   probes[1]{name,samples,mean,max,min,error_rate,breached_at_ns,breach_count}:
-    "search-answers",1,1,1,1,1,1794916044462646468,1
+    "search-answers",1,1,1,1,1,1795086845967931670,1
 post_result:
-  started_at_ns: 1794916044465417701
-  ended_at_ns: 1794916073517540668
-  duration_s: 29.052122967
+  started_at_ns: 1795086845970881576
+  ended_at_ns: 1795086875027465572
+  duration_s: 29.056583996
   samples: 30
   probes[1]{name,mean,p95,error_rate,returned_to_baseline,recovery_time_s}:
-    "search-answers",1,1,1,false,29.050316968
-  recovery_time_s: 29.050316968
+    "search-answers",1.0666666666666667,2,1,false,29.054953217
+  recovery_time_s: 29.054953217
   full_recovery: false
 load_result: null
 analysis: null
@@ -63,37 +63,37 @@ objectives:
   verdicts[1]{nfr_id,kind,metric,operator,threshold,state,criticality}:
     rto,rto,recovery.mttr_s,lte,2,inconclusive,blocking
 probe_samples[31]{probe,phase,ts_ns,duration_ms,ok}:
-  "search-answers",during,1794916044462646468,1,false
-  "search-answers",post,1794916044465424892,1,false
-  "search-answers",post,1794916045466892433,1,false
-  "search-answers",post,1794916046468537549,1,false
-  "search-answers",post,1794916047470207439,1,false
-  "search-answers",post,1794916048472075624,1,false
-  "search-answers",post,1794916049474006372,1,false
-  "search-answers",post,1794916050475585683,1,false
-  "search-answers",post,1794916051477155117,1,false
-  "search-answers",post,1794916052478985096,1,false
-  "search-answers",post,1794916053480849979,1,false
-  "search-answers",post,1794916054482409094,1,false
-  "search-answers",post,1794916055483962723,1,false
-  "search-answers",post,1794916056485644936,1,false
-  "search-answers",post,1794916057487226773,1,false
-  "search-answers",post,1794916058488919993,1,false
-  "search-answers",post,1794916059490823928,1,false
-  "search-answers",post,1794916060492816048,1,false
-  "search-answers",post,1794916061494417378,1,false
-  "search-answers",post,1794916062496122433,1,false
-  "search-answers",post,1794916063497844912,1,false
-  "search-answers",post,1794916064499673445,1,false
-  "search-answers",post,1794916065501409341,1,false
-  "search-answers",post,1794916066503178931,1,false
-  "search-answers",post,1794916067504940654,1,false
-  "search-answers",post,1794916068506757201,1,false
-  "search-answers",post,1794916069508474581,1,false
-  "search-answers",post,1794916070510232285,1,false
-  "search-answers",post,1794916071512286044,1,false
-  "search-answers",post,1794916072513901054,1,false
-  "search-answers",post,1794916073515734669,1,false
+  "search-answers",during,1795086845967931670,1,false
+  "search-answers",post,1795086845970895536,1,false
+  "search-answers",post,1795086846972445698,1,false
+  "search-answers",post,1795086847974321943,1,false
+  "search-answers",post,1795086848976236970,2,false
+  "search-answers",post,1795086849978501689,1,false
+  "search-answers",post,1795086850980330556,1,false
+  "search-answers",post,1795086851982229405,1,false
+  "search-answers",post,1795086852984138964,1,false
+  "search-answers",post,1795086853986096155,1,false
+  "search-answers",post,1795086854988073607,1,false
+  "search-answers",post,1795086855990005809,1,false
+  "search-answers",post,1795086856991811122,2,false
+  "search-answers",post,1795086857994001468,1,false
+  "search-answers",post,1795086858996007813,1,false
+  "search-answers",post,1795086859997788898,1,false
+  "search-answers",post,1795086860999770745,1,false
+  "search-answers",post,1795086862001500501,1,false
+  "search-answers",post,1795086863003224448,1,false
+  "search-answers",post,1795086864005160868,1,false
+  "search-answers",post,1795086865006914167,1,false
+  "search-answers",post,1795086866008865598,1,false
+  "search-answers",post,1795086867010648789,1,false
+  "search-answers",post,1795086868012582732,1,false
+  "search-answers",post,1795086869014572596,1,false
+  "search-answers",post,1795086870016395590,1,false
+  "search-answers",post,1795086871018323025,1,false
+  "search-answers",post,1795086872020203661,1,false
+  "search-answers",post,1795086873022106138,1,false
+  "search-answers",post,1795086874023922565,1,false
+  "search-answers",post,1795086875025834793,1,false
 target_version:
   version: "1.12.0"
   version_source: declared

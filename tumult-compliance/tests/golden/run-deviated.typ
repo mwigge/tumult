@@ -7,7 +7,7 @@
     #line(length: 100%, stroke: 0.5pt + luma(200))
   ],
   footer: context [
-    #text(size: 7.5pt, fill: luma(110))[KRK\-R3\-20261118\-a4c76a #h(1fr) Page #counter(page).display("1 of 1", both: true)]
+    #text(size: 7.5pt, fill: luma(110))[KRK\-R3\-20261120\-6cf89e #h(1fr) Page #counter(page).display("1 of 1", both: true)]
   ],
 )
 #set text(font: "Inter", size: 10.5pt, lang: "en")
@@ -26,22 +26,22 @@
 #v(12pt)
 #text(size: 12pt, fill: luma(80))[R3 \u{2014} Game-day report]
 #v(8pt)
-#text(size: 11.5pt, weight: "semibold")[Data as of 2026\-11\-17]
+#text(size: 11.5pt, weight: "semibold")[Data as of 2026\-11\-19]
 #v(1fr)
 #table(
   columns: (30%, 70%),
   stroke: none,
   inset: (x: 0pt, y: 5.5pt),
   table.hline(stroke: 0.8pt + luma(140)),
-  [#text(size: 8.5pt, fill: luma(100))[#smallcaps[Document]]], [#text(size: 10pt)[KRK\-R3\-20261118\-a4c76a]],
+  [#text(size: 8.5pt, fill: luma(100))[#smallcaps[Document]]], [#text(size: 10pt)[KRK\-R3\-20261120\-6cf89e]],
   table.hline(stroke: 0.5pt + luma(215)),
   [#text(size: 8.5pt, fill: luma(100))[#smallcaps[Version]]], [#text(size: 10pt)[\{version\}]],
   table.hline(stroke: 0.5pt + luma(215)),
-  [#text(size: 8.5pt, fill: luma(100))[#smallcaps[Generated]]], [#text(size: 10pt)[2026\-11\-18 00:00 UTC]],
+  [#text(size: 8.5pt, fill: luma(100))[#smallcaps[Generated]]], [#text(size: 10pt)[2026\-11\-20 00:00 UTC]],
   table.hline(stroke: 0.5pt + luma(215)),
-  [#text(size: 8.5pt, fill: luma(100))[#smallcaps[Data as of]]], [#text(size: 10pt)[2026\-11\-17]],
+  [#text(size: 8.5pt, fill: luma(100))[#smallcaps[Data as of]]], [#text(size: 10pt)[2026\-11\-19]],
   table.hline(stroke: 0.5pt + luma(215)),
-  [#text(size: 8.5pt, fill: luma(100))[#smallcaps[Run id]]], [#text(size: 10pt)[309cf8a8\-74ec\-4702\-bd73\-d416afa10d00]],
+  [#text(size: 8.5pt, fill: luma(100))[#smallcaps[Run id]]], [#text(size: 10pt)[cad5df03\-83b7\-473b\-b5bc\-fec2cefd49e2]],
   table.hline(stroke: 0.5pt + luma(215)),
 )
 #pagebreak()
@@ -56,8 +56,8 @@
   inset: (x: 0pt, y: 3.5pt),
   column-gutter: 16pt,
   [#text(size: 9pt, fill: luma(100))[#smallcaps[Experiment]]], [Payments tolerate a slow ledger],
-  [#text(size: 9pt, fill: luma(100))[#smallcaps[Run id]]], [309cf8a8\-74ec\-4702\-bd73\-d416afa10d00],
-  [#text(size: 9pt, fill: luma(100))[#smallcaps[Date]]], [2026\-11\-17 11:46 UTC],
+  [#text(size: 9pt, fill: luma(100))[#smallcaps[Run id]]], [cad5df03\-83b7\-473b\-b5bc\-fec2cefd49e2],
+  [#text(size: 9pt, fill: luma(100))[#smallcaps[Date]]], [2026\-11\-19 11:13 UTC],
   [#text(size: 9pt, fill: luma(100))[#smallcaps[Target]]], [payments],
   [#text(size: 9pt, fill: luma(100))[#smallcaps[Environment]]], [prod],
   [#text(size: 9pt, fill: luma(100))[#smallcaps[Scenario]]], [slow\-ledger],
@@ -102,52 +102,52 @@
   [#text(number-width: "tabular")[0.0]],
   [resilience.experiment],
   [—],
-  [#text(number-width: "tabular")[29057.8]],
+  [#text(number-width: "tabular")[29066.0]],
   [#text(fill: rgb("#D55E00"))[×] #text(number-width: "tabular")[error]],
   [#text(number-width: "tabular")[0.0]],
   [resilience.hypothesis.before],
   [—],
-  [#text(number-width: "tabular")[1.9]],
+  [#text(number-width: "tabular")[1.8]],
   [—],
   [#text(number-width: "tabular")[0.0]],
   [resilience.probe],
   [payments\-answer],
-  [#text(number-width: "tabular")[1.9]],
+  [#text(number-width: "tabular")[1.8]],
   [—],
   [#text(number-width: "tabular")[0.0]],
   [resilience.action],
   [slow\-ledger],
-  [#text(number-width: "tabular")[1.3]],
+  [#text(number-width: "tabular")[1.4]],
   [—],
   [#text(number-width: "tabular")[0.0 – 29.1]],
   [resilience.probe],
   [payments\-answer × 31],
-  [#text(number-width: "tabular")[1.5 – 1.9]],
-  [—],
+  [#text(number-width: "tabular")[1.6 – 2.2]],
+  [#text(fill: rgb("#D55E00"))[×] #text(number-width: "tabular")[error]],
   [#text(number-width: "tabular")[0.0]],
   [resilience.probe],
   [payments\-during\-fault],
-  [#text(number-width: "tabular")[1.6]],
+  [#text(number-width: "tabular")[1.7]],
   [—],
   [#text(number-width: "tabular")[29.1]],
   [resilience.hypothesis.after],
   [—],
-  [#text(number-width: "tabular")[1.4]],
+  [#text(number-width: "tabular")[1.7]],
   [—],
   [#text(number-width: "tabular")[29.1]],
   [resilience.probe],
   [payments\-answer],
-  [#text(number-width: "tabular")[1.4]],
+  [#text(number-width: "tabular")[1.7]],
   [#text(fill: rgb("#D55E00"))[×] #text(number-width: "tabular")[error]],
   [#text(number-width: "tabular")[29.1]],
   [resilience.rollback],
   [—],
-  [#text(number-width: "tabular")[1.1]],
+  [#text(number-width: "tabular")[1.2]],
   [—],
   [#text(number-width: "tabular")[29.1]],
   [resilience.action],
   [restore\-ledger],
-  [#text(number-width: "tabular")[1.0]],
+  [#text(number-width: "tabular")[1.2]],
   [—],
   table.hline(stroke: 0.8pt + luma(140)),
 )
@@ -163,7 +163,7 @@ Outcome: deviated. Steady\-state hypothesis: not met.
 
 
 #list(
-  [\[ERROR\] payments\-answer (resilience.probe): the output is outside the tolerance],
+  [\[ERROR\] payments\-answer (resilience.probe): the output is outside the tolerance (× 32)],
 )
 
 == Rollback
@@ -186,9 +186,9 @@ The rollback ran 1 step (restore\-ledger); status: all clean.
   [#text(size: 9pt, fill: luma(100))[#smallcaps[resilience.target.version]]], [5.1.3],
   [#text(size: 9pt, fill: luma(100))[#smallcaps[resilience.target.version\_source]]], [declared],
   [#text(size: 9pt, fill: luma(100))[#smallcaps[resilience.test.kind]]], [chaos],
-  [#text(size: 9pt, fill: luma(100))[#smallcaps[start.experiment\_id]]], [309cf8a8\-74ec\-4702\-bd73\-d416afa10d00],
+  [#text(size: 9pt, fill: luma(100))[#smallcaps[start.experiment\_id]]], [cad5df03\-83b7\-473b\-b5bc\-fec2cefd49e2],
   [#text(size: 9pt, fill: luma(100))[#smallcaps[start.experiment\_title]]], [Payments tolerate a slow ledger],
-  [#text(size: 9pt, fill: luma(100))[#smallcaps[start.started\_at\_ns]]], [2026\-11\-17 11:46 UTC],
+  [#text(size: 9pt, fill: luma(100))[#smallcaps[start.started\_at\_ns]]], [2026\-11\-19 11:13 UTC],
   [#text(size: 9pt, fill: luma(100))[#smallcaps[start.user]]], [operator],
 )
 
