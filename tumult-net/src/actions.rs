@@ -593,9 +593,10 @@ mod tests {
         let (_reserved, listen) = reserved_addr();
         let pidfile = pidfile_path(listen);
         // Simulate a leftover pidfile pointing at a long-dead PID. On Linux the
-        // identity check refuses the kill and the stale file is cleaned up;
-        // off Linux there is no /proc identity source, so the documented
-        // best-effort kill path runs instead. Both paths remove the pidfile.
+        // identity check refuses the kill; on another Unix a pid that cannot
+        // be signalled is no live daemon. Either way the stale file is
+        // cleaned up. Without Unix every pid counts as the daemon, and the
+        // best-effort kill path runs instead. All paths remove the pidfile.
         tokio::fs::write(&pidfile, "999999999").await.unwrap();
         // ... and the log that daemon left behind.
         // Wherever it was put: the stop may run in another environment
@@ -606,9 +607,9 @@ mod tests {
             assert!(dir.exists());
         }
         let out = stop_proxy(listen).await.expect("rollback");
-        #[cfg(target_os = "linux")]
+        #[cfg(unix)]
         assert!(out.contains("stale pidfile"), "out: {out}");
-        #[cfg(not(target_os = "linux"))]
+        #[cfg(not(unix))]
         assert!(out.contains("stopped"), "out: {out}");
         assert!(!pidfile.exists());
         assert!(!log_dir_exists(listen), "the log goes with the pidfile");

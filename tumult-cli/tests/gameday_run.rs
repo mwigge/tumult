@@ -381,6 +381,39 @@ fn send_sigint(child: &Child) {
     assert!(sent.success(), "SIGINT was not sent");
 }
 
+/// Wait until the game day of `child` has left the file `name` in the lab.
+/// If it never does, stop the binary and fail with what it printed and the
+/// files of the lab.
+fn wait_or_report(lab: &Lab, mut child: Child, name: &str) -> Child {
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while !lab.path(name).exists() {
+        if Instant::now() < deadline {
+            // sleep: interval of the bounded poll for a file of another process.
+            std::thread::sleep(Duration::from_millis(20));
+            continue;
+        }
+        child.kill().expect("stop tumult");
+        let output = child.wait_with_output().expect("wait for tumult");
+        let mut files: Vec<String> = std::fs::read_dir(lab.path("."))
+            .expect("lab directory")
+            .map(|entry| {
+                entry
+                    .expect("lab entry")
+                    .file_name()
+                    .to_string_lossy()
+                    .into_owned()
+            })
+            .collect();
+        files.sort();
+        panic!(
+            "{name} never came\nfiles: {files:?}\nstdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    child
+}
+
 /// Whether the process whose id is in `file` still runs.
 fn is_running(lab: &Lab, file: &str) -> bool {
     let pid = std::fs::read_to_string(lab.path(file)).expect("process id");
@@ -427,7 +460,7 @@ fn a_game_day_that_gets_sigint_stops_its_step_and_cuts_its_load() {
     );
     let started = Instant::now();
     let child = start(&lab);
-    wait_for(&lab.path("started"));
+    let child = wait_or_report(&lab, child, "started");
     wait_for(&lab.path("load.pid"));
 
     send_sigint(&child);
