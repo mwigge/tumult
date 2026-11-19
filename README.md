@@ -36,7 +36,7 @@ Chaos testing is still here. It is now one source of evidence among several.
 | ![Scores: DORA coverage and maturity level](docs/images/3.0/screenshots/scores-dora.png) | ![Performance: version against version with a verdict](docs/images/3.0/screenshots/performance.png) |
 | **Scores.** DORA coverage per article and function, and a maturity level from 1 to 5. | **Performance.** Did the new version get slower? A verdict per version, with a confidence interval. |
 | ![Star Map focus: one system with its evidence](docs/images/3.0/screenshots/starmap-focus.png) | ![Run detail with the span waterfall](docs/images/3.0/screenshots/run-detail.png) |
-| **Overview.** Pass rate, deviations and fault mix over time. | **Run detail.** Every step of a run as a timeline, with its approvals and audit trail. |
+| **Star Map focus.** One system with its evidence. | **Run detail.** Every step of a run as a timeline, with its approvals and audit trail. |
 
 More pictures: [platform walkthrough](docs/guides/platform-walkthrough.md).
 
@@ -113,7 +113,7 @@ Not done yet: forecasts and entities have no page of their own. A run page
 shows the forecast band of that run; the rest is in the API.
 
 Read the [3.0.0 release notes](docs/releases/3.0.0.md) before you upgrade
-from 2.x. The latest release is [3.0.1](docs/releases/3.0.1.md).
+from 2.x. The latest release is [3.0.2](docs/releases/3.0.2.md).
 **There is no way back:** the lake moves to schema v21 and DuckDB 2.0, and
 an older Tumult cannot open it afterwards. Back up first with
 `tumult store backup --output <dir>`.
