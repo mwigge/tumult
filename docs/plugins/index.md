@@ -6,7 +6,7 @@ has_children: true
 
 # Plugins
 
-Tumult supports two plugin models: **script plugins** (any language, no Rust required) and **native Rust plugins** (compiled into the binary).
+Tumult supports two plugin models: **script plugins** (shell scripts run with `/bin/sh`, no Rust required) and **native Rust plugins** (compiled into the binary).
 
 ## Plugin Discovery Order
 
@@ -21,11 +21,11 @@ Tumult searches for plugins in this order — first found wins:
 
 | | Script Plugins | Native Rust Plugins |
 |---|---|---|
-| **Language** | Any (bash, Python, Go, …) | Rust |
+| **Language** | Shell, run with `/bin/sh` (a script may call any tool) | Rust |
 | **Distribution** | Directory + `plugin.toon` manifest | Compiled into the binary |
 | **Dispatch** | Script execution with env vars | `NativeExecutor` trait, registered in a `NativeExecutorRegistry` |
 | **Arguments** | `TUMULT_<KEY>` env vars | Direct Rust function call |
-| **Result** | stdout + exit code | `Result<Value, Error>` |
+| **Result** | stdout + exit code | `Result<String, NativeError>` |
 | **Examples** | containers, db-postgres, db-mysql, db-redis, kafka, loadtest, network, process, pumba, stress, timewarp | ssh, net, kubernetes, cloud, windows |
 
 Each native crate implements the `NativeExecutor` trait from `tumult-plugin`. `tumult-exec` is the one composition root that registers the executors: the CLI and the MCP server run and list native plugins through it. Calling an unknown plugin or function fails with an error listing the available names.
@@ -50,7 +50,7 @@ total (`tumult discover` prints the authoritative list for your build).
 
 | Plugin | Capabilities |
 |---|---|
-| [tumult-ssh](tumult-ssh.md) | Remote execution over SSH (Ed25519, RSA, ECDSA, agent auth, host-key verification with `verify` default) |
+| [tumult-ssh](tumult-ssh.md) | Remote execution over SSH (Ed25519, ECDSA, agent auth, host-key verification with `verify` default) |
 | tumult-net | Privilege-free userspace TCP chaos proxy — latency, bandwidth throttle, fragmentation, byte corruption, connection termination |
 | [tumult-kubernetes](tumult-kubernetes.md) | Pod delete, deployment scale, node cordon/drain, status probes |
 | tumult-cloud | AWS (EC2 stop/terminate, FIS experiments), Azure Chaos, GCP compute stop |

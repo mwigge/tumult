@@ -64,4 +64,4 @@ rollbacks[1]:
 
 ## Works via SSH
 
-All process plugin scripts work both locally and on remote hosts via `ExecutionTarget::Ssh`. The scripts use standard POSIX commands (`kill`, `pkill`, `pgrep`, `ps`) available on all Linux/macOS systems.
+A step runs its script on the machine that runs Tumult, and a step has no `execution_target:` key. To run a script on a remote host, put it on that host and call it with the `execute` function of [tumult-ssh](tumult-ssh.md). The scripts use standard POSIX commands (`kill`, `pkill`, `pgrep`, `ps`) available on all Linux/macOS systems.

@@ -13,8 +13,8 @@ Remote command execution and file transfer over SSH for the Tumult resilience in
 - **SSH connection manager** with connection pooling
 - **Remote command execution** with stdout/stderr capture and exit code
 - **File upload** via SSH channel (no SFTP subsystem required)
-- **Key-based authentication** (ed25519, RSA, ECDSA)
-- **SSH agent authentication** (ssh-agent / pageant)
+- **Key-based authentication** (ed25519, ECDSA)
+- **SSH agent authentication** (ssh-agent)
 - **Host key verification** against `known_hosts` (default), trust-on-first-use, or accept-any
 - **Configurable timeouts** for both connection and command execution
 - **Native plugin function** `execute` for use in experiments via the `native` provider
@@ -85,7 +85,7 @@ let config = SshConfig::with_key(
 );
 ```
 
-Supported key types: Ed25519, RSA (2048+), ECDSA (P-256, P-384).
+Supported key types: Ed25519, ECDSA (P-256, P-384, P-521). RSA key files are not supported.
 
 ### SSH Agent
 
@@ -152,6 +152,7 @@ All SSH operations return `Result<_, SshError>` with these variants:
 | `ExecutionFailed` | Command could not be started |
 | `ChannelError` | SSH channel operation failed |
 | `UploadFailed` | File transfer failed |
+| `InvalidPath` | The remote path of an upload holds a control character |
 | `Timeout` | Connection or command timed out |
 
 ## Security Notes
@@ -165,7 +166,7 @@ Host key verification defaults to **`verify`**: `SshSession::connect` checks the
 
 ### RSA Key Vulnerability (RUSTSEC-2023-0071)
 
-The `russh` 0.58 dependency tree includes `rsa` 0.10.0-rc.12, which has a known timing side-channel vulnerability ([Marvin Attack](https://rustsec.org/advisories/RUSTSEC-2023-0071), CVSS 5.9 medium). This affects **RSA key authentication only**.
+The `rsa` crate has a known timing side-channel vulnerability ([Marvin Attack](https://rustsec.org/advisories/RUSTSEC-2023-0071), CVSS 5.9 medium). This affects **RSA key authentication only**. Tumult builds `russh` 0.65 without its `rsa` feature, so the `rsa` crate is not in the build and an RSA key file cannot be used.
 
 **Mitigation:** Use **Ed25519 keys** (recommended) or **ECDSA keys** instead of RSA keys. Ed25519 is not affected by this vulnerability and is the preferred key type for modern SSH.
 
@@ -177,11 +178,11 @@ ssh-keygen -t ed25519 -C "tumult-chaos" -f ~/.ssh/tumult_ed25519
 #   key_file: /home/ops/.ssh/tumult_ed25519
 ```
 
-No upstream fix is currently available for the RSA crate. This advisory will be resolved when `russh` updates its dependency.
+No upstream fix is available for the `rsa` crate, so the `rsa` feature stays off.
 
 ## Implementation Notes
 
-- Uses `russh` 0.58 — pure Rust, no C dependencies
+- Uses `russh` 0.65 with the `aws-lc-rs` crypto backend, which builds the C library AWS-LC
 - Async-native with tokio
 - File upload uses `cat > path && chmod 755` via SSH channel — no SFTP subsystem needed
 - Authentication is bounded by `connect_timeout` to prevent stalls

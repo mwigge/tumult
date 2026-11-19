@@ -20,12 +20,14 @@ Script-based plugin for Docker and Podman container chaos.
 | `stop-container` | Graceful stop | `TUMULT_CONTAINER_ID` (required), `TUMULT_TIMEOUT`, `TUMULT_RUNTIME` |
 | `pause-container` | Freeze all processes | `TUMULT_CONTAINER_ID` (required), `TUMULT_RUNTIME` |
 | `unpause-container` | Resume frozen container | `TUMULT_CONTAINER_ID` (required), `TUMULT_RUNTIME` |
+| `limit-cpu` | Set a CPU limit on a running container | `TUMULT_CONTAINER_ID` (required), `TUMULT_CPU_QUOTA`, `TUMULT_CPU_PERIOD`, `TUMULT_RUNTIME` |
+| `limit-memory` | Set a memory limit on a running container | `TUMULT_CONTAINER_ID` (required), `TUMULT_MEMORY_LIMIT`, `TUMULT_RUNTIME` |
 
 ## Probes
 
 | Probe | Description | Output |
 |-------|-------------|--------|
-| `container-status` | Container state | `running`, `stopped`, `paused`, `not_found` |
+| `container-status` | Container state | The `State.Status` of the runtime (such as `running` or `paused`), or `not_found` |
 | `container-health` | Health check status | `healthy`, `unhealthy`, `starting`, `none`, `not_found` |
 
 ## Runtime Selection

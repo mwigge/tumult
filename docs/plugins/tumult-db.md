@@ -10,9 +10,9 @@ Script-based plugins for PostgreSQL, MySQL, and Redis chaos engineering.
 
 ## Data Capture
 
-All probes return structured JSON output that gets recorded in the experiment journal. When used as hypothesis probes, the data is captured at both the **before** (baseline) and **after** (post-fault) checkpoints, giving you a pre/post comparison.
+Each probe prints its reading (a number, a word or a JSON object), and the reading gets recorded in the experiment journal. When used as hypothesis probes, the data is captured at both the **before** (baseline) and **after** (post-fault) checkpoints, giving you a pre/post comparison.
 
-For continuous during-phase sampling, use probes in the method section with `background: true` (Phase 6 feature).
+The run also samples the hypothesis probes while the method runs and after it, and keeps these samples in the journal.
 
 ## PostgreSQL (tumult-db-postgres)
 
@@ -44,7 +44,7 @@ For continuous during-phase sampling, use probes in the method section with `bac
 | `TUMULT_PG_HOST` | `localhost` | PostgreSQL host |
 | `TUMULT_PG_PORT` | `5432` | PostgreSQL port |
 | `TUMULT_PG_USER` | `postgres` | PostgreSQL user |
-| `TUMULT_PG_PASSWORD` | (empty) | Password (uses PGPASSWORD) |
+| `TUMULT_PG_PASSWORD` | (empty) | Password (written to a temporary `.pgpass` file) |
 
 ## MySQL (tumult-db-mysql)
 
@@ -82,7 +82,7 @@ For continuous during-phase sampling, use probes in the method section with `bac
 | Probe | Description | Output |
 |-------|-------------|--------|
 | `redis-ping` | PING/PONG liveness check | `"PONG"` or error |
-| `redis-info` | Connection + memory stats | JSON: `{connected_clients, used_memory_bytes, ops_per_sec, ...}` |
+| `redis-info` | Connection + memory stats | JSON: `{connected_clients, used_memory_bytes, ops_per_sec, ...}`. Fails when the reply lacks a field |
 
 ## Example: PostgreSQL Connection Pool Exhaustion
 
@@ -97,7 +97,7 @@ steady_state_hypothesis:
       activity_type: probe
       provider:
         type: process
-        path: plugins/tumult-db-postgres/probes/pool-utilization.sh
+        path: plugins/tumult-db-postgres/probes/connection-count.sh
         env:
           TUMULT_PG_DATABASE: myapp
       tolerance:

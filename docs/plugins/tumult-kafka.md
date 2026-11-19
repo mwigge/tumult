@@ -10,7 +10,7 @@ Script-based plugin for Apache Kafka chaos engineering. Covers broker failures, 
 
 ## Prerequisites
 
-- Kafka CLI tools (`kafka-consumer-groups.sh`, `kafka-topics.sh`)
+- Kafka CLI tools (`kafka-consumer-groups.sh`, `kafka-topics.sh`, `kafka-broker-api-versions.sh`)
 - For network chaos: `tc` (iproute2), `iptables` — Linux with root/sudo
 - For broker kill: SSH access to broker hosts
 
@@ -20,6 +20,7 @@ Script-based plugin for Apache Kafka chaos engineering. Covers broker failures, 
 |--------|-------------|---------------|
 | `kill-broker` | Kill Kafka broker process (SIGKILL) | `TUMULT_SIGNAL` |
 | `partition-broker` | iptables partition between brokers | `TUMULT_BROKER_IP`, `TUMULT_CLUSTER_IPS` (comma-separated) |
+| `partition-broker-rollback` | Remove the iptables rules of `partition-broker` (safe to run twice) | `TUMULT_BROKER_IP`, `TUMULT_CLUSTER_IPS` |
 | `add-broker-latency` | tc netem latency on Kafka port | `TUMULT_DELAY_MS`, `TUMULT_KAFKA_PORT` |
 
 ## Probes

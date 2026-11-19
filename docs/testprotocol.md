@@ -10,7 +10,7 @@
 > **Note (1.2):** the inventory and command references in this protocol were
 > corrected against tumult 2.16.1 (`tumult discover`: 16 plugins — 11 script
 > + 5 native — and 91 actions; 40 MCP tools; the workspace has since grown to
-> 32 crates as of 2.20). The
+> 35 crates as of 3.0.2). The
 > **Test Results Log** at the end is a *historical* execution record from the
 > 0.1.0-era build (2026-04-01): its PASS rows, counts, and version strings
 > describe that build, not the current one, and are preserved as an audit
@@ -41,9 +41,13 @@
 17. [TP-MCP: MCP Server Tests](#17-tp-mcp-mcp-server-tests)
 18. [TP-K8S: Kubernetes Plugin Tests](#18-tp-k8s-kubernetes-plugin-tests)
 19. [TP-E2E: End-to-End Pipeline Tests](#19-tp-e2e-end-to-end-pipeline-tests)
-20. [TP-UNIT: Workspace Unit Test Suite](#20-tp-unit-workspace-unit-test-suite)
-21. [TP-COMPLIANCE: Regulatory Compliance Tests](#21-tp-compliance-regulatory-compliance-tests)
-22. [Test Results Log](#22-test-results-log)
+20. [TP-PUMBA: Pumba Plugin Tests](#20-tp-pumba-pumba-plugin-tests)
+21. [TP-COLLECTOR: Custom OTel Collector Tests](#21-tp-collector-custom-otel-collector-tests)
+22. [TP-QUICKSTART: Quickstart Validation Tests](#22-tp-quickstart-quickstart-validation-tests)
+23. [TP-AGENTIC: Agentic Fault Injection Tests](#22b-tp-agentic-agentic-fault-injection-tests)
+24. [TP-UNIT: Workspace Unit Test Suite](#23-tp-unit-workspace-unit-test-suite)
+25. [TP-COMPLIANCE: Regulatory Compliance Tests](#21-tp-compliance-regulatory-compliance-tests)
+26. [Test Results Log](#22-test-results-log)
 
 ---
 
@@ -53,7 +57,7 @@
 
 | Tool | Version | Purpose |
 |------|---------|---------|
-| Rust toolchain | stable (1.82+) | Build and test |
+| Rust toolchain | stable (1.92+) | Build and test |
 | Docker + Compose | 24.x+ / v2 | Container targets and observability stack |
 | `cargo-audit` | latest | Dependency vulnerability scan |
 | `jq` | 1.7+ | JSON output validation |
@@ -81,7 +85,7 @@ export TUMULT_CLICKHOUSE_URL=http://localhost:8123  # only for TP-CLICKHOUSE
 cargo build --workspace --release
 ```
 
-**Expected output:** All 32 workspace crates compile without errors. Binary at `target/release/tumult`.
+**Expected output:** All 35 workspace crates compile without errors. Binary at `target/release/tumult`.
 
 ### TP-ENV-02: Start chaos target containers
 
@@ -90,7 +94,7 @@ cd docker/
 docker compose up -d
 ```
 
-**Expected output:** Four services healthy — `postgres`, `redis`, `kafka`, `sshd`.
+**Expected output:** Five services healthy (`postgres`, `redis`, `mysql`, `kafka`, `sshd`).
 
 **Verification:**
 
@@ -116,13 +120,16 @@ docker compose -f docker-compose.yml -f docker-compose.observability.yml up -d
 | PostgreSQL | `psql -h localhost -p 15432 -U tumult -d tumult_test -c "SELECT 1"` | Returns `1` |
 | Redis | `redis-cli -p 16379 ping` | `PONG` |
 | Kafka | `docker exec <kafka> /opt/kafka/bin/kafka-topics.sh --list --bootstrap-server localhost:9092` | No errors |
-| SSH | `ssh -p 12222 -o StrictHostKeyChecking=no test@localhost echo ok` | `ok` |
-| SigNoz UI | `curl -s http://localhost:13301/api/v1/health` | HTTP 200 |
-| OTel Collector | `curl -s http://localhost:14318/health` | `{"status":"Server available"}` |
+| SSH (after `make ssh-key`) | `ssh -p 12222 -i /tmp/tumult-test-key -o StrictHostKeyChecking=no tumult@localhost echo ok` | `ok` |
+| SigNoz UI | `curl -s http://localhost:3301/api/v1/health` | HTTP 200 |
+| OTel Collector | `curl -s http://localhost:13133/` | `{"status":"Server available"}` |
 
 ---
 
 ## 3. TP-CLI: CLI Functional Tests
+
+> `tumult run` refuses to write over a journal that is already there. To run an
+> experiment again, add `--force` or give another `--journal-path`.
 
 ### TP-CLI-01: Version output
 
@@ -138,7 +145,7 @@ tumult --version
 tumult --help
 ```
 
-**Expected:** Lists all subcommands: `run`, `validate`, `discover`, `analyze`, `export`, `compliance`, `report`, `trend`, `init`, `new`, `templates`, `import`, `store`, `recommend`, `agents`, `agentic`, `gameday`, `mcp`, `chaosgraph`, `topology`, `autopilot`, `tui`.
+**Expected:** Lists all subcommands: `run`, `validate`, `discover`, `analyze`, `export`, `compliance`, `report`, `trend`, `init`, `new`, `templates`, `import`, `store`, `recommend`, `agents`, `agentic`, `gameday`, `mcp`, `chaosgraph`, `topology`, `autopilot`, `gate`, `perf`, `tui`.
 
 ### TP-CLI-03: Validate experiment
 
@@ -155,7 +162,7 @@ echo "title: bad" > /tmp/bad.toon
 tumult validate /tmp/bad.toon
 ```
 
-**Expected:** Non-zero exit code with descriptive error (missing `steady_state_hypothesis` or `method`).
+**Expected:** Non-zero exit code with a descriptive error (`experiment has no method steps`).
 
 ### TP-CLI-05: Discover plugins
 
@@ -188,9 +195,9 @@ tumult run experiment.toon --output-format json
 ### TP-CLI-08: Run with rollback strategy
 
 ```bash
-tumult run experiment.toon --rollback-strategy always
-tumult run experiment.toon --rollback-strategy on-deviation
-tumult run experiment.toon --rollback-strategy never
+tumult run experiment.toon --rollback-strategy always --force
+tumult run experiment.toon --rollback-strategy on-deviation --force
+tumult run experiment.toon --rollback-strategy never --force
 ```
 
 **Expected:** Each completes successfully. With `always`, `rollback_results` is populated. With `never`, it is empty.
@@ -257,11 +264,11 @@ steady_state_hypothesis:
         pattern: "^will_never_match$"
 ```
 
-**Expected:** `status: deviated`, `steady_state_before.met: false`, method is **not** executed.
+**Expected:** `status: aborted`, `steady_state_before.met: false`, method is **not** executed.
 
 ### TP-CORE-03: Rollback execution on deviation
 
-Same failing experiment with `--rollback on-deviation` and a rollback section.
+Same failing experiment with `--rollback-strategy on-deviation` and a rollback section.
 
 **Expected:** `rollback_results` is populated, rollback actions executed.
 
@@ -275,7 +282,7 @@ Create an experiment with `timeout_s: 1.0` and a `sleep 10` command.
 
 Experiment with `pause_before_s: 1.0` or `pause_after_s: 1.0`.
 
-**Expected:** Total `duration_ms` includes the pause time. Minimum duration >= 1000ms for the paused activity.
+**Expected:** Total `duration_ms` includes the pause time and is at least 1000ms. The `duration_ms` of the paused step does not count the pause.
 
 ### TP-CORE-06: Background activities
 
@@ -321,6 +328,8 @@ Each activity result in journal.toon must have:
 name, activity_type, status, started_at_ns, duration_ms, output, error, trace_id, span_id
 ```
 
+`output` and `error` are only there when the step has them.
+
 ### TP-TOON-04: Array notation
 
 TOON arrays use `field[N]` notation. Verify:
@@ -355,7 +364,7 @@ done
 tumult discover
 ```
 
-**Expected output includes:** All 16 plugins (91 actions total) with their registered actions and probes:
+**Expected output includes:** All 16 plugins (91 actions total) with their registered actions. `tumult discover` does not list probes. The probes below are in the `plugin.toon` of each script plugin.
 
 | Plugin (script) | Actions | Probes |
 |--------|---------|--------|
@@ -457,28 +466,28 @@ tumult run <redis-ping.toon>
 tumult run <redis-info.toon>
 ```
 
-**Expected:** Returns Redis INFO output with server, memory, stats sections.
+**Expected:** Returns one JSON object with `connected_clients`, `used_memory_bytes`, `used_memory_human`, `ops_per_sec`, `keyspace_hits`, `keyspace_misses` and `uptime_seconds`. When the reply lacks one of these fields, the probe fails and prints no JSON.
 
-### TP-SCRIPT-08: tumult-containers — container-running probe
+### TP-SCRIPT-08: tumult-containers — container-status probe
 
 ```bash
-tumult run <container-running-probe.toon targeting docker postgres container>
+tumult run <container-status-probe.toon targeting docker postgres container>
 ```
 
-**Expected:** Returns `true` for a running container.
+**Expected:** Returns `running` for a running container.
 
-### TP-SCRIPT-09: tumult-containers — cpu-utilization probe
+### TP-SCRIPT-09: tumult-stress — cpu-utilization probe
 
 ```bash
-tumult run <container-cpu-probe.toon>
+tumult run <cpu-utilization-probe.toon>
 ```
 
 **Expected:** Returns numeric CPU utilization percentage.
 
-### TP-SCRIPT-10: tumult-containers — memory-utilization probe
+### TP-SCRIPT-10: tumult-stress — memory-utilization probe
 
 ```bash
-tumult run <container-memory-probe.toon>
+tumult run <memory-utilization-probe.toon>
 ```
 
 **Expected:** Returns numeric memory utilization percentage.
@@ -499,13 +508,13 @@ tumult run <memory-stress.toon>
 
 **Expected:** Memory stress applied and released. Journal shows succeeded.
 
-### TP-SCRIPT-13: tumult-kafka — topic-list probe (requires Kafka container)
+### TP-SCRIPT-13: tumult-kafka — broker-count probe (requires Kafka container)
 
 ```bash
-tumult run <kafka-topic-list.toon>
+tumult run <kafka-broker-count.toon>
 ```
 
-**Expected:** Returns list of Kafka topics (may be empty initially).
+**Expected:** Returns the number of brokers as one number (1 for the one broker of the lab). When the query fails, the probe fails with the message of the Kafka tool and prints no number.
 
 ### TP-SCRIPT-14: tumult-network — add-latency action
 
@@ -563,6 +572,14 @@ schema verification reads a row and checks the columns.)
 | hypothesis_after_met | BOOLEAN |
 | estimate_accuracy | DOUBLE |
 | resilience_score | DOUBLE |
+| test_kind | VARCHAR |
+| rto_target_s | DOUBLE |
+| rpo_target_s | DOUBLE |
+| rto_measured_s | DOUBLE |
+| rpo_measured_s | DOUBLE |
+| target_version | VARCHAR |
+| version_source | VARCHAR |
+| version_shares | VARCHAR |
 
 **Expected — `activity_results` table columns:**
 
@@ -605,7 +622,7 @@ tumult export journal.toon --format arrow
 tumult store stats
 ```
 
-**Expected:** Shows store location (`~/.tumult/analytics.duckdb`), experiment count, and activity count.
+**Expected:** Shows store location (`~/.tumult/lake.duckdb`), experiment count, and activity count.
 
 ### TP-DUCK-02: Journal ingestion
 
@@ -655,7 +672,7 @@ tumult store stats          # count should increment by 1
 ### TP-DUCK-07: Import from Parquet
 
 ```bash
-tumult store backup --output /tmp/tumult-backup   # writes Parquet files into the directory
+tumult store export --output /tmp/tumult-backup   # writes Parquet files into the directory
 tumult import /tmp/tumult-backup                  # import takes the backup directory
 tumult store stats
 ```
@@ -669,7 +686,7 @@ tumult store purge --older-than-days 0
 tumult store stats
 ```
 
-**Expected:** Experiments older than the retention window are removed (0 days = all). Store file remains but is empty.
+**Expected:** Experiments older than the retention window are removed (0 days = all). The store file remains, with 0 experiments and 0 activities.
 
 ---
 
@@ -730,9 +747,9 @@ Each span must carry relevant attributes per [OTel semantic conventions](https:/
 
 | Span | Required attributes |
 |------|-------------------|
-| `resilience.experiment` | `experiment.id`, `experiment.title`, `experiment.status` |
-| `resilience.action` | `activity.name`, `activity.type` |
-| `resilience.probe` | `activity.name`, `activity.type`, `probe.tolerance.type` |
+| `resilience.experiment` | `resilience.experiment.id`, `resilience.experiment.title`, `resilience.outcome.status` |
+| `resilience.action` | `resilience.action.name`, `resilience.activity.type` |
+| `resilience.probe` | `resilience.action.name`, `resilience.activity.type` |
 
 ### TP-OTEL-05: Span events
 
@@ -741,9 +758,9 @@ Verify canonical events are emitted:
 | Event name | When |
 |-----------|------|
 | `journal.ingested` | After journal is written to analytics store |
-| `drain.completed` | After telemetry pipeline flush |
-| `tolerance.derived` | After baseline tolerance calculation |
-| `anomaly.detected` | When baseline anomaly check triggers |
+| `drain.completed` | After the Kubernetes `drain_node` action has drained its node |
+| `tolerance.derived` | After `derive_baseline` of the `tumult-baseline` library derives a tolerance (a run does not call it) |
+| `anomaly.detected` | When the anomaly check of `derive_baseline` triggers (a run does not call it) |
 
 ### TP-OTEL-06: Trace context propagation
 
@@ -770,10 +787,10 @@ TUMULT_OTEL_ENABLED=false tumult run experiment.toon
 ### TP-OTEL-08: Console exporter
 
 ```bash
-TUMULT_OTEL_CONSOLE=true tumult run experiment.toon 2>&1 | grep -c "SpanData"
+TUMULT_OTEL_CONSOLE=true tumult run experiment.toon 2>&1 | grep -c "Span #"
 ```
 
-**Expected:** Span data printed to stderr. Count >= 1.
+**Expected:** Span data printed to stdout. Count >= 1.
 
 ### TP-OTEL-09: Service resource attributes
 
@@ -792,7 +809,7 @@ If an experiment panics or is interrupted, spans must still be exported (flushed
 
 ```bash
 # Create experiment that will panic/timeout
-timeout 2 tumult run <long-running-experiment.toon>
+timeout -s INT 2 tumult run <long-running-experiment.toon>   # tumult run stops a run on SIGINT
 ```
 
 **Expected:** Partial trace visible in backend. `resilience.experiment` span has error status.
@@ -804,7 +821,7 @@ timeout 2 tumult run <long-running-experiment.toon>
 ### TP-SIGNOZ-01: SigNoz UI accessible
 
 ```bash
-curl -s -o /dev/null -w "%{http_code}" http://localhost:13301
+curl -s -o /dev/null -w "%{http_code}" http://localhost:3301
 ```
 
 **Expected:** HTTP 200.
@@ -814,7 +831,7 @@ curl -s -o /dev/null -w "%{http_code}" http://localhost:13301
 After running an experiment with OTLP enabled:
 
 ```bash
-curl -s "http://localhost:13301/api/v1/services" | jq '.[] | select(.serviceName == "tumult")'
+curl -s "http://localhost:3301/api/v1/services" | jq '.[] | select(.serviceName == "tumult")'
 ```
 
 **Expected:** `tumult` service is listed.
@@ -824,7 +841,7 @@ curl -s "http://localhost:13301/api/v1/services" | jq '.[] | select(.serviceName
 Navigate to SigNoz Traces tab or query:
 
 ```bash
-curl -s "http://localhost:13301/api/v3/query_range" \
+curl -s "http://localhost:3301/api/v3/query_range" \
   -H "Content-Type: application/json" \
   -d '{"start": <epoch_ns>, "end": <epoch_ns>, "step": 60, "compositeQuery": ...}'
 ```
@@ -908,7 +925,7 @@ docker exec <postgres> ping -c 1 kafka
 
 ```bash
 curl -s http://localhost:14317  # gRPC port (may reject non-gRPC)
-curl -s http://localhost:14318/health
+curl -s http://localhost:13133/
 ```
 
 **Expected:** HTTP health endpoint returns healthy status.
@@ -930,14 +947,14 @@ psql -h localhost -p 15432 -U tumult -d tumult_test -c "SELECT 1"
 ### TP-SSH-01: SSH connection to test container
 
 ```bash
-ssh -p 12222 -o StrictHostKeyChecking=no test@localhost echo "hello from ssh"
+ssh -p 12222 -i /tmp/tumult-test-key -o StrictHostKeyChecking=no tumult@localhost echo "hello from ssh"   # key from make ssh-key
 ```
 
 **Expected:** Returns `hello from ssh`.
 
 ### TP-SSH-02: SSH provider experiment execution
 
-Create experiment using the native `tumult-ssh` plugin targeting `localhost:12222`:
+Create experiment using the native `tumult-ssh` plugin targeting `localhost:12222`, with the key from `make ssh-key`:
 
 ```toon
 provider:
@@ -947,37 +964,43 @@ provider:
   arguments:
     host: localhost
     port: 12222
-    user: test
+    user: tumult
+    key_file: /tmp/tumult-test-key
     command: uname -a
 ```
 
 **Expected:** Probe succeeds. Output contains Linux kernel info from the container.
 
-### TP-SSH-03: SSH connection pooling
+### TP-SSH-03: SSH connections of several steps
 
 Run experiment with multiple SSH-based activities.
 
-**Expected:** Reuses connections (visible in debug logs). No "too many open connections" errors.
+**Expected:** Each step opens and closes its own SSH session (the native step does not use `SshPool`). No "too many open connections" errors.
 
 ---
 
 ## 14. TP-BASELINE: Statistical Baseline Tests
 
+`tumult run` takes no baseline. It reads the `baseline:` block and does not use
+it, and it keeps the tolerances as written. TP-BASELINE-01 to TP-BASELINE-04
+test the `tumult-baseline` library (`derive_baseline`), which derives the bounds
+and emits the events.
+
 ### TP-BASELINE-01: Mean ± Stddev tolerance derivation
 
-Run experiment with `--baseline full` and numeric probe data.
+Call `derive_baseline` with numeric probe samples and `Method::MeanStddev`.
 
 **Expected:** `tolerance.derived` event emitted. Derived tolerance uses mean ± N*sigma.
 
 ### TP-BASELINE-02: IQR tolerance derivation
 
-Configure `baseline.method: iqr`.
+Use `Method::Iqr`.
 
 **Expected:** Tolerance bounds based on Q1 - 1.5*IQR and Q3 + 1.5*IQR.
 
 ### TP-BASELINE-03: Percentile tolerance derivation
 
-Configure `baseline.method: percentile` with `p: 99`.
+Use `Method::Percentile` with `percentile: 99.0`.
 
 **Expected:** Upper bound based on 99th percentile * multiplier.
 
@@ -985,7 +1008,7 @@ Configure `baseline.method: percentile` with `p: 99`.
 
 Feed highly variable baseline samples (CV > threshold).
 
-**Expected:** `anomaly.detected` event emitted. Experiment logs a warning about unstable baseline.
+**Expected:** `anomaly.detected` event emitted. The result has `anomaly_detected: true` and a reason.
 
 ### TP-BASELINE-05: Baseline skip mode
 
@@ -1001,7 +1024,7 @@ tumult run experiment.toon --baseline-mode skip
 tumult run experiment.toon --baseline-mode only
 ```
 
-**Expected:** Baseline collected. No fault injection. No method execution. Journal has baseline data only.
+**Expected:** The hypothesis probes are measured once. No fault injection. No method execution. The journal holds `steady_state_before` only, and the run is not stored.
 
 ---
 
@@ -1048,7 +1071,7 @@ tumult report journal.toon --format html --output /tmp/report.html
 tumult compliance journal.toon --framework dora
 ```
 
-**Expected:** Evidence report for the Digital Operational Resilience Act (EU 2022/2554): pass rate, recovery compliance (MTTR against the target), the evidence verdict and the mapped articles. The DevOps Research and Assessment delivery metrics (change failure rate, deployment frequency) are a different "DORA" and are not part of this output.
+**Expected:** Evidence report for the Digital Operational Resilience Act (EU 2022/2554): pass rate, recovery within the target (the share of the runs that watched for recovery), the evidence verdict and the mapped articles. The DevOps Research and Assessment delivery metrics (change failure rate, deployment frequency) are a different "DORA" and are not part of this output.
 
 ### TP-ANALYTICS-06: Compliance report — NIS2
 
@@ -1073,18 +1096,18 @@ done
 
 ```bash
 # Run experiment 5 times
-for i in $(seq 1 5); do tumult run experiment.toon --force; done
+for i in $(seq 1 5); do tumult run experiment.toon --journal-path journal-$i.toon; done
 tumult trend . --metric duration_ms
 ```
 
-**Expected:** Shows duration trend across runs (journals directory is the positional argument). Identifies regressions if any.
+**Expected:** Shows duration trend across runs (journals directory is the positional argument), then a summary line with min, max and avg.
 
 ### TP-ANALYTICS-09: Backup and restore
 
 ```bash
-tumult store backup --output /tmp/tumult-backup
+tumult store export --output /tmp/tumult-restore
 tumult store purge --older-than-days 0
-tumult import /tmp/tumult-backup
+tumult import /tmp/tumult-restore
 tumult store stats
 ```
 
@@ -1094,13 +1117,17 @@ tumult store stats
 
 ## 16. TP-CLICKHOUSE: ClickHouse External Backend Tests
 
+These tests reach ClickHouse at `localhost:8123`. The shipped
+`docker/docker-compose.observability.yml` publishes no ClickHouse port (the
+`signoz` service publishes 3301, 4317 and 4318 only).
+
 ### TP-CLICKHOUSE-01: ClickHouse connection
 
 ```bash
-TUMULT_CLICKHOUSE_URL=http://localhost:8123 tumult store stats
+TUMULT_CLICKHOUSE_URL=http://localhost:8123 tumult store migrate
 ```
 
-**Expected:** Connects to SigNoz's ClickHouse. Reports table existence.
+**Expected:** Connects to SigNoz's ClickHouse, creates the `tumult` database and its tables, and copies the runs of the local DuckDB store into it. With an empty DuckDB store, `migrate` does not connect. `tumult store stats` reads the DuckDB store only.
 
 ### TP-CLICKHOUSE-02: Schema creation
 
@@ -1124,16 +1151,15 @@ docker exec <clickhouse> clickhouse-client \
 ### TP-CLICKHOUSE-04: Cross-correlation with OTel traces
 
 ```bash
-# Get trace_id from tumult.experiments
-docker exec <clickhouse> clickhouse-client \
-  --query "SELECT trace_id FROM tumult.activity_results LIMIT 1"
+# Get trace_id from the journal (the tumult tables in ClickHouse have no trace_id column)
+grep trace_id journal.toon
 
 # Look up same trace in SigNoz traces table
 docker exec <clickhouse> clickhouse-client \
   --query "SELECT count() FROM signoz_traces.distributed_signoz_index_v3 WHERE traceID = '<trace_id>'"
 ```
 
-**Expected:** Same trace_id exists in both tumult experiment data and SigNoz traces. Cross-correlation possible.
+**Expected:** Same trace_id exists in both the journal of the run and SigNoz traces. Cross-correlation possible.
 
 ---
 
@@ -1266,15 +1292,15 @@ Create experiment using actions/probes from multiple plugins in a single run.
 ### TP-E2E-05: Experiment with baseline + analysis
 
 ```bash
-tumult run <baseline-experiment.toon> --baseline full
+tumult run <baseline-experiment.toon> --baseline-mode full
 ```
 
 **Expected:**
-- `baseline_result` populated with statistical data
+- `baseline_result` stays empty, as a run takes no baseline
 - `during_result` shows fault-injection metrics
 - `post_result` shows recovery metrics
 - `analysis` section compares estimate vs. actual
-- Resilience score computed
+- `analysis.resilience_score` is 1 when the run completed and 0 when it did not
 
 ### TP-E2E-06: Script plugin produces complete journal
 
@@ -1291,32 +1317,32 @@ cat journal.toon
 OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:14317 tumult run experiment.toon
 sleep 5
 # Verify in SigNoz
-curl -s "http://localhost:13301/api/v1/services" | jq '.[].serviceName'
+curl -s "http://localhost:3301/api/v1/services" | jq '.[].serviceName'
 ```
 
 **Expected:** Full telemetry pipeline: Tumult → OTLP gRPC → Tumult OTel Collector → SigNoz OTel Collector → ClickHouse → SigNoz UI.
 
 ### TP-E2E-08: Pumba chaos scenario
 
-Inject latency into PG container via Pumba, measure with baseline, verify recovery.
+Inject latency into PG container via Pumba, measure with the hypothesis probes, verify recovery.
 
 ```bash
 tumult run <pumba-pg-latency.toon> --baseline-mode full
 ```
 
-**Expected:** Pumba injects netem delay, baseline detects latency increase, post-recovery returns to normal. JSON output in journal contains `chaos.tool=pumba`.
+**Expected:** Pumba injects netem delay, the probes detect the latency increase, post-recovery returns to normal. JSON output in journal contains `chaos.tool=pumba`.
 
 ### TP-E2E-09: Full observability with custom collector
 
 ```bash
-# Build and start custom collector
-cd docker/tumult-collector && docker build -t tumult-otel-collector .
-# Run experiment pointing at custom collector
-OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317 tumult run experiment.toon
-# Verify traces in ClickHouse + file export + Prometheus metrics
+# Start the Tumult collector (contrib image with docker/tumult-collector/config.yaml)
+docker compose -f docker/docker-compose.yml -f docker/docker-compose.observability.yml up -d tumult-collector
+# Run experiment pointing at the collector
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:14317 tumult run experiment.toon
+# Verify traces in ClickHouse + Prometheus metrics
 ```
 
-**Expected:** Traces in ClickHouse `signoz_traces` DB. JSONL file written. Prometheus :8889 exposes metrics. APM span metrics derived.
+**Expected:** Traces in ClickHouse `signoz_traces` DB. Prometheus on host port 18889 exposes metrics. APM span metrics derived.
 
 ### TP-E2E-10: SSH provider experiment
 
@@ -1336,7 +1362,7 @@ tumult run <ssh-uname.toon>  # SSH provider targeting sshd container on :12222
 tumult discover | grep tumult-pumba
 ```
 
-**Expected:** 10 actions and 3 probes registered.
+**Expected:** The 10 actions are listed (`tumult-pumba::netem-delay` and the others). The 3 probes are in `plugin.toon`, and `tumult discover` does not list probes.
 
 ### TP-PUMBA-02: Manifest parsing
 
@@ -1422,12 +1448,14 @@ Run a Pumba netem-delay experiment with OTLP enabled. Query Jaeger for the trace
 
 ### TP-PUMBA-15: DuckDB analytics for Pumba data
 
+The output keys hold a dot (`chaos.action`), so each JSON path quotes its key.
+
 ```sql
-SELECT json_extract_string(output, '$.chaos.action') AS action,
-       json_extract_string(output, '$.chaos.container') AS target,
-       json_extract(output, '$.netem.delay_ms') AS delay_ms
+SELECT json_extract_string(output, '$."chaos.action"') AS action,
+       json_extract_string(output, '$."chaos.container"') AS target,
+       json_extract(output, '$."netem.delay_ms"') AS delay_ms
 FROM activity_results
-WHERE json_extract_string(output, '$.chaos.tool') = 'pumba'
+WHERE json_extract_string(output, '$."chaos.tool"') = 'pumba'
 ```
 
 **Expected:** Returns Pumba chaos parameters extracted from JSON output column.
@@ -1436,19 +1464,18 @@ WHERE json_extract_string(output, '$.chaos.tool') = 'pumba'
 
 ## 21. TP-COLLECTOR: Custom OTel Collector Tests
 
-### TP-COLLECTOR-01: Docker build
+### TP-COLLECTOR-01: Collector start
 
 ```bash
-cd docker/tumult-collector && docker build -t tumult-otel-collector .
+docker compose -f docker/docker-compose.yml -f docker/docker-compose.observability.yml up -d tumult-collector
 ```
 
-**Expected:** Multi-stage build succeeds. Binary `tumult-otel-collector` in final image.
+**Expected:** The `tumult-collector` service runs the image `otel/opentelemetry-collector-contrib:0.114.0` with `docker/tumult-collector/config.yaml`. There is no custom build.
 
 ### TP-COLLECTOR-02: Health check
 
 ```bash
-docker run -d --name tumult-collector -p 4317:4317 -p 13133:13133 tumult-otel-collector
-curl -s http://localhost:13133/health
+curl -s http://localhost:13133/
 ```
 
 **Expected:** Returns healthy status.
@@ -1456,14 +1483,14 @@ curl -s http://localhost:13133/health
 ### TP-COLLECTOR-03: OTLP gRPC receive
 
 ```bash
-OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317 tumult run experiment.toon
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:14317 tumult run experiment.toon
 ```
 
 **Expected:** Experiment completes, no OTLP connection errors.
 
 ### TP-COLLECTOR-04: Arrow receive
 
-Connect Arrow receiver on :4319.
+Connect Arrow receiver on host port 14319 (4319 in the container).
 
 **Expected:** OTel Arrow protocol accepted.
 
@@ -1475,16 +1502,14 @@ Traces appear in `signoz_traces` database after experiment run.
 
 ### TP-COLLECTOR-06: File export
 
-```bash
-docker exec tumult-collector cat /var/tumult/export/traces.jsonl | head -1
-```
+The collector config at this version has no file exporter (`docker/tumult-collector/config.yaml`).
 
-**Expected:** Valid JSONL with trace data.
+**Expected:** No JSONL file is written. This test does not apply.
 
 ### TP-COLLECTOR-07: Prometheus metrics endpoint
 
 ```bash
-curl -s http://localhost:8889/metrics | grep tumult
+curl -s http://localhost:18889/metrics | grep tumult
 ```
 
 **Expected:** Prometheus metrics exposed, including span-derived metrics.
@@ -1498,18 +1523,16 @@ Verify spanmetrics connector derives RED metrics from traces.
 ### TP-COLLECTOR-09: Host metrics
 
 ```bash
-curl -s http://localhost:8889/metrics | grep system_cpu
+curl -s http://localhost:18889/metrics | grep system_cpu
 ```
 
 **Expected:** `system_cpu_time`, `system_memory_usage` metrics present.
 
 ### TP-COLLECTOR-10: Docker stats
 
-```bash
-curl -s http://localhost:8889/metrics | grep container_
-```
+The collector config at this version has no `docker_stats` receiver (`docker/tumult-collector/config.yaml`).
 
-**Expected:** `container_cpu_usage_total`, `container_memory_usage` metrics present.
+**Expected:** No `container_*` metrics. This test does not apply.
 
 ---
 
@@ -1525,7 +1548,7 @@ curl -s http://localhost:8889/metrics | grep container_
 tumult run examples/redis-chaos.toon
 ```
 
-**Expected:** Status: Completed. 3 method steps (SET, GET, DEL).
+**Expected:** Status: Completed. 5 method steps (SET, pause, no answer while paused, unpause, GET).
 
 ### TP-QUICKSTART-03: PostgreSQL failover example
 
@@ -1739,13 +1762,13 @@ tumult compliance journal.toon --framework nis2
 
 **Expected:** Maps to NIS2 risk management and incident response requirements.
 
-### TP-COMPLIANCE-03: PCI-DSS — Requirement 11
+### TP-COMPLIANCE-03: PCI-DSS — Requirement 12.10.2
 
 ```bash
 tumult compliance journal.toon --framework pci-dss
 ```
 
-**Expected:** Maps to PCI-DSS Requirement 11 (security testing).
+**Expected:** Maps to PCI-DSS Requirement 12.10.2 (the incident response plan is tested at least once every 12 months).
 
 ### TP-COMPLIANCE-04: ISO-27001 — Annex A controls
 
@@ -1761,7 +1784,7 @@ tumult compliance journal.toon --framework iso-27001
 tumult compliance journal.toon --framework soc2
 ```
 
-**Expected:** Maps to SOC2 availability and processing integrity criteria.
+**Expected:** Maps to the SOC 2 common criteria CC7.2, CC7.4 and CC7.5 (monitoring, incident response and recovery).
 
 ---
 

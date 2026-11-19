@@ -65,9 +65,10 @@ The runner does not require ten consecutive successful samples.
 
 `full_recovery` reports whether all probes were observed to recover;
 `recovery_time_s` and per-probe timings measure from the post-phase start.
-`mttr_s` is absent if recovery was not observed. Always inspect the recovery
-flag alongside timings: a duration alone does not prove recovery. Final
-hypothesis and rollback results are separate evidence.
+`mttr_s` is absent if recovery was not observed or a step of the method
+failed. Always inspect the recovery flag alongside timings: a duration alone
+does not prove recovery. Final hypothesis and rollback results are separate
+evidence.
 
 These `PostResult` fields are reserved and remain absent (`None`):
 
@@ -78,7 +79,7 @@ These `PostResult` fields are reserved and remain absent (`None`):
 The runner does not automatically verify data integrity or assert absence of
 data loss. Post sampling precedes rollback, so a fault requiring explicit
 rollback can remain active during this window. Supply and inspect cleanup
-steps; a Completed status does not imply every resource was restored.
+steps; a `completed` status does not imply every resource was restored.
 
 ## Analysis results
 
@@ -112,9 +113,10 @@ against an administrator who can rewrite both evidence and hashes.
 
 ## SQL over imported journals
 
-The implemented journal-detail tables are `experiments`, `activity_results`
-and `load_results`; there is no `journals` table. Detailed recovery fields
-remain in the TOON journal and are not columns in `experiments`.
+The implemented journal-detail tables are `experiments`, `activity_results`,
+`load_results`, `probe_samples` and `nfr_verdicts`; there is no `journals`
+table. Detailed recovery fields remain in the TOON journal and are not
+columns in `experiments`.
 
 ### Recent run outcomes
 
