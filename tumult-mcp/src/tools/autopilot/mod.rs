@@ -126,6 +126,8 @@ fn run_playbook(
         experiment_path: playbook,
         rollback_strategy: "on-deviation",
         journal_path: &journal_path,
+        // Each decision has its own journal: one that is there is kept.
+        force: false,
         store_path,
         no_ingest: false,
         format: "toon",

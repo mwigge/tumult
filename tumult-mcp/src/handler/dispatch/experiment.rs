@@ -42,6 +42,7 @@ pub(super) fn run_experiment(
             experiment_path: &path,
             rollback_strategy: &args.rollback_strategy,
             journal_path: std::path::Path::new(&journal_path),
+            force: args.force,
             store_path: &args.store_path,
             no_ingest: args.no_ingest,
             format: &args.format,

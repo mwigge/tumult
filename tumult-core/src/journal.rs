@@ -18,6 +18,32 @@ pub enum JournalError {
     /// The journal file could not be read or written.
     #[error("failed to write journal file: {0}")]
     WriteError(#[from] std::io::Error),
+    /// A journal is already at the path, and the output keeps it.
+    #[error("journal already exists: {}", .0.display())]
+    Exists(std::path::PathBuf),
+}
+
+/// What a [`JournalOutput`] does with a journal that is already at its
+/// path. A journal holds the evidence of exactly one run, so a run keeps
+/// the journal of an earlier one unless its user asks to replace it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExistingJournal {
+    /// Keep the journal and fail, at prepare and again at publish.
+    Refuse,
+    /// Put the new journal in its place.
+    Replace,
+}
+
+impl ExistingJournal {
+    /// [`Replace`](Self::Replace) when the user forced it, else
+    /// [`Refuse`](Self::Refuse).
+    #[must_use]
+    pub fn replace_if(force: bool) -> Self {
+        if force {
+            return Self::Replace;
+        }
+        Self::Refuse
+    }
 }
 
 /// Encode a journal to a TOON string.
@@ -29,14 +55,15 @@ pub fn encode_journal(journal: &Journal) -> Result<String, JournalError> {
     toon_format::encode_default(journal).map_err(|e| JournalError::EncodeError(e.to_string()))
 }
 
-/// Write a journal to a file in TOON format.
+/// Write a journal to a file in TOON format, in the place of a file that is
+/// already at `path`.
 ///
 /// # Errors
 ///
 /// Returns [`JournalError::EncodeError`] if the journal cannot be serialized.
 /// Returns [`JournalError::WriteError`] if the file cannot be written.
 pub fn write_journal(journal: &Journal, path: &Path) -> Result<(), JournalError> {
-    JournalOutput::prepare(path)?.write(&encode_journal(journal)?)
+    JournalOutput::prepare(path, ExistingJournal::Replace)?.write(&encode_journal(journal)?)
 }
 
 /// Reserved writable journal output. The temporary file is owner-only and is
@@ -44,14 +71,18 @@ pub fn write_journal(journal: &Journal, path: &Path) -> Result<(), JournalError>
 pub struct JournalOutput {
     file: tempfile::NamedTempFile,
     destination: std::path::PathBuf,
+    existing: ExistingJournal,
 }
 
 impl JournalOutput {
     /// Checks the destination and reserves a file before any fault executes.
+    /// `existing` says what to do with a journal already at `path`.
     ///
     /// # Errors
-    /// Returns an error for a non-file destination or an unwritable parent.
-    pub fn prepare(path: &Path) -> Result<Self, JournalError> {
+    /// Returns an error for a non-file destination or an unwritable parent,
+    /// and [`JournalError::Exists`] for a journal at `path` that `existing`
+    /// refuses to replace.
+    pub fn prepare(path: &Path, existing: ExistingJournal) -> Result<Self, JournalError> {
         match std::fs::symlink_metadata(path) {
             Ok(metadata) if !metadata.file_type().is_file() => {
                 return Err(std::io::Error::new(
@@ -59,6 +90,9 @@ impl JournalOutput {
                     "journal destination must be a regular file, not a directory or symlink",
                 )
                 .into());
+            }
+            Ok(_) if existing == ExistingJournal::Refuse => {
+                return Err(JournalError::Exists(path.to_path_buf()));
             }
             Ok(_) => {}
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
@@ -71,13 +105,17 @@ impl JournalOutput {
         Ok(Self {
             file: tempfile::NamedTempFile::new_in(parent)?,
             destination: path.to_path_buf(),
+            existing,
         })
     }
 
     /// Writes encoded evidence and atomically publishes it at the reserved path.
     ///
     /// # Errors
-    /// Returns an error if writing, syncing or publication fails.
+    /// Returns an error if writing, syncing or publication fails, and
+    /// [`JournalError::Exists`] for a journal that came to the path after
+    /// [`prepare`](Self::prepare) and that the output refuses to replace:
+    /// of two runs that publish to one path, one wins.
     pub fn write(mut self, content: &str) -> Result<(), JournalError> {
         use std::io::Write;
         self.file.write_all(content.as_bytes())?;
@@ -89,14 +127,31 @@ impl JournalOutput {
                 .filter(|p| !p.as_os_str().is_empty())
                 .unwrap_or(Path::new(".")),
         )?;
-        self.file
-            .persist(&self.destination)
-            .map_err(|error| error.error)?;
+        match self.existing {
+            // Refused here too: a journal that came after prepare is kept.
+            ExistingJournal::Refuse => self
+                .file
+                .persist_noclobber(&self.destination)
+                .map_err(|error| refused(error.error, &self.destination))?,
+            ExistingJournal::Replace => self
+                .file
+                .persist(&self.destination)
+                .map_err(|error| error.error)?,
+        };
         // Persist the directory entry as well as the temporary file's contents.
         #[cfg(unix)]
         parent.sync_all()?;
         Ok(())
     }
+}
+
+/// The error of a publish that was refused: a journal at `path` is
+/// [`JournalError::Exists`], any other failure is the write error it is.
+fn refused(error: std::io::Error, path: &Path) -> JournalError {
+    if error.kind() == std::io::ErrorKind::AlreadyExists {
+        return JournalError::Exists(path.to_path_buf());
+    }
+    error.into()
 }
 
 /// Read a journal from a TOON file.
@@ -351,6 +406,74 @@ mod tests {
         assert!(path.exists());
         let contents = std::fs::read_to_string(&path).unwrap();
         assert!(contents.contains("test experiment"));
+    }
+
+    #[test]
+    fn an_output_that_refuses_fails_at_prepare_on_an_existing_journal() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("journal.toon");
+        std::fs::write(&path, "the first run").unwrap();
+
+        let refused = JournalOutput::prepare(&path, ExistingJournal::Refuse);
+
+        assert!(
+            matches!(&refused, Err(JournalError::Exists(at)) if at == &path),
+            "{:?}",
+            refused.err()
+        );
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "the first run");
+    }
+
+    #[test]
+    fn an_output_that_refuses_fails_at_publish_on_a_journal_that_came_after_prepare() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("journal.toon");
+        let output = JournalOutput::prepare(&path, ExistingJournal::Refuse).unwrap();
+        // Another run publishes its journal first.
+        std::fs::write(&path, "the other run").unwrap();
+
+        let refused = output.write("this run");
+
+        assert!(
+            matches!(&refused, Err(JournalError::Exists(at)) if at == &path),
+            "{refused:?}"
+        );
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "the other run");
+        // The reserved file is gone with the refused output.
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn an_output_that_refuses_publishes_where_no_journal_is() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("journal.toon");
+
+        JournalOutput::prepare(&path, ExistingJournal::Refuse)
+            .unwrap()
+            .write("the first run")
+            .unwrap();
+
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "the first run");
+    }
+
+    #[test]
+    fn an_output_that_replaces_puts_the_new_journal_in_place_of_the_old() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("journal.toon");
+        std::fs::write(&path, "the first run").unwrap();
+
+        JournalOutput::prepare(&path, ExistingJournal::Replace)
+            .unwrap()
+            .write("the second run")
+            .unwrap();
+
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "the second run");
+    }
+
+    #[test]
+    fn a_forced_run_replaces_and_any_other_refuses() {
+        assert_eq!(ExistingJournal::replace_if(true), ExistingJournal::Replace);
+        assert_eq!(ExistingJournal::replace_if(false), ExistingJournal::Refuse);
     }
 
     #[test]

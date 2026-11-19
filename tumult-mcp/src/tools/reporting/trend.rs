@@ -588,6 +588,7 @@ mod tests {
                 experiment_path: &experiment,
                 rollback_strategy: "always",
                 journal_path: &dir.path().join(name),
+                force: false,
                 store_path: "unused.duckdb",
                 no_ingest: true,
                 format: "toon",

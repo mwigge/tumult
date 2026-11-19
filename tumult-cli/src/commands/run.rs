@@ -8,7 +8,7 @@ use tumult_core::engine::{
     resolve_config, resolve_secrets, validate_experiment,
 };
 use tumult_core::execution::RollbackStrategy;
-use tumult_core::journal::{encode_journal, JournalOutput};
+use tumult_core::journal::{encode_journal, ExistingJournal, JournalError, JournalOutput};
 use tumult_core::runner::{run_experiment, RunConfig};
 use tumult_core::types::{Experiment, ExperimentStatus, Journal};
 
@@ -23,6 +23,18 @@ use super::print_dry_run;
 #[derive(Debug, thiserror::Error)]
 #[error("experiment finished with status: {0:?}")]
 pub struct NotCompleted(pub ExperimentStatus);
+
+/// What `tumult run` can do about a journal that is already there.
+const RUN_WAYS_OUT: &str = "pass --force to overwrite, or choose a different --journal-path";
+
+/// The error of a journal that could not be reserved or published. One
+/// that is already there says `ways_out`, the options of the command.
+pub(super) fn existing_journal_error(error: JournalError, ways_out: &str) -> anyhow::Error {
+    let JournalError::Exists(path) = &error else {
+        return error.into();
+    };
+    anyhow::anyhow!("journal already exists: {} — {ways_out}", path.display())
+}
 
 // ── Run command ───────────────────────────────────────────────
 
@@ -88,18 +100,6 @@ pub async fn cmd_run_with_baseline_mode<S: ::std::hash::BuildHasher>(
         );
     }
 
-    // A journal holds the evidence of exactly one run: silently overwriting
-    // it destroys the previous run's record. Refuse unless --force was given.
-    // Checked up front (not just before writing) so a doomed run does not
-    // execute faults first; a dry run writes no journal and skips the check.
-    if !dry_run && journal_path.exists() && !force {
-        bail!(
-            "journal already exists: {} — pass --force to overwrite, or choose \
-             a different --journal-path",
-            journal_path.display()
-        );
-    }
-
     let content = tokio::fs::read_to_string(experiment_path)
         .await
         .with_context(|| {
@@ -142,6 +142,13 @@ pub async fn cmd_run_with_baseline_mode<S: ::std::hash::BuildHasher>(
         print_dry_run(&experiment);
         return Ok(());
     }
+
+    // A journal holds the evidence of exactly one run: the rule of the core
+    // refuses one that is already there unless --force was given. Reserved
+    // before anything runs, so a doomed run executes no fault; a dry run
+    // writes no journal and reserves none.
+    let output = JournalOutput::prepare(journal_path, ExistingJournal::replace_if(force))
+        .map_err(|error| existing_journal_error(error, RUN_WAYS_OUT))?;
 
     // Build the TUMULT_CONFIG_* / TUMULT_SECRET_* environment injected into
     // process and script provider subprocesses. Keys that cannot form valid
@@ -206,11 +213,12 @@ pub async fn cmd_run_with_baseline_mode<S: ::std::hash::BuildHasher>(
 
     crate::outln!("Running experiment: {}", experiment.title);
 
-    let output = JournalOutput::prepare(journal_path)?;
     let journal = run_experiment(&experiment, &executor_arc, &controls_arc, &run_config)?;
 
     let encoded = encode_journal(&journal)?;
-    output.write(&encoded)?;
+    output
+        .write(&encoded)
+        .map_err(|error| existing_journal_error(error, RUN_WAYS_OUT))?;
 
     crate::outln!("Status: {:?}", journal.status);
     if let Some(measured) = &journal.target_version {

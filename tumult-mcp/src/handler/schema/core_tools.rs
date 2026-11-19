@@ -11,7 +11,7 @@ use super::{default_list_limit, default_store_path};
 /// unless `no_ingest` is set.
 #[macros::mcp_tool(
     name = "tumult_run_experiment",
-    description = "Execute a Tumult experiment. Persists the journal (journal_path, default journal.toon in the workspace root), auto-ingests it into the analytics store unless no_ingest is set, and returns the run as JSON (format=json, default) or the journal as TOON (format=toon).",
+    description = "Execute a Tumult experiment. Persists the journal (journal_path, default journal.toon in the workspace root), auto-ingests it into the analytics store unless no_ingest is set, and returns the run as JSON (format=json, default) or the journal as TOON (format=toon). Refuses, before anything runs, a journal_path that already holds a journal: choose another journal_path, or set force to replace it.",
     destructive_hint = true,
     read_only_hint = false,
     idempotent_hint = false,
@@ -27,6 +27,10 @@ pub struct RunExperimentTool {
     /// Where to write the journal, relative to the workspace root.
     /// Defaults to `journal.toon` (CLI parity).
     pub journal_path: Option<String>,
+    /// Replace a journal already at `journal_path` (parity with the CLI
+    /// `--force`). Without it such a journal is kept and the run refused.
+    #[serde(default)]
+    pub force: bool,
     /// Skip analytics-store ingestion (parity with the CLI `--no-ingest`).
     #[serde(default)]
     pub no_ingest: bool,

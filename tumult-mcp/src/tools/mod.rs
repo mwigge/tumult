@@ -247,6 +247,26 @@ pub(crate) mod test_support {
         write_experiment(dir, &valid_experiment())
     }
 
+    /// Write, as `test.toon` in `dir`, a valid experiment whose one action
+    /// adds a line to the file `mark`, so a test can count its runs.
+    pub(crate) fn write_marking_experiment(dir: &std::path::Path, mark: &std::path::Path) {
+        let experiment = tumult_core::types::Experiment {
+            method: vec![tumult_core::types::Activity {
+                name: "mark".into(),
+                activity_type: tumult_core::types::ActivityType::Action,
+                provider: tumult_core::types::Provider::Process {
+                    path: "sh".into(),
+                    arguments: vec!["-c".into(), format!("echo run >> '{}'", mark.display())],
+                    env: std::collections::HashMap::new(),
+                    timeout_s: Some(5.0),
+                },
+                ..Default::default()
+            }],
+            ..valid_experiment()
+        };
+        write_experiment(dir, &experiment);
+    }
+
     /// Write `experiment` as `test.toon` into `dir` and return its path.
     fn write_experiment(
         dir: &std::path::Path,
@@ -326,6 +346,7 @@ pub(crate) mod test_support {
             experiment_path: exp_path,
             rollback_strategy: "always",
             journal_path,
+            force: false,
             store_path: "unused.duckdb",
             no_ingest: true,
             format: "toon",

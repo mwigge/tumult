@@ -34,6 +34,9 @@ pub struct RunExperimentRequest<'a> {
     pub rollback_strategy: &'a str,
     /// Where the journal is written (already resolved/contained).
     pub journal_path: &'a Path,
+    /// Replace a journal already at `journal_path` (parity with the CLI's
+    /// `--force`); without it such a journal is kept and the run refused.
+    pub force: bool,
     /// Analytics store the journal is ingested into (unless `no_ingest`).
     pub store_path: &'a str,
     /// Skip analytics-store ingestion (parity with the CLI's `--no-ingest`).
@@ -84,6 +87,24 @@ impl std::fmt::Display for IngestionStatus {
     }
 }
 
+/// What `tumult_run_experiment` can do about a journal that is already
+/// there.
+const RUN_WAYS_OUT: &str = "pass force: true to replace it, or choose another journal_path";
+
+/// The error of a journal that could not be reserved or published, at
+/// `stage`. One that is already there says `ways_out`, the arguments of the
+/// tool.
+pub(super) fn journal_error(
+    error: &tumult_core::journal::JournalError,
+    stage: &str,
+    ways_out: &str,
+) -> ToolError {
+    if let tumult_core::journal::JournalError::Exists(path) = error {
+        return ToolError::AlreadyExists(format!("journal {}; {ways_out}", path.display()));
+    }
+    ToolError::Execution(format!("{stage}: {error}"))
+}
+
 /// Run an experiment, persist the journal, and ingest it into the analytics
 /// store (mirroring `tumult run`'s journal write + auto-ingest behavior).
 ///
@@ -100,7 +121,9 @@ impl std::fmt::Display for IngestionStatus {
 ///
 /// Returns a [`ToolError`] if the file cannot be read, parsed, or validated,
 /// the rollback strategy or format is invalid, execution fails, or the
-/// journal cannot be encoded or written.
+/// journal cannot be encoded or written. A journal already at
+/// `journal_path` is [`ToolError::AlreadyExists`] without `force`, before
+/// anything runs.
 pub fn run_experiment(request: RunExperimentRequest<'_>) -> Result<StructuredReport, ToolError> {
     use std::sync::Arc;
     use tumult_core::controls::{ControlRegistry, ProviderControl};
@@ -108,7 +131,7 @@ pub fn run_experiment(request: RunExperimentRequest<'_>) -> Result<StructuredRep
         apply_template_vars, build_config_env, build_secret_env, flatten_secrets, parse_experiment,
         resolve_config, resolve_secrets, validate_experiment,
     };
-    use tumult_core::journal::{encode_journal, JournalOutput};
+    use tumult_core::journal::{encode_journal, ExistingJournal, JournalOutput};
     use tumult_core::runner::{run_experiment as run, ActivityExecutor, RunConfig};
 
     if request.format != "json" && request.format != "toon" {
@@ -193,15 +216,18 @@ pub fn run_experiment(request: RunExperimentRequest<'_>) -> Result<StructuredRep
         max_concurrent_faults: None,
     };
 
-    let output = JournalOutput::prepare(request.journal_path)
-        .map_err(|e| ToolError::Execution(format!("journal preflight failed: {e}")))?;
+    let output = JournalOutput::prepare(
+        request.journal_path,
+        ExistingJournal::replace_if(request.force),
+    )
+    .map_err(|e| journal_error(&e, "journal preflight failed", RUN_WAYS_OUT))?;
     let journal = run(&experiment, &executor, &controls, &config)
         .map_err(|e| ToolError::Execution(e.to_string()))?;
 
     // Persist the journal (CLI parity: `tumult run` always writes it).
     output
         .write(&encode_journal(&journal).map_err(|e| ToolError::Execution(e.to_string()))?)
-        .map_err(|e| ToolError::Execution(format!("failed to write journal: {e}")))?;
+        .map_err(|e| journal_error(&e, "failed to write journal", RUN_WAYS_OUT))?;
 
     // Auto-ingest into the persistent analytics store (CLI parity:
     // ingest failures are warnings, not run failures).
@@ -356,6 +382,7 @@ mod tests {
             experiment_path,
             rollback_strategy: strategy,
             journal_path,
+            force: false,
             store_path,
             no_ingest,
             format,

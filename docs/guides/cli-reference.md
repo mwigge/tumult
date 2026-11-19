@@ -653,6 +653,8 @@ tumult gameday <create|run|analyze>
 
 Before 3.0.2 the command exited with 0 for every GameDay that wrote a journal.
 
+`tumult gameday run` keeps the journal of an earlier run (`<name>.gameday.journal.toon`): it stops before the first experiment unless you pass `--force`, as `tumult run` does.
+
 See the [Experiment Scheduling guide](scheduling.md) for recurring GameDays.
 
 ## tumult topology

@@ -19,7 +19,7 @@ pub(crate) enum GameDayAction {
         /// Load tool to run during the GameDay
         #[arg(long, value_enum)]
         load: Option<LoadToolArg>,
-        /// Path to load test script
+        /// Path to load test script (k6 `.js`), or the URL to hit for oha
         #[arg(long)]
         load_script: Option<PathBuf>,
         /// Number of virtual users
@@ -33,6 +33,9 @@ pub(crate) enum GameDayAction {
     Run {
         /// Path to `.gameday.toon` file
         gameday: PathBuf,
+        /// Overwrite the journal file if it already exists
+        #[arg(long)]
+        force: bool,
     },
     /// Show aggregate analysis of a completed GameDay
     Analyze {

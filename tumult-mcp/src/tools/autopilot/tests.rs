@@ -575,15 +575,16 @@ fn write_guarded_playbook(dir: &std::path::Path) -> String {
     path.to_str().unwrap().to_string()
 }
 
-#[test]
-fn respond_approve_with_gate_passing_reruns_gate_and_executes() {
-    let dir = tempfile::TempDir::new().unwrap();
-    let db = empty_store(dir.path());
-    let playbook = write_guarded_playbook(dir.path());
+/// A store with the proposed decision `d-prop`, and the policy under which
+/// an approval of it runs the guarded playbook. Returns the store and the
+/// policy.
+fn approvable_decision(dir: &std::path::Path) -> (std::path::PathBuf, std::path::PathBuf) {
+    let db = empty_store(dir);
+    let playbook = write_guarded_playbook(dir);
     // A policy under which the decision's class is enact-eligible: tier
     // listed, class pretrusted (no autonomy record needed), guard required
     // and present with a passing telemetry pre-flight.
-    let policy_path = dir.path().join("autopilot.toml");
+    let policy_path = dir.join("autopilot.toml");
     std::fs::write(
         &policy_path,
         format!(
@@ -602,6 +603,13 @@ fn respond_approve_with_gate_passing_reruns_gate_and_executes() {
             .insert_autopilot_decision(&decision_bound("d-prop", "propose", &playbook, &hash))
             .unwrap();
     }
+    (db, policy_path)
+}
+
+#[test]
+fn respond_approve_with_gate_passing_reruns_gate_and_executes() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let (db, policy_path) = approvable_decision(dir.path());
 
     let report = autopilot_respond(
         db.to_str().unwrap(),
@@ -629,6 +637,39 @@ fn respond_approve_with_gate_passing_reruns_gate_and_executes() {
             .exists(),
         "an approved, gate-passing decision must run its playbook"
     );
+}
+
+/// Each decision has its own journal. One that is already at its path is
+/// the evidence of another run and is kept: the run is refused.
+#[test]
+fn an_approved_run_keeps_a_journal_that_is_already_at_the_path_of_its_decision() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let (db, policy_path) = approvable_decision(dir.path());
+    let journals = dir.path().join("autopilot-journals");
+    std::fs::create_dir_all(&journals).unwrap();
+    let journal = journals.join("d-prop.journal.toon");
+    std::fs::write(&journal, "the journal of another run").unwrap();
+
+    let err = autopilot_respond(
+        db.to_str().unwrap(),
+        "d-prop",
+        true,
+        Some("approved for enact"),
+        Some(policy_path.to_str().unwrap()),
+        0,
+    )
+    .expect_err("the journal of another run must be kept");
+
+    assert!(matches!(err, ToolError::AlreadyExists(_)), "got: {err}");
+    assert_eq!(
+        std::fs::read_to_string(&journal).unwrap(),
+        "the journal of another run"
+    );
+    let store = tumult_lake::AnalyticsStore::open(&db).unwrap();
+    let status = tumult_query::autopilot_decision(&store, "d-prop")
+        .unwrap()
+        .unwrap();
+    assert_eq!(status.last_event.as_deref(), Some("run_failed"));
 }
 
 // ── Engine helpers ─────────────────────────────────────────────

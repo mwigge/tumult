@@ -325,8 +325,8 @@ async fn dispatch(command: Commands) -> anyhow::Result<()> {
                     framework,
                 )?;
             }
-            GameDayAction::Run { gameday } => {
-                commands::cmd_gameday_run(&gameday)?;
+            GameDayAction::Run { gameday, force } => {
+                commands::cmd_gameday_run(&gameday, force)?;
             }
             GameDayAction::Analyze { gameday } => {
                 commands::cmd_gameday_analyze(&gameday)?;

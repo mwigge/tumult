@@ -80,6 +80,70 @@ async fn call_tool_run_experiment_honors_journal_path_and_no_ingest() {
     assert!(result_text(&result).contains("MCP test experiment"));
 }
 
+/// Run `test.toon` to the journal `run.toon` without ingest, with `force`
+/// when it is given.
+async fn run_to_run_toon(handler: &TumultHandler, force: Option<bool>) -> CallToolResult {
+    let mut arguments = serde_json::json!({
+        "experiment_path": "test.toon",
+        "journal_path": "run.toon",
+        "no_ingest": true,
+    });
+    if let Some(force) = force {
+        arguments["force"] = serde_json::json!(force);
+    }
+    handler
+        .handle_call_tool_request(
+            call_params("tumult_run_experiment", arguments, None),
+            stub_runtime(),
+        )
+        .await
+        .expect("run must produce a result")
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn call_tool_run_experiment_refuses_an_existing_journal_and_keeps_it() {
+    let tmp = tempfile::tempdir().unwrap();
+    let _home = private_home(tmp.path());
+    let mark = tmp.path().join("ran");
+    crate::tools::test_support::write_marking_experiment(tmp.path(), &mark);
+    let handler = open_handler(tmp.path());
+    let first = run_to_run_toon(&handler, None).await;
+    assert!(first.is_error.is_none(), "{}", result_text(&first));
+    let journal = std::fs::read(tmp.path().join("run.toon")).unwrap();
+
+    let second = run_to_run_toon(&handler, None).await;
+
+    assert_eq!(second.is_error, Some(true), "{}", result_text(&second));
+    let text = result_text(&second);
+    assert!(text.contains("already exists"), "{text}");
+    assert!(text.contains("force"), "must name force: {text}");
+    assert!(
+        text.contains("journal_path"),
+        "must name journal_path: {text}"
+    );
+    assert_eq!(std::fs::read(tmp.path().join("run.toon")).unwrap(), journal);
+    // The action ran in the first run only.
+    assert_eq!(std::fs::read_to_string(&mark).unwrap(), "run\n");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn call_tool_run_experiment_with_force_replaces_the_journal() {
+    let tmp = tempfile::tempdir().unwrap();
+    let _home = private_home(tmp.path());
+    let mark = tmp.path().join("ran");
+    crate::tools::test_support::write_marking_experiment(tmp.path(), &mark);
+    let handler = open_handler(tmp.path());
+    run_to_run_toon(&handler, None).await;
+    let first = tumult_core::journal::read_journal(&tmp.path().join("run.toon")).unwrap();
+
+    let second = run_to_run_toon(&handler, Some(true)).await;
+
+    assert!(second.is_error.is_none(), "{}", result_text(&second));
+    let replaced = tumult_core::journal::read_journal(&tmp.path().join("run.toon")).unwrap();
+    assert_ne!(replaced.experiment_id, first.experiment_id);
+    assert_eq!(std::fs::read_to_string(&mark).unwrap(), "run\nrun\n");
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn call_tool_run_experiment_rejects_unknown_rollback_strategy() {
     let tmp = tempfile::tempdir().unwrap();

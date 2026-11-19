@@ -112,6 +112,9 @@ run experiment -> journal -> analytics store -> coverage/trend/recommendation
 ```
 
 Use `no_ingest` to disable ingestion or `store_path` to select another store.
+A run keeps the journal of an earlier run: `tumult_run_experiment` and
+`tumult_gameday_run` refuse it before anything runs, unless `force` is set
+(or, for an experiment, another `journal_path` is chosen).
 
 ## Workspace resources
 

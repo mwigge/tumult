@@ -71,6 +71,15 @@ fn open_handler(root: &std::path::Path) -> TumultHandler {
     TumultHandler::with_auth(root.to_path_buf(), McpAuth::none())
 }
 
+/// Point the home directory and the store at `dir` for as long as the
+/// guard lives, so no run of a test can reach the store of the user.
+fn private_home(dir: &std::path::Path) -> tumult_test_utils::EnvGuard {
+    let mut env = tumult_test_utils::EnvGuard::lock();
+    env.set("HOME", dir)
+        .set("TUMULT_LAKE_PATH", dir.join("lake.duckdb"));
+    env
+}
+
 /// Assert `structured` conforms to the schema advertised for `tool_name`:
 /// every required property is present and no undeclared keys appear.
 fn assert_conforms(tool_name: &str, structured: &serde_json::Map<String, serde_json::Value>) {

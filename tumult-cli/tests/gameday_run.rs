@@ -221,6 +221,90 @@ fn a_game_day_that_is_not_compliant_ends_with_an_error_after_it_wrote_its_journa
     assert_eq!(journal(&lab).compliance_status, "PARTIAL");
 }
 
+/// A game day of one experiment whose step adds a line to the file `ran`
+/// in the lab, so a test can count the runs of the step.
+fn write_marking_gameday(lab: &Lab) {
+    let mark = step("mark", "action", "echo run >> ran");
+    write_gameday(lab, &[("marks", experiment("marks", &mark, 1))], SCORING);
+}
+
+/// The lines the step of the marking game day left: one per run.
+fn marks(lab: &Lab) -> String {
+    std::fs::read_to_string(lab.path("ran")).unwrap_or_default()
+}
+
+#[test]
+fn a_second_game_day_run_keeps_the_journal_of_the_first_and_runs_nothing() {
+    let lab = Lab::with_state("ok");
+    write_marking_gameday(&lab);
+    gameday(&lab, "run", &[]);
+    let first = std::fs::read(lab.path("lab.gameday.journal.toon")).expect("journal");
+
+    let output = lab
+        .command(&["gameday", "run", "lab.gameday.toon"])
+        .output()
+        .expect("run tumult");
+
+    let printed = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(output.status.code(), Some(1), "{printed}");
+    assert_eq!(
+        fatal_error(&output.stderr),
+        "journal already exists: lab.gameday.journal.toon — pass --force to overwrite"
+    );
+    assert_eq!(
+        std::fs::read(lab.path("lab.gameday.journal.toon")).expect("journal"),
+        first
+    );
+    // The step ran in the first game day only: the second stopped before
+    // its first experiment.
+    assert_eq!(marks(&lab), "run\n");
+}
+
+#[test]
+fn a_game_day_run_with_force_replaces_the_journal_of_the_first() {
+    let lab = Lab::with_state("ok");
+    write_marking_gameday(&lab);
+    gameday(&lab, "run", &[]);
+    let first = journal(&lab);
+
+    let output = lab
+        .command(&["gameday", "run", "lab.gameday.toon", "--force"])
+        .output()
+        .expect("run tumult");
+
+    let printed = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success(), "{printed}");
+    assert_eq!(marks(&lab), "run\nrun\n");
+    let second = journal(&lab);
+    assert_ne!(second.gameday_id, first.gameday_id);
+    assert!(
+        printed.ends_with("\nJournal: lab.gameday.journal.toon\n"),
+        "{printed}"
+    );
+}
+
+#[test]
+fn a_game_day_whose_journal_cannot_be_written_runs_nothing() {
+    let lab = Lab::with_state("ok");
+    write_marking_gameday(&lab);
+    // A directory holds the place of the journal.
+    std::fs::create_dir(lab.path("lab.gameday.journal.toon")).expect("directory");
+
+    let output = lab
+        .command(&["gameday", "run", "lab.gameday.toon"])
+        .output()
+        .expect("run tumult");
+
+    let printed = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(output.status.code(), Some(1), "{printed}");
+    assert!(
+        fatal_error(&output.stderr).contains("must be a regular file"),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(marks(&lab), "");
+}
+
 /// A load block of two users for `duration_s`, with `profile` as its shape.
 fn load_block(duration_s: f64, profile: &str) -> String {
     format!(
