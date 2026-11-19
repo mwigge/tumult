@@ -197,7 +197,7 @@ $ tumult report --format junit --output report.xml
 
 That second command is the 1.5.0 pairing that makes this CI-ready: `tumult report --format junit|json` emits one JUnit `<testcase>` per activity. A latency experiment that fails its hypothesis fails the pipeline; same as any other test. And since tumult-net needs no privileges, the whole loop runs inside a stock CI runner.
 
-Under the hood, the fault outlives the CLI call: the action spawns a detached `tumult-net-proxyd` daemon and records its PID in a pidfile keyed by the listen address. `stop_proxy` finds it from a completely fresh invocation and tears it down. Stale pidfile? Cleaned up. No pidfile? "no chaos proxy running", exit zero.
+Under the hood, the fault outlives the CLI call: the action spawns a detached `tumult-net-proxyd` daemon, which records its PID in a pidfile keyed by the listen address once it serves. `stop_proxy` finds it from a completely fresh invocation and tears it down. Stale pidfile? Cleaned up. No pidfile? "no chaos proxy running", exit zero.
 
 ## It shows up in your traces
 

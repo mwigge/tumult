@@ -115,7 +115,8 @@ pub struct ProxySpec {
     pub upstream: SocketAddr,
     /// The directional faults applied to forwarded traffic.
     pub profile: FaultProfile,
-    /// The pidfile the daemon and its rollback use to discover the process.
+    /// The pidfile the daemon writes its pid to once it serves, and that the
+    /// start and the rollback read to find it.
     pub pidfile: PathBuf,
 }
 

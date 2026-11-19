@@ -36,46 +36,89 @@ fn exec_err(e: crate::error::CloudError) -> NativeError {
     NativeError::execution(e)
 }
 
-/// The FIS experiment this process started last.
+/// FIS states in which an experiment still has to be stopped.
+const ACTIVE_FIS_STATES: &[&str] = &["pending", "initiating", "running"];
+
+/// What a FIS stop or status step is about.
 ///
-/// A stop or a status step without `experiment_id` means that experiment,
-/// so an experiment file does not have to guess an id before the run.
-#[derive(Default)]
-struct StartedFis(std::sync::Mutex<Option<String>>);
+/// FIS gives an experiment its id when it starts, so an experiment file
+/// cannot know it. A step that names no id names the template instead, and
+/// means the experiments FIS lists for it: that holds in any process, also
+/// in the one that runs the rollback of a run after a crash.
+enum FisSubject<'a> {
+    /// The experiment with this id.
+    Experiment(&'a str),
+    /// The experiments of this template.
+    Template(&'a str),
+}
 
-impl StartedFis {
-    const fn new() -> Self {
-        Self(std::sync::Mutex::new(None))
-    }
-
-    fn slot(&self) -> std::sync::MutexGuard<'_, Option<String>> {
-        self.0
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-    }
-
-    /// Keep the id of a start. A start that gave no id changes nothing.
-    fn remember(&self, id: Option<String>) {
-        let Some(id) = id else {
-            return;
-        };
-        *self.slot() = Some(id);
-    }
-
-    /// The id a step means: the one it names, or the one started last.
-    fn resolve(&self, args: &NativeArgs) -> Result<String, NativeError> {
+impl<'a> FisSubject<'a> {
+    /// The `experiment_id` a step names, or else its `experiment_template_id`.
+    fn of(args: &'a NativeArgs) -> Result<Self, NativeError> {
         if let Some(id) = opt_str(args, "experiment_id") {
-            return Ok(id.to_owned());
+            return Ok(Self::Experiment(id));
         }
-        self.slot()
-            .clone()
-            .ok_or_else(|| NativeError::MissingArgument {
-                argument: "experiment_id".into(),
-            })
+        if let Some(template) = opt_str(args, "experiment_template_id") {
+            return Ok(Self::Template(template));
+        }
+        Err(NativeError::MissingArgument {
+            argument: "experiment_id or experiment_template_id".into(),
+        })
     }
 }
 
-static STARTED_FIS: StartedFis = StartedFis::new();
+/// Stop every experiment of `template` that is pending, initiating or
+/// running, whoever started it. With none, nothing is sent: a rollback is
+/// safe to run twice. A stop FIS refuses does not keep the others running:
+/// every one is tried, and the refused ones are the error.
+async fn stop_fis_template(client: &FisClient, template: &str) -> Result<String, NativeError> {
+    let experiments = client.list_experiments(template).await.map_err(exec_err)?;
+    let mut stopped = Vec::new();
+    let mut refused = Vec::new();
+    for experiment in experiments
+        .iter()
+        .filter(|experiment| ACTIVE_FIS_STATES.contains(&experiment.state.status.as_str()))
+    {
+        match client.stop_experiment(&experiment.id).await {
+            Ok(summary) => stopped.push(summary),
+            Err(error) => refused.push(format!("{}: {error}", experiment.id)),
+        }
+    }
+    if !refused.is_empty() {
+        let message = format!(
+            "could not stop FIS experiment {} of template {template}; the others: {}",
+            refused.join("; "),
+            if stopped.is_empty() {
+                "none".to_owned()
+            } else {
+                stopped.join("; ")
+            }
+        );
+        return Err(NativeError::Failed(message));
+    }
+    if stopped.is_empty() {
+        return Ok(format!(
+            "no FIS experiment of template {template} is pending, initiating or running; nothing to stop"
+        ));
+    }
+    Ok(stopped.join("; "))
+}
+
+/// The status of the newest experiment of `template`, in any state. A
+/// template with no experiment is an error: the probe found nothing to
+/// measure.
+async fn fis_template_status(client: &FisClient, template: &str) -> Result<String, NativeError> {
+    let experiments = client.list_experiments(template).await.map_err(exec_err)?;
+    let Some(newest) = experiments
+        .iter()
+        .max_by(|a, b| a.creation_time.total_cmp(&b.creation_time))
+    else {
+        return Err(NativeError::Failed(format!(
+            "FIS lists no experiment of template {template}"
+        )));
+    };
+    client.experiment_status(&newest.id).await.map_err(exec_err)
+}
 
 /// [`NativeExecutor`] for the `tumult-cloud` connectors.
 pub struct CloudExecutor;
@@ -105,19 +148,27 @@ impl NativeExecutor for CloudExecutor {
             "aws_fis_start_experiment" => {
                 let template = arg_str(args, "experiment_template_id")?;
                 let client = fis_client(args)?;
-                let started = client.start(template).await.map_err(exec_err)?;
-                STARTED_FIS.remember(started.id);
-                Ok(started.summary)
+                client.start_experiment(template).await.map_err(exec_err)
             }
             "aws_fis_stop_experiment" => {
-                let id = STARTED_FIS.resolve(args)?;
+                let subject = FisSubject::of(args)?;
                 let client = fis_client(args)?;
-                client.stop_experiment(&id).await.map_err(exec_err)
+                match subject {
+                    FisSubject::Experiment(id) => {
+                        client.stop_experiment(id).await.map_err(exec_err)
+                    }
+                    FisSubject::Template(template) => stop_fis_template(&client, template).await,
+                }
             }
             "aws_fis_experiment_status" => {
-                let id = STARTED_FIS.resolve(args)?;
+                let subject = FisSubject::of(args)?;
                 let client = fis_client(args)?;
-                client.experiment_status(&id).await.map_err(exec_err)
+                match subject {
+                    FisSubject::Experiment(id) => {
+                        client.experiment_status(id).await.map_err(exec_err)
+                    }
+                    FisSubject::Template(template) => fis_template_status(&client, template).await,
+                }
             }
             "aws_ec2_stop_instance" => {
                 let instance = arg_str(args, "instance_id")?;
@@ -345,59 +396,26 @@ mod tests {
         assert!(err.to_string().contains("instance"));
     }
 
-    fn id_arg(id: &str) -> NativeArgs {
-        NativeArgs::from([("experiment_id".into(), serde_json::json!(id))])
-    }
-
-    #[test]
-    fn a_given_experiment_id_wins_over_the_started_one() {
-        let started = StartedFis::default();
-        started.remember(Some("EXPstarted".into()));
-        assert_eq!(started.resolve(&id_arg("EXPgiven")).unwrap(), "EXPgiven");
-    }
-
-    #[test]
-    fn the_started_experiment_is_used_when_no_id_is_given() {
-        let started = StartedFis::default();
-        started.remember(Some("EXPstarted".into()));
-        assert_eq!(started.resolve(&NativeArgs::new()).unwrap(), "EXPstarted");
-    }
-
-    #[test]
-    fn a_start_without_an_id_keeps_the_one_before() {
-        let started = StartedFis::default();
-        started.remember(Some("EXPfirst".into()));
-        started.remember(None);
-        assert_eq!(started.resolve(&NativeArgs::new()).unwrap(), "EXPfirst");
-    }
-
-    #[test]
-    fn no_id_and_nothing_started_is_a_missing_argument() {
-        let err = StartedFis::default()
-            .resolve(&NativeArgs::new())
-            .unwrap_err();
-        assert!(matches!(err, NativeError::MissingArgument { .. }));
-        assert!(err.to_string().contains("experiment_id"));
-    }
-
     #[tokio::test]
-    async fn fis_stop_missing_experiment_id_is_typed_error_before_network() {
+    async fn fis_stop_missing_experiment_and_template_is_typed_error_before_network() {
         let err = CloudExecutor
             .execute("aws_fis_stop_experiment", &NativeArgs::new())
             .await
             .unwrap_err();
         assert!(matches!(err, NativeError::MissingArgument { .. }));
-        assert!(err.to_string().contains("experiment_id"));
+        assert!(err.to_string().contains("experiment_id"), "{err}");
+        assert!(err.to_string().contains("experiment_template_id"), "{err}");
     }
 
     #[tokio::test]
-    async fn fis_status_missing_experiment_id_is_typed_error_before_network() {
+    async fn fis_status_missing_experiment_and_template_is_typed_error_before_network() {
         let err = CloudExecutor
             .execute("aws_fis_experiment_status", &NativeArgs::new())
             .await
             .unwrap_err();
         assert!(matches!(err, NativeError::MissingArgument { .. }));
-        assert!(err.to_string().contains("experiment_id"));
+        assert!(err.to_string().contains("experiment_id"), "{err}");
+        assert!(err.to_string().contains("experiment_template_id"), "{err}");
     }
 
     #[tokio::test]
