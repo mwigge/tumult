@@ -48,6 +48,17 @@ class DistributionTests(unittest.TestCase):
         self.assertRegex(image, r"COPY plugins/ /opt/tumult/plugins/")
         self.assertIn("TUMULT_PLUGIN_PATH=/opt/tumult/plugins", image)
 
+    def test_daemon_image_runs_an_init_that_reaps_orphans(self):
+        # The daemon runs process experiments; a process they leave behind
+        # goes to PID 1 when its parent ends. scripts/smoke-daemon-image.sh
+        # proves the reaping on the built image.
+        image = (ROOT / "docker/Dockerfile.tumultd").read_text()
+        self.assertRegex(image, r"apt-get install[^\n]*(\\\n[^\n]*)*\btini\b")
+        entrypoint = json.loads(re.search(r"^ENTRYPOINT (.+)$", image, re.M)[1])
+        self.assertEqual(entrypoint, ["/usr/bin/tini", "--"])
+        command = json.loads(re.search(r"^CMD (.+)$", image, re.M)[1])
+        self.assertEqual(command, ["tumultd"])
+
     def test_daemon_templates_disable_automatic_retention(self):
         manifest = (ROOT / "deploy/k8s/tumultd.yaml").read_text()
         unit = (ROOT / "deploy/systemd/tumultd.service").read_text()

@@ -94,6 +94,25 @@ probe() {
     request /api/metrics | grep -q hypothesis_pass_rate
   ' >/dev/null 2>&1
 }
+# A process experiment can leave a process whose parent is gone, as a
+# worker started in the background. The kernel gives it to PID 1 of the
+# container, which must reap it when it ends: else it stays a zombie, and
+# `kill -0` finds a process the experiment killed.
+reaps_orphans() {
+  timeout 25 docker exec --user 10001:10001 "$1" sh -ec '
+    sh -c "sleep 60 >/dev/null 2>&1 </dev/null & echo \$! > /tmp/smoke-orphan.pid"
+    pid=$(cat /tmp/smoke-orphan.pid)
+    kill "$pid"
+    i=0
+    while kill -0 "$pid" 2>/dev/null; do
+      [ "$i" -lt 50 ] || exit 1
+      sleep 0.1
+      i=$((i + 1))
+    done
+  ' >/dev/null 2>&1 && return 0
+  echo 'the daemon image does not reap orphaned processes (PID 1 is no init)' >&2
+  return 1
+}
 wait_ready() {
   local deadline=$((SECONDS + wait_seconds))
   while (( SECONDS < deadline )); do
@@ -110,6 +129,7 @@ wait_ready() {
 
 start_container "$first" "$scratch/bootstrap.env"
 wait_ready "$first"
+reaps_orphans "$first"
 timeout 20 docker stop --time 10 "$first" >/dev/null
 timeout 20 docker rm "$first" >/dev/null
 # Fresh container, same volume, and no identity-provisioning inputs.
@@ -117,4 +137,4 @@ start_container "$second" "$scratch/runtime.env"
 timeout 10 docker exec "$second" sh -ec \
   'test -z "${KRONIKA_BOOTSTRAP_ADMIN_PASSWORD:-}${KRONIKA_BOOTSTRAP_TOKEN:-}"' >/dev/null
 wait_ready "$second"
-echo 'daemon image smoke passed: authenticated health, bundled tools and persisted identity'
+echo 'daemon image smoke passed: authenticated health, bundled tools, reaped orphans and persisted identity'

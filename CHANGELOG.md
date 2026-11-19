@@ -70,6 +70,7 @@ differently on purpose, so read the
 
 ### Fixed
 
+- Daemon image: a process that an experiment of the daemon leaves behind is reaped when it ends. `tumultd` was PID 1 of the container and reaped nothing, so a killed worker stayed a zombie, `kill -0` still found it, and the `worker-process-kill` step of the seeded game day deviated. The image runs `tini` as PID 1 now, and the image smoke test checks that orphans are reaped.
 - Examples: the k6 smoke script sends requests to the demo app, and the load examples aim at `/checkout/1`, a route the demo app serves. They aimed at `/api/checkout`.
 - Examples: the saturation and ramp examples put their fault on the demo stack, and the saturation run stops the stress it started. Its probe had a second `tolerance` block, and that one was in force.
 - Examples: `redis-chaos` pauses Redis and reads the key back afterwards, and `cpu-stress` measures how long a new process takes to start. The first injected nothing and the second could not fail.
