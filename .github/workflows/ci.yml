@@ -208,6 +208,27 @@ jobs:
         run: npm --prefix web ci && npm --prefix web run build
       - run: cargo test --workspace --all-features --no-fail-fast
 
+  # demo/app, demo/control-panel and demo/traffic are cargo workspaces of
+  # their own, so the Format and Test jobs do not reach them. Their tests
+  # need no web build, no docker and no demo stack.
+  demo-crates:
+    name: Demo crates
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9  # master
+        with:
+          toolchain: 1.92.0
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6  # v2.9.2
+        with:
+          workspaces: |
+            demo/app
+            demo/control-panel
+            demo/traffic
+      - run: make demo-test
+
   doc:
     name: Documentation
     # Main-only: rustdoc over the workspace is ~20 min and validates nothing

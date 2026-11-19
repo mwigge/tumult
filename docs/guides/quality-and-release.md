@@ -5,7 +5,7 @@ parent: Guides
 
 # Quality and release checks
 
-Tumult uses language-specific checks. Rust uses rustfmt and Clippy (including pedantic warnings); the Svelte/TypeScript UI uses Prettier, ESLint, Svelte check and Playwright; Python scripts use Black and Ruff; the PostgreSQL initialization fixture uses SQLFluff's PostgreSQL dialect. SQL embedded in Rust is verified through database tests and security review, not passed through a text formatter that cannot interpret Rust expressions.
+Tumult uses language-specific checks. Rust uses rustfmt and Clippy (including pedantic warnings); the Svelte/TypeScript UI uses Prettier, ESLint, Svelte check and Playwright; Python scripts use Black and Ruff; the PostgreSQL initialization fixture uses SQLFluff's PostgreSQL dialect. SQL embedded in Rust is verified through database tests and security review. The layout of the lake schema SQL is linted with SQLFluff's DuckDB dialect by `scripts/lint-embedded-sql.sh`: the SQL constants of `tumult-lake/src/schema` and a kept file of the SQL its functions build.
 
 The imported analytics crates retain their existing crate-level exception for Clippy's pedantic group; ordinary Clippy warnings still fail CI. This release adds no blanket Rust lint exceptions.
 
@@ -22,6 +22,7 @@ npm --prefix web run build
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --all-features --locked -- -D warnings -W clippy::pedantic
 cargo test --workspace --all-features --locked
+make demo-test
 cargo doc --workspace --no-deps --all-features --locked
 cargo machete --with-metadata
 cargo deny check
@@ -31,6 +32,7 @@ npm --prefix web run test:e2e
 .quality-venv/bin/black --check scripts demo/proof
 .quality-venv/bin/ruff check scripts demo/proof
 .quality-venv/bin/sqlfluff lint docker/init-postgres.sql
+bash scripts/lint-embedded-sql.sh
 python3 scripts/check-docs.py
 python3 scripts/test-distribution.py
 bash -n scripts/smoke-daemon-image.sh

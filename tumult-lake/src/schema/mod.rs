@@ -258,11 +258,13 @@ pub fn run_verdict(status: &str) -> Option<RunVerdict> {
 /// `None`.
 #[must_use]
 pub fn run_verdict_sql(status: &str) -> String {
+    // Laid out as a column of a SELECT, one arm a line, in lines short
+    // enough for the SQL standard of the views.
     let arms: Vec<String> = RUN_VERDICTS
         .iter()
-        .map(|(ending, verdict)| format!("WHEN '{ending}' THEN '{}'", verdict.as_str()))
+        .map(|(ending, verdict)| format!("\n        WHEN '{ending}' THEN '{}'", verdict.as_str()))
         .collect();
-    format!("CASE lower({status}) {} END", arms.join(" "))
+    format!("CASE lower({status}){}\n    END", arms.concat())
 }
 
 /// The root of every run, in the columns of `spans`, with `journal_only`.
@@ -369,14 +371,18 @@ fn run_completions_view() -> String {
 /// window, so the view reads every log record there is.
 #[must_use]
 pub fn run_completions_sql(since_ns: Option<i64>) -> String {
-    let since = since_ns.map_or_else(String::new, |ns| format!("\n    AND ts_ns >= {ns}"));
+    // A condition of two parts is laid out one part a line, as in the views.
+    let filter = since_ns.map_or_else(
+        || "WHERE body = 'experiment.completed'".to_string(),
+        |ns| format!("WHERE\n    body = 'experiment.completed'\n    AND ts_ns >= {ns}"),
+    );
     format!(
         "SELECT
     ts_ns,
     log_attrs,
     log_attrs['experiment_id'] AS experiment_id
 FROM logs
-WHERE body = 'experiment.completed'{since}
+{filter}
 QUALIFY
     row_number() OVER (
         PARTITION BY log_attrs['experiment_id']

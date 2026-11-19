@@ -19,6 +19,30 @@ updates:
           - "parquet"
           - "duckdb"
 
+  # The demo crates are cargo workspaces of their own, each with its own
+  # Cargo.lock.
+  - package-ecosystem: cargo
+    directories:
+      - /demo/app
+      - /demo/control-panel
+      - /demo/traffic
+    schedule:
+      interval: monthly
+      day: monday
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+    groups:
+      opentelemetry:
+        patterns:
+          - "opentelemetry*"
+          - "tracing-opentelemetry"
+      arrow-parquet:
+        patterns:
+          - "arrow"
+          - "parquet"
+          - "duckdb"
+
   - package-ecosystem: github-actions
     directory: /
     schedule:

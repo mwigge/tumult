@@ -182,7 +182,12 @@ async fn checkout(
     // Step 3 — payment authorization (simulated downstream work).
     let authorized = payment(&order.name, order.amount_cents).await;
 
-    tracing::info!(order.id = order.id, reserved, authorized, "checkout complete");
+    tracing::info!(
+        order.id = order.id,
+        reserved,
+        authorized,
+        "checkout complete"
+    );
     Ok(Json(json!({
         "order_id": order.id,
         "name": order.name,

@@ -68,7 +68,7 @@ All configuration is environment-driven. Each field takes a **neutral**
 ## Run standalone against any tumult-mcp
 
 ```sh
-cargo run -p demo-control-panel      # or: ./demo-control-panel
+cargo run --manifest-path demo/control-panel/Cargo.toml   # from the repository root; or: ./demo-control-panel
 
 # pointed at a real server with an operator token
 TUMULT_UI_MCP_URL=https://tumult-mcp.internal:3100 \

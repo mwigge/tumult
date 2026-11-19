@@ -862,3 +862,86 @@ fn the_run_roots_have_every_column_of_a_span() {
 
     assert!(missing.is_empty(), "{missing:?}");
 }
+
+/// A statement for each SQL function of the schema that no view uses, as
+/// a reader would write it.
+fn reader_statements() -> [String; 3] {
+    let since = run_completions_sql(Some(1_774_980_000_000_000_000));
+    let verdict = run_verdict_sql(&run_outcome_sql("s", "l"));
+    let mean = mean_recovery_time_sql("s");
+    [
+        format!("-- run_completions_sql with a window, as a reader joins it.\n{since};"),
+        format!(
+            "-- run_verdict_sql of the outcome of each run.
+SELECT
+    s.experiment_id,
+    {verdict} AS verdict
+FROM run_roots AS s
+LEFT JOIN run_completions AS l ON s.experiment_id = l.experiment_id;"
+        ),
+        format!(
+            "-- mean_recovery_time_sql over the roots of the runs.
+SELECT {mean} AS mean_recovery_time_s
+FROM run_roots AS s;"
+        ),
+    ]
+}
+
+/// The text of the kept file the linter reads: the SQL that functions of
+/// the schema build, as the lake runs it. Each view as `create_views` makes
+/// it, then the statements of [`reader_statements`].
+fn sql_built_by_functions() -> String {
+    let statements: Vec<String> = crate::schema::create_views()
+        .iter()
+        .map(|view| view.trim().to_string())
+        .chain(reader_statements())
+        .collect();
+    format!(
+        "-- The SQL that functions of tumult-lake/src/schema/mod.rs build, as the
+-- lake runs it: each view as create_views() makes it, then a statement for
+-- each function that no view uses. scripts/lint-embedded-sql.sh lints this
+-- file with sqlfluff, and a test of tumult-lake keeps it the SQL of the
+-- functions. Change the SQL in the functions, then write this file again
+-- and read the difference:
+--   TUMULT_BLESS=1 cargo test -p tumult-lake -- sql_built_by_functions
+
+{}
+",
+        statements.join("\n\n")
+    )
+}
+
+#[test]
+fn the_sql_built_by_functions_is_the_sql_kept_for_the_linter() {
+    let kept = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/golden/sql-built-by-functions.sql");
+
+    tumult_test_utils::assert_kept(&kept, &sql_built_by_functions());
+}
+
+/// The statements written for the linter are more than text: each runs on
+/// a lake and answers for the run in it.
+#[test]
+fn the_statements_kept_for_the_linter_run_on_a_lake() {
+    let d = tempfile::TempDir::new().unwrap();
+    let store = Store::open(&d.path().join("kronika.duckdb")).unwrap();
+    let writer = store.writer().unwrap();
+    writer.insert_spans(&[sample_span("run-1")]).unwrap();
+    writer
+        .insert_logs(&[completed_log("run-1", "completed")])
+        .unwrap();
+    let reader = store.read_only().unwrap();
+
+    // A reader runs a statement as a subquery, so without the semicolon
+    // that ends it in the file.
+    let [since, verdict, mean] =
+        reader_statements().map(|sql| reader.query_json_rows(sql.trim_end_matches(';')).unwrap());
+
+    assert_eq!(since.len(), 1, "{since:?}");
+    assert_eq!(since[0]["experiment_id"], "run-1");
+    assert_eq!(
+        verdict,
+        [serde_json::json!({"experiment_id": "run-1", "verdict": "pass"})]
+    );
+    assert_eq!(mean, [serde_json::json!({"mean_recovery_time_s": 12.5})]);
+}

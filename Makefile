@@ -10,7 +10,8 @@
 #   make test            Run all Rust tests
 #   make e2e             Run e2e tests (requires up)
 #   make lint            Run fmt + clippy + pedantic warnings
-#   make precommit       Run all quality gates (lint + test + audit)
+#   make demo-test       Run fmt + clippy + tests of the three demo crates
+#   make precommit       Run all quality gates (lint + demo-test + test + audit)
 #   make build           Build release binary
 
 COMPOSE_TARGETS = docker compose -f docker/docker-compose.yml
@@ -20,7 +21,7 @@ COMPOSE_CLASSIC = $(COMPOSE_FULL) --profile classic
 COMPOSE_DEMO    = docker compose -f docker/docker-compose.demo.yml
 
 .PHONY: up up-targets up-observe up-classic down status reset logs \
-        ssh-key test e2e mutants lint precommit build clean \
+        ssh-key test e2e mutants lint demo-test precommit build clean \
         demo demo-down demo-check demo-base ui-check
 
 # ── Docker Infrastructure ──────────────────────────────────────
@@ -169,7 +170,21 @@ lint:
 	cargo fmt --all -- --check
 	cargo clippy --all-targets --all-features -- -D warnings -W clippy::pedantic -D clippy::print_stdout -D clippy::print_stderr -D clippy::dbg_macro
 
-precommit: lint
+# demo/app, demo/control-panel and demo/traffic are cargo workspaces of
+# their own, so `lint` and `test` do not reach them. Their tests need no
+# docker and no demo stack (`make demo-check` is the stack). A target
+# directory set in CARGO_TARGET_DIR is used for all three.
+DEMO_CRATES = demo/app demo/control-panel demo/traffic
+
+demo-test:
+	@set -e; for crate in $(DEMO_CRATES); do \
+	  echo "== $$crate"; \
+	  cargo fmt --manifest-path $$crate/Cargo.toml --all -- --check; \
+	  cargo clippy --manifest-path $$crate/Cargo.toml --locked --all-targets -- -D warnings; \
+	  cargo test --manifest-path $$crate/Cargo.toml --locked; \
+	done
+
+precommit: lint demo-test
 	cargo test --workspace
 	cargo audit
 
