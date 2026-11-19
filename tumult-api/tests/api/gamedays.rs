@@ -320,6 +320,13 @@ async fn the_run_list_finds_a_campaign_by_its_gameday() {
     let long = "r".repeat(101);
     let (status, body) = get(&srv.base, &format!("/api/runs?registry_id={long}")).await;
     assert_eq!(status, 400, "{body}");
+    assert_eq!(body["error"], "registry id too long", "{body}");
+
+    // An id of 100 characters is the longest the list takes.
+    let longest = "r".repeat(100);
+    let (status, body) = get(&srv.base, &format!("/api/runs?registry_id={longest}")).await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["count"], 0, "{body}");
 }
 
 /// Two simultaneous launches of the same gameday race; the single-writer
