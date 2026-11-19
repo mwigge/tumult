@@ -450,6 +450,17 @@ mod tests {
     }
 
     #[test]
+    fn a_wide_range_is_padded_by_fifteen_percent_of_itself() {
+        // 15% of the range 40 to 80 is 6, more than the least pad of 2.
+        let svg = render_svg(&trend_of(vec![(
+            "score".into(),
+            vec![(DAY, 40.0), (2 * DAY, 80.0)],
+        )]));
+        assert!(svg.contains(">86<"), "{svg}");
+        assert!(svg.contains(">34<"), "{svg}");
+    }
+
+    #[test]
     fn lines_with_no_points_at_all_render_nothing() {
         assert!(render_svg(&trend_of(vec![])).is_empty());
         assert!(render_svg(&trend_of(vec![("a".into(), vec![])])).is_empty());

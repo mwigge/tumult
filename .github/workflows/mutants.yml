@@ -33,13 +33,15 @@ env:
 
 jobs:
   mutants:
-    name: Mutants (part ${{ matrix.shard }} of 8)
+    name: Mutants (part ${{ matrix.shard }} of 16)
     runs-on: ubuntu-latest
     timeout-minutes: 240
     strategy:
       fail-fast: false
       matrix:
-        shard: [0, 1, 2, 3, 4, 5, 6, 7]
+        # Sixteen parts: with eight, a part of the 3.0.2 diff (about 220
+        # mutants) ran past the time limit of its job.
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
     env:
       BASE_REF: ${{ github.base_ref }}
     steps:
@@ -82,7 +84,7 @@ jobs:
       - name: Mutate the changed lines
         run: |
           bash scripts/mutants.sh "origin/${BASE_REF:-main}" \
-            --in-place --shard "${{ matrix.shard }}/8" --no-shuffle
+            --in-place --shard "${{ matrix.shard }}/16" --no-shuffle
 
       - name: Upload the result
         if: always()
