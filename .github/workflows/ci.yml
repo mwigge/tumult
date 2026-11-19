@@ -78,7 +78,8 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6  # v2.9.2
         with:
           shared-key: ci-workspace
-      - run: cargo install cargo-deny --locked
+      # Pinned: 0.22.0 needs a newer Rust than the workspace toolchain.
+      - run: cargo install cargo-deny --version 0.21.0 --locked
       # advisories through cargo-deny (not rustsec/audit-check) so deny.toml
       # stays the single source of truth for documented exceptions.
       - run: cargo deny check advisories
