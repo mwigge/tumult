@@ -56,8 +56,9 @@
 //! * `GET /api/traces/durations?range=` — root-span durations as scatter
 //!   points plus p50/p95/p99 percentiles.
 //! * `GET /api/traces/{id}` — every span and log of one trace.
-//! * `GET /api/metrics/catalog` — raw metric names across sums/gauges/
-//!   histograms, with the attribute keys seen on their points.
+//! * `GET /api/metrics/catalog` — every raw metric name across sums/gauges/
+//!   histograms in the caller's scope, with the attribute keys of all its
+//!   points.
 //! * `GET /api/metrics/query?name=&group_by=&range=&interval=` — bucketed
 //!   series for one raw metric (sums → SUM, gauges → AVG, histograms →
 //!   avg plus an interpolated p95), optionally split by an attribute key.

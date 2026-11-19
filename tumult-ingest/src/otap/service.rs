@@ -86,6 +86,7 @@ use super::proto::arrow_metrics_service_server::{ArrowMetricsService, ArrowMetri
 use super::proto::arrow_traces_service_server::{ArrowTracesService, ArrowTracesServiceServer};
 use super::proto::{BatchArrowRecords, BatchStatus, StatusCode};
 use super::{to_logs_request, to_metrics_request, to_trace_request, OtapBatch, OtapError};
+use crate::error::WriteFailed;
 use crate::grpc::authorize;
 use crate::log_guard::{self, LogLimiter};
 use crate::writer::{Batch, IngestWriter};
@@ -521,12 +522,13 @@ async fn handle_batch(
         Ok(()) => Outcome::Ack(ack(StatusCode::Ok, String::new())),
         Err(e) => {
             tracing::error!(signal, batch_id, error = %e, "OTAP write failed");
-            // Nothing is wrong with the batch: UNAVAILABLE makes the
-            // exporter send it again.
-            Outcome::Ack(ack(
-                StatusCode::Unavailable,
-                "telemetry write failed".into(),
-            ))
+            // The answer of every carrier to a failed write: the exporter
+            // sends the batch again.
+            Outcome::Ack(BatchStatus {
+                batch_id,
+                status_code: WriteFailed::CODE as i32,
+                status_message: WriteFailed::MESSAGE.into(),
+            })
         }
     };
     (Some(consumer), outcome)

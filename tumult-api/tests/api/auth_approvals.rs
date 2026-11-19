@@ -1645,6 +1645,175 @@ async fn env_scoping_filters_telemetry_reads() {
     );
 }
 
+/// A scoped reader finds a metric of its own environment also when more
+/// than 5000 rows of another metric of that environment were written
+/// before it. A metric of another environment is not in its catalog and
+/// is 404 at the query, so the reader does not learn that it exists.
+#[tokio::test]
+async fn a_scoped_reader_finds_its_metrics_behind_others_and_not_those_of_other_environments() {
+    let srv = spawn_server().await;
+    add_user(&srv, "tele", "tele-password-1", "viewer", false).await;
+    exec_write(&srv, move |w| {
+        w.set_user_env_scopes("u-tele", &["staging".to_string()])
+            .map_err(|e| e.to_string())
+    })
+    .await;
+    let now = now_ns();
+    exec_write(&srv, move |w| {
+        w.insert_spans(&[
+            env_root("exp-stg", "stg-exp", "staging", now - 100 * NS),
+            env_root("exp-prd", "prd-exp", "prod", now - 90 * NS),
+        ])
+        .map_err(|e| e.to_string())?;
+        // More than 5000 rows of a staging metric come first.
+        let busy: Vec<MetricSumRow> = (0..5_001)
+            .map(|i| MetricSumRow {
+                ts_ns: now - 300 * NS + i,
+                metric_name: "demo.stg.busy".into(),
+                value: 1.0,
+                experiment_name: Some("stg-exp".into()),
+                ..MetricSumRow::default()
+            })
+            .collect();
+        w.insert_metric_sums(&busy).map_err(|e| e.to_string())?;
+        w.insert_metric_sums(&[
+            MetricSumRow {
+                ts_ns: now - 98 * NS,
+                metric_name: "demo.stg.quiet".into(),
+                value: 3.0,
+                experiment_name: Some("stg-exp".into()),
+                attrs: vec![("zone".to_string(), "a".to_string())],
+                ..MetricSumRow::default()
+            },
+            MetricSumRow {
+                ts_ns: now - 88 * NS,
+                metric_name: "demo.prd.only".into(),
+                value: 100.0,
+                experiment_name: Some("prd-exp".into()),
+                ..MetricSumRow::default()
+            },
+        ])
+        .map_err(|e| e.to_string())
+    })
+    .await;
+
+    let (_, _, cookie) = login(&srv.base, "tele", "tele-password-1").await;
+    let cookie = cookie.unwrap();
+    let client = reqwest::Client::new();
+    let scoped_get = |path: &str| {
+        client
+            .get(format!("{}{path}", srv.base))
+            .header("Cookie", format!("kro_session={cookie}"))
+            .send()
+    };
+
+    let resp = scoped_get("/api/metrics/query?name=demo.stg.quiet&interval=1d")
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+    let body: Value = resp.json().await.unwrap();
+    let total: f64 = body["series"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .flat_map(|s| s["points"].as_array().unwrap().iter())
+        .filter_map(|p| p["v"].as_f64())
+        .sum();
+    assert_eq!(total, 3.0, "{body}");
+
+    // The catalog holds the two staging metrics and nothing else: the
+    // seed metrics name no staging experiment.
+    let resp = scoped_get("/api/metrics/catalog").await.unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+    let body: Value = resp.json().await.unwrap();
+    assert_eq!(
+        body["metrics"],
+        json!([
+            {"name": "demo.stg.busy", "types": ["sum"], "dimensions": []},
+            {"name": "demo.stg.quiet", "types": ["sum"], "dimensions": ["zone"]},
+        ]),
+        "{body}"
+    );
+
+    let resp = scoped_get("/api/metrics/query?name=demo.prd.only&interval=1d")
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 404);
+}
+
+/// A name that is a sum in another environment and a gauge in the
+/// reader's own is read as a gauge: the table of a name is the first one
+/// that holds it inside the scope of the reader.
+#[tokio::test]
+async fn a_scoped_reader_reads_a_name_from_the_table_that_holds_it_in_its_environment() {
+    let srv = spawn_server().await;
+    add_user(&srv, "tele", "tele-password-1", "viewer", false).await;
+    exec_write(&srv, move |w| {
+        w.set_user_env_scopes("u-tele", &["staging".to_string()])
+            .map_err(|e| e.to_string())
+    })
+    .await;
+    let now = now_ns();
+    exec_write(&srv, move |w| {
+        w.insert_spans(&[
+            env_root("exp-stg", "stg-exp", "staging", now - 100 * NS),
+            env_root("exp-prd", "prd-exp", "prod", now - 90 * NS),
+        ])
+        .map_err(|e| e.to_string())?;
+        w.insert_metric_sums(&[MetricSumRow {
+            ts_ns: now - 88 * NS,
+            metric_name: "demo.split".into(),
+            value: 100.0,
+            experiment_name: Some("prd-exp".into()),
+            ..MetricSumRow::default()
+        }])
+        .map_err(|e| e.to_string())?;
+        w.insert_metric_gauges(&[tumult_lake::MetricGaugeRow {
+            ts_ns: now - 98 * NS,
+            metric_name: "demo.split".into(),
+            value: 0.25,
+            experiment_name: Some("stg-exp".into()),
+            ..Default::default()
+        }])
+        .map_err(|e| e.to_string())
+    })
+    .await;
+
+    let (_, _, cookie) = login(&srv.base, "tele", "tele-password-1").await;
+    let cookie = cookie.unwrap();
+    let client = reqwest::Client::new();
+    let scoped_get = |path: &str| {
+        client
+            .get(format!("{}{path}", srv.base))
+            .header("Cookie", format!("kro_session={cookie}"))
+            .send()
+    };
+
+    let resp = scoped_get("/api/metrics/query?name=demo.split&interval=1d")
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+    let body: Value = resp.json().await.unwrap();
+    assert_eq!(body["type"], "gauge", "{body}");
+    let points: Vec<f64> = body["series"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .flat_map(|s| s["points"].as_array().unwrap().iter())
+        .filter_map(|p| p["v"].as_f64())
+        .collect();
+    assert_eq!(points, [0.25], "{body}");
+
+    let resp = scoped_get("/api/metrics/catalog").await.unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+    let body: Value = resp.json().await.unwrap();
+    assert_eq!(
+        body["metrics"],
+        json!([{"name": "demo.split", "types": ["gauge"], "dimensions": []}]),
+        "{body}"
+    );
+}
+
 /// Scoped report generation is confined to the principal's environments, and
 /// pre-rendered artifacts carry generation-time coverage metadata that the
 /// list/serve endpoints enforce: global and legacy (no-metadata) artifacts

@@ -804,6 +804,53 @@ async fn write_failure_is_reported_as_unavailable_so_the_exporter_retries() {
     assert_eq!(ack.status_code, StatusCode::Unavailable as i32);
 }
 
+/// A batch the store refuses is acked UNAVAILABLE, nothing of it is
+/// stored, and the same data sent again once the cause is gone is stored
+/// once.
+#[tokio::test]
+async fn a_batch_the_store_refuses_is_acked_unavailable_and_stored_once_when_sent_again() {
+    use crate::test_store;
+
+    let dir = tempfile::TempDir::new().unwrap();
+    let store = tumult_lake::Store::open(&dir.path().join("k.duckdb")).unwrap();
+    let (ingest, _task) = IngestWriter::spawn(store.writer().unwrap(), 16);
+    let otap = super::service::OtapGrpc::new(ingest.clone(), None);
+    let router = tonic::transport::Server::builder().add_service(otap.metrics());
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let incoming = tonic::codegen::tokio_stream::wrappers::TcpListenerStream::new(listener);
+    tokio::spawn(async move { router.serve_with_incoming(incoming).await.unwrap() });
+    let mut client = ArrowMetricsServiceClient::connect(format!("http://{addr}"))
+        .await
+        .unwrap();
+    let (tx, rx) = tokio::sync::mpsc::channel::<BatchArrowRecords>(1);
+    let outbound = tonic::codegen::tokio_stream::wrappers::ReceiverStream::new(rx);
+    let mut acks = client
+        .arrow_metrics(tonic::Request::new(outbound))
+        .await
+        .unwrap()
+        .into_inner();
+    let mut encoder = Encoder::new(false);
+
+    test_store::hide_gauges(&ingest).await;
+    tx.send(encoder.metrics(&metrics_fixture())).await.unwrap();
+    let ack = acks.message().await.unwrap().unwrap();
+    assert_eq!(ack.status_code, StatusCode::Unavailable as i32);
+    assert_eq!(ack.status_message, "telemetry write failed");
+
+    test_store::restore_gauges(&ingest).await;
+    assert_eq!(test_store::stored(&store), (0, 0));
+    tx.send(encoder.metrics(&metrics_fixture())).await.unwrap();
+    let ack = acks.message().await.unwrap().unwrap();
+    assert_eq!(
+        ack.status_code,
+        StatusCode::Ok as i32,
+        "{}",
+        ack.status_message
+    );
+    assert_eq!(test_store::stored(&store), (2, 1));
+}
+
 #[tokio::test]
 async fn oversized_message_ends_the_stream_with_out_of_range() {
     let served = serve(None).await;

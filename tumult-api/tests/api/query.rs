@@ -582,6 +582,169 @@ async fn metrics_query_splits_by_attribute_key() {
     assert_eq!(status, 400);
 }
 
+/// A metric written after more than 5000 rows of another metric in the
+/// same table is in the catalog with its attribute key, and its query
+/// answers with its point.
+#[tokio::test]
+async fn a_metric_written_after_5000_rows_of_another_is_listed_and_found() {
+    let srv = spawn_server().await;
+    let now = now_ns();
+    exec_write(&srv, move |w| {
+        let busy: Vec<tumult_lake::MetricSumRow> = (0..5_001)
+            .map(|i| tumult_lake::MetricSumRow {
+                ts_ns: now - 300 * NS + i,
+                metric_name: "demo.busy".into(),
+                value: 1.0,
+                ..tumult_lake::MetricSumRow::default()
+            })
+            .collect();
+        w.insert_metric_sums(&busy).map_err(|e| e.to_string())?;
+        w.insert_metric_sums(&[tumult_lake::MetricSumRow {
+            ts_ns: now - 100 * NS,
+            metric_name: "demo.quiet".into(),
+            value: 7.0,
+            attrs: vec![("zone".to_string(), "a".to_string())],
+            ..tumult_lake::MetricSumRow::default()
+        }])
+        .map_err(|e| e.to_string())
+    })
+    .await;
+
+    let (status, body) = get(&srv.base, "/api/metrics/query?name=demo.quiet&interval=1d").await;
+    assert_eq!(status, 200, "{body}");
+    let points: Vec<f64> = body["series"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .flat_map(|s| s["points"].as_array().unwrap().iter())
+        .filter_map(|p| p["v"].as_f64())
+        .collect();
+    assert_eq!(points, [7.0], "{body}");
+
+    let (status, body) = get(&srv.base, "/api/metrics/catalog").await;
+    assert_eq!(status, 200, "{body}");
+    let quiet = body["metrics"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| m["name"] == "demo.quiet")
+        .cloned();
+    assert_eq!(
+        quiet,
+        Some(json!({"name": "demo.quiet", "types": ["sum"], "dimensions": ["zone"]})),
+        "{body}"
+    );
+}
+
+/// A metric name with an apostrophe is found by that name, and a name
+/// that tries to close the string finds nothing: the name is data, never
+/// a part of the statement.
+#[tokio::test]
+async fn a_metric_name_with_an_apostrophe_is_found_by_that_name() {
+    let srv = spawn_server().await;
+    let now = now_ns();
+    exec_write(&srv, move |w| {
+        w.insert_metric_sums(&[tumult_lake::MetricSumRow {
+            ts_ns: now - 100 * NS,
+            metric_name: "demo.o'clock".into(),
+            value: 4.0,
+            ..tumult_lake::MetricSumRow::default()
+        }])
+        .map_err(|e| e.to_string())
+    })
+    .await;
+
+    let (status, body) = get(
+        &srv.base,
+        "/api/metrics/query?name=demo.o%27clock&interval=1d",
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["name"], "demo.o'clock", "{body}");
+    let points: Vec<f64> = body["series"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .flat_map(|s| s["points"].as_array().unwrap().iter())
+        .filter_map(|p| p["v"].as_f64())
+        .collect();
+    assert_eq!(points, [4.0], "{body}");
+
+    // x' OR '1'='1
+    let (status, body) = get(
+        &srv.base,
+        "/api/metrics/query?name=x%27%20OR%20%271%27%3D%271",
+    )
+    .await;
+    assert_eq!(status, 404, "{body}");
+}
+
+/// A name written as a gauge and as a sum is listed with both types in
+/// the order of the tables (sum before gauge), with the attribute keys of
+/// both, and the query reads it from the sum table.
+#[tokio::test]
+async fn a_name_in_two_tables_is_listed_with_both_types_and_read_as_a_sum() {
+    let srv = spawn_server().await;
+    let now = now_ns();
+    exec_write(&srv, move |w| {
+        w.insert_metric_gauges(&[tumult_lake::MetricGaugeRow {
+            ts_ns: now - 200 * NS,
+            metric_name: "demo.both".into(),
+            value: 10.0,
+            attrs: vec![("gauge_key".to_string(), "g".to_string())],
+            ..Default::default()
+        }])
+        .map_err(|e| e.to_string())?;
+        w.insert_metric_sums(&[
+            tumult_lake::MetricSumRow {
+                ts_ns: now - 150 * NS,
+                metric_name: "demo.both".into(),
+                value: 2.0,
+                attrs: vec![("sum_key".to_string(), "s".to_string())],
+                ..Default::default()
+            },
+            tumult_lake::MetricSumRow {
+                ts_ns: now - 140 * NS,
+                metric_name: "demo.both".into(),
+                value: 3.0,
+                ..Default::default()
+            },
+        ])
+        .map_err(|e| e.to_string())
+    })
+    .await;
+
+    let (status, body) = get(&srv.base, "/api/metrics/catalog").await;
+    assert_eq!(status, 200, "{body}");
+    let both = body["metrics"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| m["name"] == "demo.both")
+        .cloned();
+    assert_eq!(
+        both,
+        Some(json!({
+            "name": "demo.both",
+            "types": ["sum", "gauge"],
+            "dimensions": ["gauge_key", "sum_key"],
+        })),
+        "{body}"
+    );
+
+    let (status, body) = get(&srv.base, "/api/metrics/query?name=demo.both&interval=1d").await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["type"], "sum", "{body}");
+    let total: f64 = body["series"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .flat_map(|s| s["points"].as_array().unwrap().iter())
+        .filter_map(|p| p["v"].as_f64())
+        .sum();
+    assert_eq!(total, 5.0, "{body}");
+}
+
 #[tokio::test]
 async fn topology_builds_service_and_target_graph() {
     let srv = spawn_server().await;

@@ -223,7 +223,8 @@ flowchart LR
    backpressure) to the single writer connection. A FATAL persist error
    (DuckDB invalidates the connection) makes the writer task rebuild the
    connection with bounded retries instead of acking errors forever; the
-   failed batch is reported, never retried.
+   daemon does not retry the failed batch, it tells the sender to send it
+   again (gRPC `UNAVAILABLE`, HTTP `503`).
 4. **Semantic layer** — `metrics/*.yaml` definitions compile to strictly
    validated SQL (`[a-z0-9_.]` identifiers only → injection-impossible).
 5. **UI / reports** — `tumult-api` answers the UI's queries through fresh

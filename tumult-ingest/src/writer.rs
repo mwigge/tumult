@@ -87,7 +87,9 @@ impl IngestWriter {
     /// internal errors ("FATAL Error: …"), and every statement after that
     /// fails — without a reconnect the daemon keeps acking errors forever.
     /// The failed batch is NOT retried (partial-batch risk): its caller gets
-    /// the error; subsequent batches land on the rebuilt writer.
+    /// the error and tells the sender to send the batch again
+    /// ([`crate::error::WriteFailed`]); subsequent batches land on the
+    /// rebuilt writer.
     pub fn spawn_reconnect(
         writer: Writer,
         db_path: PathBuf,

@@ -195,7 +195,9 @@ exporters:
   produces them.
 
 **What the exporter is told.** Every batch gets a `BatchStatus`; the codes
-are chosen for how the `otelarrow` exporter reacts to them.
+are chosen for how the `otelarrow` exporter reacts to them. A failed lake
+write over unary OTLP is gRPC `UNAVAILABLE` or HTTP `503`, which OTLP
+exporters retry too.
 
 | Event | `BatchStatus` | Stream |
 |---|---|---|

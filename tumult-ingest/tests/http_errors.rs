@@ -3,14 +3,23 @@
 #![allow(clippy::pedantic)]
 
 //! Error-path tests for the OTLP/HTTP endpoints: malformed protobuf bodies
-//! are 400s, a dead writer channel is a 500, and the metrics endpoint
-//! round-trips an empty export request.
+//! are 400s, a dead writer channel is a 503 the sender retries, and the
+//! metrics endpoint round-trips an empty export request.
 
 use opentelemetry_proto::tonic::collector::metrics::v1::ExportMetricsServiceRequest;
 use opentelemetry_proto::tonic::collector::trace::v1::ExportTraceServiceRequest;
 use prost::Message;
 use tumult_ingest::{http, IngestWriter};
 use tumult_lake::Store;
+
+/// The `google.rpc.Status` an OTLP/HTTP error answer carries.
+#[derive(prost::Message)]
+struct OtlpStatus {
+    #[prost(int32, tag = "1")]
+    code: i32,
+    #[prost(string, tag = "2")]
+    message: String,
+}
 
 async fn serve(ingest: IngestWriter) -> (String, tokio::task::JoinHandle<()>) {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -71,7 +80,7 @@ async fn metrics_export_round_trips() {
 }
 
 #[tokio::test]
-async fn dead_writer_channel_is_a_server_error_not_a_hang() {
+async fn dead_writer_channel_is_unavailable_not_a_hang() {
     let tmp = tempfile::TempDir::new().unwrap();
     let store = Store::open(&tmp.path().join("kronika.duckdb")).unwrap();
     let (ingest, writer_task) = IngestWriter::spawn(store.writer().unwrap(), 4);
@@ -89,8 +98,9 @@ async fn dead_writer_channel_is_a_server_error_not_a_hang() {
         .send()
         .await
         .unwrap();
-    assert_eq!(response.status(), 500);
-    let body = response.text().await.unwrap();
-    assert!(body.contains("telemetry write failed"), "{body}");
+    assert_eq!(response.status(), 503);
+    let status = OtlpStatus::decode(response.bytes().await.unwrap()).unwrap();
+    assert_eq!(status.code, tonic::Code::Unavailable as i32);
+    assert_eq!(status.message, "telemetry write failed");
     server.abort();
 }
