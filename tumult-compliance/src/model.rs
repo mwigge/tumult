@@ -102,7 +102,7 @@ const WORD_TONES: [(&str, Tone); 17] = [
 impl Tone {
     /// The tone of `status`, in any case. A status a run ends with has the
     /// tone of its verdict ([`tumult_lake::run_verdict`]); any other word
-    /// has the tone [`WORD_TONES`] gives it.
+    /// has the tone `WORD_TONES` gives it.
     #[must_use]
     pub fn of(status: &str) -> Self {
         if let Some(verdict) = tumult_lake::run_verdict(status) {

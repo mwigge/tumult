@@ -316,7 +316,7 @@ pub fn success_rate(rows: &[ExperimentRow]) -> f64 {
 }
 
 /// Count experiments per normalised status kind, returned in a stable display
-/// order (the endings of a run in the order of [`RUN_PILLS`], then Running,
+/// order (the endings of a run in the order of `RUN_PILLS`, then Running,
 /// then Other), skipping zeros.
 #[must_use]
 pub fn status_breakdown(rows: &[ExperimentRow]) -> Vec<(StatusKind, usize)> {

@@ -16,7 +16,7 @@
 //! parameters and the principal's scopes, and carries an `ETag`; a
 //! request with `Cache-Control: no-cache` reads the lake again unless
 //! the kept response is younger than 2 s (see
-//! [`crate::handlers::starmap_cache`] for the bounds).
+//! `crate::handlers::starmap_cache` for the bounds).
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::future::Future;

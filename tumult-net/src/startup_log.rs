@@ -382,7 +382,7 @@ mod private_dir {
 }
 
 /// How the daemon logs: as `service_name`, and no more than
-/// [`DAEMON_LOG_LIMIT_BYTES`] to the stderr the start action gave it.
+/// `DAEMON_LOG_LIMIT_BYTES` to the stderr the start action gave it.
 #[must_use]
 pub fn daemon_log_options(service_name: &str) -> LogOptions {
     LogOptions::new(service_name).with_output_limit(DAEMON_LOG_LIMIT_BYTES)
