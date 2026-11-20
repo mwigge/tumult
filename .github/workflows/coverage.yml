@@ -66,7 +66,11 @@ jobs:
         # of each test binary, and the test binaries filled the runner disk.
         # The llvm engine reads only its own coverage sections, never the
         # debug info, so the linker drops the debug info from each binary.
-        run: cargo tarpaulin --workspace --exclude tumult-windows --engine llvm --rustflags=-Clink-arg=-Wl,--strip-debug --out xml --timeout 300 --fail-under 90
+        # The llvm engine runs the tests of a binary one at a time, and its
+        # --timeout is the time the whole binary may take, not one test.
+        # The api tests of tumult-api take 8 to 11 minutes like that, so
+        # each binary gets 20 minutes. A hung test still fails the run.
+        run: cargo tarpaulin --workspace --exclude tumult-windows --engine llvm --rustflags=-Clink-arg=-Wl,--strip-debug --out xml --timeout 1200 --fail-under 90
       - name: Report build resource usage
         if: always()
         run: |
