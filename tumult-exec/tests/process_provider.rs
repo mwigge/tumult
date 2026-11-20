@@ -328,3 +328,28 @@ fn a_timeout_that_comes_before_the_stop_is_still_a_timeout() {
         Some("process \x27sh\x27 timed out")
     );
 }
+
+// ── One spawn at a time ─────────────────────────────────────
+
+/// A child that another thread spawns while a step makes its pipes would
+/// keep a copy of them on macOS, and the step would wait for that child to
+/// end. So a step starts only when no other spawn runs.
+#[test]
+fn a_process_starts_only_when_no_other_spawn_runs() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let marker = dir.path().join("started");
+    let step = sh(&format!("touch {}", marker.display()), Some(5.0));
+
+    let ran = tumult_core::spawn::alone(|| {
+        let ran = std::thread::spawn(move || ProviderExecutor::new().execute(&step));
+        // sleep: there is no event for a file that must stay absent; wait
+        // past the time the step would need to start.
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        assert!(!marker.exists(), "the step started during another spawn");
+        ran
+    });
+
+    let outcome = ran.join().expect("the step ends");
+    assert!(outcome.success, "{:?}", outcome.error);
+    assert!(marker.exists(), "the step did not run");
+}
