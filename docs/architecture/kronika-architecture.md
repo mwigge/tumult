@@ -30,7 +30,7 @@ that accepts only the column types OTAP uses.
 Everything lives in this repository as first-class `tumult-*` crates.
 
 The daemon's configuration surface keeps `KRONIKA_*` environment variable
-names (`KRONIKA_HTTP_ADDR`, `KRONIKA_INGEST_TOKEN`, `KRONIKA_LAKE_DIR`,
+names (`KRONIKA_OTLP_HTTP_ADDR`, `KRONIKA_INGEST_TOKEN`, `KRONIKA_LAKE_DIR`,
 …) — those are stable identifiers, not product names.
 
 Three environment-variable prefixes coexist, each with a distinct scope:
@@ -111,7 +111,7 @@ Evidence in: every source ends on the same writer.
 ```mermaid
 flowchart LR
     accTitle: Evidence ingest flow
-    accDescr: OTLP over gRPC, OTel-Arrow streams and OTLP over HTTP are checked against the ingest token and the size limits, decoded to the OTLP request types and converted by tumult-otlp into span, log and metric rows. Entity events in logs additionally become entity rows when KRONIKA_ENTITY_EVENTS is set. Manual records, imports, run state and stored verdicts reach the same bounded channel as write closures. One writer persists everything to the DuckDB lake.
+    accDescr: OTLP over gRPC, OTel-Arrow streams and OTLP over HTTP are checked against the ingest token and the size limits, decoded to the OTLP request types and converted by tumult-otlp into span, log and metric rows. With KRONIKA_ENTITY_EVENTS set, entity events in logs become entity rows instead of log rows. Manual records, imports, run state and stored verdicts reach the same bounded channel as write closures. One writer persists everything to the DuckDB lake.
     otlpg[OTLP gRPC] --> guard[Ingest token<br>and limits]
     otap[OTel-Arrow streams] --> dec[Arrow IPC decode<br>to OTLP types]
     dec --> guard
@@ -223,7 +223,8 @@ flowchart LR
    backpressure) to the single writer connection. A FATAL persist error
    (DuckDB invalidates the connection) makes the writer task rebuild the
    connection with bounded retries instead of acking errors forever; the
-   failed batch is reported, never retried.
+   daemon does not retry the failed batch, it tells the sender to send it
+   again (gRPC `UNAVAILABLE`, HTTP `503`).
 4. **Semantic layer** — `metrics/*.yaml` definitions compile to strictly
    validated SQL (`[a-z0-9_.]` identifiers only → injection-impossible).
 5. **UI / reports** — `tumult-api` answers the UI's queries through fresh
@@ -276,7 +277,7 @@ flowchart LR
    only sentences whose numbers are grounded in the report's own facts.
 
 The docker demo (`docker/docker-compose.kronika.yml`) is the **reference
-ingestion flow** end to end: a pinned tumult binary runs the
+ingestion flow** end to end: a tumult binary built from the workspace runs the
 experiment suite and emits genuine OTLP/gRPC (traces, metrics, logs) into
 tumultd, which normalizes, stores and renders it into the HTML reports
 under `demo-out/`. Whatever tumult emits on the wire is exactly what the
@@ -287,7 +288,7 @@ semantic layer computes over.
 Everything in this section is computed from rows already in the lake. None
 of it has a store of its own beyond the derived tables named here.
 
-- **Resilience score and gate.** `/api/scores` and `/api/scores/tree` roll
+- **Compliance score and gate.** `/api/scores` and `/api/scores/tree` roll
   the latest run per experiment up the `org.yaml` hierarchy with freshness
   decay; `/api/gate/{target}` returns the same model as a `pass|warn|fail`
   verdict for CI.
@@ -346,7 +347,7 @@ session. The charts and the evidence on each page are described in
 | Experiments | `/experiments`, `/experiments/{id}` | `/api/experiments`, `/api/experiments/{id}`, `/api/dimensions` | viewer |
 | Runs | `/runs`, `/runs/new`, `/runs/{id}` | `/api/runs`, `/api/registry`, `/api/runs/dry-run`, `/api/runs/{id}`, `/api/runs/{id}/impact` | viewer; operator to dry-run, start or stop |
 | Author | `/author`, `/author/new` | `/api/authoring/catalog`, `/api/authoring/scaffold`, `/api/runs/validate` | viewer; operator to register a definition |
-| GameDays | `/gamedays`, `/gamedays/{id}` | `/api/gamedays`, `/api/gamedays/{id}`, `POST /api/gamedays/{id}/runs` | viewer; operator to start a campaign |
+| GameDays | `/gamedays`, `/gamedays/{id}` | `/api/gamedays`, `/api/gamedays/{id}`, `/api/runs` (by `registry_id` and `gameday_id`), `POST /api/gamedays/{id}/runs` | viewer; operator to start a campaign |
 | Approvals | `/approvals` | `/api/approvals`, `POST /api/runs/{id}/approve`, `POST /api/runs/{id}/reject` | viewer; approver to decide |
 | Manual | `/manual` | `/api/manual/experiments` and its submit, verify and reject routes | viewer; operator to enter, approver to review |
 | Logs | `/logs` | `/api/logs`, `/api/logs/volume` | viewer |
@@ -361,8 +362,8 @@ session. The charts and the evidence on each page are described in
 | Webhooks | `/webhooks` | `/api/webhooks` | admin |
 
 The authoritative role of every route is the route table in `tumult-api`;
-a route missing from it requires admin. Three API surfaces have no page
-yet: `/api/forecast` (the run page draws only `/api/runs/{id}/impact`),
+a route missing from it requires admin. Some API surfaces have no page
+yet, among them `/api/forecast` (the run page draws only `/api/runs/{id}/impact`),
 `/api/entities`, and `POST /api/risks/{id}/recommend` (the Resilience page
 shows the recommended kind of experiment and does not call the route).
 
@@ -500,8 +501,11 @@ has been superseded by this implementation.
 
 Wide, ClickHouse-exporter-aligned tables: `spans`, `logs`, `metric_sums`,
 `metric_gauges`, `metric_histograms` (+ `import_batches` for manual imports,
-`schema_meta` versioning). Rollup view `experiment_runs` projects one row per
-`resilience.experiment` span.
+`schema_meta` versioning). View `run_roots` holds the root of every run: its
+`resilience.experiment` span, or a row built from its journal when the run
+sent no trace (`journal_only`). View `run_completions` holds the last
+`experiment.completed` log of each run, so a run that logged its end twice is
+one row. Rollup view `experiment_runs` projects one row per run root.
 
 v2 adds manual evidence: `manual_experiments` (content + draft → submitted →
 verified/rejected lifecycle + provenance + `content_hash`),

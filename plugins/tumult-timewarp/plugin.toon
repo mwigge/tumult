@@ -21,10 +21,10 @@ actions[7]:
     description: Sustain crypto/RNG load (random-byte generation loop) to stress the CRNG path (records a pidfile)
   - name: stop-entropy-drain
     script: actions/stop-entropy-drain.sh
-    description: Rollback — stop entropy-drain / rng-pressure worker processes via pidfile and pkill
+    description: Rollback — stop entropy-drain / rng-pressure worker process groups via pidfile
   - name: restore-clock
     script: actions/restore-clock.sh
-    description: Rollback — kill lingering faketime helpers and remove temp cert/token state
+    description: Rollback — remove temp cert/token state (a faketime helper exits with the command it wraps)
 
 probes[3]:
   - name: entropy-available

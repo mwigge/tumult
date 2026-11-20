@@ -6,11 +6,17 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use tumult_core::controls::ControlRegistry;
 use tumult_core::runner::oha::OhaLoadExecutor;
-use tumult_core::runner::{load_executor_for, LoadExecutor};
-use tumult_core::types::{LoadConfig, LoadProfile, LoadTool};
+use tumult_core::runner::{
+    load_executor_for, run_experiment, ActivityExecutor, ActivityOutcome, LoadExecutor, RunConfig,
+};
+use tumult_core::types::{
+    Activity, ActivityType, Experiment, ExperimentStatus, LoadConfig, LoadProfile, LoadTool,
+};
 use tumult_test_utils::EnvGuard;
 
 fn config(profile: Option<LoadProfile>, duration_s: f64) -> LoadConfig {
@@ -284,6 +290,42 @@ fn soak_profile_streams_one_sample_per_interval() {
         .windows(2)
         .all(|pair| pair[0].ts_ns <= pair[1].ts_ns));
     assert_eq!(result.total_requests, 15);
+}
+
+// `date +%s%N` is GNU date.
+#[cfg(target_os = "linux")]
+#[test]
+fn a_sample_is_stamped_with_the_start_of_its_window() {
+    let mut env = EnvGuard::lock();
+    let dir = tempfile::tempdir().expect("tempdir");
+    // Each window writes down the time at which it is about to answer.
+    let stamping = FAKE_OHA_JSON.replacen(
+        "#BEFORE_SUMMARY",
+        r#"date +%s%N >> "$(dirname "$0")/answered""#,
+        1,
+    );
+    install_fake_oha(&mut env, &dir, &stamping);
+    let before = chrono::Utc::now().timestamp_nanos_opt().expect("now");
+
+    let executor = OhaLoadExecutor::default();
+    let handle = executor.start(&soak(3.0)).expect("starts");
+    wait_for_calls(&dir, 3);
+    let result = executor.stop(handle).expect("stops");
+
+    let answered: Vec<i64> = recorded(&dir, "answered")
+        .iter()
+        .map(|ns| ns.parse().expect("a time in nanoseconds"))
+        .collect();
+    let stamps: Vec<i64> = result.samples.iter().map(|s| s.ts_ns).collect();
+    assert_eq!(stamps.len(), 3, "{stamps:?}");
+    assert_eq!(answered.len(), 3, "{answered:?}");
+    assert!(before <= stamps[0], "{before} is after {}", stamps[0]);
+    for (stamp, answered) in stamps.iter().zip(&answered) {
+        assert!(
+            stamp <= answered,
+            "a window stamped at {stamp} was about to answer at {answered}"
+        );
+    }
 }
 
 #[test]
@@ -680,4 +722,63 @@ fn adapter_selector_covers_k6_and_oha_but_not_jmeter() {
         panic!("jmeter must have no adapter");
     };
     assert!(err.contains("jmeter"), "{err}");
+}
+
+/// Every step succeeds at once.
+struct EveryStepSucceeds;
+
+impl ActivityExecutor for EveryStepSucceeds {
+    fn execute(&self, _activity: &Activity) -> ActivityOutcome {
+        ActivityOutcome {
+            success: true,
+            output: None,
+            error: None,
+            duration_ms: 0,
+        }
+    }
+}
+
+/// An oha load with a threshold name the adapter does not check can never
+/// meet its thresholds, so the run deviates. This is why validation may
+/// refuse such a name: the refusal only moves the failure before the run.
+#[test]
+fn an_oha_run_with_an_unknown_threshold_name_deviates() {
+    let mut env = EnvGuard::lock();
+    let dir = tempfile::tempdir().expect("tempdir");
+    install_fake_oha(&mut env, &dir, FAKE_OHA_JSON);
+    let run_with_threshold = |name: &str| {
+        let mut load = config(None, 1.0);
+        load.thresholds.insert(name.into(), 60_000.0);
+        let experiment = Experiment {
+            title: "a threshold".into(),
+            method: vec![Activity {
+                name: "noop".into(),
+                activity_type: ActivityType::Action,
+                ..Activity::default()
+            }],
+            load: Some(load),
+            ..Experiment::default()
+        };
+        let executor: Arc<dyn ActivityExecutor> = Arc::new(EveryStepSucceeds);
+        run_experiment(
+            &experiment,
+            &executor,
+            &Arc::new(ControlRegistry::new()),
+            &RunConfig::default(),
+        )
+        .expect("the run ends")
+    };
+
+    // The same bound under a name oha checks holds.
+    let known = run_with_threshold("latency_p95_ms");
+    assert_eq!(known.status, ExperimentStatus::Completed);
+
+    let unknown = run_with_threshold("latency_p90_ms");
+    let load = unknown
+        .load_result
+        .as_ref()
+        .expect("the load left a result");
+    assert!(load.total_requests > 0, "{load:?}");
+    assert!(!load.thresholds_met);
+    assert_eq!(unknown.status, ExperimentStatus::Deviated);
 }

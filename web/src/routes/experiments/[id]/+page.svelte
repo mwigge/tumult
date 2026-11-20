@@ -3,6 +3,7 @@
     import { api, fmtAgo, fmtDuration, fmtTs } from '#lib/api.js';
     import { experimentDurationNs } from '#lib/duration.js';
     import type { ExperimentDetail, Span } from '#lib/types.js';
+    import EvidencePanels from '#lib/components/EvidencePanels.svelte';
     import StatusBadge from '#lib/components/StatusBadge.svelte';
     import Waterfall from '#lib/components/Waterfall.svelte';
     import SpanDrawer from '#lib/components/SpanDrawer.svelte';
@@ -47,6 +48,11 @@
         <a href="/experiments" style="color: var(--text-dim)">← experiments</a>
         <h1>{exp.name ?? exp.id}</h1>
         <StatusBadge status={exp.status} />
+        {#if exp.journal_only}
+            <span class="badge neutral" title="This run sent no trace. The lake holds its journal."
+                >journal only</span
+            >
+        {/if}
         <span class="sub mono">{exp.id}</span>
     </div>
 
@@ -75,9 +81,15 @@
         </div>
     </div>
 
+    <EvidencePanels evidence={detail.evidence ?? null} />
+
     <div class="panel" style="margin-bottom: 14px">
         <h2>Trace waterfall — {detail.spans.length} spans</h2>
-        {#if detail.spans.length === 0}
+        {#if exp.journal_only}
+            <div class="state" data-testid="no-trace">
+                This run sent no trace. What you see here comes from its journal.
+            </div>
+        {:else if detail.spans.length === 0}
             <div class="state">No spans recorded for this experiment.</div>
         {:else}
             <Waterfall spans={detail.spans} onselect={(s) => (selected = s)} />
@@ -106,7 +118,9 @@
         <div class="panel">
             <h2>Metric points ({detail.metrics.length})</h2>
             {#if detail.metrics.length === 0}
-                <div class="state">No metric points tagged with this experiment's name.</div>
+                <div class="state">
+                    No metric points with the name of this experiment in the time of this run.
+                </div>
             {:else}
                 <table class="data">
                     <thead>

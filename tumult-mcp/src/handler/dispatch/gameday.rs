@@ -56,7 +56,7 @@ pub(super) fn gameday_run(handler: &TumultHandler, params: &CallToolRequestParam
                 .into(),
         )));
     };
-    let result = tokio::task::block_in_place(|| tools::gameday_run(&path));
+    let result = tokio::task::block_in_place(|| tools::gameday_run(&path, args.force));
     drop(guard);
     Ok(result.map(ToolOutput::from))
 }

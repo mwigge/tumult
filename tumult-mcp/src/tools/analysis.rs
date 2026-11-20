@@ -20,12 +20,36 @@ fn ingest_or_skip(store: &tumult_lake::AnalyticsStore, path: &Path) {
     }
 }
 
+/// Run the caller's `query` on `store` and render the rows as tab-separated
+/// text. External access is turned off first, so the query reads the tables
+/// of the store and nothing else of the host.
+fn answer(store: &tumult_lake::AnalyticsStore, query: &str) -> Result<String, ToolError> {
+    store
+        .deny_external_access()
+        .map_err(|e| ToolError::Store(e.to_string()))?;
+    let columns = store
+        .query_columns(query)
+        .map_err(|e| ToolError::Store(e.to_string()))?;
+    let rows = store
+        .query(query)
+        .map_err(|e| ToolError::Store(e.to_string()))?;
+
+    let mut output = columns.join("\t") + "\n";
+    for row in &rows {
+        output += &row.join("\t");
+        output += "\n";
+    }
+    let _ = write!(output, "{} row(s)", rows.len());
+    Ok(output)
+}
+
 /// Analyze journals with a SQL query via `DuckDB`.
 ///
 /// # Errors
 ///
 /// Returns a [`ToolError`] if the query is not a SELECT/WITH, the store cannot
-/// be created, a journal cannot be read or ingested, or the query fails.
+/// be created, a journal cannot be read or ingested, or the query fails,
+/// which includes any query that reads a host file.
 pub fn analyze(journals_path: &str, query: &str) -> Result<String, ToolError> {
     use tumult_core::journal::read_journal;
 
@@ -49,20 +73,7 @@ pub fn analyze(journals_path: &str, query: &str) -> Result<String, ToolError> {
         }
     }
 
-    let columns = store
-        .query_columns(query)
-        .map_err(|e| ToolError::Store(e.to_string()))?;
-    let rows = store
-        .query(query)
-        .map_err(|e| ToolError::Store(e.to_string()))?;
-
-    let mut output = columns.join("\t") + "\n";
-    for row in &rows {
-        output += &row.join("\t");
-        output += "\n";
-    }
-    let _ = write!(output, "{} row(s)", rows.len());
-    Ok(output)
+    answer(&store, query)
 }
 
 /// Query the persistent analytics store stats.
@@ -123,7 +134,8 @@ pub fn store_stats(store_path: &str) -> Result<StructuredReport, ToolError> {
 /// # Errors
 ///
 /// Returns a [`ToolError`] if the query is not a SELECT/WITH, the store cannot
-/// be opened, or the query fails.
+/// be opened, or the query fails, which includes any query that reads a
+/// host file.
 pub fn analyze_persistent(store_path: &str, query: &str) -> Result<String, ToolError> {
     validate_select_only(query)?;
 
@@ -136,21 +148,7 @@ pub fn analyze_persistent(store_path: &str, query: &str) -> Result<String, ToolE
 
     let store = tumult_lake::AnalyticsStore::open_read_only(&path)
         .map_err(|e| ToolError::Store(e.to_string()))?;
-
-    let columns = store
-        .query_columns(query)
-        .map_err(|e| ToolError::Store(e.to_string()))?;
-    let rows = store
-        .query(query)
-        .map_err(|e| ToolError::Store(e.to_string()))?;
-
-    let mut output = columns.join("\t") + "\n";
-    for row in &rows {
-        output += &row.join("\t");
-        output += "\n";
-    }
-    let _ = write!(output, "{} row(s)", rows.len());
-    Ok(output)
+    answer(&store, query)
 }
 
 #[cfg(test)]
@@ -250,6 +248,67 @@ mod tests {
         assert!(result.is_ok());
         let output = result.unwrap();
         assert!(output.contains("1 row(s)"));
+    }
+
+    // ── host files stay out of reach ─────────────────────────
+
+    /// The value the host files hold. No answer may carry it.
+    const HOST_SECRET: &str = "host-secret-7f3a";
+
+    /// Writes a CSV and a JSON file that hold [`HOST_SECRET`] into `dir`,
+    /// and returns queries that read them: by table function and by a
+    /// quoted path in `FROM`. None of them names a function of the deny
+    /// list, so only the connection itself can refuse them.
+    fn host_file_queries(dir: &Path) -> Vec<String> {
+        let csv = dir.join("secret.csv");
+        std::fs::write(&csv, format!("value\n{HOST_SECRET}\n")).unwrap();
+        let json = dir.join("secret.json");
+        std::fs::write(&json, format!("{{\"value\": \"{HOST_SECRET}\"}}\n")).unwrap();
+        vec![
+            format!("SELECT * FROM read_csv_auto('{}')", csv.display()),
+            format!("SELECT * FROM read_json_auto('{}')", json.display()),
+            format!("SELECT * FROM '{}'", csv.display()),
+        ]
+    }
+
+    /// `None` when the connection refused the query and the secret did not
+    /// come back in the error either; otherwise what went wrong.
+    fn leak(result: Result<String, ToolError>, sql: &str) -> Option<String> {
+        match result {
+            Ok(output) => Some(format!("{sql} was answered: {output}")),
+            Err(error) => {
+                let error = error.to_string();
+                let refused = error.contains("Permission Error") && !error.contains(HOST_SECRET);
+                (!refused).then(|| format!("{sql} failed otherwise: {error}"))
+            }
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn analyze_cannot_read_a_host_file_through_sql() {
+        let run = TempDir::new().unwrap();
+        let journal = write_run_journal(run.path());
+        let host = TempDir::new().unwrap();
+
+        let leaks: Vec<String> = host_file_queries(host.path())
+            .iter()
+            .filter_map(|sql| leak(analyze(journal.to_str().unwrap(), sql), sql))
+            .collect();
+        assert!(leaks.is_empty(), "{leaks:#?}");
+    }
+
+    #[test]
+    fn analyze_store_cannot_read_a_host_file_through_sql() {
+        let dir = TempDir::new().unwrap();
+        let db_path = dir.path().join("analytics.duckdb");
+        drop(tumult_lake::AnalyticsStore::open(&db_path).unwrap());
+        let host = TempDir::new().unwrap();
+
+        let leaks: Vec<String> = host_file_queries(host.path())
+            .iter()
+            .filter_map(|sql| leak(analyze_persistent(db_path.to_str().unwrap(), sql), sql))
+            .collect();
+        assert!(leaks.is_empty(), "{leaks:#?}");
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

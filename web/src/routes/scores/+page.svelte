@@ -7,6 +7,17 @@
     import { api } from '#lib/api.js';
     import type { EChartsCoreOption } from '#lib/echarts.js';
     import { CHART } from '#lib/echarts.js';
+    import {
+        bandColor,
+        bandGlyph,
+        bandLabel,
+        deltaClass,
+        fmtDelta,
+        fmtScore,
+        tileLabel,
+        tileScore,
+    } from '#lib/org-score.js';
+    import { COMPLIANCE_SCORE, COMPLIANCE_SCORE_LINE } from '#lib/score-names.js';
     import { strong, tip, tipFormatter } from '#lib/tooltip.js';
     import type { OrgNodeScore, ScoreTree, SparkPoint } from '#lib/types.js';
     import EChart from '#lib/components/EChart.svelte';
@@ -69,16 +80,6 @@
         goto(`?${params}`, { replace: true, reset: false });
     }
 
-    // Band hues from the Okabe-Ito palette (colour-blind safe).
-    const BAND_COLOR: Record<string, string> = {
-        good: '#009E73',
-        fair: '#E69F00',
-        poor: '#D55E00',
-    };
-    const BAND_GLYPH: Record<string, string> = { good: '●', fair: '▲', poor: '×' };
-    const bandColor = (b: string) => BAND_COLOR[b] ?? '#5b6772';
-    const bandGlyph = (b: string) => BAND_GLYPH[b] ?? '○';
-
     // Breadcrumb segments for the current node path.
     const crumbs = $derived(node === '' ? [] : node.split('/'));
 
@@ -86,7 +87,7 @@
     /** What a tile of the treemap carries for its tooltip. */
     interface TreeTip {
         path?: string;
-        score?: number;
+        score?: number | null;
         band?: string;
         scored?: number;
         expected?: number;
@@ -105,7 +106,7 @@
                     const d = p.data ?? {};
                     return tip(
                         strong(d.path),
-                        `score ${Number(d.score ?? 0).toFixed(1)} (${d.band ?? ''})`,
+                        tileScore(d.score ?? null, d.band ?? ''),
                         `coverage ${d.scored ?? 0}/${d.expected ?? 0}`,
                     );
                 }),
@@ -120,8 +121,8 @@
                     height: '100%',
                     label: {
                         show: true,
-                        formatter: (p: { name?: string; data?: { score?: number } }) =>
-                            `${p.name ?? ''}\n${Number(p.data?.score ?? 0).toFixed(1)}`,
+                        formatter: (p: { name?: string; data?: { score?: number | null } }) =>
+                            tileLabel(p.name ?? '', p.data?.score ?? null),
                         color: '#0b0e11',
                         fontWeight: 600,
                         fontSize: 12,
@@ -155,9 +156,6 @@
         const t = tree;
         sparkPoints = t ? t.sparkline.map((p: [number, number]) => ({ ts: p[0], v: p[1] })) : [];
     });
-    const fmtScore = (v: number) => v.toFixed(1);
-    const fmtDelta = (d: number) => `${d >= 0 ? '+' : ''}${d.toFixed(1)}`;
-    const deltaCls = (d: number) => (d > 0.5 ? 'up' : d < -0.5 ? 'down' : 'flat');
 </script>
 
 <div class="page-head">
@@ -204,11 +202,11 @@
             <div class="value mono" style="color: {bandColor(tree.band)}">
                 <span class="glyph">{bandGlyph(tree.band)}</span>{fmtScore(tree.score)}
             </div>
-            <div class="hint">{tree.band}</div>
+            <div class="hint">{bandLabel(tree.band)}</div>
         </div>
         <div class="panel card">
             <div class="label">Δ vs previous {range}</div>
-            <div class="value mono delta {deltaCls(tree.delta)}">{fmtDelta(tree.delta)}</div>
+            <div class="value mono delta {deltaClass(tree.delta)}">{fmtDelta(tree.delta)}</div>
             <div class="hint">period-over-period</div>
         </div>
         <div class="panel card">
@@ -222,6 +220,10 @@
             <div class="hint"><Sparkline points={sparkPoints} color={bandColor(tree.band)} /></div>
         </div>
     </div>
+    <p class="meaning" data-testid="score-meaning">
+        <strong>{COMPLIANCE_SCORE}.</strong>
+        {COMPLIANCE_SCORE_LINE}
+    </p>
 
     {#if node === ''}
         <div class="panel">
@@ -263,9 +265,10 @@
                                 ><span class="bandg" style="color: {bandColor(tree.band)}"
                                     >{bandGlyph(tree.band)}</span
                                 >
-                                {tree.band}</td
+                                {bandLabel(tree.band)}</td
                             >
-                            <td class="mono delta {deltaCls(tree.delta)}">{fmtDelta(tree.delta)}</td
+                            <td class="mono delta {deltaClass(tree.delta)}"
+                                >{fmtDelta(tree.delta)}</td
                             >
                             <td
                                 ><Sparkline
@@ -289,7 +292,7 @@
                                     ><span class="bandg" style="color: {bandColor(c.band)}"
                                         >{bandGlyph(c.band)}</span
                                     >
-                                    {c.band}</td
+                                    {bandLabel(c.band)}</td
                                 >
                                 <td class="mono" style="color: var(--text-faint)">—</td>
                                 <td style="color: var(--text-faint)">—</td>
@@ -384,6 +387,11 @@
         color: var(--text-faint);
         font-size: 11.5px;
         margin-top: 4px;
+    }
+    .meaning {
+        color: var(--text-dim);
+        font-size: 12.5px;
+        margin: 0 0 12px;
     }
     .kind {
         color: var(--text-faint);

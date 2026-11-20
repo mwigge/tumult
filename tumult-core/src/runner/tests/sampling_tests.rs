@@ -235,11 +235,11 @@ fn post_phase_stops_at_timeout_when_probe_never_recovers() {
     );
 }
 
-// -- Tests: sampler-thread panic tolerance
+// -- Tests: a probe that panics on the sampler thread
 
 /// Panics on probe execution from any thread except the one it was created
 /// on: the hypothesis-before/after and post-phase probes (main thread)
-/// succeed, while the during-phase sampler thread panics.
+/// succeed, while every sample on the during-phase sampler thread panics.
 struct PanicOffMainProbeExecutor {
     main_thread: std::thread::ThreadId,
 }
@@ -261,7 +261,7 @@ impl ActivityExecutor for PanicOffMainProbeExecutor {
 }
 
 #[test]
-fn sampler_thread_panic_does_not_fail_the_run() {
+fn a_probe_that_panics_on_the_sampler_thread_does_not_fail_the_run() {
     let exp = experiment_with_hypothesis();
     let executor: Arc<dyn ActivityExecutor> = Arc::new(PanicOffMainProbeExecutor {
         main_thread: std::thread::current().id(),
@@ -275,12 +275,15 @@ fn sampler_thread_panic_does_not_fail_the_run() {
         &default_config(),
         &fast_sampling(),
     )
-    .expect("runner must not propagate a sampler-thread panic");
+    .expect("the panic of a probe stays in its sample");
 
     assert_eq!(journal.status, ExperimentStatus::Completed);
-    assert!(
-        journal.during_result.is_none(),
-        "the sampler panicked before collecting any samples"
+    let during = journal
+        .during_result
+        .expect("the samples whose probe panicked are kept");
+    assert_eq!(
+        during.probes[0].breach_count, during.probes[0].samples,
+        "a sample whose probe panicked is a failed sample"
     );
     assert!(
         journal.post_result.is_some(),

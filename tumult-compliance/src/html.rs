@@ -85,7 +85,7 @@ pub fn render_html(doc: &ReportDoc) -> String {
             esc(f)
         )),
         experiment = m.experiment_id.as_ref().map_or(String::new(), |e| format!(
-            "<tr><th>Experiment</th><td>{}</td></tr>",
+            "<tr><th>Run id</th><td>{}</td></tr>",
             esc(e)
         )),
     ));
@@ -105,10 +105,7 @@ pub fn render_html(doc: &ReportDoc) -> String {
 fn subtitle(m: &crate::model::DocMeta) -> String {
     match m.template {
         crate::model::TemplateKind::ExecutiveDigest => "Executive Resilience Digest".into(),
-        crate::model::TemplateKind::GameDay => format!(
-            "Game-Day Experiment Report — {}",
-            m.experiment_id.as_deref().unwrap_or("unknown run")
-        ),
+        crate::model::TemplateKind::GameDay => "Game-Day Experiment Report".into(),
         crate::model::TemplateKind::EvidencePack => format!(
             "Compliance Evidence Pack — {}",
             m.framework.as_deref().unwrap_or("framework")

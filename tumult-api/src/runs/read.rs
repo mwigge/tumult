@@ -37,11 +37,32 @@ pub struct ListParams {
     limit: Option<u32>,
     /// Campaign children of one parent run (schema v12 `runs.gameday_id`).
     gameday_id: Option<String>,
+    /// Runs of one registered definition; for a GameDay, its campaigns.
+    registry_id: Option<String>,
 }
 
-/// `GET /api/runs?state=&limit=` — runs, newest first (limit defaults to
-/// 100, capped at 500). Runs whose experiment's environment is outside the
-/// principal's scopes are hidden, including queued runs. Durable request
+/// An id filter of the list: none when empty, a 400 when longer than 100
+/// characters.
+fn id_filter(value: Option<String>, what: &str) -> Result<Option<String>, ApiError> {
+    let value = value.filter(|s| !s.is_empty());
+    if value.as_deref().is_some_and(|id| id.chars().count() > 100) {
+        return Err(bad_request(format!("{what} id too long")));
+    }
+    Ok(value)
+}
+
+/// `AND <column> = '<value>'`, or nothing without a value.
+fn equals_clause(column: &str, value: Option<&str>) -> String {
+    value.map_or(String::new(), |v| {
+        format!("AND {column} = {}", sql_string(v))
+    })
+}
+
+/// `GET /api/runs?state=&limit=&gameday_id=&registry_id=` — runs, newest
+/// first (limit defaults to 100, capped at 500). `gameday_id` keeps the
+/// children of one campaign, `registry_id` the runs of one definition (for
+/// a GameDay, its campaigns). Runs whose experiment's environment is outside
+/// the principal's scopes are hidden, including queued runs. Durable request
 /// context takes precedence over telemetry; unknown legacy scope fails closed.
 pub async fn list(
     State(state): State<ApiState>,
@@ -58,22 +79,14 @@ pub async fn list(
     }
     let limit = params.limit.unwrap_or(100).clamp(1, 500);
     let state_filter = params.state.filter(|s| !s.is_empty());
-    let gameday_filter = params.gameday_id.filter(|s| !s.is_empty());
-    if gameday_filter
-        .as_deref()
-        .is_some_and(|id| id.chars().count() > 100)
-    {
-        return Err(bad_request("gameday id too long"));
-    }
+    let gameday_filter = id_filter(params.gameday_id, "gameday")?;
+    let registry_filter = id_filter(params.registry_id, "registry")?;
     let scopes = principal.env_scopes.clone();
     let rows = with_reader(&state.db_path, move |reader| {
-        let state_clause = state_filter.as_deref().map_or(String::new(), |s| {
-            format!("AND r.state = {}", sql_string(s))
-        });
-        let gameday_clause = gameday_filter.as_deref().map_or(String::new(), |g| {
-            format!("AND r.gameday_id = {}", sql_string(g))
-        });
-        if scopes.is_empty() && gameday_clause.is_empty() {
+        let state_clause = equals_clause("r.state", state_filter.as_deref());
+        let gameday_clause = equals_clause("r.gameday_id", gameday_filter.as_deref());
+        let registry_clause = equals_clause("r.registry_id", registry_filter.as_deref());
+        if scopes.is_empty() && gameday_clause.is_empty() && registry_clause.is_empty() {
             return reader
                 .runs(state_filter.as_deref(), limit)
                 .map_err(|e| e.to_string());
@@ -90,7 +103,7 @@ pub async fn list(
                  LEFT JOIN run_registry g ON g.id = r.registry_id \
                  LEFT JOIN (SELECT experiment_id, any_value(target_environment) AS env \
                             FROM spans GROUP BY 1) e ON e.experiment_id = r.experiment_id \
-                 WHERE {scope_clause} {state_clause} {gameday_clause} \
+                 WHERE {scope_clause} {state_clause} {gameday_clause} {registry_clause} \
                  ORDER BY r.queued_at_ns DESC LIMIT {limit}"
             ))
             .map_err(|e| e.to_string())
@@ -99,9 +112,22 @@ pub async fn list(
     Ok(Json(json!({"count": rows.len(), "runs": rows})))
 }
 
+/// The approval request of a run with the number of approvals it has so
+/// far, as a row of the approval queue has it.
+fn with_approved_count(request: Option<Value>, decisions: &[Value]) -> Option<Value> {
+    let mut request = request?;
+    let approved = decisions
+        .iter()
+        .filter(|decision| decision["decision"] == "approved")
+        .count();
+    request["approved_count"] = json!(approved);
+    Some(request)
+}
+
 /// `GET /api/runs/{id}` — one run plus its audit trail (oldest first) and
-/// its approval chain: `approval.request` (the pinned request, `null` for
-/// T0 runs that never gate) and `approval.decisions` (oldest first).
+/// its approval chain: `approval.request` (the pinned request with its
+/// `approved_count`, `null` for T0 runs that never gate) and
+/// `approval.decisions` (oldest first).
 /// Runs in an environment outside the principal's scopes 404 (same rule as
 /// the list, including runs that have not produced telemetry yet).
 pub async fn detail(
@@ -140,6 +166,7 @@ pub async fn detail(
         let decisions = reader
             .approval_decisions(&lookup)
             .map_err(|e| e.to_string())?;
+        let request = with_approved_count(request, &decisions);
         Ok(run.map(|run| {
             json!({
                 "run": run,

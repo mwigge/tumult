@@ -20,6 +20,7 @@ mod recommend;
 mod report;
 mod run;
 mod store;
+mod summary;
 mod target_version;
 mod topology;
 mod trend;
@@ -31,7 +32,7 @@ pub use gate::{cmd_gate, FailOn, GateArgs};
 pub use perf::{cmd_perf, exit_code_of, PerfArgs, PerfFailOn};
 pub use recommend::{cmd_agents, cmd_recommend, AgentArgs};
 pub use report::cmd_report;
-pub use run::{cmd_run, cmd_run_with_baseline_mode};
+pub use run::{cmd_run, cmd_run_with_baseline_mode, NotCompleted};
 pub use store::{
     cmd_import, cmd_store_backup, cmd_store_export, cmd_store_import_legacy, cmd_store_migrate,
     cmd_store_path, cmd_store_purge, cmd_store_restore, cmd_store_stats,
@@ -64,7 +65,7 @@ pub use topology::{
 pub use trend::{cmd_export, cmd_trend};
 pub use types::{
     build_load_override, parse_duration_str, parse_var_args, ComplianceFramework, ExportFormat,
-    LoadToolArg, ReportFormat,
+    LoadOverride, LoadToolArg, ReportFormat,
 };
 pub use validate::{cmd_discover, cmd_validate};
 
@@ -86,7 +87,9 @@ pub(crate) use init::{generate_template, init_at};
 #[cfg(test)]
 pub(crate) use load::*;
 #[cfg(test)]
-pub(crate) use report::{format_activity_row, generate_html_report, generate_junit_report};
+pub(crate) use report::{
+    generate_html_report, generate_junit_report, generated_at, step_row, ReportFrame,
+};
 // Names the test modules pull in via `use super::super::*`, previously provided
 // by this module's private `use` aliases before the split.
 #[cfg(test)]

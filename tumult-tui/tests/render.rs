@@ -11,20 +11,24 @@
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::backend::TestBackend;
+use ratatui::style::Color;
 use ratatui::Terminal;
 use tempfile::TempDir;
 
 use tumult_core::types::{
-    ActivityResult, ActivityStatus, ActivityType, AnalysisResult, ExperimentStatus, Journal,
+    ActivityResult, ActivityStatus, ActivityType, AnalysisResult, ExperimentStatus,
+    HypothesisResult, Journal,
 };
-use tumult_lake::AnalyticsStore;
+use tumult_lake::{AnalyticsStore, RunVerdict};
 use tumult_tui::app::{App, Tab, View};
-use tumult_tui::ui;
+use tumult_tui::logic::StatusKind;
+use tumult_tui::{data, ui};
 
 fn journal(id: &str, title: &str, status: ExperimentStatus, start_ns: i64, dur_ms: u64) -> Journal {
     let failed = status != ExperimentStatus::Completed;
     Journal {
         target_version: None,
+        target: None,
         experiment_title: title.into(),
         experiment_id: id.into(),
         status,
@@ -119,12 +123,201 @@ fn seed() -> (TempDir, std::path::PathBuf) {
     (dir, path)
 }
 
+/// The verdict of one check of the steady state.
+fn verdict(met: bool) -> HypothesisResult {
+    HypothesisResult {
+        title: "The target answers".into(),
+        met,
+        probe_results: vec![],
+    }
+}
+
+/// A lake with one run of each hypothesis verdict, a minute apart, oldest
+/// first: a step failed while the steady state held before and after the
+/// method; the steady state failed before the method; the definition has
+/// no hypothesis.
+fn seed_verdicts() -> (TempDir, std::path::PathBuf) {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("analytics.duckdb");
+    let store = AnalyticsStore::open(&path).unwrap();
+    let base = 1_700_000_000_000_000_000i64;
+    let mut held = journal(
+        "held",
+        "Step failed, target held",
+        ExperimentStatus::Failed,
+        base,
+        1000,
+    );
+    held.steady_state_before = Some(verdict(true));
+    held.steady_state_after = Some(verdict(true));
+    let mut down = journal(
+        "down",
+        "Target down before",
+        ExperimentStatus::Aborted,
+        base + 60_000_000_000,
+        1000,
+    );
+    down.steady_state_before = Some(verdict(false));
+    let unjudged = journal(
+        "none",
+        "No hypothesis",
+        ExperimentStatus::Completed,
+        base + 120_000_000_000,
+        1000,
+    );
+    for run in [&held, &down, &unjudged] {
+        store.ingest_journal(run).unwrap();
+    }
+    drop(store);
+    (dir, path)
+}
+
+/// The names the deserializer of a status expects, read from the error it
+/// gives for a name it does not know.
+fn names_expected(refused: &serde_json::Error) -> Vec<serde_json::Value> {
+    let refused = refused.to_string();
+    let names = refused
+        .split_once("expected one of ")
+        .and_then(|(_, rest)| rest.split_once(" at line"))
+        .map_or_else(
+            || panic!("the refusal does not list the statuses: {refused}"),
+            |(names, _)| names,
+        );
+    names
+        .split(", ")
+        .map(|name| serde_json::json!(name.trim_matches('`')))
+        .collect()
+}
+
+/// Every status a run can end with, so that a status added to
+/// `ExperimentStatus` is in the list.
+fn every_run_status() -> Vec<ExperimentStatus> {
+    let refused =
+        serde_json::from_str::<ExperimentStatus>("\"none\"").expect_err("no run ends as none");
+    names_expected(&refused)
+        .into_iter()
+        .map(|name| serde_json::from_value(name).unwrap())
+        .collect()
+}
+
+/// Every status a step can end with, so that a status added to
+/// `ActivityStatus` is in the list.
+fn every_step_status() -> Vec<ActivityStatus> {
+    let refused =
+        serde_json::from_str::<ActivityStatus>("\"none\"").expect_err("no step ends as none");
+    names_expected(&refused)
+        .into_iter()
+        .map(|name| serde_json::from_value(name).unwrap())
+        .collect()
+}
+
+/// A lake with one run for each of `statuses`, a minute apart. Each run has
+/// one step for each status a step can end with.
+fn seed_every_status(statuses: &[ExperimentStatus]) -> (TempDir, std::path::PathBuf) {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("analytics.duckdb");
+    let store = AnalyticsStore::open(&path).unwrap();
+    let base = 1_700_000_000_000_000_000i64;
+    for (minute, status) in (0i64..).zip(statuses) {
+        let mut run = journal(
+            &format!("run-{status}"),
+            &format!("Run that ended {status}"),
+            status.clone(),
+            base + minute * 60_000_000_000,
+            1000,
+        );
+        let step = run.method_results[0].clone();
+        run.method_results = every_step_status()
+            .into_iter()
+            .map(|status| ActivityResult {
+                name: format!("step-{status}"),
+                status,
+                ..step.clone()
+            })
+            .collect();
+        store.ingest_journal(&run).unwrap();
+    }
+    drop(store);
+    (dir, path)
+}
+
+/// The colour of the first cell of `word` on the line of the screen that
+/// shows `line_with`; `None` when no such line shows `word`.
+fn colour_on_line(term: &Terminal<TestBackend>, line_with: &str, word: &str) -> Option<Color> {
+    let buffer = term.backend().buffer();
+    (0..buffer.area.height).find_map(|y| {
+        let cells: Vec<&ratatui::buffer::Cell> =
+            (0..buffer.area.width).map(|x| &buffer[(x, y)]).collect();
+        let symbols: Vec<&str> = cells.iter().map(|cell| cell.symbol()).collect();
+        if !symbols.concat().contains(line_with) {
+            return None;
+        }
+        (0..symbols.len())
+            .find(|at| {
+                symbols[*at..]
+                    .iter()
+                    .take(word.chars().count())
+                    .copied()
+                    .collect::<String>()
+                    == word
+            })
+            .map(|at| cells[at].fg)
+    })
+}
+
 fn buffer_text(term: &Terminal<TestBackend>) -> String {
     term.backend()
         .buffer()
         .content()
         .iter()
         .map(ratatui::buffer::Cell::symbol)
+        .collect()
+}
+
+/// The line of the screen that shows `text`.
+fn line_with(term: &Terminal<TestBackend>, text: &str) -> String {
+    let buffer = term.backend().buffer();
+    (0..buffer.area.height)
+        .map(|y| {
+            (0..buffer.area.width)
+                .map(|x| buffer[(x, y)].symbol())
+                .collect::<String>()
+        })
+        .find(|line| line.contains(text))
+        .unwrap_or_else(|| panic!("no line shows {text}: {}", buffer_text(term)))
+}
+
+/// The text on the line under `label`, from the column `label` starts at
+/// to the next blank.
+fn under(term: &Terminal<TestBackend>, label: &str) -> String {
+    let buffer = term.backend().buffer();
+    let row = |y: u16| -> Vec<String> {
+        (0..buffer.area.width)
+            .map(|x| buffer[(x, y)].symbol().to_string())
+            .collect()
+    };
+    let width = label.chars().count();
+    (0..buffer.area.height.saturating_sub(1))
+        .find_map(|y| {
+            let cells = row(y);
+            let at = (0..cells.len())
+                .find(|at| cells[*at..].iter().take(width).cloned().collect::<String>() == label)?;
+            Some(
+                row(y + 1)[at..]
+                    .iter()
+                    .take_while(|cell| cell.as_str() != " ")
+                    .cloned()
+                    .collect(),
+            )
+        })
+        .unwrap_or_else(|| panic!("no line shows {label}: {}", buffer_text(term)))
+}
+
+/// The ids of the runs in the order the history shows them.
+fn shown_order(app: &App) -> Vec<String> {
+    app.filtered
+        .iter()
+        .map(|i| app.experiments[*i].id.clone())
         .collect()
 }
 
@@ -215,6 +408,105 @@ fn analytics_tab_renders_trends() {
 }
 
 #[test]
+fn the_history_says_whether_the_hypothesis_of_each_run_was_met() {
+    let (_dir, path) = seed_verdicts();
+    let mut app = App::new(path, 2).unwrap();
+
+    let mut term = Terminal::new(TestBackend::new(120, 30)).unwrap();
+    term.draw(|f| ui::render(&mut app, f)).unwrap();
+
+    let header = line_with(&term, "Duration");
+    assert!(header.contains("Hypothesis met"), "{header}");
+    let text = buffer_text(&term);
+    assert!(!text.contains("Resil"), "{text}");
+    // A step failed, yet the target held: the hypothesis was met.
+    let held = line_with(&term, "Step failed, target held");
+    assert!(held.contains(" yes "), "{held}");
+    let down = line_with(&term, "Target down before");
+    assert!(down.contains(" no "), "{down}");
+    // A run that judged no hypothesis says neither.
+    let unjudged = line_with(&term, "No hypothesis");
+    assert!(unjudged.contains(" — "), "{unjudged}");
+}
+
+#[test]
+fn the_runs_sort_by_their_hypothesis_met_first_then_not_met_then_not_known() {
+    let (_dir, path) = seed_verdicts();
+    let mut app = App::new(path, 2).unwrap();
+    // The fourth sort key is the hypothesis, descending at first.
+    for _ in 0..3 {
+        app.on_key(key(KeyCode::Char('s')));
+    }
+
+    let mut term = Terminal::new(TestBackend::new(120, 30)).unwrap();
+    term.draw(|f| ui::render(&mut app, f)).unwrap();
+
+    let status = line_with(&term, "sort:");
+    assert!(status.contains("sort:hypothesis met"), "{status}");
+    assert_eq!(shown_order(&app), ["held", "down", "none"]);
+    app.on_key(key(KeyCode::Char('S')));
+    assert_eq!(shown_order(&app), ["none", "down", "held"]);
+}
+
+#[test]
+fn the_detail_of_a_run_says_whether_its_hypothesis_was_met() {
+    let (_dir, path) = seed_verdicts();
+    let mut app = App::new(path, 2).unwrap();
+    // Newest first: the run whose step failed while the target held is the third.
+    app.on_key(key(KeyCode::Down));
+    app.on_key(key(KeyCode::Down));
+    assert_eq!(app.selected_experiment().unwrap().id, "held");
+    app.on_key(key(KeyCode::Enter));
+
+    let mut term = Terminal::new(TestBackend::new(120, 30)).unwrap();
+    term.draw(|f| ui::render(&mut app, f)).unwrap();
+
+    let status = line_with(&term, "duration");
+    assert!(status.contains("hypothesis met yes"), "{status}");
+    assert!(!status.contains("resilience"), "{status}");
+}
+
+#[test]
+fn the_comparison_says_whether_the_hypothesis_of_each_marked_run_was_met() {
+    let (_dir, path) = seed_verdicts();
+    let mut app = App::new(path, 2).unwrap();
+    for _ in 0..3 {
+        app.on_key(key(KeyCode::Char(' ')));
+        app.on_key(key(KeyCode::Down));
+    }
+    app.on_key(key(KeyCode::Char('c')));
+    assert_eq!(app.view, View::Compare);
+
+    let mut term = Terminal::new(TestBackend::new(120, 30)).unwrap();
+    term.draw(|f| ui::render(&mut app, f)).unwrap();
+
+    let header = line_with(&term, "Duration");
+    assert!(header.contains("Hypothesis met"), "{header}");
+    let held = line_with(&term, "Step failed, target held");
+    assert!(held.contains(" yes "), "{held}");
+    let down = line_with(&term, "Target down before");
+    assert!(down.contains(" no "), "{down}");
+    let unjudged = line_with(&term, "No hypothesis");
+    assert!(unjudged.contains(" — "), "{unjudged}");
+}
+
+#[test]
+fn the_trends_draw_each_verdict_and_leave_out_a_run_without_one() {
+    let (_dir, path) = seed_verdicts();
+    let mut app = App::new(path, 2).unwrap();
+    app.on_key(key(KeyCode::Char('2')));
+
+    let mut term = Terminal::new(TestBackend::new(120, 30)).unwrap();
+    term.draw(|f| ui::render(&mut app, f)).unwrap();
+    let text = buffer_text(&term);
+
+    assert!(!text.contains("Resilience score"), "{text}");
+    // Oldest first: met draws high, not met low, and the run that judged
+    // no hypothesis is not drawn.
+    assert_eq!(under(&term, "Hypothesis met (oldest → newest)"), "█▁");
+}
+
+#[test]
 fn chaosgraph_tab_lists_nodes() {
     let (_dir, path) = seed();
     let mut app = App::new(path, 2).unwrap();
@@ -245,4 +537,113 @@ fn compare_view_renders_marked_runs() {
     let text = buffer_text(&term);
     assert!(text.contains("Compare"));
     assert!(text.contains("Duration trend"));
+}
+
+#[test]
+fn every_status_a_run_ends_with_has_its_own_pill_in_the_tone_of_its_verdict() {
+    let statuses = every_run_status();
+    let (_dir, path) = seed_every_status(&statuses);
+    let mut app = App::new(path, 2).unwrap();
+    // The selected row is drawn in the colours of the selection.
+    app.table_state.select(None);
+
+    let mut term = Terminal::new(TestBackend::new(140, 30)).unwrap();
+    term.draw(|f| ui::render(&mut app, f)).unwrap();
+
+    let mut drawn = Vec::new();
+    let mut wanted = Vec::new();
+    for status in &statuses {
+        let pill = match status {
+            ExperimentStatus::Completed => "PASS".to_string(),
+            ExperimentStatus::Failed => "FAIL".to_string(),
+            other => other.to_string().to_ascii_uppercase(),
+        };
+        // A run that passed is green, a run that failed is red, and a run
+        // that proves nothing either way is grey.
+        let tone = match tumult_lake::run_verdict(&status.to_string()) {
+            Some(RunVerdict::Pass) => Color::Green,
+            Some(RunVerdict::Fail) => Color::Red,
+            Some(RunVerdict::NoEvidence) => Color::Gray,
+            None => panic!("{status} has no verdict"),
+        };
+        let title = format!("Run that ended {status}");
+        drawn.push((status, colour_on_line(&term, &title, &pill)));
+        wanted.push((status, Some(tone)));
+    }
+    assert_eq!(drawn, wanted);
+    assert!(!buffer_text(&term).contains("UNKNOWN"));
+}
+
+#[test]
+fn the_compare_view_shows_the_whole_pill_of_every_marked_run() {
+    let statuses = every_run_status();
+    let (_dir, path) = seed_every_status(&statuses);
+    let mut app = App::new(path, 2).unwrap();
+    for _ in &statuses {
+        app.on_key(key(KeyCode::Char(' ')));
+        app.on_key(key(KeyCode::Down));
+    }
+    app.on_key(key(KeyCode::Char('c')));
+    assert_eq!(app.view, View::Compare);
+    assert_eq!(app.marked_experiments().len(), statuses.len());
+
+    let mut term = Terminal::new(TestBackend::new(140, 30)).unwrap();
+    term.draw(|f| ui::render(&mut app, f)).unwrap();
+
+    // The longest pill has eleven letters: the column must not cut it.
+    assert_eq!(
+        colour_on_line(&term, "Run that ended interrupted", "INTERRUPTED"),
+        Some(Color::Gray),
+        "{}",
+        buffer_text(&term)
+    );
+}
+
+#[test]
+fn the_timeline_draws_each_step_in_the_tone_of_how_it_ended() {
+    let (_dir, path) = seed_every_status(&[ExperimentStatus::Completed]);
+    let mut app = App::new(path, 2).unwrap();
+    app.on_key(key(KeyCode::Enter));
+    assert_eq!(app.view, View::Detail);
+
+    let mut term = Terminal::new(TestBackend::new(140, 30)).unwrap();
+    term.draw(|f| ui::render(&mut app, f)).unwrap();
+
+    // The bar of a step is the first thing on its line.
+    let bars: Vec<(String, Option<Color>)> = every_step_status()
+        .iter()
+        .map(|status| {
+            let step = format!("step-{status}");
+            let bar = colour_on_line(&term, &step, "\u{2588}");
+            (step, bar)
+        })
+        .collect();
+    assert_eq!(
+        bars,
+        [
+            ("step-succeeded".to_string(), Some(Color::Green)),
+            ("step-failed".to_string(), Some(Color::Red)),
+            ("step-timeout".to_string(), Some(Color::Red)),
+            ("step-skipped".to_string(), Some(Color::Gray)),
+        ],
+        "{}",
+        buffer_text(&term)
+    );
+}
+
+#[test]
+fn every_status_a_step_ends_with_is_known_to_the_timeline() {
+    let (_dir, path) = seed_every_status(&[ExperimentStatus::Completed]);
+
+    let steps = data::load_activities(&path, "run-completed").unwrap();
+
+    assert_eq!(steps.len(), every_step_status().len());
+    for step in &steps {
+        assert_ne!(
+            StatusKind::of_step(&step.status),
+            StatusKind::OTHER,
+            "{}",
+            step.status
+        );
+    }
 }

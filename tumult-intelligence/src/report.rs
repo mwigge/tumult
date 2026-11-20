@@ -1,21 +1,25 @@
 //! Deterministic heuristic reporting derived from the analytics store and
 //! plugin catalog.
 
-use std::collections::HashSet;
 use std::fmt::Write as _;
 use std::path::Path;
 
+use tumult_graph::AvailableAction;
+
+/// The coverage, failure and staleness report over the store at
+/// `store_path` and the plugin catalog. A catalog action counts as tested
+/// when a stored run injected it (see [`tumult_graph::TestedFaults`]).
 #[must_use]
 pub fn heuristic_report(store_path: &Path) -> String {
     let mut output = String::new();
     let available_plugins = tumult_plugin::discovery::discover_all_plugins().unwrap_or_default();
-    let available_actions: Vec<String> = available_plugins
+    let available_actions: Vec<AvailableAction> = available_plugins
         .iter()
         .flat_map(|plugin| {
             plugin
                 .actions
                 .iter()
-                .map(move |action| format!("{}::{}", plugin.name, action.name))
+                .map(move |action| AvailableAction::new(&plugin.name, &action.name))
         })
         .collect();
 
@@ -31,7 +35,7 @@ pub fn heuristic_report(store_path: &Path) -> String {
         .ok();
         writeln!(output, "Available actions: {}", available_actions.len()).ok();
         for action in available_actions.iter().take(15) {
-            writeln!(output, "  - {action}").ok();
+            writeln!(output, "  - {}::{}", action.plugin, action.action).ok();
         }
         return output;
     }
@@ -43,47 +47,7 @@ pub fn heuristic_report(store_path: &Path) -> String {
         return output;
     };
 
-    let tested_actions = store
-        .query("SELECT DISTINCT name FROM activity_results WHERE activity_type = 'action'")
-        .unwrap_or_default();
-    let tested_set: HashSet<String> = tested_actions
-        .into_iter()
-        .filter_map(|row| row.into_iter().next())
-        .collect();
-    let untested: Vec<&String> = available_actions
-        .iter()
-        .filter(|action| {
-            let short_name = action.split("::").nth(1).unwrap_or(action);
-            !tested_set.contains(short_name)
-        })
-        .collect();
-
-    let tested_count = available_actions.len().saturating_sub(untested.len());
-    let coverage = if available_actions.is_empty() {
-        0.0
-    } else {
-        #[allow(clippy::cast_precision_loss)]
-        {
-            (tested_count as f64 / available_actions.len() as f64) * 100.0
-        }
-    };
-    writeln!(
-        output,
-        "Coverage: {tested_count}/{} actions tested ({coverage:.0}%)",
-        available_actions.len()
-    )
-    .ok();
-
-    if !untested.is_empty() {
-        writeln!(output).ok();
-        writeln!(output, "Untested actions ({}):", untested.len()).ok();
-        for action in untested.iter().take(15) {
-            writeln!(output, "  - {action}").ok();
-        }
-        if untested.len() > 15 {
-            writeln!(output, "  ... and {} more", untested.len() - 15).ok();
-        }
-    }
+    write_coverage(&mut output, &store, &available_actions);
 
     let failures = store
         .query(
@@ -120,6 +84,54 @@ pub fn heuristic_report(store_path: &Path) -> String {
     }
 
     output
+}
+
+/// The coverage section: how many of `available` a stored run injected,
+/// and the first of the others. A store whose graph cannot be read says so.
+fn write_coverage(
+    output: &mut String,
+    store: &tumult_lake::AnalyticsStore,
+    available: &[AvailableAction],
+) {
+    let tested = match tumult_query::tested_faults(store) {
+        Ok(tested) => tested,
+        Err(e) => {
+            writeln!(output, "Coverage could not be read: {e}").ok();
+            return;
+        }
+    };
+    let untested: Vec<&AvailableAction> = available
+        .iter()
+        .filter(|action| !tested.contains(action))
+        .collect();
+
+    let tested_count = available.len().saturating_sub(untested.len());
+    let coverage = if available.is_empty() {
+        0.0
+    } else {
+        #[allow(clippy::cast_precision_loss)]
+        {
+            (tested_count as f64 / available.len() as f64) * 100.0
+        }
+    };
+    writeln!(
+        output,
+        "Coverage: {tested_count}/{} actions tested ({coverage:.0}%)",
+        available.len()
+    )
+    .ok();
+
+    if untested.is_empty() {
+        return;
+    }
+    writeln!(output).ok();
+    writeln!(output, "Untested actions ({}):", untested.len()).ok();
+    for action in untested.iter().take(15) {
+        writeln!(output, "  - {}::{}", action.plugin, action.action).ok();
+    }
+    if untested.len() > 15 {
+        writeln!(output, "  ... and {} more", untested.len() - 15).ok();
+    }
 }
 
 pub(crate) fn plugin_catalog() -> String {

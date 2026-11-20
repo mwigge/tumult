@@ -11,31 +11,47 @@
 pub const MIGRATE_V5_RUN_TABLES_INDEX_FREE: &str = "
 BEGIN TRANSACTION;
 CREATE TABLE runs_v5 (
-    id              VARCHAR NOT NULL,
-    registry_id     VARCHAR NOT NULL,
-    state           VARCHAR NOT NULL,
-    params_json     JSON,
-    experiment_id   VARCHAR,
+    id VARCHAR NOT NULL,
+    registry_id VARCHAR NOT NULL,
+    state VARCHAR NOT NULL,
+    params_json JSON,
+    experiment_id VARCHAR,
     rollback_status VARCHAR,
-    error           VARCHAR,
-    queued_at_ns    BIGINT NOT NULL,
-    started_at_ns   BIGINT,
-    ended_at_ns     BIGINT
+    error VARCHAR,
+    queued_at_ns BIGINT NOT NULL,
+    started_at_ns BIGINT,
+    ended_at_ns BIGINT
 );
-INSERT INTO runs_v5 SELECT id, registry_id, state, params_json, experiment_id,
-    rollback_status, error, queued_at_ns, started_at_ns, ended_at_ns FROM runs;
+INSERT INTO runs_v5 SELECT
+    id,
+    registry_id,
+    state,
+    params_json,
+    experiment_id,
+    rollback_status,
+    error,
+    queued_at_ns,
+    started_at_ns,
+    ended_at_ns
+FROM runs;
 DROP TABLE runs;
 ALTER TABLE runs_v5 RENAME TO runs;
 CREATE TABLE run_registry_v5 (
-    id               VARCHAR NOT NULL,
-    name             VARCHAR NOT NULL,
-    definition_toon  VARCHAR NOT NULL,
-    content_hash     VARCHAR NOT NULL,
+    id VARCHAR NOT NULL,
+    name VARCHAR NOT NULL,
+    definition_toon VARCHAR NOT NULL,
+    content_hash VARCHAR NOT NULL,
     registered_at_ns BIGINT NOT NULL,
-    registered_by    VARCHAR
+    registered_by VARCHAR
 );
-INSERT INTO run_registry_v5 SELECT id, name, definition_toon, content_hash,
-    registered_at_ns, registered_by FROM run_registry;
+INSERT INTO run_registry_v5 SELECT
+    id,
+    name,
+    definition_toon,
+    content_hash,
+    registered_at_ns,
+    registered_by
+FROM run_registry;
 DROP TABLE run_registry;
 ALTER TABLE run_registry_v5 RENAME TO run_registry;
 DROP INDEX IF EXISTS idx_run_audit_run;

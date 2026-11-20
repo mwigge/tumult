@@ -1,0 +1,39 @@
+# Mutation tests (cargo-mutants). The tool changes the code one small step at
+# a time and runs the tests of the crate. A change that no test notices is a
+# gap in the tests. See docs/guides/testing.md.
+
+# Test code and test helpers are not mutated.
+exclude_globs = [
+    "**/tests/**",
+    "**/tests.rs",
+    "**/*_tests.rs",
+    "tumult-test-utils/**",
+    "demo/**",
+]
+
+# Mutants no test can catch, each with its reason.
+exclude_re = [
+    # The Windows twins of the script executor are not compiled on Linux,
+    # so a change to them cannot fail a test there. The POSIX functions of
+    # the same name return a type with no default: the same change does not
+    # compile for them.
+    "tumult-plugin/src/executor\\.rs.*replace execute_script(_until)? -> Result<ScriptResult, ExecutorError>",
+    # A list item closes the objects at its own indent and deeper. With `<=`
+    # it would keep an object at its own indent open. A document that
+    # decodes has none: the decoder wants the items of a list two levels
+    # deeper than the last key before them, and `first_duplicate` only reads
+    # documents that decode.
+    "tumult-core/src/engine/duplicate_keys\\.rs.*replace < with <= in enter_line",
+    # Two equal values differ by exactly 0, and a change that shows as 0
+    # returns "same as the period before" before the sign is read. So `>=`
+    # gives the same text as `>` for every input.
+    "tumult-report/src/show\\.rs.*replace > with >= in change",
+    # The guards skip an insert of no rows. An insert of no rows writes
+    # nothing and succeeds (a journal with no objectives takes that path),
+    # so `>=` stores the same rows as `>`.
+    "tumult-lake/src/duckdb_store/ingest\\.rs.*replace > with >= in ingest_journal_inner",
+    # The twins of is_proxyd_process for other systems than Linux are not
+    # compiled on Linux. The lines pin them, so the Linux one is still
+    # mutated; if a line moves, the twin shows as missed again.
+    "tumult-net/src/actions\\.rs:(484|490):5: replace is_proxyd_process -> bool",
+]

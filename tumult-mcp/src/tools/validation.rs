@@ -48,6 +48,11 @@ const FORBIDDEN_SQL_FUNCTIONS: &[&str] = &[
 /// false positive (a literal naming such a function) for never missing a
 /// smuggled call — the safe direction for a viewer-facing query tool.
 ///
+/// This list is a second layer. It misses calls like `read_csv_auto` or a
+/// quoted path in `FROM`, so the analyze tools also turn off the external
+/// access of their store
+/// ([`tumult_lake::AnalyticsStore::deny_external_access`]).
+///
 /// # Errors
 ///
 /// Returns [`ToolError::InvalidInput`] if the query does not start with

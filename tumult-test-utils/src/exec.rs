@@ -15,12 +15,17 @@ use std::process::Command;
 /// the copy in the other child is still open. A descriptor that never exists
 /// in the test process cannot be inherited from it.
 ///
+/// The shell gets a `PATH` of its own: another test of the same binary may
+/// point the `PATH` of the process elsewhere for a moment, and the shell would
+/// then not find `chmod`.
+///
 /// # Panics
 ///
 /// When `sh` cannot be started or cannot write the file.
 pub fn write_executable(path: impl AsRef<Path>, content: &str) {
     let path = path.as_ref();
     let status = Command::new("/bin/sh")
+        .env("PATH", "/usr/bin:/bin")
         .args(["-c", r#"printf '%s' "$2" > "$1" && chmod 755 "$1""#, "sh"])
         .arg(path)
         .arg(content)
@@ -55,6 +60,22 @@ mod tests {
         write_executable(&path, content);
 
         assert_eq!(std::fs::read_to_string(&path).unwrap(), content);
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o755);
+    }
+
+    /// Another test of the same binary may point `PATH` elsewhere for a
+    /// moment. The shell that writes the file finds its tools all the same.
+    #[test]
+    fn write_executable_does_not_depend_on_the_path_of_the_test_process() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("tool");
+        {
+            let mut env = crate::EnvGuard::lock();
+            env.set("PATH", dir.path());
+            write_executable(&path, "#!/bin/sh\nexit 0\n");
+        }
+
         let mode = std::fs::metadata(&path).unwrap().permissions().mode();
         assert_eq!(mode & 0o777, 0o755);
     }

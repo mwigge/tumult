@@ -132,10 +132,11 @@ fn shell_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\\''"))
 }
 
-/// Native (compiled-in Rust) plugin names — mirrors the CLI's composition-root
-/// registry (`tumult-cli`'s `exec::native`). Every other plugin name is a
+/// Native (compiled-in Rust) plugin names: the plugins of the shared
+/// composition root, `tumult_exec::native_registry` (a test in `tumult-mcp`,
+/// which sees both, fails when they differ). Every other plugin name is a
 /// script plugin, dispatched through the discovery search paths at runtime.
-const NATIVE_PLUGINS: [&str; 5] = [
+pub const NATIVE_PLUGINS: [&str; 5] = [
     "tumult-kubernetes",
     "tumult-ssh",
     "tumult-net",

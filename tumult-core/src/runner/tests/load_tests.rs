@@ -461,3 +461,58 @@ fn an_interrupted_method_aborts_the_load_before_the_rollbacks() {
     );
     assert!(journal.load_result.is_some(), "the load's evidence is kept");
 }
+
+/// A load tool that cannot be started, as when its binary is missing.
+pub(super) struct NoStart;
+
+/// What [`NoStart`] says when it is asked to start.
+pub(super) const NO_START: &str = "failed to start oha (oha): No such file or directory";
+
+impl LoadExecutor for NoStart {
+    fn start(&self, _config: &LoadConfig) -> Result<LoadHandle, String> {
+        Err(NO_START.into())
+    }
+
+    fn stop(&self, _handle: LoadHandle) -> Result<LoadResult, String> {
+        Err("a load that never started has nothing to stop".into())
+    }
+}
+
+/// A declared load runs with the adapter of the tool it names when the run
+/// is given no load executor.
+#[cfg(unix)]
+#[test]
+fn a_declared_load_runs_with_the_adapter_of_its_tool() {
+    let mut env = tumult_test_utils::EnvGuard::lock();
+    let tools = tempfile::tempdir().expect("tools directory");
+    // A stand-in for oha: one window of 40 answered requests.
+    let summary = r#"{"summary":{"successRate":1.0,"total":1.0,"slowest":0.2,"fastest":0.01,"average":0.05,"requestsPerSec":40.0,"totalData":1,"sizePerRequest":1,"sizePerSec":1},"responseTimeHistogram":{},"latencyPercentiles":{"p50":0.02,"p95":0.08,"p99":0.1},"rps":{},"details":{},"statusCodeDistribution":{"200":40},"errorDistribution":{}}"#;
+    let oha = tumult_test_utils::fake_bin(
+        tools.path(),
+        "oha",
+        &format!("[ \"$1\" = \"--version\" ] && exit 0\nprintf '%s' '{summary}'"),
+    );
+    env.set("TUMULT_OHA_BINARY", &oha);
+    let mut exp = minimal_experiment();
+    exp.load = Some(LoadConfig {
+        tool: LoadTool::Oha,
+        script: std::path::PathBuf::from("http://127.0.0.1:9/health"),
+        vus: Some(1),
+        duration_s: Some(1.0),
+        thresholds: HashMap::new(),
+        profile: None,
+    });
+    let executor: Arc<dyn ActivityExecutor> = Arc::new(MockExecutor::always_succeed());
+
+    let run = run_experiment(
+        &exp,
+        &executor,
+        &Arc::new(ControlRegistry::new()),
+        &RunConfig::default(),
+    );
+
+    let journal = run.expect("the run has a load executor");
+    let load = journal.load_result.expect("the load left its result");
+    assert_eq!(load.tool, LoadTool::Oha);
+    assert_eq!(load.total_requests, 40);
+}

@@ -3,7 +3,7 @@
 For guided browser lessons with an optional AI tutor, start with the
 [Chaos Lab](../chaos-lab/README.md). It needs only Docker to run the experiments.
 
-Four composable bundles for a complete chaos engineering lab.
+Four composable bundles for a complete Tumult lab.
 
 ## Pre-built Images
 
@@ -16,7 +16,7 @@ docker pull ghcr.io/mwigge/tumult-mcp:latest     # MCP server (HTTP entrypoint)
 
 Both images contain `tumult`, `tumult-mcp` and `tumult-net-proxyd`, plus 11
 script plugins, example experiments and GameDay definitions. The repository has
-32 workspace crates; these images do not include `tumultd` or its web UI.
+35 workspace crates; these images do not include `tumultd` or its web UI.
 With the bundled manifests, `tumult discover` lists 16 plugins (11 script and
 5 native) and 91 actions (56 script actions plus 35 native functions, including
 probes). Provider tools, permissions and the host OS determine what can execute.
@@ -183,16 +183,19 @@ tumult run experiment.toon
 | `docker-compose.tumult.yml` | Tumult MCP server |
 | `docker-compose.aqe.yml` | Agentic QE Fleet |
 | `docker-compose.kronika.yml` | tumultd demo stack (daemon + web UI + seed + report) |
-| `docker-compose.kronika-collector.yml` | tumultd dev pair with OTel Collector (`otel-collector-kronika.yaml`) |
+| `docker-compose.kronika-collector.yml` | Optional dev OTel Collector that forwards to a tumultd on the host (`otel-collector-kronika.yaml`) |
 | `docker-compose.grafana-full.yml` | Grafana stack reference: Tempo + Mimir + Loki + Grafana (see `docs/guides/grafana-stack.md`) |
+| `docker-compose.demo.yml` | One-command demo stack for `make demo` (see `demo/README.md`) |
 | `Dockerfile.tumult` | CLI + MCP image (both binaries) |
 | `Dockerfile.tumultd` | tumultd image (web UI build + daemon + CLI) |
 | `Dockerfile.tumult-mcp` | MCP server entrypoint variant |
 | `Dockerfile.sshd` | SSH test target |
+| `Dockerfile.demo-app`, `Dockerfile.demo-control-panel`, `Dockerfile.demo-traffic` | Images of the demo stack |
 | `tumult-collector/config.yaml` | OTel Collector pipeline config |
 | `init-postgres.sql` | PostgreSQL test schema |
 | `prometheus.yml` | Prometheus scrape config (classic) |
 | `grafana/` | Grafana provisioning (classic) |
+| `grafana-full/` | Tempo, Mimir and Loki config for `docker-compose.grafana-full.yml` |
 | `signoz/` | SigNoz dashboard definitions |
 
 ## Environment Variables

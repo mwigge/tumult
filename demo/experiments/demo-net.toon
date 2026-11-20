@@ -2,6 +2,11 @@ title: Demo — network latency via the tumult-net userspace proxy
 description: Stand a native tokio-netem proxy in front of demo-app and prove requests still succeed through the delayed path
 
 tags[4]: demo, network, resilience, compliance
+kind: chaos
+target:
+  system: demo-app
+  technology: http
+  environment: demo
 
 regulatory:
   frameworks[1]: DORA
@@ -24,7 +29,7 @@ steady_state_hypothesis:
         type: regex
         pattern: "ok"
 
-method[2]:
+method[3]:
   - name: inject-latency
     activity_type: action
     provider:
@@ -48,6 +53,14 @@ method[2]:
     tolerance:
       type: regex
       pattern: "ok"
+  - name: remove-latency
+    activity_type: action
+    provider:
+      type: native
+      plugin: tumult-net
+      function: stop_proxy
+      arguments:
+        listen: 0.0.0.0:18080
 
 rollbacks[1]:
   - name: stop-proxy

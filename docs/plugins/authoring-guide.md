@@ -25,31 +25,23 @@ tumult-nginx/
 
 The manifest file (`plugin.toon`) declares the plugin's identity and capabilities:
 
-```json
-{
-  "name": "tumult-nginx",
-  "version": "0.1.0",
-  "description": "Nginx chaos actions and probes",
-  "actions": [
-    {
-      "name": "kill-worker",
-      "script": "actions/kill-worker.sh",
-      "description": "Kill an nginx worker process"
-    },
-    {
-      "name": "reload-config",
-      "script": "actions/reload-config.sh",
-      "description": "Force nginx config reload"
-    }
-  ],
-  "probes": [
-    {
-      "name": "connection-count",
-      "script": "probes/connection-count.sh",
-      "description": "Count active nginx connections"
-    }
-  ]
-}
+```toon
+name: tumult-nginx
+version: 0.1.0
+description: Nginx chaos actions and probes
+
+actions[2]:
+  - name: kill-worker
+    script: actions/kill-worker.sh
+    description: Kill an nginx worker process
+  - name: reload-config
+    script: actions/reload-config.sh
+    description: Force nginx config reload
+
+probes[1]:
+  - name: connection-count
+    script: probes/connection-count.sh
+    description: Count active nginx connections
 ```
 
 See `docs/plugins/plugin-manifest-spec.md` for the full specification.
@@ -85,8 +77,8 @@ Arguments are passed as environment variables with the `TUMULT_` prefix. Keys ar
 ### Example Action Script
 
 ```bash
-#!/bin/bash
-set -euo pipefail
+#!/bin/sh
+set -eu
 
 # Receives: TUMULT_WORKER_PID or discovers one
 WORKER_PID="${TUMULT_WORKER_PID:-$(pgrep -f 'nginx: worker' | head -1)}"
@@ -103,8 +95,8 @@ echo "killed nginx worker pid=$WORKER_PID"
 ### Example Probe Script
 
 ```bash
-#!/bin/bash
-set -euo pipefail
+#!/bin/sh
+set -eu
 
 # Count active connections from nginx stub_status
 CONNECTIONS=$(curl -s http://localhost:8080/nginx_status | grep 'Active connections' | awk '{print $3}')
@@ -121,7 +113,7 @@ echo "$CONNECTIONS"
 
 Tumult searches for plugins in this order:
 
-1. `./plugins/` — local to the experiment directory
+1. `./plugins/` — in the directory you run `tumult` from
 2. `~/.tumult/plugins/` — user-global
 3. `TUMULT_PLUGIN_PATH` environment variable — colon-separated custom paths
 
@@ -129,7 +121,7 @@ First-found-wins: if two plugins share the same name, the one discovered first i
 
 ## Testing Locally
 
-Place your plugin directory in `./plugins/` next to your experiment file:
+Place your plugin directory in `./plugins/` next to your experiment file, and run `tumult` from that directory:
 
 ```
 my-project/
@@ -166,7 +158,7 @@ There is no central registry. Share your plugin by:
 
 ## Best Practices
 
-- Always use `set -euo pipefail` in bash scripts
+- Always use `set -eu`. Tumult runs each script with `/bin/sh`, whatever its first line names
 - Write idempotent actions where possible (running twice produces the same result)
 - Include a `README.md` describing what the plugin does and what arguments it accepts
 - Test scripts independently before wrapping in a plugin manifest

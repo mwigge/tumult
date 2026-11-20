@@ -249,8 +249,8 @@ pub(crate) fn migrate(conn: &Connection) -> Result<(), duckdb::Error> {
     for amendment in schema::AMEND_TABLES {
         conn.execute_batch(amendment)?;
     }
-    for view in schema::CREATE_VIEWS {
-        conn.execute_batch(view)?;
+    for view in schema::create_views() {
+        conn.execute_batch(&view)?;
     }
     // Static `ComplianceArticle` nodes from the citation registry:
     // deterministic and run-independent, seeded at migrate time.

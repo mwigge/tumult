@@ -30,7 +30,7 @@ actions[10]:
     description: Pause container processes for a duration
   - name: stop-container
     script: actions/stop-container.sh
-    description: Stop container with grace period and restart
+    description: Stop container with grace period and optional restart
   - name: stress-container
     script: actions/stress-container.sh
     description: CPU/memory/IO stress injection inside container

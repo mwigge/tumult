@@ -171,7 +171,7 @@ async fn seed_shared_system(srv: &TestServer) {
     .await;
 }
 
-fn node<'a>(body: &'a Value, id: &str) -> Option<&'a Value> {
+pub(crate) fn node<'a>(body: &'a Value, id: &str) -> Option<&'a Value> {
     body["nodes"]
         .as_array()
         .unwrap()
@@ -440,6 +440,40 @@ async fn scoped_principal_never_sees_another_environment() {
     .await;
     assert!(node(&around, "svc:checkout").is_some());
     assert_eq!(leaked(&around), Vec::<String>::new());
+}
+
+#[tokio::test]
+async fn a_run_that_was_aborted_or_interrupted_is_neither_a_run_nor_a_failure_of_its_system() {
+    let srv = spawn_server().await;
+    let ended = |id: &str, status: &str, age_s: i64| SpanRow {
+        ts_ns: now_ns() - age_s * NS,
+        outcome_status: Some(status.into()),
+        ..run_span(id, "gate-check", "gate", "demo")
+    };
+    let rows = vec![
+        ended("gate-1", "completed", 900),
+        ended("gate-2", "aborted", 600),
+        ended("gate-3", "Interrupted", 300),
+    ];
+    exec_write(&srv, move |w| {
+        w.insert_spans(&rows).map_err(|e| e.to_string())
+    })
+    .await;
+
+    let (status, body) = get(&srv.base, "/api/starmap").await;
+
+    assert_eq!(status, 200, "{body}");
+    let gate = node(&body, "sys:demo/gate").expect("tested system");
+    assert_eq!(
+        (&gate["evidence"]["runs"], &gate["evidence"]["failed"]),
+        (&json!(1), &json!(0)),
+        "{gate}"
+    );
+    assert!(edge(&body, "sys:demo/gate|tested_by|def:name/gate-check").is_some());
+    assert!(
+        edge(&body, "def:name/gate-check|broke|sys:demo/gate").is_none(),
+        "{body}"
+    );
 }
 
 #[tokio::test]

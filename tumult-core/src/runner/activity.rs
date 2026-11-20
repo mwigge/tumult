@@ -16,12 +16,17 @@ use opentelemetry::KeyValue;
 use tokio_util::sync::CancellationToken;
 
 use super::telemetry::{
-    current_span_id, current_trace_id, epoch_nanos_now, fault_attributes, plugin_name,
+    current_span_id, current_trace_id, epoch_nanos_now, fault_attributes, plugin_name, probe_end,
     set_span_status_from_outcome, target_attributes,
 };
-use super::{ActivityExecutor, TRACER_NAME};
+use super::{ActivityExecutor, ActivityOutcome, TRACER_NAME};
 
-/// Evaluate a steady-state hypothesis by running its probes.
+/// The error of a probe that ran and read a value outside its tolerance.
+pub(crate) const OUTSIDE_TOLERANCE: &str = "the output is outside the tolerance";
+
+/// Evaluate a steady-state hypothesis by running its probes. A probe that
+/// panics is a failed probe: the hypothesis is not met, and the run goes
+/// on to its rollbacks and its journal.
 pub(crate) fn evaluate_hypothesis(
     hypothesis: &Hypothesis,
     executor: &dyn ActivityExecutor,
@@ -31,13 +36,12 @@ pub(crate) fn evaluate_hypothesis(
     let mut all_met = true;
 
     for probe in &hypothesis.probes {
-        let result = execute_single_activity(probe, executor, controls, None);
+        // The step is judged against its tolerance where it runs.
+        let result = contained(probe, "hypothesis probe", || {
+            execute_single_activity(probe, executor, controls, None)
+        });
 
-        if !probe_outcome_ok(
-            probe,
-            result.status == ActivityStatus::Succeeded,
-            result.output.as_deref(),
-        ) {
+        if result.status != ActivityStatus::Succeeded {
             all_met = false;
         }
 
@@ -73,6 +77,37 @@ pub(crate) fn probe_outcome_ok(probe: &Activity, success: bool, output: Option<&
     evaluate_tolerance(&value, tolerance)
 }
 
+/// Judge the outcome of a step. A probe that ran and read a value outside
+/// its tolerance did not succeed: its span, its metric and its result all
+/// say so. The output is kept, so a reader sees what the probe read.
+fn judged(activity: &Activity, outcome: ActivityOutcome) -> ActivityOutcome {
+    if activity.activity_type != ActivityType::Probe || !outcome.success {
+        return outcome;
+    }
+    if probe_outcome_ok(activity, true, outcome.output.as_deref()) {
+        return outcome;
+    }
+    ActivityOutcome {
+        success: false,
+        error: Some(OUTSIDE_TOLERANCE.into()),
+        ..outcome
+    }
+}
+
+/// Hand a step to the executor. A step that runs under a token can be ended
+/// by it: a halt or a stop does not wait for the step. Rollbacks and the
+/// probes of the steady state run without one.
+fn dispatch(
+    activity: &Activity,
+    executor: &dyn ActivityExecutor,
+    stop: Option<&CancellationToken>,
+) -> ActivityOutcome {
+    match stop {
+        Some(stop) => executor.execute_until(activity, stop),
+        None => executor.execute(activity),
+    }
+}
+
 /// Execute a single activity with `OTel` instrumentation.
 ///
 /// Extracted so both foreground and background paths share the same logic.
@@ -82,31 +117,11 @@ fn execute_single_activity(
     controls: &ControlRegistry,
     cancellation: Option<&CancellationToken>,
 ) -> ActivityResult {
-    let tracer = opentelemetry::global::tracer(TRACER_NAME);
-
     controls.emit(&LifecycleEvent::BeforeActivity {
         name: activity.name.clone(),
     });
 
-    let span_name = match activity.activity_type {
-        ActivityType::Action => "resilience.action",
-        ActivityType::Probe => "resilience.probe",
-    };
-    let mut attrs = vec![
-        KeyValue::new("resilience.action.name", activity.name.clone()),
-        KeyValue::new(
-            "resilience.activity.type",
-            activity.activity_type.to_string(),
-        ),
-    ];
-    attrs.extend(target_attributes(activity));
-    attrs.extend(fault_attributes(activity));
-    let span = tracer
-        .span_builder(span_name.to_string())
-        .with_attributes(attrs)
-        .start(&tracer);
-    let cx = opentelemetry::Context::current_with_span(span);
-    let _guard = cx.attach();
+    let _span = enter_step_span(activity);
 
     let started_at_ns = epoch_nanos_now();
     let start = std::time::Instant::now();
@@ -125,28 +140,7 @@ fn execute_single_activity(
             span_id: current_span_id(),
         };
     }
-    let outcome = executor.execute(activity);
-    set_span_status_from_outcome(outcome.success, outcome.error.as_deref());
-
-    // Per-operation metrics: every action and probe is counted and timed,
-    // tagged with the plugin serving it and the outcome.
-    let metrics = tumult_otel::TumultMetrics::global();
-    match activity.activity_type {
-        ActivityType::Action => tumult_otel::instrument::record_action(
-            metrics,
-            &plugin_name(activity),
-            &activity.name,
-            start,
-            outcome.success,
-        ),
-        ActivityType::Probe => tumult_otel::instrument::record_probe(
-            metrics,
-            &plugin_name(activity),
-            &activity.name,
-            start,
-            outcome.success,
-        ),
-    }
+    let outcome = run_judged(activity, executor, cancellation, start);
 
     let result = make_result(ResultParams {
         activity,
@@ -166,6 +160,96 @@ fn execute_single_activity(
     result
 }
 
+/// Take one sample of a hypothesis probe, while the method runs or after
+/// it. The sample is judged, traced and counted as a step is, and a probe
+/// that panics is a failed sample. A sample fires no control event, and a
+/// stop of the run does not end it.
+pub(crate) fn sample_probe(probe: &Activity, executor: &dyn ActivityExecutor) -> ActivityResult {
+    contained(probe, "probe sample", || {
+        let span = enter_step_span(probe);
+        let start = std::time::Instant::now();
+        let started_at_ns = epoch_nanos_now();
+        let outcome = run_judged(probe, executor, None, start);
+        let trace_id = current_trace_id();
+        let span_id = current_span_id();
+        drop(span);
+        // Probe durations never exceed u64::MAX milliseconds (~585M years).
+        #[allow(clippy::cast_possible_truncation)]
+        let elapsed = start.elapsed().as_millis() as u64;
+        make_result(ResultParams {
+            activity: probe,
+            started_at_ns,
+            duration_ms: elapsed,
+            success: outcome.success,
+            output: outcome.output,
+            error: outcome.error,
+            trace_id,
+            span_id,
+        })
+    })
+}
+
+/// Open the span of a step, and make it the current span of this thread
+/// until the guard drops. Each run of a step, a sample too, is its own
+/// span in the trace of the run.
+fn enter_step_span(activity: &Activity) -> opentelemetry::ContextGuard {
+    let tracer = opentelemetry::global::tracer(TRACER_NAME);
+    let span_name = match activity.activity_type {
+        ActivityType::Action => "resilience.action",
+        ActivityType::Probe => "resilience.probe",
+    };
+    let mut attrs = vec![
+        KeyValue::new("resilience.action.name", activity.name.clone()),
+        KeyValue::new(
+            "resilience.activity.type",
+            activity.activity_type.to_string(),
+        ),
+    ];
+    attrs.extend(target_attributes(activity));
+    attrs.extend(fault_attributes(activity));
+    let span = tracer
+        .span_builder(span_name.to_string())
+        .with_attributes(attrs)
+        .start(&tracer);
+    opentelemetry::Context::current_with_span(span).attach()
+}
+
+/// Hand a step to the executor and judge what it did. The current span and
+/// the metric of the step say what the returned outcome says. `start` is
+/// when the step started, for its metric.
+fn run_judged(
+    activity: &Activity,
+    executor: &dyn ActivityExecutor,
+    stop: Option<&CancellationToken>,
+    start: std::time::Instant,
+) -> ActivityOutcome {
+    let ran = dispatch(activity, executor, stop);
+    let plugin_ran = ran.success;
+    let outcome = judged(activity, ran);
+    set_span_status_from_outcome(outcome.success, outcome.error.as_deref());
+
+    // Per-operation metrics: every action and probe is counted and timed,
+    // tagged with the plugin serving it and the outcome.
+    let metrics = tumult_otel::TumultMetrics::global();
+    match activity.activity_type {
+        ActivityType::Action => tumult_otel::instrument::record_action(
+            metrics,
+            &plugin_name(activity),
+            &activity.name,
+            start,
+            outcome.success,
+        ),
+        ActivityType::Probe => tumult_otel::instrument::record_probe(
+            metrics,
+            &plugin_name(activity),
+            &activity.name,
+            start,
+            probe_end(plugin_ran, outcome.success),
+        ),
+    }
+    outcome
+}
+
 /// Execute a foreground activity, containing any provider panic.
 ///
 /// Foreground activities run on the scoped-thread closure itself, so an
@@ -180,15 +264,26 @@ fn execute_foreground_activity(
     controls: &ControlRegistry,
     cancellation: Option<&CancellationToken>,
 ) -> ActivityResult {
-    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+    contained(activity, "foreground activity", || {
         execute_single_activity(activity, executor, controls, cancellation)
-    }));
+    })
+}
+
+/// Run `step` of `activity`, and turn a panic in it into a `Failed` result
+/// with the panic message as its error. `what` names the step in the log
+/// line.
+fn contained(
+    activity: &Activity,
+    what: &str,
+    step: impl FnOnce() -> ActivityResult,
+) -> ActivityResult {
+    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(step));
     outcome.unwrap_or_else(|panic| {
         let message = panic_message(&*panic);
         tracing::error!(
             activity = %activity.name,
             panic = %message,
-            "foreground activity panicked"
+            "{what} panicked"
         );
         ActivityResult {
             name: activity.name.clone(),
@@ -410,7 +505,15 @@ pub(super) fn wait_pause(seconds: Option<f64>, token: Option<&CancellationToken>
     let Some(seconds) = seconds.filter(|s| *s > 0.0 && s.is_finite()) else {
         return !is_cancelled(token);
     };
-    let duration = std::time::Duration::from_secs_f64(seconds);
+    // Validation refuses a pause longer than a duration can hold. For a
+    // caller that does not validate, it is skipped, as an infinite one is.
+    let duration = match std::time::Duration::try_from_secs_f64(seconds) {
+        Ok(duration) => duration,
+        Err(error) => {
+            tracing::warn!(pause_s = seconds, error = %error, "pause skipped");
+            return !is_cancelled(token);
+        }
+    };
     let started = std::time::Instant::now();
     while started.elapsed() < duration {
         if is_cancelled(token) {

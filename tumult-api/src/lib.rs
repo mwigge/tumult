@@ -12,15 +12,17 @@
 //! connection, mutations ride the daemon's single-writer channel):
 //!
 //! * `GET /api/overview?range=24h|7d|14d|30d` — KPI cards (value, delta vs the
-//!   previous equal window, sparkline), experiments per day, target-system
-//!   leaderboard, fault breakdown.
+//!   previous equal window, sparkline), runs per day, target-system
+//!   leaderboard, fault injection steps.
 //! * `GET /api/timeseries?metric=<name>&interval=5m|1h|1d&range=…` — any
 //!   semantic metric from the metrics directory as a bucketed series.
 //! * `GET /api/experiments?range=&outcome=&target=&fault=&q=` — experiment
-//!   list, newest first (outcome joined from tumult's `experiment.completed`
-//!   log attributes; root spans carry no outcome for real tumult data).
-//! * `GET /api/experiments/{id}` — spans (waterfall), correlated logs and
-//!   metric points for one experiment.
+//!   list, newest first. The outcome is one of completed, deviated, failed,
+//!   aborted, interrupted and halted, read by `tumult_lake::run_outcome_sql`;
+//!   `outcome=incomplete` is a run that has not ended.
+//! * `GET /api/experiments/{id}` — spans (waterfall), correlated logs,
+//!   metric points and the `evidence` of its journal (`null` for a run
+//!   without one) for one experiment.
 //! * `GET /api/dimensions` — distinct filter values (outcomes, targets,
 //!   faults, experiment names).
 //! * `GET /api/metrics` — semantic metrics available for `/api/timeseries`.
@@ -55,8 +57,9 @@
 //! * `GET /api/traces/durations?range=` — root-span durations as scatter
 //!   points plus p50/p95/p99 percentiles.
 //! * `GET /api/traces/{id}` — every span and log of one trace.
-//! * `GET /api/metrics/catalog` — raw metric names across sums/gauges/
-//!   histograms, with the attribute keys seen on their points.
+//! * `GET /api/metrics/catalog` — every raw metric name across sums/gauges/
+//!   histograms in the caller's scope, with the attribute keys of all its
+//!   points.
 //! * `GET /api/metrics/query?name=&group_by=&range=&interval=` — bucketed
 //!   series for one raw metric (sums → SUM, gauges → AVG, histograms →
 //!   avg plus an interpolated p95), optionally split by an attribute key.
@@ -95,15 +98,18 @@
 //!   with a canonical pin. `POST /api/runs/{id}/stop` e-stops a run
 //!   (mid-method cancel with rollbacks, or cancel-before-start when still
 //!   queued).
-//! * `GET /api/runs?state=&limit=` / `GET /api/runs/{id}` — run list and
-//!   one run with its audit trail and approval chain (request + decisions).
+//! * `GET /api/runs?state=&limit=&gameday_id=&registry_id=` /
+//!   `GET /api/runs/{id}` — run list (`gameday_id`: the children of one
+//!   campaign; `registry_id`: the runs of one definition, for a GameDay its
+//!   campaigns) and one run with its audit trail and approval chain
+//!   (request + decisions).
 //! * `GET /api/approvals` — the pending approval queue;
 //!   `POST /api/runs/{id}/approve` / `POST /api/runs/{id}/reject` record an
 //!   approver's decision (Approver role, approver ≠ requester, T3 re-runs
 //!   the autopilot gate fail-closed); `POST /api/runs/{id}/break-glass`
 //!   (Admin) overrides with a mandatory justification and opens a
 //!   retrospective manual-evidence draft as compliance debt.
-//! * `GET /api/scores?range=` — Gremlin-style resilience scorecard
+//! * `GET /api/scores?range=` — Gremlin-style compliance scorecard
 //!   (freshness-decayed per-experiment scores, target and portfolio rollup).
 //! * `GET /api/gate/{target}?min_score=&max_age_days=&env=` — CI gate: the
 //!   target's score as a `pass|warn|fail` verdict with reasons and evidence.

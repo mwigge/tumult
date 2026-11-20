@@ -67,7 +67,7 @@ Only experiments passing both are written, to `<dir>/<title-slug>.toon` (slug = 
 
 ```
 Wrote out/experiments/redis-restart-under-load.toon
-Rejected experiment: experiment method contains no steps
+Rejected experiment: experiment has no method steps
 1 experiment(s) written, 1 rejected (validation failed)
 ```
 
@@ -80,7 +80,7 @@ In `--format json` mode the output gains an `agent` object:
     "model": null,
     "recommendations": "## Recommendations\n1. ...",
     "experiments_written": ["out/experiments/redis-restart-under-load.toon"],
-    "experiments_rejected": [{ "error": "experiment method contains no steps" }]
+    "experiments_rejected": [{ "error": "experiment has no method steps" }]
   }
 }
 ```

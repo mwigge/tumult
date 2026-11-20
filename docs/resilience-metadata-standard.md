@@ -238,7 +238,7 @@ Measurements captured after fault removal to assess recovery.
 | `resilience.post.ended_at` | `int64` | Required | Epoch nanoseconds when post-fault observation ended. |
 | `resilience.post.duration_s` | `float` | Required | Total post-fault observation duration in seconds. |
 | `resilience.post.samples` | `int` | Required | Total number of samples collected during the post-fault window. |
-| `resilience.post.recovery_time_s` | `float` | Required | Mean Time to Recovery (MTTR) -- seconds from fault removal to all probes returning within baseline thresholds. |
+| `resilience.post.recovery_time_s` | `float` | Required | Mean Time to Recovery (MTTR) -- seconds from fault removal to all probes returning within baseline thresholds. When a probe did not return, the largest value of a probe: recovery takes at least this long. |
 | `resilience.post.full_recovery` | `boolean` | Required | Whether the system fully returned to baseline levels. |
 | `resilience.post.residual_degradation` | `float` | Recommended | Remaining degradation at end of observation, expressed in sigma from baseline mean. `0.0` means fully recovered. |
 | `resilience.post.data_integrity_verified` | `boolean` | Recommended | Whether a data integrity check was performed after recovery. |
@@ -254,7 +254,7 @@ For each probe `{name}`:
 | `resilience.post.probe.{name}.p95` | `float` | Recommended | 95th percentile during the post-fault window. |
 | `resilience.post.probe.{name}.error_rate` | `float` | Recommended | Error rate during the post-fault window, `0.0` to `1.0`. |
 | `resilience.post.probe.{name}.returned_to_baseline` | `boolean` | Required | Whether this probe returned to within baseline thresholds. |
-| `resilience.post.probe.{name}.recovery_time_s` | `float` | Required | Seconds from fault removal until this probe returned to baseline. |
+| `resilience.post.probe.{name}.recovery_time_s` | `float` | Required | Seconds from fault removal until this probe returned to baseline. When it did not return, the seconds until its last failing sample: it was still failing then. |
 
 ---
 
@@ -264,7 +264,7 @@ Final outcome of the experiment run.
 
 | Attribute | Type | Requirement | Description | Enum Values |
 |---|---|---|---|---|
-| `resilience.outcome.status` | `string` | Required | Terminal status of the experiment run. | `completed`, `deviated`, `aborted`, `failed`, `interrupted` |
+| `resilience.outcome.status` | `string` | Required | Terminal status of the experiment run. | `completed`, `deviated`, `aborted`, `failed`, `interrupted`, `halted` |
 | `resilience.outcome.hypothesis_met` | `boolean` | Required | Whether the experiment's hypothesis was confirmed. |  |
 | `resilience.outcome.deviation_detected` | `boolean` | Required | Whether the system deviated from expected behaviour. |  |
 | `resilience.outcome.deviation_magnitude` | `float` | Conditional | Magnitude of deviation in sigma. Required when `deviation_detected` is `true`. |  |
@@ -325,7 +325,7 @@ Post-experiment analysis comparing predictions to actuals and tracking trends.
 | `resilience.analysis.estimate_accuracy` | `float` | Recommended | Accuracy of the pre-experiment estimate, `0.0` to `1.0`. `1.0` means the prediction exactly matched the outcome. |  |
 | `resilience.analysis.estimate_recovery_delta` | `float` | Recommended | Difference between predicted and actual recovery time in seconds (`predicted - actual`). Positive means recovery was faster than predicted. |  |
 | `resilience.analysis.trend` | `string` | Recommended | Resilience trend based on comparison with prior runs of the same experiment. | `improving`, `stable`, `degrading` |
-| `resilience.analysis.resilience_score` | `float` | Recommended | Composite resilience score, `0.0` to `1.0`. Computed per the platform's documented score methodology. |  |
+| `resilience.analysis.resilience_score` | `float` | Recommended | `0` or `1`: `1` when the run completed. |  |
 | `resilience.analysis.regulatory_evidence` | `string[]` | Recommended | List of regulatory evidence artefact identifiers produced by this run (e.g. report IDs, audit log references). |  |
 
 ---
@@ -485,7 +485,7 @@ The following attributes are approved for use as metric label dimensions:
 | `resilience.target.system` | 12 values | `resilience.target.*` |
 | `resilience.target.technology` | Open but bounded | `resilience.target.*` |
 | `resilience.target.environment` | 4 values | `resilience.target.*` |
-| `resilience.outcome.status` | 5 values | `resilience.outcome.*` |
+| `resilience.outcome.status` | 6 values | `resilience.outcome.*` |
 
 ### Recommended Metric Instruments
 
@@ -596,7 +596,7 @@ Implementations MAY extend this standard with additional attributes under a vend
 
 ## 10. Scoring Methodology (Optional — 3 Layers)
 
-The scoring model is optional but enables deep analytics when populated. Scores are computed in DuckDB from journal data — not during experiment execution.
+The scoring model is optional but enables deep analytics when populated. Tumult does not compute these scores in this version. An implementation computes them from journal data, not during experiment execution.
 
 ### Layer 1 — Experiment Quality (`resilience.score.quality.*`)
 
@@ -624,7 +624,7 @@ Optional FMEA (Failure Mode and Effects Analysis) attributes per IEC 60812:2018:
 
 ### Layer 2 — DevOps Performance Metrics / Accelerate Four Keys (`resilience.score.devops.*`)
 
-Operational performance metrics from the Accelerate / Four Keys research programme. Requires external data (CI/CD events, incident management). This layer is an **integration point** — Tumult does not compute these values directly but accepts them from external systems for correlation.
+Operational performance metrics from the Accelerate / Four Keys research programme. Requires external data (CI/CD events, incident management). This layer is an **integration point**. Tumult neither computes these values nor reads them from external systems in this version.
 
 Scientific basis: Forsgren, Humble, Kim (2018), *Accelerate*; State of DevOps Reports.
 
@@ -674,6 +674,8 @@ Domain classification for slicing experiments by what is being tested. Optional 
 
 ### Analytics Example
 
+Tumult does not write the taxonomy attributes, and its store has no `journals` table. The query shows the shape of such an analysis. It does not run on the Tumult store.
+
 ```sql
 SELECT
     taxonomy_domain,
@@ -690,11 +692,11 @@ ORDER BY avg_mttr DESC
 
 ## Appendix B: resilience.load.* (Optional Load Integration)
 
-Attributes for correlating experiments with load testing tools (k6).
+Attributes for correlating experiments with load testing tools (k6 and oha).
 
 | Attribute | Type | Requirement | Description |
 |---|---|---|---|
-| `resilience.load.tool` | `string` | Optional | Load testing tool. Values: `k6`. |
+| `resilience.load.tool` | `string` | Optional | Load testing tool. Values: `k6`, `oha`. |
 | `resilience.load.vus` | `int` | Optional | Virtual users / threads. |
 | `resilience.load.duration_s` | `float` | Optional | Load test duration in seconds. |
 | `resilience.load.throughput_rps` | `float` | Optional | Observed requests per second. |

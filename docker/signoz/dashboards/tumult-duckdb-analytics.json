@@ -1,5 +1,5 @@
 {
-  "description": "DuckDB analytics pipeline — ingest rate, query latency, export/import operations, store size gauge, and purge events from the tumult-analytics crate.",
+  "description": "DuckDB analytics pipeline — ingest rate, query latency, export/import operations, store size gauge, and purge events from the tumult-lake crate.",
   "layout": [
     {
       "h": 1,

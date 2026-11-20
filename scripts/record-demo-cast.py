@@ -19,7 +19,7 @@ import sys
 
 WIDTH, HEIGHT = 110, 35
 BIN = os.environ.get("TUMULT_BIN", "./target/debug/tumult")
-STORE = os.environ["TUMULT_ANALYTICS_PATH"]
+STORE = os.environ["TUMULT_LAKE_PATH"]
 
 COPPER = "\x1b[38;5;173m"
 DIM = "\x1b[2m"

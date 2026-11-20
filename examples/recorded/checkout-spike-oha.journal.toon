@@ -1,0 +1,192 @@
+experiment_title: Checkout API absorbs a 20x traffic spike (oha)
+experiment_id: "29164f10-7bd5-4f5c-95ac-538b0552b8b5"
+status: completed
+started_at_ns: 1794852977888381550
+ended_at_ns: 1794853038015163995
+duration_ms: 60126
+steady_state_before:
+  title: Checkout answers
+  met: true
+  probe_results[1]{name,activity_type,status,started_at_ns,duration_ms,trace_id,span_id}:
+    health,probe,succeeded,1794852977888407579,6,"",""
+steady_state_after:
+  title: Checkout answers
+  met: true
+  probe_results[1]{name,activity_type,status,started_at_ns,duration_ms,trace_id,span_id}:
+    health,probe,succeeded,1794853038008131415,7,"",""
+method_results[1]{name,activity_type,status,started_at_ns,duration_ms,trace_id,span_id}:
+  "hold-for-the-spike",probe,succeeded,1794852977896259259,60007,"",""
+rollback_results[0]:
+rollback_failures: 0
+estimate: null
+baseline_result: null
+during_result:
+  started_at_ns: 1794852977896230626
+  ended_at_ns: 1794853037904208397
+  fault_active_s: 60.007977771
+  sample_interval_s: 1
+  probes[1]{name,samples,mean,max,min,error_rate,breach_count}:
+    health,60,7.1,14,6,0,0
+post_result:
+  started_at_ns: 1794853037904276240
+  ended_at_ns: 1794853037910766882
+  duration_s: 0.006490642
+  samples: 1
+  probes[1]{name,mean,p95,error_rate,returned_to_baseline,recovery_time_s}:
+    health,6,6,0,true,0
+  recovery_time_s: 0
+  full_recovery: true
+  mttr_s: 0
+load_result:
+  tool: oha
+  started_at_ns: 1794852977896195223
+  ended_at_ns: 1794853038008109392
+  duration_s: 60.111914169
+  vus: 200
+  throughput_rps: 437.6614065789469
+  latency_p50_ms: 94.31679520834759
+  latency_p95_ms: 130.5818361800403
+  latency_p99_ms: 139.1472522291976
+  error_rate: 0
+  total_requests: 26283
+  thresholds_met: true
+  samples[3]:
+    - ts_ns: 1794852998032552031
+      duration_s: 20.122037538
+      vus: 10
+      throughput_rps: 105.50621406956247
+      latency_p50_ms: 94.94373
+      latency_p95_ms: 129.196706
+      latency_p99_ms: 139.43486299999998
+      error_rate: 0
+      requests: 2123
+      counts:
+        sent: 2123
+        ok: 2123
+        timed_out: 0
+        transport: 0
+        http_4xx: 0
+        http_5xx: 0
+        http_other: 0
+        unclassified: 0
+      request_timeout_ms: 20000
+    - ts_ns: 1794853008056248191
+      duration_s: 9.992963115
+      vus: 200
+      throughput_rps: 2101.77899771023
+      latency_p50_ms: 94.310915
+      latency_p95_ms: 130.757985
+      latency_p99_ms: 139.073892
+      error_rate: 0
+      requests: 21003
+      counts:
+        sent: 21003
+        ok: 21003
+        timed_out: 0
+        transport: 0
+        http_4xx: 0
+        http_5xx: 0
+        http_other: 0
+        unclassified: 0
+      request_timeout_ms: 10000
+    - ts_ns: 1794853038008080088
+      duration_s: 29.938272505
+      vus: 10
+      throughput_rps: 105.4503061081012
+      latency_p50_ms: 93.934318
+      latency_p95_ms: 130.341411
+      latency_p99_ms: 139.44189500000002
+      error_rate: 0
+      requests: 3157
+      counts:
+        sent: 3157
+        ok: 3157
+        timed_out: 0
+        transport: 0
+        http_4xx: 0
+        http_5xx: 0
+        http_other: 0
+        unclassified: 0
+      request_timeout_ms: 30000
+  execution:
+    planned_windows: 3
+    completed_windows: 3
+    requests:
+      sent: 26283
+      ok: 26283
+      timed_out: 0
+      transport: 0
+      http_4xx: 0
+      http_5xx: 0
+      http_other: 0
+      unclassified: 0
+analysis: null
+regulatory: null
+kind: performance
+objectives:
+  rto_measured_s: 0
+  verdicts[2]{nfr_id,kind,metric,operator,threshold,observed,state,margin,criticality}:
+    "p99-spike",latency,load.latency_p99_ms,lte,1000,139.1472522291976,met,860.8527477708024,blocking
+    "spike-errors",availability,load.error_rate,lte,0.02,0,met,0.02,major
+probe_samples[61]{probe,phase,ts_ns,duration_ms,ok}:
+  health,during,1794852977896304788,7,true
+  health,during,1794852978903804282,8,true
+  health,during,1794852979912199874,6,true
+  health,during,1794852980919277107,7,true
+  health,during,1794852981927323232,7,true
+  health,during,1794852982934440971,6,true
+  health,during,1794852983941505571,6,true
+  health,during,1794852984948517553,14,true
+  health,during,1794852985962741540,7,true
+  health,during,1794852986969856963,6,true
+  health,during,1794852987976863781,7,true
+  health,during,1794852988984002090,7,true
+  health,during,1794852989991183750,7,true
+  health,during,1794852990998489708,7,true
+  health,during,1794852992005693131,7,true
+  health,during,1794852993013230667,7,true
+  health,during,1794852994020630686,6,true
+  health,during,1794852995027558454,6,true
+  health,during,1794852996034478129,7,true
+  health,during,1794852997042354998,7,true
+  health,during,1794852998050493131,14,true
+  health,during,1794852999065295515,8,true
+  health,during,1794853000073828275,8,true
+  health,during,1794853001082295743,8,true
+  health,during,1794853002090570821,8,true
+  health,during,1794853003099218822,8,true
+  health,during,1794853004107312907,8,true
+  health,during,1794853005115715027,7,true
+  health,during,1794853006123422679,9,true
+  health,during,1794853007132723353,7,true
+  health,during,1794853008140809128,10,true
+  health,during,1794853009151199300,6,true
+  health,during,1794853010158205657,6,true
+  health,during,1794853011165088979,7,true
+  health,during,1794853012172191642,6,true
+  health,during,1794853013179112741,6,true
+  health,during,1794853014185961501,6,true
+  health,during,1794853015193001750,7,true
+  health,during,1794853016200134992,7,true
+  health,during,1794853017207646937,7,true
+  health,during,1794853018214800032,7,true
+  health,during,1794853019222081050,7,true
+  health,during,1794853020230022344,7,true
+  health,during,1794853021237254697,7,true
+  health,during,1794853022244508864,6,true
+  health,during,1794853023251302978,7,true
+  health,during,1794853024258465862,6,true
+  health,during,1794853025265449134,7,true
+  health,during,1794853026272575642,6,true
+  health,during,1794853027279532374,7,true
+  health,during,1794853028286688367,6,true
+  health,during,1794853029293611919,6,true
+  health,during,1794853030300580039,8,true
+  health,during,1794853031308989453,6,true
+  health,during,1794853032315728836,6,true
+  health,during,1794853033322495496,6,true
+  health,during,1794853034329242817,7,true
+  health,during,1794853035336766319,6,true
+  health,during,1794853036343766262,7,true
+  health,during,1794853037351279519,6,true
+  health,post,1794853037904282139,6,true

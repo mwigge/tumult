@@ -54,8 +54,8 @@ class TumultMCPClient {
 
   // Convenience methods matching AQE's chaos-engineer interface
   async discover() { return this.callTool('tumult_discover'); }
-  async runExperiment(path) { return this.callTool('tumult_run_experiment', { experiment_path: path }); }
-  async runGameDay(path) { return this.callTool('tumult_gameday_run', { gameday_path: path }); }
+  async runExperiment(path) { return this.callTool('tumult_run_experiment', { experiment_path: path, force: true }); }
+  async runGameDay(path) { return this.callTool('tumult_gameday_run', { gameday_path: path, force: true }); }
   async analyzeGameDay(path) { return this.callTool('tumult_gameday_analyze', { gameday_path: path }); }
   async storeStats() { return this.callTool('tumult_store_stats'); }
   async sql(query) { return this.callTool('tumult_analyze_store', { query }); }

@@ -9,7 +9,7 @@ use serde_json::Value as JsonValue;
 
 /// A self-contained slice of `ChaosGraph` to query.
 ///
-/// The caller (typically tumult-analytics or an MCP tool handler) selects
+/// The caller (an MCP tool handler) selects
 /// these rows out of `DuckDB`; this crate never talks to `DuckDB` itself.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct GraphSnapshot {

@@ -1,0 +1,51 @@
+title: Payments tolerate a slow ledger
+description: The ledger behind the payments answers slowly. Payments must keep answering while it does.
+
+tags[3]: latency, ledger, payments
+target:
+  system: payments
+  technology: postgresql
+  environment: prod
+  criticality: high
+  version: 5.1.3
+rto_target_s: 2.0
+blast_radius: the ledger connection of one instance
+
+steady_state_hypothesis:
+  title: Payments answer
+  probes[1]:
+    - name: payments-answer
+      activity_type: probe
+      provider:
+        type: process
+        path: sh
+        arguments[2]: "-c", "cat state"
+        timeout_s: 5.0
+      tolerance:
+        type: regex
+        pattern: "^ok$"
+
+method[2]:
+  - name: slow-ledger
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "echo down > state"
+      timeout_s: 5.0
+  - name: payments-during-fault
+    activity_type: probe
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "cat state"
+      timeout_s: 5.0
+
+rollbacks[1]:
+  - name: restore-ledger
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "echo ok > state"
+      timeout_s: 5.0

@@ -11,10 +11,10 @@ mod game_day;
 mod tests;
 
 use sha2::{Digest, Sha256};
-use tumult_lake::Reader;
+use tumult_lake::{scope, Reader, RunVerdict};
 
 use crate::html::fmt_date;
-use crate::model::{DocMeta, TemplateKind};
+use crate::model::{Cell, DocMeta, TemplateKind};
 use crate::scoring::{self, RunState, Scorecard};
 
 pub use evidence_pack::{build_evidence_pack, CLAUSE_VERIFY_FOOTNOTE, FRAMEWORK_CLAUSES};
@@ -67,45 +67,70 @@ fn f1(v: f64) -> String {
     format!("{v:.1}")
 }
 
-fn bluf(card: &Scorecard, open: &[&scoring::ExperimentScore]) -> String {
-    let trend = card.delta.map_or("no prior-period baseline".into(), |d| {
-        if d > 0.5 {
-            format!("improving ({d:+.1} vs the previous period)")
-        } else if d < -0.5 {
-            format!("declining ({d:+.1} vs the previous period)")
-        } else {
-            format!("flat ({d:+.1} vs the previous period)")
-        }
-    });
+/// `n` of a thing, by its name for one and its name for more: "1 run",
+/// "3 runs".
+fn counted(n: usize, one: &str, many: &str) -> String {
+    format!("{n} {}", if n == 1 { one } else { many })
+}
+
+/// Where the portfolio score went against the period before, as the end
+/// of the sentence that gives the score.
+fn direction(delta: Option<f64>) -> String {
+    let Some(d) = delta else {
+        return ". There is no earlier period to compare it with.".into();
+    };
+    let word = if d > 0.5 {
+        "improving"
+    } else if d < -0.5 {
+        "declining"
+    } else {
+        "flat"
+    };
+    format!(" and {word} ({d:+.1} vs the previous period).")
+}
+
+/// The three lowest targets, of those below a full score.
+fn weakest_targets(card: &Scorecard) -> String {
     let weakest: Vec<String> = card
         .targets
         .iter()
+        .filter(|t| t.score < 100.0)
         .take(3)
         .map(|t| format!("{} ({})", t.target, f1(t.score)))
         .collect();
-    let mut s = format!(
-        "Portfolio resilience is {} ({}/100) and {}. Weakest targets: {}. ",
-        card.band,
-        f1(card.portfolio),
-        trend,
-        if weakest.is_empty() {
-            "none — no targets on record".into()
-        } else {
-            weakest.join(", ")
-        },
-    );
-    if open.is_empty() {
-        s.push_str("No open weaknesses; keep the current experiment cadence.");
-    } else {
-        s.push_str(&format!(
-            "{} open weakness(es) need a decision: re-run, remediate, or accept.",
-            open.len()
-        ));
+    if weakest.is_empty() {
+        return "Every target scores 100.".into();
     }
-    s
+    format!("Weakest targets: {}.", weakest.join(", "))
+}
+
+/// What the open weaknesses ask of the reader.
+fn decisions(open: usize) -> String {
+    match open {
+        0 => "No open weaknesses; keep the current experiment cadence.".into(),
+        1 => "1 open weakness needs a decision: re-run, remediate, or accept.".into(),
+        n => format!("{n} open weaknesses need a decision: re-run, remediate, or accept."),
+    }
+}
+
+fn bluf(card: &Scorecard, open: &[&scoring::ExperimentScore]) -> String {
+    let Some(portfolio) = card.portfolio else {
+        return "No experiment is on record, so there is no compliance score yet.".into();
+    };
+    format!(
+        "Portfolio compliance score is {} ({}/100){} {} {}",
+        card.band,
+        f1(portfolio),
+        direction(card.delta),
+        weakest_targets(card),
+        decisions(open.len()),
+    )
 }
 
 fn outlook(card: &Scorecard) -> String {
+    if card.experiments.is_empty() {
+        return "Next period priorities: run a first experiment to put a score on record.".into();
+    }
     let untested = card
         .experiments
         .iter()
@@ -119,15 +144,17 @@ fn outlook(card: &Scorecard) -> String {
     let mut pts = Vec::new();
     if untested > 0 {
         pts.push(format!(
-            "schedule first runs for {untested} untested experiment(s)"
+            "schedule first runs for {}",
+            counted(untested, "untested experiment", "untested experiments")
         ));
     }
     if stale > 0 {
         pts.push(format!(
-            "re-run {stale} experiment(s) whose last pass is over 30 days old"
+            "re-run {} whose last pass is over 30 days old",
+            counted(stale, "experiment", "experiments")
         ));
     }
-    if let Some(w) = card.targets.first() {
+    if let Some(w) = card.targets.first().filter(|w| w.score < 100.0) {
         pts.push(format!(
             "focus next game-day on {}, the weakest target",
             w.target
@@ -140,8 +167,12 @@ fn outlook(card: &Scorecard) -> String {
     }
 }
 
-/// Count deviated/failed runs in `[from, to)` and how many later ran green;
-/// plus MTTR from spans that report `recovery_time_s`.
+/// The cell of a fault severity: the word with its mark, or `not recorded`
+/// in plain text when the run or the record has none.
+fn severity_cell(severity: Option<&str>) -> Cell {
+    severity.map_or(Cell::text("not recorded"), Cell::status)
+}
+
 /// The decision an open weakness asks of the reader, by run state.
 fn decision_for(state: RunState) -> String {
     match state {
@@ -154,8 +185,8 @@ fn decision_for(state: RunState) -> String {
 }
 
 /// Experiment names with at least one run in `[from_ns, to_ns)` — automated
-/// runs plus verified manual executions in the window. Scoped to `envs`
-/// (empty = unscoped).
+/// runs, with or without a trace, plus verified manual executions in the
+/// window. Scoped to `envs` (empty = unscoped).
 fn runs_in_window(
     reader: &Reader,
     from_ns: i64,
@@ -164,15 +195,15 @@ fn runs_in_window(
 ) -> Result<std::collections::BTreeSet<String>, String> {
     let rows = reader
         .query_json_rows(&format!(
-            "SELECT DISTINCT experiment_name AS name FROM spans \
-             WHERE span_name = 'resilience.experiment' AND experiment_name IS NOT NULL \
+            "SELECT DISTINCT experiment_name AS name FROM run_roots \
+             WHERE experiment_name IS NOT NULL \
                AND ts_ns >= {from_ns} AND ts_ns < {to_ns}{} \
              UNION \
              SELECT DISTINCT experiment_name FROM manual_experiments \
              WHERE status = 'verified' \
                AND executed_at_ns >= {from_ns} AND executed_at_ns < {to_ns}{}",
-            scoring::and_env(scoring::env_in("target_environment", envs)),
-            scoring::and_env(scoring::env_in("target_environment", envs)),
+            scope::and(scope::in_list("target_environment", envs)),
+            scope::and(scope::in_list("target_environment", envs)),
         ))
         .map_err(|e| e.to_string())?;
     Ok(rows
@@ -181,6 +212,10 @@ fn runs_in_window(
         .collect())
 }
 
+/// Count the runs in `[from, to)` that did not pass and how many later ran
+/// green, with or without a trace; plus the mean time to recover of the
+/// runs that report a recovery time ([`tumult_lake::mean_recovery_time_sql`]).
+/// A run that proves nothing is neither ([`tumult_lake::run_verdict`]).
 fn issue_stats(
     reader: &Reader,
     from_ns: i64,
@@ -189,13 +224,12 @@ fn issue_stats(
 ) -> Result<(u64, u64, Option<f64>), String> {
     let rows = reader
         .query_json_rows(&format!(
-            "SELECT s.experiment_name AS name, s.ts_ns AS ts, l.log_attrs['status'] AS status \
-             FROM spans s LEFT JOIN logs l \
-               ON l.log_attrs['experiment_id'] = s.experiment_id \
-              AND l.body = 'experiment.completed' \
-             WHERE s.span_name = 'resilience.experiment' AND s.experiment_name IS NOT NULL \
+            "SELECT s.experiment_name AS name, s.ts_ns AS ts, {} AS status \
+             FROM run_roots s LEFT JOIN run_completions l ON s.experiment_id = l.experiment_id \
+             WHERE s.experiment_name IS NOT NULL \
                AND s.ts_ns >= {from_ns} AND s.ts_ns < {to_ns}{} ORDER BY s.ts_ns",
-            scoring::and_env(scoring::env_in("s.target_environment", envs)),
+            tumult_lake::run_outcome_sql("s", "l"),
+            scope::and(scope::in_list("s.target_environment", envs)),
         ))
         .map_err(|e| e.to_string())?;
 
@@ -208,7 +242,11 @@ fn issue_stats(
         ) else {
             continue;
         };
-        let ok = cell(row, "status") == Some("Completed");
+        let verdict = cell(row, "status").and_then(tumult_lake::run_verdict);
+        if verdict == Some(RunVerdict::NoEvidence) {
+            continue;
+        }
+        let ok = verdict == Some(RunVerdict::Pass);
         by_name.entry(name.to_string()).or_default().push((ts, ok));
     }
     let mut discovered = 0u64;
@@ -228,9 +266,10 @@ fn issue_stats(
 
     let mttr = reader
         .query_json_rows(&format!(
-            "SELECT AVG(recovery_time_s) AS v FROM spans \
-             WHERE recovery_time_s IS NOT NULL AND ts_ns >= {from_ns} AND ts_ns < {to_ns}{}",
-            scoring::and_env(scoring::env_in("target_environment", envs)),
+            "SELECT {} AS v FROM run_roots s \
+             WHERE s.ts_ns >= {from_ns} AND s.ts_ns < {to_ns}{}",
+            tumult_lake::mean_recovery_time_sql("s"),
+            scope::and(scope::in_list("s.target_environment", envs)),
         ))
         .map_err(|e| e.to_string())?
         .first()

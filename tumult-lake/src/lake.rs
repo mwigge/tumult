@@ -23,7 +23,9 @@ pub const AUDIT_TABLE: &str = "manual_experiment_audit";
 pub const MANUAL_TABLE: &str = "manual_experiments";
 
 // An explicit portable-data contract. Adding a platform table requires a
-// classification decision; full operational backups discover all schema data.
+// classification decision, and `tests/lake_evidence.rs` fails until the table
+// is in one of the two lists; full operational backups discover all schema
+// data.
 const TABLES: &[&str] = &[
     "spans",
     "logs",
@@ -37,6 +39,11 @@ const TABLES: &[&str] = &[
     "experiments",
     "activity_results",
     "load_results",
+    // The evidence a verdict is computed from, and the verdicts.
+    "probe_samples",
+    "nfr_verdicts",
+    "perf_verdicts",
+    "forecasts",
     "autopilot_decisions",
     "autopilot_events",
     "autopilot_change_events",
@@ -54,6 +61,15 @@ const TABLES: &[&str] = &[
     "approval_decisions",
     "webhook_cursors",
     "webhook_dead_letters",
+    "risk_suppressions",
+    // The function register and its daily history.
+    "ict_legal_entities",
+    "ict_functions",
+    "ict_function_services",
+    "requirement_status_daily",
+    "maturity_daily",
+    "entity_versions",
+    "service_version_sightings",
 ];
 const EXCLUDED: &[&str] = &[
     "users",
@@ -63,6 +79,8 @@ const EXCLUDED: &[&str] = &[
     "webhooks",
     "run_recovery_plans",
     "run_execution_pins",
+    // How far the read of old spans into `service_version_sightings` has come.
+    "sightings_backfill",
     "schema_meta",
 ];
 

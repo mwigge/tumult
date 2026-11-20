@@ -2,6 +2,11 @@ title: SSH remote execution — stress test via SSH
 description: Execute commands on a remote host via SSH, including stress-ng
 
 tags[2]: ssh, stress
+kind: robustness
+target:
+  system: lab-host
+  technology: ssh
+  environment: lab
 
 steady_state_hypothesis:
   title: SSH host is reachable

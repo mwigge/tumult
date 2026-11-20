@@ -2,6 +2,11 @@ title: Demo — multi-turn agent-graph fault injection (RAG grounding failure)
 description: Run the bundled rag-grounding-failure trajectory pack (fake adapters, no external API), injecting retrieval poisoning at step 0 and proving the answer step 2 loses its grounding — whole-trajectory contracts and agentic subscores fire
 
 tags[4]: demo, agentic, trajectory, resilience
+kind: chaos
+target:
+  system: demo-agent
+  technology: agent
+  environment: demo
 
 steady_state_hypothesis:
   title: demo-app is healthy before the agentic trajectory scenario

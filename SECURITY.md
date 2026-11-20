@@ -32,8 +32,8 @@ Please use [GitHub's private vulnerability reporting](https://github.com/mwigge/
 
 ## Security Practices
 
-- Workspace crates forbid unsafe code unless a narrowly scoped module documents
-  and reviews the required invariant.
+- Production code uses `unsafe` only for a few process and signal calls, and
+  each one documents the invariant it needs.
 - **`cargo deny check advisories`** runs in CI (see below).
 - **Clippy pedantic** enforced with `-D warnings`
 - Production fallible paths return typed errors; panics are reserved for
@@ -55,7 +55,7 @@ documented in the security assessment.
 ## Deployment Security
 
 - **TLS.** The Krönika daemon (`tumultd`) can serve TLS directly when
-  `KRONIKA_TLS_CERT` / `KRONIKA_TLS_KEY` are set (support being added);
+  `KRONIKA_TLS_CERT` / `KRONIKA_TLS_KEY` are set;
   otherwise deploy it — and the MCP server — behind a TLS-terminating reverse
   proxy (nginx/Caddy/Ingress). Never expose the plain-HTTP listeners to an
   untrusted network.

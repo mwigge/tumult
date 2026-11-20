@@ -84,6 +84,8 @@ pub struct RunFacts {
     pub hypothesis_before_met: Option<bool>,
     pub hypothesis_after_met: Option<bool>,
     pub actions_succeeded: bool,
+    /// No probe of the method failed or read a value outside its tolerance.
+    pub method_probes_held: bool,
     /// The declared load sent at least one request (true without a load).
     pub load_has_evidence: bool,
     /// A blocking objective was breached.
@@ -103,6 +105,7 @@ impl RunFacts {
             hypothesis_before_met: None,
             hypothesis_after_met: None,
             actions_succeeded: true,
+            method_probes_held: true,
             load_has_evidence: true,
             blocking_breach: false,
             load_missed_thresholds: false,
@@ -113,6 +116,7 @@ impl RunFacts {
     /// Anything that by itself makes a finished run a deviation.
     fn deviates(self) -> bool {
         self.hypothesis_after_met == Some(false)
+            || !self.method_probes_held
             || self.blocking_breach
             || self.load_missed_thresholds
             || !self.load_has_evidence
@@ -133,8 +137,9 @@ pub struct Conclusion {
 /// 1. `Interrupted` — the run was cancelled.
 /// 2. `Aborted` — the hypothesis did not hold before the method.
 /// 3. `Failed` — an action failed, or a declared load left no evidence.
-/// 4. `Deviated` — the hypothesis did not hold afterwards, a blocking
-///    objective was breached, or the load missed its thresholds or plan.
+/// 4. `Deviated` — the hypothesis did not hold afterwards, a probe of the
+///    method did not hold, a blocking objective was breached, or the load
+///    missed its thresholds or plan.
 /// 5. `Completed`.
 ///
 /// A higher status never hides the cleanup a lower one calls for:
@@ -193,6 +198,7 @@ mod tests {
             hypothesis_before_met: Some(false),
             hypothesis_after_met: Some(false),
             actions_succeeded: false,
+            method_probes_held: false,
             load_has_evidence: false,
             blocking_breach: true,
             load_missed_thresholds: true,
@@ -233,6 +239,10 @@ mod tests {
         let cases = [
             RunFacts {
                 hypothesis_after_met: Some(false),
+                ..RunFacts::clean()
+            },
+            RunFacts {
+                method_probes_held: false,
                 ..RunFacts::clean()
             },
             RunFacts {
@@ -286,15 +296,27 @@ mod tests {
     }
 
     #[test]
+    fn a_failed_action_wins_over_a_probe_of_the_method_that_did_not_hold() {
+        let both = RunFacts {
+            actions_succeeded: false,
+            method_probes_held: false,
+            ..RunFacts::clean()
+        };
+        let conclusion = conclude(&both);
+        assert_eq!(conclusion.status, ExperimentStatus::Failed);
+        assert!(conclusion.needs_rollback);
+    }
+
+    #[test]
     fn a_failure_or_interrupt_rolls_back_only_what_was_started() {
-        let failed_probe_only = RunFacts {
+        let failed_before_a_fault = RunFacts {
             actions_succeeded: false,
             ..RunFacts::clean()
         };
-        assert!(!conclude(&failed_probe_only).needs_rollback);
+        assert!(!conclude(&failed_before_a_fault).needs_rollback);
         let failed_after_fault = RunFacts {
             fault_started: true,
-            ..failed_probe_only
+            ..failed_before_a_fault
         };
         assert!(conclude(&failed_after_fault).needs_rollback);
 

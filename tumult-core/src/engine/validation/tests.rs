@@ -607,6 +607,84 @@ fn validate_rejects_zero_users_anywhere() {
     assert!(load_error(&with_load(Some(spike), None, Some(60.0))).contains("peak_vus"));
 }
 
+/// A flat load of `tool` with `thresholds`.
+fn with_tool(tool: LoadTool, thresholds: &[(&str, f64)]) -> Experiment {
+    let mut exp = with_load(None, None, None);
+    let load = exp.load.as_mut().expect("a load");
+    load.tool = tool;
+    load.thresholds = thresholds
+        .iter()
+        .map(|(name, bound)| ((*name).to_string(), *bound))
+        .collect();
+    exp
+}
+
+/// A load whose tool has no adapter can never run. Validation refuses it
+/// with the reason the runner gives, which it asks of the same function.
+#[test]
+fn a_load_tool_without_an_adapter_is_refused_with_the_reason_of_the_runner() {
+    let Err(runner_reason) = crate::runner::load_executor_for(&LoadTool::Jmeter) else {
+        panic!("jmeter has no adapter");
+    };
+    assert_eq!(load_error(&with_tool(LoadTool::Jmeter, &[])), runner_reason);
+    assert!(validate_experiment(&with_tool(LoadTool::K6, &[])).is_ok());
+    assert!(validate_experiment(&with_tool(LoadTool::Oha, &[])).is_ok());
+}
+
+/// oha checks five threshold names; a run with any other name deviates.
+/// Validation refuses such a name before the run and names it.
+#[test]
+fn an_oha_threshold_name_the_adapter_does_not_check_is_refused_and_named() {
+    let reason = load_error(&with_tool(LoadTool::Oha, &[("latency_p90_ms", 200.0)]));
+    assert!(reason.contains("latency_p90_ms"), "{reason}");
+    assert!(reason.contains("oha"), "{reason}");
+
+    let every_known_name = [
+        ("latency_p50_ms", 100.0),
+        ("latency_p95_ms", 200.0),
+        ("latency_p99_ms", 300.0),
+        ("error_rate", 0.01),
+        ("throughput_rps", 10.0),
+    ];
+    let outcome = validate_experiment(&with_tool(LoadTool::Oha, &every_known_name));
+    assert!(outcome.is_ok(), "{outcome:?}");
+
+    // Of several unknown names the first in order is named, so the reason
+    // reads the same on every run.
+    let several = [("zz_ms", 1.0), ("aa_ms", 1.0), ("mm_ms", 1.0)];
+    let reason = load_error(&with_tool(LoadTool::Oha, &several));
+    assert!(reason.contains("'aa_ms'"), "{reason}");
+}
+
+/// k6 applies the thresholds of its script, not those of the file. A k6
+/// load with thresholds stays valid, and validation says once that they
+/// are not applied.
+#[test]
+fn k6_thresholds_are_accepted_with_one_warning_that_they_are_not_applied() {
+    let warnings_of = |exp: &Experiment| {
+        let captured = tumult_otel::logging::testing::capture_json(tracing::Level::TRACE, || {
+            let outcome = validate_experiment(exp);
+            assert!(outcome.is_ok(), "{outcome:?}");
+        });
+        captured
+            .events
+            .into_iter()
+            .filter(|event| event["message"] == "load.thresholds.not_applied")
+            .collect::<Vec<_>>()
+    };
+
+    let bounded = with_tool(
+        LoadTool::K6,
+        &[("latency_p95_ms", 200.0), ("http_req_failed", 0.01)],
+    );
+    let warnings = warnings_of(&bounded);
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    assert_eq!(warnings[0]["tool"], "k6");
+    assert_eq!(warnings[0]["level"], "WARN");
+
+    assert!(warnings_of(&with_tool(LoadTool::K6, &[])).is_empty());
+}
+
 #[test]
 fn a_target_version_beyond_the_bounds_is_refused() {
     let with_version = |version: &str| Experiment {
@@ -638,4 +716,317 @@ fn a_target_version_beyond_the_bounds_is_refused() {
         control.to_string().contains("no control characters"),
         "{control}"
     );
+}
+
+// ── The metric catalogue ───────────────────────────────────────
+
+fn hypothesis(probe: &str) -> Hypothesis {
+    Hypothesis {
+        title: "steady".into(),
+        probes: vec![Activity {
+            name: probe.into(),
+            activity_type: ActivityType::Probe,
+            ..Default::default()
+        }],
+    }
+}
+
+/// An experiment with one objective on `metric` and a hypothesis probe
+/// named `health`.
+fn with_metric(metric: &str) -> Experiment {
+    let mut measured = objective("a");
+    measured.metric = metric.into();
+    with_method(Experiment {
+        nfr: vec![measured],
+        steady_state_hypothesis: Some(hypothesis("health")),
+        ..Default::default()
+    })
+}
+
+#[test]
+fn every_metric_of_the_catalogue_is_accepted() {
+    for metric in [
+        "load.throughput_rps",
+        "load.latency_p50_ms",
+        "load.latency_p95_ms",
+        "load.latency_p99_ms",
+        "load.error_rate",
+        "load.total_requests",
+        "recovery.mttr_s",
+        "recovery.time_s",
+        "during.error_rate",
+        "during.availability",
+        "post.error_rate",
+        "post.availability",
+        "fault.duration_s",
+        "probe.health.mean_ms",
+        "probe.health.max_ms",
+        "probe.health.p95_ms",
+        "probe.health.error_rate",
+    ] {
+        let outcome = validate_experiment(&with_metric(metric));
+        assert!(outcome.is_ok(), "{metric}: {outcome:?}");
+    }
+}
+
+#[test]
+fn a_metric_outside_the_catalogue_is_rejected_and_named() {
+    for metric in [
+        "load.latency_p90_ms",
+        "latency_p95_ms",
+        "during.latency",
+        "recovery.rto",
+        "probe.health",
+        "probe.health.p99_ms",
+    ] {
+        let err = validate_experiment(&with_metric(metric)).unwrap_err();
+        assert!(
+            matches!(err, EngineError::NfrInvalid { .. }),
+            "{metric}: {err}"
+        );
+        assert!(err.to_string().contains(metric), "{err}");
+    }
+}
+
+#[test]
+fn a_probe_metric_must_name_a_hypothesis_probe() {
+    let err = validate_experiment(&with_metric("probe.helth.p95_ms")).unwrap_err();
+    assert!(err.to_string().contains("'helth'"), "{err}");
+
+    // A probe name may hold dots: the statistic is what follows the last one.
+    let mut dotted = with_metric("probe.api.v2.p95_ms");
+    dotted.steady_state_hypothesis = Some(hypothesis("api.v2"));
+    let outcome = validate_experiment(&dotted);
+    assert!(outcome.is_ok(), "{outcome:?}");
+}
+
+// ── Guards and controls run through a provider too ─────────────
+
+fn bad_script() -> Provider {
+    Provider::Script {
+        plugin: "../outside".into(),
+        function: "probe".into(),
+        arguments: HashMap::new(),
+        timeout_s: None,
+    }
+}
+
+#[test]
+fn validate_checks_the_script_provider_of_a_guard() {
+    let mut guard = guard_with_tolerance(
+        "watch",
+        Some(Tolerance::Exact {
+            value: serde_json::json!("ok"),
+        }),
+        1,
+    );
+    guard.probe.provider = bad_script();
+    let exp = with_method(Experiment {
+        guards: vec![guard],
+        ..Default::default()
+    });
+    let err = validate_experiment(&exp).unwrap_err();
+    assert!(err.to_string().contains("invalid script provider"), "{err}");
+    assert!(err.to_string().contains("watch"), "{err}");
+}
+
+#[test]
+fn validate_checks_the_script_provider_of_a_control() {
+    let exp = with_method(Experiment {
+        controls: vec![Control {
+            name: "audit".into(),
+            provider: bad_script(),
+        }],
+        ..Default::default()
+    });
+    let err = validate_experiment(&exp).unwrap_err();
+    assert!(err.to_string().contains("invalid script provider"), "{err}");
+    assert!(err.to_string().contains("audit"), "{err}");
+}
+
+// ── Seconds the runner waits on: timeouts, pauses, a flat load ─
+
+/// An experiment file with a step in every place a step can sit. Each
+/// `{place}` holds a number of seconds.
+const EVERY_PLACE: &str = "\
+title: seconds in every place
+controls[1]:
+  - name: logging
+    provider:
+      type: script
+      plugin: logger
+      function: record
+      timeout_s: {control}
+steady_state_hypothesis:
+  title: the target answers
+  probes[1]:
+    - name: answers
+      activity_type: probe
+      provider:
+        type: process
+        path: sh
+        timeout_s: {probe}
+      pause_before_s: {probe_pause}
+guards[1]:
+  - name: safety
+    probe:
+      name: watch
+      activity_type: probe
+      provider:
+        type: script
+        plugin: health
+        function: check
+        timeout_s: {guard}
+      tolerance:
+        type: regex
+        pattern: ok
+      pause_after_s: {guard_pause}
+method[2]:
+  - name: inject
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      timeout_s: {method}
+    pause_before_s: {pause_before}
+    pause_after_s: {pause_after}
+  - name: load-in-background
+    activity_type: action
+    background: true
+    provider:
+      type: process
+      path: sh
+      timeout_s: {background}
+rollbacks[1]:
+  - name: heal
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      timeout_s: {rollback}
+";
+
+/// The places of [`EVERY_PLACE`].
+const PLACES: &[&str] = &[
+    "control",
+    "probe",
+    "probe_pause",
+    "guard",
+    "guard_pause",
+    "method",
+    "pause_before",
+    "pause_after",
+    "background",
+    "rollback",
+];
+
+/// [`EVERY_PLACE`] read by the real parser, with `value` in `place` and
+/// `others` in every other place.
+fn file_with(place: &str, value: &str, others: &str) -> Experiment {
+    let text = PLACES.iter().fold(EVERY_PLACE.to_string(), |text, p| {
+        let seconds = if *p == place { value } else { others };
+        text.replace(&format!("{{{p}}}"), seconds)
+    });
+    crate::engine::parse_experiment(&text).expect("the file parses")
+}
+
+fn seconds_error(exp: &Experiment) -> String {
+    validate_experiment(exp)
+        .expect_err("a bad number of seconds must be refused")
+        .to_string()
+}
+
+#[test]
+fn a_negative_timeout_is_refused_with_the_step_and_the_value_in_every_place() {
+    for (place, owner) in [
+        ("method", "activity 'inject'"),
+        ("background", "activity 'load-in-background'"),
+        ("rollback", "activity 'heal'"),
+        ("probe", "activity 'answers'"),
+        ("guard", "guard 'safety'"),
+        ("control", "control 'logging'"),
+    ] {
+        assert_eq!(
+            seconds_error(&file_with(place, "-1", "5")),
+            format!(
+                "invalid timeout_s in {owner}: -1 is not a number of seconds from 0 up to 2^64"
+            ),
+            "{place}"
+        );
+    }
+}
+
+#[test]
+fn a_negative_pause_is_refused_with_the_step_and_the_value_in_every_place() {
+    for (place, owner, field) in [
+        ("pause_before", "activity 'inject'", "pause_before_s"),
+        ("pause_after", "activity 'inject'", "pause_after_s"),
+        ("probe_pause", "activity 'answers'", "pause_before_s"),
+        ("guard_pause", "guard 'safety'", "pause_after_s"),
+    ] {
+        assert_eq!(
+            seconds_error(&file_with(place, "-0.5", "5")),
+            format!(
+                "invalid {field} in {owner}: -0.5 is not a number of seconds from 0 up to 2^64"
+            ),
+            "{place}"
+        );
+    }
+}
+
+#[test]
+fn a_timeout_too_large_to_wait_on_is_refused() {
+    let error = seconds_error(&file_with("method", "1e20", "5"));
+    assert!(
+        error.starts_with("invalid timeout_s in activity 'inject': 100000000000000000000 is not"),
+        "{error}"
+    );
+}
+
+#[test]
+fn a_timeout_that_is_not_a_number_or_is_infinite_is_refused() {
+    // A file cannot spell these: the parser reads them as text or refuses
+    // them. A caller that builds the experiment in code can.
+    for (seconds, shown) in [
+        (f64::NAN, "NaN"),
+        (f64::INFINITY, "inf"),
+        (f64::NEG_INFINITY, "-inf"),
+    ] {
+        let mut exp = file_with("method", "5", "5");
+        exp.method[0].provider = Provider::Process {
+            path: "sh".into(),
+            arguments: vec![],
+            env: HashMap::new(),
+            timeout_s: Some(seconds),
+        };
+        assert_eq!(
+            seconds_error(&exp),
+            format!("invalid timeout_s in activity 'inject': {shown} is not a number of seconds from 0 up to 2^64")
+        );
+    }
+}
+
+#[test]
+fn zero_and_a_fraction_of_a_second_are_accepted_in_every_place() {
+    // Guard: these pass today and must keep passing. A zero timeout times
+    // the step out at once, and a zero pause does not wait.
+    for seconds in ["0", "0.5", "5"] {
+        let exp = file_with("method", seconds, seconds);
+        let outcome = validate_experiment(&exp);
+        assert!(outcome.is_ok(), "{seconds}: {outcome:?}");
+    }
+}
+
+#[test]
+fn a_flat_load_with_a_duration_that_is_not_a_number_of_seconds_is_refused() {
+    for (seconds, shown) in [(-30.0, "-30"), (f64::NAN, "NaN"), (f64::INFINITY, "inf")] {
+        assert_eq!(
+            seconds_error(&with_load(None, None, Some(seconds))),
+            format!(
+                "invalid duration_s in load: {shown} is not a number of seconds from 0 up to 2^64"
+            )
+        );
+    }
+    assert!(validate_experiment(&with_load(None, None, Some(0.0))).is_ok());
+    assert!(validate_experiment(&with_load(None, None, Some(30.0))).is_ok());
 }

@@ -1,39 +1,49 @@
-title: CPU stress — verify the host stays responsive under load
-description: Confirm the host responds, inject CPU stress with stress-ng, confirm it still responds
+title: CPU stress — a new process still starts fast when every core is busy
+description: Changes this host: every core is loaded with stress-ng for ten seconds. Measure how long the host takes to start a process, load every core with stress-ng for ten seconds, and measure again while the stress runs. The time must stay under half a second.
 
-tags[2]: stress, resilience
+tags[3]: stress, resilience, host-changing
+kind: robustness
+target:
+  system: localhost
+  technology: linux
+  environment: local
 
 steady_state_hypothesis:
-  title: Host shell is responsive
+  title: A new process starts within 500 ms
   probes[1]:
-    - name: host-alive
+    - name: process-start-ms
       activity_type: probe
       provider:
         type: process
         path: sh
-        arguments[2]: "-c", "echo alive"
+        arguments[2]: "-c", "start=$(date +%s%N); sh -c true; echo $(( ($(date +%s%N) - start) / 1000000 ))"
         timeout_s: 5.0
       tolerance:
-        type: regex
-        pattern: "alive"
+        type: range
+        from: 0
+        to: 500
 
 method[2]:
   - name: cpu-stress
     activity_type: action
+    background: true
     provider:
       type: process
       path: sh
-      arguments[2]: "-c", "stress-ng --cpu 2 --timeout 5s --metrics-brief 2>&1 | tail -1"
-      timeout_s: 20.0
-  - name: verify-responsive
+      arguments[2]: "-c", "stress-ng --cpu 0 --timeout 10s --metrics-brief 2>&1 | tail -1"
+      timeout_s: 30.0
+  - name: process-start-ms-under-stress
     activity_type: probe
+    pause_before_s: 3.0
     provider:
       type: process
       path: sh
-      arguments[2]: "-c", "echo alive"
-      timeout_s: 5.0
+      arguments[2]: "-c", "start=$(date +%s%N); sh -c true; echo $(( ($(date +%s%N) - start) / 1000000 ))"
+      timeout_s: 10.0
     tolerance:
-      type: regex
-      pattern: "alive"
+      type: range
+      from: 0
+      to: 500
+    pause_after_s: 8.0
 
 rollbacks[0]:

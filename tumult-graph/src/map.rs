@@ -10,9 +10,11 @@
 //!   faults are `plugin::function`, services are extracted from the injecting
 //!   activity's provider arguments, and `Fault -[observed_on]-> Service` edges
 //!   are added.
-//! * **Journal only** (the CLI auto-ingest path): faults fall back to the
-//!   injecting activity's name; no service/target information is available.
+//! * **Journal only** (a journal ingested without its definition, such as an
+//!   API import with no experiment): faults fall back to the injecting
+//!   activity's name; no service/target information is available.
 
+use serde_json::Value;
 use tumult_core::types::{
     ActivityType, Experiment, ExperimentStatus, Journal, Provider, RegulatoryMapping,
 };
@@ -38,17 +40,13 @@ pub fn journal_to_graph(journal: &Journal, experiment: Option<&Experiment>) -> G
     });
 
     // ── Journal (run) node + Experiment -[yielded]-> Journal ─────
-    let run_id = format!("run:{}", journal.experiment_id);
+    let [run_id, dev_id] = run_node_ids(&journal.experiment_id);
     let status = journal.status.to_string();
     builder.push_node(Node {
         id: run_id.clone(),
         kind: NodeKind::Journal,
         label: status.clone(),
-        attrs: serde_json::json!({
-            "status": status,
-            "started_at_ns": journal.started_at_ns,
-            "duration_ms": journal.duration_ms,
-        }),
+        attrs: run_attrs(journal, &status, experiment),
     });
     builder.push_edge(&exp_id, EdgeRel::Yielded, &run_id);
 
@@ -57,7 +55,6 @@ pub fn journal_to_graph(journal: &Journal, experiment: Option<&Experiment>) -> G
     // unambiguous, `caused_by` edges point at the responsible fault(s).
     if journal.status != ExperimentStatus::Completed {
         let detail = crate::attribution::deviation_detail(journal, experiment);
-        let dev_id = format!("dev:{}", journal.experiment_id);
         builder.push_node(Node {
             id: dev_id.clone(),
             kind: NodeKind::Deviation,
@@ -95,6 +92,49 @@ pub fn journal_to_graph(journal: &Journal, experiment: Option<&Experiment>) -> G
     builder.finish()
 }
 
+/// The id of the fault node of `function` of `plugin`, as a run ingested
+/// with its definition keys it.
+#[must_use]
+pub fn plugin_fault_id(plugin: &str, function: &str) -> String {
+    format!("fault:{plugin}::{function}")
+}
+
+/// The graph nodes that belong to run `experiment_id` alone: its journal
+/// node and, when it did not complete, its deviation node. Every other node
+/// a run adds is shared with the other runs.
+#[must_use]
+pub fn run_node_ids(experiment_id: &str) -> [String; 2] {
+    [
+        format!("run:{experiment_id}"),
+        format!("dev:{experiment_id}"),
+    ]
+}
+
+/// What the run node says about its run. The target is the one the
+/// definition declares: a journal does not name it, and a run that left no
+/// trace is placed by it.
+fn run_attrs(journal: &Journal, status: &str, experiment: Option<&Experiment>) -> Value {
+    let mut attrs = serde_json::json!({
+        "status": status,
+        "started_at_ns": journal.started_at_ns,
+        "duration_ms": journal.duration_ms,
+    });
+    let Some(target) = experiment.and_then(|e| e.target.as_ref()) else {
+        return attrs;
+    };
+    attrs["target_system"] = Value::from(target.system.as_str());
+    let optional = [
+        ("target_technology", &target.technology),
+        ("target_environment", &target.environment),
+    ];
+    for (key, value) in optional {
+        if let Some(value) = value {
+            attrs[key] = Value::from(value.as_str());
+        }
+    }
+    attrs
+}
+
 /// Richest path: derive `Fault` and `Service` nodes from the experiment's
 /// action activities. Native providers give `Fault = plugin::function` and a
 /// service from provider arguments; process providers give `Fault =
@@ -117,12 +157,11 @@ fn map_from_experiment(builder: &mut Builder, exp_id: &str, exp: &Experiment) {
                 arguments,
                 ..
             } => {
-                let fault_label = format!("{plugin}::{function}");
-                let fault_id = format!("fault:{fault_label}");
+                let fault_id = plugin_fault_id(plugin, function);
                 builder.push_node(Node {
                     id: fault_id.clone(),
                     kind: NodeKind::Fault,
-                    label: fault_label,
+                    label: format!("{plugin}::{function}"),
                     attrs: serde_json::json!({ "plugin": plugin, "function": function }),
                 });
                 (fault_id, service_from_arguments(arguments))
@@ -265,6 +304,7 @@ mod tests {
     fn base_journal(id: &str, status: ExperimentStatus) -> Journal {
         Journal {
             target_version: None,
+            target: None,
             experiment_title: "Latency drill".into(),
             experiment_id: id.into(),
             status,
@@ -360,6 +400,49 @@ mod tests {
             "observed_on",
             "svc:demo-app".into()
         )));
+    }
+
+    fn run_node(delta: &GraphDelta) -> &Node {
+        delta
+            .nodes
+            .iter()
+            .find(|node| node.kind == NodeKind::Journal)
+            .expect("the run has a node")
+    }
+
+    #[test]
+    fn the_run_node_names_the_target_the_definition_declares() {
+        let journal = base_journal("run-1", ExperimentStatus::Completed);
+        let exp = Experiment {
+            target: Some(tumult_core::types::ExperimentTarget {
+                system: "payments-api".into(),
+                technology: Some("postgresql".into()),
+                environment: Some("staging".into()),
+                criticality: None,
+                namespace: None,
+                version: None,
+            }),
+            ..latency_experiment()
+        };
+
+        let delta = journal_to_graph(&journal, Some(&exp));
+
+        let attrs = &run_node(&delta).attrs;
+        assert_eq!(attrs["target_system"], "payments-api");
+        assert_eq!(attrs["target_technology"], "postgresql");
+        assert_eq!(attrs["target_environment"], "staging");
+    }
+
+    #[test]
+    fn the_run_node_of_a_run_without_a_declared_target_names_none() {
+        let journal = base_journal("run-1", ExperimentStatus::Completed);
+
+        let with_definition = journal_to_graph(&journal, Some(&latency_experiment()));
+        let journal_alone = journal_to_graph(&journal, None);
+
+        for delta in [with_definition, journal_alone] {
+            assert!(run_node(&delta).attrs.get("target_system").is_none());
+        }
     }
 
     #[test]

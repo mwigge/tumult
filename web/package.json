@@ -7,13 +7,16 @@
   "scripts": {
     "dev": "vite dev",
     "build": "vite build",
+    "build:report": "vite build --config vite.report.config.ts",
     "preview": "vite preview",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "eslint . --max-warnings=0",
     "test": "vitest run",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:report": "playwright test --config playwright.report.config.ts",
+    "test:live": "playwright test --config playwright.live.config.ts"
   },
   "dependencies": {
     "echarts": "6.1.0"

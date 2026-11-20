@@ -2,7 +2,7 @@
 //! [`tumult_lake::QueryRow`] results.
 //!
 //! Every field here corresponds to a real column in the `experiments` /
-//! `activity_results` tables (see `tumult-analytics/src/duckdb_store/mod.rs`).
+//! `activity_results` tables (see `tumult-lake/src/schema/analytics.rs`).
 //! The mappers are total: a malformed or short row yields `None` rather than
 //! panicking, so a partially-populated store can never crash the UI.
 
@@ -16,7 +16,9 @@ pub struct ExperimentRow {
     /// Wall-clock start, nanoseconds since the Unix epoch.
     pub started_at_ns: i64,
     pub duration_ms: u64,
-    pub resilience: Option<f64>,
+    /// Whether the hypothesis of the run was met; `None` when the run
+    /// judged none.
+    pub hypothesis_met: Option<bool>,
     pub steps: u64,
     /// Count of non-succeeded activities recorded for this experiment.
     pub deviations: u64,
@@ -25,7 +27,7 @@ pub struct ExperimentRow {
 impl ExperimentRow {
     /// Build a row from the history query's column order:
     /// `experiment_id, title, status, started_at_ns, duration_ms,
-    /// resilience_score, method_step_count, deviations`.
+    /// hypothesis_met, method_step_count, deviations`.
     ///
     /// Returns `None` if the slice is too short to be an experiment row.
     #[must_use]
@@ -39,7 +41,7 @@ impl ExperimentRow {
             status: cols[2].clone(),
             started_at_ns: cols[3].parse().unwrap_or(0),
             duration_ms: cols[4].parse().unwrap_or(0),
-            resilience: parse_opt_f64(&cols[5]),
+            hypothesis_met: cols[5].parse().ok(),
             steps: cols[6].parse().unwrap_or(0),
             deviations: cols[7].parse().unwrap_or(0),
         })
@@ -89,15 +91,6 @@ pub struct GraphNodeRow {
     pub label: String,
 }
 
-/// Parse a store double column that may hold the literal `"NULL"`.
-fn parse_opt_f64(raw: &str) -> Option<f64> {
-    if raw == "NULL" || raw.is_empty() {
-        None
-    } else {
-        raw.parse().ok()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -114,7 +107,7 @@ mod tests {
             "deviated",
             "1783183432647939812",
             "57",
-            "0.8200",
+            "true",
             "3",
             "1",
         ]))
@@ -124,13 +117,13 @@ mod tests {
         assert_eq!(row.status, "deviated");
         assert_eq!(row.started_at_ns, 1_783_183_432_647_939_812);
         assert_eq!(row.duration_ms, 57);
-        assert_eq!(row.resilience, Some(0.82));
+        assert_eq!(row.hypothesis_met, Some(true));
         assert_eq!(row.steps, 3);
         assert_eq!(row.deviations, 1);
     }
 
     #[test]
-    fn experiment_row_handles_null_resilience() {
+    fn experiment_row_handles_a_run_that_judged_no_hypothesis() {
         let row = ExperimentRow::from_columns(&cols(&[
             "abc",
             "t",
@@ -142,7 +135,7 @@ mod tests {
             "0",
         ]))
         .unwrap();
-        assert_eq!(row.resilience, None);
+        assert_eq!(row.hypothesis_met, None);
     }
 
     #[test]

@@ -9,7 +9,7 @@
 # Usage (CLI):
 #   docker run tumult run /opt/tumult/examples/redis-chaos.toon
 #   docker run tumult analyze --all
-#   docker run tumult gameday run /opt/tumult/gamedays/q2-postgres-resilience.gameday.toon
+#   docker run tumult gameday run /opt/tumult/gamedays/q2-postgres-resilience.gameday.toon --force
 #   docker run tumult discover
 #   docker run tumult --help
 #

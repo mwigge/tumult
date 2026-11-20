@@ -235,7 +235,7 @@ mod tests {
     fn experiment(verdicts: Vec<Verdict>, rto: Option<(f64, f64)>) -> ExperimentLatest {
         ExperimentLatest {
             name: "e".into(),
-            kind: "robustness".into(),
+            kind: Some("robustness".into()),
             last_run_ns: NOW,
             passed: true,
             outcome: None,

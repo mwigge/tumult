@@ -13,7 +13,7 @@ use crate::tools;
 
 use super::{parse_args, validate_page, Dispatched, ToolOutput, DEFAULT_JOURNAL_PATH};
 
-/// Dispatch `tumult_run_experiment`: execute a chaos experiment and persist
+/// Dispatch `tumult_run_experiment`: execute an experiment and persist
 /// its journal. An enact path: refuses (as a tool-level error, not a protocol
 /// error) while another enactment holds the `EnactLock` slot — a queued fault
 /// is a stale fault. The captured MCP span context is passed through as the
@@ -42,6 +42,7 @@ pub(super) fn run_experiment(
             experiment_path: &path,
             rollback_strategy: &args.rollback_strategy,
             journal_path: std::path::Path::new(&journal_path),
+            force: args.force,
             store_path: &args.store_path,
             no_ingest: args.no_ingest,
             format: &args.format,

@@ -109,6 +109,7 @@ pub fn facts_package(report: &Report) -> Value {
                 label,
                 value,
                 delta,
+                ..
             } => Some(json!({"label": label, "value": value, "delta": delta})),
             _ => None,
         })
@@ -134,6 +135,7 @@ fn facts_numbers(report: &Report) -> Vec<f64> {
                 label,
                 value,
                 delta,
+                ..
             } => {
                 texts.push(label);
                 texts.push(value);
@@ -145,7 +147,7 @@ fn facts_numbers(report: &Report) -> Vec<f64> {
                 texts.extend(headers.iter().map(String::as_str));
                 texts.extend(rows.iter().flatten().map(String::as_str));
             }
-            Section::Narrative { .. } | Section::ChartRef { .. } => {}
+            Section::Narrative { .. } | Section::Bars { .. } => {}
         }
     }
     let mut numbers = Vec::new();
@@ -266,16 +268,21 @@ mod tests {
         Report {
             title: "kronika digest".into(),
             generated_at_ns: 1,
+            period: None,
             sections: vec![
                 Section::Kpi {
                     label: "experiment_count".into(),
                     value: "6".into(),
                     delta: Some("+2".into()),
+                    about: None,
+                    trend: None,
                 },
                 Section::Kpi {
                     label: "hypothesis_pass_rate".into(),
                     value: "0.875".into(),
                     delta: None,
+                    about: None,
+                    trend: None,
                 },
                 Section::Table {
                     headers: vec!["experiment".into(), "value".into()],

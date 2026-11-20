@@ -195,7 +195,9 @@ exporters:
   produces them.
 
 **What the exporter is told.** Every batch gets a `BatchStatus`; the codes
-are chosen for how the `otelarrow` exporter reacts to them.
+are chosen for how the `otelarrow` exporter reacts to them. A failed lake
+write over unary OTLP is gRPC `UNAVAILABLE` or HTTP `503`, which OTLP
+exporters retry too.
 
 | Event | `BatchStatus` | Stream |
 |---|---|---|
@@ -429,13 +431,12 @@ resilience.experiment                    (root — tumult-core runner)
 │   ├── k8s.pod.delete                  (tumult-kubernetes)
 │   ├── k8s.node.drain
 │   ├── k8s.deployment.scale
-│   └── k8s.network_policy.apply
+│   └── k8s.networkpolicy.apply
 ├── resilience.hypothesis.after
 │   └── resilience.probe
-├── resilience.rollback                  (one per rollback step)
+├── resilience.rollback                  (one over all rollback steps)
 │   └── resilience.action
 ├── baseline.acquire                     (tumult-baseline)
-│   └── baseline.sample                 (repeated per interval)
 ├── resilience.analytics.ingest         (tumult-lake → DuckDB or ClickHouse)
 │   ├── resilience.analytics.query
 │   └── resilience.analytics.export
@@ -444,7 +445,7 @@ resilience.experiment                    (root — tumult-core runner)
 
 ### Trace Context Propagation
 
-When Tumult executes a script plugin, it injects `TRACEPARENT` and `TRACESTATE` environment variables into the subprocess. This allows scripts that emit their own OTel spans to attach as children of the `script.execute` span:
+When Tumult executes a script plugin, it injects `TRACEPARENT` and `TRACESTATE` environment variables into the subprocess. This allows scripts that emit their own OTel spans to attach as children of the `script.execute` span. With telemetry off there is no span, and a script gets no `TRACEPARENT`:
 
 ```bash
 #!/usr/bin/env bash
@@ -453,7 +454,7 @@ When Tumult executes a script plugin, it injects `TRACEPARENT` and `TRACESTATE` 
 my-otel-instrumented-service --do-chaos
 ```
 
-When running via the MCP server, you can pass a `parent_context` in `RunConfig` to link the experiment root span to the calling agent's trace.
+When running via the MCP server, the server passes the context of its `mcp.tool.call` span as `parent_context` in `RunConfig`, so the experiment root span is a child of the tool call.
 
 ## Span Attributes Reference
 
@@ -462,31 +463,29 @@ When running via the MCP server, you can pass a `parent_context` in `RunConfig` 
 | Attribute | Type | Description |
 |-----------|------|-------------|
 | `resilience.experiment.id` | string | UUID for this experiment run |
-| `resilience.experiment.name` | string | Experiment title |
-| `resilience.experiment.status` | string | `Completed`, `Failed`, `Aborted`, `Interrupted` |
-| `resilience.experiment.duration_ms` | int | Total experiment wall-clock time |
-| `resilience.hypothesis.met` | bool | Did the steady-state hypothesis hold? |
-| `resilience.hypothesis.deviations` | int | Number of probe deviations detected |
+| `resilience.experiment.title` | string | Experiment title |
+| `resilience.test.kind` | string | The kind of the test, such as `chaos` |
+| `resilience.outcome.status` | string | `completed`, `deviated`, `failed`, `aborted`, `interrupted`, `halted` |
+| `resilience.outcome.hypothesis_met` | bool | Did the steady-state hypothesis hold? Only when the run judged it |
+| `resilience.outcome.recovery_time_s` | float | Seconds until the target recovered. Only when the run saw it recover |
 
 ### `resilience.action` / `resilience.probe`
 
 | Attribute | Type | Description |
 |-----------|------|-------------|
-| `resilience.action.name` | string | Activity name from experiment definition |
-| `resilience.probe.name` | string | Probe name from experiment definition |
+| `resilience.action.name` | string | Activity name from experiment definition, on probe spans too |
+| `resilience.activity.type` | string | `action` or `probe` |
 | `resilience.plugin.name` | string | Plugin executing the activity |
-| `resilience.activity.duration_ms` | int | Activity execution duration |
-| `resilience.activity.status` | string | `success`, `failure`, `timeout` |
-| `resilience.activity.phase` | string | `before`, `method`, `after`, `rollback` |
+| `resilience.fault.type` | string | `injection` for an action, `observation` for a probe |
+| `resilience.fault.name` | string | Activity name from experiment definition |
+| `resilience.target.type` | string | `process`, `native` or `script` |
 
 ### `script.execute`
 
 | Attribute | Type | Description |
 |-----------|------|-------------|
-| `script.plugin_name` | string | Script plugin name |
-| `script.function_name` | string | Action or probe function name |
-| `script.exit_code` | int | Script process exit code |
-| `script.duration_ms` | int | Script execution duration |
+| `script.path` | string | Path of the script that runs |
+| `script.timeout_seconds` | float | Timeout of the script, when it has one |
 
 ### `ssh.connect` / `ssh.execute`
 
@@ -494,27 +493,23 @@ When running via the MCP server, you can pass a `parent_context` in `RunConfig` 
 |-----------|------|-------------|
 | `net.peer.name` | string | SSH target hostname |
 | `net.peer.port` | int | SSH port (default 22) |
-| `ssh.user` | string | SSH username |
-| `ssh.auth_method` | string | `key_file`, `agent`, `password` |
-| `ssh.command_exit_code` | int | Remote command exit code |
+| `ssh.command` | string | Remote command, first 256 bytes (`ssh.execute`) |
+| `ssh.auth_method` | string | `key` or `agent` |
+| `ssh.exit_code` | int | Remote command exit code, on the `ssh.command.completed` event |
 
 ### `baseline.acquire`
 
 | Attribute | Type | Description |
 |-----------|------|-------------|
-| `baseline.probe_name` | string | Name of the probe being baselined |
-| `baseline.method` | string | `mean_stddev`, `percentile`, `iqr`, `error_rate` |
-| `baseline.sample_count` | int | Number of samples collected |
-| `baseline.duration_ms` | int | Baseline acquisition wall time |
-| `baseline.anomaly_detected` | bool | Whether the baseline itself was anomalous |
+| `baseline.probe_count` | int | Number of probes being baselined |
+| `baseline.tolerance_method` | string | `mean_stddev`, `percentile`, `iqr`, `static` |
 
 ### `resilience.analytics.ingest`
 
 | Attribute | Type | Description |
 |-----------|------|-------------|
-| `analytics.backend` | string | `duckdb` or `clickhouse` |
-| `analytics.experiment_id` | string | Experiment ID being ingested |
-| `analytics.rows_inserted` | int | Number of activity rows written |
+| `resilience.experiment.id` | string | Experiment ID being ingested |
+| `resilience.experiment.title` | string | Title of the experiment being ingested |
 
 ## Structured Span Events
 
@@ -522,22 +517,23 @@ Tumult emits structured span events (not logs) at key lifecycle points. These ap
 
 | Event Name | Parent Span | Fields | Description |
 |------------|-------------|--------|-------------|
-| `journal.ingested` | `resilience.analytics.ingest` | `experiment_id`, `activity_count` | Journal successfully written to store |
-| `drain.completed` | `resilience.experiment` | `spans_exported`, `metrics_exported` | OTel flush completed at experiment end |
-| `tolerance.derived` | `baseline.acquire` | `probe_name`, `method`, `lower`, `upper` | Baseline tolerance bounds calculated |
-| `anomaly.detected` | `baseline.acquire` | `probe_name`, `reason`, `cv` | Baseline anomaly found before experiment |
-| `script.completed` | `script.execute` | `exit_code`, `stdout_bytes`, `stderr_bytes` | Script plugin finished execution |
-| `experiment.started` | `resilience.experiment` | `experiment_id`, `title`, `triggered_by` | Audit event: experiment begins |
-| `experiment.completed` | `resilience.experiment` | `experiment_id`, `status`, `duration_ms` | Audit event: experiment ends |
+| `journal.ingested` | `resilience.analytics.ingest` | `resilience.experiment.id`, `resilience.activity.count` | Journal successfully written to store |
+| `tolerance.derived` | `baseline.acquire` | `baseline.tolerance.lower`, `baseline.tolerance.upper`, `baseline.samples_total` | Baseline tolerance bounds calculated |
+| `anomaly.detected` | `baseline.acquire` | `baseline.anomaly.reason`, `baseline.anomaly.cv` | Baseline anomaly found before experiment |
+| `script.completed` | `script.execute` | `script.exit_code`, `script.stdout_bytes`, `script.stderr_bytes` | Script plugin finished execution |
+| `experiment.started` | `resilience.experiment` | `experiment_id`, `experiment_title`, `user`, `started_at_ns` | Audit event: experiment begins |
+| `experiment.completed` | `resilience.experiment` | `experiment_id`, `experiment_title`, `status`, `duration_ms`, `deviations` | Audit event: experiment ends |
 
 ### Audit Events
 
 The `experiment.started` and `experiment.completed` events are also emitted as structured `tracing::info!` log records with fields compatible with SIEM ingestion:
 
 ```
-INFO experiment.started experiment_id="abc-123" title="Kill DB connections" triggered_by="cli"
-INFO experiment.completed experiment_id="abc-123" status="Completed" duration_ms=45231
+INFO experiment.started experiment_id="abc-123" experiment_title="Kill DB connections" user="alice"
+INFO experiment.completed experiment_id="abc-123" status=completed duration_ms=45231
 ```
+
+`experiment.completed` is written once for every run, however it ended. `status` is spelled as in the journal: `completed`, `deviated`, `failed`, `aborted`, `interrupted` or `halted`.
 
 The sample above is the terminal (text) rendering. Without a terminal the same events are JSON lines on stderr; see [Logging](logging.md) for the format and the field vocabulary.
 
@@ -548,28 +544,28 @@ Correlation with the experiment trace depends on the path the record takes:
 
 ## Metrics Reference
 
-All metrics use the `resilience.` namespace.
+The engine metrics use the `tumult.` namespace. Three store gauges use `resilience.store.`. The label `resilience.outcome.status` of a metric is `success` or `failure`.
 
 ### Counters
 
 | Metric | Labels | Description |
 |--------|--------|-------------|
-| `resilience.experiments.total` | `status` | Experiments run, by outcome |
-| `resilience.actions.total` | `plugin`, `outcome` | Actions executed |
-| `resilience.probes.total` | `plugin`, `outcome` | Probes executed |
-| `resilience.hypothesis.deviations.total` | `experiment` | Steady-state violations, by experiment name |
-| `resilience.script.executions.total` | `plugin`, `function`, `outcome` | Script plugin invocations |
-| `resilience.rollbacks.total` | `outcome` | Rollback executions |
-| `resilience.rollback.failures` | — | Rollback steps that failed (non-fatal) |
+| `tumult.experiments.total` | `resilience.outcome.status` | Experiments run, by outcome. Only a completed run is `success` |
+| `tumult.actions.total` | `resilience.plugin.name`, `resilience.action.name`, `resilience.outcome.status` | Actions executed |
+| `tumult.probes.total` | `resilience.plugin.name`, `resilience.probe.name`, `resilience.outcome.status` | Probes executed. A probe outside its tolerance is `failure` |
+| `tumult.hypothesis.deviations.total` | `resilience.experiment.name` | Deviated runs, by experiment title |
+| `tumult.plugin.script.executions.total` | `script.success` | Script plugin invocations |
+| `tumult.rollbacks.total` | `resilience.action.name`, `resilience.outcome.status` | Rollback executions |
+| `tumult.plugin.errors.total` | same as `tumult.actions.total` or `tumult.probes.total` | Actions that failed and probes their plugin could not run |
+| `tumult.baseline.probes.total`, `tumult.baseline.samples.total` | none | Baseline probes and samples taken |
 
 ### Histograms
 
 | Metric | Labels | Description |
 |--------|--------|-------------|
-| `resilience.action.duration_seconds` | `plugin` | Action execution latency |
-| `resilience.probe.duration_seconds` | `plugin` | Probe execution latency |
-| `resilience.experiment.duration_seconds` | `status` | Total experiment duration |
-| `resilience.baseline.duration_seconds` | `method` | Baseline acquisition time |
+| `tumult.action.duration` | same as `tumult.actions.total` | Action execution latency, in seconds |
+| `tumult.probe.duration` | same as `tumult.probes.total` | Probe execution latency, in seconds |
+| `tumult.experiment.duration` | `resilience.outcome.status` | Total experiment duration, in seconds |
 
 ### Gauges (Store)
 
@@ -578,7 +574,7 @@ All metrics use the `resilience.` namespace.
 | `resilience.store.experiments` | Total experiments in persistent store |
 | `resilience.store.activities` | Total activity rows in store |
 | `resilience.store.size_bytes` | DuckDB file size in bytes |
-| `resilience.store.disk_usage_pct` | Store disk usage as percentage of volume |
+| `tumult.store.disk_usage_pct` | Store disk usage as percentage of volume |
 
 ## Trace-to-Metrics Correlation (SigNoz)
 
@@ -586,17 +582,17 @@ When using SigNoz with the ClickHouse backend, experiment data lands in the same
 
 ```sql
 -- Find all traces for a specific experiment
-SELECT e.title, e.status, t.traceID, t.serviceName
+SELECT e.title, e.status, t.trace_id, t.serviceName
 FROM tumult.experiments e
-JOIN signoz_traces.signoz_index_v2 t
-  ON e.experiment_id = t.traceID
-WHERE e.status = 'Failed'
+JOIN signoz_traces.signoz_index_v3 t
+  ON t.attributes_string['resilience.experiment.id'] = e.experiment_id
+WHERE e.status = 'failed'
 
 -- Correlate experiment timing with infrastructure metrics
 SELECT e.title, s.unix_milli, s.value AS cpu_pct
 FROM tumult.experiments e
 JOIN signoz_metrics.samples_v4 s
-  ON s.unix_milli BETWEEN e.started_at AND e.completed_at
+  ON s.unix_milli BETWEEN intDiv(e.started_at_ns, 1000000) AND intDiv(e.ended_at_ns, 1000000)
 WHERE s.metric_name = 'system.cpu.utilization'
 ```
 
@@ -608,20 +604,19 @@ TUMULT_CLICKHOUSE_URL=http://localhost:8123 tumult run experiment.toon
 
 ## Trace Context from MCP Callers
 
-When an AI agent or orchestration system calls Tumult via MCP (`tumult_run_experiment`), the experiment's root span can be linked to the agent's trace. Pass the W3C trace context in the MCP call metadata:
+When an AI agent or orchestration system calls Tumult via MCP (`tumult_run_experiment`), the experiment's root span is a child of the server's `mcp.tool.call` span. The server reads only `authorization` from the MCP call metadata:
 
 ```json
 {
   "_meta": {
     "extra": {
-      "authorization": "Bearer <token>",
-      "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+      "authorization": "Bearer <token>"
     }
   }
 }
 ```
 
-The MCP handler extracts the `traceparent` header and wires it into `RunConfig.parent_context`, making the experiment a child span of the calling agent.
+The MCP handler does not read a `traceparent` from the call. It wires the context of its own `mcp.tool.call` span into `RunConfig.parent_context`, so the trace starts at the tool call and is not linked to the trace of the calling agent.
 
 ## Troubleshooting
 
@@ -635,8 +630,8 @@ The MCP handler extracts the `traceparent` header and wires it into `RunConfig.p
 - Ensure your collector config has a `metrics` pipeline
 - Verify the backend supports OTLP metrics ingestion
 
-**`hypothesis.deviations.total` not broken down by experiment?**
-- This metric carries the `experiment` label. Ensure your metrics backend supports high-cardinality labels, or filter with `--experiment <name>` in queries.
+**`tumult.hypothesis.deviations.total` not broken down by experiment?**
+- This metric carries the `resilience.experiment.name` label. Ensure your metrics backend supports high-cardinality labels, or filter with `--experiment <name>` in queries.
 
 **Subprocess spans not connecting to parent?**
 - The subprocess must read `TRACEPARENT`/`TRACESTATE` from environment and use them as its OTel context. Most OTel SDKs do this automatically if you call `opentelemetry::global::get_text_map_propagator`.
@@ -644,4 +639,4 @@ The MCP handler extracts the `traceparent` header and wires it into `RunConfig.p
 **SigNoz not showing experiment data?**
 - Confirm `TUMULT_CLICKHOUSE_URL` is set correctly.
 - Check ClickHouse is healthy: `curl http://localhost:8123/ping`
-- The ClickHouse backend retries 3 times with exponential backoff (2s/4s/8s) before failing.
+- `tumult run` connects to ClickHouse once and does not retry. A failed connection fails the ingest of the journal.

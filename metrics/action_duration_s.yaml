@@ -3,7 +3,8 @@
 # tumult emits the plugin as resilience.plugin.name, promoted to
 # plugin_name at ingest.
 name: action_duration_s
-description: Mean action duration in seconds, per plugin.
+description: Mean action duration, per plugin.
+unit: seconds
 source_table: metric_histograms
 time_col: ts_ns
 measure:

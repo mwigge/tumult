@@ -1,6 +1,12 @@
 title: Demo — auto-halt guardrail pulls the plug when demo-app goes unhealthy
 description: A safety guard watches demo-app health during a DB outage and halts the run the moment it turns unhealthy, running rollback immediately.
 
+kind: chaos
+target:
+  system: demo-app
+  technology: http
+  environment: demo
+
 regulatory:
   frameworks[1]: DORA
   requirements[1]:

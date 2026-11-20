@@ -3,6 +3,7 @@
 pub mod conformance;
 pub mod dora;
 pub mod entities;
+pub(crate) mod evidence;
 pub mod experiments;
 pub mod gate;
 pub mod logs;

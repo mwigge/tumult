@@ -16,7 +16,11 @@ tumult-cloud = { path = "../tumult-cloud" }
 tumult-windows = { path = "../tumult-windows" }
 serde_json = { workspace = true }
 tokio = { workspace = true }
+tokio-util = { workspace = true }
 libc = { workspace = true }
 
 [dev-dependencies]
-tumult-test-utils = { path = "../tumult-test-utils", default-features = false }
+opentelemetry = { workspace = true }
+opentelemetry_sdk = { workspace = true, features = ["testing"] }
+tempfile = { workspace = true }
+tumult-test-utils = { path = "../tumult-test-utils", default-features = false, features = ["otel"] }

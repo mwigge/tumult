@@ -4,7 +4,7 @@
 //! The question this module answers is the auditor's question: *for each
 //! regulatory control and each service, does the latest chaos evidence say
 //! the control is evidenced, broken, or simply untested?* It consumes raw
-//! [`EdgeRecord`] rows (read back from storage by `tumult-analytics`) plus
+//! [`EdgeRecord`] rows (read back from storage by `tumult-lake`) plus
 //! parsed deviation attrs, and never touches a database — mirroring the
 //! coverage/topology pattern so the computation is deterministic and unit
 //! testable without `DuckDB`.

@@ -1,34 +1,29 @@
 //! Phase computation: analysis (Phase 4), probe sampling, and during/post
 //! result construction.
 
-use std::collections::HashMap;
 use std::sync::mpsc::{Receiver, RecvTimeoutError};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
+use indexmap::IndexMap;
 use tokio_util::sync::CancellationToken;
 
 use crate::types::{
-    ActivityResult, ActivityStatus, ActivityType, AnalysisResult, DuringResult, ExpectedOutcome,
-    Experiment, ExperimentStatus, Hypothesis, PostResult, ProbeDuring, ProbePost, ProbeSample,
-    SamplePhase,
+    ActivityResult, ActivityStatus, AnalysisResult, DuringResult, ExpectedOutcome, Experiment,
+    ExperimentStatus, Hypothesis, PostResult, ProbeDuring, ProbePost, ProbeSample, SamplePhase,
 };
 
-use opentelemetry::trace::{TraceContextExt, Tracer};
-use opentelemetry::KeyValue;
+use super::activity::sample_probe;
+use super::ActivityExecutor;
 
-use super::activity::probe_outcome_ok;
-use super::telemetry::{
-    current_span_id, current_trace_id, epoch_nanos_now, fault_attributes, plugin_name,
-    set_span_status_from_outcome, target_attributes,
-};
-use super::{ActivityExecutor, TRACER_NAME};
-
-/// Probe samples grouped by probe name, each group in collection order.
+/// Probe samples grouped by probe name, in the order of the probes of the
+/// hypothesis, each group in time order.
 pub(crate) type ProbeSamples = Vec<(String, Vec<ActivityResult>)>;
 
-/// Mutable per-probe sample sink used while sampling is in progress.
-pub(crate) type ProbeSampleMap = HashMap<String, Vec<ActivityResult>>;
+/// Mutable per-probe sample sink used while sampling is in progress. It
+/// keeps the probes in the order their first sample came, which is the
+/// order of the hypothesis: a round samples its probes in that order.
+pub(crate) type ProbeSampleMap = IndexMap<String, Vec<ActivityResult>>;
 
 /// Compute Phase 4 analysis from estimate and actual results.
 ///
@@ -78,68 +73,14 @@ fn sample_probe_round(
     hypothesis: &Hypothesis,
     executor: &dyn ActivityExecutor,
 ) -> (Vec<ActivityResult>, bool) {
-    let mut round = Vec::with_capacity(hypothesis.probes.len());
-    let mut all_within_tolerance = true;
-
-    for probe in &hypothesis.probes {
-        // Each sample is a real probe execution — give it the same span
-        // coverage as method-phase activities so during/post operations
-        // show up in traces and join the experiment's trace tree.
-        let tracer = opentelemetry::global::tracer(TRACER_NAME);
-        let mut attrs = vec![
-            KeyValue::new("resilience.action.name", probe.name.clone()),
-            KeyValue::new("resilience.activity.type", ActivityType::Probe.to_string()),
-        ];
-        attrs.extend(target_attributes(probe));
-        attrs.extend(fault_attributes(probe));
-        let span = tracer
-            .span_builder("resilience.probe")
-            .with_attributes(attrs)
-            .start(&tracer);
-        let cx = opentelemetry::Context::current_with_span(span);
-        let guard = cx.attach();
-
-        let start = Instant::now();
-        let started_at_ns = epoch_nanos_now();
-        let outcome = executor.execute(probe);
-        set_span_status_from_outcome(outcome.success, outcome.error.as_deref());
-        tumult_otel::instrument::record_probe(
-            tumult_otel::TumultMetrics::global(),
-            &plugin_name(probe),
-            &probe.name,
-            start,
-            outcome.success,
-        );
-        let trace_id = current_trace_id();
-        let span_id = current_span_id();
-        drop(guard);
-        // Probe durations never exceed u64::MAX milliseconds (~585M years).
-        #[allow(clippy::cast_possible_truncation)]
-        let elapsed = start.elapsed().as_millis() as u64;
-
-        let within_tolerance = probe_outcome_ok(probe, outcome.success, outcome.output.as_deref());
-        if !within_tolerance {
-            all_within_tolerance = false;
-        }
-        let status = if within_tolerance {
-            ActivityStatus::Succeeded
-        } else {
-            ActivityStatus::Failed
-        };
-
-        round.push(ActivityResult {
-            name: probe.name.clone(),
-            activity_type: ActivityType::Probe,
-            status,
-            started_at_ns,
-            duration_ms: elapsed,
-            output: outcome.output,
-            error: outcome.error,
-            trace_id,
-            span_id,
-        });
-    }
-
+    let round: Vec<ActivityResult> = hypothesis
+        .probes
+        .iter()
+        .map(|probe| sample_probe(probe, executor))
+        .collect();
+    let all_within_tolerance = round
+        .iter()
+        .all(|sample| sample.status == ActivityStatus::Succeeded);
     (round, all_within_tolerance)
 }
 

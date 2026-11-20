@@ -1,9 +1,9 @@
 # demo-app — the fault-injection target
 
 A small orders API over Postgres, instrumented with OpenTelemetry. It's the
-service Tumult disrupts in the [one-command demo](../README.md): every fault
-domain (network latency, DB connection kills, container pause, CPU/memory
-stress, process signals, SSH, agentic) ultimately shows up as a change in this
+service Tumult disrupts in the [one-command demo](../README.md): the fault
+domains that act on it or its database (network latency, DB connection kills,
+container pause, CPU stress, process signals) show up as a change in this
 app's traces and metrics in SigNoz.
 
 It is deliberately tiny and boring on the happy path — the interesting behavior
@@ -45,8 +45,8 @@ it has visible depth in SigNoz:
 ```
 GET /checkout/:id
 ├── db query          (loads the order; nested db.get_order span)
-├── inventory check   (simulated downstream reservation, ~15–45ms)
-└── payment           (simulated payment authorization, ~25–60ms)
+├── inventory check   (simulated downstream reservation, 15 to 60 ms)
+└── payment           (simulated payment authorization, 25 to 85 ms)
 ```
 
 Under a DB fault, `db query` errors and the parent span carries the error
@@ -109,6 +109,10 @@ cargo build
 cargo test          # handler + fault-path tests using an in-memory store stub
 cargo clippy --all-targets -- -D warnings
 ```
+
+From the repository root, `make demo-test` runs `cargo fmt --check`, clippy and
+the tests of this crate and the two other demo crates, each with its own lock
+file. CI runs it in the job "Demo crates".
 
 ## Source map
 

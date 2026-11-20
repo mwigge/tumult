@@ -5,28 +5,24 @@
 //! connection. Writes (run ingest, coverage-gap refresh) stay on
 //! [`tumult_lake::AnalyticsStore`].
 
-use std::collections::HashSet;
-
 use duckdb::params;
-use tumult_graph::{sql, EgoGraph, EgoTuple, NodeSummary};
+use tumult_graph::{sql, EgoGraph, EgoTuple, NodeSummary, TestedFaults};
 use tumult_lake::{AnalyticsError, AnalyticsStore};
 
-/// Distinct tested action names — the `activity_results.name` values of
-/// `action` activities. This is the "tested" set the coverage-gap
-/// derivation subtracts the plugin catalog against.
+/// The faults the stored runs injected: the fault ids of the graph's
+/// `injects` edges. This is the "tested" set the coverage-gap derivation
+/// and the recommendation novelty subtract the plugin catalog against.
 ///
 /// # Errors
 ///
 /// Returns an error if the query fails.
-#[must_use = "callers must use the returned set of tested action names"]
-pub fn tested_action_names(store: &AnalyticsStore) -> Result<HashSet<String>, AnalyticsError> {
-    let mut stmt = store
-        .__connection()
-        .prepare("SELECT DISTINCT name FROM activity_results WHERE activity_type = 'action'")?;
-    let rows = stmt
+#[must_use = "callers must use the returned set of tested faults"]
+pub fn tested_faults(store: &AnalyticsStore) -> Result<TestedFaults, AnalyticsError> {
+    let mut stmt = store.__connection().prepare(sql::INJECTED_FAULTS)?;
+    let ids = stmt
         .query_map(params![], |row| row.get::<_, String>(0))?
-        .collect::<Result<HashSet<_>, _>>()?;
-    Ok(rows)
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(TestedFaults::from_fault_ids(ids))
 }
 
 /// Return node summaries of a given `kind`, optionally filtered by a
@@ -232,18 +228,22 @@ mod tests {
     }
 
     #[test]
-    fn tested_action_names_reflects_ingested_actions() {
+    fn tested_faults_are_the_plugin_functions_of_the_stored_definitions() {
+        use tumult_graph::AvailableAction;
         let s = AnalyticsStore::in_memory().unwrap();
-        assert!(tested_action_names(&s).unwrap().is_empty());
+        assert_eq!(tested_faults(&s).unwrap(), TestedFaults::default());
 
+        // The journal's step is `action-1`; its definition's function is
+        // `tumult-net::inject_latency`.
         s.ingest_journal_with_experiment(
             &sample_journal("e1", ExperimentStatus::Completed),
             Some(&latency_experiment()),
         )
         .unwrap();
 
-        let names = tested_action_names(&s).unwrap();
-        assert!(names.contains("action-1"));
+        let tested = tested_faults(&s).unwrap();
+        assert!(tested.contains(&AvailableAction::new("tumult-net", "inject_latency")));
+        assert!(!tested.contains(&AvailableAction::new("tumult-net", "action-1")));
     }
 
     #[test]
@@ -283,8 +283,7 @@ mod tests {
             AvailableAction::new("tumult-net", "inject_latency"),
             AvailableAction::new("tumult-net", "drop_packets"),
         ];
-        let tested = std::collections::HashSet::new();
-        let delta = tumult_graph::coverage_gap_delta(&available, &tested);
+        let delta = tumult_graph::coverage_gap_delta(&available, &TestedFaults::default());
 
         s.refresh_coverage_gaps(&delta).unwrap();
         let gaps = graph_query(&s, "coverage_gap", None).unwrap();

@@ -135,7 +135,7 @@ pub(crate) enum BaselineMode {
 
 #[derive(clap::Subcommand, Debug)]
 pub(crate) enum Commands {
-    /// Execute a chaos experiment
+    /// Execute an experiment
     Run {
         /// Path to experiment .toon file
         experiment: PathBuf,
@@ -158,7 +158,7 @@ pub(crate) enum Commands {
         #[arg(long)]
         no_ingest: bool,
         /// Output format for journal (human-readable summary or JSON to stdout)
-        #[arg(long, value_enum)]
+        #[arg(long, value_enum, conflicts_with = "dry_run")]
         output_format: Option<OutputFormat>,
         /// Template variable substitution: KEY=VALUE (may be repeated)
         #[arg(long = "var", value_name = "KEY=VALUE", action = clap::ArgAction::Append)]
@@ -257,7 +257,8 @@ pub(crate) enum Commands {
         /// Time window (e.g., 30d, 90d)
         #[arg(long)]
         last: Option<String>,
-        /// Filter by target technology (matches experiment title)
+        /// Only the runs on this target: the system or the technology the
+        /// journal names
         #[arg(long)]
         target: Option<String>,
     },
@@ -295,7 +296,7 @@ pub(crate) enum Commands {
         #[command(subcommand)]
         action: StoreAction,
     },
-    /// AI-assisted recommendation for the next useful chaos experiment
+    /// AI-assisted recommendation for the next useful experiment
     Recommend {
         /// Recommendation goal or operator intent
         #[arg(long)]

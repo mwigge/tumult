@@ -42,6 +42,7 @@ Tumult agentic fault-injecting proxy
   listening: http://127.0.0.1:8080
   upstream:  https://api.anthropic.com
   scenario:  malformed-json-recovery
+  client:    unknown
   faults:    malformed_output
   journal:   target/agentic/proxy.jsonl
 
@@ -132,7 +133,9 @@ probability in a custom pack and the same `--seed` replays the same decisions.
 - The proxy forwards your real credentials to the real upstream — run it locally
   and never expose the listen port beyond `127.0.0.1`.
 - `accept-encoding` is stripped so responses arrive uncompressed and can be
-  inspected and mutated; everything else (including `authorization`) is forwarded
+  inspected and mutated. Hop-by-hop headers are dropped, and the proxy sends
+  its own trace context in place of the inbound `traceparent` and
+  `tracestate`. Everything else (including `authorization`) is forwarded
   verbatim.
 - Bodies pass through tumult in memory, but **capture is metadata-only by
   default** — no prompt, completion, or body content is written to the journal or

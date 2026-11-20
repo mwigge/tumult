@@ -1,6 +1,6 @@
 use crate::common::*;
 use serde_json::{json, Value};
-use tumult_lake::Store;
+use tumult_lake::{LogRow, SpanRow, Store};
 
 #[tokio::test]
 async fn overview_returns_kpis_deltas_and_breakdowns() {
@@ -75,10 +75,11 @@ async fn experiments_lists_filters_and_searches() {
     assert_eq!(status, 200, "{body}");
     let rows = body["experiments"].as_array().unwrap();
     assert_eq!(rows.len(), 2);
-    // Newest first; outcome joined from the completed log.
+    // Newest first. The seed is two runs stored before 3.0.2: the outcome
+    // is on the completed log, spelled with a capital.
     assert_eq!(rows[0]["id"], "exp-fail");
-    assert_eq!(rows[0]["status"], "Deviated");
-    assert_eq!(rows[1]["status"], "Completed");
+    assert_eq!(rows[0]["status"], "deviated");
+    assert_eq!(rows[1]["status"], "completed");
     assert_eq!(rows[0]["faults"], "injection");
 
     let (_, body) = get(&srv.base, "/api/experiments?outcome=deviated").await;
@@ -117,7 +118,7 @@ async fn experiment_detail_returns_spans_logs_metrics() {
     let (status, body) = get(&srv.base, "/api/experiments/exp-pass").await;
     assert_eq!(status, 200, "{body}");
     assert_eq!(body["experiment"]["name"], "pg-failover");
-    assert_eq!(body["experiment"]["status"], "Completed");
+    assert_eq!(body["experiment"]["status"], "completed");
     assert_eq!(body["spans"].as_array().unwrap().len(), 2);
     assert_eq!(body["logs"].as_array().unwrap().len(), 2);
     // Regression: a log's real timestamp must survive ingest → store → API
@@ -145,7 +146,7 @@ async fn dimensions_lists_distinct_filter_values() {
         .map(Value::as_str)
         .collect::<Option<Vec<_>>>()
         .unwrap();
-    assert_eq!(outcomes, ["Completed", "Deviated"]);
+    assert_eq!(outcomes, ["completed", "deviated"]);
     assert_eq!(body["targets"], serde_json::json!(["database"]));
     assert_eq!(body["faults"], serde_json::json!(["injection"]));
     assert_eq!(
@@ -166,6 +167,47 @@ async fn metrics_lists_semantic_definitions() {
         .filter_map(|m| m["name"].as_str())
         .collect();
     assert!(names.contains(&"hypothesis_pass_rate"), "{names:?}");
+}
+
+#[tokio::test]
+async fn metrics_say_the_unit_of_their_value() {
+    let srv = spawn_server().await;
+
+    let (status, body) = get(&srv.base, "/api/metrics").await;
+
+    assert_eq!(status, 200, "{body}");
+    let metrics = body["metrics"].as_array().expect("the metrics");
+    let unit_of = |name: &str| {
+        let metric = metrics.iter().find(|metric| metric["name"] == name);
+        metric.map(|metric| metric["unit"].clone())
+    };
+    assert_eq!(
+        unit_of("hypothesis_pass_rate"),
+        Some(serde_json::json!("ratio"))
+    );
+    assert_eq!(
+        unit_of("action_duration_p95"),
+        Some(serde_json::json!("nanoseconds"))
+    );
+    assert_eq!(unit_of("mttr"), Some(serde_json::json!("seconds")));
+    assert_eq!(
+        unit_of("experiment_count"),
+        Some(serde_json::json!("count"))
+    );
+}
+
+#[tokio::test]
+async fn a_timeseries_says_the_unit_of_its_points() {
+    let srv = spawn_server().await;
+
+    let (status, body) = get(
+        &srv.base,
+        "/api/timeseries?metric=hypothesis_pass_rate&interval=1h&range=24h",
+    )
+    .await;
+
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["unit"], "ratio");
 }
 
 #[tokio::test]
@@ -368,9 +410,9 @@ async fn traces_groups_spans_and_filters() {
     assert_eq!(rows[0]["service_name"], "tumult");
     assert_eq!(rows[0]["span_count"], 2);
     assert_eq!(rows[0]["error_count"], 0);
-    assert_eq!(rows[0]["status"], "Deviated");
+    assert_eq!(rows[0]["status"], "deviated");
     assert_eq!(rows[0]["experiment_id"], "exp-fail");
-    assert_eq!(rows[1]["status"], "Completed");
+    assert_eq!(rows[1]["status"], "completed");
     // Trace duration spans the whole tree (5s), not just one span.
     assert_eq!(rows[0]["duration_ns"], serde_json::json!(5 * NS));
 
@@ -538,6 +580,169 @@ async fn metrics_query_splits_by_attribute_key() {
     )
     .await;
     assert_eq!(status, 400);
+}
+
+/// A metric written after more than 5000 rows of another metric in the
+/// same table is in the catalog with its attribute key, and its query
+/// answers with its point.
+#[tokio::test]
+async fn a_metric_written_after_5000_rows_of_another_is_listed_and_found() {
+    let srv = spawn_server().await;
+    let now = now_ns();
+    exec_write(&srv, move |w| {
+        let busy: Vec<tumult_lake::MetricSumRow> = (0..5_001)
+            .map(|i| tumult_lake::MetricSumRow {
+                ts_ns: now - 300 * NS + i,
+                metric_name: "demo.busy".into(),
+                value: 1.0,
+                ..tumult_lake::MetricSumRow::default()
+            })
+            .collect();
+        w.insert_metric_sums(&busy).map_err(|e| e.to_string())?;
+        w.insert_metric_sums(&[tumult_lake::MetricSumRow {
+            ts_ns: now - 100 * NS,
+            metric_name: "demo.quiet".into(),
+            value: 7.0,
+            attrs: vec![("zone".to_string(), "a".to_string())],
+            ..tumult_lake::MetricSumRow::default()
+        }])
+        .map_err(|e| e.to_string())
+    })
+    .await;
+
+    let (status, body) = get(&srv.base, "/api/metrics/query?name=demo.quiet&interval=1d").await;
+    assert_eq!(status, 200, "{body}");
+    let points: Vec<f64> = body["series"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .flat_map(|s| s["points"].as_array().unwrap().iter())
+        .filter_map(|p| p["v"].as_f64())
+        .collect();
+    assert_eq!(points, [7.0], "{body}");
+
+    let (status, body) = get(&srv.base, "/api/metrics/catalog").await;
+    assert_eq!(status, 200, "{body}");
+    let quiet = body["metrics"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| m["name"] == "demo.quiet")
+        .cloned();
+    assert_eq!(
+        quiet,
+        Some(json!({"name": "demo.quiet", "types": ["sum"], "dimensions": ["zone"]})),
+        "{body}"
+    );
+}
+
+/// A metric name with an apostrophe is found by that name, and a name
+/// that tries to close the string finds nothing: the name is data, never
+/// a part of the statement.
+#[tokio::test]
+async fn a_metric_name_with_an_apostrophe_is_found_by_that_name() {
+    let srv = spawn_server().await;
+    let now = now_ns();
+    exec_write(&srv, move |w| {
+        w.insert_metric_sums(&[tumult_lake::MetricSumRow {
+            ts_ns: now - 100 * NS,
+            metric_name: "demo.o'clock".into(),
+            value: 4.0,
+            ..tumult_lake::MetricSumRow::default()
+        }])
+        .map_err(|e| e.to_string())
+    })
+    .await;
+
+    let (status, body) = get(
+        &srv.base,
+        "/api/metrics/query?name=demo.o%27clock&interval=1d",
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["name"], "demo.o'clock", "{body}");
+    let points: Vec<f64> = body["series"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .flat_map(|s| s["points"].as_array().unwrap().iter())
+        .filter_map(|p| p["v"].as_f64())
+        .collect();
+    assert_eq!(points, [4.0], "{body}");
+
+    // x' OR '1'='1
+    let (status, body) = get(
+        &srv.base,
+        "/api/metrics/query?name=x%27%20OR%20%271%27%3D%271",
+    )
+    .await;
+    assert_eq!(status, 404, "{body}");
+}
+
+/// A name written as a gauge and as a sum is listed with both types in
+/// the order of the tables (sum before gauge), with the attribute keys of
+/// both, and the query reads it from the sum table.
+#[tokio::test]
+async fn a_name_in_two_tables_is_listed_with_both_types_and_read_as_a_sum() {
+    let srv = spawn_server().await;
+    let now = now_ns();
+    exec_write(&srv, move |w| {
+        w.insert_metric_gauges(&[tumult_lake::MetricGaugeRow {
+            ts_ns: now - 200 * NS,
+            metric_name: "demo.both".into(),
+            value: 10.0,
+            attrs: vec![("gauge_key".to_string(), "g".to_string())],
+            ..Default::default()
+        }])
+        .map_err(|e| e.to_string())?;
+        w.insert_metric_sums(&[
+            tumult_lake::MetricSumRow {
+                ts_ns: now - 150 * NS,
+                metric_name: "demo.both".into(),
+                value: 2.0,
+                attrs: vec![("sum_key".to_string(), "s".to_string())],
+                ..Default::default()
+            },
+            tumult_lake::MetricSumRow {
+                ts_ns: now - 140 * NS,
+                metric_name: "demo.both".into(),
+                value: 3.0,
+                ..Default::default()
+            },
+        ])
+        .map_err(|e| e.to_string())
+    })
+    .await;
+
+    let (status, body) = get(&srv.base, "/api/metrics/catalog").await;
+    assert_eq!(status, 200, "{body}");
+    let both = body["metrics"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| m["name"] == "demo.both")
+        .cloned();
+    assert_eq!(
+        both,
+        Some(json!({
+            "name": "demo.both",
+            "types": ["sum", "gauge"],
+            "dimensions": ["gauge_key", "sum_key"],
+        })),
+        "{body}"
+    );
+
+    let (status, body) = get(&srv.base, "/api/metrics/query?name=demo.both&interval=1d").await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["type"], "sum", "{body}");
+    let total: f64 = body["series"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .flat_map(|s| s["points"].as_array().unwrap().iter())
+        .filter_map(|p| p["v"].as_f64())
+        .sum();
+    assert_eq!(total, 5.0, "{body}");
 }
 
 #[tokio::test]
@@ -875,4 +1080,620 @@ async fn a_journal_import_drops_the_cached_star_maps() {
     // A duplicate stores nothing, so the cached map still stands.
     assert_eq!(import().await, false);
     assert_eq!(starmap_as_of(&srv.base).await, after);
+}
+
+/// The endings of a run other than `completed` and `deviated`, which the
+/// seed has.
+const OTHER_ENDINGS: [&str; 4] = ["failed", "aborted", "interrupted", "halted"];
+
+/// The root span of run `id` against the system `queue`, as 3.0.2 stores
+/// it: the span says how the run ended. `None` is a run that has not ended.
+fn root_span(id: &str, status: Option<&str>) -> SpanRow {
+    SpanRow {
+        ts_ns: now_ns() - 300 * NS,
+        trace_id: format!("trace-{id}"),
+        span_id: format!("span-{id}-root"),
+        span_name: "resilience.experiment".into(),
+        span_kind: "Internal".into(),
+        duration_ns: 5 * NS,
+        status_code: "Error".into(),
+        service_name: "tumult".into(),
+        experiment_id: Some(id.into()),
+        experiment_name: Some(format!("name-{id}")),
+        outcome_status: status.map(str::to_string),
+        target_system: Some("queue".into()),
+        target_environment: Some("demo".into()),
+        events: "[]".into(),
+        ..SpanRow::default()
+    }
+}
+
+/// One run for each of [`OTHER_ENDINGS`], named `run-<ending>`. None of
+/// them has a completed log.
+async fn seed_other_endings(srv: &TestServer) {
+    let rows: Vec<SpanRow> = OTHER_ENDINGS
+        .iter()
+        .map(|status| root_span(&format!("run-{status}"), Some(status)))
+        .collect();
+    exec_write(srv, move |w| {
+        w.insert_spans(&rows).map_err(|e| e.to_string())
+    })
+    .await;
+}
+
+fn rows_of<'a>(body: &'a Value, key: &str) -> &'a Vec<Value> {
+    body[key]
+        .as_array()
+        .unwrap_or_else(|| panic!("no {key}: {body}"))
+}
+
+#[tokio::test]
+async fn a_run_is_listed_and_filtered_by_the_status_on_its_root_span() {
+    let srv = spawn_server().await;
+    seed_other_endings(&srv).await;
+
+    for status in OTHER_ENDINGS {
+        let (code, body) = get(&srv.base, &format!("/api/experiments?outcome={status}")).await;
+        assert_eq!(code, 200, "{body}");
+        let rows = rows_of(&body, "experiments");
+        assert_eq!(rows.len(), 1, "{status}: {rows:?}");
+        assert_eq!(rows[0]["id"], format!("run-{status}"));
+        assert_eq!(rows[0]["status"], status);
+
+        let (code, body) = get(&srv.base, &format!("/api/traces?outcome={status}")).await;
+        assert_eq!(code, 200, "{body}");
+        let rows = rows_of(&body, "traces");
+        assert_eq!(rows.len(), 1, "{status}: {rows:?}");
+        assert_eq!(rows[0]["trace_id"], format!("trace-run-{status}"));
+        assert_eq!(rows[0]["status"], status);
+    }
+
+    let (_, body) = get(&srv.base, "/api/experiments/run-halted").await;
+    assert_eq!(body["experiment"]["status"], "halted");
+    let (_, body) = get(&srv.base, "/api/experiments?outcome=incomplete").await;
+    assert_eq!(rows_of(&body, "experiments").len(), 0);
+    let (_, body) = get(&srv.base, "/api/traces?outcome=incomplete").await;
+    assert_eq!(rows_of(&body, "traces").len(), 0);
+}
+
+#[tokio::test]
+async fn the_outcome_filter_takes_either_spelling() {
+    let srv = spawn_server().await;
+
+    for outcome in ["deviated", "Deviated", "DEVIATED"] {
+        let (code, body) = get(&srv.base, &format!("/api/experiments?outcome={outcome}")).await;
+        assert_eq!(code, 200, "{body}");
+        assert_eq!(rows_of(&body, "experiments")[0]["id"], "exp-fail");
+        let (code, body) = get(&srv.base, &format!("/api/traces?outcome={outcome}")).await;
+        assert_eq!(code, 200, "{body}");
+        assert_eq!(rows_of(&body, "traces")[0]["trace_id"], "trace-exp-fail");
+    }
+
+    let (code, body) = get(&srv.base, "/api/experiments?outcome=bogus").await;
+    assert_eq!(code, 400);
+    assert_eq!(
+        body["error"],
+        "invalid outcome \"bogus\"; expected \
+         completed|deviated|failed|aborted|interrupted|halted|incomplete"
+    );
+}
+
+#[tokio::test]
+async fn a_run_that_has_not_ended_is_incomplete() {
+    let srv = spawn_server().await;
+    let row = root_span("run-open", None);
+    exec_write(&srv, move |w| {
+        w.insert_spans(&[row]).map_err(|e| e.to_string())
+    })
+    .await;
+
+    let (_, body) = get(&srv.base, "/api/experiments?outcome=incomplete").await;
+    let rows = rows_of(&body, "experiments");
+    assert_eq!(rows.len(), 1, "{rows:?}");
+    assert_eq!(rows[0]["id"], "run-open");
+    assert!(rows[0]["status"].is_null(), "{}", rows[0]);
+    let (_, body) = get(&srv.base, "/api/traces?outcome=incomplete").await;
+    assert_eq!(rows_of(&body, "traces")[0]["trace_id"], "trace-run-open");
+}
+
+#[tokio::test]
+async fn the_outcome_facet_lists_each_status_once_in_one_spelling() {
+    let srv = spawn_server().await;
+    seed_other_endings(&srv).await;
+    // A completed run stored by 3.0.2 next to the one of the seed, which is
+    // spelled with a capital.
+    let row = root_span("run-completed", Some("completed"));
+    exec_write(&srv, move |w| {
+        w.insert_spans(&[row]).map_err(|e| e.to_string())
+    })
+    .await;
+
+    let (status, body) = get(&srv.base, "/api/dimensions").await;
+
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(
+        body["outcomes"],
+        json!([
+            "aborted",
+            "completed",
+            "deviated",
+            "failed",
+            "halted",
+            "interrupted"
+        ])
+    );
+}
+
+#[tokio::test]
+async fn the_pass_rate_of_a_target_counts_runs_in_either_spelling() {
+    let srv = spawn_server().await;
+    seed_other_endings(&srv).await;
+    let row = root_span("run-completed", Some("completed"));
+    exec_write(&srv, move |w| {
+        w.insert_spans(&[row]).map_err(|e| e.to_string())
+    })
+    .await;
+
+    let (status, body) = get(&srv.base, "/api/overview?range=24h").await;
+
+    assert_eq!(status, 200, "{body}");
+    let pass_rate = |target: &str| {
+        rows_of(&body, "targets")
+            .iter()
+            .find(|row| row["target"] == target)
+            .unwrap_or_else(|| panic!("no target {target}: {body}"))["pass_rate"]
+            .clone()
+    };
+    // The seed: one of two runs against the database completed.
+    assert_eq!(pass_rate("database"), 0.5);
+    // One of the three runs against the queue that passed or failed
+    // completed. The aborted and the interrupted run prove nothing: they
+    // are in its run count and not in its pass rate.
+    assert_eq!(pass_rate("queue"), json!(1.0 / 3.0));
+    let queue = rows_of(&body, "targets")
+        .iter()
+        .find(|row| row["target"] == "queue")
+        .unwrap();
+    assert_eq!(queue["experiments"], 5, "{queue}");
+}
+
+/// The card `name` of an overview.
+fn card<'a>(body: &'a Value, name: &str) -> &'a Value {
+    rows_of(body, "kpis")
+        .iter()
+        .find(|kpi| kpi["name"] == name)
+        .unwrap_or_else(|| panic!("no card {name}: {body}"))
+}
+
+/// The answer of `/api/ask` to `question`.
+async fn asked(base: &str, question: &str) -> Value {
+    let resp = reqwest::Client::new()
+        .post(format!("{base}/api/ask"))
+        .json(&json!({ "question": question }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    resp.json().await.unwrap()
+}
+
+#[tokio::test]
+async fn the_run_pass_rate_counts_runs_and_not_the_points_of_a_cumulative_counter() {
+    let srv = spawn_server().await;
+    // A runner that exports its counters as running totals repeats, after
+    // the failed run of the seed, the one success of the run before it.
+    let repeated = tumult_lake::MetricSumRow {
+        ts_ns: now_ns() - 595 * NS,
+        metric_name: "tumult.experiments.total".into(),
+        value: 1.0,
+        experiment_name: Some("pg-failover".into()),
+        outcome_status: Some("success".into()),
+        ..tumult_lake::MetricSumRow::default()
+    };
+    exec_write(&srv, move |w| {
+        w.insert_metric_sums(&[repeated]).map_err(|e| e.to_string())
+    })
+    .await;
+
+    let (status, overview) = get(&srv.base, "/api/overview?range=24h").await;
+    let answer = asked(&srv.base, "What is the pass rate?").await;
+
+    assert_eq!(status, 200, "{overview}");
+    // One of the two runs of the seed passed.
+    assert_eq!(card(&overview, "pass_rate")["value"], 0.5, "{overview}");
+    assert_eq!(card(&overview, "pass_rate")["label"], "Run pass rate");
+    assert_eq!(answer["rows"][0]["pass_rate"], 0.5, "{answer}");
+}
+
+#[tokio::test]
+async fn the_card_its_sparkline_the_leaderboard_and_ask_give_one_pass_rate() {
+    use tumult_core::types::{Experiment, ExperimentStatus, ExperimentTarget, Journal};
+    let srv = spawn_server().await;
+    let at = now_ns() - 300 * NS;
+    let ended = |id: &str, status: Option<&str>| SpanRow {
+        ts_ns: at,
+        ..root_span(id, status)
+    };
+    // One run for each way a run can end, and one that has not ended.
+    // The halted run was stored before 3.0.2: its completion log says how
+    // it ended. The deviated run sent no trace: the lake holds its journal.
+    let spans = vec![
+        ended("run-completed", Some("completed")),
+        ended("run-failed", Some("failed")),
+        ended("run-halted", None),
+        ended("run-aborted", Some("aborted")),
+        ended("run-interrupted", Some("interrupted")),
+        ended("run-open", None),
+    ];
+    let halted = LogRow {
+        ts_ns: at + NS,
+        body: "experiment.completed".into(),
+        service_name: "tumult".into(),
+        log_attrs: vec![
+            ("experiment_id".to_string(), "run-halted".to_string()),
+            ("status".to_string(), "Halted".to_string()),
+        ],
+        ..LogRow::default()
+    };
+    let journal = Journal {
+        experiment_title: "name-run-deviated".into(),
+        started_at_ns: at,
+        ended_at_ns: at + 5 * NS,
+        ..tumult_lake::duckdb_store::sample_journal("run-deviated", ExperimentStatus::Deviated)
+    };
+    let definition = Experiment {
+        title: journal.experiment_title.clone(),
+        target: Some(ExperimentTarget {
+            system: "queue".into(),
+            technology: None,
+            environment: Some("demo".into()),
+            criticality: None,
+            namespace: None,
+            version: None,
+        }),
+        ..Experiment::default()
+    };
+    exec_write(&srv, move |w| {
+        for table in ["spans", "logs", "metric_sums"] {
+            w.execute(&format!("DELETE FROM {table}"), ())
+                .map_err(|e| e.to_string())?;
+        }
+        w.insert_spans(&spans).map_err(|e| e.to_string())?;
+        w.insert_logs(&[halted]).map_err(|e| e.to_string())?;
+        w.ingest_journal(&journal, Some(&definition))
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    })
+    .await;
+
+    let (status, overview) = get(&srv.base, "/api/overview?range=24h").await;
+    let answer = asked(&srv.base, "What is the pass rate?").await;
+
+    assert_eq!(status, 200, "{overview}");
+    let pass_rate = card(&overview, "pass_rate");
+    let queue = &rows_of(&overview, "targets")[0];
+    let sparkline: Vec<&Value> = rows_of(pass_rate, "spark")
+        .iter()
+        .map(|point| &point["v"])
+        .collect();
+    // One of the four runs that passed or failed completed.
+    let one_in_four = json!(0.25);
+    assert_eq!(
+        (
+            &pass_rate["value"],
+            sparkline,
+            (&queue["target"], &queue["experiments"], &queue["pass_rate"]),
+            &answer["rows"][0]["pass_rate"],
+        ),
+        (
+            &one_in_four,
+            vec![&one_in_four],
+            (&json!("queue"), &json!(7), &one_in_four),
+            &one_in_four,
+        ),
+        "{overview}\n{answer}"
+    );
+}
+
+/// The values of the points of the sparkline of a card.
+fn points(card: &Value) -> Vec<&Value> {
+    rows_of(card, "spark")
+        .iter()
+        .map(|point| &point["v"])
+        .collect()
+}
+
+/// The rows of the targets of an overview: name, runs and run pass rate.
+fn targets(overview: &Value) -> Vec<(&Value, &Value, &Value)> {
+    rows_of(overview, "targets")
+        .iter()
+        .map(|row| (&row["target"], &row["experiments"], &row["pass_rate"]))
+        .collect()
+}
+
+/// One deviation counted five minutes ago for the experiment `name`.
+fn deviation_of(name: &str) -> tumult_lake::MetricSumRow {
+    tumult_lake::MetricSumRow {
+        ts_ns: now_ns() - 300 * NS,
+        metric_name: "tumult.hypothesis.deviations.total".into(),
+        value: 1.0,
+        experiment_name: Some(name.into()),
+        ..tumult_lake::MetricSumRow::default()
+    }
+}
+
+#[tokio::test]
+async fn the_rates_of_the_home_page_keep_to_the_window_and_have_a_point_for_each_hour() {
+    let srv = spawn_server().await;
+    let now = now_ns();
+    let hour = 3_600 * NS;
+    let at = |ts_ns: i64, id: &str, status: &str| SpanRow {
+        ts_ns,
+        ..root_span(id, Some(status))
+    };
+    // Three runs five minutes ago, two half an hour apart in one hour of
+    // the clock five hours ago, and two in the day before the window. The
+    // last run of the list names no target.
+    let earlier = (now - 5 * hour) / hour * hour;
+    let spans = vec![
+        at(now - 300 * NS, "now-completed", "completed"),
+        at(now - 300 * NS, "now-failed", "failed"),
+        at(earlier + 60 * NS, "earlier-completed", "completed"),
+        at(earlier + 1_860 * NS, "earlier-failed", "failed"),
+        at(now - 36 * hour, "day-before-failed", "failed"),
+        at(now - 36 * hour, "day-before-deviated", "deviated"),
+        SpanRow {
+            target_system: None,
+            ..at(now - 300 * NS, "no-target", "completed")
+        },
+    ];
+    exec_write(&srv, move |w| {
+        for table in ["spans", "logs", "metric_sums"] {
+            w.execute(&format!("DELETE FROM {table}"), ())
+                .map_err(|e| e.to_string())?;
+        }
+        w.insert_spans(&spans).map_err(|e| e.to_string())?;
+        w.insert_metric_sums(&[deviation_of("name-now-failed")])
+            .map_err(|e| e.to_string())
+    })
+    .await;
+
+    let (status, overview) = get(&srv.base, "/api/overview?range=24h").await;
+
+    assert_eq!(status, 200, "{overview}");
+    let pass_rate = card(&overview, "pass_rate");
+    // Three of the five runs of the window passed, and none of the two of
+    // the day before.
+    assert_eq!(
+        (&pass_rate["value"], &pass_rate["delta"]),
+        (&json!(0.6), &json!(0.6)),
+        "{pass_rate}"
+    );
+    // One point for the hour of the two earlier runs, at the start of that
+    // hour, and one point for the last hour.
+    assert_eq!(
+        points(pass_rate),
+        [&json!(0.5), &json!(2.0 / 3.0)],
+        "{pass_rate}"
+    );
+    assert_eq!(
+        rows_of(pass_rate, "spark")[0]["ts"],
+        earlier / NS,
+        "{pass_rate}"
+    );
+    // The run without a target is in no row of the targets.
+    assert_eq!(
+        targets(&overview),
+        [(&json!("queue"), &json!(4), &json!(0.5))],
+        "{overview}"
+    );
+    // One deviation over the five traced runs of the window.
+    let deviation_rate = card(&overview, "deviation_rate");
+    assert_eq!(deviation_rate["value"], 0.2, "{deviation_rate}");
+}
+
+#[tokio::test]
+async fn a_scoped_reader_gets_the_rates_of_the_runs_of_its_environments() {
+    let srv = spawn_server().await;
+    // The seed holds two runs in `demo`, and one of them deviated. Two runs
+    // in `staging` completed, with one deviation counted for them.
+    let at = now_ns() - 300 * NS;
+    let in_staging = |id: &str| SpanRow {
+        ts_ns: at,
+        experiment_name: Some("staging-drill".into()),
+        target_environment: Some("staging".into()),
+        ..root_span(id, Some("completed"))
+    };
+    let spans = [in_staging("staging-1"), in_staging("staging-2")];
+    exec_write(&srv, move |w| {
+        w.insert_spans(&spans).map_err(|e| e.to_string())?;
+        w.insert_metric_sums(&[deviation_of("staging-drill")])
+            .map_err(|e| e.to_string())
+    })
+    .await;
+    let token = add_scoped_token(&srv, "staging-viewer", "viewer", &["staging"]).await;
+
+    let (status, scoped) = get_auth(&srv.base, "/api/overview?range=24h", &token).await;
+
+    assert_eq!(status, 200, "{scoped}");
+    let pass_rate = card(&scoped, "pass_rate");
+    let one = json!(1.0);
+    assert_eq!(
+        (&pass_rate["value"], points(pass_rate)),
+        (&one, vec![&one]),
+        "{pass_rate}"
+    );
+    assert_eq!(
+        targets(&scoped),
+        [(&json!("queue"), &json!(2), &one)],
+        "{scoped}"
+    );
+    // One deviation over the two traced runs of staging.
+    let deviation_rate = card(&scoped, "deviation_rate");
+    let half = json!(0.5);
+    assert_eq!(
+        (&deviation_rate["value"], points(deviation_rate)),
+        (&half, vec![&half]),
+        "{deviation_rate}"
+    );
+}
+
+#[tokio::test]
+async fn ask_names_the_runs_that_did_not_complete_in_either_spelling() {
+    let srv = spawn_server().await;
+    let row = root_span("run-halted", Some("halted"));
+    exec_write(&srv, move |w| {
+        w.insert_spans(&[row]).map_err(|e| e.to_string())
+    })
+    .await;
+
+    let resp = reqwest::Client::new()
+        .post(format!("{}/api/ask", srv.base))
+        .json(&json!({"question": "Which experiments failed?"}))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), 200);
+    let body: Value = resp.json().await.unwrap();
+    let found: Vec<(&str, &str)> = rows_of(&body, "rows")
+        .iter()
+        .map(|row| {
+            (
+                row["experiment_id"].as_str().unwrap(),
+                row["status"].as_str().unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        found,
+        [("run-halted", "halted"), ("exp-fail", "deviated")],
+        "{body}"
+    );
+}
+
+#[tokio::test]
+async fn ask_lists_the_recent_runs_with_how_each_ended_in_one_spelling() {
+    let srv = spawn_server().await;
+    // The runs of the seed have their status on the log, with a capital.
+    // This one has it on its root span.
+    let row = root_span("run-halted", Some("halted"));
+    exec_write(&srv, move |w| {
+        w.insert_spans(&[row]).map_err(|e| e.to_string())
+    })
+    .await;
+
+    let resp = reqwest::Client::new()
+        .post(format!("{}/api/ask", srv.base))
+        .json(&json!({"question": "Show recent experiments"}))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), 200);
+    let body: Value = resp.json().await.unwrap();
+    let found: Vec<(&str, &str)> = rows_of(&body, "rows")
+        .iter()
+        .map(|row| {
+            (
+                row["experiment_id"].as_str().unwrap(),
+                row["status"].as_str().unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        found,
+        [
+            ("run-halted", "halted"),
+            ("exp-fail", "deviated"),
+            ("exp-pass", "completed")
+        ],
+        "{body}"
+    );
+}
+
+#[tokio::test]
+async fn ask_leaves_the_runs_that_prove_nothing_out_of_the_failed_runs() {
+    let srv = spawn_server().await;
+    let rows = vec![
+        root_span("run-aborted", Some("aborted")),
+        root_span("run-interrupted", Some("Interrupted")),
+    ];
+    exec_write(&srv, move |w| {
+        w.insert_spans(&rows).map_err(|e| e.to_string())
+    })
+    .await;
+
+    let resp = reqwest::Client::new()
+        .post(format!("{}/api/ask", srv.base))
+        .json(&json!({"question": "Which experiments failed?"}))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), 200);
+    let body: Value = resp.json().await.unwrap();
+    let found: Vec<&str> = rows_of(&body, "rows")
+        .iter()
+        .map(|row| row["experiment_id"].as_str().unwrap())
+        .collect();
+    assert_eq!(found, ["exp-fail"], "{body}");
+}
+
+#[tokio::test]
+async fn a_run_with_two_completion_logs_is_listed_and_counted_once() {
+    let srv = spawn_server().await;
+    let again = LogRow {
+        ts_ns: now_ns() - 1790 * NS,
+        severity_text: "INFO".into(),
+        body: "experiment.completed".into(),
+        service_name: "tumult".into(),
+        log_attrs: vec![
+            ("experiment_id".to_string(), "exp-pass".to_string()),
+            ("status".to_string(), "Completed".to_string()),
+        ],
+        ..LogRow::default()
+    };
+    exec_write(&srv, move |w| {
+        w.insert_logs(&[again]).map_err(|e| e.to_string())
+    })
+    .await;
+    let listed = |body: &Value, key: &str, id: &str| -> Vec<String> {
+        rows_of(body, key)
+            .iter()
+            .map(|row| row[id].as_str().unwrap_or_default().to_string())
+            .collect()
+    };
+
+    let (_, experiments) = get(&srv.base, "/api/experiments").await;
+    let (_, traces) = get(&srv.base, "/api/traces").await;
+    let (_, overview) = get(&srv.base, "/api/overview?range=24h").await;
+    let database = rows_of(&overview, "targets")
+        .iter()
+        .find(|row| row["target"] == "database")
+        .unwrap_or_else(|| panic!("no database: {overview}"));
+    let asked: Value = reqwest::Client::new()
+        .post(format!("{}/api/ask", srv.base))
+        .json(&json!({"question": "Show recent experiments"}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+
+    assert_eq!(
+        (
+            listed(&experiments, "experiments", "id"),
+            listed(&traces, "traces", "trace_id"),
+            (&database["experiments"], &database["pass_rate"]),
+            listed(&asked, "rows", "experiment_id"),
+        ),
+        (
+            vec!["exp-fail".to_string(), "exp-pass".to_string()],
+            vec!["trace-exp-fail".to_string(), "trace-exp-pass".to_string()],
+            (&json!(2), &json!(0.5)),
+            vec!["exp-fail".to_string(), "exp-pass".to_string()],
+        )
+    );
 }

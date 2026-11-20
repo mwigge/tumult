@@ -12,6 +12,6 @@
     "moduleResolution": "bundler",
     "types": ["$app/types", "node"]
   },
-  "include": ["src", "tests", "*.ts", "*.js"],
+  "include": ["src", "tests", "report-tests", "live-tests", "*.ts", "*.js"],
   "exclude": ["src/service-worker"]
 }

@@ -1,0 +1,47 @@
+experiment_title: Process kill — verify a disrupted process can be detected and removed
+experiment_id: "1a225ed1-e2fd-4ba5-b2de-e77b1c3d1db3"
+status: completed
+started_at_ns: 1794852787424047562
+ended_at_ns: 1794852791476767930
+duration_ms: 4052
+steady_state_before:
+  title: A target process can be started and is running
+  met: true
+  probe_results[1]{name,activity_type,status,started_at_ns,duration_ms,output,trace_id,span_id}:
+    "start-and-check",probe,succeeded,1794852787424070767,1017,"38027","",""
+steady_state_after:
+  title: A target process can be started and is running
+  met: true
+  probe_results[1]{name,activity_type,status,started_at_ns,duration_ms,output,trace_id,span_id}:
+    "start-and-check",probe,succeeded,1794852790465365178,1011,"38503","",""
+method_results[2]{name,activity_type,status,started_at_ns,duration_ms,output,trace_id,span_id}:
+  "kill-process",action,succeeded,1794852788442037058,10,killed,"",""
+  "verify-gone",probe,succeeded,1794852788452375572,9,gone,"",""
+rollback_results[0]:
+rollback_failures: 0
+estimate: null
+baseline_result: null
+during_result:
+  started_at_ns: 1794852788441994033
+  ended_at_ns: 1794852789453947498
+  fault_active_s: 1.011953465
+  sample_interval_s: 1
+  probes[1]{name,samples,mean,max,min,error_rate,breached_at_ns,breach_count}:
+    "start-and-check",1,1011,1011,1011,1,1794852788442075501,1
+post_result:
+  started_at_ns: 1794852789454025345
+  ended_at_ns: 1794852790465353991
+  duration_s: 1.011328646
+  samples: 1
+  probes[1]{name,mean,p95,error_rate,returned_to_baseline,recovery_time_s}:
+    "start-and-check",1011,1011,0,true,0
+  recovery_time_s: 0
+  full_recovery: true
+  mttr_s: 0
+load_result: null
+analysis: null
+regulatory: null
+kind: chaos
+probe_samples[2]{probe,phase,ts_ns,duration_ms,ok}:
+  "start-and-check",during,1794852788442075501,1011,false
+  "start-and-check",post,1794852789454031965,1011,true

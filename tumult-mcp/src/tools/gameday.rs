@@ -17,9 +17,10 @@ pub struct GameDayCreateRequest<'a> {
     pub name: &'a str,
     /// Experiment `.toon` paths referenced by the campaign.
     pub experiments: &'a [String],
-    /// Load tool: `k6`, `jmeter`, or `none`/absent for no load.
+    /// Load tool: `k6`, `oha`, or `none`/absent for no load.
     pub load_tool: Option<&'a str>,
-    /// Load script path recorded in the load config.
+    /// Load script path recorded in the load config; for `oha`, the URL to
+    /// hit.
     pub load_script: Option<&'a str>,
     /// Virtual users for the load test.
     pub load_vus: Option<u32>,
@@ -33,30 +34,29 @@ pub struct GameDayCreateRequest<'a> {
 /// # Errors
 ///
 /// Returns a [`ToolError`] if the load tool or framework is invalid, the
-/// file already exists, or it cannot be written.
+/// load options make no load a game day file can hold, the file already
+/// exists, or it cannot be written.
 pub fn gameday_create(request: &GameDayCreateRequest<'_>) -> Result<StructuredReport, ToolError> {
-    use tumult_core::types::{gameday_toon_template, GameDayTemplateSpec, LoadTool};
+    use tumult_core::types::{gameday_toon_template, GameDayTemplateSpec, LoadSpec, LoadTool};
 
     let load_tool = match request.load_tool {
         None | Some("none") => None,
         Some("k6") => Some(LoadTool::K6),
         Some("oha") => Some(LoadTool::Oha),
+        // Known, but refused below with the reason of the runner.
         Some("jmeter") => Some(LoadTool::Jmeter),
         Some(other) => {
             return Err(ToolError::InvalidInput(format!(
-                "unknown load_tool '{other}'; valid values: k6, oha, jmeter, none"
+                "unknown load_tool '{other}'; valid values: k6, oha, none"
             )))
         }
     };
-    // LoadConfig.script is a required field: without it the created file
-    // would not parse back as a GameDay, so refuse instead of writing it.
-    if load_tool.is_some() && request.load_script.is_none() {
-        return Err(ToolError::InvalidInput(
-            "load_script is required when load_tool is set (the gameday load config \
-             cannot be parsed without a script path)"
-                .into(),
-        ));
-    }
+    let load = LoadSpec::from_options(
+        load_tool,
+        request.load_script.map(Path::new),
+        request.load_vus,
+    )
+    .map_err(load_option_error)?;
     let framework_report_str = request
         .framework
         .map(tumult_core::compliance::ComplianceFramework::parse)
@@ -79,9 +79,7 @@ pub fn gameday_create(request: &GameDayCreateRequest<'_>) -> Result<StructuredRe
     let content = gameday_toon_template(&GameDayTemplateSpec {
         name: request.name,
         experiments: &experiments,
-        load_tool,
-        load_script: request.load_script.map(Path::new),
-        load_vus: request.load_vus,
+        load,
         framework_report_str,
     });
     std::fs::write(request.output_path, &content)?;
@@ -106,19 +104,41 @@ pub fn gameday_create(request: &GameDayCreateRequest<'_>) -> Result<StructuredRe
     Ok(StructuredReport { text, structured })
 }
 
-/// Runs a `GameDay` — all experiments under shared load.
+/// The error of `load_tool`, `load_script` and `load_vus` that make no
+/// load, in the names of the arguments.
+fn load_option_error(error: tumult_core::types::LoadSpecError) -> ToolError {
+    use tumult_core::types::LoadSpecError;
+    let message = match error {
+        LoadSpecError::ScriptMissing(_) => "load_script is required when load_tool is set (the \
+                                            gameday load config cannot be parsed without a \
+                                            script path)"
+            .to_string(),
+        LoadSpecError::ToolMissing => "load_script and load_vus need a load_tool: k6 or oha".into(),
+        LoadSpecError::NoAdapter(reason) => reason,
+    };
+    ToolError::InvalidInput(message)
+}
+
+/// What `tumult_gameday_run` can do about the journal of an earlier run.
+const GAMEDAY_WAYS_OUT: &str = "pass force: true to replace it";
+
+/// Runs a `GameDay` — all experiments under shared load. The journal of an
+/// earlier run is replaced only when `force` is set.
 ///
 /// # Errors
 ///
 /// Returns a [`ToolError`] if the `GameDay` cannot be read, parsed,
-/// or any experiment fails to execute.
+/// or any experiment fails to execute, and [`ToolError::AlreadyExists`]
+/// for the journal of an earlier run without `force`, before any
+/// experiment runs.
 #[allow(clippy::too_many_lines)] // GameDay orchestration spans load setup, multi-experiment execution, and result aggregation
-pub fn gameday_run(gameday_path: &str) -> Result<String, ToolError> {
+pub fn gameday_run(gameday_path: &str, force: bool) -> Result<String, ToolError> {
     use tumult_core::controls::{ControlRegistry, ProviderControl};
     use tumult_core::engine::{
         apply_template_vars, build_config_env, build_secret_env, flatten_secrets, parse_experiment,
         resolve_config, resolve_secrets, validate_experiment,
     };
+    use tumult_core::journal::{ExistingJournal, JournalOutput};
     use tumult_core::runner::{run_gameday_with_wiring, ExperimentWiring, RunConfig};
     use tumult_core::types::GameDay;
 
@@ -212,23 +232,17 @@ pub fn gameday_run(gameday_path: &str) -> Result<String, ToolError> {
         experiments.push(experiment);
     }
 
-    // Same load adapter as `tumult gameday run` (CLI parity): a declared
-    // load config runs through the shared executor for its tool instead of
-    // being silently dropped.
-    let load_executor = gameday
-        .load
-        .as_ref()
-        .map(|load| tumult_core::runner::load_executor_for(&load.tool))
-        .transpose()
-        .map_err(ToolError::InvalidInput)?;
-    let config = RunConfig {
-        load_executor,
-        ..RunConfig::default()
-    };
+    // The runner runs a declared load with the adapter of its tool, as for
+    // `tumult gameday run`.
+    let config = RunConfig::default();
 
+    // The journal of an earlier run is kept unless `force` is set, and the
+    // refusal comes before any experiment runs.
     let journal_path = path.with_extension("journal.toon");
-    let journal_output = tumult_core::journal::JournalOutput::prepare(&journal_path)
-        .map_err(|e| ToolError::Execution(format!("journal preflight failed: {e}")))?;
+    let journal_output = JournalOutput::prepare(&journal_path, ExistingJournal::replace_if(force))
+        .map_err(|e| {
+            super::experiment::journal_error(&e, "journal preflight failed", GAMEDAY_WAYS_OUT)
+        })?;
     let journal = run_gameday_with_wiring(
         &gameday,
         &experiments,
@@ -240,9 +254,9 @@ pub fn gameday_run(gameday_path: &str) -> Result<String, ToolError> {
     // Publish the journal to the preflighted destination.
     let toon_out = toon_format::encode_default(&journal)
         .map_err(|e| ToolError::Execution(format!("failed to encode journal: {e}")))?;
-    journal_output
-        .write(&toon_out)
-        .map_err(|e| ToolError::Execution(format!("failed to write journal: {e}")))?;
+    journal_output.write(&toon_out).map_err(|e| {
+        super::experiment::journal_error(&e, "failed to write journal", GAMEDAY_WAYS_OUT)
+    })?;
 
     let mut output = String::new();
     writeln!(output, "GameDay: {}", journal.title).ok();
@@ -273,11 +287,11 @@ pub fn gameday_run(gameday_path: &str) -> Result<String, ToolError> {
         )
         .ok();
     } else if gameday.load.is_some() {
-        // Report the gap rather than stay silent: the campaign declared load but no result
-        // came back (e.g. the k6 binary is not installed on this host).
+        // Report the gap rather than stay silent: the campaign declared load, the load
+        // started, but no result came back. A load that does not start ends the campaign.
         writeln!(
             output,
-            "Load: declared but produced no result (load tool failed to start; see server logs)"
+            "Load: declared but produced no result (the load started but left none; see server logs)"
         )
         .ok();
     }
@@ -455,9 +469,10 @@ mod tests {
         let msg = err.to_string();
         assert!(msg.contains("locust"), "must name the bad value: {msg}");
         assert!(
-            msg.contains("k6") && msg.contains("jmeter") && msg.contains("none"),
-            "must list valid values: {msg}"
+            msg.contains("k6, oha, none"),
+            "must list the values that work: {msg}"
         );
+        assert!(!msg.contains("jmeter"), "jmeter does not work: {msg}");
         assert!(!out.exists(), "no file must be written");
     }
 
@@ -548,11 +563,39 @@ mod tests {
     }
 
     #[test]
-    fn gameday_create_with_jmeter_load_tool() {
+    fn gameday_create_with_an_oha_load_writes_a_file_that_reads_back() {
+        let dir = TempDir::new().unwrap();
+        let out = dir.path().join("oha.gameday.toon");
+        let experiments = vec!["a.toon".to_string()];
+        gameday_create(&GameDayCreateRequest {
+            output_path: &out,
+            name: "oha-gd",
+            experiments: &experiments,
+            load_tool: Some("oha"),
+            load_script: Some("http://127.0.0.1:9/health"),
+            load_vus: Some(3),
+            framework: None,
+        })
+        .unwrap();
+
+        let content = std::fs::read_to_string(&out).unwrap();
+        let gameday: tumult_core::types::GameDay = toon_format::decode_default(&content)
+            .unwrap_or_else(|e| panic!("the file does not read back ({e}):\n{content}"));
+        let load = gameday.load.expect("a load block");
+        assert_eq!(load.tool.to_string(), "oha");
+        assert_eq!(load.script, Path::new("http://127.0.0.1:9/health"));
+        assert_eq!(load.vus, Some(3));
+    }
+
+    /// jmeter has no load adapter: a game day of it could never start its
+    /// load, so it is refused at create, as the runner and the validation
+    /// of an experiment refuse it.
+    #[test]
+    fn gameday_create_refuses_jmeter_which_no_game_day_can_run() {
         let dir = TempDir::new().unwrap();
         let out = dir.path().join("jmeter.gameday.toon");
         let experiments = vec!["a.toon".to_string()];
-        gameday_create(&GameDayCreateRequest {
+        let err = gameday_create(&GameDayCreateRequest {
             output_path: &out,
             name: "jmeter-gd",
             experiments: &experiments,
@@ -561,12 +604,41 @@ mod tests {
             load_vus: None,
             framework: None,
         })
-        .unwrap();
-        let content = std::fs::read_to_string(&out).unwrap();
-        assert!(content.contains("tool: jmeter"), "{content}");
-        assert!(content.contains("script: plan.jmx"), "{content}");
-        assert!(!content.contains("vus:"), "no vus expected: {content}");
-        assert!(!content.contains("regulatory:"), "no framework: {content}");
+        .expect_err("jmeter must be refused");
+        assert!(matches!(err, ToolError::InvalidInput(_)), "got: {err}");
+        let msg = err.to_string();
+        assert!(msg.contains("jmeter"), "must name the tool: {msg}");
+        assert!(
+            msg.contains("k6, oha"),
+            "must list the tools that work: {msg}"
+        );
+        assert!(!out.exists(), "no file must be written");
+    }
+
+    #[test]
+    fn gameday_create_refuses_a_load_script_or_vus_without_a_load_tool() {
+        let dir = TempDir::new().unwrap();
+        let out = dir.path().join("unit-gd.gameday.toon");
+        let experiments = vec!["a.toon".to_string()];
+        for (load_tool, load_script, load_vus) in [
+            (None, Some("load.js"), None),
+            (None, None, Some(5)),
+            (Some("none"), Some("load.js"), None),
+        ] {
+            let err = gameday_create(&GameDayCreateRequest {
+                output_path: &out,
+                name: "unit-gd",
+                experiments: &experiments,
+                load_tool,
+                load_script,
+                load_vus,
+                framework: None,
+            })
+            .expect_err("a script or VUs without a tool must be refused");
+            assert!(matches!(err, ToolError::InvalidInput(_)), "got: {err}");
+            assert!(err.to_string().contains("load_tool"), "got: {err}");
+            assert!(!out.exists(), "no file must be written");
+        }
     }
 
     #[test]
@@ -608,7 +680,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let out = write_runnable_gameday(dir.path());
 
-        let report = gameday_run(out.to_str().unwrap()).unwrap();
+        let report = gameday_run(out.to_str().unwrap(), false).unwrap();
         assert!(report.contains("GameDay: unit-gd"), "{report}");
         assert!(report.contains("Status:"), "{report}");
         assert!(report.contains("Resilience Score:"), "{report}");
@@ -625,7 +697,7 @@ mod tests {
     fn gameday_analyze_reports_experiment_outcomes() {
         let dir = TempDir::new().unwrap();
         let out = write_runnable_gameday(dir.path());
-        gameday_run(out.to_str().unwrap()).unwrap();
+        gameday_run(out.to_str().unwrap(), false).unwrap();
 
         let analysis = gameday_analyze(out.to_str().unwrap()).unwrap();
         assert!(analysis.contains("GameDay: unit-gd"), "{analysis}");
@@ -641,7 +713,7 @@ mod tests {
 
     #[test]
     fn gameday_run_missing_file_is_an_io_error() {
-        let err = gameday_run("/nonexistent/unit-gd.gameday.toon")
+        let err = gameday_run("/nonexistent/unit-gd.gameday.toon", false)
             .expect_err("a missing gameday file must fail");
         assert!(matches!(err, ToolError::Io(_)), "got: {err}");
     }
@@ -651,7 +723,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let out = dir.path().join("bad.gameday.toon");
         std::fs::write(&out, "title: [unterminated").unwrap();
-        let err = gameday_run(out.to_str().unwrap()).expect_err("garbage must not parse");
+        let err = gameday_run(out.to_str().unwrap(), false).expect_err("garbage must not parse");
         assert!(
             err.to_string().contains("failed to parse gameday"),
             "got: {err}"
@@ -664,8 +736,8 @@ mod tests {
         let out = dir.path().join("unit-gd.gameday.toon");
         let experiments = vec!["no-such-experiment.toon".to_string()];
         gameday_create(&create_request(&out, &experiments, None, None)).unwrap();
-        let err =
-            gameday_run(out.to_str().unwrap()).expect_err("a missing experiment file must fail");
+        let err = gameday_run(out.to_str().unwrap(), false)
+            .expect_err("a missing experiment file must fail");
         assert!(matches!(err, ToolError::Io(_)), "got: {err}");
     }
 
@@ -676,8 +748,8 @@ mod tests {
         let out = dir.path().join("unit-gd.gameday.toon");
         let experiments = vec!["broken.toon".to_string()];
         gameday_create(&create_request(&out, &experiments, None, None)).unwrap();
-        let err =
-            gameday_run(out.to_str().unwrap()).expect_err("an unparseable experiment must fail");
+        let err = gameday_run(out.to_str().unwrap(), false)
+            .expect_err("an unparseable experiment must fail");
         let msg = err.to_string();
         assert!(msg.contains("failed to parse"), "got: {msg}");
         assert!(msg.contains("broken.toon"), "must name the file: {msg}");

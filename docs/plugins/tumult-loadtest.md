@@ -10,7 +10,8 @@ Integrates k6 with the Tumult experiment lifecycle for resilience testing under 
 
 For the common case you do not need the plugin drivers at all: the
 experiment-level `load:` section (and the `tumult run --load` override) starts
-k6 before the method, stops it when the experiment ends, and records a
+the tool it names (k6 or oha) before the method, ends it after the method and
+its recovery samples, and records a
 structured `load_result` in the journal automatically. See the
 [Load Testing Guide](../guides/load-testing-guide.md).
 
@@ -79,14 +80,12 @@ method[3]:
         TUMULT_K6_VUS: 50
         TUMULT_K6_DURATION: 5m
     background: true
-
   - name: wait-for-stable-load
     activity_type: action
     provider:
       type: process
       path: sleep
       arguments[1]: "30"
-
   - name: kill-db-connections
     activity_type: action
     provider:

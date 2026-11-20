@@ -1,0 +1,54 @@
+<!DOCTYPE html><html lang='en'><head><meta charset='utf-8'><title>Game-day report — Payments tolerate a slow ledger</title><style>
+@page { size: A4; margin: 20mm 18mm; }
+* { box-sizing: border-box; }
+body { margin: 0; background: #e8eaec; font: 10.5pt/1.55 'Inter', system-ui, sans-serif;
+       color: #1a1d21; font-variant-numeric: lining-nums tabular-nums; }
+.page { max-width: 210mm; margin: 24px auto; background: #fff; padding: 20mm 18mm;
+        box-shadow: 0 1px 4px rgba(0,0,0,.18); }
+@media print { body { background: #fff; } .page { margin: 0; box-shadow: none; max-width: none; } }
+h1.section { font: 600 16pt 'Source Serif 4', Georgia, serif; margin: 1.4em 0 .5em;
+             border-bottom: 1.5px solid #1a1d21; padding-bottom: 4px; }
+h2 { font: 600 12pt 'Source Serif 4', Georgia, serif; margin: 1.2em 0 .35em; }
+p { margin: .45em 0; }
+.cover { border-bottom: 2.5px solid #1a1d21; padding-bottom: 18px; margin-bottom: 8px;
+         min-height: 200mm; display: flex; flex-direction: column; }
+.wordmark { font-size: 9pt; font-weight: 700; letter-spacing: .3em; }
+.accent-rule { height: 1.5px; background: #0072B2; margin: 6px 0 90px; }
+.cover-mid { flex: 1; }
+.doc-class { display: inline-block; font-size: 7.5pt; letter-spacing: .18em; text-transform: uppercase;
+             color: #444; border: 1px solid #6b7280; border-radius: 9pt; padding: 3px 9px;
+             margin-bottom: 16px; }
+h1.display { font: 700 26pt/1.15 'Source Serif 4', Georgia, serif; margin: 0 0 8px; }
+.cover-sub { font-size: 12pt; color: #4b5563; margin-bottom: 8px; }
+.cover-period { font-size: 11.5pt; font-weight: 600; margin-bottom: 26px; }
+.glyph { font-size: 8.5pt; }
+table.docmeta { border-collapse: collapse; font-size: 9.5pt; }
+table.docmeta th { text-align: left; font-weight: 500; color: #6b7280; padding: 2px 24px 2px 0;
+                   font-variant: small-caps; letter-spacing: .08em; }
+table.docmeta td { padding: 2px 0; }
+.kpis { display: flex; flex-wrap: wrap; gap: 10px; margin: 10px 0 14px; }
+.kpi { border: 1px solid #d8dce0; border-radius: 4px; padding: 10px 16px; min-width: 110px; }
+.kpi-label { font-size: 8pt; letter-spacing: .14em; text-transform: uppercase; color: #6b7280; }
+.kpi-value { font: 600 17pt 'Source Serif 4', Georgia, serif; margin-top: 2px; }
+.kpi-sub { font-size: 8.5pt; color: #6b7280; }
+table.data { border-collapse: collapse; width: 100%; margin: 10px 0 14px; font-size: 9.5pt; }
+table.data thead { display: table-header-group; }
+table.data th { text-align: left; font-weight: 600; font-size: 8pt; letter-spacing: .1em;
+                text-transform: uppercase; color: #6b7280; border-bottom: 1.2px solid #1a1d21;
+                padding: 4px 10px 4px 0; }
+table.data td { border-bottom: 0.6px solid #e3e6e9; padding: 5px 10px 5px 0; }
+table.data .num, table.data th.num { text-align: right; }
+ul { margin: .4em 0 .8em; padding-left: 1.3em; }
+li { margin: .2em 0; }
+figure { margin: 12px 0 16px; }
+figcaption { font-size: 8pt; color: #6b7280; margin-top: 4px; }
+.pagebreak { break-after: page; }
+.footnote { font-size: 8pt; color: #6b7280; border-top: 0.6px solid #d8dce0;
+            padding-top: 6px; margin-top: 24px; }
+.signoff { display: flex; gap: 40px; margin-top: 48px; }
+.sig { flex: 1; }
+.sig-line { border-bottom: 1px solid #1a1d21; height: 28px; }
+.sig-role { font-size: 8pt; letter-spacing: .12em; text-transform: uppercase; color: #6b7280;
+            margin-top: 4px; }
+.sig-name { font-size: 9pt; color: #6b7280; }
+</style></head><body><main class='page'><section class='cover'><div class='wordmark'>KRÖNIKA</div><div class='accent-rule'></div><div class='cover-mid'><span class='doc-class'>Internal</span><h1 class='display'>Game-day report — Payments tolerate a slow ledger</h1><div class='cover-sub'>Game-Day Experiment Report</div><div class='cover-period'>Data as of 2026-11-19</div></div><table class='docmeta'><tbody><tr><th>Document</th><td>KRK-R3-20261120-6cf89e</td></tr><tr><th>Version</th><td>{version}</td></tr><tr><th>Generated</th><td>2026-11-20 00:00 UTC</td></tr><tr><th>Data as of</th><td>2026-11-19</td></tr><tr><th>Run id</th><td>cad5df03-83b7-473b-b5bc-fec2cefd49e2</td></tr></tbody></table></section><h1 class='section'>Run summary</h1><table class='docmeta'><tbody><tr><th>Experiment</th><td>Payments tolerate a slow ledger</td></tr><tr><th>Run id</th><td>cad5df03-83b7-473b-b5bc-fec2cefd49e2</td></tr><tr><th>Date</th><td>2026-11-19 11:13 UTC</td></tr><tr><th>Target</th><td>payments</td></tr><tr><th>Environment</th><td>prod</td></tr><tr><th>Scenario</th><td>slow-ledger</td></tr><tr><th>Severity</th><td>not recorded</td></tr><tr><th>Hypothesis</th><td><span class='glyph' style='color:#D55E00'>×</span> Not met</td></tr><tr><th>Outcome</th><td><span class='glyph' style='color:#D55E00'>×</span> deviated</td></tr></tbody></table><h2>Blast radius and safety</h2><table class='docmeta'><tbody><tr><th>Blast radius</th><td>the ledger connection of one instance</td></tr><tr><th>Recovery time</th><td>not recorded</td></tr><tr><th>Rollback exercised</th><td>yes</td></tr></tbody></table><h2>Timeline</h2><table class='data'><colgroup><col style='width:15.2%'><col style='width:30.3%'><col style='width:25.8%'><col style='width:16.7%'><col style='width:12.1%'></colgroup><thead><tr><th class='num'>t+ (s)</th><th>Span</th><th>Step</th><th class='num'>Duration (ms)</th><th>Status</th></tr></thead><tbody><tr><td class='num'>0.0</td><td>resilience.experiment</td><td>—</td><td class='num'>29066.0</td><td><span class='glyph' style='color:#D55E00'>×</span> error</td></tr><tr><td class='num'>0.0</td><td>resilience.hypothesis.before</td><td>—</td><td class='num'>1.8</td><td>—</td></tr><tr><td class='num'>0.0</td><td>resilience.probe</td><td>payments-answer</td><td class='num'>1.8</td><td>—</td></tr><tr><td class='num'>0.0</td><td>resilience.action</td><td>slow-ledger</td><td class='num'>1.4</td><td>—</td></tr><tr><td class='num'>0.0 – 29.1</td><td>resilience.probe</td><td>payments-answer × 31</td><td class='num'>1.6 – 2.2</td><td><span class='glyph' style='color:#D55E00'>×</span> error</td></tr><tr><td class='num'>0.0</td><td>resilience.probe</td><td>payments-during-fault</td><td class='num'>1.7</td><td>—</td></tr><tr><td class='num'>29.1</td><td>resilience.hypothesis.after</td><td>—</td><td class='num'>1.7</td><td>—</td></tr><tr><td class='num'>29.1</td><td>resilience.probe</td><td>payments-answer</td><td class='num'>1.7</td><td><span class='glyph' style='color:#D55E00'>×</span> error</td></tr><tr><td class='num'>29.1</td><td>resilience.rollback</td><td>—</td><td class='num'>1.2</td><td>—</td></tr><tr><td class='num'>29.1</td><td>resilience.action</td><td>restore-ledger</td><td class='num'>1.2</td><td>—</td></tr></tbody></table><h2>Verdict</h2><p>Outcome: deviated. Steady-state hypothesis: not met.</p><h2>Findings</h2><ul><li>[ERROR] payments-answer (resilience.probe): the output is outside the tolerance (× 32)</li></ul><h2>Rollback</h2><p>The rollback ran 1 step (restore-ledger); status: all clean.</p><div class='pagebreak'></div><h2>Configuration appendix</h2><table class='docmeta'><tbody><tr><th>resilience.target.criticality</th><td>high</td></tr><tr><th>resilience.target.version</th><td>5.1.3</td></tr><tr><th>resilience.target.version_source</th><td>declared</td></tr><tr><th>resilience.test.kind</th><td>chaos</td></tr><tr><th>start.experiment_id</th><td>cad5df03-83b7-473b-b5bc-fec2cefd49e2</td></tr><tr><th>start.experiment_title</th><td>Payments tolerate a slow ledger</td></tr><tr><th>start.started_at_ns</th><td>2026-11-19 11:13 UTC</td></tr><tr><th>start.user</th><td>operator</td></tr></tbody></table><p class='footnote'>Generated by Tumult v{version} from the run&#39;s trace and logs.</p><div class='signoff'><div class='sig'><div class='sig-line'></div><div class='sig-role'>Run operator</div><div class='sig-name'>Name / date</div></div><div class='sig'><div class='sig-line'></div><div class='sig-role'>Reviewed by</div><div class='sig-name'>Name / date</div></div></div></main></body></html>

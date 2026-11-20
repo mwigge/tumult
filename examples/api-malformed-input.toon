@@ -1,5 +1,5 @@
 title: Checkout API rejects malformed input without falling over
-description: A robustness run with no fault injector. The method throws oversized, truncated, wrongly typed and deeply nested JSON at the order endpoint and expects 4xx answers, then holds for the rest of the load window, while the health probe stays green and the error rate of the background load stays flat.
+description: A robustness run with no fault injector. The method asks the checkout route for order ids that are not a number, too large, badly encoded and far too long, and expects 4xx answers, then holds for the rest of the load window, while the health probe stays green and the error rate of the background load stays flat.
 
 tags[3]: robustness, malformed-input, checkout
 kind: robustness
@@ -17,7 +17,7 @@ nfr[1]:
 
 load:
   tool: oha
-  script: http://127.0.0.1:8080/api/checkout
+  script: http://127.0.0.1:8080/checkout/1
   vus: 5
   duration_s: 60
 
@@ -33,42 +33,42 @@ steady_state_hypothesis:
         timeout_s: 5.0
 
 method[4]:
-  - name: oversized-body
+  - name: not-a-number
     activity_type: probe
     provider:
       type: process
       path: sh
-      arguments[2]: "-c", "head -c 20000000 /dev/zero | curl -s -o /dev/null -w '%{http_code}' -X POST -H 'content-type: application/json' --data-binary @- http://127.0.0.1:8080/api/orders"
-      timeout_s: 30.0
-    tolerance:
-      type: regex
-      pattern: "^4[0-9][0-9]$"
-  - name: truncated-json
-    activity_type: probe
-    provider:
-      type: process
-      path: sh
-      arguments[2]: "-c", "curl -s -o /dev/null -w '%{http_code}' -X POST -H 'content-type: application/json' -d '{\"items\": [{\"sku\": \"A1\", \"qty\": ' http://127.0.0.1:8080/api/orders"
+      arguments[2]: "-c", "curl -s -o /dev/null -w '%{http_code}' -m 8 http://127.0.0.1:8080/checkout/abc"
       timeout_s: 10.0
     tolerance:
       type: regex
       pattern: "^4[0-9][0-9]$"
-  - name: wrong-types
+  - name: number-too-large
     activity_type: probe
     provider:
       type: process
       path: sh
-      arguments[2]: "-c", "curl -s -o /dev/null -w '%{http_code}' -X POST -H 'content-type: application/json' -d '{\"items\": \"not-a-list\", \"total\": \"NaN\", \"customer\": -1}' http://127.0.0.1:8080/api/orders"
+      arguments[2]: "-c", "curl -s -o /dev/null -w '%{http_code}' -m 8 http://127.0.0.1:8080/checkout/99999999999999999999"
       timeout_s: 10.0
     tolerance:
       type: regex
       pattern: "^4[0-9][0-9]$"
-  - name: deeply-nested
+  - name: badly-encoded
     activity_type: probe
     provider:
       type: process
       path: sh
-      arguments[2]: "-c", "body=$(printf '[%.0s' $(seq 1 5000)); curl -s -o /dev/null -w '%{http_code}' -X POST -H 'content-type: application/json' -d \"$body\" http://127.0.0.1:8080/api/orders"
+      arguments[2]: "-c", "curl -s -o /dev/null -w '%{http_code}' -m 8 http://127.0.0.1:8080/checkout/%00%ff%fe"
+      timeout_s: 10.0
+    tolerance:
+      type: regex
+      pattern: "^4[0-9][0-9]$"
+  - name: far-too-long
+    activity_type: probe
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "id=$(head -c 100000 /dev/zero | tr '\\0' 9); curl -s -o /dev/null -w '%{http_code}' -m 8 http://127.0.0.1:8080/checkout/$id"
       timeout_s: 10.0
     tolerance:
       type: regex

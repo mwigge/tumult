@@ -9,7 +9,6 @@ use std::path::Path;
 use std::time::Duration;
 
 use crate::error::ToolError;
-use crate::tools::validation::validate_action_name;
 use crate::tools::StructuredReport;
 
 use tumult_intelligence::{AgentOptions, OutputFormat, RecommendOptions};
@@ -155,6 +154,9 @@ pub fn recommend(request: &RecommendRequest<'_>) -> Result<StructuredReport, Too
 /// Returns a coverage report — which plugins, targets, and fault types
 /// have been tested vs what is available.
 ///
+/// A plugin action is tested when a stored run injected it (see
+/// [`tumult_graph::TestedFaults`]).
+///
 /// The structured object contains `plugins` (per-plugin coverage entries)
 /// and `store` (summary counts, or `null` when no analytics store exists).
 ///
@@ -179,38 +181,21 @@ pub fn coverage(store_path: &str) -> Result<StructuredReport, ToolError> {
     } else {
         None
     };
+    let tested = match store {
+        Some(ref s) => {
+            tumult_query::tested_faults(s).map_err(|e| ToolError::Store(e.to_string()))?
+        }
+        None => tumult_graph::TestedFaults::default(),
+    };
 
     let mut plugin_entries: Vec<serde_json::Value> = Vec::with_capacity(available_plugins.len());
     for plugin in &available_plugins {
         let action_count = plugin.actions.len();
         let probe_count = plugin.probes.len();
-
-        let tested_count = if let Some(ref s) = store {
-            // Count distinct action names from this plugin that appear in results
-            let action_names: Vec<String> = plugin.actions.iter().map(|a| a.name.clone()).collect();
-            let mut count = 0;
-            for name in &action_names {
-                // Validate the name before interpolating into a query to
-                // prevent SQL injection via a crafted plugin manifest.
-                if validate_action_name(name).is_err() {
-                    continue;
-                }
-                let q =
-                    format!("SELECT count(*) FROM activity_results WHERE name = '{name}' LIMIT 1");
-                if let Ok(rows) = s.query(&q) {
-                    if let Some(row) = rows.first() {
-                        if let Some(val) = row.first() {
-                            if val != "0" {
-                                count += 1;
-                            }
-                        }
-                    }
-                }
-            }
-            count
-        } else {
-            0
-        };
+        let tested_count = crate::tools::graph::plugin_actions(plugin)
+            .iter()
+            .filter(|action| tested.contains(action))
+            .count();
 
         let status = if tested_count == action_count && action_count > 0 {
             "FULL"
@@ -460,46 +445,27 @@ mod tests {
         std::fs::write(plugin_dir.join("plugin.toon"), toon).unwrap();
         let _plugins = crate::tools::test_support::plugin_path_guard(&dir.path().join("catalog"));
 
-        // A completed run that exercised exactly one of the two actions.
-        let journal = tumult_core::types::Journal {
-            target_version: None,
-            experiment_title: "coverage drill".into(),
-            experiment_id: "run-cov-1".into(),
-            status: tumult_core::types::ExperimentStatus::Completed,
-            started_at_ns: 1,
-            ended_at_ns: 2,
-            duration_ms: 1,
-            steady_state_before: None,
-            steady_state_after: None,
-            method_results: vec![tumult_core::types::ActivityResult {
-                name: "cov-action-tested".into(),
-                activity_type: tumult_core::types::ActivityType::Action,
-                status: tumult_core::types::ActivityStatus::Succeeded,
-                started_at_ns: 1,
-                duration_ms: 1,
-                output: None,
-                error: None,
-                trace_id: tumult_core::types::TraceId::empty(),
-                span_id: tumult_core::types::SpanId::empty(),
-            }],
-            rollback_results: vec![],
-            rollback_failures: 0,
-            kind: tumult_core::types::TestKind::default(),
-            objectives: None,
-            probe_samples: vec![],
-            estimate: None,
-            baseline_result: None,
-            during_result: None,
-            post_result: None,
-            load_result: None,
-            analysis: None,
-            regulatory: None,
-            halt: None,
-            blast_radius: None,
+        // A completed run whose step `exercise-tested` called exactly one
+        // of the two actions: the plugin function counts, not the step name.
+        let journal = crate::tools::test_support::journal_of(
+            "run-cov-1",
+            "coverage drill",
+            tumult_core::types::ExperimentStatus::Completed,
+            &["exercise-tested"],
+            &[],
+        );
+        let definition = tumult_core::types::Experiment {
+            title: "coverage drill".into(),
+            method: vec![crate::tools::test_support::script_action(
+                "exercise-tested",
+                "cov-plugin",
+                "cov-action-tested",
+            )],
+            ..Default::default()
         };
         let store = tumult_lake::AnalyticsStore::open(&db).unwrap();
         store
-            .ingest_journal_with_experiment(&journal, None)
+            .ingest_journal_with_experiment(&journal, Some(&definition))
             .unwrap();
         drop(store);
 

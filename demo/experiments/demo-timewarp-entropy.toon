@@ -2,6 +2,11 @@ title: Demo — RNG pressure and crypto resilience under entropy skew
 description: Apply sustained RNG/crypto pressure on the runner, confirm crypto operations still complete and entropy stays readable, then stop the pressure and recover
 
 tags[3]: demo, timewarp, resilience
+kind: chaos
+target:
+  system: demo-runner
+  technology: linux
+  environment: demo
 
 steady_state_hypothesis:
   title: kernel entropy is readable before the fault

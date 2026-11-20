@@ -12,7 +12,7 @@ use ratatui::widgets::{
 use ratatui::Frame;
 
 use crate::app::{App, Tab, View};
-use crate::logic::{self, StatusKind};
+use crate::logic::{self, StatusKind, Tone};
 use crate::theme;
 
 /// Draw the whole frame.
@@ -78,7 +78,7 @@ fn render_header(app: &App, f: &mut Frame, area: Rect) {
                 "success {:.0}%  ",
                 logic::success_rate(&app.experiments) * 100.0
             ),
-            Style::default().fg(theme::status_color(StatusKind::Pass)),
+            Style::default().fg(theme::tone_color(Tone::Pass)),
         ),
     ]);
     let filter_desc = format!(
@@ -111,7 +111,7 @@ fn render_header(app: &App, f: &mut Frame, area: Rect) {
     if let Some(err) = &app.error {
         content.push(Line::from(Span::styled(
             format!("! {err}"),
-            Style::default().fg(theme::status_color(StatusKind::Failed)),
+            Style::default().fg(theme::tone_color(Tone::Fail)),
         )));
     }
     let para = Paragraph::new(content).block(Block::default().borders(Borders::BOTTOM));
@@ -136,7 +136,7 @@ fn render_experiments(app: &mut App, f: &mut Frame, area: Rect) {
         Cell::from("Title"),
         Cell::from("Status"),
         Cell::from("Duration"),
-        Cell::from("Resil"),
+        Cell::from("Hypothesis met"),
         Cell::from("Steps"),
         Cell::from("Dev"),
         Cell::from(""),
@@ -152,7 +152,7 @@ fn render_experiments(app: &mut App, f: &mut Frame, area: Rect) {
         .iter()
         .map(|i| {
             let e = &app.experiments[*i];
-            let kind = StatusKind::classify(&e.status);
+            let kind = StatusKind::of_run(&e.status);
             let mark = if app.marks.contains(&e.id) {
                 "◉"
             } else {
@@ -163,7 +163,7 @@ fn render_experiments(app: &mut App, f: &mut Frame, area: Rect) {
                 Cell::from(e.title.clone()),
                 Cell::from(Span::styled(kind.label(), theme::status_style(kind))),
                 Cell::from(logic::format_duration(e.duration_ms)),
-                Cell::from(logic::format_resilience(e.resilience)),
+                Cell::from(logic::format_hypothesis_met(e.hypothesis_met)),
                 Cell::from(e.steps.to_string()),
                 Cell::from(e.deviations.to_string()),
                 Cell::from(Span::styled(mark, Style::default().fg(theme::ACCENT))),
@@ -178,9 +178,9 @@ fn render_experiments(app: &mut App, f: &mut Frame, area: Rect) {
     let widths = [
         Constraint::Length(14),
         Constraint::Min(20),
+        Constraint::Length(11),
         Constraint::Length(9),
-        Constraint::Length(9),
-        Constraint::Length(6),
+        Constraint::Length(14),
         Constraint::Length(5),
         Constraint::Length(4),
         Constraint::Length(2),
@@ -225,7 +225,7 @@ fn render_detail(app: &App, f: &mut Frame, area: Rect) {
         .constraints([Constraint::Length(5), Constraint::Min(0)])
         .split(area);
 
-    let kind = StatusKind::classify(&exp.status);
+    let kind = StatusKind::of_run(&exp.status);
     let meta = Paragraph::new(vec![
         Line::from(vec![
             Span::styled("Title  ", Style::default().fg(theme::MUTED)),
@@ -238,9 +238,9 @@ fn render_detail(app: &App, f: &mut Frame, area: Rect) {
             Span::styled("Status ", Style::default().fg(theme::MUTED)),
             Span::styled(kind.label(), theme::status_style(kind)),
             Span::raw(format!(
-                "   duration {}   resilience {}   steps {}   deviations {}",
+                "   duration {}   hypothesis met {}   steps {}   deviations {}",
                 logic::format_duration(exp.duration_ms),
-                logic::format_resilience(exp.resilience),
+                logic::format_hypothesis_met(exp.hypothesis_met),
                 exp.steps,
                 exp.deviations,
             )),
@@ -273,7 +273,7 @@ fn render_detail(app: &App, f: &mut Frame, area: Rect) {
         app.detail_activities
             .iter()
             .map(|a| {
-                let kind = StatusKind::classify(&a.status);
+                let kind = StatusKind::of_step(&a.status);
                 let bar = logic::microbar(a.duration_ms as f64, max_dur as f64, bar_width);
                 let phase = if a.phase.is_empty() {
                     String::new()
@@ -313,7 +313,7 @@ fn render_compare(app: &App, f: &mut Frame, area: Rect) {
         Cell::from("Title"),
         Cell::from("Status"),
         Cell::from("Duration"),
-        Cell::from("Resil"),
+        Cell::from("Hypothesis met"),
     ])
     .style(
         Style::default()
@@ -323,22 +323,22 @@ fn render_compare(app: &App, f: &mut Frame, area: Rect) {
     let rows: Vec<Row> = marked
         .iter()
         .map(|e| {
-            let kind = StatusKind::classify(&e.status);
+            let kind = StatusKind::of_run(&e.status);
             Row::new(vec![
                 Cell::from(logic::format_time(e.started_at_ns)),
                 Cell::from(e.title.clone()),
                 Cell::from(Span::styled(kind.label(), theme::status_style(kind))),
                 Cell::from(logic::format_duration(e.duration_ms)),
-                Cell::from(logic::format_resilience(e.resilience)),
+                Cell::from(logic::format_hypothesis_met(e.hypothesis_met)),
             ])
         })
         .collect();
     let widths = [
         Constraint::Length(14),
         Constraint::Min(20),
+        Constraint::Length(11),
         Constraint::Length(9),
-        Constraint::Length(9),
-        Constraint::Length(6),
+        Constraint::Length(14),
     ];
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -387,7 +387,7 @@ fn render_analytics(app: &App, f: &mut Frame, area: Rect) {
                 .borders(Borders::ALL)
                 .title(" Overall success rate "),
         )
-        .gauge_style(Style::default().fg(theme::status_color(StatusKind::Pass)))
+        .gauge_style(Style::default().fg(theme::tone_color(Tone::Pass)))
         .ratio(rate)
         .label(format!("{:.1}%", rate * 100.0));
     f.render_widget(gauge, chunks[0]);
@@ -405,7 +405,7 @@ fn render_analytics(app: &App, f: &mut Frame, area: Rect) {
         .map(|(kind, n)| {
             let bar = logic::microbar(*n as f64, max_count as f64, 12);
             ListItem::new(Line::from(vec![
-                Span::styled(format!("{:<9}", kind.label()), theme::status_style(*kind)),
+                Span::styled(format!("{:<11}", kind.label()), theme::status_style(*kind)),
                 Span::styled(
                     format!("{bar} "),
                     Style::default().fg(theme::status_color(*kind)),
@@ -421,9 +421,9 @@ fn render_analytics(app: &App, f: &mut Frame, area: Rect) {
     );
     f.render_widget(bd_list, mid[0]);
 
-    // Success + resilience block sparklines (chronological).
+    // Success + hypothesis block sparklines (chronological).
     let succ = logic::sparkline(&logic::success_series(&chrono), 40);
-    let resil = logic::sparkline(&logic::resilience_series(&chrono), 40);
+    let met = logic::sparkline(&logic::hypothesis_met_series(&chrono), 40);
     let trend = Paragraph::new(vec![
         Line::from(Span::styled(
             "Success (oldest → newest)",
@@ -431,14 +431,14 @@ fn render_analytics(app: &App, f: &mut Frame, area: Rect) {
         )),
         Line::from(Span::styled(
             succ,
-            Style::default().fg(theme::status_color(StatusKind::Pass)),
+            Style::default().fg(theme::tone_color(Tone::Pass)),
         )),
         Line::from(""),
         Line::from(Span::styled(
-            "Resilience score",
+            "Hypothesis met (oldest → newest)",
             Style::default().fg(theme::MUTED),
         )),
-        Line::from(Span::styled(resil, Style::default().fg(theme::ACCENT))),
+        Line::from(Span::styled(met, Style::default().fg(theme::ACCENT))),
     ])
     .block(Block::default().borders(Borders::ALL).title(" Trends "));
     f.render_widget(trend, mid[1]);
@@ -607,7 +607,7 @@ mod tests {
             status: status.into(),
             started_at_ns: ns,
             duration_ms: 1_500,
-            resilience: Some(0.75),
+            hypothesis_met: Some(true),
             steps: 2,
             deviations: 1,
         }
@@ -793,7 +793,7 @@ mod tests {
         assert!(text.contains("66.7%"), "success gauge label: {text}");
         assert!(text.contains("Status breakdown"), "{text}");
         assert!(text.contains("Trends"), "{text}");
-        assert!(text.contains("Resilience score"), "{text}");
+        assert!(text.contains("Hypothesis met (oldest → newest)"), "{text}");
         assert!(text.contains("Duration over the run sequence"), "{text}");
     }
 

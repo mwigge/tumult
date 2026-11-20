@@ -38,5 +38,10 @@ async-trait.workspace = true
 opentelemetry_sdk = { workspace = true, features = ["testing"] }
 # Captures what a request logs (`logging::testing`).
 tumult-otel = { path = "../tumult-otel" }
-# `EnvGuard` for the tests that read configuration from the environment.
-tumult-test-utils = { path = "../tumult-test-utils", default-features = false }
+# The executor of the daemon, for the runs whose steps are real processes.
+tumult-exec = { path = "../tumult-exec" }
+# `EnvGuard` for the tests that read configuration from the environment,
+# and the recording of real runs.
+tumult-test-utils = { path = "../tumult-test-utils", default-features = false, features = [
+    "recorded",
+] }

@@ -1,7 +1,7 @@
 //! SSH session — connection management and command execution.
 //!
 //! Provides `SshSession` for connecting to remote hosts and executing
-//! commands with stdout/stderr capture. Uses `russh` 0.58 internally.
+//! commands with stdout/stderr capture. Uses `russh` 0.65 internally.
 
 use std::sync::Arc;
 

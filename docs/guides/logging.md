@@ -96,13 +96,12 @@ such targets with `LogOptions::with_local_only_targets`.
 ### Process start and fatal errors
 
 `init` is the first thing `main` does. If it fails, the binary writes one
-JSON line by hand (`logging.init.failed`) and continues without logs rather
-than refusing to start.
+JSON line by hand (`logging.init.failed`) and exits with a non-zero code.
 
 An error that ends the process is the last event on stderr:
 
 ```json
-{"timestamp":"...","level":"ERROR","target":"tumult_otel::logging","event.name":"process.fatal","message":"exiting because of an unrecoverable error","service.name":"tumult","service.version":"3.0.1","error.message":"reading experiment missing.toon: No such file or directory (os error 2)"}
+{"timestamp":"...","level":"ERROR","target":"tumult_otel::logging","event.name":"process.fatal","message":"exiting because of an unrecoverable error","service.name":"tumult","service.version":"3.0.1","error.message":"failed to read experiment file: missing.toon: No such file or directory (os error 2)"}
 ```
 
 The exit code is non-zero. A panic is reported the same way, as
@@ -126,7 +125,7 @@ reworded.
 - lowercase, dot-separated, at least two segments: `component.thing.happened`
 - first segment is the component: `daemon`, `auth`, `lake`, `otel`, `cli`, `mcp`, `net`, `ssh`,
   `report`, `agent_cli`, `agentic`, `clickhouse`, `cypher`, `plugin`,
-  `logging`, `process`
+  `ingest`, `otlp`, `runs`, `score`, `logging`, `process`
 - last segment says what happened, in the past tense or as a state:
   `failed`, `skipped`, `rejected`, `retrying`, `timed_out`
 
@@ -296,8 +295,8 @@ abort in the release profile: the run would end before its journal is
 ingested. The `output` macros give up on a stream that fails (a
 `cli.output.closed` debug event for a closed pipe, a
 `cli.output.write_failed` warning for anything else) and the command
-finishes its work. Four lines of `tumult store` output still use `println!`
-and are to be converted.
+finishes its work. Four lines of `tumult store export` and `tumult import`
+output still use `println!` and are to be converted.
 
 ### Human diagnostics that stay text
 
@@ -306,7 +305,7 @@ and not as events, whatever `TUMULT_LOG_FORMAT` says:
 
 | Command | What it writes to stderr |
 |---|---|
-| `tumult validate` | findings about the experiment: an unknown plugin or function, a plugin search path that was skipped |
+| `tumult validate` | plugin discovery warnings: a search path that was skipped, a manifest that could not be read |
 | `tumult discover` | plugin discovery warnings that annotate the listing |
 | `tumult analyze` | `warning: skipping <file>: <cause>` for a journal it could not load |
 

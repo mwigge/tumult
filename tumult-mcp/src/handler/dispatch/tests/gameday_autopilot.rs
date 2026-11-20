@@ -97,6 +97,68 @@ async fn call_tool_gameday_run_is_refused_while_an_enactment_is_in_flight() {
     );
 }
 
+/// Run the campaign `mark-gd.gameday.toon`, with `force` when it is given.
+async fn run_marking_gameday(handler: &TumultHandler, force: Option<bool>) -> CallToolResult {
+    let mut arguments = serde_json::json!({ "gameday_path": "mark-gd.gameday.toon" });
+    if let Some(force) = force {
+        arguments["force"] = serde_json::json!(force);
+    }
+    handler
+        .handle_call_tool_request(
+            call_params("tumult_gameday_run", arguments, None),
+            stub_runtime(),
+        )
+        .await
+        .expect("run must produce a result")
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn call_tool_gameday_run_refuses_the_journal_of_an_earlier_run_and_runs_nothing() {
+    let tmp = tempfile::tempdir().unwrap();
+    let _home = private_home(tmp.path());
+    let mark = tmp.path().join("ran");
+    crate::tools::test_support::write_marking_experiment(tmp.path(), &mark);
+    let handler = open_handler(tmp.path());
+    create_runnable_gameday(&handler, "mark-gd").await;
+    let first = run_marking_gameday(&handler, None).await;
+    assert!(first.is_error.is_none(), "{}", result_text(&first));
+    let journal_path = tmp.path().join("mark-gd.gameday.journal.toon");
+    let journal = std::fs::read(&journal_path).unwrap();
+
+    let second = run_marking_gameday(&handler, None).await;
+
+    assert_eq!(second.is_error, Some(true), "{}", result_text(&second));
+    let text = result_text(&second);
+    assert!(text.contains("already exists"), "{text}");
+    assert!(text.contains("force"), "must name force: {text}");
+    assert_eq!(std::fs::read(&journal_path).unwrap(), journal);
+    // The action ran in the first campaign only: the second stopped before
+    // its first experiment.
+    assert_eq!(std::fs::read_to_string(&mark).unwrap(), "run\n");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn call_tool_gameday_run_with_force_replaces_the_journal() {
+    let tmp = tempfile::tempdir().unwrap();
+    let _home = private_home(tmp.path());
+    let mark = tmp.path().join("ran");
+    crate::tools::test_support::write_marking_experiment(tmp.path(), &mark);
+    let handler = open_handler(tmp.path());
+    create_runnable_gameday(&handler, "mark-gd").await;
+    run_marking_gameday(&handler, None).await;
+    let read = |path: &std::path::Path| -> tumult_core::types::GameDayJournal {
+        toon_format::decode_default(&std::fs::read_to_string(path).unwrap()).unwrap()
+    };
+    let journal_path = tmp.path().join("mark-gd.gameday.journal.toon");
+    let first = read(&journal_path);
+
+    let second = run_marking_gameday(&handler, Some(true)).await;
+
+    assert!(second.is_error.is_none(), "{}", result_text(&second));
+    assert_ne!(read(&journal_path).gameday_id, first.gameday_id);
+    assert_eq!(std::fs::read_to_string(&mark).unwrap(), "run\nrun\n");
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn call_tool_gameday_list_searches_a_validated_subdirectory() {
     let tmp = tempfile::tempdir().unwrap();

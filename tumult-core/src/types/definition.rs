@@ -16,7 +16,11 @@ use super::target::{ConfigValue, Provider, SecretValue, Tolerance};
 
 /// A single experiment step: an action (fault injection) or a probe
 /// (measurement), executed through a provider.
+///
+/// A key that is not listed here is an error. A dropped key would change
+/// what the step does without a word, for example where it runs.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Activity {
     /// Human-readable step name, surfaced in the journal.
     pub name: String,
@@ -425,6 +429,43 @@ fn default_version() -> String {
     "v1".to_string()
 }
 
+/// The structural facts of an experiment that decide whether it can serve
+/// as an autopilot playbook. Every gate reads them from
+/// [`Experiment::structural_facts`], so the MCP engine, the daemon and the
+/// API agree on them.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct StructuralFacts {
+    /// A steady-state hypothesis with at least one probe. Without a probe
+    /// the experiment cannot falsify anything.
+    pub has_steady_state: bool,
+    /// At least one rollback activity.
+    pub has_rollback: bool,
+    /// At least one guard.
+    pub has_guard: bool,
+    /// Method actions (fault injections), counting repetitions.
+    pub fault_count: usize,
+}
+
+impl Experiment {
+    /// The [`StructuralFacts`] of this experiment.
+    #[must_use]
+    pub fn structural_facts(&self) -> StructuralFacts {
+        StructuralFacts {
+            has_steady_state: self
+                .steady_state_hypothesis
+                .as_ref()
+                .is_some_and(|h| !h.probes.is_empty()),
+            has_rollback: !self.rollbacks.is_empty(),
+            has_guard: !self.guards.is_empty(),
+            fault_count: self
+                .method
+                .iter()
+                .filter(|a| a.activity_type == ActivityType::Action)
+                .count(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::types::test_support::toon_round_trip;
@@ -796,5 +837,84 @@ mod tests {
     fn unknown_nfr_field_is_rejected() {
         let toon = "title: x\nnfr[1]:\n  - id: a\n    kind: latency\n    metric: m\n    operator: lte\n    threshold: 1\n    bogus: 2\n";
         assert!(toon_format::decode_default::<Experiment>(toon).is_err());
+    }
+
+    const STEP: &str = "title: t\nmethod[1]:\n  - name: step\n    activity_type: action\n    provider:\n      type: process\n      path: echo\n";
+
+    fn parse_error(toon: &str) -> String {
+        toon_format::decode_default::<Experiment>(toon)
+            .expect_err("an unknown key must be an error")
+            .to_string()
+    }
+
+    #[test]
+    fn a_plain_step_parses() {
+        let exp: Experiment = toon_format::decode_default(STEP).expect("parse");
+        assert_eq!(exp.method.len(), 1);
+    }
+
+    #[test]
+    fn unknown_activity_key_is_rejected_and_named() {
+        // The plugin docs used to show this key. It was dropped without a
+        // word, so a step written for a remote host ran on the local one.
+        let toon = format!("{STEP}    execution_target:\n      type: ssh\n      host: db\n");
+        let error = parse_error(&toon);
+        assert!(error.contains("execution_target"), "{error}");
+    }
+
+    #[test]
+    fn structural_facts_count_faults_and_want_a_probe_for_a_steady_state() {
+        let action = |name: &str| Activity {
+            name: name.into(),
+            activity_type: ActivityType::Action,
+            ..Activity::default()
+        };
+        let probe = Activity {
+            activity_type: ActivityType::Probe,
+            ..action("look")
+        };
+        let mut exp = Experiment {
+            steady_state_hypothesis: Some(Hypothesis {
+                title: "up".into(),
+                probes: vec![],
+            }),
+            method: vec![action("a"), probe.clone(), action("a")],
+            rollbacks: vec![action("undo")],
+            ..Experiment::default()
+        };
+        assert_eq!(
+            exp.structural_facts(),
+            StructuralFacts {
+                has_steady_state: false,
+                has_rollback: true,
+                has_guard: false,
+                fault_count: 2,
+            },
+            "a hypothesis without a probe is no steady state"
+        );
+        exp.steady_state_hypothesis = Some(Hypothesis {
+            title: "up".into(),
+            probes: vec![probe],
+        });
+        assert!(exp.structural_facts().has_steady_state);
+        assert_eq!(
+            Experiment::default().structural_facts(),
+            StructuralFacts::default()
+        );
+    }
+
+    #[test]
+    fn unknown_provider_key_is_rejected_and_named() {
+        let error = parse_error(&format!("{STEP}      timeout: 5\n"));
+        assert!(error.contains("timeout"), "{error}");
+    }
+
+    #[test]
+    fn unknown_tolerance_key_is_rejected_and_named() {
+        let toon = format!(
+            "{STEP}    tolerance:\n      type: range\n      from: 0\n      to: 1\n      unit: ms\n"
+        );
+        let error = parse_error(&toon);
+        assert!(error.contains("unit"), "{error}");
     }
 }

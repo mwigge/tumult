@@ -1,0 +1,51 @@
+title: Checkout survives a cache restart
+description: The cache of the checkout restarts. The checkout must answer again once the cache is back.
+
+tags[3]: cache, restart, checkout
+target:
+  system: checkout
+  technology: redis
+  environment: prod
+  criticality: critical
+  version: 2.8.0
+rto_target_s: 2.0
+blast_radius: one cache node
+
+steady_state_hypothesis:
+  title: Checkout answers
+  probes[1]:
+    - name: checkout-answers
+      activity_type: probe
+      provider:
+        type: process
+        path: sh
+        arguments[2]: "-c", "cat state"
+        timeout_s: 5.0
+      tolerance:
+        type: regex
+        pattern: "^ok$"
+
+method[2]:
+  - name: restart-cache
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "echo down > state; sleep 0.2; echo ok > state"
+      timeout_s: 5.0
+  - name: cache-is-back
+    activity_type: probe
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "cat state"
+      timeout_s: 5.0
+
+rollbacks[1]:
+  - name: start-cache
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "echo ok > state"
+      timeout_s: 5.0

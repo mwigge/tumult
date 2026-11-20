@@ -1,6 +1,7 @@
 #!/bin/sh
 # Probe: check Kafka consumer group lag
-# Outputs: total lag across all partitions (integer)
+# Outputs: total lag across all partitions (integer). A failed query exits
+# non-zero with the message of the tool.
 #
 # Environment variables:
 #   TUMULT_KAFKA_BOOTSTRAP - Bootstrap servers (default: localhost:9092)
@@ -44,6 +45,10 @@ else
     exit 1
 fi
 
+# The query runs on its own first, so a failed query ends the probe with
+# the status and the message of the tool instead of a lag of zero.
+DESCRIBE=$("${CMD}" --bootstrap-server "${BOOTSTRAP}" --group "${GROUP}" --describe)
+
 # Sum up lag across all partitions
-"${CMD}" --bootstrap-server "${BOOTSTRAP}" --group "${GROUP}" --describe 2>/dev/null \
+printf '%s\n' "${DESCRIBE}" \
     | awk 'NR > 1 && $6 ~ /^[0-9]+$/ { total += $6 } END { print total+0 }'

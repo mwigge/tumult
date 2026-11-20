@@ -8,7 +8,7 @@
 //!
 //! A renderer-agnostic content model ([`ReportDoc`]) with two outputs: a
 //! print-styled HTML preview for the UI and a Typst-compiled PDF. Also home
-//! to the resilience scoring model that feeds both the executive digest and
+//! to the compliance scoring model that feeds both the executive digest and
 //! `GET /api/scores`.
 
 pub mod builders;

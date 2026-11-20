@@ -6,7 +6,15 @@
     import { api, fmtAgo } from '#lib/api.js';
     import type { EChartsCoreOption } from '#lib/echarts.js';
     import { chartTokens } from '#lib/echarts.js';
+    import type { LegendItem } from '#lib/legend.js';
     import { coverageLabels, disciplineLabel, stackedLabel } from '#lib/coverage.js';
+    import { sparkTrend } from '#lib/org-score.js';
+    import {
+        COMPLIANCE_SCORE,
+        COMPLIANCE_SCORE_LINE,
+        RESILIENCE_SCORE,
+        RESILIENCE_SCORE_LINE,
+    } from '#lib/score-names.js';
     import { strong, tip, tipFormatter } from '#lib/tooltip.js';
     import type {
         ConformanceReport,
@@ -16,6 +24,7 @@
         RiskReport,
         ScoreTree,
     } from '#lib/types.js';
+    import ChartLegend from '#lib/components/ChartLegend.svelte';
     import EChart from '#lib/components/EChart.svelte';
     import FanChart from '#lib/components/FanChart.svelte';
     import type { FanSeries } from '#lib/components/FanChart.svelte';
@@ -102,7 +111,17 @@
     const bandClass = (b: string) => (b === 'good' ? 'ok' : b === 'fair' ? 'warn' : 'fail');
 
     const t = chartTokens();
-    const STATUS_VALUE: Record<string, number> = { missing: 0, stale: 1, covered: 2 };
+    // The three states of a coverage cell in the order of their value, each
+    // in the colour the heatmap and its legend draw it in.
+    const COVERAGE_STATES: LegendItem[] = [
+        { label: 'missing', color: t.fail },
+        { label: 'stale', color: t.warn },
+        { label: 'covered', color: t.ok },
+    ];
+    const STATUS_VALUE: Record<string, number> = Object.fromEntries(
+        COVERAGE_STATES.map((state, value) => [state.label, value]),
+    );
+    const axisName = { color: t.text };
 
     // Coverage heatmap: targets × disciplines, hue = covered / stale / missing.
     const heatmapOption: EChartsCoreOption | null = $derived.by(() => {
@@ -113,28 +132,38 @@
             c.cells.map((cell) => [kinds.indexOf(cell.kind), y, STATUS_VALUE[cell.status] ?? 0]),
         );
         return {
-            grid: { left: 150, right: 16, top: 10, bottom: 40 },
+            grid: { left: 150, right: 16, top: 26, bottom: 58 },
             tooltip: {
                 ...t.tooltip,
                 formatter: tipFormatter((p: { data?: number[] }) => {
                     const [x, y, v] = p.data ?? [0, 0, 0];
-                    const status = ['missing', 'stale', 'covered'][v] ?? '';
+                    const status = COVERAGE_STATES[v]?.label ?? '';
                     return tip([strong(targets[y]), ` · ${disciplineLabel(kinds[x])}`], status);
                 }),
             },
             xAxis: {
                 type: 'category',
                 data: kinds.map(disciplineLabel),
+                name: 'discipline',
+                nameLocation: 'middle',
+                nameGap: 40,
+                nameTextStyle: axisName,
                 // Name every column; a bundled name goes on two lines
                 // instead of being skipped or running into its neighbour.
                 axisLabel: { color: t.text, interval: 0, formatter: stackedLabel },
             },
-            yAxis: { type: 'category', data: targets, axisLabel: { color: t.text } },
+            yAxis: {
+                type: 'category',
+                data: targets,
+                name: 'target',
+                nameTextStyle: { ...axisName, align: 'right' },
+                axisLabel: { color: t.text },
+            },
             visualMap: {
                 show: false,
                 min: 0,
-                max: 2,
-                inRange: { color: [t.fail, t.warn, t.ok] },
+                max: COVERAGE_STATES.length - 1,
+                inRange: { color: COVERAGE_STATES.map((state) => state.color) },
             },
             series: [
                 {
@@ -174,6 +203,22 @@
     const pct = (v: number | null) => (v == null ? '–' : `${Math.round(v)}`);
     const LEVEL_CLASS: Record<string, string> = { spine: 'ok', target: 'warn', none: 'fail' };
 
+    // What the cell of an objective with no margin counts as.
+    const NO_MARGIN = { met: 0.5, breached: -0.5, other: 0 } as const;
+    // The margin scale, low to high, each part in the colour the heatmap
+    // and its legend draw it in.
+    const MARGIN_SCALE: LegendItem[] = [
+        { label: 'margin on the bad side', color: t.fail },
+        { label: 'margin near zero', color: t.warn },
+        { label: 'margin on the good side', color: t.ok },
+    ];
+    const nfrLegend: LegendItem[] = [
+        ...MARGIN_SCALE,
+        {
+            label: `no margin: met counts as ${NO_MARGIN.met}, breached as ${NO_MARGIN.breached}, any other verdict as ${NO_MARGIN.other}`,
+        },
+    ];
+
     // NFR heatmap: targets × objectives, hue = margin (negative = breached).
     const nfrOption: EChartsCoreOption | null = $derived.by(() => {
         if (!posture || posture.nfrs.length === 0) return null;
@@ -181,10 +226,15 @@
         const targets = [...new Set(posture.nfrs.map((n) => n.target))];
         const cells = posture.nfrs;
         const value = (n: (typeof cells)[number]) =>
-            n.margin ?? (n.state === 'met' ? 0.5 : n.state === 'breached' ? -0.5 : 0);
+            n.margin ??
+            (n.state === 'met'
+                ? NO_MARGIN.met
+                : n.state === 'breached'
+                  ? NO_MARGIN.breached
+                  : NO_MARGIN.other);
         const span = Math.max(1, ...cells.map((n) => Math.abs(value(n))));
         return {
-            grid: { left: 110, right: 16, top: 10, bottom: 40 },
+            grid: { left: 110, right: 16, top: 26, bottom: 96 },
             tooltip: {
                 ...t.tooltip,
                 formatter: tipFormatter((p: { data?: (number | string)[] }) => {
@@ -200,13 +250,39 @@
                     );
                 }),
             },
-            xAxis: { type: 'category', data: ids, axisLabel: { color: t.text } },
-            yAxis: { type: 'category', data: targets, axisLabel: { color: t.text } },
+            xAxis: {
+                type: 'category',
+                data: ids,
+                name: 'objective',
+                nameLocation: 'middle',
+                nameGap: 78,
+                nameTextStyle: axisName,
+                // Every objective is a named column. An id is long and has
+                // no place to break at, so the ids are written at a slant,
+                // and a very long one is cut (the tooltip has all of it).
+                axisLabel: {
+                    color: t.text,
+                    interval: 0,
+                    rotate: 40,
+                    width: 96,
+                    overflow: 'truncate',
+                },
+            },
+            yAxis: {
+                type: 'category',
+                data: targets,
+                name: 'target',
+                nameTextStyle: { ...axisName, align: 'right' },
+                axisLabel: { color: t.text },
+            },
             visualMap: {
                 show: false,
+                // The margin of a cell. Without this the scale reads the
+                // last value of a cell, which is its place in the list.
+                dimension: 2,
                 min: -span,
                 max: span,
-                inRange: { color: [t.fail, t.warn, t.ok] },
+                inRange: { color: MARGIN_SCALE.map((part) => part.color) },
             },
             series: [
                 {
@@ -224,15 +300,9 @@
     });
 
     // Score trend over the range: bucket indices become timestamps ending now.
-    const trend: FanSeries | null = $derived.by(() => {
-        if (!tree || tree.sparkline.length === 0) return null;
-        const n = tree.sparkline.length;
-        const now = Date.now();
-        return {
-            ts: tree.sparkline.map((p) => now - TREND_MS + (TREND_MS * p[0]) / n),
-            observed: tree.sparkline.map((p) => p[1]),
-        };
-    });
+    const trend: FanSeries | null = $derived.by(() =>
+        tree ? sparkTrend(tree.sparkline, TREND_MS, Date.now()) : null,
+    );
 </script>
 
 <div class="page-head">
@@ -357,15 +427,16 @@
                         option={heatmapOption}
                         id="coverage"
                         label="Evidence coverage per target and discipline"
-                        height={Math.max(160, 28 * report.coverage.targets.length + 60)}
+                        height={Math.max(160, 28 * report.coverage.targets.length + 94)}
                     />
+                    <ChartLegend id="coverage" items={COVERAGE_STATES} />
                 {/if}
                 {#if radarOption}
                     <EChart
                         option={radarOption}
                         id="coverage-radar"
                         height={240}
-                        label="Evidence coverage per discipline"
+                        label="Evidence coverage per discipline: the share of targets covered, from 0 to 1"
                     />
                 {/if}
             {/if}
@@ -383,20 +454,23 @@
                         label="Objective verdicts per target"
                         height={Math.max(
                             160,
-                            28 * new Set(posture.nfrs.map((n) => n.target)).size + 60,
+                            28 * new Set(posture.nfrs.map((n) => n.target)).size + 132,
                         )}
                     />
+                    <ChartLegend id="nfr" items={nfrLegend} />
                 </section>
             {/if}
             {#if trend}
                 <section class="panel" data-testid="trend">
-                    <h2>Compliance score, {TREND_RANGE}</h2>
+                    <h2>{COMPLIANCE_SCORE}, {TREND_RANGE}</h2>
+                    <p class="muted meaning">{COMPLIANCE_SCORE_LINE}</p>
                     <FanChart
                         series={trend}
+                        name={COMPLIANCE_SCORE}
                         unit="score"
                         id="trend"
                         height={220}
-                        label="Compliance score over {TREND_RANGE}"
+                        label="{COMPLIANCE_SCORE} over {TREND_RANGE}"
                     />
                 </section>
             {/if}
@@ -473,14 +547,11 @@
     {/if}
 
     <section class="panel score" data-testid="posture">
-        <h2>Resilience score</h2>
+        <h2>{RESILIENCE_SCORE}</h2>
+        <p class="muted meaning">{RESILIENCE_SCORE_LINE}</p>
         <div class="headline">
             <span class="value mono">{posture.posture.score.toFixed(1)}</span>
             <span class="badge {bandClass(posture.posture.band)}">{posture.posture.band}</span>
-            <span class="muted">
-                continuous score: objective margins, discipline coverage, evidence freshness and
-                recovery against target, per target and criticality weighted
-            </span>
         </div>
         {#if posture.posture.targets.length > 0}
             <table>
@@ -521,6 +592,9 @@
     .muted {
         color: var(--text-dim);
         font-size: 12.5px;
+    }
+    .meaning {
+        margin: 0 0 10px;
     }
     .counts {
         display: flex;

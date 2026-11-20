@@ -2,6 +2,11 @@ title: Demo — container pause and recovery
 description: Freeze the demo-postgres container briefly, then unpause it and confirm the database recovers
 
 tags[3]: demo, containers, resilience
+kind: chaos
+target:
+  system: demo-postgres
+  technology: postgresql
+  environment: demo
 
 steady_state_hypothesis:
   title: demo-postgres is accepting connections

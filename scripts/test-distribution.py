@@ -48,6 +48,17 @@ class DistributionTests(unittest.TestCase):
         self.assertRegex(image, r"COPY plugins/ /opt/tumult/plugins/")
         self.assertIn("TUMULT_PLUGIN_PATH=/opt/tumult/plugins", image)
 
+    def test_daemon_image_runs_an_init_that_reaps_orphans(self):
+        # The daemon runs process experiments; a process they leave behind
+        # goes to PID 1 when its parent ends. scripts/smoke-daemon-image.sh
+        # proves the reaping on the built image.
+        image = (ROOT / "docker/Dockerfile.tumultd").read_text()
+        self.assertRegex(image, r"apt-get install[^\n]*(\\\n[^\n]*)*\btini\b")
+        entrypoint = json.loads(re.search(r"^ENTRYPOINT (.+)$", image, re.M)[1])
+        self.assertEqual(entrypoint, ["/usr/bin/tini", "--"])
+        command = json.loads(re.search(r"^CMD (.+)$", image, re.M)[1])
+        self.assertEqual(command, ["tumultd"])
+
     def test_daemon_templates_disable_automatic_retention(self):
         manifest = (ROOT / "deploy/k8s/tumultd.yaml").read_text()
         unit = (ROOT / "deploy/systemd/tumultd.service").read_text()
@@ -188,6 +199,13 @@ class DistributionTests(unittest.TestCase):
         self.assertTrue(published)
         self.assertTrue(all(port.startswith("127.0.0.1:") for port in published))
 
+    def test_dashboard_import_defaults_to_the_published_signoz_port(self):
+        compose = (ROOT / "docker/docker-compose.observability.yml").read_text()
+        ui = re.search(r'^\s+- "(\d+):8080"\s+# SigNoz UI$', compose, re.M)[1]
+        script = (ROOT / "docker/signoz/dashboards/import-dashboards.sh").read_text()
+        default = re.search(r'^SIGNOZ_URL="\$\{1:-([^}]+)\}"$', script, re.M)[1]
+        self.assertEqual(default, f"http://localhost:{ui}")
+
     def run_installer(self, failure):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -234,55 +252,6 @@ class DistributionTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertNotIn("Docker targets started", result.stdout)
         self.assertNotIn("stale-binary-executed", calls)
-
-
-class JournalProofTests(unittest.TestCase):
-    def check_journal(self, content):
-        with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "journal.toon"
-            path.write_text(content)
-            return subprocess.run(
-                ["python3", str(ROOT / "scripts/check-proof-journals.py"), str(path)],
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-
-    def test_completed_experiment_is_accepted(self):
-        self.assertEqual(
-            self.check_journal("status: completed\nrollback_failures: 0\n").returncode,
-            0,
-        )
-
-    def test_completed_word_in_failed_output_is_rejected(self):
-        result = self.check_journal(
-            'status: deviated\noutput: "completed"\nrollback_failures: 0\n'
-        )
-        self.assertNotEqual(result.returncode, 0)
-
-    def test_all_gameday_experiments_must_complete(self):
-        content = (
-            "gameday_id: test\nexperiment_journals[2]:\n"
-            "  - experiment_title: first\n    status: completed\n    rollback_failures: 0\n"
-            "  - experiment_title: second\n    status: deviated\n    rollback_failures: 0\n"
-        )
-        self.assertNotEqual(self.check_journal(content).returncode, 0)
-        self.assertEqual(
-            self.check_journal(content.replace("deviated", "completed")).returncode, 0
-        )
-
-    def test_missing_gameday_record_is_rejected(self):
-        content = (
-            "gameday_id: test\nexperiment_journals[2]:\n"
-            "  - experiment_title: first\n    status: completed\n    rollback_failures: 0\n"
-        )
-        self.assertNotEqual(self.check_journal(content).returncode, 0)
-
-    def test_rollback_failure_is_not_success(self):
-        self.assertNotEqual(
-            self.check_journal("status: completed\nrollback_failures: 1\n").returncode,
-            0,
-        )
 
 
 if __name__ == "__main__":

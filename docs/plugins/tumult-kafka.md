@@ -10,7 +10,7 @@ Script-based plugin for Apache Kafka chaos engineering. Covers broker failures, 
 
 ## Prerequisites
 
-- Kafka CLI tools (`kafka-consumer-groups.sh`, `kafka-topics.sh`)
+- Kafka CLI tools (`kafka-consumer-groups.sh`, `kafka-topics.sh`, `kafka-broker-api-versions.sh`)
 - For network chaos: `tc` (iproute2), `iptables` — Linux with root/sudo
 - For broker kill: SSH access to broker hosts
 
@@ -20,6 +20,7 @@ Script-based plugin for Apache Kafka chaos engineering. Covers broker failures, 
 |--------|-------------|---------------|
 | `kill-broker` | Kill Kafka broker process (SIGKILL) | `TUMULT_SIGNAL` |
 | `partition-broker` | iptables partition between brokers | `TUMULT_BROKER_IP`, `TUMULT_CLUSTER_IPS` (comma-separated) |
+| `partition-broker-rollback` | Remove the iptables rules of `partition-broker` (safe to run twice) | `TUMULT_BROKER_IP`, `TUMULT_CLUSTER_IPS` |
 | `add-broker-latency` | tc netem latency on Kafka port | `TUMULT_DELAY_MS`, `TUMULT_KAFKA_PORT` |
 
 ## Probes
@@ -29,6 +30,8 @@ Script-based plugin for Apache Kafka chaos engineering. Covers broker failures, 
 | `consumer-lag` | Total consumer group lag | Integer (sum across partitions) |
 | `under-replicated` | Under-replicated partition count | Integer (0 = healthy) |
 | `broker-count` | Active brokers in cluster | Integer |
+
+A probe whose query fails exits non-zero with the message of the Kafka tool. It prints no count.
 
 ## Example: Broker Kill with Consumer Lag Monitoring
 
@@ -54,26 +57,33 @@ method[1]:
   - name: kill-broker-2
     activity_type: action
     provider:
-      type: process
-      path: plugins/tumult-kafka/actions/kill-broker.sh
-    execution_target:
-      type: ssh
-      host: broker-2
-      user: kafka
-      key_path: /home/ops/.ssh/id_ed25519
+      type: native
+      plugin: tumult-ssh
+      function: execute
+      arguments:
+        host: broker-2
+        user: kafka
+        key_file: /home/ops/.ssh/id_ed25519
+        command: pkill -KILL -f kafka.Kafka
 
 rollbacks[1]:
   - name: restart-broker
     activity_type: action
     provider:
-      type: process
-      path: /opt/kafka/bin/kafka-server-start.sh
-      arguments[2]: -daemon, /opt/kafka/config/server.properties
-    execution_target:
-      type: ssh
-      host: broker-2
-      user: kafka
+      type: native
+      plugin: tumult-ssh
+      function: execute
+      arguments:
+        host: broker-2
+        user: kafka
+        key_file: /home/ops/.ssh/id_ed25519
+        command: /opt/kafka/bin/kafka-server-start.sh -daemon /opt/kafka/config/server.properties
 ```
+
+A step runs on the machine that runs Tumult. The probe above runs there
+and talks to the cluster over the network. The kill must happen on the
+broker host, so it goes through the [tumult-ssh](tumult-ssh.md) plugin.
+`kill-broker.sh` does the same for a broker on the local machine.
 
 ## Network Chaos for Kafka
 

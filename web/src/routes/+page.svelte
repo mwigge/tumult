@@ -4,7 +4,9 @@
     import { api } from '#lib/api.js';
     import type { ExperimentWindow, Overview } from '#lib/types.js';
     import { CHART } from '#lib/echarts.js';
-    import { experimentOverlay, overlayRunId } from '#lib/overlays.js';
+    import type { LegendItem } from '#lib/legend.js';
+    import { experimentOverlay, outcomeLegend, overlayRunId } from '#lib/overlays.js';
+    import ChartLegend from '#lib/components/ChartLegend.svelte';
     import KpiCard from '#lib/components/KpiCard.svelte';
     import RangeSwitch from '#lib/components/RangeSwitch.svelte';
     import EChart from '#lib/components/EChart.svelte';
@@ -40,6 +42,27 @@
 
     const dayStr = (ts: number) => new Date(ts * 1000).toISOString().slice(0, 10);
 
+    /** Calendar hues, from no run to the busiest day of the range. */
+    const CALENDAR_HUES = ['#1c242c', '#2d5d84', CHART.accent];
+    const busiest = $derived.by(() =>
+        Math.max(1, ...(data?.experiments_per_day ?? []).map((p) => p.v)),
+    );
+
+    // What the colours of the per-day chart stand for: the outcome of the
+    // run a band marks, or the two ends of the calendar scale.
+    const perDayLegend: LegendItem[] = $derived.by(() => {
+        if (range === '24h') {
+            return runs.length === 0
+                ? []
+                : [{ label: 'each band is one run:' }, ...outcomeLegend()];
+        }
+        return [
+            { label: 'runs per day:' },
+            { label: '0', color: CALENDAR_HUES[0] },
+            { label: String(busiest), color: CALENDAR_HUES[CALENDAR_HUES.length - 1] },
+        ];
+    });
+
     const perDayOption = $derived.by(() => {
         if (!data) return {};
         const points = data.experiments_per_day;
@@ -50,9 +73,9 @@
             const overlay = experimentOverlay(runs, (ms) => dayStr(ms / 1000));
             return {
                 ...tooltip(),
-                grid: { left: 40, right: 12, top: 18, bottom: 26 },
+                grid: { left: 40, right: 12, top: 26, bottom: 26 },
                 xAxis: axisCat(points.map((p) => dayStr(p.ts))),
-                yAxis: axisVal(),
+                yAxis: axisVal('runs'),
                 series: [
                     {
                         type: 'bar',
@@ -66,14 +89,13 @@
         }
         const from = dayStr(data.from_ns / 1_000_000_000);
         const to = dayStr(data.to_ns / 1_000_000_000);
-        const max = Math.max(1, ...points.map((p) => p.v));
         return {
             tooltip: { ...CHART.tooltip },
             visualMap: {
                 min: 0,
-                max,
+                max: busiest,
                 show: false,
-                inRange: { color: ['#1c242c', '#2d5d84', CHART.accent] },
+                inRange: { color: CALENDAR_HUES },
             },
             calendar: {
                 range: [from, to],
@@ -137,9 +159,11 @@
             axisTick: { show: false },
         };
     }
-    function axisVal() {
+    function axisVal(name: string) {
         return {
             type: 'value',
+            name,
+            nameTextStyle: { color: CHART.text },
             minInterval: 1,
             splitLine: { lineStyle: { color: CHART.split } },
             axisLabel: { color: CHART.text },
@@ -173,29 +197,34 @@
 
     <div class="grid cols-2" style="margin-top: 14px">
         <div class="panel">
-            <h2>Experiments per day</h2>
+            <h2>Runs per day</h2>
             {#if data.experiments_per_day.length === 0}
-                <div class="state">No experiments in this window.</div>
+                <div class="state">No runs in this window.</div>
             {:else}
                 <EChart
                     id="per-day"
                     option={perDayOption}
-                    label="Experiments per day by outcome"
+                    label={range === '24h'
+                        ? 'Count of runs per day. The bands and lines mark single runs in the colour of their outcome.'
+                        : 'Count of runs per day as a calendar.'}
                     height={range === '24h' ? 220 : 200}
                     onclick={onOverlayClick}
                 />
+                {#if perDayLegend.length > 0}
+                    <ChartLegend id="per-day" items={perDayLegend} />
+                {/if}
             {/if}
         </div>
         <div class="panel">
-            <h2>Fault breakdown</h2>
+            <h2>Fault injections</h2>
             {#if data.faults.length === 0}
-                <div class="state">No fault-injection spans recorded in this window.</div>
+                <div class="state">No fault injection step was recorded in this window.</div>
             {:else}
                 <EChart
                     id="faults"
                     option={faultsOption}
                     height={220}
-                    label="Runs per fault type"
+                    label="Fault injection steps per kind and plugin"
                 />
             {/if}
         </div>

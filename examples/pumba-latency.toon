@@ -2,6 +2,11 @@ title: Pumba network latency injection on Redis
 description: Inject 200ms latency into Redis container, observe packet stats before and after
 
 tags[3]: pumba, redis, network
+kind: chaos
+target:
+  system: redis
+  technology: redis
+  environment: lab
 
 steady_state_hypothesis:
   title: Redis responds normally

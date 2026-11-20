@@ -2,6 +2,7 @@
 # in the window.
 name: coverage
 description: Number of distinct target systems under test.
+unit: count
 source_table: spans
 time_col: ts_ns
 measure:

@@ -28,7 +28,7 @@ pub mod k6;
 mod load;
 /// Tool-agnostic load plan (stages/windows) every load adapter renders.
 pub mod load_profile;
-mod nfr;
+pub(crate) mod nfr;
 /// oha load executor — runs the plan window by window and streams samples.
 pub mod oha;
 mod phases;
@@ -49,8 +49,8 @@ pub enum RunnerError {
     EmptyMethod,
     #[error("baseline-only requires at least one steady-state probe")]
     MissingBaselineProbes,
-    #[error("declared load requires a load executor")]
-    MissingLoadExecutor,
+    /// A declared load could not start, or its tool has no adapter. No
+    /// fault ran.
     #[error("load startup failed: {0}")]
     LoadStart(String),
     /// A `GameDay` declares a different number of experiments than were provided.
@@ -105,6 +105,20 @@ pub struct ActivityOutcome {
 pub trait ActivityExecutor: Send + Sync {
     /// Executes a single activity and returns its outcome.
     fn execute(&self, activity: &Activity) -> ActivityOutcome;
+
+    /// Executes a single activity, and ends it early when `stop` fires.
+    ///
+    /// The runner calls this for the steps of the method, with the token
+    /// that a guard halt or a stop of the run cancels. A step that was ended
+    /// this way did not succeed, and its error says that it was stopped.
+    /// Rollbacks and the probes of the steady state go through
+    /// [`execute`](Self::execute): a stop does not end the cleanup.
+    ///
+    /// The default cannot stop a step: it runs the step to its end.
+    fn execute_until(&self, activity: &Activity, stop: &CancellationToken) -> ActivityOutcome {
+        let _ = stop;
+        self.execute(activity)
+    }
 }
 
 /// Handle to a running load test process.
@@ -151,7 +165,8 @@ pub trait LoadExecutor: Send + Sync {
 
 /// The adapter for a configured load tool. `jmeter` is accepted by the
 /// definition format but has no adapter, so asking for it is an error
-/// rather than a silent fallback to k6.
+/// rather than a silent fallback to k6. Validation asks here too, so such
+/// a load is refused before the run.
 ///
 /// # Errors
 ///
@@ -308,9 +323,10 @@ pub struct RunConfig {
     /// `resilience.experiment` span is created as a child of this context,
     /// enabling cross-service trace linking (e.g. from an MCP tool span).
     pub parent_context: Option<opentelemetry::Context>,
-    /// Optional load test executor. When provided and the experiment has
-    /// a `load` config, the runner starts the load tool in the background
-    /// during method execution.
+    /// Optional load test executor for the declared `load`. When `None`,
+    /// the runner uses the adapter of the tool the load names
+    /// ([`load_executor_for`]); tests give a stand-in here. The runner
+    /// starts the load in the background during method execution.
     pub load_executor: Option<std::sync::Arc<dyn LoadExecutor>>,
     /// Optional override for the experiment's `max_concurrent_faults`
     /// blast-radius cap. When `Some`, it takes precedence over the value

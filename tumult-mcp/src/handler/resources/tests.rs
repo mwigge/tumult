@@ -88,6 +88,49 @@ async fn list_resources_classifies_kinds_with_consistent_mime_types() {
     }
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_listing_says_what_each_file_of_the_workspace_is() {
+    let tmp = tempfile::tempdir().unwrap();
+    // journal.toon (journal) + test.toon (experiment definition).
+    crate::tools::test_support::write_run_journal(tmp.path());
+    std::fs::write(
+        tmp.path().join("drill.gameday.toon"),
+        "title: Drill\nexperiments[1]:\n  - path: test.toon\n",
+    )
+    .unwrap();
+    let handler = open_handler(tmp.path());
+
+    let result = handler
+        .handle_list_resources_request(None, stub_runtime())
+        .await
+        .unwrap();
+
+    let described: Vec<(&str, &str)> = result
+        .resources
+        .iter()
+        .map(|r| {
+            (
+                r.name.as_str(),
+                r.description.as_deref().unwrap_or_default(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        described,
+        [
+            ("test.toon", "Tumult experiment definition (raw TOON)."),
+            (
+                "drill.gameday.toon",
+                "Tumult GameDay campaign definition (raw TOON)."
+            ),
+            (
+                "journal.toon",
+                "Tumult experiment journal (read as JSON: {summary, journal})."
+            ),
+        ]
+    );
+}
+
 /// Write `count` minimal experiment files named `exp-XXXX.toon`.
 fn write_many_experiments(dir: &std::path::Path, count: usize) {
     for i in 0..count {

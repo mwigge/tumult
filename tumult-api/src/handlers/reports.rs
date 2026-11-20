@@ -1,5 +1,5 @@
 //! `GET /api/reports*` (v1 digests and v2 compliance reports) and
-//! `GET /api/scores*` (resilience scorecard, org tree rollup).
+//! `GET /api/scores*` (compliance scorecard, org tree rollup).
 
 use crate::error::ApiError;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -12,10 +12,7 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 use crate::auth::Principal;
-use crate::sql_util::{
-    internal, invalid_range, now_ns, parse_range, scope_scorecard, scoped_experiment_names,
-    windows, with_reader,
-};
+use crate::sql_util::{internal, invalid_range, now_ns, parse_range, windows, with_reader};
 use crate::ApiState;
 
 // ---------------------------------------------------------------------------
@@ -209,10 +206,11 @@ pub(crate) struct ScoresQuery {
     range: Option<String>,
 }
 
-/// `GET /api/scores?range=24h|7d|14d|30d` — resilience scorecard as of now,
-/// with the portfolio delta against the previous equal window. Scoped
-/// principals get the card of their own environments only (rollups
-/// recomputed over the visible experiments).
+/// `GET /api/scores?range=24h|7d|14d|30d` — compliance scorecard as of now,
+/// with the portfolio delta against the previous equal window (`null` when
+/// nothing was on record at the start of the window). With nothing on
+/// record now, `portfolio` is `null` and `band` is `unknown`. Scoped
+/// principals get the card of their own environments only.
 pub(crate) async fn scores(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
@@ -229,17 +227,9 @@ pub(crate) async fn scores(
     };
     let scopes = principal.env_scopes.clone();
     let card = with_reader(&state.db_path, move |reader| {
-        let mut card = scope_scorecard(
-            reader,
-            tumult_compliance::scoring::compute(reader, to, None)?,
-            &scopes,
-        )?;
-        let prev = scope_scorecard(
-            reader,
-            tumult_compliance::scoring::compute(reader, from, None)?,
-            &scopes,
-        )?;
-        card.delta = Some(card.portfolio - prev.portfolio);
+        let mut card = tumult_compliance::scoring::compute_scoped(reader, to, None, &scopes)?;
+        let prev = tumult_compliance::scoring::compute_scoped(reader, from, None, &scopes)?;
+        card.delta = tumult_compliance::scoring::change_since(card.portfolio, prev.portfolio);
         Ok(card)
     })
     .await?;
@@ -257,6 +247,9 @@ pub(crate) struct TreeParams {
 /// `GET /api/scores/tree?node=<path>&range=24h|7d|14d|30d` — org rollup for one
 /// node: criticality-weighted score recomputed from all leaves in its
 /// subtree, coverage, a period sparkline, and one level of child rollups.
+/// With no scored leaf, `score` is `null` and `band` is `unknown`; `delta`
+/// is `null` when the node has no score now or had none a period ago, and
+/// the sparkline has no point for an instant with nothing scored.
 pub(crate) async fn scores_tree(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
@@ -287,14 +280,13 @@ pub(crate) async fn scores_tree(
     let scopes = principal.env_scopes.clone();
 
     let payload = with_reader(&state.db_path, move |reader| {
-        // Scoped principals roll up only the experiments they can see.
-        let in_scope = scoped_experiment_names(reader, &scopes)?;
         // Leaves at an instant: every scored experiment plus pending manual
-        // records (expected but unscored). Pending status is read as of NOW
-        // for every sample point — a documented approximation, since the
-        // lifecycle has no history before the audit trail.
+        // records (expected but unscored), both of the principal's
+        // environments only. Pending status is read as of NOW for every
+        // sample point — a documented approximation, since the lifecycle
+        // has no history before the audit trail.
         let leaves_at = |t: i64| -> Result<Vec<tumult_compliance::ScoredLeaf>, String> {
-            let card = tumult_compliance::scoring::compute(reader, t, None)?;
+            let card = tumult_compliance::scoring::compute_scoped(reader, t, None, &scopes)?;
             let mut leaves: Vec<tumult_compliance::ScoredLeaf> = card
                 .experiments
                 .iter()
@@ -304,13 +296,10 @@ pub(crate) async fn scores_tree(
                 })
                 .collect();
             leaves.extend(
-                tumult_compliance::scoring::pending_manual_leaves(reader)?
+                tumult_compliance::scoring::pending_manual_leaves(reader, &scopes)?
                     .into_iter()
                     .map(|name| tumult_compliance::ScoredLeaf { name, score: None }),
             );
-            if let Some(names) = &in_scope {
-                leaves.retain(|l| names.contains(&l.name));
-            }
             Ok(leaves)
         };
 
@@ -328,8 +317,10 @@ pub(crate) async fn scores_tree(
             let t = as_of - period_ns + step * i;
             let score = org
                 .compute_node(&node, &leaves_at(t)?)
-                .map_or(0.0, |n| n.score);
-            sparkline.push(vec![json!(i), json!(score)]);
+                .and_then(|n| n.score);
+            if let Some(score) = score {
+                sparkline.push(vec![json!(i), json!(score)]);
+            }
         }
 
         Ok(json!({
@@ -338,7 +329,7 @@ pub(crate) async fn scores_tree(
             "kind": current.kind,
             "score": current.score,
             "band": current.band,
-            "delta": current.score - previous.score,
+            "delta": tumult_compliance::scoring::change_since(current.score, previous.score),
             "coverage": current.coverage,
             "scored": current.scored,
             "expected": current.expected,

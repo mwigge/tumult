@@ -1,6 +1,6 @@
 //! `GET /api/gate/{target}` — the CI gate.
 //!
-//! One target's resilience score, turned into a `pass` / `warn` / `fail`
+//! One target's compliance score, turned into a `pass` / `warn` / `fail`
 //! verdict a pipeline can act on, with the evidence behind it. The score is
 //! the same freshness-decayed model as `/api/scores` (so the gate and the
 //! scorecard never disagree); the verdict adds a floor (`min_score`) and a
@@ -185,6 +185,7 @@ mod tests {
             severity: None,
             runs: 1,
             origin: "automated".into(),
+            journal_only: false,
         }
     }
 

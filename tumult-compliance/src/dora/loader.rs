@@ -37,7 +37,9 @@ use std::fmt;
 use serde_json::Value;
 use tumult_core::compliance::{entity_id_is_valid, truncated, EntityProfile};
 use tumult_core::types::canonical_kind;
-use tumult_lake::{IctFunction, IctFunctionService, IctLegalEntity, IctRegister, Reader};
+use tumult_lake::{
+    scope, IctFunction, IctFunctionService, IctLegalEntity, IctRegister, Reader, RunVerdict,
+};
 
 use super::model::{
     day_of, parse_day, Evidence, Facts, Function, IncidentFeed, Inputs, Outcome, PlannedTest,
@@ -46,7 +48,6 @@ use super::model::{
 use super::params::HouseParams;
 use super::register::{FEED_NAMES, MAP_ENTITY, MAP_SERVICE};
 use crate::org::glob_match;
-use crate::scoring::{and_env, env_in};
 
 /// Source of a status row computed on its own day.
 pub const SNAPSHOT_SOURCE: &str = "snapshot";
@@ -378,19 +379,28 @@ impl Mapper {
 }
 
 /// Outcome of a completion status; `None` for a run that proves nothing
-/// either way. A run with no completion record counts as failed.
+/// either way. A run takes the outcome of its verdict
+/// ([`tumult_lake::run_verdict`]), a manual record that of its outcome. A
+/// run with no completion record counts as failed.
 fn outcome_of(status: Option<&str>) -> Option<Outcome> {
     let status = status.map(str::to_ascii_lowercase);
     match status.as_deref() {
-        Some("completed" | "passed") => Some(Outcome::Passed),
+        Some("passed") => Some(Outcome::Passed),
         Some("partial") => Some(Outcome::Partial),
-        Some("inconclusive" | "aborted" | "interrupted") => None,
-        _ => Some(Outcome::Failed),
+        Some("inconclusive") => None,
+        run => match run.and_then(tumult_lake::run_verdict) {
+            Some(RunVerdict::Pass) => Some(Outcome::Passed),
+            Some(RunVerdict::NoEvidence) => None,
+            Some(RunVerdict::Fail) | None => Some(Outcome::Failed),
+        },
     }
 }
 
+/// The runs up to `as_of_ns`, with or without a trace: the rows of
+/// `run_roots`, as the scorecard reads them.
 fn runs_sql(as_of_ns: i64, envs: &[String]) -> String {
-    let scope = and_env(env_in("s.target_environment", envs));
+    let scope = scope::and(scope::in_list("s.target_environment", envs));
+    let status = tumult_lake::run_outcome_sql("s", "l");
     format!(
         "SELECT COALESCE(s.experiment_id, s.span_id) AS id, s.experiment_name AS name, \
          s.ts_ns AS ts, s.target_system AS system, s.target_environment AS env, \
@@ -399,22 +409,21 @@ fn runs_sql(as_of_ns: i64, envs: &[String]) -> String {
          COALESCE(s.span_attrs['ict.entity.id'], s.resource_attrs['ict.entity.id']) AS entity, \
          COALESCE(s.span_attrs['ict.entity.tier'], s.resource_attrs['ict.entity.tier']) AS tier, \
          COALESCE(e.test_kind, s.span_attrs['resilience.test.kind']) AS kind, \
-         COALESCE(l.log_attrs['status'], s.outcome_status) AS status, \
+         {status} AS status, \
          e.rto_target_s AS rto_target_s, e.rpo_target_s AS rpo_target_s, \
          COALESCE(e.rto_measured_s, s.recovery_time_s) AS rto_measured_s, \
          e.rpo_measured_s AS rpo_measured_s \
-         FROM spans s \
-         LEFT JOIN logs l ON l.log_attrs['experiment_id'] = s.experiment_id \
-         AND l.body = 'experiment.completed' \
+         FROM run_roots s \
+         LEFT JOIN run_completions l ON s.experiment_id = l.experiment_id \
          LEFT JOIN experiments e ON e.experiment_id = s.experiment_id \
-         WHERE s.span_name = 'resilience.experiment' AND s.experiment_name IS NOT NULL \
+         WHERE s.experiment_name IS NOT NULL \
          AND s.ts_ns <= {as_of_ns}{scope} \
          ORDER BY s.ts_ns, id"
     )
 }
 
 fn manual_sql(as_of_ns: i64, envs: &[String]) -> String {
-    let scope = and_env(env_in("m.target_environment", envs));
+    let scope = scope::and(scope::in_list("m.target_environment", envs));
     format!(
         "SELECT m.id AS id, m.experiment_name AS name, m.exercise_type AS exercise_type, \
          m.executed_at_ns AS ts, m.outcome_status AS status, m.target_system AS system, \
@@ -470,7 +479,7 @@ fn window_start(as_of_ns: i64, days: u32) -> i64 {
 fn services_sql(as_of_ns: i64, envs: &[String], params: &HouseParams) -> Sql {
     let mut binds = Vec::new();
     let from_ns = window_start(as_of_ns, params.conformance.window_days);
-    let scope = and_env(env_in("target_environment", envs));
+    let scope = scope::and(scope::in_list("target_environment", envs));
     let levels: Vec<String> = params
         .conformance
         .levels()
@@ -512,7 +521,7 @@ fn services_sql(as_of_ns: i64, envs: &[String], params: &HouseParams) -> Sql {
 
 fn topology_sql(as_of_ns: i64, envs: &[String], params: &HouseParams) -> String {
     let from_ns = window_start(as_of_ns, params.conformance.window_days);
-    let scope = and_env(env_in("c.target_environment", envs));
+    let scope = scope::and(scope::in_list("c.target_environment", envs));
     format!(
         "SELECT COUNT(*) AS edges FROM ( \
          SELECT 1 AS edge FROM spans c \
@@ -524,7 +533,7 @@ fn topology_sql(as_of_ns: i64, envs: &[String], params: &HouseParams) -> String 
 }
 
 fn schedules_sql(envs: &[String]) -> String {
-    let scope = and_env(env_in("env", envs));
+    let scope = scope::and(scope::in_list("env", envs));
     format!(
         "SELECT target AS target FROM run_schedules \
          WHERE enabled AND target IS NOT NULL{scope} ORDER BY 1"
@@ -613,7 +622,7 @@ fn manual_of(row: &Value, functions: Vec<String>, params: &HouseParams) -> Optio
         system,
         env: text(row, "env"),
         experiment: text(row, "name").unwrap_or_else(|| id.clone()),
-        kind: params.manual_kinds.get(&exercise).cloned(),
+        kind: params.manual_kind(&exercise).map(str::to_owned),
         cited: cited(row),
         outcome,
         rto_measured_s: num(row, "rto_measured_s"),
@@ -1171,6 +1180,110 @@ functions:
     }
 
     #[test]
+    fn the_status_of_a_run_is_read_in_either_spelling_and_from_its_root_span() {
+        let (_dir, store) = store_with(ORG);
+        let (before, before_log) = run("r1", "payments-db", "dr", "Completed", NOW - 3 * DAY_NS);
+        let (mut since, _) = run("r2", "payments-db", "dr", "", NOW - 2 * DAY_NS);
+        since.outcome_status = Some("completed".into());
+        let (mut halted, _) = run("r3", "payments-db", "dr", "", NOW - DAY_NS);
+        halted.outcome_status = Some("halted".into());
+        seed(&store, &[before, since, halted], &[before_log]);
+
+        let loaded = loaded(&store, request(&[]));
+
+        let seen: Vec<(&str, Outcome)> = loaded
+            .inputs
+            .evidence
+            .iter()
+            .map(|e| (e.id.as_str(), e.outcome))
+            .collect();
+        assert_eq!(
+            seen,
+            [
+                ("r1", Outcome::Passed),
+                ("r2", Outcome::Passed),
+                ("r3", Outcome::Failed),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_run_that_sent_no_trace_is_evidence_like_a_run_that_did() {
+        use tumult_core::types::{Experiment, ExperimentStatus, ExperimentTarget, Journal};
+        let (_dir, store) = store_with(ORG);
+        let (traced, traced_log) = run("r1", "payments-db", "dr", "Completed", NOW - 2 * DAY_NS);
+        seed(&store, &[traced], &[traced_log]);
+        // A plain `tumult run` against the same system: the lake holds its
+        // journal and no span.
+        let journal = Journal {
+            started_at_ns: NOW - DAY_NS,
+            ended_at_ns: NOW - DAY_NS + 300_000_000_000,
+            ..tumult_lake::duckdb_store::sample_journal("r2", ExperimentStatus::Deviated)
+        };
+        let definition = Experiment {
+            title: journal.experiment_title.clone(),
+            target: Some(ExperimentTarget {
+                system: "payments-db".into(),
+                technology: None,
+                environment: Some("prod".into()),
+                criticality: None,
+                namespace: None,
+                version: None,
+            }),
+            ..Experiment::default()
+        };
+        assert!(store
+            .writer()
+            .unwrap()
+            .ingest_journal(&journal, Some(&definition))
+            .unwrap());
+
+        let loaded = loaded(&store, request(&[]));
+
+        let seen: Vec<(&str, Outcome, Vec<String>)> = loaded
+            .inputs
+            .evidence
+            .iter()
+            .map(|e| (e.id.as_str(), e.outcome, e.functions.clone()))
+            .collect();
+        let payments = vec!["cif-0001".to_string()];
+        assert_eq!(
+            seen,
+            [
+                ("r1", Outcome::Passed, payments.clone()),
+                ("r2", Outcome::Failed, payments),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_run_with_two_completion_logs_is_one_piece_of_evidence() {
+        let (_dir, store) = store_with(ORG);
+        let (span, first) = run("r1", "payments-db", "dr", "Deviated", NOW - DAY_NS);
+        let again = LogRow {
+            ts_ns: first.ts_ns + 1,
+            log_attrs: pairs(&[("experiment_id", "r1"), ("status", "Completed")]),
+            ..first.clone()
+        };
+        // The later log is stored first.
+        seed(&store, &[span], &[again, first]);
+
+        let loaded = loaded(&store, request(&[]));
+
+        let seen: Vec<(&str, Outcome)> = loaded
+            .inputs
+            .evidence
+            .iter()
+            .map(|e| (e.id.as_str(), e.outcome))
+            .collect();
+        assert_eq!(
+            seen,
+            [("r1", Outcome::Passed)],
+            "the later log says how it ended"
+        );
+    }
+
+    #[test]
     fn runs_bind_by_entity_id_then_by_target_glob() {
         let (_dir, store) = store_with(ORG);
         let (by_glob, glob_log) = run("r1", "payments-db", "dr", "completed", NOW - 3 * DAY_NS);
@@ -1705,7 +1818,7 @@ functions:
                 "INSERT INTO manual_experiments (id, experiment_name, exercise_type, \
                  executed_at_ns, hypothesis, method, outcome_status, target_system, \
                  target_environment, entered_by, entered_at_ns, attestation, status, \
-                 framework_refs, content_hash) VALUES ('{id}', '{id}', '{exercise}', {at}, \
+                 framework_refs, content_hash) VALUES ('{id}', 'name-{id}', '{exercise}', {at}, \
                  'h', 'm', 'passed', {target}, 'prod', 'ada', {at}, 'a', 'verified', \
                  CAST('{refs}' AS VARCHAR[]), 'hash')",
                 at = NOW - DAY_NS
@@ -1739,6 +1852,14 @@ functions:
                 ("m2", vec!["cif-0001".to_string()], Some("dr"), Vec::new()),
             ]
         );
+        // A record is shown by its name, not by its id.
+        let names: Vec<&str> = loaded
+            .inputs
+            .evidence
+            .iter()
+            .map(|e| e.experiment.as_str())
+            .collect();
+        assert_eq!(names, ["name-m1", "name-m2"]);
         assert!(loaded
             .inputs
             .evidence

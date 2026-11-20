@@ -52,7 +52,7 @@ pub(super) fn compliance(handler: &TumultHandler, params: &CallToolRequestParams
 }
 
 /// Dispatch `tumult_trend`: compute a cross-run metric trend over journals,
-/// with optional time window and target-title filter.
+/// with optional time window and target.
 pub(super) fn trend(handler: &TumultHandler, params: &CallToolRequestParams) -> Dispatched {
     let args: TrendTool = parse_args(params)?;
     let path = handler.resolve_path(&args.journals_path)?;

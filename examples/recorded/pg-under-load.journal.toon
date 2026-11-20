@@ -1,0 +1,103 @@
+experiment_title: PostgreSQL under real load — container pause disruption
+experiment_id: "9e42dc01-0f09-491a-aa6d-49152e5ade30"
+status: completed
+started_at_ns: 1794852723048304877
+ended_at_ns: 1794852744985025629
+duration_ms: 21936
+steady_state_before:
+  title: PostgreSQL accepts queries
+  met: true
+  probe_results[1]{name,activity_type,status,started_at_ns,duration_ms,output,trace_id,span_id}:
+    "pg-responds",probe,succeeded,1794852723048323445,42,"PostgreSQL 16.16 on x86_64-pc-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit","",""
+steady_state_after:
+  title: PostgreSQL accepts queries
+  met: true
+  probe_results[1]{name,activity_type,status,started_at_ns,duration_ms,output,trace_id,span_id}:
+    "pg-responds",probe,succeeded,1794852744943351068,41,"PostgreSQL 16.16 on x86_64-pc-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit","",""
+method_results[4]:
+  - name: "connection-count-before"
+    activity_type: probe
+    status: succeeded
+    started_at_ns: 1794852723091405505
+    duration_ms: 3052
+    output: "7"
+    trace_id: ""
+    span_id: ""
+  - name: "pause-postgres"
+    activity_type: action
+    status: succeeded
+    started_at_ns: 1794852726143550171
+    duration_ms: 5608
+    trace_id: ""
+    span_id: ""
+  - name: "connection-count-after"
+    activity_type: probe
+    status: succeeded
+    started_at_ns: 1794852733752167890
+    duration_ms: 54
+    output: "6"
+    trace_id: ""
+    span_id: ""
+  - name: "start-pg-load"
+    activity_type: action
+    status: succeeded
+    started_at_ns: 1794852723091455430
+    duration_ms: 21808
+    output: "pg_query_duration_ms\n    ✓ 'p(95)<1000' p(95)=16\n\n\n  █ TOTAL RESULTS \n\n    checks_total.......: 1268    63.212282/s\n    checks_succeeded...: 100.00% 1268 out of 1268\n    checks_failed......: 0.00%   0 out of 1268\n\n    ✓ query returned rows\n\n    CUSTOM\n    pg_query_duration_ms...: avg=28.391956 min=4       med=7       max=5034  p(90)=12      p(95)=16     \n\n    EXECUTION\n    iteration_duration.....: avg=78.95ms   min=54.73ms med=57.46ms max=5.08s p(90)=62.35ms p(95)=67.15ms\n    iterations.............: 1268 63.212282/s\n    vus....................: 5    min=5       max=5\n    vus_max................: 5    min=5       max=5\n\n    NETWORK\n    data_received..........: 0 B  0 B/s\n    data_sent..............: 0 B  0 B/s\n\n\n\n\nrunning (20.1s), 0/5 VUs, 1268 complete and 0 interrupted iterations\ndefault ✓ [ 100% ] 5 VUs  20s"
+    trace_id: ""
+    span_id: ""
+rollback_results[0]:
+rollback_failures: 0
+estimate: null
+baseline_result: null
+during_result:
+  started_at_ns: 1794852723091341438
+  ended_at_ns: 1794852744899874270
+  fault_active_s: 21.808532832
+  sample_interval_s: 1
+  probes[1]{name,samples,mean,max,min,error_rate,breached_at_ns,breach_count}:
+    "pg-responds",21,44.42857142857143,85,13,0.23809523809523808,1794852727275670728,5
+post_result:
+  started_at_ns: 1794852744899929093
+  ended_at_ns: 1794852744943330878
+  duration_s: 0.043401785
+  samples: 1
+  probes[1]{name,mean,p95,error_rate,returned_to_baseline,recovery_time_s}:
+    "pg-responds",43,43,0,true,0
+  recovery_time_s: 0
+  full_recovery: true
+  mttr_s: 0
+load_result: null
+analysis: null
+regulatory: null
+blast_radius:
+  peak_concurrent_faults: 1
+kind: performance
+objectives:
+  rto_measured_s: 0
+  verdicts[2]{nfr_id,kind,metric,operator,threshold,observed,state,margin,criticality}:
+    "pg-responds-p95",latency,"probe.pg-responds.p95_ms",lte,2000,71,met,1929,major
+    availability,availability,during.availability,gte,0.5,0.7619047619047619,met,0.26190476190476186,minor
+probe_samples[22]{probe,phase,ts_ns,duration_ms,ok}:
+  "pg-responds",during,1794852723091453457,45,true
+  "pg-responds",during,1794852724136926548,46,true
+  "pg-responds",during,1794852725183289993,47,true
+  "pg-responds",during,1794852726230473202,45,true
+  "pg-responds",during,1794852727275670728,16,false
+  "pg-responds",during,1794852728292618221,13,false
+  "pg-responds",during,1794852729306033097,13,false
+  "pg-responds",during,1794852730319568609,14,false
+  "pg-responds",during,1794852731333748465,13,false
+  "pg-responds",during,1794852732347260091,71,true
+  "pg-responds",during,1794852733418487627,69,true
+  "pg-responds",during,1794852734487920375,50,true
+  "pg-responds",during,1794852735538188278,49,true
+  "pg-responds",during,1794852736587999203,85,true
+  "pg-responds",during,1794852737673827783,49,true
+  "pg-responds",during,1794852738723690496,51,true
+  "pg-responds",during,1794852739774929826,51,true
+  "pg-responds",during,1794852740826205649,43,true
+  "pg-responds",during,1794852741869629765,50,true
+  "pg-responds",during,1794852742920367506,49,true
+  "pg-responds",during,1794852743969671357,64,true
+  "pg-responds",post,1794852744899934501,43,true

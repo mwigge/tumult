@@ -82,6 +82,6 @@ ${TUMULT} validate "${EXPERIMENT}"
 
 echo "running read-only FIS status call..."
 # shellcheck disable=SC2086
-${TUMULT} run "${EXPERIMENT}"
+${TUMULT} run "${EXPERIMENT}" --journal-path "${WORKDIR}/journal.toon"
 
 echo "== smoke test complete =="

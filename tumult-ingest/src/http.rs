@@ -33,7 +33,7 @@ use opentelemetry_proto::tonic::collector::trace::v1::{
 use prost::Message;
 use std::net::SocketAddr;
 
-use crate::error::IngestError;
+use crate::error::{IngestError, WriteFailed};
 use crate::writer::{Batch, IngestWriter};
 
 mod encoding;
@@ -222,10 +222,7 @@ fn status_response(status: StatusCode, message: String) -> Response {
 
 fn server_error(e: IngestError) -> axum::response::Response {
     tracing::error!(error = %e, "OTLP write failed");
-    status_response(
-        StatusCode::INTERNAL_SERVER_ERROR,
-        "telemetry write failed".into(),
-    )
+    status_response(WriteFailed::HTTP, WriteFailed::MESSAGE.into())
 }
 
 #[cfg(test)]
@@ -243,6 +240,7 @@ mod protocol_tests {
             (StatusCode::BAD_REQUEST, 3),
             (StatusCode::UNAUTHORIZED, 16),
             (StatusCode::INTERNAL_SERVER_ERROR, 13),
+            (StatusCode::SERVICE_UNAVAILABLE, 14),
         ] {
             let response = status_response(status, "safe".into());
             let body = axum::body::to_bytes(response.into_body(), 4096)
@@ -388,5 +386,42 @@ mod tests {
         }
         let lines = logs.text().matches("ingest bearer token rejected").count();
         assert!((1..=20).contains(&lines), "{lines} warnings");
+    }
+
+    /// A batch the store refuses is a 503 with the OTLP status
+    /// UNAVAILABLE, nothing of it is stored, and the same body sent again
+    /// once the cause is gone is stored once.
+    #[tokio::test]
+    async fn a_batch_the_store_refuses_is_a_503_and_stored_once_when_sent_again() {
+        use crate::test_store;
+
+        let dir = tempfile::tempdir().unwrap();
+        let store = tumult_lake::Store::open(&dir.path().join("db")).unwrap();
+        let (ingest, _task) = IngestWriter::spawn(store.writer().unwrap(), 4);
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let app = router(ingest.clone());
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let body = test_store::sum_and_gauge().encode_to_vec();
+        let send = || {
+            reqwest::Client::new()
+                .post(format!("http://{addr}/v1/metrics"))
+                .header("content-type", "application/x-protobuf")
+                .body(body.clone())
+                .send()
+        };
+
+        test_store::hide_gauges(&ingest).await;
+        let response = send().await.unwrap();
+        assert_eq!(response.status(), reqwest::StatusCode::SERVICE_UNAVAILABLE);
+        let status = OtlpStatus::decode(response.bytes().await.unwrap()).unwrap();
+        assert_eq!(status.code, tonic::Code::Unavailable as i32);
+        assert_eq!(status.message, "telemetry write failed");
+
+        test_store::restore_gauges(&ingest).await;
+        assert_eq!(test_store::stored(&store), (0, 0));
+        let response = send().await.unwrap();
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
+        assert_eq!(test_store::stored(&store), (1, 1));
     }
 }

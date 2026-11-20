@@ -184,7 +184,7 @@ async fn write_digest(
         Ok(tumult_report::build_report(
             &reader,
             &defs,
-            &format!("Tumult digest — last {}s", interval.as_secs()),
+            &tumult_report::digest_title(interval),
             Some((from_ns, to_ns)),
         )?)
     })
@@ -586,7 +586,7 @@ condition: { column: span_name, equals: "resilience.experiment" }
         );
         let html = std::fs::read_to_string(&path).unwrap();
         assert!(
-            html.contains("Tumult digest — last 3600s"),
+            html.contains("Tumult digest — last hour"),
             "digest title missing"
         );
     }

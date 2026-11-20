@@ -73,15 +73,15 @@ fn parse_var_args_value_with_equals() {
 // ── build_load_override tests ─────────────────────────────
 
 #[test]
-fn build_load_override_none_tool_returns_none() {
+fn build_load_override_none_tool_keeps_the_load_of_the_file() {
     let result = build_load_override(None, None, None, None).unwrap();
-    assert!(result.is_none());
+    assert_eq!(result, LoadOverride::Keep);
 }
 
 #[test]
-fn build_load_override_explicit_none_returns_none() {
+fn build_load_override_explicit_none_removes_the_load_of_the_file() {
     let result = build_load_override(Some(LoadToolArg::None), None, None, None).unwrap();
-    assert!(result.is_none());
+    assert_eq!(result, LoadOverride::Remove);
 }
 
 #[test]
@@ -93,7 +93,9 @@ fn build_load_override_k6_returns_config() {
         Some("60s".to_string()),
     )
     .unwrap();
-    let config = result.unwrap();
+    let LoadOverride::Replace(config) = result else {
+        panic!("a load tool replaces the load of the file: {result:?}");
+    };
     assert_eq!(config.vus, Some(20));
     assert!((config.duration_s.unwrap() - 60.0).abs() < f64::EPSILON);
     assert!(matches!(config.tool, tumult_core::types::LoadTool::K6));
@@ -102,7 +104,9 @@ fn build_load_override_k6_returns_config() {
 #[test]
 fn build_load_override_k6_defaults() {
     let result = build_load_override(Some(LoadToolArg::K6), None, None, None).unwrap();
-    let config = result.unwrap();
+    let LoadOverride::Replace(config) = result else {
+        panic!("a load tool replaces the load of the file: {result:?}");
+    };
     assert!(matches!(config.tool, tumult_core::types::LoadTool::K6));
     assert_eq!(config.vus, Some(10)); // default
     assert!((config.duration_s.unwrap() - 30.0).abs() < f64::EPSILON); // default

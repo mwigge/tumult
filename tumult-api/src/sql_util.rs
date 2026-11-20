@@ -10,7 +10,7 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::Json;
 use serde_json::{json, Value};
-use tumult_lake::{Reader, SqlParam, Store};
+use tumult_lake::{scope, Reader, RunVerdict, SqlParam, Store};
 
 // ---------------------------------------------------------------------------
 // helpers
@@ -90,6 +90,38 @@ pub(crate) fn sql_string(s: &str) -> String {
     format!("'{}'", s.replace('\'', "''"))
 }
 
+/// How a run can end, in the spelling of the journal.
+const RUN_ENDINGS: [&str; 6] = [
+    "completed",
+    "deviated",
+    "failed",
+    "aborted",
+    "interrupted",
+    "halted",
+];
+
+/// The predicate of the `outcome` filter on a list of runs: one of
+/// [`RUN_ENDINGS`] in any case, or `incomplete` for a run that has not
+/// ended. `span` and `log` are the aliases that
+/// [`tumult_lake::run_outcome_sql`] takes.
+///
+/// # Errors
+/// The message of the `400` answer when `outcome` is neither.
+pub(crate) fn run_outcome_where(outcome: &str, span: &str, log: &str) -> Result<String, String> {
+    let wanted = outcome.to_ascii_lowercase();
+    let status = tumult_lake::run_outcome_sql(span, log);
+    if wanted == "incomplete" {
+        return Ok(format!("{status} IS NULL"));
+    }
+    if RUN_ENDINGS.contains(&wanted.as_str()) {
+        return Ok(format!("{status} = {}", sql_string(&wanted)));
+    }
+    Err(format!(
+        "invalid outcome {wanted:?}; expected {}|incomplete",
+        RUN_ENDINGS.join("|")
+    ))
+}
+
 /// Quote a user-supplied substring for `ILIKE … ESCAPE '\'` (contains-match).
 pub(crate) fn sql_contains(s: &str) -> String {
     let esc = s
@@ -116,20 +148,21 @@ pub(crate) fn w(from: i64, to: i64) -> String {
     format!("ts_ns >= {from} AND ts_ns < {to}")
 }
 
-/// `col IN ('a', 'b')` predicate restricting reads to a principal's
-/// environment scopes, or `None` when the set is empty (all environments —
-/// also the synthetic open-auth principal's case). Scoping is read-side
-/// filtering only; mutations are role-gated by the auth middleware.
-pub(crate) fn env_scope_where(col: &str, scopes: &[String]) -> Option<String> {
-    if scopes.is_empty() {
-        return None;
-    }
-    let list = scopes
-        .iter()
-        .map(|s| sql_string(s))
-        .collect::<Vec<_>>()
-        .join(", ");
-    Some(format!("{col} IN ({list})"))
+/// The run pass rate, as an SQL aggregate over runs: the share of the runs
+/// that passed among the runs that passed or failed. A run that proves
+/// nothing (aborted, interrupted) and a run that has not ended are in
+/// neither part ([`tumult_lake::run_verdict`]). `span` is the alias of a
+/// row of `run_roots` and `log` the alias of its row of `run_completions`,
+/// as for [`tumult_lake::run_outcome_sql`]. The card of the home page, its
+/// sparkline, its targets and the answer of `/api/ask` all read this one.
+pub(crate) fn run_pass_rate_sql(span: &str, log: &str) -> String {
+    let verdict = tumult_lake::run_verdict_sql(&tumult_lake::run_outcome_sql(span, log));
+    format!(
+        "count(*) FILTER (WHERE {verdict} = '{pass}') \
+         / nullif(count(*) FILTER (WHERE {verdict} IN ('{pass}', '{fail}')), 0)",
+        pass = RunVerdict::Pass.as_str(),
+        fail = RunVerdict::Fail.as_str(),
+    )
 }
 
 /// The principal's scopes as one bound parameter: a JSON list, or null for
@@ -150,114 +183,14 @@ pub(crate) fn in_scopes(n: usize, column: &str) -> String {
     )
 }
 
-/// `" AND <predicate>"` suffix for a WHERE clause, or empty when the
-/// principal is unscoped (the predicate is `None`).
-pub(crate) fn and_pred(pred: Option<String>) -> String {
-    pred.map_or_else(String::new, |p| format!(" AND {p}"))
-}
-
 /// EXISTS predicate scoping spans/logs rows to an in-scope experiment
 /// trace: `target_environment` lives only on the root span, so child spans
 /// and log rows reach it through `trace_id` correlation. Rows with no
 /// in-scope linkage are hidden from scoped principals (fail closed).
 pub(crate) fn env_trace_exists(alias: &str, scopes: &[String]) -> Option<String> {
-    env_scope_where("se.target_environment", scopes).map(|env| {
+    scope::in_list("se.target_environment", scopes).map(|env| {
         format!("EXISTS (SELECT 1 FROM spans se WHERE se.trace_id = {alias}.trace_id AND {env})")
     })
-}
-
-/// Environment predicate for one of the `metric_*` tables: metric points
-/// carry no environment column, so they reach the root span's
-/// `target_environment` through `experiment_name` correlation.
-pub(crate) fn env_metric_exists(table: &str, scopes: &[String]) -> Option<String> {
-    env_scope_where("se.target_environment", scopes).map(|env| {
-        format!(
-            "EXISTS (SELECT 1 FROM spans se WHERE se.experiment_name = {table}.experiment_name AND {env})"
-        )
-    })
-}
-
-/// Environment predicate for a metric definition's source table: `spans`
-/// binds its own column, the metric tables bind through `experiment_name`.
-pub(crate) fn env_table_predicate(table: &str, scopes: &[String]) -> Option<String> {
-    if table == "spans" {
-        env_scope_where("target_environment", scopes)
-    } else {
-        env_metric_exists(table, scopes)
-    }
-}
-
-/// Names of the experiments visible under the scopes (automated and manual
-/// evidence); `None` when the principal is unscoped.
-pub(crate) fn scoped_experiment_names(
-    reader: &Reader,
-    scopes: &[String],
-) -> Result<Option<std::collections::HashSet<String>>, String> {
-    let Some(env) = env_scope_where("target_environment", scopes) else {
-        return Ok(None);
-    };
-    let rows = reader
-        .query_json_rows(&format!(
-            "SELECT experiment_name AS name FROM spans \
-             WHERE span_name = 'resilience.experiment' AND {env} \
-             UNION SELECT experiment_name AS name FROM manual_experiments WHERE {env}"
-        ))
-        .map_err(|e| e.to_string())?;
-    Ok(Some(
-        rows.iter()
-            .filter_map(|r| r.get("name").and_then(Value::as_str).map(str::to_owned))
-            .collect(),
-    ))
-}
-
-/// Restrict a scorecard to in-scope experiments, recomputing the target and
-/// portfolio rollups with scoring's equal-weight algorithm (the scoring
-/// crate has no scope hook, so the rollup is replayed here).
-pub(crate) fn scope_scorecard(
-    reader: &Reader,
-    mut card: tumult_compliance::scoring::Scorecard,
-    scopes: &[String],
-) -> Result<tumult_compliance::scoring::Scorecard, String> {
-    let Some(in_scope) = scoped_experiment_names(reader, scopes)? else {
-        return Ok(card);
-    };
-    card.experiments.retain(|e| in_scope.contains(&e.name));
-    let mut by_target: std::collections::BTreeMap<
-        String,
-        Vec<&tumult_compliance::scoring::ExperimentScore>,
-    > = std::collections::BTreeMap::new();
-    for e in &card.experiments {
-        by_target
-            .entry(e.target.clone().unwrap_or_else(|| "(untargeted)".into()))
-            .or_default()
-            .push(e);
-    }
-    let mut targets: Vec<tumult_compliance::scoring::TargetScore> = by_target
-        .into_iter()
-        .map(|(target, exps)| {
-            let score = exps.iter().map(|e| f64::from(e.score)).sum::<f64>() / exps.len() as f64;
-            tumult_compliance::scoring::TargetScore {
-                target,
-                score,
-                band: tumult_compliance::scoring::band(score).to_string(),
-                runs: exps.iter().map(|e| e.runs).sum(),
-                last_run_ns: exps.iter().filter_map(|e| e.last_run_ns).max(),
-            }
-        })
-        .collect();
-    targets.sort_by(|a, b| {
-        a.score
-            .partial_cmp(&b.score)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
-    card.portfolio = if targets.is_empty() {
-        0.0
-    } else {
-        targets.iter().map(|t| t.score).sum::<f64>() / targets.len() as f64
-    };
-    card.band = tumult_compliance::scoring::band(card.portfolio).to_string();
-    card.targets = targets;
-    Ok(card)
 }
 
 /// Parse a click-to-filter `k=v` parameter into (key, value); the key must
@@ -387,6 +320,12 @@ pub(crate) fn ratio_series(num: &[Value], den: &[Value]) -> Vec<Value> {
 }
 
 pub(crate) fn bucket_expr(bucket_s: i64) -> String {
+    bucket_of("ts_ns", bucket_s)
+}
+
+/// [`bucket_expr`] over the time column `column`, for a query that joins
+/// two tables with a `ts_ns`.
+pub(crate) fn bucket_of(column: &str, bucket_s: i64) -> String {
     let ns = bucket_s * 1_000_000_000;
-    format!("(ts_ns // {ns}) * {ns} // 1000000000")
+    format!("({column} // {ns}) * {ns} // 1000000000")
 }

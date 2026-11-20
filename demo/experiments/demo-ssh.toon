@@ -2,6 +2,11 @@ title: Demo — SSH remote execution against demo-sshd
 description: Use the native tumult-ssh executor to run commands on demo-sshd, including a short stress-ng burst
 
 tags[3]: demo, ssh, resilience
+kind: chaos
+target:
+  system: demo-sshd
+  technology: ssh
+  environment: demo
 
 steady_state_hypothesis:
   title: demo-sshd is reachable over SSH

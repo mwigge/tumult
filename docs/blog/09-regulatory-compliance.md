@@ -279,6 +279,7 @@ Parquet export makes long-term retention practical. Journals compressed as Parqu
 ```bash
 # Archive journals as Parquet for long-term retention. export converts one
 # journal per invocation, writing <journal-stem>.parquet in the current directory
+# and the steps of the run in activities/<journal-stem>.parquet
 cd archives/2025/
 for journal in ../../journals/2025/*.toon; do
   tumult export "$journal" --format parquet

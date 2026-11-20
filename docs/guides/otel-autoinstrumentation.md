@@ -33,7 +33,7 @@ runnable example is `examples/otel/`.
 Rules the ingest applies (`tumult-otlp`):
 
 - A span-level `resilience.target.*` attribute always wins. The tumult
-  runner sets them on every span of an experiment trace.
+  runner sets them on the root span of an experiment trace.
 - When a span carries none, the **resource** attributes fill the target
   columns. That is how an auto-instrumented application declares what it
   is, once, at deploy time.
@@ -128,15 +128,16 @@ maps them onto the promoted keys so the lake sees one contract:
   `deployment.environment.name` so other backends agree.
 - **Cardinality guard** (`attributes` processor): request-scoped ids are
   dropped before anything becomes a metric dimension.
-- **Export** to tumultd over OTLP with the ingest token.
+- **Export** to tumultd over OTel-Arrow (unary OTLP as a fallback) with the ingest token.
 
 Point every agent at the Collector, not at the daemon, and the contract is
 enforced in one place.
 
 ## 4. During a run: linking application spans to the experiment
 
-The tumult runner sets `TRACEPARENT` (and `BAGGAGE`) on every process it
-starts, so a probe or a load generator joins the experiment trace. For
+The tumult runner sets `TRACEPARENT` (and `TRACESTATE`) on every script
+plugin it starts, so a script probe joins the experiment trace. A process
+step and a load generator get no trace context. For
 spans an application emits on its own while a fault is active, the link is
 the **target**: the run's `resilience.target.*` matches the application's
 resource attributes, and the run window (`/api/experiments/windows`) selects
@@ -163,6 +164,6 @@ when a target is absent from the Resilience page (`/resilience`).
 ## 6. Versions
 
 Pin what you validated. The example pins OpenTelemetry Python 1.37 /
-0.58b0, the Collector contrib 0.139 and the Operator agent images of the
+0.58b0, the Collector contrib 0.157 and the Operator agent images of the
 same generation; the daemon speaks OTLP 1.x over gRPC and HTTP and accepts
 any SDK that does.

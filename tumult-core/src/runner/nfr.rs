@@ -12,12 +12,64 @@
 //! | `fault.duration_s` | the during-phase result |
 //!
 //! A metric that the run did not produce yields an `inconclusive` verdict:
-//! an objective is never silently met.
+//! an objective is never silently met. A metric outside this catalogue can
+//! never be produced, so validation refuses it ([`metric_fault`]).
 
 use crate::types::{
     DuringResult, Experiment, LoadResult, NfrCriticality, NfrKind, NfrObjective, NfrOperator,
     NfrState, NfrVerdict, ObjectiveOutcome, PostResult, ProbeSample, SamplePhase,
 };
+
+/// The metrics with one fixed spelling. [`resolve`] answers each of them.
+pub(crate) const FIXED_METRICS: &[&str] = &[
+    "load.throughput_rps",
+    "load.latency_p50_ms",
+    "load.latency_p95_ms",
+    "load.latency_p99_ms",
+    "load.error_rate",
+    "load.total_requests",
+    "recovery.mttr_s",
+    "recovery.time_s",
+    "during.error_rate",
+    "during.availability",
+    "post.error_rate",
+    "post.availability",
+    "fault.duration_s",
+];
+
+/// The statistics of a `probe.<name>.<stat>` metric.
+pub(crate) const PROBE_STATS: &[&str] = &["mean_ms", "max_ms", "p95_ms", "error_rate"];
+
+/// Why no run can measure `metric`, or `None` when the catalogue holds it.
+/// `probes` are the probes of the steady-state hypothesis: the only ones a
+/// run samples. Pure.
+pub(crate) fn metric_fault(metric: &str, probes: &[&str]) -> Option<String> {
+    if FIXED_METRICS.contains(&metric) {
+        return None;
+    }
+    let probe_stat = metric
+        .strip_prefix("probe.")
+        .and_then(|rest| rest.rsplit_once('.'))
+        .filter(|(_, stat)| PROBE_STATS.contains(stat));
+    let Some((name, _)) = probe_stat else {
+        return Some(format!(
+            "metric '{metric}' is not in the catalogue (known: {}, probe.<name>.<{}>)",
+            FIXED_METRICS.join(", "),
+            PROBE_STATS.join("|")
+        ));
+    };
+    if probes.contains(&name) {
+        return None;
+    }
+    let sampled = if probes.is_empty() {
+        "none".to_string()
+    } else {
+        probes.join(", ")
+    };
+    Some(format!(
+        "metric '{metric}' names the probe '{name}', which the steady-state hypothesis does not have (its probes: {sampled})"
+    ))
+}
 
 /// Measurements an objective can be evaluated against.
 pub(crate) struct Measurements<'a> {
@@ -268,6 +320,70 @@ mod tests {
             samples: vec![],
             execution: crate::types::LoadExecution::default(),
         }
+    }
+
+    /// A run that measured everything the catalogue names.
+    fn full_post() -> PostResult {
+        PostResult {
+            started_at_ns: 0,
+            ended_at_ns: 5_000_000_000,
+            duration_s: 5.0,
+            samples: 1,
+            probes: vec![],
+            recovery_time_s: 4.0,
+            full_recovery: true,
+            residual_degradation: None,
+            data_integrity_verified: None,
+            data_loss_detected: None,
+            mttr_s: Some(3.5),
+        }
+    }
+
+    fn full_during() -> DuringResult {
+        DuringResult {
+            started_at_ns: 0,
+            ended_at_ns: 2_000_000_000,
+            fault_active_s: 2.0,
+            sample_interval_s: 1.0,
+            probes: vec![],
+            degradation_onset_s: None,
+            degradation_peak_s: None,
+            degradation_magnitude: None,
+            graceful_degradation: None,
+        }
+    }
+
+    #[test]
+    fn the_resolver_knows_every_metric_the_catalogue_accepts() {
+        let (l, post, during) = (load(), full_post(), full_during());
+        let samples = vec![
+            sample("health", SamplePhase::During, 1, 100, true),
+            sample("health", SamplePhase::Post, 2, 50, true),
+        ];
+        let m = Measurements {
+            during: Some(&during),
+            post: Some(&post),
+            load: Some(&l),
+            samples: &samples,
+        };
+        let probe_metrics = PROBE_STATS
+            .iter()
+            .map(|stat| format!("probe.health.{stat}"));
+        let fixed = FIXED_METRICS.iter().map(ToString::to_string);
+        for metric in fixed.chain(probe_metrics) {
+            assert_eq!(metric_fault(&metric, &["health"]), None, "{metric}");
+            assert!(resolve(&metric, &m).is_some(), "{metric} is not resolved");
+        }
+    }
+
+    #[test]
+    fn a_metric_the_resolver_does_not_know_is_a_fault() {
+        for metric in ["load.latency_p90_ms", "probe.health.p99_ms", "uptime"] {
+            let fault = metric_fault(metric, &["health"]).expect("a fault");
+            assert!(fault.contains(metric), "{fault}");
+        }
+        let fault = metric_fault("probe.other.p95_ms", &["health"]).expect("a fault");
+        assert!(fault.contains("'other'"), "{fault}");
     }
 
     #[test]

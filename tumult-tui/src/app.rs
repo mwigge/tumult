@@ -417,7 +417,15 @@ impl App {
     }
 
     fn cycle_status_filter(&mut self) {
-        const CYCLE: [&str; 5] = ["", "pass", "deviated", "fail", "aborted"];
+        const CYCLE: [&str; 7] = [
+            "",
+            "pass",
+            "deviated",
+            "fail",
+            "halted",
+            "aborted",
+            "interrupted",
+        ];
         let cur = CYCLE
             .iter()
             .position(|s| *s == self.status_filter)
@@ -512,7 +520,7 @@ mod tests {
             status: status.into(),
             started_at_ns: ns,
             duration_ms: 10,
-            resilience: None,
+            hypothesis_met: None,
             steps: 1,
             deviations: 0,
         }
@@ -756,7 +764,15 @@ mod tests {
     #[test]
     fn status_filter_cycles_through_every_status_and_back_to_all() {
         let mut app = app_with(vec![exp("a", "completed", 1)]);
-        for expected in ["pass", "deviated", "fail", "aborted", ""] {
+        for expected in [
+            "pass",
+            "deviated",
+            "fail",
+            "halted",
+            "aborted",
+            "interrupted",
+            "",
+        ] {
             app.on_key(key(KeyCode::Char('f')));
             assert_eq!(app.status_filter, expected);
         }

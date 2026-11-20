@@ -41,9 +41,9 @@ pub(crate) enum AutopilotAction {
         #[arg(long)]
         store: Option<PathBuf>,
     },
-    /// Approve a proposed decision — runs its playbook experiment after a
-    /// full re-gate against current state, which requires the policy the
-    /// decision was gated under
+    /// Approve a proposed decision — a full re-gate against current state
+    /// runs first, with the policy the decision was gated under, and the
+    /// playbook experiment runs only if it answers enact
     Approve {
         /// Decision id (from `tumult autopilot status`)
         id: String,

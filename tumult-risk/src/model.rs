@@ -50,7 +50,9 @@ pub struct Verdict {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ExperimentLatest {
     pub name: String,
-    pub kind: String,
+    /// The discipline it counts towards; `None` for a manual record of a
+    /// type the house parameters do not count as a test.
+    pub kind: Option<String>,
     pub last_run_ns: i64,
     pub passed: bool,
     pub outcome: Option<String>,

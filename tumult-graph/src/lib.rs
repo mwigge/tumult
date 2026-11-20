@@ -5,9 +5,9 @@
 //! [`tumult_core::types::Experiment`] definition) into a small set of typed
 //! graph [`Node`]s and [`Edge`]s, and it owns the SQL used to persist and
 //! query those nodes/edges. It holds **no database handle of its own**:
-//! `tumult-analytics` owns the embedded `DuckDB` connection and executes the
+//! `tumult-lake` owns the embedded `DuckDB` connection and executes the
 //! SQL exposed here. That keeps the dependency direction acyclic —
-//! `tumult-graph` depends only on `tumult-core`, and `tumult-analytics`
+//! `tumult-graph` depends only on `tumult-core`, and `tumult-lake`
 //! depends on `tumult-graph`.
 //!
 //! # Why a graph?
@@ -72,8 +72,8 @@ pub mod starmap;
 pub mod topology;
 
 pub use compliance::{compliance_article_id, compliance_article_nodes, resolve_citation};
-pub use coverage::{coverage_gap_delta, AvailableAction, COVERAGE_GAP_RUN_ID};
-pub use map::journal_to_graph;
+pub use coverage::{coverage_gap_delta, AvailableAction, TestedFaults, COVERAGE_GAP_RUN_ID};
+pub use map::{journal_to_graph, plugin_fault_id, run_node_ids};
 pub use model::{
     Edge, EdgeRecord, EdgeRel, EgoGraph, EgoTuple, GraphDelta, Node, NodeKind, NodeSummary,
 };

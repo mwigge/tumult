@@ -15,6 +15,6 @@ fi
 
 export TUMULT_BIN=./target/debug/tumult
 export TUMULT_NET_PROXYD="$PWD/target/debug/tumult-net-proxyd"
-export TUMULT_ANALYTICS_PATH="$PWD/demo/proof/topology/cast-store.duckdb"
-rm -f "$TUMULT_ANALYTICS_PATH"
+export TUMULT_LAKE_PATH="$PWD/demo/proof/topology/cast-store.duckdb"
+rm -f "$TUMULT_LAKE_PATH"
 python3 scripts/record-demo-cast.py docs/demo/tumult-demo.cast

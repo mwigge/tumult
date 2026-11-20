@@ -5,7 +5,7 @@
 # in the loop during development (e.g. to tee telemetry to a file exporter,
 # debug what tumult/smedja actually send, or chain processors).
 #
-#   docker compose -f docker/docker-compose.yml up
+#   docker compose -f docker/docker-compose.kronika-collector.yml up
 #
 # Then point exporters at the collector (host ports 14317/14318) and it
 # forwards to tumultd on the host (tumultd.host:4317) while also writing

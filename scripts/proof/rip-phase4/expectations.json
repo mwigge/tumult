@@ -1,0 +1,14 @@
+{
+  "experiments": {
+    "checkout-blackout.toon": {"proof": "proof-script"},
+    "checkout-halt-flat.toon": {"proof": "proof-script"},
+    "checkout-halt.toon": {"proof": "proof-script"},
+    "checkout-hung.toon": {"proof": "proof-script"},
+    "checkout-interrupt.toon": {"proof": "proof-script"},
+    "checkout-prod.toon": {"proof": "proof-script"},
+    "checkout-soak-blackout.toon": {"proof": "proof-script"},
+    "checkout-soak.toon": {"proof": "proof-script"},
+    "checkout-truncated.toon": {"proof": "proof-script"},
+    "checkout-unreachable.toon": {"proof": "proof-script"}
+  }
+}

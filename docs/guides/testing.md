@@ -47,6 +47,74 @@ is not a test.
 Shared test helpers live in `tumult-test-utils`, one definition each. A helper
 is tested only when it contains logic of its own.
 
+## Real paths
+
+A behaviour a user can see has at least one test that goes the whole way: the
+real thing runs, and the test reads what a user would read.
+
+| Behaviour of | The test goes through |
+|---|---|
+| A run (status, steps, rollbacks, recovery) | The `tumult` binary, or the runner with `tumult_exec::ProviderExecutor`, with steps that are real `sh` commands |
+| A command | The `tumult` binary: its exit code, its output, the files it writes |
+| The lake | A store in a temporary directory, written by the code that writes it in production |
+| The API | The real router over a real store |
+| The HTML report | A browser without a network opens the report the `tumult` binary writes: `npm run test:report` in `web/` |
+| A report (per run, executive digest, evidence pack, run report, metric digest) | The builder and the renderer over a store filled with the recorded runs in `tumult-test-utils/recorded`; the text is compared with the file kept in `tests/golden` |
+| The page of a run in Krönika | A browser opens the page on a real `tumultd` with a lake of its own, filled by a real run and an imported journal: `npm run test:live` in `web/` |
+
+The specs in `web/tests` answer `/api` with fixtures. They prove how a page
+draws what it is given, not that what it is given is true: a page that shows
+evidence also has a spec in `web/live-tests`.
+
+A scripted executor (a type that implements `ActivityExecutor` and returns
+what the test tells it to) is a double at an I/O boundary. It is allowed for
+cases a real process cannot give on demand, such as a cancel at an exact
+step. It is never the only proof of a behaviour: the same behaviour has a
+test from the table above.
+
+Rows written by hand into a store prove the reader, not the writer. Use them
+for data the current code no longer writes, such as old spellings. For
+everything else the rows come from a real run.
+
+## Kept files
+
+A report test compares the whole text with a file kept next to the test, so
+every word and number of the report is under test.
+
+- `tumult_test_utils::assert_kept(path, text)` does the comparison and names
+  the first line that differs.
+- `TUMULT_BLESS=1 cargo test -p <crate>` writes the files again. Read the
+  difference before you commit it: the difference is the review.
+- The recorded runs are real runs of the `tumult` binary. The README in
+  `tumult-test-utils/recorded` says how to record them again.
+- What changes from run to run (the version, a time of the clock) is
+  asserted first and then replaced by a name such as `{version}`.
+
+## Mutation tests
+
+`cargo-mutants` changes the code one small step at a time: a `==` becomes
+`!=`, a function returns a fixed value, a `!` is removed. After each step it
+runs the tests of the crate. A change that no test notices is a line the
+tests do not prove.
+
+```sh
+cargo install cargo-mutants --locked
+make mutants                          # the lines changed since origin/main
+make mutants ARGS="-p tumult-core"    # one crate
+```
+
+- Every changed line is mutated before the commit. The `Mutation tests`
+  workflow does the same on each pull request, in eight parts.
+- `MISSED` means no test failed. Add a test that fails for that change, or
+  remove the code if nothing needs it.
+- `TIMEOUT` means the change made a test hang. It counts as caught only when
+  a test would also fail without the timeout; otherwise bound the loop.
+- A change that cannot be told apart from the original (an equivalent
+  mutant) is listed under `exclude_re` in `.cargo/mutants.toml` with a
+  comment that says why. This is rare. Do not use it to silence a missed
+  mutant.
+- Test code and `tumult-test-utils` are not mutated (`.cargo/mutants.toml`).
+
 ## Names
 
 `<subject>_<condition>_<outcome>` or a plain sentence. The name states the
@@ -139,8 +207,8 @@ What counts as an assertion:
 - `ensure!`, `bail!` or `return Err(..)` in a test that returns `Result`;
 - clap's `debug_assert()` and the `assert()` and `assert_async()` of mockito
   and assert_cmd;
-- a call to an `assert_*` function that is defined in the same crate and
-  itself asserts.
+- a call to an `assert_*` function that is defined in the same crate, or in
+  `tumult-test-utils`, and itself asserts.
 
 A `_does_not_panic` test with a comment above it that names the panic is
 exempt.
@@ -160,7 +228,8 @@ The guard is a text scan, so it has limits:
 
 - It cannot tell whether an assertion is meaningful. Review against this page
   does that.
-- Helpers are matched by name within a top-level directory. An assertion
+- Helpers are matched by name within a top-level directory and in
+  `tumult-test-utils`. An assertion
   inside a helper that is not named `assert_*` is not seen, and such a test
   is reported.
 - A test file pulled in with `#[cfg(test)] mod x;` under another name than

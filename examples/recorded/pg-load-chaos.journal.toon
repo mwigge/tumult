@@ -1,0 +1,90 @@
+experiment_title: PostgreSQL under k6 load — container pause disruption
+experiment_id: "dd0d2c16-1300-4d71-959b-d526225e0021"
+status: completed
+started_at_ns: 1794852744991240183
+ended_at_ns: 1794852761483406696
+duration_ms: 16492
+steady_state_before:
+  title: PostgreSQL accepts queries
+  met: true
+  probe_results[1]{name,activity_type,status,started_at_ns,duration_ms,output,trace_id,span_id}:
+    "pg-responds",probe,succeeded,1794852744991263178,42,"PostgreSQL 16.16 on x86_64-pc-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit","",""
+steady_state_after:
+  title: PostgreSQL accepts queries
+  met: true
+  probe_results[1]{name,activity_type,status,started_at_ns,duration_ms,output,trace_id,span_id}:
+    "pg-responds",probe,succeeded,1794852761440668636,42,"PostgreSQL 16.16 on x86_64-pc-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit","",""
+method_results[3]:
+  - name: "connection-count-before"
+    activity_type: probe
+    status: succeeded
+    started_at_ns: 1794852745034494917
+    duration_ms: 3054
+    output: "6"
+    trace_id: ""
+    span_id: ""
+  - name: "pause-postgres-5s"
+    activity_type: action
+    status: succeeded
+    started_at_ns: 1794852748089182047
+    duration_ms: 5262
+    trace_id: ""
+    span_id: ""
+  - name: "connection-count-after"
+    activity_type: probe
+    status: succeeded
+    started_at_ns: 1794852761352213477
+    duration_ms: 45
+    output: "6"
+    trace_id: ""
+    span_id: ""
+rollback_results[0]:
+rollback_failures: 0
+estimate: null
+baseline_result: null
+during_result:
+  started_at_ns: 1794852745034453555
+  ended_at_ns: 1794852761397669141
+  fault_active_s: 16.363215586
+  sample_interval_s: 1
+  probes[1]{name,samples,mean,max,min,error_rate,breach_count}:
+    "pg-responds",11,510.3636363636364,5092,43,0,0
+post_result:
+  started_at_ns: 1794852761397725923
+  ended_at_ns: 1794852761440237105
+  duration_s: 0.042511182
+  samples: 1
+  probes[1]{name,mean,p95,error_rate,returned_to_baseline,recovery_time_s}:
+    "pg-responds",42,42,0,true,0
+  recovery_time_s: 0
+  full_recovery: true
+  mttr_s: 0
+load_result:
+  tool: k6
+  started_at_ns: 1794852745034448747
+  ended_at_ns: 1794852761440358829
+  duration_s: 16.405910082
+  vus: 5
+  throughput_rps: 57.242242889322725
+  latency_p50_ms: 57.407881
+  latency_p95_ms: 62.8020264
+  latency_p99_ms: 71.89955068
+  error_rate: 0
+  total_requests: 863
+  thresholds_met: true
+analysis: null
+regulatory: null
+kind: chaos
+probe_samples[12]{probe,phase,ts_ns,duration_ms,ok}:
+  "pg-responds",during,1794852745034540476,44,true
+  "pg-responds",during,1794852746079196842,51,true
+  "pg-responds",during,1794852747130765556,52,true
+  "pg-responds",during,1794852748183034917,5092,true
+  "pg-responds",during,1794852754276097102,50,true
+  "pg-responds",during,1794852755327007645,66,true
+  "pg-responds",during,1794852756394003152,51,true
+  "pg-responds",during,1794852757445844761,56,true
+  "pg-responds",during,1794852758502187625,52,true
+  "pg-responds",during,1794852759554586978,57,true
+  "pg-responds",during,1794852760612661580,43,true
+  "pg-responds",post,1794852761397732342,42,true

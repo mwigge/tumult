@@ -2,6 +2,11 @@ title: PostgreSQL CPU stress — resource pressure
 description: Inject CPU stress on PG container via Pumba, verify queries still complete
 
 tags[2]: postgres, stress
+kind: robustness
+target:
+  system: postgres
+  technology: postgresql
+  environment: lab
 
 steady_state_hypothesis:
   title: PostgreSQL accepts queries
@@ -24,7 +29,7 @@ method[1]:
       type: process
       path: sh
       arguments[2]: "-c", "docker run --rm -v /var/run/docker.sock:/var/run/docker.sock ghcr.io/alexei-led/pumba:latest stress -d 5s --stressors='--cpu 2 --timeout 5s' docker-postgres-1"
-      timeout_s: 10.0
+      timeout_s: 30.0
     pause_after_s: 2.0
 
 rollbacks[1]:

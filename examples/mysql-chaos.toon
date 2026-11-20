@@ -2,6 +2,11 @@ title: MySQL resilience — verify queries succeed after connection disruption
 description: Confirm MySQL answers a query, terminate idle connections, confirm it still answers
 
 tags[2]: mysql, resilience
+kind: chaos
+target:
+  system: mysql
+  technology: mysql
+  environment: lab
 
 steady_state_hypothesis:
   title: MySQL answers a trivial query

@@ -1,0 +1,48 @@
+experiment_title: Container pause — verify a paused service recovers when unpaused
+experiment_id: "87a48a0d-b7c4-48d6-8b72-b5d5fd911b8a"
+status: completed
+started_at_ns: 1794852712389488021
+ended_at_ns: 1794852712590326314
+duration_ms: 200
+steady_state_before:
+  title: Redis container responds to ping
+  met: true
+  probe_results[1]{name,activity_type,status,started_at_ns,duration_ms,output,trace_id,span_id}:
+    "redis-ping",probe,succeeded,1794852712389512537,39,PONG,"",""
+steady_state_after:
+  title: Redis container responds to ping
+  met: true
+  probe_results[1]{name,activity_type,status,started_at_ns,duration_ms,output,trace_id,span_id}:
+    "redis-ping",probe,succeeded,1794852712551477898,38,PONG,"",""
+method_results[3]{name,activity_type,status,started_at_ns,duration_ms,output,trace_id,span_id}:
+  "pause-container",action,succeeded,1794852712429406170,22,"docker-redis-1\npaused","",""
+  "unpause-container",action,succeeded,1794852712452008099,19,"docker-redis-1\nunpaused","",""
+  "verify-recovered",probe,succeeded,1794852712471937709,39,PONG,"",""
+rollback_results[0]:
+rollback_failures: 0
+estimate: null
+baseline_result: null
+during_result:
+  started_at_ns: 1794852712429353241
+  ended_at_ns: 1794852712511316801
+  fault_active_s: 0.08196356
+  sample_interval_s: 1
+  probes[1]{name,samples,mean,max,min,error_rate,breached_at_ns,breach_count}:
+    "redis-ping",1,24,24,24,1,1794852712429445510,1
+post_result:
+  started_at_ns: 1794852712511378114
+  ended_at_ns: 1794852712551467532
+  duration_s: 0.040089418
+  samples: 1
+  probes[1]{name,mean,p95,error_rate,returned_to_baseline,recovery_time_s}:
+    "redis-ping",40,40,0,true,0
+  recovery_time_s: 0
+  full_recovery: true
+  mttr_s: 0
+load_result: null
+analysis: null
+regulatory: null
+kind: chaos
+probe_samples[2]{probe,phase,ts_ns,duration_ms,ok}:
+  "redis-ping",during,1794852712429445510,24,false
+  "redis-ping",post,1794852712511385054,40,true

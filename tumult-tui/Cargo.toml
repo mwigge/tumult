@@ -7,6 +7,7 @@ license.workspace = true
 description = "Keyboard-driven analytics TUI over the Tumult DuckDB analytics store"
 
 [dependencies]
+tumult-core = { path = "../tumult-core" }
 tumult-lake = { path = "../tumult-lake" }
 tumult-query = { path = "../tumult-query" }
 ratatui = { workspace = true }
@@ -15,5 +16,5 @@ chrono = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]
+serde_json = { workspace = true }
 tempfile = { workspace = true }
-tumult-core = { path = "../tumult-core" }

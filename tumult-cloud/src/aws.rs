@@ -12,7 +12,7 @@ use serde::Deserialize;
 
 use crate::creds::AwsCredentials;
 use crate::error::CloudError;
-use crate::sigv4::{sign, SignRequest};
+use crate::sigv4::{encode_query_value, sign, SignRequest};
 
 /// EC2 Query-protocol API version.
 const EC2_API_VERSION: &str = "2016-11-15";
@@ -57,7 +57,8 @@ impl Signer {
     }
 
     /// Sign and send one request, returning the response body text on 2xx or a
-    /// typed [`CloudError`] otherwise.
+    /// typed [`CloudError`] otherwise. A query on `path` must be in the form
+    /// `SigV4` signs: sorted by key, every key and value encoded.
     async fn send(
         &self,
         service: &str,
@@ -81,7 +82,8 @@ impl Signer {
             &SignRequest {
                 method: verb,
                 host: &host,
-                path,
+                // The query is signed on its own, below.
+                path: path.split_once('?').map_or(path, |(path, _)| path),
                 query: url.query().unwrap_or_default(),
                 body: &body,
                 service,
@@ -145,6 +147,71 @@ struct FisEnvelope {
     experiment: FisExperiment,
 }
 
+/// Most pages of a `ListExperiments` answer that are read.
+const MAX_LIST_PAGES: usize = 20;
+
+/// The experiments asked for in one page: the most FIS gives.
+const LIST_PAGE_SIZE: &str = "100";
+
+/// One experiment as `ListExperiments` shows it.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListedExperiment {
+    /// The experiment id.
+    pub id: String,
+    /// The template the experiment was started from.
+    pub experiment_template_id: String,
+    /// Where the experiment is in its life.
+    pub state: ListedState,
+    /// When the experiment was made, in seconds since the epoch.
+    pub creation_time: f64,
+}
+
+/// The `state` of a listed experiment.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct ListedState {
+    /// `pending`, `initiating`, `running`, `completed`, `stopping`,
+    /// `stopped`, `failed` or `cancelled`.
+    pub status: String,
+}
+
+/// One page of a `ListExperiments` answer.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ListedPage {
+    #[serde(default)]
+    experiments: Vec<ListedExperiment>,
+    #[serde(default)]
+    next_token: Option<String>,
+}
+
+/// The path and query of one `ListExperiments` page. The query is in the
+/// form `SigV4` signs: sorted by key, every key and value encoded.
+fn list_path(template_id: &str, next_token: Option<&str>) -> String {
+    let mut pairs = vec![
+        ("experimentTemplateId", template_id),
+        ("maxResults", LIST_PAGE_SIZE),
+    ];
+    if let Some(token) = next_token {
+        pairs.push(("nextToken", token));
+    }
+    pairs.sort_by_key(|(key, _)| *key);
+    let query: Vec<String> = pairs
+        .iter()
+        .map(|(key, value)| format!("{}={}", encode_query_value(key), encode_query_value(value)))
+        .collect();
+    format!("/experiments?{}", query.join("&"))
+}
+
+/// A `ListExperiments` answer that cannot be used, as an error.
+fn unusable_list(reason: &str) -> CloudError {
+    CloudError::Api {
+        provider: "aws",
+        status: 200,
+        message: format!("ListExperiments {reason}"),
+    }
+}
+
 /// Render a parsed FIS response into a stable, human- and machine-friendly
 /// one-line summary.
 fn summarize_fis(verb: &str, text: &str) -> String {
@@ -164,6 +231,23 @@ fn summarize_fis(verb: &str, text: &str) -> String {
         }
         Err(_) => format!("{verb} FIS experiment: {text}"),
     }
+}
+
+/// The id in an FIS response, when the response is an experiment.
+fn fis_id(text: &str) -> Option<String> {
+    serde_json::from_str::<FisEnvelope>(text)
+        .ok()
+        .map(|envelope| envelope.experiment.id)
+}
+
+/// What a start call gave back.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StartedExperiment {
+    /// The id FIS gave the new experiment. `None` when the answer was not
+    /// an experiment.
+    pub id: Option<String>,
+    /// The one-line summary that goes into the journal.
+    pub summary: String,
 }
 
 /// Connector for the AWS Fault Injection Service control plane.
@@ -199,6 +283,17 @@ impl FisClient {
     /// Returns a typed [`CloudError`] on transport failure or a non-2xx
     /// response (auth / not-found / throttled / generic API error).
     pub async fn start_experiment(&self, template_id: &str) -> Result<String, CloudError> {
+        self.start(template_id).await.map(|started| started.summary)
+    }
+
+    /// Start an experiment from a template, and give back the id FIS gave it
+    /// with the summary.
+    ///
+    /// # Errors
+    ///
+    /// Returns a typed [`CloudError`] on transport failure or a non-2xx
+    /// response (auth / not-found / throttled / generic API error).
+    pub async fn start(&self, template_id: &str) -> Result<StartedExperiment, CloudError> {
         // Idempotency token — unique per invocation, no `uuid` dependency.
         let client_token = format!(
             "tumult-{}",
@@ -222,7 +317,10 @@ impl FisClient {
                 Some("application/json"),
             )
             .await?;
-        Ok(summarize_fis("started", &text))
+        Ok(StartedExperiment {
+            id: fis_id(&text),
+            summary: summarize_fis("started", &text),
+        })
     }
 
     /// Stop a running experiment (`StopExperiment`,
@@ -255,6 +353,46 @@ impl FisClient {
             .send("fis", "GET", &path, Vec::new(), None)
             .await?;
         Ok(summarize_fis("status of", &text))
+    }
+
+    /// The experiments of a template, in any state (`ListExperiments`,
+    /// `GET /experiments?experimentTemplateId={id}&maxResults=100`), following
+    /// `nextToken` for at most [`MAX_LIST_PAGES`] pages. An experiment the
+    /// answer gives
+    /// for another template is left out.
+    ///
+    /// # Errors
+    ///
+    /// Returns a typed [`CloudError`] on transport failure or a non-2xx
+    /// response, and [`CloudError::Api`] when an answer is not in the shape
+    /// read here or the pages do not end within the bound.
+    pub async fn list_experiments(
+        &self,
+        template_id: &str,
+    ) -> Result<Vec<ListedExperiment>, CloudError> {
+        let mut experiments = Vec::new();
+        let mut next_token: Option<String> = None;
+        for _ in 0..MAX_LIST_PAGES {
+            let path = list_path(template_id, next_token.as_deref());
+            let text = self
+                .signer
+                .send("fis", "GET", &path, Vec::new(), None)
+                .await?;
+            let page: ListedPage = serde_json::from_str(&text)
+                .map_err(|e| unusable_list(&format!("answer could not be read ({e}): {text}")))?;
+            experiments.extend(
+                page.experiments
+                    .into_iter()
+                    .filter(|experiment| experiment.experiment_template_id == template_id),
+            );
+            let Some(token) = page.next_token.filter(|token| !token.is_empty()) else {
+                return Ok(experiments);
+            };
+            next_token = Some(token);
+        }
+        Err(unusable_list(&format!(
+            "gave more than {MAX_LIST_PAGES} pages for template {template_id}"
+        )))
     }
 }
 

@@ -27,6 +27,11 @@ pub(crate) enum StoreAction {
         output: PathBuf,
     },
     /// Purge experiments older than N days
+    ///
+    /// Removes each old run with its activities, load results, probe
+    /// samples, NFR verdicts and own graph rows; keeps telemetry, the run
+    /// registry and audit trail, manual records, forecasts, sightings and
+    /// the autopilot tables.
     Purge {
         /// Number of days to retain
         #[arg(long)]

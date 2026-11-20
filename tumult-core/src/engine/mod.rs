@@ -1,6 +1,7 @@
 //! Experiment engine — orchestrates the five-phase execution lifecycle.
 
 mod config;
+mod duplicate_keys;
 mod error;
 mod template;
 mod tolerance;

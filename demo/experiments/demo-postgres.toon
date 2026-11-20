@@ -2,6 +2,11 @@ title: Demo — PostgreSQL connection kill
 description: Terminate every active backend on demo-postgres and verify the database keeps accepting connections
 
 tags[3]: demo, postgres, resilience
+kind: chaos
+target:
+  system: demo-postgres
+  technology: postgresql
+  environment: demo
 
 steady_state_hypothesis:
   title: demo-postgres is accepting connections

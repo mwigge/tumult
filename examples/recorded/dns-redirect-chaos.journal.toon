@@ -1,0 +1,48 @@
+experiment_title: DNS redirect — a name is sent to the wrong address and a lookup shows it
+experiment_id: "19631e65-d722-494c-ba3b-ccc49dfb5b8d"
+status: completed
+started_at_ns: 1794852791794802708
+ended_at_ns: 1794852791993555774
+duration_ms: 198
+steady_state_before:
+  title: DNS resolves correctly
+  met: true
+  probe_results[1]{name,activity_type,status,started_at_ns,duration_ms,output,trace_id,span_id}:
+    "dns-baseline",probe,succeeded,1794852791794825693,154,"173.194.206.102","",""
+steady_state_after:
+  title: DNS resolves correctly
+  met: true
+  probe_results[1]{name,activity_type,status,started_at_ns,duration_ms,output,trace_id,span_id}:
+    "dns-baseline",probe,succeeded,1794852791974855971,18,"173.194.206.101","",""
+method_results[3]{name,activity_type,status,started_at_ns,duration_ms,output,trace_id,span_id}:
+  "dns-latency-before",probe,succeeded,1794852791949829992,9,"0","",""
+  "redirect-dns",action,succeeded,1794852791959007116,1,"redirecting test-redirect.tumult.local → 127.0.0.1 via /etc/hosts\nDNS redirect active","",""
+  "redirect-visible",probe,succeeded,1794852791960334697,5,"127.0.0.1       test-redirect.tumult.local","",""
+rollback_results[0]:
+rollback_failures: 0
+estimate: null
+baseline_result: null
+during_result:
+  started_at_ns: 1794852791949768960
+  ended_at_ns: 1794852791966209022
+  fault_active_s: 0.016440062
+  sample_interval_s: 1
+  probes[1]{name,samples,mean,max,min,error_rate,breach_count}:
+    "dns-baseline",1,8,8,8,0,0
+post_result:
+  started_at_ns: 1794852791966274641
+  ended_at_ns: 1794852791974846086
+  duration_s: 0.008571445
+  samples: 1
+  probes[1]{name,mean,p95,error_rate,returned_to_baseline,recovery_time_s}:
+    "dns-baseline",8,8,0,true,0
+  recovery_time_s: 0
+  full_recovery: true
+  mttr_s: 0
+load_result: null
+analysis: null
+regulatory: null
+kind: chaos
+probe_samples[2]{probe,phase,ts_ns,duration_ms,ok}:
+  "dns-baseline",during,1794852791949887649,8,true
+  "dns-baseline",post,1794852791966278717,8,true

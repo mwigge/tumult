@@ -5,15 +5,16 @@ SSH remote execution for the Tumult resilience intelligence platform -- run chao
 ## Key Types
 
 - `SshSession` -- manages SSH connections via `russh`
-- `RemoteExecutor` -- executes commands on remote targets
+- `SshExecutor` -- executes commands on remote targets
 
 ## Usage
 
 ```rust
-use tumult_ssh::SshSession;
+use tumult_ssh::{SshConfig, SshSession};
 
-let session = SshSession::connect("host:22", auth).await?;
-let output = session.exec("systemctl stop nginx").await?;
+let config = SshConfig::with_agent("host", "user");
+let session = SshSession::connect(config).await?;
+let output = session.execute("systemctl stop nginx").await?;
 ```
 
 ## More Information

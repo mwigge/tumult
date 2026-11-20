@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
 
+import { COMPLIANCE_SCORE, COMPLIANCE_SCORE_LINE } from '../src/lib/score-names';
 import { EVIL, expectShownAsText, installChartHooks, showTip } from './charts';
 import { demoStar } from './starmap-demo';
 
@@ -200,6 +201,7 @@ const run = (id: string, name: string, status: string) => ({
     status,
     deviations: null,
     duration_ms: '2000',
+    journal_only: false,
     faults: null,
     origin: 'automated',
     review_status: null,
@@ -216,7 +218,7 @@ interface Mirror {
 }
 
 const runs = [
-    run('run-1', 'queue-dependency-loss', 'deviated'),
+    { ...run('run-1', 'queue-dependency-loss', 'deviated'), journal_only: true },
     run('run-2', 'message-queue-kill', 'completed'),
     run('run-3', 'queue-dependency-loss-twice', 'completed'),
 ];
@@ -704,6 +706,9 @@ test('lens, selection and focus round-trip through the URL', async ({ page }) =>
     await expect(drawer).toContainText('Latest chaos run failed');
     await expect(drawer.locator('dt', { hasText: 'resilience' })).toHaveCount(1);
     await expect(drawer.locator('dt', { hasText: 'posture' })).toHaveCount(0);
+    // The gate verdict names its score and says what the score measures.
+    await expect(drawer).toContainText(`${COMPLIANCE_SCORE} 41.5 (poor)`);
+    await expect(drawer).toContainText(COMPLIANCE_SCORE_LINE);
     await expect(drawer.getByRole('link', { name: 'Resilience', exact: true })).toHaveAttribute(
         'href',
         '/resilience?env=demo',
@@ -869,6 +874,17 @@ test('the drawer shows only the runs of the selected definition', async ({ page 
     expect(asked?.searchParams.get('range')).toBe('30d');
     expect(asked?.searchParams.get('name')).toBe('queue-dependency-loss');
     expect(asked?.searchParams.get('q')).toBeNull();
+});
+
+test('the drawer marks a run that is a journal only', async ({ page }) => {
+    await mock(page, []);
+    await page.goto('/starmap?range=30d&sel=sys%3Ademo%2Fmessage-queue');
+    const rows = page.getByTestId('starmap-drawer').locator('ul.rows li');
+    const ofTheRun = (name: string) =>
+        rows.filter({ has: page.getByRole('link', { name, exact: true }) });
+    await expect(ofTheRun('queue-dependency-loss')).toContainText('journal only');
+    await expect(ofTheRun('message-queue-kill')).toHaveCount(1);
+    await expect(ofTheRun('message-queue-kill')).not.toContainText('journal only');
 });
 
 test('the drawer explains flags and what an entity hides', async ({ page }) => {

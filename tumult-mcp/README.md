@@ -4,7 +4,7 @@ MCP (Model Context Protocol) server adapter exposing Tumult resilience testing a
 
 ## Key Types
 
-- `TumultMcpServer` -- MCP server implementation
+- `TumultHandler` -- MCP server implementation
 - `tumult_run_experiment` -- tool to execute experiments
 - `tumult_read_journal` -- tool to read and query journals
 

@@ -11,7 +11,7 @@ async fn register_run_def(base: &str) -> String {
 
 /// Register an experiment TOON via the validate endpoint; returns its
 /// registry id.
-async fn register_toon(base: &str, toon: &str) -> String {
+pub(crate) async fn register_toon(base: &str, toon: &str) -> String {
     let resp = reqwest::Client::new()
         .post(format!("{base}/api/runs/validate"))
         .json(&json!({"toon": toon}))
@@ -25,7 +25,7 @@ async fn register_toon(base: &str, toon: &str) -> String {
 }
 
 /// Poll a run's detail until it reaches a terminal state (10s budget).
-async fn await_terminal_run(base: &str, run_id: &str) -> Value {
+pub(crate) async fn await_terminal_run(base: &str, run_id: &str) -> Value {
     const TERMINAL: [&str; 8] = [
         "passed",
         "deviated",
@@ -59,7 +59,7 @@ async fn await_terminal_run(base: &str, run_id: &str) -> Value {
 /// "anonymous" approver differs from the "synthetic" requester, so the
 /// segregation-of-duties check passes (RUN_TOON — one fault kind with a
 /// rollback on the default "dev" env — classifies T1 and gates).
-async fn enqueue_approved(base: &str, registry_id: &str) -> String {
+pub(crate) async fn enqueue_approved(base: &str, registry_id: &str) -> String {
     let client = reqwest::Client::new();
     let resp = client
         .post(format!("{base}/api/runs"))
@@ -285,6 +285,40 @@ async fn run_audit_verify_reports_chain_validity() {
     // layer by `verify_run_audit_chain`'s test).
     let (status, _body) = get(&srv.base, "/api/runs/run-does-not-exist/audit/verify").await;
     assert_eq!(status, 404);
+}
+
+/// The vars of a run come back as a JSON object, not as a string of JSON:
+/// in the run, in the run list and in the approval queue. The web reads
+/// them in this shape.
+#[tokio::test]
+async fn the_vars_of_a_run_are_an_object_on_every_read() {
+    let srv = spawn_server().await;
+    let registry_id = register_run_def(&srv.base).await;
+    let resp = reqwest::Client::new()
+        .post(format!("{}/api/runs", srv.base))
+        .json(&json!({"registry_id": registry_id, "vars": {"region": "eu-north"}}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 202);
+    let body: Value = resp.json().await.unwrap();
+    assert_eq!(body["state"], "pending_approval", "{body}");
+    let run_id = body["run_id"].as_str().unwrap().to_string();
+    let vars = json!({"region": "eu-north"});
+
+    let (status, detail) = get(&srv.base, &format!("/api/runs/{run_id}")).await;
+    assert_eq!(status, 200, "{detail}");
+    assert_eq!(detail["run"]["params_json"], vars, "{detail}");
+
+    let (status, list) = get(&srv.base, "/api/runs").await;
+    assert_eq!(status, 200, "{list}");
+    assert_eq!(list["runs"][0]["id"], json!(run_id), "{list}");
+    assert_eq!(list["runs"][0]["params_json"], vars, "{list}");
+
+    let (status, queue) = get(&srv.base, "/api/approvals").await;
+    assert_eq!(status, 200, "{queue}");
+    assert_eq!(queue["queue"][0]["run_id"], json!(run_id), "{queue}");
+    assert_eq!(queue["queue"][0]["params_json"], vars, "{queue}");
 }
 
 /// A bound probe-only definition classifies T0 and enqueues directly.

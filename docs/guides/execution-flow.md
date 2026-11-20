@@ -47,13 +47,18 @@ successfully and satisfy its tolerance to pass.
 5. It starts during-phase probe sampling and guard monitoring, then executes
    the method. Background actions honor the concurrency limit. Cancellation
    interrupts pre-action pauses and waiting slots and prevents later dispatch.
+   A guard breach or a stop also ends the step that is running: the process
+   group of a `process` or `script` step is killed, and the step is recorded
+   as failed with an error that ends in `stopped before it finished`. A
+   `native` step runs to its end. Rollbacks are never ended this way.
 6. It stops the during sampler and guard monitor. A guard breach or cancellation
    stops the method, stops load, and applies the rollback strategy. Such a run
    cannot be reported Completed.
 7. On the normal path, it samples post-phase probes immediately after method
    completion, before cleanup. Sampling ends on the first passing round,
-   cancellation or timeout. There is no automatic data-integrity verification
-   or requirement for sustained recovery.
+   cancellation or timeout. When an action of the method failed, the samples
+   stay in the journal and the run reports no time to recovery. There is no
+   automatic data-integrity verification or requirement for sustained recovery.
 8. It stops load, collects its result, and evaluates the final hypothesis
    unless cancellation has been requested.
 9. It determines status and applies the rollback strategy. A rollback is an

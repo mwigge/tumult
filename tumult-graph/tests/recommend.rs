@@ -1,10 +1,10 @@
 //! Fixture-driven tests for `tumult_graph::recommend::recommend`.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use tumult_graph::lineage::{ControlServiceStatus, LineageCell};
 use tumult_graph::recommend::{recommend, RecommendationInput};
-use tumult_graph::AvailableAction;
+use tumult_graph::{AvailableAction, TestedFaults};
 
 const DORA: &str = "compliance:DORA/Art.25";
 const NIS2: &str = "compliance:NIS2/Art.21(2)(b)";
@@ -38,7 +38,7 @@ fn fixture<'a>(
     lineage: &'a [LineageCell],
     depends_on: &'a [(String, String)],
     actions: &'a [AvailableAction],
-    tested: &'a HashSet<String>,
+    tested: &'a TestedFaults,
     strengths: &'a HashMap<String, String>,
 ) -> RecommendationInput<'a> {
     RecommendationInput {
@@ -46,7 +46,7 @@ fn fixture<'a>(
         lineage,
         depends_on,
         available_actions: actions,
-        tested_action_names: tested,
+        tested_faults: tested,
         article_strength: strengths,
     }
 }
@@ -64,7 +64,7 @@ fn ranks_broken_central_service_first_with_reasons() {
         AvailableAction::new("tumult-net", "inject_latency"),
         AvailableAction::new("tumult-net", "drop_packets"),
     ];
-    let tested: HashSet<String> = ["inject_latency".to_string()].into_iter().collect();
+    let tested = TestedFaults::from_fault_ids(["fault:tumult-net::inject_latency"]);
     let strengths: HashMap<String, String> = [
         (DORA.to_string(), "direct".to_string()),
         (NIS2.to_string(), "supporting".to_string()),
@@ -125,7 +125,7 @@ fn deterministic_and_limited() {
         AvailableAction::new("tumult-net", "drop_packets"),
         AvailableAction::new("tumult-net", "inject_latency"),
     ];
-    let tested: HashSet<String> = HashSet::new();
+    let tested = TestedFaults::default();
     let strengths: HashMap<String, String> = HashMap::new();
     let input = fixture(&lineage, &depends_on, &actions, &tested, &strengths);
 
@@ -146,9 +146,10 @@ fn all_actions_tested_falls_back_to_first_sorted_without_bonus() {
         AvailableAction::new("tumult-net", "inject_latency"),
         AvailableAction::new("tumult-net", "drop_packets"),
     ];
-    let tested: HashSet<String> = ["inject_latency".to_string(), "drop_packets".to_string()]
-        .into_iter()
-        .collect();
+    let tested = TestedFaults::from_fault_ids([
+        "fault:tumult-net::inject_latency",
+        "fault:tumult-net::drop_packets",
+    ]);
     let strengths = HashMap::new();
     let depends_on: Vec<(String, String)> = Vec::new();
     let input = fixture(&lineage, &depends_on, &actions, &tested, &strengths);
@@ -164,7 +165,7 @@ fn all_actions_tested_falls_back_to_first_sorted_without_bonus() {
 #[test]
 fn empty_catalog_or_no_actionable_cells_yields_nothing() {
     let actions = vec![AvailableAction::new("tumult-net", "drop_packets")];
-    let tested = HashSet::new();
+    let tested = TestedFaults::default();
     let strengths = HashMap::new();
     let depends_on = Vec::new();
 
@@ -190,7 +191,7 @@ fn observed_traffic_boosts_score_and_unreachable_service_is_far() {
     ];
     let depends_on = fixture_edges();
     let actions = vec![AvailableAction::new("tumult-net", "drop_packets")];
-    let tested: HashSet<String> = HashSet::new();
+    let tested = TestedFaults::default();
     let strengths: HashMap<String, String> = [(DORA.to_string(), "direct".to_string())]
         .into_iter()
         .collect();
@@ -204,7 +205,7 @@ fn observed_traffic_boosts_score_and_unreachable_service_is_far() {
         lineage: &lineage,
         depends_on: &depends_on,
         available_actions: &actions,
-        tested_action_names: &tested,
+        tested_faults: &tested,
         article_strength: &strengths,
         criticality: &criticality,
     };

@@ -5,17 +5,18 @@ OpenTelemetry instrumentation for the Tumult resilience intelligence platform --
 ## Key Types
 
 - `TelemetryConfig` -- configures OTLP exporters and resource attributes
-- `init_telemetry` -- initializes the OpenTelemetry SDK with tracing bridge
-- `shutdown_telemetry` -- flushes and shuts down exporters
+- `TumultTelemetry::new` -- initializes the OpenTelemetry SDK with tracing bridge
+- `TumultTelemetry::shutdown` -- flushes and shuts down exporters
 
 ## Usage
 
 ```rust
-use tumult_otel::{TelemetryConfig, init_telemetry};
+use tumult_otel::{TelemetryConfig, TumultTelemetry};
 
-let config = TelemetryConfig::default();
-let _guard = init_telemetry(&config)?;
+let config = TelemetryConfig::from_env();
+let telemetry = TumultTelemetry::new(config);
 // spans and metrics are now exported via OTLP
+telemetry.shutdown();
 ```
 
 ## More Information

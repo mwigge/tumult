@@ -7,8 +7,10 @@ use crate::types::{
     TraceId,
 };
 
-use opentelemetry::trace::TraceContextExt;
+use opentelemetry::trace::{Status, TraceContextExt};
 use opentelemetry::KeyValue;
+use tumult_otel::attributes;
+use tumult_otel::instrument::ProbeEnd;
 
 /// Build a Journal for an experiment interrupted before it started.
 pub(crate) fn make_interrupted_journal(experiment: &Experiment, now_ns: i64) -> Journal {
@@ -56,6 +58,36 @@ pub(crate) fn target_version_attributes(version: &TargetVersion) -> [KeyValue; 2
     ]
 }
 
+/// How a run ended, for its root span: the status in the spelling of the
+/// journal, the verdict on the hypothesis and the recovery time when the
+/// run has them, and the blast radius the definition declares.
+pub(crate) fn outcome_attributes(journal: &Journal) -> Vec<KeyValue> {
+    let mut attrs = vec![KeyValue::new(
+        attributes::OUTCOME,
+        journal.status.to_string(),
+    )];
+    if let Some(met) = journal.hypothesis_met() {
+        attrs.push(KeyValue::new(attributes::HYPOTHESIS_MET, met));
+    }
+    if let Some(seconds) = journal.recovery_time_s() {
+        attrs.push(KeyValue::new(attributes::RECOVERY_TIME_S, seconds));
+    }
+    let declared = journal.blast_radius.as_ref().and_then(|b| b.note.clone());
+    if let Some(note) = declared {
+        attrs.push(KeyValue::new(attributes::FAULT_BLAST_RADIUS, note));
+    }
+    attrs
+}
+
+/// The status of the root span: Ok for a completed run, and an error that
+/// names the status for every other ending.
+pub(crate) fn outcome_span_status(status: &ExperimentStatus) -> Status {
+    if *status == ExperimentStatus::Completed {
+        return Status::Ok;
+    }
+    Status::error(status.to_string())
+}
+
 /// Extract target attributes from an activity's provider.
 pub(crate) fn target_attributes(activity: &Activity) -> Vec<KeyValue> {
     match &activity.provider {
@@ -86,7 +118,8 @@ pub(crate) fn target_attributes(activity: &Activity) -> Vec<KeyValue> {
     }
 }
 
-/// Extract fault attributes from an activity.
+/// The fault attributes of an activity, and the plugin that serves it: the
+/// span of a step names its plugin the way the metrics of the step do.
 pub(crate) fn fault_attributes(activity: &Activity) -> Vec<KeyValue> {
     let fault_type = match activity.activity_type {
         ActivityType::Action => "injection",
@@ -95,6 +128,7 @@ pub(crate) fn fault_attributes(activity: &Activity) -> Vec<KeyValue> {
     vec![
         KeyValue::new("resilience.fault.type", fault_type),
         KeyValue::new("resilience.fault.name", activity.name.clone()),
+        KeyValue::new(attributes::PLUGIN_NAME, plugin_name(activity)),
     ]
 }
 
@@ -110,13 +144,25 @@ pub(crate) fn plugin_name(activity: &Activity) -> String {
     }
 }
 
+/// How a probe ended, for its metric. A probe the plugin ran is no error
+/// of the plugin, whatever the probe read.
+pub(crate) fn probe_end(plugin_ran: bool, within_tolerance: bool) -> ProbeEnd {
+    if !plugin_ran {
+        return ProbeEnd::PluginFailed;
+    }
+    if within_tolerance {
+        return ProbeEnd::Passed;
+    }
+    ProbeEnd::OutsideTolerance
+}
+
 /// Set span error status if the outcome failed.
 pub(crate) fn set_span_status_from_outcome(success: bool, error: Option<&str>) {
     if !success {
         let ctx = opentelemetry::Context::current();
         let span = ctx.span();
         let desc = error.unwrap_or("activity failed");
-        span.set_status(opentelemetry::trace::Status::error(desc.to_string()));
+        span.set_status(Status::error(desc.to_string()));
     }
 }
 

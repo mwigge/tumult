@@ -617,10 +617,12 @@ fn drive(
             skip(&mut run, i + 1, behind_unanswered);
             continue;
         };
+        // A sample is stamped with the start of its window.
+        let started_ns = super::epoch_nanos_now();
         let end = host.run_window(window, length_s);
         behind_unanswered = end.unanswered();
         run.outcomes.push(WindowOutcome {
-            ts_ns: super::epoch_nanos_now(),
+            ts_ns: started_ns,
             vus: window.vus,
             end,
         });
@@ -1381,24 +1383,17 @@ fn thresholds_hold(
     result: &LoadResult,
     thresholds: &std::collections::HashMap<String, f64>,
 ) -> bool {
-    // No answer, no latency: an unknown figure is never within a bound.
-    let answered = !result.samples.is_empty();
     let mut held = true;
     for (metric, bound) in thresholds {
-        let ok = match metric.as_str() {
-            "latency_p50_ms" => answered && result.latency_p50_ms <= *bound,
-            "latency_p95_ms" => answered && result.latency_p95_ms <= *bound,
-            "latency_p99_ms" => answered && result.latency_p99_ms <= *bound,
-            "error_rate" => result.error_rate <= *bound,
-            "throughput_rps" => result.throughput_rps >= *bound,
-            other => {
-                tracing::warn!(
-                    tool = "oha",
-                    metric = %bounded_log_text(other),
-                    "load.threshold.unknown_metric"
-                );
-                false
-            }
+        let ok = if let Some(holds) = threshold_check(metric) {
+            holds(result, *bound)
+        } else {
+            tracing::warn!(
+                tool = "oha",
+                metric = %bounded_log_text(metric),
+                "load.threshold.unknown_metric"
+            );
+            false
         };
         if !ok {
             tracing::warn!(
@@ -1411,6 +1406,27 @@ fn thresholds_hold(
         }
     }
     held
+}
+
+/// How oha checks a threshold named `metric` against a result and its
+/// bound; `None` for a name oha does not check.
+fn threshold_check(metric: &str) -> Option<fn(&LoadResult, f64) -> bool> {
+    // No answer, no latency: an unknown figure is never within a bound.
+    let check: fn(&LoadResult, f64) -> bool = match metric {
+        "latency_p50_ms" => |r, bound| !r.samples.is_empty() && r.latency_p50_ms <= bound,
+        "latency_p95_ms" => |r, bound| !r.samples.is_empty() && r.latency_p95_ms <= bound,
+        "latency_p99_ms" => |r, bound| !r.samples.is_empty() && r.latency_p99_ms <= bound,
+        "error_rate" => |r, bound| r.error_rate <= bound,
+        "throughput_rps" => |r, bound| r.throughput_rps >= bound,
+        _ => return None,
+    };
+    Some(check)
+}
+
+/// Whether oha checks a threshold named `metric`. Validation asks here,
+/// so a name the adapter would count as unmet is refused before the run.
+pub(crate) fn checks_threshold(metric: &str) -> bool {
+    threshold_check(metric).is_some()
 }
 
 #[cfg(test)]
@@ -2281,6 +2297,35 @@ mod tests {
         // Without a threshold the all-error run is evidence and stands.
         let result = aggregate(&run(20), plan(vec![unanswered(1, 50)]), &thresholds(&[]));
         assert!(result.thresholds_met);
+    }
+
+    /// Each latency threshold is an upper bound on its own percentile, and
+    /// none of them holds for a load nobody answered.
+    #[test]
+    fn each_latency_threshold_bounds_its_own_percentile() {
+        let answered = || plan(vec![window(1, 100, 0.1)]);
+        let nobody = || plan(vec![unanswered(1, 50)]);
+        for (name, latency_ms) in [
+            ("latency_p50_ms", 10.0),
+            ("latency_p95_ms", 100.0),
+            ("latency_p99_ms", 30.0),
+        ] {
+            let at = thresholds(&[(name, latency_ms)]);
+            assert!(
+                aggregate(&run(10), answered(), &at).thresholds_met,
+                "{name}"
+            );
+            let under = thresholds(&[(name, latency_ms - 1.0)]);
+            assert!(
+                !aggregate(&run(10), answered(), &under).thresholds_met,
+                "{name}"
+            );
+            let any = thresholds(&[(name, f64::MAX)]);
+            assert!(
+                !aggregate(&run(10), nobody(), &any).thresholds_met,
+                "{name}"
+            );
+        }
     }
 
     #[test]

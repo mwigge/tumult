@@ -103,6 +103,8 @@
 //! shape), [`analytics`] (v3), [`runs`] (v4–v7), [`auth`] (v6/v9),
 //! [`table_stakes`] (v10–v13), [`migrations`] (the versioned rebuilds).
 
+use tumult_core::types::ExperimentStatus;
+
 mod analytics;
 mod auth;
 mod entities;
@@ -139,19 +141,261 @@ pub const CREATE_TABLES: &[&str] = &[
     entities::DDL,
 ];
 
-/// Rollup view: one row per experiment run, over the experiment root spans
-/// tumult emits as `resilience.experiment`. The outcome lives on tumult's
-/// `experiment.completed` log record (capitalised `status` attr), not on the
-/// span, so it is resolved via the same join the API list query uses.
-/// CREATE OR REPLACE so existing databases pick up view changes on startup.
-pub const CREATE_VIEWS: &[&str] = &[EXPERIMENT_RUNS_VIEW, entities::VIEW];
+/// The views, in the order they are created: the root of every run, the
+/// completion log of every run, the rollup of every run and the current
+/// state of every entity. CREATE OR REPLACE so existing databases pick up
+/// view changes on startup.
+#[must_use]
+pub fn create_views() -> [String; 4] {
+    [
+        run_roots_view(),
+        run_completions_view(),
+        experiment_runs_view(),
+        entities::VIEW.to_string(),
+    ]
+}
 
 /// Additive changes to tables of this version that an earlier build of the
 /// same version may have created without them. Run after
-/// [`CREATE_TABLES`] and before [`CREATE_VIEWS`].
+/// [`CREATE_TABLES`] and before [`create_views`].
 pub const AMEND_TABLES: &[&str] = &[entities::ADD_RECEIPT_COLUMN];
 
-const EXPERIMENT_RUNS_VIEW: &str = "
+/// The SQL expression for the status a run ended with, in the spelling of
+/// the journal: `completed`, `deviated`, `failed`, `aborted`, `interrupted`
+/// or `halted`. NULL for a run that has not ended.
+///
+/// `span` is the alias of the root span of the run and `log` the alias of
+/// its row of `run_completions`, the last `experiment.completed` log record
+/// of the run. The root span carries the status since 3.0.2. The log is
+/// read for runs stored before that, which spelled it with a capital, so
+/// the result is in lower case.
+#[must_use]
+pub fn run_outcome_sql(span: &str, log: &str) -> String {
+    format!("lower(coalesce({span}.outcome_status, {log}.log_attrs['status']))")
+}
+
+/// The SQL aggregate for the mean time to recover, in seconds: the mean
+/// recovery time of the runs that report one. NULL when no run reports
+/// one, never 0.
+///
+/// `root` is the alias of a row of `run_roots`, one row a run. A traced run
+/// reports the recovery time on its root span; a run stored only as a
+/// journal reports the recovery time its journal measured, which is there
+/// only when its definition declares an objective. A span that is no root
+/// of a run is not read.
+#[must_use]
+pub fn mean_recovery_time_sql(root: &str) -> String {
+    format!("avg({root}.recovery_time_s)")
+}
+
+/// The SQL expression for whether the hypothesis of a run stored as a
+/// journal was met, by the rule of `Journal::hypothesis_met`: the verdict
+/// after the method when the run got that far, FALSE when the hypothesis
+/// failed before the method, and NULL when the run judged none.
+///
+/// `run` is the alias of a row of `experiments`.
+#[must_use]
+pub fn hypothesis_met_sql(run: &str) -> String {
+    // Laid out as the column of `run_roots` it renders, in lines short
+    // enough for the SQL standard of the views.
+    format!(
+        "coalesce(
+        {run}.hypothesis_after_met,
+        CASE WHEN NOT {run}.hypothesis_before_met THEN FALSE END
+    )"
+    )
+}
+
+/// What the way a run ended says about the system it tested.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RunVerdict {
+    /// The run completed: the hypothesis held.
+    Pass,
+    /// The run deviated, failed or was halted.
+    Fail,
+    /// The run was aborted before its method or interrupted: it proves
+    /// nothing either way, so it is neither a pass nor a failure and is
+    /// left out of counts and rates.
+    NoEvidence,
+}
+
+impl RunVerdict {
+    /// The verdict as [`run_verdict_sql`] spells it.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Pass => "pass",
+            Self::Fail => "fail",
+            Self::NoEvidence => "no_evidence",
+        }
+    }
+}
+
+/// The verdict of each status a run can end with. [`run_verdict`] and
+/// [`run_verdict_sql`] both read it.
+const RUN_VERDICTS: [(ExperimentStatus, RunVerdict); 6] = [
+    (ExperimentStatus::Completed, RunVerdict::Pass),
+    (ExperimentStatus::Deviated, RunVerdict::Fail),
+    (ExperimentStatus::Failed, RunVerdict::Fail),
+    (ExperimentStatus::Halted, RunVerdict::Fail),
+    (ExperimentStatus::Aborted, RunVerdict::NoEvidence),
+    (ExperimentStatus::Interrupted, RunVerdict::NoEvidence),
+];
+
+/// The verdict of a run that ended with `status`, in either spelling.
+/// `None` for any other text, as for a run that has not ended: what that
+/// counts as is the caller's to say.
+#[must_use]
+pub fn run_verdict(status: &str) -> Option<RunVerdict> {
+    RUN_VERDICTS
+        .iter()
+        .find(|(ending, _)| ending.to_string().eq_ignore_ascii_case(status))
+        .map(|(_, verdict)| *verdict)
+}
+
+/// The SQL expression for the [`run_verdict`] of the status `status`, in
+/// the spelling of [`RunVerdict::as_str`]. NULL where `run_verdict` gives
+/// `None`.
+#[must_use]
+pub fn run_verdict_sql(status: &str) -> String {
+    // Laid out as a column of a SELECT, one arm a line, in lines short
+    // enough for the SQL standard of the views.
+    let arms: Vec<String> = RUN_VERDICTS
+        .iter()
+        .map(|(ending, verdict)| format!("\n        WHEN '{ending}' THEN '{}'", verdict.as_str()))
+        .collect();
+    format!("CASE lower({status}){}\n    END", arms.concat())
+}
+
+/// The root of every run, in the columns of `spans`, with `journal_only`.
+///
+/// A run that sent its trace has its `resilience.experiment` span here as it
+/// is. A run stored only as a journal (a plain `tumult run`, a journal
+/// import) left no span: its row is built from the journal, says
+/// `journal_only`, has no trace id, and takes its target from the run node
+/// of the graph, which holds what the definition declared. The hypothesis verdict follows
+/// `Journal::hypothesis_met`, by [`hypothesis_met_sql`]. Every column of
+/// `spans` is named, so a new one has to be added here.
+fn run_roots_view() -> String {
+    format!(
+        "
+CREATE OR REPLACE VIEW run_roots AS
+SELECT
+    s.ts_ns,
+    s.trace_id,
+    s.span_id,
+    s.parent_span_id,
+    s.span_name,
+    s.span_kind,
+    s.duration_ns,
+    s.status_code,
+    s.status_message,
+    s.service_name,
+    s.service_version,
+    s.experiment_id,
+    s.experiment_name,
+    s.outcome_status,
+    s.fault_type,
+    s.fault_subtype,
+    s.fault_severity,
+    s.blast_radius,
+    s.target_system,
+    s.target_technology,
+    s.target_environment,
+    s.plugin_name,
+    s.hypothesis_met,
+    s.recovery_time_s,
+    s.span_attrs,
+    s.resource_attrs,
+    s.events,
+    FALSE AS journal_only
+FROM spans AS s
+WHERE s.span_name = 'resilience.experiment'
+UNION ALL
+SELECT
+    e.started_at_ns AS ts_ns,
+    NULL AS trace_id,
+    NULL AS span_id,
+    NULL AS parent_span_id,
+    'resilience.experiment' AS span_name,
+    'Internal' AS span_kind,
+    e.ended_at_ns - e.started_at_ns AS duration_ns,
+    CASE WHEN lower(e.status) = 'completed' THEN 'Ok' ELSE 'Error' END AS status_code,
+    '' AS status_message,
+    'tumult' AS service_name,
+    NULL AS service_version,
+    e.experiment_id,
+    e.title AS experiment_name,
+    lower(e.status) AS outcome_status,
+    NULL AS fault_type,
+    NULL AS fault_subtype,
+    NULL AS fault_severity,
+    NULL AS blast_radius,
+    json_extract_string(g.attrs, '$.target_system') AS target_system,
+    json_extract_string(g.attrs, '$.target_technology') AS target_technology,
+    json_extract_string(g.attrs, '$.target_environment') AS target_environment,
+    NULL AS plugin_name,
+    {hypothesis_met} AS hypothesis_met,
+    e.rto_measured_s AS recovery_time_s,
+    NULL AS span_attrs,
+    NULL AS resource_attrs,
+    NULL AS events,
+    TRUE AS journal_only
+FROM experiments AS e
+LEFT JOIN graph_nodes AS g ON g.id = 'run:' || e.experiment_id
+WHERE NOT EXISTS (
+    SELECT 1 FROM spans AS r
+    WHERE
+        r.span_name = 'resilience.experiment'
+        AND r.experiment_id = e.experiment_id
+);
+",
+        hypothesis_met = hypothesis_met_sql("e")
+    )
+}
+
+/// The completion log of every run: the last `experiment.completed` record
+/// stored for its id, so a run that logged its end twice is still one row.
+/// A root joins it by `experiment_id` as the `log` of [`run_outcome_sql`].
+fn run_completions_view() -> String {
+    format!(
+        "\nCREATE OR REPLACE VIEW run_completions AS\n{};\n",
+        run_completions_sql(None)
+    )
+}
+
+/// The rows of the view `run_completions`, as a query. With `since_ns` it
+/// reads only the records from that time on. A reader that asks about the
+/// runs since a time joins this in place of the view: a run completes
+/// after it starts, and a filter on the view does not reach below its
+/// window, so the view reads every log record there is.
+#[must_use]
+pub fn run_completions_sql(since_ns: Option<i64>) -> String {
+    // A condition of two parts is laid out one part a line, as in the views.
+    let filter = since_ns.map_or_else(
+        || "WHERE body = 'experiment.completed'".to_string(),
+        |ns| format!("WHERE\n    body = 'experiment.completed'\n    AND ts_ns >= {ns}"),
+    );
+    format!(
+        "SELECT
+    ts_ns,
+    log_attrs,
+    log_attrs['experiment_id'] AS experiment_id
+FROM logs
+{filter}
+QUALIFY
+    row_number() OVER (
+        PARTITION BY log_attrs['experiment_id']
+        ORDER BY ts_ns DESC
+    ) = 1"
+    )
+}
+
+/// Rollup view: one row per experiment run, over the roots of the runs.
+/// The outcome is read by the rule of [`run_outcome_sql`].
+fn experiment_runs_view() -> String {
+    format!(
+        "
 CREATE OR REPLACE VIEW experiment_runs AS
 SELECT
     s.experiment_id,
@@ -159,13 +403,11 @@ SELECT
     min(s.ts_ns) AS started_at_ns,
     max(s.ts_ns + s.duration_ns) AS ended_at_ns,
     max(s.duration_ns) AS duration_ns,
-    any_value(coalesce(s.outcome_status, l.log_attrs['status'])) AS outcome_status,
+    any_value({outcome}) AS outcome_status,
     any_value(s.hypothesis_met) AS hypothesis_met
-FROM spans AS s
-LEFT JOIN logs AS l
-    ON
-        l.log_attrs['experiment_id'] = s.experiment_id
-        AND l.body = 'experiment.completed'
-WHERE s.span_name = 'resilience.experiment'
-GROUP BY s.experiment_id;
-";
+FROM run_roots AS s
+LEFT JOIN run_completions AS l ON s.experiment_id = l.experiment_id
+GROUP BY s.experiment_id;",
+        outcome = run_outcome_sql("s", "l")
+    )
+}

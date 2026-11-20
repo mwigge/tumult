@@ -38,6 +38,7 @@ use tonic::service::interceptor::InterceptedService;
 use tonic::transport::server::Router;
 use tonic::{Request, Response, Status};
 
+use crate::error::WriteFailed;
 use crate::writer::{Batch, IngestWriter};
 
 /// HTTP/2 streams one connection may have open at once. A collector uses a
@@ -189,7 +190,7 @@ struct OtlpGrpc {
 
 fn to_status(e: crate::error::IngestError) -> Status {
     tracing::error!(error = %e, "OTLP write failed");
-    Status::internal("telemetry write failed")
+    WriteFailed::status()
 }
 
 #[tonic::async_trait]
@@ -602,9 +603,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn export_maps_writer_failure_to_internal() {
+    async fn export_maps_writer_failure_to_unavailable() {
         // A dead writer task: the channel receiver is gone, so the export
-        // call surfaces the channel error as INTERNAL (never a panic).
+        // call answers UNAVAILABLE, the code an OTLP exporter retries
+        // (never a panic).
         let dead = OtlpGrpc {
             ingest: IngestWriter::stopped_for_test(),
             ingest_token: None,
@@ -612,7 +614,35 @@ mod tests {
         let err = TraceService::export(&dead, Request::new(ExportTraceServiceRequest::default()))
             .await
             .unwrap_err();
-        assert_eq!(err.code(), tonic::Code::Internal);
+        assert_eq!(err.code(), tonic::Code::Unavailable);
+        assert_eq!(err.message(), "telemetry write failed");
+    }
+
+    /// A batch the store refuses is answered UNAVAILABLE, nothing of it
+    /// is stored, and the same export sent again once the cause is gone
+    /// is stored once.
+    #[tokio::test]
+    async fn a_batch_the_store_refuses_is_unavailable_and_stored_once_when_sent_again() {
+        use crate::test_store;
+
+        let (_d, store, ingest) = test_ingest();
+        let svc = OtlpGrpc {
+            ingest: ingest.clone(),
+            ingest_token: None,
+        };
+        test_store::hide_gauges(&ingest).await;
+        let err = MetricsService::export(&svc, Request::new(test_store::sum_and_gauge()))
+            .await
+            .unwrap_err();
+        assert_eq!(err.code(), tonic::Code::Unavailable, "{err}");
+        assert_eq!(err.message(), "telemetry write failed");
+
+        test_store::restore_gauges(&ingest).await;
+        assert_eq!(test_store::stored(&store), (0, 0));
+        MetricsService::export(&svc, Request::new(test_store::sum_and_gauge()))
+            .await
+            .unwrap();
+        assert_eq!(test_store::stored(&store), (1, 1));
     }
 }
 

@@ -1,0 +1,8 @@
+{
+  "completed": "pass",
+  "deviated": "fail",
+  "failed": "fail",
+  "halted": "fail",
+  "aborted": "no_evidence",
+  "interrupted": "no_evidence"
+}

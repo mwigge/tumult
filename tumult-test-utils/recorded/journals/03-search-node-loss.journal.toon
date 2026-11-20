@@ -1,0 +1,104 @@
+experiment_title: Search answers after the loss of a node
+experiment_id: "5a62a8ea-74ee-4097-897c-c5a76dd44617"
+status: deviated
+started_at_ns: 1795086845965899419
+ended_at_ns: 1795086875030020026
+duration_ms: 29064
+steady_state_before:
+  title: Search answers
+  met: true
+  probe_results[1]{name,activity_type,status,started_at_ns,duration_ms,output,trace_id,span_id}:
+    "search-answers",probe,succeeded,1795086845965978640,1,ok,70fe7ad87fc6e7546f68315a3992b569,7cc2c363d2309a04
+steady_state_after:
+  title: Search answers
+  met: false
+  probe_results[1]{name,activity_type,status,started_at_ns,duration_ms,output,error,trace_id,span_id}:
+    "search-answers",probe,failed,1795086875027531292,1,down,the output is outside the tolerance,70fe7ad87fc6e7546f68315a3992b569,792672d36d18992c
+method_results[2]:
+  - name: "lose-node"
+    activity_type: action
+    status: succeeded
+    started_at_ns: 1795086845967886970
+    duration_ms: 1
+    trace_id: 70fe7ad87fc6e7546f68315a3992b569
+    span_id: "08711563accaadff"
+  - name: "search-after-loss"
+    activity_type: probe
+    status: succeeded
+    started_at_ns: 1795086845969205447
+    duration_ms: 1
+    output: down
+    trace_id: 70fe7ad87fc6e7546f68315a3992b569
+    span_id: 7b028868a6ee5e8f
+rollback_results[1]{name,activity_type,status,started_at_ns,duration_ms,trace_id,span_id}:
+  "start-node",action,succeeded,1795086875028918710,1,70fe7ad87fc6e7546f68315a3992b569,0ea6ea3e8a9b844e
+rollback_failures: 0
+estimate: null
+baseline_result: null
+during_result:
+  started_at_ns: 1795086845967846519
+  ended_at_ns: 1795086845970820615
+  fault_active_s: 0.002974096
+  sample_interval_s: 1
+  probes[1]{name,samples,mean,max,min,error_rate,breached_at_ns,breach_count}:
+    "search-answers",1,1,1,1,1,1795086845967931670,1
+post_result:
+  started_at_ns: 1795086845970881576
+  ended_at_ns: 1795086875027465572
+  duration_s: 29.056583996
+  samples: 30
+  probes[1]{name,mean,p95,error_rate,returned_to_baseline,recovery_time_s}:
+    "search-answers",1.0666666666666667,2,1,false,29.054953217
+  recovery_time_s: 29.054953217
+  full_recovery: false
+load_result: null
+analysis: null
+regulatory: null
+blast_radius:
+  note: one search node
+  peak_concurrent_faults: 0
+kind: chaos
+objectives:
+  rto_target_s: 2
+  verdicts[1]{nfr_id,kind,metric,operator,threshold,state,criticality}:
+    rto,rto,recovery.mttr_s,lte,2,inconclusive,blocking
+probe_samples[31]{probe,phase,ts_ns,duration_ms,ok}:
+  "search-answers",during,1795086845967931670,1,false
+  "search-answers",post,1795086845970895536,1,false
+  "search-answers",post,1795086846972445698,1,false
+  "search-answers",post,1795086847974321943,1,false
+  "search-answers",post,1795086848976236970,2,false
+  "search-answers",post,1795086849978501689,1,false
+  "search-answers",post,1795086850980330556,1,false
+  "search-answers",post,1795086851982229405,1,false
+  "search-answers",post,1795086852984138964,1,false
+  "search-answers",post,1795086853986096155,1,false
+  "search-answers",post,1795086854988073607,1,false
+  "search-answers",post,1795086855990005809,1,false
+  "search-answers",post,1795086856991811122,2,false
+  "search-answers",post,1795086857994001468,1,false
+  "search-answers",post,1795086858996007813,1,false
+  "search-answers",post,1795086859997788898,1,false
+  "search-answers",post,1795086860999770745,1,false
+  "search-answers",post,1795086862001500501,1,false
+  "search-answers",post,1795086863003224448,1,false
+  "search-answers",post,1795086864005160868,1,false
+  "search-answers",post,1795086865006914167,1,false
+  "search-answers",post,1795086866008865598,1,false
+  "search-answers",post,1795086867010648789,1,false
+  "search-answers",post,1795086868012582732,1,false
+  "search-answers",post,1795086869014572596,1,false
+  "search-answers",post,1795086870016395590,1,false
+  "search-answers",post,1795086871018323025,1,false
+  "search-answers",post,1795086872020203661,1,false
+  "search-answers",post,1795086873022106138,1,false
+  "search-answers",post,1795086874023922565,1,false
+  "search-answers",post,1795086875025834793,1,false
+target_version:
+  version: "1.12.0"
+  version_source: declared
+target:
+  system: search
+  technology: opensearch
+  environment: staging
+  version: "1.12.0"

@@ -61,7 +61,10 @@ async fn main() {
         "DATABASE_URL",
         "postgres://demo:demo@demo-postgres:5432/orders",
     );
-    let otlp_endpoint = env_or("OTEL_EXPORTER_OTLP_ENDPOINT", "http://tumult-collector:4318");
+    let otlp_endpoint = env_or(
+        "OTEL_EXPORTER_OTLP_ENDPOINT",
+        "http://tumult-collector:4318",
+    );
     let listen_addr = env_or("LISTEN_ADDR", "0.0.0.0:8080");
 
     let tracer_provider = telemetry::init(&otlp_endpoint);

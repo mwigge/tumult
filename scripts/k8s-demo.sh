@@ -91,9 +91,13 @@ kubectl run "${POD}" \
 kubectl wait --for=condition=Ready "pod/${POD}" -n "${NAMESPACE}" --timeout=90s >/dev/null
 log "target pod is Ready"
 
+# Each run keeps a journal of its own here, not in the directory the script
+# is started from: the CLI does not write over a journal that is there.
+JOURNALS="$(mktemp -d)"
+
 # ── 3. Fault 1: in-pod network latency ────────────────────────────
 log "running experiment: examples/k8s-pod-latency.toon"
-"$TUMULT" run "${PROJECT_DIR}/examples/k8s-pod-latency.toon"
+"$TUMULT" run "${PROJECT_DIR}/examples/k8s-pod-latency.toon" --journal-path "${JOURNALS}/k8s-pod-latency.journal.toon"
 
 log "asserting a tumult-netem ephemeral container was attached"
 kubectl get pod "${POD}" -n "${NAMESPACE}" \
@@ -114,7 +118,7 @@ fi
 
 # ── 4. Fault 2: in-pod CPU stress ─────────────────────────────────
 log "running experiment: examples/k8s-pod-stress.toon"
-"$TUMULT" run "${PROJECT_DIR}/examples/k8s-pod-stress.toon"
+"$TUMULT" run "${PROJECT_DIR}/examples/k8s-pod-stress.toon" --journal-path "${JOURNALS}/k8s-pod-stress.journal.toon"
 
 log "asserting a tumult-stress ephemeral container was attached"
 kubectl get pod "${POD}" -n "${NAMESPACE}" \
@@ -132,3 +136,4 @@ kubectl get pod "${POD}" -n "${NAMESPACE}" \
 log "PASS: stress-ng ephemeral container reached running/terminated"
 
 log "ALL CHECKS PASSED — both in-pod faults injected via ephemeral containers"
+log "journals: ${JOURNALS}"

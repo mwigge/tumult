@@ -89,6 +89,28 @@ pub fn all_succeeded(results: &[ActivityResult]) -> bool {
             .all(|r| r.status == ActivityStatus::Succeeded)
 }
 
+/// Whether the method applied its fault as written: it ran a step, and
+/// every action in it succeeded. A probe of the method is judged by
+/// [`probes_held`].
+#[must_use]
+pub fn actions_succeeded(results: &[ActivityResult]) -> bool {
+    !results.is_empty()
+        && results
+            .iter()
+            .filter(|r| r.activity_type == ActivityType::Action)
+            .all(|r| r.status == ActivityStatus::Succeeded)
+}
+
+/// Whether every probe in these results held: none failed and none timed
+/// out. A probe that was skipped read nothing, so it says nothing.
+#[must_use]
+pub fn probes_held(results: &[ActivityResult]) -> bool {
+    !results.iter().any(|r| {
+        r.activity_type == ActivityType::Probe
+            && matches!(r.status, ActivityStatus::Failed | ActivityStatus::Timeout)
+    })
+}
+
 /// Count activities by type in a method.
 #[must_use]
 pub fn count_by_type(activities: &[Activity], activity_type: &ActivityType) -> usize {
@@ -209,6 +231,60 @@ mod tests {
         });
         assert_eq!(result.status, ActivityStatus::Failed);
         assert_eq!(result.error.unwrap(), "connection refused");
+    }
+
+    // ── actions_succeeded, probes_held ─────────────────────────
+
+    fn step(activity_type: ActivityType, status: ActivityStatus) -> ActivityResult {
+        ActivityResult {
+            name: "step".into(),
+            activity_type,
+            status,
+            started_at_ns: 0,
+            duration_ms: 0,
+            output: None,
+            error: None,
+            trace_id: "".into(),
+            span_id: "".into(),
+        }
+    }
+
+    #[test]
+    fn a_method_that_ran_nothing_did_not_apply_its_fault() {
+        assert!(!actions_succeeded(&[]));
+    }
+
+    #[test]
+    fn a_failed_probe_does_not_say_the_actions_failed() {
+        let results = [
+            step(ActivityType::Action, ActivityStatus::Succeeded),
+            step(ActivityType::Probe, ActivityStatus::Failed),
+        ];
+        assert!(actions_succeeded(&results));
+        assert!(!probes_held(&results));
+    }
+
+    #[test]
+    fn a_failed_action_says_the_actions_failed_and_nothing_about_the_probes() {
+        let results = [
+            step(ActivityType::Action, ActivityStatus::Failed),
+            step(ActivityType::Probe, ActivityStatus::Succeeded),
+        ];
+        assert!(!actions_succeeded(&results));
+        assert!(probes_held(&results));
+    }
+
+    #[test]
+    fn a_probe_that_timed_out_did_not_hold_and_a_skipped_one_says_nothing() {
+        assert!(!probes_held(&[step(
+            ActivityType::Probe,
+            ActivityStatus::Timeout
+        )]));
+        assert!(probes_held(&[step(
+            ActivityType::Probe,
+            ActivityStatus::Skipped
+        )]));
+        assert!(probes_held(&[]));
     }
 
     // ── all_succeeded ──────────────────────────────────────────

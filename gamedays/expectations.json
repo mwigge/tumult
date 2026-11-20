@@ -1,0 +1,11 @@
+{
+  "experiments": {
+    "pg-connection-kill.toon": {"proof": "examples-proof", "within": "q2-postgres-resilience.gameday.toon", "expect": {"status": "completed", "hypothesis_before": true, "hypothesis_after": true, "rollbacks": 0, "objectives": {}}},
+    "pg-container-pause.toon": {"proof": "examples-proof", "within": "q2-postgres-resilience.gameday.toon", "expect": {"status": "completed", "hypothesis_before": true, "hypothesis_after": true, "rollbacks": 0, "objectives": {}}},
+    "pg-cpu-stress.toon": {"proof": "examples-proof", "within": "q2-postgres-resilience.gameday.toon", "expect": {"status": "completed", "hypothesis_before": true, "hypothesis_after": true, "rollbacks": 0, "objectives": {}}},
+    "pg-mem-stress.toon": {"proof": "examples-proof", "within": "q2-postgres-resilience.gameday.toon", "expect": {"status": "completed", "hypothesis_before": true, "hypothesis_after": true, "rollbacks": 0, "objectives": {}}}
+  },
+  "gamedays": {
+    "q2-postgres-resilience.gameday.toon": {"proof": "examples-proof", "expect": {"load_result": true}}
+  }
+}

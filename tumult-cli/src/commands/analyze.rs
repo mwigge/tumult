@@ -4,77 +4,6 @@ use std::path::Path;
 
 use anyhow::{bail, Context, Result};
 
-// ── Select-only query validation ──────────────────────────────
-//
-// Ported from `tumult-mcp/src/tools/validation.rs` (the MCP cypher/graph
-// query guard) — a deliberate small duplication: the CLI must not depend on
-// the MCP crate for this, and the two implementations must be kept in sync
-// manually. The token scan is deliberately quote-insensitive: a forbidden
-// token inside a string literal also rejects the query, trading a rare
-// false positive for never missing a smuggled call.
-
-/// Keywords that introduce a write or schema/configuration change. Rejected
-/// as standalone tokens anywhere in the query, since `DuckDB` allows DML/DDL
-/// after a leading `WITH` CTE (e.g. `WITH x AS (SELECT 1) INSERT INTO ...`).
-const FORBIDDEN_SQL_KEYWORDS: &[&str] = &[
-    "INSERT", "UPDATE", "DELETE", "CREATE", "DROP", "ALTER", "ATTACH", "DETACH", "COPY", "EXPORT",
-    "IMPORT", "INSTALL", "LOAD", "PRAGMA", "SET", "CALL", "VACUUM", "TRUNCATE",
-];
-
-/// `DuckDB` table functions and extension entry points that reach the host
-/// filesystem, the network, or another database. A plain `SELECT` stays
-/// read-only against the store, but `SELECT * FROM read_text('/etc/passwd')`
-/// reads arbitrary host files and `INSTALL httpfs` loads remote extensions —
-/// so these tokens are rejected exactly like the DML/DDL keywords above.
-const FORBIDDEN_SQL_FUNCTIONS: &[&str] = &[
-    "READ_TEXT",
-    "READ_CSV",
-    "READ_PARQUET",
-    "READ_JSON",
-    "READ_BLOB",
-    "GLOB",
-    "SQLITE_SCAN",
-    "PARQUET_SCAN",
-    "CSV_SCAN",
-    "JSON_SCAN",
-    "HTTPFS",
-    "EXPORT_DATABASE",
-    "IMPORT_DATABASE",
-];
-
-/// Validate that a `--query` SQL string is read-only (SELECT or WITH only,
-/// single statement, no write keywords or filesystem table functions).
-///
-/// # Errors
-///
-/// Returns an error if the query does not start with `SELECT` or `WITH`,
-/// contains more than one statement, or contains a forbidden keyword or
-/// table function.
-fn validate_select_only(query: &str) -> Result<()> {
-    let trimmed = query.trim();
-    let normalized = trimmed.to_uppercase();
-    if !(normalized.starts_with("SELECT") || normalized.starts_with("WITH")) {
-        bail!(
-            "only SELECT/WITH queries are allowed, got: {}",
-            normalized.split_whitespace().next().unwrap_or("(empty)")
-        );
-    }
-
-    let without_trailing_semicolons =
-        trimmed.trim_end_matches(|c: char| c.is_whitespace() || c == ';');
-    if without_trailing_semicolons.contains(';') {
-        bail!("only a single statement is allowed (no `;`-separated statements)");
-    }
-
-    for token in normalized.split(|c: char| !c.is_ascii_alphanumeric() && c != '_') {
-        if FORBIDDEN_SQL_KEYWORDS.contains(&token) || FORBIDDEN_SQL_FUNCTIONS.contains(&token) {
-            bail!("query contains a forbidden keyword: {token}");
-        }
-    }
-
-    Ok(())
-}
-
 // ── Analyze command ───────────────────────────────────────────
 
 /// # Errors
@@ -408,7 +337,7 @@ pub fn cmd_analyze(
     crate::outln!("Loaded {count} journal(s) into analytics store\n");
 
     if let Some(sql) = query {
-        validate_select_only(sql)?;
+        tumult_mcp::tools::validate_select_only(sql)?;
         let columns = store.query_columns(sql)?;
         let rows = store.query(sql)?;
         crate::outln!("{}", columns.join("\t"));
@@ -437,83 +366,6 @@ mod tests {
     use super::*;
     use crate::output::testing::capture;
 
-    // ── validate_select_only ──────────────────────────────────
-
-    #[test]
-    fn select_only_allows_plain_select() {
-        for sql in [
-            "SELECT experiment_id, title FROM experiments",
-            "  select count(*) from activity_results",
-            "WITH cte AS (SELECT 1) SELECT * FROM cte",
-            // A single trailing semicolon is tolerated.
-            "SELECT * FROM experiments;",
-            // Identifiers merely containing a forbidden token stay allowed.
-            "SELECT alter_ego, globe_count, loader FROM experiments",
-        ] {
-            let outcome = validate_select_only(sql);
-            assert!(outcome.is_ok(), "{sql} must be allowed, got: {outcome:?}");
-        }
-    }
-
-    #[test]
-    fn select_only_rejects_write_statements() {
-        for sql in [
-            "DELETE FROM experiments",
-            "INSERT INTO experiments VALUES (1)",
-            "UPDATE experiments SET title = 'x'",
-            "DROP TABLE experiments",
-            "CREATE TABLE foo (id int)",
-            "TRUNCATE TABLE experiments",
-        ] {
-            let err = validate_select_only(sql).unwrap_err();
-            assert!(
-                err.to_string().contains("only SELECT/WITH")
-                    || err.to_string().contains("forbidden keyword"),
-                "{sql} must be rejected, got: {err}"
-            );
-        }
-    }
-
-    #[test]
-    fn select_only_rejects_stacked_statements() {
-        let err = validate_select_only("SELECT 1; DROP TABLE experiments").unwrap_err();
-        assert!(err.to_string().contains("single statement"), "{err}");
-    }
-
-    #[test]
-    fn select_only_rejects_dml_after_cte() {
-        let err = validate_select_only("WITH x AS (SELECT 1) DELETE FROM experiments").unwrap_err();
-        assert!(err.to_string().contains("forbidden keyword"), "{err}");
-    }
-
-    #[test]
-    fn select_only_rejects_filesystem_table_functions() {
-        for sql in [
-            "SELECT * FROM read_text('/etc/passwd')",
-            "SELECT * FROM read_csv('data.csv')",
-            "SELECT * FROM read_parquet('s3://bucket/x.parquet')",
-            "SELECT * FROM read_json('/var/log/app.json')",
-            "SELECT * FROM read_blob('/etc/shadow')",
-            "SELECT * FROM glob('/home/*/.ssh/*')",
-            "SELECT * FROM parquet_scan('x.parquet')",
-            "SELECT * FROM csv_scan('x.csv')",
-            "SELECT * FROM json_scan('x.json')",
-            "SELECT * FROM sqlite_scan('/tmp/other.db', 'users')",
-            "SELECT export_database('/tmp/out')",
-            "SELECT import_database('/tmp/in')",
-            "SELECT * FROM t ATTACH 'evil.db'",
-            "SELECT 1 FROM t COPY TO '/tmp/out.csv'",
-            "SELECT * FROM (INSTALL httpfs)",
-            "WITH x AS (LOAD httpfs) SELECT 1",
-        ] {
-            let err = validate_select_only(sql).unwrap_err();
-            assert!(
-                err.to_string().contains("forbidden keyword"),
-                "{sql} must be rejected, got: {err}"
-            );
-        }
-    }
-
     // ── cmd_analyze --query against an in-memory journal store ──
 
     /// Write `journal` as `name.toon` into a fresh tempdir.
@@ -527,6 +379,7 @@ mod tests {
     fn sample_journal() -> tumult_core::types::Journal {
         tumult_core::types::Journal {
             target_version: None,
+            target: None,
             experiment_title: "analyze test".into(),
             experiment_id: "exp-analyze-1".into(),
             status: tumult_core::types::ExperimentStatus::Completed,
@@ -635,6 +488,7 @@ mod tests {
     fn rich_journal(id: &str, started_at_ns: i64) -> Journal {
         Journal {
             target_version: None,
+            target: None,
             experiment_title: format!("rich {id}"),
             experiment_id: id.into(),
             status: ExperimentStatus::Deviated,

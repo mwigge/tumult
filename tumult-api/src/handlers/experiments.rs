@@ -7,10 +7,11 @@ use axum::response::IntoResponse;
 use axum::{Extension, Json};
 use serde::Deserialize;
 use serde_json::{json, Value};
+use tumult_lake::{scope, Reader, SqlParam};
 
 use crate::auth::Principal;
 use crate::sql_util::{
-    and_pred, env_scope_where, env_trace_exists, invalid_range, sql_contains, sql_string, windows,
+    env_trace_exists, invalid_range, run_outcome_where, sql_contains, sql_string, windows,
     with_reader,
 };
 use crate::ApiState;
@@ -43,17 +44,26 @@ fn short_enough(field: &str, value: &str) -> Result<(), ApiError> {
     )))
 }
 
-/// The root-span ↔ completed-log join used by the list and detail queries.
-const EXPERIMENT_FROM: &str = "FROM spans s LEFT JOIN logs l \
-     ON l.log_attrs['experiment_id'] = s.experiment_id \
-    AND l.body = 'experiment.completed'";
+/// The run-root ↔ completed-log join used by the list and detail queries.
+/// `run_roots` holds the root span of a run, or a root built from its
+/// journal when the run sent no trace, and `run_completions` the last
+/// completion log of each run.
+const EXPERIMENT_FROM: &str =
+    "FROM run_roots s LEFT JOIN run_completions l ON s.experiment_id = l.experiment_id";
 
-const EXPERIMENT_COLS: &str = "s.experiment_id AS id, s.experiment_name AS name, \
-     s.ts_ns AS started_ns, s.duration_ns, s.trace_id, \
-     s.target_system, s.target_technology, s.target_environment, \
-     l.log_attrs['status'] AS status, \
-     l.log_attrs['deviations'] AS deviations, \
-     l.log_attrs['duration_ms'] AS duration_ms";
+/// The columns of one run over [`EXPERIMENT_FROM`].
+fn experiment_cols() -> String {
+    format!(
+        "s.experiment_id AS id, s.experiment_name AS name, \
+         s.ts_ns AS started_ns, s.duration_ns, s.trace_id, \
+         s.target_system, s.target_technology, s.target_environment, \
+         {} AS status, \
+         l.log_attrs['deviations'] AS deviations, \
+         l.log_attrs['duration_ms'] AS duration_ms, \
+         s.journal_only",
+        tumult_lake::run_outcome_sql("s", "l")
+    )
+}
 
 pub(crate) async fn experiments(
     State(state): State<ApiState>,
@@ -67,7 +77,7 @@ pub(crate) async fn experiments(
     };
     let mut wheres = vec!["s.span_name = 'resilience.experiment'".to_string()];
     // Per-user environment scoping (empty scopes = all environments).
-    if let Some(env) = env_scope_where("s.target_environment", &principal.env_scopes) {
+    if let Some(env) = scope::in_list("s.target_environment", &principal.env_scopes) {
         wheres.push(env);
     }
     if let Some(range) = &params.range {
@@ -77,23 +87,7 @@ pub(crate) async fn experiments(
         wheres.push(format!("s.ts_ns >= {} AND s.ts_ns < {}", cur.0, cur.1));
     }
     if let Some(outcome) = &params.outcome {
-        let lower = outcome.to_ascii_lowercase();
-        match lower.as_str() {
-            // tumult stores the status capitalised in log attributes.
-            "completed" | "deviated" | "failed" => {
-                let mut chars = lower.chars();
-                let cap = chars.next().map_or_else(String::new, |f| {
-                    f.to_uppercase().collect::<String>() + chars.as_str()
-                });
-                wheres.push(format!("l.log_attrs['status'] = {}", sql_string(&cap)));
-            }
-            "incomplete" => wheres.push("l.log_attrs['status'] IS NULL".into()),
-            other => {
-                return Err(bad(format!(
-                    "invalid outcome {other:?}; expected completed|deviated|failed|incomplete"
-                )))
-            }
-        }
+        wheres.push(run_outcome_where(outcome, "s", "l").map_err(bad)?);
     }
     if let Some(target) = &params.target {
         wheres.push(format!("s.target_system = {}", sql_string(target)));
@@ -138,11 +132,12 @@ pub(crate) async fn experiments(
     let include_spans = origin != Some("manual");
 
     let spans_sql = format!(
-        "SELECT {EXPERIMENT_COLS}, \
+        "SELECT {}, \
          (SELECT string_agg(DISTINCT c.fault_type, ',') FROM spans c \
           WHERE c.trace_id = s.trace_id AND c.fault_type IS NOT NULL) AS faults, \
          'automated' AS origin, NULL AS review_status \
          {EXPERIMENT_FROM} WHERE {}",
+        experiment_cols(),
         wheres.join(" AND ")
     );
 
@@ -152,7 +147,7 @@ pub(crate) async fn experiments(
         // The manual branch mirrors the span columns; range/target/q filters
         // map onto the manual columns.
         let mut mwheres = vec!["1=1".to_string()];
-        if let Some(env) = env_scope_where("m.target_environment", &principal.env_scopes) {
+        if let Some(env) = scope::in_list("m.target_environment", &principal.env_scopes) {
             mwheres.push(env);
         }
         if let Some(range) = &params.range {
@@ -182,7 +177,8 @@ pub(crate) async fn experiments(
              CAST(m.duration_s * 1000000000 AS BIGINT) AS duration_ns, \
              NULL AS trace_id, m.target_system, NULL AS target_technology, \
              m.target_environment, m.outcome_status AS status, \
-             NULL AS deviations, NULL AS duration_ms, NULL AS faults, \
+             NULL AS deviations, NULL AS duration_ms, false AS journal_only, \
+             NULL AS faults, \
              'manual' AS origin, m.status AS review_status \
              FROM manual_experiments m WHERE {}",
             mwheres.join(" AND ")
@@ -234,12 +230,12 @@ pub(crate) async fn experiment_windows(
             .into());
     }
     // The rollup view has no environment column; scope binds through the
-    // root span's `target_environment` by experiment_id.
-    let env = env_scope_where("se.target_environment", &principal.env_scopes).map_or_else(
+    // `target_environment` of the run's root by experiment_id.
+    let env = scope::in_list("se.target_environment", &principal.env_scopes).map_or_else(
         String::new,
         |env| {
             format!(
-                " AND EXISTS (SELECT 1 FROM spans se \
+                " AND EXISTS (SELECT 1 FROM run_roots se \
                  WHERE se.experiment_id = experiment_runs.experiment_id AND {env})"
             )
         },
@@ -258,6 +254,42 @@ pub(crate) async fn experiment_windows(
     Ok(Json(json!({"count": rows.len(), "runs": rows})))
 }
 
+/// How long after the end of a run a metric point of it may be stamped:
+/// one export interval of the metrics reader.
+const METRIC_EXPORT_GRACE_NS: i64 = 60_000_000_000;
+
+/// The metric points that carry the name of the run `info` and are of its
+/// time. Every run of an experiment has the same name, so the time is
+/// what tells the points of one run from those of the next.
+fn metric_points(reader: &Reader, info: &Value) -> Result<Vec<Value>, String> {
+    let name = info.get("name").and_then(Value::as_str);
+    let started_ns = info.get("started_ns").and_then(Value::as_i64);
+    let (Some(name), Some(started_ns)) = (name, started_ns) else {
+        return Ok(Vec::new());
+    };
+    let duration_ns = info.get("duration_ns").and_then(Value::as_i64);
+    let last_ns = started_ns
+        .saturating_add(duration_ns.unwrap_or(0))
+        .saturating_add(METRIC_EXPORT_GRACE_NS);
+    reader
+        .query_json_rows_bound(
+            "SELECT 'sum' AS kind, ts_ns, metric_name, value, outcome_status, plugin_name \
+             FROM metric_sums \
+             WHERE experiment_name = $1 AND ts_ns BETWEEN $2 AND $3 \
+             UNION ALL \
+             SELECT 'gauge', ts_ns, metric_name, value, outcome_status, plugin_name \
+             FROM metric_gauges \
+             WHERE experiment_name = $1 AND ts_ns BETWEEN $2 AND $3 \
+             ORDER BY 2 LIMIT 1000",
+            &[
+                SqlParam::Text(name.to_string()),
+                SqlParam::Int(started_ns),
+                SqlParam::Int(last_ns),
+            ],
+        )
+        .map_err(|e| e.to_string())
+}
+
 pub(crate) async fn experiment_detail(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
@@ -273,14 +305,15 @@ pub(crate) async fn experiment_detail(
     }
     // Environments outside the principal's scopes look exactly like a
     // missing experiment (404 — no existence leak across scopes).
-    let env_where = env_scope_where("s.target_environment", &principal.env_scopes)
+    let env_where = scope::in_list("s.target_environment", &principal.env_scopes)
         .map_or(String::new(), |e| format!(" AND {e}"));
     let body = with_reader(&state.db_path, move |reader| {
         let id_sql = sql_string(&id);
         let info = reader
             .query_json_rows(&format!(
-                "SELECT {EXPERIMENT_COLS} {EXPERIMENT_FROM} \
-                 WHERE s.span_name = 'resilience.experiment' AND s.experiment_id = {id_sql}{env_where}"
+                "SELECT {} {EXPERIMENT_FROM} \
+                 WHERE s.experiment_id = {id_sql}{env_where}",
+                experiment_cols()
             ))
             .map_err(|e| e.to_string())?;
         let Some(info) = info.into_iter().next() else {
@@ -319,28 +352,15 @@ pub(crate) async fn experiment_detail(
             ))
             .map_err(|e| e.to_string())?;
 
-        let metrics = match info.get("name").and_then(Value::as_str) {
-            Some(name) => {
-                let name = sql_string(name);
-                reader
-                    .query_json_rows(&format!(
-                        "SELECT 'sum' AS kind, ts_ns, metric_name, value, outcome_status, plugin_name \
-                         FROM metric_sums WHERE experiment_name = {name} \
-                         UNION ALL \
-                         SELECT 'gauge', ts_ns, metric_name, value, outcome_status, plugin_name \
-                         FROM metric_gauges WHERE experiment_name = {name} \
-                         ORDER BY 2 LIMIT 1000"
-                    ))
-                    .map_err(|e| e.to_string())?
-            }
-            None => Vec::new(),
-        };
+        let metrics = metric_points(reader, &info)?;
+        let evidence = super::evidence::of_run(reader, &id)?;
 
         Ok(Some(json!({
             "experiment": info,
             "spans": spans,
             "logs": logs,
             "metrics": metrics,
+            "evidence": evidence,
         })))
     })
     .await?;
@@ -363,18 +383,13 @@ pub(crate) async fn dimensions(
 ) -> Result<Json<Value>, ApiError> {
     let scopes = principal.env_scopes.clone();
     let body = with_reader(&state.db_path, move |reader| {
-        // targets/experiments bind the root span's own environment column;
-        // outcomes (logs) and faults (child spans) reach it by correlation.
-        let and_root = and_pred(env_scope_where("target_environment", &scopes));
-        let and_trace = and_pred(env_trace_exists("spans", &scopes));
-        let and_logs = and_pred(
-            env_scope_where("se.target_environment", &scopes).map(|env| {
-                format!(
-                    "EXISTS (SELECT 1 FROM spans se \
-                 WHERE se.experiment_id = logs.log_attrs['experiment_id'] AND {env})"
-                )
-            }),
-        );
+        // outcomes/targets/experiments bind the environment column of the
+        // row itself; faults (child spans) reach it by correlation. A run
+        // that sent no trace names its target only on its run root.
+        let and_root = scope::and(scope::in_list("target_environment", &scopes));
+        let and_run = scope::and(scope::in_list("s.target_environment", &scopes));
+        let and_trace = scope::and(env_trace_exists("spans", &scopes));
+        let status = tumult_lake::run_outcome_sql("s", "l");
         let distinct = |sql: &str| -> Result<Vec<Value>, String> {
             let rows = reader.query_json_rows(sql).map_err(|e| e.to_string())?;
             Ok(rows
@@ -384,19 +399,21 @@ pub(crate) async fn dimensions(
         };
         Ok(json!({
             "outcomes": distinct(&format!(
-                "SELECT DISTINCT log_attrs['status'] AS v FROM logs \
-                 WHERE body = 'experiment.completed' AND log_attrs['status'] IS NOT NULL{and_logs} \
+                "SELECT DISTINCT {status} AS v {EXPERIMENT_FROM} \
+                 WHERE {status} IS NOT NULL{and_run} \
                  ORDER BY 1"))?,
             "targets": distinct(&format!(
-                "SELECT DISTINCT target_system AS v FROM spans \
+                "SELECT DISTINCT target_system AS v FROM ( \
+                 SELECT target_system, target_environment FROM spans \
+                 UNION ALL \
+                 SELECT target_system, target_environment FROM run_roots WHERE journal_only) \
                  WHERE target_system IS NOT NULL{and_root} ORDER BY 1"))?,
             "faults": distinct(&format!(
                 "SELECT DISTINCT fault_type AS v FROM spans \
                  WHERE fault_type IS NOT NULL{and_trace} ORDER BY 1"))?,
             "experiments": distinct(&format!(
-                "SELECT DISTINCT experiment_name AS v FROM spans \
-                 WHERE span_name = 'resilience.experiment' \
-                   AND experiment_name IS NOT NULL{and_root} ORDER BY 1"))?,
+                "SELECT DISTINCT experiment_name AS v FROM run_roots \
+                 WHERE experiment_name IS NOT NULL{and_root} ORDER BY 1"))?,
         }))
     })
     .await?;

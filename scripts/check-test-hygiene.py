@@ -20,8 +20,9 @@ This is a text scan, not a parser. Its limits:
     assertion on literals alone, such as `assert!(true)` or `assert_eq!(1, 1)`,
     and does not count `debug_assert!`.
   - A call to `assert_*(..)` counts only when a function of that name is
-    defined in the same top-level directory and itself asserts. Functions are
-    matched by name alone, so two helpers with one name are not told apart.
+    defined in the same top-level directory, or in `tumult-test-utils`, and
+    itself asserts. Functions are matched by name alone, so two helpers with
+    one name are not told apart.
   - Assertions hidden in a helper that is not named `assert_*` are not seen.
   - Test code is a `#[test]`-like function, a `#[cfg(test)] mod` block, a file
     under a `tests` directory or a file named `tests.rs`. Other files pulled
@@ -47,6 +48,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 ALLOWLIST = Path(__file__).with_name("test-hygiene-allow.txt")
 SKIP_DIRS = {".git", ".claude", "target", "node_modules", "dist", ".quality-venv"}
+# The crate of test helpers that every other crate may use.
+SHARED_TEST_CRATE = "tumult-test-utils"
 JS_SUFFIXES = {".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx"}
 RULES = {
     "no-assert",
@@ -293,11 +296,13 @@ def _asserts(fn: _Fn, helpers: frozenset[str] | set[str]) -> bool:
     return any(call.group(1) in helpers for call in HELPER_CALL.finditer(fn.body))
 
 
-def _asserting_helpers(texts: list[str]) -> frozenset[str]:
+def _asserting_helpers(
+    texts: list[str], shared: frozenset[str] = frozenset()
+) -> frozenset[str]:
     candidates = [
         fn for text in texts for fn in _functions(text) if fn.name.startswith("assert_")
     ]
-    helpers: set[str] = set()
+    helpers: set[str] = set(shared)
     grew = True
     while grew:
         grew = False
@@ -780,8 +785,11 @@ def scan(root: Path) -> list[tuple[str, str, int, str]]:
             rust.setdefault(crate, []).append((rel.as_posix(), src, strip_rust(src)))
         else:
             add(rel.as_posix(), check_js(src) if is_js else check_python(src))
+    shared = _asserting_helpers(
+        [text for _rel, _src, text in rust.get(SHARED_TEST_CRATE, [])]
+    )
     for files in rust.values():
-        helpers = _asserting_helpers([text for _rel, _src, text in files])
+        helpers = _asserting_helpers([text for _rel, _src, text in files], shared)
         for rel, src, text in files:
             add(rel, _check_rust(src, text, rel, helpers))
     return sorted(offences, key=lambda offence: (offence[0].split("::")[0], offence[2]))

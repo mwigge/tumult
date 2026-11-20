@@ -247,3 +247,84 @@ async fn timeout_includes_descendant_pipe_drain_async() {
 fn timeout_includes_descendant_pipe_drain_plain_thread() {
     assert_descendant_pipe_timeout();
 }
+
+// ── A stop from outside ──────────────────────────────────────
+
+/// A token that fires after `delay`.
+fn stop_after(delay: std::time::Duration) -> tokio_util::sync::CancellationToken {
+    let token = tokio_util::sync::CancellationToken::new();
+    let trigger = token.clone();
+    std::thread::spawn(move || {
+        // sleep: the stop comes while the step runs, not before it.
+        std::thread::sleep(delay);
+        trigger.cancel();
+    });
+    token
+}
+
+fn assert_a_stop_ends_the_process() {
+    let stop = stop_after(std::time::Duration::from_millis(200));
+    let started = std::time::Instant::now();
+
+    let outcome = ProviderExecutor::new().execute_until(&sh("sleep 30", Some(60.0)), &stop);
+
+    assert!(!outcome.success);
+    assert_eq!(
+        outcome.error.as_deref(),
+        Some("process \x27sh\x27 stopped before it finished")
+    );
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(10),
+        "the stop waited for the process: {:?}",
+        started.elapsed()
+    );
+}
+
+#[test]
+fn a_stop_ends_the_process_on_a_plain_thread() {
+    assert_a_stop_ends_the_process();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_stop_ends_the_process_inside_a_runtime() {
+    assert_a_stop_ends_the_process();
+}
+
+#[test]
+fn a_stopped_process_takes_its_children_with_it() {
+    // The step starts a child that would leave a marker after the stop.
+    let dir = tempfile::TempDir::new().unwrap();
+    let marker = dir.path().join("child-survived");
+    let command = format!("( sleep 0.6; touch \"{}\" ) & sleep 30", marker.display());
+    let stop = stop_after(std::time::Duration::from_millis(200));
+
+    let outcome = ProviderExecutor::new().execute_until(&sh(&command, None), &stop);
+
+    assert!(!outcome.success);
+    // sleep: there is no event for a file that must stay absent; wait past
+    // the time the child would have written it.
+    std::thread::sleep(std::time::Duration::from_millis(1000));
+    assert!(!marker.exists(), "a child of the step outlived the stop");
+}
+
+#[test]
+fn a_process_that_ends_before_the_stop_keeps_its_outcome() {
+    let stop = tokio_util::sync::CancellationToken::new();
+
+    let outcome = ProviderExecutor::new().execute_until(&sh("echo done", Some(10.0)), &stop);
+
+    assert!(outcome.success, "{:?}", outcome.error);
+    assert_eq!(outcome.output.as_deref(), Some("done"));
+}
+
+#[test]
+fn a_timeout_that_comes_before_the_stop_is_still_a_timeout() {
+    let stop = tokio_util::sync::CancellationToken::new();
+
+    let outcome = ProviderExecutor::new().execute_until(&sh("sleep 30", Some(0.2)), &stop);
+
+    assert_eq!(
+        outcome.error.as_deref(),
+        Some("process \x27sh\x27 timed out")
+    );
+}

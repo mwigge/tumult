@@ -141,14 +141,13 @@ steady_state_hypothesis:
     - name: app-responds
       activity_type: probe
       provider:
-        type: http
-        method: GET
-        url: http://localhost:8080/health
+        type: process
+        path: curl
+        arguments[6]: "-s", "-o", "/dev/null", "-w", "%{http_code}", "http://localhost:8080/health"
         timeout_s: 3.0
       tolerance:
         type: exact
         value: 200
-
     - name: cache-available
       activity_type: probe
       provider:
@@ -158,8 +157,6 @@ steady_state_hypothesis:
         type: regex
         pattern: "PONG"
 ```
-
-*(Update 2026-07: the experimental `http` provider was removed in favor of script/native plugins; use `type: process` or a plugin action.)*
 
 If **any** probe fails its tolerance, the hypothesis is not met. Failing the hypothesis before the method causes the experiment to abort. Failing it after the method marks the experiment as `deviated`.
 
@@ -184,27 +181,25 @@ method[3]:
       path: plugins/tumult-db-redis/actions/flush-all.sh
       env:
         TUMULT_REDIS_HOST: ${config.redis_host}
-    pause_after_s: 2.0      # wait 2 seconds after flushing
-
+    pause_after_s: 2.0
   - name: measure-cache-miss-rate
     activity_type: probe
     provider:
       type: process
       path: plugins/tumult-db-redis/probes/redis-info.sh
     background: false
-
   - name: send-load-spike
     activity_type: action
     provider:
-      type: http
-      method: POST
-      url: http://localhost:8080/simulate-load
-      body: '{"requests": 500}'
+      type: process
+      path: curl
+      arguments[6]: "-s", "-X", "POST", "-d", "requests=500", "http://localhost:8080/simulate-load"
       timeout_s: 10.0
-    background: true        # run concurrently with next step
+    background: true
 ```
 
-*(Update 2026-07: the experimental `http` provider was removed in favor of script/native plugins; use `type: process` or a plugin action.)*
+`pause_after_s: 2.0` waits two seconds after the flush. `background: true`
+runs the step next to the one after it.
 
 **Activity fields:**
 
@@ -286,9 +281,8 @@ compiled plugin as typed values):
       command: stress-ng --cpu 4 --timeout 60s
 ```
 
-(A schema-level `ExecutionTarget` type — `local`, `ssh`, `container`,
-`kube_exec` — exists in `tumult-core` but is not wired to activities; an
-`execution_target:` key on an activity is ignored.)
+(An `execution_target:` key on an activity is not part of the format.
+Since 3.0.2 it is an error, not a key that is dropped.)
 
 ### Rollbacks
 
@@ -301,7 +295,7 @@ rollbacks[1]:
     provider:
       type: process
       path: /usr/local/bin/redis-cli
-      arguments[2]: "SET", "cache:warm-marker", "1"
+      arguments[3]: "SET", "cache:warm-marker", "1"
       env:
         REDIS_HOST: ${config.redis_host}
     background: false

@@ -31,4 +31,4 @@ libc = { workspace = true }
 
 [dev-dependencies]
 opentelemetry_sdk = { workspace = true, features = ["testing"] }
-tumult-test-utils = { path = "../tumult-test-utils" }
+tumult-test-utils = { path = "../tumult-test-utils", features = ["otel"] }

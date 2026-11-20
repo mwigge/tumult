@@ -273,3 +273,38 @@ fn regulatory_preserved_in_journal() {
 
     assert!(journal.regulatory.is_some());
 }
+
+#[test]
+fn a_journal_says_when_the_run_ended_and_how_long_it_took() {
+    /// An action that takes 30 ms.
+    struct SlowAction;
+    impl ActivityExecutor for SlowAction {
+        fn execute(&self, _activity: &Activity) -> ActivityOutcome {
+            // sleep: how long the action takes is the input
+            std::thread::sleep(std::time::Duration::from_millis(30));
+            ActivityOutcome {
+                success: true,
+                output: None,
+                error: None,
+                duration_ms: 30,
+            }
+        }
+    }
+    let executor: Arc<dyn ActivityExecutor> = Arc::new(SlowAction);
+
+    let journal = run_experiment(
+        &minimal_experiment(),
+        &executor,
+        &Arc::new(ControlRegistry::new()),
+        &default_config(),
+    )
+    .unwrap();
+
+    assert!(journal.duration_ms >= 30, "{}", journal.duration_ms);
+    assert!(
+        journal.ended_at_ns - journal.started_at_ns >= 30_000_000,
+        "{} to {}",
+        journal.started_at_ns,
+        journal.ended_at_ns
+    );
+}

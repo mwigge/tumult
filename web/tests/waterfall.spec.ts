@@ -57,6 +57,7 @@ const detail = {
         status: 'completed',
         deviations: '0',
         duration_ms: '3004',
+        journal_only: false,
         faults: null,
         origin: 'automated',
         review_status: null,

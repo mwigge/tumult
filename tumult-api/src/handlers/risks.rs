@@ -21,9 +21,10 @@ use axum::http::StatusCode;
 use axum::{Extension, Json};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use tumult_compliance::dora::HouseParams;
 use tumult_compliance::scoring::{ExperimentScore, RunState};
 use tumult_core::types::discipline;
-use tumult_lake::Reader;
+use tumult_lake::{scope, Reader};
 use tumult_risk::{
     Definition, Dependency, ExperimentLatest, Inputs, KindEvidence, Report, Suppression,
     TargetEvidence, Verdict,
@@ -31,7 +32,7 @@ use tumult_risk::{
 
 use crate::auth::Principal;
 use crate::error::{bad_request, forbidden, not_found, unavailable, ApiError};
-use crate::sql_util::{and_pred, env_trace_exists, internal, now_ns, sql_string, with_reader};
+use crate::sql_util::{env_trace_exists, internal, now_ns, sql_string, with_reader};
 use crate::ApiState;
 
 const DAY_NS: i64 = 86_400 * 1_000_000_000;
@@ -75,17 +76,6 @@ fn in_list(ids: &[String]) -> String {
         .join(", ")
 }
 
-/// Discipline of a manual exercise type: failover and drill evidence is
-/// disaster recovery, which is part of robustness; everything unnamed
-/// counts as chaos.
-fn manual_kind(exercise_type: &str) -> &'static str {
-    match exercise_type.to_ascii_lowercase().as_str() {
-        "failover" | "drill" | "dr" | "soak" | "robustness" => "robustness",
-        "load" | "performance" => "performance",
-        _ => "chaos",
-    }
-}
-
 /// Discipline of an automated run from its stored kind: chaos when the
 /// run recorded none.
 fn run_kind(test_kind: Option<String>) -> String {
@@ -93,16 +83,19 @@ fn run_kind(test_kind: Option<String>) -> String {
 }
 
 struct KindRow {
-    kind: String,
+    /// `None` for a manual record the house does not count as a test.
+    kind: Option<String>,
     rto_target_s: Option<f64>,
     rto_measured_s: Option<f64>,
 }
 
 /// `experiment_id` → discipline and recovery targets, from the journal's
-/// `experiments` rows (automated runs) and `manual_experiments` (manual).
+/// `experiments` rows (automated runs) and `manual_experiments` (manual,
+/// by the house parameters, as the DORA score reads them).
 fn kinds_by_evidence(
     reader: &Reader,
     experiments: &[ExperimentScore],
+    params: &HouseParams,
 ) -> Result<BTreeMap<String, KindRow>, String> {
     let mut out = BTreeMap::new();
     let automated: Vec<String> = experiments
@@ -123,7 +116,7 @@ fn kinds_by_evidence(
             out.insert(
                 id,
                 KindRow {
-                    kind: run_kind(str_of(&row, "test_kind")),
+                    kind: Some(run_kind(str_of(&row, "test_kind"))),
                     rto_target_s: row.get("rto_target_s").and_then(Value::as_f64),
                     rto_measured_s: row.get("rto_measured_s").and_then(Value::as_f64),
                 },
@@ -144,11 +137,12 @@ fn kinds_by_evidence(
             let Some(id) = str_of(&row, "id") else {
                 continue;
             };
-            let kind = str_of(&row, "exercise_type").map_or("chaos", |t| manual_kind(&t));
+            let kind = str_of(&row, "exercise_type")
+                .and_then(|t| params.manual_discipline(&t).map(str::to_owned));
             out.insert(
                 id,
                 KindRow {
-                    kind: kind.into(),
+                    kind,
                     rto_target_s: None,
                     rto_measured_s: None,
                 },
@@ -196,7 +190,8 @@ fn verdicts_by_evidence(
 /// Fold the latest experiment evidence into one [`TargetEvidence`] per
 /// target and environment: the experiments themselves plus a
 /// per-discipline rollup. A name tested in two environments is two
-/// targets; evidence from one never covers the other.
+/// targets; evidence from one never covers the other. An experiment with
+/// no discipline stays in the list and adds to no discipline.
 fn targets_from(
     experiments: &[ExperimentScore],
     kinds: &BTreeMap<String, KindRow>,
@@ -211,7 +206,8 @@ fn targets_from(
             continue;
         };
         let row = e.evidence_id.as_ref().and_then(|id| kinds.get(id));
-        let kind = row.map_or("chaos", |r| r.kind.as_str()).to_string();
+        // No stored row: an automated run that recorded no kind.
+        let kind = row.map_or_else(|| Some(run_kind(None)), |r| r.kind.clone());
         let entry = by_target
             .entry((target.clone(), e.environment.clone()))
             .or_insert_with(|| TargetEvidence {
@@ -235,6 +231,9 @@ fn targets_from(
             rto_target_s: row.and_then(|r| r.rto_target_s),
             rto_measured_s: row.and_then(|r| r.rto_measured_s),
         });
+        let Some(kind) = kind else {
+            continue;
+        };
         match entry.kinds.iter_mut().find(|k| k.kind == kind) {
             Some(k) => {
                 k.runs += e.runs;
@@ -257,7 +256,7 @@ fn targets_from(
 /// Callee services in the span call graph with how many distinct services
 /// call them and how often: the "untested dependency" rule's input.
 fn dependencies(reader: &Reader, envs: &[String]) -> Result<Vec<Dependency>, String> {
-    let scope = and_pred(env_trace_exists("c", envs));
+    let scope = scope::and(env_trace_exists("c", envs));
     let sql = format!(
         "SELECT c.service_name AS service, COUNT(DISTINCT p.service_name) AS callers, \
          COUNT(*) AS calls \
@@ -312,14 +311,17 @@ fn suppressions(reader: &Reader) -> Result<Vec<Suppression>, String> {
 }
 
 /// Assemble the scanner inputs from the lake and the manifests directory.
+/// `params` are the house parameters in force: they give the discipline
+/// of a manual record.
 pub(crate) fn gather(
     reader: &Reader,
     as_of_ns: i64,
     envs: &[String],
     manifests_dir: Option<&FsPath>,
+    params: &HouseParams,
 ) -> Result<Inputs, String> {
     let card = tumult_compliance::scoring::compute_scoped(reader, as_of_ns, None, envs)?;
-    let kinds = kinds_by_evidence(reader, &card.experiments)?;
+    let kinds = kinds_by_evidence(reader, &card.experiments, params)?;
     let verdicts = verdicts_by_evidence(reader, &card.experiments)?;
     let (workloads, budgets) = match manifests_dir {
         Some(dir) => {
@@ -392,8 +394,9 @@ pub(crate) async fn scan_for(
     let envs = envs_for(principal, env)?;
     let as_of_ns = now_ns();
     let manifests_dir: Option<PathBuf> = state.manifests_dir().cloned();
+    let params = state.score_runtime().params();
     with_reader(&state.db_path, move |reader| {
-        let inputs = gather(reader, as_of_ns, &envs, manifests_dir.as_deref())?;
+        let inputs = gather(reader, as_of_ns, &envs, manifests_dir.as_deref(), &params)?;
         let report = tumult_risk::scan(&inputs);
         Ok((inputs, report))
     })
@@ -543,6 +546,7 @@ mod tests {
             severity: None,
             runs,
             origin: "automated".into(),
+            journal_only: false,
         }
     }
 
@@ -557,7 +561,7 @@ mod tests {
         kinds.insert(
             "e2".to_string(),
             KindRow {
-                kind: "robustness".into(),
+                kind: Some("robustness".into()),
                 rto_target_s: Some(60.0),
                 rto_measured_s: Some(90.0),
             },
@@ -586,7 +590,7 @@ mod tests {
         kinds.insert(
             "e2".to_string(),
             KindRow {
-                kind: "robustness".into(),
+                kind: Some("robustness".into()),
                 rto_target_s: None,
                 rto_measured_s: None,
             },
@@ -638,7 +642,7 @@ mod tests {
                 environment: Some("demo".into()),
                 experiments: vec![ExperimentLatest {
                     name: "pg".into(),
-                    kind: "robustness".into(),
+                    kind: Some("robustness".into()),
                     last_run_ns: 1,
                     passed: true,
                     outcome: None,
@@ -661,15 +665,117 @@ mod tests {
         assert_eq!(cells[1].margin, Some(10.0));
     }
 
+    /// A register whose one function owns every `svc-` service.
+    const REGISTER: &str = "
+nodes:
+  - {name: platform, kind: domain}
+legal_entities:
+  - lei: 529900T8BM49AURSDO55
+    name: Demo Firm
+    profile: full
+functions:
+  - id: cif-0001
+    name: Payments
+    tier: critical
+    org_unit: platform
+    services: [\"svc-*\"]
+";
+
+    /// A lake with the register above and, for each exercise type, one
+    /// verified record against the service `svc-<type>`.
+    fn lake_with_one_record_of_each(
+        types: &[tumult_lake::ExerciseType],
+    ) -> (tempfile::TempDir, tumult_lake::Store) {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let store = tumult_lake::Store::open(&dir.path().join("k.duckdb")).expect("store");
+        let writer = store.writer().expect("writer");
+        let declared = tumult_compliance::dora::register::parse(REGISTER).expect("register");
+        writer
+            .sync_ict_register(&declared.ict, 1)
+            .expect("sync register");
+        for exercise in types {
+            let name = exercise.as_str();
+            let record = tumult_lake::NewManualExperiment {
+                experiment_name: format!("exercise-{name}"),
+                exercise_type: *exercise,
+                executed_at_ns: now_ns() - DAY_NS,
+                hypothesis: "the service holds".into(),
+                method: "by hand".into(),
+                outcome: tumult_lake::ManualOutcome::Passed,
+                hypothesis_met: Some(true),
+                findings: None,
+                action_items: vec![],
+                target_system: Some(format!("svc-{name}")),
+                target_environment: Some("prod".into()),
+                blast_radius: None,
+                recovery_time_s: None,
+                duration_s: None,
+                entered_by: "alice".into(),
+                attestation: "attested".into(),
+                renewal_due_ns: None,
+                framework_refs: vec![],
+            };
+            let id = writer.create_manual_draft(&record).expect("draft");
+            writer.submit_manual(&id, None, "alice").expect("submit");
+            writer.verify_manual(&id, "bob", None).expect("verify");
+        }
+        drop(writer);
+        (dir, store)
+    }
+
+    /// With the default house parameters, every exercise type counts
+    /// towards the discipline `HouseParams::manual_discipline` gives it
+    /// in the risk view and in the DORA score, or towards none in both.
     #[test]
-    fn manual_exercise_types_map_to_disciplines() {
-        assert_eq!(manual_kind("Failover"), "robustness");
-        assert_eq!(manual_kind("drill"), "robustness");
-        assert_eq!(manual_kind("tabletop"), "chaos");
-        assert_eq!(manual_kind("load"), "performance");
-        assert_eq!(manual_kind("dr"), "robustness");
-        assert_eq!(manual_kind("soak"), "robustness");
-        assert_eq!(manual_kind("Performance"), "performance");
+    fn every_exercise_type_counts_towards_one_discipline_in_the_risk_view_and_in_dora() {
+        use tumult_lake::ExerciseType;
+        let table = [
+            (ExerciseType::GameDay, Some("chaos")),
+            (ExerciseType::Tabletop, None),
+            (ExerciseType::Failover, Some("robustness")),
+            (ExerciseType::Pentest, Some("security")),
+            (ExerciseType::Tlpt, Some("security")),
+            (ExerciseType::Drill, Some("robustness")),
+            (ExerciseType::Other, None),
+        ];
+        let types: Vec<ExerciseType> = table.iter().map(|(t, _)| *t).collect();
+        let (_dir, store) = lake_with_one_record_of_each(&types);
+        let reader = store.read_only().expect("reader");
+        let now = now_ns();
+
+        let params = HouseParams::default();
+        let inputs = gather(&reader, now, &[], None, &params).expect("risk inputs");
+        let request = tumult_compliance::dora::loader::Request {
+            envs: &[],
+            lei: None,
+            profile: None,
+            as_of_ns: now,
+            workloads: &[],
+            proof_days: false,
+        };
+        let loaded =
+            tumult_compliance::dora::loader::load(&reader, request, &params).expect("dora");
+
+        for (exercise, want) in table {
+            let name = exercise.as_str();
+            assert_eq!(params.manual_discipline(name), want, "{name}");
+            let target = inputs
+                .targets
+                .iter()
+                .find(|t| t.target == format!("svc-{name}"))
+                .unwrap_or_else(|| panic!("no risk target for {name}"));
+            let listed: Vec<&str> = target.kinds.iter().map(|k| k.kind.as_str()).collect();
+            assert_eq!(listed, want.into_iter().collect::<Vec<_>>(), "{name}");
+            assert_eq!(target.experiments.len(), 1, "{name}");
+            assert_eq!(target.experiments[0].kind.as_deref(), want, "{name}");
+            let evidence = loaded
+                .inputs
+                .evidence
+                .iter()
+                .find(|e| e.experiment == format!("exercise-{name}"))
+                .unwrap_or_else(|| panic!("no DORA evidence for {name}"));
+            assert_eq!(evidence.kind.as_deref().map(discipline), want, "{name}");
+        }
     }
 
     #[test]

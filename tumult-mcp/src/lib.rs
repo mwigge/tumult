@@ -1,7 +1,8 @@
 //! Tumult MCP Server — Library crate for tool definitions and handlers.
 //!
-//! Exposes Tumult resilience testing and intelligence as MCP tools:
-//! - `tumult_run_experiment` — execute a chaos experiment
+//! Exposes Tumult resilience testing and intelligence as MCP tools, among
+//! them:
+//! - `tumult_run_experiment` — execute an experiment
 //! - `tumult_validate` — validate experiment syntax
 //! - `tumult_discover` — list plugins and capabilities
 //! - `tumult_analyze` — SQL query over journals (`DuckDB`)
@@ -13,8 +14,6 @@
 pub mod error;
 /// MCP handler: routes tool calls to their implementations.
 pub mod handler;
-/// Composition root registering the native plugins visible to `tumult_discover`.
-pub(crate) mod native;
 /// Programmatic entry point for running the MCP server over stdio or HTTP.
 pub mod server;
 /// `OTel` instrumentation for MCP tool dispatch.

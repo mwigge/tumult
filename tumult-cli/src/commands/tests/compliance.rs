@@ -1,6 +1,6 @@
 //! Tests for `tumult compliance`: directory scanning (including malformed
 //! journals), the missing-path and missing-journals errors, and the
-//! reduced-assurance verdict when journals carry no recovery signals.
+//! reduced-assurance verdict when no run watched for recovery.
 
 use super::super::*;
 use super::helpers::*;
@@ -56,13 +56,19 @@ fn compliance_without_journals_or_sources_errors() {
 }
 
 #[test]
-fn compliance_without_recovery_signals_falls_back_to_pass_rate_only() {
-    // No post_result and no analysis: recovery_compliance is None, so the
-    // verdict must be the reduced-assurance pass-rate-only path.
+fn a_run_that_only_completed_is_no_sign_of_recovery() {
+    // The run completed with a full score and never watched its target
+    // come back. That is its pass, counted once, in the pass rate.
     let dir = TempDir::new().unwrap();
     let mut journal = journal_with_failure();
     journal.status = ExperimentStatus::Completed;
-    assert!(journal.post_result.is_none() && journal.analysis.is_none());
+    journal.analysis = Some(tumult_core::types::AnalysisResult {
+        estimate_accuracy: None,
+        estimate_recovery_delta_s: None,
+        trend: None,
+        resilience_score: Some(1.0),
+    });
+    assert!(journal.post_result.is_none());
     let path = dir.path().join("plain.toon");
     tumult_core::journal::write_journal(&journal, &path).unwrap();
 
@@ -71,14 +77,13 @@ fn compliance_without_recovery_signals_falls_back_to_pass_rate_only() {
 
     result.unwrap();
     let out = printed.stdout;
-    assert!(out.contains("  Pass rate: 100.0%\n"), "{out}");
-    assert!(out.contains("  Recovery compliance: N/A"), "{out}");
     assert!(
-        out.contains("  verdict based on pass rate ONLY (reduced assurance).\n"),
-        "{out}"
-    );
-    assert!(
-        out.contains("  Evidence verdict: COMPLIANT (pass-rate only)\n"),
+        out.contains(
+            "  Pass rate: 100.0%\n  \
+             Recovery within 30s: not measured, no run watched for recovery. \
+             The verdict rests on the pass rate only (reduced assurance).\n  \
+             Evidence verdict: COMPLIANT (pass-rate only)\n"
+        ),
         "{out}"
     );
 }

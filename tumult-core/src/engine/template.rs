@@ -4,15 +4,25 @@ use std::collections::HashMap;
 
 use crate::types::Experiment;
 
+use super::duplicate_keys::first_duplicate;
 use super::EngineError;
 
 /// Parse an experiment from a TOON string.
 ///
 /// # Errors
 ///
-/// Returns [`EngineError::ParseError`] if the TOON string is malformed or cannot be decoded.
+/// Returns [`EngineError::ParseError`] if the TOON string is malformed or cannot be decoded,
+/// or if one object holds a key twice: the decoder would keep the last one and drop the first.
 pub fn parse_experiment(toon: &str) -> Result<Experiment, EngineError> {
-    toon_format::decode_default(toon).map_err(|e| EngineError::ParseError(e.to_string()))
+    let experiment =
+        toon_format::decode_default(toon).map_err(|e| EngineError::ParseError(e.to_string()))?;
+    if let Some(twice) = first_duplicate(toon) {
+        return Err(EngineError::ParseError(format!(
+            "key '{}' is written twice in one object (lines {} and {}); only the last one would be used",
+            twice.key, twice.first_line, twice.line
+        )));
+    }
+    Ok(experiment)
 }
 
 /// Apply template variable substitution to an experiment.

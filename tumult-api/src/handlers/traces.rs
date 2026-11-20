@@ -7,10 +7,12 @@ use axum::response::IntoResponse;
 use axum::{Extension, Json};
 use serde::Deserialize;
 use serde_json::{json, Value};
+use tumult_lake::scope;
 
 use crate::auth::Principal;
 use crate::sql_util::{
-    and_pred, attr_kv, env_trace_exists, invalid_range, sql_string, w, windows, with_reader,
+    attr_kv, env_trace_exists, invalid_range, run_outcome_where, sql_string, w, windows,
+    with_reader,
 };
 use crate::ApiState;
 
@@ -27,30 +29,13 @@ pub(crate) struct TracesParams {
     attr_not: Option<String>,
 }
 
-/// Reusable outcome predicate on the joined `experiment.completed` status
-/// (`l` must be the logs alias of that join); `None` passes everything.
+/// The outcome predicate on a trace `t` and the completed log `l` of its
+/// run; `None` passes everything.
 fn outcome_where(outcome: Option<&str>) -> Result<Option<String>, String> {
-    let Some(outcome) = outcome.filter(|o| !o.is_empty()) else {
-        return Ok(None);
-    };
-    let lower = outcome.to_ascii_lowercase();
-    match lower.as_str() {
-        // tumult stores the status capitalised in log attributes.
-        "completed" | "deviated" | "failed" => {
-            let mut chars = lower.chars();
-            let cap = chars.next().map_or_else(String::new, |f| {
-                f.to_uppercase().collect::<String>() + chars.as_str()
-            });
-            Ok(Some(format!(
-                "l.log_attrs['status'] = {}",
-                sql_string(&cap)
-            )))
-        }
-        "incomplete" => Ok(Some("l.log_attrs['status'] IS NULL".into())),
-        other => Err(format!(
-            "invalid outcome {other:?}; expected completed|deviated|failed|incomplete"
-        )),
-    }
+    outcome
+        .filter(|o| !o.is_empty())
+        .map(|outcome| run_outcome_where(outcome, "t", "l"))
+        .transpose()
 }
 
 pub(crate) async fn traces(
@@ -127,13 +112,14 @@ pub(crate) async fn traces(
 
     // Group spans into traces. The display root is the (earliest) span with
     // no parent; traces without one fall back to the earliest span. Only
-    // experiment runs have an outcome, joined through the completed log.
+    // experiment runs have an outcome.
+    let status = tumult_lake::run_outcome_sql("t", "l");
     let sql = format!(
         "SELECT t.trace_id, t.started_ns, t.duration_ns, t.span_count, t.error_count, \
          COALESCE(r.span_name, t.first_span) AS root_name, \
          COALESCE(r.service_name, t.first_service) AS service_name, \
          t.experiment_id, t.experiment_name, \
-         l.log_attrs['status'] AS status \
+         {status} AS status \
          FROM ( \
            SELECT trace_id, MIN(ts_ns) AS started_ns, \
                   MAX(ts_ns + duration_ns) - MIN(ts_ns) AS duration_ns, \
@@ -141,6 +127,7 @@ pub(crate) async fn traces(
                   COUNT(*) FILTER (WHERE status_code = 'Error') AS error_count, \
                   MAX(experiment_id) AS experiment_id, \
                   MAX(experiment_name) AS experiment_name, \
+                  MAX(outcome_status) AS outcome_status, \
                   arg_min(span_name, ts_ns) AS first_span, \
                   arg_min(service_name, ts_ns) AS first_service \
            FROM spans WHERE {span_where} GROUP BY trace_id \
@@ -150,8 +137,7 @@ pub(crate) async fn traces(
                   ROW_NUMBER() OVER (PARTITION BY trace_id ORDER BY ts_ns) AS rn \
            FROM spans WHERE parent_span_id IS NULL \
          ) r ON r.trace_id = t.trace_id AND r.rn = 1 \
-         LEFT JOIN logs l ON l.log_attrs['experiment_id'] = t.experiment_id \
-            AND l.body = 'experiment.completed' \
+         LEFT JOIN run_completions l ON t.experiment_id = l.experiment_id \
          {trace_where} ORDER BY t.started_ns DESC LIMIT 200"
     );
     let rows = with_reader(&state.db_path, move |reader| {
@@ -228,7 +214,7 @@ pub(crate) async fn trace_detail(
     }
     // Traces outside the principal's scopes look exactly like a missing
     // trace (404 — no existence leak across scopes).
-    let env = and_pred(env_trace_exists("spans", &principal.env_scopes));
+    let env = scope::and(env_trace_exists("spans", &principal.env_scopes));
     let body = with_reader(&state.db_path, move |reader| {
         let id_sql = sql_string(&id);
         let spans = reader

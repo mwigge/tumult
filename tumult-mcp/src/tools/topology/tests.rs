@@ -60,6 +60,7 @@ fn seed_broken_store(dir: &std::path::Path) -> std::path::PathBuf {
     };
     let journal = Journal {
         target_version: None,
+        target: None,
         experiment_title: "DB failover drill".into(),
         experiment_id: "run-broken-1".into(),
         status: ExperimentStatus::Deviated,
@@ -234,6 +235,103 @@ fn recommend_returns_ranked_explained_recommendations() {
         assert!(!rec["reasons"].as_array().unwrap().is_empty());
     }
     assert!(report.text.contains("1. "), "{}", report.text);
+}
+
+/// A store with a broken run of a DORA-mapped drill on `svc:db` whose
+/// action `start-thing` calls `p::do_thing`, and the declared topology.
+fn seed_broken_thing_store(dir: &std::path::Path) -> String {
+    let db = dir.join("analytics.duckdb");
+    let store = tumult_lake::AnalyticsStore::open(&db).unwrap();
+    let mut action = crate::tools::test_support::script_action("start-thing", "p", "do_thing");
+    if let Provider::Script { arguments, .. } = &mut action.provider {
+        arguments.insert("upstream".into(), "db:5432".into());
+    }
+    let drill = Experiment {
+        title: "Thing drill".into(),
+        method: vec![action],
+        regulatory: Some(RegulatoryMapping {
+            frameworks: vec!["DORA".into()],
+            requirements: vec![RegulatoryRequirement {
+                id: "Art. 25".into(),
+                description: "Testing of ICT tools and systems".into(),
+                evidence: "scenario-based fault injection".into(),
+            }],
+        }),
+        ..Default::default()
+    };
+    let journal = crate::tools::test_support::journal_of(
+        "run-thing-1",
+        "Thing drill",
+        ExperimentStatus::Deviated,
+        &["start-thing"],
+        &[],
+    );
+    store
+        .ingest_journal_with_experiment(&journal, Some(&drill))
+        .unwrap();
+    drop(store);
+    let db = db.to_str().unwrap().to_string();
+    topology_import(&db, Some(TOPOLOGY_TOML), None).unwrap();
+    db
+}
+
+/// The `(plugin::action, reasons)` of each recommendation for DORA.
+fn recommended(db: &str) -> Vec<(String, Vec<String>)> {
+    let report = recommend_injection(db, Some("dora"), Some(3)).unwrap();
+    let recs = report.structured["recommendations"].as_array().unwrap();
+    recs.iter()
+        .map(|rec| {
+            let reasons = rec["reasons"].as_array().unwrap();
+            (
+                format!(
+                    "{}::{}",
+                    rec["plugin"].as_str().unwrap(),
+                    rec["action"].as_str().unwrap()
+                ),
+                reasons
+                    .iter()
+                    .map(|r| r.as_str().unwrap().to_string())
+                    .collect(),
+            )
+        })
+        .collect()
+}
+
+#[test]
+fn a_fault_a_stored_run_tested_earns_no_novelty_bonus() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let _env = crate::tools::test_support::catalog_guard(dir.path(), &[("p", &["do_thing"])]);
+    let db = seed_broken_thing_store(dir.path());
+
+    let recs = recommended(&db);
+    assert!(!recs.is_empty());
+    for (action, reasons) in &recs {
+        assert_eq!(action, "p::do_thing");
+        assert!(
+            !reasons.iter().any(|r| r.contains("never tested")),
+            "{reasons:?}"
+        );
+    }
+}
+
+#[test]
+fn the_pick_prefers_a_plugin_function_no_stored_run_tested() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let _env = crate::tools::test_support::catalog_guard(
+        dir.path(),
+        &[("p", &["do_thing", "other_thing"])],
+    );
+    let db = seed_broken_thing_store(dir.path());
+
+    let recs = recommended(&db);
+    assert!(!recs.is_empty());
+    for (action, reasons) in &recs {
+        assert_eq!(action, "p::other_thing");
+        assert!(
+            reasons.contains(&"action p::other_thing never tested".to_string()),
+            "{reasons:?}"
+        );
+    }
 }
 
 #[test]

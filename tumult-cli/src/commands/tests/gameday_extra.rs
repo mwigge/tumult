@@ -56,7 +56,7 @@ fn gameday_create_without_load_omits_load_block() {
 #[test]
 fn gameday_run_missing_file_errors() {
     let dir = TempDir::new().unwrap();
-    let err = cmd_gameday_run(&dir.path().join("missing.gameday.toon")).unwrap_err();
+    let err = cmd_gameday_run(&dir.path().join("missing.gameday.toon"), false).unwrap_err();
     assert!(err.to_string().contains("failed to read"), "{err}");
 }
 
@@ -66,7 +66,7 @@ fn gameday_run_malformed_file_errors() {
     let path = dir.path().join("broken.gameday.toon");
     std::fs::write(&path, "not a gameday {{{").unwrap();
 
-    let err = cmd_gameday_run(&path).unwrap_err();
+    let err = cmd_gameday_run(&path, false).unwrap_err();
     assert!(err.to_string().contains("failed to parse gameday"), "{err}");
 }
 
@@ -80,7 +80,7 @@ fn gameday_run_reports_experiment_read_failure() {
     )
     .unwrap();
 
-    let err = cmd_gameday_run(&path).unwrap_err();
+    let err = cmd_gameday_run(&path, false).unwrap_err();
     assert!(
         err.to_string().contains("failed to read experiment"),
         "{err}"

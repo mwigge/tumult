@@ -162,4 +162,16 @@ async fn create_in_a_staging_env_parks_for_approval() {
     let (status, body) = get(&srv.base, "/api/runs?state=pending_approval").await;
     assert_eq!(status, 200);
     assert_eq!(body["count"], json!(1));
+
+    // The filter leaves out a run in another state, and an empty one is no
+    // filter. The same holds next to a second filter of the list.
+    let of_definition = format!("/api/runs?registry_id={registry_id}");
+    for (state, count) in [("passed", 0), ("pending_approval", 1), ("", 1)] {
+        let (status, body) = get(&srv.base, &format!("/api/runs?state={state}")).await;
+        assert_eq!(status, 200, "{body}");
+        assert_eq!(body["count"], json!(count), "state {state:?}: {body}");
+        let (status, body) = get(&srv.base, &format!("{of_definition}&state={state}")).await;
+        assert_eq!(status, 200, "{body}");
+        assert_eq!(body["count"], json!(count), "state {state:?}: {body}");
+    }
 }

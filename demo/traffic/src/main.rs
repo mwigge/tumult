@@ -101,16 +101,15 @@ async fn checkout(
     known_ids: &Arc<Mutex<Vec<i64>>>,
 ) -> Result<(), reqwest::Error> {
     let id = pick_id(known_ids);
-    let resp = client
-        .get(format!("{target}/checkout/{id}"))
-        .send()
-        .await?;
+    let resp = client.get(format!("{target}/checkout/{id}")).send().await?;
     println!("GET /checkout/{id} -> {}", resp.status());
     Ok(())
 }
 
 fn remember_id(known_ids: &Arc<Mutex<Vec<i64>>>, id: i64) {
-    let mut ids = known_ids.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let mut ids = known_ids
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if !ids.contains(&id) {
         ids.push(id);
         if ids.len() > MAX_TRACKED_IDS {
@@ -122,7 +121,9 @@ fn remember_id(known_ids: &Arc<Mutex<Vec<i64>>>, id: i64) {
 /// Pick a checkout id: a known id if we have any, otherwise a small random id
 /// (the seed data uses ids 1..=20, so these usually hit real rows).
 fn pick_id(known_ids: &Arc<Mutex<Vec<i64>>>) -> i64 {
-    let ids = known_ids.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let ids = known_ids
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let mut rng = rand::rng();
     if ids.is_empty() || rng.random_bool(0.3) {
         rng.random_range(1..=20)

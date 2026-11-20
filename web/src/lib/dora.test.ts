@@ -1,7 +1,20 @@
 import { describe, expect, it } from 'vitest';
 
-import { historyStateText, proofDaysText, snapshotSkippedText } from './dora';
-import type { MaturityHistoryPoint } from './types';
+import {
+    componentsLegend,
+    componentsOption,
+    coverageHue,
+    heatmapLegend,
+    historyLegend,
+    historyOption,
+    historyStateText,
+    proofDaysText,
+    snapshotSkippedText,
+    statusHue,
+    STATUS_NAMES,
+} from './dora';
+import { chartTokens } from './echarts';
+import type { MaturityHistoryPoint, MaturityReport } from './types';
 
 const point = (over: Partial<MaturityHistoryPoint>): MaturityHistoryPoint => ({
     quarter: '2026-Q2',
@@ -65,5 +78,112 @@ describe('proofDaysText', () => {
             '1 day stored by the proof tool is not counted',
         );
         expect(proofDaysText({ enabled: false, counted: 0, ignored: 0, note: null })).toBe('');
+    });
+});
+
+/** The parts of a maturity report the component bars and the history read. */
+const report = (): MaturityReport =>
+    ({
+        history: [
+            point({ quarter: '2026-Q3' }),
+            point({ quarter: '2026-Q4', state: 'today', level: 3, index: 3.1 }),
+        ],
+        weights: { conformance: 0.2, coverage: 0.3, slo: 0.25, recovery: 0.15, loop: 0.1 },
+        components: { conformance: 81, coverage: 64.5, slo: null, recovery: 70, loop: 55 },
+        component_states: {},
+        cap: { rule: 'gate', level: 2, component: 'coverage', reason: 'coverage holds it' },
+    }) as unknown as MaturityReport;
+
+interface Line {
+    name: string;
+    lineStyle: { color: string; type?: string };
+}
+interface History {
+    yAxis: { name?: string; min: number; max: number };
+    series: Line[];
+}
+interface Bars {
+    xAxis: { name?: string; min: number; max: number };
+    series: { data: { component: string; itemStyle: { color: string } }[] }[];
+}
+
+describe('historyOption', () => {
+    it('names the axis of the level with its scale and each of the two lines', () => {
+        const option = historyOption(report(), 'tumult-dark') as unknown as History;
+        expect(option.yAxis).toMatchObject({ name: 'level (1 to 5)', min: 1, max: 5 });
+        expect(option.series.map((s) => s.name)).toEqual(['Level', 'Index']);
+    });
+});
+
+describe('historyLegend', () => {
+    it('shows each line in the colour and the stroke the chart draws it in', () => {
+        for (const theme of ['tumult-dark', 'tumult-light'] as const) {
+            const option = historyOption(report(), theme) as unknown as History;
+            expect(historyLegend(theme)).toEqual(
+                option.series.map((s) => ({
+                    label: s.name,
+                    color: s.lineStyle.color,
+                    mark: s.lineStyle.type === 'dashed' ? 'dashed' : 'line',
+                })),
+            );
+        }
+        expect(historyLegend('tumult-dark').map((item) => item.label)).toEqual(['Level', 'Index']);
+    });
+});
+
+describe('componentsOption', () => {
+    it('names the score axis with its scale', () => {
+        const option = componentsOption(report(), 'tumult-dark') as unknown as Bars;
+        expect(option.xAxis).toMatchObject({ name: 'score (0 to 100)', min: 0, max: 100 });
+    });
+});
+
+describe('componentsLegend', () => {
+    it('says that the warn colour is the component that caps the level', () => {
+        const t = chartTokens('tumult-dark');
+        expect(componentsLegend('tumult-dark')).toEqual([
+            { label: 'component score', color: t.accent },
+            { label: 'the component that caps the level', color: t.warn },
+        ]);
+    });
+
+    it('takes its colours from the bars', () => {
+        const option = componentsOption(report(), 'tumult-light') as unknown as Bars;
+        const [score, capped] = componentsLegend('tumult-light');
+        const color = (key: string) =>
+            option.series[0].data.find((d) => d.component === key)?.itemStyle.color;
+        expect(color('coverage')).toBe(capped.color);
+        expect(color('conformance')).toBe(score.color);
+    });
+});
+
+describe('heatmapLegend', () => {
+    const swatches = (mode: 'coverage' | 'status') =>
+        heatmapLegend(mode)
+            .filter((item) => item.color)
+            .map((item) => [item.label, item.color]);
+
+    it('names the coverage hues with the two stops', () => {
+        expect(swatches('coverage')).toEqual([
+            ['below 50 %', coverageHue(0.49)],
+            ['from 50 %', coverageHue(0.5)],
+            ['from 80 %', coverageHue(0.8)],
+        ]);
+    });
+
+    it('names the hue of each evidence status with its rank', () => {
+        expect(swatches('status')).toEqual(
+            STATUS_NAMES.map((name, rank) => [`${rank} ${name}`, statusHue(rank)]),
+        );
+    });
+
+    it('names the hatch and the two signs in both views', () => {
+        for (const mode of ['coverage', 'status'] as const) {
+            expect(heatmapLegend(mode).slice(-3)).toEqual([
+                { label: 'hatched = unknown share', mark: 'hatch' },
+                { label: 'no source connected', glyph: '?' },
+                { label: 'no events in window', glyph: '–' },
+            ]);
+        }
     });
 });

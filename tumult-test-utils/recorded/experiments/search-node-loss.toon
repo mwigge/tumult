@@ -1,0 +1,50 @@
+title: Search answers after the loss of a node
+description: One search node is lost. With a replica the search answers on; without one it stays down.
+
+tags[2]: node-loss, search
+target:
+  system: search
+  technology: opensearch
+  environment: staging
+  version: 1.12.0
+rto_target_s: 2.0
+blast_radius: one search node
+
+steady_state_hypothesis:
+  title: Search answers
+  probes[1]:
+    - name: search-answers
+      activity_type: probe
+      provider:
+        type: process
+        path: sh
+        arguments[2]: "-c", "cat state"
+        timeout_s: 5.0
+      tolerance:
+        type: regex
+        pattern: "^ok$"
+
+method[2]:
+  - name: lose-node
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "echo down > state; if [ -f replica ]; then echo ok > state; fi"
+      timeout_s: 5.0
+  - name: search-after-loss
+    activity_type: probe
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "cat state"
+      timeout_s: 5.0
+
+rollbacks[1]:
+  - name: start-node
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "echo ok > state"
+      timeout_s: 5.0

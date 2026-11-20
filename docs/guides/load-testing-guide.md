@@ -19,13 +19,13 @@ A system that handles faults at idle may fail under production traffic. Load tes
 
 | Tool | Best For | Metrics | Time series |
 |------|----------|---------|-------------|
-| **k6** | HTTP/gRPC APIs, scripted scenarios | req duration, error rate, throughput, VUs | end-of-run summary only |
+| **k6** | HTTP/gRPC APIs, scripted scenarios | iteration duration, error rate, throughput, VUs | end-of-run summary only |
 | **oha** | One HTTP endpoint, no script | req duration percentiles, error rate, throughput | one sample per window (soak: every `sample_interval_s`) |
 
 Both adapters implement the same `LoadExecutor` boundary and consume the same
 traffic plan, so a load profile (ramp, spike, soak) means the same thing on
-either tool. `load_executor_for(tool)` picks the adapter; JMeter is accepted
-by the format for older files but has no adapter and fails at start.
+either tool. `load_executor_for(tool)` picks the adapter; JMeter still
+parses for older files, but it has no adapter, so validation refuses it.
 
 ## Load Profiles
 
@@ -111,7 +111,7 @@ tumult run experiment-with-load.toon
 oha needs no script: `load.script` is the URL. The adapter runs
 `oha --no-tui --output-format json -c <vus> -z <window> -w -t <timeout> <url>`
 per window (oha 1.x; older releases that only know `-j` are not supported)
-and reads the JSON summary (`summary.requestsPerSec`,
+and reads the JSON summary (`summary.total`,
 `latencyPercentiles.p50/p95/p99`, `statusCodeDistribution`,
 `errorDistribution`).
 
@@ -149,7 +149,7 @@ plan its place: a ramp reaches its peak when the plan says so, and a
 **Planned against completed.** The load result carries an `execution`
 block in the journal: `planned_windows`, `completed_windows`,
 `unanswered_windows`, `lost_to_unanswered`, `aborted`, and `reasons`; the
-lake keeps them per run, with the time the load really sampled. A slot
+lake keeps all but `reasons` per run, with the time the load really sampled. A slot
 lost behind a window in which nothing answered is part of that blackout
 (`lost_to_unanswered`), not a truncation: it fails the run only through a
 declared threshold, like the unanswered window itself. A plan that fell
@@ -174,6 +174,7 @@ whole run are request-weighted means of the window percentiles, since oha
 does not expose raw latencies; the windows themselves are kept exactly.
 `thresholds` are checked by the adapter against the aggregate (see the
 experiment format), because oha has no threshold language of its own.
+Validation refuses a threshold name the adapter does not check.
 
 **How a load ends.**
 
@@ -194,15 +195,18 @@ that left none still marks its span with `resilience.load.error` and
 `resilience.load.aborted`;
 both an aborted and a truncated load are logged as warnings.
 Cancellation is checked between activities and during
-`pause_before_s` / `pause_after_s`; an activity's own process that is already
-running is not interrupted, so hold a long experiment open with a pause
-rather than a `sleep` command.
+`pause_before_s` / `pause_after_s`. A halt or an interrupt also ends a
+process or script step of the method that is still running. It kills the
+process group of the step, and the journal records a failed step whose
+error says "stopped before it finished". A native step runs to its end, and
+so do the rollbacks and the probes of the steady state.
 
 **What the load does to the run.** A declared load is evidence the run
 depends on:
 
 | The load … | Run status |
 |---|---|
+| did not start (its binary is missing, say) | `failed` before the method runs. The command ends with `load startup failed` and writes no journal |
 | could not be collected (the tool failed, no window completed) or sent no request at all | `failed` |
 | ran but missed a declared `thresholds` bound, or did not run its whole plan | `deviated` |
 | met its thresholds | unchanged |
@@ -210,15 +214,24 @@ depends on:
 `thresholds_met` is true only when at least one request was sent, the whole
 plan ran, and every declared bound holds. A window nobody answered (a
 blackout while the fault is injected) is recorded and is not a deviation by
-itself, with oha as with k6: declare `thresholds.error_rate` when it should
-be one. An interrupted k6 is killed at once and leaves a result marked
-aborted with no measurements.
+itself, with oha as with k6: declare `thresholds.error_rate` (oha) or a
+threshold in the k6 script when it should be one. An interrupted k6 is
+killed at once and leaves a result marked aborted with no measurements.
+
+**When the load ends.** A run does not wait for its load: when the method
+and the recovery check are done, k6 has 10 seconds to end by itself and oha
+is stopped after the window it is in. Give the load the length of the method.
+A GameDay shares one load between its experiments. When every experiment has
+run and the load has time left, the GameDay waits for the load to end, so
+its journal holds the whole load. A GameDay that is cancelled, or that an
+experiment error stops, does not wait: it aborts the load as in the table
+above, and the load result is marked `execution.aborted: true`.
 
 **Status precedence.** When several things went wrong, the first that
 applies names the run: `interrupted` (cancelled), `aborted` (the hypothesis
 did not hold before the method), `failed` (an action failed, or the load
-left no evidence), `deviated` (hypothesis after, a blocking objective, or
-the load's thresholds or plan), `completed`. The status never hides the
+left no evidence), `deviated` (hypothesis after, a probe of the method, a
+blocking objective, or the load's thresholds or plan), `completed`. The status never hides the
 cleanup a lower one calls for: rollbacks run whenever the facts amount to a
 deviation, whatever the status reads — a run that is `failed` because its
 load left no evidence still rolls back as a deviated run would, also when its

@@ -31,7 +31,7 @@ Desktop without host-level network capabilities.
 | `iptables-loss` | Drop incoming packets to the container via iptables |
 | `kill-container` | Kill the container with a configurable signal and timing |
 | `pause-container` | Pause container processes for a duration |
-| `stop-container` | Stop the container with a grace period and restart |
+| `stop-container` | Stop the container with a grace period and an optional restart (`TUMULT_RESTART`, default `false`) |
 | `stress-container` | CPU / memory / IO stress injection inside the container |
 
 ## Probes
@@ -52,9 +52,11 @@ docker compose -p docker -f docker/docker-compose.yml up -d redis
 tumult run examples/pumba-latency.toon
 ```
 
-Pumba actions are short-lived sidecar containers — they apply the fault for a
-bounded duration and then clean up automatically, so the disruption is
-self-limiting even if the experiment is interrupted.
+The netem, iptables, pause and stress actions run Pumba for a bounded
+duration, and Pumba then removes the fault. Without a `pumba` binary on the
+PATH, Pumba runs as a short-lived sidecar container, so the disruption is
+self-limiting even if the experiment is interrupted. `kill-container`, and
+`stop-container` without `TUMULT_RESTART=true`, leave the container down.
 
 ## Pumba vs `tumult-network`
 

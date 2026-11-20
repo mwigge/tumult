@@ -6,7 +6,7 @@
 # Usage:
 #   ./import-dashboards.sh [SIGNOZ_URL]
 #
-# Defaults to http://localhost:13301 (the Tumult observability stack port).
+# Defaults to http://localhost:3301 (the Tumult observability stack port).
 # SigNoz does not support file-based provisioning, so this script must be
 # run once after `docker compose up` to load all dashboards.
 #
@@ -14,7 +14,7 @@
 
 set -euo pipefail
 
-SIGNOZ_URL="${1:-http://localhost:13301}"
+SIGNOZ_URL="${1:-http://localhost:3301}"
 API_URL="${SIGNOZ_URL}/api/v1/dashboards"
 DASHBOARD_DIR="$(cd "$(dirname "$0")" && pwd)"
 

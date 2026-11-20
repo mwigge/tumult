@@ -4,19 +4,28 @@ Plugin system for the Tumult resilience intelligence platform -- define and load
 
 ## Key Types
 
-- `Plugin` -- trait for implementing custom chaos actions and probes
-- `PluginLoader` -- discovers and loads plugins
-- `PluginResult` -- execution result from a plugin
+- `NativeExecutor` -- trait for implementing custom chaos actions and probes
+- `discovery` -- discovers and loads script plugins (`plugin.toon`)
+- `NativeError` -- error result from a plugin
 
 ## Usage
 
 ```rust
-use tumult_plugin::{Plugin, PluginResult};
+use tumult_plugin::{NativeArgs, NativeError, NativeExecutor};
 
 struct MyAction;
 
-impl Plugin for MyAction {
-    async fn execute(&self, params: &serde_json::Value) -> PluginResult {
+#[async_trait::async_trait(?Send)]
+impl NativeExecutor for MyAction {
+    fn name(&self) -> &'static str {
+        "my-plugin"
+    }
+
+    fn functions(&self) -> &'static [&'static str] {
+        &["my_action"]
+    }
+
+    async fn execute(&self, function: &str, args: &NativeArgs) -> Result<String, NativeError> {
         // custom chaos logic
     }
 }

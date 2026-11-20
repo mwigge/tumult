@@ -19,10 +19,10 @@ Native Rust plugin using `kube-rs` for Kubernetes chaos engineering. Follows pat
 
 ## Authentication
 
-Supports all `kube-rs` auth methods:
+Supports these `kube-rs` auth methods:
 - **Kubeconfig** — `~/.kube/config` or `KUBECONFIG` env var
 - **In-cluster** — service account token (for running inside K8s)
-- **OIDC** — identity provider tokens
+- **OIDC** identity provider tokens, read as the `id-token` of the kubeconfig and not refreshed
 
 ## Actions
 
@@ -35,14 +35,15 @@ Supports all `kube-rs` auth methods:
 | `drain_node` | Cordon + evict pods | `name`, `grace_period_seconds` |
 | `apply_network_policy` | Create a network policy | `namespace`, `policy` (NetworkPolicy object) |
 | `delete_network_policy` | Remove a network policy | `namespace`, `name` |
+| `pod_network_latency` | Add egress latency to a pod with an ephemeral `tc netem` container | `namespace`, `pod` or `label_selector`, `delay_ms`, `jitter_ms`, `duration_s`, `iface`, `image` |
+| `pod_stress` | Add CPU or memory stress inside a pod with an ephemeral `stress-ng` container | `namespace`, `pod` or `label_selector`, `cpu_workers` or `mem_bytes`, `duration_s`, `target_container`, `image` |
 
 ## Probes
 
 | Probe | Description | Returns |
 |-------|-------------|---------|
 | `pod_is_ready` | Is a specific pod ready? | `bool` |
-| `pods_by_label` | List pods matching labels | `Vec<PodStatus>` |
-| `all_pods_ready` | Are all matching pods ready? | `(total, ready)` |
+| `all_pods_ready` | Are all matching pods ready? | `{"total":N,"ready":N}` |
 | `deployment_is_ready` | Deployment replica status | `DeploymentStatus` |
 | `node_status` | Node conditions + schedulability | `NodeStatus` |
 | `service_has_endpoints` | Does service have backends? | `bool` |
@@ -96,6 +97,6 @@ rollbacks[1]:
 
 ## Implementation Notes
 
-- Uses `kube-rs` 3.1 — async-native, no kubectl dependency
+- Uses `kube-rs` 4.2 — async-native, no kubectl dependency
 - K8s API version: v1.32 (via `k8s-openapi` feature flag)
 - See ADR-007 for the rationale behind native vs script approach

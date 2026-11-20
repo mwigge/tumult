@@ -1,6 +1,7 @@
 #!/bin/sh
 # Probe: count active brokers in the Kafka cluster
-# Outputs: integer count
+# Outputs: integer count. A failed query exits non-zero with the message of
+# the tool.
 #
 # Environment variables:
 #   TUMULT_KAFKA_BOOTSTRAP - Bootstrap servers (default: localhost:9092)
@@ -32,4 +33,8 @@ else
     exit 1
 fi
 
-"${CMD}" --bootstrap-server "${BOOTSTRAP}" 2>/dev/null | grep -c "^${BOOTSTRAP}" || echo "0"
+# The query runs on its own first, so a failed query ends the probe with
+# the status and the message of the tool. Each broker of the cluster is one
+# line with its id, "host:port (id: 1 rack: null) -> (", whatever its host.
+BROKERS=$("${CMD}" --bootstrap-server "${BOOTSTRAP}")
+printf '%s\n' "${BROKERS}" | awk '/ \(id: [0-9]+ rack: / { count++ } END { print count+0 }'

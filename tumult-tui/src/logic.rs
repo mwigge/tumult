@@ -3,50 +3,122 @@
 //! and value formatting. Everything here is deterministic and unit-tested so
 //! the rendering layer stays a thin projection over verified logic.
 
+use tumult_core::types::{ActivityStatus, ExperimentStatus};
+use tumult_lake::RunVerdict;
+
 use crate::model::ExperimentRow;
 
-/// Normalised outcome class for an experiment or activity status string.
+/// The tone a status is drawn in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum StatusKind {
+pub enum Tone {
+    /// A run that passed, or a step that succeeded.
     Pass,
-    Deviated,
-    Failed,
-    Aborted,
+    /// A run that failed, or a step that failed or timed out.
+    Fail,
+    /// A run that proves nothing either way, a step that did not run, or a
+    /// status the TUI does not know.
+    Neutral,
+    /// A run that has not ended.
     Running,
-    Other,
 }
 
-impl StatusKind {
-    /// Classify a raw store status string (case-insensitive).
-    #[must_use]
-    pub fn classify(status: &str) -> Self {
-        match status.to_ascii_lowercase().as_str() {
-            "completed" | "succeeded" | "passed" | "pass" => Self::Pass,
-            "deviated" | "deviation" => Self::Deviated,
-            "failed" | "error" => Self::Failed,
-            "aborted" | "halted" | "cancelled" | "canceled" => Self::Aborted,
-            "running" | "in_progress" | "started" => Self::Running,
-            _ => Self::Other,
+impl From<RunVerdict> for Tone {
+    fn from(verdict: RunVerdict) -> Self {
+        match verdict {
+            RunVerdict::Pass => Self::Pass,
+            RunVerdict::Fail => Self::Fail,
+            RunVerdict::NoEvidence => Self::Neutral,
         }
+    }
+}
+
+/// Normalised outcome class for an experiment or activity status string:
+/// the word of its pill and the tone it is drawn in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StatusKind {
+    label: &'static str,
+    tone: Tone,
+}
+
+/// The pill word of each status a run ends with, in display order.
+const RUN_PILLS: [(ExperimentStatus, &str); 6] = [
+    (ExperimentStatus::Completed, "PASS"),
+    (ExperimentStatus::Deviated, "DEVIATED"),
+    (ExperimentStatus::Failed, "FAIL"),
+    (ExperimentStatus::Halted, "HALTED"),
+    (ExperimentStatus::Aborted, "ABORTED"),
+    (ExperimentStatus::Interrupted, "INTERRUPTED"),
+];
+
+/// The pill of each status a step ends with.
+const STEP_PILLS: [(ActivityStatus, StatusKind); 4] = [
+    (
+        ActivityStatus::Succeeded,
+        StatusKind::new("PASS", Tone::Pass),
+    ),
+    (ActivityStatus::Failed, StatusKind::new("FAIL", Tone::Fail)),
+    (
+        ActivityStatus::Timeout,
+        StatusKind::new("TIMEOUT", Tone::Fail),
+    ),
+    (
+        ActivityStatus::Skipped,
+        StatusKind::new("SKIPPED", Tone::Neutral),
+    ),
+];
+
+impl StatusKind {
+    /// A run that has not ended.
+    pub const RUNNING: Self = Self::new("RUNNING", Tone::Running);
+    /// A status the TUI does not know.
+    pub const OTHER: Self = Self::new("UNKNOWN", Tone::Neutral);
+
+    const fn new(label: &'static str, tone: Tone) -> Self {
+        Self { label, tone }
+    }
+
+    /// The kind of the status a run is stored with (case-insensitive). A
+    /// run that ended has the tone of its verdict
+    /// ([`tumult_lake::run_verdict`]).
+    #[must_use]
+    pub fn of_run(status: &str) -> Self {
+        if let Some(verdict) = tumult_lake::run_verdict(status) {
+            return RUN_PILLS
+                .iter()
+                .find(|(ending, _)| ending.to_string().eq_ignore_ascii_case(status))
+                .map_or(Self::OTHER, |(_, label)| Self::new(label, verdict.into()));
+        }
+        match status.to_ascii_lowercase().as_str() {
+            "running" | "in_progress" | "started" => Self::RUNNING,
+            _ => Self::OTHER,
+        }
+    }
+
+    /// The kind of the status a step is stored with (case-insensitive).
+    #[must_use]
+    pub fn of_step(status: &str) -> Self {
+        STEP_PILLS
+            .iter()
+            .find(|(step, _)| step.to_string().eq_ignore_ascii_case(status))
+            .map_or(Self::OTHER, |(_, kind)| *kind)
     }
 
     /// Short uppercase pill label.
     #[must_use]
     pub fn label(self) -> &'static str {
-        match self {
-            Self::Pass => "PASS",
-            Self::Deviated => "DEVIATED",
-            Self::Failed => "FAIL",
-            Self::Aborted => "ABORTED",
-            Self::Running => "RUNNING",
-            Self::Other => "UNKNOWN",
-        }
+        self.label
+    }
+
+    /// The tone the pill is drawn in.
+    #[must_use]
+    pub fn tone(self) -> Tone {
+        self.tone
     }
 
     /// Whether this outcome counts as a success for success-rate trends.
     #[must_use]
     pub fn is_success(self) -> bool {
-        matches!(self, Self::Pass)
+        self.tone == Tone::Pass
     }
 }
 
@@ -56,7 +128,7 @@ pub enum SortKey {
     Time,
     Duration,
     Status,
-    Resilience,
+    HypothesisMet,
 }
 
 impl SortKey {
@@ -66,8 +138,8 @@ impl SortKey {
         match self {
             Self::Time => Self::Duration,
             Self::Duration => Self::Status,
-            Self::Status => Self::Resilience,
-            Self::Resilience => Self::Time,
+            Self::Status => Self::HypothesisMet,
+            Self::HypothesisMet => Self::Time,
         }
     }
 
@@ -78,7 +150,7 @@ impl SortKey {
             Self::Time => "time",
             Self::Duration => "duration",
             Self::Status => "status",
-            Self::Resilience => "resilience",
+            Self::HypothesisMet => "hypothesis met",
         }
     }
 }
@@ -94,12 +166,8 @@ pub fn sort_experiments(rows: &mut [ExperimentRow], key: SortKey, ascending: boo
                 .cmp(&b.status)
                 .then(b.started_at_ns.cmp(&a.started_at_ns))
         }),
-        SortKey::Resilience => rows.sort_by(|a, b| {
-            a.resilience
-                .unwrap_or(f64::MIN)
-                .partial_cmp(&b.resilience.unwrap_or(f64::MIN))
-                .unwrap_or(std::cmp::Ordering::Equal)
-        }),
+        // Not known, then not met, then met: descending puts met first.
+        SortKey::HypothesisMet => rows.sort_by_key(|a| a.hypothesis_met),
     }
     if !ascending {
         rows.reverse();
@@ -114,7 +182,7 @@ pub fn sort_experiments(rows: &mut [ExperimentRow], key: SortKey, ascending: boo
 #[must_use]
 pub fn matches_filter(row: &ExperimentRow, status_filter: &str, title_query: &str) -> bool {
     let status_ok = status_filter.is_empty()
-        || StatusKind::classify(&row.status)
+        || StatusKind::of_run(&row.status)
             .label()
             .to_ascii_lowercase()
             .contains(&status_filter.to_ascii_lowercase())
@@ -208,7 +276,7 @@ pub fn success_series(chronological: &[ExperimentRow]) -> Vec<f64> {
     chronological
         .iter()
         .map(|r| {
-            if StatusKind::classify(&r.status).is_success() {
+            if StatusKind::of_run(&r.status).is_success() {
                 1.0
             } else {
                 0.0
@@ -223,12 +291,14 @@ pub fn duration_series(chronological: &[ExperimentRow]) -> Vec<f64> {
     chronological.iter().map(|r| r.duration_ms as f64).collect()
 }
 
-/// Chronological resilience series; missing scores contribute 0.0.
+/// Chronological hypothesis verdicts: 1.0 when met, 0.0 when not. A run
+/// that judged no hypothesis is left out: it is not a "no".
 #[must_use]
-pub fn resilience_series(chronological: &[ExperimentRow]) -> Vec<f64> {
+pub fn hypothesis_met_series(chronological: &[ExperimentRow]) -> Vec<f64> {
     chronological
         .iter()
-        .map(|r| r.resilience.unwrap_or(0.0))
+        .filter_map(|r| r.hypothesis_met)
+        .map(|met| if met { 1.0 } else { 0.0 })
         .collect()
 }
 
@@ -240,31 +310,26 @@ pub fn success_rate(rows: &[ExperimentRow]) -> f64 {
     }
     let ok = rows
         .iter()
-        .filter(|r| StatusKind::classify(&r.status).is_success())
+        .filter(|r| StatusKind::of_run(&r.status).is_success())
         .count();
     (ok as f64) / (rows.len() as f64)
 }
 
 /// Count experiments per normalised status kind, returned in a stable display
-/// order (Pass, Deviated, Failed, Aborted, Running, Other), skipping zeros.
+/// order (the endings of a run in the order of [`RUN_PILLS`], then Running,
+/// then Other), skipping zeros.
 #[must_use]
 pub fn status_breakdown(rows: &[ExperimentRow]) -> Vec<(StatusKind, usize)> {
-    const ORDER: [StatusKind; 6] = [
-        StatusKind::Pass,
-        StatusKind::Deviated,
-        StatusKind::Failed,
-        StatusKind::Aborted,
-        StatusKind::Running,
-        StatusKind::Other,
-    ];
-    ORDER
+    RUN_PILLS
         .iter()
+        .map(|(ending, _)| StatusKind::of_run(&ending.to_string()))
+        .chain([StatusKind::RUNNING, StatusKind::OTHER])
         .filter_map(|kind| {
             let n = rows
                 .iter()
-                .filter(|r| StatusKind::classify(&r.status) == *kind)
+                .filter(|r| StatusKind::of_run(&r.status) == kind)
                 .count();
-            (n > 0).then_some((*kind, n))
+            (n > 0).then_some((kind, n))
         })
         .collect()
 }
@@ -294,24 +359,30 @@ pub fn format_duration(duration_ms: u64) -> String {
     }
 }
 
-/// Format an optional resilience score as a two-decimal value or a dash.
+/// Whether the hypothesis of a run was met: `yes` or `no`, and a dash for
+/// a run that judged none.
 #[must_use]
-pub fn format_resilience(resilience: Option<f64>) -> String {
-    resilience.map_or_else(|| "—".to_string(), |v| format!("{v:.2}"))
+pub fn format_hypothesis_met(hypothesis_met: Option<bool>) -> String {
+    match hypothesis_met {
+        Some(true) => "yes",
+        Some(false) => "no",
+        None => "—",
+    }
+    .to_string()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn exp(id: &str, status: &str, ns: i64, dur: u64, res: Option<f64>) -> ExperimentRow {
+    fn exp(id: &str, status: &str, ns: i64, dur: u64, met: Option<bool>) -> ExperimentRow {
         ExperimentRow {
             id: id.into(),
             title: format!("Experiment {id}"),
             status: status.into(),
             started_at_ns: ns,
             duration_ms: dur,
-            resilience: res,
+            hypothesis_met: met,
             steps: 1,
             deviations: 0,
         }
@@ -319,12 +390,35 @@ mod tests {
 
     #[test]
     fn classify_covers_known_statuses() {
-        assert_eq!(StatusKind::classify("completed"), StatusKind::Pass);
-        assert_eq!(StatusKind::classify("DEVIATED"), StatusKind::Deviated);
-        assert_eq!(StatusKind::classify("failed"), StatusKind::Failed);
-        assert_eq!(StatusKind::classify("aborted"), StatusKind::Aborted);
-        assert_eq!(StatusKind::classify("running"), StatusKind::Running);
-        assert_eq!(StatusKind::classify("weird"), StatusKind::Other);
+        let pill = |kind: StatusKind| (kind.label(), kind.tone());
+        assert_eq!(pill(StatusKind::of_run("completed")), ("PASS", Tone::Pass));
+        assert_eq!(
+            pill(StatusKind::of_run("DEVIATED")),
+            ("DEVIATED", Tone::Fail)
+        );
+        assert_eq!(pill(StatusKind::of_run("failed")), ("FAIL", Tone::Fail));
+        assert_eq!(pill(StatusKind::of_run("Halted")), ("HALTED", Tone::Fail));
+        assert_eq!(
+            pill(StatusKind::of_run("aborted")),
+            ("ABORTED", Tone::Neutral)
+        );
+        assert_eq!(
+            pill(StatusKind::of_run("interrupted")),
+            ("INTERRUPTED", Tone::Neutral)
+        );
+        assert_eq!(StatusKind::of_run("running"), StatusKind::RUNNING);
+        assert_eq!(StatusKind::of_run("weird"), StatusKind::OTHER);
+        assert_eq!(pill(StatusKind::of_step("succeeded")), ("PASS", Tone::Pass));
+        assert_eq!(pill(StatusKind::of_step("Failed")), ("FAIL", Tone::Fail));
+        assert_eq!(
+            pill(StatusKind::of_step("timeout")),
+            ("TIMEOUT", Tone::Fail)
+        );
+        assert_eq!(
+            pill(StatusKind::of_step("skipped")),
+            ("SKIPPED", Tone::Neutral)
+        );
+        assert_eq!(StatusKind::of_step("completed"), StatusKind::OTHER);
     }
 
     #[test]
@@ -350,15 +444,15 @@ mod tests {
     }
 
     #[test]
-    fn sort_by_resilience_descending_handles_none() {
+    fn sort_by_hypothesis_puts_met_first_then_not_met_then_not_known() {
         let mut rows = vec![
-            exp("a", "completed", 1, 1, Some(0.5)),
+            exp("a", "aborted", 1, 1, Some(false)),
             exp("b", "completed", 2, 1, None),
-            exp("c", "completed", 3, 1, Some(0.9)),
+            exp("c", "failed", 3, 1, Some(true)),
         ];
-        sort_experiments(&mut rows, SortKey::Resilience, false);
-        assert_eq!(rows[0].id, "c");
-        assert_eq!(rows[2].id, "b"); // None sorts lowest
+        sort_experiments(&mut rows, SortKey::HypothesisMet, false);
+        let ids: Vec<&str> = rows.iter().map(|r| r.id.as_str()).collect();
+        assert_eq!(ids, ["c", "a", "b"]);
     }
 
     #[test]
@@ -429,15 +523,22 @@ mod tests {
             exp("c", "deviated", 3, 1, None),
         ];
         let bd = status_breakdown(&rows);
-        assert_eq!(bd, vec![(StatusKind::Pass, 2), (StatusKind::Deviated, 1)]);
+        assert_eq!(
+            bd,
+            vec![
+                (StatusKind::of_run("completed"), 2),
+                (StatusKind::of_run("deviated"), 1)
+            ]
+        );
     }
 
     #[test]
     fn format_helpers() {
         assert_eq!(format_duration(500), "500ms");
         assert_eq!(format_duration(1500), "1.5s");
-        assert_eq!(format_resilience(Some(0.833)), "0.83");
-        assert_eq!(format_resilience(None), "—");
+        assert_eq!(format_hypothesis_met(Some(true)), "yes");
+        assert_eq!(format_hypothesis_met(Some(false)), "no");
+        assert_eq!(format_hypothesis_met(None), "—");
         assert_eq!(format_time(0), "—");
         // A known epoch instant renders deterministically in UTC.
         assert_eq!(format_time(1_609_459_200_000_000_000), "01-01 00:00:00");

@@ -1,0 +1,47 @@
+experiment_title: MySQL resilience — verify queries succeed after connection disruption
+experiment_id: "9be3ea3e-80e5-401d-86b2-cf22a5b218c3"
+status: completed
+started_at_ns: 1794852772151225731
+ended_at_ns: 1794852772380275630
+duration_ms: 229
+steady_state_before:
+  title: MySQL answers a trivial query
+  met: true
+  probe_results[1]{name,activity_type,status,started_at_ns,duration_ms,output,trace_id,span_id}:
+    "mysql-select",probe,succeeded,1794852772151249257,45,"1","",""
+steady_state_after:
+  title: MySQL answers a trivial query
+  met: true
+  probe_results[1]{name,activity_type,status,started_at_ns,duration_ms,output,trace_id,span_id}:
+    "mysql-select",probe,succeeded,1794852772335601566,44,"1","",""
+method_results[2]{name,activity_type,status,started_at_ns,duration_ms,output,trace_id,span_id}:
+  "kill-idle-connections",action,succeeded,1794852772197155834,51,done,"",""
+  "verify-recovered",probe,succeeded,1794852772248969518,42,"1","",""
+rollback_results[0]:
+rollback_failures: 0
+estimate: null
+baseline_result: null
+during_result:
+  started_at_ns: 1794852772197088192
+  ended_at_ns: 1794852772291987629
+  fault_active_s: 0.094899437
+  sample_interval_s: 1
+  probes[1]{name,samples,mean,max,min,error_rate,breach_count}:
+    "mysql-select",1,49,49,49,0,0
+post_result:
+  started_at_ns: 1794852772292046924
+  ended_at_ns: 1794852772335589748
+  duration_s: 0.043542824
+  samples: 1
+  probes[1]{name,mean,p95,error_rate,returned_to_baseline,recovery_time_s}:
+    "mysql-select",43,43,0,true,0
+  recovery_time_s: 0
+  full_recovery: true
+  mttr_s: 0
+load_result: null
+analysis: null
+regulatory: null
+kind: chaos
+probe_samples[2]{probe,phase,ts_ns,duration_ms,ok}:
+  "mysql-select",during,1794852772197197422,49,true
+  "mysql-select",post,1794852772292053494,43,true

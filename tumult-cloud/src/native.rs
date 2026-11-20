@@ -36,6 +36,90 @@ fn exec_err(e: crate::error::CloudError) -> NativeError {
     NativeError::execution(e)
 }
 
+/// FIS states in which an experiment still has to be stopped.
+const ACTIVE_FIS_STATES: &[&str] = &["pending", "initiating", "running"];
+
+/// What a FIS stop or status step is about.
+///
+/// FIS gives an experiment its id when it starts, so an experiment file
+/// cannot know it. A step that names no id names the template instead, and
+/// means the experiments FIS lists for it: that holds in any process, also
+/// in the one that runs the rollback of a run after a crash.
+enum FisSubject<'a> {
+    /// The experiment with this id.
+    Experiment(&'a str),
+    /// The experiments of this template.
+    Template(&'a str),
+}
+
+impl<'a> FisSubject<'a> {
+    /// The `experiment_id` a step names, or else its `experiment_template_id`.
+    fn of(args: &'a NativeArgs) -> Result<Self, NativeError> {
+        if let Some(id) = opt_str(args, "experiment_id") {
+            return Ok(Self::Experiment(id));
+        }
+        if let Some(template) = opt_str(args, "experiment_template_id") {
+            return Ok(Self::Template(template));
+        }
+        Err(NativeError::MissingArgument {
+            argument: "experiment_id or experiment_template_id".into(),
+        })
+    }
+}
+
+/// Stop every experiment of `template` that is pending, initiating or
+/// running, whoever started it. With none, nothing is sent: a rollback is
+/// safe to run twice. A stop FIS refuses does not keep the others running:
+/// every one is tried, and the refused ones are the error.
+async fn stop_fis_template(client: &FisClient, template: &str) -> Result<String, NativeError> {
+    let experiments = client.list_experiments(template).await.map_err(exec_err)?;
+    let mut stopped = Vec::new();
+    let mut refused = Vec::new();
+    for experiment in experiments
+        .iter()
+        .filter(|experiment| ACTIVE_FIS_STATES.contains(&experiment.state.status.as_str()))
+    {
+        match client.stop_experiment(&experiment.id).await {
+            Ok(summary) => stopped.push(summary),
+            Err(error) => refused.push(format!("{}: {error}", experiment.id)),
+        }
+    }
+    if !refused.is_empty() {
+        let message = format!(
+            "could not stop FIS experiment {} of template {template}; the others: {}",
+            refused.join("; "),
+            if stopped.is_empty() {
+                "none".to_owned()
+            } else {
+                stopped.join("; ")
+            }
+        );
+        return Err(NativeError::Failed(message));
+    }
+    if stopped.is_empty() {
+        return Ok(format!(
+            "no FIS experiment of template {template} is pending, initiating or running; nothing to stop"
+        ));
+    }
+    Ok(stopped.join("; "))
+}
+
+/// The status of the newest experiment of `template`, in any state. A
+/// template with no experiment is an error: the probe found nothing to
+/// measure.
+async fn fis_template_status(client: &FisClient, template: &str) -> Result<String, NativeError> {
+    let experiments = client.list_experiments(template).await.map_err(exec_err)?;
+    let Some(newest) = experiments
+        .iter()
+        .max_by(|a, b| a.creation_time.total_cmp(&b.creation_time))
+    else {
+        return Err(NativeError::Failed(format!(
+            "FIS lists no experiment of template {template}"
+        )));
+    };
+    client.experiment_status(&newest.id).await.map_err(exec_err)
+}
+
 /// [`NativeExecutor`] for the `tumult-cloud` connectors.
 pub struct CloudExecutor;
 
@@ -67,14 +151,24 @@ impl NativeExecutor for CloudExecutor {
                 client.start_experiment(template).await.map_err(exec_err)
             }
             "aws_fis_stop_experiment" => {
-                let id = arg_str(args, "experiment_id")?;
+                let subject = FisSubject::of(args)?;
                 let client = fis_client(args)?;
-                client.stop_experiment(id).await.map_err(exec_err)
+                match subject {
+                    FisSubject::Experiment(id) => {
+                        client.stop_experiment(id).await.map_err(exec_err)
+                    }
+                    FisSubject::Template(template) => stop_fis_template(&client, template).await,
+                }
             }
             "aws_fis_experiment_status" => {
-                let id = arg_str(args, "experiment_id")?;
+                let subject = FisSubject::of(args)?;
                 let client = fis_client(args)?;
-                client.experiment_status(id).await.map_err(exec_err)
+                match subject {
+                    FisSubject::Experiment(id) => {
+                        client.experiment_status(id).await.map_err(exec_err)
+                    }
+                    FisSubject::Template(template) => fis_template_status(&client, template).await,
+                }
             }
             "aws_ec2_stop_instance" => {
                 let instance = arg_str(args, "instance_id")?;
@@ -117,18 +211,33 @@ impl NativeExecutor for CloudExecutor {
     }
 }
 
+/// The endpoint set for one AWS service, if any.
+///
+/// `AWS_ENDPOINT_URL_<SERVICE>` is the variable the AWS command line and the
+/// AWS SDKs read: a VPC interface endpoint, or a local stand-in for the
+/// service.
+fn endpoint_override(service: &str) -> Option<String> {
+    std::env::var(format!("AWS_ENDPOINT_URL_{service}")).ok()
+}
+
 /// Build an FIS client from the region argument/environment and AWS creds.
 fn fis_client(args: &NativeArgs) -> Result<FisClient, NativeError> {
     let region = region_from_env(opt_str(args, "region")).map_err(exec_err)?;
     let creds = AwsCredentials::from_env().map_err(exec_err)?;
-    Ok(FisClient::new(region, creds))
+    let Some(endpoint) = endpoint_override("FIS") else {
+        return Ok(FisClient::new(region, creds));
+    };
+    Ok(FisClient::with_endpoint(endpoint, region, creds))
 }
 
 /// Build an EC2 client from the region argument/environment and AWS creds.
 fn ec2_client(args: &NativeArgs) -> Result<Ec2Client, NativeError> {
     let region = region_from_env(opt_str(args, "region")).map_err(exec_err)?;
     let creds = AwsCredentials::from_env().map_err(exec_err)?;
-    Ok(Ec2Client::new(region, creds))
+    let Some(endpoint) = endpoint_override("EC2") else {
+        return Ok(Ec2Client::new(region, creds));
+    };
+    Ok(Ec2Client::with_endpoint(endpoint, region, creds))
 }
 
 /// Build an Azure Chaos Studio client from the ambient bearer token.
@@ -288,23 +397,25 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn fis_stop_missing_experiment_id_is_typed_error_before_network() {
+    async fn fis_stop_missing_experiment_and_template_is_typed_error_before_network() {
         let err = CloudExecutor
             .execute("aws_fis_stop_experiment", &NativeArgs::new())
             .await
             .unwrap_err();
         assert!(matches!(err, NativeError::MissingArgument { .. }));
-        assert!(err.to_string().contains("experiment_id"));
+        assert!(err.to_string().contains("experiment_id"), "{err}");
+        assert!(err.to_string().contains("experiment_template_id"), "{err}");
     }
 
     #[tokio::test]
-    async fn fis_status_missing_experiment_id_is_typed_error_before_network() {
+    async fn fis_status_missing_experiment_and_template_is_typed_error_before_network() {
         let err = CloudExecutor
             .execute("aws_fis_experiment_status", &NativeArgs::new())
             .await
             .unwrap_err();
         assert!(matches!(err, NativeError::MissingArgument { .. }));
-        assert!(err.to_string().contains("experiment_id"));
+        assert!(err.to_string().contains("experiment_id"), "{err}");
+        assert!(err.to_string().contains("experiment_template_id"), "{err}");
     }
 
     #[tokio::test]

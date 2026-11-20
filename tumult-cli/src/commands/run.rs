@@ -8,7 +8,7 @@ use tumult_core::engine::{
     resolve_config, resolve_secrets, validate_experiment,
 };
 use tumult_core::execution::RollbackStrategy;
-use tumult_core::journal::{encode_journal, JournalOutput};
+use tumult_core::journal::{encode_journal, ExistingJournal, JournalError, JournalOutput};
 use tumult_core::runner::{run_experiment, RunConfig};
 use tumult_core::types::{Experiment, ExperimentStatus, Journal};
 
@@ -18,6 +18,24 @@ use tumult_otel::logging::{err_sources, sanitize_url};
 
 use super::events::{self, EnvKey};
 use super::print_dry_run;
+use super::LoadOverride;
+
+/// The error of a run that wrote its journal and did not complete.
+#[derive(Debug, thiserror::Error)]
+#[error("experiment finished with status: {0:?}")]
+pub struct NotCompleted(pub ExperimentStatus);
+
+/// What `tumult run` can do about a journal that is already there.
+const RUN_WAYS_OUT: &str = "pass --force to overwrite, or choose a different --journal-path";
+
+/// The error of a journal that could not be reserved or published. One
+/// that is already there says `ways_out`, the options of the command.
+pub(super) fn existing_journal_error(error: JournalError, ways_out: &str) -> anyhow::Error {
+    let JournalError::Exists(path) = &error else {
+        return error.into();
+    };
+    anyhow::anyhow!("journal already exists: {} — {ways_out}", path.display())
+}
 
 // ── Run command ───────────────────────────────────────────────
 
@@ -45,7 +63,7 @@ pub async fn cmd_run<S: ::std::hash::BuildHasher>(
         rollback_strategy,
         auto_ingest,
         vars,
-        load_override,
+        load_override.map_or(LoadOverride::Keep, LoadOverride::Replace),
         tumult_core::runner::BaselineMode::Full,
         None,
     )
@@ -67,7 +85,7 @@ pub async fn cmd_run_with_baseline_mode<S: ::std::hash::BuildHasher>(
     rollback_strategy: RollbackStrategy,
     auto_ingest: bool,
     vars: std::collections::HashMap<String, String, S>,
-    load_override: Option<tumult_core::types::LoadConfig>,
+    load_override: LoadOverride,
     baseline_mode: tumult_core::runner::BaselineMode,
     target_version: Option<&str>,
 ) -> Result<()> {
@@ -80,18 +98,6 @@ pub async fn cmd_run_with_baseline_mode<S: ::std::hash::BuildHasher>(
             "experiment file too large ({} bytes, max 10MB): {}",
             file_size,
             experiment_path.display()
-        );
-    }
-
-    // A journal holds the evidence of exactly one run: silently overwriting
-    // it destroys the previous run's record. Refuse unless --force was given.
-    // Checked up front (not just before writing) so a doomed run does not
-    // execute faults first; a dry run writes no journal and skips the check.
-    if !dry_run && journal_path.exists() && !force {
-        bail!(
-            "journal already exists: {} — pass --force to overwrite, or choose \
-             a different --journal-path",
-            journal_path.display()
         );
     }
 
@@ -126,12 +132,26 @@ pub async fn cmd_run_with_baseline_mode<S: ::std::hash::BuildHasher>(
     };
 
     super::target_version::declare(&mut experiment, target_version)?;
+    // Apply load override from CLI flags, or use experiment's load config.
+    // Before validation, so the load that is checked is the one that runs.
+    match load_override {
+        LoadOverride::Keep => {}
+        LoadOverride::Remove => experiment.load = None,
+        LoadOverride::Replace(load) => experiment.load = Some(load),
+    }
     validate_experiment(&experiment)?;
 
     if dry_run {
         print_dry_run(&experiment);
         return Ok(());
     }
+
+    // A journal holds the evidence of exactly one run: the rule of the core
+    // refuses one that is already there unless --force was given. Reserved
+    // before anything runs, so a doomed run executes no fault; a dry run
+    // writes no journal and reserves none.
+    let output = JournalOutput::prepare(journal_path, ExistingJournal::replace_if(force))
+        .map_err(|error| existing_journal_error(error, RUN_WAYS_OUT))?;
 
     // Build the TUMULT_CONFIG_* / TUMULT_SECRET_* environment injected into
     // process and script provider subprocesses. Keys that cannot form valid
@@ -175,19 +195,6 @@ pub async fn cmd_run_with_baseline_mode<S: ::std::hash::BuildHasher>(
         }
     });
 
-    // Apply load override from CLI flags, or use experiment's load config
-    if let Some(ref override_config) = load_override {
-        experiment.load = Some(override_config.clone());
-    }
-
-    // Create the load adapter for the experiment's load tool, if any
-    let load_executor = experiment
-        .load
-        .as_ref()
-        .map(|load| tumult_core::runner::load_executor_for(&load.tool))
-        .transpose()
-        .map_err(|e| anyhow::anyhow!(e))?;
-
     // The version that served the run is asked of the daemon, or of the
     // local store the run reports to; a run nobody observes says so.
     let version_resolver = super::target_version::resolver(auto_ingest);
@@ -202,16 +209,19 @@ pub async fn cmd_run_with_baseline_mode<S: ::std::hash::BuildHasher>(
         rollback_strategy,
         cancellation_token: Some(cancel_token),
         parent_context: None,
-        load_executor,
+        // The runner runs a declared load with the adapter of its tool.
+        load_executor: None,
         max_concurrent_faults: None,
     };
 
     crate::outln!("Running experiment: {}", experiment.title);
 
-    let output = JournalOutput::prepare(journal_path)?;
     let journal = run_experiment(&experiment, &executor_arc, &controls_arc, &run_config)?;
 
-    output.write(&encode_journal(&journal)?)?;
+    let encoded = encode_journal(&journal)?;
+    output
+        .write(&encoded)
+        .map_err(|error| existing_journal_error(error, RUN_WAYS_OUT))?;
 
     crate::outln!("Status: {:?}", journal.status);
     if let Some(measured) = &journal.target_version {
@@ -226,7 +236,12 @@ pub async fn cmd_run_with_baseline_mode<S: ::std::hash::BuildHasher>(
     if !journal.rollback_results.is_empty() {
         crate::outln!("Rollbacks: {} executed", journal.rollback_results.len());
     }
+    crate::out!("{}", super::summary::of_run(&journal));
     crate::outln!("Journal written to: {}", journal_path.display());
+    crate::outln!(
+        "Journal SHA-256: {}",
+        super::report::journal_sha256(encoded.as_bytes())
+    );
 
     // Auto-ingest into persistent analytics store
     if auto_ingest && baseline_mode != tumult_core::runner::BaselineMode::Only {
@@ -245,7 +260,7 @@ pub async fn cmd_run_with_baseline_mode<S: ::std::hash::BuildHasher>(
 
     // Exit with non-zero if experiment did not complete successfully
     if journal.status != ExperimentStatus::Completed {
-        bail!("experiment finished with status: {:?}", journal.status);
+        return Err(NotCompleted(journal.status).into());
     }
 
     Ok(())
@@ -416,6 +431,7 @@ mod tests {
     fn test_journal(id: &str) -> Journal {
         Journal {
             target_version: None,
+            target: None,
             experiment_title: format!("Test {id}"),
             experiment_id: id.into(),
             status: ExperimentStatus::Completed,

@@ -33,6 +33,7 @@ use axum::response::{IntoResponse, Response};
 use axum::Extension;
 use serde::Deserialize;
 use serde_json::{json, Value};
+use tumult_compliance::dora::HouseParams;
 use tumult_compliance::OrgTree;
 use tumult_graph::starmap::{
     assemble, ArticleRow, CallRow, CoverFrom, CoverRow, DefinitionRow, DependsRow, ExperimentRow,
@@ -40,7 +41,7 @@ use tumult_graph::starmap::{
     StarMap, StarQuery, SuppressionRow, SystemRow, WorkloadRow, DEFAULT_BUDGET, MAX_BUDGET,
     MAX_DEPTH,
 };
-use tumult_lake::Reader;
+use tumult_lake::{scope, Reader, RunVerdict};
 use tumult_risk::{CoverageStatus, Inputs, Report, Risk};
 
 use crate::auth::Principal;
@@ -49,9 +50,7 @@ use crate::handlers::starmap_cache::{
     CachedMap, Miss, StarMapCache, REFRESH_FLOOR, RETRY_AFTER, TTL,
 };
 use crate::handlers::{conformance, risks};
-use crate::sql_util::{
-    and_pred, env_scope_where, invalid_range, now_ns, parse_range, with_reader, PARENT_LOOKBACK_NS,
-};
+use crate::sql_util::{invalid_range, now_ns, parse_range, with_reader, PARENT_LOOKBACK_NS};
 use crate::ApiState;
 
 const DEFAULT_RANGE: &str = "7d";
@@ -283,7 +282,7 @@ fn capped_rows(
 /// name the system under test, not the system the runner belongs to.
 fn services_sql(window: &Window) -> String {
     let attr = |key: &str| format!("NULLIF(resource_attrs['{key}'], '')");
-    let scope = and_pred(env_scope_where("target_environment", &window.envs));
+    let scope = scope::and(scope::in_list("target_environment", &window.envs));
     format!(
         "SELECT service_name AS service, {} AS entity_id, {} AS entity_tier, \
          {} AS entity_owner, NULLIF(target_system, '') AS system, {} AS component, \
@@ -340,8 +339,8 @@ fn services(
 /// call whose parent started more than an hour before the window opened
 /// is not counted.
 fn calls_sql(window: &Window) -> String {
-    let child = and_pred(env_scope_where("c.target_environment", &window.envs));
-    let parent = and_pred(env_scope_where("p.target_environment", &window.envs));
+    let child = scope::and(scope::in_list("c.target_environment", &window.envs));
+    let parent = scope::and(scope::in_list("p.target_environment", &window.envs));
     format!(
         "SELECT p.service_name AS client, c.service_name AS server, COUNT(*) AS calls, \
          COUNT(*) FILTER (WHERE c.status_code = 'Error') AS errors, \
@@ -376,24 +375,25 @@ fn calls(reader: &Reader, window: &Window) -> Result<Vec<CallRow>, String> {
         .collect())
 }
 
-/// Runs and verified manual records that started inside the window. The
-/// outcome of a run is on its root span or its completion log; a run
-/// completes after it starts, so only logs since the window opened are
-/// joined.
+/// Runs and verified manual records that started inside the window. A run
+/// is read from its root, which is built from the journal when the run
+/// sent no trace. The outcome of a run is on its root or its completion
+/// log; a run completes after it starts, so only logs since the window
+/// opened are read.
 fn runs_sql(window: &Window) -> String {
-    let span_scope = and_pred(env_scope_where("s.target_environment", &window.envs));
-    let manual_scope = and_pred(env_scope_where("m.target_environment", &window.envs));
+    let span_scope = scope::and(scope::in_list("s.target_environment", &window.envs));
+    let manual_scope = scope::and(scope::in_list("m.target_environment", &window.envs));
     let (from, to) = (window.from_ns, window.to_ns);
+    let status = tumult_lake::run_outcome_sql("s", "l");
+    let completions = tumult_lake::run_completions_sql(Some(from));
     format!(
         "SELECT s.experiment_id AS id, any_value(s.experiment_name) AS experiment, \
          any_value(s.target_system) AS system, any_value(s.target_environment) AS environment, \
          MIN(s.ts_ns) AS started_ns, \
-         any_value(COALESCE(s.outcome_status, l.log_attrs['status'])) AS status, \
+         any_value({status}) AS status, \
          false AS manual \
-         FROM spans s LEFT JOIN logs l \
-           ON l.log_attrs['experiment_id'] = s.experiment_id \
-          AND l.body = 'experiment.completed' AND l.ts_ns >= {from} \
-         WHERE s.span_name = 'resilience.experiment' AND s.experiment_id IS NOT NULL \
+         FROM run_roots s LEFT JOIN ({completions}) l ON s.experiment_id = l.experiment_id \
+         WHERE s.experiment_id IS NOT NULL \
            AND s.experiment_name IS NOT NULL \
            AND s.ts_ns >= {from} AND s.ts_ns < {to}{span_scope} \
          GROUP BY s.experiment_id \
@@ -406,11 +406,19 @@ fn runs_sql(window: &Window) -> String {
     )
 }
 
-/// The scorecard's rule: completed, passed and partial pass; anything
-/// else, including a run that never reported an outcome, failed.
-fn failed(status: Option<&str>) -> bool {
+/// The scorecard's rule: a run fails by its verdict
+/// ([`tumult_lake::run_verdict`]), a manual record unless it passed or
+/// partly passed, and so does a run that never reported an outcome.
+/// `None` for a run that proves nothing: it is no evidence at all.
+fn failed(status: Option<&str>) -> Option<bool> {
     let status = status.map(str::to_ascii_lowercase);
-    !matches!(status.as_deref(), Some("completed" | "passed" | "partial"))
+    if matches!(status.as_deref(), Some("passed" | "partial")) {
+        return Some(false);
+    }
+    match status.as_deref().and_then(tumult_lake::run_verdict) {
+        Some(RunVerdict::NoEvidence) => None,
+        verdict => Some(verdict != Some(RunVerdict::Pass)),
+    }
 }
 
 fn runs(reader: &Reader, window: &Window) -> Result<Vec<RunRow>, String> {
@@ -424,7 +432,7 @@ fn runs(reader: &Reader, window: &Window) -> Result<Vec<RunRow>, String> {
                 system: text(row, "system"),
                 environment: text(row, "environment"),
                 started_ns: row.get("started_ns").and_then(Value::as_i64)?,
-                failed: failed(row.get("status").and_then(Value::as_str)),
+                failed: failed(row.get("status").and_then(Value::as_str))?,
                 manual: row.get("manual").and_then(Value::as_bool).unwrap_or(false),
             })
         })
@@ -599,7 +607,7 @@ fn covers(reader: &Reader, window: &Window, limit: usize) -> Result<Capped<Cover
             })
         })
         .collect();
-    let scope = and_pred(env_scope_where("m.target_environment", &window.envs));
+    let scope = scope::and(scope::in_list("m.target_environment", &window.envs));
     let manual = rows(
         reader,
         &format!(
@@ -687,8 +695,9 @@ fn load(
     manifests_dir: Option<&FsPath>,
     org: &OrgTree,
     caps: Caps,
+    params: &HouseParams,
 ) -> Result<StarInputs, String> {
-    let risk_inputs = risks::gather(reader, window.to_ns, &window.envs, manifests_dir)?;
+    let risk_inputs = risks::gather(reader, window.to_ns, &window.envs, manifests_dir, params)?;
     let report = tumult_risk::scan(&risk_inputs);
     let levels = conformance::levels(reader, window.from_ns, &window.envs)?;
     let (covers, cut_covers) = covers(reader, window, caps.covers)?;
@@ -824,10 +833,18 @@ fn respond(map: &CachedMap, headers: &HeaderMap) -> Response {
 async fn build(state: &ApiState, query: StarQuery, window: Window) -> Result<CachedMap, ApiError> {
     let org = Arc::clone(&state.org);
     let manifests_dir: Option<PathBuf> = state.manifests_dir().cloned();
+    let params = state.score_runtime().params();
     let parent = tracing::Span::current();
     with_reader(&state.db_path, move |reader| {
         let caps = Caps::all(GRAPH_ROW_LIMIT);
-        let inputs = load(reader, &window, manifests_dir.as_deref(), &org, caps)?;
+        let inputs = load(
+            reader,
+            &window,
+            manifests_dir.as_deref(),
+            &org,
+            caps,
+            &params,
+        )?;
         let map = assemble_traced(&parent, &inputs, &query, window.envs.len());
         serde_json::to_vec(&map)
             .map(CachedMap::new)
@@ -973,12 +990,19 @@ mod tests {
     #[test]
     fn outcome_rule_matches_the_scorecard() {
         for passed in ["Completed", "completed", "passed", "partial"] {
-            assert!(!failed(Some(passed)), "{passed}");
+            assert_eq!(failed(Some(passed)), Some(false), "{passed}");
         }
-        for broke in ["Deviated", "Failed", "failed", "Aborted", ""] {
-            assert!(failed(Some(broke)), "{broke}");
+        for broke in ["Deviated", "Failed", "failed", "Halted", ""] {
+            assert_eq!(failed(Some(broke)), Some(true), "{broke}");
         }
-        assert!(failed(None), "a run with no outcome did not pass");
+        for nothing in ["Aborted", "interrupted"] {
+            assert_eq!(failed(Some(nothing)), None, "{nothing} is no evidence");
+        }
+        assert_eq!(
+            failed(None),
+            Some(true),
+            "a run with no outcome did not pass"
+        );
     }
 
     #[test]
@@ -1031,13 +1055,72 @@ mod tests {
         }
     }
 
+    /// A run of the drill mapped to DORA Art. 25, as its journal says.
+    fn drill_run(id: &str, status: &str, started_at_ns: i64) -> tumult_core::types::Journal {
+        serde_json::from_value(serde_json::json!({
+            "experiment_title": "Purge drill",
+            "experiment_id": id,
+            "status": status,
+            "started_at_ns": started_at_ns,
+            "ended_at_ns": started_at_ns + 1,
+            "duration_ms": 1,
+            "method_results": [],
+            "rollback_results": [],
+        }))
+        .expect("journal")
+    }
+
+    #[test]
+    fn a_purged_run_is_no_longer_evidence() {
+        use tumult_core::types::{Experiment, RegulatoryMapping, RegulatoryRequirement};
+        let dir = tempfile::tempdir().expect("temp dir");
+        let path = dir.path().join("k.duckdb");
+        let drill = Experiment {
+            title: "Purge drill".into(),
+            regulatory: Some(RegulatoryMapping {
+                frameworks: vec!["DORA".into()],
+                requirements: vec![RegulatoryRequirement {
+                    id: "Art. 25".into(),
+                    description: "Testing of ICT tools and systems".into(),
+                    evidence: "scenario-based fault injection".into(),
+                }],
+            }),
+            ..Experiment::default()
+        };
+        // The old run completed and evidences the article; the new one
+        // deviated, so it only maps the drill to it.
+        let store = tumult_lake::AnalyticsStore::open(&path).expect("store");
+        for journal in [
+            drill_run("old-1", "completed", 1_577_836_800_000_000_000),
+            drill_run("new-1", "deviated", now_ns()),
+        ] {
+            store
+                .ingest_journal_with_experiment(&journal, Some(&drill))
+                .expect("ingest");
+        }
+        assert_eq!(store.purge_older_than_days(30).expect("purge"), 1);
+        drop(store);
+
+        let lake = tumult_lake::Store::open(&path).expect("lake");
+        let reader = lake.read_only().expect("reader");
+        let (rows, cut) = covers(&reader, &any_time(), GRAPH_ROW_LIMIT).expect("read");
+        assert!(!cut);
+        let drill_covers: Vec<(&str, bool)> = rows
+            .iter()
+            .filter(|row| row.from == CoverFrom::Experiment("Purge drill".into()))
+            .map(|row| (row.article.as_str(), row.evidenced))
+            .collect();
+        assert_eq!(drill_covers, [("compliance:DORA/Art.25", false)]);
+    }
+
     #[test]
     fn any_one_capped_source_marks_the_map_truncated() {
         let (_dir, store) = graph_lake();
         let reader = store.read_only().expect("reader");
         let org = OrgTree::empty();
         let read = |caps: Caps| {
-            let inputs = load(&reader, &any_time(), None, &org, caps).expect("load");
+            let params = HouseParams::default();
+            let inputs = load(&reader, &any_time(), None, &org, caps, &params).expect("load");
             (
                 inputs.truncated,
                 assemble(&inputs, &StarQuery::default()).truncated,
@@ -1190,7 +1273,7 @@ mod tests {
         );
         let q = runs_sql(&window);
         assert!(
-            q.contains(&format!("l.ts_ns >= {}", 2 * hour)),
+            q.contains(&tumult_lake::run_completions_sql(Some(2 * hour))),
             "the completion log join is bounded: {q}"
         );
     }

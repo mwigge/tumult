@@ -86,6 +86,7 @@ fn store_backup_creates_parquet_files() {
     store
         .ingest_journal(&Journal {
             target_version: None,
+            target: None,
             experiment_title: "test".into(),
             experiment_id: "e1".into(),
             status: ExperimentStatus::Completed,
@@ -140,6 +141,7 @@ fn store_purge_removes_old_data() {
     store
         .ingest_journal(&Journal {
             target_version: None,
+            target: None,
             experiment_title: "old".into(),
             experiment_id: "old-1".into(),
             status: ExperimentStatus::Completed,
@@ -173,6 +175,7 @@ fn store_purge_removes_old_data() {
     store
         .ingest_journal(&Journal {
             target_version: None,
+            target: None,
             experiment_title: "new".into(),
             experiment_id: "new-1".into(),
             status: ExperimentStatus::Completed,
@@ -218,6 +221,7 @@ fn store_stats_reports_counts() {
     store
         .ingest_journal(&Journal {
             target_version: None,
+            target: None,
             experiment_title: "test".into(),
             experiment_id: "e1".into(),
             status: ExperimentStatus::Completed,

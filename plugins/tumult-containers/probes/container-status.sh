@@ -1,6 +1,6 @@
 #!/bin/sh
 # Probe: check if a container is running
-# Outputs: "running", "stopped", "paused", or "not_found"
+# Outputs: the State.Status of the runtime (such as "running" or "paused"), or "not_found"
 #
 # Environment variables:
 #   TUMULT_CONTAINER_ID   - Container ID or name (required)

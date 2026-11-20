@@ -11,7 +11,7 @@ use super::{default_list_limit, default_store_path};
 /// unless `no_ingest` is set.
 #[macros::mcp_tool(
     name = "tumult_run_experiment",
-    description = "Execute a Tumult chaos experiment. Persists the journal (journal_path, default journal.toon in the workspace root), auto-ingests it into the analytics store unless no_ingest is set, and returns the run as JSON (format=json, default) or the journal as TOON (format=toon).",
+    description = "Execute a Tumult experiment. Persists the journal (journal_path, default journal.toon in the workspace root), auto-ingests it into the analytics store unless no_ingest is set, and returns the run as JSON (format=json, default) or the journal as TOON (format=toon). Refuses, before anything runs, a journal_path that already holds a journal: choose another journal_path, or set force to replace it.",
     destructive_hint = true,
     read_only_hint = false,
     idempotent_hint = false,
@@ -27,6 +27,10 @@ pub struct RunExperimentTool {
     /// Where to write the journal, relative to the workspace root.
     /// Defaults to `journal.toon` (CLI parity).
     pub journal_path: Option<String>,
+    /// Replace a journal already at `journal_path` (parity with the CLI
+    /// `--force`). Without it such a journal is kept and the run refused.
+    #[serde(default)]
+    pub force: bool,
     /// Skip analytics-store ingestion (parity with the CLI `--no-ingest`).
     #[serde(default)]
     pub no_ingest: bool,
@@ -120,7 +124,7 @@ pub struct ListJournalsTool {
 /// Arguments for the `tumult_discover` tool (takes none).
 #[macros::mcp_tool(
     name = "tumult_discover",
-    description = "List all Tumult plugins, actions, and probes.",
+    description = "List the plugins Tumult can run: each native plugin with its functions, and each script plugin with its actions. Script probes are not listed.",
     read_only_hint = true,
     idempotent_hint = true,
     open_world_hint = false
@@ -214,7 +218,7 @@ pub struct ListExperimentsTool {
 /// Inline output is capped at 512 KiB; HTML/PDF reports are CLI-only.
 #[macros::mcp_tool(
     name = "tumult_report",
-    description = "Render an experiment journal as a report: format=json (raw journal JSON, default) or format=junit (JUnit XML, one testcase per activity). With output_path the report is written inside the workspace and the path is returned; otherwise the content is returned inline (capped at 512 KiB). HTML/PDF reports are CLI-only.",
+    description = "Render an experiment journal as a report: format=json (raw journal JSON, default) or format=junit (JUnit XML, one testcase per step and one per check of the steady state). With output_path the report is written inside the workspace and the path is returned; otherwise the content is returned inline (capped at 512 KiB). HTML/PDF reports are CLI-only.",
     destructive_hint = false,
     read_only_hint = false,
     idempotent_hint = true,
@@ -252,7 +256,7 @@ pub struct ComplianceTool {
 /// Arguments for the `tumult_trend` tool.
 #[macros::mcp_tool(
     name = "tumult_trend",
-    description = "Cross-run metric trend over journals (a .toon journal file or a directory of them): metric one of resilience_score (default), duration_ms, estimate_accuracy, method_step_count; optional last window (e.g. 30d) and target title filter. Returns time-ordered points and a direction verdict.",
+    description = "Cross-run metric trend over journals (a .toon journal file or a directory of them): metric one of resilience_score (default), duration_ms, estimate_accuracy, method_step_count; optional last window (e.g. 30d) and target (the system or the technology the journal names). Returns time-ordered points and a direction verdict.",
     read_only_hint = true,
     idempotent_hint = true,
     open_world_hint = false
@@ -267,7 +271,8 @@ pub struct TrendTool {
     pub metric: String,
     /// Time window in days (e.g. `30d`).
     pub last: Option<String>,
-    /// Case-insensitive experiment-title substring filter.
+    /// Only the runs on this target: the system or the technology the
+    /// journal names, whole and in any case.
     pub target: Option<String>,
 }
 fn default_trend_metric() -> String {

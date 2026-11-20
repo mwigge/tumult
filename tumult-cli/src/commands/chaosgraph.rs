@@ -138,6 +138,7 @@ mod tests {
         };
         let journal = Journal {
             target_version: None,
+            target: None,
             experiment_title: "Latency drill".into(),
             experiment_id: "run-1".into(),
             status: ExperimentStatus::Completed,

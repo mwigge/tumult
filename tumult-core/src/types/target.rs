@@ -50,7 +50,7 @@ pub enum ExecutionTarget {
 /// How an activity is executed: native plugin, script plugin, or local
 /// process. Serialized with a `type` tag (`snake_case`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
+#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Provider {
     /// Dispatch to a native (in-process) plugin function.
     Native {
@@ -77,11 +77,40 @@ pub enum Provider {
         path: String,
         #[serde(default)]
         arguments: Vec<String>,
-        #[serde(default)]
+        /// Environment of the process. A number or `true`/`false` is taken
+        /// as its text, so `WORKERS: 4` needs no quotes.
+        #[serde(default, deserialize_with = "env_as_text")]
         env: HashMap<String, String>,
         /// Execution timeout in seconds; `None` means no timeout.
         timeout_s: Option<f64>,
     },
+}
+
+/// Reads the `env` map of a process provider: every value becomes text.
+fn env_as_text<'de, D>(deserializer: D) -> Result<HashMap<String, String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let raw = HashMap::<String, serde_json::Value>::deserialize(deserializer)?;
+    raw.into_iter()
+        .map(|(name, value)| {
+            let text = scalar_text(&value).ok_or_else(|| {
+                serde::de::Error::custom(format!(
+                    "env value of {name} must be text, a number or true/false"
+                ))
+            })?;
+            Ok((name, text))
+        })
+        .collect()
+}
+
+fn scalar_text(value: &serde_json::Value) -> Option<String> {
+    match value {
+        serde_json::Value::String(text) => Some(text.clone()),
+        serde_json::Value::Number(number) => Some(number.to_string()),
+        serde_json::Value::Bool(flag) => Some(flag.to_string()),
+        _ => None,
+    }
 }
 
 // ── Tolerance ──────────────────────────────────────────────────
@@ -89,7 +118,7 @@ pub enum Provider {
 /// Expected-output check for a probe or guard. Serialized with a `type` tag
 /// (`snake_case`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
+#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Tolerance {
     /// The actual value must equal `value` (compared as JSON).
     Exact { value: serde_json::Value },
@@ -310,5 +339,31 @@ mod tests {
                 .unwrap(),
             "redis"
         );
+    }
+
+    fn process_env(env_lines: &str) -> Result<HashMap<String, String>, String> {
+        let toon = format!("type: process\npath: run.sh\nenv:\n{env_lines}");
+        match toon_format::decode_default::<Provider>(&toon) {
+            Ok(Provider::Process { env, .. }) => Ok(env),
+            Ok(other) => panic!("expected a process provider, got {other:?}"),
+            Err(e) => Err(e.to_string()),
+        }
+    }
+
+    #[test]
+    fn process_env_takes_numbers_and_booleans_as_text() {
+        // The environment of a process is text. `WORKERS: 4` must not be a
+        // parse error only because TOON reads the 4 as a number.
+        let env = process_env("  WORKERS: 4\n  LOAD: 0.5\n  DRY_RUN: true\n  NAME: db\n").unwrap();
+        assert_eq!(env["WORKERS"], "4");
+        assert_eq!(env["LOAD"], "0.5");
+        assert_eq!(env["DRY_RUN"], "true");
+        assert_eq!(env["NAME"], "db");
+    }
+
+    #[test]
+    fn process_env_rejects_a_list_and_names_the_variable() {
+        let error = process_env("  HOSTS[2]: a, b\n").unwrap_err();
+        assert!(error.contains("HOSTS"), "{error}");
     }
 }

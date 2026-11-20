@@ -481,6 +481,23 @@ impl HouseParams {
         reaches(value, self.existing_threshold)
     }
 
+    /// The kind a manual exercise of `exercise_type` is test evidence
+    /// of, from `manual_kinds`; `None` for a type the house does not
+    /// list, which is a record and not a test. The type is matched as
+    /// it is stored.
+    #[must_use]
+    pub fn manual_kind(&self, exercise_type: &str) -> Option<&str> {
+        self.manual_kinds.get(exercise_type).map(String::as_str)
+    }
+
+    /// The discipline a manual exercise of `exercise_type` counts
+    /// towards (a `dr` kind is robustness); `None` for a type the house
+    /// does not list. The DORA score and the risk view both read it.
+    #[must_use]
+    pub fn manual_discipline(&self, exercise_type: &str) -> Option<&str> {
+        self.manual_kind(exercise_type).map(discipline)
+    }
+
     /// Check that the parameters describe a usable model: every share
     /// and factor within 0..=1, every threshold above zero, every gate
     /// threshold a percentage above zero and no gate easier than the one
@@ -933,6 +950,44 @@ mod tests {
         assert!(!p.holds(0.75 - 2.0 * VALUE_EPS));
         assert!(!p.holds(0.7499));
         assert!(!p.holds(f64::NAN));
+    }
+
+    #[test]
+    fn every_manual_exercise_type_has_the_discipline_of_its_kind_or_none() {
+        use tumult_lake::ExerciseType;
+        let p = HouseParams::default();
+        let seen: Vec<(&str, Option<&str>, Option<&str>)> = [
+            ExerciseType::GameDay,
+            ExerciseType::Tabletop,
+            ExerciseType::Failover,
+            ExerciseType::Pentest,
+            ExerciseType::Tlpt,
+            ExerciseType::Drill,
+            ExerciseType::Other,
+        ]
+        .into_iter()
+        .map(|t| {
+            let name = t.as_str();
+            (name, p.manual_kind(name), p.manual_discipline(name))
+        })
+        .collect();
+        assert_eq!(
+            seen,
+            [
+                ("gameday", Some("chaos"), Some("chaos")),
+                ("tabletop", None, None),
+                ("failover", Some("dr"), Some("robustness")),
+                ("pentest", Some("security"), Some("security")),
+                ("tlpt", Some("security"), Some("security")),
+                ("drill", Some("dr"), Some("robustness")),
+                ("other", None, None),
+            ]
+        );
+        // The type is matched as it is stored, as the lake stores it.
+        assert_eq!(p.manual_discipline("Pentest"), None);
+        let house: HouseParams = serde_yaml::from_str("manual_kinds: {tabletop: load}\n").unwrap();
+        assert_eq!(house.manual_discipline("tabletop"), Some("performance"));
+        assert_eq!(house.manual_discipline("pentest"), None);
     }
 
     /// Validation refuses a zero threshold; should one get past it,

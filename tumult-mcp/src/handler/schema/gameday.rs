@@ -7,7 +7,7 @@ use super::default_list_limit;
 /// Arguments for the `tumult_gameday_run` tool.
 #[macros::mcp_tool(
     name = "tumult_gameday_run",
-    description = "Run a GameDay — execute all experiments in a .gameday.toon file under shared load. Returns resilience score and compliance status.",
+    description = "Run a GameDay — execute all experiments in a .gameday.toon file under shared load. Returns resilience score and compliance status. Refuses, before any experiment runs, while the journal of an earlier run (the .journal.toon alongside the file) is there: set force to replace it.",
     destructive_hint = true,
     read_only_hint = false,
     idempotent_hint = false,
@@ -17,6 +17,10 @@ use super::default_list_limit;
 pub struct GameDayRunTool {
     /// Path to the `.gameday.toon` file.
     pub gameday_path: String,
+    /// Replace the journal of an earlier run (parity with the CLI
+    /// `--force`). Without it that journal is kept and the run refused.
+    #[serde(default)]
+    pub force: bool,
 }
 
 /// Arguments for the `tumult_gameday_analyze` tool.
@@ -38,7 +42,7 @@ pub struct GameDayAnalyzeTool {
 /// Fails if `<name>.gameday.toon` already exists.
 #[macros::mcp_tool(
     name = "tumult_gameday_create",
-    description = "Create a .gameday.toon campaign file (<name>.gameday.toon in the workspace root) from experiment paths, with optional shared load config (load_tool k6, oha or jmeter, load_script, load_vus) and compliance framework mapping. Fails if the file already exists.",
+    description = "Create a .gameday.toon campaign file (<name>.gameday.toon in the workspace root) from experiment paths, with optional shared load config (load_tool k6 or oha with its load_script, and load_vus) and compliance framework mapping. Fails if the file already exists.",
     destructive_hint = false,
     read_only_hint = false,
     idempotent_hint = false,
@@ -51,12 +55,13 @@ pub struct GameDayCreateTool {
     /// Experiment `.toon` paths referenced by the campaign (resolved
     /// relative to the gameday file when it is run).
     pub experiments: Vec<String>,
-    /// Load tool to run during the campaign: `k6`, `jmeter`, or `none`
+    /// Load tool to run during the campaign: `k6`, `oha`, or `none`
     /// (default: no load).
     pub load_tool: Option<String>,
-    /// Load script path recorded in the load config.
+    /// Load script path recorded in the load config; for `oha`, the URL to
+    /// hit. Required with a load tool.
     pub load_script: Option<String>,
-    /// Virtual users for the load test.
+    /// Virtual users for the load test (needs a load tool).
     pub load_vus: Option<u32>,
     /// Compliance framework to map: one of `dora`, `nis2`, `pci-dss`,
     /// `iso-22301`, `iso-27001`, `soc2`, `basel-iii`.

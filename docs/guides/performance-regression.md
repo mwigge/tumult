@@ -456,9 +456,9 @@ tumult perf checkout --quantile p95 --margin-pct 5 --env staging --store
 
 ```
 perf checkout: REGRESSED (p95 of load.latency_p95_ms)
-  versions: 1.5.0 is the version deployed latest in environment staging
-  baseline  1.4.0: 100.0 ms over 72 sample(s) in 3 run(s)
-  candidate 1.5.0: 150.0 ms over 72 sample(s) in 3 run(s)
+  versions: 1.5.0 is the version deployed latest in environment staging, and 1.4.0 the one deployed before it
+  baseline  1.4.0: 100.0 ms over 72 sample(s) in 5 run(s)
+  candidate 1.5.0: 150.0 ms over 72 sample(s) in 5 run(s)
       1 run(s) attributed from spans; 1 partial run(s) left out
   delta +50.0 ms (+50.0%), CI [31.0, 70.0], margin ±5.0
   - p95 difference interval [31.00, 70.00] against a noise margin of ±5.00 lies entirely above the margin
@@ -580,7 +580,9 @@ The oha adapter's `error_rate` is (transport errors + answers outside
 timeout is a transport error. k6's is its own `http_req_failed` rate, which
 by default counts answers outside 200–399 too but follows whatever
 `http.setResponseCallback` the script installs — a script that declares 404
-expected does not count it. Compare error rates between runs of the same
+expected does not count it. A k6 script that sends no HTTP request (an
+xk6-sql script, say) has no such rate; its error rate is the share of its
+`check()` calls that failed. Compare error rates between runs of the same
 tool, not across tools.
 
 ## Slow tails

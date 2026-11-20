@@ -13,12 +13,18 @@ mod dora;
 mod endpoints;
 mod entities;
 mod events;
+mod evidence;
+mod faults;
 mod forecast;
 mod gamedays;
 mod gate;
+mod journal_only;
 mod manual;
 mod perf;
 mod query;
+#[cfg(unix)]
+mod real_runs;
+mod recovery;
 mod reports;
 mod risks;
 mod runs;

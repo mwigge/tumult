@@ -1,11 +1,11 @@
 //! The R2 compliance evidence pack skeleton, per framework.
 
-use tumult_lake::Reader;
+use tumult_lake::{scope, Reader};
 
-use super::{base_meta, cell};
+use super::{base_meta, cell, counted};
 use crate::html::fmt_date;
 use crate::model::{Block, Cell, ReportDoc, TemplateKind};
-use crate::scoring::{self, RunState};
+use crate::scoring;
 
 /// Clause lists per framework (skeleton — must be verified against the
 /// licensed framework text; see the mandatory footnote on every R2).
@@ -93,8 +93,9 @@ pub fn build_evidence_pack(
         Block::H1("Scope and methodology".into()),
         Block::Paragraph(format!(
             "This pack summarises the resilience testing evidence Tumult recorded \
-             for the {} framework{}{}. Experiments are chaos/continuity tests \
-             executed via tumult; outcomes are taken from each run's completion log.",
+             for the {} framework{}{}. An automated experiment is a chaos or continuity \
+             test that Tumult ran. The outcome of a run is the status that run recorded; \
+             a manual exercise has the outcome of its verified record.",
             key.to_uppercase(),
             from_ns.map_or(String::new(), |f| format!(
                 " over the period {} – {}",
@@ -104,7 +105,11 @@ pub fn build_evidence_pack(
             if card.experiments.is_empty() {
                 ". No experiments are on record in the store".into()
             } else {
-                format!("; {} experiments are on record", card.experiments.len())
+                let on_record = card.experiments.len();
+                format!(
+                    "; {}",
+                    counted(on_record, "experiment is on record", "experiments are on record")
+                )
             },
         )),
         Block::H2("Independence".into()),
@@ -153,7 +158,7 @@ pub fn build_evidence_pack(
                 "SELECT id, experiment_name AS name, executed_at_ns, entered_by, entered_at_ns, \
                  reviewed_by, reviewed_at_ns FROM manual_experiments \
                  WHERE status = 'verified'{} ORDER BY executed_at_ns DESC",
-                scoring::and_env(scoring::env_in("target_environment", envs)),
+                scope::and(scope::in_list("target_environment", envs)),
             ))
             .map_err(|e| e.to_string())?;
         let mut manual_by_id: std::collections::BTreeMap<String, &serde_json::Value> =
@@ -187,7 +192,7 @@ pub fn build_evidence_pack(
                     let verifier = manual.and_then(|m| cell(m, "reviewed_by"));
                     vec![
                         Cell::text(e.name.clone()),
-                        Cell::status(e.origin.clone()),
+                        Cell::text(e.origin.clone()),
                         Cell::text(format!(
                             "{} / {}",
                             e.target.as_deref().unwrap_or("—"),
@@ -320,7 +325,7 @@ pub fn build_evidence_pack(
              entered_at_ns, reviewed_by, reviewed_at_ns, attestation, framework_refs \
              FROM manual_experiments WHERE status = 'verified'{} \
              ORDER BY experiment_name, executed_at_ns DESC",
-            scoring::and_env(scoring::env_in("target_environment", envs)),
+            scope::and(scope::in_list("target_environment", envs)),
         ))
         .map_err(|e| e.to_string())?;
     if !attested.is_empty() {
@@ -390,7 +395,7 @@ pub fn build_evidence_pack(
     let open: Vec<&scoring::ExperimentScore> = card
         .experiments
         .iter()
-        .filter(|e| matches!(e.state, RunState::Failed | RunState::NeverRun))
+        .filter(|e| e.state.is_open())
         .collect();
     blocks.push(Block::H2("Findings log".into()));
     if open.is_empty() {

@@ -4,21 +4,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::time::Duration;
 
-#[cfg(not(windows))]
-use opentelemetry::propagation::Injector;
 use thiserror::Error;
-
-/// A simple `HashMap`-backed carrier for W3C trace-context propagation.
-/// Only the POSIX `execute_script` injects trace context.
-#[cfg(not(windows))]
-struct HashMapCarrier(HashMap<String, String>);
-
-#[cfg(not(windows))]
-impl Injector for HashMapCarrier {
-    fn set(&mut self, key: &str, value: String) {
-        self.0.insert(key.to_uppercase(), value);
-    }
-}
 
 #[derive(Error, Debug)]
 pub enum ExecutorError {
@@ -28,6 +14,8 @@ pub enum ExecutorError {
     ExecutionFailed(#[from] std::io::Error),
     #[error("script timed out after {0}s")]
     Timeout(f64),
+    #[error("script stopped before it finished")]
+    Stopped,
     #[error("null byte in script argument key or value: {0}")]
     NullByteInArgument(String),
     #[error(
@@ -205,6 +193,27 @@ pub async fn execute_script<S: std::hash::BuildHasher>(
     arguments: &HashMap<String, String, S>,
     timeout: Option<Duration>,
 ) -> Result<ScriptResult, ExecutorError> {
+    let never = std::future::pending();
+    execute_script_until(script_path, plugin_root, arguments, timeout, never).await
+}
+
+/// [`execute_script`], ended early when `stop` completes.
+///
+/// A stop kills the process group of the script, like a timeout does, so
+/// children the script started do not outlive it.
+///
+/// # Errors
+///
+/// Returns [`ExecutorError::Stopped`] if `stop` completes before the script
+/// ends, and otherwise the errors of [`execute_script`].
+#[cfg(not(windows))]
+pub async fn execute_script_until<S: std::hash::BuildHasher>(
+    script_path: &Path,
+    plugin_root: &Path,
+    arguments: &HashMap<String, String, S>,
+    timeout: Option<Duration>,
+    stop: impl std::future::Future<Output = ()>,
+) -> Result<ScriptResult, ExecutorError> {
     // Pre-compute the display string once to avoid repeated allocations
     // (PLUGIN-ALLOC-01: was called 3-4× via .display().to_string() inline).
     let path_str = script_path.display().to_string();
@@ -232,11 +241,16 @@ pub async fn execute_script<S: std::hash::BuildHasher>(
 
     // Inject W3C trace context into the subprocess environment so that scripts
     // and child processes can propagate the active trace (TRACEPARENT / TRACESTATE).
-    let mut carrier = HashMapCarrier(HashMap::new());
-    opentelemetry::global::get_text_map_propagator(|propagator| {
-        propagator.inject(&mut carrier);
-    });
-    env_vars.extend(carrier.0);
+    let mut trace_context = HashMap::new();
+    tumult_otel::propagation::inject_traceparent(
+        &opentelemetry::Context::current(),
+        &mut trace_context,
+    );
+    env_vars.extend(
+        trace_context
+            .into_iter()
+            .map(|(key, value)| (key.to_uppercase(), value)),
+    );
 
     let mut cmd = tokio::process::Command::new("/bin/sh");
     cmd.arg(script_path);
@@ -265,19 +279,21 @@ pub async fn execute_script<S: std::hash::BuildHasher>(
         .take()
         .map(|err| tokio::spawn(read_capped(err, "stderr")));
 
-    let status = if let Some(duration) = timeout {
-        match tokio::time::timeout(duration, child.wait()).await {
-            Ok(status) => status.map_err(ExecutorError::ExecutionFailed)?,
-            Err(_elapsed) => {
-                kill_timed_out_child(&mut child).await;
-                log_timed_out(&path_str, duration);
-                crate::telemetry::event_script_timed_out(&path_str, duration.as_secs_f64());
-                crate::telemetry::record_execution(false);
-                return Err(ExecutorError::Timeout(duration.as_secs_f64()));
-            }
+    let status = match wait_for_exit(&mut child, timeout, stop).await {
+        Waited::Exited(status) => status.map_err(ExecutorError::ExecutionFailed)?,
+        Waited::TimedOut(duration) => {
+            end_child(&mut child).await;
+            log_timed_out(&path_str, duration);
+            crate::telemetry::event_script_timed_out(&path_str, duration.as_secs_f64());
+            crate::telemetry::record_execution(false);
+            return Err(ExecutorError::Timeout(duration.as_secs_f64()));
         }
-    } else {
-        child.wait().await.map_err(ExecutorError::ExecutionFailed)?
+        Waited::Stopped => {
+            end_child(&mut child).await;
+            log_stopped(&path_str);
+            crate::telemetry::record_execution(false);
+            return Err(ExecutorError::Stopped);
+        }
     };
 
     // The reader tasks finish at EOF once the process group is dead.
@@ -304,6 +320,38 @@ pub async fn execute_script<S: std::hash::BuildHasher>(
     Ok(result)
 }
 
+/// How the wait for a script ended.
+#[cfg(not(windows))]
+enum Waited {
+    Exited(std::io::Result<std::process::ExitStatus>),
+    TimedOut(Duration),
+    Stopped,
+}
+
+/// Wait until the script exits, `timeout` passes or `stop` completes,
+/// whichever comes first.
+#[cfg(not(windows))]
+async fn wait_for_exit(
+    child: &mut tokio::process::Child,
+    timeout: Option<Duration>,
+    stop: impl std::future::Future<Output = ()>,
+) -> Waited {
+    let timed_out = async {
+        match timeout {
+            Some(duration) => {
+                tokio::time::sleep(duration).await;
+                duration
+            }
+            None => std::future::pending().await,
+        }
+    };
+    tokio::select! {
+        status = child.wait() => Waited::Exited(status),
+        duration = timed_out => Waited::TimedOut(duration),
+        () = stop => Waited::Stopped,
+    }
+}
+
 /// Windows counterpart of the POSIX [`execute_script`]: script plugins run
 /// through `/bin/sh`, which does not exist on Windows, so dispatch fails
 /// fast with a clear error rather than an opaque spawn failure.
@@ -320,6 +368,23 @@ pub async fn execute_script<S: std::hash::BuildHasher>(
 ) -> Result<ScriptResult, ExecutorError> {
     let _ = (script_path, plugin_root, arguments, timeout);
     Err(ExecutorError::UnsupportedPlatform)
+}
+
+/// Windows counterpart of the POSIX [`execute_script_until`].
+///
+/// # Errors
+///
+/// Always returns [`ExecutorError::UnsupportedPlatform`].
+#[cfg(windows)]
+pub async fn execute_script_until<S: std::hash::BuildHasher>(
+    script_path: &Path,
+    plugin_root: &Path,
+    arguments: &HashMap<String, String, S>,
+    timeout: Option<Duration>,
+    stop: impl std::future::Future<Output = ()>,
+) -> Result<ScriptResult, ExecutorError> {
+    drop(stop);
+    execute_script(script_path, plugin_root, arguments, timeout).await
 }
 
 /// Most bytes kept from one output stream of a script. A script is
@@ -498,6 +563,17 @@ fn log_timed_out(script_path: &str, timeout: Duration) {
     );
 }
 
+/// Notes a script that was ended because its run was stopped. Someone asked
+/// for that, so it is not a warning.
+#[cfg(not(windows))]
+fn log_stopped(script_path: &str) {
+    tracing::info!(
+        name: "plugin.script.stopped",
+        { file.path = script_path },
+        "script was stopped before it finished and was killed"
+    );
+}
+
 /// Notes a script that did not exit with code 0.
 ///
 /// That is an observation, not a failure of ours: a probe reports a broken
@@ -528,20 +604,21 @@ fn log_non_zero_exit(
     );
 }
 
-/// Kill the timed-out child's whole process group on Unix, so children the
-/// script spawned don't survive the shell; fall back to killing only the
-/// direct child elsewhere. Always reaps the child.
+/// Kill the whole process group of a child that timed out or was stopped, so
+/// children the script spawned don't survive the shell; fall back to killing
+/// only the direct child where there are no process groups. Always reaps the
+/// child.
 #[cfg(unix)]
-async fn kill_timed_out_child(child: &mut tokio::process::Child) {
+async fn end_child(child: &mut tokio::process::Child) {
     if let Some(pid) = child.id() {
         kill_process_group(pid);
     }
     let _ = child.wait().await;
 }
 
-/// Non-Unix counterpart of [`kill_timed_out_child`].
+/// Non-Unix counterpart of [`end_child`].
 #[cfg(not(any(unix, windows)))]
-async fn kill_timed_out_child(child: &mut tokio::process::Child) {
+async fn end_child(child: &mut tokio::process::Child) {
     let _ = child.kill().await;
 }
 
@@ -1089,6 +1166,127 @@ mod tests {
             .filter(|event| event["level"] == "WARN" || event["level"] == "ERROR")
             .count();
         assert_eq!(warnings, 0, "{}", after_both.raw);
+    }
+
+    // ── a stop from outside ────────────────────────────────────
+
+    /// A stop that comes after `delay`.
+    async fn stop_after(delay: Duration) {
+        // sleep: this is the stop itself, a signal at a set time.
+        tokio::time::sleep(delay).await;
+    }
+
+    #[tokio::test]
+    async fn a_stopped_script_ends_at_once_with_an_error_that_says_so() {
+        let dir = TempDir::new().unwrap();
+        let script = create_test_script(dir.path(), "slow.sh", "#!/bin/sh\nsleep 30\n");
+        let started = std::time::Instant::now();
+
+        let result = execute_script_until(
+            &script,
+            dir.path(),
+            &HashMap::new(),
+            Some(Duration::from_secs(60)),
+            stop_after(Duration::from_millis(100)),
+        )
+        .await;
+
+        let error = result.expect_err("a stopped script has no result");
+        assert!(matches!(error, ExecutorError::Stopped), "{error}");
+        assert_eq!(error.to_string(), "script stopped before it finished");
+        assert!(
+            started.elapsed() < Duration::from_secs(10),
+            "the stop waited for the script: {:?}",
+            started.elapsed()
+        );
+    }
+
+    #[tokio::test]
+    async fn a_stopped_script_takes_its_children_with_it() {
+        // The script starts a child that would leave a marker after the
+        // stop. If only the shell were killed, the marker would appear.
+        let dir = TempDir::new().unwrap();
+        let marker = dir.path().join("child-survived");
+        let script = create_test_script(
+            dir.path(),
+            "test.sh",
+            &format!(
+                "#!/bin/sh\n( sleep 0.4; touch \"{}\" ) &\nsleep 30\n",
+                marker.display()
+            ),
+        );
+
+        let result = execute_script_until(
+            &script,
+            dir.path(),
+            &HashMap::new(),
+            None,
+            stop_after(Duration::from_millis(100)),
+        )
+        .await;
+        assert!(matches!(result, Err(ExecutorError::Stopped)));
+
+        // sleep: there is no event for a file that must stay absent; wait
+        // past the time the child would have written it.
+        tokio::time::sleep(Duration::from_millis(800)).await;
+        assert!(!marker.exists(), "a child of the script outlived the stop");
+    }
+
+    #[tokio::test]
+    async fn a_script_that_ends_before_the_stop_keeps_its_result() {
+        let dir = TempDir::new().unwrap();
+        let script = create_test_script(dir.path(), "quick.sh", "#!/bin/sh\necho done\n");
+
+        let result = execute_script_until(
+            &script,
+            dir.path(),
+            &HashMap::new(),
+            None,
+            stop_after(Duration::from_secs(60)),
+        )
+        .await
+        .expect("the script ran to its end");
+
+        assert!(result.succeeded());
+        assert_eq!(result.stdout.trim(), "done");
+    }
+
+    #[tokio::test]
+    async fn a_timeout_that_comes_before_the_stop_is_still_a_timeout() {
+        let dir = TempDir::new().unwrap();
+        let script = create_test_script(dir.path(), "slow.sh", "#!/bin/sh\nsleep 30\n");
+
+        let result = execute_script_until(
+            &script,
+            dir.path(),
+            &HashMap::new(),
+            Some(Duration::from_millis(100)),
+            stop_after(Duration::from_secs(60)),
+        )
+        .await;
+
+        assert!(matches!(result, Err(ExecutorError::Timeout(_))));
+    }
+
+    #[tokio::test]
+    async fn a_stopped_script_is_a_named_event_and_not_a_warning() {
+        let dir = TempDir::new().unwrap();
+        let script = create_test_script(dir.path(), "slow.sh", "#!/bin/sh\nsleep 30\n");
+        let logs = capture(tracing::Level::INFO);
+        let result = execute_script_until(
+            &script,
+            dir.path(),
+            &HashMap::new(),
+            None,
+            stop_after(Duration::from_millis(100)),
+        )
+        .await;
+        let logs = logs.snapshot();
+
+        assert!(matches!(result, Err(ExecutorError::Stopped)));
+        let event = &logs.named("plugin.script.stopped")[0];
+        assert_eq!(event["level"], "INFO");
+        assert_eq!(event["file.path"], script.to_str().unwrap());
     }
 
     #[tokio::test]

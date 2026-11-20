@@ -1,7 +1,12 @@
 title: Network latency — verify connectivity survives injected loopback delay
-description: Confirm loopback ping works, add netem latency, confirm it still works, reset
+description: Changes this host: sudo tc adds a 100 ms delay to the loopback interface and removes it again. Confirm loopback ping works, add netem latency, confirm it still works, reset
 
-tags[2]: network, resilience
+tags[3]: network, resilience, host-changing
+kind: chaos
+target:
+  system: localhost
+  technology: linux
+  environment: local
 
 steady_state_hypothesis:
   title: Loopback responds to ping

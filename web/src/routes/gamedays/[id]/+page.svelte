@@ -1,7 +1,7 @@
 <script lang="ts">
     import { page } from '$app/state';
     import { onMount } from 'svelte';
-    import { ACTIVE_RUN_STATES, api } from '#lib/api.js';
+    import { ACTIVE_RUN_STATES, ApiError, api } from '#lib/api.js';
     import type { GameDayDetail, MeResponse, RunRow } from '#lib/types.js';
     import StatusBadge from '#lib/components/StatusBadge.svelte';
 
@@ -16,6 +16,10 @@
     let children = $state<RunRow[]>([]);
     let launchError = $state<string | null>(null);
     let launching = $state(false);
+    // The environment the campaign runs in, typed as on New run.
+    let environment = $state('');
+    // Polls the campaign at once; the effect below sets it while the page is open.
+    let follow: (() => void) | null = null;
 
     const canRun = $derived(
         me ? !me.auth_required || (me.authenticated && !!me.role && me.role !== 'viewer') : false,
@@ -49,10 +53,10 @@
 
         async function poll() {
             try {
-                const r = await api.runs(undefined, 50);
+                const r = await api.gamedayCampaigns(gamedayId);
                 if (cancelled) return;
                 const mine = r.runs
-                    .filter((run) => run.registry_id === gamedayId && !run.gameday_id)
+                    .filter((run) => !run.gameday_id)
                     .sort((a, b) => b.queued_at_ns - a.queued_at_ns);
                 campaign = mine[0] ?? null;
                 if (campaign) {
@@ -65,30 +69,37 @@
                 // Campaign progress is best-effort; the plan above stays.
             }
             if (!cancelled && campaign && ACTIVE_RUN_STATES.has(campaign.state)) {
+                // One pending tick at most, also when a launch started a poll of its own.
+                if (timer) clearTimeout(timer);
                 timer = setTimeout(poll, 3000);
             }
         }
 
+        follow = () => void poll();
         void load();
         void poll();
         return () => {
             cancelled = true;
+            follow = null;
             if (timer) clearTimeout(timer);
         };
     });
 
     async function launch() {
-        if (launching) return;
+        const env = environment.trim();
+        if (launching || !env) return;
         launching = true;
         launchError = null;
         try {
-            await api.startCampaign(id, 'dev');
-            // The next poll tick picks the campaign up.
-            const r = await api.runs(undefined, 10);
-            const mine = r.runs.filter((run) => run.registry_id === id && !run.gameday_id);
-            campaign = mine[0] ?? campaign;
+            const started = await api.startCampaign(id, env);
+            campaign = (await api.run(started.run_id)).run;
+            children = [];
+            follow?.();
         } catch (e) {
-            launchError = String(e);
+            launchError =
+                e instanceof ApiError && e.status === 403
+                    ? `Not allowed to run in ${env}: ${e.message}`
+                    : String(e);
         } finally {
             launching = false;
         }
@@ -193,9 +204,31 @@
         {#if !canRun}
             <div class="hint">Launching campaigns requires the operator role or above.</div>
         {:else}
-            <button class="primary" onclick={launch} disabled={launching || campaignActive}>
+            <div class="params">
+                <label
+                    >Environment<input
+                        type="text"
+                        bind:value={environment}
+                        placeholder="staging or production"
+                    /></label
+                >
+            </div>
+            <p class="hint">
+                The administrator must bind the reviewed execution fingerprint of each step to this
+                environment. Unbound executions require the highest approval tier.
+            </p>
+            <button
+                class="primary"
+                onclick={launch}
+                disabled={launching || campaignActive || !environment.trim()}
+            >
                 {launching ? 'Starting…' : campaignActive ? 'Campaign running' : 'Run GameDay'}
             </button>
+            <div class="hint">
+                {environment.trim()
+                    ? `The campaign runs in ${environment.trim()}.`
+                    : 'Enter the environment the campaign runs in.'}
+            </div>
             {#if launchError}<div class="state error" style="margin-top: 10px">
                     {launchError}
                 </div>{/if}
@@ -221,8 +254,17 @@
         align-items: center;
         gap: 8px;
     }
+    .params {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+        gap: 10px 18px;
+    }
+    .params input {
+        width: 100%;
+    }
     .hint {
         color: var(--text-dim);
         font-size: 12.5px;
+        margin-top: 8px;
     }
 </style>

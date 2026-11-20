@@ -61,7 +61,7 @@ fn sys(name: &str, statuses: &[(&str, &str)]) -> SystemRow {
 fn exp(name: &str, passed: bool) -> ExperimentRow {
     ExperimentRow {
         name: name.to_string(),
-        kind: "chaos".to_string(),
+        kind: Some("chaos".to_string()),
         passed,
         last_run_ns: 500,
     }

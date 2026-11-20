@@ -10,7 +10,7 @@ Tumult provides a single binary `tumult` with the following commands.
 
 ## tumult run
 
-Execute a chaos experiment.
+Execute an experiment.
 
 ```
 tumult run <experiment.toon> [OPTIONS]
@@ -24,13 +24,13 @@ tumult run <experiment.toon> [OPTIONS]
 | `--rollback-strategy <s>` | `on-deviation` | `always`, `on-deviation`, or `never` (`deviated` is accepted as an alias for `on-deviation`) |
 | `--baseline-mode <m>` | `full` | `full`/`skip`: declared tolerances; `only`: one probe-only observation, no fault/load/control/rollback |
 | `--no-ingest` | `false` | Skip auto-ingestion into persistent analytics store |
-| `--output-format <f>` | — | `json` — print journal as JSON to stdout after run |
+| `--output-format <f>` | — | `json`: print the journal as JSON on stdout when the run has ended, also when it did not complete. Stdout then holds the journal only; the [summary](#summary) goes to stderr. Not with `--dry-run` |
 | `--var KEY=VALUE` | — | Template variable substitution (repeatable) |
 | `--target-version <v>` | — | The version of the target this run measures, recorded in the journal as `declared` (overrides `target.version`; an error when the definition has no `target` block). Without it and without `target.version`, a run that auto-ingests asks the daemon (or the local lake) once at its end which `service.version` the target's spans carried during the run and records it as `observed` |
-| `--load <tool>` | — | Run a load test concurrently with the method (`k6` or `none`) |
-| `--load-script <path>` | — | Path to load test script (k6 `.js`) |
-| `--load-vus <n>` | — | Number of virtual users for the load test |
-| `--load-duration <d>` | — | Load test duration (e.g. `30s`, `5m`) |
+| `--load <tool>` | — | Run a load test concurrently with the method (`k6` or `oha`). `none` runs the experiment without the load of its file |
+| `--load-script <path>` | `load.js` | Path to load test script (k6 `.js`), or the URL to hit for oha |
+| `--load-vus <n>` | `10` | Number of virtual users for the load test |
+| `--load-duration <d>` | `30s` | Load test duration (e.g. `30s`, `5m`) |
 
 ### Examples
 
@@ -38,7 +38,8 @@ tumult run <experiment.toon> [OPTIONS]
 # Basic run
 tumult run experiment.toon
 
-# Dry run — show plan without executing
+# Dry run — show the plan without executing: kind, target, recovery
+# targets, objectives, load, hypothesis, guards, steps and rollbacks
 tumult run experiment.toon --dry-run
 
 # Custom journal path
@@ -66,7 +67,7 @@ injected. `always` runs them on every outcome; `never` skips them entirely.
 
 ### Template Variables
 
-The `--var` flag substitutes `${KEY}` placeholders in the experiment's title and activity names before execution. This allows a single experiment template to be reused across environments:
+The `--var` flag substitutes `${KEY}` placeholders in every string field of the experiment before execution. This allows a single experiment template to be reused across environments:
 
 ```toon
 title: Resilience test for ${env} cluster ${cluster}
@@ -82,12 +83,40 @@ tumult run template.toon --var env=production --var cluster=us-east-1
 
 Undefined variables cause a hard error at startup, not at execution time.
 
+### Summary
+
+When a run ends, it prints what it found.
+
+```
+Running experiment: Checkout answers while a slow job runs
+Status: Completed
+Duration: 3169ms
+Method steps: 1 executed
+Hypothesis: met before, met after
+Objectives: 3 met, 1 breached, 1 inconclusive
+  breached: a-million-requests: load.total_requests must be at least 1000000, observed 10611
+  inconclusive: rpo: rpo must be at most 5, not measured
+Load (oha): 10611 requests, 3531.4 requests/s, p50 0.5 ms, p95 0.8 ms, p99 1.4 ms, error rate 0.00 %, thresholds met
+Journal written to: journal.toon
+Journal SHA-256: e97edc233991dfdebf733d0af92a92e83b29c9710320016b7e814cfc2c80f474
+Ingested into persistent analytics store
+```
+
+| Line | What it says |
+|------|--------------|
+| `Hypothesis` | Whether the steady state was `met`, `not met` or `not checked`, before and after the method |
+| `Objectives` | How many [objectives](experiment-format.md) were met, breached or inconclusive. Each one that was not met gets a line with its rule and the value the run observed |
+| `Load` | What the load measured in all. The line ends with `cut before its planned end` when the load was stopped early |
+| `Journal SHA-256` | The hash of the journal file, the same value `sha256sum` prints |
+
+A run without a steady state, objectives or a load has no line about it.
+
 ### Exit Codes
 
 | Code | Meaning |
 |------|---------|
 | 0 | Experiment completed successfully |
-| 1 | Experiment failed, deviated, interrupted, or aborted |
+| 1 | Experiment failed, deviated, halted, interrupted, or aborted |
 
 ### Auto-Ingest
 
@@ -113,9 +142,14 @@ Reports:
 - Title, description, tags
 - Method and rollback step counts
 - Hypothesis probe count
-- Phase 0/1 configuration presence
+- Whether an estimate and a baseline block are present. A run does not use the baseline block, and validate says so
 - Configuration and secret resolution status
-- Template variable references (warns on undefined vars)
+- Whether a regulatory mapping is present
+
+Validation fails when:
+- a step, a guard or a control names a plugin, function or action that this binary does not have. The error lists every such step and what is available.
+- an objective names a metric outside the [metric table](experiment-format.md#objectives), or a `probe.<name>` metric names a probe that the steady-state hypothesis does not have.
+- the file has a key the format does not know (on a step, a provider or a tolerance) or a key written twice, a load tool with no adapter (`jmeter`) or an oha threshold the adapter does not check, or a timeout or a pause that is no number of seconds.
 
 ### Example
 
@@ -257,15 +291,42 @@ tumult export <journal.toon> [OPTIONS]
 |--------|---------|-------------|
 | `--format <f>` | `parquet` | `parquet`, `arrow`, `csv`, or `json` |
 
+`json` writes the whole journal to `<journal>.json`. The other formats write
+two tables in the working directory:
+
+| File | Rows |
+|------|------|
+| `<journal>.<ext>` | The run: one row |
+| `activities/<journal>.<ext>` | The steps of the run: one row per step |
+
+Both tables have the column `experiment_id`. Each table has its own
+directory, so a tool that reads every file of a directory as one table gets
+the runs from the one and the steps from the other.
+
 ## tumult compliance
 
 Generate regulatory compliance reports.
 
 ```
 tumult compliance <journals-dir> --framework <name>
+tumult compliance --framework <name> --sources
 ```
 
 Supported frameworks: `dora`, `nis2`, `pci-dss`, `iso-22301`, `iso-27001`, `soc2`, `basel-iii`
+
+`--sources` lists every mapped citation with its source URL and the date it was last checked, and reads no journal.
+
+The evidence summary counts two things:
+
+| Line | What it counts |
+|------|----------------|
+| `Pass rate` | Of all the journals, the share whose run completed |
+| `Recovery within 30s` | Of the runs that watched for recovery, the share whose target came back within 30 seconds |
+
+A run watches for recovery when it has a steady state to probe after the
+fault. A watched run whose target did not come back counts against the
+share. When no run watched, the line says so, and the verdict ends with
+`(pass-rate only)`.
 
 ### Example
 
@@ -285,8 +346,15 @@ tumult trend <journals-dir> [OPTIONS]
 | Option | Default | Description |
 |--------|---------|-------------|
 | `--metric <m>` | `resilience_score` | Metric to trend (`resilience_score`, `duration_ms`, `estimate_accuracy`, `method_step_count`) |
-| `--last <window>` | — | Time window: `30d`, `90d`, etc. |
-| `--target <tech>` | — | Filter by target system (matches experiment title) |
+| `--last <window>` | — | Only the runs that started in this window: `30d`, `90d`, etc. |
+| `--target <name>` | — | Only the runs on this target: the system or the technology the journal names (whole name, any case) |
+
+The points and the summary line are over the same runs: the ones of the
+window and of the target.
+
+A journal names the target its experiment declares (since 3.0.2). With
+`--target`, a journal that names no target is left out, and the output says
+how many were.
 
 ### Examples
 
@@ -305,9 +373,26 @@ tumult report <journal.toon> [OPTIONS]
 
 | Option | Description |
 |--------|-------------|
-| `--output <path>` | Output file path (default: `report.html`) |
+| `--output <path>` | Output file path (default: the name of the journal with `.html`, or `.xml` for `junit` and `.json` for `json`) |
 | `--format <f>` | `html` (default), `pdf`, `json`, or `junit` |
 | `--trace-ui-base <url>` | Base URL of a trace UI (e.g. Jaeger/Tempo) — HTML reports render each activity's `trace_id` as a clickable link (falls back to the `TUMULT_TRACE_UI_BASE` env var) |
+
+The HTML report is one file that shows the whole journal: the halt, the
+steady state, every step, the objectives, the load, the measurements, the
+versions and the analysis. It follows the light or dark setting of the
+browser. Set `SOURCE_DATE_EPOCH` (seconds) to fix the time the report says it
+was generated at, so the same journal always gives the same file.
+
+The report draws up to five charts: a timeline of the steps, the headroom
+of each objective, the load latency, the load throughput with its error
+rate, and the samples of each probe over time. The time a fault was active
+is shaded. The charts need no network: the script that draws them is in
+the file, which makes a report with a chart about 570 KB. A reader with
+scripts off still gets every table.
+
+The JUnit file has one test case per step, and one per check of the steady
+state. A check that did not hold is a failed case, so a deviated run shows as a
+failure in CI.
 
 ## tumult import
 
@@ -341,7 +426,7 @@ tumult store <subcommand>
 | `backup [--output <dir>]` | Copy the complete database and checksum manifest; stop writers first, protect credentials in backup |
 | `export [--output <dir>]` | Write the Parquet directory `tumult import` reads (experiments, activities, load results, probe samples, run roots, version history); refuses a directory that already holds one |
 | `restore --input <dir> --output <new-db>` | Verify a complete backup and restore into a new database; never overwrite an existing destination |
-| `purge --older-than-days <N>` | Delete experiments older than N days |
+| `purge --older-than-days <N>` | Delete experiments older than N days, with their activities, load results, probe samples, NFR verdicts and own graph rows; telemetry, the run registry and audit trail, manual records, forecasts, sightings and autopilot tables are kept |
 | `path` | Print the store file path |
 | `migrate` | Migrate data from DuckDB to ClickHouse backend |
 | `import-legacy [--analytics-db <path>] [--kronika-db <path>] [--store <path>]` | Import databases from older installs (old analytics store and/or kronika lake) into the current store; idempotent |
@@ -363,7 +448,7 @@ backup; ordinary queries do not automatically read cold archive files.
 
 ## tumult recommend
 
-Recommend the next useful chaos experiment from deterministic heuristics over the analytics store (coverage gaps, failing experiments, stale experiments), optionally enhanced by a local agent CLI.
+Recommend the next useful experiment from deterministic heuristics over the analytics store (coverage gaps, failing experiments, stale experiments), optionally enhanced by a local agent CLI.
 
 ```
 tumult recommend [OPTIONS]
@@ -563,6 +648,17 @@ tumult gameday <create|run|analyze>
 | `run` | Run all experiments in a GameDay under shared load |
 | `analyze` | Show aggregate analysis of a completed GameDay |
 
+`tumult gameday run` writes its journal first and then exits with a code that says how the GameDay went.
+
+| Code | Meaning |
+|------|---------|
+| 0 | The GameDay is `COMPLIANT` |
+| 1 | The GameDay is `PARTIAL` or `NON-COMPLIANT`, or it could not run |
+
+Before 3.0.2 the command exited with 0 for every GameDay that wrote a journal.
+
+`tumult gameday run` keeps the journal of an earlier run (`<name>.gameday.journal.toon`): it stops before the first experiment unless you pass `--force`, as `tumult run` does.
+
 See the [Experiment Scheduling guide](scheduling.md) for recurring GameDays.
 
 ## tumult topology
@@ -595,7 +691,7 @@ tumult autopilot <once|status|approve|deny|notify-change|export>
 |------------|-------------|
 | `once` | Run one pass of the decision loop (without `--execute` nothing is injected) |
 | `status` | List recorded decisions with their latest lifecycle event |
-| `approve` | Approve a proposed decision — runs its playbook experiment |
+| `approve` | Approve a proposed decision — its playbook runs only if the re-gate now answers enact |
 | `deny` | Deny a proposed decision — records veto feedback |
 | `notify-change` | Record a deploy/config change event against a service |
 | `export` | Export the decision and event tables as Parquet files |
@@ -676,6 +772,7 @@ tumult tui [--store <path>] [--refresh-secs <n>]
 | Variable | Description |
 |----------|-------------|
 | `TUMULT_PLUGIN_PATH` | Additional plugin search paths (colon-separated) |
+| `TUMULT_LAKE_PATH` | Path of the persistent store (default: `~/.tumult/lake.duckdb`) |
 | `TUMULT_OTEL_ENABLED` | Enable/disable OTel (default: `true`) |
 | `TUMULT_OTEL_CONSOLE` | Print spans to console (default: `false`) |
 | `RUST_LOG` | Tracing filter. When unset **and** no OTLP endpoint is configured, the CLI defaults it to `warn` to keep interactive output clean; set it explicitly (e.g. `info`) to see audit/telemetry logs |

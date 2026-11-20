@@ -1,6 +1,7 @@
 #!/bin/sh
 # Probe: wall-clock offset in seconds between a target and the runner.
 # Outputs a single integer (target_epoch - runner_epoch). ~0 when clocks agree.
+# Fails when docker exec fails or the target answers no epoch in seconds.
 #
 # Because containers share the host kernel clock, this normally reads 0 in
 # docker-compose (proving no unintended host skew). It becomes non-zero only
@@ -22,9 +23,14 @@ if [ -z "${TARGET}" ]; then
     exit 0
 fi
 
-TGT="$(docker exec "${TARGET}" sh -c "${TARGET_CMD}" 2>/dev/null || echo "${RUNNER}")"
+# A failed docker exec ends the probe with the status and the message of
+# docker. An answer that is not an epoch is no measurement either.
+TGT="$(docker exec "${TARGET}" sh -c "${TARGET_CMD}")"
 case "${TGT}" in
-    ''|*[!0-9]*) TGT="${RUNNER}" ;;
+    ''|*[!0-9]*)
+        echo "error: ${TARGET} answered '${TGT}' to '${TARGET_CMD}', not an epoch in seconds" >&2
+        exit 1
+        ;;
 esac
 
 echo "$(( TGT - RUNNER ))"

@@ -462,8 +462,25 @@ pub async fn spawn_server_with_org(org_yaml: &str) -> TestServer {
     spawn(
         Arc::new(|_env| Arc::new(SlowNoopExecutor)),
         org_yaml,
+        &[],
         |state| state,
     )
+    .await
+}
+
+/// The test server scoring with the house parameters of the org file at
+/// `org_file`, read once when it starts. Score responses are not cached.
+pub async fn spawn_server_with_score_file(org_file: PathBuf) -> TestServer {
+    let factory: tumult_ingest::runs::ExecutorFactory = Arc::new(|_env| Arc::new(SlowNoopExecutor));
+    spawn(factory, ORG_YAML, &[], move |state| {
+        let runtime = tumult_api::score::ScoreRuntime::open(
+            Some(org_file),
+            None,
+            std::time::Duration::ZERO,
+            now_ns(),
+        );
+        state.with_score_runtime(Arc::new(runtime))
+    })
     .await
 }
 
@@ -475,7 +492,7 @@ pub async fn spawn_server_with_forecast_sidecar(
 ) -> TestServer {
     let url = url.to_string();
     let factory: tumult_ingest::runs::ExecutorFactory = Arc::new(|_env| Arc::new(SlowNoopExecutor));
-    spawn(factory, ORG_YAML, move |state| {
+    spawn(factory, ORG_YAML, &[], move |state| {
         state
             .with_forecast_url(Some(url))
             .expect("a usable sidecar URL")
@@ -485,12 +502,21 @@ pub async fn spawn_server_with_forecast_sidecar(
 }
 
 async fn spawn_server_with_factory(factory: tumult_ingest::runs::ExecutorFactory) -> TestServer {
-    spawn(factory, ORG_YAML, |state| state).await
+    spawn(factory, ORG_YAML, &[], |state| state).await
+}
+
+/// A server whose runs go through the executor of the daemon: every step is
+/// a real process. `definitions` are the experiments its policy lets run.
+pub async fn spawn_server_with_real_executor(definitions: &[&str]) -> TestServer {
+    let factory: tumult_ingest::runs::ExecutorFactory =
+        Arc::new(|env| Arc::new(tumult_exec::ProviderExecutor::with_injected_env(env)));
+    spawn(factory, ORG_YAML, definitions, |state| state).await
 }
 
 async fn spawn(
     factory: tumult_ingest::runs::ExecutorFactory,
     org_yaml: &str,
+    definitions: &[&str],
     tune: impl FnOnce(tumult_api::ApiState) -> tumult_api::ApiState,
 ) -> TestServer {
     let tmp = tempfile::TempDir::new().unwrap();
@@ -514,7 +540,10 @@ async fn spawn(
         crate::gamedays::EXP_A,
         crate::gamedays::EXP_B,
         crate::runs::PROBE_ONLY_TOON,
-    ] {
+    ]
+    .iter()
+    .chain(definitions)
+    {
         let (experiment, injected) = tumult_ingest::prepare_run(toon, &Default::default()).unwrap();
         let hash = tumult_ingest::execution_policy::execution_hash(&experiment, &injected).unwrap();
         for env in ["dev", "staging", "prod", "production"] {

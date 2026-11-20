@@ -24,25 +24,29 @@ a Windows host** (they shell out to `taskkill` / `netsh` or spin CPU threads).
 | `cpu_stress` | Saturate CPU with worker threads | `workers` (default: host parallelism), `duration_secs` (default: 10) |
 | `network_blackhole` | Block a port/host via Windows Firewall | `port` **or** `remote_host` (exactly one) |
 
-`network_blackhole` returns the exact rollback command in its result and the
-plugin removes the firewall rule when the experiment's rollback runs
-(`netsh advfirewall firewall delete rule name=<rule>`).
+`network_blackhole` returns the exact rollback command in its result
+(`netsh advfirewall firewall delete rule name=<rule>`). The plugin has no
+rollback function of its own. Run that command as a `process` step in the
+rollbacks of the experiment.
 
 ## Example experiment
 
 ```toon
-version: v1
 title: Windows service survives a process kill
-steady-state:
+
+steady_state_hypothesis:
+  title: The service is running
   probes[1]:
     - name: service-healthy
-      type: probe
+      activity_type: probe
       provider:
         type: process
-        arguments[3]: ["cmd", "/c", "sc query MyService | findstr RUNNING"]
+        path: cmd
+        arguments[2]: "/c", "sc query MyService | findstr RUNNING"
+
 method[1]:
   - name: kill-the-service
-    type: action
+    activity_type: action
     provider:
       type: native
       plugin: tumult-windows

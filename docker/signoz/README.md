@@ -31,7 +31,7 @@ export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317   # gRPC endpoint
 export OTEL_SERVICE_NAME=tumult                            # default
 # TUMULT_OTEL_ENABLED=false      # opt out entirely
 # TUMULT_OTEL_CONSOLE=true       # also dump spans to stdout
-# TUMULT_OTEL_LOG_STDERR=true    # logs on stderr (MCP stdio does this itself)
+# TUMULT_LOG_FORMAT=json|text    # logs always go to stderr (JSON, text on a terminal)
 ```
 
 Note: Tumult exports over **gRPC** — the endpoint is the bare

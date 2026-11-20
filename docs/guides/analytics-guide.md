@@ -22,7 +22,7 @@ TOON Journal (.toon) → Arrow RecordBatch (columnar) → DuckDB (SQL) → Parqu
 |--------|------|-------------|
 | experiment_id | VARCHAR | UUID per run |
 | title | VARCHAR | Experiment title |
-| status | VARCHAR | Completed, Deviated, Aborted, Failed |
+| status | VARCHAR | completed, deviated, failed, aborted, interrupted, halted |
 | started_at_ns | BIGINT | Start time (epoch nanoseconds) |
 | ended_at_ns | BIGINT | End time |
 | duration_ms | UBIGINT | Total duration |
@@ -31,7 +31,7 @@ TOON Journal (.toon) → Arrow RecordBatch (columnar) → DuckDB (SQL) → Parqu
 | hypothesis_before_met | BOOLEAN | Steady state before? |
 | hypothesis_after_met | BOOLEAN | Steady state after? |
 | estimate_accuracy | DOUBLE | Estimate vs actual (0-1) |
-| resilience_score | DOUBLE | Overall resilience (0-1) |
+| resilience_score | DOUBLE | 0 or 1: 1 when the run completed. Empty when the experiment has no `estimate` |
 
 ### activity_results
 
@@ -39,8 +39,8 @@ TOON Journal (.toon) → Arrow RecordBatch (columnar) → DuckDB (SQL) → Parqu
 |--------|------|-------------|
 | experiment_id | VARCHAR | Links to experiments |
 | name | VARCHAR | Activity name |
-| activity_type | VARCHAR | Action or Probe |
-| status | VARCHAR | Succeeded, Failed, Timeout |
+| activity_type | VARCHAR | action or probe |
+| status | VARCHAR | succeeded, failed, timeout, skipped |
 | started_at_ns | BIGINT | Start time |
 | duration_ms | UBIGINT | Execution duration |
 | output | VARCHAR | Activity output |
@@ -59,7 +59,7 @@ SELECT name, phase, avg(duration_ms) as avg_ms
 FROM activity_results GROUP BY name, phase ORDER BY avg_ms DESC LIMIT 10;
 
 -- Failure rate
-SELECT count(*) FILTER (WHERE status != 'Completed')::float / count(*) * 100 as failure_pct
+SELECT count(*) FILTER (WHERE status != 'completed')::float / count(*) * 100 as failure_pct
 FROM experiments;
 ```
 
@@ -87,11 +87,17 @@ tumult store path
 ### Backup and Restore
 
 ```bash
-# Export the entire store to Parquet files
+# Export runs, steps, load results, probe samples, run roots and version history to Parquet
+tumult store export --output my-export/
+
+# Import those Parquet files into the persistent store
+tumult import my-export/
+
+# Back up the complete store, credentials included (stop the daemon first)
 tumult store backup --output my-backup/
 
-# Restore from backup into the persistent store
-tumult import my-backup/
+# Restore that backup into a new database file
+tumult store restore --input my-backup/ --output restored.duckdb
 ```
 
 ### SigNoz backfill
@@ -163,12 +169,12 @@ tumult analyze
 tumult analyze journals/
 
 # Custom SQL
-tumult analyze journals/ --query "SELECT * FROM experiments WHERE status = 'Deviated'"
+tumult analyze journals/ --query "SELECT * FROM experiments WHERE status = 'deviated'"
 
 # Single journal
 tumult analyze journal.toon
 
-# Export to Parquet
+# Export to Parquet: the run in journal.parquet, its steps in activities/journal.parquet
 tumult export journal.toon --format parquet
 
 # Export to CSV

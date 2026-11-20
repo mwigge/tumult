@@ -2,6 +2,11 @@ title: In-pod network latency via ephemeral debug container
 description: Inject tc netem latency into a running pod's network namespace, then verify it stays ready
 
 tags[3]: kubernetes, network, resilience
+kind: chaos
+target:
+  system: nginx-test
+  technology: kubernetes
+  environment: staging
 
 steady_state_hypothesis:
   title: Target pod is ready before injection

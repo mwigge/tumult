@@ -36,6 +36,8 @@ export interface ExperimentRow {
     status: string | null;
     deviations: string | null;
     duration_ms: string | null;
+    /** The run sent no trace: the lake holds its journal only. */
+    journal_only: boolean;
     faults: string | null;
     origin: 'automated' | 'manual' | null;
     review_status: string | null;
@@ -88,11 +90,107 @@ export interface MetricPoint {
     plugin_name: string | null;
 }
 
+/** A step of a run: a probe of its steady state, a step of its method or a rollback. */
+export interface EvidenceStep {
+    /** `hypothesis_before`, `method`, `hypothesis_after` or `rollback`. */
+    phase: string;
+    name: string;
+    activity_type: string;
+    status: string;
+    started_at_ns: number;
+    duration_ms: number;
+    output: string | null;
+    error: string | null;
+}
+
+/** The verdict of a run on one objective. */
+export interface EvidenceObjective {
+    nfr_id: string;
+    kind: string;
+    metric: string;
+    /** `lte`, `gte` or `eq`. */
+    operator: string;
+    threshold: number;
+    observed: number | null;
+    /** `met`, `breached` or `inconclusive`. */
+    state: string;
+    margin: number | null;
+    criticality: string;
+}
+
+/** One window of a load. The load tool tells the counts of some windows only. */
+export interface LoadWindow {
+    /** The start of the window. */
+    ts_ns: number;
+    window_s?: number;
+    throughput_rps?: number;
+    latency_p50_ms?: number;
+    latency_p95_ms?: number;
+    latency_p99_ms?: number;
+    /** A share, 0 to 1. */
+    error_rate?: number;
+    requests_sent?: number;
+    requests_ok?: number;
+    requests_timed_out?: number;
+    request_timeout_ms?: number;
+}
+
+/** The load of a run: its totals and its windows. */
+export interface EvidenceLoad {
+    tool: string;
+    started_at_ns: number;
+    ended_at_ns: number;
+    duration_s: number;
+    vus: number;
+    throughput_rps: number;
+    latency_p50_ms: number;
+    latency_p95_ms: number;
+    latency_p99_ms: number;
+    /** A share, 0 to 1. */
+    error_rate: number;
+    total_requests: number;
+    thresholds_met: boolean;
+    windows: LoadWindow[];
+}
+
+/** One sample of a probe: how long it took and whether it was within its tolerance. */
+export interface EvidenceProbeSample {
+    probe: string;
+    /** `baseline`, `during` or `post`. */
+    phase: string;
+    ts_ns: number;
+    duration_ms: number;
+    ok: boolean;
+}
+
+/** What the journal of a run says, as the lake holds it. */
+export interface RunEvidence {
+    kind: string;
+    started_at_ns: number;
+    ended_at_ns: number;
+    /** `null`: the steady state was not checked then. */
+    hypothesis: { before_met: boolean | null; after_met: boolean | null };
+    recovery: {
+        rto_target_s: number | null;
+        rto_measured_s: number | null;
+        rpo_target_s: number | null;
+        rpo_measured_s: number | null;
+    };
+    steps: EvidenceStep[];
+    objectives: EvidenceObjective[];
+    load: EvidenceLoad | null;
+    /** The earliest first; `probe_samples_total` says how many the run has. */
+    probe_samples: EvidenceProbeSample[];
+    probe_samples_total: number;
+}
+
 export interface ExperimentDetail {
     experiment: ExperimentRow;
     spans: Span[];
     logs: LogRow[];
     metrics: MetricPoint[];
+    /** `null`: the lake has no journal of this run. */
+    evidence: RunEvidence | null;
 }
 
 export interface Dimensions {
@@ -345,6 +443,8 @@ export interface ExperimentScore {
     last_run_ns: number | null;
     last_outcome: string | null;
     runs: number;
+    /** The latest run sent no trace: the lake holds its journal only. */
+    journal_only: boolean;
 }
 
 export interface TargetScore {
@@ -356,7 +456,8 @@ export interface TargetScore {
 }
 
 export interface Scorecard {
-    portfolio: number;
+    /** Null when nothing is on record; its band is then `unknown`. */
+    portfolio: number | null;
     band: string;
     delta: number | null;
     as_of_ns: number;
@@ -584,7 +685,8 @@ export interface OrgNodeScore {
     path: string;
     name: string;
     kind: string;
-    score: number;
+    /** Null when no leaf of the subtree is scored; its band is then `unknown`. */
+    score: number | null;
     band: string;
     coverage: number;
     scored: number;
@@ -595,7 +697,9 @@ export interface OrgNodeScore {
 }
 
 export interface ScoreTree extends OrgNodeScore {
-    delta: number;
+    /** Null when the node has no score now or had none a period ago. */
+    delta: number | null;
+    /** `[instant, score]`; an instant with nothing scored has no point. */
     sparkline: [number, number][];
 }
 
@@ -936,7 +1040,8 @@ export interface RunRow {
     state: RunExecState;
     /** Campaign parent when this run is a gameday child (schema v12). */
     gameday_id?: string | null;
-    params_json: string | null;
+    /** A JSON object: the vars of a run, or `env` of a campaign parent; null without either. */
+    params_json: Record<string, unknown> | null;
     experiment_id: string | null;
     rollback_status: string | null;
     error: string | null;
@@ -968,7 +1073,8 @@ export interface ApprovalRequest {
     run_id: string;
     state: string;
     queued_at_ns: number;
-    params_json: string | null;
+    /** The vars of the run as a JSON object, as in `RunRow`. */
+    params_json: Record<string, unknown> | null;
     definition_name: string | null;
     tier: ApprovalTier;
     /** SHA-256 pin of the approved definition bytes (64 hex chars). */

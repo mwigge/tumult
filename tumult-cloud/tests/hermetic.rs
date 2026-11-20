@@ -25,6 +25,7 @@ use tumult_cloud::azure::ChaosClient;
 use tumult_cloud::creds::AwsCredentials;
 use tumult_cloud::error::CloudError;
 use tumult_cloud::gcp::ComputeClient;
+use tumult_cloud::sigv4::{sign, SignRequest};
 
 /// A single recorded inbound request.
 #[derive(Clone, Debug)]
@@ -164,6 +165,39 @@ async fn fis_start_signs_and_posts_experiment() {
 }
 
 #[tokio::test]
+async fn fis_start_returns_the_id_it_started() {
+    let mock = MockServer::start().await;
+    mock.set_response(
+        200,
+        r#"{"experiment":{"id":"EXPabc123","state":{"status":"initiating"}}}"#,
+    );
+    let client = FisClient::with_endpoint(
+        mock.base_url.clone(),
+        "us-east-1".to_string(),
+        fake_aws_creds(),
+    );
+
+    let started = client.start("EXT-template-1").await.unwrap();
+    assert_eq!(started.id.as_deref(), Some("EXPabc123"));
+    assert!(started.summary.contains("initiating"));
+}
+
+#[tokio::test]
+async fn fis_start_has_no_id_when_the_answer_is_not_an_experiment() {
+    let mock = MockServer::start().await;
+    mock.set_response(200, "not json");
+    let client = FisClient::with_endpoint(
+        mock.base_url.clone(),
+        "us-east-1".to_string(),
+        fake_aws_creds(),
+    );
+
+    let started = client.start("EXT-template-1").await.unwrap();
+    assert_eq!(started.id, None);
+    assert!(started.summary.contains("not json"));
+}
+
+#[tokio::test]
 async fn fis_stop_uses_delete_on_experiment_id() {
     let mock = MockServer::start().await;
     mock.set_response(
@@ -205,6 +239,113 @@ async fn fis_status_uses_get() {
     assert!(out.contains("completed"));
     assert!(out.contains("all done"));
     assert_eq!(mock.last().method, "GET");
+}
+
+#[tokio::test]
+async fn fis_list_signs_the_query_it_sends() {
+    let mock = MockServer::start().await;
+    mock.set_response(
+        200,
+        r#"{"experiments":[{"id":"EXP1","experimentTemplateId":"EXT/lab+1","state":{"status":"running"},"creationTime":1700000000.0}]}"#,
+    );
+    let client = FisClient::with_endpoint(
+        mock.base_url.clone(),
+        "us-east-1".to_string(),
+        fake_aws_creds(),
+    );
+
+    let listed = client.list_experiments("EXT/lab+1").await.unwrap();
+
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].id, "EXP1");
+    assert_eq!(listed[0].state.status, "running");
+    let req = mock.last();
+    assert_eq!(req.method, "GET");
+    assert_eq!(req.path, "/experiments");
+    assert_eq!(
+        req.query,
+        "experimentTemplateId=EXT%2Flab%2B1&maxResults=100"
+    );
+    // Signed over the path without its query, and over the query as sent.
+    let date = req.header("x-amz-date").unwrap();
+    let signed_at = chrono::NaiveDateTime::parse_from_str(date, "%Y%m%dT%H%M%SZ")
+        .unwrap()
+        .and_utc();
+    let expected = sign(
+        &SignRequest {
+            method: "GET",
+            host: req.header("host").unwrap(),
+            path: "/experiments",
+            query: &req.query,
+            body: b"",
+            service: "fis",
+            region: "us-east-1",
+            extra_headers: &[],
+        },
+        &fake_aws_creds(),
+        signed_at,
+    );
+    assert_eq!(req.header("authorization").unwrap(), expected[0].1);
+}
+
+#[tokio::test]
+async fn fis_list_keeps_only_the_experiments_of_the_template_asked_for() {
+    let mock = MockServer::start().await;
+    mock.set_response(
+        200,
+        r#"{"experiments":[
+            {"id":"EXP-lab","experimentTemplateId":"EXT-lab","state":{"status":"running"},"creationTime":1700000000.0},
+            {"id":"EXP-other","experimentTemplateId":"EXT-other","state":{"status":"running"},"creationTime":1700000001.0}
+        ]}"#,
+    );
+    let client = FisClient::with_endpoint(
+        mock.base_url.clone(),
+        "us-east-1".to_string(),
+        fake_aws_creds(),
+    );
+
+    let listed = client.list_experiments("EXT-lab").await.unwrap();
+
+    let ids: Vec<&str> = listed.iter().map(|e| e.id.as_str()).collect();
+    assert_eq!(ids, ["EXP-lab"]);
+}
+
+#[tokio::test]
+async fn fis_list_in_another_shape_is_an_error_not_an_empty_list() {
+    let mock = MockServer::start().await;
+    mock.set_response(200, r#"{"experiments":[{"id":"EXP1"}]}"#);
+    let client = FisClient::with_endpoint(
+        mock.base_url.clone(),
+        "us-east-1".to_string(),
+        fake_aws_creds(),
+    );
+
+    let err = client.list_experiments("EXT-lab").await.unwrap_err();
+
+    assert!(
+        matches!(err, CloudError::Api { status: 200, .. }),
+        "got: {err:?}"
+    );
+    assert!(err.to_string().contains("ListExperiments"), "{err}");
+}
+
+#[tokio::test]
+async fn fis_list_that_never_ends_is_an_error_after_twenty_pages() {
+    let mock = MockServer::start().await;
+    mock.set_response(200, r#"{"experiments":[],"nextToken":"more"}"#);
+    let client = FisClient::with_endpoint(
+        mock.base_url.clone(),
+        "us-east-1".to_string(),
+        fake_aws_creds(),
+    );
+
+    let err = client.list_experiments("EXT-lab").await.unwrap_err();
+
+    assert!(
+        matches!(err, CloudError::Api { status: 200, .. }),
+        "got: {err:?}"
+    );
+    assert_eq!(mock.requests.lock().unwrap().len(), 20);
 }
 
 #[tokio::test]

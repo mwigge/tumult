@@ -193,7 +193,7 @@ fn experiment_rules(t: &TargetEvidence, out: &mut Vec<Risk>) {
                 target: Some(&t.target),
                 environment: t.environment.as_deref(),
                 subject: format!("{}/{}", e.name, v.nfr_id),
-                recommended_kind: kind_const(&e.kind),
+                recommended_kind: e.kind.as_deref().and_then(kind_const),
                 evidence: e.evidence_id.iter().cloned().collect(),
             }));
         }
@@ -242,7 +242,7 @@ fn experiment_rules(t: &TargetEvidence, out: &mut Vec<Risk>) {
                 target: Some(&t.target),
                 environment: t.environment.as_deref(),
                 subject: e.name.clone(),
-                recommended_kind: kind_const(&e.kind),
+                recommended_kind: e.kind.as_deref().and_then(kind_const),
                 evidence: e.evidence_id.iter().cloned().collect(),
             }));
         }
@@ -270,7 +270,7 @@ fn untested_dependencies(inputs: &Inputs, out: &mut Vec<Risk>) {
                 d.service, d.callers
             ),
             detail: format!(
-                "Telemetry shows {} calls into {} from {} caller(s), yet no experiment targets it. \
+                "Telemetry shows {} calls into {} from {} caller(s), yet no test targets it. \
                  A failure there propagates to every caller untested.",
                 d.calls, d.service, d.callers
             ),
@@ -632,7 +632,7 @@ mod tests {
     fn experiment(name: &str, passed: bool, verdicts: Vec<Verdict>) -> ExperimentLatest {
         ExperimentLatest {
             name: name.into(),
-            kind: "robustness".into(),
+            kind: Some("robustness".into()),
             last_run_ns: NOW - DAY_NS,
             passed,
             outcome: Some(if passed { "Completed" } else { "Deviated" }.into()),
@@ -682,6 +682,8 @@ mod tests {
         assert_eq!(breached[0].subject, "failover/avail");
         assert_eq!(breached[1].severity, Severity::Low);
         assert_eq!(breached[0].evidence, vec!["run-1".to_string()]);
+        // The next test to run is of the discipline that breached.
+        assert_eq!(breached[0].recommended_kind.as_deref(), Some("robustness"));
         // The deviation is explained by the breach: no duplicate failed-run risk.
         assert!(!rules_of(&risks).contains(&"latest_run_failed"));
     }
@@ -703,6 +705,34 @@ mod tests {
             .unwrap();
         assert_eq!(failed.severity, Severity::Medium);
         assert!(failed.title.contains("Deviated"), "{}", failed.title);
+        assert_eq!(failed.recommended_kind.as_deref(), Some("robustness"));
+    }
+
+    /// A manual record of a type the house does not count as a test has
+    /// no discipline: its findings stay and recommend none.
+    #[test]
+    fn a_failed_record_with_no_discipline_recommends_none() {
+        let mut t = target("db", None, vec![]);
+        let mut plain = experiment("tabletop", false, vec![]);
+        plain.kind = None;
+        let mut breaching = experiment(
+            "walkthrough",
+            false,
+            vec![verdict("avail", "breached", "major")],
+        );
+        breaching.kind = None;
+        t.experiments.extend([plain, breaching]);
+        let inputs = Inputs {
+            as_of_ns: NOW,
+            targets: vec![t],
+            ..Default::default()
+        };
+        let risks = evaluate(&inputs);
+        let of = |rule: &str| risks.iter().find(|r| r.rule == rule).unwrap();
+        assert_eq!(of("latest_run_failed").subject, "tabletop");
+        assert_eq!(of("latest_run_failed").recommended_kind, None);
+        assert_eq!(of("objective_breached").subject, "walkthrough/avail");
+        assert_eq!(of("objective_breached").recommended_kind, None);
     }
 
     #[test]

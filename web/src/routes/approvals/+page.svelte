@@ -1,6 +1,7 @@
 <script lang="ts">
     import { onMount } from 'svelte';
     import { api, fmtAgo, fmtTs, shortId } from '#lib/api.js';
+    import { paramsText } from '#lib/run-params.js';
     import type { ApprovalQueueRow, ApprovalTier, MeResponse } from '#lib/types.js';
 
     let rows = $state<ApprovalQueueRow[] | null>(null);
@@ -106,15 +107,6 @@
         const m = Math.floor(ms / 60_000);
         if (m >= 60) return { text: `${Math.floor(m / 60)}h ${m % 60}m`, soon: false };
         return { text: `${m}m ${Math.floor((ms % 60_000) / 1000)}s`, soon: true };
-    }
-
-    function prettyParams(raw: string | null): string {
-        if (!raw) return '—';
-        try {
-            return JSON.stringify(JSON.parse(raw), null, 2);
-        } catch {
-            return raw;
-        }
     }
 </script>
 
@@ -232,9 +224,7 @@
                                 <div class="detail">
                                     <div>
                                         <h3>Parameters</h3>
-                                        <pre class="mono params">{prettyParams(
-                                                row.params_json,
-                                            )}</pre>
+                                        <pre class="mono params">{paramsText(row.params_json)}</pre>
                                     </div>
                                     <div>
                                         <h3>Pin hash</h3>

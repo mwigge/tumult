@@ -25,13 +25,14 @@
 //!   `depends_on` distance to the nearest broken service (0 when the service
 //!   itself is broken; 0 for everyone when nothing is broken; 5 when
 //!   unreachable): blast-radius neighbours of a known break come first.
-//! * **novelty** — 1.25 when the action has never been tested.
+//! * **novelty** — 1.25 when no stored run injected the action (see
+//!   [`TestedFaults`]).
 
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 
 use serde::{Deserialize, Serialize};
 
-use crate::coverage::AvailableAction;
+use crate::coverage::{AvailableAction, TestedFaults};
 use crate::lineage::{ControlServiceStatus, LineageCell};
 
 /// Undirected `depends_on` distance assigned when no broken service is
@@ -46,8 +47,8 @@ pub struct RecommendationInput<'a> {
     pub depends_on: &'a [(String, String)],
     /// The plugin action catalog.
     pub available_actions: &'a [AvailableAction],
-    /// Action names that have appeared in a tested run.
-    pub tested_action_names: &'a HashSet<String>,
+    /// The faults the stored runs injected.
+    pub tested_faults: &'a TestedFaults,
     /// Article id → citation strength (`direct`/`supporting`/`indirect`).
     pub article_strength: &'a HashMap<String, String>,
     /// Observed traffic criticality per service id (e.g. `OTel` span rate).
@@ -118,7 +119,7 @@ pub fn recommend(input: &RecommendationInput<'_>, limit: usize) -> Vec<Recommend
     for ((service, article), status) in candidates {
         let action = actions
             .iter()
-            .find(|a| !input.tested_action_names.contains(&a.action))
+            .find(|a| !input.tested_faults.contains(a))
             .or(actions.first())
             .copied();
         let Some(action) = action else { continue };
@@ -172,7 +173,7 @@ pub fn recommend(input: &RecommendationInput<'_>, limit: usize) -> Vec<Recommend
             _ => format!("{d} hop(s) from the nearest broken service"),
         });
 
-        if !input.tested_action_names.contains(&action.action) {
+        if !input.tested_faults.contains(action) {
             score *= 1.25;
             reasons.push(format!(
                 "action {}::{} never tested",

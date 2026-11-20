@@ -135,6 +135,62 @@ pub struct GameDayJournal {
 
 // ── GameDay scaffolding template ──────────────────────────────
 
+/// The load of a game day that `gameday create` writes: a tool with the
+/// script it runs. The `load` block of a game day file needs a script, so
+/// the type has no tool without one, and no script or VU count without a
+/// tool. [`LoadSpec::from_options`] is the one way to build it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LoadSpec<'a> {
+    tool: LoadTool,
+    script: &'a std::path::Path,
+    vus: Option<u32>,
+}
+
+/// Why the load options of a surface make no [`LoadSpec`].
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum LoadSpecError {
+    /// A tool came without the script it runs.
+    #[error("the load tool {0} needs a script (for oha, the URL to hit)")]
+    ScriptMissing(LoadTool),
+    /// A script or a VU count came without a tool to run it.
+    #[error("a load script or a VU count needs a load tool")]
+    ToolMissing,
+    /// The tool has no adapter, so no game day could start its load. The
+    /// reason is the one of the runner.
+    #[error("{0}")]
+    NoAdapter(String),
+}
+
+impl<'a> LoadSpec<'a> {
+    /// The load of the options `tool`, `script` and `vus` of a surface, or
+    /// `None` when none of them is given.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`LoadSpecError::ToolMissing`] for a script or VUs without a
+    /// tool, [`LoadSpecError::NoAdapter`] for a tool the runner cannot run,
+    /// and [`LoadSpecError::ScriptMissing`] for a tool without a script.
+    pub fn from_options(
+        tool: Option<LoadTool>,
+        script: Option<&'a std::path::Path>,
+        vus: Option<u32>,
+    ) -> Result<Option<Self>, LoadSpecError> {
+        let Some(tool) = tool else {
+            if script.is_some() || vus.is_some() {
+                return Err(LoadSpecError::ToolMissing);
+            }
+            return Ok(None);
+        };
+        // The runner decides which tools can run, as it does for the
+        // validation of an experiment.
+        crate::runner::load_executor_for(&tool).map_err(LoadSpecError::NoAdapter)?;
+        let Some(script) = script else {
+            return Err(LoadSpecError::ScriptMissing(tool));
+        };
+        Ok(Some(Self { tool, script, vus }))
+    }
+}
+
 /// Parameters for [`gameday_toon_template`] — the `gameday create`
 /// scaffolding shared by the CLI and the MCP server.
 #[derive(Debug, Clone, Default)]
@@ -143,12 +199,8 @@ pub struct GameDayTemplateSpec<'a> {
     pub name: &'a str,
     /// Experiment `.toon` paths referenced by the campaign.
     pub experiments: &'a [PathBuf],
-    /// Load tool to run during the campaign, if any.
-    pub load_tool: Option<LoadTool>,
-    /// Load script path (only meaningful with `load_tool`).
-    pub load_script: Option<&'a std::path::Path>,
-    /// Virtual users for the load test (only meaningful with `load_tool`).
-    pub load_vus: Option<u32>,
+    /// Load to run during the campaign, if any.
+    pub load: Option<LoadSpec<'a>>,
     /// Compliance framework report identifier (e.g. `DORA`), if mapped.
     pub framework_report_str: Option<&'a str>,
 }
@@ -166,18 +218,16 @@ pub fn gameday_toon_template(spec: &GameDayTemplateSpec<'_>) -> String {
     writeln!(content, "description: GameDay campaign\n").ok();
     writeln!(content, "tags[1]: gameday\n").ok();
 
-    if let Some(ref tool) = spec.load_tool {
-        let tool_str = match tool {
+    if let Some(ref load) = spec.load {
+        let tool_str = match load.tool {
             LoadTool::K6 => "k6",
             LoadTool::Jmeter => "jmeter",
             LoadTool::Oha => "oha",
         };
         writeln!(content, "load:").ok();
         writeln!(content, "  tool: {tool_str}").ok();
-        if let Some(script) = spec.load_script {
-            writeln!(content, "  script: {}", script.display()).ok();
-        }
-        if let Some(vus) = spec.load_vus {
+        writeln!(content, "  script: {}", load.script.display()).ok();
+        if let Some(vus) = load.vus {
             writeln!(content, "  vus: {vus}").ok();
         }
         writeln!(content, "  duration_s: 120.0\n").ok();
@@ -315,12 +365,16 @@ mod tests {
     #[test]
     fn gameday_template_decodes_as_gameday_with_all_options() {
         let experiments = vec![PathBuf::from("a.toon"), PathBuf::from("b.toon")];
+        let load = LoadSpec::from_options(
+            Some(LoadTool::K6),
+            Some(std::path::Path::new("load.js")),
+            Some(25),
+        )
+        .unwrap();
         let content = gameday_toon_template(&GameDayTemplateSpec {
             name: "Q3 Drill",
             experiments: &experiments,
-            load_tool: Some(LoadTool::K6),
-            load_script: Some(std::path::Path::new("load.js")),
-            load_vus: Some(25),
+            load,
             framework_report_str: Some("DORA"),
         });
 
@@ -350,6 +404,59 @@ mod tests {
         assert!(gameday.load.is_none());
         assert!(gameday.regulatory.is_none());
         assert_eq!(gameday.experiments.len(), 1);
+    }
+
+    #[test]
+    fn a_load_is_a_tool_with_its_script_and_no_options_are_no_load() {
+        let script = std::path::Path::new("load.js");
+
+        assert_eq!(
+            LoadSpec::from_options(Some(LoadTool::K6), Some(script), Some(5)),
+            Ok(Some(LoadSpec {
+                tool: LoadTool::K6,
+                script,
+                vus: Some(5),
+            }))
+        );
+        assert_eq!(LoadSpec::from_options(None, None, None), Ok(None));
+    }
+
+    #[test]
+    fn a_load_tool_without_a_script_makes_no_load() {
+        assert_eq!(
+            LoadSpec::from_options(Some(LoadTool::Oha), None, Some(5)),
+            Err(LoadSpecError::ScriptMissing(LoadTool::Oha))
+        );
+    }
+
+    #[test]
+    fn a_load_script_or_a_vu_count_without_a_tool_makes_no_load() {
+        let script = std::path::Path::new("load.js");
+
+        assert_eq!(
+            LoadSpec::from_options(None, Some(script), None),
+            Err(LoadSpecError::ToolMissing)
+        );
+        assert_eq!(
+            LoadSpec::from_options(None, None, Some(5)),
+            Err(LoadSpecError::ToolMissing)
+        );
+    }
+
+    #[test]
+    fn a_load_tool_the_runner_cannot_run_makes_no_load() {
+        let Err(reason) = crate::runner::load_executor_for(&LoadTool::Jmeter) else {
+            panic!("jmeter has no adapter");
+        };
+
+        assert_eq!(
+            LoadSpec::from_options(
+                Some(LoadTool::Jmeter),
+                Some(std::path::Path::new("plan.jmx")),
+                None
+            ),
+            Err(LoadSpecError::NoAdapter(reason))
+        );
     }
 
     #[test]

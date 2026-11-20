@@ -7983,7 +7983,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-agent-cli"
-version = "3.0.1"
+version = "3.0.2"
 dependencies = [
  "serde",
  "serde_json",
@@ -7996,7 +7996,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-agentic"
-version = "3.0.1"
+version = "3.0.2"
 dependencies = [
  "axum",
  "opentelemetry",
@@ -8014,7 +8014,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-api"
-version = "3.0.1"
+version = "3.0.2"
 dependencies = [
  "async-trait",
  "axum",
@@ -8033,6 +8033,7 @@ dependencies = [
  "tumult-autopilot",
  "tumult-compliance",
  "tumult-core",
+ "tumult-exec",
  "tumult-forecast",
  "tumult-graph",
  "tumult-ingest",
@@ -8049,7 +8050,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-auth"
-version = "3.0.1"
+version = "3.0.2"
 dependencies = [
  "argon2",
  "getrandom 0.4.3",
@@ -8059,7 +8060,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-authoring"
-version = "3.0.1"
+version = "3.0.2"
 dependencies = [
  "indexmap",
  "serde",
@@ -8072,7 +8073,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-autopilot"
-version = "3.0.1"
+version = "3.0.2"
 dependencies = [
  "serde",
  "serde_json",
@@ -8082,7 +8083,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-baseline"
-version = "3.0.1"
+version = "3.0.2"
 dependencies = [
  "criterion",
  "opentelemetry",
@@ -8096,7 +8097,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-cli"
-version = "3.0.1"
+version = "3.0.2"
 dependencies = [
  "anyhow",
  "arrow",
@@ -8106,7 +8107,9 @@ dependencies = [
  "opentelemetry",
  "reqwest 0.12.28",
  "serde_json",
+ "sha2 0.11.0",
  "tempfile",
+ "thiserror 2.0.19",
  "tokio",
  "tokio-util",
  "toon-format",
@@ -8129,7 +8132,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-clickhouse"
-version = "3.0.1"
+version = "3.0.2"
 dependencies = [
  "chrono",
  "clickhouse",
@@ -8146,7 +8149,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-cloud"
-version = "3.0.1"
+version = "3.0.2"
 dependencies = [
  "async-trait",
  "axum",
@@ -8160,13 +8163,16 @@ dependencies = [
  "thiserror 2.0.19",
  "tokio",
  "tumult-plugin",
+ "tumult-test-utils",
  "zeroize",
 ]
 
 [[package]]
 name = "tumult-compliance"
-version = "3.0.1"
+version = "3.0.2"
 dependencies = [
+ "opentelemetry-proto",
+ "opentelemetry_sdk",
  "serde",
  "serde_json",
  "serde_yaml",
@@ -8175,14 +8181,17 @@ dependencies = [
  "thiserror 2.0.19",
  "tracing",
  "tumult-core",
+ "tumult-exec",
  "tumult-lake",
+ "tumult-otlp",
+ "tumult-test-utils",
  "typst",
  "typst-pdf",
 ]
 
 [[package]]
 name = "tumult-core"
-version = "3.0.1"
+version = "3.0.2"
 dependencies = [
  "chrono",
  "indexmap",
@@ -8205,7 +8214,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-cypher"
-version = "3.0.1"
+version = "3.0.2"
 dependencies = [
  "grafeo",
  "opentelemetry",
@@ -8219,11 +8228,15 @@ dependencies = [
 
 [[package]]
 name = "tumult-exec"
-version = "3.0.1"
+version = "3.0.2"
 dependencies = [
  "libc",
+ "opentelemetry",
+ "opentelemetry_sdk",
  "serde_json",
+ "tempfile",
  "tokio",
+ "tokio-util",
  "tumult-cloud",
  "tumult-core",
  "tumult-kubernetes",
@@ -8236,14 +8249,14 @@ dependencies = [
 
 [[package]]
 name = "tumult-forecast"
-version = "3.0.1"
+version = "3.0.2"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "tumult-graph"
-version = "3.0.1"
+version = "3.0.2"
 dependencies = [
  "serde",
  "serde_json",
@@ -8253,7 +8266,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-ingest"
-version = "3.0.1"
+version = "3.0.2"
 dependencies = [
  "arrow",
  "axum",
@@ -8296,7 +8309,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-intelligence"
-version = "3.0.1"
+version = "3.0.2"
 dependencies = [
  "async-trait",
  "duckdb",
@@ -8308,14 +8321,16 @@ dependencies = [
  "toon-format",
  "tumult-agent-cli",
  "tumult-core",
+ "tumult-graph",
  "tumult-lake",
  "tumult-plugin",
+ "tumult-query",
  "tumult-test-utils",
 ]
 
 [[package]]
 name = "tumult-kubernetes"
-version = "3.0.1"
+version = "3.0.2"
 dependencies = [
  "async-trait",
  "http",
@@ -8338,7 +8353,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-lake"
-version = "3.0.1"
+version = "3.0.2"
 dependencies = [
  "arrow",
  "chrono",
@@ -8360,7 +8375,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-mcp"
-version = "3.0.1"
+version = "3.0.2"
 dependencies = [
  "async-trait",
  "chrono",
@@ -8374,6 +8389,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.19",
  "tokio",
+ "tokio-util",
  "toml 1.1.4+spec-1.1.0",
  "toon-format",
  "tracing",
@@ -8382,26 +8398,22 @@ dependencies = [
  "tumult-auth",
  "tumult-authoring",
  "tumult-autopilot",
- "tumult-cloud",
  "tumult-core",
  "tumult-cypher",
  "tumult-exec",
  "tumult-graph",
  "tumult-intelligence",
- "tumult-kubernetes",
  "tumult-lake",
- "tumult-net",
  "tumult-otel",
  "tumult-plugin",
  "tumult-query",
- "tumult-ssh",
  "tumult-test-utils",
  "uuid",
 ]
 
 [[package]]
 name = "tumult-metrics"
-version = "3.0.1"
+version = "3.0.2"
 dependencies = [
  "serde",
  "serde_yaml",
@@ -8411,7 +8423,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-net"
-version = "3.0.1"
+version = "3.0.2"
 dependencies = [
  "async-trait",
  "opentelemetry",
@@ -8428,7 +8440,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-otel"
-version = "3.0.1"
+version = "3.0.2"
 dependencies = [
  "chrono",
  "opentelemetry",
@@ -8450,7 +8462,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-otlp"
-version = "3.0.1"
+version = "3.0.2"
 dependencies = [
  "opentelemetry-proto",
  "serde_json",
@@ -8461,7 +8473,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-perf"
-version = "3.0.1"
+version = "3.0.2"
 dependencies = [
  "serde",
  "serde_json",
@@ -8469,11 +8481,12 @@ dependencies = [
 
 [[package]]
 name = "tumult-plugin"
-version = "3.0.1"
+version = "3.0.2"
 dependencies = [
  "async-trait",
  "libc",
  "opentelemetry",
+ "opentelemetry_sdk",
  "serde",
  "serde_json",
  "tempfile",
@@ -8487,7 +8500,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-query"
-version = "3.0.1"
+version = "3.0.2"
 dependencies = [
  "duckdb",
  "serde",
@@ -8499,22 +8512,24 @@ dependencies = [
 
 [[package]]
 name = "tumult-report"
-version = "3.0.1"
+version = "3.0.2"
 dependencies = [
  "serde_json",
  "tempfile",
  "thiserror 2.0.19",
  "tokio",
  "tracing",
+ "tumult-compliance",
  "tumult-intelligence",
  "tumult-lake",
  "tumult-metrics",
  "tumult-otel",
+ "tumult-test-utils",
 ]
 
 [[package]]
 name = "tumult-risk"
-version = "3.0.1"
+version = "3.0.2"
 dependencies = [
  "serde",
  "serde_json",
@@ -8524,7 +8539,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-ssh"
-version = "3.0.1"
+version = "3.0.2"
 dependencies = [
  "async-trait",
  "dirs-next",
@@ -8543,23 +8558,30 @@ dependencies = [
 
 [[package]]
 name = "tumult-test-utils"
-version = "3.0.1"
+version = "3.0.2"
 dependencies = [
  "indexmap",
  "opentelemetry",
+ "opentelemetry-proto",
  "opentelemetry_sdk",
+ "serde",
+ "serde_json",
  "tempfile",
  "tokio",
+ "tonic",
  "tumult-core",
+ "tumult-lake",
+ "tumult-otlp",
 ]
 
 [[package]]
 name = "tumult-tui"
-version = "3.0.1"
+version = "3.0.2"
 dependencies = [
  "chrono",
  "crossterm 0.29.0",
  "ratatui 0.30.2",
+ "serde_json",
  "tempfile",
  "thiserror 2.0.19",
  "tumult-core",
@@ -8569,7 +8591,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-windows"
-version = "3.0.1"
+version = "3.0.2"
 dependencies = [
  "async-trait",
  "serde_json",
@@ -8580,7 +8602,7 @@ dependencies = [
 
 [[package]]
 name = "tumultd"
-version = "3.0.1"
+version = "3.0.2"
 dependencies = [
  "anyhow",
  "async-trait",

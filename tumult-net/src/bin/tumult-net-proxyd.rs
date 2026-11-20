@@ -3,13 +3,17 @@
 //! The `tumult-net` actions spawn this binary so a proxy fault outlives the
 //! short-lived CLI invocation that created it. It reconstructs its
 //! configuration from the `--flag value` argv written by
-//! [`tumult_net::config::ProxySpec::to_argv`], then forwards traffic until the
-//! rollback action kills the process.
+//! [`tumult_net::config::ProxySpec::to_argv`], binds its listen address,
+//! records its pid in the pidfile, then forwards traffic until the rollback
+//! action kills the process.
 
+use std::net::SocketAddr;
 use std::process::ExitCode;
 
 use tumult_net::config::ProxySpec;
+use tumult_net::pidfile;
 use tumult_net::proxy::Proxy;
+use tumult_net::NetError;
 use tumult_otel::logging::{self, err};
 
 /// `service.name` of the daemon's log events.
@@ -39,17 +43,41 @@ async fn main() -> ExitCode {
     };
 
     let proxy = Proxy::new(spec.listen, spec.upstream, spec.profile);
-    if let Err(e) = proxy.run().await {
+    let listener = match proxy.bind().await {
+        Ok(listener) => listener,
+        Err(e) => return failed(spec.listen, &e),
+    };
+    // Recorded only once the address is bound: a daemon that could not
+    // bind leaves the pidfile of the proxy that did alone.
+    if let Err(e) = pidfile::write(&spec.pidfile, std::process::id()) {
         tracing::error!(
-            name: "net.proxyd.failed",
+            name: "net.proxyd.pidfile.failed",
             {
-                server.address = %spec.listen.ip(),
-                server.port = spec.listen.port(),
+                file.path = %spec.pidfile.display(),
+                error.type = "io",
                 error.message = %err(&e),
             },
-            "chaos proxy failed"
+            "the pid could not be recorded"
         );
         return ExitCode::FAILURE;
     }
+    if let Err(e) = proxy.serve(&listener).await {
+        return failed(spec.listen, &e);
+    }
     ExitCode::SUCCESS
+}
+
+/// Logs why the proxy on `listen` failed, as the event the spawning action
+/// reads back.
+fn failed(listen: SocketAddr, error: &NetError) -> ExitCode {
+    tracing::error!(
+        name: "net.proxyd.failed",
+        {
+            server.address = %listen.ip(),
+            server.port = listen.port(),
+            error.message = %err(error),
+        },
+        "chaos proxy failed"
+    );
+    ExitCode::FAILURE
 }

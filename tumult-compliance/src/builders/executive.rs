@@ -2,11 +2,32 @@
 
 use tumult_lake::Reader;
 
-use super::{base_meta, bluf, decision_for, f1, issue_stats, outlook, runs_in_window, DAY_NS};
+use super::{
+    base_meta, bluf, counted, decision_for, f1, issue_stats, outlook, runs_in_window,
+    severity_cell, DAY_NS,
+};
 use crate::html::fmt_date;
 use crate::model::{Block, Cell, ChartSpec, ReportDoc, TemplateKind};
-use crate::org::{OrgTree, ScoredLeaf};
-use crate::scoring::{self, RunState};
+use crate::org::{OrgNodeScore, OrgTree, ScoredLeaf};
+use crate::scoring;
+
+/// What deviated or failed in the period `from` to `to`, and what was fixed
+/// since.
+fn issues(from_ns: i64, to_ns: i64, discovered: u64, fixed: u64, mttr_s: Option<f64>) -> String {
+    let period = format!("In the period {} – {}", fmt_date(from_ns), fmt_date(to_ns));
+    let recovery = mttr_s.map_or(String::new(), |m| {
+        format!(" Mean time to recovery across runs reporting one: {m:.1}s.")
+    });
+    if discovered == 0 {
+        return format!("{period}, no experiment run deviated or failed.{recovery}");
+    }
+    format!(
+        "{period}, {} deviated or failed; {fixed} {} later fixed (a later completed run of \
+         the same experiment — an intentionally simple, auditable heuristic).{recovery}",
+        counted(discovered as usize, "experiment run", "experiment runs"),
+        if fixed == 1 { "was" } else { "were" },
+    )
+}
 
 /// Build the R1 executive resilience digest as of `as_of_ns`, comparing
 /// against `period_ns` earlier. `org` drives the "By domain" rollup section
@@ -31,13 +52,16 @@ pub fn build_executive(
     let open: Vec<&scoring::ExperimentScore> = card
         .experiments
         .iter()
-        .filter(|e| e.state != RunState::Passed && e.state != RunState::Stale)
+        .filter(|e| e.state.is_open())
         .collect();
-    let tested = card
+    // Experiments with at least one run inside the period.
+    let in_window = runs_in_window(reader, from_ns, as_of_ns, envs)?;
+    let tested_in_window = card
         .experiments
         .iter()
-        .filter(|e| e.state != RunState::NeverRun)
+        .filter(|e| in_window.contains(&e.name))
         .count();
+    let scored = !card.experiments.is_empty();
 
     // The scope set is part of the document identity: a scoped digest is a
     // different document from the global one for the same instant.
@@ -62,8 +86,8 @@ pub fn build_executive(
     blocks.push(Block::Kpis(vec![
         (
             "Portfolio score".into(),
-            f1(card.portfolio),
-            Some(card.band.clone()),
+            card.portfolio.map_or("—".into(), f1),
+            card.portfolio.map(|_| card.band.clone()),
         ),
         (
             "Δ vs previous period".into(),
@@ -72,8 +96,8 @@ pub fn build_executive(
         ),
         (
             "Experiments tested".into(),
-            format!("{tested} / {}", card.experiments.len()),
-            None,
+            format!("{tested_in_window} / {}", card.experiments.len()),
+            Some("in the period".into()),
         ),
         ("Open weaknesses".into(), open.len().to_string(), None),
         (
@@ -82,23 +106,35 @@ pub fn build_executive(
             mttr_s.map(|m| format!("MTTR {m:.1}s")),
         ),
     ]));
+    blocks.push(Block::Paragraph(format!(
+        "The portfolio score is the compliance score. {}",
+        scoring::COMPLIANCE_SCORE_LINE
+    )));
 
     // Score trend across the period (portfolio sampled at 10 instants).
     let trend = scoring::portfolio_series_scoped(reader, as_of_ns, period_ns, 10, envs)?;
     blocks.push(Block::H2("Score trend".into()));
-    blocks.push(Block::Chart(ChartSpec::Lines(vec![(
-        "portfolio".into(),
-        trend,
-    )])));
+    blocks.push(if trend.is_empty() {
+        Block::Paragraph("No score on record in the period.".into())
+    } else {
+        Block::Chart(ChartSpec::Trend {
+            y_name: "Portfolio score".into(),
+            series: vec![("portfolio".into(), trend)],
+        })
+    });
 
     // Per-experiment bars, weakest first (experiments are sorted by score).
     blocks.push(Block::H2("Experiment scores".into()));
-    blocks.push(Block::Chart(ChartSpec::Bars(
-        card.experiments
-            .iter()
-            .map(|e| (e.name.clone(), f64::from(e.score)))
-            .collect(),
-    )));
+    blocks.push(if scored {
+        Block::Chart(ChartSpec::Bars(
+            card.experiments
+                .iter()
+                .map(|e| (e.name.clone(), f64::from(e.score)))
+                .collect(),
+        ))
+    } else {
+        nothing_on_record()
+    });
 
     // By domain: top-level org rollup (criticality-weighted mean over all
     // leaves in each subtree; pending manual records count toward coverage).
@@ -111,7 +147,7 @@ pub fn build_executive(
         })
         .collect();
     leaves.extend(
-        scoring::pending_manual_leaves_scoped(reader, envs)?
+        scoring::pending_manual_leaves(reader, envs)?
             .into_iter()
             .map(|name| ScoredLeaf { name, score: None }),
     );
@@ -131,15 +167,7 @@ pub fn build_executive(
                 rows: root
                     .children
                     .iter()
-                    .map(|c| {
-                        vec![
-                            Cell::text(c.name.clone()),
-                            Cell::text(f1(c.score)),
-                            Cell::status(c.band.clone()),
-                            Cell::text(format!("{}/{}", c.scored, c.expected)),
-                            Cell::text(c.weakest.clone().unwrap_or("—".into())),
-                        ]
-                    })
+                    .map(|domain| domain_row(domain, &leaves))
                     .collect(),
                 numeric_cols: vec![1],
                 widths: Some(vec![2.6, 0.8, 1.0, 1.0, 2.2]),
@@ -148,25 +176,107 @@ pub fn build_executive(
     }
 
     // Coverage: experiments with ≥ 1 run inside the window vs not.
-    let in_window = runs_in_window(reader, from_ns, as_of_ns, envs)?;
-    let tested_in_window = card
-        .experiments
-        .iter()
-        .filter(|e| in_window.contains(&e.name))
-        .count() as f64;
-    let not_run = card.experiments.len() as f64 - tested_in_window;
+    let not_run = card.experiments.len() - tested_in_window;
     blocks.push(Block::H2("Coverage".into()));
-    if card.experiments.is_empty() {
-        blocks.push(Block::Paragraph("No experiments on record.".into()));
+    blocks.push(if scored {
+        Block::Chart(ChartSpec::Donut(vec![
+            ("Tested in window".into(), tested_in_window as f64),
+            ("Not run in window".into(), not_run as f64),
+        ]))
     } else {
-        blocks.push(Block::Chart(ChartSpec::Donut(vec![
-            ("Tested in window".into(), tested_in_window),
-            ("Not run in window".into(), not_run),
-        ])));
-    }
+        nothing_on_record()
+    });
 
     blocks.push(Block::H2("Target scores".into()));
-    blocks.push(Block::Table {
+    blocks.push(if scored {
+        target_scores(&card)
+    } else {
+        nothing_on_record()
+    });
+
+    blocks.push(Block::H2("Issues discovered and fixed".into()));
+    blocks.push(Block::Paragraph(issues(
+        from_ns, as_of_ns, discovered, fixed, mttr_s,
+    )));
+
+    blocks.push(Block::H2("Open weaknesses and decisions needed".into()));
+    blocks.push(match (scored, open.is_empty()) {
+        (false, _) => nothing_on_record(),
+        (true, true) => {
+            Block::Paragraph("No open weaknesses: every known experiment last ran green.".into())
+        }
+        (true, false) => open_weaknesses(&open, as_of_ns),
+    });
+
+    blocks.push(Block::H2("Outlook".into()));
+    blocks.push(Block::Paragraph(outlook(&card)));
+
+    let n_manual = card
+        .experiments
+        .iter()
+        .filter(|e| e.origin == "manual")
+        .count();
+    let n_automated = card.experiments.len() - n_manual;
+    blocks.push(Block::Footnote(format!(
+        "Scores: passed 100, stale pass (>30d) 75, failed 50, never run 0; bands \
+         >70 good, 50–70 fair, <50 poor. Evidence mix: {n_automated} automated, \
+         {} (manual partials score 75; \
+         inconclusive manual outcomes are excluded). Generated by Tumult v{}; \
+         data as of {}.",
+        counted(
+            n_manual,
+            "verified manual experiment",
+            "verified manual experiments"
+        ),
+        env!("CARGO_PKG_VERSION"),
+        fmt_date(as_of_ns)
+    )));
+    blocks.push(Block::Signoff(vec![
+        ("Prepared by".into(), "Tumult".into()),
+        ("Approved by".into(), String::new()),
+    ]));
+
+    Ok(ReportDoc { meta, blocks })
+}
+
+/// What a section says when the store holds no experiment.
+fn nothing_on_record() -> Block {
+    Block::Paragraph("No experiments on record.".into())
+}
+
+/// The row of a domain in the roll-up. A domain with nothing scored has no
+/// score and no band. A domain names its weakest member only when that
+/// member is below the full score.
+fn domain_row(domain: &OrgNodeScore, leaves: &[ScoredLeaf]) -> Vec<Cell> {
+    let coverage = Cell::text(format!("{}/{}", domain.scored, domain.expected));
+    let Some(score) = domain.score else {
+        return vec![
+            Cell::text(domain.name.clone()),
+            Cell::text("—"),
+            Cell::text("—"),
+            coverage,
+            Cell::text("—"),
+        ];
+    };
+    let below_full = |name: &String| {
+        let scores = leaves.iter().filter(|leaf| leaf.name == *name);
+        scores
+            .filter_map(|leaf| leaf.score)
+            .any(|score| score < 100)
+    };
+    let weakest = domain.weakest.clone().filter(below_full);
+    vec![
+        Cell::text(domain.name.clone()),
+        Cell::text(f1(score)),
+        Cell::status(domain.band.clone()),
+        coverage,
+        Cell::text(weakest.unwrap_or("—".into())),
+    ]
+}
+
+/// The score of each target, with the experiments and runs behind it.
+fn target_scores(card: &scoring::Scorecard) -> Block {
+    Block::Table {
         headers: vec![
             "Target".into(),
             "Experiments".into(),
@@ -195,78 +305,35 @@ pub fn build_executive(
             .collect(),
         numeric_cols: vec![1, 2, 3],
         widths: Some(vec![3.0, 1.1, 0.8, 0.8, 1.0]),
-    });
-
-    blocks.push(Block::H2("Issues discovered and fixed".into()));
-    blocks.push(Block::Paragraph(format!(
-        "In the period {} – {}, {} experiment runs deviated or failed; {} were later \
-         fixed (a subsequent completed run of the same experiment — an intentionally \
-         simple, auditable heuristic).{}",
-        fmt_date(from_ns),
-        fmt_date(as_of_ns),
-        discovered,
-        fixed,
-        mttr_s.map_or(String::new(), |m| format!(
-            " Mean time to recovery across runs reporting one: {m:.1}s."
-        )),
-    )));
-
-    blocks.push(Block::H2("Open weaknesses and decisions needed".into()));
-    if open.is_empty() {
-        blocks.push(Block::Paragraph(
-            "No open weaknesses: every known experiment last ran green.".into(),
-        ));
-    } else {
-        blocks.push(Block::Table {
-            headers: vec![
-                "Severity".into(),
-                "Experiment".into(),
-                "Last run".into(),
-                "Age (d)".into(),
-                "Decision needed".into(),
-            ],
-            rows: open
-                .iter()
-                .map(|e| {
-                    vec![
-                        Cell::status(e.severity.clone().unwrap_or_else(|| "medium".into())),
-                        Cell::text(e.name.clone()),
-                        Cell::text(e.last_run_ns.map_or("never".into(), fmt_date)),
-                        Cell::text(
-                            e.last_run_ns
-                                .map_or("—".into(), |ts| ((as_of_ns - ts) / DAY_NS).to_string()),
-                        ),
-                        Cell::text(decision_for(e.state)),
-                    ]
-                })
-                .collect(),
-            numeric_cols: vec![3],
-            widths: Some(vec![1.2, 3.0, 1.0, 0.7, 2.0]),
-        });
     }
+}
 
-    blocks.push(Block::H2("Outlook".into()));
-    blocks.push(Block::Paragraph(outlook(&card)));
-
-    let n_manual = card
-        .experiments
-        .iter()
-        .filter(|e| e.origin == "manual")
-        .count();
-    let n_automated = card.experiments.len() - n_manual;
-    blocks.push(Block::Footnote(format!(
-        "Scores: passed 100, stale pass (>30d) 75, failed 50, never run 0; bands \
-         >70 good, 50–70 fair, <50 poor. Evidence mix: {n_automated} automated, \
-         {n_manual} verified manual experiment(s) (manual partials score 75; \
-         inconclusive manual outcomes are excluded). Generated by Tumult v{}; \
-         data as of {}.",
-        env!("CARGO_PKG_VERSION"),
-        fmt_date(as_of_ns)
-    )));
-    blocks.push(Block::Signoff(vec![
-        ("Prepared by".into(), "Tumult".into()),
-        ("Approved by".into(), String::new()),
-    ]));
-
-    Ok(ReportDoc { meta, blocks })
+/// The open weaknesses, each with the decision it asks for.
+fn open_weaknesses(open: &[&scoring::ExperimentScore], as_of_ns: i64) -> Block {
+    Block::Table {
+        headers: vec![
+            "Severity".into(),
+            "Experiment".into(),
+            "Last run".into(),
+            "Age (d)".into(),
+            "Decision needed".into(),
+        ],
+        rows: open
+            .iter()
+            .map(|e| {
+                vec![
+                    severity_cell(e.severity.as_deref()),
+                    Cell::text(e.name.clone()),
+                    Cell::text(e.last_run_ns.map_or("never".into(), fmt_date)),
+                    Cell::text(
+                        e.last_run_ns
+                            .map_or("—".into(), |ts| ((as_of_ns - ts) / DAY_NS).to_string()),
+                    ),
+                    Cell::text(decision_for(e.state)),
+                ]
+            })
+            .collect(),
+        numeric_cols: vec![3],
+        widths: Some(vec![1.2, 3.0, 1.0, 0.7, 2.0]),
+    }
 }

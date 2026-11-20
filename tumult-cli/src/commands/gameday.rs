@@ -7,12 +7,16 @@ use super::{ComplianceFramework, LoadToolArg};
 
 // ── GameDay commands ────────────────────────────────────────
 
+/// The status of a game day that reached its score.
+const COMPLIANT: &str = "COMPLIANT";
+
 /// Creates a `.gameday.toon` file from experiment paths.
 ///
 /// # Errors
 ///
-/// Returns an error if the name is not a plain file-name component or the
-/// file cannot be written.
+/// Returns an error if the name is not a plain file-name component, the
+/// load options make no load a game day file can hold, the file already
+/// exists, or it cannot be written.
 #[must_use = "callers must handle gameday creation errors"]
 pub fn cmd_gameday_create(
     name: &str,
@@ -22,7 +26,7 @@ pub fn cmd_gameday_create(
     load_vus: Option<u32>,
     framework: Option<ComplianceFramework>,
 ) -> Result<()> {
-    use tumult_core::types::{gameday_toon_template, GameDayTemplateSpec, LoadTool};
+    use tumult_core::types::{gameday_toon_template, GameDayTemplateSpec, LoadSpec, LoadTool};
 
     // The name becomes `{name}.gameday.toon` in the current directory — it
     // must be a plain file-name component, not a path (`../x` would escape
@@ -44,17 +48,21 @@ pub fn cmd_gameday_create(
         Some(LoadToolArg::Oha) => Some(LoadTool::Oha),
         Some(LoadToolArg::None) | None => None,
     };
+    let load =
+        LoadSpec::from_options(core_load_tool, load_script, load_vus).map_err(load_option_error)?;
     let framework_report_str = framework.map(|fw| fw.as_report_str());
     let content = gameday_toon_template(&GameDayTemplateSpec {
         name,
         experiments,
-        load_tool: core_load_tool,
-        load_script,
-        load_vus,
+        load,
         framework_report_str,
     });
 
     let filename = format!("{name}.gameday.toon");
+    // A game day file of the name is kept, as the MCP tool keeps it.
+    if std::path::Path::new(&filename).exists() {
+        bail!("{filename} already exists — remove it first or use a different name");
+    }
     std::fs::write(&filename, &content).with_context(|| format!("failed to write {filename}"))?;
 
     crate::outln!("Created: {filename}");
@@ -63,19 +71,41 @@ pub fn cmd_gameday_create(
     Ok(())
 }
 
-/// Runs a `GameDay` — executes all experiments under shared load.
+/// The error of `--load`, `--load-script` and `--load-vus` that make no
+/// load, in the names of the options.
+fn load_option_error(error: tumult_core::types::LoadSpecError) -> anyhow::Error {
+    use tumult_core::types::LoadSpecError;
+    match error {
+        LoadSpecError::ScriptMissing(tool) => anyhow::anyhow!(
+            "--load {tool} needs --load-script: the k6 `.js` script, or the URL to hit for oha"
+        ),
+        LoadSpecError::ToolMissing => {
+            anyhow::anyhow!("--load-script and --load-vus need --load k6 or --load oha")
+        }
+        LoadSpecError::NoAdapter(reason) => anyhow::anyhow!(reason),
+    }
+}
+
+/// What `tumult gameday run` can do about a journal that is already there.
+const GAMEDAY_WAYS_OUT: &str = "pass --force to overwrite";
+
+/// Runs a `GameDay` — executes all experiments under shared load. The
+/// journal of an earlier run is replaced only when `force` is set.
 ///
 /// # Errors
 ///
-/// Returns an error if the `GameDay` file cannot be read, parsed, or experiments fail.
+/// Returns an error if the `GameDay` file cannot be read, parsed, or experiments fail,
+/// if the journal of an earlier run is there without `force`,
+/// and when the game day ends with a status other than `COMPLIANT`.
 #[allow(clippy::too_many_lines)] // GameDay orchestration spans load setup, multi-experiment execution, and scoring summary
 #[must_use = "callers must handle gameday run errors"]
-pub fn cmd_gameday_run(gameday_path: &std::path::Path) -> Result<()> {
+pub fn cmd_gameday_run(gameday_path: &std::path::Path, force: bool) -> Result<()> {
     use tumult_core::controls::{ControlRegistry, ProviderControl};
     use tumult_core::engine::{
         apply_template_vars, build_config_env, build_secret_env, flatten_secrets, parse_experiment,
         resolve_config, resolve_secrets, validate_experiment,
     };
+    use tumult_core::journal::{ExistingJournal, JournalOutput};
     use tumult_core::runner::{run_gameday_with_wiring, ExperimentWiring, RunConfig};
     use tumult_core::types::GameDay;
 
@@ -151,14 +181,6 @@ pub fn cmd_gameday_run(gameday_path: &std::path::Path) -> Result<()> {
         experiments.push(experiment);
     }
 
-    // Create the load adapter for the gameday's load tool, if any
-    let load_executor = gameday
-        .load
-        .as_ref()
-        .map(|load| tumult_core::runner::load_executor_for(&load.tool))
-        .transpose()
-        .map_err(|e| anyhow::anyhow!(e))?;
-
     // Spawn a task that cancels the gameday if SIGINT (Ctrl-C) is received.
     let cancel_token = tokio_util::sync::CancellationToken::new();
     let cancel_token_for_signal = cancel_token.clone();
@@ -179,10 +201,18 @@ pub fn cmd_gameday_run(gameday_path: &std::path::Path) -> Result<()> {
         rollback_strategy: tumult_core::execution::RollbackStrategy::OnDeviation,
         cancellation_token: Some(cancel_token),
         parent_context: None,
-        load_executor,
+        // The runner runs a declared load with the adapter of its tool.
+        load_executor: None,
         max_concurrent_faults: None,
     };
 
+    // The journal is reserved before the first experiment runs, at the
+    // path `gameday analyze` reads: the rule of the core refuses one that
+    // is already there unless --force was given, and a path that cannot
+    // take a journal fails before any fault.
+    let journal_path = gameday_path.with_extension("journal.toon");
+    let journal_output = JournalOutput::prepare(&journal_path, ExistingJournal::replace_if(force))
+        .map_err(|error| super::run::existing_journal_error(error, GAMEDAY_WAYS_OUT))?;
     crate::outln!("Running...\n");
 
     let journal = run_gameday_with_wiring(
@@ -243,22 +273,24 @@ pub fn cmd_gameday_run(gameday_path: &std::path::Path) -> Result<()> {
     );
 
     if let Some(ref lr) = journal.load_result {
-        crate::outln!(
-            "\nLoad ({}): {} requests, p95={}ms, error_rate={:.4}",
-            lr.tool,
-            lr.total_requests,
-            lr.latency_p95_ms,
-            lr.error_rate
-        );
+        crate::out!("\n{}", super::summary::load(lr));
     }
 
-    // Write gameday journal
-    let journal_path = gameday_path.with_extension("journal.toon");
+    // Publish the gameday journal at the reserved path.
     let toon = toon_format::encode_default(&journal)
         .with_context(|| "failed to encode gameday journal")?;
-    std::fs::write(&journal_path, &toon)
-        .with_context(|| format!("failed to write {}", journal_path.display()))?;
+    journal_output
+        .write(&toon)
+        .map_err(|error| super::run::existing_journal_error(error, GAMEDAY_WAYS_OUT))?;
     crate::outln!("\nJournal: {}", journal_path.display());
+
+    // Exit with non-zero if the game day did not reach its score
+    if journal.compliance_status != COMPLIANT {
+        bail!(
+            "game day finished with status: {}",
+            journal.compliance_status
+        );
+    }
 
     Ok(())
 }
@@ -388,7 +420,7 @@ method[1]:
         )
         .unwrap();
 
-        cmd_gameday_run(&gameday_path).unwrap();
+        cmd_gameday_run(&gameday_path, false).unwrap();
 
         // The resolved config reached the method subprocess as TUMULT_CONFIG_*.
         let journal = std::fs::read_to_string(gameday_path.with_extension("journal.toon")).unwrap();

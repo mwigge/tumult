@@ -73,8 +73,10 @@ environment:
 
 Every tool declares MCP annotation hints for read-only, destructive,
 idempotent, and open-world behavior. Viewer credentials can use read-only
-tools. Writers and fault executors require the operator role. A viewer's
-`store_path` argument is ignored — viewers always read the default store.
+tools. Writers and fault executors require the operator role. Four tools
+ignore the `store_path` of a viewer and read the default store:
+`tumult_store_stats`, `tumult_analyze_store`, `tumult_chaosgraph_cypher` and
+`tumult_autopilot_status`.
 
 The destructive tools are four: `tumult_run_experiment`, `tumult_gameday_run`,
 `tumult_autopilot_run` (when `execute=true`), and `tumult_autopilot_respond`
@@ -112,6 +114,9 @@ run experiment -> journal -> analytics store -> coverage/trend/recommendation
 ```
 
 Use `no_ingest` to disable ingestion or `store_path` to select another store.
+A run keeps the journal of an earlier run: `tumult_run_experiment` and
+`tumult_gameday_run` refuse it before anything runs, unless `force` is set
+(or, for an experiment, another `journal_path` is chosen).
 
 ## Workspace resources
 

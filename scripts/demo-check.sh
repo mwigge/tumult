@@ -4,12 +4,15 @@
 # for the Tumult 2.2 one-command demo.
 #
 # Two modes:
-#   full      (default) — assert every experiment ends Completed AND that spans
-#                         reached the collector, then assert the Star Map of
-#                         the Krönika demo. Exits non-zero on any failure.
-#                         This is the dev smoke test (`make demo-check`).
-#   populate            — run the sweep once, best-effort, to warm the SigNoz
-#                         dashboards. Never fails the caller (`make demo`).
+#   full      (default) — assert that the journal of every run says what
+#                         demo/experiments/expectations.json expects AND that
+#                         spans reached the collector, then assert the Star
+#                         Map of the Krönika demo. Exits non-zero on any
+#                         failure. This is the dev smoke test
+#                         (`make demo-check`).
+#   populate            — run the ten domains once, best-effort, to warm the
+#                         SigNoz dashboards. Never fails the caller
+#                         (`make demo`).
 #
 # Usage:
 #   scripts/demo-check.sh [--mode full|populate] [--no-wait] [--starmap-only]
@@ -19,7 +22,8 @@
 # docker/docker-compose.kronika.yml up as its own compose project, with its
 # own container names and image tag (tumult-demo-check-kronika), on a fresh
 # volume with throwaway credentials and on host ports 24317/24318, so a
-# Krönika demo that is already up is left alone. It runs the seed, checks the
+# Krönika demo that is already up is left alone. It runs the seed, compares
+# each seed journal with demo/kronika/experiments/expectations.json, checks the
 # map (suppressing one risk to show a suppressed one) and removes the project
 # again, also when it is interrupted; the image stays as a build cache.
 # The project, its names and its ports are the same for every run, so one
@@ -35,6 +39,10 @@
 # Assumes the demo stack is already `up` (the Makefile brings it up first).
 # Runs each experiment inside the tumult-mcp container via `tumult run`, the
 # same path the control panel exercises through the MCP run_experiment tool.
+#
+# Journals and run logs go to a directory of this run. It is removed at the
+# end, unless a journal was not as expected: then it is kept and its path is
+# printed.
 
 set -euo pipefail
 
@@ -44,12 +52,20 @@ COMPOSE="${COMPOSE_DEMO:-docker compose -f ${REPO_ROOT}/docker/docker-compose.de
 MODE="full"
 DO_WAIT=1
 
-# Domains in run order (name → experiment file basename). Each ends Completed
-# on success, so they belong in the pass/fail sweep. The auto-halt guardrail
-# (demo-guard-halt.toon) is deliberately excluded: its expected outcome is
-# Halted, not Completed, so it is exercised from the control panel's own
-# "Safety guardrail" card instead.
-DOMAINS=(net postgres container stress process ssh agentic agentic-trajectory timewarp-clock timewarp-entropy)
+# The sweep runs what demo/experiments/expectations.json gives to the proof
+# `demo-check`, in the order of that file. The same file says what the journal
+# of each run must hold, so a run that halts by design is judged like any
+# other: by its journal, not by the exit status of `tumult run`.
+EXPECTATIONS="${REPO_ROOT}/demo/experiments/expectations.json"
+JOURNAL_CHECK="${REPO_ROOT}/scripts/check-proof-journals.py"
+# Not in the warm-up of `make demo`, which runs the ten domains only.
+FULL_ONLY=" demo-guard-halt demo-topo-recommended demo-topo-blind "
+SWEEP=()
+
+# Journals and run logs of this check. See the header.
+WORK=""
+KEEP_WORK=0
+JOURNAL_FAILS=0
 
 # Containers that carry a healthcheck we wait on. demo-collector is excluded:
 # its image is distroless (no in-container probe possible), so its readiness is
@@ -57,6 +73,7 @@ DOMAINS=(net postgres container stress process ssh agentic agentic-trajectory ti
 HEALTH_CONTAINERS=(demo-postgres demo-app demo-sshd demo-signoz demo-mcp)
 
 HEALTH_TIMEOUT="${HEALTH_TIMEOUT:-240}"
+COLLECTOR_METRICS_URL="${COLLECTOR_METRICS_URL:-http://localhost:18888/metrics}"
 
 # Star Map: the compose project this script owns, and where its daemon listens.
 # The command is an array so that a checkout path with a space stays one word;
@@ -75,8 +92,8 @@ STARMAP_LOCK_WAIT="${STARMAP_LOCK_WAIT:-900}"
 STARMAP_URL="${STARMAP_URL:-}"
 STARMAP_WAIT="${STARMAP_WAIT:-90}"
 STARMAP_ONLY=0
-# The Krönika seed runs eight experiments; two do not pass by design.
-SEED_TALLY="6 passed, 2 deviated/failed"
+# What the journal of each experiment of the Krönika seed must hold.
+SEED_EXPECTATIONS="${REPO_ROOT}/demo/kronika/experiments/expectations.json"
 
 # ── Args ──────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
@@ -104,6 +121,58 @@ info() { printf "  ----  %s\n" "$1"; }
 
 FAILURES=0
 record_fail() { FAILURES=$((FAILURES + 1)); }
+# A problem that fails the full check and is only a warning in a warm-up.
+complain() {
+  if [[ "$MODE" == "full" ]]; then fail "$1"; else warn "$1"; fi
+}
+
+# ── Work directory ────────────────────────────────────────────────
+# Whatever this script started or made is removed on every way out, an
+# interrupt included.
+arm_cleanup() {
+  trap cleanup EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+}
+
+work_dir() {
+  [[ -n "$WORK" ]] && return 0
+  WORK="$(mktemp -d)" || return 1
+  arm_cleanup
+}
+
+cleanup() {
+  kronika_cleanup
+  [[ -z "$WORK" || $KEEP_WORK -eq 1 ]] && return 0
+  rm -rf "$WORK"
+  WORK=""
+}
+
+# ── Journal check ─────────────────────────────────────────────────
+# Compare the journals in a directory with what an expectations file says
+# the proof $1 must find. A line of the check is `ok   name`, `FAIL name`,
+# or a detail of the FAIL above it. $4 goes in front of each name. Sets
+# JOURNAL_FAILS to the number of names that failed.
+check_journals() {
+  local proof="$1" expectations="$2" journals="$3" prefix="$4"
+  local out line rc=0 fails=0
+  out="$(python3 "$JOURNAL_CHECK" --proof "$proof" "$expectations" "$journals" 2>&1)" || rc=1
+  while IFS= read -r line; do
+    case "$line" in
+      "ok   "*) pass "${prefix}${line#ok   }" ;;
+      "FAIL "*) fail "${prefix}${line#FAIL }"; fails=$((fails + 1)) ;;
+      *)        printf '        %s\n' "${line#     }" ;;
+    esac
+  done <<<"$out"
+  if [[ $rc -eq 1 && $fails -eq 0 ]]; then
+    fail "${prefix}the journal check did not run"
+    fails=1
+  fi
+  JOURNAL_FAILS=$fails
+  [[ $fails -eq 0 ]] && return 0
+  KEEP_WORK=1
+  return 1
+}
 
 # ── Docker ────────────────────────────────────────────────────────
 # Everything here drives the demo through Docker, except a Star Map check
@@ -152,23 +221,54 @@ wait_for_health() {
 }
 
 # ── Sweep ─────────────────────────────────────────────────────────
+# Run one experiment in the demo and bring its journal out. The journal of
+# an earlier run is removed first, so a run that writes none leaves none.
+# -T: no TTY (safe under make / CI); stdin is not the caller's.
 run_experiment() {
-  local domain="$1"
-  local exp="/demo/experiments/demo-${domain}.toon"
-  local journal="/journals/demo-${domain}.journal.toon"
-  # -T: no TTY (safe under make / CI). Redirect run output to a temp log.
-  local log; log="$(mktemp)"
-  if $COMPOSE exec -T tumult-mcp \
-        tumult run "$exp" --journal-path "$journal" --force >"$log" 2>&1; then
-    local status; status="$(grep -E '^Status:' "$log" | head -1 | sed 's/Status: //')"
-    pass "demo-${domain}  (${status:-Completed})"
-    rm -f "$log"
-    return 0
-  else
-    fail "demo-${domain}  — tumult run exited non-zero"
-    sed 's/^/        /' "$log" | grep -viE 'opentelemetry|TracerProvider' | tail -12 || true
-    rm -f "$log"
+  local name="$1" rc=0 status
+  local journal="/journals/${name}.journal.toon"
+  local out="${WORK}/sweep/${name}"
+  $COMPOSE exec -T tumult-mcp rm -f "$journal" </dev/null >/dev/null 2>&1 || true
+  $COMPOSE exec -T tumult-mcp \
+    tumult run "/demo/experiments/${name}.toon" --journal-path "$journal" --force \
+    </dev/null >"${out}.log" 2>&1 || rc=$?
+  if ! $COMPOSE exec -T tumult-mcp cat "$journal" </dev/null >"${out}.journal.toon" 2>/dev/null; then
+    rm -f "${out}.journal.toon"
+  fi
+  status="$(sed -n 's/^Status: //p' "${out}.log" | head -1)"
+  info "${name}  (${status:-no status}, exit ${rc})"
+}
+
+# Fill SWEEP with the names this mode runs, in the order of the expectations.
+sweep_list() {
+  local listed name
+  if ! listed="$(python3 "$JOURNAL_CHECK" --proof demo-check --list "$EXPECTATIONS" 2>&1)"; then
+    complain "sweep — nothing to run: ${listed##*$'\n'}"
     return 1
+  fi
+  SWEEP=()
+  while IFS= read -r name; do
+    name="${name%.toon}"
+    [[ "$MODE" == "populate" && "$FULL_ONLY" == *" ${name} "* ]] && continue
+    SWEEP+=("$name")
+  done <<<"$listed"
+}
+
+sweep() {
+  sweep_list || return 1
+  if ! work_dir || ! mkdir -p "${WORK}/sweep"; then
+    complain "sweep — cannot make a directory for the journals"
+    return 1
+  fi
+  echo "Running the fault sweep (${#SWEEP[@]} experiments)..."
+  local name
+  for name in "${SWEEP[@]}"; do
+    run_experiment "$name"
+  done
+  # The first runs once more in the same stack, and the journal check judges
+  # that run: a run that completes leaves no fault behind to refuse it.
+  if [[ "$MODE" == "full" && ${#SWEEP[@]} -gt 0 ]]; then
+    run_experiment "${SWEEP[0]}"
   fi
 }
 
@@ -178,8 +278,8 @@ run_experiment() {
 # experiment runs and demo-app traffic reached the collector.
 assert_telemetry() {
   local metrics
-  if ! metrics="$(curl -sf -m 8 http://localhost:18888/metrics 2>/dev/null)"; then
-    fail "telemetry — could not scrape collector self-metrics on :18888"
+  if ! metrics="$(curl -sf -m 8 "$COLLECTOR_METRICS_URL" 2>/dev/null)"; then
+    fail "telemetry — could not scrape collector self-metrics at ${COLLECTOR_METRICS_URL}"
     return 1
   fi
   local accepted
@@ -292,15 +392,21 @@ kronika_env() {
   KRONIKA_INGEST_TOKEN="$(throwaway_secret)"
 }
 
-# Bring the Krönika demo up on a fresh volume and run its seed. Sets
-# STARMAP_URL and STARMAP_TOKEN for the daemon it started. From here on the
-# stack is removed on every way out, an interrupt included.
+# Bring the Krönika demo up on a fresh volume, run its seed and compare the
+# seed journals with what is expected of them. Sets STARMAP_URL and
+# STARMAP_TOKEN for the daemon it started. From here on the stack is removed
+# on every way out, an interrupt included. The seed does not run as this
+# user, so the directory it writes its journals to is open to all.
 kronika_up() {
   kronika_env
-  trap kronika_cleanup EXIT
-  trap 'exit 130' INT
-  trap 'exit 143' TERM
+  arm_cleanup
   kronika_lock || return 1
+  local seed_journals
+  if ! work_dir || ! mkdir -p "${WORK}/seed" || ! chmod 777 "${WORK}/seed"; then
+    fail "star map — cannot make a directory for the seed journals"
+    return 1
+  fi
+  seed_journals="${WORK}/seed"
   local log; log="$(mktemp)"
   kronika_down
   KRONIKA_STARTED=1
@@ -310,20 +416,15 @@ kronika_up() {
     rm -f "$log"
     return 1
   fi
-  if ! "${KRONIKA_COMPOSE[@]}" run --rm seed >"$log" 2>&1; then
+  if ! "${KRONIKA_COMPOSE[@]}" run --rm -v "${seed_journals}:/tmp/journals" seed >"$log" 2>&1; then
     fail "star map — the Krönika seed exited non-zero"
     tail -12 "$log" | sed 's/^/        /'
     rm -f "$log"
     return 1
   fi
-  if ! grep -q "suite done — ${SEED_TALLY}" "$log"; then
-    fail "star map — the seed did not end with ${SEED_TALLY}"
-    grep '=== seed:' "$log" | sed 's/^/        /' || true
-    rm -f "$log"
-    return 1
-  fi
-  rm -f "$log"
-  pass "star map — Krönika demo seeded (${SEED_TALLY})"
+  mv "$log" "${WORK}/seed.log"
+  check_journals kronika-seed "$SEED_EXPECTATIONS" "$seed_journals" "seed — " || return 1
+  pass "star map — Krönika demo seeded"
   STARMAP_URL="http://127.0.0.1:${KRONIKA_HOST_HTTP_PORT}"
   STARMAP_TOKEN="$KRONIKA_BOOTSTRAP_TOKEN"
 }
@@ -369,6 +470,9 @@ assert_starmap() {
 finish() {
   echo ""
   echo "------------------------------------------------------------------"
+  if [[ $KEEP_WORK -eq 1 ]]; then
+    info "run logs and journals kept in ${WORK}"
+  fi
   if [[ $FAILURES -eq 0 ]]; then
     pass "ALL CHECKS PASSED"
     echo "------------------------------------------------------------------"
@@ -404,28 +508,29 @@ if [[ $DO_WAIT -eq 1 ]]; then
 fi
 
 echo ""
-echo "Running fault sweep across ${#DOMAINS[@]} domains..."
-for d in "${DOMAINS[@]}"; do
-  if ! run_experiment "$d"; then
-    [[ "$MODE" == "full" ]] && record_fail
-  fi
-done
-
-if [[ "$MODE" == "full" ]]; then
-  echo ""
-  echo "Asserting telemetry landed..."
-  assert_telemetry || record_fail
-  echo ""
-  echo "Asserting the Star Map of the Krönika demo..."
-  assert_starmap || record_fail
-fi
-
 if [[ "$MODE" == "populate" ]]; then
+  sweep || true
   echo ""
   echo "------------------------------------------------------------------"
   info "populate mode — dashboards warmed; not asserting (exit 0)"
   echo "------------------------------------------------------------------"
   exit 0
 fi
+
+if sweep; then
+  echo ""
+  echo "Checking the journal of each run against demo/experiments/expectations.json..."
+  check_journals demo-check "$EXPECTATIONS" "${WORK}/sweep" "" \
+    || FAILURES=$((FAILURES + JOURNAL_FAILS))
+else
+  record_fail
+fi
+
+echo ""
+echo "Asserting telemetry landed..."
+assert_telemetry || record_fail
+echo ""
+echo "Asserting the Star Map of the Krönika demo..."
+assert_starmap || record_fail
 
 finish

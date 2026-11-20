@@ -111,7 +111,7 @@ pub(crate) fn output_schema_for(tool_name: &str) -> Option<ToolOutputSchema> {
                 "pass_rate": { "type": "number", "description": "Fraction of journals that completed (0.0-1.0)." },
                 "recovery_compliance": {
                     "type": ["number", "null"],
-                    "description": "Recovery-compliance proxy (0.0-1.0); null when no MTTR or resilience_score data exists (pass-rate-only verdict).",
+                    "description": "Of the runs that watched for recovery, the share (0.0-1.0) that saw their target recover within the target time; null when no run watched for recovery (pass-rate-only verdict).",
                 },
                 "verdict": {
                     "type": "string",
@@ -147,7 +147,13 @@ pub(crate) fn output_schema_for(tool_name: &str) -> Option<ToolOutputSchema> {
             }),
         )),
         "tumult_trend" => Some(schema_object(
-            &["metric", "points", "target", "verdict"],
+            &[
+                "metric",
+                "points",
+                "target",
+                "journals_without_target",
+                "verdict",
+            ],
             json!({
                 "metric": {
                     "type": "string",
@@ -165,7 +171,11 @@ pub(crate) fn output_schema_for(tool_name: &str) -> Option<ToolOutputSchema> {
                         },
                     },
                 },
-                "target": { "type": ["string", "null"], "description": "Title filter applied, if any." },
+                "target": { "type": ["string", "null"], "description": "Target asked for, if any: the system or the technology the journal names." },
+                "journals_without_target": {
+                    "type": "integer",
+                    "description": "Journals left out of a trend by target because they name no target.",
+                },
                 "verdict": {
                     "type": "string",
                     "enum": ["improving", "declining", "stable", "increasing", "decreasing", "insufficient-data"],
@@ -721,6 +731,57 @@ pub(crate) fn output_schema_for(tool_name: &str) -> Option<ToolOutputSchema> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Whether `value` is of the JSON type `declared` names: one name, or
+    /// one of several.
+    fn is_of(value: &serde_json::Value, declared: &serde_json::Value) -> bool {
+        if let Some(names) = declared.as_array() {
+            return names.iter().any(|name| is_of(value, name));
+        }
+        match declared.as_str() {
+            Some("string") => value.is_string(),
+            Some("integer") => value.is_i64() || value.is_u64(),
+            Some("number") => value.is_number(),
+            Some("boolean") => value.is_boolean(),
+            Some("array") => value.is_array(),
+            Some("object") => value.is_object(),
+            Some("null") => value.is_null(),
+            _ => false,
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn what_a_trend_returns_is_of_the_types_its_schema_declares() {
+        let journals = tempfile::TempDir::new().unwrap();
+        crate::tools::test_support::write_run_journal_on(
+            journals.path(),
+            "first",
+            "orders",
+            "mysql",
+        );
+        let schema = output_schema_for("tumult_trend").unwrap();
+        let declared = schema.properties.as_ref().unwrap();
+
+        for target in [None, Some("orders")] {
+            let result = crate::tools::trend(
+                journals.path().to_str().unwrap(),
+                "duration_ms",
+                None,
+                target,
+            )
+            .unwrap();
+
+            for name in &schema.required {
+                assert!(result.structured.contains_key(name), "{name}");
+            }
+            for (name, value) in &result.structured {
+                let property = declared
+                    .get(name)
+                    .unwrap_or_else(|| panic!("{name} is not in the schema"));
+                assert!(is_of(value, &property["type"]), "{name}: {value}");
+            }
+        }
+    }
 
     #[test]
     fn every_structured_tool_has_a_schema_and_only_those() {

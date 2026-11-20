@@ -84,7 +84,7 @@ echo ""
 # ── Step 4: Run a chaos experiment ──────────────────────────
 
 echo "=== Step 4: Run postgres-failover experiment ==="
-RUN=$(mcp_call 4 "tools/call" '{"name":"tumult_run_experiment","arguments":{"experiment_path":"examples/postgres-failover.toon"}}' "$SESSION")
+RUN=$(mcp_call 4 "tools/call" '{"name":"tumult_run_experiment","arguments":{"experiment_path":"examples/postgres-failover.toon","force":true}}' "$SESSION")
 echo "$RUN" | extract_data | python3 -c "
 import sys, json
 d = json.loads(sys.stdin.read())

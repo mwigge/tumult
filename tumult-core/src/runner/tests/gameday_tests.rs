@@ -149,155 +149,190 @@ fn gameday_experiment_count_mismatch_returns_error() {
     ));
 }
 
-// -- GameDay robustness tests
+// -- GameDay scoring tests
 
-/// Load executor that records start/stop calls.
-struct RecordingLoadExecutor {
-    stopped: Arc<AtomicUsize>,
-}
+/// Probes answer; every action of the method fails.
+struct FailingMethodExecutor;
 
-impl RecordingLoadExecutor {
-    fn new() -> (Self, Arc<AtomicUsize>) {
-        let stopped = Arc::new(AtomicUsize::new(0));
-        (
-            Self {
-                stopped: stopped.clone(),
-            },
-            stopped,
-        )
+impl ActivityExecutor for FailingMethodExecutor {
+    fn execute(&self, activity: &Activity) -> ActivityOutcome {
+        let is_probe = activity.activity_type == ActivityType::Probe;
+        ActivityOutcome {
+            success: is_probe,
+            output: Some("200".into()),
+            error: None,
+            duration_ms: 1,
+        }
     }
 }
 
-impl LoadExecutor for RecordingLoadExecutor {
-    fn start(&self, _config: &LoadConfig) -> Result<LoadHandle, String> {
-        Ok(LoadHandle {
-            inner: Box::new(()),
-        })
-    }
-
-    fn stop(&self, _handle: LoadHandle) -> Result<LoadResult, String> {
-        self.stopped.fetch_add(1, Ordering::Relaxed);
-        Ok(LoadResult {
-            tool: LoadTool::K6,
-            started_at_ns: 1_000_000_000,
-            ended_at_ns: 2_000_000_000,
-            duration_s: 1.0,
-            vus: 1,
-            throughput_rps: 10.0,
-            latency_p50_ms: 1.0,
-            latency_p95_ms: 2.0,
-            latency_p99_ms: 3.0,
-            error_rate: 0.0,
-            total_requests: 10,
-            thresholds_met: true,
-            samples: vec![],
-            execution: crate::types::LoadExecution::default(),
-        })
-    }
-}
-
-fn gameday_with_load(paths: &[&str]) -> crate::types::GameDay {
+#[test]
+fn a_run_whose_method_failed_is_not_a_recovery_within_target() {
     use crate::types::{GameDay, GameDayExperiment, ScoringConfig};
-    GameDay {
-        title: "Robust GameDay".into(),
+
+    let gameday = GameDay {
+        title: "Failed method".into(),
         description: None,
         tags: vec![],
         regulatory: None,
-        load: Some(LoadConfig {
-            tool: LoadTool::K6,
-            script: std::path::PathBuf::from("load.js"),
-            vus: Some(1),
-            duration_s: Some(5.0),
-            thresholds: HashMap::new(),
-            profile: None,
-        }),
-        experiments: paths
-            .iter()
-            .map(|p| GameDayExperiment {
-                path: (*p).into(),
-                compliance_maps: vec![],
-            })
-            .collect(),
+        load: None,
+        experiments: vec![GameDayExperiment {
+            path: "fail.toon".into(),
+            compliance_maps: vec![],
+        }],
+        scoring: ScoringConfig::default(),
+    };
+    let executor: Arc<dyn ActivityExecutor> = Arc::new(FailingMethodExecutor);
+
+    let result = run_gameday(
+        &gameday,
+        &[experiment_with_hypothesis()],
+        &executor,
+        &Arc::new(ControlRegistry::new()),
+        &default_config(),
+    )
+    .expect("gameday should run");
+
+    let journal = &result.experiment_journals[0];
+    assert_eq!(journal.status, ExperimentStatus::Failed);
+    assert!(journal.post_result.is_some(), "the probes were sampled");
+    assert!(
+        result.resilience_score.recovery_compliance.abs() < f64::EPSILON,
+        "got {}",
+        result.resilience_score.recovery_compliance
+    );
+}
+
+// -- The shared load of a game day
+
+/// A game day of one experiment under `load`.
+fn gameday_under(load: Option<LoadConfig>) -> crate::types::GameDay {
+    use crate::types::{GameDay, GameDayExperiment, ScoringConfig};
+
+    GameDay {
+        title: "Under load".into(),
+        description: None,
+        tags: vec![],
+        regulatory: None,
+        load,
+        experiments: vec![GameDayExperiment {
+            path: "exp.toon".into(),
+            compliance_maps: vec![],
+        }],
         scoring: ScoringConfig::default(),
     }
 }
 
+/// A short load of `tool`.
+fn short_load(tool: LoadTool) -> LoadConfig {
+    LoadConfig {
+        tool,
+        script: std::path::PathBuf::from("http://127.0.0.1:9/health"),
+        vus: Some(1),
+        duration_s: Some(0.2),
+        thresholds: HashMap::new(),
+        profile: None,
+    }
+}
+
+/// Run `gameday` with its one experiment; the outcome and the number of
+/// steps the experiment ran.
+fn run_one(
+    gameday: &crate::types::GameDay,
+    config: &RunConfig,
+) -> (Result<GameDayJournal, RunnerError>, usize) {
+    let mock = MockExecutor::always_succeed();
+    let calls = mock.call_count.clone();
+    let executor: Arc<dyn ActivityExecutor> = Arc::new(mock);
+    let result = run_gameday(
+        gameday,
+        &[minimal_experiment()],
+        &executor,
+        &Arc::new(ControlRegistry::new()),
+        config,
+    );
+    (result, calls.load(Ordering::SeqCst))
+}
+
 #[test]
-fn gameday_stops_load_and_retains_journals_when_experiment_errors() {
-    let gameday = gameday_with_load(&["ok.toon", "bad.toon"]);
-
-    let exp_ok = minimal_experiment();
-    // Empty method → run_experiment returns RunnerError::EmptyMethod.
-    let exp_bad = Experiment {
-        method: vec![],
-        ..minimal_experiment()
-    };
-
-    let executor: Arc<dyn ActivityExecutor> = Arc::new(MockExecutor::always_succeed());
-    let controls = Arc::new(ControlRegistry::new());
-    let (load_exec, stopped) = RecordingLoadExecutor::new();
-
+fn a_game_day_whose_load_does_not_start_ends_with_the_error_before_any_step() {
     let config = RunConfig {
-        load_executor: Some(Arc::new(load_exec)),
+        load_executor: Some(Arc::new(super::load_tests::NoStart)),
         ..RunConfig::default()
     };
 
-    let journal = run_gameday(&gameday, &[exp_ok, exp_bad], &executor, &controls, &config)
-        .expect("a failing experiment must not discard the campaign's results");
+    let (result, steps) = run_one(&gameday_under(Some(short_load(LoadTool::Oha))), &config);
 
-    assert_eq!(
-        stopped.load(Ordering::Relaxed),
-        1,
-        "the shared load process must be stopped even when an experiment errors"
-    );
-    assert_eq!(
-        journal.experiment_journals.len(),
-        1,
-        "journals of completed experiments must be retained in the output"
-    );
-    assert_eq!(
-        journal.experiment_journals[0].status,
-        ExperimentStatus::Completed
-    );
     assert!(
-        journal.load_result.is_some(),
-        "load results should still be collected"
+        matches!(&result, Err(RunnerError::LoadStart(reason)) if reason == super::load_tests::NO_START),
+        "{result:?}"
+    );
+    assert_eq!(steps, 0);
+}
+
+#[test]
+fn a_game_day_whose_load_tool_has_no_adapter_ends_with_the_error_before_any_step() {
+    let gameday = gameday_under(Some(short_load(LoadTool::Jmeter)));
+
+    let (result, steps) = run_one(&gameday, &RunConfig::default());
+
+    assert!(
+        matches!(&result, Err(RunnerError::LoadStart(reason)) if reason.contains("jmeter")),
+        "{result:?}"
+    );
+    assert_eq!(steps, 0);
+}
+
+#[test]
+fn a_game_day_that_declares_no_load_scores_full_load_impact() {
+    let (result, _) = run_one(&gameday_under(None), &RunConfig::default());
+
+    let journal = result.expect("the game day runs");
+    assert!(journal.load_result.is_none());
+    assert!(
+        (journal.resilience_score.load_impact_tolerance - 1.0).abs() < f64::EPSILON,
+        "{:?}",
+        journal.resilience_score
     );
 }
 
 #[test]
-fn gameday_cancelled_token_skips_experiments_and_stops_load() {
-    let gameday = gameday_with_load(&["a.toon", "b.toon"]);
-
-    let executor: Arc<dyn ActivityExecutor> = Arc::new(MockExecutor::always_succeed());
-    let controls = Arc::new(ControlRegistry::new());
-    let (load_exec, stopped) = RecordingLoadExecutor::new();
-
-    let token = CancellationToken::new();
-    token.cancel();
-
+fn a_game_day_whose_load_left_no_result_scores_no_load_impact() {
+    let (load, _) = super::load_tests::ScriptedLoad::answering(Err("no summary".into()));
     let config = RunConfig {
-        cancellation_token: Some(token),
-        load_executor: Some(Arc::new(load_exec)),
+        load_executor: Some(Arc::new(load)),
         ..RunConfig::default()
     };
 
-    let journal = run_gameday(
-        &gameday,
-        &[minimal_experiment(), minimal_experiment()],
-        &executor,
-        &controls,
-        &config,
-    )
-    .expect("a cancelled campaign still returns its journal");
+    let (result, _) = run_one(&gameday_under(Some(short_load(LoadTool::Oha))), &config);
 
+    let journal = result.expect("the game day runs");
+    assert!(journal.load_result.is_none());
     assert!(
-        journal.experiment_journals.is_empty(),
-        "no experiment should start once the token is cancelled"
+        journal.resilience_score.load_impact_tolerance.abs() < f64::EPSILON,
+        "{:?}",
+        journal.resilience_score
     );
-    assert_eq!(
-        stopped.load(Ordering::Relaxed),
-        1,
-        "the shared load process must be stopped on the cancellation path"
+}
+
+#[test]
+fn a_game_day_scores_its_load_by_the_share_of_requests_without_error() {
+    let measured = LoadResult {
+        error_rate: 0.25,
+        ..super::load_tests::load_result(100, true)
+    };
+    let (load, _) = super::load_tests::ScriptedLoad::answering(Ok(measured));
+    let config = RunConfig {
+        load_executor: Some(Arc::new(load)),
+        ..RunConfig::default()
+    };
+
+    let (result, _) = run_one(&gameday_under(Some(short_load(LoadTool::Oha))), &config);
+
+    let journal = result.expect("the game day runs");
+    assert!(
+        (journal.resilience_score.load_impact_tolerance - 0.75).abs() < 1e-9,
+        "{:?}",
+        journal.resilience_score
     );
 }

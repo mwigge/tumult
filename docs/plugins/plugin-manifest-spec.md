@@ -55,15 +55,15 @@ The structure (shown here in JSON for readability) contains:
 ```json
 {
   "name": "tumult-kafka",
-  "version": "0.2.0",
+  "version": "0.1.0",
   "description": "Kafka chaos actions and probes",
   "actions": [
     {"name": "kill-broker", "script": "actions/kill-broker.sh", "description": "Kill a Kafka broker"},
-    {"name": "partition-topic", "script": "actions/partition-topic.sh", "description": "Partition a topic"}
+    {"name": "partition-broker", "script": "actions/partition-broker.sh", "description": "Partition a broker"}
   ],
   "probes": [
     {"name": "consumer-lag", "script": "probes/consumer-lag.sh", "description": "Check consumer lag"},
-    {"name": "broker-health", "script": "probes/broker-health.sh", "description": "Verify broker health"}
+    {"name": "broker-count", "script": "probes/broker-count.sh", "description": "Count active brokers"}
   ]
 }
 ```

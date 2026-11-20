@@ -183,6 +183,23 @@ fn a_halt_rolls_back_even_when_the_aborted_load_left_nothing() {
 }
 
 #[test]
+fn a_halted_run_logs_its_status_in_the_completed_event() {
+    let mut journal = None;
+    let events = super::log_capture::logged(|| {
+        journal = Some(halt_with_load(Err("aborted".into())).0);
+    });
+    let journal = journal.expect("the run returned a journal");
+
+    assert_eq!(journal.status, ExperimentStatus::Halted);
+    let completed: Vec<_> = events
+        .iter()
+        .filter(|event| event.event == "experiment.completed")
+        .collect();
+    assert_eq!(completed.len(), 1, "{events:?}");
+    assert_eq!(completed[0].field("status"), Some("halted"));
+}
+
+#[test]
 fn guard_breach_halts_experiment_and_runs_rollback() {
     let mut exp = minimal_experiment();
     exp.guards = vec![health_guard()];
@@ -361,5 +378,102 @@ fn a_halted_run_observes_its_version_when_it_ends() {
             version_source: VersionSource::Observed,
             shares: Vec::new(),
         })
+    );
+}
+
+#[test]
+fn a_guard_whose_probe_panics_halts_the_run() {
+    // A guard that cannot run its probe cannot see the target. The run
+    // stops as on a breach, instead of going on without its guard.
+    struct PanickingProbe;
+    impl ActivityExecutor for PanickingProbe {
+        fn execute(&self, activity: &Activity) -> ActivityOutcome {
+            match activity.activity_type {
+                ActivityType::Probe => panic!("the guard probe broke"),
+                ActivityType::Action => ActivityOutcome {
+                    success: true,
+                    output: Some("done".into()),
+                    error: None,
+                    duration_ms: 1,
+                },
+            }
+        }
+    }
+
+    // A guard with no tolerance is safe when its probe succeeds, so the
+    // probe that panicked must not read as one that succeeded.
+    let mut no_tolerance = health_guard();
+    no_tolerance.probe.tolerance = None;
+    for guard in [health_guard(), no_tolerance] {
+        let mut exp = minimal_experiment();
+        exp.guards = vec![guard];
+        exp.method = vec![test_action("action-1")];
+
+        let executor: Arc<dyn ActivityExecutor> = Arc::new(PanickingProbe);
+        let journal = run_experiment_with_sampling(
+            &exp,
+            &executor,
+            &Arc::new(ControlRegistry::new()),
+            &default_config(),
+            &fast_sampling(),
+        )
+        .unwrap();
+
+        assert_eq!(journal.status, ExperimentStatus::Halted);
+        assert_eq!(journal.halt.expect("a halt record").guard_name, "safety");
+    }
+}
+
+/// [`HaltingExecutor`] for a run with a steady state: the probe of the
+/// hypothesis holds, every other step is the inner executor to answer.
+struct SteadyUnderHalt(HaltingExecutor);
+
+impl ActivityExecutor for SteadyUnderHalt {
+    fn execute(&self, activity: &Activity) -> ActivityOutcome {
+        if activity.name != "health-check" {
+            return self.0.execute(activity);
+        }
+        ActivityOutcome {
+            success: true,
+            output: Some("200".into()),
+            error: None,
+            duration_ms: 1,
+        }
+    }
+}
+
+#[test]
+fn a_halted_run_keeps_what_its_probes_saw_under_the_fault() {
+    let mut exp = experiment_with_hypothesis();
+    exp.guards = vec![health_guard()];
+    let (guard_exit_sender, guard_exit_receiver) = mpsc::channel();
+    let executor: Arc<dyn ActivityExecutor> = Arc::new(SteadyUnderHalt(HaltingExecutor {
+        method_calls: Arc::default(),
+        rollback_ran: Arc::default(),
+        guard_exit_sender: Mutex::new(Some(guard_exit_sender)),
+        guard_exit_receiver: Mutex::new(guard_exit_receiver),
+    }));
+
+    let journal = run_experiment_with_sampling(
+        &exp,
+        &executor,
+        &Arc::new(ControlRegistry::new()),
+        &default_config(),
+        &fast_sampling(),
+    )
+    .unwrap();
+
+    assert_eq!(journal.status, ExperimentStatus::Halted);
+    let during = journal
+        .during_result
+        .expect("the during result of a halted run");
+    assert!(during.probes[0].samples > 0, "{during:?}");
+    assert!(
+        journal
+            .probe_samples
+            .iter()
+            .any(|sample| sample.phase == SamplePhase::During),
+        "{:?}",
+        journal.probe_samples
     );
 }

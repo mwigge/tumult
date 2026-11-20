@@ -4,8 +4,8 @@ Windows-native fault injection for the Tumult resilience intelligence platform.
 
 `tumult-windows` implements the `NativeExecutor` trait (like `tumult-ssh`,
 `tumult-net`, `tumult-kubernetes`, and `tumult-cloud`) and is registered in the
-CLI composition root, so `tumult discover` lists it and its functions
-automatically.
+composition root of `tumult-exec`, which the CLI and the daemon share, so
+`tumult discover` lists it and its functions automatically.
 
 Faults are injected by driving **built-in Windows tools** (`taskkill`, `netsh`)
 through `std::process::Command`, plus a self-contained CPU busy-spin. There is
@@ -73,5 +73,5 @@ cargo build -p tumult-windows --bin winfault --target x86_64-pc-windows-gnu
 ```
 
 Dependencies are kept minimal (`tumult-plugin`, `async-trait`, `thiserror`,
-`serde_json`) — no `tumult-analytics`/DuckDB or other heavy C dependencies — so
+`serde_json`) — no `tumult-lake`/DuckDB or other heavy C dependencies — so
 the windows-gnu cross-build stays clean.

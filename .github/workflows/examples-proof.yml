@@ -1,31 +1,54 @@
 name: Examples proof
 
-# Runs the bundled example experiments and the Q2 GameDay against the real
-# docker-compose lab on a GitHub runner, asserts each produces a `completed`
-# journal, and uploads the journals as evidence. This is the "works as promised"
-# proof for the non-agentic plugins (postgres, redis, kafka, mysql, containers,
-# stress, process, network, loadtest, pumba).
+# Runs every experiment and GameDay that examples/expectations.json and
+# gamedays/expectations.json give to the proof `examples-proof`, against the
+# docker-compose lab and the demo app on a GitHub runner. The journal of each
+# run is then compared with what its entry says it must hold, and uploaded as
+# evidence. A second job runs the proof scripts under scripts/proof/.
 #
-# Dispatch manually; set `commit: true` to also commit the journals under
-# examples/recorded/.
+# Starts on a pull request that touches an example, a GameDay, a proof script
+# or the lab, once a month, and by hand. Started by hand on a branch with
+# `commit: true`, it also commits the journals to that branch.
 
 on:
   workflow_dispatch:
     inputs:
       commit:
-        description: "Commit regenerated journals under examples/recorded/"
+        description: "Commit the journals to the branch the run was started on"
         type: boolean
         default: false
   schedule:
     - cron: "0 6 1 * *" # monthly validation (artifacts only)
+  pull_request:
+    branches: [main]
+    paths:
+      - "examples/**"
+      - "gamedays/**"
+      - "scripts/proof/**"
+      - "scripts/check-proof-journals.py"
+      - "docker/docker-compose.yml"
+      - "docker/Dockerfile.sshd"
+      - ".github/workflows/examples-proof.yml"
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: examples-proof-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  OHA_VERSION: v1.16.0
+  OHA_SHA256: 620bb9e16fb53eabc9a3fc45f88bdb41fefa3fee5c05e75892011ce320391716
 
 jobs:
   prove:
+    name: Experiments against the lab
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
+    env:
+      TUMULT: ${{ github.workspace }}/target/release/tumult
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -36,51 +59,95 @@ jobs:
 
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
-      - name: Build tumult
-        run: cargo build --release -p tumult-cli
+      # net-chaos starts tumult-net-proxyd, which the CLI looks for next to
+      # its own binary.
+      - name: Build tumult and the network proxy
+        run: cargo build --release -p tumult-cli -p tumult-net
 
-      - name: Install k6 + stress-ng
+      # apt reads a plain OpenPGP keyring, not the keybox that
+      # `gpg --keyring` writes. The key of k6 is taken only when its one
+      # primary key has the pinned fingerprint.
+      - name: Install k6, stress-ng and dig
         run: |
-          sudo gpg -k
-          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          curl -fsSL https://dl.k6.io/key.gpg -o "$RUNNER_TEMP/k6.asc"
+          primary=$(gpg --show-keys --with-colons "$RUNNER_TEMP/k6.asc" \
+            | awk -F: '/^pub/ {p = 1; next} p && /^fpr/ {print $10; p = 0}')
+          test "$primary" = C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          sudo gpg --dearmor --yes -o /usr/share/keyrings/k6-archive-keyring.gpg "$RUNNER_TEMP/k6.asc"
           echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends k6 stress-ng
+          sudo apt-get install -y --no-install-recommends k6 stress-ng dnsutils
 
-      - name: Start the chaos-target lab
+      - name: Install oha
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/oha" "https://github.com/hatoo/oha/releases/download/${OHA_VERSION}/oha-linux-amd64"
+          echo "${OHA_SHA256}  ${RUNNER_TEMP}/oha" | sha256sum --check
+          sudo install -m 0755 "$RUNNER_TEMP/oha" /usr/local/bin/oha
+
+      # network-latency, pumba-latency and checkout-ramp-k6 delay packets
+      # with netem. The runner kernel ships it in the extra modules package.
+      - name: Load the netem kernel module
+        run: |
+          sudo modprobe sch_netem || {
+            sudo apt-get install -y --no-install-recommends "linux-modules-extra-$(uname -r)"
+            sudo modprobe sch_netem
+          }
+
+      - name: Start the lab and the demo app
         working-directory: docker
         run: |
           docker compose -p docker up -d --wait postgres redis kafka mysql sshd
+          docker compose -f docker-compose.demo.yml up -d --wait demo-postgres demo-app
           docker pull ghcr.io/alexei-led/pumba:latest
-          docker ps --format '  {{.Names}} ({{.Status}})'
+          # ssh-remote logs in to the lab SSH server with the key of its image.
+          docker cp "$(docker compose -p docker ps -q sshd):/test_key" /tmp/tumult-test-key
+          chmod 600 /tmp/tumult-test-key
+          docker ps --format "  {{.Names}} ({{.Status}})"
 
-      - name: Run example experiments
-        env:
-          TUMULT: ${{ github.workspace }}/target/release/tumult
+      # A run that ends non-zero does not stop the loop: the gate below reads
+      # every journal, and some runs are expected to end that way.
+      - name: Run the experiments
         run: |
-          set -x
           mkdir -p examples/recorded
-          run() { "$TUMULT" run "examples/$1.toon" --journal-path "examples/recorded/$1.journal.toon" --no-ingest; }
-          run redis-chaos
-          run postgres-failover
-          run kafka-broker-chaos
-          run container-pause-recovery
-          run mysql-chaos
-          run cpu-stress
-          run process-kill
-          run network-latency
+          python3 scripts/check-proof-journals.py --proof examples-proof \
+            --list examples/expectations.json > "$RUNNER_TEMP/experiments"
+          while read -r file; do
+            name="${file%.toon}"
+            # The journal in the checkout is removed first, so the gate cannot
+            # read one that this run did not write.
+            rm -f "examples/recorded/$name.journal.toon"
+            run=("$TUMULT" run "examples/$file" --journal-path "examples/recorded/$name.journal.toon" --no-ingest)
+            # dns-redirect-chaos edits /etc/hosts, so it runs as root.
+            if [ "$name" = dns-redirect-chaos ]; then
+              run=(sudo -E env "PATH=$PATH" "${run[@]}")
+            fi
+            echo "::group::$name"
+            "${run[@]}" < /dev/null || echo "$name ended with exit code $?"
+            echo "::endgroup::"
+          done < "$RUNNER_TEMP/experiments"
+          # The run as root leaves a journal only root can read.
+          sudo chown -R "$(id -u):$(id -g)" examples/recorded
 
-      - name: Run the Q2 PostgreSQL GameDay (k6 load + pumba)
-        env:
-          TUMULT: ${{ github.workspace }}/target/release/tumult
+      # A GameDay writes its journal next to its definition. The journal in
+      # the checkout is removed first, so the gate cannot read one that this
+      # run did not write.
+      - name: Run the GameDays
         run: |
-          "$TUMULT" gameday run gamedays/q2-postgres-resilience.gameday.toon
+          for gameday in gamedays/*.gameday.toon; do
+            rm -f "${gameday%.toon}.journal.toon"
+            echo "::group::$gameday"
+            "$TUMULT" gameday run "$gameday" < /dev/null || echo "$gameday ended with exit code $?"
+            echo "::endgroup::"
+          done
 
-      - name: Gate — every run must be `completed`
+      - name: Gate, every journal holds what its expectations entry says
         run: |
-          python3 scripts/check-proof-journals.py \
-            examples/recorded/*.journal.toon \
-            gamedays/q2-postgres-resilience.gameday.journal.toon
+          failed=0
+          python3 scripts/check-proof-journals.py --proof examples-proof \
+            examples/expectations.json examples/recorded || failed=1
+          python3 scripts/check-proof-journals.py --proof examples-proof \
+            gamedays/expectations.json gamedays || failed=1
+          exit "$failed"
 
       - name: Upload journals as evidence
         if: always()
@@ -89,18 +156,76 @@ jobs:
           name: example-journals
           path: |
             examples/recorded/**
-            gamedays/q2-postgres-resilience.gameday.journal.toon
-
-      - name: Commit regenerated journals
-        if: github.event_name == 'workflow_dispatch' && inputs.commit
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add examples/recorded gamedays/q2-postgres-resilience.gameday.journal.toon
-          git commit -m "chore(examples): regenerate recorded proof journals [skip ci]" || echo "nothing to commit"
-          git push
+            gamedays/*.gameday.journal.toon
 
       - name: Tear down
         if: always()
         working-directory: docker
-        run: docker compose -p docker down -v
+        run: |
+          docker compose -f docker-compose.demo.yml down -v
+          docker compose -p docker down -v
+
+  proof-scripts:
+    name: Proof scripts
+    runs-on: ubuntu-latest
+    # A build of tumultd without a cache takes 45 minutes on a runner.
+    timeout-minutes: 120
+    env:
+      CARGO_PROFILE_DEV_DEBUG: line-tables-only
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # stable
+        with:
+          toolchain: 1.92.0
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      # tumultd embeds web/build at compile time.
+      - name: Build the web UI
+        run: npm --prefix web ci && npm --prefix web run build
+
+      - name: Build tumult and tumultd
+        run: cargo build -p tumultd -p tumult-cli
+
+      - name: Install oha
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/oha" "https://github.com/hatoo/oha/releases/download/${OHA_VERSION}/oha-linux-amd64"
+          echo "${OHA_SHA256}  ${RUNNER_TEMP}/oha" | sha256sum --check
+          sudo install -m 0755 "$RUNNER_TEMP/oha" /usr/local/bin/oha
+
+      - name: Posture and risks proof
+        run: bash scripts/proof/rip-phase2/proof.sh
+
+      - name: Performance verdict proof
+        run: bash scripts/proof/rip-phase4/proof.sh
+
+  record:
+    name: Commit the journals
+    needs: prove
+    if: inputs.commit
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: example-journals
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add examples/recorded gamedays/*.gameday.journal.toon
+          git commit -m "chore(examples): regenerate recorded proof journals [skip ci]" || echo "nothing to commit"
+          git push

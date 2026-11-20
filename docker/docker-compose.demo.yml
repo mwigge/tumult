@@ -3,7 +3,7 @@
 # A single, self-contained docker network (`tumult-demo`) that stands up:
 #   demo-postgres  →  demo-app (axum, OTel)  ←  demo-traffic (load)
 #   tumult-collector → signoz (traces + metrics + dashboards)
-#   tumult-mcp (chaos engine, MCP/HTTP)  ←  demo-control-panel (web UI)
+#   tumult-mcp (the platform, MCP/HTTP)  ←  demo-control-panel (web UI)
 #   demo-sshd (ssh fault target)
 #
 # Driven by the repo Makefile:
@@ -158,7 +158,7 @@ services:
     networks:
       - tumult-demo
 
-  # ── Tumult MCP server — the chaos engine (HTTP transport) ─────────
+  # ── Tumult MCP server — the platform over MCP (HTTP transport) ────
   # Built from the full tumult image (BASE=tumult) so it is self-contained:
   # ships both binaries, all plugins, docker CLI, ssh + curl. Mounts the
   # docker socket so container/pumba faults can reach sibling containers,

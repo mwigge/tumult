@@ -1,7 +1,10 @@
 //! `GET /api/risks`, `GET /api/posture` and `POST /api/risks/{id}/suppress`
 //! — the passive risk scan over the seeded store.
 
+use std::collections::BTreeSet;
+
 use serde_json::{json, Value};
+use tumult_lake::{ExerciseType, ManualOutcome, NewManualExperiment, SpanRow};
 
 use crate::common::*;
 
@@ -232,11 +235,15 @@ async fn recommend_scaffolds_registers_and_proposes_a_candidate() {
         "{body}"
     );
     assert_eq!(exp["registered"], true);
+    // The registered definition is one a run can read: it names the kind
+    // once, and the target of the finding.
     let toon = exp["toon"].as_str().unwrap();
-    assert!(
-        toon.contains("kind: robustness") && toon.contains("system: database"),
-        "{toon}"
-    );
+    let definition =
+        tumult_core::engine::parse_experiment(toon).unwrap_or_else(|e| panic!("{e}:\n{toon}"));
+    assert_eq!(definition.kind, tumult_core::types::TestKind::Robustness);
+    let target = definition.target.expect("the definition names its target");
+    assert_eq!(target.system, "database");
+    assert_eq!(target.environment.as_deref(), Some("demo"));
     let cand = &body["candidate"];
     assert_eq!(cand["trigger"]["type"], "risk");
     assert_eq!(cand["trigger"]["risk_id"], id);
@@ -338,4 +345,290 @@ async fn otel_conformance_reports_per_service_contract_coverage() {
     assert_eq!(body["summary"]["services"], services.len());
     let (status, body) = get(&srv.base, "/api/otel/conformance?range=bogus").await;
     assert_eq!(status, 400, "{body}");
+}
+
+/// A record of `exercise` named `name` against `target` in `demo`, ended
+/// with `outcome` an hour ago and entered by alice.
+fn manual_record(
+    name: &str,
+    exercise: ExerciseType,
+    target: &str,
+    outcome: ManualOutcome,
+) -> NewManualExperiment {
+    NewManualExperiment {
+        experiment_name: name.into(),
+        exercise_type: exercise,
+        executed_at_ns: now_ns() - 3600 * NS,
+        hypothesis: "the service holds".into(),
+        method: "by hand".into(),
+        outcome,
+        hypothesis_met: Some(outcome == ManualOutcome::Passed),
+        findings: None,
+        action_items: vec![],
+        target_system: Some(target.into()),
+        target_environment: Some("demo".into()),
+        blast_radius: None,
+        recovery_time_s: None,
+        duration_s: None,
+        entered_by: "alice".into(),
+        attestation: "attested".into(),
+        renewal_due_ns: None,
+        framework_refs: vec![],
+    }
+}
+
+/// Enter `record` and have a second person verify it.
+async fn add_verified(srv: &TestServer, record: NewManualExperiment) {
+    exec_write(srv, move |writer| {
+        let id = writer
+            .create_manual_draft(&record)
+            .map_err(|e| e.to_string())?;
+        writer
+            .submit_manual(&id, None, "alice")
+            .map_err(|e| e.to_string())?;
+        writer
+            .verify_manual(&id, "bob", None)
+            .map_err(|e| e.to_string())
+    })
+    .await;
+}
+
+/// `discipline:status` of every coverage cell of `target`.
+fn coverage_of(report: &Value, target: &str) -> Vec<String> {
+    let row = report["coverage"]["targets"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|t| t["target"] == target)
+        .unwrap_or_else(|| panic!("no coverage row of {target} in {report}"));
+    row["cells"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| {
+            let kind = c["kind"].as_str().unwrap();
+            format!("{kind}:{}", c["status"].as_str().unwrap())
+        })
+        .collect()
+}
+
+/// `rule:subject` of every finding about `target`, sorted.
+fn findings_of(report: &Value, target: &str) -> Vec<String> {
+    let mut rows: Vec<String> = report["risks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|r| r["target"] == target)
+        .map(|r| {
+            let rule = r["rule"].as_str().unwrap();
+            format!("{rule}:{}", r["subject"].as_str().unwrap())
+        })
+        .collect();
+    rows.sort();
+    rows
+}
+
+/// A server span of `service` in the checkout trace, the child of
+/// `parent` when one is given.
+fn call_span(service: &str, span_id: &str, parent: Option<&str>) -> SpanRow {
+    SpanRow {
+        ts_ns: now_ns() - 60 * NS,
+        trace_id: "trace-checkout".into(),
+        span_id: span_id.into(),
+        parent_span_id: parent.map(str::to_string),
+        span_name: "GET /".into(),
+        span_kind: "Server".into(),
+        service_name: service.into(),
+        events: "[]".into(),
+        ..SpanRow::default()
+    }
+}
+
+/// The disciplines of the evidence rows of `experiment` in a DORA
+/// article document.
+fn evidence_kinds(doc: &Value, experiment: &str) -> BTreeSet<Option<String>> {
+    doc["requirements"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .flat_map(|r| r["entities"].as_array().unwrap())
+        .flat_map(|e| e["evidence"].as_array().unwrap())
+        .filter(|row| row["experiment"] == experiment)
+        .map(|row| row["kind"].as_str().map(str::to_string))
+        .collect()
+}
+
+/// A pentest is security evidence in the risk view, as it is in the
+/// DORA score: its target is covered in security and not in chaos.
+#[tokio::test]
+async fn a_verified_pentest_covers_its_target_in_security_and_not_in_chaos() {
+    let srv = spawn_server().await;
+    let pentest = manual_record(
+        "edge-pentest",
+        ExerciseType::Pentest,
+        "edge",
+        ManualOutcome::Passed,
+    );
+    add_verified(&srv, pentest).await;
+
+    let (status, body) = get(&srv.base, "/api/risks").await;
+
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(
+        coverage_of(&body, "edge"),
+        [
+            "chaos:missing",
+            "performance:missing",
+            "robustness:missing",
+            "security:covered"
+        ]
+    );
+}
+
+/// A tabletop is no test under the default house parameters: it counts
+/// towards no discipline. A target whose only evidence is a tabletop is
+/// covered in nothing, has a gap in every core discipline, has no
+/// freshness and scores 0, and as a service that others call it is an
+/// untested dependency. The record stays in the list of the target, so
+/// a failed tabletop still raises its own finding, which names no
+/// discipline to test next.
+#[tokio::test]
+async fn a_target_whose_only_evidence_is_a_tabletop_has_no_discipline_covered() {
+    let srv = spawn_server().await;
+    // checkout calls ledger.
+    exec_write(&srv, |writer| {
+        writer
+            .insert_spans(&[
+                call_span("checkout", "span-checkout", None),
+                call_span("ledger", "span-ledger", Some("span-checkout")),
+            ])
+            .map_err(|e| e.to_string())
+    })
+    .await;
+    let tabletop = manual_record(
+        "ledger-tabletop",
+        ExerciseType::Tabletop,
+        "ledger",
+        ManualOutcome::Failed,
+    );
+    add_verified(&srv, tabletop).await;
+
+    let (status, risks) = get(&srv.base, "/api/risks").await;
+    assert_eq!(status, 200, "{risks}");
+    assert_eq!(
+        coverage_of(&risks, "ledger"),
+        [
+            "chaos:missing",
+            "performance:missing",
+            "robustness:missing",
+            "security:missing"
+        ]
+    );
+    assert_eq!(
+        findings_of(&risks, "ledger"),
+        [
+            "discipline_gap:chaos",
+            "discipline_gap:performance",
+            "discipline_gap:robustness",
+            "latest_run_failed:ledger-tabletop",
+            "untested_dependency:dependency"
+        ]
+    );
+    let failed = risks["risks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["rule"] == "latest_run_failed" && r["subject"] == "ledger-tabletop")
+        .unwrap();
+    assert_eq!(failed["recommended_kind"], Value::Null, "{failed}");
+
+    let (status, posture) = get(&srv.base, "/api/posture").await;
+    assert_eq!(status, 200, "{posture}");
+    let ledger = posture["posture"]["targets"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|t| t["target"] == "ledger")
+        .unwrap_or_else(|| panic!("no posture of ledger in {posture}"));
+    assert_eq!(ledger["components"]["coverage"], 0.0, "{ledger}");
+    assert_eq!(ledger["components"]["freshness"], Value::Null, "{ledger}");
+    assert_eq!(ledger["score"], 0.0, "{ledger}");
+    assert_eq!(ledger["band"], "poor", "{ledger}");
+}
+
+/// The house parameters are the one source of the discipline of a manual
+/// exercise. A house that counts a tabletop as chaos, and lists no other
+/// type, gets the tabletop as chaos evidence in the risk view, in the
+/// DORA score and on the Star Map, and a drill as evidence of no
+/// discipline in all three.
+#[tokio::test]
+async fn a_house_that_counts_a_tabletop_as_chaos_moves_every_view_alike() {
+    let house = tempfile::TempDir::new().unwrap();
+    let org_file = house.path().join("org.yaml");
+    let manual_kinds = "score:\n  manual_kinds: {tabletop: chaos}\n";
+    std::fs::write(
+        &org_file,
+        format!("{}{manual_kinds}", crate::dora::REGISTER),
+    )
+    .unwrap();
+    let srv = spawn_server_with_score_file(org_file).await;
+    crate::dora::register(&srv).await;
+    let tabletop = manual_record(
+        "api-tabletop",
+        ExerciseType::Tabletop,
+        "payments-api",
+        ManualOutcome::Passed,
+    );
+    let drill = manual_record(
+        "archive-drill",
+        ExerciseType::Drill,
+        "ledger-archive",
+        ManualOutcome::Passed,
+    );
+    add_verified(&srv, tabletop).await;
+    add_verified(&srv, drill).await;
+
+    let (status, risks) = get(&srv.base, "/api/risks").await;
+    assert_eq!(status, 200, "{risks}");
+    assert_eq!(
+        coverage_of(&risks, "payments-api"),
+        [
+            "chaos:covered",
+            "performance:missing",
+            "robustness:missing",
+            "security:missing"
+        ]
+    );
+    assert_eq!(
+        coverage_of(&risks, "ledger-archive"),
+        [
+            "chaos:missing",
+            "performance:missing",
+            "robustness:missing",
+            "security:missing"
+        ]
+    );
+
+    let (status, dora) = get(&srv.base, "/api/dora/24?entity=cif-0001").await;
+    assert_eq!(status, 200, "{dora}");
+    assert_eq!(dora["params"]["source"], "org_file", "{dora}");
+    assert_eq!(
+        evidence_kinds(&dora, "api-tabletop"),
+        BTreeSet::from([Some("chaos".to_string())]),
+        "{dora}"
+    );
+    let drill_kinds = evidence_kinds(&dora, "archive-drill");
+    assert!(drill_kinds.iter().all(Option::is_none), "{drill_kinds:?}");
+
+    let (status, map) = get(&srv.base, "/api/starmap").await;
+    assert_eq!(status, 200, "{map}");
+    let on_the_map = |system: &str| {
+        let node = crate::starmap::node(&map, system);
+        node.unwrap_or_else(|| panic!("no {system} in {map}"))["evidence"]["by_discipline"].clone()
+    };
+    assert_eq!(on_the_map("sys:demo/payments-api")["chaos"], "covered");
+    assert_eq!(
+        on_the_map("sys:demo/ledger-archive")["robustness"],
+        "missing"
+    );
 }

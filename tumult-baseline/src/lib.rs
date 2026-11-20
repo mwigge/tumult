@@ -5,10 +5,11 @@
 //!
 //! # Overview
 //!
-//! During Phase 1 (Baseline) of a chaos experiment, probes sample the
-//! system's steady-state behaviour. This crate takes those raw samples and
-//! derives statistical bounds that later phases use to decide whether the
-//! system has deviated from normal.
+//! Probes sample the system's steady-state behaviour. This crate takes those
+//! raw samples and derives statistical bounds that decide whether the
+//! system has deviated from normal. The runner of `tumult-core` does not
+//! call it. A run keeps the tolerances as written, and a `baseline:` block
+//! is declared only. The crate is for tools that take their own samples.
 //!
 //! # Statistical methods
 //!
@@ -24,8 +25,8 @@
 //! # Anomaly detection
 //!
 //! [`check_baseline_anomaly`] runs a coefficient-of-variation check over the
-//! collected samples. If variance is too high the baseline is flagged and the
-//! runner can abort before injecting chaos.
+//! collected samples. If variance is too high the baseline is flagged, so a
+//! caller can stop before it injects a fault.
 //!
 //! # Key entry point
 //!

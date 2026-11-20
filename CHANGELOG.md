@@ -6,6 +6,175 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [3.0.2] - 2026-11-19
+
+This release goes through experiments from end to end. It fixes the
+experiment files, the tests of the runs, the evidence a run leaves, the
+output of a run, the reports and the roll-up into scores. There is no
+schema change, and the lake stays on v21. Some runs and numbers come out
+differently on purpose, so read the
+[3.0.2 release notes](docs/releases/3.0.2.md) before you upgrade.
+
+### Changed
+
+- Experiments: a key the format does not know on a step, a provider or a tolerance is an error that names the key. It was dropped without a word, so a step with `execution_target:` ran on the local host.
+- Experiments: a key written twice in one object is an error that gives both line numbers. The decoder kept the last one in silence.
+- Experiments: validation refuses a timeout, a pause or the duration of a flat load that is not a number of seconds from 0 up to 2^64, in the method, background steps, rollbacks, hypothesis probes, guards and controls. A negative `timeout_s` on a script step made the executor panic, and a negative pause was skipped.
+- Experiments: validation refuses an objective on a metric outside the catalogue, and a `probe.<name>` metric must name a probe of the steady-state hypothesis. Such an objective could only end inconclusive.
+- Experiments: validation refuses a load tool without an adapter (jmeter) and an oha threshold name the adapter does not check, and the daemon refuses them when it takes a run. Such a load passed and then failed or deviated in the run. A k6 load with thresholds stays valid and logs `load.thresholds.not_applied`.
+- CLI: `tumult validate` refuses a step, a guard or a control that names a plugin, a function or an action this binary does not have, and lists what is there. It only warned, and the step failed when the run reached it.
+- Runs: a probe with a tolerance is judged wherever it runs. A probe in the method that reads a value outside its tolerance is a failed step, the run is deviated, the rollbacks run and recovery is measured. Only the probes of the steady state were compared before. A probe in the rollbacks that does not hold makes the rollback fail.
+- Runs: a probe in the method that could not run makes the run deviated, not failed, and the run keeps its recovery time. An action that fails still makes the run failed.
+- Runs: a run whose method action failed reports no time to recovery. Its `rto` and recovery objectives are inconclusive, and a GameDay counts it as not recovered within target. It reported 0 s and `met`.
+- Runs: a guard halt, Ctrl-C or a stop over the API ends the step that is running. A process or script step is killed with its process group and recorded as failed with "stopped before it finished". The run waited for the step. A native step, the rollbacks, the guards and the hypothesis checks run to their end.
+- Runs: the status of a run has one spelling, in lower case, in the journal, the root span, the `experiment.completed` log, the API and the evidence pack. That log is written once for each run, also for an aborted, interrupted or halted run. Runs stored before 3.0.2 are read in either spelling.
+- Runs: `tumult.probes.total` counts a probe as passed, outside tolerance or plugin failed, and only a failed plugin adds to `tumult.plugin.errors.total`. A probe that read the wrong value counted as a success, and a probe of a target that was down counted as a plugin error.
+- Runs: a sample of a hypothesis probe outside its tolerance has an error span, as the journal says. The error counts of `/api/traces` and `/api/topology` grow by the number of failed samples.
+- Load: the daemon runs a load with the tool that `load.tool` names. It always ran k6. A tool without an adapter is an error before any step runs.
+- Load: the error rate of a k6 HTTP script is failed requests over requests, and its request count is `http_reqs`. Both came from the checks and the iterations of the script, so a script without a check read 0. A script that sends no HTTP request keeps its checks and iterations.
+- GameDay: a game day whose shared load does not start ends with the error before any experiment runs. It went on without load and scored load impact 1.0. A declared load that left no result scores 0.0.
+- GameDay: an experiment inside a game day that declares its own load runs that load with its own tool. It stopped the campaign.
+- CLI: `tumult gameday run` exits with 1 unless the game day is COMPLIANT, after it writes the journal. It exited with 0 for each game day that wrote a journal.
+- CLI, MCP: `tumult gameday run`, `tumult_run_experiment` and `tumult_gameday_run` refuse a journal that is already at their path before anything runs, as `tumult run` does. Pass `--force` or `force: true` to replace it. The MCP tools replaced it and the CLI game day wrote over it after the whole run. An MCP run to the default `journal.toon` fails the second time.
+- CLI: `tumult run` reads and validates the experiment before it refuses an existing journal, so an experiment error comes first.
+- Demo: the control panel, `demo/proof/validate.py` and the MCP demo scripts pass `force: true`, so a domain can run again and replaces its journal.
+- CLI, MCP: `tumult gameday create` and `tumult_gameday_create` refuse a load tool without a script, a script or a VU count without a tool, and jmeter. `tumult gameday create` keeps an existing game day file and fails. `--load k6` without `--load-script` wrote a file that `tumult gameday run` could not parse.
+- CLI: `tumult run --dry-run` and `--output-format` cannot be used together.
+- Reports: the JUnit report has a case for each check of the steady state, named after the hypothesis, that fails when the check did not hold. A deviated run had no failing case, so a CI job that read the file stayed green.
+- Reports: the journal hash in the HTML report is the SHA-256 of the journal file, so `sha256sum` gives the same value. It was a 64-bit hash of the standard library hasher that no other tool could check.
+- Reports: the HTML report has no "Resilience Score" row. The value was 1 for a completed run and 0 otherwise, which the status says.
+- Reports: the executive digest says "compliance score" where it said "resilience" and prints a line that says what the score measures. A stored digest keeps its old text.
+- Reports: a bar in a report chart has one colour. A bar took its colour from its place in the list, so a score of 100 could be drawn in the red of a failure.
+- Reports: the run report spells the outcome as the journal does ("halted", not "Halted").
+- Metrics: `action_duration_p95` is the 0.95 quantile. It was a mean.
+- Scores: a completed run passes, a deviated, failed or halted run fails, and an aborted or interrupted run is no evidence. The scorecard, the Star Map, DORA and the issue counts of the digest leave a run that is no evidence out, and the latest run that proves something decides the score of an experiment. The views did not agree on a halted, an aborted or an interrupted run.
+- Scores: a scorecard with nothing on record has no score. `/api/scores` returns `portfolio: null` and the band `unknown`, where it said 0.0 and `poor`. A node of the organisation tree with nothing scored is `score: null` and `unknown` in `/api/scores/tree` and sorts after the scored nodes, and the Scores page shows a dash.
+- Scores: the change of a score is null when there was no score at the start of the period, in the digest, `/api/scores` and `/api/scores/tree`. A first score read as a rise from 0. The score trend has no point before the first run.
+- Scores: a manual exercise has one discipline in each view, the one the house parameters (`manual_kinds`) give it. With the default parameters a pentest or a TLPT counts as security, and a tabletop or a record of type `other` counts towards no discipline. The risk view counted them as chaos. A service that others call and that has only such a record is an untested dependency, and that finding says no test targets it.
+- Scores: the mean time to recover on the home card, its sparkline, the executive digest and the metric `mttr` is the mean over runs (`run_roots`). A run stored only as a journal counts, and a span that is not the root of a run does not. With no run that reports a recovery time there is no value. A house with its own copy of `metrics/mttr.yaml` keeps the old number until it takes the new file.
+- CLI, MCP: the recovery line of the compliance summary is the share of the runs that watched for recovery whose target came back within target, with the number of runs. It counted only the runs that did recover, and used the mean resilience score when none had a time. When no run watched, the line says so and the verdict rests on the pass rate alone.
+- CLI, MCP: `tumult trend --target` and `tumult_trend` match the target the journal names, not a part of the title. A journal without a target is left out and counted. The summary line covers the same runs as the points.
+- Web: the home card "Hypothesis pass rate" is "Run pass rate". It is the runs that passed over the runs that passed or failed, counted from runs, and it no longer sums the counter `tumult.experiments.total`. The table of targets and the Ask answer use the same rate. The API field `pass_rate` keeps its name.
+- Web: the two scores have one name each, Compliance score and Resilience score. The Resilience page, the Scores page and the Star Map drawer show one line for each that says what it measures.
+- Web, Reports, TUI: the colour of how a run ended follows its verdict. Deviated and halted are red (deviated was orange, halted grey or without colour). Aborted and interrupted are grey (they were red in the web and the CLI run report). The manual outcome `partial` is a warning in lists.
+- Web: the pie of the home page is "Fault injections" and counts fault injection steps only, without probe samples or steps of a rollback. It was "Fault breakdown". "Experiments per day" is "Runs per day". A manual record typed "observation" is no longer in the pie.
+- Web: the GameDay page has an Environment field, and the launch waits until it has a value. Each campaign of the page ran in "dev". An API request without `env` still runs in "dev".
+- Web: the blast radius panel of a run page is headed "Planned blast radius" and says it is a plan.
+- TUI: the column "Resil" is "Hypothesis met" and shows yes, no or a dash. A run whose step failed while the target held reads yes. The sort and the trend follow.
+- API: the outcome filter takes the six endings and `incomplete`, in any case. Aborted, interrupted and halted runs are no longer `incomplete`.
+- API: a store write that fails on the OTLP endpoints answers gRPC `UNAVAILABLE` and HTTP 503, so the exporter sends the batch again. It answered `INTERNAL` and 500, which an exporter does not retry.
+- MCP: `tumult_coverage` reports a store it cannot read as an error. It reported zero coverage.
+- Autopilot: a playbook with a rollback and no guard is downgraded on `guard.present`. It was proposed with "no rollback declared".
+- Autopilot: a steady-state hypothesis without a probe is no steady state for the daemon approval gate and the API recommend path, as it was for MCP. The answer of `POST /api/risks/{id}/recommend` gains `candidate.playbook_error`.
+- Store: a catalog action counts as tested when a stored run's definition calls that function of that plugin. Step names were compared with function names, so a step named like a function of another plugin closed that gap. A journal ingested without its definition closes no coverage gap. Gaps stored by an earlier `--refresh` stay until the next `tumult chaosgraph coverage-gaps --refresh`.
+
+### Fixed
+
+- Daemon image: a process that an experiment of the daemon leaves behind is reaped when it ends. `tumultd` was PID 1 of the container and reaped nothing, so a killed worker stayed a zombie, `kill -0` still found it, and the `worker-process-kill` step of the seeded game day deviated. The image runs `tini` as PID 1 now, and the image smoke test checks that orphans are reaped.
+- Examples: the k6 smoke script sends requests to the demo app, and the load examples aim at `/checkout/1`, a route the demo app serves. They aimed at `/api/checkout`.
+- Examples: the saturation and ramp examples put their fault on the demo stack, and the saturation run stops the stress it started. Its probe had a second `tolerance` block, and that one was in force.
+- Examples: `redis-chaos` pauses Redis and reads the key back afterwards, and `cpu-stress` measures how long a new process takes to start. The first injected nothing and the second could not fail.
+- Examples: the Q2 GameDay drives its load with the PostgreSQL script, and its CPU and memory stress steps have a 30 second timeout. With 10 seconds both steps timed out on a busy CI runner.
+- Examples: the shipped experiments name their kind, their target and their environment, and a test fails when a shipped file leaves one out. 34 files named neither, so their runs counted as chaos against no system.
+- Examples: the four examples that change the host carry the tag `host-changing`, and their description starts with what they change. The DNS example resolves the name after the redirect and undoes the change with the rollback of the plugin.
+- Examples: the process kill example matches a command line that is exactly `sleep 300`. It ended its own shell.
+- Examples: `net-chaos`, `dns-redirect-chaos` and the demo experiment `demo-net` remove their fault as the last step of the method. A run that completes runs no rollback, so the proxy or the hosts line stayed after the run. A test holds each shipped experiment to this.
+- Examples: the AWS FIS example names its template in its status, stop and rollback steps. It stopped a made-up id.
+- Examples: `examples/agentic/fake-http-malformed-json.toon` is removed. It was no experiment and failed `tumult validate`.
+- Experiments: the environment of a process provider takes a number or true/false as text, so `WORKERS: 4` needs no quotes.
+- Lab: the SSH server of the lab becomes healthy. Its health check used `ssh-keyscan`, which is not in the image, so `docker compose up --wait` failed.
+- Demo: `scripts/demo-topology.sh` writes its runs to its own store (`TUMULT_LAKE_PATH`) with a journal per run, and each check can fail the script. The runs went to the lake of the user, and a failing check printed nothing.
+- CLI: `tumult validate` and the dry run say that a `baseline:` block is declared and that a run does not use it. They printed `Baseline: configured (Phase 1)`.
+- CLI, MCP: the help of `tumult run`, the MCP tool `tumult_run_experiment` and the MCP server describe an experiment or resilience experiments, not a chaos experiment.
+- CLI: `tumult run --output-format json` writes the journal and nothing else to stdout, also for a run that did not complete. The lines for a person go to stderr. Text came first, and a run that did not complete printed no JSON.
+- CLI: the dry run writes one of a thing in the singular ("1 step", not "1 steps").
+- CLI: `tumult run --load` replaces the load of the file before validation, so the load that is checked is the load that runs.
+- CLI: `tumult run --load none` runs the experiment without the load of its file. It did the same as no flag.
+- Runs: the root span of a run carries its status, whether the hypothesis was met, the recovery time and the blast radius, and its span status is Ok only for a completed run. The game-day report showed no verdict, recovery time or blast radius for a real run, and the MTTR number stayed empty.
+- Runs: a probe that panics in a sample or in a hypothesis check is a failed probe, and the run goes on to its rollbacks and its journal. A panic left the runner with no journal and no rollback.
+- Runs: a guard probe that panics counts as a breach and halts the run. The guard thread died and the run went on without a guard.
+- Runs: the probes in `during_result`, `post_result` and `probe_samples` keep the order of the experiment file. The order changed from run to run.
+- Runs: an experiment whose load did not start ends as failed, tells the controls, writes its outcome on the root span and logs `experiment.completed`. It skipped the end of the run.
+- Runs: a stop that comes after the runner returned keeps the status, the end time and the duration the run logged, and still runs the rollbacks the run did not run. It rewrote the stored journal to interrupted.
+- Load: k6 reports the 99th percentile. Each k6 result had `latency_p99_ms` 0.
+- Load: the count of failed checks in the text summary of k6 1.x is read right.
+- Load: an oha load window is stamped with its start, as the lake, the charts and the report read it. Each point sat one window late. The recorded journals under `examples/recorded/` keep the old stamps until they are recorded again.
+- Load: recovery of a stored run runs the rollbacks and leaves the load out, so a load that can no longer run does not block the cleanup.
+- GameDay: a game day that ran each experiment waits for its shared load to end, and a cancelled or error-stopped game day aborts the load and keeps what was measured. A game day stopped its load too early and lost the k6 result, and a cancelled one waited for the whole plan.
+- Store: a run stored only as a journal shows in Experiments, the scorecard, the Star Map, the charts and the Overview counts, marked "journal only". It also counts in the issue counts of the digest, the DORA evidence and the Ask answer "how many experiments ran". A plain `tumult run` sends no trace, so its run was in the lake and nowhere on screen.
+- Store: `tumult store purge` removes the whole run in one transaction, with its load results, probe samples, NFR verdicts, graph edges and its own graph nodes. A purge that fails part way removes nothing. It left those rows, and the Star Map went on counting a purged run.
+- Store: the Parquet data archive holds the probe samples, the objective verdicts, the performance verdicts, the forecasts, the accepted risks, the function register with its daily history and the entity and service version history. A store filled from the archive could show a verdict without the numbers behind it.
+- Web: the Runs list and the header of a run show one run time, ended minus started, and a new Waited value, started minus queued. The list showed ended minus queued, so a run that waited for an approval looked hours long.
+- Web: the metric points of an experiment page are those of that run, in the time of the run plus one export interval. The page showed the points of each run of the experiment.
+- Web: the page of a run that waits for approval shows the approvals so far ("0/2"). It showed "/2".
+- Web: the GameDay page finds its campaign however many runs came after it, and follows a new campaign at once. A launch the server refuses says "Not allowed to run in" with the environment.
+- Web: the run page shows the planned blast radius of a run started with vars, and the approvals detail prints the parameters as JSON. It printed "[object Object]".
+- Web: the Objectives heatmap of the Resilience page colours a cell by its margin and writes the objective ids at a slant. It coloured a cell by its place in the list and skipped ids.
+- Web: the compliance trend of the Resilience page places a point by its instant. With a missing instant, points sat in the future.
+- API: JSON numbers read from the lake are parsed exactly, so a number no longer differs in its last digit from the one a journal stored.
+- API: the metric explorer finds a metric that has data, and `GET /api/metrics/catalog` lists each metric name the reader may see. Both read a sample of 5000 rows per table, so a metric with data could answer 404.
+- API: `POST /api/risks/{id}/recommend` writes `kind:` and `target:` once in the definition it scaffolds, and a kind that does not exist is an error that names it.
+- Scores: `/api/scores` and `/api/scores/tree` of a reader scoped to environments hold the runs and manual records of those environments only, and the portfolio score is the one `/api/gate` judges for that scope. A name that ran in staging and in prod showed the prod row to a staging reader.
+- Scores: a run that logged its end twice is listed and counted once, with the status of the later log.
+- Scores: Ask lists only failed runs under "which experiments failed".
+- Scores: the sparkline of the deviation card divides by the traced runs, as its value does.
+- Reports: the score trend of the executive digest has dates on its x axis, named "Date (UTC)", and a y axis named "Portfolio score". The x axis had no label.
+- Reports: the weekly metric digest names its period, shows each value in its unit with the change against the period before and a sparkline, and draws a bar chart for a metric with a dimension. It printed raw numbers, a duration in nanoseconds and a chart reference that nothing drew.
+- Reports: a digest of an empty store says that no experiments are on record, a target at the full score is not named as the weakest, and the card "Experiments tested" counts a run that sent no trace.
+- Reports: the run report of one run of a game day shows the spans and logs of that run. A game day runs in one trace, and the report showed the other runs too.
+- Reports: the run report reads up to 20,000 spans and warns when a run has more. It read the first 500 without a word.
+- Reports: the run report folds a warning or an error that a run logged many times into one line with "(× n)", and says when it shows only the first 100 different lines. A warning logged 150 times hid the error after it.
+- Reports: the run report finds the rollback by the span `resilience.rollback`, and says "not known" when it left spans out and read no rollback span. A database `ROLLBACK` span counted as the rollback.
+- Reports: the HTML report shows "at least X" as the recovery time of a probe that did not come back. It showed the time to the last failing sample as a recovery.
+- Reports: the evidence pack lists a verified manual `partial` as an open weakness, as the digest does. The digest prints "not recorded" for a record without a severity, where it printed "medium".
+- Reports: counts read as words ("1 was later fixed", "2 open weaknesses").
+- MCP: a viewer can no longer read host files through `tumult_analyze` and `tumult_analyze_store`. The store turns off external access before the query runs, so DuckDB refuses host files, `COPY`, `ATTACH`, `INSTALL` and `LOAD`.
+- MCP: `tumult_discover` lists `tumult-windows`. Discovery read its own copy of the native plugin list.
+- Autopilot: an approved broken-control decision runs its playbook when the gate now answers enact. The re-gate vetoed it for the break it was recorded to revalidate.
+- Autopilot: a playbook that cannot be read is vetoed with "playbook unreadable" and the error. The veto said the experiment had no steady state and no fault. A `validator.not_hollow` veto and a line of `tumult autopilot status` show the reasons, and the change-event loop logs `mcp.autopilot.playbook.skipped` for a playbook it skips.
+- Plugins: the Kafka probes `consumer-lag`, `under-replicated` and `broker-count`, the timewarp probe `clock-offset` and the Redis probe `redis-info` fail when their query fails. They printed 0, so a cluster that could not be reached passed a check for zero lag.
+- Plugins: `under-replicated` and `broker-count` print one number, and `broker-count` counts each broker. A healthy cluster printed two zeros, and three brokers read 1.
+- Plugins: the MySQL and Postgres actions `kill-connections` count the connections they ended. They counted each `KILL`, also one that failed, and each line with a t in it.
+- Plugins: a second `start_proxy` on a listen address that already has a chaos proxy is refused and names the running pid. It replaced the pidfile of the first proxy, which no stop could find again. `tumult-net-proxyd` writes its pidfile after it binds.
+- Plugins: a script plugin gets `TRACEPARENT` and `TRACESTATE` of the span that runs it, so a script can add spans to the trace of the run. The keys were set in lower case, and no script read them.
+- Plugins: the `add-latency` action of the network plugin works without `TUMULT_TARGET_IP` and then delays the whole interface. The script stopped before any `tc` call.
+- Plugins: the `ping-latency` probe fails with the message of `ping` when the host does not answer or `ping` prints no round-trip line, and on macOS the `cpu-utilization` probe fails when `top` fails. Both printed nothing and ended with 0, so a probe with no tolerance passed for a host that was down.
+- CI: the examples proof runs what `examples/expectations.json` and `gamedays/expectations.json` name and compares each journal with its entry. It also starts on pull requests that touch an example, a GameDay, a proof script or the lab. A recorded journal is removed before its run, so the gate reads only journals of this run. It ran eight examples and passed when each journal said completed.
+- CI: the coverage workflow no longer names a crate outside the workspace.
+- Demo: `make demo-check` compares the journal of each demo run and of the Krönika seed with its expectations file, and runs the guard halt and the two topology experiments. It runs the first experiment once more in the same stack, which a fault that stays in place fails. It passed when each run printed a status line.
+- Demo: the Grafana dashboard reads `tumult_experiments_total` and `tumult_action_duration_seconds_bucket`, the names the platform exports, and the SigNoz dashboard import aims at port 3301, where the compose file publishes SigNoz.
+- CI: `.cargo/audit.toml` no longer ignores RUSTSEC-2023-0071. The `rsa` crate left the lock file, so the ignore covered nothing.
+
+### Added
+
+- CLI: `tumult run` ends with a line on the hypothesis before and after, a line with the objectives met, breached and inconclusive (and one line for each that was not met), and a line on the load. The `Status:` line keeps its wording. `tumult gameday run` prints the same load line.
+- CLI: `tumult run` prints the SHA-256 of the journal it writes.
+- CLI: `tumult run --dry-run` shows the kind, the target, the recovery targets, the objectives, the load and the guards, and runs nothing.
+- CLI: `tumult export` to Parquet, CSV or Arrow also writes the steps of the run, one row per step, in `activities/<journal>.<ext>`. A JSON export is unchanged.
+- Reports: the HTML report of `tumult report` shows the whole journal, with sections for the halt, the steady state, the rollbacks, the objectives, the load, the measurements during and after the fault, the versions, the blast radius, the estimate, the analysis and the regulatory mapping. A section is only written when the journal holds its part. The page follows the light or dark setting of the browser.
+- Reports: the HTML report draws up to five charts without a network (a timeline of the steps, the headroom of each objective, load latency, throughput with error rate, and the probe samples), with the time of the fault shaded. The report stays one file, and a report without a chart has no script.
+- Reports: `SOURCE_DATE_EPOCH` sets the time the HTML report says it was generated, so one journal gives one file.
+- Web, API: the page of an experiment run shows the evidence of its journal in the panels Steady state, Objectives, Steps, Load and Probe samples, with charts of the load and of the samples. `GET /api/experiments/{id}` gains `evidence`, which is null for a run without a journal.
+- Web, API: `/api/experiments` rows and `/api/scores` experiments carry `journal_only`, and the Experiments list, the run page and the Star Map drawer mark such a run.
+- Web: a legend under the per-day chart, the calendar, the coverage and objectives heatmaps of the Resilience page and the three DORA charts, and axis names with their scale.
+- TUI: HALTED and INTERRUPTED pills and filter entries, and TIMEOUT and SKIPPED for a step.
+- API: `GET /api/runs` takes `registry_id`, the runs of one definition.
+- API: `/api/metrics` and `/api/timeseries` give the unit of a metric, and the shipped metric definitions say their unit.
+- Runs: a step span carries the name of its plugin as `resilience.plugin.name`.
+- Plugins: the AWS FIS and EC2 steps read `AWS_ENDPOINT_URL_FIS` and `AWS_ENDPOINT_URL_EC2`, so a VPC interface endpoint can be used. Without them nothing changes.
+- Plugins: a FIS stop or status can name `experiment_template_id` in place of `experiment_id`. A stop by template stops each pending, initiating or running experiment of the template, and a status by template is the status of the newest one. The role needs `fis:ListExperiments` for it.
+- CI: a job "Demo crates" runs `make demo-test`, which runs fmt, clippy and the tests of the three demo crates. `make precommit` runs it too, and Dependabot reads the lock files of the demo crates.
+- CI: the SQL lint also reads the SQL that functions build, from a kept file that a test holds to the code, and it reads the v5 migration it missed.
+- CI: `cargo deny` passes over the two new notices that chrono and humantime are unmaintained (RUSTSEC-2026-0543 and RUSTSEC-2026-0542). Neither names a vulnerability and neither has a fixed release. `deny.toml` gives the reason and a review date.
+- CI: the Test job installs cargo-machete 0.9.2 and the deny job cargo-deny 0.21.0. The releases 0.10.1 and 0.22.0 do not build on Rust 1.92, the toolchain of the workspace.
+- CI: the examples proof installs the apt key of k6 as a plain keyring, taken from dl.k6.io and pinned by the fingerprint of its primary key. apt no longer read the keybox that `gpg --keyring` wrote, so the k6 install failed.
+- CI: the mutation tests pass. A game day computes the time its load has left as a duration that stops at zero, so no change to the sum can make it wait for hours. Three kinds of change no Linux test can see are excluded, each with its reason: one that gives the same text for every input, two that insert no rows where none were inserted, and the twins of a function that Linux does not compile. A test pins the padding of a wide range in the trend chart of the compliance report, which no test read. The mutation workflow runs in 16 parts, because with 8 a part ran past its time limit.
+- Docs: the guides, the reference pages (Kronika pages, architecture, test protocol, metadata standard, regulatory mapping), the plugin pages, the demo and docker pages and the READMEs of the crates follow the changes above, and each was checked against the code. The plugin docs no longer show keys the format does not know.
+
+### Quality
+
+- Tests load each shipped experiment and each experiment block in the docs. Each experiment set has an expectations file that the proof gates compare journals with. Each report is compared with a kept file. Mutation tests run on the changed lines (`make mutants` and a workflow), and a behaviour a user can see has at least one test through the binary, the real executor or a store written by the code that writes it in production. The recording of five real runs that the tests of the readers, the reports and the charts use was made again with this release.
+
 ## [3.0.1] - 2026-11-16
 
 A patch release: the product is named the same way everywhere, a few

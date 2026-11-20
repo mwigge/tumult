@@ -3,10 +3,11 @@
 #![allow(clippy::pedantic)]
 #![allow(clippy::print_stdout)] // an example: the list of rendered files is its output
 
-//! Render sample R1/R3/R2 PDFs from a seeded fixture store into
-//! `/tmp/krk/out/` — the visual-iteration loop for the report pipeline.
+//! Render sample R1/R3/R2 PDFs from a seeded fixture store into the
+//! directory given as argument, or into `/tmp/krk/out/` without one — the
+//! visual-iteration loop for the report pipeline.
 //!
-//! Run: `cargo run -p tumult-compliance --example render_samples`
+//! Run: `cargo run -p tumult-compliance --example render_samples -- <dir>`
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -120,8 +121,10 @@ fn run(
 }
 
 fn main() {
-    let dir = std::path::Path::new("/tmp/krk/out");
-    std::fs::create_dir_all(dir).unwrap();
+    let dir = std::env::args_os()
+        .nth(1)
+        .map_or_else(|| "/tmp/krk/out".into(), std::path::PathBuf::from);
+    std::fs::create_dir_all(&dir).unwrap();
     let tmp = tempfile::TempDir::new().unwrap();
     let db = tmp.path().join("fixture.duckdb");
     let now = now_ns();

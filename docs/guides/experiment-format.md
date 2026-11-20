@@ -15,10 +15,10 @@ Every experiment has these sections:
 | Section | Required | Description |
 |---------|----------|-------------|
 | `version` | No | Schema version (defaults to `v1` when omitted) |
-| `title` | Yes | Human-readable experiment name |
+| `title` | No | Human-readable experiment name (empty when omitted) |
 | `description` | No | What this experiment validates |
 | `tags` | No | Classification tags for filtering and analytics |
-| `target` | No | System under test: `system` (required inside the block), `technology`, `environment`, `criticality`, `version` (the build this run measures; `tumult run --target-version` overrides it, and without either the runner records the version the target's own spans carried during the run). Emitted as `resilience.target.*` on the root span; the scorecard, the gate and environment scopes key on it, and performance verdicts compare by the recorded version |
+| `target` | No | System under test: `system` (required inside the block), `technology`, `environment`, `criticality`, `namespace` (the target's `service.namespace`, when two services of one name report to one store), `version` (the build this run measures; `tumult run --target-version` overrides it, and without either the runner records the version the target's own spans carried during the run). Emitted as `resilience.target.*` on the root span; the scorecard, the gate and environment scopes key on it, and performance verdicts compare by the recorded version. The journal of the run keeps the block as `target`, and `tumult trend --target` selects runs by its `system` or `technology` |
 | `kind` | No | What the run is: `chaos` (default), `performance` (load and performance; `load` is accepted as another name), `robustness`, `dr`, `security`. Coverage and scores count four disciplines: chaos, load / performance, robustness and security. A `dr` run is part of robustness. Non-functional objectives are not a discipline: the `nfr` block below is verified by a run of any kind. Sets the `resilience.test.kind` span attribute |
 | `nfr` | No | Non-functional objectives verified against the run's measurements (see [Objectives](#objectives)) |
 | `rto_target_s` | No | Recovery time objective in seconds; required when `kind: dr`. Measured against post-phase MTTR |
@@ -33,7 +33,7 @@ Every experiment has these sections:
 | `method` | Yes | Ordered sequence of actions and probes to execute |
 | `rollbacks` | No | Actions to restore system state after the experiment |
 | `estimate` | No | Phase 0 — prediction of expected outcome |
-| `baseline` | No | Phase 1 — statistical baseline acquisition config |
+| `baseline` | No | Statistical baseline settings. Declared only: a run does not use them |
 | `load` | No | Load tool integration (k6 or oha) with an optional traffic profile |
 | `regulatory` | No | Regulatory framework mapping (DORA, NIS2, PCI-DSS) |
 
@@ -46,10 +46,12 @@ Every step in `method`, `rollbacks`, and `steady_state_hypothesis.probes` is an 
 | `name` | string | Unique name for this step |
 | `activity_type` | `action` or `probe` | Actions change state, probes observe |
 | `provider` | Provider | How the activity executes (see below) |
-| `tolerance` | Tolerance | Expected result (for probes in hypothesis) |
+| `tolerance` | Tolerance | What a probe must read (see Tolerance Types) |
 | `pause_before_s` | float | Wait before executing (seconds) |
 | `pause_after_s` | float | Wait after executing (seconds) |
 | `background` | bool | Run concurrently with next step |
+
+Give each probe of `steady_state_hypothesis.probes` its own name: the run samples these probes during and after the method, and two probes with one name are recorded as one series.
 
 ## Provider Types
 
@@ -59,7 +61,7 @@ Every step in `method`, `rollbacks`, and `steady_state_hypothesis.probes` is an 
 | `script` | Dispatch a discovered script plugin action | `plugin`, `function`, `arguments`, `timeout_s` |
 | `process` | Run a script or binary | `path`, `arguments`, `env`, `timeout_s` |
 
-The `native` provider dispatches through a registry of compiled-in executors (`tumult-ssh`, `tumult-net`, `tumult-kubernetes`). Referencing an unknown plugin or function fails with an error listing the available names. To probe an HTTP endpoint, use a `process` provider with `curl` — the former experimental `http` provider type has been removed and now fails validation.
+The `native` provider dispatches through a registry of compiled-in executors (`tumult-ssh`, `tumult-net`, `tumult-kubernetes`, `tumult-cloud`, `tumult-windows`). Referencing an unknown plugin or function fails with an error listing the available names. To probe an HTTP endpoint, use a `process` provider with `curl`. The former experimental `http` provider type has been removed and now fails validation.
 
 ### Script Provider
 
@@ -123,12 +125,12 @@ Both sections feed two consumption paths:
 
 ## Controls
 
-Each entry in `controls:` declares a lifecycle hook with a `name` and a `provider`. Declared controls **execute**: the control's provider is invoked once at every lifecycle event — before/after the experiment, the hypothesis evaluations, the method, each activity, and the rollbacks — with the event identity injected so the hook can decide whether to act:
+Each entry in `controls:` declares a lifecycle hook with a `name` and a `provider`. Declared controls **execute**: the control's provider is invoked once at every lifecycle event — before/after the experiment, the hypothesis evaluations, the method, each step (of the method, a hypothesis evaluation or the rollbacks), and the rollbacks — with the event identity injected so the hook can decide whether to act:
 
 - `process` providers receive `TUMULT_CONTROL_EVENT` (e.g. `before_experiment`, `after_activity`) as an environment variable, plus `TUMULT_CONTROL_ACTIVITY` for the per-activity events,
 - `script` and `native` providers receive the same values as `control_event` / `control_activity` arguments (script providers export them as the same `TUMULT_*` env vars).
 
-Entries the declared provider already sets win over the injected ones. Controls are observability/safeguard hooks, not gates: a failing (or panicking) control is logged and the run continues. Controls execute on every event by design — the schema has no event scoping, so a hook that only cares about some events should check `TUMULT_CONTROL_EVENT` and exit early.
+Entries the declared provider already sets win over the injected ones. Controls are observability/safeguard hooks, not gates: a failing (or panicking) control is logged and the run continues. Controls execute on every event by design — the schema has no event scoping, so a hook that only cares about some events should check `TUMULT_CONTROL_EVENT` and exit early. A sample of a hypothesis probe, taken during or after the method, and the read of a guard fire no event.
 
 ## Rollback Strategy
 
@@ -142,13 +144,26 @@ Steps in `rollbacks:` run according to the run's rollback strategy (`tumult run 
 
 ## Tolerance Types
 
-Used in steady-state hypothesis probes to define expected values:
+What a probe must read. A probe with a tolerance is judged wherever it runs:
 
 | Type | Description | Fields |
 |------|-------------|--------|
 | `exact` | Exact value match | `value` (any JSON value) |
 | `range` | Numeric range | `from`, `to` |
 | `regex` | Pattern match on string output | `pattern` |
+
+A probe that reads a value outside its tolerance is a failed step. Its error
+says `the output is outside the tolerance` and its output is kept.
+
+| Where the probe is | What a failed probe does to the run |
+|--------------------|-------------------------------------|
+| Hypothesis, before the method | The run is `aborted` |
+| Method | The run is `deviated`. Rollbacks run and recovery is measured |
+| Hypothesis, after the method | The run is `deviated` |
+| Rollbacks | The rollback counts as failed |
+
+A failed action in the method makes the run `failed`: the fault was not
+applied as written.
 
 ## Estimate (Phase 0)
 
@@ -164,9 +179,11 @@ Predictions made before any measurement. Compared against actual results in Phas
 | `rationale` | string | Why this prediction |
 | `prior_runs` | int | How many times this has been run before |
 
-## Baseline Config (Phase 1)
+## Baseline Config
 
-Configuration for statistical baseline acquisition:
+A run does not use this block: tolerances stay as written. `tumult validate`
+and a dry run say so. The block is kept for tools that take their own samples
+with the `tumult-baseline` library, see the [Baseline Guide](baseline-guide.md).
 
 | Field | Description |
 |-------|-------------|
@@ -202,6 +219,8 @@ Metrics the runner produces:
 | `probe.<name>.mean_ms`, `probe.<name>.max_ms`, `probe.<name>.p95_ms`, `probe.<name>.error_rate` | raw during-phase samples of one probe |
 | `fault.duration_s` | the during phase |
 
+A metric that is not in this table is an error: no run can measure it. A `probe.<name>` metric must name a probe of the steady-state hypothesis, because those are the probes a run samples.
+
 `rto_target_s` adds an implicit blocking `rto` objective on `recovery.mttr_s`. `rpo_target_s` is recorded with the run; without an `nfr` entry of `kind: rpo` naming a probe-derived metric it is reported `inconclusive`, never silently met.
 
 ```yaml
@@ -226,7 +245,7 @@ Raw probe samples from the during and post phases are kept in the journal (`prob
 
 ## Load
 
-The optional `load` section drives load generation concurrent with the method. Two adapters share one boundary (`runner::LoadExecutor` plus the tool-agnostic plan in `runner::load_profile`): **k6** (`tool: k6`, `script` is the k6 script) and **oha** (`tool: oha`, `script` is the URL to hit). The `--load` CLI override accepts `k6`, `oha` or `none`. `tool: jmeter` still parses for older files but has no adapter and fails at start rather than silently running k6.
+The optional `load` section drives load generation concurrent with the method. Two adapters share one boundary (`runner::LoadExecutor` plus the tool-agnostic plan in `runner::load_profile`): **k6** (`tool: k6`, `script` is the k6 script) and **oha** (`tool: oha`, `script` is the URL to hit). The `--load` CLI override accepts `k6`, `oha` or `none`, and takes the place of the file's load before validation. `--load none` runs the experiment without the load of its file. `tool: jmeter` still parses for older files, but it has no adapter, so validation refuses it.
 
 | Field | Required | Description |
 |---|---|---|
@@ -234,7 +253,7 @@ The optional `load` section drives load generation concurrent with the method. T
 | `script` | Yes | k6 script path, or the URL for oha |
 | `vus` | No | Virtual users / concurrency (default 10) |
 | `duration_s` | No | Seconds of load (default 30); required when a `profile` is set |
-| `thresholds` | No | Metric → bound. k6 scripts enforce their own; for oha the adapter checks `latency_p50_ms`, `latency_p95_ms`, `latency_p99_ms`, `error_rate` (upper bounds) and `throughput_rps` (lower bound) against the aggregate, and an unknown name counts as unmet |
+| `thresholds` | No | Metric → bound. k6 applies the thresholds of its script, not these: validation accepts them and logs a warning (`load.thresholds.not_applied`). For oha the adapter checks `latency_p50_ms`, `latency_p95_ms`, `latency_p99_ms`, `error_rate` (upper bounds) and `throughput_rps` (lower bound) against the aggregate; validation refuses any other name |
 | `profile` | No | Traffic shape, see below |
 
 ### Load profiles
@@ -250,7 +269,7 @@ A profile shapes the traffic over `duration_s`; without one the load is flat at 
 ```toon
 load:
   tool: oha
-  script: http://127.0.0.1:8080/api/checkout
+  script: http://127.0.0.1:8080/checkout/1
   vus: 20
   duration_s: 7200
   profile:
@@ -258,39 +277,50 @@ load:
     sample_interval_s: 30
 ```
 
-The oha adapter runs the plan window by window (`sample_interval_s` wide for a soak and at least one second, one window per stage otherwise) and records one sample per window in `load_result.samples` (`ts_ns`, `duration_s`, `vus`, `throughput_rps`, `latency_p50_ms`, `latency_p95_ms`, `latency_p99_ms`, `error_rate`, `requests`). The lake stores each field as a `probe_samples` series named `load.<field>` in the `during` phase, next to the probe samples of the same run, so a two-hour soak is a time series you can chart and compare, not one number. The k6 adapter keeps its single end-of-run summary (its per-request stream is too heavy to retain) but honours every profile through stages. Examples: `examples/checkout-ramp-k6.toon`, `examples/checkout-spike-oha.toon`, `examples/checkout-soak-oha.toon`.
+The oha adapter runs the plan window by window (`sample_interval_s` wide for a soak and at least one second, one window per stage otherwise) and records one sample per window in `load_result.samples` (`ts_ns`, `duration_s`, `vus`, `throughput_rps`, `latency_p50_ms`, `latency_p95_ms`, `latency_p99_ms`, `error_rate`, `requests`). The lake stores the rate, the three latencies and the error rate of each window as `probe_samples` series named `load.<field>`, and the length of the window as `load.window_s`, in the `during` phase, next to the probe samples of the same run, so a two-hour soak is a time series you can chart and compare, not one number. The k6 adapter keeps its single end-of-run summary (its per-request stream is too heavy to retain) but honours every profile through stages. Examples: `examples/checkout-ramp-k6.toon`, `examples/checkout-spike-oha.toon`, `examples/checkout-soak-oha.toon`.
 
 ### Robustness runs
 
-`kind: robustness` covers the runs where the question is "does it fail safely" rather than "does it recover from a fault": malformed input, saturation and soak. They use the same sections as every other experiment — the method carries the hostile inputs as probes with tolerances, the load section drives the saturation or soak, and `nfr` entries say what must hold. `examples/api-malformed-input.toon` posts oversized, truncated, wrongly typed and deeply nested bodies and expects 4xx while the health probe stays green; `examples/api-saturation.toon` ramps past capacity under cpu stress and expects shed load (429/503) rather than a dead process; `examples/checkout-soak-oha.toon` holds load for two hours and streams samples.
+`kind: robustness` covers the runs where the question is "does it fail safely" rather than "does it recover from a fault": malformed input, saturation and soak. They use the same sections as every other experiment. The method carries the hostile inputs as probes with tolerances, the load section drives the saturation or soak, and `nfr` entries say what must hold. `examples/api-malformed-input.toon` asks the checkout route for order ids that are not a number, too large, badly encoded and far too long, and expects 4xx while the health probe stays green; `examples/api-saturation.toon` ramps past capacity under cpu stress and expects shed load (429/503) rather than a dead process; `examples/checkout-soak-oha.toon` holds load for two hours and streams samples.
 
 ## Analysis (Phase 4)
 
-Computed onto the journal after the run, comparing predictions (Phase 0) and measurements:
+Computed onto the journal after the run when the experiment has an `estimate`, comparing predictions (Phase 0) and measurements:
 
 | Field | Description |
 |-------|-------------|
-| `estimate_accuracy` | 0.0–1.0 — how close the outcome was to the estimate |
-| `resilience_score` | 0.0–1.0 composite score |
-| `estimate_recovery_delta_s` | *Reserved — unpopulated in 2.20* |
-| `trend` | *Reserved — unpopulated in 2.20* |
+| `estimate_accuracy` | 0 or 1: 1 when the estimate said `recovered` and the run completed, or said another outcome and the run did not complete |
+| `resilience_score` | 0 or 1: 1 when the run completed |
+| `estimate_recovery_delta_s` | *Reserved, not populated* |
+| `trend` | *Reserved, not populated* |
 
-The degradation fields on during/post results (`degradation_onset_s`, `degradation_peak_s`, `degradation_magnitude`, `graceful_degradation`, `residual_degradation`) are likewise reserved and unpopulated in 2.20.
+The degradation fields on during/post results (`degradation_onset_s`, `degradation_peak_s`, `degradation_magnitude`, `graceful_degradation`, `residual_degradation`) are likewise reserved and not populated.
 
 ## Journal Export
 
-`tumult export <journal> --format <fmt>` writes the journal's experiment record in four formats: `parquet` (Apache Parquet), `csv`, `json` (pretty-printed journal), and `arrow` (Apache Arrow IPC file format, suitable for zero-copy analytics interchange).
+`tumult export <journal> --format <fmt>` writes the journal in four formats. `json` is the whole journal, pretty-printed. `parquet` (Apache Parquet), `csv` and `arrow` (Apache Arrow IPC file format, suitable for zero-copy analytics interchange) are tables: the run is one row of `<journal-stem>.<ext>` and its steps are the rows of `activities/<journal-stem>.<ext>`.
 
-## Execution Target
+## Where a step runs
 
-Activities can specify WHERE they run:
+A step runs on the machine that runs Tumult. To reach another place, pick
+the provider for it:
 
-| Target | Description |
-|--------|-------------|
-| `local` | Run on the machine running tumult (default) |
-| `ssh` | Run via SSH on a remote host |
-| `container` | Run inside a Docker/Podman container |
-| `kube_exec` | Run via kubectl exec in a Kubernetes pod |
+| Place | How |
+|-------|-----|
+| This machine | `process`, or a `script` plugin |
+| A remote host | `native` plugin `tumult-ssh`, function `execute` ([tumult-ssh](../plugins/tumult-ssh.md)) |
+| A container | `process` with `docker exec`, or the `tumult-containers` plugin |
+| A Kubernetes pod | `native` plugin `tumult-kubernetes` ([tumult-kubernetes](../plugins/tumult-kubernetes.md)) |
+
+An example that changes the machine it runs on has the tag `host-changing`, and
+its description starts with what it changes.
+
+A step has no `execution_target:` key. A key that Tumult does not know,
+on a step, a provider or a tolerance, is an error when the file is
+loaded. `tumult validate` shows it.
+
+A key written twice in one object is an error too. Only the last one
+would be used, so a block left behind by an edit would win.
 
 ## Example
 

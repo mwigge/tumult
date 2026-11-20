@@ -77,6 +77,7 @@ mod runs;
 mod schedules;
 #[cfg(feature = "duckdb")]
 mod schema;
+pub mod scope;
 #[cfg(feature = "duckdb")]
 mod sightings;
 #[cfg(feature = "duckdb")]
@@ -133,7 +134,10 @@ pub use runs::{rollback_status, run_state, NewRun, RegisteredDefinition};
 #[cfg(feature = "duckdb")]
 pub use schedules::ScheduleRow;
 #[cfg(feature = "duckdb")]
-pub use schema::CURRENT_SCHEMA_VERSION;
+pub use schema::{
+    hypothesis_met_sql, mean_recovery_time_sql, run_completions_sql, run_outcome_sql, run_verdict,
+    run_verdict_sql, RunVerdict, CURRENT_SCHEMA_VERSION,
+};
 #[cfg(feature = "duckdb")]
 pub use sightings::{StoredVersions, VersionSighting, REDEPLOY_GAP};
 #[cfg(feature = "duckdb")]

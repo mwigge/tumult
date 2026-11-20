@@ -45,7 +45,7 @@ a shared-kernel environment.
 |---|---|---|
 | `entropy-available` | integer, `/proc/sys/kernel/random/entropy_avail` | ~256 constant on modern kernels; the correct signal on old ones. |
 | `crypto-throughput` | integer ms to generate `TUMULT_CRYPTO_BYTES` of randomness | Rises under `rng-pressure` / CPU contention. |
-| `clock-offset` | integer seconds `target_epoch − runner_epoch` | 0 when clocks agree (shared kernel); non-zero only when a target process is faketime-skewed. |
+| `clock-offset` | integer seconds `target_epoch − runner_epoch` | 0 when clocks agree (shared kernel), and 0 when `TUMULT_TARGET` is unset; non-zero only when a target process is faketime-skewed. Fails when `docker exec` fails or the target answers no number. |
 
 ## Deliberately skipped
 
@@ -75,6 +75,7 @@ Shared: `TUMULT_TW_STATE_DIR` (default `/tmp/tumult-timewarp`), `TUMULT_TARGET`
 - `rng-pressure`: `TUMULT_RNG_WORKERS` (default 4), `TUMULT_RNG_DURATION`
   (default 60).
 - `crypto-throughput`: `TUMULT_CRYPTO_BYTES` (default 33554432 = 32 MiB).
+- `clock-offset`: `TUMULT_TARGET_CMD` (default `date -u +%s`).
 
 ## Demo experiments
 

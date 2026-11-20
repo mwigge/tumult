@@ -8,11 +8,12 @@ pub const DEFAULT_MTTR_TARGET_S: f64 = 30.0;
 
 /// Journal-level compliance signals accumulated across a set of journals.
 ///
-/// The analytics `experiments` table has no MTTR column and a true
-/// `ResilienceScore` (with `recovery_compliance`) is a GameDay-only
-/// aggregate, so recovery compliance is derived from `PostResult::mttr_s`,
-/// falling back to `AnalysisResult::resilience_score`, then to pass-rate
-/// only (`None`).
+/// They count two things that are not the same. The pass rate is the share
+/// of the runs that completed. The recovery is the share of the runs that
+/// watched their target after the fault and saw it come back within the
+/// target time. A run watches for recovery when it has a post phase, and
+/// that takes a steady state to probe. A run that only completed says
+/// nothing of recovery, so it is in the pass rate and nowhere else.
 #[derive(Debug, Clone, Default)]
 pub struct ComplianceSignals {
     /// Total journals accumulated.
@@ -21,10 +22,11 @@ pub struct ComplianceSignals {
     pub completed_journals: usize,
     /// Journals that declared a regulatory mapping.
     pub journals_with_regulatory: usize,
-    /// Observed `mttr_s` values from post-phase results.
+    /// Journals of runs that watched for recovery: they have a post phase.
+    pub recovery_watched: usize,
+    /// The recovery times, in seconds, of the watched runs that saw their
+    /// target recover.
     pub mttrs: Vec<f64>,
-    /// Observed `resilience_score` values from analysis results.
-    pub resilience_scores: Vec<f64>,
 }
 
 impl ComplianceSignals {
@@ -39,11 +41,11 @@ impl ComplianceSignals {
         if journal.regulatory.is_some() {
             self.journals_with_regulatory += 1;
         }
-        if let Some(score) = journal.analysis.as_ref().and_then(|a| a.resilience_score) {
-            self.resilience_scores.push(score);
+        if journal.post_result.is_some() {
+            self.recovery_watched += 1;
         }
-        if let Some(mttr) = journal.post_result.as_ref().and_then(|p| p.mttr_s) {
-            self.mttrs.push(mttr);
+        if let Some(recovery_time_s) = journal.recovery_time_s() {
+            self.mttrs.push(recovery_time_s);
         }
     }
 
@@ -59,38 +61,59 @@ impl ComplianceSignals {
         }
     }
 
-    /// Recovery-compliance proxy: fraction of MTTRs at or under
-    /// `mttr_target_s`; falls back to the average resilience score, and
-    /// returns `None` when neither signal is present (pass-rate-only
-    /// verdict, reduced assurance).
+    /// How many runs saw their target recover within `mttr_target_s`
+    /// seconds. A recovery that took exactly the target is within it.
+    #[must_use]
+    pub fn recovered_within(&self, mttr_target_s: f64) -> usize {
+        self.mttrs
+            .iter()
+            .filter(|mttr| **mttr <= mttr_target_s)
+            .count()
+    }
+
+    /// Of the runs that watched for recovery, the share that saw their
+    /// target recover within `mttr_target_s` seconds. A watched run that saw
+    /// no recovery is not within the target. `None` when no run watched:
+    /// the verdict then rests on the pass rate only (reduced assurance).
     #[must_use]
     pub fn recovery_compliance(&self, mttr_target_s: f64) -> Option<f64> {
-        #[allow(clippy::cast_precision_loss)]
-        if self.mttrs.is_empty() {
-            if self.resilience_scores.is_empty() {
-                None
-            } else {
-                Some(
-                    self.resilience_scores.iter().sum::<f64>()
-                        / self.resilience_scores.len() as f64,
-                )
-            }
-        } else {
-            Some(
-                self.mttrs.iter().filter(|m| **m <= mttr_target_s).count() as f64
-                    / self.mttrs.len() as f64,
-            )
+        if self.recovery_watched == 0 {
+            return None;
         }
+        #[allow(clippy::cast_precision_loss)]
+        {
+            Some(self.recovered_within(mttr_target_s) as f64 / self.recovery_watched as f64)
+        }
+    }
+
+    /// What a report says of recovery, in one line: the share of
+    /// [`recovery_compliance`](Self::recovery_compliance) and the runs it
+    /// is of, or that no run watched for recovery.
+    #[must_use]
+    pub fn recovery_line(&self, mttr_target_s: f64) -> String {
+        let Some(share) = self.recovery_compliance(mttr_target_s) else {
+            return format!(
+                "Recovery within {mttr_target_s}s: not measured, no run watched for recovery. \
+                 The verdict rests on the pass rate only (reduced assurance)."
+            );
+        };
+        format!(
+            "Recovery within {mttr_target_s}s: {:.1}% of the runs that watched for recovery \
+             ({} of {})",
+            share * 100.0,
+            self.recovered_within(mttr_target_s),
+            self.recovery_watched
+        )
     }
 }
 
 /// Recovery-aware compliance verdict.
 ///
 /// The COMPLIANT / PARTIAL / NON-COMPLIANT verdict requires BOTH a pass rate
-/// and a recovery signal. `recovery_compliance` is `None` when neither MTTR
-/// nor `resilience_score` data is present in the journals, in which case the
-/// verdict falls back to pass-rate-only thresholds (reduced assurance).
-/// Thresholds are aligned with `ResilienceScore::status` (0.90 / 0.75).
+/// and a recovery signal. `recovery_compliance` is `None` when no run
+/// watched for recovery, in which case the verdict falls back to
+/// pass-rate-only thresholds (reduced assurance). Thresholds are aligned
+/// with `ResilienceScore::status` (0.90 / 0.75).
 #[must_use]
 pub fn compliance_verdict(pass_rate: f64, recovery_compliance: Option<f64>) -> &'static str {
     match recovery_compliance {

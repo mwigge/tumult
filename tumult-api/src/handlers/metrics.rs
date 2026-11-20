@@ -1,5 +1,7 @@
 //! `GET /api/timeseries`, `GET /api/metrics` and the raw-metric explorer
-//! (`/api/metrics/catalog`, `/api/metrics/query`).
+//! (`/api/metrics/catalog`, `/api/metrics/query`). The catalog lists every
+//! raw metric name the reader may see; a query finds the table of its name
+//! by asking the tables, not the catalog.
 
 use crate::error::ApiError;
 use axum::extract::{Query, State};
@@ -8,12 +10,11 @@ use axum::response::IntoResponse;
 use axum::{Extension, Json};
 use serde::Deserialize;
 use serde_json::{json, Value};
-use tumult_lake::Reader;
+use tumult_lake::{scope, Reader};
 
 use crate::auth::Principal;
 use crate::sql_util::{
-    and_pred, bucket_expr, env_metric_exists, env_table_predicate, internal, invalid_range,
-    parse_interval, sql_string, w, windows, with_reader,
+    bucket_expr, internal, invalid_range, parse_interval, sql_string, w, windows, with_reader,
 };
 use crate::ApiState;
 
@@ -73,7 +74,7 @@ pub(crate) async fn timeseries(
     // Scope the source rows before aggregation: the SQL generator has no
     // predicate hook, so the table reference becomes a filtered subquery
     // (the source table is a validated `[a-z0-9_.]` identifier).
-    let sql = match env_table_predicate(&def.source_table, &principal.env_scopes) {
+    let sql = match scope::table_predicate(&def.source_table, &principal.env_scopes) {
         Some(pred) => sql.replacen(
             &format!("FROM {}", def.source_table),
             &format!("FROM (SELECT * FROM {} WHERE {pred})", def.source_table),
@@ -82,11 +83,13 @@ pub(crate) async fn timeseries(
         None => sql,
     };
     let description = def.description.clone();
+    let unit = def.unit;
     let body = with_reader(&state.db_path, move |reader| {
         let rows = reader.query_json_rows(&sql).map_err(|e| e.to_string())?;
         Ok(json!({
             "metric": metric,
             "description": description,
+            "unit": unit,
             "interval": interval,
             "range": range,
             "points": rows,
@@ -104,7 +107,7 @@ pub(crate) async fn list_metrics(State(state): State<ApiState>) -> Result<Json<V
         .map_err(|e| internal(format!("load metrics: {e}")))?;
     let metrics: Vec<Value> = defs
         .iter()
-        .map(|d| json!({"name": d.name, "description": d.description}))
+        .map(|d| json!({"name": d.name, "description": d.description, "unit": d.unit}))
         .collect();
     Ok(Json(json!({"metrics": metrics})))
 }
@@ -120,20 +123,23 @@ const METRIC_TABLES: [(&str, &str); 3] = [
     ("metric_histograms", "histogram"),
 ];
 
-/// Catalog of raw metrics: name → table types it appears in + attribute
-/// keys seen on its points (sampled, capped per table). Scoped principals
-/// see only metrics of experiments inside their environments.
+/// Catalog of raw metrics: every name → table types it appears in +
+/// attribute keys of all its points, read from every row of the tables.
+/// Scoped principals see only metrics of experiments inside their
+/// environments.
 fn load_catalog(reader: &Reader, scopes: &[String]) -> Result<Vec<Value>, String> {
     let mut names: std::collections::BTreeMap<
         String,
         (Vec<String>, std::collections::BTreeSet<String>),
     > = std::collections::BTreeMap::new();
     for (table, kind) in METRIC_TABLES {
-        let env = env_metric_exists(table, scopes)
+        let env = scope::table_predicate(table, scopes)
             .map_or_else(String::new, |pred| format!(" WHERE {pred}"));
         let rows = reader
             .query_json_rows(&format!(
-                "SELECT metric_name, map_keys(attrs) AS k FROM {table}{env} LIMIT 5000"
+                "SELECT metric_name, list_distinct(flatten(list(k))) AS k \
+                 FROM (SELECT DISTINCT metric_name, map_keys(attrs) AS k FROM {table}{env}) AS key_lists \
+                 GROUP BY metric_name"
             ))
             .map_err(|e| e.to_string())?;
         for row in rows {
@@ -162,6 +168,30 @@ fn load_catalog(reader: &Reader, scopes: &[String]) -> Result<Vec<Value>, String
             })
         })
         .collect())
+}
+
+/// The table of `name` and its type: the first of [`METRIC_TABLES`] with a
+/// point of that name the reader may see, or `None`. One probe per table on
+/// the indexed name column, inside the reader's scope, so a name outside
+/// the scope is not found and its existence does not leak.
+fn metric_table(
+    reader: &Reader,
+    name: &str,
+    scopes: &[String],
+) -> Result<Option<(&'static str, &'static str)>, String> {
+    for (table, kind) in METRIC_TABLES {
+        let env = scope::and(scope::table_predicate(table, scopes));
+        let hit = reader
+            .query_json_rows_bound(
+                &format!("SELECT 1 AS hit FROM {table} WHERE metric_name = $1{env} LIMIT 1"),
+                &[name],
+            )
+            .map_err(|e| e.to_string())?;
+        if !hit.is_empty() {
+            return Ok(Some((table, kind)));
+        }
+    }
+    Ok(None)
 }
 
 pub(crate) async fn metrics_catalog(
@@ -272,19 +302,7 @@ pub(crate) async fn metrics_query(
     let metric_name = name.clone();
     let scopes = principal.env_scopes.clone();
     let body = with_reader(&state.db_path, move |reader| {
-        let catalog = load_catalog(reader, &scopes)?;
-        let Some(entry) = catalog
-            .iter()
-            .find(|m| m.get("name").and_then(Value::as_str) == Some(metric_name.as_str()))
-        else {
-            return Ok(None);
-        };
-        let types: Vec<&str> = entry
-            .get("types")
-            .and_then(Value::as_array)
-            .map(|t| t.iter().filter_map(Value::as_str).collect())
-            .unwrap_or_default();
-        let Some((table, kind)) = METRIC_TABLES.iter().find(|(_, k)| types.contains(k)) else {
+        let Some((table, kind)) = metric_table(reader, &metric_name, &scopes)? else {
             return Ok(None);
         };
         let grp_sel = group_by.as_ref().map_or(String::new(), |g| {
@@ -292,12 +310,12 @@ pub(crate) async fn metrics_query(
         });
         let window = w(cur.0, cur.1);
         let name_sql = sql_string(&metric_name);
-        let env = and_pred(env_metric_exists(table, &scopes));
+        let env = scope::and(scope::table_predicate(table, &scopes));
 
         // Pivot (bucket, group) rows into one series per group.
         let mut groups: std::collections::BTreeMap<Option<String>, Vec<Value>> =
             std::collections::BTreeMap::new();
-        if *kind == "histogram" {
+        if kind == "histogram" {
             // Fetch raw rows and aggregate in Rust: elementwise bucket sums
             // per (bucket, group), then interpolate p95. Bounds are assumed
             // stable per metric — mixed schemas degrade to first-seen.
@@ -346,7 +364,7 @@ pub(crate) async fn metrics_query(
                 }));
             }
         } else {
-            let agg = if *kind == "sum" {
+            let agg = if kind == "sum" {
                 "SUM(value)"
             } else {
                 "AVG(value)"

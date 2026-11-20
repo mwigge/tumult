@@ -1,4 +1,4 @@
-# Tumult MCP Server — chaos engine container
+# Tumult MCP Server — resilience intelligence platform container
 #
 # Provides the full Tumult platform as an MCP-accessible service.
 # Connects to the chaos targets and observability stack.

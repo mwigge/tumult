@@ -1,5 +1,5 @@
-title: Checkout API ramps from 5 to 50 users while the payments hop is slow
-description: A ramp profile rendered as k6 stages. Load climbs linearly for 60 s, then holds 50 VUs while 150 ms of latency is injected through a tumult-net proxy in front of payments; p95 must stay under 400 ms and the health probe must keep answering.
+title: Checkout API ramps from 5 to 50 users while the database hop is slow
+description: A ramp profile rendered as k6 stages. Load climbs linearly for 60 s, then holds 50 VUs while Pumba adds 20 ms of delay to the network of the database container; p95 must stay under 400 ms and the health probe must keep answering.
 
 tags[3]: load, ramp, checkout
 kind: performance
@@ -43,26 +43,20 @@ steady_state_hypothesis:
         timeout_s: 5.0
 
 method[1]:
-  - name: slow-payments
+  - name: slow-database
     activity_type: action
+    pause_before_s: 60.0
     provider:
-      type: native
-      plugin: tumult-net
-      function: inject_latency
-      arguments:
-        listen: 127.0.0.1:18443
-        upstream: 127.0.0.1:8443
-        delay_ms: 150
-        jitter_ms: 20
-        seed: 7
-    pause_after_s: 180.0
+      type: process
+      path: sh
+      arguments[2]: "-c", "docker run --rm --name tumult-ramp-netem -v /var/run/docker.sock:/var/run/docker.sock ghcr.io/alexei-led/pumba:latest netem -d 115s -i eth0 delay -t 20 demo-postgres"
+      timeout_s: 150.0
 
 rollbacks[1]:
-  - name: stop-proxy
+  - name: stop-the-delay
     activity_type: action
     provider:
-      type: native
-      plugin: tumult-net
-      function: stop_proxy
-      arguments:
-        listen: 127.0.0.1:18443
+      type: process
+      path: sh
+      arguments[2]: "-c", "docker stop tumult-ramp-netem 2>/dev/null || true"
+      timeout_s: 30.0

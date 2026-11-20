@@ -191,18 +191,24 @@ fn a_closed_stdout_does_not_end_the_run_before_its_journal_is_ingested() {
 #[test]
 fn a_closed_stderr_does_not_end_a_validation_that_has_findings() {
     let dir = tempfile::tempdir().unwrap();
+    let broken = dir.path().join("plugins").join("broken");
+    std::fs::create_dir_all(&broken).unwrap();
+    std::fs::write(
+        broken.join("plugin.toon"),
+        "name: broken\nactions[2]:\n  - only-one\n",
+    )
+    .unwrap();
     std::fs::write(
         dir.path().join("experiment.toon"),
-        r"title: Uses a plugin nobody has
+        r"title: Sits next to a plugin with a broken manifest
 description: The finding goes to stderr
 
 method[1]:
-  - name: unknown
+  - name: hello
     activity_type: action
     provider:
-      type: native
-      plugin: no-such-plugin
-      function: nothing
+      type: process
+      path: echo
 ",
     )
     .unwrap();

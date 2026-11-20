@@ -1,0 +1,29 @@
+{
+  "experiments": {
+    "redis-chaos.toon": {"proof": "examples-proof", "expect": {"status": "completed", "hypothesis_before": true, "hypothesis_after": true, "rollbacks": 0, "objectives": {}}},
+    "container-pause-recovery.toon": {"proof": "examples-proof", "expect": {"status": "completed", "hypothesis_before": true, "hypothesis_after": true, "rollbacks": 0, "objectives": {}}},
+    "pumba-latency.toon": {"proof": "examples-proof", "expect": {"status": "completed", "hypothesis_before": true, "hypothesis_after": true, "rollbacks": 0, "objectives": {}}},
+    "postgres-failover.toon": {"proof": "examples-proof", "expect": {"status": "completed", "hypothesis_before": true, "hypothesis_after": true, "rollbacks": 0, "objectives": {"post-availability": "met", "rto": "met"}}},
+    "pg-under-load.toon": {"proof": "examples-proof", "expect": {"status": "completed", "hypothesis_before": true, "hypothesis_after": true, "rollbacks": 0, "objectives": {"pg-responds-p95": "met", "availability": "met"}}},
+    "pg-load-chaos.toon": {"proof": "examples-proof", "expect": {"status": "completed", "hypothesis_before": true, "hypothesis_after": true, "rollbacks": 0, "load_result": true, "objectives": {}}},
+    "kafka-broker-chaos.toon": {"proof": "examples-proof", "expect": {"status": "completed", "hypothesis_before": true, "hypothesis_after": true, "rollbacks": 0, "objectives": {}}},
+    "mysql-chaos.toon": {"proof": "examples-proof", "expect": {"status": "completed", "hypothesis_before": true, "hypothesis_after": true, "rollbacks": 0, "objectives": {}}},
+    "ssh-remote.toon": {"proof": "examples-proof", "expect": {"status": "completed", "hypothesis_before": true, "hypothesis_after": true, "rollbacks": 0, "objectives": {}}},
+    "cpu-stress.toon": {"proof": "examples-proof", "expect": {"status": "completed", "hypothesis_before": true, "hypothesis_after": true, "rollbacks": 0, "objectives": {}}},
+    "process-kill.toon": {"proof": "examples-proof", "expect": {"status": "completed", "hypothesis_before": true, "hypothesis_after": true, "rollbacks": 0, "objectives": {}}},
+    "network-latency.toon": {"proof": "examples-proof", "expect": {"status": "completed", "hypothesis_before": true, "hypothesis_after": true, "rollbacks": 0, "objectives": {}}},
+    "dns-redirect-chaos.toon": {"proof": "examples-proof", "expect": {"status": "completed", "hypothesis_before": true, "hypothesis_after": true, "rollbacks": 0, "objectives": {}}},
+    "net-chaos.toon": {"proof": "examples-proof", "expect": {"status": "completed", "hypothesis_before": true, "hypothesis_after": true, "rollbacks": 0, "objectives": {}}},
+    "api-malformed-input.toon": {"proof": "examples-proof", "expect": {"status": "completed", "hypothesis_before": true, "hypothesis_after": true, "rollbacks": 0, "load_result": true, "objectives": {"survives-garbage": "met"}}},
+    "api-saturation.toon": {"proof": "examples-proof", "expect": {"status": "completed", "hypothesis_before": true, "hypothesis_after": true, "rollbacks": 0, "load_result": true, "objectives": {"health-survives": "met", "recovers": "met"}}},
+    "checkout-spike-oha.toon": {"proof": "examples-proof", "expect": {"status": "completed", "hypothesis_before": true, "hypothesis_after": true, "rollbacks": 0, "load_result": true, "objectives": {"p99-spike": "met", "spike-errors": "met"}}},
+    "checkout-ramp-k6.toon": {"proof": "examples-proof", "expect": {"status": "completed", "hypothesis_before": true, "hypothesis_after": true, "rollbacks": 0, "load_result": true, "objectives": {"p95-under-load": "met", "errors": "met"}}},
+    "checkout-soak-oha.toon": {"proof": "validate-only", "reason": "runs for two hours; scripts/proof/rip-phase4 proves the soak profile in minutes"},
+    "aws-fis-experiment.toon": {"proof": "validate-only", "reason": "needs an AWS account with a FIS experiment template"},
+    "azure-chaos.toon": {"proof": "validate-only", "reason": "needs an Azure subscription with a Chaos Studio experiment"},
+    "k8s-pod-chaos.toon": {"proof": "validate-only", "reason": "needs a Kubernetes cluster"},
+    "k8s-pod-latency.toon": {"proof": "validate-only", "reason": "needs a Kubernetes cluster"},
+    "k8s-pod-stress.toon": {"proof": "validate-only", "reason": "needs a Kubernetes cluster"},
+    "k8s-zone-failover.toon": {"proof": "validate-only", "reason": "needs a Kubernetes cluster with nodes in two zones"}
+  }
+}

@@ -4,18 +4,22 @@
 // comparisons). CI still applies -D warnings to it.
 #![allow(clippy::pedantic)]
 
-//! `tumult-report` — report model, self-contained HTML renderer and a
-//! tokio-interval scheduler producing reports from semantic metric
-//! definitions over a read-only store connection.
+//! `tumult-report` — the metric digest: its model, the builder that reads
+//! the numbers of semantic metric definitions over a read-only store
+//! connection, and a self-contained HTML renderer.
 
 pub mod narrative;
+mod show;
+mod trend;
 
-use std::path::PathBuf;
 use std::time::Duration;
 
+use serde_json::Value;
+use tumult_compliance::html::fmt_datetime;
+use tumult_compliance::svg::render_svg;
+use tumult_compliance::ChartSpec;
 use tumult_lake::{Reader, StoreError};
-use tumult_metrics::{to_sql, MetricDef, MetricsError};
-use tumult_otel::logging::{bounded, err};
+use tumult_metrics::{to_sql, to_sql_bucketed, MetricDef, MetricsError, Unit};
 
 /// Report errors.
 #[derive(Debug, thiserror::Error)]
@@ -26,15 +30,30 @@ pub enum ReportError {
     Metrics(#[from] MetricsError),
 }
 
+/// The value of a metric in each of a row of equal stretches of time.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Trend {
+    /// The stretch of time one point covers, in words: `day`, `5 minutes`.
+    pub per: String,
+    /// The start of each stretch in epoch nanoseconds and the value in it,
+    /// the oldest first.
+    pub points: Vec<(i64, f64)>,
+}
+
 /// One report section.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Section {
-    /// A headline number, Rill-style, with an optional delta vs. the
-    /// previous window.
+    /// A headline number, Rill-style.
     Kpi {
         label: String,
         value: String,
+        /// What the value did against the period before, when the digest
+        /// has a period.
         delta: Option<String>,
+        /// What the number measures, in a sentence.
+        about: Option<String>,
+        /// The value over the period, drawn as a small line.
+        trend: Option<Trend>,
     },
     /// A plain table.
     Table {
@@ -43,11 +62,11 @@ pub enum Section {
     },
     /// Prose (deterministic in v1; LLM-narrated in later phases).
     Narrative { text: String },
-    /// A reference to a live chart in the web UI; renders as a sparkline
-    /// placeholder in the static digest.
-    ChartRef {
-        metric: String,
-        dimension: Option<String>,
+    /// The value of a metric for each group of its dimensions, drawn as
+    /// bars under `title`.
+    Bars {
+        title: String,
+        bars: Vec<(String, f64)>,
     },
 }
 
@@ -56,7 +75,28 @@ pub enum Section {
 pub struct Report {
     pub title: String,
     pub generated_at_ns: i64,
+    /// The `[start_ns, end_ns)` the numbers are about; `None` for all data.
+    pub period: Option<(i64, i64)>,
     pub sections: Vec<Section>,
+}
+
+/// The title of the digest the daemon writes every `interval`.
+#[must_use]
+pub fn digest_title(interval: Duration) -> String {
+    format!("Tumult digest — last {}", stretch(interval.as_secs()))
+}
+
+/// A stretch of `seconds` in words, in the largest unit it is a whole
+/// number of: `7 days`, `hour`, `90 seconds`.
+fn stretch(seconds: u64) -> String {
+    let (count, unit) = [(86_400, "day"), (3_600, "hour"), (60, "minute")]
+        .into_iter()
+        .find(|(size, _)| seconds.is_multiple_of(*size))
+        .map_or((seconds, "second"), |(size, unit)| (seconds / size, unit));
+    if count == 1 {
+        return unit.to_string();
+    }
+    format!("{count} {unit}s")
 }
 
 fn escape_html(text: &str) -> String {
@@ -67,59 +107,101 @@ fn escape_html(text: &str) -> String {
         .replace('\'', "&#39;")
 }
 
-/// Render a report as a clean, self-contained HTML digest (inline CSS,
-/// muted design, sparkline placeholder divs). Suitable for email.
+/// The card of a headline number: its name, its value, and when the digest
+/// has them its change, what it measures and its trend.
+fn kpi_html(
+    label: &str,
+    value: &str,
+    delta: Option<&str>,
+    about: Option<&str>,
+    trend: Option<&Trend>,
+) -> String {
+    let part = |class: &str, text: Option<&str>| {
+        text.map_or(String::new(), |text| {
+            format!(r#"<div class="{class}">{}</div>"#, escape_html(text))
+        })
+    };
+    format!(
+        r#"<div class="kpi"><div class="kpi-label">{}</div><div class="kpi-value">{}</div>{}{}{}</div>"#,
+        escape_html(label),
+        escape_html(value),
+        part("delta", delta),
+        trend.map_or(String::new(), trend_html),
+        part("kpi-about", about),
+    )
+}
+
+/// The small line of a trend, and the stretch of time one point covers.
+fn trend_html(trend: &Trend) -> String {
+    format!(
+        r#"<div class="trend">{}<span class="trend-per">per {}</span></div>"#,
+        render_svg(&ChartSpec::Sparkline(trend.points.clone())),
+        escape_html(&trend.per),
+    )
+}
+
+fn table_html(headers: &[String], rows: &[Vec<String>]) -> String {
+    let mut out = String::from("<table><thead><tr>");
+    for header in headers {
+        out.push_str(&format!("<th>{}</th>", escape_html(header)));
+    }
+    out.push_str("</tr></thead><tbody>");
+    for row in rows {
+        out.push_str("<tr>");
+        for cell in row {
+            out.push_str(&format!("<td>{}</td>", escape_html(cell)));
+        }
+        out.push_str("</tr>");
+    }
+    out.push_str("</tbody></table>");
+    out
+}
+
+fn bars_html(title: &str, bars: &[(String, f64)]) -> String {
+    format!(
+        r#"<div class="chart"><div class="chart-label">{}</div>{}</div>"#,
+        escape_html(title),
+        render_svg(&ChartSpec::Bars(bars.to_vec())),
+    )
+}
+
+fn section_html(section: &Section) -> String {
+    match section {
+        Section::Kpi {
+            label,
+            value,
+            delta,
+            about,
+            trend,
+        } => kpi_html(
+            label,
+            value,
+            delta.as_deref(),
+            about.as_deref(),
+            trend.as_ref(),
+        ),
+        Section::Table { headers, rows } => table_html(headers, rows),
+        Section::Narrative { text } => format!("<p>{}</p>", escape_html(text)),
+        Section::Bars { title, bars } => bars_html(title, bars),
+    }
+}
+
+/// The line under the title: the period of the digest and when it was made.
+fn meta_line(report: &Report) -> String {
+    let period = match report.period {
+        Some((start, end)) => {
+            format!("Period: {} to {}", fmt_datetime(start), fmt_datetime(end))
+        }
+        None => "All data".to_string(),
+    };
+    format!("{period} · made {}", fmt_datetime(report.generated_at_ns))
+}
+
+/// Render a report as a clean, self-contained HTML digest: inline CSS and
+/// inline SVG charts, nothing loaded from elsewhere.
 #[must_use]
 pub fn render_html(report: &Report) -> String {
-    let mut body = String::new();
-    for section in &report.sections {
-        match section {
-            Section::Kpi {
-                label,
-                value,
-                delta,
-            } => {
-                let delta_html = delta.as_ref().map_or(String::new(), |d| {
-                    format!(r#"<span class="delta">{}</span>"#, escape_html(d))
-                });
-                body.push_str(&format!(
-                    r#"<div class="kpi"><div class="kpi-label">{}</div><div class="kpi-value">{}</div>{delta_html}<div class="sparkline" data-metric="{}"></div></div>"#,
-                    escape_html(label),
-                    escape_html(value),
-                    escape_html(label),
-                ));
-            }
-            Section::Table { headers, rows } => {
-                body.push_str("<table><thead><tr>");
-                for h in headers {
-                    body.push_str(&format!("<th>{}</th>", escape_html(h)));
-                }
-                body.push_str("</tr></thead><tbody>");
-                for row in rows {
-                    body.push_str("<tr>");
-                    for cell in row {
-                        body.push_str(&format!("<td>{}</td>", escape_html(cell)));
-                    }
-                    body.push_str("</tr>");
-                }
-                body.push_str("</tbody></table>");
-            }
-            Section::Narrative { text } => {
-                body.push_str(&format!("<p>{}</p>", escape_html(text)));
-            }
-            Section::ChartRef { metric, dimension } => {
-                let dim = dimension.as_deref().unwrap_or("");
-                body.push_str(&format!(
-                    r#"<div class="chart-ref"><div class="sparkline" data-metric="{}" data-dimension="{}"></div><div class="chart-label">{} by {}</div></div>"#,
-                    escape_html(metric),
-                    escape_html(dim),
-                    escape_html(metric),
-                    escape_html(dim),
-                ));
-            }
-        }
-    }
-
+    let body: String = report.sections.iter().map(section_html).collect();
     format!(
         r#"<!DOCTYPE html>
 <html lang="en">
@@ -131,17 +213,18 @@ pub fn render_html(report: &Report) -> String {
          max-width: 44rem; color: #1c1e21; background: #fafafa; }}
   h1 {{ font-size: 1.25rem; font-weight: 600; }}
   .meta {{ color: #6b7280; font-size: 0.8rem; margin-bottom: 1.5rem; }}
-  .kpi {{ display: inline-block; background: #fff; border: 1px solid #e5e7eb;
-         border-radius: 6px; padding: 0.75rem 1rem; margin: 0 0.75rem 0.75rem 0;
-         min-width: 8rem; }}
+  .kpi {{ display: inline-block; vertical-align: top; background: #fff;
+         border: 1px solid #e5e7eb; border-radius: 6px; padding: 0.75rem 1rem;
+         margin: 0 0.75rem 0.75rem 0; width: 12rem; }}
   .kpi-label {{ color: #6b7280; font-size: 0.75rem; text-transform: uppercase;
                letter-spacing: 0.05em; }}
   .kpi-value {{ font-size: 1.5rem; font-weight: 600; }}
-  .delta {{ color: #6b7280; font-size: 0.8rem; }}
-  .sparkline {{ height: 2rem; background: repeating-linear-gradient(90deg,
-      #e5e7eb 0, #e5e7eb 2px, transparent 2px, transparent 8px); margin-top: 0.5rem; }}
-  .chart-ref {{ margin: 1rem 0; }}
-  .chart-label {{ color: #6b7280; font-size: 0.8rem; margin-top: 0.25rem; }}
+  .delta, .kpi-about, .trend-per, .chart-label {{ color: #6b7280; font-size: 0.8rem; }}
+  .trend {{ margin-top: 0.5rem; }}
+  .trend svg {{ vertical-align: middle; margin-right: 0.4rem; }}
+  .kpi-about {{ margin-top: 0.5rem; }}
+  .chart {{ margin: 1rem 0; }}
+  .chart-label {{ margin-bottom: 0.4rem; }}
   table {{ border-collapse: collapse; width: 100%; background: #fff; margin: 1rem 0; }}
   th, td {{ text-align: left; padding: 0.4rem 0.6rem; border-bottom: 1px solid #e5e7eb;
            font-size: 0.9rem; }}
@@ -150,67 +233,40 @@ pub fn render_html(report: &Report) -> String {
 </head>
 <body>
 <h1>{title}</h1>
-<div class="meta">generated at {generated} (epoch ns)</div>
+<div class="meta">{meta}</div>
 {body}
 </body>
 </html>"#,
         title = escape_html(&report.title),
-        generated = report.generated_at_ns,
-        body = body,
+        meta = escape_html(&meta_line(report)),
     )
 }
 
 /// Format a JSON value (from the store's `row_to_json` rows) for display.
-fn fmt_value(value: &serde_json::Value) -> String {
+fn fmt_value(value: &Value) -> String {
     match value {
-        serde_json::Value::Null => "—".to_string(),
-        serde_json::Value::Number(n) => {
-            if let Some(f) = n.as_f64() {
-                if f.fract() == 0.0 && f.abs() < 1e15 {
-                    format!("{}", f as i64)
-                } else {
-                    format!("{f:.3}")
-                }
-            } else {
-                n.to_string()
-            }
-        }
+        Value::Null => "—".to_string(),
+        Value::Number(n) => n.as_f64().map_or_else(|| n.to_string(), show::number),
         other => other.to_string().trim_matches('"').to_string(),
     }
 }
 
-/// Environment predicate confining a metric query to a principal's
-/// environment scopes, mirroring the API layer: `spans` binds
-/// `target_environment` directly (it lives on the root span), the
-/// `metric_*` tables reach it through `experiment_name` correlation against
-/// the root spans. `None` when unscoped (empty set = all environments).
-fn env_predicate(table: &str, envs: &[String]) -> Option<String> {
-    if envs.is_empty() {
-        return None;
-    }
-    let list = envs
-        .iter()
-        .map(|e| format!("'{}'", e.replace('\'', "''")))
-        .collect::<Vec<_>>()
-        .join(", ");
-    Some(if table == "spans" {
-        format!("target_environment IN ({list})")
-    } else {
-        format!(
-            "EXISTS (SELECT 1 FROM spans se \
-             WHERE se.experiment_name = {table}.experiment_name \
-               AND se.target_environment IN ({list}))"
-        )
-    })
+/// The value of a metric in `unit` for display: a number in its unit,
+/// anything else as it is.
+fn shown(unit: Option<Unit>, value: &Value) -> String {
+    value
+        .as_f64()
+        .map_or_else(|| fmt_value(value), |number| show::value(unit, number))
 }
 
-/// Insert an environment predicate into SQL compiled by
-/// `tumult_metrics::to_sql` (`SELECT … FROM <table>` + optional `WHERE` +
-/// optional `GROUP BY … ORDER BY …`): appended to the existing WHERE clause
-/// or added as a fresh one, always before any GROUP BY. Unchanged when
-/// `envs` is empty (unscoped).
+/// Insert the environment predicate of `table`
+/// ([`tumult_lake::scope::table_predicate`]) into SQL compiled by
+/// `tumult_metrics::to_sql` or `to_sql_bucketed` (`SELECT … FROM <table>` +
+/// optional `WHERE` + optional `GROUP BY … ORDER BY …`): appended to the
+/// existing WHERE clause or added as a fresh one, always before any GROUP
+/// BY. Unchanged when `envs` is empty (unscoped).
 fn confine_sql(sql: &str, table: &str, envs: &[String]) -> String {
-    let Some(pred) = env_predicate(table, envs) else {
+    let Some(pred) = tumult_lake::scope::table_predicate(table, envs) else {
         return sql.to_string();
     };
     let (head, tail) = match sql.find("\nGROUP BY") {
@@ -221,6 +277,141 @@ fn confine_sql(sql: &str, table: &str, envs: &[String]) -> String {
         format!("{head}\n  AND ({pred}){tail}")
     } else {
         format!("{head}\nWHERE ({pred}){tail}")
+    }
+}
+
+/// One metric, read from the store for a reader of the environments `envs`.
+struct Source<'a> {
+    reader: &'a Reader,
+    def: &'a MetricDef,
+    envs: &'a [String],
+}
+
+impl Source<'_> {
+    /// The rows of `sql`, confined to the environments of the reader.
+    fn rows(&self, sql: &str) -> Result<Vec<Value>, ReportError> {
+        let confined = confine_sql(sql, &self.def.source_table, self.envs);
+        Ok(self.reader.query_json_rows(&confined)?)
+    }
+
+    /// The value of the metric over the whole of `period`, whatever its
+    /// dimensions: the headline number describes everything, the groups
+    /// are its breakdown. `Null` when the store has no value.
+    fn headline(&self, period: Option<(i64, i64)>) -> Result<Value, ReportError> {
+        let mut whole = self.def.clone();
+        whole.dimensions = Vec::new();
+        let rows = self.rows(&to_sql(&whole, &[], period)?)?;
+        let value = rows.first().and_then(|row| row.get("value"));
+        Ok(value.cloned().unwrap_or(Value::Null))
+    }
+
+    /// What the value `now` of `period` did against the period of the same
+    /// length just before it. A digest over all data has no period before,
+    /// and a number without a value has nothing to compare.
+    fn change(
+        &self,
+        now: &Value,
+        period: Option<(i64, i64)>,
+    ) -> Result<Option<String>, ReportError> {
+        let (Some(now), Some((start, end))) = (now.as_f64(), period) else {
+            return Ok(None);
+        };
+        let before = self.headline(Some((start - (end - start), start)))?;
+        Ok(Some(show::change(self.def.unit, now, before.as_f64())))
+    }
+
+    /// The value over `period` in equal stretches of time. One stretch with
+    /// a value is a number, not a trend: `None` below two points.
+    fn trend(&self, period: Option<(i64, i64)>) -> Result<Option<Trend>, ReportError> {
+        let (width, per) = trend::width_for(period);
+        let rows = self.rows(&to_sql_bucketed(self.def, width, &[], period)?)?;
+        let found: Vec<(i64, f64)> = rows.iter().filter_map(trend::point_of).collect();
+        let points = if trend::counts(&self.def.measure) {
+            trend::filled(&found, width, period)
+        } else {
+            found
+        };
+        if points.len() < 2 {
+            return Ok(None);
+        }
+        Ok(Some(Trend {
+            per: per.to_string(),
+            points,
+        }))
+    }
+
+    /// The headline number of the metric over `period`.
+    fn kpi(&self, period: Option<(i64, i64)>) -> Result<Section, ReportError> {
+        let now = self.headline(period)?;
+        Ok(Section::Kpi {
+            label: self.def.name.clone(),
+            value: shown(self.def.unit, &now),
+            delta: self.change(&now, period)?,
+            about: self.def.description.clone(),
+            trend: self.trend(period)?,
+        })
+    }
+
+    /// The groups of a metric with dimensions over `period`: a table of
+    /// them and, when there are any, their bars.
+    fn breakdown(&self, period: Option<(i64, i64)>) -> Result<Vec<Section>, ReportError> {
+        if self.def.dimensions.is_empty() {
+            return Ok(Vec::new());
+        }
+        let rows = self.rows(&to_sql(self.def, &[], period)?)?;
+        let mut sections = vec![self.table(&rows)];
+        sections.extend(self.bars(&rows));
+        Ok(sections)
+    }
+
+    /// The value of each dimension of the group `row`.
+    fn group_of(&self, row: &Value) -> Vec<String> {
+        let cell = |dimension| {
+            row.get(dimension)
+                .map_or_else(|| "—".to_string(), fmt_value)
+        };
+        self.def.dimensions.iter().map(cell).collect()
+    }
+
+    fn table(&self, rows: &[Value]) -> Section {
+        let value_of = |row: &Value| shown(self.def.unit, row.get("value").unwrap_or(&Value::Null));
+        Section::Table {
+            headers: self
+                .def
+                .dimensions
+                .iter()
+                .cloned()
+                .chain(std::iter::once("value".to_string()))
+                .collect(),
+            rows: rows
+                .iter()
+                .map(|row| {
+                    let mut cells = self.group_of(row);
+                    cells.push(value_of(row));
+                    cells
+                })
+                .collect(),
+        }
+    }
+
+    /// A bar for each group that has a value; `None` when no group has one.
+    fn bars(&self, rows: &[Value]) -> Option<Section> {
+        let found = |row: &Value| {
+            let value = row.get("value")?.as_f64()?;
+            Some((self.group_of(row).join(" / "), value))
+        };
+        let (groups, values): (Vec<String>, Vec<f64>) = rows.iter().filter_map(found).unzip();
+        if groups.is_empty() {
+            return None;
+        }
+        let (sizes, unit) = show::bars(self.def.unit, &values);
+        let what = format!("{} by {}", self.def.name, self.def.dimensions.join(", "));
+        let title = match unit {
+            Some(unit) => format!("{what} ({unit})"),
+            None => what,
+        };
+        let bars = groups.into_iter().zip(sizes).collect();
+        Some(Section::Bars { title, bars })
     }
 }
 
@@ -254,64 +445,9 @@ pub fn build_report_scoped(
 ) -> Result<Report, ReportError> {
     let mut sections = Vec::new();
     for def in defs {
-        let sql = confine_sql(&to_sql(def, &[], time_range)?, &def.source_table, envs);
-        let rows = reader.query_json_rows(&sql)?;
-        // The headline number must describe the whole window, so for
-        // dimensioned defs it comes from an ungrouped query (the grouped
-        // rows below become the breakdown table).
-        let value_row = if def.dimensions.is_empty() {
-            rows.first().cloned()
-        } else {
-            let mut ungrouped = def.clone();
-            ungrouped.dimensions = Vec::new();
-            let ungrouped_sql = confine_sql(
-                &to_sql(&ungrouped, &[], time_range)?,
-                &ungrouped.source_table,
-                envs,
-            );
-            reader.query_json_rows(&ungrouped_sql)?.into_iter().next()
-        };
-        let value = value_row
-            .as_ref()
-            .and_then(|r| r.get("value"))
-            .map_or_else(|| "—".to_string(), fmt_value);
-        sections.push(Section::Kpi {
-            label: def.name.clone(),
-            value,
-            // TODO(report): compute delta vs. the previous window.
-            delta: None,
-        });
-        if !def.dimensions.is_empty() {
-            // Dimensioned metrics render their groups as a real table so the
-            // digest shows the breakdown (e.g. which experiments ran), not
-            // just a chart placeholder.
-            let headers: Vec<String> = def
-                .dimensions
-                .iter()
-                .cloned()
-                .chain(std::iter::once("value".to_string()))
-                .collect();
-            let table_rows = rows
-                .iter()
-                .map(|row| {
-                    def.dimensions
-                        .iter()
-                        .map(|d| row.get(d).map_or_else(|| "—".to_string(), fmt_value))
-                        .chain(std::iter::once(
-                            row.get("value").map_or_else(|| "—".to_string(), fmt_value),
-                        ))
-                        .collect()
-                })
-                .collect();
-            sections.push(Section::Table {
-                headers,
-                rows: table_rows,
-            });
-            sections.push(Section::ChartRef {
-                metric: def.name.clone(),
-                dimension: def.dimensions.first().cloned(),
-            });
-        }
+        let source = Source { reader, def, envs };
+        sections.push(source.kpi(time_range)?);
+        sections.extend(source.breakdown(time_range)?);
     }
     let generated_at_ns = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -319,83 +455,9 @@ pub fn build_report_scoped(
     Ok(Report {
         title: title.to_string(),
         generated_at_ns,
+        period: time_range,
         sections,
     })
-}
-
-/// Produces reports on a tokio interval, reading through a fresh read-only
-/// connection per tick (so it never fights the writer).
-pub struct Scheduler {
-    store_path: PathBuf,
-    defs: Vec<MetricDef>,
-    interval: Duration,
-    title: String,
-}
-
-impl Scheduler {
-    #[must_use]
-    pub fn new(
-        store_path: PathBuf,
-        defs: Vec<MetricDef>,
-        interval: Duration,
-        title: String,
-    ) -> Self {
-        Self {
-            store_path,
-            defs,
-            interval,
-            title,
-        }
-    }
-
-    /// Run forever, emitting a report per tick. Reports are logged via
-    /// `tracing` in v1; delivery (email/webhook/file spool) is Phase 2
-    /// // TODO(report): plumb report delivery targets.
-    pub async fn run(self) {
-        let mut ticker = tokio::time::interval(self.interval);
-        loop {
-            ticker.tick().await;
-            log_tick(&self.produce_once());
-        }
-    }
-
-    fn produce_once(&self) -> Result<Report, ReportError> {
-        let store = tumult_lake::Store::open(&self.store_path)?;
-        let reader = store.read_only()?;
-        build_report(&reader, &self.defs, &self.title, None)
-    }
-}
-
-/// Logs the outcome of one scheduler tick.
-fn log_tick(outcome: &Result<Report, ReportError>) {
-    match outcome {
-        Ok(report) => tracing::info!(
-            name: "report.scheduled.produced",
-            {
-                report.title = %bounded(&report.title),
-                report.kpis = %bounded(&kpi_summary(report)),
-            },
-            "scheduled report produced"
-        ),
-        Err(error) => tracing::warn!(
-            name: "report.scheduled.failed",
-            { error.message = %err(error) },
-            "scheduled report failed"
-        ),
-    }
-}
-
-/// The report's headline numbers as `label=value, label=value`.
-fn kpi_summary(report: &Report) -> String {
-    report
-        .sections
-        .iter()
-        .filter_map(|section| match section {
-            Section::Kpi { label, value, .. } => Some(format!("{label}={value}")),
-            _ => None,
-        })
-        .collect::<Vec<_>>()
-        .join(", ")
 }
 
 #[cfg(test)]
@@ -407,11 +469,32 @@ mod tests {
         MetricDef {
             name: "experiment_count".into(),
             description: None,
+            unit: None,
             source_table: table.into(),
             measure: Measure::Count,
             dimensions,
             time_col: "ts_ns".into(),
             condition: None,
+        }
+    }
+
+    /// A headline number with nothing but its name and its value.
+    fn bare_kpi(label: &str, value: &str) -> Section {
+        Section::Kpi {
+            label: label.into(),
+            value: value.into(),
+            delta: None,
+            about: None,
+            trend: None,
+        }
+    }
+
+    fn report_of(sections: Vec<Section>) -> Report {
+        Report {
+            title: "Resilience digest".into(),
+            generated_at_ns: 1_774_980_000_000_000_000,
+            period: None,
+            sections,
         }
     }
 
@@ -491,68 +574,141 @@ mod tests {
     }
 
     #[test]
-    fn render_contains_kpi_value_and_escapes_html() {
-        let report = Report {
-            title: "Resilience digest".into(),
-            generated_at_ns: 1_774_980_000_000_000_000,
-            sections: vec![
-                Section::Kpi {
-                    label: "hypothesis_pass_rate".into(),
-                    value: "0.875".into(),
-                    delta: Some("+2.1%".into()),
-                },
-                Section::Narrative {
-                    text: "<script>alert('xss')</script> & friends".into(),
-                },
-                Section::Table {
-                    headers: vec!["target".into()],
-                    rows: vec![vec!["<b>pg</b>".into()]],
-                },
-            ],
+    fn a_scoped_report_counts_the_metric_points_of_its_experiments_only() {
+        let d = tempfile::TempDir::new().unwrap();
+        let store = tumult_lake::Store::open(&d.path().join("k.duckdb")).unwrap();
+        let root = |id: &str, env: &str| tumult_lake::SpanRow {
+            ts_ns: 1,
+            trace_id: format!("trace-{id}"),
+            span_id: format!("span-{id}-root"),
+            span_name: "resilience.experiment".into(),
+            experiment_id: Some(id.into()),
+            experiment_name: Some(id.into()),
+            target_environment: Some(env.into()),
+            events: "[]".into(),
+            ..Default::default()
         };
+        let point = |experiment: Option<&str>, ts: i64| tumult_lake::MetricSumRow {
+            ts_ns: ts,
+            metric_name: "tumult.experiments.total".into(),
+            value: 1.0,
+            experiment_name: experiment.map(str::to_string),
+            ..Default::default()
+        };
+        let writer = store.writer().unwrap();
+        writer
+            .insert_spans(&[root("exp-dev", "dev"), root("exp-prd", "prod")])
+            .unwrap();
+        // Two points of the dev experiment, one of the prod experiment and
+        // one of no experiment, which no scope reaches.
+        writer
+            .insert_metric_sums(&[
+                point(Some("exp-dev"), 1),
+                point(Some("exp-dev"), 2),
+                point(Some("exp-prd"), 3),
+                point(None, 4),
+            ])
+            .unwrap();
+        let reader = store.read_only().unwrap();
+        let defs = vec![count_def("metric_sums", vec![])];
+        let kpi_value = |report: &Report| match &report.sections[0] {
+            Section::Kpi { value, .. } => value.clone(),
+            other => panic!("expected KPI section, got {other:?}"),
+        };
+
+        let global = build_report(&reader, &defs, "t", None).unwrap();
+        let scoped = build_report_scoped(&reader, &defs, "t", None, &["dev".to_string()]).unwrap();
+
+        assert_eq!(kpi_value(&global), "4");
+        assert_eq!(kpi_value(&scoped), "2");
+    }
+
+    #[test]
+    fn render_contains_kpi_value_and_escapes_html() {
+        let report = report_of(vec![
+            Section::Kpi {
+                label: "hypothesis_pass_rate".into(),
+                value: "87.5%".into(),
+                delta: Some("+2.1 points vs the period <before>".into()),
+                about: Some("Runs that met their <hypothesis>.".into()),
+                trend: None,
+            },
+            Section::Narrative {
+                text: "<script>alert('xss')</script> & friends".into(),
+            },
+            Section::Table {
+                headers: vec!["target".into()],
+                rows: vec![vec!["<b>pg</b>".into()]],
+            },
+            Section::Bars {
+                title: "runs by <target>".into(),
+                bars: vec![("<i>pg</i>".into(), 2.0)],
+            },
+        ]);
         let html = render_html(&report);
-        assert!(html.contains("0.875"));
-        assert!(html.contains("hypothesis_pass_rate"));
-        assert!(html.contains("Resilience digest"));
+        assert!(html.contains(r#"<div class="kpi-value">87.5%</div>"#));
+        assert!(html.contains(r#"<div class="kpi-label">hypothesis_pass_rate</div>"#));
+        assert!(html.contains("<h1>Resilience digest</h1>"));
+        assert!(
+            html.contains(r#"<div class="delta">+2.1 points vs the period &lt;before&gt;</div>"#)
+        );
+        assert!(html
+            .contains(r#"<div class="kpi-about">Runs that met their &lt;hypothesis&gt;.</div>"#));
         // Untrusted text is escaped.
         assert!(!html.contains("<script>"));
         assert!(html.contains("&lt;script&gt;"));
         assert!(!html.contains("<b>pg</b>"));
         assert!(html.contains("&lt;b&gt;pg&lt;/b&gt;"));
-        // Sparkline placeholders exist for KPI cards.
-        assert!(html.contains("class=\"sparkline\""));
+        assert!(html.contains(r#"<div class="chart-label">runs by &lt;target&gt;</div>"#));
+        assert!(!html.contains("<i>pg</i>"));
+        assert!(html.contains("&lt;i&gt;pg&lt;/i&gt;"));
     }
 
     #[test]
-    fn render_kpi_without_delta_and_chart_refs() {
-        let report = Report {
-            title: "t".into(),
-            generated_at_ns: 0,
-            sections: vec![
-                Section::Kpi {
-                    label: "experiment_count".into(),
-                    value: "7".into(),
-                    delta: None,
-                },
-                Section::ChartRef {
-                    metric: "deviation_rate".into(),
-                    dimension: Some("target".into()),
-                },
-                Section::ChartRef {
-                    metric: "mttr".into(),
-                    dimension: None,
-                },
-            ],
-        };
+    fn a_bare_number_has_no_change_no_trend_and_no_text_about_it() {
+        let html = render_html(&report_of(vec![bare_kpi("experiment_count", "7")]));
+
+        assert!(
+            html.contains(r#"<div class="kpi-value">7</div></div>"#),
+            "{html}"
+        );
+        assert!(!html.contains(r#"class="delta""#));
+        assert!(!html.contains(r#"class="kpi-about""#));
+        assert!(!html.contains(r#"class="trend""#));
+    }
+
+    #[test]
+    fn the_trend_of_a_number_is_drawn_in_its_card_with_what_a_point_covers() {
+        let day = 86_400_000_000_000;
+        let html = render_html(&report_of(vec![Section::Kpi {
+            label: "experiment_count".into(),
+            value: "4".into(),
+            delta: None,
+            about: None,
+            trend: Some(Trend {
+                per: "day".into(),
+                points: vec![(0, 1.0), (day, 3.0)],
+            }),
+        }]));
+
+        assert!(
+            html.contains("<polyline points='3.0,25.0 117.0,3.0'"),
+            "{html}"
+        );
+        assert!(
+            html.contains(r#"</svg><span class="trend-per">per day</span></div>"#),
+            "{html}"
+        );
+    }
+
+    #[test]
+    fn the_page_is_titled_and_escaped_in_its_head_too() {
+        let mut report = report_of(Vec::new());
+        report.title = "a <b> digest".into();
+
         let html = render_html(&report);
-        // No delta means no delta span at all.
-        assert!(!html.contains("class=\"delta\""));
-        // Dimensioned chart ref names both metric and dimension.
-        assert!(html.contains(r#"data-metric="deviation_rate" data-dimension="target""#));
-        assert!(html.contains("deviation_rate by target"));
-        // A dimensionless ref renders an empty dimension placeholder.
-        assert!(html.contains(r#"data-metric="mttr" data-dimension="""#));
-        assert!(html.contains("mttr by"));
+
+        assert!(html.contains("<title>a &lt;b&gt; digest</title>"), "{html}");
     }
 
     #[test]
@@ -568,86 +724,12 @@ mod tests {
     }
 
     #[test]
-    fn scheduler_produces_a_report_from_the_store() {
-        let d = tempfile::TempDir::new().unwrap();
-        let path = d.path().join("k.duckdb");
-        {
-            let store = tumult_lake::Store::open(&path).unwrap();
-            store
-                .writer()
-                .unwrap()
-                .insert_spans(&[tumult_lake::SpanRow {
-                    ts_ns: 1,
-                    trace_id: "trace-1".into(),
-                    span_id: "span-1".into(),
-                    span_name: "resilience.experiment".into(),
-                    span_kind: "Internal".into(),
-                    service_name: "tumult".into(),
-                    experiment_id: Some("exp-1".into()),
-                    experiment_name: Some("exp-1".into()),
-                    events: "[]".into(),
-                    ..Default::default()
-                }])
-                .unwrap();
-        } // store dropped: the scheduler opens its own read-only connection
-
-        let scheduler = Scheduler::new(
-            path,
-            vec![count_def("spans", vec![])],
-            Duration::from_secs(60),
-            "scheduled digest".into(),
+    fn a_value_that_is_not_a_number_is_shown_as_it_is() {
+        assert_eq!(
+            shown(Some(Unit::Seconds), &serde_json::json!("soon")),
+            "soon"
         );
-        let report = scheduler.produce_once().unwrap();
-        assert_eq!(report.title, "scheduled digest");
-        match &report.sections[0] {
-            Section::Kpi { value, .. } => assert_eq!(value, "1"),
-            other => panic!("expected KPI section, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn a_produced_scheduled_report_is_a_named_event_with_its_kpis() {
-        let report = Report {
-            title: "weekly digest".into(),
-            generated_at_ns: 1,
-            sections: vec![
-                Section::Kpi {
-                    label: "experiment_count".into(),
-                    value: "6".into(),
-                    delta: None,
-                },
-                Section::Table {
-                    headers: vec!["experiment".into()],
-                    rows: vec![vec!["pg-failover".into()]],
-                },
-                Section::Kpi {
-                    label: "pass_rate".into(),
-                    value: "0.875".into(),
-                    delta: None,
-                },
-            ],
-        };
-        let logs = tumult_otel::logging::testing::capture_json(tracing::Level::INFO, || {
-            log_tick(&Ok(report));
-        });
-        let event = &logs.named("report.scheduled.produced")[0];
-        assert_eq!(event["level"], "INFO");
-        assert_eq!(event["report.title"], "weekly digest");
-        assert_eq!(event["report.kpis"], "experiment_count=6, pass_rate=0.875");
-    }
-
-    #[test]
-    fn a_failed_scheduled_report_is_a_named_warning_with_the_cause() {
-        let failure = ReportError::Store(StoreError::StoreLocked {
-            path: PathBuf::from("/var/lib/tumult/lake.duckdb"),
-        });
-        let logs = tumult_otel::logging::testing::capture_json(tracing::Level::INFO, || {
-            log_tick(&Err(failure));
-        });
-        let event = &logs.named("report.scheduled.failed")[0];
-        assert_eq!(event["level"], "WARN");
-        let cause = event["error.message"].as_str().unwrap();
-        assert!(cause.contains("locked"), "{cause}");
-        assert!(event.get("error").is_none(), "legacy field: {event}");
+        assert_eq!(shown(Some(Unit::Seconds), &Value::Null), "—");
+        assert_eq!(shown(Some(Unit::Seconds), &serde_json::json!(2)), "2.0 s");
     }
 }

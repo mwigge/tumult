@@ -19,8 +19,12 @@ use crate::telemetry;
 use super::{AnalyticsStore, StoreStats};
 
 impl AnalyticsStore {
-    /// Purge experiments (and their activities) older than `days` from now.
-    /// Returns the number of experiments removed.
+    /// Purge the runs older than `days` from now, in one transaction: each
+    /// run's `experiments` row, every row the ingest of its journal wrote
+    /// beside it, and the graph nodes of the run alone. Telemetry, the run
+    /// registry and its audit trail, manual records, forecasts, sightings
+    /// and the autopilot tables are kept. Returns the number of
+    /// experiments removed.
     ///
     /// # Errors
     ///
@@ -40,22 +44,20 @@ impl AnalyticsStore {
             })?;
         let cutoff_ns = now_ns.saturating_sub(retention_ns);
 
-        // Delete activity results for old experiments first
-        self.conn.execute(
-            "DELETE FROM activity_results WHERE experiment_id IN \
-             (SELECT experiment_id FROM experiments WHERE started_at_ns < ?)",
-            params![cutoff_ns],
-        )?;
-
-        // Delete old experiments
-        let mut stmt = self
-            .conn
-            .prepare("DELETE FROM experiments WHERE started_at_ns < ? RETURNING experiment_id")?;
-        let mut rows = stmt.query(params![cutoff_ns])?;
-        let mut count = 0;
-        while rows.next()?.is_some() {
-            count += 1;
-        }
+        // One transaction: the old experiments rows, then every other row
+        // their runs hold.
+        let count = self.in_transaction(|| {
+            let mut stmt = self.conn.prepare(
+                "DELETE FROM experiments WHERE started_at_ns < ? RETURNING experiment_id",
+            )?;
+            let ids = stmt
+                .query_map(params![cutoff_ns], |row| row.get::<_, String>(0))?
+                .collect::<Result<Vec<_>, _>>()?;
+            for id in &ids {
+                super::ingest::delete_run_rows(&self.conn, id)?;
+            }
+            Ok(ids.len())
+        })?;
         let remaining = self.experiment_count().unwrap_or(0);
         telemetry::event_purge_completed(count, remaining);
         Ok(count)
@@ -223,19 +225,22 @@ impl AnalyticsStore {
 
     /// Run `work` in one transaction: kept when it succeeds, undone when
     /// it fails.
-    fn in_transaction(
+    fn in_transaction<T>(
         &self,
-        work: impl FnOnce() -> Result<(), AnalyticsError>,
-    ) -> Result<(), AnalyticsError> {
+        work: impl FnOnce() -> Result<T, AnalyticsError>,
+    ) -> Result<T, AnalyticsError> {
         self.conn.execute_batch("BEGIN TRANSACTION")?;
-        if let Err(e) = work() {
-            if let Err(rollback) = self.conn.execute_batch("ROLLBACK") {
-                tracing::warn!(error.message = %rollback, "lake.import.rollback_failed");
+        let done = match work() {
+            Ok(done) => done,
+            Err(e) => {
+                if let Err(rollback) = self.conn.execute_batch("ROLLBACK") {
+                    tracing::warn!(error.message = %rollback, "lake.maintenance.rollback_failed");
+                }
+                return Err(e);
             }
-            return Err(e);
-        }
+        };
         self.conn.execute_batch("COMMIT")?;
-        Ok(())
+        Ok(done)
     }
 
     /// Import the rows of `path` the table does not hold yet: the file is
@@ -380,7 +385,7 @@ const EXPERIMENTS: Imported = Imported {
     key: &["experiment_id"],
 };
 const ACTIVITIES: Imported = Imported {
-    table: "activity_results",
+    table: super::ingest::ACTIVITY_RESULTS.table,
     key: &[
         "experiment_id",
         "name",
@@ -391,12 +396,12 @@ const ACTIVITIES: Imported = Imported {
 };
 /// A run has one load result.
 const LOAD_RESULTS: Imported = Imported {
-    table: "load_results",
+    table: super::ingest::LOAD_RESULTS.table,
     key: &["experiment_id"],
 };
 /// One value of one series of one run at one instant.
 const PROBE_SAMPLES: Imported = Imported {
-    table: "probe_samples",
+    table: super::ingest::PROBE_SAMPLES.table,
     key: &["experiment_id", "probe_name", "phase", "ts_ns"],
 };
 
@@ -503,6 +508,221 @@ mod tests {
             .query("SELECT count(*) FROM activity_results WHERE experiment_id = 'old-1'")
             .unwrap();
         assert_eq!(rows[0][0], "0");
+    }
+
+    /// 2020-01-01, older than any retention a test purges by.
+    const LONG_AGO_NS: i64 = 1_577_836_800_000_000_000;
+
+    /// The definition of the drill: one fault on one service, mapped to
+    /// DORA Art. 25.
+    fn drill() -> Experiment {
+        Experiment {
+            title: "Purge drill".into(),
+            method: vec![Activity {
+                name: "inject-latency".into(),
+                activity_type: ActivityType::Action,
+                provider: Provider::Native {
+                    plugin: "tumult-net".into(),
+                    function: "inject_latency".into(),
+                    arguments: std::collections::HashMap::from([(
+                        "upstream".into(),
+                        serde_json::Value::String("demo-app:8080".into()),
+                    )]),
+                },
+                ..Default::default()
+            }],
+            regulatory: Some(RegulatoryMapping {
+                frameworks: vec!["DORA".into()],
+                requirements: vec![RegulatoryRequirement {
+                    id: "Art. 25".into(),
+                    description: "Testing of ICT tools and systems".into(),
+                    evidence: "scenario-based fault injection".into(),
+                }],
+            }),
+            ..Default::default()
+        }
+    }
+
+    /// A deviated run of the drill that leaves a row in every table an
+    /// ingest writes: a load with its windows, probe samples, an NFR
+    /// verdict, and a deviation node.
+    fn drill_run(id: &str, started_at_ns: i64) -> Journal {
+        let mut journal = load_run(id);
+        journal.experiment_title = "Purge drill".into();
+        journal.status = ExperimentStatus::Deviated;
+        journal.started_at_ns = started_at_ns;
+        journal.probe_samples = vec![ProbeSample {
+            probe: "health".into(),
+            phase: SamplePhase::During,
+            ts_ns: started_at_ns,
+            duration_ms: 120,
+            ok: true,
+        }];
+        journal.objectives = Some(ObjectiveOutcome {
+            rto_target_s: Some(900.0),
+            rpo_target_s: None,
+            rto_measured_s: Some(42.5),
+            rpo_measured_s: None,
+            verdicts: vec![NfrVerdict {
+                nfr_id: "rto".into(),
+                kind: NfrKind::Rto,
+                metric: "recovery.mttr_s".into(),
+                operator: NfrOperator::Lte,
+                threshold: 900.0,
+                observed: Some(42.5),
+                state: NfrState::Met,
+                margin: Some(857.5),
+                criticality: NfrCriticality::Blocking,
+            }],
+        });
+        journal
+    }
+
+    /// A store with an old and a new run of the drill, both ingested with
+    /// the definition.
+    fn drill_store() -> AnalyticsStore {
+        let s = AnalyticsStore::in_memory().unwrap();
+        let now = chrono::Utc::now().timestamp_nanos_opt().unwrap();
+        for journal in [drill_run("old-1", LONG_AGO_NS), drill_run("new-1", now)] {
+            assert!(s
+                .ingest_journal_with_experiment(&journal, Some(&drill()))
+                .unwrap());
+        }
+        s
+    }
+
+    /// Every table an ingest writes rows of one run to, with the column
+    /// that holds the run's id.
+    const BY_RUN: [(&str, &str); 6] = [
+        ("experiments", "experiment_id"),
+        ("activity_results", "experiment_id"),
+        ("load_results", "experiment_id"),
+        ("probe_samples", "experiment_id"),
+        ("nfr_verdicts", "experiment_id"),
+        ("graph_edges", "run_id"),
+    ];
+
+    /// The rows of run `id` in each table of [`BY_RUN`].
+    fn table_rows_of_run(s: &AnalyticsStore, id: &str) -> Vec<Vec<String>> {
+        BY_RUN
+            .iter()
+            .map(|(table, key)| {
+                rows_of(
+                    s,
+                    &format!("SELECT * FROM {table} WHERE {key} = '{id}' ORDER BY ALL"),
+                )
+            })
+            .collect()
+    }
+
+    /// The rows of run `id`, table by table, then the graph nodes of the
+    /// run alone.
+    fn rows_of_run(s: &AnalyticsStore, id: &str) -> Vec<Vec<String>> {
+        let mut rows = table_rows_of_run(s, id);
+        rows.push(rows_of(
+            s,
+            &format!("SELECT id FROM graph_nodes WHERE id IN ('run:{id}', 'dev:{id}') ORDER BY id"),
+        ));
+        rows
+    }
+
+    const SHARED_NODES: &str = "SELECT id FROM graph_nodes WHERE id IN \
+         ('exp:Purge drill', 'fault:tumult-net::inject_latency', 'svc:demo-app') ORDER BY id";
+
+    #[test]
+    fn a_purge_removes_every_row_of_the_old_run_and_keeps_the_new_run() {
+        let s = drill_store();
+        let old = rows_of_run(&s, "old-1");
+        assert!(old.iter().all(|rows| !rows.is_empty()), "{old:?}");
+        assert_eq!(old[6], ["dev:old-1", "run:old-1"]);
+        let new = rows_of_run(&s, "new-1");
+
+        assert_eq!(s.purge_older_than_days(30).unwrap(), 1);
+
+        let left = rows_of_run(&s, "old-1");
+        assert!(left.iter().all(Vec::is_empty), "{left:?}");
+        assert_eq!(rows_of_run(&s, "new-1"), new);
+        // The nodes the runs share stay.
+        assert_eq!(
+            rows_of(&s, SHARED_NODES),
+            [
+                "exp:Purge drill",
+                "fault:tumult-net::inject_latency",
+                "svc:demo-app"
+            ]
+        );
+    }
+
+    #[test]
+    fn a_purge_of_two_old_runs_removes_both_and_counts_two() {
+        let s = drill_store();
+        let second = drill_run("old-2", LONG_AGO_NS + 1);
+        assert!(s
+            .ingest_journal_with_experiment(&second, Some(&drill()))
+            .unwrap());
+        let new = rows_of_run(&s, "new-1");
+
+        assert_eq!(s.purge_older_than_days(30).unwrap(), 2);
+
+        for id in ["old-1", "old-2"] {
+            let left = rows_of_run(&s, id);
+            assert!(left.iter().all(Vec::is_empty), "{id}: {left:?}");
+        }
+        assert_eq!(rows_of_run(&s, "new-1"), new);
+    }
+
+    #[test]
+    fn a_purge_that_fails_part_way_removes_nothing() {
+        let s = drill_store();
+        let old = rows_of_run(&s, "old-1");
+        // Without its graph nodes table the store fails the last delete of
+        // a purge, after the rows of every other table were deleted.
+        s.conn.execute_batch("DROP TABLE graph_nodes").unwrap();
+
+        assert!(s.purge_older_than_days(30).is_err());
+
+        let mut kept = table_rows_of_run(&s, "old-1");
+        kept.push(old[6].clone());
+        assert_eq!(kept, old);
+    }
+
+    /// The number of rows of each table of the store, by table name.
+    fn row_counts(s: &AnalyticsStore) -> std::collections::BTreeMap<String, String> {
+        let tables = rows_of(
+            s,
+            "SELECT table_name FROM information_schema.tables \
+             WHERE table_schema = 'main' AND table_type = 'BASE TABLE' ORDER BY table_name",
+        );
+        tables
+            .into_iter()
+            .map(|table| {
+                let count = rows_of(s, &format!("SELECT count(*) FROM {table}"));
+                (table, count.concat())
+            })
+            .collect()
+    }
+
+    #[test]
+    fn the_run_tables_name_every_table_an_ingest_writes_a_run_to() {
+        let s = AnalyticsStore::in_memory().unwrap();
+        let before = row_counts(&s);
+        s.ingest_journal_with_experiment(&drill_run("old-1", LONG_AGO_NS), Some(&drill()))
+            .unwrap();
+
+        let after = row_counts(&s);
+        let written: Vec<&str> = after
+            .iter()
+            .filter(|(table, count)| before.get(*table) != Some(count))
+            .map(|(table, _)| table.as_str())
+            .collect();
+        let mut named: Vec<&str> = super::super::ingest::RUN_TABLES
+            .iter()
+            .map(|run_table| run_table.table)
+            .collect();
+        // The run itself, and the nodes it owns (see `run_node_ids`).
+        named.extend(["experiments", "graph_nodes"]);
+        named.sort_unstable();
+        assert_eq!(written, named);
     }
 
     #[test]

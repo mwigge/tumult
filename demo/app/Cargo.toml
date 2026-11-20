@@ -50,7 +50,7 @@ tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
 
 # Keep clippy strict without denying at build time (avoids breaking the Docker
-# build on a future pedantic lint). The verify step runs `clippy -D warnings`.
+# build on a future pedantic lint). `make demo-test` runs `clippy -D warnings`.
 [lints.clippy]
 pedantic = "warn"
 

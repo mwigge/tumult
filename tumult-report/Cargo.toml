@@ -1,11 +1,13 @@
 [package]
 name = "tumult-report"
-description = "Report model, HTML renderer and scheduled report producer"
+description = "Metric digest: report model, builder and HTML renderer"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [dependencies]
+# The SVG charts and the readable time of the compliance reports.
+tumult-compliance.workspace = true
 tumult-intelligence.workspace = true
 tumult-lake.workspace = true
 tumult-metrics.workspace = true
@@ -17,3 +19,5 @@ tracing.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+# The telemetry and journals of real runs, for the digest kept with the tests.
+tumult-test-utils = { path = "../tumult-test-utils", features = ["recorded"] }

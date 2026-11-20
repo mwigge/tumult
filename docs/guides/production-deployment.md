@@ -117,12 +117,12 @@ terminate TLS at the proxy (gRPC needs HTTP/2 passthrough — e.g.
 OIDC proxy in front. With TLS unset, any non-loopback bind logs a loud
 `TLS is OFF` warning at startup.
 
-One caveat with a proxy: `tumultd` rate-limits logins by client IP, and
-behind a proxy every request arrives from the proxy's address — so all
-users share a single rate-limit bucket. That's the conservative option
-(one slow brute-force lockout for everyone), and it's fine to accept. If
-per-user limits matter, run without a proxy or let the proxy handle auth
-itself. Note that `tumultd` deliberately does **not** trust
+One caveat with a proxy: `tumultd` rate-limits failed logins by client IP
+and username, and behind a proxy every request arrives from the proxy's
+address. So all clients that try one username share one rate-limit bucket.
+That's the conservative option (one slow brute-force lockout of that
+username for everyone), and it's fine to accept. If per-client limits
+matter, run without a proxy or let the proxy handle auth itself. Note that `tumultd` deliberately does **not** trust
 `X-Forwarded-For` — clients can spoof that header, which would let an
 attacker reset their own bucket or pin the limit on someone else.
 
@@ -370,14 +370,19 @@ its bootstrap API token and requires a successful store check.
 | Metric | Type | Meaning |
 |---|---|---|
 | `tumultd_runs_started_total` | counter | Runs that began execution. |
-| `tumultd_runs_completed_total` | counter | Runs that reached a completed terminal state (journal written). |
+| `tumultd_runs_completed_total` | counter | Runs that ended with their journal stored, whatever the status of the run. |
 | `tumultd_runs_failed_total` | counter | Runs that failed (validation, dispatch refusal, runner error). |
 | `tumultd_webhook_deliveries_succeeded_total` | counter | Webhook events delivered. |
 | `tumultd_webhook_deliveries_failed_total` | counter | Webhook deliveries that failed (retried under backoff until dead-lettered). |
 | `tumultd_webhook_dead_letters_total` | counter | Events abandoned to `webhook_dead_letters` — **permanent delivery loss**. |
 | `tumultd_schedule_fires_total` | counter | Schedule fires. |
+| `tumultd_malformed_entity_ids_total` | counter | Resources received with a malformed `ict.entity.id`. |
+| `tumultd_score_snapshots_skipped_total` | counter | Daily score snapshots not stored while defaults stood in for a refused org file. |
 | `tumultd_active_campaigns` | gauge | GameDay campaigns currently advancing. |
 | `tumultd_supervisor_last_tick_ns` | gauge | Last supervisor heartbeat, epoch ns. |
+
+The entity event metrics (`tumultd_entity_*`) are described in the
+[entity events guide](entity-events.md).
 
 **Suggested alert thresholds** (tune to your traffic; chaos runs fail by
 design, so rates matter more than single increments):
@@ -420,9 +425,10 @@ scrape_configs:
 A provider appearing in `discover` means its implementation is available; it
 does not establish access to a target or prove that dependencies are installed.
 Docker actions require access to a Docker daemon; Podman actions need Podman.
-CLI, MCP and daemon wire the k6 load executor. Load experiments still need a
-compatible k6 binary and a readable script; missing tools or startup failures
-reject execution before the fault method runs. Cloud and Windows
+CLI, MCP and daemon run a declared load with the adapter of its `load.tool`
+(k6 or oha). Load experiments still need that tool installed and, for k6, a
+readable script; missing tools or startup failures reject execution before
+the fault method runs. Cloud and Windows
 providers require their own credentials, platform and reachability. The demo
 stack does not grant host Docker control automatically.
 

@@ -5,19 +5,33 @@
 //! enriching the span with result metrics when the load test is stopped.
 
 use super::{LoadExecutor, LoadHandle, RunConfig, RunnerError, TRACER_NAME};
-use crate::types::{Experiment, LoadResult};
+use crate::types::{Experiment, LoadConfig, LoadResult};
 
 use opentelemetry::trace::{TraceContextExt, Tracer};
 use opentelemetry::KeyValue;
+
+/// The adapter that runs `load`: the one the run was given, else the one
+/// of the tool the load names. Experiments and game days both ask here. A
+/// tool without an adapter is a [`RunnerError::LoadStart`].
+pub(super) fn executor_for(
+    load: &LoadConfig,
+    config: &RunConfig,
+) -> Result<std::sync::Arc<dyn LoadExecutor>, RunnerError> {
+    if let Some(executor) = &config.load_executor {
+        return Ok(executor.clone());
+    }
+    super::load_executor_for(&load.tool).map_err(RunnerError::LoadStart)
+}
 
 /// Start the background load test (if configured) and open the
 /// `resilience.load` span.
 ///
 /// Returns the attached span guard (which must be dropped by the caller once
 /// the load result has been collected) and the running load handle, if any.
+/// A load that does not start puts its error on the load span.
 pub(super) fn start_load(
     experiment: &Experiment,
-    config: &RunConfig,
+    load_executor: Option<&std::sync::Arc<dyn LoadExecutor>>,
 ) -> Result<(Option<opentelemetry::ContextGuard>, Option<LoadHandle>), RunnerError> {
     let load_tracer = opentelemetry::global::tracer(TRACER_NAME);
     let load_span_guard = if let Some(ref load_config) = experiment.load {
@@ -42,8 +56,8 @@ pub(super) fn start_load(
         None
     };
 
-    let load_handle = if let (Some(ref load_config), Some(ref load_exec)) =
-        (&experiment.load, &config.load_executor)
+    let load_handle = if let (Some(ref load_config), Some(load_exec)) =
+        (&experiment.load, load_executor)
     {
         match load_exec.start(load_config) {
             Ok(handle) => {
@@ -55,6 +69,11 @@ pub(super) fn start_load(
                 Some(handle)
             }
             Err(e) => {
+                let span_cx = opentelemetry::Context::current();
+                let span = span_cx.span();
+                span.set_attribute(KeyValue::new("resilience.load.error", e.clone()));
+                span.set_status(opentelemetry::trace::Status::error(e.clone()));
+                tracing::error!(error = %e, tool = %load_config.tool, "failed to start load test");
                 return Err(RunnerError::LoadStart(e));
             }
         }

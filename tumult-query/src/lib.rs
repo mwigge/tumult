@@ -17,7 +17,7 @@ pub use autopilot::{
     autopilot_class_history, autopilot_decision, autopilot_decisions, autopilot_decisions_since,
     autopilot_last_enacted_on, change_events_since,
 };
-pub use graph::{graph_neighbors, graph_query, tested_action_names};
+pub use graph::{graph_neighbors, graph_query, tested_faults};
 pub use topology::{graph_edges_by_rels, graph_nodes_with_attrs, NodeAttrs};
 
 #[cfg(test)]
@@ -28,6 +28,7 @@ pub(crate) fn sample_journal(
     use tumult_core::types::*;
     Journal {
         target_version: None,
+        target: None,
         experiment_title: format!("Test {id}"),
         experiment_id: id.into(),
         status,

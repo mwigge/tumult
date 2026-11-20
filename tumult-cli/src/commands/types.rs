@@ -24,7 +24,7 @@ pub enum ReportFormat {
     Pdf,
     /// JSON (raw journal serialized via `serde_json`)
     Json,
-    /// `JUnit` XML (one testcase per activity across all phases)
+    /// `JUnit` XML (one testcase per step and one per check of the steady state)
     Junit,
 }
 
@@ -133,11 +133,22 @@ pub fn parse_var_args(
     Ok(map)
 }
 
-/// Builds a `LoadConfig` override from CLI flags.
+/// What the `--load` flags of `tumult run` do to the load of the file.
+#[derive(Debug, Clone, PartialEq)]
+pub enum LoadOverride {
+    /// No `--load` flag: the run keeps the load of the file.
+    Keep,
+    /// `--load none`: the run has no load, also when the file has one.
+    Remove,
+    /// A real load tool: this load takes the place of the file's.
+    Replace(tumult_core::types::LoadConfig),
+}
+
+/// Builds the [`LoadOverride`] of the CLI flags.
 ///
-/// Returns `None` if `--load none` was specified (explicitly disable load).
-/// Returns `None` if no `--load` flag was given at all (use experiment default).
-/// Returns `Some(config)` if a real load tool was specified (override experiment).
+/// Returns [`LoadOverride::Remove`] if `--load none` was specified (explicitly disable load).
+/// Returns [`LoadOverride::Keep`] if no `--load` flag was given at all (use experiment default).
+/// Returns [`LoadOverride::Replace`] if a real load tool was specified (override experiment).
 ///
 /// # Errors
 ///
@@ -147,15 +158,15 @@ pub fn build_load_override(
     script: Option<std::path::PathBuf>,
     vus: Option<u32>,
     duration: Option<String>,
-) -> anyhow::Result<Option<tumult_core::types::LoadConfig>> {
+) -> anyhow::Result<LoadOverride> {
     // --load none explicitly disables
     if matches!(tool, Some(LoadToolArg::None)) {
-        return Ok(None);
+        return Ok(LoadOverride::Remove);
     }
 
     // No --load flag at all → no override
     let Some(tool) = tool else {
-        return Ok(None);
+        return Ok(LoadOverride::Keep);
     };
     let script = script.unwrap_or_else(|| std::path::PathBuf::from("load.js"));
     let duration_s = duration.map(|d| parse_duration_str(&d)).transpose()?;
@@ -166,7 +177,7 @@ pub fn build_load_override(
         LoadToolArg::None => unreachable!(),
     };
 
-    Ok(Some(tumult_core::types::LoadConfig {
+    Ok(LoadOverride::Replace(tumult_core::types::LoadConfig {
         tool: load_tool,
         script,
         vus: Some(vus.unwrap_or(10)),

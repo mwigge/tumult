@@ -1,5 +1,5 @@
 title: Checkout API sheds load instead of collapsing at saturation
-description: A robustness run that drives the service past its capacity. A ramp from 10 to 400 concurrent users over 90 s, then 30 s at the top, while a cpu-stress action takes half the cores; the service may slow down and refuse work (429/503 count as answered), but the health probe must keep answering and the process must survive.
+description: A robustness run that drives the service past its capacity. A ramp from 10 to 400 concurrent users over 90 s, then 30 s at the top, while stress-ng takes CPU inside the service's container (through Pumba); the service may slow down and refuse work (429/503 count as answered), but the health probe must keep answering and the process must survive.
 
 tags[3]: robustness, saturation, checkout
 kind: robustness
@@ -23,7 +23,7 @@ nfr[2]:
 
 load:
   tool: oha
-  script: http://127.0.0.1:8080/api/checkout
+  script: http://127.0.0.1:8080/checkout/1
   vus: 400
   duration_s: 120
   profile:
@@ -49,18 +49,18 @@ method[2]:
     provider:
       type: process
       path: sh
-      arguments[2]: "-c", "stress-ng --cpu $(( $(nproc) / 2 )) --timeout 120s"
-      timeout_s: 130.0
+      arguments[2]: "-c", "docker run --rm --name tumult-saturation-stress -v /var/run/docker.sock:/var/run/docker.sock ghcr.io/alexei-led/pumba:latest stress --duration 120s --stressors '--cpu 2 --timeout 120s' demo-app"
+      timeout_s: 180.0
   - name: process-still-up
     activity_type: probe
     provider:
       type: process
       path: sh
-      arguments[2]: "-c", "sleep 120 && pgrep -f checkout-api >/dev/null && echo alive"
+      arguments[2]: "-c", "sleep 120 && docker inspect -f '{{.State.Running}}' demo-app"
       timeout_s: 130.0
     tolerance:
       type: regex
-      pattern: "alive"
+      pattern: "true"
 
 rollbacks[1]:
   - name: stop-stress
@@ -68,5 +68,5 @@ rollbacks[1]:
     provider:
       type: process
       path: sh
-      arguments[2]: "-c", "pkill -f stress-ng || true"
+      arguments[2]: "-c", "docker stop tumult-saturation-stress 2>/dev/null || true"
       timeout_s: 10.0

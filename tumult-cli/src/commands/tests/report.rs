@@ -32,9 +32,9 @@ async fn report_generates_html_file() {
 
     let content = std::fs::read_to_string(&report_path).unwrap();
     assert!(content.contains("<!DOCTYPE html>"));
-    assert!(content.contains("Tumult Experiment Report"));
-    assert!(content.contains("CLI test experiment"));
-    assert!(content.contains("Activity Timeline"));
+    assert!(content.contains(r#"<p class="eyebrow">Tumult run report</p>"#));
+    assert!(content.contains("<h1>CLI test experiment</h1>"));
+    assert!(content.contains(r#"<section id="steps">"#));
 }
 
 // The cwd guard must cover the awaited report call (the cwd is read inside
@@ -159,7 +159,7 @@ fn json_report_is_valid_and_roundtrips() {
 #[test]
 fn html_trace_ui_base_renders_clickable_full_id_link() {
     let journal = journal_with_failure();
-    let html = generate_html_report(&journal, Some("https://tempo.example/"), "deadbeef");
+    let html = html_report(&journal, Some("https://tempo.example/"), "deadbeef");
     // Uses the FULL trace_id in the href (not the 16-char display truncation),
     // and the trailing slash on the base is trimmed.
     assert!(html.contains(
@@ -172,7 +172,7 @@ fn html_trace_ui_base_renders_clickable_full_id_link() {
 #[test]
 fn html_without_trace_ui_base_is_plain_text() {
     let journal = journal_with_failure();
-    let html = generate_html_report(&journal, None, "deadbeef");
+    let html = html_report(&journal, None, "deadbeef");
     assert!(!html.contains("<a class=\"trace-link\""));
     assert!(html.contains(r#"<span class="trace-link">aabbccddeeff0011</span>"#));
 }
@@ -180,7 +180,7 @@ fn html_without_trace_ui_base_is_plain_text() {
 #[test]
 fn html_surfaces_failure_detail() {
     let journal = journal_with_failure();
-    let html = generate_html_report(&journal, None, "deadbeef");
+    let html = html_report(&journal, None, "deadbeef");
     assert!(html.contains(r#"<span class="detail-error">connection refused on port 5432</span>"#));
     // No fabricated diagnostic command is emitted (the core path has no such field).
     assert!(!html.contains("tumult replay --trace"));
@@ -191,15 +191,15 @@ fn html_surfaces_failure_detail() {
 #[test]
 fn html_footer_has_version_and_hash() {
     let journal = journal_with_failure();
-    let html = generate_html_report(&journal, None, "0123abcd0123abcd");
+    let html = html_report(&journal, None, "0123abcd0123abcd");
     assert!(html.contains(concat!("Tumult</strong> v", env!("CARGO_PKG_VERSION"))));
-    assert!(html.contains("Report generated:"));
+    assert!(html.contains("Report generated: 2026-11-17T00:00:00Z<br>"));
     assert!(html.contains("<code>0123abcd0123abcd</code>"));
 }
 
 #[test]
 fn html_footer_names_the_resilience_intelligence_platform() {
-    let html = generate_html_report(&journal_with_failure(), None, "hash");
+    let html = html_report(&journal_with_failure(), None, "hash");
     assert!(html.contains("Rust-native resilience intelligence platform"));
     assert!(!html.contains("chaos engineering platform"));
 }
@@ -258,13 +258,14 @@ fn compliance_runs_over_journal_with_mttr() {
 
     result.unwrap();
     let out = printed.stdout;
-    assert!(out.contains("  Pass rate: 100.0%\n"), "{out}");
     assert!(
-        out.contains("  Recovery compliance: 100.0% (MTTR<="),
+        out.contains(
+            "  Pass rate: 100.0%\n  \
+             Recovery within 30s: 100.0% of the runs that watched for recovery (1 of 1)\n  \
+             Evidence verdict: COMPLIANT\n"
+        ),
         "{out}"
     );
-    assert!(out.contains("  Evidence verdict: COMPLIANT\n"), "{out}");
-    assert!(!out.contains("pass rate ONLY"), "{out}");
 }
 
 #[test]
@@ -274,10 +275,31 @@ fn the_provenance_hash_of_an_unreadable_journal_is_an_error_not_a_hash() {
 
     let err = crate::commands::report::source_hash(&missing).unwrap_err();
     assert!(format!("{err:#}").contains("gone.toon"), "{err:#}");
+}
 
-    let present = dir.path().join("journal.toon");
-    std::fs::write(&present, b"status: completed\n").unwrap();
-    let hash = crate::commands::report::source_hash(&present).unwrap();
-    assert_eq!(hash.len(), 16);
-    assert!(hash.chars().all(|c| c.is_ascii_hexdigit()), "{hash}");
+/// The digest of `abc` in FIPS 180-2, appendix B.1.
+const SHA256_OF_ABC: &str = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+
+#[test]
+fn the_provenance_hash_is_the_sha256_of_the_bytes_of_the_journal() {
+    let dir = TempDir::new().unwrap();
+    let journal = dir.path().join("journal.toon");
+    std::fs::write(&journal, b"abc").unwrap();
+
+    let hash = crate::commands::report::source_hash(&journal).unwrap();
+
+    assert_eq!(hash, SHA256_OF_ABC);
+}
+
+#[test]
+fn the_report_footer_names_the_hash_as_sha256() {
+    let html = html_report(&journal_with_failure(), None, SHA256_OF_ABC);
+
+    assert!(
+        html.contains(&format!(
+            "Source journal SHA-256: <code>{SHA256_OF_ABC}</code>"
+        )),
+        "{html}"
+    );
+    assert!(!html.contains("non-cryptographic"), "{html}");
 }

@@ -88,4 +88,13 @@ pub enum EngineError {
     /// A script provider reference is invalid (see `reason`).
     #[error("invalid script provider in activity '{activity}': {reason}")]
     InvalidScriptProvider { activity: String, reason: String },
+    /// A number of seconds the runner waits on (a timeout, a pause, the
+    /// duration of a flat load) is negative, not a number, infinite, or
+    /// longer than a duration can hold. `owner` names the step.
+    #[error("invalid {field} in {owner}: {value} is not a number of seconds from 0 up to 2^64")]
+    InvalidSeconds {
+        owner: String,
+        field: String,
+        value: f64,
+    },
 }

@@ -677,3 +677,81 @@ fn whoami_tool_error_is_protocol_error() {
         Err(McpError::Protocol(_))
     ));
 }
+
+// ── The live client against a loopback server ─────────────────
+
+/// What a loopback MCP server answers to one request of the live client: a
+/// session on `initialize`, a completed run on `tools/call`, and an empty
+/// `202 Accepted` to the notification.
+fn loopback_answer(request: &serde_json::Value) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    match request["method"].as_str() {
+        Some("initialize") => (
+            [("mcp-session-id", "loopback")],
+            axum::Json(json!({"jsonrpc": "2.0", "id": request["id"], "result": {}})),
+        )
+            .into_response(),
+        Some("tools/call") => axum::Json(json!({
+            "jsonrpc": "2.0",
+            "id": request["id"],
+            "result": {
+                "isError": false,
+                "content": [{"type": "text", "text": "status: completed"}],
+                "structuredContent": {
+                    "journal": {"status": "completed", "duration_ms": 228},
+                    "journal_path": "/demo/journal.toon",
+                    "ingestion": "ingested"
+                }
+            }
+        }))
+        .into_response(),
+        _ => axum::http::StatusCode::ACCEPTED.into_response(),
+    }
+}
+
+/// The body of every request a loopback server was sent, in order.
+type Seen = std::sync::Arc<std::sync::Mutex<Vec<serde_json::Value>>>;
+
+/// Start a loopback MCP server on a free port. Returns its base URL and what
+/// it was sent.
+async fn loopback_mcp() -> (String, Seen) {
+    let seen = Seen::default();
+    let kept = seen.clone();
+    let app = axum::Router::new().route(
+        "/mcp",
+        axum::routing::post(move |axum::Json(request): axum::Json<serde_json::Value>| {
+            let kept = kept.clone();
+            async move {
+                let answer = loopback_answer(&request);
+                kept.lock().unwrap().push(request);
+                answer
+            }
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    tokio::spawn(async move { axum::serve(listener, app).await });
+    (base, seen)
+}
+
+#[tokio::test]
+async fn a_run_replaces_the_journal_of_an_earlier_run() {
+    let (base, seen) = loopback_mcp().await;
+    let run = McpClient::new(&base, None)
+        .run_experiment("/demo/experiments/demo-net.toon")
+        .await
+        .unwrap();
+    assert_eq!(run.status, "completed");
+    let requests = seen.lock().unwrap();
+    let call = requests
+        .iter()
+        .find(|r| r["method"] == "tools/call")
+        .expect("a run is one tools/call");
+    assert_eq!(call["params"]["name"], "tumult_run_experiment");
+    // Every run of the panel writes the default journal path, and the server
+    // keeps a journal that is already there unless the call says `force`.
+    assert_eq!(
+        call["params"]["arguments"],
+        json!({"experiment_path": "/demo/experiments/demo-net.toon", "force": true})
+    );
+}

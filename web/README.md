@@ -21,8 +21,8 @@ the bar); `npm run dev` starts vite with `/api` proxied to
 
 | Choice                                                              | Why                                                                                                                                                                                                                                           |
 | ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **SvelteKit 2 + Svelte 5 (runes), adapter-static SPA**              | Small runtime, file-based routing that maps 1:1 onto the drill-down hierarchy (overview → experiment → span drawer). `ssr = false`, prerendered shells plus a `200.html` fallback served by tumultd for client-side routes.                   |
-| **ECharts, tree-shaken** (`echarts/core`, `web/src/lib/echarts.ts`) | Time-series bar, calendar heatmap (experiments/day) and donut (fault breakdown) with zoom/tooltip — only the registered chart types ship.                                                                                                     |
+| **SvelteKit 3 + Svelte 5 (runes), adapter-static SPA**              | Small runtime, file-based routing that maps 1:1 onto the drill-down hierarchy (overview → experiment → span drawer). `ssr = false`, prerendered shells plus a `200.html` fallback served by tumultd for client-side routes.                   |
+| **ECharts, tree-shaken** (`echarts/core`, `web/src/lib/echarts.ts`) | Time-series bar, calendar heatmap (runs per day) and donut (fault injections) with zoom/tooltip — only the registered chart types ship.                                                                                                       |
 | **Custom span waterfall** (`Waterfall.svelte`)                      | The signature piece: ruler, indented span tree, status-coloured duration bars (Ok emerald / Error red / Unset slate), click → drawer with attributes, events and correlated logs. Owning it lets us encode `resilience.*` semantics directly. |
 | **Hand-rolled CSS** (`lib/theme.css`)                               | Near-black Grafana-caliber theme; saturated colour is reserved for status and data. No UI framework — fewer moving parts in the embedded build.                                                                                               |
 
@@ -40,13 +40,17 @@ this size), Plotly (too heavy), generic-BI dashboard aesthetics.
 
 ## Pages
 
-- `/` — Overview: KPI cards, experiments-per-day (bar 24h / calendar heatmap
-  7d+), fault donut, target-system leaderboard.
+- `/` — Overview: KPI cards, runs per day (bar 24h / calendar heatmap
+  7d+), fault injections donut, target-system leaderboard.
 - `/experiments` — filterable run list (range, outcome, fault, target,
-  free-text); newest first.
-- `/experiments/[id]` — trace waterfall + span drawer, correlated logs,
-  metric points.
+  origin, free-text); newest first.
+- `/experiments/[id]` — the evidence of the journal (steady state,
+  objectives, steps, load, probe samples), trace waterfall + span drawer,
+  correlated logs, metric points.
 - `/ask` — NL → guarded SQL → result table; golden answers work without an
   LLM, otherwise graceful setup hint (`{configured:false}` from the API).
-- `/reports` — digests written by the daemon's `KRONIKA_REPORT_INTERVAL`
-  scheduler.
+- `/reports` — compliance reports, quick metric digests, and the digests
+  written by the daemon's `KRONIKA_REPORT_INTERVAL` scheduler.
+
+The UI has more pages than these. Each one is listed in
+`docs/reference/kronika-pages.md`.

@@ -28,7 +28,7 @@ if ! command -v tc >/dev/null 2>&1; then
     exit 1
 fi
 
-if [ -n "${TUMULT_TARGET_IP}" ]; then
+if [ -n "${TUMULT_TARGET_IP:-}" ]; then
     echo "adding ${DELAY}ms (±${JITTER}ms) latency to ${TUMULT_TARGET_IP} on ${INTERFACE}"
     tc qdisc add dev "${INTERFACE}" root handle 1: prio
     tc qdisc add dev "${INTERFACE}" parent 1:3 handle 30: netem delay "${DELAY}ms" "${JITTER}ms"

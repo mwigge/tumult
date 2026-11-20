@@ -297,9 +297,9 @@ fn failed_run_after_fault_started_rolls_back_under_default_strategy() {
 }
 
 #[test]
-fn failed_run_without_started_fault_skips_rollback_under_default_strategy() {
-    // A method containing only a (failing) observation probe never injected a
-    // fault, so there is nothing to clean up.
+fn a_method_of_one_probe_that_fails_deviates_and_rolls_back() {
+    // A probe of the method that does not hold is a deviation, with or
+    // without a fault before it, and a deviation gets its rollbacks.
     struct FailProbesExecutor;
     impl ActivityExecutor for FailProbesExecutor {
         fn execute(&self, activity: &Activity) -> ActivityOutcome {
@@ -325,11 +325,8 @@ fn failed_run_without_started_fault_skips_rollback_under_default_strategy() {
 
     let journal = run_experiment(&exp, &executor, &controls, &default_config()).unwrap();
 
-    assert_eq!(journal.status, ExperimentStatus::Failed);
-    assert!(
-        journal.rollback_results.is_empty(),
-        "no fault started → no rollback under OnDeviation"
-    );
+    assert_eq!(journal.status, ExperimentStatus::Deviated);
+    assert_eq!(journal.rollback_results.len(), 1);
 }
 
 #[test]
@@ -472,4 +469,79 @@ fn orphan_rollback_without_rollbacks_is_a_noop() {
     let results = run_orphan_rollback(&exp, &counting, &controls);
     assert!(results.is_empty());
     assert_eq!(call_count.load(Ordering::Relaxed), 0);
+}
+
+/// Cancels the run from inside the first step of `kind` it is asked to run.
+/// Every probe holds.
+struct CancelIn {
+    kind: ActivityType,
+    token: CancellationToken,
+}
+
+impl ActivityExecutor for CancelIn {
+    fn execute(&self, activity: &Activity) -> ActivityOutcome {
+        if activity.activity_type == self.kind {
+            self.token.cancel();
+        }
+        ActivityOutcome {
+            success: true,
+            output: Some("200".into()),
+            error: None,
+            duration_ms: 1,
+        }
+    }
+}
+
+/// Run an experiment with a steady state that is cancelled in its first
+/// step of `kind`.
+fn cancelled_in(kind: ActivityType) -> Journal {
+    let token = CancellationToken::new();
+    let executor: Arc<dyn ActivityExecutor> = Arc::new(CancelIn {
+        kind,
+        token: token.clone(),
+    });
+    let config = RunConfig {
+        cancellation_token: Some(token),
+        ..RunConfig::default()
+    };
+    run_experiment_with_sampling(
+        &experiment_with_hypothesis(),
+        &executor,
+        &Arc::new(ControlRegistry::new()),
+        &config,
+        &fast_sampling(),
+    )
+    .unwrap()
+}
+
+#[test]
+fn a_run_cancelled_while_it_measured_the_steady_state_keeps_the_measurement() {
+    let journal = cancelled_in(ActivityType::Probe);
+
+    assert_eq!(journal.status, ExperimentStatus::Interrupted);
+    assert!(journal.method_results.is_empty());
+    let before = journal
+        .steady_state_before
+        .expect("the steady state before the method");
+    assert_eq!(before.probe_results.len(), 1, "{before:?}");
+}
+
+#[test]
+fn a_run_interrupted_in_its_method_keeps_what_its_probes_saw_under_the_fault() {
+    let journal = cancelled_in(ActivityType::Action);
+
+    assert_eq!(journal.status, ExperimentStatus::Interrupted);
+    assert_eq!(journal.method_results.len(), 1);
+    let during = journal
+        .during_result
+        .expect("the during result of an interrupted run");
+    assert!(during.probes[0].samples > 0, "{during:?}");
+    assert!(
+        journal
+            .probe_samples
+            .iter()
+            .any(|sample| sample.phase == SamplePhase::During),
+        "{:?}",
+        journal.probe_samples
+    );
 }

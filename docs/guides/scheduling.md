@@ -24,8 +24,8 @@ background.
 - Scheduled runs go through the **normal run path** — the same tier
   classification and approval gating as `POST /api/runs` — so a scheduled
   production-tier run still parks for approval.
-- Fired runs are recorded with actor `schedule:<name>` and appear in the
-  audit trail like any other run.
+- Fired runs are recorded with the user who created the schedule as their
+  actor and appear in the audit trail like any other run.
 - Missed fires collapse: after daemon downtime a schedule fires exactly once
   on the first tick back, never a piled-up backlog. A full run queue retries
   the fire next tick; a broken definition advances the schedule anyway so it
@@ -33,7 +33,8 @@ background.
 
 ## API
 
-- `GET /api/schedules` — list every schedule, with its definition name.
+- `GET /api/schedules` — list every schedule in the caller's environments,
+  with its definition name.
 - `POST /api/schedules` — create an enabled schedule:
 
   ```json

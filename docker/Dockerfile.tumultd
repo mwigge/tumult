@@ -29,7 +29,7 @@ RUN cargo build --release --locked -p tumultd -p tumult-cli -p tumult-net \
 FROM debian:bookworm-slim
 RUN apt-get update \
     && apt-get install -y --no-install-recommends curl ca-certificates \
-        docker.io openssh-client wget psmisc procps stress-ng \
+        docker.io openssh-client wget psmisc procps stress-ng tini \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --create-home --user-group --uid 10001 kronika
 
@@ -55,6 +55,9 @@ USER kronika
 WORKDIR /data
 EXPOSE 4317 4318
 
+# tini is PID 1: it reaps the processes that experiments leave behind (a
+# killed background worker would else stay a zombie that `kill -0` finds).
 # Default: run the daemon. The demo's seed/report containers override the
 # command (tumult experiment suite / sh -c '… curl /report …').
+ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["tumultd"]

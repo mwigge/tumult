@@ -2,6 +2,8 @@
 
 use std::fmt::Write as _;
 
+use tumult_core::journal::JournalScope;
+
 use crate::error::ToolError;
 use crate::tools::StructuredReport;
 
@@ -21,9 +23,34 @@ struct TrendPoint {
     value: f64,
 }
 
+/// The start of the window `last` asks for ("30d" or "30"), in epoch
+/// nanoseconds. `None` when it asks for none.
+fn window_start_ns(last: Option<&str>) -> Result<Option<i64>, ToolError> {
+    let Some(window) = last else {
+        return Ok(None);
+    };
+    let days: i64 = window.trim_end_matches('d').parse().map_err(|_| {
+        ToolError::InvalidInput(format!(
+            "last must be a number of days (e.g., 30d), got: {window}"
+        ))
+    })?;
+    let now_ns = i64::try_from(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_nanos()),
+    )
+    .unwrap_or(i64::MAX);
+    Ok(Some(now_ns.saturating_sub(
+        days.saturating_mul(86_400 * 1_000_000_000),
+    )))
+}
+
 /// Cross-run metric trend over journals (mirrors `tumult trend`): ingests
-/// the journals into an in-memory analytics store and returns time-ordered
-/// `{ts, value}` points plus a direction verdict.
+/// the journals of the window and of the target into an in-memory analytics
+/// store and returns time-ordered `{ts, value}` points plus a direction
+/// verdict. The target is the one a journal names (its system or its
+/// technology); a journal that names none is left out of a trend by target
+/// and counted.
 ///
 /// # Errors
 ///
@@ -42,28 +69,14 @@ pub fn trend(
         )));
     }
 
-    // Parse `last` ("30d" or "30") into a nanosecond cutoff filter.
-    let time_filter = if let Some(window) = last {
-        let days: i64 = window.trim_end_matches('d').parse().map_err(|_| {
-            ToolError::InvalidInput(format!(
-                "last must be a number of days (e.g., 30d), got: {window}"
-            ))
-        })?;
-        let now_ns = i64::try_from(
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map_or(0, |d| d.as_nanos()),
-        )
-        .unwrap_or(i64::MAX);
-        let cutoff_ns = now_ns.saturating_sub(days.saturating_mul(86_400 * 1_000_000_000));
-        format!(" AND started_at_ns >= {cutoff_ns}")
-    } else {
-        String::new()
-    };
+    let mut scope = JournalScope::new(window_start_ns(last)?, target);
 
     let store =
         tumult_lake::AnalyticsStore::in_memory().map_err(|e| ToolError::Store(e.to_string()))?;
     let (loaded, skipped) = for_each_journal(journals_path, |journal| {
+        if !scope.admit(&journal) {
+            return;
+        }
         // Ingest failures surface as missing points, not tool failures.
         if let Err(error) = store.ingest_journal(&journal) {
             tracing::warn!(
@@ -78,31 +91,18 @@ pub fn trend(
     })?;
 
     // Pre-built queries keyed by metric — no interpolation of user input.
-    let base_sql = match metric {
-        "resilience_score" => "SELECT started_at_ns, resilience_score FROM experiments WHERE resilience_score IS NOT NULL",
-        "duration_ms" => "SELECT started_at_ns, duration_ms FROM experiments WHERE duration_ms IS NOT NULL",
-        "estimate_accuracy" => "SELECT started_at_ns, estimate_accuracy FROM experiments WHERE estimate_accuracy IS NOT NULL",
-        "method_step_count" => "SELECT started_at_ns, method_step_count FROM experiments WHERE method_step_count IS NOT NULL",
+    // They read every run of the store: it holds the journals of the scope
+    // only.
+    let sql = match metric {
+        "resilience_score" => "SELECT started_at_ns, resilience_score FROM experiments WHERE resilience_score IS NOT NULL ORDER BY started_at_ns",
+        "duration_ms" => "SELECT started_at_ns, duration_ms FROM experiments WHERE duration_ms IS NOT NULL ORDER BY started_at_ns",
+        "estimate_accuracy" => "SELECT started_at_ns, estimate_accuracy FROM experiments WHERE estimate_accuracy IS NOT NULL ORDER BY started_at_ns",
+        "method_step_count" => "SELECT started_at_ns, method_step_count FROM experiments WHERE method_step_count IS NOT NULL ORDER BY started_at_ns",
         _ => unreachable!("validated above"),
     };
-    // Bind the LIKE pattern as a query parameter to prevent SQL injection.
-    let target_filter = if target.is_some() {
-        " AND lower(title) LIKE ?"
-    } else {
-        ""
-    };
-    let sql = format!("{base_sql}{time_filter}{target_filter} ORDER BY started_at_ns");
-
-    let rows = if let Some(t) = target {
-        let like_pattern = format!("%{}%", t.to_lowercase());
-        store
-            .query_with_param(&sql, &like_pattern)
-            .map_err(|e| ToolError::Store(e.to_string()))?
-    } else {
-        store
-            .query(&sql)
-            .map_err(|e| ToolError::Store(e.to_string()))?
-    };
+    let rows = store
+        .query(sql)
+        .map_err(|e| ToolError::Store(e.to_string()))?;
 
     let points: Vec<TrendPoint> = rows
         .iter()
@@ -127,12 +127,19 @@ pub fn trend(
         ),
     );
     structured.insert("target".into(), serde_json::json!(target));
+    structured.insert(
+        "journals_without_target".into(),
+        serde_json::json!(scope.without_target()),
+    );
     structured.insert("verdict".into(), serde_json::json!(verdict));
 
     let mut text = String::new();
     writeln!(text, "Loaded {loaded} journal(s)").ok();
     if skipped > 0 {
         writeln!(text, "Skipped (unreadable): {skipped}").ok();
+    }
+    if let Some(note) = scope.left_out_note() {
+        writeln!(text, "{note}").ok();
     }
     writeln!(text).ok();
     if points.is_empty() {
@@ -228,8 +235,82 @@ fn trend_verdict(metric: &str, points: &[TrendPoint]) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tools::test_support::write_run_journal;
+    use crate::tools::test_support::{write_run_journal, write_run_journal_on};
     use tempfile::TempDir;
+
+    const DAY_NS: i64 = 86_400_000_000_000;
+
+    /// Make the run of the journal at `journal_path` one that started
+    /// `age_ns` ago.
+    fn start_ago(journal_path: &std::path::Path, age_ns: i64) {
+        let mut journal = tumult_core::journal::read_journal(journal_path).unwrap();
+        let now_ns = chrono::Utc::now().timestamp_nanos_opt().unwrap();
+        journal.started_at_ns = now_ns - age_ns;
+        tumult_core::journal::write_journal(&journal, journal_path).unwrap();
+    }
+
+    /// The number of points of the trend of `duration_ms` over
+    /// `journals_path`.
+    fn points_of(
+        journals_path: &std::path::Path,
+        last: Option<&str>,
+        target: Option<&str>,
+    ) -> usize {
+        let result = trend(journals_path.to_str().unwrap(), "duration_ms", last, target).unwrap();
+        result.structured["points"].as_array().unwrap().len()
+    }
+
+    /// Make the run of the journal at `journal_path` one that started at
+    /// `started_at_ns`, took `duration_ms`, ran `steps` steps, and was
+    /// analysed to `score` and `accuracy`.
+    fn measured(
+        journal_path: &std::path::Path,
+        started_at_ns: i64,
+        duration_ms: u64,
+        steps: usize,
+        score: f64,
+        accuracy: f64,
+    ) {
+        let mut journal = tumult_core::journal::read_journal(journal_path).unwrap();
+        journal.started_at_ns = started_at_ns;
+        journal.duration_ms = duration_ms;
+        journal.method_results = vec![journal.method_results[0].clone(); steps];
+        journal.analysis = Some(tumult_core::types::AnalysisResult {
+            estimate_accuracy: Some(accuracy),
+            estimate_recovery_delta_s: None,
+            trend: None,
+            resilience_score: Some(score),
+        });
+        tumult_core::journal::write_journal(&journal, journal_path).unwrap();
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn the_points_of_a_trend_are_the_values_of_its_metric_oldest_first() {
+        let journals = TempDir::new().unwrap();
+        let later = write_run_journal_on(journals.path(), "later", "orders", "mysql");
+        let earlier = write_run_journal_on(journals.path(), "earlier", "sessions", "redis");
+        measured(&later, 2_000, 700, 1, 0.9, 0.4);
+        measured(&earlier, 1_000, 300, 3, 0.5, 0.8);
+
+        for (metric, first, second, verdict) in [
+            ("resilience_score", 0.5, 0.9, "improving"),
+            ("duration_ms", 300.0, 700.0, "declining"),
+            ("estimate_accuracy", 0.8, 0.4, "declining"),
+            ("method_step_count", 3.0, 1.0, "decreasing"),
+        ] {
+            let result = trend(journals.path().to_str().unwrap(), metric, None, None).unwrap();
+
+            assert_eq!(
+                result.structured["points"],
+                serde_json::json!([
+                    { "ts": 1_000, "value": first },
+                    { "ts": 2_000, "value": second },
+                ]),
+                "{metric}"
+            );
+            assert_eq!(result.structured["verdict"], verdict, "{metric}");
+        }
+    }
 
     #[test]
     fn trend_rejects_unknown_metric_listing_values() {
@@ -263,19 +344,137 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn trend_target_filter_excludes_non_matching_titles() {
+    async fn trend_by_target_matches_the_system_or_the_technology_and_not_the_title() {
+        let journals = TempDir::new().unwrap();
+        // The title names another technology than the one the run was on.
+        write_run_journal_on(journals.path(), "postgres failover", "orders", "mysql");
+
+        for (wanted, points) in [
+            ("orders", 1),
+            ("Orders", 1),
+            ("MySQL", 1),
+            ("postgres", 0),
+            ("postgres failover", 0),
+            ("order", 0),
+        ] {
+            let result = trend(
+                journals.path().to_str().unwrap(),
+                "duration_ms",
+                None,
+                Some(wanted),
+            )
+            .unwrap();
+            assert_eq!(
+                result.structured["points"].as_array().unwrap().len(),
+                points,
+                "{wanted}"
+            );
+            assert_eq!(result.structured["target"], wanted);
+            assert_eq!(result.structured["journals_without_target"], 0);
+            assert!(!result.text.contains("Left out"), "{}", result.text);
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_trend_by_target_is_over_the_runs_on_it_and_so_is_its_summary() {
+        let journals = TempDir::new().unwrap();
+        write_run_journal_on(journals.path(), "first", "orders", "mysql");
+        write_run_journal_on(journals.path(), "second", "sessions", "redis");
+
+        let all = trend(
+            journals.path().to_str().unwrap(),
+            "method_step_count",
+            None,
+            None,
+        )
+        .unwrap();
+        assert!(all.text.contains("\nSummary: 2 runs, "), "{}", all.text);
+
+        let one = trend(
+            journals.path().to_str().unwrap(),
+            "method_step_count",
+            None,
+            Some("redis"),
+        )
+        .unwrap();
+        assert!(
+            one.text
+                .starts_with("Loaded 2 journal(s)\n\nTrend: method_step_count (1 data points)\n"),
+            "{}",
+            one.text
+        );
+        assert!(one.text.contains("\nSummary: 1 runs, "), "{}", one.text);
+        assert_eq!(one.structured["verdict"], "insufficient-data");
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_trend_by_target_leaves_out_the_journals_that_name_no_target_and_says_so() {
+        let dir = TempDir::new().unwrap();
+        let journals = dir.path().join("journals");
+        let run_dir = dir.path().join("run");
+        std::fs::create_dir_all(&journals).unwrap();
+        std::fs::create_dir_all(&run_dir).unwrap();
+        write_run_journal_on(&journals, "first", "orders", "mysql");
+        // The run of an experiment that declares no target.
+        std::fs::rename(write_run_journal(&run_dir), journals.join("plain.toon")).unwrap();
+
+        let result = trend(
+            journals.to_str().unwrap(),
+            "duration_ms",
+            None,
+            Some("orders"),
+        )
+        .unwrap();
+
+        assert_eq!(result.structured["points"].as_array().unwrap().len(), 1);
+        assert_eq!(result.structured["journals_without_target"], 1);
+        assert!(
+            result.text.starts_with(
+                "Loaded 2 journal(s)\nLeft out: 1 journal(s) that name no target (a journal \
+                 names the target its experiment declares, since 3.0.2)\n\n\
+                 Trend: duration_ms (1 data points)\n"
+            ),
+            "{}",
+            result.text
+        );
+
+        // Without a target nothing is left out.
+        let result = trend(journals.to_str().unwrap(), "duration_ms", None, None).unwrap();
+        assert_eq!(result.structured["points"].as_array().unwrap().len(), 2);
+        assert_eq!(result.structured["journals_without_target"], 0);
+        assert!(!result.text.contains("Left out"), "{}", result.text);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_window_is_counted_in_days_from_now() {
         let dir = TempDir::new().unwrap();
         let journal_path = write_run_journal(dir.path());
+        start_ago(&journal_path, 10 * DAY_NS);
+
+        assert_eq!(points_of(&journal_path, Some("30d"), None), 1);
+        assert_eq!(points_of(&journal_path, Some("11"), None), 1);
+        assert_eq!(points_of(&journal_path, Some("9d"), None), 0);
+        assert_eq!(points_of(&journal_path, None, None), 1);
+        // A window longer than time itself takes every journal.
+        assert_eq!(points_of(&journal_path, Some("999999999999999d"), None), 1);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_journal_before_the_window_is_not_left_out_for_its_target() {
+        let dir = TempDir::new().unwrap();
+        let journal_path = write_run_journal(dir.path());
+        start_ago(&journal_path, 10 * DAY_NS);
 
         let result = trend(
             journal_path.to_str().unwrap(),
             "duration_ms",
-            None,
-            Some("no-such-experiment"),
+            Some("5d"),
+            Some("orders"),
         )
         .unwrap();
+
         assert!(result.structured["points"].as_array().unwrap().is_empty());
-        assert!(result.text.contains("No data points"));
+        assert_eq!(result.structured["journals_without_target"], 0);
     }
 
     fn pts(values: &[f64]) -> Vec<TrendPoint> {
@@ -389,6 +588,7 @@ mod tests {
                 experiment_path: &experiment,
                 rollback_strategy: "always",
                 journal_path: &dir.path().join(name),
+                force: false,
                 store_path: "unused.duckdb",
                 no_ingest: true,
                 format: "toon",

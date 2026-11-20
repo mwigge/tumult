@@ -19,8 +19,16 @@ case "${OS}" in
         fi
         ;;
     Darwin)
-        # macOS — use top for CPU idle
-        top -l 1 -n 0 2>/dev/null | awk '/CPU usage/ { gsub(/%/,""); print 100 - $7 }'
+        # macOS — use top for CPU idle. top runs on its own first, so a failed
+        # top ends the probe with its status and its message.
+        TOP=$(top -l 1 -n 0)
+        BUSY=$(printf '%s\n' "${TOP}" | awk '/CPU usage/ { gsub(/%/,""); print 100 - $7 }')
+        if [ -z "${BUSY}" ]; then
+            echo "error: top printed no CPU usage line" >&2
+            printf '%s\n' "${TOP}" >&2
+            exit 1
+        fi
+        echo "${BUSY}"
         ;;
     *)
         echo "error: unsupported OS: ${OS}" >&2

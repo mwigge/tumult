@@ -1,0 +1,156 @@
+experiment_title: Checkout API rejects malformed input without falling over
+experiment_id: "19142331-bc84-4f1c-ae7e-213399f40e28"
+status: completed
+started_at_ns: 1794852795062563986
+ended_at_ns: 1794852855190457609
+duration_ms: 60127
+steady_state_before:
+  title: Checkout answers
+  met: true
+  probe_results[1]{name,activity_type,status,started_at_ns,duration_ms,trace_id,span_id}:
+    health,probe,succeeded,1794852795062583475,6,"",""
+steady_state_after:
+  title: Checkout answers
+  met: true
+  probe_results[1]{name,activity_type,status,started_at_ns,duration_ms,trace_id,span_id}:
+    health,probe,succeeded,1794852855183490978,6,"",""
+method_results[4]{name,activity_type,status,started_at_ns,duration_ms,output,trace_id,span_id}:
+  "not-a-number",probe,succeeded,1794852795070207277,8,"400","",""
+  "number-too-large",probe,succeeded,1794852795078997968,9,"400","",""
+  "badly-encoded",probe,succeeded,1794852795088350656,6,"400","",""
+  "far-too-long",probe,succeeded,1794852795094398603,9,"414","",""
+rollback_results[0]:
+rollback_failures: 0
+estimate: null
+baseline_result: null
+during_result:
+  started_at_ns: 1794852795070177122
+  ended_at_ns: 1794852855104021485
+  fault_active_s: 60.033844363
+  sample_interval_s: 1
+  probes[1]{name,samples,mean,max,min,error_rate,breach_count}:
+    health,60,7.15,21,6,0,0
+post_result:
+  started_at_ns: 1794852855104119473
+  ended_at_ns: 1794852855111205825
+  duration_s: 0.007086352
+  samples: 1
+  probes[1]{name,mean,p95,error_rate,returned_to_baseline,recovery_time_s}:
+    health,7,7,0,true,0
+  recovery_time_s: 0
+  full_recovery: true
+  mttr_s: 0
+load_result:
+  tool: oha
+  started_at_ns: 1794852795070143401
+  ended_at_ns: 1794852855183466261
+  duration_s: 60.11332286
+  vus: 5
+  throughput_rps: 53.15675245015714
+  latency_p50_ms: 93.88239499999999
+  latency_p95_ms: 130.19423799999998
+  latency_p99_ms: 139.909403
+  error_rate: 0
+  total_requests: 3194
+  thresholds_met: true
+  samples[1]:
+    - ts_ns: 1794852855183404097
+      duration_s: 60.086439686
+      vus: 5
+      throughput_rps: 53.15675245015714
+      latency_p50_ms: 93.88239499999999
+      latency_p95_ms: 130.19423799999998
+      latency_p99_ms: 139.909403
+      error_rate: 0
+      requests: 3194
+      counts:
+        sent: 3194
+        ok: 3194
+        timed_out: 0
+        transport: 0
+        http_4xx: 0
+        http_5xx: 0
+        http_other: 0
+        unclassified: 0
+      request_timeout_ms: 30000
+  execution:
+    planned_windows: 1
+    completed_windows: 1
+    requests:
+      sent: 3194
+      ok: 3194
+      timed_out: 0
+      transport: 0
+      http_4xx: 0
+      http_5xx: 0
+      http_other: 0
+      unclassified: 0
+analysis: null
+regulatory: null
+kind: robustness
+objectives:
+  rto_measured_s: 0
+  verdicts[1]{nfr_id,kind,metric,operator,threshold,observed,state,margin,criticality}:
+    "survives-garbage",availability,during.availability,gte,0.999,1,met,0.0010000000000000009,blocking
+probe_samples[61]{probe,phase,ts_ns,duration_ms,ok}:
+  health,during,1794852795070255130,17,true
+  health,during,1794852796088207668,7,true
+  health,during,1794852797095424513,16,true
+  health,during,1794852798111752222,6,true
+  health,during,1794852799118588749,11,true
+  health,during,1794852800129867456,6,true
+  health,during,1794852801136562607,6,true
+  health,during,1794852802143540987,7,true
+  health,during,1794852803151031140,6,true
+  health,during,1794852804157821716,6,true
+  health,during,1794852805164814529,6,true
+  health,during,1794852806171622814,6,true
+  health,during,1794852807178427250,7,true
+  health,during,1794852808185510143,6,true
+  health,during,1794852809192391578,6,true
+  health,during,1794852810199183347,7,true
+  health,during,1794852811206872571,6,true
+  health,during,1794852812213952675,6,true
+  health,during,1794852813220835962,6,true
+  health,during,1794852814227910648,6,true
+  health,during,1794852815234727295,7,true
+  health,during,1794852816241858081,6,true
+  health,during,1794852817248752274,7,true
+  health,during,1794852818255901480,6,true
+  health,during,1794852819262712266,6,true
+  health,during,1794852820269682462,7,true
+  health,during,1794852821276784657,7,true
+  health,during,1794852822284189931,6,true
+  health,during,1794852823290964152,7,true
+  health,during,1794852824298272782,6,true
+  health,during,1794852825305281686,6,true
+  health,during,1794852826312155026,6,true
+  health,during,1794852827319075045,7,true
+  health,during,1794852828326195659,7,true
+  health,during,1794852829333655066,6,true
+  health,during,1794852830340657220,7,true
+  health,during,1794852831347912757,6,true
+  health,during,1794852832354843224,7,true
+  health,during,1794852833362317469,9,true
+  health,during,1794852834372102075,6,true
+  health,during,1794852835378797301,6,true
+  health,during,1794852836385796246,7,true
+  health,during,1794852837392895103,7,true
+  health,during,1794852838400098316,6,true
+  health,during,1794852839406887638,6,true
+  health,during,1794852840413537973,6,true
+  health,during,1794852841420556003,6,true
+  health,during,1794852842427638440,21,true
+  health,during,1794852843448989205,6,true
+  health,during,1794852844455931862,13,true
+  health,during,1794852845469751223,6,true
+  health,during,1794852846476664134,6,true
+  health,during,1794852847483560747,6,true
+  health,during,1794852848490533664,6,true
+  health,during,1794852849497476384,6,true
+  health,during,1794852850504221597,7,true
+  health,during,1794852851512236305,7,true
+  health,during,1794852852519319758,6,true
+  health,during,1794852853526127896,7,true
+  health,during,1794852854533251911,6,true
+  health,post,1794852855104126203,7,true

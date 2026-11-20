@@ -37,6 +37,8 @@ pub mod runs;
 pub mod schedules;
 #[cfg(test)]
 mod test_logs;
+#[cfg(test)]
+mod test_store;
 pub mod webhooks;
 mod writer;
 

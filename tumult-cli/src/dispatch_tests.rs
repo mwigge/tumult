@@ -50,6 +50,7 @@ fn test_journal(id: &str) -> tumult_core::types::Journal {
     use tumult_core::types::*;
     Journal {
         target_version: None,
+        target: None,
         experiment_title: format!("dispatch {id}"),
         experiment_id: id.into(),
         status: ExperimentStatus::Completed,
@@ -358,7 +359,7 @@ async fn dispatch_report_writes_html() {
     .unwrap();
 
     let html = std::fs::read_to_string(&out).unwrap();
-    assert!(html.contains("Tumult Experiment Report"), "{html}");
+    assert!(html.contains("<title>Tumult report: "), "{html}");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

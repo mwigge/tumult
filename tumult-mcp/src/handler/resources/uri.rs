@@ -43,7 +43,7 @@ impl ResourceKind {
     pub(super) fn description(self) -> &'static str {
         match self {
             Self::Journal => "Tumult experiment journal (read as JSON: {summary, journal}).",
-            Self::Experiment => "Tumult chaos experiment definition (raw TOON).",
+            Self::Experiment => "Tumult experiment definition (raw TOON).",
             Self::Gameday => "Tumult GameDay campaign definition (raw TOON).",
         }
     }

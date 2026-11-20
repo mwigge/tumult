@@ -2,6 +2,7 @@
     import { page } from '$app/state';
     import { onMount } from 'svelte';
     import { ACTIVE_RUN_STATES, api } from '#lib/api.js';
+    import { planVars } from '#lib/run-params.js';
     import type { DryRunScope, ExperimentDetail, MeResponse, RunDetail, Span } from '#lib/types.js';
     import Waterfall from '#lib/components/Waterfall.svelte';
     import SpanDrawer from '#lib/components/SpanDrawer.svelte';
@@ -18,8 +19,10 @@
     let me = $state<MeResponse | null>(null);
     let telemetry = $state<ExperimentDetail | null>(null);
     let selected = $state<Span | null>(null);
-    // Blast-radius summary from the run's own definition+vars, fetched once
-    // via the dry-run endpoint (Viewer-level; executes nothing).
+    // The planned blast radius: the definition of the run with its vars,
+    // fetched once via the dry-run endpoint (Viewer-level; executes nothing).
+    // A registered definition never changes, so this is the plan the run
+    // had. It is not what the run did: a run can end before its method.
     let scope = $state<DryRunScope | null>(null);
     let scopeFailed = $state(false);
 
@@ -88,10 +91,7 @@
                 error = null;
                 if (!scope && !scopeFailed) {
                     try {
-                        const vars = d.run.params_json
-                            ? (JSON.parse(d.run.params_json) as Record<string, string>)
-                            : {};
-                        const r = await api.dryRun(d.run.registry_id, vars);
+                        const r = await api.dryRun(d.run.registry_id, planVars(d.run.params_json));
                         if (cancelled) return;
                         if (r.valid) scope = r.plan.scope;
                         else scopeFailed = true;
@@ -156,9 +156,13 @@
     <RunHeader {run} runId={id} {active} {canStop} {awaitingTier} {triggerActor} />
 
     {#if scope}
-        <div class="panel" style="margin-bottom: 14px">
-            <h2>Blast radius</h2>
+        <div class="panel" style="margin-bottom: 14px" data-testid="run-scope">
+            <h2>Planned blast radius</h2>
             <ScopeSummary {scope} />
+            <div class="plan-note" data-testid="run-scope-plan">
+                What the definition of this run plans to hit. It is a plan, not a measure of what
+                the run did.
+            </div>
         </div>
     {/if}
 
@@ -201,5 +205,10 @@
     .exp-link {
         margin-top: 10px;
         font-size: 12.5px;
+    }
+    .plan-note {
+        color: var(--text-faint);
+        font-size: 12.5px;
+        margin-top: 8px;
     }
 </style>

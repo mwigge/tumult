@@ -5,7 +5,7 @@ parent: Guides
 
 # Quality and release checks
 
-Tumult uses language-specific checks. Rust uses rustfmt and Clippy (including pedantic warnings); the Svelte/TypeScript UI uses Prettier, ESLint, Svelte check and Playwright; Python scripts use Black and Ruff; the PostgreSQL initialization fixture uses SQLFluff's PostgreSQL dialect. SQL embedded in Rust is verified through database tests and security review, not passed through a text formatter that cannot interpret Rust expressions.
+Tumult uses language-specific checks. Rust uses rustfmt and Clippy (including pedantic warnings); the Svelte/TypeScript UI uses Prettier, ESLint, Svelte check, Vitest and Playwright; Python scripts use Black and Ruff; the PostgreSQL initialization fixture uses SQLFluff's PostgreSQL dialect. SQL embedded in Rust is verified through database tests and security review. The layout of the lake schema SQL is linted with SQLFluff's DuckDB dialect by `scripts/lint-embedded-sql.sh`: the SQL constants of `tumult-lake/src/schema` and a kept file of the SQL its functions build.
 
 The imported analytics crates retain their existing crate-level exception for Clippy's pedantic group; ordinary Clippy warnings still fail CI. This release adds no blanket Rust lint exceptions.
 
@@ -18,24 +18,43 @@ Run these gates from the repository root:
 npm --prefix web run format:check
 npm --prefix web run lint
 npm --prefix web run check
+npm --prefix web test
 npm --prefix web run build
+npm --prefix web run build:report
+git diff --exit-code -- tumult-cli/src/commands/report/html/report-charts.js
 cargo fmt --all -- --check
-cargo clippy --workspace --all-targets --all-features --locked -- -D warnings -W clippy::pedantic
+cargo clippy --workspace --all-targets --all-features --locked -- -D warnings -W clippy::pedantic -D clippy::print_stdout -D clippy::print_stderr -D clippy::dbg_macro
+cargo check -p tumult-lake --no-default-features
 cargo test --workspace --all-features --locked
+make demo-test
+make mutants
 cargo doc --workspace --no-deps --all-features --locked
 cargo machete --with-metadata
 cargo deny check
 npm --prefix web audit --audit-level=moderate
 npm --prefix web exec -- playwright install chromium
 npm --prefix web run test:e2e
+TUMULT_BIN="$PWD/target/debug/tumult" npm --prefix web run test:report
+TUMULT_BIN="$PWD/target/debug/tumult" TUMULTD_BIN="$PWD/target/debug/tumultd" npm --prefix web run test:live
 .quality-venv/bin/black --check scripts demo/proof
 .quality-venv/bin/ruff check scripts demo/proof
 .quality-venv/bin/sqlfluff lint docker/init-postgres.sql
+bash scripts/lint-embedded-sql.sh
 python3 scripts/check-docs.py
+python3 scripts/check-citations.py
+python3 scripts/test-check-log-messages.py
+python3 scripts/check-log-messages.py
 python3 scripts/test-distribution.py
 bash -n scripts/smoke-daemon-image.sh
 python3 scripts/test-smoke-daemon-image.py
 python3 scripts/test-smoke-daemon-binary.py
+bash -n scripts/demo-check.sh
+python3 scripts/test-starmap-check.py
+python3 scripts/test-check-proof-journals.py
+bash -n scripts/demo-topology.sh
+python3 scripts/test-demo-topology.py
+python3 scripts/test-check-test-hygiene.py
+python3 scripts/check-test-hygiene.py
 ```
 
 On machines with many logical CPUs, set `CARGO_BUILD_JOBS=4` and pass `-- --test-threads=2` to Cargo tests to bound linker and DuckDB concurrency. Browser tests use one worker and the production static build. CI also enforces workspace coverage on main; its 90% floor is unchanged. A passing unit suite is not a coverage measurement or proof of remote-provider support.

@@ -15,7 +15,8 @@ pub(crate) fn generate_json_report(journal: &Journal) -> Result<String> {
     Ok(tumult_core::report::json_report(journal)?)
 }
 
-/// FIX 1: minimal `JUnit` XML — one `<testcase>` per activity across all phases.
+/// Minimal `JUnit` XML: one `<testcase>` per step of every phase and one per
+/// check of the steady state.
 pub(crate) fn generate_junit_report(journal: &Journal) -> String {
     tumult_core::report::junit_report(journal)
 }

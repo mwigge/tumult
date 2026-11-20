@@ -35,7 +35,7 @@ Script-based plugin for network fault injection. Covers latency, packet loss, co
 
 | Probe | Description | Output |
 |-------|-------------|--------|
-| `ping-latency` | Round-trip latency (ms) | Float |
+| `ping-latency` | Round-trip latency (ms) | Float. A host that does not answer fails the probe with the message of `ping` |
 | `dns-resolve` | DNS resolution check | IP address or `"failed"` |
 | `dns-latency` | DNS resolution time (ms) | Integer ms or `"error"` |
 
@@ -83,7 +83,7 @@ rollbacks[1]:
     provider:
       type: script
       plugin: tumult-network
-      action: reset-tc
+      function: reset-tc
 ```
 
 For DNS block (`/etc/hosts` + iptables):
@@ -94,7 +94,7 @@ rollbacks[1]:
     provider:
       type: script
       plugin: tumult-network
-      action: block-dns-rollback
+      function: block-dns-rollback
 ```
 
 For DNS redirect (`/etc/hosts` entries added by `redirect-dns`):
@@ -105,5 +105,5 @@ rollbacks[1]:
     provider:
       type: script
       plugin: tumult-network
-      action: redirect-dns-rollback
+      function: redirect-dns-rollback
 ```

@@ -3,7 +3,7 @@
 
 use ratatui::style::{Color, Modifier, Style};
 
-use crate::logic::StatusKind;
+use crate::logic::{StatusKind, Tone};
 
 /// Accent used for the active tab, selection, and headings.
 pub const ACCENT: Color = Color::Cyan;
@@ -12,17 +12,21 @@ pub const MUTED: Color = Color::DarkGray;
 /// Highlight background for a freshly-arrived (new since last refresh) row.
 pub const NEW_ROW_BG: Color = Color::Rgb(40, 60, 40);
 
+/// The colour of a tone.
+#[must_use]
+pub fn tone_color(tone: Tone) -> Color {
+    match tone {
+        Tone::Pass => Color::Green,
+        Tone::Fail => Color::Red,
+        Tone::Neutral => Color::Gray,
+        Tone::Running => Color::Cyan,
+    }
+}
+
 /// The colour associated with a status outcome.
 #[must_use]
 pub fn status_color(kind: StatusKind) -> Color {
-    match kind {
-        StatusKind::Pass => Color::Green,
-        StatusKind::Deviated => Color::Yellow,
-        StatusKind::Failed => Color::Red,
-        StatusKind::Aborted => Color::Magenta,
-        StatusKind::Running => Color::Cyan,
-        StatusKind::Other => Color::Gray,
-    }
+    tone_color(kind.tone())
 }
 
 /// A bold, coloured style for a status pill.

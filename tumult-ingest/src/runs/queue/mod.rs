@@ -142,11 +142,34 @@ pub fn prepare_run(
     definition_toon: &str,
     vars: &HashMap<String, String>,
 ) -> Result<(Experiment, HashMap<String, String>), String> {
-    let experiment = tumult_core::engine::parse_experiment(definition_toon)
-        .map_err(|e| format!("parse: {e}"))?;
-    let config = tumult_core::engine::resolve_config(&experiment.configuration)
+    prepare_parsed(&parse_definition(definition_toon)?, vars)
+}
+
+/// As [`prepare_run`], for a stored run of which only the rollbacks are
+/// left to run. Recovery starts no load, so the load is left out: one that
+/// can no longer run does not keep the run from its cleanup.
+pub(super) fn prepare_rollback(
+    definition_toon: &str,
+    vars: &HashMap<String, String>,
+) -> Result<(Experiment, HashMap<String, String>), String> {
+    let definition = Experiment {
+        load: None,
+        ..parse_definition(definition_toon)?
+    };
+    prepare_parsed(&definition, vars)
+}
+
+fn parse_definition(definition_toon: &str) -> Result<Experiment, String> {
+    tumult_core::engine::parse_experiment(definition_toon).map_err(|e| format!("parse: {e}"))
+}
+
+fn prepare_parsed(
+    definition: &Experiment,
+    vars: &HashMap<String, String>,
+) -> Result<(Experiment, HashMap<String, String>), String> {
+    let config = tumult_core::engine::resolve_config(&definition.configuration)
         .map_err(|e| format!("config: {e}"))?;
-    prepare_definition(&experiment, vars, &config)
+    prepare_definition(definition, vars, &config)
 }
 
 pub(super) fn prepare_definition(

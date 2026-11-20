@@ -1,7 +1,12 @@
-title: DNS redirect chaos — verify application handles wrong DNS responses
-description: Redirect a domain to 127.0.0.1 via /etc/hosts and verify the probe detects it
+title: DNS redirect — a name is sent to the wrong address and a lookup shows it
+description: Changes this host: a line is added to /etc/hosts and removed again, so it needs root. Redirect a test name to 127.0.0.1 and check that a lookup on this host answers with that address.
 
-tags[2]: dns, network
+tags[3]: dns, network, host-changing
+kind: chaos
+target:
+  system: localhost
+  technology: linux
+  environment: local
 
 steady_state_hypothesis:
   title: DNS resolves correctly
@@ -17,7 +22,7 @@ steady_state_hypothesis:
         type: regex
         pattern: "\\d+\\.\\d+\\.\\d+\\.\\d+"
 
-method[2]:
+method[4]:
   - name: dns-latency-before
     activity_type: probe
     provider:
@@ -35,12 +40,29 @@ method[2]:
         dns_domain: "test-redirect.tumult.local"
         dns_redirect: "127.0.0.1"
       timeout_s: 10.0
+  - name: redirect-visible
+    activity_type: probe
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "getent hosts test-redirect.tumult.local || echo unresolved"
+      timeout_s: 10.0
+    tolerance:
+      type: regex
+      pattern: "^127\\.0\\.0\\.1"
+  - name: remove-redirect
+    activity_type: action
+    provider:
+      type: script
+      plugin: tumult-network
+      function: redirect-dns-rollback
+      timeout_s: 10.0
 
 rollbacks[1]:
   - name: restore-dns
     activity_type: action
     provider:
-      type: process
-      path: sh
-      arguments[2]: "-c", "sed -i.bak '/tumult-dns-redirect/d' /etc/hosts && rm -f /etc/hosts.bak"
+      type: script
+      plugin: tumult-network
+      function: redirect-dns-rollback
       timeout_s: 10.0

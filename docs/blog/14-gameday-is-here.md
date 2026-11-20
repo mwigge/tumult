@@ -38,7 +38,7 @@ All experiments run in sequence under a shared load generator. They share a sing
 
 ```bash
 tumult gameday create q2-postgres-resilience \
-  --load k6 --load-script examples/k6/smoke-test.js \
+  --load k6 --load-script examples/k6/pg-load.js \
   --experiments gamedays/pg-connection-kill.toon,gamedays/pg-container-pause.toon,gamedays/pg-cpu-stress.toon,gamedays/pg-mem-stress.toon \
   --framework dora
 ```
@@ -61,7 +61,7 @@ regulatory:
 
 load:
   tool: k6
-  script: examples/k6/smoke-test.js
+  script: examples/k6/pg-load.js
   vus: 5
   duration_s: 60.0
 

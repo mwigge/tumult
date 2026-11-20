@@ -2,16 +2,17 @@
 
 use crate::controls::ControlRegistry;
 use crate::types::{
-    Experiment, ExperimentStatus, GameDay, GameDayExperiment, GameDayJournal, Journal,
-    ResilienceScore,
+    Experiment, ExperimentStatus, GameDay, GameDayExperiment, GameDayJournal, Journal, LoadConfig,
+    LoadResult, ResilienceScore,
 };
 
-use opentelemetry::trace::{TraceContextExt, Tracer};
+use opentelemetry::trace::{Status, TraceContextExt, Tracer};
 use opentelemetry::KeyValue;
 
 use super::telemetry::epoch_nanos_now;
 use super::{
-    run_experiment, ActivityExecutor, LoadExecutor, LoadHandle, RunConfig, RunnerError, TRACER_NAME,
+    load, load_profile, run_experiment, ActivityExecutor, LoadExecutor, LoadHandle, RunConfig,
+    RunnerError, TRACER_NAME,
 };
 
 /// Stops the shared load process when dropped, so no exit path from
@@ -37,6 +38,79 @@ impl Drop for LoadGuard<'_> {
             if let Err(e) = executor.abort(handle) {
                 tracing::error!(error = %e, "failed to stop gameday load on exit");
             }
+        }
+    }
+}
+
+/// Wait until the shared load, started at `started`, has run its whole plan.
+///
+/// The load is evidence for the whole campaign, and k6 gives its numbers
+/// only when it ends by itself. A cancelled campaign does not wait.
+fn await_load_plan(load: &LoadConfig, started: std::time::Instant, config: &RunConfig) {
+    // A plan that is no number of seconds has nothing to wait for.
+    let plan = std::time::Duration::try_from_secs_f64(load_profile::plan(load).total_duration_s())
+        .unwrap_or_default();
+    let left = plan.saturating_sub(started.elapsed());
+    if left.is_zero() {
+        return;
+    }
+    let left_s = left.as_secs_f64();
+    tracing::info!(left_s, "gameday waits for its load to end");
+    super::activity::wait_pause(Some(left_s), config.cancellation_token.as_ref());
+}
+
+/// Start the shared load on the current (game day) span. A load that does
+/// not start ends the game day before any experiment runs, with the error
+/// on the span.
+fn start_shared_load(
+    load: &LoadConfig,
+    executor: &dyn LoadExecutor,
+) -> Result<LoadHandle, RunnerError> {
+    match executor.start(load) {
+        Ok(handle) => {
+            tracing::info!(tool = %load.tool, "gameday load started");
+            Ok(handle)
+        }
+        Err(e) => {
+            tracing::error!(error = %e, tool = %load.tool, "failed to start gameday load");
+            opentelemetry::Context::current()
+                .span()
+                .set_status(Status::error(e.clone()));
+            Err(RunnerError::LoadStart(e))
+        }
+    }
+}
+
+/// End the shared load and give what it measured.
+///
+/// A campaign that was cancelled, or that an error stopped, cuts its load:
+/// the tool is not left to finish what it is doing, and the result says it
+/// was cut. Any other campaign has waited for the plan and stops the load.
+fn end_shared_load(
+    handle: Option<LoadHandle>,
+    executor: Option<&std::sync::Arc<dyn LoadExecutor>>,
+    cut: bool,
+) -> Option<LoadResult> {
+    let (Some(handle), Some(executor)) = (handle, executor) else {
+        return None;
+    };
+    let ended = if cut {
+        executor.abort(handle)
+    } else {
+        executor.stop(handle)
+    };
+    match ended {
+        Ok(result) => {
+            tracing::info!(
+                throughput_rps = result.throughput_rps,
+                cut,
+                "gameday load completed"
+            );
+            Some(result)
+        }
+        Err(e) => {
+            tracing::error!(error = %e, cut, "failed to collect gameday load results");
+            None
         }
     }
 }
@@ -79,7 +153,9 @@ impl Clone for ExperimentWiring {
 /// # Errors
 ///
 /// Returns [`RunnerError::ExperimentCountMismatch`] if `experiments` does
-/// not line up one-to-one with `gameday.experiments`.
+/// not line up one-to-one with `gameday.experiments`, and
+/// [`RunnerError::LoadStart`] if the declared load does not start; no
+/// experiment runs then.
 #[must_use = "the GameDayJournal contains the aggregate results"]
 pub fn run_gameday(
     gameday: &GameDay,
@@ -111,7 +187,9 @@ pub fn run_gameday(
 /// # Errors
 ///
 /// Returns [`RunnerError::ExperimentCountMismatch`] if `experiments` does
-/// not line up one-to-one with `gameday.experiments`.
+/// not line up one-to-one with `gameday.experiments`, and
+/// [`RunnerError::LoadStart`] if the declared load does not start; no
+/// experiment runs then.
 #[must_use = "the GameDayJournal contains the aggregate results"]
 #[allow(clippy::too_many_lines)] // Orchestration function with OTel setup, load management, and scoring
 pub fn run_gameday_with_wiring(
@@ -131,6 +209,12 @@ pub fn run_gameday_with_wiring(
             provided: experiments.len(),
         });
     }
+
+    let load_executor = gameday
+        .load
+        .as_ref()
+        .map(|declared| load::executor_for(declared, config))
+        .transpose()?;
 
     let gameday_id = uuid::Uuid::new_v4().to_string();
     let started = std::time::Instant::now();
@@ -153,32 +237,21 @@ pub fn run_gameday_with_wiring(
     let _gd_guard = gd_cx.attach();
 
     // Start shared load (if configured)
-    let load_handle = if let (Some(ref load_config), Some(ref load_exec)) =
-        (&gameday.load, &config.load_executor)
-    {
-        match load_exec.start(load_config) {
-            Ok(handle) => {
-                tracing::info!(
-                    tool = %load_config.tool,
-                    "gameday load started"
-                );
-                Some(handle)
-            }
-            Err(e) => {
-                tracing::error!(error = %e, "failed to start gameday load");
-                None
-            }
+    let load_handle = match (&gameday.load, &load_executor) {
+        (Some(load_config), Some(load_exec)) => {
+            Some(start_shared_load(load_config, load_exec.as_ref())?)
         }
-    } else {
-        None
+        _ => None,
     };
+
+    let load_started = load_handle.as_ref().map(|_| std::time::Instant::now());
 
     // Guard so the shared load process is stopped on *every* exit path —
     // including a campaign-stopping experiment error or an unwind — not just
     // the happy path below.
     let mut load_guard = LoadGuard {
         handle: load_handle,
-        executor: config.load_executor.as_ref(),
+        executor: load_executor.as_ref(),
     };
 
     // Run each experiment with the GameDay span as parent context
@@ -199,7 +272,9 @@ pub fn run_gameday_with_wiring(
             rollback_strategy: config.rollback_strategy.clone(),
             cancellation_token: config.cancellation_token.clone(),
             parent_context: Some(opentelemetry::Context::current()),
-            load_executor: None, // load is managed at GameDay level
+            // The shared load is the game day's; a load the experiment
+            // declares itself runs with the tool it names.
+            load_executor: None,
             max_concurrent_faults: config.max_concurrent_faults,
             version_resolver: config.version_resolver.clone(),
         };
@@ -215,25 +290,15 @@ pub fn run_gameday_with_wiring(
         }
     }
 
-    // Stop load and collect results (the guard covers every other path)
-    let load_result =
-        if let (Some(handle), Some(ref load_exec)) = (load_guard.take(), &config.load_executor) {
-            match load_exec.stop(handle) {
-                Ok(result) => {
-                    tracing::info!(
-                        throughput_rps = result.throughput_rps,
-                        "gameday load completed"
-                    );
-                    Some(result)
-                }
-                Err(e) => {
-                    tracing::error!(error = %e, "failed to collect gameday load results");
-                    None
-                }
-            }
-        } else {
-            None
-        };
+    // A campaign that ran every experiment lets its load run to the end.
+    let ran_all = journals.len() == experiments.len();
+    if let (Some(load), Some(started), true) = (&gameday.load, load_started, ran_all) {
+        await_load_plan(load, started, config);
+    }
+
+    // End the load and collect results (the guard covers every other path)
+    let cut = !ran_all || super::activity::is_cancelled(config.cancellation_token.as_ref());
+    let load_result = end_shared_load(load_guard.take(), load_executor.as_ref(), cut);
 
     // Compute resilience score
     let total = journals.len();
@@ -251,10 +316,7 @@ pub fn run_gameday_with_wiring(
     // Recovery compliance: check MTTR against target
     let recovery = compute_recovery_compliance(&journals, gameday.scoring.mttr_target_s);
 
-    // Load impact tolerance (1.0 if no load, otherwise based on error rate)
-    let load_impact = load_result
-        .as_ref()
-        .map_or(1.0, |lr| (1.0 - lr.error_rate).max(0.0));
+    let load_impact = load_impact_tolerance(gameday.load.as_ref(), load_result.as_ref());
 
     // Compliance coverage: pair each declared experiment with its journal by
     // construction (same index, lengths validated above) and count mapped
@@ -284,28 +346,28 @@ pub fn run_gameday_with_wiring(
     })
 }
 
-/// Computes recovery compliance score from MTTR data in journals.
+/// Load impact tolerance from the error rate of the shared load: 1.0 when
+/// the game day declares no load, and 0.0 when the declared load left no
+/// result, which is no evidence that the target held under it.
+fn load_impact_tolerance(declared: Option<&LoadConfig>, result: Option<&LoadResult>) -> f64 {
+    if declared.is_none() {
+        return 1.0;
+    }
+    result.map_or(0.0, |lr| (1.0 - lr.error_rate).max(0.0))
+}
+
+/// Computes recovery compliance score from MTTR data in journals: of the
+/// runs that watched for recovery, the share that measured one within the
+/// target. A run that measured none, because the target did not come back or
+/// its method failed, is not within the target. The rule is the one of
+/// [`ComplianceSignals`](crate::compliance::ComplianceSignals).
 fn compute_recovery_compliance(journals: &[Journal], mttr_target_s: f64) -> f64 {
-    let mut total_recovery = 0;
-    let mut compliant_recovery = 0;
-
+    let mut signals = crate::compliance::ComplianceSignals::default();
     for journal in journals {
-        if let Some(ref post) = journal.post_result {
-            total_recovery += 1;
-            if post.recovery_time_s <= mttr_target_s && post.full_recovery {
-                compliant_recovery += 1;
-            }
-        }
+        signals.accumulate(journal);
     }
-
-    if total_recovery == 0 {
-        1.0 // No recovery data → assume compliant
-    } else {
-        #[allow(clippy::cast_precision_loss)]
-        {
-            f64::from(compliant_recovery) / f64::from(total_recovery)
-        }
-    }
+    // No run watched for recovery: nothing speaks against the game day.
+    signals.recovery_compliance(mttr_target_s).unwrap_or(1.0)
 }
 
 /// Computes compliance coverage from article mappings.

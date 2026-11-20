@@ -13,6 +13,8 @@ use axum::{Extension, Json};
 use serde::Serialize;
 use serde_json::{json, Map, Value};
 use tumult_autopilot::{AmbientContext, Candidate, ConfidenceTier, Trigger};
+use tumult_core::engine::parse_experiment;
+use tumult_core::types::ExperimentTarget;
 use tumult_risk::{Risk, Severity};
 
 use crate::auth::Principal;
@@ -131,15 +133,26 @@ fn confidence(risk: &Risk) -> ConfidenceTier {
     }
 }
 
-/// Append the discipline and the target block the scaffolder does not
-/// know about, so the registered definition scores and gates by target.
-fn with_kind_and_target(toon: &str, kind: &str, target: &str, env: Option<&str>) -> String {
-    let mut out = toon.trim_end().to_string();
-    out.push_str(&format!("\nkind: {kind}\ntarget:\n  system: {target}\n"));
-    if let Some(env) = env {
-        out.push_str(&format!("  environment: {env}\n"));
-    }
-    out
+/// Set the discipline and the target block the scaffolder does not know
+/// about, so the registered definition scores and gates by target.
+fn with_kind_and_target(
+    toon: &str,
+    kind: &str,
+    target: &str,
+    env: Option<&str>,
+) -> Result<String, String> {
+    let mut experiment = parse_experiment(toon).map_err(|e| e.to_string())?;
+    experiment.kind =
+        serde_json::from_value(json!(kind)).map_err(|e| format!("unknown kind '{kind}': {e}"))?;
+    experiment.target = Some(ExperimentTarget {
+        system: target.to_string(),
+        technology: None,
+        environment: env.map(str::to_string),
+        criticality: None,
+        namespace: None,
+        version: None,
+    });
+    toon_format::encode_default(&experiment).map_err(|e| e.to_string())
 }
 
 struct Registered {
@@ -184,7 +197,8 @@ async fn register_scaffold(
         kind,
         target,
         risk.environment.as_deref(),
-    );
+    )
+    .map_err(internal)?;
     let vars = HashMap::new();
     let experiment = crate::runs::preview_experiment(&toon, &vars).map_err(internal)?;
     let introspection = tumult_ingest::approvals::introspect(&experiment);
@@ -270,6 +284,7 @@ fn candidate_for(risk: &Risk, rec: &Recommendation, reg: &Registered) -> Candida
         experiment_has_rollback: reg.introspection.has_rollback,
         experiment_has_steady_state: reg.introspection.has_steady_state,
         experiment_fault_count: reg.introspection.fault_count,
+        playbook_error: None,
         trigger: Trigger::Risk {
             risk_id: risk.id.clone(),
             rule: risk.rule.clone(),
@@ -425,6 +440,7 @@ pub(crate) async fn recommend(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tumult_core::types::{Experiment, TestKind};
 
     fn risk(rule: &str, kind: Option<&str>, subject: &str) -> Risk {
         Risk {
@@ -502,12 +518,44 @@ mod tests {
         assert!(recommendation_for(&risk("unknown_rule", None, "x")).is_none());
     }
 
+    /// What the scaffolder hands over: encoder output, which already
+    /// names the default kind.
+    fn scaffolded() -> String {
+        let toon = toon_format::encode_default(&Experiment {
+            title: "t".into(),
+            ..Default::default()
+        })
+        .unwrap();
+        assert!(toon.contains("kind: chaos"), "{toon}");
+        toon
+    }
+
     #[test]
-    fn kind_and_target_are_appended_to_the_definition() {
-        let toon = with_kind_and_target("title: t\nmethod[0]:\n", "dr", "db", Some("demo"));
-        assert!(toon.ends_with("kind: dr\ntarget:\n  system: db\n  environment: demo\n"));
-        let bare = with_kind_and_target("title: t", "chaos", "db", None);
-        assert!(bare.ends_with("kind: chaos\ntarget:\n  system: db\n"));
+    fn kind_and_target_are_set_on_the_definition() {
+        let toon = with_kind_and_target(&scaffolded(), "dr", "db", Some("demo")).unwrap();
+
+        let read = parse_experiment(&toon).unwrap();
+        assert_eq!(read.kind, TestKind::Dr);
+        let target = read.target.unwrap();
+        assert_eq!(target.system, "db");
+        assert_eq!(target.environment.as_deref(), Some("demo"));
+        assert_eq!(toon.matches("kind:").count(), 1, "{toon}");
+    }
+
+    #[test]
+    fn a_target_without_an_environment_names_only_the_system() {
+        let toon = with_kind_and_target(&scaffolded(), "chaos", "db", None).unwrap();
+
+        let target = parse_experiment(&toon).unwrap().target.unwrap();
+        assert_eq!(target.system, "db");
+        assert_eq!(target.environment, None);
+    }
+
+    #[test]
+    fn a_kind_that_does_not_exist_is_an_error() {
+        let error = with_kind_and_target(&scaffolded(), "mayhem", "db", None).unwrap_err();
+
+        assert!(error.contains("unknown kind 'mayhem'"), "{error}");
     }
 
     #[test]

@@ -55,16 +55,16 @@ Tumult emits a `resilience.agentic.experiment` span tree through `tumult-otel`.
 It records the experiment itself, independent of the agent:
 
 ```text
-resilience.agentic.experiment
-├── resilience.agent.scenario          (scenario / pack entry)
-├── resilience.agent.fault.decision    (one per fault evaluated: selected or not)
-├── resilience.agent.fault.application  (one per fault actually applied)
-├── resilience.agent.contract          (one per contract outcome)
-└── resilience.agent.score             (resilience score for the run)
+resilience.agentic.experiment          (one span per run: scenario, target type,
+│                                        client, score, capture policy, counts)
+├── event fault                        (one per fault evaluated: type, applied or not)
+└── event contract                     (one per contract outcome: passed, severity, reason)
 ```
 
-This side is **always present**, including for fully offline runs
-(`tumult agentic run` / `replay` / `smoke`) where no live client is involved. It
+This side is present for `tumult agentic run`, `tumult agentic run-live` and
+the MCP tools `tumult_agentic_smoke` and `tumult_agentic_run_experiment`,
+including fully offline runs where no live client is involved. The CLI `smoke`
+and `replay` paths do not emit it. It
 answers: which scenario ran, which faults were decided and applied, which
 contracts passed or failed, and what score resulted.
 
@@ -74,8 +74,9 @@ The target side is the agent's own behaviour under the injected faults. It has
 two sources:
 
 - **The proxy span floor.** The `agentic proxy` emits a span per proxied request
-  on the model surface — method, path, status, latency, faults applied, contract
-  verdicts, byte counts — for *every* client, with no client-side configuration.
+  on the model surface, with its method, path, status, latency and the faults
+  applied, for *every* client, with no client-side configuration. The contract
+  verdicts and the body size go to its log line and its journal.
   This is the guaranteed-uniform layer.
 - **The client's native OTel.** When a client exports its own spans (model calls,
   tool/MCP calls, internal retries), those are normalized onto `gen_ai.*` and
@@ -85,7 +86,8 @@ When trace context propagates from Tumult through the proxy to the agent and bac
 into the agent's own exporter, **both sides share one trace** and the experiment
 and the agent's reaction sit in a single nested tree. When it does not propagate,
 the two sides remain separate traces correlated by attribute
-(`tumult.client`, `resilience.experiment.id`, `resilience.run.id`).
+(`tumult.client`, which every agentic span of Tumult carries, and
+`resilience.agent.scenario`; these spans carry no experiment id or run id).
 
 ## Trace-Nesting Tiers
 
@@ -95,7 +97,7 @@ One caveat matters here: the clients do not nest equally. There are three tiers.
 |---|---|---|
 | **Full nesting** | Provider-side `traceparent` honoured on both the model and MCP/tool surfaces; the agent's spans nest under the experiment trace. | Claude Code |
 | **Partial nesting** | `traceparent` honoured on the MCP/tool surface only; model-call spans correlate by attribute. | OpenCode |
-| **Correlate-by-attribute** | No provider-side `traceparent`; spans are joined to the experiment by `tumult.client` + experiment/run IDs, not by trace ID. | Codex, Copilot |
+| **Correlate-by-attribute** | No provider-side `traceparent`; spans are joined to the experiment by `tumult.client` and the scenario, not by trace ID. | Codex, Copilot |
 
 - **Claude Code** nests on both surfaces, but only with
   `CLAUDE_CODE_PROPAGATE_TRACEPARENT=1` set.
@@ -210,8 +212,8 @@ experiment by attribute, over the proxy span floor.
 
 ## What You Get
 
-Whichever client you test, the experiment side is identical and always present,
-the proxy span floor is identical, and the `tumult.client` attribute lets you
+Whichever client you test, the experiment side is identical for every run that
+Tumult drives, the proxy span floor is identical, and the `tumult.client` attribute lets you
 compare runs across clients on one canonical schema. Native client OTel and
 trace-nesting add detail where the client supports it — but no client is required
 to support them for the experiment to be observable and comparable.

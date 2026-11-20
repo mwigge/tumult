@@ -60,7 +60,8 @@ fn server_details() -> InitializeResult {
             version: env!("CARGO_PKG_VERSION").into(),
             title: Some("Tumult Resilience Intelligence MCP Server".into()),
             description: Some(
-                "Run chaos experiments, analyze journals, discover plugins via MCP tools".into(),
+                "Run resilience experiments, analyze journals, discover plugins via MCP tools"
+                    .into(),
             ),
             icons: vec![],
             website_url: Some("https://github.com/mwigge/tumult".into()),
@@ -483,6 +484,8 @@ mod tests {
         assert!(shown.contains("Tumult Resilience Intelligence MCP Server"));
         assert!(!shown.contains("Chaos Engineering"), "{shown}");
         assert!(!shown.contains("chaos engineering"), "{shown}");
+        assert!(!shown.contains("chaos experiments"), "{shown}");
+        assert!(shown.contains("Run resilience experiments"), "{shown}");
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

@@ -1,6 +1,8 @@
 //! Static validation of experiment definitions before execution.
 
-use crate::types::{Experiment, LoadProfile, TestKind, Tolerance};
+use crate::types::{
+    Activity, Experiment, LoadConfig, LoadProfile, LoadTool, Provider, TestKind, Tolerance,
+};
 
 use super::EngineError;
 
@@ -19,6 +21,12 @@ use super::EngineError;
 /// Returns [`EngineError::InvalidMaxConcurrentFaults`] if `max_concurrent_faults` is 0.
 /// Returns [`EngineError::InvalidScriptProvider`] if a script provider's plugin or
 /// function is empty or contains path separators, `..`, null bytes, or whitespace.
+/// This holds for every step: method, rollbacks, hypothesis probes, guards and controls.
+/// Returns [`EngineError::InvalidSeconds`] if a timeout or a pause of any of those steps,
+/// or the duration of a flat load, is not a number of seconds from 0 up to 2^64.
+/// Returns [`EngineError::NfrInvalid`] if an objective names a metric no run can measure.
+/// Returns [`EngineError::LoadProfileInvalid`] if the load names a tool with no adapter,
+/// an oha threshold the adapter does not check, or a profile that does not fit the run.
 ///
 /// # Examples
 ///
@@ -159,6 +167,13 @@ pub fn validate_experiment(experiment: &Experiment) -> Result<(), EngineError> {
             }
             Some(_) => {}
         }
+        validate_script_provider(&guard.name, &guard.probe.provider)?;
+        validate_step_seconds(&format!("guard '{}'", guard.name), &guard.probe)?;
+    }
+
+    for control in &experiment.controls {
+        validate_script_provider(&control.name, &control.provider)?;
+        validate_timeout(&format!("control '{}'", control.name), &control.provider)?;
     }
 
     // Validate all regex tolerance patterns compile, and every script
@@ -195,16 +210,58 @@ pub fn validate_experiment(experiment: &Experiment) -> Result<(), EngineError> {
             _ => {}
         }
 
-        if let crate::types::Provider::Script {
-            plugin, function, ..
-        } = &activity.provider
-        {
-            validate_script_name(&activity.name, "plugin", plugin)?;
-            validate_script_name(&activity.name, "function", function)?;
-        }
+        validate_script_provider(&activity.name, &activity.provider)?;
+        validate_step_seconds(&format!("activity '{}'", activity.name), activity)?;
     }
 
     Ok(())
+}
+
+/// The seconds of a step: its timeout and its pauses. `owner` names the
+/// step in the error.
+fn validate_step_seconds(owner: &str, activity: &Activity) -> Result<(), EngineError> {
+    validate_timeout(owner, &activity.provider)?;
+    validate_seconds(owner, "pause_before_s", activity.pause_before_s)?;
+    validate_seconds(owner, "pause_after_s", activity.pause_after_s)
+}
+
+/// The timeout of a process or a script provider. A native provider has none.
+fn validate_timeout(owner: &str, provider: &Provider) -> Result<(), EngineError> {
+    let (Provider::Process { timeout_s, .. } | Provider::Script { timeout_s, .. }) = provider
+    else {
+        return Ok(());
+    };
+    validate_seconds(owner, "timeout_s", *timeout_s)
+}
+
+/// A number of seconds the runner waits on must be one a `Duration` can
+/// hold: zero or more, finite, and below 2^64. Where the runner turns any
+/// other value into a `Duration`, it panics or the wait is dropped.
+fn validate_seconds(owner: &str, field: &str, seconds: Option<f64>) -> Result<(), EngineError> {
+    let Some(value) = seconds else {
+        return Ok(());
+    };
+    if std::time::Duration::try_from_secs_f64(value).is_ok() {
+        return Ok(());
+    }
+    Err(EngineError::InvalidSeconds {
+        owner: owner.to_string(),
+        field: field.to_string(),
+        value,
+    })
+}
+
+/// Check the plugin and function names of a script provider. `owner` is the
+/// step, guard or control the provider belongs to. Other providers pass.
+fn validate_script_provider(owner: &str, provider: &Provider) -> Result<(), EngineError> {
+    let Provider::Script {
+        plugin, function, ..
+    } = provider
+    else {
+        return Ok(());
+    };
+    validate_script_name(owner, "plugin", plugin)?;
+    validate_script_name(owner, "function", function)
 }
 
 /// A script provider's `plugin`/`function` fields name a plugin directory
@@ -240,6 +297,12 @@ fn validate_script_name(activity: &str, field: &str, value: &str) -> Result<(), 
 /// Objectives and recovery targets: unique, well-formed objectives; finite
 /// positive RTO/RPO; a `dr` run must declare its RTO.
 fn validate_objectives(experiment: &Experiment) -> Result<(), EngineError> {
+    let probes: Vec<&str> = experiment
+        .steady_state_hypothesis
+        .iter()
+        .flat_map(|hypothesis| &hypothesis.probes)
+        .map(|probe| probe.name.as_str())
+        .collect();
     let mut seen = std::collections::HashSet::new();
     for o in &experiment.nfr {
         if o.id.trim().is_empty() {
@@ -255,6 +318,12 @@ fn validate_objectives(experiment: &Experiment) -> Result<(), EngineError> {
             return Err(EngineError::NfrInvalid {
                 id: o.id.clone(),
                 reason: "metric is empty".into(),
+            });
+        }
+        if let Some(reason) = crate::runner::nfr::metric_fault(&o.metric, &probes) {
+            return Err(EngineError::NfrInvalid {
+                id: o.id.clone(),
+                reason,
             });
         }
         if !o.threshold.is_finite() {
@@ -308,6 +377,12 @@ fn validate_load(experiment: &Experiment) -> Result<(), EngineError> {
     let Some(load) = experiment.load.as_ref() else {
         return Ok(());
     };
+    // A tool without an adapter can never run: the runner's choice of
+    // adapter decides it, and its reason is the one given here.
+    if let Err(reason) = crate::runner::load_executor_for(&load.tool) {
+        return Err(EngineError::LoadProfileInvalid { reason });
+    }
+    validate_thresholds(load)?;
     let invalid = |reason: &str| EngineError::LoadProfileInvalid {
         reason: reason.to_string(),
     };
@@ -315,7 +390,7 @@ fn validate_load(experiment: &Experiment) -> Result<(), EngineError> {
         return Err(invalid("vus must be at least 1"));
     }
     let Some(profile) = load.profile.as_ref() else {
-        return Ok(());
+        return validate_seconds("load", "duration_s", load.duration_s);
     };
     let Some(duration_s) = load.duration_s else {
         return Err(invalid("a profile requires duration_s"));
@@ -378,6 +453,34 @@ fn validate_load(experiment: &Experiment) -> Result<(), EngineError> {
         }
     }
     Ok(())
+}
+
+/// k6 applies the thresholds of its script, not those of the file: they
+/// stay valid and are said to be unused. oha checks the file's, and a run
+/// with a name it does not check deviates, so such a name is refused.
+fn validate_thresholds(load: &LoadConfig) -> Result<(), EngineError> {
+    if load.thresholds.is_empty() {
+        return Ok(());
+    }
+    if load.tool == LoadTool::K6 {
+        tracing::warn!(
+            tool = "k6",
+            thresholds = load.thresholds.len(),
+            "load.thresholds.not_applied"
+        );
+        return Ok(());
+    }
+    let Some(unknown) = load
+        .thresholds
+        .keys()
+        .filter(|name| !crate::runner::oha::checks_threshold(name))
+        .min()
+    else {
+        return Ok(());
+    };
+    Err(EngineError::LoadProfileInvalid {
+        reason: format!("oha checks no threshold named '{unknown}'"),
+    })
 }
 
 #[cfg(test)]

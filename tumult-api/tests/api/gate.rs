@@ -1,4 +1,4 @@
-//! `GET /api/gate/{target}` — the CI gate: one target's resilience score
+//! `GET /api/gate/{target}` — the CI gate: one target's compliance score
 //! turned into a pass/warn/fail verdict with the evidence behind it.
 
 use crate::common::*;

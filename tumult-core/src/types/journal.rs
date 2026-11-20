@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::definition::{Estimate, Experiment, RegulatoryMapping};
+use super::definition::{Estimate, Experiment, ExperimentTarget, RegulatoryMapping};
 use super::enums::{ActivityStatus, ActivityType, ExperimentStatus, TestKind};
 use super::ids::{SpanId, TraceId};
 use super::results::{
@@ -273,20 +273,27 @@ pub struct Journal {
     /// the definition declared no objectives or targets.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub objectives: Option<ObjectiveOutcome>,
-    /// Raw probe samples from the during and post phases, in collection
-    /// order. Aggregates live in `during_result` / `post_result`.
+    /// Raw probe samples, those of the during phase before those of the
+    /// post phase. Each phase is grouped by probe, in the order of the
+    /// probes of the hypothesis, and each group is in time order.
+    /// Aggregates live in `during_result` / `post_result`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub probe_samples: Vec<ProbeSample>,
     /// The version of the target this run measured and how it is known;
     /// `None` when it was neither declared nor observed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub target_version: Option<TargetVersion>,
+    /// The target the run was on, as its definition declares it. `None`
+    /// when the definition declares none, and in a journal written before
+    /// 3.0.2.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target: Option<ExperimentTarget>,
 }
 
 impl Journal {
     /// Build a `Journal` skeleton for `experiment`: fills in the fields
     /// derived from the experiment definition (`experiment_title`,
-    /// `estimate`, `regulatory`, a declared target version) plus the given identity/status/timing, and
+    /// `estimate`, `regulatory`, the target and its declared version) plus the given identity/status/timing, and
     /// zeroes/empties every execution-result field. Callers use struct
     /// update syntax (`..Journal::for_experiment(...)`) to set whichever
     /// result fields apply to their completion path.
@@ -321,7 +328,42 @@ impl Journal {
             objectives: None,
             probe_samples: vec![],
             target_version: TargetVersion::declared(experiment),
+            target: experiment.target.clone(),
         }
+    }
+
+    /// Whether the steady state held, as far as the run judged it: the
+    /// verdict after the method when the run got that far, and `false` when
+    /// the hypothesis failed before the method. `None` when the definition
+    /// has no hypothesis, or when it held before the method and the run
+    /// ended without judging it again.
+    #[must_use]
+    pub fn hypothesis_met(&self) -> Option<bool> {
+        if let Some(after) = &self.steady_state_after {
+            return Some(after.met);
+        }
+        let before = self.steady_state_before.as_ref()?;
+        (!before.met).then_some(false)
+    }
+
+    /// The measured recovery time: seconds from the end of the method until
+    /// every hypothesis probe was back within tolerance. `None` when the
+    /// run did not see the target recover.
+    #[must_use]
+    pub fn recovery_time_s(&self) -> Option<f64> {
+        self.post_result.as_ref()?.mttr_s
+    }
+
+    /// Whether the run was on `target`: the system or the technology its
+    /// journal names, whole and without regard to case. The title of the
+    /// experiment says nothing of it. `None` when the journal names no
+    /// target.
+    #[must_use]
+    pub fn is_on(&self, target: &str) -> Option<bool> {
+        let named = self.target.as_ref()?;
+        let wanted = target.trim().to_lowercase();
+        let is_wanted = |name: &str| name.trim().to_lowercase() == wanted;
+        Some(is_wanted(&named.system) || named.technology.as_deref().is_some_and(is_wanted))
     }
 }
 
@@ -417,6 +459,7 @@ mod tests {
     fn journal_with_all_phases_round_trips() {
         let journal = Journal {
             target_version: None,
+            target: None,
             experiment_title: "Database failover test".into(),
             experiment_id: "550e8400-e29b-41d4-a716-446655440000".into(),
             status: ExperimentStatus::Completed,
@@ -504,10 +547,103 @@ mod tests {
         assert_eq!(toon_round_trip(&journal), journal);
     }
 
+    fn target(system: &str, technology: Option<&str>) -> ExperimentTarget {
+        ExperimentTarget {
+            system: system.into(),
+            technology: technology.map(Into::into),
+            environment: Some("staging".into()),
+            criticality: None,
+            namespace: None,
+            version: None,
+        }
+    }
+
+    fn journal_on(target: Option<ExperimentTarget>) -> Journal {
+        let experiment = Experiment {
+            title: "postgres failover".into(),
+            target,
+            ..Experiment::default()
+        };
+        Journal::for_experiment(&experiment, "id".into(), ExperimentStatus::Completed, 1)
+    }
+
+    #[test]
+    fn a_journal_names_the_target_its_experiment_declares() {
+        let declared = target("checkout", Some("mysql"));
+
+        let journal = journal_on(Some(declared.clone()));
+
+        assert_eq!(journal.target, Some(declared));
+        let encoded = toon_format::encode_default(&journal).expect("encode");
+        assert!(
+            encoded.contains("target:\n  system: checkout\n  technology: mysql\n"),
+            "{encoded}"
+        );
+        assert_eq!(toon_round_trip(&journal), journal);
+    }
+
+    #[test]
+    fn a_journal_of_an_experiment_without_a_target_names_none() {
+        let journal = journal_on(None);
+
+        assert_eq!(journal.target, None);
+        // The journal has no key for it, as one written before the field
+        // existed, and such a journal still reads.
+        let encoded = toon_format::encode_default(&journal).expect("encode");
+        assert!(!encoded.contains("target"), "{encoded}");
+        assert_eq!(toon_round_trip(&journal), journal);
+    }
+
+    #[test]
+    fn a_run_is_on_the_system_or_the_technology_its_journal_names() {
+        let journal = journal_on(Some(target("checkout", Some("mysql"))));
+
+        for (wanted, on) in [
+            ("checkout", true),
+            ("mysql", true),
+            // Without regard to case and to blanks around the name.
+            ("Checkout", true),
+            (" MySQL ", true),
+            // The whole name, not a part of it.
+            ("check", false),
+            ("sql", false),
+            ("", false),
+            // Not the title of the experiment, and not the environment.
+            ("postgres", false),
+            ("postgres failover", false),
+            ("staging", false),
+        ] {
+            assert_eq!(journal.is_on(wanted), Some(on), "{wanted:?}");
+        }
+    }
+
+    #[test]
+    fn the_names_a_journal_carries_are_matched_without_case_and_blanks_too() {
+        let journal = journal_on(Some(target("Checkout", Some(" MySQL "))));
+
+        assert_eq!(journal.is_on("checkout"), Some(true));
+        assert_eq!(journal.is_on("mysql"), Some(true));
+        assert_eq!(journal.is_on("sql"), Some(false));
+    }
+
+    #[test]
+    fn a_run_on_a_target_without_a_technology_is_on_its_system() {
+        let journal = journal_on(Some(target("checkout", None)));
+
+        assert_eq!(journal.is_on("checkout"), Some(true));
+        assert_eq!(journal.is_on("mysql"), Some(false));
+    }
+
+    #[test]
+    fn a_journal_that_names_no_target_cannot_say_what_it_was_on() {
+        assert_eq!(journal_on(None).is_on("postgres failover"), None);
+    }
+
     #[test]
     fn journal_minimal_round_trips() {
         let journal = Journal {
             target_version: None,
+            target: None,
             experiment_title: "Database failover test".into(),
             experiment_id: "550e8400-e29b-41d4-a716-446655440000".into(),
             status: ExperimentStatus::Completed,
@@ -589,5 +725,51 @@ mod tests {
         };
         let decoded: Journal = toon_round_trip(&journal);
         assert_eq!(decoded, journal);
+    }
+
+    fn judged(met: bool) -> HypothesisResult {
+        HypothesisResult {
+            title: "steady".into(),
+            met,
+            probe_results: vec![],
+        }
+    }
+
+    /// A journal whose hypothesis was judged before and after the method
+    /// with these verdicts; `None` where it was not judged.
+    fn journal_judged(before: Option<bool>, after: Option<bool>) -> Journal {
+        Journal {
+            steady_state_before: before.map(judged),
+            steady_state_after: after.map(judged),
+            ..Journal::for_experiment(
+                &Experiment::default(),
+                "id-1".into(),
+                ExperimentStatus::Completed,
+                0,
+            )
+        }
+    }
+
+    #[test]
+    fn the_verdict_after_the_method_is_the_verdict_on_the_hypothesis() {
+        let held = journal_judged(Some(true), Some(true));
+        let broke = journal_judged(Some(true), Some(false));
+
+        assert_eq!(held.hypothesis_met(), Some(true));
+        assert_eq!(broke.hypothesis_met(), Some(false));
+    }
+
+    #[test]
+    fn a_hypothesis_that_failed_before_the_method_is_not_met() {
+        assert_eq!(
+            journal_judged(Some(false), None).hypothesis_met(),
+            Some(false)
+        );
+    }
+
+    #[test]
+    fn a_hypothesis_that_only_held_before_the_method_has_no_verdict() {
+        assert_eq!(journal_judged(Some(true), None).hypothesis_met(), None);
+        assert_eq!(journal_judged(None, None).hypothesis_met(), None);
     }
 }

@@ -3,7 +3,7 @@ use std::path::Path;
 
 use tumult_lake::{rollback_status, run_state, Store};
 
-use super::queue::{build_controls, prepare_run};
+use super::queue::{build_controls, prepare_rollback};
 use super::recovery_plan::RecoveryPlan;
 use super::{exec_write, ExecutorFactory};
 use crate::IngestWriter;
@@ -199,7 +199,7 @@ fn prepare_orphan(
     if !orphan["recovery_plan_json"].is_null() {
         let plan: RecoveryPlan = serde_json::from_value(orphan["recovery_plan_json"].clone())
             .map_err(|e| format!("invalid persisted recovery plan: {e}"))?;
-        return plan.prepare();
+        return plan.without_load().prepare();
     }
     let vars = if orphan["params_json"].is_null() {
         HashMap::new()
@@ -207,5 +207,5 @@ fn prepare_orphan(
         serde_json::from_value(orphan["params_json"].clone())
             .map_err(|e| format!("invalid saved parameters: {e}"))?
     };
-    prepare_run(toon, &vars)
+    prepare_rollback(toon, &vars)
 }

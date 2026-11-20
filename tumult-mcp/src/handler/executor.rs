@@ -1,6 +1,8 @@
 //! Compatibility executor backed by the shared CLI/daemon provider dispatch.
 
+use std::borrow::Cow;
 use std::collections::HashMap;
+use tokio_util::sync::CancellationToken;
 use tumult_core::runner::{ActivityExecutor, ActivityOutcome};
 use tumult_core::types::{Activity, Provider};
 
@@ -30,22 +32,32 @@ impl ProcessExecutor {
     }
 }
 
+/// `activity`, with the default timeout when it is a process without one.
+fn bounded(activity: &Activity) -> Cow<'_, Activity> {
+    let unbounded = matches!(
+        &activity.provider,
+        Provider::Process {
+            timeout_s: None,
+            ..
+        }
+    );
+    if !unbounded {
+        return Cow::Borrowed(activity);
+    }
+    let mut bounded = activity.clone();
+    if let Provider::Process { timeout_s, .. } = &mut bounded.provider {
+        *timeout_s = Some(DEFAULT_EXECUTION_TIMEOUT_SECS);
+    }
+    Cow::Owned(bounded)
+}
+
 impl ActivityExecutor for ProcessExecutor {
     fn execute(&self, activity: &Activity) -> ActivityOutcome {
-        if matches!(
-            &activity.provider,
-            Provider::Process {
-                timeout_s: None,
-                ..
-            }
-        ) {
-            let mut bounded = activity.clone();
-            if let Provider::Process { timeout_s, .. } = &mut bounded.provider {
-                *timeout_s = Some(DEFAULT_EXECUTION_TIMEOUT_SECS);
-            }
-            return self.inner.execute(&bounded);
-        }
-        self.inner.execute(activity)
+        self.inner.execute(&bounded(activity))
+    }
+
+    fn execute_until(&self, activity: &Activity, stop: &CancellationToken) -> ActivityOutcome {
+        self.inner.execute_until(&bounded(activity), stop)
     }
 }
 
@@ -75,6 +87,41 @@ mod tests {
 
         let outcome = executor.execute(&activity);
         assert!(outcome.error.as_ref().unwrap().contains("timed out"));
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_stop_ends_the_process_that_runs() {
+        let stop = tokio_util::sync::CancellationToken::new();
+        let trigger = stop.clone();
+        std::thread::spawn(move || {
+            // sleep: the stop comes while the step runs, not before it.
+            std::thread::sleep(std::time::Duration::from_millis(200));
+            trigger.cancel();
+        });
+        let activity = tumult_core::types::Activity {
+            name: "stop-test".into(),
+            activity_type: tumult_core::types::ActivityType::Action,
+            provider: tumult_core::types::Provider::Process {
+                path: "sleep".into(),
+                arguments: vec!["30".into()],
+                env: std::collections::HashMap::new(),
+                timeout_s: None,
+            },
+            ..Default::default()
+        };
+        let started = std::time::Instant::now();
+
+        let outcome = ProcessExecutor::new().execute_until(&activity, &stop);
+
+        assert_eq!(
+            outcome.error.as_deref(),
+            Some("process \x27sleep\x27 stopped before it finished")
+        );
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(10),
+            "the stop waited for the process: {:?}",
+            started.elapsed()
+        );
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

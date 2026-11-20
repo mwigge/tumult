@@ -131,9 +131,31 @@ pub fn chaosgraph_neighbors(
     })
 }
 
-/// `chaosgraph_coverage_gaps`: plugin-catalog actions that have never appeared
-/// in a tested run, optionally filtered by fault domain (plugin) and annotated,
+/// The fault actions of the plugin `manifest`, one per manifest action.
+pub(crate) fn plugin_actions(
+    manifest: &tumult_plugin::manifest::ScriptPluginManifest,
+) -> Vec<tumult_graph::AvailableAction> {
+    manifest
+        .actions
+        .iter()
+        .map(|action| tumult_graph::AvailableAction::new(&manifest.name, &action.name))
+        .collect()
+}
+
+/// The fault actions of the plugin catalog: every action of every script
+/// plugin discovery finds.
+pub(crate) fn available_actions() -> Vec<tumult_graph::AvailableAction> {
+    let plugins = tumult_plugin::discovery::discover_all_plugins().unwrap_or_default();
+    plugins.iter().flat_map(plugin_actions).collect()
+}
+
+/// `chaosgraph_coverage_gaps`: plugin-catalog actions that no stored run
+/// injected, optionally filtered by fault domain (plugin) and annotated,
 /// when a framework is given, with that framework's still-unevidenced articles.
+///
+/// An action is tested when a run ingested with its definition called that
+/// function of that plugin. A run ingested without its definition keys its
+/// faults by activity name, so it closes no gap.
 ///
 /// Derived read-only by default: the gap list is computed in memory and the
 /// store is opened read-only, so it coexists with a running server. Pass
@@ -163,21 +185,13 @@ pub fn chaosgraph_coverage_gaps(
     };
 
     // Available capabilities from the plugin catalog.
-    let plugins = tumult_plugin::discovery::discover_all_plugins().unwrap_or_default();
-    let available: Vec<tumult_graph::AvailableAction> = plugins
-        .iter()
-        .flat_map(|p| {
-            p.actions
-                .iter()
-                .map(move |a| tumult_graph::AvailableAction::new(&p.name, &a.name))
-        })
-        .collect();
+    let available = available_actions();
 
-    // Tested actions from the store, then derive the gap sub-graph in memory.
+    // Tested faults from the store, then derive the gap sub-graph in memory.
     // The response is built entirely from `delta` below; persisting it (so
     // `chaosgraph_query`/`_neighbors` can navigate the gap nodes) is opt-in.
     let tested =
-        tumult_query::tested_action_names(&store).map_err(|e| ToolError::Store(e.to_string()))?;
+        tumult_query::tested_faults(&store).map_err(|e| ToolError::Store(e.to_string()))?;
     let delta = tumult_graph::coverage_gap_delta(&available, &tested);
     if refresh {
         store
@@ -293,6 +307,7 @@ fn evidenced_article_ids(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tools::test_support::{catalog_guard, journal_of, script_action};
     use tumult_core::types::*;
 
     fn seed_store(dir: &std::path::Path) -> std::path::PathBuf {
@@ -317,6 +332,7 @@ mod tests {
         };
         let journal = Journal {
             target_version: None,
+            target: None,
             experiment_title: "Latency drill".into(),
             experiment_id: "run-1".into(),
             status: ExperimentStatus::Completed,
@@ -409,6 +425,7 @@ mod tests {
         };
         let journal = Journal {
             target_version: None,
+            target: None,
             experiment_title: "Demo — PostgreSQL connection kill".into(),
             experiment_id: "demo-postgres-1".into(),
             status: ExperimentStatus::Completed,
@@ -481,6 +498,152 @@ mod tests {
         let err =
             chaosgraph_coverage_gaps(db.to_str().unwrap(), Some("hipaa"), None, false).unwrap_err();
         assert!(err.to_string().contains("hipaa"));
+    }
+
+    /// A store at `dir` holding `runs`, each ingested with its definition
+    /// when it has one.
+    fn store_with(dir: &std::path::Path, runs: &[(Journal, Option<Experiment>)]) -> String {
+        let db = dir.join("analytics.duckdb");
+        let store = tumult_lake::AnalyticsStore::open(&db).unwrap();
+        for (journal, definition) in runs {
+            assert!(store
+                .ingest_journal_with_experiment(journal, definition.as_ref())
+                .unwrap());
+        }
+        db.to_str().unwrap().to_string()
+    }
+
+    /// The ids of the coverage gaps of the store at `db`.
+    fn gap_ids(db: &str) -> Vec<String> {
+        let report = chaosgraph_coverage_gaps(db, None, None, false).unwrap();
+        report.structured["gaps"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|gap| gap["id"].as_str().unwrap().to_string())
+            .collect()
+    }
+
+    /// A drill whose method is `method` and whose rollbacks are `rollbacks`.
+    fn drill(method: Vec<Activity>, rollbacks: Vec<Activity>) -> Experiment {
+        Experiment {
+            title: "Thing drill".into(),
+            method,
+            rollbacks,
+            ..Default::default()
+        }
+    }
+
+    fn run_of(method: &[&str], rollbacks: &[&str]) -> Journal {
+        journal_of(
+            "run-1",
+            "Thing drill",
+            ExperimentStatus::Completed,
+            method,
+            rollbacks,
+        )
+    }
+
+    #[test]
+    fn a_plugin_function_a_stored_run_called_is_not_a_gap() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let _env = catalog_guard(dir.path(), &[("p", &["do_thing", "other_thing"])]);
+        let definition = drill(vec![script_action("start-thing", "p", "do_thing")], vec![]);
+        let db = store_with(
+            dir.path(),
+            &[(run_of(&["start-thing"], &[]), Some(definition))],
+        );
+        assert_eq!(gap_ids(&db), ["gap:p::other_thing"]);
+    }
+
+    #[test]
+    fn a_run_of_one_plugin_leaves_the_action_of_the_same_name_of_another_a_gap() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let _env = catalog_guard(dir.path(), &[("p", &["do_thing"]), ("q", &["do_thing"])]);
+        let definition = drill(vec![script_action("do_thing", "p", "do_thing")], vec![]);
+        let db = store_with(
+            dir.path(),
+            &[(run_of(&["do_thing"], &[]), Some(definition))],
+        );
+        assert_eq!(gap_ids(&db), ["gap:q::do_thing"]);
+    }
+
+    #[test]
+    fn a_process_activity_named_like_a_plugin_action_leaves_the_action_a_gap() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let _env = catalog_guard(dir.path(), &[("p", &["do_thing"])]);
+        let process = Activity {
+            name: "do_thing".into(),
+            activity_type: ActivityType::Action,
+            provider: Provider::Process {
+                path: "true".into(),
+                arguments: vec![],
+                env: std::collections::HashMap::new(),
+                timeout_s: None,
+            },
+            ..Default::default()
+        };
+        let db = store_with(
+            dir.path(),
+            &[(
+                run_of(&["do_thing"], &[]),
+                Some(drill(vec![process], vec![])),
+            )],
+        );
+        assert_eq!(gap_ids(&db), ["gap:p::do_thing"]);
+    }
+
+    #[test]
+    fn a_run_ingested_without_its_definition_closes_no_gap() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let _env = catalog_guard(dir.path(), &[("p", &["do_thing"])]);
+        let db = store_with(dir.path(), &[(run_of(&["do_thing"], &[]), None)]);
+        assert_eq!(gap_ids(&db), ["gap:p::do_thing"]);
+    }
+
+    #[test]
+    fn a_function_that_only_runs_as_a_rollback_stays_a_gap() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let _env = catalog_guard(dir.path(), &[("p", &["do_thing", "undo_thing"])]);
+        let definition = drill(
+            vec![script_action("start-thing", "p", "do_thing")],
+            vec![script_action("undo_thing", "p", "undo_thing")],
+        );
+        let db = store_with(
+            dir.path(),
+            &[(run_of(&["start-thing"], &["undo_thing"]), Some(definition))],
+        );
+        assert_eq!(gap_ids(&db), ["gap:p::undo_thing"]);
+    }
+
+    /// The runner records no result for an action it never reached (see
+    /// `hypothesis_before_fail_aborts_experiment` in tumult-core): the
+    /// fault of the definition counts all the same.
+    #[test]
+    fn a_fault_counts_as_tested_once_a_run_of_its_definition_is_stored_even_unreached() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let _env = catalog_guard(dir.path(), &[("p", &["do_thing"])]);
+        let definition = drill(vec![script_action("start-thing", "p", "do_thing")], vec![]);
+        let aborted = journal_of("run-1", "Thing drill", ExperimentStatus::Aborted, &[], &[]);
+        let db = store_with(dir.path(), &[(aborted, Some(definition))]);
+        assert!(gap_ids(&db).is_empty());
+    }
+
+    #[test]
+    fn the_fault_of_a_purged_run_is_a_gap_again() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let _env = catalog_guard(dir.path(), &[("p", &["do_thing"])]);
+        let definition = drill(vec![script_action("do_thing", "p", "do_thing")], vec![]);
+        let db = store_with(
+            dir.path(),
+            &[(run_of(&["do_thing"], &[]), Some(definition))],
+        );
+        assert!(gap_ids(&db).is_empty());
+
+        let store = tumult_lake::AnalyticsStore::open(std::path::Path::new(&db)).unwrap();
+        assert_eq!(store.purge_older_than_days(30).unwrap(), 1);
+        drop(store);
+        assert_eq!(gap_ids(&db), ["gap:p::do_thing"]);
     }
 
     #[test]
@@ -558,6 +721,7 @@ mod tests {
         };
         let journal = Journal {
             target_version: None,
+            target: None,
             experiment_title: "DORA drill".into(),
             experiment_id: "run-dora-1".into(),
             status: ExperimentStatus::Completed,

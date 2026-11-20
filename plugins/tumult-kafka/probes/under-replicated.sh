@@ -1,6 +1,7 @@
 #!/bin/sh
 # Probe: count under-replicated partitions
-# Outputs: integer count (0 = healthy)
+# Outputs: integer count (0 = healthy). A failed query exits non-zero with
+# the message of the tool.
 #
 # Environment variables:
 #   TUMULT_KAFKA_BOOTSTRAP - Bootstrap servers (default: localhost:9092)
@@ -32,5 +33,7 @@ else
     exit 1
 fi
 
-"${CMD}" --bootstrap-server "${BOOTSTRAP}" --describe --under-replicated-partitions 2>/dev/null \
-    | grep -c "Topic:" || echo "0"
+# The query runs on its own first, so a failed query ends the probe with
+# the status and the message of the tool. Each partition is one line.
+PARTITIONS=$("${CMD}" --bootstrap-server "${BOOTSTRAP}" --describe --under-replicated-partitions)
+printf '%s\n' "${PARTITIONS}" | awk '/Topic:/ { count++ } END { print count+0 }'

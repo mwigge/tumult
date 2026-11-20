@@ -6,11 +6,11 @@ use std::time::Duration;
 use tokio::sync::Semaphore;
 use tokio_util::sync::CancellationToken;
 use tumult_core::runner::{ActivityExecutor, ActivityOutcome};
-use tumult_core::types::Activity;
+use tumult_core::types::{Activity, Experiment};
 use tumult_lake::{rollback_status, run_state, NewRun, RegisteredDefinition, Store};
 use tumult_test_utils::EnvGuard;
 
-use super::worker::{process, sweep_expired_approvals};
+use super::worker::{complete_or_cleanup, process, sweep_expired_approvals};
 use super::*;
 use crate::IngestWriter;
 
@@ -1469,6 +1469,141 @@ async fn late_approval_rejection_cannot_erase_running_cleanup_ownership() {
     }
 }
 
+/// Run `TEST_TOON` to its end with no stop: the journal, and the status its
+/// `experiment.completed` log record carries.
+async fn run_to_its_end(
+    experiment: &Experiment,
+    executor: &Arc<dyn ActivityExecutor>,
+    controls: &Arc<tumult_core::controls::ControlRegistry>,
+) -> (tumult_core::types::Journal, String) {
+    let (experiment, executor, controls) = (experiment.clone(), executor.clone(), controls.clone());
+    // The runner blocks, and its log is captured on the thread it runs on.
+    tokio::task::spawn_blocking(move || {
+        let mut journal = None;
+        let logs = tumult_otel::logging::testing::capture_json(tracing::Level::INFO, || {
+            let config = tumult_core::runner::RunConfig::default();
+            journal =
+                tumult_core::runner::run_experiment(&experiment, &executor, &controls, &config)
+                    .ok();
+        });
+        let completed: Vec<_> = logs
+            .events
+            .iter()
+            .filter(|event| event["message"] == "experiment.completed")
+            .collect();
+        assert_eq!(completed.len(), 1, "{}", logs.raw);
+        let status = completed[0]["status"].as_str().expect("status").to_string();
+        (journal.expect("the run returned a journal"), status)
+    })
+    .await
+    .unwrap()
+}
+
+/// The one journal in the lake: its status, its end and its rollback count.
+fn stored_journal(fx: &Fixture) -> serde_json::Value {
+    let mut rows = Store::at(&fx.db_path)
+        .read_only()
+        .unwrap()
+        .query_json_rows("SELECT status, ended_at_ns, rollback_count FROM experiments")
+        .unwrap();
+    assert_eq!(rows.len(), 1, "{rows:?}");
+    rows.remove(0)
+}
+
+/// A stop that is accepted after the runner has returned comes too late to
+/// interrupt the run. The log and the root span of the run already say how
+/// it ended, so the journal in the lake must say the same. The stop still
+/// gets the cleanup it asks for.
+#[tokio::test]
+async fn a_late_stop_stores_the_status_the_run_logged() {
+    let fx = fixture().await;
+    exec_write(&fx.ingest, |writer| {
+        writer
+            .insert_run(&NewRun {
+                id: "late-stop".into(),
+                registry_id: "reg-1".into(),
+                params_json: None,
+                queued_at_ns: 1,
+                actor: None,
+            })
+            .and_then(|()| writer.mark_run_started("late-stop", None))
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .unwrap();
+    let (experiment, _) = prepare_run(TEST_TOON, &HashMap::new()).unwrap();
+    let executor: Arc<dyn ActivityExecutor> = Arc::new(RecordingExecutor {
+        executed: Arc::clone(&fx.executed),
+        delay: Duration::ZERO,
+    });
+    let controls = Arc::new(tumult_core::controls::ControlRegistry::new());
+    let (journal, logged) = run_to_its_end(&experiment, &executor, &controls).await;
+    assert_eq!(logged, "completed");
+
+    let ended_at_ns = journal.ended_at_ns;
+
+    let stop = CancellationToken::new();
+    stop.cancel();
+    complete_or_cleanup(
+        &fx.ingest,
+        "late-stop",
+        &experiment,
+        executor,
+        controls,
+        &stop,
+        journal,
+    )
+    .await;
+
+    let stored = stored_journal(&fx);
+    assert_eq!(stored["status"], serde_json::json!(logged));
+    assert_eq!(stored["ended_at_ns"], serde_json::json!(ended_at_ns));
+    assert_eq!(stored["rollback_count"], serde_json::json!(1));
+    let run = run_row(&fx, "late-stop");
+    assert_eq!(run["state"], serde_json::json!(run_state::PASSED));
+    assert_eq!(
+        run["rollback_status"],
+        serde_json::json!(rollback_status::COMPLETED)
+    );
+    let executed = fx.executed.lock().unwrap();
+    assert!(executed.contains(&"rollback-1".to_string()), "{executed:?}");
+}
+
+/// A completion the store refuses while nobody asked for a stop is left for
+/// recovery: the worker runs no cleanup of its own. The run here has no row
+/// in the store, so the store cannot finish it.
+#[tokio::test]
+async fn a_completion_the_store_refuses_without_a_stop_runs_no_cleanup() {
+    let fx = fixture().await;
+    let (experiment, _) = prepare_run(TEST_TOON, &HashMap::new()).unwrap();
+    let executor: Arc<dyn ActivityExecutor> = Arc::new(RecordingExecutor {
+        executed: Arc::clone(&fx.executed),
+        delay: Duration::ZERO,
+    });
+    let controls = Arc::new(tumult_core::controls::ControlRegistry::new());
+    let (journal, logged) = run_to_its_end(&experiment, &executor, &controls).await;
+
+    complete_or_cleanup(
+        &fx.ingest,
+        "no-such-run",
+        &experiment,
+        executor,
+        controls,
+        &CancellationToken::new(),
+        journal,
+    )
+    .await;
+
+    let stored = stored_journal(&fx);
+    assert_eq!(stored["status"], serde_json::json!(logged));
+    assert_eq!(stored["rollback_count"], serde_json::json!(0));
+    let executed = fx.executed.lock().unwrap();
+    assert!(
+        !executed.contains(&"rollback-1".to_string()),
+        "{executed:?}"
+    );
+}
+
 /// One action against a declared target that names no version.
 const TARGETED_TOON: &str = r"
 title: versioned queue experiment
@@ -1542,4 +1677,210 @@ async fn a_daemon_run_records_the_version_its_target_served_during_the_run() {
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0]["target_version"], serde_json::json!("1.5.0"));
     assert_eq!(rows[0]["version_source"], serde_json::json!("observed"));
+}
+
+/// One action under an oha load. Nobody listens on the port: the stand-ins
+/// below send no request.
+const OHA_LOAD_TOON: &str = r#"
+title: oha load queue experiment
+load:
+  tool: oha
+  script: "http://127.0.0.1:9/health"
+  vus: 1
+  duration_s: 1.0
+method[1]:
+  - name: action-1
+    activity_type: action
+    provider:
+      type: native
+      plugin: test
+      function: noop
+"#;
+
+/// One action under a load of a tool that has no adapter.
+const JMETER_LOAD_TOON: &str = r"
+title: jmeter load queue experiment
+load:
+  tool: jmeter
+  script: plan.jmx
+  vus: 1
+  duration_s: 1.0
+method[1]:
+  - name: action-1
+    activity_type: action
+    provider:
+      type: native
+      plugin: test
+      function: noop
+";
+
+/// Put a stand-in in the place of `oha` and of `k6`. Each writes its name
+/// to `calls` next to itself. The oha one prints the summary of one window
+/// of 40 answered requests, as oha 1.x does; the k6 one ends at once.
+fn load_tool_stand_ins(env: &mut EnvGuard, dir: &std::path::Path) {
+    let summary = r#"{"summary":{"successRate":1.0,"total":1.0,"slowest":0.2,"fastest":0.01,"average":0.05,"requestsPerSec":40.0,"totalData":1,"sizePerRequest":1,"sizePerSec":1},"responseTimeHistogram":{},"latencyPercentiles":{"p50":0.02,"p95":0.08,"p99":0.1},"rps":{},"details":{},"statusCodeDistribution":{"200":40},"errorDistribution":{}}"#;
+    let oha = tumult_test_utils::fake_bin(
+        dir,
+        "oha",
+        &format!(
+            "echo oha >> \"$(dirname \"$0\")/calls\"\n[ \"$1\" = \"--version\" ] && exit 0\nprintf '%s' '{summary}'"
+        ),
+    );
+    let k6 = tumult_test_utils::fake_bin(dir, "k6", "echo k6 >> \"$(dirname \"$0\")/calls\"");
+    env.set("TUMULT_OHA_BINARY", &oha);
+    env.set("TUMULT_K6_BINARY", &k6);
+}
+
+/// The load tools the stand-ins in `dir` say were started, in order.
+fn load_tools_asked(dir: &std::path::Path) -> Vec<String> {
+    std::fs::read_to_string(dir.join("calls"))
+        .map(|text| text.lines().map(str::to_string).collect())
+        .unwrap_or_default()
+}
+
+/// Queue `toon` on a fresh daemon queue; the fixture and the id of the run.
+async fn queued_run_of(toon: &'static str) -> (Fixture, String) {
+    let fx = fixture_for(toon).await;
+    let queue = RunQueue::spawn(
+        fx.ingest.clone(),
+        fx.db_path.clone(),
+        RunQueueConfig {
+            concurrency: 1,
+            queue_depth: 4,
+            sweep_interval: Duration::from_secs(3600),
+        },
+        recording_factory(&fx.executed, Duration::ZERO),
+    );
+    let run_id = queue
+        .enqueue(
+            RunRequest {
+                definition_toon: toon.into(),
+                ..request()
+            },
+            None,
+        )
+        .await
+        .unwrap();
+    (fx, run_id)
+}
+
+/// A daemon run of a definition whose load names oha runs its load with
+/// oha, as `tumult run` does.
+#[tokio::test]
+async fn a_daemon_run_drives_its_load_with_the_tool_the_definition_names() {
+    let mut env = EnvGuard::lock();
+    let tools = tempfile::TempDir::new().unwrap();
+    load_tool_stand_ins(&mut env, tools.path());
+
+    let (fx, run_id) = queued_run_of(OHA_LOAD_TOON).await;
+
+    let state = await_terminal(&fx, &run_id).await;
+    let asked = load_tools_asked(tools.path());
+    assert!(asked.iter().any(|tool| tool == "oha"), "{asked:?}");
+    assert!(!asked.iter().any(|tool| tool == "k6"), "{asked:?}");
+    assert_eq!(state, run_state::PASSED);
+    assert_eq!(fx.executed.lock().unwrap().as_slice(), ["action-1"]);
+}
+
+/// A definition whose load names a tool without an adapter can never run.
+/// The daemon refuses it at enqueue, with the reason the runner gives, so
+/// no run row is left to recover, no step runs and no other tool starts in
+/// its place.
+#[tokio::test]
+async fn a_daemon_refuses_a_load_tool_that_has_no_adapter_at_enqueue() {
+    let mut env = EnvGuard::lock();
+    let tools = tempfile::TempDir::new().unwrap();
+    load_tool_stand_ins(&mut env, tools.path());
+    let fx = fixture().await;
+    let queue = RunQueue::spawn(
+        fx.ingest.clone(),
+        fx.db_path.clone(),
+        RunQueueConfig {
+            concurrency: 1,
+            queue_depth: 4,
+            sweep_interval: Duration::from_secs(3600),
+        },
+        recording_factory(&fx.executed, Duration::ZERO),
+    );
+
+    let refused = queue
+        .enqueue(
+            RunRequest {
+                definition_toon: JMETER_LOAD_TOON.into(),
+                ..request()
+            },
+            None,
+        )
+        .await;
+
+    assert!(
+        matches!(refused, Err(EnqueueError::Store(_))),
+        "{refused:?}"
+    );
+    let reason = prepare_run(JMETER_LOAD_TOON, &HashMap::new()).unwrap_err();
+    assert!(reason.contains("no load adapter for jmeter"), "{reason}");
+    let runs = Store::at(&fx.db_path)
+        .read_only()
+        .unwrap()
+        .runs(None, 10)
+        .unwrap();
+    assert!(runs.is_empty(), "{runs:?}");
+    assert!(fx.executed.lock().unwrap().is_empty());
+    assert_eq!(load_tools_asked(tools.path()), Vec::<String>::new());
+}
+
+/// A stored run gets its rollbacks after a restart also when its load can
+/// no longer run. An older daemon started such a run, and recovery starts
+/// no load. This holds for a run with a snapshot and for one without.
+#[tokio::test]
+async fn a_stored_run_whose_load_can_no_longer_run_is_still_rolled_back() {
+    let fx = fixture().await;
+    let load = "load:\n  tool: jmeter\n  script: plan.jmx\n  vus: 1\n  duration_s: 1.0\nmethod[3]:";
+    let toon = TEST_TOON.replacen("method[3]:", load, 1);
+    let refused = prepare_run(&toon, &HashMap::new()).unwrap_err();
+    assert!(refused.contains("no load adapter for jmeter"), "{refused}");
+    let plan = super::recovery_plan::RecoveryPlan::capture(&toon, &HashMap::new()).unwrap();
+    let snapshot = serde_json::to_string(&plan).unwrap();
+    let stored = |id: &str| NewRun {
+        id: id.into(),
+        registry_id: "reg-jmeter".into(),
+        params_json: None,
+        queued_at_ns: 1,
+        actor: None,
+    };
+    exec_write(&fx.ingest, move |writer| {
+        writer
+            .register_definition(&RegisteredDefinition {
+                id: "reg-jmeter".into(),
+                name: "jmeter".into(),
+                definition_toon: toon,
+                content_hash: "h-jmeter".into(),
+                registered_at_ns: 1,
+                registered_by: None,
+            })
+            .and_then(|()| writer.insert_run(&stored("with-snapshot")))
+            .and_then(|()| writer.claim_run("with-snapshot"))
+            .and_then(|()| writer.begin_run_execution("with-snapshot", &snapshot, None))
+            .and_then(|()| writer.insert_run(&stored("without-snapshot")))
+            .and_then(|()| writer.mark_run_started("without-snapshot", None))
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .unwrap();
+
+    let factory = recording_factory(&fx.executed, Duration::ZERO);
+    let count = reconcile_orphans(&fx.ingest, &fx.db_path, &factory)
+        .await
+        .unwrap();
+
+    assert_eq!(count, 2);
+    for run in ["with-snapshot", "without-snapshot"] {
+        let row = run_row(&fx, run);
+        assert_eq!(row["state"], run_state::ABORTED, "{row}");
+        assert_eq!(row["rollback_status"], rollback_status::COMPLETED, "{row}");
+    }
+    assert_eq!(
+        fx.executed.lock().unwrap().as_slice(),
+        ["rollback-1", "rollback-1"]
+    );
 }

@@ -168,6 +168,62 @@ async fn start_campaign_rejects_env_outside_the_principals_scopes() {
     assert_eq!(detail["count"], 1, "{detail}");
 }
 
+/// The `registry_id` filter of the run list keeps the scope rule: a reader
+/// scoped to staging finds the staging campaign of its GameDay and not the
+/// prod campaign of another.
+#[tokio::test]
+async fn the_gameday_filter_of_the_run_list_keeps_the_scope_rule() {
+    let srv = spawn_server().await;
+    let admin = add_scoped_token(&srv, "gd-admin", "admin", &[]).await;
+    let reader = add_scoped_token(&srv, "gd-reader", "viewer", &["staging"]).await;
+    let mut campaigns = Vec::new();
+    for (title, env) in [("staging campaign", "staging"), ("prod campaign", "prod")] {
+        let toon = GAMEDAY.replace("scoped campaign", title);
+        let (status, body) = post_auth(
+            &srv.base,
+            "/api/gamedays/validate",
+            &admin,
+            json!({"toon": toon, "experiments": {"a.toon": SCOPE_TOON}}),
+        )
+        .await;
+        assert_eq!(status, 200, "{body}");
+        let gameday_id = body["gameday_registry_id"].as_str().unwrap().to_string();
+        let (status, body) = post_auth(
+            &srv.base,
+            &format!("/api/gamedays/{gameday_id}/runs"),
+            &admin,
+            json!({"env": env}),
+        )
+        .await;
+        assert_eq!(status, 202, "{body}");
+        campaigns.push((gameday_id, body["run_id"].clone()));
+    }
+    let [(staging_day, staging_run), (prod_day, prod_run)] = &campaigns[..] else {
+        panic!("two campaigns: {campaigns:?}");
+    };
+
+    let path = |day: &str| format!("/api/runs?registry_id={day}");
+    let (status, body) = get_auth(&srv.base, &path(staging_day), &reader).await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["count"], 1, "{body}");
+    assert_eq!(&body["runs"][0]["id"], staging_run, "{body}");
+    // The scoped read sends the parameters in the shape of the open one.
+    assert_eq!(
+        body["runs"][0]["params_json"],
+        json!({"env": "staging"}),
+        "{body}"
+    );
+
+    let (status, body) = get_auth(&srv.base, &path(prod_day), &reader).await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["count"], 0, "out of scope: {body}");
+
+    let (status, body) = get_auth(&srv.base, &path(prod_day), &admin).await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["count"], 1, "{body}");
+    assert_eq!(&body["runs"][0]["id"], prod_run, "{body}");
+}
+
 /// Preview data must never carry server-resolved credentials, even for an operator.
 #[tokio::test]
 async fn preview_redacts_resolved_secrets() {

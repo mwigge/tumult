@@ -1,0 +1,53 @@
+experiment_title: "Redis freeze — a paused store gives no answer, then comes back with its data"
+experiment_id: "b3ff0560-f70f-4014-92b7-a9f55fd87d24"
+status: completed
+started_at_ns: 1794852709121121615
+ended_at_ns: 1794852712383263599
+duration_ms: 3262
+steady_state_before:
+  title: Redis responds to ping
+  met: true
+  probe_results[1]{name,activity_type,status,started_at_ns,duration_ms,output,trace_id,span_id}:
+    "redis-ping",probe,succeeded,1794852709121144309,43,PONG,"",""
+steady_state_after:
+  title: Redis responds to ping
+  met: true
+  probe_results[1]{name,activity_type,status,started_at_ns,duration_ms,output,trace_id,span_id}:
+    "redis-ping",probe,succeeded,1794852712345095028,38,PONG,"",""
+method_results[5]{name,activity_type,status,started_at_ns,duration_ms,output,trace_id,span_id}:
+  "redis-set-key",action,succeeded,1794852709164714577,46,OK,"",""
+  "pause-redis",action,succeeded,1794852709211251405,30,"docker-redis-1\npaused","",""
+  "no-answer-while-paused",probe,succeeded,1794852709241713853,2004,"no-answer","",""
+  "unpause-redis",action,succeeded,1794852711245763423,18,"docker-redis-1\nunpaused","",""
+  "key-survived",probe,succeeded,1794852712264807502,41,"chaos-was-here","",""
+rollback_results[0]:
+rollback_failures: 0
+estimate: null
+baseline_result: null
+during_result:
+  started_at_ns: 1794852709164651682
+  ended_at_ns: 1794852712306382967
+  fault_active_s: 3.141731285
+  sample_interval_s: 1
+  probes[1]{name,samples,mean,max,min,error_rate,breached_at_ns,breach_count}:
+    "redis-ping",4,30,49,13,0.5,1794852710214402584,2
+post_result:
+  started_at_ns: 1794852712306438346
+  ended_at_ns: 1794852712345081257
+  duration_s: 0.038642911
+  samples: 1
+  probes[1]{name,mean,p95,error_rate,returned_to_baseline,recovery_time_s}:
+    "redis-ping",38,38,0,true,0
+  recovery_time_s: 0
+  full_recovery: true
+  mttr_s: 0
+load_result: null
+analysis: null
+regulatory: null
+kind: chaos
+probe_samples[5]{probe,phase,ts_ns,duration_ms,ok}:
+  "redis-ping",during,1794852709164753846,49,true
+  "redis-ping",during,1794852710214402584,16,false
+  "redis-ping",during,1794852711231286364,13,false
+  "redis-ping",during,1794852712244910375,42,true
+  "redis-ping",post,1794852712306444245,38,true

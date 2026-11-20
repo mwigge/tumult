@@ -1,6 +1,6 @@
 # Agentic QE Fleet — autonomous quality engineering agents
 #
-# Connects to the Tumult MCP server for chaos engineering capabilities.
+# Connects to the Tumult MCP server of the resilience intelligence platform.
 # Requires: infra + tumult bundles running first.
 #
 # Setup:

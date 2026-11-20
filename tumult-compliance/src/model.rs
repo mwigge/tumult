@@ -56,17 +56,84 @@ impl Cell {
         Self::Status(s.into())
     }
 
-    /// Glyph + Okabe-Ito color for a status/severity string. Outcomes,
-    /// run states, severities and OTel status codes share the mapping:
-    /// green ● good, orange ▲ warning, vermillion × bad, grey ○ unknown.
-    /// (Glyphs restricted to ● ▲ × ○ — present in the vendored Inter.)
+    /// Glyph + Okabe-Ito color for a status/severity string, by its
+    /// [`Tone`].
     #[must_use]
     pub fn glyph(status: &str) -> (&'static str, &'static str) {
-        match status.to_ascii_lowercase().as_str() {
-            "completed" | "passed" | "ok" | "low" | "good" | "met" => ("●", "#009E73"),
-            "deviated" | "stale" | "medium" | "warning" | "fair" => ("▲", "#E69F00"),
-            "failed" | "error" | "high" | "critical" | "poor" | "not met" => ("×", "#D55E00"),
-            _ => ("○", "#6B7280"),
+        Tone::of(status).glyph()
+    }
+}
+
+/// How a status cell reads: good, in between, bad, or no judgement.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Tone {
+    Good,
+    Warn,
+    Bad,
+    Neutral,
+}
+
+/// The tone of each status word that is not a status a run ends with:
+/// manual outcomes, run states, severities, bands, hypothesis results and
+/// OTel status codes. Any other word is neutral.
+const WORD_TONES: [(&str, Tone); 17] = [
+    ("passed", Tone::Good),
+    ("ok", Tone::Good),
+    ("low", Tone::Good),
+    ("good", Tone::Good),
+    ("met", Tone::Good),
+    // A manual exercise that worked in part: between a pass and a failure.
+    ("partial", Tone::Warn),
+    ("stale", Tone::Warn),
+    ("medium", Tone::Warn),
+    ("warning", Tone::Warn),
+    ("fair", Tone::Warn),
+    ("error", Tone::Bad),
+    ("high", Tone::Bad),
+    ("critical", Tone::Bad),
+    ("poor", Tone::Bad),
+    ("not met", Tone::Bad),
+    // A manual exercise that showed nothing either way, and a clause no
+    // evidence is mapped to: no judgement.
+    ("inconclusive", Tone::Neutral),
+    ("unmapped", Tone::Neutral),
+];
+
+impl Tone {
+    /// The tone of `status`, in any case. A status a run ends with has the
+    /// tone of its verdict ([`tumult_lake::run_verdict`]); any other word
+    /// has the tone [`WORD_TONES`] gives it.
+    #[must_use]
+    pub fn of(status: &str) -> Self {
+        if let Some(verdict) = tumult_lake::run_verdict(status) {
+            return verdict.into();
+        }
+        WORD_TONES
+            .iter()
+            .find(|(word, _)| word.eq_ignore_ascii_case(status))
+            .map_or(Self::Neutral, |(_, tone)| *tone)
+    }
+
+    /// Glyph + Okabe-Ito color: green ● good, orange ▲ warn, vermillion
+    /// × bad, grey ○ neutral. (Glyphs restricted to ● ▲ × ○ — present in
+    /// the vendored Inter.)
+    #[must_use]
+    pub const fn glyph(self) -> (&'static str, &'static str) {
+        match self {
+            Self::Good => ("●", "#009E73"),
+            Self::Warn => ("▲", "#E69F00"),
+            Self::Bad => ("×", "#D55E00"),
+            Self::Neutral => ("○", "#6B7280"),
+        }
+    }
+}
+
+impl From<tumult_lake::RunVerdict> for Tone {
+    fn from(verdict: tumult_lake::RunVerdict) -> Self {
+        match verdict {
+            tumult_lake::RunVerdict::Pass => Self::Good,
+            tumult_lake::RunVerdict::Fail => Self::Bad,
+            tumult_lake::RunVerdict::NoEvidence => Self::Neutral,
         }
     }
 }
@@ -112,8 +179,15 @@ pub enum ChartSpec {
     Bars(Vec<(String, f64)>),
     /// (label, value) donut slices.
     Donut(Vec<(String, f64)>),
-    /// (series name, (x, y) points) lines.
-    Lines(Vec<(String, Vec<(f64, f64)>)>),
+    /// Lines over time: what the y axis measures, and for each series its
+    /// name and its (time in epoch ns, value) points.
+    Trend {
+        y_name: String,
+        series: Vec<(String, Vec<(i64, f64)>)>,
+    },
+    /// A small line without axes, for the card of one number: the
+    /// (time in epoch ns, value) points, the oldest first.
+    Sparkline(Vec<(i64, f64)>),
 }
 
 /// A complete report document.
@@ -140,13 +214,36 @@ mod tests {
         ] {
             assert_eq!(Cell::glyph(good), ("●", "#009E73"), "{good}");
         }
-        for warn in ["deviated", "stale", "medium", "warning", "fair"] {
+        for warn in ["partial", "stale", "medium", "warning", "fair"] {
             assert_eq!(Cell::glyph(warn), ("▲", "#E69F00"), "{warn}");
         }
         for bad in ["failed", "error", "high", "critical", "poor", "not met"] {
             assert_eq!(Cell::glyph(bad), ("×", "#D55E00"), "{bad}");
         }
-        assert_eq!(Cell::glyph("inconclusive"), ("○", "#6B7280"));
+        for neutral in ["inconclusive", "Unmapped", "queued", "—"] {
+            assert_eq!(Cell::glyph(neutral), ("○", "#6B7280"), "{neutral}");
+        }
+    }
+
+    #[test]
+    fn a_status_a_run_ends_with_is_drawn_in_the_tone_of_its_verdict() {
+        // A run that passed is good, a run that failed is bad, and a run
+        // that proves nothing either way is neutral, in either spelling.
+        let good = ("●", "#009E73");
+        let bad = ("×", "#D55E00");
+        let neutral = ("○", "#6B7280");
+        for (status, glyph) in [
+            ("completed", good),
+            ("deviated", bad),
+            ("failed", bad),
+            ("halted", bad),
+            ("aborted", neutral),
+            ("interrupted", neutral),
+        ] {
+            assert_eq!(Cell::glyph(status), glyph, "{status}");
+            let shouted = status.to_ascii_uppercase();
+            assert_eq!(Cell::glyph(&shouted), glyph, "{shouted}");
+        }
     }
 
     #[test]

@@ -174,7 +174,9 @@ impl McpClient {
         rpc_result(&parse_sse_body(&body)?)
     }
 
-    /// Run an experiment by path via `tumult_run_experiment`.
+    /// Run an experiment by path via `tumult_run_experiment`. Every run writes
+    /// the default journal path of the server, so each one replaces the
+    /// journal of the run before it (`force`).
     ///
     /// # Errors
     /// Propagates [`McpError`] on any transport, RPC, or tool-level failure.
@@ -182,7 +184,7 @@ impl McpClient {
         let result = self
             .call_tool(
                 "tumult_run_experiment",
-                json!({ "experiment_path": experiment_path }),
+                json!({ "experiment_path": experiment_path, "force": true }),
             )
             .await?;
         parse_run_result(&result)

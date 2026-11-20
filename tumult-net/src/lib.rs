@@ -34,6 +34,7 @@ pub mod error;
 pub(crate) mod faults;
 pub mod handles;
 pub mod native;
+pub mod pidfile;
 pub mod probes;
 pub mod proxy;
 pub(crate) mod startup_log;
