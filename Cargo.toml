@@ -228,6 +228,13 @@ strip = "debuginfo"
 # Deny all warnings so `cargo build` outside CI is also strict.
 warnings = "deny"
 
+# Every crate reads these lints (`[lints] workspace = true`), so a plain
+# `cargo clippy --all-targets --all-features` checks what CI checks. CI and
+# `make lint` add only `-D warnings`.
 [workspace.lints.clippy]
-# Mirror the `-W clippy::pedantic` flag used in CI and the pre-commit hook.
-pedantic = "warn"
+pedantic = { level = "warn", priority = -1 }
+# Diagnostics are structured log events (docs/guides/logging.md). Output
+# that is the product of a command carries a commented #[allow].
+print_stdout = "deny"
+print_stderr = "deny"
+dbg_macro = "deny"

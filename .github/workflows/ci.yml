@@ -135,10 +135,9 @@ jobs:
       # No separate `cargo check`: clippy --all-targets already type-checks
       # every target including tests, so a check pass first only recompiles
       # the workspace crates a second time.
-      # print_stdout/print_stderr/dbg_macro: diagnostics are structured log
-      # events (docs/guides/logging.md); output that is the product of a
-      # command carries a commented #[allow].
-      - run: cargo clippy --all-targets --all-features -- -D warnings -W clippy::pedantic -D clippy::print_stdout -D clippy::print_stderr -D clippy::dbg_macro
+      # The lints (pedantic, and print_stdout/print_stderr/dbg_macro denied)
+      # are in [workspace.lints] of Cargo.toml, which every crate reads.
+      - run: cargo clippy --all-targets --all-features -- -D warnings
       # tumult-clickhouse depends on tumult-lake without the duckdb feature;
       # --all-features never builds that shape.
       - run: cargo check -p tumult-lake --no-default-features
@@ -264,12 +263,22 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      # The whole history: the prose check compares with the point where
+      # the branch left its base.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
       - run: python3 scripts/check-docs.py
       # Regulatory citation wordings that were found wrong (a DORA paragraph
       # that does not exist, a retention period DORA does not set) must not
       # come back in docs, seeds or fixtures.
       - run: python3 scripts/check-citations.py
+      # No em or en dash and no Title Case heading in a line that the pull
+      # request adds to a markdown file or to the html of the site.
+      - name: Prose of the added lines
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: python3 scripts/check-prose.py "origin/${BASE_REF:-main}"
 
   forecastd:
     name: Forecast sidecar (stub model)
@@ -326,3 +335,6 @@ jobs:
       - run: python3 scripts/test-demo-topology.py
       - run: python3 scripts/test-check-test-hygiene.py
       - run: python3 scripts/check-test-hygiene.py
+      - run: python3 scripts/test-check-prose.py
+      - run: python3 scripts/test-check-pr-body.py
+      - run: python3 scripts/test-quality-gates.py

@@ -28,3 +28,6 @@ tumult-test-utils = { path = "../tumult-test-utils", default-features = false, f
 clickhouse = { workspace = true, features = ["test-util"] }
 # test-util: a paused clock, so backoff is measured without waiting for it.
 tokio = { version = "1", features = ["rt", "macros", "time", "test-util"] }
+
+[lints]
+workspace = true

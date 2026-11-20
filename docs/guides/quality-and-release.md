@@ -23,7 +23,7 @@ npm --prefix web run build
 npm --prefix web run build:report
 git diff --exit-code -- tumult-cli/src/commands/report/html/report-charts.js
 cargo fmt --all -- --check
-cargo clippy --workspace --all-targets --all-features --locked -- -D warnings -W clippy::pedantic -D clippy::print_stdout -D clippy::print_stderr -D clippy::dbg_macro
+cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 cargo check -p tumult-lake --no-default-features
 cargo test --workspace --all-features --locked
 make demo-test
@@ -42,6 +42,7 @@ TUMULT_BIN="$PWD/target/debug/tumult" TUMULTD_BIN="$PWD/target/debug/tumultd" np
 bash scripts/lint-embedded-sql.sh
 python3 scripts/check-docs.py
 python3 scripts/check-citations.py
+python3 scripts/check-prose.py
 python3 scripts/test-check-log-messages.py
 python3 scripts/check-log-messages.py
 python3 scripts/test-distribution.py
@@ -55,7 +56,16 @@ bash -n scripts/demo-topology.sh
 python3 scripts/test-demo-topology.py
 python3 scripts/test-check-test-hygiene.py
 python3 scripts/check-test-hygiene.py
+python3 scripts/test-check-prose.py
+python3 scripts/test-check-pr-body.py
+python3 scripts/test-quality-gates.py
 ```
+
+`make precommit` runs the checks of the CI jobs Format, Test, Demo crates, Cargo Deny and Documentation checks, then `make mutants`. The clippy lints are in `[workspace.lints]` of `Cargo.toml`, and every crate reads them.
+
+`scripts/check-prose.py` reads the lines that a branch adds to markdown files and to the html of the site. It fails on an em or en dash and on a heading in Title Case. Write headings in sentence case: names, acronyms and code keep their capitals.
+
+The body of a pull request has the headings Why, What changed, Scope, Tradeoffs, Blast Radius and Verification, in this order, and at most 40 lines. Leave out a heading with nothing to say, but never Why or Verification. The workflow `Pull request body` checks it with `scripts/check-pr-body.py`.
 
 On machines with many logical CPUs, set `CARGO_BUILD_JOBS=4` and pass `-- --test-threads=2` to Cargo tests to bound linker and DuckDB concurrency. Browser tests use one worker and the production static build. CI also enforces workspace coverage on main; its 90% floor is unchanged. A passing unit suite is not a coverage measurement or proof of remote-provider support.
 

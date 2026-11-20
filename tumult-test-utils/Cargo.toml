@@ -44,3 +44,6 @@ tonic = { workspace = true }
 [[example]]
 name = "record_telemetry"
 required-features = ["recorded"]
+
+[lints]
+workspace = true

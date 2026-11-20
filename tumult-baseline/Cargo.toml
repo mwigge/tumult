@@ -21,3 +21,6 @@ tumult-test-utils = { path = "../tumult-test-utils", default-features = false, f
 [[bench]]
 name = "stats_bench"
 harness = false
+
+[lints]
+workspace = true

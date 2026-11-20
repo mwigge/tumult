@@ -65,3 +65,6 @@ tumult-test-utils = { path = "../tumult-test-utils", default-features = false }
 [[example]]
 name = "otap_probe"
 required-features = ["otap-client"]
+
+[lints]
+workspace = true

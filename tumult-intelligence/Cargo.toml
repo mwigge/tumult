@@ -37,3 +37,5 @@ tumult-plugin = { path = "../tumult-plugin" }
 toon-format = { workspace = true }
 serde_json = { workspace = true }
 
+[lints]
+workspace = true

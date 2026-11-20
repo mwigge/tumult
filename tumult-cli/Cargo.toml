@@ -51,3 +51,6 @@ tumult-test-utils = { path = "../tumult-test-utils", default-features = false }
 tempfile = { workspace = true }
 # Reads back the Arrow and CSV files `tumult export` writes, in tests.
 arrow = { workspace = true }
+
+[lints]
+workspace = true
