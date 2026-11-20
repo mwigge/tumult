@@ -6,7 +6,7 @@
 //! export call (and every Arrow stream) must carry an
 //! `authorization: Bearer <token>` metadata entry; anything else is rejected
 //! with `UNAUTHENTICATED`. The token is checked on the headers of a call
-//! ([`bearer`]), before its message is read or decoded. The first
+//! (`bearer`), before its message is read or decoded. The first
 //! authorised call also tells the listener ([`crate::listener`]) that the
 //! connection belongs to a client: until then it has a deadline and gives
 //! way to a newcomer when the listener is full.

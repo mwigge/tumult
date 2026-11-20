@@ -554,7 +554,7 @@ fn inconclusive(target: &str, fail_on: PerfFailOn) -> Result<()> {
 ///
 /// # Errors
 ///
-/// Returns [`PerfDidNotPass`] when the verdict fails under `fail_on`, and
+/// Returns `PerfDidNotPass` when the verdict fails under `fail_on`, and
 /// any other error when no daemon URL is configured, the daemon is
 /// unreachable, it answers with an error status, or `--store` was given
 /// and the verdict was not stored.

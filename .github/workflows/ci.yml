@@ -15,9 +15,10 @@ env:
 # namespace (~40 min wall, and every stacked-PR rebase paid it again). Now
 # one job builds the workspace once and walks check → clippy → machete →
 # nextest, every Rust job shares one rust-cache key (main-push runs warm it
-# for PRs), nextest runs the suite process-parallel, and the doc build only
-# happens on main. The exhaustive gates live on main (Coverage on every
-# merge, 90% floor) and in the Release workflow (full --all-features matrix).
+# for PRs), nextest runs the suite process-parallel, and the doc build
+# fails on any rustdoc warning. The exhaustive gates live on main
+# (Coverage on every merge, 90% floor) and in the Release workflow (full
+# --all-features matrix).
 
 jobs:
   web:
@@ -234,11 +235,12 @@ jobs:
 
   doc:
     name: Documentation
-    # Main-only: rustdoc over the workspace is ~20 min and validates nothing
-    # a PR author can act on differently than clippy already does.
-    if: github.event_name == 'push'
+    # Runs on pull requests and on main. A broken doc link fails the pull
+    # request, not main after the merge. It takes about 20 min.
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      RUSTDOCFLAGS: -D warnings
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9  # stable

@@ -11,7 +11,7 @@
 //! flags such resources; ids stored before that check existed are found
 //! by running the same check here. The list is bounded both ways: an id
 //! is shown cut to one character past the longest valid one, and at most
-//! [`MALFORMED_LIMIT`] rows are returned; the document says when either
+//! `MALFORMED_LIMIT` rows are returned; the document says when either
 //! bound cut something.
 
 use axum::extract::{Query, State};

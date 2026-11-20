@@ -13,7 +13,6 @@ pub mod attributes;
 pub mod config;
 /// Instrumentation wrappers for chaos actions and probes.
 pub mod instrument;
-/// Structured logging: shared subscriber init, JSON and text formatters.
 pub mod logging;
 /// Standard metrics for Tumult experiments.
 pub mod metrics;

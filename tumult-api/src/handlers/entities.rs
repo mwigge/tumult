@@ -6,12 +6,12 @@
 //! environments; an entity that names none is outside every scope. Every
 //! value a request supplies reaches the store as a bound parameter.
 //!
-//! Both answer one page at a time (see [`page`]): `total` is the number of
+//! Both answer one page at a time (see `page`): `total` is the number of
 //! rows the request matches, `count` the number returned, `truncated`
 //! whether rows were left out, and `next_cursor` where to go on.
 //!
 //! `DELETE /api/entities?environment=…[&type=…]` removes the entities of
-//! one environment with all their rows ([`purge_entities`]). It needs the
+//! one environment with all their rows (`purge_entities`). It needs the
 //! Admin role, runs on the daemon's single writer and is written to the
 //! log there; a purge that is refused or fails is written to the log too.
 

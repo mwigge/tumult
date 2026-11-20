@@ -1,5 +1,5 @@
-//! `GET /api/forecast` ([`metric`]) and `GET /api/runs/{id}/impact`
-//! ([`run_impact`]) — the forecasting endpoints.
+//! `GET /api/forecast` (`metric`) and `GET /api/runs/{id}/impact`
+//! (`run_impact`) — the forecasting endpoints.
 //!
 //! Both pull a series from the lake, resample it onto the series contract
 //! (regular step, `NaN` gaps, capped) and ask a provider for quantile
@@ -27,7 +27,7 @@
 //! alike and opens the circuit.
 //! Whoever made it, a band narrower than the series can resolve
 //! is widened to [`tumult_forecast::band::floor`] and flagged
-//! `degenerate_band`. Spans and counters are described in [`telemetry`].
+//! `degenerate_band`. Spans and counters are described in `telemetry`.
 
 pub mod breaker;
 pub mod client;
