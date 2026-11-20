@@ -205,14 +205,6 @@ export interface MetricDefInfo {
     description: string | null;
 }
 
-export interface Timeseries {
-    metric: string;
-    description: string | null;
-    interval: string;
-    range: string;
-    points: { bucket_s: number; value: number | null }[];
-}
-
 export interface AskResponse {
     configured: boolean;
     source?: 'golden' | 'llm';
@@ -432,7 +424,7 @@ export interface StarMap {
 // ---------------------------------------------------------------------------
 // v2: resilience scoring + compliance reports
 
-export type RunState = 'passed' | 'stale' | 'failed' | 'never_run';
+export type RunState = 'passed' | 'stale' | 'partial' | 'failed' | 'never_run';
 
 export interface ExperimentScore {
     name: string;
@@ -445,24 +437,6 @@ export interface ExperimentScore {
     runs: number;
     /** The latest run sent no trace: the lake holds its journal only. */
     journal_only: boolean;
-}
-
-export interface TargetScore {
-    target: string;
-    score: number;
-    band: string;
-    runs: number;
-    last_run_ns: number | null;
-}
-
-export interface Scorecard {
-    /** Null when nothing is on record; its band is then `unknown`. */
-    portfolio: number | null;
-    band: string;
-    delta: number | null;
-    as_of_ns: number;
-    targets: TargetScore[];
-    experiments: ExperimentScore[];
 }
 
 /** `GET /api/gate/{target}`: the CI gate verdict for one target. */
@@ -1675,33 +1649,6 @@ export interface ForecastSeries {
     observed: (number | null)[];
     median: (number | null)[];
     bands: { level: number; lower: (number | null)[]; upper: (number | null)[] }[];
-}
-
-/** `GET /api/forecast` */
-export interface ForecastResponse {
-    metric: string;
-    description: string | null;
-    target: string | null;
-    env: string[] | null;
-    range: string;
-    horizon: number;
-    step_ns: number;
-    from_ns: number;
-    to_ns: number;
-    /** Epoch ms; use these in the browser, where a double cannot hold ns. */
-    from_ms: number;
-    to_ms: number;
-    series: ForecastSeries;
-    forecast: {
-        levels: number[];
-        quantiles: (number | null)[][];
-        context_points: number;
-        insufficient_history: boolean;
-        /** The band had no width and was floored. */
-        degenerate_band: boolean;
-    };
-    provenance: ForecastProvenance;
-    cached: boolean;
 }
 
 /** One probe's counterfactual in `GET /api/runs/{id}/impact`. A probe that

@@ -4,8 +4,9 @@
     // fault windows (markArea), objective thresholds (horizontal markLine)
     // and moment marks (vertical markLine, e.g. peak and recovery). Bands
     // are drawn widest first so narrower ones sit on top.
+    import { onMount } from 'svelte';
     import type { EChartsCoreOption } from '#lib/echarts.js';
-    import { chartTokens } from '#lib/echarts.js';
+    import { chartTheme, chartTokens, followTheme } from '#lib/echarts.js';
     import { strong, swatch, tip, tipFormatter } from '#lib/tooltip.js';
     import EChart from './EChart.svelte';
 
@@ -47,7 +48,10 @@
         label?: string;
     } = $props();
 
-    const t = chartTokens();
+    // The chart is drawn in the colours of the theme in force.
+    let theme = $state(chartTheme());
+    onMount(() => followTheme((next) => (theme = next)));
+    const t = $derived(chartTokens(theme));
 
     function pairs(values: (number | null)[]): [number, number | null][] {
         return series.ts.map((x, i) => [x, values[i] ?? null]);
