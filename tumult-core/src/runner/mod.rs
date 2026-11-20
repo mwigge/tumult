@@ -185,8 +185,6 @@ pub enum BaselineMode {
     /// Runs the ordinary experiment using its declared static tolerances.
     #[default]
     Full,
-    /// Runs the ordinary experiment without statistical baseline acquisition.
-    Skip,
     /// Measures hypothesis probes only; never runs controls, load or faults.
     Only,
 }

@@ -33,8 +33,7 @@ sixth phase of an experiment.
 Baseline-only journals are labeled as observations and are not automatically
 ingested as fault-execution evidence. Probe implementations must themselves be
 safe to run: declaring a shell command a probe does not sandbox its effects.
-See [Statistical Baselines](guides/baseline-guide.md) for the separate statistics
-library and [Execution Flow](guides/execution-flow.md) for runtime ordering.
+See [Execution Flow](guides/execution-flow.md) for runtime ordering.
 
 ## During results
 

@@ -65,7 +65,6 @@ tumult-plugin:     0 unsafe blocks
 tumult-ssh:        0 unsafe blocks
 tumult-clickhouse: 0 unsafe blocks
 tumult-mcp:        0 unsafe blocks
-tumult-baseline:   0 unsafe blocks
 tumult-kubernetes: 0 unsafe blocks
 tumult-test-utils: 0 unsafe blocks
 ```

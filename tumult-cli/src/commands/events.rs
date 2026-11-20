@@ -64,6 +64,15 @@ pub(super) fn auto_ingest_failed(error: &anyhow::Error) {
     );
 }
 
+/// The run writes its journal to `ClickHouse`, a store that Tumult 3.1
+/// removes.
+pub(super) fn clickhouse_deprecated() {
+    tracing::warn!(
+        name: "cli.clickhouse.deprecated",
+        "the ClickHouse store is deprecated and Tumult 3.1 removes it; unset TUMULT_CLICKHOUSE_URL to write to the lake"
+    );
+}
+
 /// The daemon named by `TUMULT_DAEMON_URL` never answered; the CLI falls
 /// back to writing the store directly. The URL is logged without userinfo
 /// or query.

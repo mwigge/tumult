@@ -296,8 +296,10 @@ async fn auto_ingest_journal(
 ) -> Result<(bool, Option<String>)> {
     use tumult_lake::AnalyticsBackend;
 
-    // Dual-mode: ClickHouse if configured, DuckDB otherwise
+    // Dual-mode: ClickHouse if configured (deprecated, 3.1 removes it),
+    // DuckDB otherwise
     if tumult_clickhouse::ClickHouseConfig::is_configured() {
+        events::clickhouse_deprecated();
         let config = tumult_clickhouse::ClickHouseConfig::from_env();
         let store = tumult_clickhouse::ClickHouseStore::connect(&config)
             .await

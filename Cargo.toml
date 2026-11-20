@@ -10,7 +10,6 @@ members = [
     "tumult-auth",
     "tumult-authoring",
     "tumult-otel",
-    "tumult-baseline",
     # Phase 1
     "tumult-ssh",
     "tumult-net",

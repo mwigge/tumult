@@ -13,14 +13,13 @@ Every experiment and every experiment operation is tracked:
   `resilience.hypothesis.before/after`, `resilience.action` /
   `resilience.probe` per operation (including during/post-phase probe
   samples), `resilience.rollback`, `resilience.load`, plus plugin-crate
-  spans (`k8s.*`, `ssh.*`, `net.*`, `script.execute`, `baseline.acquire`,
-  `mcp.tool.call`, …).
+  spans (`k8s.*`, `ssh.*`, `net.*`, `script.execute`, `mcp.tool.call`, …).
 - **Metrics**: `tumult.experiments.total`, `tumult.experiment.duration`,
   `tumult.actions.total` / `tumult.probes.total`,
   `tumult.action.duration` / `tumult.probe.duration`,
   `tumult.rollbacks.total`, `tumult.hypothesis.deviations.total`,
   `tumult.plugin.errors.total`, `tumult.plugin.script.executions.total`,
-  `resilience.store.*`, `tumult.baseline.*`.
+  `resilience.store.*`.
 - **Logs**: the full `tracing` stream over OTLP, stamped with the active
   trace/span ids, so any log line jumps to its experiment trace.
 
@@ -48,7 +47,7 @@ Note: Tumult exports over **gRPC** — the endpoint is the bare
 | `tumult-logs-traces` | Outcomes, per-operation p95, log stream, recent experiments/operations |
 | `tumult-loadtest` | k6 load test throughput/latency |
 | `tumult-mcp` | MCP tool calls |
-| `tumult-plugins-baseline` | Baseline acquisition, tolerances |
+| `tumult-plugins-baseline` | Script plugin runs and their durations |
 | `tumult-infra-ops` / `tumult-infra-targets` | k8s/ssh/net operation spans |
 | `tumult-store-health` / `tumult-duckdb-analytics` / `tumult-clickhouse` | Store gauges and analytics |
 | `tumult-resilience-*` / `tumult-compliance-*` / `tumult-postmortem` | Scoring, compliance, MTTR |

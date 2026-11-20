@@ -39,19 +39,6 @@ pub(crate) fn begin_execute(command: &str, timeout_s: Option<f64>) -> SpanGuard 
     ssh_span("ssh.execute", attrs)
 }
 
-pub(crate) fn begin_upload(remote_path: &str, file_bytes: u64) -> SpanGuard {
-    ssh_span(
-        "ssh.upload",
-        vec![
-            KeyValue::new("ssh.remote_path", remote_path.to_string()),
-            KeyValue::new(
-                "ssh.file_bytes",
-                i64::try_from(file_bytes).unwrap_or(i64::MAX),
-            ),
-        ],
-    )
-}
-
 pub(crate) fn event_command_completed(exit_code: i64, stdout_bytes: usize, stderr_bytes: usize) {
     let cx = opentelemetry::Context::current();
     cx.span().add_event(
@@ -67,19 +54,6 @@ pub(crate) fn event_command_completed(exit_code: i64, stdout_bytes: usize, stder
                 i64::try_from(stderr_bytes).unwrap_or(i64::MAX),
             ),
         ],
-    );
-}
-
-// Retained for future integration with upload-complete spans in upload_file; not yet called.
-#[allow(dead_code)]
-pub(crate) fn event_upload_completed(bytes: u64) {
-    let cx = opentelemetry::Context::current();
-    cx.span().add_event(
-        "ssh.upload.completed",
-        vec![KeyValue::new(
-            "ssh.bytes_transferred",
-            i64::try_from(bytes).unwrap_or(i64::MAX),
-        )],
     );
 }
 
@@ -188,32 +162,6 @@ mod tests {
                 "ssh.command",
                 format!("x{}...", "é".repeat(127))
             )]
-        );
-    }
-
-    #[test]
-    fn upload_span_carries_path_size_and_completion_event() {
-        let ((), spans) = capture_spans(|| {
-            let _g = begin_upload("/tmp/script.sh", 4096);
-            event_upload_completed(4000);
-        });
-
-        assert_eq!(spans.len(), 1);
-        let span = &spans[0];
-        assert_eq!(span.name, "ssh.upload");
-        assert_eq!(
-            span.attributes,
-            [
-                KeyValue::new("ssh.remote_path", "/tmp/script.sh"),
-                KeyValue::new("ssh.file_bytes", 4096_i64),
-            ]
-        );
-        let events = &span.events.events;
-        assert_eq!(events.len(), 1);
-        assert_eq!(events[0].name, "ssh.upload.completed");
-        assert_eq!(
-            events[0].attributes,
-            [KeyValue::new("ssh.bytes_transferred", 4000_i64)]
         );
     }
 }

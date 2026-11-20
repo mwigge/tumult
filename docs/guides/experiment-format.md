@@ -182,8 +182,7 @@ Predictions made before any measurement. Compared against actual results in Phas
 ## Baseline Config
 
 A run does not use this block: tolerances stay as written. `tumult validate`
-and a dry run say so. The block is kept for tools that take their own samples
-with the `tumult-baseline` library, see the [Baseline Guide](baseline-guide.md).
+and a dry run say so. The block is kept so that files that have it stay valid.
 
 | Field | Description |
 |-------|-------------|
