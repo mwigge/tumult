@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- CI: `Mutation tests` is one check that every pull request reports, and it must pass before a merge to `main`. A pull request that changes no Rust skips the sixteen parts, and a part may run for 350 minutes.
+
 ## [3.0.2] - 2026-11-19
 
 This release goes through experiments from end to end. It fixes the

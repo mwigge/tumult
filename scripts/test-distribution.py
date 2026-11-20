@@ -59,6 +59,24 @@ class DistributionTests(unittest.TestCase):
         command = json.loads(re.search(r"^CMD (.+)$", image, re.M)[1])
         self.assertEqual(command, ["tumultd"])
 
+    def test_the_required_mutation_check_reports_on_every_pull_request(self):
+        # "Mutation tests" is a required check of main: a pull request that
+        # never gets it can never merge.
+        workflow = (ROOT / ".github/workflows/mutants.yml").read_text()
+        trigger = re.search(r"^on:\n(.*?)\n\S", workflow, re.M | re.S)[1]
+        self.assertNotIn("paths:", trigger)
+        check = re.search(
+            r"^  \w+:\n    name: Mutation tests\n(.*?)(?=^  \w+:\n|\Z)",
+            workflow,
+            re.M | re.S,
+        )
+        self.assertIsNotNone(check, "no job named Mutation tests")
+        self.assertIn("    needs: [changes, mutants]\n", check[1])
+        self.assertIn("    if: always()\n", check[1])
+        self.assertIn(
+            'test "$MUTANTS" = success || test "$MUTANTS" = skipped', check[1]
+        )
+
     def test_daemon_templates_disable_automatic_retention(self):
         manifest = (ROOT / "deploy/k8s/tumultd.yaml").read_text()
         unit = (ROOT / "deploy/systemd/tumultd.service").read_text()

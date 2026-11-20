@@ -104,7 +104,9 @@ make mutants ARGS="-p tumult-core"    # one crate
 ```
 
 - Every changed line is mutated before the commit. The `Mutation tests`
-  workflow does the same on each pull request, in eight parts.
+  workflow does the same on each pull request, in sixteen parts, and its
+  check `Mutation tests` must pass before a merge to `main`. A pull request
+  that changes no Rust skips the parts.
 - `MISSED` means no test failed. Add a test that fails for that change, or
   remove the code if nothing needs it.
 - `TIMEOUT` means the change made a test hang. It counts as caught only when

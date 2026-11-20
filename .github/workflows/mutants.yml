@@ -4,15 +4,14 @@ name: Mutation tests
 # at a time, and runs the tests of the crate after each step. A change that
 # no test notices fails the job: the tests did not prove that line.
 # The policy is in docs/guides/testing.md. Locally: `make mutants`.
+#
+# The job "Mutation tests" is a required check, so the workflow runs on every
+# pull request. A pull request that changes no Rust skips the parts, and the
+# check passes at once.
 
 on:
   pull_request:
     branches: [main]
-    paths:
-      - "**.rs"
-      - ".cargo/mutants.toml"
-      - "scripts/mutants.sh"
-      - ".github/workflows/mutants.yml"
   workflow_dispatch:
 
 permissions:
@@ -32,10 +31,37 @@ env:
   CXXFLAGS: -g0
 
 jobs:
+  changes:
+    name: Rust changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      rust: ${{ steps.diff.outputs.rust }}
+    env:
+      BASE_REF: ${{ github.base_ref }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      # The same files as the diff of scripts/mutants.sh, and the files that
+      # decide what it mutates.
+      - id: diff
+        run: |
+          base=$(git merge-base "origin/${BASE_REF:-main}" HEAD)
+          changed=$(git diff --name-only "$base" HEAD -- "*.rs" \
+            .cargo/mutants.toml scripts/mutants.sh .github/workflows/mutants.yml)
+          echo "$changed"
+          if [ -n "$changed" ]; then rust=true; else rust=false; fi
+          echo "rust=$rust" >> "$GITHUB_OUTPUT"
+
   mutants:
     name: Mutants (part ${{ matrix.shard }} of 16)
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 240
+    # Near the limit of a hosted runner (360): a part of the 3.0.2 diff with
+    # 109 mutants of tumult-api ran past 240.
+    timeout-minutes: 350
     strategy:
       fail-fast: false
       matrix:
@@ -93,3 +119,21 @@ jobs:
           name: mutants-${{ matrix.shard }}
           path: mutants.out
           if-no-files-found: ignore
+
+  # The one required check. It passes when every part passed, or when the
+  # pull request changed no Rust and the parts were skipped. A part that
+  # failed, ran past its limit or was cancelled fails it.
+  result:
+    name: Mutation tests
+    needs: [changes, mutants]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - env:
+          CHANGES: ${{ needs.changes.result }}
+          MUTANTS: ${{ needs.mutants.result }}
+        run: |
+          echo "Rust changes: $CHANGES; mutation parts: $MUTANTS"
+          test "$CHANGES" = success
+          test "$MUTANTS" = success || test "$MUTANTS" = skipped
