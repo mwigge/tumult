@@ -195,7 +195,6 @@ More: [MCP guide](docs/guides/mcp-guide.md).
 | `TUMULT_MCP_TOKEN` | Configure one MCP operator bearer token. |
 | `TUMULT_MCP_AUTH_CONFIG` | Configure multiple viewer/operator tokens. |
 | `TUMULT_TRACE_UI_BASE` | Add trace links to generated reports. |
-| `TUMULT_CLICKHOUSE_URL` | Enable ClickHouse/SigNoz correlation. |
 | `CLAUDE_CODE_BIN`, `CODEX_BIN` | Override local agent adapter binaries. |
 
 </details>

@@ -26,7 +26,7 @@ do.
 A JSON line:
 
 ```json
-{"timestamp":"2026-11-13T09:14:02.118334Z","level":"WARN","target":"tumult_clickhouse::store","event.name":"clickhouse.connect.retrying","message":"ClickHouse connection failed, retrying","service.name":"tumultd","service.version":"3.0.1","trace_id":"4bf92f3577b34da6a3ce929d0e0e4736","span_id":"00f067aa0ba902b7","url.full":"http://clickhouse.internal:8123","attempt":2,"max_attempts":3,"backoff_s":4,"error.message":"connection refused"}
+{"timestamp":"2026-11-13T09:14:02.118334Z","level":"WARN","target":"tumult_cli::commands::events","event.name":"cli.daemon.unreachable","message":"daemon unreachable, writing the store directly","service.name":"tumult","service.version":"3.0.2","url.full":"http://127.0.0.1:4318","error.message":"connection refused"}
 ```
 
 Keys the formatter owns:

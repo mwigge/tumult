@@ -58,7 +58,6 @@ and experiments without optional phases do not emit a complete fault lifecycle.
 | `TUMULT_OTEL_ENABLED` | `true` | Enable/disable telemetry collection |
 | `TUMULT_OTEL_CONSOLE` | `false` | Also print spans to stdout |
 | `TUMULT_MCP_TOKEN` | — | Bearer token for MCP server auth (unset = no auth) |
-| `TUMULT_CLICKHOUSE_URL` | — | ClickHouse URL for SigNoz cross-correlation mode |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | unset (no export) | OTLP/gRPC endpoint, e.g. `http://localhost:14317` |
 | `OTEL_EXPORTER_OTLP_HEADERS` | unset | Export authorization metadata, e.g. `authorization=Bearer <ingest-token>` |
 | `OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE` | `delta` | How counters and histograms are exported: `delta`, `cumulative` or `lowmemory` |
@@ -436,8 +435,7 @@ resilience.experiment                    (root — tumult-core runner)
 │   └── resilience.probe
 ├── resilience.rollback                  (one over all rollback steps)
 │   └── resilience.action
-├── baseline.acquire                     (tumult-baseline)
-├── resilience.analytics.ingest         (tumult-lake → DuckDB or ClickHouse)
+├── resilience.analytics.ingest         (tumult-lake → DuckDB)
 │   ├── resilience.analytics.query
 │   └── resilience.analytics.export
 └── mcp.tool.call                        (tumult-mcp — when run via MCP)
@@ -497,13 +495,6 @@ When running via the MCP server, the server passes the context of its `mcp.tool.
 | `ssh.auth_method` | string | `key` or `agent` |
 | `ssh.exit_code` | int | Remote command exit code, on the `ssh.command.completed` event |
 
-### `baseline.acquire`
-
-| Attribute | Type | Description |
-|-----------|------|-------------|
-| `baseline.probe_count` | int | Number of probes being baselined |
-| `baseline.tolerance_method` | string | `mean_stddev`, `percentile`, `iqr`, `static` |
-
 ### `resilience.analytics.ingest`
 
 | Attribute | Type | Description |
@@ -518,8 +509,6 @@ Tumult emits structured span events (not logs) at key lifecycle points. These ap
 | Event Name | Parent Span | Fields | Description |
 |------------|-------------|--------|-------------|
 | `journal.ingested` | `resilience.analytics.ingest` | `resilience.experiment.id`, `resilience.activity.count` | Journal successfully written to store |
-| `tolerance.derived` | `baseline.acquire` | `baseline.tolerance.lower`, `baseline.tolerance.upper`, `baseline.samples_total` | Baseline tolerance bounds calculated |
-| `anomaly.detected` | `baseline.acquire` | `baseline.anomaly.reason`, `baseline.anomaly.cv` | Baseline anomaly found before experiment |
 | `script.completed` | `script.execute` | `script.exit_code`, `script.stdout_bytes`, `script.stderr_bytes` | Script plugin finished execution |
 | `experiment.started` | `resilience.experiment` | `experiment_id`, `experiment_title`, `user`, `started_at_ns` | Audit event: experiment begins |
 | `experiment.completed` | `resilience.experiment` | `experiment_id`, `experiment_title`, `status`, `duration_ms`, `deviations` | Audit event: experiment ends |
@@ -557,7 +546,6 @@ The engine metrics use the `tumult.` namespace. Three store gauges use `resilien
 | `tumult.plugin.script.executions.total` | `script.success` | Script plugin invocations |
 | `tumult.rollbacks.total` | `resilience.action.name`, `resilience.outcome.status` | Rollback executions |
 | `tumult.plugin.errors.total` | same as `tumult.actions.total` or `tumult.probes.total` | Actions that failed and probes their plugin could not run |
-| `tumult.baseline.probes.total`, `tumult.baseline.samples.total` | none | Baseline probes and samples taken |
 
 ### Histograms
 
@@ -575,32 +563,6 @@ The engine metrics use the `tumult.` namespace. Three store gauges use `resilien
 | `resilience.store.activities` | Total activity rows in store |
 | `resilience.store.size_bytes` | DuckDB file size in bytes |
 | `tumult.store.disk_usage_pct` | Store disk usage as percentage of volume |
-
-## Trace-to-Metrics Correlation (SigNoz)
-
-When using SigNoz with the ClickHouse backend, experiment data lands in the same database as SigNoz traces and metrics. This enables powerful cross-signal queries:
-
-```sql
--- Find all traces for a specific experiment
-SELECT e.title, e.status, t.trace_id, t.serviceName
-FROM tumult.experiments e
-JOIN signoz_traces.signoz_index_v3 t
-  ON t.attributes_string['resilience.experiment.id'] = e.experiment_id
-WHERE e.status = 'failed'
-
--- Correlate experiment timing with infrastructure metrics
-SELECT e.title, s.unix_milli, s.value AS cpu_pct
-FROM tumult.experiments e
-JOIN signoz_metrics.samples_v4 s
-  ON s.unix_milli BETWEEN intDiv(e.started_at_ns, 1000000) AND intDiv(e.ended_at_ns, 1000000)
-WHERE s.metric_name = 'system.cpu.utilization'
-```
-
-To enable:
-
-```bash
-TUMULT_CLICKHOUSE_URL=http://localhost:8123 tumult run experiment.toon
-```
 
 ## Trace Context from MCP Callers
 
@@ -635,8 +597,3 @@ The MCP handler does not read a `traceparent` from the call. It wires the contex
 
 **Subprocess spans not connecting to parent?**
 - The subprocess must read `TRACEPARENT`/`TRACESTATE` from environment and use them as its OTel context. Most OTel SDKs do this automatically if you call `opentelemetry::global::get_text_map_propagator`.
-
-**SigNoz not showing experiment data?**
-- Confirm `TUMULT_CLICKHOUSE_URL` is set correctly.
-- Check ClickHouse is healthy: `curl http://localhost:8123/ping`
-- `tumult run` connects to ClickHouse once and does not retry. A failed connection fails the ingest of the journal.

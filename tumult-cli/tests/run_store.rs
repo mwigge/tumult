@@ -211,3 +211,77 @@ fn a_run_without_a_trace_is_placed_by_the_target_of_its_definition() {
         ]
     );
 }
+
+#[test]
+fn a_run_that_writes_to_clickhouse_warns_once_that_clickhouse_is_deprecated() {
+    let lab = Lab::with_state("ok");
+    // No ClickHouse answers here: the listener takes a connection and closes it.
+    let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).expect("loopback listener");
+    let url = format!("http://{}", listener.local_addr().expect("address"));
+    std::thread::spawn(move || {
+        for connection in listener.incoming() {
+            drop(connection);
+        }
+    });
+    let method = [inject(), heal()].concat();
+    std::fs::write(
+        lab.path("clickhouse.toon"),
+        experiment(&method, &leave_marker()),
+    )
+    .expect("experiment");
+
+    let output = lab
+        .command(&[
+            "run",
+            "clickhouse.toon",
+            "--journal-path",
+            "clickhouse-journal.toon",
+        ])
+        .env("TUMULT_CLICKHOUSE_URL", &url)
+        .output()
+        .expect("run tumult");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(0), "{stderr}");
+    let warnings: Vec<serde_json::Value> = stderr
+        .lines()
+        .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+        .filter(|event| event["event.name"] == "cli.clickhouse.deprecated")
+        .collect();
+    assert_eq!(warnings.len(), 1, "{stderr}");
+    assert_eq!(warnings[0]["level"], "WARN");
+    let message = warnings[0]["message"].as_str().unwrap_or_default();
+    assert!(message.contains("3.1"), "{message}");
+}
+
+#[test]
+fn a_run_in_baseline_mode_skip_runs_and_is_stored_as_a_full_run() {
+    let lab = Lab::with_state("ok");
+    let method = [inject(), heal()].concat();
+    std::fs::write(lab.path("skip.toon"), experiment(&method, &leave_marker()))
+        .expect("experiment");
+
+    let output = lab.tumult(&[
+        "run",
+        "skip.toon",
+        "--journal-path",
+        "skip-journal.toon",
+        "--baseline-mode",
+        "skip",
+    ]);
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(output.status.code(), Some(0), "{stdout}");
+    assert!(
+        stdout.contains("Ingested into persistent analytics store\n"),
+        "{stdout}"
+    );
+    let journal = tumult_core::journal::read_journal(&lab.path("skip-journal.toon"))
+        .expect("the journal of the run");
+    let steps: Vec<&str> = journal
+        .method_results
+        .iter()
+        .map(|result| result.name.as_str())
+        .collect();
+    assert_eq!(steps, ["inject", "heal"]);
+}

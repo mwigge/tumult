@@ -1,10 +1,8 @@
-//! Command execution and file upload over an established SSH session.
-
-use std::path::Path;
+//! Command execution over an established SSH session.
 
 use crate::error::SshError;
 
-use super::{command_preview, shell_escape, CommandResult, SshSession};
+use super::{command_preview, CommandResult, SshSession};
 
 impl SshSession {
     /// Execute a command on the remote host.
@@ -109,88 +107,5 @@ impl SshSession {
             result.stderr.len(),
         );
         Ok(result)
-    }
-
-    /// Upload a file to the remote host via SSH channel.
-    ///
-    /// Uses `cat > path` on the remote end. Requires a POSIX shell.
-    /// The file is written with mode 755 (executable).
-    ///
-    /// # Errors
-    ///
-    /// Returns [`SshError::InvalidPath`] if `remote_path` contains control characters.
-    /// Returns [`SshError::UploadFailed`] if the local file cannot be read or the remote write fails.
-    /// Returns [`SshError::ChannelError`] if a channel cannot be opened.
-    /// Returns [`SshError::Timeout`] if the upload exceeds the configured command timeout.
-    #[tracing::instrument(skip(self), fields(remote_path = %remote_path))]
-    pub async fn upload_file(&self, local_path: &Path, remote_path: &str) -> Result<(), SshError> {
-        let file_size = tokio::fs::metadata(local_path).await.map_or(0, |m| m.len());
-        let _span = crate::telemetry::begin_upload(remote_path, file_size);
-
-        let content = tokio::fs::read(local_path)
-            .await
-            .map_err(|e| SshError::UploadFailed(format!("read local file: {e}")))?;
-
-        let mut channel = self
-            .handle
-            .channel_open_session()
-            .await
-            .map_err(|e| SshError::ChannelError(e.to_string()))?;
-
-        let cmd = format!(
-            "cat > {} && chmod 755 {}",
-            shell_escape(remote_path)?,
-            shell_escape(remote_path)?
-        );
-        channel
-            .exec(true, cmd)
-            .await
-            .map_err(|e| SshError::UploadFailed(e.to_string()))?;
-
-        channel
-            .data(&content[..])
-            .await
-            .map_err(|e| SshError::UploadFailed(e.to_string()))?;
-
-        channel
-            .eof()
-            .await
-            .map_err(|e| SshError::UploadFailed(e.to_string()))?;
-
-        // Wait for completion with timeout
-        let wait_fut = async {
-            let mut got_exit_status = false;
-            let mut exit_ok = true;
-
-            loop {
-                match channel.wait().await {
-                    Some(russh::ChannelMsg::ExitStatus { exit_status }) => {
-                        got_exit_status = true;
-                        exit_ok = exit_status == 0;
-                    }
-                    None => break,
-                    _ => {}
-                }
-            }
-
-            if got_exit_status && !exit_ok {
-                return Err(SshError::UploadFailed(
-                    "remote write exited with non-zero status".to_string(),
-                ));
-            }
-            Ok(())
-        };
-
-        if let Some(timeout) = self.config.command_timeout {
-            tokio::time::timeout(timeout, wait_fut)
-                .await
-                .map_err(|_| SshError::Timeout {
-                    seconds: timeout.as_secs_f64(),
-                })??;
-        } else {
-            wait_fut.await?;
-        }
-
-        Ok(())
     }
 }
