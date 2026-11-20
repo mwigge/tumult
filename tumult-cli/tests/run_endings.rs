@@ -35,10 +35,10 @@ guards[1]:
     min_breaches: 1
 "#;
 
-/// A step that would run for a minute. It leaves `started` when it runs,
-/// and the process id of its `sleep` in `sleep.pid`.
-fn long_step(name: &str, before: &str) -> String {
-    let command = format!("{before} sleep 60 & echo $! > sleep.pid; touch started; wait");
+/// A step that would run for a minute. It leaves the process id of its
+/// `sleep` in `sleep.pid`, then runs `then`, then leaves `started`.
+fn long_step(name: &str, then: &str) -> String {
+    let command = format!("sleep 60 & echo $! > sleep.pid; {then} touch started; wait");
     step_within(name, "action", &command, 90.0)
 }
 
@@ -182,6 +182,8 @@ fn a_run_whose_target_is_down_before_the_fault_ends_aborted() {
 #[test]
 fn a_guard_that_breaks_ends_the_run_halted_and_stops_the_step_that_runs() {
     let lab = Lab::with_state("ok");
+    // The guard can stop the step as soon as the state is down, so the step
+    // takes the target down once `sleep.pid` is written.
     let method = [
         long_step("inject", "echo down > state;"),
         step("next", "action", "touch next-step-ran"),

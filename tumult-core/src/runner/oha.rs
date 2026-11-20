@@ -714,8 +714,7 @@ impl WindowHost for WindowRunner {
             // (or a wrapper script) spawned, not only the leader.
             std::os::unix::process::CommandExt::process_group(&mut cmd, 0);
         }
-        let spawned = cmd
-            .arg("--no-tui")
+        cmd.arg("--no-tui")
             .arg("--output-format")
             .arg("json")
             .arg("-c")
@@ -730,8 +729,8 @@ impl WindowHost for WindowRunner {
             .arg(oha_duration(request_timeout.as_secs_f64()))
             .arg(&self.url)
             .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
-            .spawn();
+            .stderr(std::process::Stdio::piped());
+        let spawned = crate::spawn::alone(|| cmd.spawn());
         let child = match spawned {
             Ok(child) => child,
             Err(e) => return WindowEnd::Failed(format!("failed to start oha: {e}")),

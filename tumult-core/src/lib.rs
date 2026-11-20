@@ -45,6 +45,8 @@ pub mod journal;
 pub mod report;
 /// Experiment runner — orchestrates the five-phase execution lifecycle.
 pub mod runner;
+/// One spawn of a child process at a time.
+pub mod spawn;
 /// Bridge for driving async futures from synchronous code.
 pub mod sync_bridge;
 /// Core data model types for Tumult experiments.

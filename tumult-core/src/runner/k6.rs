@@ -123,9 +123,8 @@ impl LoadExecutor for K6LoadExecutor {
             cmd.env("K6_OTEL_EXPORTER_OTLP_ENDPOINT", &endpoint);
         }
 
-        let child = cmd
-            .spawn()
-            .map_err(|e| format!("failed to start k6: {e}"))?;
+        let child =
+            crate::spawn::alone(|| cmd.spawn()).map_err(|e| format!("failed to start k6: {e}"))?;
 
         let started_at_ns = super::epoch_nanos_now();
 
