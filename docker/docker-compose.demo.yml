@@ -171,7 +171,7 @@ services:
       args:
         BASE: tumult
     container_name: demo-mcp
-    # The image ENTRYPOINT is `tumult-mcp` and this command replaces its CMD, so
+    # The image ENTRYPOINT is tini, then `tumult-mcp`. This command replaces its CMD, so
     # the transport is named here: without it the server speaks stdio and exits.
     # It binds loopback by default; 0.0.0.0 lets the port mapping reach it —
     # safe here because TUMULT_MCP_TOKEN is set (the server refuses a non-loopback

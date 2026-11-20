@@ -16,13 +16,13 @@ CI.
 
 ```bash
 # Local client over stdio.
-tumult-mcp
+tumult mcp serve
 
 # Streamable HTTP on loopback.
-tumult-mcp --transport http --port 3100
+tumult mcp serve --transport http --port 3100
 
 # Authenticated HTTP.
-TUMULT_MCP_TOKEN='replace-with-a-secret' tumult-mcp --transport http --port 3100
+TUMULT_MCP_TOKEN='replace-with-a-secret' tumult mcp serve --transport http --port 3100
 ```
 
 Without authentication, HTTP is restricted to loopback. For multiple tokens

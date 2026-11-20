@@ -501,7 +501,7 @@ Binary resolution honors the `CLAUDE_CODE_BIN` / `CODEX_BIN` env overrides.
 
 ## tumult mcp serve
 
-Start the MCP (Model Context Protocol) server from the main `tumult` binary. This is the recommended way to launch the server — it runs in-process, so no separate `tumult-mcp` executable needs to be installed alongside the CLI. (The standalone `tumult-mcp` binary below remains available and behaves identically.)
+Start the MCP (Model Context Protocol) server from the main `tumult` binary. This is the way to start the server on a host: the release archives ship `tumult`, not `tumult-mcp`. The server runs in the same process.
 
 ```
 tumult mcp serve                                    # stdio (IDE integration)
@@ -522,7 +522,7 @@ The exposed tools, authentication, and data model are identical to the standalon
 
 ## tumult-mcp
 
-Start the MCP (Model Context Protocol) server: a separate binary using stdio by default or Streamable HTTP. Equivalent to `tumult mcp serve`.
+Start the MCP (Model Context Protocol) server: a separate binary using stdio by default or Streamable HTTP. Equivalent to `tumult mcp serve`, with the same options. It is in the container images and in a build from source, not in the release archives.
 
 ```
 tumult-mcp                                # stdio (IDE integration)
@@ -552,7 +552,7 @@ Tool failures are returned with `isError: true` per the MCP specification. Authe
 Set `TUMULT_MCP_TOKEN` to require bearer token auth on all tool calls. If not set, the server runs without authentication (log warning emitted).
 
 ```bash
-TUMULT_MCP_TOKEN=my-secret tumult-mcp
+TUMULT_MCP_TOKEN=my-secret tumult mcp serve
 ```
 
 Callers must pass `Authorization: Bearer my-secret` in MCP request metadata.

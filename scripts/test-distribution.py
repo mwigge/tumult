@@ -16,17 +16,24 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class DistributionTests(unittest.TestCase):
-    def test_container_and_kubernetes_arguments_compose(self):
+    def kubernetes_mcp_argv(self):
         image = (ROOT / "docker/Dockerfile.tumult-mcp").read_text()
         manifest = (ROOT / "deploy/k8s/tumult-mcp.yaml").read_text()
         entrypoint = json.loads(re.search(r"^ENTRYPOINT (.+)$", image, re.M)[1])
         args = json.loads(re.search(r"^\s+args: (.+)$", manifest, re.M)[1])
         command = re.search(r"^\s+command: (.+)$", manifest, re.M)
-        argv = (json.loads(command[1]) if command else entrypoint) + args
+        return (json.loads(command[1]) if command else entrypoint) + args
+
+    def test_container_and_kubernetes_arguments_compose(self):
+        argv = self.kubernetes_mcp_argv()
         flags = [arg for arg in argv if arg.startswith("--")]
         self.assertEqual(len(flags), len(set(flags)), argv)
-        self.assertEqual(argv[0], "tumult-mcp")
         self.assertEqual(argv[argv.index("--host") + 1], "0.0.0.0")
+
+    def test_kubernetes_keeps_the_init_of_the_mcp_image(self):
+        # A pod command replaces the image entrypoint, tini included.
+        argv = self.kubernetes_mcp_argv()
+        self.assertEqual(argv[:3], ["/usr/bin/tini", "--", "tumult-mcp"])
 
     def test_service_workspaces_are_persisted_and_writable(self):
         manifest = (ROOT / "deploy/k8s/tumult-mcp.yaml").read_text()
@@ -58,6 +65,45 @@ class DistributionTests(unittest.TestCase):
         self.assertEqual(entrypoint, ["/usr/bin/tini", "--"])
         command = json.loads(re.search(r"^CMD (.+)$", image, re.M)[1])
         self.assertEqual(command, ["tumultd"])
+
+    def test_cli_image_runs_an_init_that_reaps_orphans(self):
+        # The CLI image runs experiments as well, so PID 1 must reap a
+        # process that a step leaves behind, as in the daemon image.
+        image = (ROOT / "docker/Dockerfile.tumult").read_text()
+        self.assertRegex(image, r"apt-get install[^\n]*(\\\n[^\n]*)*\btini\b")
+        entrypoint = json.loads(re.search(r"^ENTRYPOINT (.+)$", image, re.M)[1])
+        self.assertEqual(entrypoint, ["/usr/bin/tini", "--", "tumult"])
+        command = json.loads(re.search(r"^CMD (.+)$", image, re.M)[1])
+        self.assertEqual(command, ["--help"])
+
+    def test_mcp_image_runs_the_server_under_the_init_of_its_base(self):
+        # The MCP image is built on the CLI image, which installs tini.
+        image = (ROOT / "docker/Dockerfile.tumult-mcp").read_text()
+        self.assertIn("ARG BASE=tumult\nFROM ${BASE}\n", image)
+        entrypoint = json.loads(re.search(r"^ENTRYPOINT (.+)$", image, re.M)[1])
+        self.assertEqual(entrypoint, ["/usr/bin/tini", "--", "tumult-mcp"])
+        command = json.loads(re.search(r"^CMD (.+)$", image, re.M)[1])
+        self.assertEqual(command, ["--transport", "http", "--host", "0.0.0.0"])
+
+    def test_release_commands_keep_the_init_of_the_images(self):
+        # `docker run --entrypoint` replaces tini as well, so an override
+        # names tini and puts the program after `--`.
+        release = (ROOT / ".github/workflows/release.yml").read_text()
+        for override in re.findall(r"--entrypoint (\S+)", release):
+            with self.subTest(override=override):
+                self.assertEqual(override, "/usr/bin/tini")
+
+    def test_systemd_unit_runs_a_binary_the_release_archive_ships(self):
+        release = (ROOT / ".github/workflows/release.yml").read_text()
+        copy = re.search(r'^\s+cp (.+) "\$\{ARCHIVE\}/"$', release, re.M)[1]
+        shipped = re.findall(r"/release/([\w-]+)", copy)
+        self.assertIn("tumult", shipped)
+        unit = (ROOT / "deploy/systemd/tumult-mcp.service").read_text()
+        argv = re.search(r"^ExecStart=(.+)$", unit, re.M)[1].split()
+        # The release notes install the archive binaries in /usr/local/bin.
+        self.assertEqual(str(Path(argv[0]).parent), "/usr/local/bin")
+        self.assertIn(Path(argv[0]).name, shipped)
+        self.assertEqual(argv[argv.index("--host") + 1], "127.0.0.1")
 
     def test_the_required_mutation_check_reports_on_every_pull_request(self):
         # "Mutation tests" is a required check of main: a pull request that
