@@ -441,6 +441,37 @@ fn stop_rejects_a_handle_from_another_executor() {
     assert_eq!(error, "invalid load handle");
 }
 
+/// A load tool that starts while a probe makes its pipes would keep a copy
+/// of them on macOS, and the probe would wait for the load to end. So k6
+/// starts only when no other spawn runs.
+#[cfg(unix)]
+#[test]
+fn k6_starts_only_when_no_other_spawn_runs() {
+    let mut env = EnvGuard::lock();
+    let dir = tempfile::tempdir().expect("tempdir");
+    let marker = dir.path().join("started");
+    let body = format!("#!/bin/sh\ntouch {}\nexec sleep 30\n", marker.display());
+    install_fake_k6(&mut env, &dir, &body);
+
+    let starting = tumult_core::spawn::alone(|| {
+        let starting = std::thread::spawn(|| K6LoadExecutor.start(&config()));
+        // sleep: there is no event for a file that must stay absent; wait
+        // past the time k6 would need to start.
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        assert!(!marker.exists(), "k6 started during another spawn");
+        starting
+    });
+
+    let handle = starting
+        .join()
+        .expect("the start ends")
+        .expect("fake k6 starts");
+    let result = K6LoadExecutor
+        .abort(handle)
+        .expect("an aborted k6 has a result");
+    assert!(result.execution.aborted);
+}
+
 #[test]
 fn abort_kills_a_running_k6_at_once() {
     let mut env = EnvGuard::lock();

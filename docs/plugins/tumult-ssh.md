@@ -6,13 +6,11 @@ nav_order: 3
 
 # tumult-ssh — SSH Remote Execution
 
-Remote command execution and file transfer over SSH for the Tumult resilience intelligence platform.
+Remote command execution over SSH for the Tumult resilience intelligence platform.
 
 ## Features
 
-- **SSH connection manager** with connection pooling
 - **Remote command execution** with stdout/stderr capture and exit code
-- **File upload** via SSH channel (no SFTP subsystem required)
 - **Key-based authentication** (ed25519, ECDSA)
 - **SSH agent authentication** (ssh-agent)
 - **Host key verification** against `known_hosts` (default), trust-on-first-use, or accept-any
@@ -112,15 +110,6 @@ println!("exit code: {}", result.exit_code);
 assert!(result.success());
 ```
 
-### Upload File
-
-```rust
-session.upload_file(
-    Path::new("scripts/stress.sh"),
-    "/tmp/stress.sh",
-).await?;
-```
-
 ### Close
 
 ```rust
@@ -151,8 +140,6 @@ All SSH operations return `Result<_, SshError>` with these variants:
 | `KeyParseError` | Private key file is malformed |
 | `ExecutionFailed` | Command could not be started |
 | `ChannelError` | SSH channel operation failed |
-| `UploadFailed` | File transfer failed |
-| `InvalidPath` | The remote path of an upload holds a control character |
 | `Timeout` | Connection or command timed out |
 
 ## Security Notes
@@ -184,6 +171,4 @@ No upstream fix is available for the `rsa` crate, so the `rsa` feature stays off
 
 - Uses `russh` 0.65 with the `aws-lc-rs` crypto backend, which builds the C library AWS-LC
 - Async-native with tokio
-- File upload uses `cat > path && chmod 755` via SSH channel — no SFTP subsystem needed
 - Authentication is bounded by `connect_timeout` to prevent stalls
-- Upload operations respect `command_timeout`

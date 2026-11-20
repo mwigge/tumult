@@ -70,7 +70,6 @@ OTLP metric names use dots; Prometheus doesn't allow them. The collector's remot
 | `tumult.action.duration` (unit `s`) | `tumult_action_duration_seconds_bucket` / `_sum` / `_count` |
 | `tumult.probe.duration` (unit `s`) | `tumult_probe_duration_seconds_bucket` / `_sum` / `_count` |
 | `tumult.experiment.duration` (unit `s`) | `tumult_experiment_duration_seconds_bucket` / `_sum` / `_count` |
-| `tumult.baseline.samples.total` | `tumult_baseline_samples_total` |
 | `resilience.store.experiments` | `resilience_store_experiments` |
 | `resilience.store.activities` | `resilience_store_activities` |
 | `resilience.store.size_bytes` | `resilience_store_size_bytes` |

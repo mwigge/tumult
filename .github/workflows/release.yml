@@ -247,9 +247,10 @@ jobs:
       - name: Smoke test
         timeout-minutes: 2
         run: |
-          # The tumult-mcp image selects the authenticated HTTP server,
-          # so we override to run the tumult CLI binary that's also in the image.
-          docker run --rm --entrypoint tumult ghcr.io/${{ github.repository_owner }}/tumult-mcp:${{ steps.version.outputs.version }} --version
+          # The tumult-mcp image selects the authenticated HTTP server, so
+          # the override runs the tumult CLI binary that is also in the image.
+          # The override names tini, so the init stays PID 1.
+          docker run --rm --entrypoint /usr/bin/tini ghcr.io/${{ github.repository_owner }}/tumult-mcp:${{ steps.version.outputs.version }} -- tumult --version
           # Keep the image entrypoint and pass the Kubernetes-style argv.
           # Help parses the command without opening a listener or using secrets.
           docker run --rm ghcr.io/${{ github.repository_owner }}/tumult-mcp:${{ steps.version.outputs.version }} --transport http --host 0.0.0.0 --port 3100 --help
@@ -356,8 +357,8 @@ jobs:
             # Start MCP server
             docker run -e TUMULT_MCP_TOKEN=replace-with-a-secret -p 3100:3100 ghcr.io/mwigge/tumult-mcp:${{ steps.version.outputs.version }}
 
-            # Or use the CLI image with MCP entrypoint override
-            docker run -e TUMULT_MCP_TOKEN=replace-with-a-secret -p 3100:3100 --entrypoint tumult-mcp ghcr.io/mwigge/tumult:${{ steps.version.outputs.version }} --transport http --host 0.0.0.0
+            # Or start the MCP server from the CLI image
+            docker run -e TUMULT_MCP_TOKEN=replace-with-a-secret -p 3100:3100 ghcr.io/mwigge/tumult:${{ steps.version.outputs.version }} mcp serve --transport http --host 0.0.0.0
             ```
 
             ## Binary Downloads

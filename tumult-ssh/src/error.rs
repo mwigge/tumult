@@ -49,14 +49,6 @@ pub enum SshError {
     #[error("channel error: {0}")]
     ChannelError(String),
 
-    /// A file upload via SSH channel failed.
-    ///
-    /// No `#[source]` here — upload failures can originate from either
-    /// `std::io::Error` (local read) or `russh::Error` (remote write), both
-    /// formatted into a single context string at the call site.
-    #[error("upload failed: {0}")]
-    UploadFailed(String),
-
     #[error("host key verification failed: server key not recognized")]
     HostKeyVerificationFailed,
 
@@ -83,9 +75,4 @@ pub enum SshError {
 
     #[error("timeout after {seconds}s")]
     Timeout { seconds: f64 },
-
-    /// A remote path contained control characters (e.g. `\n`, `\r`, NUL) that
-    /// could be used to inject shell commands through the escaped argument.
-    #[error("invalid remote path — contains control characters: {path:?}")]
-    InvalidPath { path: String },
 }

@@ -21,7 +21,6 @@ New here? Start with the [Platform Walkthrough](platform-walkthrough.md).
 | [Execution Flow](execution-flow.md) | The five phases of a run |
 | [CLI Reference](cli-reference.md) | Every command |
 | [Load Testing Guide](load-testing-guide.md) | Ramp, spike and soak tests with k6 and oha |
-| [Statistical Baselines](baseline-guide.md) | Let data set the pass limits |
 | [Experiment Scheduling](scheduling.md) | Run experiments and GameDays on a timer |
 | [Autopilot](autopilot.md) | Automatic fault injection behind a policy |
 | [Windows Faults](windows-faults.md) | Faults on Windows hosts |

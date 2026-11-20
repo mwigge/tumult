@@ -85,7 +85,7 @@ export TUMULT_CLICKHOUSE_URL=http://localhost:8123  # only for TP-CLICKHOUSE
 cargo build --workspace --release
 ```
 
-**Expected output:** All 35 workspace crates compile without errors. Binary at `target/release/tumult`.
+**Expected output:** All 34 workspace crates compile without errors. Binary at `target/release/tumult`.
 
 ### TP-ENV-02: Start chaos target containers
 
@@ -759,8 +759,6 @@ Verify canonical events are emitted:
 |-----------|------|
 | `journal.ingested` | After journal is written to analytics store |
 | `drain.completed` | After the Kubernetes `drain_node` action has drained its node |
-| `tolerance.derived` | After `derive_baseline` of the `tumult-baseline` library derives a tolerance (a run does not call it) |
-| `anomaly.detected` | When the anomaly check of `derive_baseline` triggers (a run does not call it) |
 
 ### TP-OTEL-06: Trace context propagation
 
@@ -975,40 +973,14 @@ provider:
 
 Run experiment with multiple SSH-based activities.
 
-**Expected:** Each step opens and closes its own SSH session (the native step does not use `SshPool`). No "too many open connections" errors.
+**Expected:** Each step opens and closes its own SSH session. No "too many open connections" errors.
 
 ---
 
 ## 14. TP-BASELINE: Statistical Baseline Tests
 
 `tumult run` takes no baseline. It reads the `baseline:` block and does not use
-it, and it keeps the tolerances as written. TP-BASELINE-01 to TP-BASELINE-04
-test the `tumult-baseline` library (`derive_baseline`), which derives the bounds
-and emits the events.
-
-### TP-BASELINE-01: Mean ± Stddev tolerance derivation
-
-Call `derive_baseline` with numeric probe samples and `Method::MeanStddev`.
-
-**Expected:** `tolerance.derived` event emitted. Derived tolerance uses mean ± N*sigma.
-
-### TP-BASELINE-02: IQR tolerance derivation
-
-Use `Method::Iqr`.
-
-**Expected:** Tolerance bounds based on Q1 - 1.5*IQR and Q3 + 1.5*IQR.
-
-### TP-BASELINE-03: Percentile tolerance derivation
-
-Use `Method::Percentile` with `percentile: 99.0`.
-
-**Expected:** Upper bound based on 99th percentile * multiplier.
-
-### TP-BASELINE-04: Anomaly detection triggers
-
-Feed highly variable baseline samples (CV > threshold).
-
-**Expected:** `anomaly.detected` event emitted. The result has `anomaly_detected: true` and a reason.
+it, and it keeps the tolerances as written.
 
 ### TP-BASELINE-05: Baseline skip mode
 
@@ -1674,7 +1646,6 @@ integration suites combined; 89 test suites in all):
 | tumult-mcp | ~270 | All pass |
 | tumult-cli | ~190 | All pass |
 | tumult-analytics | ~80 | All pass |
-| tumult-baseline | ~75 | All pass |
 | tumult-ssh | ~75 | All pass |
 | tumult-plugin | ~65 | All pass |
 | tumult-graph | ~65 | All pass |
@@ -1696,19 +1667,6 @@ integration suites combined; 89 test suites in all):
 > `tumult-agentic` / `tumult-otel` counts cover the cross-client observability
 > work: fault engine, scenario packs, proxy trace propagation,
 > experiment-side instrumentation, client profiles, and orchestrator mode.
-
-### TP-UNIT-03: Property-based tests (proptest)
-
-```bash
-cargo test --workspace -- prop_ 2>&1
-```
-
-**Expected:** All proptest properties hold:
-- `prop_iqr_upper_ge_lower`
-- `prop_mean_of_constant_slice_equals_constant`
-- `prop_percentile_always_between_min_and_max`
-- `prop_percentile_monotone`
-- `prop_stddev_non_negative`
 
 ### TP-UNIT-04: Doc tests
 

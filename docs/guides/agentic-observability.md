@@ -20,13 +20,10 @@ questions after every run:
 Agentic runs should correlate with the normal experiment root span:
 
 ```text
-resilience.experiment
-├── resilience.agent.scenario
-│   ├── gen_ai.invoke_agent
-│   ├── gen_ai.chat
-│   ├── gen_ai.execute_tool
-│   └── gen_ai.evaluate
-└── resilience.analytics.ingest
+tumult.experiment                  one live run
+└── tumult.agentic.fault           one proxied request
+tumult.agentic.tool                one MCP tool call
+└── resilience.agentic.experiment  the run, with fault and contract events
 ```
 
 The current local smoke path records deterministic trace metadata and contract
@@ -36,30 +33,20 @@ agent produces them.
 
 ## Attribute Reference
 
-Tumult keeps low-cardinality resilience attributes for experiment analysis and
-adds GenAI attributes for model/tool correlation.
+Tumult keeps low-cardinality resilience attributes for experiment analysis.
+Spans of the client itself carry their own `gen_ai.*` attributes. The
+collector maps them, see
+[cross-client observability](agentic-cross-client-observability.md).
 
 | Attribute | Purpose |
 |---|---|
 | `resilience.experiment.id` | Stable experiment identifier |
-| `resilience.run.id` | Run identifier when present |
-| `resilience.trace.id` | Correlated trace identifier |
-| `resilience.span.id` | Correlated span identifier |
-| `resilience.parent_span.id` | Parent span identifier when linked |
 | `resilience.agent.scenario` | Scenario name or pack entry |
 | `resilience.agent.fault.type` | Low-cardinality fault type |
 | `resilience.agent.contract` | Contract name when recording an evaluation |
 | `resilience.agent.score` | Run or matrix resilience score |
 | `resilience.agent.payload.capture_policy` | `metadata_only`, `redacted_content`, or `raw_content` |
-| `resilience.agent.input.bytes` | Prompt/input byte count |
-| `resilience.agent.output.bytes` | Completion/output byte count |
-| `resilience.agent.payload.sha256` | Hash for correlation without raw content |
-| `gen_ai.operation.name` | `chat`, `generate_content`, `execute_tool`, `invoke_agent`, `invoke_workflow`, `evaluate`, or `embeddings` |
-| `gen_ai.system` | Provider or AI system label |
-| `gen_ai.request.model` | Requested model |
-| `gen_ai.response.model` | Actual response model when known |
 | `gen_ai.tool.name` | Tool name for tool-call spans |
-| `gen_ai.evaluation.result` | Contract/evaluation label such as `pass`, `fail`, or a score bucket |
 
 Keep scenario, fault, contract, and evaluation labels bounded. Put detailed
 diagnostics in the journal, not in high-cardinality span attributes.

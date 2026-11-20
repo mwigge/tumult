@@ -26,7 +26,7 @@ All agentic telemetry — whatever its origin — normalizes onto a single schem
   `gen_ai.tool.name`, `gen_ai.evaluation.result`, token counts). See the
   [observability guide](agentic-observability.md) for the full attribute table.
 - **`resilience.agent.*`** — Tumult's experiment-side attributes (scenario, fault
-  type, contract, score, capture policy, byte counts, payload hash).
+  type, contract, score, capture policy).
 - **`tumult.client`** — a resource attribute identifying which agent produced the
   telemetry. Allowed values: `claude-code`, `codex`, `copilot`, `opencode`,
   `unknown`. This is the single dimension you slice on to compare clients.
