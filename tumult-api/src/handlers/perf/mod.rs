@@ -76,7 +76,7 @@
 //!    is `regressed` (`failure_share`) whatever its latencies: the
 //!    survivors of a build that hangs are fast. That takes evidence:
 //!    `min_runs` runs a side that counted their requests,
-//!    [`FAILURE_MIN_SENT`] requests a side and [`FAILURE_MIN_EXCESS`]
+//!    `FAILURE_MIN_SENT` requests a side and `FAILURE_MIN_EXCESS`
 //!    failures beyond what the baseline's share would give. A difference
 //!    that rests on less is never a regression by itself and never
 //!    passed over: it is `inconclusive` (`failure_share_unsettled`)

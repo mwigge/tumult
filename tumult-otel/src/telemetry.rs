@@ -298,7 +298,7 @@ pub fn init_meter_provider(config: &TelemetryConfig) -> Option<SdkMeterProvider>
 ///
 /// The provider is not registered globally and exports nothing by itself:
 /// [`TumultTelemetry::new`] attaches it to the log bridge of the subscriber
-/// installed by [`logging::init`](crate::logging::init), which mirrors every
+/// installed by [`logging::init`], which mirrors every
 /// tracing event — stamped with the active trace/span ids — to it. The
 /// returned provider must be kept alive for the process lifetime and shut
 /// down on exit (see [`TumultTelemetry::shutdown`]).
@@ -419,7 +419,7 @@ impl TumultTelemetry {
     /// When enabled with an OTLP endpoint, sets up the gRPC exporters,
     /// installs the global tracer and meter providers, and starts mirroring
     /// log events to the collector through the subscriber installed by
-    /// [`logging::init`](crate::logging::init). It never installs a
+    /// [`logging::init`]. It never installs a
     /// subscriber itself: call `logging::init` first, at process start.
     ///
     /// When `config.console_export` is `true`, span data is also written

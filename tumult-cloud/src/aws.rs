@@ -357,7 +357,7 @@ impl FisClient {
 
     /// The experiments of a template, in any state (`ListExperiments`,
     /// `GET /experiments?experimentTemplateId={id}&maxResults=100`), following
-    /// `nextToken` for at most [`MAX_LIST_PAGES`] pages. An experiment the
+    /// `nextToken` for at most `MAX_LIST_PAGES` pages. An experiment the
     /// answer gives
     /// for another template is left out.
     ///

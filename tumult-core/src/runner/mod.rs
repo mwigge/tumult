@@ -26,10 +26,8 @@ mod guard;
 /// K6 load executor — spawns k6 and parses its summary into a `LoadResult`.
 pub mod k6;
 mod load;
-/// Tool-agnostic load plan (stages/windows) every load adapter renders.
 pub mod load_profile;
 pub(crate) mod nfr;
-/// oha load executor — runs the plan window by window and streams samples.
 pub mod oha;
 mod phases;
 mod sampler;
