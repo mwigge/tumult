@@ -151,8 +151,8 @@ Full list: [CLI reference](docs/guides/cli-reference.md). File format:
 Tumult exposes 40 tools over stdio or HTTP.
 
 ```bash
-tumult-mcp                                    # stdio
-TUMULT_MCP_TOKEN=secret tumult-mcp --transport http --port 3100
+tumult mcp serve                              # stdio
+TUMULT_MCP_TOKEN=secret tumult mcp serve --transport http --port 3100
 ```
 
 Read-only tools need the `viewer` role. Tools that change or break things
