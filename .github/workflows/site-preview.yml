@@ -1,0 +1,85 @@
+name: Site preview
+
+# Builds the docs site with the same pinned action as Pages
+# (.github/workflows/pages.yml), so the preview is what tumult.rs would serve.
+# Then it checks the built site (scripts/site-check.py), takes pictures of a
+# fixed page list at 1440 and 390 px (scripts/site-shots.mjs) and uploads the
+# built site and the pictures as one artifact, site-preview, so a docs change
+# can be seen before it merges. Failures that a later pull request fixes are
+# listed in scripts/site-known.txt; the pages that must keep answering are in
+# scripts/site-baseline.txt.
+
+on:
+  pull_request:
+    paths:
+      - "docs/**"
+      - ".github/workflows/site-preview.yml"
+      - "scripts/site-*"
+      - "scripts/test-site-*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: site-preview-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  preview:
+    name: Site preview
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Build with Jekyll, as Pages does
+        id: build
+        uses: actions/jekyll-build-pages@44a6e6beabd48582f863aeeb6cb2151cc1716697  # v1.0.13
+        with:
+          source: ./docs
+          destination: ./_site
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      # The picture script takes Playwright from web/node_modules.
+      - name: Install Playwright and its browser
+        id: browser
+        working-directory: web
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Tests of the site check
+        run: python3 scripts/test-site-check.py
+
+      - name: Tests of the picture script
+        if: ${{ !cancelled() && steps.browser.outcome == 'success' }}
+        run: python3 scripts/test-site-shots.py
+
+      - name: Check the built site
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: >-
+          python3 scripts/site-check.py _site
+          --source docs
+          --known scripts/site-known.txt
+          --baseline scripts/site-baseline.txt
+
+      - name: Take the pictures
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && steps.browser.outcome == 'success' }}
+        run: node scripts/site-shots.mjs _site site-shots --known scripts/site-known.txt
+
+      - name: Upload the built site and the pictures
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        with:
+          name: site-preview
+          path: |
+            _site
+            site-shots
+          if-no-files-found: error
+          retention-days: 14
