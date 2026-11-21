@@ -23,6 +23,8 @@ resilience.experiment                 root, from the runner
 ├── resilience.hypothesis.before
 │   └── resilience.probe              one per probe
 │       └── script.execute            script plugins
+├── resilience.load                   only with a load block
+│   └── resilience.action, ...        the method steps run under it
 ├── resilience.action                 one per method step
 │   ├── script.execute
 │   ├── ssh.connect, ssh.execute      SSH targets
@@ -36,6 +38,11 @@ resilience.experiment                 root, from the runner
     ├── resilience.analytics.query
     └── resilience.analytics.export
 ```
+
+With a `load` block, `resilience.load` opens after the first hypothesis
+and ends before the second. The method steps and the probe samples of
+that time are its children. Without a load, the method steps hang under
+the root.
 
 A script plugin gets `TRACEPARENT` and `TRACESTATE`, so the spans of the
 script become children of `script.execute`. With telemetry off, there is
@@ -65,6 +72,7 @@ so the trace starts at the tool call.
 | `ssh.connect`, `ssh.execute` | `net.peer.name`, `net.peer.port` | The SSH host and port |
 | | `ssh.command` | The first 256 bytes of the command |
 | | `ssh.auth_method` | `key` or `agent` |
+| `resilience.load` | `resilience.load.tool`, `resilience.load.vus`, `resilience.load.script` | The load tool, its virtual users and its script. The results, such as `resilience.load.throughput_rps`, are added when the load ends |
 | `resilience.analytics.ingest` | `resilience.experiment.id`, `resilience.experiment.title` | The run being stored |
 
 ## Events
