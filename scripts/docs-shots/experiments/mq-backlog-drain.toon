@@ -1,0 +1,35 @@
+title: message-queue backlog, queue drains after a burst
+description: Push a burst of messages into the queue and check that the backlog drains within the recovery target
+
+tags[2]: load, resilience
+kind: chaos
+target:
+  system: message-queue
+  technology: queue
+  environment: demo
+rto_target_s: 30
+
+steady_state_hypothesis:
+  title: Queue backlog is empty
+  probes[1]:
+    - name: backlog-empty
+      activity_type: probe
+      provider:
+        type: process
+        path: sh
+        arguments[2]: "-c", "echo drained"
+        timeout_s: 5.0
+      tolerance:
+        type: regex
+        pattern: "^drained$"
+
+method[1]:
+  - name: burst-messages
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "sleep 1; echo burst-sent"
+      timeout_s: 5.0
+
+rollbacks[0]:

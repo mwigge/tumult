@@ -1,9 +1,10 @@
 <script lang="ts">
     import { page } from '$app/state';
     import { goto } from '$app/navigation';
+    import { onMount } from 'svelte';
     import { api } from '#lib/api.js';
     import type { ExperimentWindow, Overview } from '#lib/types.js';
-    import { CHART } from '#lib/echarts.js';
+    import { chartTheme, chartTokens, followTheme } from '#lib/echarts.js';
     import type { LegendItem } from '#lib/legend.js';
     import { experimentOverlay, outcomeLegend, overlayRunId } from '#lib/overlays.js';
     import ChartLegend from '#lib/components/ChartLegend.svelte';
@@ -17,6 +18,11 @@
     let error: string | null = $state(null);
     // Experiment runs overlapping the visible window (chart overlay bands).
     let runs: ExperimentWindow[] = $state([]);
+
+    // The charts are drawn in the colours of the theme in force.
+    let theme = $state(chartTheme());
+    onMount(() => followTheme((next) => (theme = next)));
+    const tokens = $derived(chartTokens(theme));
 
     $effect(() => {
         let cancelled = false;
@@ -43,7 +49,7 @@
     const dayStr = (ts: number) => new Date(ts * 1000).toISOString().slice(0, 10);
 
     /** Calendar hues, from no run to the busiest day of the range. */
-    const CALENDAR_HUES = ['#1c242c', '#2d5d84', CHART.accent];
+    const calendarHues = $derived([tokens.hover, tokens.accentDim, tokens.accent]);
     const busiest = $derived.by(() =>
         Math.max(1, ...(data?.experiments_per_day ?? []).map((p) => p.v)),
     );
@@ -54,12 +60,12 @@
         if (range === '24h') {
             return runs.length === 0
                 ? []
-                : [{ label: 'each band is one run:' }, ...outcomeLegend()];
+                : [{ label: 'each band is one run:' }, ...outcomeLegend(tokens)];
         }
         return [
             { label: 'runs per day:' },
-            { label: '0', color: CALENDAR_HUES[0] },
-            { label: String(busiest), color: CALENDAR_HUES[CALENDAR_HUES.length - 1] },
+            { label: '0', color: calendarHues[0] },
+            { label: String(busiest), color: calendarHues[calendarHues.length - 1] },
         ];
     });
 
@@ -70,7 +76,7 @@
             // Category axis of day buckets: overlay bands map a run onto its day
             // column. (The calendar-heatmap branch below has no markArea support
             // on the calendar coordinate system, so overlays are 24h-only here.)
-            const overlay = experimentOverlay(runs, (ms) => dayStr(ms / 1000));
+            const overlay = experimentOverlay(runs, tokens, (ms) => dayStr(ms / 1000));
             return {
                 ...tooltip(),
                 grid: { left: 40, right: 12, top: 26, bottom: 26 },
@@ -80,7 +86,7 @@
                     {
                         type: 'bar',
                         data: points.map((p) => p.v),
-                        itemStyle: { color: CHART.accent, borderRadius: [3, 3, 0, 0] },
+                        itemStyle: { color: tokens.accent, borderRadius: [3, 3, 0, 0] },
                         barMaxWidth: 44,
                     },
                     ...(overlay ? [overlay] : []),
@@ -90,12 +96,12 @@
         const from = dayStr(data.from_ns / 1_000_000_000);
         const to = dayStr(data.to_ns / 1_000_000_000);
         return {
-            tooltip: { ...CHART.tooltip },
+            tooltip: { ...tokens.tooltip },
             visualMap: {
                 min: 0,
                 max: busiest,
                 show: false,
-                inRange: { color: CALENDAR_HUES },
+                inRange: { color: calendarHues },
             },
             calendar: {
                 range: [from, to],
@@ -103,10 +109,10 @@
                 left: 44,
                 right: 12,
                 cellSize: ['auto', 16],
-                splitLine: { lineStyle: { color: CHART.axis } },
-                itemStyle: { color: 'transparent', borderColor: CHART.axis },
-                dayLabel: { color: CHART.text },
-                monthLabel: { color: CHART.text },
+                splitLine: { lineStyle: { color: tokens.axis } },
+                itemStyle: { color: 'transparent', borderColor: tokens.axis },
+                dayLabel: { color: tokens.text },
+                monthLabel: { color: tokens.text },
                 yearLabel: { show: false },
             },
             series: [
@@ -122,14 +128,14 @@
     const faultsOption = $derived.by(() => {
         if (!data) return {};
         return {
-            tooltip: { ...CHART.tooltip, trigger: 'item' },
-            legend: { bottom: 0, textStyle: { color: CHART.text } },
+            tooltip: { ...tokens.tooltip, trigger: 'item' },
+            legend: { bottom: 0, textStyle: { color: tokens.text } },
             series: [
                 {
                     type: 'pie',
                     radius: ['48%', '72%'],
                     center: ['50%', '44%'],
-                    itemStyle: { borderColor: '#151b21', borderWidth: 2 },
+                    itemStyle: { borderColor: tokens.panel, borderWidth: 2 },
                     label: { show: false },
                     data: data.faults.map((f) => ({
                         name: f.fault_subtype
@@ -137,14 +143,14 @@
                             : f.fault_type,
                         value: f.count,
                     })),
-                    color: [CHART.warn, CHART.accent, CHART.fail, CHART.ok],
+                    color: [tokens.warn, tokens.accent, tokens.fail, tokens.ok],
                 },
             ],
         };
     });
 
     function tooltip() {
-        return { tooltip: { ...CHART.tooltip } };
+        return { tooltip: { ...tokens.tooltip } };
     }
     function onOverlayClick(params: { componentType?: string; data?: unknown }) {
         const id = overlayRunId(params);
@@ -154,8 +160,8 @@
         return {
             type: 'category',
             data,
-            axisLine: { lineStyle: { color: CHART.axis } },
-            axisLabel: { color: CHART.text },
+            axisLine: { lineStyle: { color: tokens.axis } },
+            axisLabel: { color: tokens.text },
             axisTick: { show: false },
         };
     }
@@ -163,10 +169,10 @@
         return {
             type: 'value',
             name,
-            nameTextStyle: { color: CHART.text },
+            nameTextStyle: { color: tokens.text },
             minInterval: 1,
-            splitLine: { lineStyle: { color: CHART.split } },
-            axisLabel: { color: CHART.text },
+            splitLine: { lineStyle: { color: tokens.split } },
+            axisLabel: { color: tokens.text },
         };
     }
 </script>
