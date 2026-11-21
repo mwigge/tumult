@@ -3,8 +3,10 @@
 .github/workflows/site-preview.yml.
 
 Reads every html page of the site. Fails, with the page and the reason, on:
-  raw-mermaid        a mermaid block on a page that loads no mermaid script,
-                     so the reader sees the diagram source as text
+  raw-mermaid        a mermaid block on a page that loads no mermaid script
+                     (a script whose src names mermaid, or an inline script
+                     that imports it), so the reader sees the diagram source
+                     as text
   liquid-left        `{{` or `{%` left in the text or an attribute of a page
                      (code, scripts and styles are not read)
   liquid-ate-braces  with --source: a `{{ }}` in a source page that Liquid
@@ -66,6 +68,10 @@ LINK_ATTRS = {
 }
 NOT_READ = {"pre", "code", "script", "style", "textarea"}
 LIQUID = re.compile(r"\{\{|\{%")
+# `import mermaid from '.../mermaid.esm.min.mjs'`, as just-the-docs writes it.
+MERMAID_IMPORT = re.compile(
+    r"\bimport\b[^;'\"]*\bfrom\s*(['\"])[^'\"]*mermaid[^'\"]*\1", re.IGNORECASE
+)
 # Liquid prints these names; any other first name prints nothing.
 JEKYLL_NAMES = {
     *("site", "page", "layout", "content", "paginator", "jekyll", "include"),
@@ -99,6 +105,7 @@ class Page(HTMLParser):
         self.mermaid_script = False
         self.redirect: str | None = None
         self._not_read = 0
+        self._script: list[str] | None = None
 
     def handle_starttag(self, tag, attrs):
         values = {name: value or "" for name, value in attrs}
@@ -108,6 +115,8 @@ class Page(HTMLParser):
             self.mermaid_block = True
         if tag == "script" and "mermaid" in values.get("src", "").lower():
             self.mermaid_script = True
+        if tag == "script" and "src" not in values:
+            self._script = []
         if tag == "meta" and values.get("http-equiv", "").lower() == "refresh":
             found = REFRESH_URL.search(values.get("content", ""))
             self.redirect = found[1].strip() if found else None
@@ -117,8 +126,14 @@ class Page(HTMLParser):
     def handle_endtag(self, tag):
         if tag in NOT_READ and self._not_read:
             self._not_read -= 1
+        if tag == "script" and self._script is not None:
+            if MERMAID_IMPORT.search("".join(self._script)):
+                self.mermaid_script = True
+            self._script = None
 
     def handle_data(self, data):
+        if self._script is not None:
+            self._script.append(data)
         if not self._not_read:
             self.text.append(data)
 

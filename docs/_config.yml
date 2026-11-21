@@ -6,8 +6,10 @@ baseurl: ""
 remote_theme: just-the-docs/just-the-docs@v0.10.1
 
 # Site settings
-logo: "/images/tumult.png"
-favicon_ico: "/images/tumult-banner.png"
+logo: "/images/tumult-logo.svg"
+# A small PNG for browsers that show no SVG icon; _includes/head_custom.html
+# adds the SVG one.
+favicon_ico: "/images/favicon.png"
 
 # Navigation
 nav_sort: case_insensitive
@@ -23,9 +25,13 @@ search:
   rel_url: true
   button: false
 
-# Colour scheme — custom palette derived from the product UI
-# (web/src/lib/theme.css), defined in _sass/color_schemes/tumult.scss
+# Colour scheme: the light tokens of the product UI (web/src/lib/theme.css),
+# defined in _sass/color_schemes/tumult.scss
 color_scheme: tumult
+
+# Draw the mermaid blocks. The theme loads this version from jsDelivr.
+mermaid:
+  version: "11.17.2"
 
 # Footer
 footer_content: "Tumult is open source under the Apache-2.0 license."
@@ -51,10 +57,11 @@ callouts:
 # Exclude from build
 exclude:
   - "*.drawio"
-  - "architecture/"
   - "plans/"
 
-# Plugins
+# Plugins. jekyll-redirect-from keeps the old address of a page that moved
+# or left the site working: redirect_from or redirect_to in front matter.
 plugins:
   - jekyll-seo-tag
   - jekyll-github-metadata
+  - jekyll-redirect-from

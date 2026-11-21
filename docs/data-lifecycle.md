@@ -1,7 +1,8 @@
 ---
 title: Data Lifecycle
-parent: Reference
-nav_order: 1
+parent: Concepts
+nav_order: 2
+summary: "Five-phase data flow, OTel attribute listings, journal structure, SQL examples"
 ---
 
 # Tumult Data Lifecycle

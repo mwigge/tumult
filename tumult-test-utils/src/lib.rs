@@ -2,7 +2,7 @@
 //!
 //! This crate is a **test-only** utility used exclusively as a
 //! `[dev-dependency]`. One definition per helper; see
-//! `docs/guides/testing.md` for the rules the helpers support.
+//! `CONTRIBUTING.md` for the rules the helpers support.
 //!
 //! | Helper | Feature | Purpose |
 //! |---|---|---|
