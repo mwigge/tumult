@@ -1,7 +1,9 @@
 ---
 title: Topology
-parent: Guides
-nav_order: 17
+parent: Read the evidence
+grand_parent: Guides
+nav_order: 6
+summary: "Service maps and where to inject next"
 ---
 
 # Service topology, compliance lineage & injection recommendations

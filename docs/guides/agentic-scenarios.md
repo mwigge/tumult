@@ -1,7 +1,9 @@
 ---
 title: Agentic Scenarios
-parent: Guides
-nav_order: 13
+parent: Work with AI agents
+grand_parent: Guides
+nav_order: 4
+summary: "Write scenario packs"
 ---
 
 # Agentic Scenarios

@@ -1,7 +1,8 @@
 ---
 title: Regulatory Mapping
 parent: Reference
-nav_order: 3
+nav_order: 4
+summary: "DORA, NIS2, PCI-DSS 4.0, Basel III, ISO 22301, ISO 27001 and SOC 2 mappings"
 ---
 
 # Tumult Regulatory Mapping

@@ -1,7 +1,9 @@
 ---
 title: Autopilot
-parent: Guides
-nav_order: 18
+parent: Run experiments
+grand_parent: Guides
+nav_order: 4
+summary: "Automatic fault injection behind a policy"
 ---
 
 # Autopilot: policy-gated autonomous fault injection

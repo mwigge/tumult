@@ -1,7 +1,9 @@
 ---
 title: Analytics Guide
-parent: Guides
+parent: Read the evidence
+grand_parent: Guides
 nav_order: 5
+summary: "SQL over your results"
 ---
 
 # Analytics Guide

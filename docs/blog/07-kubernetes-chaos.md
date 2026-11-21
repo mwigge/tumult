@@ -426,7 +426,7 @@ hypothesis_after_results[2]:
 
 The duration of the `hypothesis_after` probes tells you the actual recovery time; the time from the probe check starting until the deployment fully recovered. This is the real MTTR: not the time until the replacement pod was scheduled, but the time until it was ready to serve traffic.
 
-**Update:** Kubernetes chaos is now fully validated on kind (K8s v1.35.0) with the native `tumult-kubernetes` plugin wired via kube-rs. Pod deletion, deployment scaling, readiness probes, and node cordon/uncordon all tested through `tumult run`. See the [test protocol](../testprotocol.md) for results.
+**Update:** Kubernetes chaos is now fully validated on kind (K8s v1.35.0) with the native `tumult-kubernetes` plugin wired via kube-rs. Pod deletion, deployment scaling, readiness probes, and node cordon/uncordon all tested through `tumult run`. See the [test protocol](https://github.com/mwigge/tumult/blob/v3.0.2/docs/testprotocol.md) for results.
 
 ---
 

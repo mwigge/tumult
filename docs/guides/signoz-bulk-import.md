@@ -1,7 +1,9 @@
 ---
 title: SigNoz Bulk Import
-parent: Guides
-nav_order: 24
+parent: Send telemetry
+grand_parent: Guides
+nav_order: 5
+summary: "Load old spans into SigNoz"
 ---
 
 # SigNoz Bulk Import

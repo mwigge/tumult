@@ -1,7 +1,9 @@
 ---
 title: OpenTelemetry Auto-instrumentation
-parent: Guides
-nav_order: 25
+parent: Send telemetry
+grand_parent: Guides
+nav_order: 2
+summary: "Name your services so Tumult can match them"
 ---
 
 # OpenTelemetry auto-instrumentation and the resilience contract

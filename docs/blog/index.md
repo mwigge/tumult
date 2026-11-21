@@ -1,8 +1,10 @@
 ---
 title: Blog
-nav_order: 4
+nav_order: 8
 updated: 2026-08-05
 has_children: true
+# The table below lists the posts, so no list of child pages.
+has_toc: false
 ---
 
 # Blog
