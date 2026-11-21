@@ -1,20 +1,20 @@
 # tumult-mcp
 
-MCP (Model Context Protocol) server adapter exposing Tumult resilience testing and intelligence as tools for LLM agents.
+The MCP server of Tumult. It gives an AI agent Tumult as tools: run an
+experiment, read a journal, query the lake and more. The
+[MCP guide](../docs/guides/mcp-guide.md) lists the tools and how to
+connect a client.
 
-## Key Types
-
-- `TumultHandler` -- MCP server implementation
-- `tumult_run_experiment` -- tool to execute experiments
-- `tumult_read_journal` -- tool to read and query journals
-
-## Usage
+## Start it
 
 ```bash
-# Start the MCP server
-tumult-mcp
+tumult-mcp                                   # stdio, for a local client
+tumult-mcp --transport http --port 3100      # Streamable HTTP
+```
 
-# Or configure in your MCP client settings
+`tumult mcp serve` in the CLI does the same. In a client config:
+
+```json
 {
   "mcpServers": {
     "tumult": { "command": "tumult-mcp" }
@@ -22,6 +22,8 @@ tumult-mcp
 }
 ```
 
-## More Information
+## Key types
 
-See the [main README](../README.md) for project overview and setup.
+- `TumultHandler`: the MCP server
+- `tumult_run_experiment`: the tool that runs an experiment
+- `tumult_read_journal`: the tool that reads a journal

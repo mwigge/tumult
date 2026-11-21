@@ -4,79 +4,72 @@ parent: Plugins
 nav_order: 9
 ---
 
-# tumult-containers — Container Chaos
+# tumult-containers
 
-Script-based plugin for Docker and Podman container chaos.
+Kill, stop, pause or limit a Docker or Podman container. This script
+plugin needs `docker` or `podman` on the machine that runs Tumult.
 
-## Prerequisites
+Every function takes `container_id` (a name or an ID, required) and
+`runtime` (`docker` or `podman`, default `docker`).
 
-- `docker` or `podman` installed and accessible
+## Faults
 
-## Actions
-
-| Action | Description | Key Variables |
-|--------|-------------|---------------|
-| `kill-container` | Kill a container (SIGKILL) | `TUMULT_CONTAINER_ID` (required), `TUMULT_SIGNAL`, `TUMULT_RUNTIME` |
-| `stop-container` | Graceful stop | `TUMULT_CONTAINER_ID` (required), `TUMULT_TIMEOUT`, `TUMULT_RUNTIME` |
-| `pause-container` | Freeze all processes | `TUMULT_CONTAINER_ID` (required), `TUMULT_RUNTIME` |
-| `unpause-container` | Resume frozen container | `TUMULT_CONTAINER_ID` (required), `TUMULT_RUNTIME` |
-| `limit-cpu` | Set a CPU limit on a running container | `TUMULT_CONTAINER_ID` (required), `TUMULT_CPU_QUOTA`, `TUMULT_CPU_PERIOD`, `TUMULT_RUNTIME` |
-| `limit-memory` | Set a memory limit on a running container | `TUMULT_CONTAINER_ID` (required), `TUMULT_MEMORY_LIMIT`, `TUMULT_RUNTIME` |
+| Action | What it does | More arguments |
+|---|---|---|
+| `kill-container` | Sends a signal to the container | `signal` (`KILL`) |
+| `stop-container` | Stops it, with a grace period | `timeout` in seconds (10) |
+| `pause-container` | Freezes every process in it | |
+| `unpause-container` | Lets it run again | |
+| `limit-cpu` | Sets a CPU limit while it runs | `cpu_quota` (50000), `cpu_period` (100000), both in microseconds |
+| `limit-memory` | Sets a memory limit while it runs | `memory_limit` (`128m`) |
 
 ## Probes
 
-| Probe | Description | Output |
-|-------|-------------|--------|
-| `container-status` | Container state | The `State.Status` of the runtime (such as `running` or `paused`), or `not_found` |
-| `container-health` | Health check status | `healthy`, `unhealthy`, `starting`, `none`, `not_found` |
+| Probe | Result |
+|---|---|
+| `container-status` | The state, such as `running` or `paused`, or `not_found` |
+| `container-health` | `healthy`, `unhealthy`, `starting`, `none` (no health check) or `not_found` |
 
-## Runtime Selection
-
-Set `TUMULT_RUNTIME` to `docker` (default) or `podman`:
+## Example
 
 ```toon
-method[1]:
-  - name: kill-db-container
-    activity_type: action
-    provider:
-      type: process
-      path: plugins/tumult-containers/actions/kill-container.sh
-      env:
-        TUMULT_CONTAINER_ID: postgres-primary
-        TUMULT_RUNTIME: podman
-```
+title: The API comes back after a pause
 
-## Example Experiment
-
-```toon
 steady_state_hypothesis:
-  title: API container is healthy
+  title: The API container is healthy
   probes[1]:
-    - name: check-api
+    - name: api-health
       activity_type: probe
       provider:
-        type: process
-        path: plugins/tumult-containers/probes/container-health.sh
-        env:
-          TUMULT_CONTAINER_ID: api-server
+        type: script
+        plugin: tumult-containers
+        function: container-health
+        arguments:
+          container_id: api-server
       tolerance:
         type: exact
         value: healthy
 
-method[1]:
-  - name: kill-api
+method[2]:
+  - name: pause-api
     activity_type: action
     provider:
-      type: process
-      path: plugins/tumult-containers/actions/kill-container.sh
-      env:
-        TUMULT_CONTAINER_ID: api-server
-
-rollbacks[1]:
-  - name: restart-api
+      type: script
+      plugin: tumult-containers
+      function: pause-container
+      arguments:
+        container_id: api-server
+    pause_after_s: 10.0
+  - name: unpause-api
     activity_type: action
     provider:
-      type: process
-      path: docker
-      arguments[2]: start, api-server
+      type: script
+      plugin: tumult-containers
+      function: unpause-container
+      arguments:
+        container_id: api-server
 ```
+
+The Author page of Krönika asks for the same arguments in a form and writes the experiment for you:
+
+![The Author page with the arguments of pause-container](../images/3.0/screenshots/author-new.png)
