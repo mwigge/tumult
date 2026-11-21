@@ -1,0 +1,324 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "How a run executes",
+    "output": "flow-execution.html",
+    "quality_profile": "showcase",
+    "locale": "en",
+    "repository": {
+      "url": "https://github.com/mwigge/tumult",
+      "revision": "feb427009b9b337f2a82f10a5e9bfca0e58baba1"
+    },
+    "legend": {
+      "entries": {
+        "frontend": {
+          "label": "Entry point"
+        },
+        "backend": {
+          "label": "Runner step"
+        },
+        "security": {
+          "label": "Check"
+        },
+        "database": {
+          "label": "Stored data"
+        }
+      }
+    }
+  },
+  "lanes": [
+    {
+      "id": "entry",
+      "label": "CLI, MCP or daemon"
+    },
+    {
+      "id": "before",
+      "label": "Before the fault"
+    },
+    {
+      "id": "during",
+      "label": "During the fault"
+    },
+    {
+      "id": "after",
+      "label": "After the fault"
+    }
+  ],
+  "mainPath": [
+    "check",
+    "tell",
+    "before",
+    "load",
+    "method",
+    "recover",
+    "again",
+    "status",
+    "journal",
+    "save"
+  ],
+  "nodes": [
+    {
+      "id": "check",
+      "lane": "entry",
+      "col": 0,
+      "type": "frontend",
+      "label": "Check the run",
+      "sublabel": "parse, validate",
+      "tag": "daemon: approval",
+      "sources": [
+        {
+          "path": "tumult-cli/src/commands/run.rs",
+          "line": 113,
+          "end_line": 142
+        },
+        {
+          "path": "tumult-api/src/approvals.rs",
+          "line": 365,
+          "end_line": 459
+        }
+      ]
+    },
+    {
+      "id": "tell",
+      "lane": "before",
+      "col": 0,
+      "type": "backend",
+      "label": "Tell the controls",
+      "sublabel": "before the run",
+      "sources": [
+        {
+          "path": "tumult-core/src/runner/experiment.rs",
+          "line": 166,
+          "end_line": 170
+        }
+      ]
+    },
+    {
+      "id": "before",
+      "lane": "before",
+      "col": 1,
+      "type": "security",
+      "label": "Steady state",
+      "sublabel": "probes must hold",
+      "sources": [
+        {
+          "path": "tumult-core/src/runner/experiment.rs",
+          "line": 172,
+          "end_line": 200
+        }
+      ]
+    },
+    {
+      "id": "load",
+      "lane": "before",
+      "col": 2,
+      "type": "backend",
+      "label": "Start load",
+      "sublabel": "when declared",
+      "sources": [
+        {
+          "path": "tumult-core/src/runner/experiment.rs",
+          "line": 212,
+          "end_line": 223
+        },
+        {
+          "path": "tumult-core/src/runner/load.rs",
+          "line": 32,
+          "end_line": 85
+        }
+      ]
+    },
+    {
+      "id": "method",
+      "lane": "during",
+      "col": 2,
+      "type": "backend",
+      "label": "Run the method",
+      "sublabel": "faults and probes",
+      "tag": "sampled and guarded",
+      "sources": [
+        {
+          "path": "tumult-core/src/runner/experiment.rs",
+          "line": 225,
+          "end_line": 268
+        },
+        {
+          "path": "tumult-core/src/runner/guard.rs",
+          "line": 31,
+          "end_line": 60
+        }
+      ]
+    },
+    {
+      "id": "recover",
+      "lane": "after",
+      "col": 2,
+      "type": "backend",
+      "label": "Measure recovery",
+      "sublabel": "post samples",
+      "sources": [
+        {
+          "path": "tumult-core/src/runner/experiment.rs",
+          "line": 374,
+          "end_line": 397
+        },
+        {
+          "path": "tumult-core/src/runner/phases.rs",
+          "line": 153,
+          "end_line": 175
+        }
+      ]
+    },
+    {
+      "id": "again",
+      "lane": "after",
+      "col": 3,
+      "type": "security",
+      "label": "Steady state again",
+      "sublabel": "after load stops",
+      "sources": [
+        {
+          "path": "tumult-core/src/runner/experiment.rs",
+          "line": 399,
+          "end_line": 433
+        }
+      ]
+    },
+    {
+      "id": "status",
+      "lane": "after",
+      "col": 4,
+      "type": "backend",
+      "label": "Status and rollback",
+      "sublabel": "by rollback strategy",
+      "sources": [
+        {
+          "path": "tumult-core/src/runner/experiment.rs",
+          "line": 435,
+          "end_line": 469
+        },
+        {
+          "path": "tumult-core/src/engine/tolerance.rs",
+          "line": 150,
+          "end_line": 161
+        },
+        {
+          "path": "tumult-core/src/runner/activity.rs",
+          "line": 572,
+          "end_line": 602
+        }
+      ]
+    },
+    {
+      "id": "journal",
+      "lane": "after",
+      "col": 5,
+      "type": "backend",
+      "label": "Return the journal",
+      "sublabel": "results, analysis",
+      "sources": [
+        {
+          "path": "tumult-core/src/runner/experiment.rs",
+          "line": 471,
+          "end_line": 487
+        },
+        {
+          "path": "tumult-core/src/runner/experiment.rs",
+          "line": 515,
+          "end_line": 539
+        }
+      ]
+    },
+    {
+      "id": "save",
+      "lane": "entry",
+      "col": 5,
+      "type": "database",
+      "label": "Save the evidence",
+      "sublabel": "journal and lake",
+      "sources": [
+        {
+          "path": "tumult-cli/src/commands/run.rs",
+          "line": 219,
+          "end_line": 259
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "c-t",
+      "from": "check",
+      "to": "tell",
+      "label": "valid",
+      "variant": "emphasis"
+    },
+    {
+      "id": "t-b",
+      "from": "tell",
+      "to": "before",
+      "variant": "emphasis"
+    },
+    {
+      "id": "b-l",
+      "from": "before",
+      "to": "load",
+      "label": "holds",
+      "variant": "emphasis"
+    },
+    {
+      "id": "l-m",
+      "from": "load",
+      "to": "method",
+      "variant": "emphasis"
+    },
+    {
+      "id": "m-r",
+      "from": "method",
+      "to": "recover",
+      "variant": "emphasis"
+    },
+    {
+      "id": "r-a",
+      "from": "recover",
+      "to": "again",
+      "variant": "emphasis"
+    },
+    {
+      "id": "a-s",
+      "from": "again",
+      "to": "status",
+      "variant": "emphasis"
+    },
+    {
+      "id": "s-j",
+      "from": "status",
+      "to": "journal",
+      "variant": "emphasis"
+    },
+    {
+      "id": "j-v",
+      "from": "journal",
+      "to": "save",
+      "label": "returned",
+      "variant": "emphasis"
+    },
+    {
+      "id": "b-s",
+      "from": "before",
+      "to": "status",
+      "label": "fails: abort",
+      "variant": "dashed",
+      "role": "error"
+    },
+    {
+      "id": "m-s",
+      "from": "method",
+      "to": "status",
+      "label": "guard or stop",
+      "variant": "dashed",
+      "role": "error"
+    }
+  ]
+}

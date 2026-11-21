@@ -14,9 +14,9 @@ ROOT = Path(__file__).resolve().parents[1]
 CI = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
 MAKEFILE = (ROOT / "Makefile").read_text(encoding="utf-8")
 SITE_PREVIEW = (ROOT / ".github/workflows/site-preview.yml").read_text(encoding="utf-8")
-# The tests of the site scripts run in the site preview, which has the built
-# site and a browser.
-SITE_TESTS = ("test-site-check.py", "test-site-shots.py")
+# The tests of the site and diagram scripts run in the site preview, which
+# has the built site, the pinned diagram tools and a browser.
+SITE_TESTS = ("test-site-check.py", "test-site-shots.py", "test-render-diagrams.py")
 # The CI jobs that `make precommit` runs too.
 MIRRORED_JOBS = ("fmt", "test", "demo-crates", "deny", "docs-check")
 # Steps that set up a runner rather than check the code.
