@@ -6,7 +6,7 @@
 #   TUMULT_CORRUPTION_PCT — corruption percentage 0-100 (default: 5)
 #   TUMULT_DURATION       — chaos duration (default: 30s)
 #   TUMULT_INTERFACE      — network interface inside container (default: eth0)
-#   TUMULT_PUMBA_IMAGE    — Pumba image (default: ghcr.io/alexei-led/pumba:latest)
+#   TUMULT_PUMBA_IMAGE    — Pumba image (default: ghcr.io/alexei-led/pumba:1.6.0, pinned by digest)
 
 set -eu
 
@@ -16,7 +16,7 @@ CONTAINER="${TUMULT_CONTAINER:?error: TUMULT_CONTAINER is required}"
 CORRUPT_PCT="${TUMULT_CORRUPTION_PCT:-5}"
 DURATION="${TUMULT_DURATION:-30s}"
 INTERFACE="${TUMULT_INTERFACE:-eth0}"
-PUMBA_IMAGE="${TUMULT_PUMBA_IMAGE:-ghcr.io/alexei-led/pumba:latest}"
+PUMBA_IMAGE="${TUMULT_PUMBA_IMAGE:-ghcr.io/alexei-led/pumba:1.6.0@sha256:11ed15538c7ec688628e2f53917d949e8c16418c146742731c3030ef276b6057}"
 
 validate_number "TUMULT_CORRUPTION_PCT" "$CORRUPT_PCT"
 

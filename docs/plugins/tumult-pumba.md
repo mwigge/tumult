@@ -16,7 +16,8 @@ Desktop without host-level network capabilities.
 
 - **Docker** (or Podman) with access to the Docker socket
   (`/var/run/docker.sock`).
-- The `ghcr.io/alexei-led/pumba:latest` image (pulled on first use).
+- The `ghcr.io/alexei-led/pumba:1.6.0` image, pinned by digest (pulled on first use).
+- For `stress-container`, the `ghcr.io/alexei-led/stress-ng:0.20.01` image, pinned by digest. Pumba pulls it.
 - A running **target container** to disrupt.
 
 ## Actions
@@ -57,6 +58,17 @@ duration, and Pumba then removes the fault. Without a `pumba` binary on the
 PATH, Pumba runs as a short-lived sidecar container, so the disruption is
 self-limiting even if the experiment is interrupted. `kill-container`, and
 `stop-container` without `TUMULT_RESTART=true`, leave the container down.
+
+## Images
+
+The actions pin both images by tag and digest, so a new upstream release does
+not change a run. `TUMULT_PUMBA_IMAGE` sets another Pumba image, and
+`TUMULT_STRESS_IMAGE` gives `stress-container` another stress-ng image.
+
+The stress-ng in `ghcr.io/alexei-led/stress-ng` picks its code by the model of
+the CPU. On a VM where AVX-512 cannot run, it can stop with SIGILL, and the step
+fails. A stress-ng built on Alpine has no such code. For this reason the stress
+steps of the lab examples use the SSH server image of the lab, `tumult-sshd:lab`.
 
 ## Pumba vs `tumult-network`
 

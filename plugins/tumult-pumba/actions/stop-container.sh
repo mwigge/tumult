@@ -5,14 +5,14 @@
 #   TUMULT_CONTAINER   — target container name or ID (required)
 #   TUMULT_DURATION    — stop duration before restart e.g. "30s" (default: 30s)
 #   TUMULT_RESTART     — restart after stop: "true"/"false" (default: false)
-#   TUMULT_PUMBA_IMAGE — Pumba image (default: ghcr.io/alexei-led/pumba:latest)
+#   TUMULT_PUMBA_IMAGE — Pumba image (default: ghcr.io/alexei-led/pumba:1.6.0, pinned by digest)
 
 set -eu
 
 CONTAINER="${TUMULT_CONTAINER:?error: TUMULT_CONTAINER is required}"
 DURATION="${TUMULT_DURATION:-30s}"
 RESTART="${TUMULT_RESTART:-false}"
-PUMBA_IMAGE="${TUMULT_PUMBA_IMAGE:-ghcr.io/alexei-led/pumba:latest}"
+PUMBA_IMAGE="${TUMULT_PUMBA_IMAGE:-ghcr.io/alexei-led/pumba:1.6.0@sha256:11ed15538c7ec688628e2f53917d949e8c16418c146742731c3030ef276b6057}"
 
 if [ "$RESTART" = "true" ]; then
     PUMBA_ARGS="-d ${DURATION} restart"

@@ -6,7 +6,7 @@
 #   TUMULT_SIGNAL      — kill signal (default: SIGKILL)
 #   TUMULT_INTERVAL    — repeat interval e.g. "10s" (default: empty = once)
 #   TUMULT_RANDOM      — if "true", pick random matching container (default: false)
-#   TUMULT_PUMBA_IMAGE — Pumba image (default: ghcr.io/alexei-led/pumba:latest)
+#   TUMULT_PUMBA_IMAGE — Pumba image (default: ghcr.io/alexei-led/pumba:1.6.0, pinned by digest)
 
 set -eu
 
@@ -14,7 +14,7 @@ CONTAINER="${TUMULT_CONTAINER:?error: TUMULT_CONTAINER is required}"
 SIGNAL="${TUMULT_SIGNAL:-SIGKILL}"
 INTERVAL="${TUMULT_INTERVAL:-}"
 RANDOM_FLAG="${TUMULT_RANDOM:-false}"
-PUMBA_IMAGE="${TUMULT_PUMBA_IMAGE:-ghcr.io/alexei-led/pumba:latest}"
+PUMBA_IMAGE="${TUMULT_PUMBA_IMAGE:-ghcr.io/alexei-led/pumba:1.6.0@sha256:11ed15538c7ec688628e2f53917d949e8c16418c146742731c3030ef276b6057}"
 
 PUMBA_ARGS=""
 if [ -n "$INTERVAL" ]; then

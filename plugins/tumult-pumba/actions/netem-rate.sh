@@ -6,7 +6,7 @@
 #   TUMULT_RATE        — bandwidth limit e.g. "100kbit", "1mbit" (default: 100kbit)
 #   TUMULT_DURATION    — chaos duration (default: 30s)
 #   TUMULT_INTERFACE   — network interface inside container (default: eth0)
-#   TUMULT_PUMBA_IMAGE — Pumba image (default: ghcr.io/alexei-led/pumba:latest)
+#   TUMULT_PUMBA_IMAGE — Pumba image (default: ghcr.io/alexei-led/pumba:1.6.0, pinned by digest)
 
 set -eu
 
@@ -14,7 +14,7 @@ CONTAINER="${TUMULT_CONTAINER:?error: TUMULT_CONTAINER is required}"
 RATE="${TUMULT_RATE:-100kbit}"
 DURATION="${TUMULT_DURATION:-30s}"
 INTERFACE="${TUMULT_INTERFACE:-eth0}"
-PUMBA_IMAGE="${TUMULT_PUMBA_IMAGE:-ghcr.io/alexei-led/pumba:latest}"
+PUMBA_IMAGE="${TUMULT_PUMBA_IMAGE:-ghcr.io/alexei-led/pumba:1.6.0@sha256:11ed15538c7ec688628e2f53917d949e8c16418c146742731c3030ef276b6057}"
 
 PUMBA_ARGS="-d ${DURATION} netem --interface ${INTERFACE} rate -r ${RATE}"
 

@@ -281,6 +281,18 @@ const SERVICE_TOOLS: [&str; 14] = [
     "uname",
 ];
 
+/// The shell, and the tools of the machine a script needs to run at all.
+const SHELL_TOOLS: [&str; 5] = ["sh", "cat", "dirname", "grep", "sed"];
+
+/// The tool `name` on the `PATH` of this test.
+fn tool_of_the_machine(name: &str) -> PathBuf {
+    let path = std::env::var_os("PATH").unwrap_or_default();
+    std::env::split_paths(&path)
+        .map(|dir| dir.join(name))
+        .find(|tool| tool.is_file())
+        .unwrap_or_else(|| panic!("{name} is not on PATH"))
+}
+
 /// What a service tool does until a test gives it an answer.
 const NO_STAND_IN: &str = "echo \"$0: this test gave the tool no answer\" >&2\nexit 97";
 
@@ -342,6 +354,25 @@ impl Stubs {
             self.path("bin").display(),
             std::env::var("PATH").unwrap_or_default()
         );
+        self.run_on(&path, relative, env)
+    }
+
+    /// Run the plugin script at `relative` as `run` does, with only `bin`
+    /// and links to the shell tools of the machine on `PATH`. A tool the
+    /// script looks for first, such as `pumba`, is then not found unless
+    /// the test made a stand-in for it.
+    fn run_alone(&self, relative: &str, env: &[(&str, &str)]) -> (i32, String, String) {
+        let tools = self.path("tools");
+        std::fs::create_dir(&tools).expect("tools dir");
+        for name in SHELL_TOOLS {
+            std::os::unix::fs::symlink(tool_of_the_machine(name), tools.join(name))
+                .expect("link a shell tool");
+        }
+        let path = format!("{}:{}", self.path("bin").display(), tools.display());
+        self.run_on(&path, relative, env)
+    }
+
+    fn run_on(&self, path: &str, relative: &str, env: &[(&str, &str)]) -> (i32, String, String) {
         let output = Command::new("sh")
             .arg(plugin_path(relative))
             .env("PATH", path)
@@ -1069,6 +1100,109 @@ fn ping_latency_probe_fails_when_ping_prints_no_round_trip_time_on_macos() {
 
     assert_eq!(stubs.calls(), ["uname -s", PING_CALL]);
     assert_failed_with(&run, "PING db (10.0.1.50): 56 data bytes");
+}
+
+// ── tumult-pumba ──────────────────────────────────────────────
+
+/// The Pumba image the actions run when no `pumba` is on `PATH`, pinned
+/// by tag and digest.
+const PUMBA_IMAGE: &str = "ghcr.io/alexei-led/pumba:1.6.0@sha256:11ed15538c7ec688628e2f53917d949e8c16418c146742731c3030ef276b6057";
+
+/// The stress-ng image the stress action asks Pumba to start, pinned by
+/// tag and digest.
+const STRESS_IMAGE: &str = "ghcr.io/alexei-led/stress-ng:0.20.01@sha256:6f5de54261666970ce98abb2d710b6337c44575cd31c5886c63745323a7c12a2";
+
+/// The name of every action of the plugin. Each one runs Pumba.
+fn pumba_actions() -> Vec<String> {
+    let dir = plugin_path("tumult-pumba/actions");
+    let mut names: Vec<String> = std::fs::read_dir(&dir)
+        .unwrap_or_else(|e| panic!("read {dir}: {e}"))
+        .map(|entry| entry.expect("directory entry").path())
+        .filter_map(|path| Some(path.file_name()?.to_str()?.strip_suffix(".sh")?.to_string()))
+        .collect();
+    names.sort();
+    names
+}
+
+/// How every action starts Pumba in a container on the default socket.
+const PUMBA_RUN: &str = "run --rm -v /var/run/docker.sock:/var/run/docker.sock -e DOCKER_HOST=unix:///var/run/docker.sock";
+
+/// Stand-ins with a `docker` that writes each of its arguments on a line
+/// of `argv`.
+fn docker_stubs() -> Stubs {
+    let stubs = Stubs::new();
+    let argv = stubs.path("argv");
+    stubs.tool(
+        "bin/docker",
+        &format!(r#"printf '%s\n' "$@" > '{}'"#, argv.display()),
+    );
+    stubs
+}
+
+/// Run a Pumba action on the container `app` with no `pumba` on `PATH`,
+/// and return the arguments it gave `docker`.
+fn docker_argv_of(stubs: &Stubs, action: &str, env: &[(&str, &str)]) -> Vec<String> {
+    let script = format!("tumult-pumba/actions/{action}.sh");
+    let mut all = vec![
+        ("TUMULT_CONTAINER", "app"),
+        ("DOCKER_HOST", "unix:///var/run/docker.sock"),
+    ];
+    all.extend_from_slice(env);
+    let (code, _, stderr) = stubs.run_alone(&script, &all);
+    assert_eq!(code, 0, "{action}: {stderr}");
+    std::fs::read_to_string(stubs.path("argv"))
+        .unwrap_or_default()
+        .lines()
+        .map(str::to_string)
+        .collect()
+}
+
+#[test]
+fn every_pumba_action_runs_the_pinned_pumba_image() {
+    let actions = pumba_actions();
+    assert!(!actions.is_empty(), "the plugin has no actions");
+    for action in &actions {
+        let stubs = docker_stubs();
+
+        let argv = docker_argv_of(&stubs, action, &[]);
+
+        let image_at = PUMBA_RUN.split(' ').count();
+        assert_eq!(argv[..image_at].join(" "), PUMBA_RUN, "{action}");
+        assert_eq!(argv[image_at], PUMBA_IMAGE, "{action}");
+    }
+}
+
+#[test]
+fn the_stress_action_asks_pumba_for_the_pinned_stress_ng_image() {
+    let stubs = docker_stubs();
+
+    let argv = docker_argv_of(&stubs, "stress-container", &[]);
+
+    let flag = argv
+        .iter()
+        .position(|word| word == "--stress-image")
+        .unwrap_or_else(|| panic!("no --stress-image in {argv:?}"));
+    assert_eq!(argv[flag + 1], STRESS_IMAGE);
+}
+
+#[test]
+fn the_stress_action_gives_pumba_its_stressors_as_one_argument() {
+    let stubs = docker_stubs();
+
+    let argv = docker_argv_of(
+        &stubs,
+        "stress-container",
+        &[("TUMULT_STRESS_TYPE", "memory"), ("TUMULT_DURATION", "5s")],
+    );
+
+    let stressors = argv
+        .iter()
+        .position(|word| word.starts_with("--stressors="))
+        .unwrap_or_else(|| panic!("no --stressors in {argv:?}"));
+    assert_eq!(
+        argv[stressors..],
+        ["--stressors=--vm 1 --vm-bytes 64M --timeout 5s", "app"]
+    );
 }
 
 // ── tumult-stress ─────────────────────────────────────────────

@@ -97,6 +97,8 @@ services:
 
   # ── SSH Server (for remote execution testing) ────────────────
   sshd:
+    # The Pumba stress steps of the examples start this image by name.
+    image: tumult-sshd:lab
     build:
       context: .
       dockerfile: Dockerfile.sshd

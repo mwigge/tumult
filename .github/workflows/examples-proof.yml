@@ -98,7 +98,9 @@ jobs:
         run: |
           docker compose -p docker up -d --wait postgres redis kafka mysql sshd
           docker compose -f docker-compose.demo.yml up -d --wait demo-postgres demo-app
-          docker pull ghcr.io/alexei-led/pumba:latest
+          # The experiments run this Pumba, pinned by digest. Their stress steps
+          # start the sshd image of the lab, so Pumba pulls no stress-ng image.
+          docker pull ghcr.io/alexei-led/pumba:1.6.0@sha256:11ed15538c7ec688628e2f53917d949e8c16418c146742731c3030ef276b6057
           # ssh-remote logs in to the lab SSH server with the key of its image.
           docker cp "$(docker compose -p docker ps -q sshd):/test_key" /tmp/tumult-test-key
           chmod 600 /tmp/tumult-test-key
