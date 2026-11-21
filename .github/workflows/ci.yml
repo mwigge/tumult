@@ -129,9 +129,9 @@ jobs:
       # workspace cargo steps below fail on the tumultd crate.
       - name: Build web UI (tumultd embeds web/build)
         run: npm --prefix web ci && npm --prefix web run build
+      - run: cargo install cargo-nextest --version 0.9.152 --locked
       # cargo-machete is pinned: 0.10.1 does not compile on the toolchain of
       # the workspace (rust-version 1.92.0).
-      - run: cargo install cargo-nextest --locked
       - run: cargo install cargo-machete --version 0.9.2 --locked
       # No separate `cargo check`: clippy --all-targets already type-checks
       # every target including tests, so a check pass first only recompiles

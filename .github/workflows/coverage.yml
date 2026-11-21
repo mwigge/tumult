@@ -18,13 +18,9 @@ on:
 env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: -Dwarnings
-  # Line tables suffice for tarpaulin's line coverage and keep instrumented
-  # object files small enough to link on a standard runner (full debuginfo
-  # made ld die with SIGBUS from disk pressure on the duckdb/arrow crates).
-  CARGO_PROFILE_TEST_DEBUG: line-tables-only
   # Bundled DuckDB JSON/Parquet add large native debug sections and relocations.
-  # Coverage measures workspace Rust; retain its line metadata above while
-  # omitting C++ dependency debug data from each linked test executable.
+  # Coverage measures workspace Rust; omit C++ dependency debug data from
+  # each linked test executable.
   CXXFLAGS: -g0
 
 jobs:
@@ -60,12 +56,21 @@ jobs:
       - name: Build web UI (tumultd embeds web/build)
         run: npm --prefix web ci && npm --prefix web run build
       - name: Install tarpaulin
-        run: cargo install cargo-tarpaulin
+        run: cargo install cargo-tarpaulin --version 0.37.6 --locked
       - name: Run tarpaulin
         # The exclusion is platform-honest, not coverage gaming:
         # tumult-windows only runs on Windows, so it cannot be executed on
         # this runner.
-        run: cargo tarpaulin --workspace --exclude tumult-windows --out xml --timeout 300 --fail-under 90
+        # Tarpaulin builds every crate with full debug info: its own
+        # -Cdebuginfo=2 wins over the profile. That debug info was over 80 %
+        # of each test binary, and the test binaries filled the runner disk.
+        # The llvm engine reads only its own coverage sections, never the
+        # debug info, so the linker drops the debug info from each binary.
+        # The llvm engine runs the tests of a binary one at a time, and its
+        # --timeout is the time the whole binary may take, not one test.
+        # The api tests of tumult-api take 8 to 11 minutes like that, so
+        # each binary gets 20 minutes. A hung test still fails the run.
+        run: cargo tarpaulin --workspace --exclude tumult-windows --engine llvm --rustflags=-Clink-arg=-Wl,--strip-debug --out xml --timeout 1200 --fail-under 90
       - name: Report build resource usage
         if: always()
         run: |
