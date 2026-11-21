@@ -682,7 +682,7 @@ tumult topology <import|discover-k8s|map|lineage|recommend>
 | `lineage` | Show the (article × service) compliance lineage matrix |
 | `recommend` | Rank the next most valuable fault injections, with reasons |
 
-See the [Topology guide](topology.md).
+See the [ChaosGraph and topology guide](chaosgraph.md).
 
 ## tumult autopilot
 

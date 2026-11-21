@@ -1,169 +1,143 @@
 ---
-title: Grafana Stack
+title: Grafana stack
 parent: Send telemetry
 grand_parent: Guides
 nav_order: 4
 summary: "A ready Tempo, Mimir and Loki setup"
 ---
 
-# Grafana Stack (Tempo + Mimir + Loki)
+# Grafana stack
 
-This guide walks through the reference Grafana-stack setup in `docker/docker-compose.grafana-full.yml`: one command boots an OTel Collector, Tempo, Mimir, Loki, and a pre-wired Grafana. It's a reference implementation for local exploration — not a production deployment (single-node everything, no auth, no TLS, filesystem storage). The general telemetry model (span hierarchy, attributes, metrics reference) lives in [Observability Setup](observability-setup.md); this guide is just about the Grafana flavor.
+One command starts an OpenTelemetry Collector, Tempo, Mimir, Loki and a
+Grafana with a dashboard for Tumult. It is a reference to explore on a
+laptop, not a production setup: one node each, no auth, no TLS.
 
-## Architecture
-
+```mermaid
+flowchart LR
+    accTitle: The Grafana reference stack
+    accDescr: tumult and tumultd send OTLP to the Collector. The Collector sends traces to Tempo, metrics to Mimir and logs to Loki. Grafana reads all three.
+    T["tumult, tumultd"] -- "OTLP, port 4317" --> C["otelcol-contrib"]
+    C -- traces --> Te[Tempo]
+    C -- metrics --> M[Mimir]
+    C -- logs --> L[Loki]
+    G[Grafana] --> Te
+    G --> M
+    G --> L
 ```
-tumult / tumultd ──OTLP──▶ otelcol-contrib ──▶ Tempo   (traces, OTLP gRPC)
-                    :4317                       ──▶ Mimir   (metrics, remote write)
-                                                ──▶ Loki    (logs, OTLP HTTP /otlp)
-                                                          ▲
-                                                        Grafana ── queries all three
-```
 
-The collector config is `collector/otel-collector-grafana.yaml`. Metrics land in Mimir via Prometheus remote write, so metric names go through the OTLP→Prometheus translation — see the [name translation table](#metric-name-translation) below, it matters.
+The Collector config is `collector/otel-collector-grafana.yaml`.
 
-## Running it
+## Run it
 
 ```bash
-# from the repo root
 docker compose -f docker/docker-compose.grafana-full.yml up -d
 ```
 
-Wait ~30 seconds, then check the pieces:
+After about 30 seconds, check the parts:
 
 ```bash
-curl -s http://localhost:13200/ready          # Tempo   → "ready"
-curl -s http://localhost:19009/ready          # Mimir   → "ready"
-curl -s http://localhost:13100/ready          # Loki    → "ready"
-curl -s http://localhost:23133/               # collector health extension
+curl -s http://localhost:13200/ready   # Tempo
+curl -s http://localhost:19009/ready   # Mimir
+curl -s http://localhost:13100/ready   # Loki
+curl -s http://localhost:23133/        # Collector health
 ```
 
-Point Tumult at the collector and run an experiment:
+Run an experiment against the Collector. `tumultd` reads the same
+variable.
 
 ```bash
-OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317 \
-  tumult run examples/cpu-stress.toon
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317 tumult run examples/cpu-stress.toon
 ```
 
-`tumultd` picks up the same `OTEL_EXPORTER_OTLP_ENDPOINT` environment variable, so the daemon path is identical.
+Open Grafana at `http://localhost:13001` (anonymous Viewer; the admin
+login is `admin` / `tumult`). The dashboard **Grafana Full Stack
+(reference)** shows runs by status, action p95, recent traces and logs.
+**Explore** queries Tempo, Mimir and Loki.
 
-Then open Grafana at <http://localhost:13001> (anonymous Viewer; admin login is `admin`/`tumult`):
+This stack takes host ports `4317` and `4318`, so do not run it next to
+the observability stack. Stop it with
+`docker compose -f docker/docker-compose.grafana-full.yml down -v`.
 
-- **Dashboards → "Tumult — Grafana Full Stack (reference)"** — four panels: experiments by status, action p95, recent traces, experiment logs.
-- **Explore → Tempo** — search traces or use TraceQL (below).
-- **Explore → Loki** — query logs with structured metadata (below).
-- **Explore → Mimir** — PromQL against the translated names.
+## Metric names in Mimir
 
-Port notes: the collector binds host `4317/4318` so Tumult's default endpoint works unchanged. Don't run this stack alongside `docker-compose.observability.yml` (SigNoz owns `4317` there) or the demo stack (owns `13133`, which is why this stack's collector health port is `23133`). Tear down with `docker compose -f docker/docker-compose.grafana-full.yml down -v`.
+Prometheus allows no dots, so the Collector renames metrics on the way
+to Mimir:
 
-## Metric name translation
-
-OTLP metric names use dots; Prometheus doesn't allow them. The collector's remote-write exporter translates names before pushing to Mimir. Verified live against otelcol-contrib `0.157.0` + Mimir `3.1.4`:
-
-| OTLP name (what Tumult emits) | In Mimir / PromQL |
+| Tumult sends | Mimir and PromQL show |
 |---|---|
 | `tumult.experiments.total` | `tumult_experiments_total` |
-| `tumult.actions.total` | `tumult_actions_total` |
-| `tumult.probes.total` | `tumult_probes_total` |
+| `tumult.actions.total`, `tumult.probes.total` | `tumult_actions_total`, `tumult_probes_total` |
 | `tumult.hypothesis.deviations.total` | `tumult_hypothesis_deviations_total` |
-| `tumult.plugin.script.executions.total` | `tumult_plugin_script_executions_total` |
-| `tumult.rollbacks.total` | `tumult_rollbacks_total` |
-| `tumult.plugin.errors.total` | `tumult_plugin_errors_total` |
-| `tumult.action.duration` (unit `s`) | `tumult_action_duration_seconds_bucket` / `_sum` / `_count` |
-| `tumult.probe.duration` (unit `s`) | `tumult_probe_duration_seconds_bucket` / `_sum` / `_count` |
-| `tumult.experiment.duration` (unit `s`) | `tumult_experiment_duration_seconds_bucket` / `_sum` / `_count` |
-| `resilience.store.experiments` | `resilience_store_experiments` |
-| `resilience.store.activities` | `resilience_store_activities` |
+| `tumult.rollbacks.total`, `tumult.plugin.errors.total` | `tumult_rollbacks_total`, `tumult_plugin_errors_total` |
+| `tumult.action.duration` (seconds) | `tumult_action_duration_seconds_bucket`, `_sum`, `_count` |
+| `tumult.probe.duration`, `tumult.experiment.duration` | `tumult_probe_duration_seconds_*`, `tumult_experiment_duration_seconds_*` |
 | `resilience.store.size_bytes` | `resilience_store_size_bytes` |
-| `tumult.store.disk_usage_pct` | `tumult_store_disk_usage_pct` |
 
-Rules of thumb, confirmed in practice:
-
-- Dots become underscores.
-- Counters get one `_total` suffix. Names that already end in `.total` (all of Tumult's) end up with a single `_total`. There is no doubling with the 0.157.0 translator. A counter without `.total` in its name *gains* the suffix.
-- Histograms expand into `_bucket`/`_sum`/`_count` series. A histogram with the unit `s` gains `_seconds` first.
-- Labels survive, with dots as underscores: `resilience_outcome_status`, `resilience_plugin_name`, `resilience_action_name`, `resilience_probe_name`, `resilience_experiment_name`. `service.name` becomes the `job` label, and the collector adds `otel_scope_name`.
-
-To see the real list in your running stack:
-
-```bash
-curl -s http://localhost:19009/prometheus/api/v1/label/__name__/values
-```
-
-Example PromQL:
+Dots become underscores, a counter ends in one `_total`, and a histogram
+in seconds gains `_seconds`. Labels keep their names with underscores,
+such as `resilience_outcome_status`. `service.name` becomes the `job`
+label. List the real names with
+`curl -s http://localhost:19009/prometheus/api/v1/label/__name__/values`.
 
 ```promql
-# experiment outcomes
+# Runs by outcome
 sum by (resilience_outcome_status) (tumult_experiments_total)
 
-# action p95 per plugin
+# Action p95 per plugin
 histogram_quantile(0.95,
   sum by (le, resilience_plugin_name) (rate(tumult_action_duration_seconds_bucket[$__rate_interval])))
 ```
 
-## Loki: logs and structured metadata
+## Logs in Loki
 
-Loki 3.x ingests OTLP natively (the collector's `otlp_http/loki` exporter posts to `http://loki:3100/otlp` — the old contrib `loki` exporter is deprecated). Two things to know:
-
-- **Only a few labels are indexed**: `service_name` and `deployment_environment`. Everything else — including all `resilience.*` attributes, with dots converted to underscores — is stored as **structured metadata**: queryable per line, but not indexed. Filter on it *after* the stream selector.
-- **JSON log bodies** (Tumult's audit events are JSON strings) need `| json` before you can use their fields.
+Loki indexes only `service_name` and `deployment_environment`. The
+`resilience.*` attributes are structured metadata, with underscores:
+filter on them after the stream selector. The audit events are JSON, so
+add `| json` to read their fields.
 
 <!-- {% raw %} -->
 
 ```logql
-# all tumult logs
-{service_name="tumult"}
-
-# logs for one experiment run (structured metadata filter)
+# Logs of one run
 {service_name="tumult"} | resilience_experiment_id="418efc30-..."
 
-# logs from one plugin
-{service_name="tumult"} | resilience_plugin_name="tumult-process"
-
-# parse JSON audit events and extract fields
+# Audit events as text
 {service_name="tumult"} | json | line_format "{{.event}} {{.status}}"
 
-# failures only
+# Failed runs only
 {service_name="tumult"} | json | status="failed"
-
-# count audit events per minute
-sum by (event) (count_over_time({service_name="tumult"} | json [1m]))
 ```
 
 <!-- {% endraw %} -->
 
-Because `trace_id` is attached to every log record as structured metadata, Grafana's Tempo→Loki correlation works: from a trace span, "Logs for this span" jumps to the matching log lines.
+Each log line carries its `trace_id`, so Grafana jumps from a span in
+Tempo to its log lines.
 
-## Tempo: TraceQL examples
-
-Explore → Tempo → TraceQL:
+## Traces in Tempo
 
 ```traceql
-# all tumult traces
-{ resource.service.name = "tumult" }
+# Failed runs
+{ name = "resilience.experiment" && span.resilience.outcome.status = "failed" }
 
-# failed experiments
-{ name = "resilience.experiment" &&
-  span.resilience.outcome.status = "failed" }
-
-# experiments where the hypothesis didn't hold
+# Runs where the steady state did not hold
 { name = "resilience.experiment" && span.resilience.outcome.hypothesis_met = false }
 
-# slow actions
+# Slow actions
 { name = "resilience.action" && duration > 5s }
-
-# find a run by experiment ID, then jump to its logs
-{ span.resilience.experiment.id = "418efc30-..." }
 ```
 
-## Limitations
+## Limits
 
-This stack is a reference, full stop:
+- No auth and no TLS. Do not expose these ports.
+- Single node, files on disk: Loki keeps 7 days, Tempo 24 hours.
+- Versions are pinned and tested together: otelcol 0.157.0, Tempo 2.9.4,
+  Mimir 3.1.4, Loki 3.6.2, Grafana 12.4.6.
 
-- **No auth, no TLS** on any component. Grafana is anonymous-Viewer with a hardcoded `admin`/`tumult` password. Do not expose any of these ports.
-- **Single-node everything.** Mimir, Loki, and Tempo all run monolithic with filesystem storage; Loki retention is 7 days, Tempo keeps blocks for 24h. Fine for a laptop, not for a team.
-- **No remote storage for Grafana itself** — dashboards/datasources come from provisioning files; UI edits are allowed but not durable across `down -v`.
-- The classic observability profile shares `docker/grafana/provisioning`, so this stack's Grafana also shows Jaeger/Prometheus datasources that don't resolve here (and vice versa). Harmless; they only error when queried.
-- Pinned versions (`otelcol 0.157.0`, `tempo 2.9.4`, `mimir 3.1.4`, `loki 3.6.2`, `grafana 12.4.6`) were verified together in August 2026. If you bump them, re-check the collector log for deprecation warnings — exporter kind names changed once already (`otlphttp` → `otlp_http`, etc.).
+For production, use the vendors' Helm charts with object storage and
+auth, and keep `collector/otel-collector-grafana.yaml` as the routing
+reference.
 
-For production-shaped deployments, use the vendor's Helm charts (mimir-distributed, loki, tempo) with object storage and proper auth, and keep `collector/otel-collector-grafana.yaml` as the routing reference.
+## Next
+
+- [Telemetry reference](telemetry-reference.md): every span and metric.
+- [Observability setup](observability-setup.md): other backends.
