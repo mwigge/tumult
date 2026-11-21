@@ -48,6 +48,10 @@ HTML_ATTR = re.compile(r"""\b(?:src|href|content|poster)\s*=\s*(["'])(.*?)\1""",
 YAML_VALUE = re.compile(r"""^\s*[\w-]+:\s*(["']?)([^"'\s#]+)\1\s*(?:#.*)?$""", re.M)
 FRONT_MATTER = re.compile(r"\A---\n(.*?)\n---\n", re.S)
 ALLOW_LINE = re.compile(r"(\S+)\s+#\s*(\S.*)")
+# A path a page hands to a Jekyll url filter: {{ '/images/x.svg' | relative_url }}.
+URL_FILTER = re.compile(
+    r"""\{\{\s*(['"])([^'"]+)\1\s*\|\s*(?:relative_url|absolute_url)\s*\}\}"""
+)
 
 
 def repository_files(root: Path) -> list[str]:
@@ -78,6 +82,9 @@ def image_path(page: str, target: str) -> str | None:
     """The repository path an image target of a page points at, or None when
     the target is not a local image."""
     target = target.strip()
+    filtered = URL_FILTER.fullmatch(target)
+    if filtered:
+        target = filtered[2]
     if "{{" in target or "{%" in target or "://" in target:
         return None
     if target.startswith(("data:", "mailto:", "#", "//")):
