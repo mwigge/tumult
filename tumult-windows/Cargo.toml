@@ -27,3 +27,6 @@ tumult-test-utils = { path = "../tumult-test-utils", default-features = false }
 # does not require it.
 name = "winfault"
 path = "src/bin/winfault.rs"
+
+[lints]
+workspace = true

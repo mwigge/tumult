@@ -45,3 +45,6 @@ tumult-exec = { path = "../tumult-exec" }
 tumult-test-utils = { path = "../tumult-test-utils", default-features = false, features = [
     "recorded",
 ] }
+
+[lints]
+workspace = true

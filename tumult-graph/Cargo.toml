@@ -14,3 +14,6 @@ toml = { workspace = true }
 
 [dev-dependencies]
 tumult-core = { path = "../tumult-core" }
+
+[lints]
+workspace = true
