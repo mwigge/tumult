@@ -77,6 +77,15 @@ class Missing(RepoTest):
         )
         self.assertEqual(self.failures(), [])
 
+    def test_an_image_named_through_a_url_filter_is_a_reference(self):
+        # An include of the theme names the favicon as a Jekyll filter.
+        self.write(
+            "docs/_includes/head_custom.html",
+            '<link rel="icon" href="{{ \'/images/favicon.svg\' | relative_url }}">\n',
+        )
+        self.image("docs/images/favicon.svg")
+        self.assertEqual(self.failures(), [])
+
     def test_an_image_named_only_in_prose_or_code_is_not_a_reference(self):
         self.write("CHANGELOG.md", "Replaced `login.png` and docs/images/old.png.\n")
         self.assertEqual(self.failures(), [])
