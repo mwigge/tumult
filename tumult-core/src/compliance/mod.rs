@@ -94,9 +94,6 @@ mod tests {
             probes: vec![],
             recovery_time_s: mttr_s.unwrap_or(0.0),
             full_recovery: mttr_s.is_some(),
-            residual_degradation: None,
-            data_integrity_verified: None,
-            data_loss_detected: None,
             mttr_s,
         });
         journal

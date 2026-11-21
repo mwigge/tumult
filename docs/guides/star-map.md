@@ -169,8 +169,8 @@ focus returns to where it was.
 
 The response has `nodes`, `edges` (`owns`, `implements`, `runs_on`,
 `calls`, `depends_on`, `tested_by`, `broke`, `covers`, `measures`, each
-with the `source` it was learned from), `clusters`, `counts` and
-`sources` (each `ok` or `unavailable`). With `focus`, `focus_found` says
+with the `source` it was learned from), `clusters` and `counts`. With
+`focus`, `focus_found` says
 whether that node exists inside the caller's scopes, and `focus` in the
 response is the id of the node that was looked for: an entity id is
 matched whatever its case, so `focus=ent:CIF-0042` finds `ent:cif-0042`
@@ -222,11 +222,9 @@ says otherwise, and the earlier `tgt:` ids are gone.
 
 ## What is not there yet
 
-`sources` reports `slo`, `dora` and `maturity` as `unavailable`, and the
-matching node fields are `null`. They are reserved for the SLO, DORA and
-maturity overlays. The page does not list them. It writes a line under the
-map only when a source it draws, the graph or OTel conformance, could not
-be loaded.
+The node fields `slo`, `dora` and `maturity` are `null`. They are
+reserved for the SLO, DORA and maturity overlays. The page does not list
+them.
 
 The roll-up of maturity is a proposal, not a decision: the rule and its
 weights are pending the DORA score work and may change with it. As

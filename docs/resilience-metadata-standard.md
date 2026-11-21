@@ -205,10 +205,6 @@ Measurements captured while the fault is active.
 | `resilience.during.ended_at` | `int64` | Required | Epoch nanoseconds when fault injection ended. |
 | `resilience.during.fault_active_s` | `float` | Required | Actual duration the fault was active in seconds. |
 | `resilience.during.sample_interval_s` | `float` | Required | Sampling interval in seconds during the fault window. |
-| `resilience.during.degradation_onset_s` | `float` | Recommended | Seconds from fault start to first observable degradation. |
-| `resilience.during.degradation_peak_s` | `float` | Recommended | Seconds from fault start to peak degradation. |
-| `resilience.during.degradation_magnitude` | `float` | Recommended | Peak degradation magnitude expressed in sigma (standard deviations from baseline mean). |
-| `resilience.during.graceful_degradation` | `boolean` | Recommended | Whether the system degraded gracefully (maintained partial service) rather than failing hard. |
 
 #### Per-probe during-fault metrics
 
@@ -240,9 +236,6 @@ Measurements captured after fault removal to assess recovery.
 | `resilience.post.samples` | `int` | Required | Total number of samples collected during the post-fault window. |
 | `resilience.post.recovery_time_s` | `float` | Required | Mean Time to Recovery (MTTR) -- seconds from fault removal to all probes returning within baseline thresholds. When a probe did not return, the largest value of a probe: recovery takes at least this long. |
 | `resilience.post.full_recovery` | `boolean` | Required | Whether the system fully returned to baseline levels. |
-| `resilience.post.residual_degradation` | `float` | Recommended | Remaining degradation at end of observation, expressed in sigma from baseline mean. `0.0` means fully recovered. |
-| `resilience.post.data_integrity_verified` | `boolean` | Recommended | Whether a data integrity check was performed after recovery. |
-| `resilience.post.data_loss_detected` | `boolean` | Recommended | Whether data loss was detected after recovery. |
 
 #### Per-probe post-fault metrics
 

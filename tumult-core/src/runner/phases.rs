@@ -177,12 +177,6 @@ pub(crate) fn collect_post_samples(
 /// Build a `DuringResult` from probe samples collected while fault injection
 /// was active. `sample_interval_s` is the actual interval the sampler ran
 /// with. Returns `None` if no samples were collected.
-///
-/// The degradation fields (`degradation_onset_s`, `degradation_peak_s`,
-/// `degradation_magnitude`, `graceful_degradation`) are reserved and always
-/// `None` in this version: deriving them requires latency-shape analysis
-/// over the samples that is not implemented yet, so they are left
-/// unpopulated rather than filled with placeholder values.
 pub(crate) fn build_during_result(
     started_at_ns: i64,
     ended_at_ns: i64,
@@ -250,20 +244,11 @@ pub(crate) fn build_during_result(
         fault_active_s,
         sample_interval_s,
         probes,
-        degradation_onset_s: None,
-        degradation_peak_s: None,
-        degradation_magnitude: None,
-        graceful_degradation: None,
     })
 }
 
 /// Build a `PostResult` from probe samples collected after method completion
 /// to measure system recovery. Returns `None` if no samples were collected.
-///
-/// `residual_degradation`, `data_integrity_verified`, and
-/// `data_loss_detected` are reserved and always `None` in this version (they
-/// require checks the runner does not perform yet), rather than filled with
-/// placeholder values.
 pub(crate) fn build_post_result(
     started_at_ns: i64,
     ended_at_ns: i64,
@@ -379,9 +364,6 @@ pub(crate) fn build_post_result(
         probes,
         recovery_time_s,
         full_recovery,
-        residual_degradation: None,
-        data_integrity_verified: None,
-        data_loss_detected: None,
         mttr_s,
     })
 }

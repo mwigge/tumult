@@ -208,8 +208,7 @@ teams=sorted(x["label"] for x in d["nodes"] if x["kind"]=="org" and x["org_kind"
 assert teams==["data-team","edge-team","runtime-team"], teams
 wl=[x for x in d["nodes"] if x["kind"]=="workload"]; assert len(wl)==5, [x["id"] for x in wl]
 assert all(x["evidence"]["runs"]==0 for x in d["nodes"]), "a fresh lake has no runs"
-assert not [x for x in d["nodes"] if x["kind"]=="def"], "no definitions before a run"
-assert d["sources"]["slo"]==d["sources"]["dora"]==d["sources"]["maturity"]=="unavailable", d["sources"]' <"$WORK/map0.json"
+assert not [x for x in d["nodes"] if x["kind"]=="def"], "no definitions before a run"' <"$WORK/map0.json"
 if python3 "$REPO/scripts/starmap-check.py" "$URL" --wait 0 >"$WORK/check0.out" 2>&1; then
   cat "$WORK/check0.out"
   fail "the demo-check assertions passed on a map with no runs"
@@ -288,7 +287,6 @@ assert "sys:production/cdn" not in n and "wl:edge/deployment/cdn-edge" not in n
 assert d["counts"]["nodes"]==len(d["nodes"]) and d["counts"]["edges"]==len(e)
 assert all(x["flags"]==[] for x in d["nodes"]), [(x["id"],x["flags"]) for x in d["nodes"] if x["flags"]]
 assert d["focus_found"] is None, "no focus was asked for"
-assert set(d["sources"].values())<={"ok","unavailable"}, d["sources"]
 print("     nodes", {k:len(v) for k,v in sorted(kinds.items())}, "edges", len(e))' <"$WORK/map1.json"
 pass "organisation, 3 teams, >=4 workloads with runs_on edges, 8 definitions referenced, no tgt: ids, no flags, demo only"
 

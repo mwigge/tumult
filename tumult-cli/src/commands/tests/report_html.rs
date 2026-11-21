@@ -74,7 +74,7 @@ fn a_step_that_failed_is_a_marked_row_with_what_it_said() {
 
 #[test]
 fn words_that_are_empty_are_no_words() {
-    let failed = step(ActivityStatus::Timeout, "", Some(""), Some(""));
+    let failed = step(ActivityStatus::Failed, "", Some(""), Some(""));
     let went_well = step(ActivityStatus::Succeeded, "", Some(""), Some(""));
 
     assert_eq!(

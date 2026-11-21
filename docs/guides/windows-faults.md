@@ -25,9 +25,22 @@ a Windows host** (they shell out to `taskkill` / `netsh` or spin CPU threads).
 | `network_blackhole` | Block a port/host via Windows Firewall | `port` **or** `remote_host` (exactly one) |
 
 `network_blackhole` returns the exact rollback command in its result
-(`netsh advfirewall firewall delete rule name=<rule>`). The plugin has no
-rollback function of its own. Run that command as a `process` step in the
-rollbacks of the experiment.
+(`netsh advfirewall firewall delete rule name=<rule>`). The function
+`network_blackhole_rollback` takes the same `port` or `remote_host` and
+deletes that rule. A rule that is not there counts as removed, so the
+rollback can run twice. Put it in the rollbacks of the experiment:
+
+```toon
+rollbacks[1]:
+  - name: remove-the-blackhole
+    activity_type: action
+    provider:
+      type: native
+      plugin: tumult-windows
+      function: network_blackhole_rollback
+      arguments:
+        port: 443
+```
 
 ## Example experiment
 

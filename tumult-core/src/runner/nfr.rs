@@ -332,9 +332,6 @@ mod tests {
             probes: vec![],
             recovery_time_s: 4.0,
             full_recovery: true,
-            residual_degradation: None,
-            data_integrity_verified: None,
-            data_loss_detected: None,
             mttr_s: Some(3.5),
         }
     }
@@ -346,10 +343,6 @@ mod tests {
             fault_active_s: 2.0,
             sample_interval_s: 1.0,
             probes: vec![],
-            degradation_onset_s: None,
-            degradation_peak_s: None,
-            degradation_magnitude: None,
-            graceful_degradation: None,
         }
     }
 
@@ -418,9 +411,6 @@ mod tests {
             probes: vec![],
             recovery_time_s: 4.0,
             full_recovery: true,
-            residual_degradation: None,
-            data_integrity_verified: None,
-            data_loss_detected: None,
             mttr_s: Some(3.5),
         };
         let samples = vec![
@@ -531,9 +521,6 @@ mod tests {
             probes: vec![],
             recovery_time_s: 1000.0,
             full_recovery: true,
-            residual_degradation: None,
-            data_integrity_verified: None,
-            data_loss_detected: None,
             mttr_s: Some(1000.0),
         };
         let l = load();

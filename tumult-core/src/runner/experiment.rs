@@ -252,9 +252,7 @@ pub fn run_experiment_with_sampling(
         method_started,
     );
 
-    let effective_max_faults = config
-        .max_concurrent_faults
-        .or(experiment.max_concurrent_faults);
+    let effective_max_faults = experiment.max_concurrent_faults;
 
     let (method_results, peak_concurrent_faults) = execute_activities(
         &experiment.method,

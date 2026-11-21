@@ -52,7 +52,6 @@ fn activity_case<'a>(phase: &'static str, result: &'a ActivityResult) -> Case<'a
     let text = result.error.as_deref().or(result.output.as_deref());
     let verdict = match result.status {
         ActivityStatus::Failed => Verdict::Failed("Failed", text.unwrap_or("")),
-        ActivityStatus::Timeout => Verdict::Failed("Timeout", text.unwrap_or("")),
         ActivityStatus::Skipped => Verdict::Skipped,
         ActivityStatus::Succeeded => Verdict::Passed,
     };

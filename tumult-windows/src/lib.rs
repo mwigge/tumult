@@ -14,6 +14,7 @@
 //! | `process_kill`      | `taskkill /F` a process by image name or PID  | `image` \| `pid` |
 //! | `cpu_stress`        | Spin N CPU-bound threads for a duration        | `workers`, `duration_secs` |
 //! | `network_blackhole` | Add a blocking `netsh` firewall rule (with rollback) | `port` \| `remote_host` |
+//! | `network_blackhole_rollback` | Delete that rule; a rule that is not there counts as removed | `port` \| `remote_host` |
 //!
 //! # Design: construction vs. execution
 //!

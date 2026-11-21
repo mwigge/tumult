@@ -121,13 +121,13 @@ fn cancellation_blocks_background_gate_waiters() {
     exp.method = (0..8)
         .map(|i| test_action_background(&format!("fault-{i}")))
         .collect();
+    exp.max_concurrent_faults = Some(1);
     run_experiment(
         &exp,
         &executor,
         &Arc::new(ControlRegistry::new()),
         &RunConfig {
             cancellation_token: Some(token),
-            max_concurrent_faults: Some(1),
             ..RunConfig::default()
         },
     )

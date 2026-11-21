@@ -151,13 +151,6 @@ const edges = [
 const UNKNOWN = 'sys:demo/nope';
 const map = {
     disclaimer: 'Evidence toward a requirement, not a statement of compliance.',
-    sources: {
-        slo: 'unavailable',
-        dora: 'unavailable',
-        maturity: 'unavailable',
-        conformance: 'ok',
-        graph: 'ok',
-    },
 };
 
 function starmap(query: URLSearchParams) {
@@ -174,7 +167,6 @@ const whole = (query: URLSearchParams) => ({
     depth: query.get('focus') ? Number(query.get('depth') ?? 2) : null,
     disclaimer: map.disclaimer,
     truncated: false,
-    sources: map.sources,
     maturity: null,
     counts: {
         nodes: nodes.length,
@@ -461,17 +453,6 @@ test('overlays reserved for later are not listed under the map', async ({ page }
     await expect(page.getByText(map.disclaimer)).toBeVisible();
     await expect(page.getByText(/not available yet/i)).toHaveCount(0);
     await expect(page.getByText(/could not load/i)).toHaveCount(0);
-});
-
-test('a source the map draws that failed is named in plain words', async ({ page }) => {
-    const sources = { ...map.sources, conformance: 'unavailable' };
-    await mock(page, [], true, { sources });
-    await page.goto('/starmap');
-    await drawn(page);
-    await expect(
-        page.getByText('Could not load OTel conformance; the map is drawn without it.'),
-    ).toBeVisible();
-    await expect(page.getByText(/slo|dora|maturity/)).toHaveCount(0);
 });
 
 test('the legend is chips per kind and a key, and a chip hides its kind', async ({ page }) => {

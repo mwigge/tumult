@@ -1,4 +1,5 @@
-//! What `tumult validate` says about an experiment file.
+//! What `tumult validate` says about an experiment file, and about the
+//! starter that `tumult init` writes.
 //!
 //! The binary reads real files: the experiment, and the manifests of two
 //! script plugins in the `plugins` directory it is started in.
@@ -279,4 +280,44 @@ fn a_script_plugin_name_that_is_a_path_is_refused_for_a_guard_and_for_a_control(
     };
     assert_eq!(guard, refused("watch"));
     assert_eq!(control, refused("lifecycle"));
+}
+
+/// Run `tumult init` with `args` in `lab`.
+fn init(lab: &Lab, args: &[&str]) -> std::process::Output {
+    let all: Vec<&str> = ["init"].iter().chain(args).copied().collect();
+    lab.command(&all)
+        .env_remove("TUMULT_PLUGIN_PATH")
+        .output()
+        .expect("run tumult")
+}
+
+#[test]
+fn the_starter_that_init_writes_for_a_plugin_reads_a_probe_of_it_and_passes() {
+    let lab = lab_with_plugins();
+
+    let output = init(&lab, &["--plugin", "lab-target"]);
+
+    assert!(output.status.success(), "{}", fatal_error(&output.stderr));
+    let starter = std::fs::read_to_string(lab.path("experiment.toon")).expect("the starter");
+    let experiment = tumult_core::engine::parse_experiment(&starter).expect("an experiment");
+    let reads_the_plugin = experiment.method.iter().any(|step| {
+        matches!(&step.provider, tumult_core::types::Provider::Script { plugin, function, .. }
+            if plugin == "lab-target" && function == "read")
+    });
+    assert!(reads_the_plugin, "{starter}");
+    let (passed, stdout, error) = validate(&lab, &starter);
+    assert!(passed, "{stdout}{error}");
+}
+
+#[test]
+fn init_refuses_a_plugin_that_is_not_installed_and_writes_nothing() {
+    let lab = lab_with_plugins();
+
+    let output = init(&lab, &["--plugin", "lab-cache"]);
+
+    assert!(!output.status.success());
+    let error = fatal_error(&output.stderr);
+    assert!(error.contains("lab-cache"), "{error}");
+    assert!(error.contains("lab-queue, lab-target"), "{error}");
+    assert!(!lab.path("experiment.toon").exists());
 }

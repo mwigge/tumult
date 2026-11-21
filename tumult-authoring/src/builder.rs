@@ -37,6 +37,16 @@ pub enum AuthoringError {
     /// A `--set key=value` override was malformed.
     #[error("invalid override (expected key=value): {0}")]
     BadOverride(String),
+    /// The starter was asked for a plugin with no probe in the catalog.
+    #[error(
+        "no script plugin '{plugin}' with a probe is installed (plugins with a probe: {installed})"
+    )]
+    PluginWithoutProbe {
+        /// The plugin that was asked for.
+        plugin: String,
+        /// The plugins that have a probe, or `none`.
+        installed: String,
+    },
 }
 
 /// A steady-state probe specification. Both variants compile to a `process`

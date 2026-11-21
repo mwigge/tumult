@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use opentelemetry::trace::{Span, TraceContextExt, Tracer, TracerProvider};
 use opentelemetry::Context;
 use opentelemetry_sdk::trace::SdkTracerProvider;
-use tumult_plugin::executor::execute_script;
+use tumult_plugin::executor::execute_script_until;
 
 /// Run a script that prints its `TRACEPARENT` while `context` is current,
 /// and return what it printed.
@@ -21,10 +21,17 @@ async fn traceparent_seen_in(context: Context) -> String {
     let script = dir.path().join("traceparent.sh");
     tumult_test_utils::write_executable(&script, "#!/bin/sh\nprintf '%s' \"${TRACEPARENT-}\"\n");
     let _attached = context.attach();
-    execute_script(&script, dir.path(), &HashMap::<String, String>::new(), None)
-        .await
-        .unwrap()
-        .stdout
+    let never = std::future::pending();
+    execute_script_until(
+        &script,
+        dir.path(),
+        &HashMap::<String, String>::new(),
+        None,
+        never,
+    )
+    .await
+    .unwrap()
+    .stdout
 }
 
 #[tokio::test]

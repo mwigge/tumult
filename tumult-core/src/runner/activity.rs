@@ -308,7 +308,7 @@ fn contained(
 /// bounds the number of background method activities running at the same
 /// instant on this host. It does **not** — and cannot — bound faults injected
 /// by other processes, other Tumult runs, or the wider cluster; that boundary
-/// is documented on [`crate::runner::RunConfig::max_concurrent_faults`].
+/// is documented on [`crate::types::Experiment::max_concurrent_faults`].
 struct FaultGate {
     cap: Option<usize>,
     state: std::sync::Mutex<GateState>,

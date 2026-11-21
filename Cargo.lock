@@ -8446,9 +8446,11 @@ version = "3.0.2"
 dependencies = [
  "async-trait",
  "serde_json",
+ "tempfile",
  "thiserror 2.0.19",
  "tokio",
  "tumult-plugin",
+ "tumult-test-utils",
 ]
 
 [[package]]
