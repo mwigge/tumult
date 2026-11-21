@@ -13,7 +13,11 @@
 //! | Claude Code  | `ANTHROPIC_BASE_URL=http://127.0.0.1:8080`                  |
 //! | Codex CLI    | `OPENAI_BASE_URL=http://127.0.0.1:8080/v1`                  |
 //! | OpenCode     | provider `baseURL` / `OPENAI_BASE_URL=http://127.0.0.1:8080/v1` |
-//! | GitHub Copilot | `HTTPS_PROXY=http://127.0.0.1:8080` (or model base URL)   |
+//!
+//! The proxy is a base URL, not an HTTP proxy: it opens no tunnel, and it
+//! passes a `CONNECT` on to the upstream like any other request. A client
+//! that only takes `HTTPS_PROXY`, such as the GitHub Copilot CLI, cannot be
+//! faulted this way.
 //!
 //! Faults map onto HTTP behaviour as follows:
 //!

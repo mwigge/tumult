@@ -14,8 +14,10 @@ The smoke fixture injects malformed JSON and expects the `valid_json` contract
 to fail. That failure is the success signal because it proves the injected fault
 and contract feedback loop are working.
 
-To inject the same faults into a real agent (Claude Code, Codex, OpenCode,
-Copilot), run the proxy in front of the provider and point the agent at it:
+To inject the same faults into a real agent (Claude Code, Codex, OpenCode),
+run the proxy in front of the provider and set the base URL of the agent to
+it. The proxy is a base URL and opens no tunnel, so an agent that only takes
+`HTTPS_PROXY`, such as the Copilot CLI, cannot be faulted this way:
 
 ```bash
 tumult agentic proxy --upstream https://api.anthropic.com --scenario malformed-json-recovery

@@ -299,7 +299,7 @@ pub fn run_gameday_with_wiring(
     let cut = !ran_all || super::activity::is_cancelled(config.cancellation_token.as_ref());
     let load_result = end_shared_load(load_guard.take(), load_executor.as_ref(), cut);
 
-    // Compute resilience score
+    // Compute the GameDay score
     let total = journals.len();
     let passed = journals
         .iter()

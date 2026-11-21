@@ -6,8 +6,8 @@
 //! cargo run -p tumult-lake --example entity_writer_cost -- <directory>
 //! ```
 //!
-//! The directory receives a lake file and must not hold one. The figures
-//! in `docs/guides/entity-events.md` (section 6) come from this program.
+//! The directory receives a lake file and must not hold one. No page keeps
+//! the figures: this program is the measure, so run it to get them.
 
 #![allow(clippy::print_stdout)] // an example: the measurements are its output
 

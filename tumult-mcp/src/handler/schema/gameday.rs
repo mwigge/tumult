@@ -7,7 +7,7 @@ use super::default_list_limit;
 /// Arguments for the `tumult_gameday_run` tool.
 #[macros::mcp_tool(
     name = "tumult_gameday_run",
-    description = "Run a GameDay — execute all experiments in a .gameday.toon file under shared load. Returns resilience score and compliance status. Refuses, before any experiment runs, while the journal of an earlier run (the .journal.toon alongside the file) is there: set force to replace it.",
+    description = "Run a GameDay: execute all experiments in a .gameday.toon file under shared load. Returns the GameDay score and compliance status. Refuses, before any experiment runs, while the journal of an earlier run (the .journal.toon alongside the file) is there: set force to replace it.",
     destructive_hint = true,
     read_only_hint = false,
     idempotent_hint = false,
@@ -26,7 +26,7 @@ pub struct GameDayRunTool {
 /// Arguments for the `tumult_gameday_analyze` tool.
 #[macros::mcp_tool(
     name = "tumult_gameday_analyze",
-    description = "Analyze a completed GameDay journal — returns resilience score, per-experiment results, and compliance article mapping.",
+    description = "Analyze a completed GameDay journal: returns the GameDay score, per-experiment results, and compliance article mapping.",
     read_only_hint = true,
     idempotent_hint = true,
     open_world_hint = false

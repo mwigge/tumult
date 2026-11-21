@@ -276,6 +276,37 @@ async fn no_tool_description_calls_every_experiment_a_chaos_experiment() {
     }
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_game_day_tools_name_the_game_day_score_and_no_tool_a_resilience_score() {
+    let tmp = tempfile::tempdir().unwrap();
+    let handler = open_handler(tmp.path());
+    let result = handler
+        .handle_list_tools_request(None, stub_runtime())
+        .await
+        .expect("list_tools must succeed");
+
+    for tool in &result.tools {
+        let description = tool.description.as_deref().unwrap_or_default();
+        assert!(
+            !description.to_lowercase().contains("resilience score"),
+            "{}: {description}",
+            tool.name
+        );
+    }
+    for name in ["tumult_gameday_run", "tumult_gameday_analyze"] {
+        let tool = result
+            .tools
+            .iter()
+            .find(|tool| tool.name == name)
+            .expect("the tool is listed");
+        let description = tool.description.as_deref().unwrap_or_default();
+        assert!(
+            description.contains("GameDay score"),
+            "{name}: {description}"
+        );
+    }
+}
+
 #[test]
 fn tool_annotations_reflect_tool_behavior() {
     // Read-only, idempotent, closed-world tools. The agentic tools are

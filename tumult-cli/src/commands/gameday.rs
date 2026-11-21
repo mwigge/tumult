@@ -250,10 +250,7 @@ pub fn cmd_gameday_run(gameday_path: &std::path::Path, force: bool) -> Result<()
         );
     }
 
-    crate::outln!(
-        "\nResilience Score: {:.2}",
-        journal.resilience_score.overall
-    );
+    crate::outln!("\nGameDay score: {:.2}", journal.resilience_score.overall);
     crate::outln!(
         "  Pass rate:        {:.2}",
         journal.resilience_score.pass_rate
@@ -332,10 +329,7 @@ pub fn cmd_gameday_analyze(gameday_path: &std::path::Path) -> Result<()> {
         );
     }
 
-    crate::outln!(
-        "\nResilience Score: {:.2}",
-        journal.resilience_score.overall
-    );
+    crate::outln!("\nGameDay score: {:.2}", journal.resilience_score.overall);
     crate::outln!(
         "  Pass rate:    {:.2}  Recovery: {:.2}  Load: {:.2}  Compliance: {:.2}",
         journal.resilience_score.pass_rate,

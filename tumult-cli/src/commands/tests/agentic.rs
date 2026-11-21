@@ -4,6 +4,7 @@
 
 use super::super::*;
 use super::helpers::use_temp_store;
+use crate::output::testing::capture;
 use tempfile::TempDir;
 use tumult_test_utils::EnvGuard;
 
@@ -175,6 +176,41 @@ async fn proxy_invalid_listen_address_errors() {
         err.to_string().contains("invalid --listen address"),
         "{err}"
     );
+}
+
+#[test]
+fn the_proxy_prints_base_url_hints_and_no_https_proxy_hint() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    // The proxy prints its hints on this thread, then serves until stopped.
+    let (served, printed) = capture(|| {
+        runtime.block_on(async {
+            tokio::time::timeout(
+                std::time::Duration::from_millis(300),
+                cmd_agentic_proxy(
+                    "127.0.0.1:0",
+                    "http://upstream.invalid",
+                    "malformed-json-recovery",
+                    None,
+                    42,
+                    "copilot",
+                ),
+            )
+            .await
+        })
+    });
+
+    assert!(served.is_err(), "the proxy stopped on its own: {served:?}");
+    let out = printed.stdout;
+    assert!(out.contains("Press Ctrl-C to stop."), "{out}");
+    assert!(
+        out.contains("ANTHROPIC_BASE_URL=http://127.0.0.1:"),
+        "{out}"
+    );
+    assert!(out.contains("OPENAI_BASE_URL=http://127.0.0.1:"), "{out}");
+    assert!(!out.contains("HTTPS_PROXY"), "{out}");
 }
 
 #[test]

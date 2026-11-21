@@ -90,6 +90,6 @@ fn score_gate_failure_names_scenario_contract_and_delta() {
 
     assert_eq!(
         failure.to_string(),
-        "resilience score gate failed: score 0.250 below threshold 0.900 by 0.650; scenario=support-order-lookup contract=valid_json reason=valid_json_failed"
+        "agentic score gate failed: score 0.250 below threshold 0.900 by 0.650; scenario=support-order-lookup contract=valid_json reason=valid_json_failed"
     );
 }

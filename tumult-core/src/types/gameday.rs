@@ -53,7 +53,7 @@ impl Default for ScoringConfig {
 /// A `GameDay` — a coordinated campaign of experiments under shared load.
 ///
 /// Runs multiple experiments in sequence while a load generator
-/// hammers the target system. Produces an aggregate resilience score
+/// hammers the target system. Produces an aggregate `GameDay` score
 /// mapped to regulatory compliance articles.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -72,7 +72,7 @@ pub struct GameDay {
     pub scoring: ScoringConfig,
 }
 
-/// Resilience score components for a `GameDay`.
+/// The `GameDay` score and its components.
 ///
 /// Each component is a value between 0.0 and 1.0. The overall score
 /// is a weighted mean: `pass_rate` (0.30) + recovery (0.25) +

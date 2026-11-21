@@ -335,6 +335,8 @@ jobs:
       - run: python3 scripts/test-check-proof-journals.py
       - run: bash -n scripts/demo-topology.sh
       - run: python3 scripts/test-demo-topology.py
+      - run: bash -n scripts/signoz-bulk-import.sh
+      - run: python3 scripts/test-signoz-bulk-import.py
       - run: python3 scripts/test-check-test-hygiene.py
       - run: python3 scripts/check-test-hygiene.py
       - run: python3 scripts/test-check-prose.py
