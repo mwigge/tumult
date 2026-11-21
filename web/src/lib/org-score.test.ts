@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { CHART } from './echarts';
+import { chartTokens } from './echarts';
 import {
     bandColor,
     bandGlyph,
@@ -73,7 +73,9 @@ describe('the band of a node', () => {
         expect(bandLabel('unknown')).toBe('—');
         expect(bandGlyph('unknown')).toBe('');
         expect(bandColor('unknown')).toBe('#5b6772');
-        expect([bandColor('poor'), CHART.fail]).not.toContain(bandColor('unknown'));
+        expect([bandColor('poor'), chartTokens('tumult-dark').fail]).not.toContain(
+            bandColor('unknown'),
+        );
     });
 });
 

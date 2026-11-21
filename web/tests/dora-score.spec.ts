@@ -1084,6 +1084,37 @@ test('charts follow the light theme', async ({ page }) => {
     await expect.poll(pointer).toBe('#1f6fb2');
 });
 
+test('the charts are drawn in the colours of the light theme on a direct load', async ({
+    page,
+}) => {
+    await page.addInitScript(() => localStorage.setItem('tumult.theme', 'light'));
+    await mockApi(page);
+    await page.goto('/scores?view=dora');
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+    const colours = () =>
+        page.evaluate(() => {
+            type Option = {
+                tooltip?: { backgroundColor?: string }[];
+                series?: {
+                    axisLabel?: { color?: string };
+                    lineStyle?: { color?: string };
+                    data?: { itemStyle?: { color?: string } }[];
+                }[];
+            };
+            const w = window as Window & { __tumultCharts?: Record<string, unknown> };
+            const of = (id: string) => w.__tumultCharts?.[id] as Option | undefined;
+            return {
+                heatmap: of('dora-heatmap')?.tooltip?.[0]?.backgroundColor,
+                bar: of('dora-components')?.series?.[0]?.data?.[0]?.itemStyle?.color,
+                gauge: of('dora-gauge')?.series?.[0]?.axisLabel?.color,
+                history: of('dora-history')?.series?.[0]?.lineStyle?.color,
+            };
+        });
+    await expect
+        .poll(colours)
+        .toEqual({ heatmap: '#ffffff', bar: '#1f6fb2', gauge: '#5b6772', history: '#1f6fb2' });
+});
+
 test('the navigation reaches the DORA view and the org scores stay', async ({ page }) => {
     await mockApi(page);
     await page.goto('/scores');

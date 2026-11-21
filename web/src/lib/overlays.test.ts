@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { CHART } from '#lib/echarts.js';
+import { chartTokens } from '#lib/echarts.js';
 import { experimentOverlay, labelGap, outcomeColor, outcomeLegend, spacedLabels } from './overlays';
 import type { ExperimentWindow } from './types';
+
+const DARK = chartTokens('tumult-dark');
+const LIGHT = chartTokens('tumult-light');
 
 const HOUR_MS = 3_600_000;
 const DAY = '2026-11-15';
@@ -27,8 +30,8 @@ interface Marker {
     label?: { show?: boolean; align?: string };
 }
 interface Overlay {
-    markLine: { label: { position: string }; data: Marker[] };
-    markArea: { data: unknown[] };
+    markLine: { label: { position: string; color: string }; data: Marker[] };
+    markArea: { data: { itemStyle?: { color: string } }[][] };
 }
 
 function overlayOf(
@@ -36,22 +39,23 @@ function overlayOf(
     toX?: (ms: number) => number | string,
     gap?: number,
     axis?: { min: number; max: number },
+    tokens = DARK,
 ): Overlay {
-    const series = experimentOverlay(runs, toX, gap, axis);
+    const series = experimentOverlay(runs, tokens, toX, gap, axis);
     if (series === null) throw new Error('no overlay');
     return series as unknown as Overlay;
 }
 
 describe('experimentOverlay', () => {
     it('GIVEN no runs WHEN building THEN there is no overlay', () => {
-        expect(experimentOverlay([])).toBeNull();
+        expect(experimentOverlay([], DARK)).toBeNull();
     });
 
     it('GIVEN runs at different times WHEN building THEN each run has its own named marker', () => {
         const markers = overlayOf([run(1), run(2, 'failed')]).markLine.data;
         expect(markers.map((m) => m.name)).toEqual(['exp-1 — completed', 'exp-2 — failed']);
         expect(markers.map((m) => m.runId)).toEqual(['run-1', 'run-2']);
-        expect(markers[1]?.lineStyle.color).toBe(CHART.fail);
+        expect(markers[1]?.lineStyle.color).toBe(DARK.fail);
     });
 
     it('GIVEN many runs on one day column WHEN building THEN one marker counts them', () => {
@@ -59,12 +63,12 @@ describe('experimentOverlay', () => {
         const markers = overlayOf(runs, toDay).markLine.data;
         expect(markers).toHaveLength(1);
         expect(markers[0]).toMatchObject({ xAxis: DAY, name: '3 runs', runId: null });
-        expect(markers[0]?.lineStyle.color).toBe(CHART.text);
+        expect(markers[0]?.lineStyle.color).toBe(DARK.text);
     });
 
     it('GIVEN runs on one column with one outcome WHEN building THEN the marker keeps its colour', () => {
         const markers = overlayOf([run(1, 'failed'), run(2, 'failed')], toDay).markLine.data;
-        expect(markers[0]?.lineStyle.color).toBe(outcomeColor('failed'));
+        expect(markers[0]?.lineStyle.color).toBe(outcomeColor('failed', DARK));
     });
 
     it('GIVEN any overlay WHEN labelled THEN the label stays upright above the line', () => {
@@ -75,6 +79,16 @@ describe('experimentOverlay', () => {
 
     it('GIVEN runs on one column WHEN building THEN every run keeps its band', () => {
         expect(overlayOf([run(1), run(2)], toDay).markArea.data).toHaveLength(2);
+    });
+
+    it('GIVEN the light tokens WHEN building THEN bands, lines and labels are drawn in them', () => {
+        const overlay = overlayOf([run(1), run(2, 'failed')], undefined, 0, undefined, LIGHT);
+        expect(overlay.markArea.data.map(([from]) => from?.itemStyle?.color)).toEqual([
+            `${LIGHT.ok}1a`,
+            `${LIGHT.fail}1a`,
+        ]);
+        expect(overlay.markLine.data.map((m) => m.lineStyle.color)).toEqual([LIGHT.ok, LIGHT.fail]);
+        expect(overlay.markLine.label.color).toBe(LIGHT.text);
     });
 });
 
@@ -174,17 +188,25 @@ describe('experimentOverlay labels at the edge of the axis', () => {
 
 describe('outcomeLegend', () => {
     it('names each band colour with the statuses it stands for', () => {
-        expect(outcomeLegend()).toEqual([
-            { label: 'completed', color: CHART.ok },
-            { label: 'deviated, failed, halted', color: CHART.fail },
-            { label: 'aborted, interrupted, not ended', color: CHART.text },
+        expect(outcomeLegend(DARK)).toEqual([
+            { label: 'completed', color: DARK.ok },
+            { label: 'deviated, failed, halted', color: DARK.fail },
+            { label: 'aborted, interrupted, not ended', color: DARK.text },
+        ]);
+    });
+
+    it('names the band colours in the tokens of the light theme', () => {
+        expect(outcomeLegend(LIGHT).map((item) => item.color)).toEqual([
+            LIGHT.ok,
+            LIGHT.fail,
+            LIGHT.text,
         ]);
     });
 
     it('gives each status the colour its band is drawn in', () => {
-        for (const item of outcomeLegend()) {
+        for (const item of outcomeLegend(DARK)) {
             for (const status of item.label.split(', ')) {
-                expect(outcomeColor(status === 'not ended' ? null : status)).toBe(item.color);
+                expect(outcomeColor(status === 'not ended' ? null : status, DARK)).toBe(item.color);
             }
         }
     });
