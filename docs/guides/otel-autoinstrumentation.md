@@ -1,53 +1,51 @@
 ---
-title: OpenTelemetry Auto-instrumentation
+title: Auto-instrumentation
 parent: Send telemetry
 grand_parent: Guides
 nav_order: 2
 summary: "Name your services so Tumult can match them"
 ---
 
-# OpenTelemetry auto-instrumentation and the resilience contract
+# Auto-instrumentation
 
-Tumult scores, gates and ranks risks by **target**. Everything the platform
-knows about a system comes from attributes on the telemetry it receives,
-so a service only has to do one thing to take part: carry the naming
-contract. It does not have to call any Tumult API, and with
-auto-instrumentation it does not have to change a line of code.
+Tumult scores, gates and ranks risks by **target**. A service takes part
+when its telemetry carries a few naming attributes, the contract. It does
+not call a Tumult API, and with an OpenTelemetry agent it does not change
+a line of code.
 
-This guide shows how the contract travels from an auto-instrumented
-application into the lake, which attributes the platform promotes to
-columns, and how to check what actually arrived. The attribute reference
-is [the metadata standard](../resilience-metadata-standard.md); the
-runnable example is `examples/otel/`.
+```mermaid
+flowchart TD
+    accTitle: How the naming contract reaches the lake
+    accDescr: The deploy sets OTEL_RESOURCE_ATTRIBUTES. The OpenTelemetry agent in the service adds them to all telemetry. A Collector maps other names onto the contract and sends to tumultd. The daemon fills the target columns of the lake, which drive scores, gates and risks.
+    A["Deploy sets OTEL_RESOURCE_ATTRIBUTES"] --> B[OpenTelemetry agent in your service]
+    B --> C[Collector maps names onto the contract]
+    C --> D[tumultd]
+    D --> E[(Lake: target columns)]
+    E --> F[Scores, gates, risks, Star Map]
+```
 
-## 1. What the platform reads
+The runnable example is in `examples/otel/`. The meaning of each
+attribute is in [the metadata standard](../resilience-metadata-standard.md).
 
-| Attribute | Carried as | Promoted to | Drives |
-|---|---|---|---|
-| `service.name`, `service.version` | resource | `spans.service_name`, `spans.service_version` | topology, performance verdicts per build |
-| `resilience.target.system` | resource or span | `spans.target_system` | scores, the gate, resilience score, coverage, risks |
-| `resilience.target.technology` | resource or span | `spans.target_technology` | risk rules, reports |
-| `resilience.target.environment` (or semconv `deployment.environment.name`) | resource or span | `spans.target_environment` | environment scopes, gate `env=` |
-| `resilience.target.component`, `.tier`, `.criticality`, `.region` | resource | `spans.resource_attrs` | reports, conformance, future rules |
-| `resilience.experiment.*`, `resilience.fault.*`, `resilience.outcome.*` | span (set by the tumult runner) | experiment and fault columns | everything about a run |
-| `ict.schema.version`, `ict.entity.id`, `ict.entity.tier`, `ict.entity.owner`, `ict.stage`, `ict.origin.id` | resource | `spans.resource_attrs` | ICT spine conformance (L1) |
+## What Tumult reads
 
-Rules the ingest applies (`tumult-otlp`):
+| Attribute | Drives |
+|---|---|
+| `service.name`, `service.version` | The service map, and performance verdicts per build |
+| `resilience.target.system` | Scores, the gate, coverage and risks |
+| `resilience.target.technology` | Risk rules and reports |
+| `resilience.target.environment`, or `deployment.environment.name` | Environment scopes and the gate's `env=` |
+| `resilience.target.component`, `.tier`, `.criticality`, `.region` | Reports and conformance |
+| `ict.schema.version`, `ict.entity.id`, `ict.entity.tier`, `ict.entity.owner` | The ICT spine, the DORA score and the Star Map |
 
-- A span-level `resilience.target.*` attribute always wins. The tumult
-  runner sets them on the root span of an experiment trace.
-- When a span carries none, the **resource** attributes fill the target
-  columns. That is how an auto-instrumented application declares what it
-  is, once, at deploy time.
-- `deployment.environment.name` (and the older `deployment.environment`)
-  stand in for `resilience.target.environment` when it is absent.
-- Everything else stays queryable in `resource_attrs` and `span_attrs`.
+A `resilience.target.*` attribute on a span wins. When a span has none,
+the resource attributes fill in, which is how an auto-instrumented
+service says what it is, once, at deploy time.
 
-## 2. The contract through the environment
+## Set the contract at deploy time
 
-Every OpenTelemetry agent reads the same two variables. Set them at deploy
-time (Helm values, a ConfigMap, the task definition, systemd unit) and the
-application never sees them.
+Every OpenTelemetry agent reads the same variables. Set them in your Helm
+values, task definition or systemd unit:
 
 ```sh
 OTEL_SERVICE_NAME=checkout
@@ -56,8 +54,6 @@ deployment.environment.name=staging,\
 resilience.target.system=api,\
 resilience.target.technology=jvm,\
 resilience.target.component=shop/checkout,\
-resilience.target.tier=backend,\
-resilience.target.criticality=high,\
 ict.schema.version=0.1.0,\
 ict.entity.id=cif-0042,\
 ict.entity.tier=critical,\
@@ -66,106 +62,62 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
 OTEL_PROPAGATORS=tracecontext,baggage
 ```
 
-`resilience.target.system` takes a value from the standard's enum
-(`database`, `cache`, `message-broker`, `api`, `container`, `vm`, `host`,
-`kubernetes`, `network`, `application`, `middleware`, `cloud-service`);
-`technology` names the product; `component` is the instance and is the
-only high-cardinality key, so it never becomes a metric dimension.
+`resilience.target.system` is one of `database`, `cache`,
+`message-broker`, `api`, `container`, `vm`, `host`, `kubernetes`,
+`network`, `application`, `middleware` or `cloud-service`.
 
-### Java
+Then start the service with its agent:
 
-```sh
-JAVA_TOOL_OPTIONS="-javaagent:/otel/opentelemetry-javaagent.jar" \
-OTEL_SERVICE_NAME=checkout OTEL_RESOURCE_ATTRIBUTES="…as above…" \
-java -jar checkout.jar
-```
+| Language | Command |
+|---|---|
+| Java | `JAVA_TOOL_OPTIONS="-javaagent:/otel/opentelemetry-javaagent.jar" java -jar checkout.jar` |
+| Python | `pip install opentelemetry-distro opentelemetry-exporter-otlp && opentelemetry-bootstrap -a install`, then `opentelemetry-instrument python app.py` |
+| Node.js | `node --require @opentelemetry/auto-instrumentations-node/register server.js` |
+| .NET | `CORECLR_ENABLE_PROFILING=1 dotnet Checkout.dll`, after the install script of the .NET automatic instrumentation |
+| Go and others | OpenTelemetry eBPF Instrumentation with the same variables, or set the resource in the SDK |
+| Kubernetes | The OpenTelemetry Operator injects the agent: see `examples/otel/k8s-instrumentation.yaml` |
 
-### Python
+## Fix the names in one place
 
-```sh
-pip install opentelemetry-distro opentelemetry-exporter-otlp && opentelemetry-bootstrap -a install
-OTEL_SERVICE_NAME=checkout OTEL_RESOURCE_ATTRIBUTES="…" opentelemetry-instrument python app.py
-```
+Teams use different names: plain semantic conventions, the ICT spine,
+Kubernetes labels. The Collector in `examples/otel/otel-collector.yaml`
+maps them onto one contract:
 
-### Node.js
+- It sets `ict.schema.version` and takes the environment from
+  `deployment.environment.name`.
+- It copies `ict.entity.id` to `resilience.target.component`, and
+  `ict.entity.tier` to `resilience.target.criticality`, when those are
+  missing. Without either, the component is `<namespace>/<deployment>`.
+- It drops request ids, such as `user.id` and `session.id`, before they
+  become metric labels.
+- It sends to `tumultd` over OTel-Arrow with the ingest token.
 
-```sh
-npm install @opentelemetry/auto-instrumentations-node @opentelemetry/exporter-trace-otlp-grpc
-OTEL_SERVICE_NAME=checkout OTEL_RESOURCE_ATTRIBUTES="…" \
-node --require @opentelemetry/auto-instrumentations-node/register server.js
-```
+Point every agent at the Collector, not at the daemon, and the contract
+is set in one place.
 
-### .NET
+## During a run
 
-```sh
-# OpenTelemetry .NET automatic instrumentation (install script sets OTEL_DOTNET_AUTO_HOME)
-OTEL_SERVICE_NAME=checkout OTEL_RESOURCE_ATTRIBUTES="…" \
-CORECLR_ENABLE_PROFILING=1 dotnet Checkout.dll
-```
+A script step gets `TRACEPARENT`, so its spans join the run's trace. A
+service under test is linked to the run by its **target**: the run's
+`resilience.target.*` matches the service's resource, and the run's time
+window (`/api/experiments/windows`) picks its spans.
 
-### Go and anything without an agent
+## Check what arrived
 
-Use the eBPF-based auto-instrumentation (OpenTelemetry eBPF
-Instrumentation, formerly Beyla) with the same `OTEL_RESOURCE_ATTRIBUTES`,
-or set the attributes on the SDK resource in the one init call.
-
-### Kubernetes
-
-The OpenTelemetry Operator injects the agent and the shared part of the
-contract from one `Instrumentation` resource per namespace; each workload
-adds one annotation and names its own target. See
-`examples/otel/k8s-instrumentation.yaml`.
-
-## 3. The Collector enforces the contract
-
-Teams arrive with different vocabularies: plain semconv, the ICT spine,
-Kubernetes labels. One Collector pipeline (`examples/otel/otel-collector.yaml`)
-maps them onto the promoted keys so the lake sees one contract:
-
-- **Defaults** (`resource` processor): schema version, environment from
-  `deployment.environment(.name)`.
-- **Aliases** (`transform` processor): `ict.entity.id` → `resilience.target.component`,
-  `ict.entity.tier` → `resilience.target.criticality`, `k8s.namespace.name/k8s.deployment.name`
-  → component, and `resilience.target.environment` back to
-  `deployment.environment.name` so other backends agree.
-- **Cardinality guard** (`attributes` processor): request-scoped ids are
-  dropped before anything becomes a metric dimension.
-- **Export** to tumultd over OTel-Arrow (unary OTLP as a fallback) with the ingest token.
-
-Point every agent at the Collector, not at the daemon, and the contract is
-enforced in one place.
-
-## 4. During a run: linking application spans to the experiment
-
-The tumult runner sets `TRACEPARENT` (and `TRACESTATE`) on every script
-plugin it starts, so a script probe joins the experiment trace. A process
-step and a load generator get no trace context. For
-spans an application emits on its own while a fault is active, the link is
-the **target**: the run's `resilience.target.*` matches the application's
-resource attributes, and the run window (`/api/experiments/windows`) selects
-the spans in time. With `OTEL_PROPAGATORS=tracecontext,baggage` and a
-caller that carries `resilience.experiment.id` as baggage, the application
-spans carry the experiment id as well.
-
-## 5. Checking what arrived: conformance
-
-`GET /api/otel/conformance?range=24h` reports, per `service.name`, which
-contract attributes the lake has actually seen and at which level:
+`GET /api/otel/conformance?range=24h` says, per `service.name`, which
+contract attributes arrived and which are missing:
 
 | Level | Means |
 |---|---|
-| `none` | spans arrived without a target |
-| `target` | `resilience.target.system`, `.technology`, `.environment` present on every span (resource or span level) |
-| `spine` | `target` plus the ICT spine (`ict.schema.version`, `ict.entity.id`, `ict.entity.tier`, `ict.entity.owner`) |
+| `none` | Spans arrived without a full target |
+| `target` | `resilience.target.system`, `.technology` and `.environment` on every span |
+| `spine` | `target` plus the four `ict.*` attributes |
 
-The response lists the missing keys per service, so a platform team can
-see which deployments still need their `OTEL_RESOURCE_ATTRIBUTES`. The
-same check runs in the UI smoke script and is the first thing to look at
-when a target is absent from the Resilience page (`/resilience`).
+The **Conformance** lens of the [Star Map](star-map.md) shows the same
+level on each service. Look here first when a target is missing from the
+Resilience page.
 
-## 6. Versions
+## Next
 
-Pin what you validated. The example pins OpenTelemetry Python 1.37 /
-0.58b0, the Collector contrib 0.157 and the Operator agent images of the
-same generation; the daemon speaks OTLP 1.x over gRPC and HTTP and accepts
-any SDK that does.
+- [Observability setup](observability-setup.md): send to the daemon and to your backend.
+- [Entity events](entity-events.md): track hosts and pods as they come and go.

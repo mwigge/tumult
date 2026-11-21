@@ -8,70 +8,103 @@ has_toc: false
 
 # Plugins
 
-Tumult supports two plugin models: **script plugins** (shell scripts run with `/bin/sh`, no Rust required) and **native Rust plugins** (compiled into the binary).
+A plugin gives Tumult faults to inject and probes to read. Tumult ships
+16 plugins. This page lists them and shows how a step calls one.
 
-## Plugin Discovery Order
-
-Tumult searches for plugins in this order — first found wins:
-
-1. `./plugins/` — project-local plugins
-2. `~/.tumult/plugins/` — user-level plugins
-3. `$TUMULT_PLUGIN_PATH` — custom path override
-4. Compiled-in native plugins (always available)
-
-## Script Plugins vs Native Plugins
-
-| | Script Plugins | Native Rust Plugins |
-|---|---|---|
-| **Language** | Shell, run with `/bin/sh` (a script may call any tool) | Rust |
-| **Distribution** | Directory + `plugin.toon` manifest | Compiled into the binary |
-| **Dispatch** | Script execution with env vars | `NativeExecutor` trait, registered in a `NativeExecutorRegistry` |
-| **Arguments** | `TUMULT_<KEY>` env vars | Direct Rust function call |
-| **Result** | stdout + exit code | `Result<String, NativeError>` |
-| **Examples** | containers, db-postgres, db-mysql, db-redis, kafka, loadtest, network, process, pumba, stress, timewarp | ssh, net, kubernetes, cloud, windows |
-
-Each native crate implements the `NativeExecutor` trait from `tumult-plugin`. `tumult-exec` is the one composition root that registers the executors: the CLI and the MCP server run and list native plugins through it. Calling an unknown plugin or function fails with an error listing the available names.
-
-Script plugins are dispatched from experiments with the `script` provider —
-`type: script` with `plugin:` and `function:` naming the plugin and action;
-arguments are passed to the script as `TUMULT_*` environment variables:
-
-```toon
-provider:
-  type: script
-  plugin: tumult-db-postgres
-  function: kill-connections
+```mermaid
+flowchart TD
+    accTitle: How a step reaches a plugin
+    accDescr: A step names a plugin and a function. A script plugin runs as a shell script that reads TUMULT variables. A native plugin is Rust code inside the tumult binary. Both act on your system, and their output goes into the journal.
+    step[A step in the experiment] -->|type: script| script[Shell script of the plugin]
+    step -->|type: native| native[Rust code in tumult]
+    script --> system[Your system]
+    native --> system
+    script -.->|output| journal[Journal]
+    native -.->|output| journal
 ```
 
-The bundled inventory is 16 plugins — 11 script + 5 native — with 91 actions
-total (`tumult discover` prints the authoritative list for your build).
+## Two kinds of plugin
 
-## Bundled Plugins
+| | Script plugin | Native plugin |
+|---|---|---|
+| What it is | A folder with `plugin.toon` and shell scripts | Rust code built into `tumult` |
+| Provider type | `script` | `native` |
+| Arguments reach it as | Environment variables `TUMULT_<NAME>` | JSON values |
+| Runs on | Linux and macOS (`/bin/sh`) | Every system that runs `tumult` |
+| Write your own | Yes, no Rust needed | Only by changing Tumult |
 
-### Native executors (5)
+A step runs on the machine that runs Tumult. To act on another host, use
+[tumult-ssh](tumult-ssh.md).
 
-| Plugin | Capabilities |
+## Call a script plugin
+
+```toon
+method[1]:
+  - name: pause-the-database
+    activity_type: action
+    provider:
+      type: script
+      plugin: tumult-containers
+      function: pause-container
+      arguments:
+        container_id: orders-db
+      timeout_s: 30.0
+```
+
+Each argument reaches the script as an environment variable:
+`container_id` becomes `TUMULT_CONTAINER_ID`. Numbers and `true` or
+`false` arrive as text. `timeout_s` ends a script that runs too long. A
+native step names `plugin`, `function` and `arguments` the same way, with
+`type: native`; its arguments stay JSON values.
+
+## Where Tumult finds script plugins
+
+Tumult looks in these folders, in this order. When two plugins have the
+same name, the first one wins.
+
+1. `./plugins/` in the folder where you run `tumult`
+2. `~/.tumult/plugins/`
+3. each folder in `TUMULT_PLUGIN_PATH` (separate them with `:`)
+
+Native plugins are always there. `tumult discover` lists both kinds:
+
+```bash
+tumult discover
+tumult discover --plugin tumult-network
+```
+
+The Author page of Krönika shows the script plugins as a catalog, with a
+form for each action:
+
+![The Author page lists the actions and probes of each script plugin](../images/3.0/screenshots/author.png)
+
+## Bundled plugins
+
+### Native (5)
+
+| Plugin | What it does |
 |---|---|
-| [tumult-ssh](tumult-ssh.md) | Remote execution over SSH (Ed25519, ECDSA, agent auth, host-key verification with `verify` default) |
-| tumult-net | Privilege-free userspace TCP chaos proxy — latency, bandwidth throttle, fragmentation, byte corruption, connection termination |
-| [tumult-kubernetes](tumult-kubernetes.md) | Pod delete, deployment scale, node cordon/drain, status probes |
-| tumult-cloud | AWS (EC2 stop/terminate, FIS experiments), Azure Chaos, GCP compute stop |
-| [tumult-windows](../guides/windows-faults.md) | Native Windows faults: process-kill, CPU stress, firewall blackhole |
+| [tumult-ssh](tumult-ssh.md) | Runs a command on a remote host over SSH |
+| [tumult-kubernetes](tumult-kubernetes.md) | Deletes pods, scales deployments, drains nodes, adds latency or stress inside a pod |
+| [tumult-windows](tumult-windows.md) | Kills a process, loads the CPU or blocks traffic on a Windows host |
+| tumult-net ([blog post](../blog/19-net-chaos-proxy.md)) | A TCP proxy that adds latency, limits bandwidth, splits, corrupts or cuts connections |
+| tumult-cloud ([README](https://github.com/mwigge/tumult/blob/main/tumult-cloud/README.md)) | Starts and stops AWS FIS and Azure Chaos Studio experiments, stops EC2 and GCP instances |
 
-### Script plugins (11)
+### Script (11)
 
-| Plugin | Capabilities |
+| Plugin | What it does |
 |---|---|
-| [tumult-containers](tumult-containers.md) | Docker/Podman kill, stop, pause, resource limits |
-| [tumult-db](tumult-db.md) | tumult-db-postgres / tumult-db-mysql / tumult-db-redis: kill connections, lock tables, inject latency |
-| [tumult-kafka](tumult-kafka.md) | Broker kill, partition, latency; consumer lag and ISR probes |
-| [tumult-loadtest](tumult-loadtest.md) | k6 load driver with OTel correlation |
-| [tumult-network](tumult-network.md) | `tc netem` latency, packet loss, corruption, DNS block, host partition |
-| [tumult-process](tumult-process.md) | Kill, suspend, resume processes by PID/name/pattern |
-| [tumult-pumba](tumult-pumba.md) | Container-scoped network chaos via Pumba — netem, iptables, kill/pause/stop, stress |
-| [tumult-stress](tumult-stress.md) | CPU, memory, IO stress via `stress-ng` |
-| tumult-timewarp | Clock-skew and entropy/crypto-skew faults via libfaketime — time drift, cert/token expiry, RNG starvation |
+| [tumult-containers](tumult-containers.md) | Kills, stops, pauses or limits a Docker or Podman container |
+| [tumult-db](tumult-db.md) | Three plugins: `tumult-db-postgres`, `tumult-db-mysql`, `tumult-db-redis` |
+| [tumult-kafka](tumult-kafka.md) | Kills or cuts off a broker; reads lag, brokers and replicas |
+| [tumult-loadtest](tumult-loadtest.md) | Starts and stops k6, reads its numbers |
+| [tumult-network](tumult-network.md) | Latency, packet loss, DNS faults and partitions on the host |
+| [tumult-process](tumult-process.md) | Kills, suspends or resumes a process |
+| [tumult-pumba](tumult-pumba.md) | Network faults, kills and stress for one container, through Pumba |
+| [tumult-stress](tumult-stress.md) | CPU, memory and disk load with `stress-ng` |
+| tumult-timewarp ([README](https://github.com/mwigge/tumult/blob/main/plugins/tumult-timewarp/README.md)) | Clock skew, certificate and token expiry, load on the random number generator |
 
-## Writing Your Own Plugin
+## Next
 
-See the [Plugin Authoring Guide](authoring-guide.md) and [Plugin Manifest Specification](plugin-manifest-spec.md).
+- Write your own: [Write a plugin](authoring-guide.md)
+- All the keys of a step: [Experiment format](../guides/experiment-format.md)

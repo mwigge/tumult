@@ -4,36 +4,46 @@ parent: Plugins
 nav_order: 7
 ---
 
-# tumult-kafka — Kafka Broker Chaos
+# tumult-kafka
 
-Script-based plugin for Apache Kafka chaos engineering. Covers broker failures, network partitions, latency injection, and consumer/cluster probes.
+Break a Kafka broker and read the health of the cluster. The probes call
+the Kafka command line tools over the network. The faults act on the
+machine they run on, so run them on the broker host.
 
-## Prerequisites
+```mermaid
+flowchart LR
+    accTitle: Where the Kafka steps run
+    accDescr: The probes run where Tumult runs and ask the cluster over the network. A fault must run on the broker host, so a step reaches that host through tumult-ssh, or Tumult runs there.
+    tumult[tumult] -->|probes: Kafka tools| cluster[(Kafka cluster)]
+    tumult -->|faults: tumult-ssh| broker[Broker host]
+    broker --> cluster
+```
 
-- Kafka CLI tools (`kafka-consumer-groups.sh`, `kafka-topics.sh`, `kafka-broker-api-versions.sh`)
-- For network chaos: `tc` (iproute2), `iptables` — Linux with root/sudo
-- For broker kill: SSH access to broker hosts
+## Faults
 
-## Actions
+| Action | What it does | Arguments |
+|---|---|---|
+| `kill-broker` | Sends a signal to the Kafka broker process on this machine | `signal` (`KILL`) |
+| `partition-broker` | Drops Kafka traffic from the other brokers with `iptables` | `broker_ip`, `cluster_ips` (comma-separated), both required; `kafka_port` (9092) |
+| `partition-broker-rollback` | Removes those rules. Safe to run twice. | Same as `partition-broker` |
+| `add-broker-latency` | Adds latency to the Kafka port with `tc netem` | `interface` (`eth0`), `delay_ms` (100), `jitter_ms` (10), `kafka_port` (9092) |
 
-| Action | Description | Key Variables |
-|--------|-------------|---------------|
-| `kill-broker` | Kill Kafka broker process (SIGKILL) | `TUMULT_SIGNAL` |
-| `partition-broker` | iptables partition between brokers | `TUMULT_BROKER_IP`, `TUMULT_CLUSTER_IPS` (comma-separated) |
-| `partition-broker-rollback` | Remove the iptables rules of `partition-broker` (safe to run twice) | `TUMULT_BROKER_IP`, `TUMULT_CLUSTER_IPS` |
-| `add-broker-latency` | tc netem latency on Kafka port | `TUMULT_DELAY_MS`, `TUMULT_KAFKA_PORT` |
+The network faults need Linux and root. To remove the latency, run
+`reset-tc` of [tumult-network](tumult-network.md) on the same interface.
 
 ## Probes
 
-| Probe | Description | Output |
-|-------|-------------|--------|
-| `consumer-lag` | Total consumer group lag | Integer (sum across partitions) |
-| `under-replicated` | Under-replicated partition count | Integer (0 = healthy) |
-| `broker-count` | Active brokers in cluster | Integer |
+| Probe | Result | Arguments |
+|---|---|---|
+| `consumer-lag` | The lag of a consumer group, summed over all partitions | `consumer_group` (required), `kafka_bootstrap` (`localhost:9092`), `kafka_dir` (`/opt/kafka`) |
+| `under-replicated` | The number of under-replicated partitions, 0 when healthy | `kafka_bootstrap`, `kafka_dir` |
+| `broker-count` | The number of brokers in the cluster | `kafka_bootstrap`, `kafka_dir` |
 
-A probe whose query fails exits non-zero with the message of the Kafka tool. It prints no count.
+A probe looks for the tools in `kafka_dir/bin`, then on the `PATH`. A probe
+whose query fails exits with the message of the Kafka tool and prints no
+number.
 
-## Example: Broker Kill with Consumer Lag Monitoring
+## Example: kill a broker
 
 ```toon
 title: Kafka survives broker failure
@@ -80,11 +90,6 @@ rollbacks[1]:
         command: /opt/kafka/bin/kafka-server-start.sh -daemon /opt/kafka/config/server.properties
 ```
 
-A step runs on the machine that runs Tumult. The probe above runs there
-and talks to the cluster over the network. The kill must happen on the
-broker host, so it goes through the [tumult-ssh](tumult-ssh.md) plugin.
-`kill-broker.sh` does the same for a broker on the local machine.
-
-## Network Chaos for Kafka
-
-The `tumult-network` plugin provides the foundation for Kafka network chaos. Use `add-broker-latency` for targeted latency on the Kafka port, or `partition-broker` for full network isolation between brokers.
+The probe names its script by path with the `process` provider, so its
+argument is the environment variable itself. A test runs this probe. The
+kill goes to the broker host through [tumult-ssh](tumult-ssh.md).
