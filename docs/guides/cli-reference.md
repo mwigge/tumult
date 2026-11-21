@@ -288,8 +288,9 @@ local fixtures, or through a proxy on live model traffic. See the
 ## tumult gameday
 
 `tumult gameday <SUBCOMMAND>` runs many experiments as one campaign under a
-shared load, and scores it. [Scheduling](scheduling.md) runs one on a
-timer.
+shared load, and scores it. A schedule of the daemon runs registered
+experiments only. To run a GameDay on a timer, use cron or a systemd timer
+([Scheduling](scheduling.md#without-the-daemon)).
 
 | Subcommand | Flags | What it does |
 |---|---|---|
