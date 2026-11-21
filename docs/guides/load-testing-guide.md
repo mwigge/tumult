@@ -1,7 +1,9 @@
 ---
 title: Load Testing Guide
-parent: Guides
-nav_order: 7
+parent: Run experiments
+grand_parent: Guides
+nav_order: 2
+summary: "Ramp, spike and soak tests with k6 and oha"
 ---
 
 # Load Testing Guide

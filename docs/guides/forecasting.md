@@ -1,7 +1,9 @@
 ---
 title: Forecasting and run impact
-parent: Guides
-nav_order: 31
+parent: Read the evidence
+grand_parent: Guides
+nav_order: 4
+summary: "Expected ranges and how far a run pushed them"
 ---
 
 # Forecasting and run impact

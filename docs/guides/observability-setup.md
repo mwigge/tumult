@@ -1,7 +1,9 @@
 ---
 title: Observability Setup
-parent: Guides
-nav_order: 6
+parent: Send telemetry
+grand_parent: Guides
+nav_order: 1
+summary: "OTLP, OTel-Arrow, collectors and backends"
 ---
 
 # Observability Setup

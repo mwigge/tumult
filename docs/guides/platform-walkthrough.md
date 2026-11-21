@@ -1,7 +1,7 @@
 ---
 title: Platform Walkthrough
-parent: Guides
-nav_order: 22
+parent: Get started
+nav_order: 2
 ---
 
 # Platform Walkthrough

@@ -1,7 +1,9 @@
 ---
 title: ChaosGraph
-parent: Guides
-nav_order: 16
+parent: Read the evidence
+grand_parent: Guides
+nav_order: 7
+summary: "The knowledge graph for agents"
 ---
 
 # ChaosGraph

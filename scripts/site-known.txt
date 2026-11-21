@@ -3,14 +3,3 @@
 # lines). One `page::rule  # reason` per line, the reason is required. A line
 # that matches no failure fails the check, so the pull request that fixes a
 # failure deletes its line. Found on 2026-11-21 in the pages tumult.rs serves.
-
-# Liquid prints Go templates as nothing.
-testprotocol.html::liquid-ate-braces  # five {{.X}} in docker commands; the page leaves the site (PR 11, D7)
-
-# Links to files that are not on the site.
-blog/26-web-ui-getting-started.html::broken-link  # docs/architecture/ is not built yet (PR 11)
-blog/27-kronika-getting-started.html::broken-link  # docs/architecture/ is not built yet (PR 11)
-guides/platform-walkthrough.html::broken-link  # docs/architecture/ is not built yet (PR 11)
-blog/15-road-ahead.html::broken-link  # links ../../CHANGELOG.md, a repository file Pages does not serve (PR 11)
-guides/agentic-cross-client-observability.html::broken-link  # links a collector file outside docs/ (PR 11)
-guides/mcp-guide.html::broken-link  # links ../../README.md, a repository file Pages does not serve (PR 11)

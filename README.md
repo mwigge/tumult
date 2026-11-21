@@ -63,8 +63,8 @@ docker compose -f docker/docker-compose.yml up -d --wait redis
 target/release/tumult run examples/redis-chaos.toon
 ```
 
-Needs Rust 1.92.0 or newer. The [quickstart](QUICKSTART.md) has the next
-steps.
+Needs Rust 1.92.0 or newer. [Get started](docs/get-started/index.md) has the
+next steps.
 
 **3. Learn chaos testing in your browser**
 
@@ -205,7 +205,7 @@ Keep secrets out of experiment arguments. Journals store command output.
 
 | I want to | Go to |
 |---|---|
-| Start quickly | [Quickstart](QUICKSTART.md) |
+| Start quickly | [Get started](docs/get-started/index.md) |
 | Click through the web UI | [Platform walkthrough](docs/guides/platform-walkthrough.md) |
 | Find a guide | [All guides](docs/guides/index.md) |
 | Understand the design | [Architecture](docs/architecture/kronika-architecture.md) |
@@ -219,7 +219,7 @@ Report security issues through
 
 ## Contributing
 
-Run the [quality checks](docs/guides/quality-and-release.md) before you send
+Read [CONTRIBUTING.md](CONTRIBUTING.md) and run its checks before you send
 a change. Keep commit messages about what changed and how it was tested. Do
 not include development-tool or review-process metadata in commit messages.
 

@@ -1,7 +1,9 @@
 ---
 title: Entity Events
-parent: Guides
-nav_order: 26
+parent: Send telemetry
+grand_parent: Guides
+nav_order: 3
+summary: "Track what exists and for how long"
 ---
 
 # Entity events

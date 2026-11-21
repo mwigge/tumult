@@ -1,7 +1,8 @@
 ---
 title: Execution Flow
-parent: Guides
-nav_order: 2
+parent: Concepts
+nav_order: 1
+summary: "The five phases of a run"
 ---
 
 # Execution Flow

@@ -1,7 +1,9 @@
 ---
 title: DORA Coverage and Maturity Score
-parent: Guides
-nav_order: 27
+parent: Read the evidence
+grand_parent: Guides
+nav_order: 2
+summary: "Coverage per article and a 1 to 5 level"
 ---
 
 # DORA coverage and maturity score

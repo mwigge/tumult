@@ -1,3 +1,9 @@
+---
+title: Security assessment
+# Dated 2026-06-08 for 1.3.0; out of the sidebar until it is redone for 3.0.
+nav_exclude: true
+---
+
 # Tumult Security Assessment
 
 **Date:** 2026-06-08 (tumult 1.3.0)  
