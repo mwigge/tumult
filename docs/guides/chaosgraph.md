@@ -1,207 +1,146 @@
 ---
-title: ChaosGraph
-parent: Guides
-nav_order: 16
+title: ChaosGraph and topology
+parent: Read the evidence
+grand_parent: Guides
+nav_order: 6
+summary: "The knowledge graph for agents, your service map and where to inject next"
+redirect_from:
+  - /guides/topology.html
 ---
 
-# ChaosGraph
+# ChaosGraph and topology
 
-ChaosGraph is a typed knowledge graph over Tumult's chaos data. It is built from experiment journals **as they ingest** and served to AI agents over MCP as compact sub-graphs, so an agent can answer "what did this experiment touch?" without re-reading a whole journal.
+ChaosGraph is a small graph of what your experiments did: which fault
+each one injects, which service it hits, how each run ended and which
+control it gives evidence for. Tumult builds it as runs land in the lake.
+Agents read it over MCP, and you read it with `tumult chaosgraph` and
+`tumult topology`.
 
-It shipped in **2.4.0** and is validated end to end on the live demo.
-
-## Why a graph?
-
-Agents burn context on the wrong thing. When an assistant wants to know which fault an experiment injects and which service it lands on, it does not need the steady-state hypothesis, the per-activity method results, the trace/span ids, or the analysis block. It needs a handful of relationships.
-
-The win is token cost, and it compounds with history. A **targeted** `tumult_chaosgraph_neighbors` call (with a `rel` filter) answers "what fault does this experiment inject, what service does it hit?" in about **110 tokens**, and that answer stays the same size however many times the experiment runs. The raw journal is about **480 tokens** — and the corpus grows by another journal every run. So the graph is roughly **8× more compact per run**, answers store-wide questions in about **20× less** than reading all journals, and keeps a targeted answer **bounded (O(1))** where journal reading is **O(runs)**. Every number here is reproducible against the live demo with `make demo-proof`.
-
-```
-per run of history:   journals ──► +~480 tokens each   (unbounded)
-
-                      chaosgraph ─► +~one small node    (targeted answer stays ~110 tokens)
-```
-
-The graph collapses each run to a small set of `(src)-[rel]->(dst)` tuples, so the agent reads relationships instead of records.
+A graph answer stays small. "Which fault does this experiment inject?"
+costs the same few lines after ten runs or after a thousand, where reading
+the journals grows with every run.
 
 ## The model
 
-ChaosGraph is intentionally small: eight node kinds, ten edge relations — including the declared service topology (`depends_on`) and deviation cause attribution (`caused_by`) that power the [compliance lineage map](topology.md).
-
-```
-                 injects
-   ┌────────────┐──────────►┌────────────────────────┐
-   │ experiment │           │ fault                  │
-   │            │           │ (plugin::function)     │
-   └────────────┘           └────────────────────────┘
-     │       │                       │
-     │       │ targets               │ observed_on
-     │       ▼                       ▼
-     │   ┌────────────┐        ┌────────────┐
-     │   │ service    │◄───────│ service    │  (same service node)
-     │   └────────────┘        └────────────┘
-     │ yielded
-     ▼
-   ┌────────────┐  exhibited   ┌────────────┐
-   │ journal    │─────────────►│ deviation  │  (only when a run
-   │ (run)      │              │            │   did not complete)
-   └────────────┘              └────────────┘
+```mermaid
+flowchart TD
+    accTitle: The ChaosGraph model
+    accDescr: An experiment injects a fault, targets a service and yields one journal per run. The fault is observed on the service. A run that did not complete exhibits a deviation, which can be caused by the fault. An experiment gives evidence for a compliance article. Services depend on other services.
+    E[experiment] -- injects --> F[fault]
+    E -- targets --> S[service]
+    E -- yielded --> J[journal]
+    F -- observed_on --> S
+    J -- exhibited --> D[deviation]
+    D -- caused_by --> F
+    E -- evidences --> C[compliance_article]
+    S -- depends_on --> S2[service]
 ```
 
-### Node kinds
+| Node | Id | What it is |
+|---|---|---|
+| `experiment` | `exp:<title>` | One experiment, the same node for all its runs |
+| `fault` | `fault:<plugin>::<function>` | A fault, such as `fault:tumult-net::inject_latency` |
+| `service` | `svc:<host>` | A service a run acts on, such as `svc:demo-app` |
+| `journal` | `run:<experiment_id>` | One run, labelled with how it ended |
+| `deviation` | `dev:<experiment_id>` | A run that did not complete |
+| `compliance_article` | `compliance:<framework>/<control>` | A control, such as `compliance:DORA/Art.25` |
+| `coverage_gap` | `gap:<plugin>::<action>` | A fault that no stored run injected |
+| `fault_domain` | `domain:<plugin>` | The plugin a gap belongs to |
 
-| Kind | Id shape | What it is |
-|------|----------|------------|
-| `experiment` | `exp:<title>` | The stable system-under-test identity, keyed by title. Recurs across runs. |
-| `fault` | `fault:<plugin>::<function>` | A fault primitive (e.g. `tumult-net::inject_latency`). Shared by every run that injects it. Falls back to the injecting activity's name when only a journal is available, or when the step runs a process. |
-| `service` | `svc:<host>` | A service/target the experiment acts on (e.g. `demo-app`). Stable across runs. |
-| `journal` | `run:<experiment_id>` | A single run's journal, labelled with its terminal status. Per run. |
-| `deviation` | `dev:<experiment_id>` | Present only when a run did not complete cleanly. Per run. |
-| `compliance_article` | `compliance:<framework>/<control>` | A control of a framework (e.g. `compliance:DORA/Art.25`). |
-| `coverage_gap` | `gap:<plugin>::<action>` | A catalog action that no stored run injected. |
-| `fault_domain` | `domain:<plugin>` | The plugin a coverage gap belongs to. |
+A hundred runs of one experiment share one `exp:` node and one `fault:`
+node, and add a hundred `run:` nodes. Two DuckDB tables hold the graph:
+`graph_nodes` and `graph_edges`. The [Star Map](star-map.md) draws the
+same tables together with your organisation.
 
-### Edge relations
+A service comes from the step that injects the fault: the first of
+`upstream`, `target`, `host`, `service`, `endpoint`, `address`, `url` or
+`pod`, without scheme, path or port. A process step gets one from its
+`docker` or `podman` container, an `http(s)` URL or an `ssh` host. Other
+steps give a fault but no service.
 
-| Relation | From → To | Meaning |
-|----------|-----------|---------|
-| `injects` | experiment → fault | the experiment injects this fault |
-| `targets` | experiment → service | the experiment acts on this service |
-| `yielded` | experiment → journal | this run of the experiment produced this journal |
-| `observed_on` | fault → service | this fault was injected on this service |
-| `exhibited` | journal → deviation | this run exhibited this deviation |
-| `evidences` | experiment → compliance_article | a passing run supplies evidence toward this control (edge attrs carry citation strength) |
-| `maps_to_compliance` | experiment → compliance_article | the experiment declares a mapping to this control (intent, not run-produced evidence) |
-| `gap_in` | coverage_gap → fault_domain | an untested action is a gap in this plugin's fault domain |
-| `depends_on` | service → service | declared runtime dependency, imported from a topology document — never derived from runs |
-| `caused_by` | deviation → fault | the fault attributed as the cause of this deviation (only when attribution is unambiguous; see the [topology guide](topology.md)) |
+## Ask the graph
 
-`experiment`, `fault`, and `service` are stable identities that recur across runs; `journal` and `deviation` are per-run. That is what makes the graph accumulate history without duplicating structure: a hundred runs of the same experiment share one `exp:` node and one `fault:` node, and hang a hundred `run:` nodes off it.
-
-## Arbitrary queries: `tumult_chaosgraph_cypher`
-
-Beyond the fixed query shapes below, agents can run arbitrary **read-only
-openCypher** over the whole graph. The graph is snapshotted from DuckDB (the
-only source of truth) into an in-memory engine per call — disposable by
-design. Mutating clauses are rejected before execution; rows are capped
-(default 500).
-
+```bash
+tumult chaosgraph query --kind fault --filter latency
+tumult chaosgraph neighbors --node "exp:My experiment" --depth 1
+tumult chaosgraph coverage-gaps --framework dora
 ```
+
+Add `--format json` for structured output. Over MCP the same questions
+are `tumult_chaosgraph_query`, `tumult_chaosgraph_neighbors` and
+`tumult_chaosgraph_coverage_gaps`. `tumult_chaosgraph_cypher` runs any
+read-only openCypher query, up to 500 rows by default:
+
+```text
 MATCH (e:experiment)-[:injects]->(f:fault)-[:observed_on]->(s:service)
-WHERE (other:service)-[:depends_on]->(s)
 RETURN e.id, f.id, s.id
 ```
 
-## The fixed-shape MCP tools
+## Declare your topology
 
-Both tools are read-only, idempotent, and return `structuredContent` with an advertised `outputSchema`. They read the persistent analytics store (`~/.tumult/lake.duckdb` by default; override with `store_path`).
+Services and their dependencies come from a file you review, never from
+a guess:
 
-### `tumult_chaosgraph_query`
+```toml
+# topology.toml
+[[service]]
+name = "gateway"
+depends_on = ["api"]
+tier = "edge"
+owner = "team-platform"
 
-List node ids and one-line summaries for a kind, optionally filtered by a case-insensitive label substring.
+[[service]]
+name = "api"
+depends_on = ["db"]
 
-Request:
-
-```json
-{ "kind": "fault", "filter": "latency" }
+[[service]]
+name = "db"
+tier = "data"
 ```
 
-Structured response — `{kind, count, nodes:[{id,kind,label}]}`:
-
-```json
-{
-  "kind": "fault",
-  "count": 1,
-  "nodes": [
-    { "id": "fault:tumult-net::inject_latency", "kind": "fault", "label": "tumult-net::inject_latency" }
-  ]
-}
+```bash
+tumult topology import topology.toml
 ```
 
-`kind` is one of `experiment`, `fault`, `service`, `journal`, `deviation`, `compliance_article`, `coverage_gap`, `fault_domain`.
+Every `depends_on` name must be declared in the same file. Name services
+the way your experiments do (`upstream = "api:8080"` becomes `svc:api`).
+Import again to replace the whole topology. `tumult topology discover-k8s`
+proposes a file from the Services of a cluster for you to review.
 
-### `tumult_chaosgraph_neighbors`
+## See where compliance breaks
 
-Return a node's ego sub-graph: the nodes reachable within `depth` (following edges in both directions) plus the `(src)-[rel]->(dst)` tuples among them. Optionally filter to a single relation with `rel`. `depth` defaults to `1`.
+For each control and service, the lineage gives one state:
 
-Request:
+| State | Meaning |
+|---|---|
+| evidenced | The latest run of every experiment for this pair completed |
+| broken | The latest run declared the control but gave no evidence, and deviated. The cell names the cause when it is clear |
+| untested | No experiment connects the control to the service |
 
-```json
-{ "node_id": "exp:Demo — network latency via the tumult-net userspace proxy", "depth": 1 }
+One broken experiment makes the pair broken, even if another gives
+evidence.
+
+```bash
+tumult topology lineage --framework dora
+tumult topology map --framework dora                  # text with recommendations
+tumult topology map --framework dora --format mermaid # paste into a mermaid view
+tumult topology recommend --framework dora --limit 3
 ```
 
-Structured response — `{node_id, depth, nodes:[{id,kind,label}], edges:[{src,rel,dst}]}`:
+The map colours services green (evidenced), red (broken) or amber
+(untested). The recommender ranks the next faults to inject. Each score
+is broken 1.0 or untested 0.6, times the citation strength, how many
+services depend on this one, how close it is to a broken service, and a
+bonus for a fault never run. Every recommendation lists its reasons, and
+the same lake always gives the same ranking.
 
-```json
-{
-  "node_id": "exp:Demo — network latency via the tumult-net userspace proxy",
-  "depth": 1,
-  "nodes": [
-    { "id": "exp:Demo — network latency via the tumult-net userspace proxy", "kind": "experiment", "label": "Demo — network latency via the tumult-net userspace proxy" },
-    { "id": "fault:tumult-net::inject_latency", "kind": "fault", "label": "tumult-net::inject_latency" },
-    { "id": "run:b1f2c3d4-5e6f-7a8b-9c0d-1e2f3a4b5c6d", "kind": "journal", "label": "completed" },
-    { "id": "svc:demo-app", "kind": "service", "label": "demo-app" }
-  ],
-  "edges": [
-    { "src": "exp:Demo — network latency via the tumult-net userspace proxy", "rel": "injects", "dst": "fault:tumult-net::inject_latency" },
-    { "src": "exp:Demo — network latency via the tumult-net userspace proxy", "rel": "targets", "dst": "svc:demo-app" },
-    { "src": "exp:Demo — network latency via the tumult-net userspace proxy", "rel": "yielded", "dst": "run:b1f2c3d4-5e6f-7a8b-9c0d-1e2f3a4b5c6d" },
-    { "src": "fault:tumult-net::inject_latency", "rel": "observed_on", "dst": "svc:demo-app" }
-  ]
-}
-```
+Over MCP: `tumult_topology_import` (Operator), `tumult_topology_map`,
+`tumult_compliance_lineage` and `tumult_recommend_injection` (Viewer).
 
-Each tool also returns a compact text rendering alongside the structured content, e.g. `(exp:Demo …)-[injects]->(fault:tumult-net::inject_latency)`, and caps oversized output with a hint to narrow the query.
+`make demo-topology` runs the whole loop on the demo stack: a green
+lineage, a break with its cause, then recommend, run and improve.
 
-## How it populates on ingest
+## Next
 
-There is **no new service** and no separate build step. The graph lives in two DuckDB tables in the existing analytics store:
-
-```
-graph_nodes ( id PRIMARY KEY, kind, label, attrs JSON )
-graph_edges ( src, rel, dst, run_id, ts )
-```
-
-These are added under **analytics schema v2** — an additive migration. The DDL uses `CREATE TABLE IF NOT EXISTS`, so opening a v1 store simply creates the two tables with no data loss; opening a fresh store creates everything at once.
-
-Every path that ingests a journal populates the graph in the same transaction:
-
-- `tumult run`, daemon runs and `tumult_run_experiment` over MCP → the richest mapping, because they have the experiment definition too: faults become `plugin::function` and services are extracted from the injecting activity's provider arguments.
-- A journal ingested without its definition (an API import with no experiment, a store written before v2.14.0) → journal-only mapping (faults keyed by the injecting activity's name). Such a run closes no coverage gap: the store does not know which plugin function ran.
-
-Population is **dedup-safe**. Ingestion skips a journal whose `experiment_id` already exists, node upserts key on the primary id, and a run's edges are deleted by `run_id` before re-insert. Mapping the same run twice yields identical nodes and edges — re-ingesting never duplicates graph rows.
-
-### One run, one journal node
-
-Because `experiment`, `fault`, and `service` nodes are stable, each new run of an experiment adds exactly one `journal` node to that experiment's neighbourhood (plus a `deviation` node if the run did not complete cleanly).
-
-```
-run #1        exp ──yielded──► run:…a
-run #2        exp ──yielded──► run:…a
-                  └─yielded──► run:…b        (fault/service nodes unchanged)
-run #3        exp ──yielded──► run:…a
-                  ├─yielded──► run:…b
-                  └─yielded──► run:…c
-```
-
-This is validated on the live demo: three consecutive runs grew the experiment's journal count 7 → 8 → 9 → 10, and `chaosgraph_query` / `chaosgraph_neighbors` returned the correct sub-graphs after each.
-
-## Current scope (Phase 1) and limits
-
-Phase 1 is deliberately narrow:
-
-- **Service nodes and `targets`/`observed_on` edges are extracted only for some experiment shapes today.** A service is derived from a native provider's arguments — the first present of `upstream`, `target`, `host`, `service`, `endpoint`, `address`, `url`, `pod` — with the scheme, path, and `:port` stripped (so `http://demo-app:8080/health`, `demo-app:8080`, and `demo-app` all collapse to `demo-app`). A process step gets a service only from the `docker` or `podman` container it acts on, a host in an `http(s)` URL, or an `ssh` host. Experiments that name their target differently, or that run through the journal-only path (no experiment definition), get faults but no service/target information yet.
-- **No verdicts on nodes.** Compliance articles and coverage gaps are nodes of their own, but the graph does not yet carry framework verdicts, resilience scores, or coverage state on its nodes.
-- **No blast-radius or path queries.** Neighbours expand a fixed-depth ego graph; there is no "shortest path between two services" or "everything within N hops of this fault" query surface beyond `depth`.
-
-## Roadmap (Phase 2)
-
-- **Generalised service extraction** across every provider shape, so `targets`/`observed_on` are populated for all experiments.
-- **Compliance and coverage overlay** — attach framework verdicts and coverage state to nodes so an agent can ask "which services have untested faults?" straight from the graph.
-- **Blast-radius and path queries** — richer traversals (path-between, radius) over the same node/edge model.
-
-## See also
-
-- [MCP Guide](mcp-guide.md) — the current MCP surface, annotations, structured output, and resources.
-- [Token Efficiency](token-efficiency.md) — why Tumult's data formats are cheap to feed to an LLM.
-- [Analytics Guide](analytics-guide.md) — the DuckDB store the graph tables live in.
+- [MCP guide](mcp-guide.md): connect an agent.
+- [SQL analytics](analytics-guide.md): the lake the graph lives in.

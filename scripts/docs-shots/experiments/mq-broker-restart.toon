@@ -1,0 +1,34 @@
+title: message-queue broker restart, consumers reconnect
+description: Restart the queue broker process and check that consumers reconnect and the queue answers again
+
+tags[2]: restart, resilience
+kind: chaos
+target:
+  system: message-queue
+  technology: queue
+  environment: demo
+
+steady_state_hypothesis:
+  title: Queue broker answers
+  probes[1]:
+    - name: broker-answers
+      activity_type: probe
+      provider:
+        type: process
+        path: sh
+        arguments[2]: "-c", "echo healthy"
+        timeout_s: 5.0
+      tolerance:
+        type: regex
+        pattern: "^healthy$"
+
+method[1]:
+  - name: restart-broker
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "sleep 1; echo restarted"
+      timeout_s: 5.0
+
+rollbacks[0]:

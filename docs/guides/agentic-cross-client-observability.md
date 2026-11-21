@@ -1,7 +1,9 @@
 ---
 title: Agentic Cross-Client Observability
-parent: Guides
-nav_order: 11
+parent: Work with AI agents
+grand_parent: Guides
+nav_order: 7
+summary: "One telemetry schema across clients"
 ---
 
 # Agentic Cross-Client Observability
@@ -39,7 +41,7 @@ credentials are not. Content is included only when you explicitly opt a client i
 
 Normalization onto this schema is performed by the collector. Point your client
 exporters at the collector configured by
-[`collector/otel-agentic-normalization.yaml`](../../collector/otel-agentic-normalization.yaml),
+[`collector/otel-agentic-normalization.yaml`](https://github.com/mwigge/tumult/blob/main/collector/otel-agentic-normalization.yaml),
 which maps each client's native attributes onto `gen_ai.*` and stamps the
 `tumult.client` resource attribute.
 

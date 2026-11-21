@@ -1,6 +1,6 @@
 # Mutation tests (cargo-mutants). The tool changes the code one small step at
 # a time and runs the tests of the crate. A change that no test notices is a
-# gap in the tests. See docs/guides/testing.md.
+# gap in the tests. See CONTRIBUTING.md.
 
 # Test code and test helpers are not mutated.
 exclude_globs = [

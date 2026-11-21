@@ -1,7 +1,8 @@
 ---
 title: Resilience Metadata Standard
 parent: Reference
-nav_order: 2
+nav_order: 3
+summary: "The full resilience.* OTel attribute namespace, cardinality rules and scoring model"
 ---
 
 # Tumult Metadata Model

@@ -667,6 +667,20 @@ test('the star map follows the theme', async ({ page }) => {
     expect(gap?.itemStyle.borderColor).toBe('#5b6772');
 });
 
+test('the star map is drawn in the colours of the light theme on a direct load', async ({
+    page,
+}) => {
+    await page.addInitScript(() => localStorage.setItem('tumult.theme', 'light'));
+    await mock(page, []);
+    await page.goto('/starmap');
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+    await expect.poll(async () => (await mirror(page))?.labelColor).toBe('#5b6772');
+
+    // A node with a gap is filled in the colour of a panel, its border in the colour of text.
+    const gap = (await drawn(page)).nodes.find((n) => n.name === 'sys:demo/session-cache');
+    expect(gap?.itemStyle).toMatchObject({ color: '#ffffff', borderColor: '#5b6772' });
+});
+
 test('lens, selection and focus round-trip through the URL', async ({ page }) => {
     const seen: URL[] = [];
     await mock(page, seen);

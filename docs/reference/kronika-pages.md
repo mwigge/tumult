@@ -1,7 +1,8 @@
 ---
 title: Krönika pages
 parent: Reference
-nav_order: 3
+nav_order: 2
+summary: "Every page of the web UI: its charts, the evidence shown and the API behind it"
 ---
 
 # Krönika pages, charts and evidence
@@ -153,6 +154,10 @@ Taken from the seeded demo.
 ### Traces
 
 ![Traces](../images/3.0/screenshots/traces.png)
+
+### Metrics
+
+![Metrics](../images/3.0/screenshots/metrics.png)
 
 ### Ask
 

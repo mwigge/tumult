@@ -1,7 +1,9 @@
 ---
 title: MCP Guide
-parent: Guides
-nav_order: 12
+parent: Work with AI agents
+grand_parent: Guides
+nav_order: 1
+summary: "The 40 tools and how to connect"
 ---
 
 # MCP Guide
@@ -9,7 +11,7 @@ nav_order: 12
 Tumult includes a Model Context Protocol server for discovery, authoring,
 execution, analytics, compliance, GameDays, ChaosGraph, topology, and autopilot.
 The current server exposes 40 tools. The complete inventory is maintained in
-the [README](../../README.md#mcp-server) and checked against the Rust schemas in
+the [README](https://github.com/mwigge/tumult/blob/main/README.md#mcp-server) and checked against the Rust schemas in
 CI.
 
 ## Start the server

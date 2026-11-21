@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prose check of the lines a branch adds. See docs/guides/quality-and-release.md.
+"""Prose check of the lines a branch adds. See CONTRIBUTING.md.
 
 Reads the lines that `git diff` adds since the point where the work tree left
 a base ref (default origin/main), in `*.md` files anywhere and in `*.html`
@@ -232,7 +232,7 @@ def main(argv=None) -> int:
     if offences:
         print(
             f"{len(offences)} prose failure(s) in lines added since {args.base}. "
-            "See docs/guides/quality-and-release.md."
+            "See CONTRIBUTING.md."
         )
         return 1
     print(f"Prose check passed: the lines added since {args.base}.")

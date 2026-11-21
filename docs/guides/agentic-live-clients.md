@@ -1,7 +1,9 @@
 ---
 title: Agentic Fault Injection Against Live Clients
-parent: Guides
-nav_order: 9
+parent: Work with AI agents
+grand_parent: Guides
+nav_order: 5
+summary: "Faults for Claude Code, Codex, OpenCode and Copilot traffic"
 ---
 
 # Agentic Fault Injection Against Live Clients

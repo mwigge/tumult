@@ -4,9 +4,10 @@
     // `?view=dora` shows DORA coverage and the maturity level instead.
     import { page } from '$app/state';
     import { goto } from '$app/navigation';
+    import { onMount } from 'svelte';
     import { api } from '#lib/api.js';
     import type { EChartsCoreOption } from '#lib/echarts.js';
-    import { CHART } from '#lib/echarts.js';
+    import { chartTheme, chartTokens, followTheme } from '#lib/echarts.js';
     import {
         bandColor,
         bandGlyph,
@@ -83,6 +84,11 @@
     // Breadcrumb segments for the current node path.
     const crumbs = $derived(node === '' ? [] : node.split('/'));
 
+    // The treemap is drawn in the colours of the theme in force.
+    let theme = $state(chartTheme());
+    onMount(() => followTheme((next) => (theme = next)));
+    const tokens = $derived(chartTokens(theme));
+
     let treemapOption: EChartsCoreOption | null = $state(null);
     /** What a tile of the treemap carries for its tooltip. */
     interface TreeTip {
@@ -101,7 +107,7 @@
         const children: OrgNodeScore[] = tree.children;
         treemapOption = {
             tooltip: {
-                ...CHART.tooltip,
+                ...tokens.tooltip,
                 formatter: tipFormatter((p: { data?: TreeTip }) => {
                     const d = p.data ?? {};
                     return tip(
@@ -127,7 +133,7 @@
                         fontWeight: 600,
                         fontSize: 12,
                     },
-                    itemStyle: { borderColor: '#0b0e11', borderWidth: 2, gapWidth: 3 },
+                    itemStyle: { borderColor: tokens.bg, borderWidth: 2, gapWidth: 3 },
                     emphasis: { label: { color: '#0b0e11' } },
                     data: children.map((c: OrgNodeScore) => ({
                         name: c.name,
