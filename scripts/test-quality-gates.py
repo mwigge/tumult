@@ -13,6 +13,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 CI = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
 MAKEFILE = (ROOT / "Makefile").read_text(encoding="utf-8")
+SITE_PREVIEW = (ROOT / ".github/workflows/site-preview.yml").read_text(encoding="utf-8")
+# The tests of the site scripts run in the site preview, which has the built
+# site and a browser.
+SITE_TESTS = ("test-site-check.py", "test-site-shots.py")
 # The CI jobs that `make precommit` runs too.
 MIRRORED_JOBS = ("fmt", "test", "demo-crates", "deny", "docs-check")
 # Steps that set up a runner rather than check the code.
@@ -100,8 +104,9 @@ class ScriptTests(unittest.TestCase):
     def test_every_script_test_runs_in_ci(self):
         quality = job("scripts-quality")
         for test in sorted((ROOT / "scripts").glob("test-*.py")):
+            where = SITE_PREVIEW if test.name in SITE_TESTS else quality
             with self.subTest(test=test.name):
-                self.assertIn(f"run: python3 scripts/{test.name}\n", quality)
+                self.assertIn(f"run: python3 scripts/{test.name}\n", where)
 
 
 def manifest(path):
