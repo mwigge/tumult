@@ -375,4 +375,16 @@ mod tests {
             "{err:?}"
         );
     }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_command_that_a_signal_ends_has_the_exit_code_minus_one() {
+        // A process ended by a signal has no exit code of its own.
+        let err = run("sh", &["-c".to_string(), "kill -KILL $$".to_string()]).unwrap_err();
+
+        assert!(
+            matches!(&err, WindowsError::CommandFailed { code: -1, .. }),
+            "{err:?}"
+        );
+    }
 }
