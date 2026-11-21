@@ -443,6 +443,11 @@ mod tests {
                 actions: vec![
                     entry("take-down", ActionKind::Action),
                     entry("read", ActionKind::Probe),
+                    // A plugin with an action and no probe.
+                    CatalogAction {
+                        plugin: "lab-cache".into(),
+                        ..entry("flush", ActionKind::Action)
+                    },
                 ],
             }],
         }
