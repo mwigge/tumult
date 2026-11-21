@@ -270,7 +270,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           fetch-depth: 0
+      # Local links and their anchors, the backticked repository paths and
+      # the inventory claims of the pages.
       - run: python3 scripts/check-docs.py
+      # docs/reference/kronika-pages.md lists the API calls each page of the
+      # web UI makes, and the colours of web/src/lib/tone.ts.
+      - run: python3 scripts/check-kronika-pages.py
       # Regulatory citation wordings that were found wrong (a DORA paragraph
       # that does not exist, a retention period DORA does not set) must not
       # come back in docs, seeds or fixtures.
@@ -338,5 +343,10 @@ jobs:
       - run: python3 scripts/test-check-test-hygiene.py
       - run: python3 scripts/check-test-hygiene.py
       - run: python3 scripts/test-check-prose.py
+      # Every picture a page names exists, and every picture of docs/images
+      # and docs/assets is named by a page or listed in images-allow.txt.
+      - run: python3 scripts/test-check-images.py
+      - run: python3 scripts/test-check-docs.py
+      - run: python3 scripts/test-check-kronika-pages.py
       - run: python3 scripts/test-check-pr-body.py
       - run: python3 scripts/test-quality-gates.py

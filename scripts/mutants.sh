@@ -3,7 +3,7 @@
 #
 # cargo-mutants changes the code one small step at a time and runs the tests
 # of the crate after each step. A change that no test notices is listed as
-# MISSED and the script ends non-zero. See docs/guides/testing.md.
+# MISSED and the script ends non-zero. See CONTRIBUTING.md.
 #
 # Usage: scripts/mutants.sh [base ref] [cargo mutants arguments]
 #   scripts/mutants.sh                               # against origin/main

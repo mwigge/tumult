@@ -1,539 +1,327 @@
 ---
-title: CLI Reference
-parent: Guides
-nav_order: 3
+title: CLI reference
+parent: Reference
+nav_order: 1
+summary: "Every command of tumult and its flags"
 ---
 
-# CLI Reference
+# CLI reference
 
-Tumult provides a single binary `tumult` with the following commands.
+`tumult` is one binary with one command per task. This page lists every
+command and every flag; `tumult <command> --help` prints the same list.
+
+```mermaid
+flowchart TD
+  accTitle: The commands of tumult, grouped by task
+  accDescr: You write an experiment, run it, then keep and read the results. From the store you gate a pipeline on the daemon and plan the next run.
+  W["Write an experiment<br/>init, new, templates, validate, discover"] --> R["Run it<br/>run, gameday, agentic"]
+  R --> S["Keep the results<br/>store, import, export"]
+  R --> A["Read the results<br/>analyze, report, trend, compliance, tui"]
+  S --> G["Gate a pipeline on the daemon<br/>gate, perf"]
+  S --> P["Plan the next run<br/>recommend, agents, chaosgraph, topology, autopilot, mcp"]
+```
+
+| Command | What it does |
+|---|---|
+| [`run`](#tumult-run) | Run an experiment |
+| [`validate`](#tumult-validate) | Check an experiment file and its plugin references |
+| [`discover`](#tumult-discover) | List the plugins, actions and probes |
+| [`analyze`](#tumult-analyze) | SQL over journal files or the store |
+| [`export`](#tumult-export) | Turn a journal into Parquet, Arrow, CSV or JSON |
+| [`compliance`](#tumult-compliance) | Evidence summary for one regulation |
+| [`report`](#tumult-report) | HTML, JSON or JUnit report of a journal |
+| [`trend`](#tumult-trend) | One metric across many runs |
+| [`init`](#tumult-init) | Write a starter `experiment.toon` |
+| [`new`](#tumult-new) | Pick a fault and get a ready experiment |
+| [`templates`](#tumult-templates) | List the starter templates of `new` |
+| [`import`](#tumult-import) | Read a Parquet directory into the store |
+| [`store`](#tumult-store) | Back up, restore, export and clean the store |
+| [`recommend`](#tumult-recommend) | Suggest the next useful experiment |
+| [`agents`](#tumult-agents) | List the agent command lines Tumult can use |
+| [`agentic`](#tumult-agentic) | Fault scenarios for AI agents |
+| [`gameday`](#tumult-gameday) | Run many experiments as one campaign |
+| [`mcp`](#tumult-mcp-serve) | Start the MCP server |
+| [`chaosgraph`](#tumult-chaosgraph) | Query the graph of runs, faults and services |
+| [`topology`](#tumult-topology) | Service map and compliance lineage |
+| [`autopilot`](#tumult-autopilot) | Decide and record the next faults, by policy |
+| [`gate`](#tumult-gate) | Pass or fail a target in CI |
+| [`perf`](#tumult-perf) | Performance regression verdict in CI |
+| [`tui`](#tumult-tui) | Dashboard of the store in the terminal |
+
+Every command also takes `-h, --help` and `-V, --version`.
 
 ## tumult run
 
-Execute an experiment.
+`tumult run <EXPERIMENT> [OPTIONS]` runs an experiment, writes its journal
+and stores the run.
 
-```
-tumult run <experiment.toon> [OPTIONS]
-```
+| Flag | Default | What it does |
+|---|---|---|
+| `--journal-path <JOURNAL_PATH>` | `journal.toon` | Where the journal is written |
+| `--force` | off | Overwrite a journal that exists |
+| `--dry-run` | off | Check the file and print the plan; run nothing |
+| `--rollback-strategy <ROLLBACK_STRATEGY>` | `on-deviation` | `always`, `on-deviation` (alias `deviated`) or `never` |
+| `--baseline-mode <BASELINE_MODE>` | `full` | `full` and `skip` use the declared tolerances; `only` reads the steady-state probes once, runs no fault, load, control or rollback, and is not stored |
+| `--no-ingest` | off | Do not store the run |
+| `--output-format <OUTPUT_FORMAT>` | none | `json`: print the journal as JSON on stdout when the run ends; the summary goes to stderr. Not with `--dry-run` |
+| `--var <KEY=VALUE>` | none | Fill `${KEY}` in every string of the file. Repeat for more |
+| `--target-version <VERSION>` | none | The version of the target this run measures, kept as `declared` |
+| `--load <LOAD>` | none | `k6` or `oha` runs this load with the method; `none` drops the load of the file |
+| `--load-script <LOAD_SCRIPT>` | `load.js` | The k6 script, or the URL that oha calls |
+| `--load-vus <LOAD_VUS>` | `10` | Virtual users of the load |
+| `--load-duration <LOAD_DURATION>` | `30s` | How long the load runs, such as `30s` or `5m` |
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `--journal-path <path>` | `journal.toon` | Output journal location |
-| `--force` | `false` | Overwrite the journal file if it already exists |
-| `--dry-run` | `false` | Validate and show plan without executing |
-| `--rollback-strategy <s>` | `on-deviation` | `always`, `on-deviation`, or `never` (`deviated` is accepted as an alias for `on-deviation`) |
-| `--baseline-mode <m>` | `full` | `full`/`skip`: declared tolerances; `only`: one probe-only observation, no fault/load/control/rollback |
-| `--no-ingest` | `false` | Skip auto-ingestion into persistent analytics store |
-| `--output-format <f>` | — | `json`: print the journal as JSON on stdout when the run has ended, also when it did not complete. Stdout then holds the journal only; the [summary](#summary) goes to stderr. Not with `--dry-run` |
-| `--var KEY=VALUE` | — | Template variable substitution (repeatable) |
-| `--target-version <v>` | — | The version of the target this run measures, recorded in the journal as `declared` (overrides `target.version`; an error when the definition has no `target` block). Without it and without `target.version`, a run that auto-ingests asks the daemon (or the local lake) once at its end which `service.version` the target's spans carried during the run and records it as `observed` |
-| `--load <tool>` | — | Run a load test concurrently with the method (`k6` or `oha`). `none` runs the experiment without the load of its file |
-| `--load-script <path>` | `load.js` | Path to load test script (k6 `.js`), or the URL to hit for oha |
-| `--load-vus <n>` | `10` | Number of virtual users for the load test |
-| `--load-duration <d>` | `30s` | Load test duration (e.g. `30s`, `5m`) |
+The load defaults apply only with `--load k6` or `--load oha`. A
+`${KEY}` that no `--var` sets stops the run before it starts. Without
+`--target-version` and `target.version`, a stored run asks the daemon or
+the store which `service.version` the target's spans carried, and keeps it
+as `observed`. When a run ends, it prints a summary:
 
-### Examples
-
-```bash
-# Basic run
-tumult run experiment.toon
-
-# Dry run — show the plan without executing: kind, target, recovery
-# targets, objectives, load, hypothesis, guards, steps and rollbacks
-tumult run experiment.toon --dry-run
-
-# Custom journal path
-tumult run experiment.toon --journal-path results/run-001.toon
-
-# Always rollback regardless of outcome
-tumult run experiment.toon --rollback-strategy always
-
-# Use declared tolerances (automatic statistical acquisition is not integrated)
-tumult run experiment.toon --baseline-mode skip
-
-# Skip auto-ingest into persistent DuckDB store
-tumult run experiment.toon --no-ingest
-
-# Print journal as JSON to stdout (for piping/scripting)
-tumult run experiment.toon --output-format json | jq '.status'
-
-# Template variable substitution
-tumult run experiment.toon --var env=staging --var cluster=eu-west-1
-```
-
-With the default `on-deviation` strategy, rollbacks run when the experiment
-deviates from its hypothesis or when a method step fails after a fault was
-injected. `always` runs them on every outcome; `never` skips them entirely.
-
-### Template Variables
-
-The `--var` flag substitutes `${KEY}` placeholders in every string field of the experiment before execution. This allows a single experiment template to be reused across environments:
-
-```toon
-title: Resilience test for ${env} cluster ${cluster}
-
-method[1]:
-  - name: kill-${env}-primary
-    ...
-```
-
-```bash
-tumult run template.toon --var env=production --var cluster=us-east-1
-```
-
-Undefined variables cause a hard error at startup, not at execution time.
-
-### Summary
-
-When a run ends, it prints what it found.
-
-```
+```text
 Running experiment: Checkout answers while a slow job runs
 Status: Completed
 Duration: 3169ms
 Method steps: 1 executed
 Hypothesis: met before, met after
 Objectives: 3 met, 1 breached, 1 inconclusive
-  breached: a-million-requests: load.total_requests must be at least 1000000, observed 10611
-  inconclusive: rpo: rpo must be at most 5, not measured
 Load (oha): 10611 requests, 3531.4 requests/s, p50 0.5 ms, p95 0.8 ms, p99 1.4 ms, error rate 0.00 %, thresholds met
 Journal written to: journal.toon
 Journal SHA-256: e97edc233991dfdebf733d0af92a92e83b29c9710320016b7e814cfc2c80f474
 Ingested into persistent analytics store
 ```
 
-| Line | What it says |
-|------|--------------|
-| `Hypothesis` | Whether the steady state was `met`, `not met` or `not checked`, before and after the method |
-| `Objectives` | How many [objectives](experiment-format.md) were met, breached or inconclusive. Each one that was not met gets a line with its rule and the value the run observed |
-| `Load` | What the load measured in all. The line ends with `cut before its planned end` when the load was stopped early |
-| `Journal SHA-256` | The hash of the journal file, the same value `sha256sum` prints |
-
-A run without a steady state, objectives or a load has no line about it.
-
-### Exit Codes
-
-| Code | Meaning |
-|------|---------|
-| 0 | Experiment completed successfully |
-| 1 | Experiment failed, deviated, halted, interrupted, or aborted |
-
-### Auto-Ingest
-
-By default, `tumult run` writes the journal file **and** ingests experiment data into the persistent DuckDB store at `~/.tumult/lake.duckdb`. Pass `--no-ingest` to skip store ingestion (useful in CI pipelines that manage their own storage).
-
-When `TUMULT_DAEMON_URL` is set (e.g. `http://localhost:4318`), the journal is POSTed to the daemon's `/api/import/journal` instead, so the write rides the daemon's single-writer channel rather than racing its store lock. If the daemon is unreachable (no HTTP response), the CLI falls back to the direct store write; any HTTP answer — including an error — is treated as final.
-
-When `TUMULT_DAEMON_TOKEN` is set (a `kro_...` API token), the journal POST to the daemon sends `Authorization: Bearer <token>`. Unset means no header is sent, which matches a loopback dev daemon running without authentication.
-
-The daemon can also execute experiments itself via its run-control API — `POST /api/runs/validate` (register a definition), `POST /api/runs/dry-run` (resolved plan preview), `POST /api/runs` (enqueue, bounded queue with 429 backpressure), `POST /api/runs/{id}/stop` (e-stop with rollbacks), `GET /api/runs[/{id}]` (state + audit trail), `GET /api/runs/{id}/audit/verify` (re-verify the audit hash chain). See ADR-011.
+It exits `0` when the run completed, and `1` when it deviated, failed,
+halted, was interrupted or aborted, or the command failed. The run is
+stored in `~/.tumult/lake.duckdb` (`TUMULT_LAKE_PATH` moves it). With
+`TUMULT_DAEMON_URL` set, the journal goes to the daemon instead
+(`POST /api/import/journal`, with `TUMULT_DAEMON_TOKEN` as the bearer
+token); when no daemon answers, the CLI writes the store itself. The file
+format is in [Experiment format](experiment-format.md).
 
 ## tumult validate
 
-Validate experiment syntax, structure, and plugin references.
-
-```
-tumult validate <experiment.toon>
-```
-
-Note: `tumult validate` only validates **experiment** files — it does not validate `.gameday.toon` files (those are checked when you run `tumult gameday run`).
-
-Reports:
-- Title, description, tags
-- Method and rollback step counts
-- Hypothesis probe count
-- Whether an estimate and a baseline block are present. A run does not use the baseline block, and validate says so
-- Configuration and secret resolution status
-- Whether a regulatory mapping is present
-
-Validation fails when:
-- a step, a guard or a control names a plugin, function or action that this binary does not have. The error lists every such step and what is available.
-- an objective names a metric outside the [metric table](experiment-format.md#objectives), or a `probe.<name>` metric names a probe that the steady-state hypothesis does not have.
-- the file has a key the format does not know (on a step, a provider or a tolerance) or a key written twice, a load tool with no adapter (`jmeter`) or an oha threshold the adapter does not check, or a timeout or a pause that is no number of seconds.
-
-### Example
-
-```bash
-tumult validate experiment.toon
-```
+`tumult validate <EXPERIMENT>` checks an experiment file: its syntax, its
+structure and every plugin, action and objective metric it names. It has no
+flags. It does not read `.gameday.toon` files; `tumult gameday run` checks
+those.
 
 ## tumult discover
 
-List all available plugins and their actions — both script plugins
-(discovered from the filesystem) and native plugins (compiled into the
-binary), labeled `(script)` / `(native)`.
+`tumult discover [--plugin <PLUGIN>]` lists the script plugins on disk and
+the native plugins built into the binary, with their actions and probes.
+`--plugin` shows one plugin in detail.
 
-```
-tumult discover [OPTIONS]
-```
-
-| Option | Description |
-|--------|-------------|
-| `--plugin <name>` | Show details for a specific plugin |
-
-### Plugin Search Paths
-
-Script plugins are discovered from (in order):
-
-1. `./plugins/` — local to the experiment
-2. `~/.tumult/plugins/` — user-global
-3. `$TUMULT_PLUGIN_PATH` — custom paths (colon-separated)
-
-At runtime you can override the search paths without modifying the binary.
-Native plugins (`tumult-ssh`, `tumult-net`, `tumult-kubernetes`, `tumult-cloud`,
-`tumult-windows`) are registered in the binary itself and are always listed.
-
-### Examples
-
-```bash
-# List all plugins
-tumult discover
-
-# Show details for a specific plugin (script or native)
-tumult discover --plugin tumult-kafka
-tumult discover --plugin tumult-ssh
-```
-
-From the repository root (11 script plugins in `./plugins/` plus the 5
-built-in native plugins):
-
-```text
-$ tumult discover
-Discovered 16 plugin(s) (11 script, 5 native):
-
-  tumult-cloud (native)
-  tumult-containers (script)
-  tumult-db-mysql (script)
-  tumult-db-postgres (script)
-  tumult-db-redis (script)
-  tumult-kafka (script)
-  tumult-kubernetes (native)
-  tumult-loadtest (script)
-  tumult-net (native)
-  tumult-network (script)
-  tumult-process (script)
-  tumult-pumba (script)
-  tumult-ssh (native)
-  tumult-stress (script)
-  tumult-timewarp (script)
-  tumult-windows (native)
-
-Actions: 91
-  tumult-containers::kill-container
-  ...
-  tumult-kubernetes::delete_pod
-  ...
-  tumult-ssh::execute
-  ...
-```
-
-## tumult init
-
-Create a new experiment from a template.
-
-```
-tumult init [OPTIONS]
-```
-
-| Option | Description |
-|--------|-------------|
-| `--plugin <name>` | Start the method with a step that reads a probe of this script plugin |
-
-Writes `experiment.toon` in the current directory from the `starter` template: a steady-state hypothesis and a method built only on `uname` and `sh`. It injects no fault and needs no Docker or network. With `--plugin`, the first step of the method reads the first probe of that script plugin; set its arguments and add a fault of the plugin. A native plugin (built into Tumult) gets the plain starter. A plugin that is not installed is refused. It does not prompt.
-
-### Example
-
-```bash
-tumult init
-tumult init --plugin tumult-db-postgres
-```
+Script plugins are read from `./plugins/` in the working directory, then
+`~/.tumult/plugins/`, then each folder of `TUMULT_PLUGIN_PATH` (split by
+`:`). The first plugin of a name wins. The native plugins are `tumult-ssh`,
+`tumult-net`, `tumult-kubernetes`, `tumult-cloud` and `tumult-windows`.
 
 ## tumult analyze
 
-SQL analytics over journal files using embedded DuckDB.
+`tumult analyze [JOURNALS] [OPTIONS]` runs SQL over journal files, or over
+the store when no folder is given. The tables are in the
+[Analytics guide](analytics-guide.md).
 
-```
-tumult analyze [journals-dir] [OPTIONS]
-```
-
-| Option | Description |
-|--------|-------------|
-| `--query <sql>` | Custom SQL query |
-| `--last <n>` | Show summary of the last N experiments (default: 1 if no `--query`) |
-| `--all` | Show store-wide aggregate summary |
-
-If `journals-dir` is omitted, queries the persistent store at `~/.tumult/lake.duckdb`.
-
-`--query` is read-only: only `SELECT` and `WITH` statements are accepted; anything else is rejected before execution.
-
-### Examples
-
-```bash
-# Query persistent store (no path needed)
-tumult analyze --query "SELECT status, count(*) FROM experiments GROUP BY status"
-
-# Query a specific directory of journals
-tumult analyze journals/ --query "SELECT title, duration_ms FROM experiments ORDER BY duration_ms DESC"
-
-# Default query: experiment summary
-tumult analyze journals/
-```
+| Flag | What it does |
+|---|---|
+| `--query <QUERY>` | Run this SQL. Only one `SELECT` or `WITH` statement is accepted |
+| `--last <LAST>` | Summary of the last N runs (1 when there is no `--query`) |
+| `--all` | Summary of the whole store |
 
 ## tumult export
 
-Convert journal to other formats.
+`tumult export <JOURNAL> [--format <FORMAT>]` turns one journal into files
+in the working directory.
 
-```
-tumult export <journal.toon> [OPTIONS]
-```
+| Flag | Default | What it does |
+|---|---|---|
+| `--format <FORMAT>` | `parquet` | `parquet`, `csv`, `json` or `arrow` |
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `--format <f>` | `parquet` | `parquet`, `arrow`, `csv`, or `json` |
-
-`json` writes the whole journal to `<journal>.json`. The other formats write
-two tables in the working directory:
-
-| File | Rows |
-|------|------|
-| `<journal>.<ext>` | The run: one row |
-| `activities/<journal>.<ext>` | The steps of the run: one row per step |
-
-Both tables have the column `experiment_id`. Each table has its own
-directory, so a tool that reads every file of a directory as one table gets
-the runs from the one and the steps from the other.
+`json` writes the whole journal to `<journal>.json`. The other formats
+write two tables: `<journal>.<ext>` holds the run (one row) and
+`activities/<journal>.<ext>` its steps. Both have the column
+`experiment_id`.
 
 ## tumult compliance
 
-Generate regulatory compliance reports.
+`tumult compliance <JOURNALS> --framework <FRAMEWORK>` sums up the evidence
+in journal files for one regulation. The mapping is in
+[Regulatory mapping](../regulatory-mapping.md).
 
-```
-tumult compliance <journals-dir> --framework <name>
-tumult compliance --framework <name> --sources
-```
+| Flag | What it does |
+|---|---|
+| `--framework <FRAMEWORK>` | `dora`, `nis2`, `pci-dss`, `iso-22301`, `iso-27001`, `soc2` or `basel-iii` |
+| `--sources` | List each mapped control with its source URL and the date it was checked. Needs no journals |
 
-Supported frameworks: `dora`, `nis2`, `pci-dss`, `iso-22301`, `iso-27001`, `soc2`, `basel-iii`
-
-`--sources` lists every mapped citation with its source URL and the date it was last checked, and reads no journal.
-
-The evidence summary counts two things:
-
-| Line | What it counts |
-|------|----------------|
-| `Pass rate` | Of all the journals, the share whose run completed |
-| `Recovery within 30s` | Of the runs that watched for recovery, the share whose target came back within 30 seconds |
-
-A run watches for recovery when it has a steady state to probe after the
-fault. A watched run whose target did not come back counts against the
-share. When no run watched, the line says so, and the verdict ends with
-`(pass-rate only)`.
-
-### Example
-
-```bash
-tumult compliance journals/ --framework dora
-tumult compliance journals/ --framework pci-dss
-```
-
-## tumult trend
-
-Cross-run trend analysis over journal files. `trend` requires a `<journals>` path (directory or file) — it loads those journals into a temporary in-memory store for the query; it does not read the persistent store.
-
-```
-tumult trend <journals-dir> [OPTIONS]
-```
-
-| Option | Default | Description |
-|--------|---------|-------------|
-| `--metric <m>` | `resilience_score` | Metric to trend (`resilience_score`, `duration_ms`, `estimate_accuracy`, `method_step_count`) |
-| `--last <window>` | — | Only the runs that started in this window: `30d`, `90d`, etc. |
-| `--target <name>` | — | Only the runs on this target: the system or the technology the journal names (whole name, any case) |
-
-The points and the summary line are over the same runs: the ones of the
-window and of the target.
-
-A journal names the target its experiment declares (since 3.0.2). With
-`--target`, a journal that names no target is left out, and the output says
-how many were.
-
-### Examples
-
-```bash
-tumult trend journals/ --metric duration_ms --last 30d
-tumult trend journals/ --target postgresql --metric resilience_score
-```
+The summary gives the pass rate (the share of runs that completed) and the
+share of the runs that watched for recovery whose target came back within
+30 seconds. It is evidence, not a compliance decision.
 
 ## tumult report
 
-Generate a report from a journal — HTML (default), PDF-ready HTML, JSON, or JUnit XML.
+`tumult report <JOURNAL> [OPTIONS]` writes a report of one journal.
 
+| Flag | Default | What it does |
+|---|---|---|
+| `--output <OUTPUT>` | `<journal>.<ext>` in the working directory | Where the report is written |
+| `--format <FORMAT>` | `html` | `html`, `pdf`, `json` or `junit` |
+| `--trace-ui-base <TRACE_UI_BASE>` | `TUMULT_TRACE_UI_BASE` | Base URL of a trace UI, such as Jaeger; each `trace_id` becomes a link |
+
+![The HTML report of one run](../images/3.0/screenshots/report-html.png)
+
+The HTML report is one file with every table and up to five charts, and
+needs no network. `pdf` writes the HTML and prints how to turn it into a
+PDF. `junit` has one test case per step and per steady-state check, so a
+deviated run fails in CI. `SOURCE_DATE_EPOCH` (seconds) fixes the date the
+report shows.
+
+## tumult trend
+
+`tumult trend <JOURNALS> [OPTIONS]` follows one metric across the runs in
+journal files. It reads the files, not the store.
+
+| Flag | Default | What it does |
+|---|---|---|
+| `--metric <METRIC>` | `resilience_score` | `resilience_score`, `duration_ms`, `estimate_accuracy` or `method_step_count` |
+| `--last <LAST>` | all runs | Only runs that started in this window, such as `30d` |
+| `--target <TARGET>` | all runs | Only runs on this target: the system or technology the journal names, whole name, any case |
+
+## tumult init
+
+`tumult init [--plugin <PLUGIN>]` writes `experiment.toon` in the working
+directory from the starter template, which uses only `uname` and `sh`: no
+fault, no Docker, no network. It does not overwrite a file. `--plugin`
+starts the method with the first probe of that script plugin; a native
+plugin gets the plain starter, and a plugin that is not installed is
+refused.
+
+## tumult new
+
+`tumult new [OPTIONS]` asks you to pick a fault step by step (domain,
+action, arguments, target, probe, title) and writes a checked experiment.
+With `--from` it fills a starter template and asks nothing.
+
+| Flag | Default | What it does |
+|---|---|---|
+| `--from <FROM>` | none | The template to fill |
+| `--set <KEY=VALUE>` | none | A parameter of the template. Repeat for more |
+| `--out <OUT>` | `<template>.toon`, or `<action>.toon` when you pick | Where the experiment is written |
+
+```bash
+tumult new --from pg-kill-connections --set container=db-1 --out pg-kill.toon
 ```
-tumult report <journal.toon> [OPTIONS]
-```
 
-| Option | Description |
-|--------|-------------|
-| `--output <path>` | Output file path (default: the name of the journal with `.html`, or `.xml` for `junit` and `.json` for `json`) |
-| `--format <f>` | `html` (default), `pdf`, `json`, or `junit` |
-| `--trace-ui-base <url>` | Base URL of a trace UI (e.g. Jaeger/Tempo) — HTML reports render each activity's `trace_id` as a clickable link (falls back to the `TUMULT_TRACE_UI_BASE` env var) |
+## tumult templates
 
-The HTML report is one file that shows the whole journal: the halt, the
-steady state, every step, the objectives, the load, the measurements, the
-versions and the analysis. It follows the light or dark setting of the
-browser. Set `SOURCE_DATE_EPOCH` (seconds) to fix the time the report says it
-was generated at, so the same journal always gives the same file.
-
-The report draws up to five charts: a timeline of the steps, the headroom
-of each objective, the load latency, the load throughput with its error
-rate, and the samples of each probe over time. The time a fault was active
-is shaded. The charts need no network: the script that draws them is in
-the file, which makes a report with a chart about 570 KB. A reader with
-scripts off still gets every table.
-
-The JUnit file has one test case per step, and one per check of the steady
-state. A check that did not hold is a failed case, so a deviated run shows as a
-failure in CI.
+`tumult templates` lists the starter templates that `tumult new` fills,
+with their parameters and defaults. It has no flags.
 
 ## tumult import
 
-Import the Parquet directory `tumult store export` writes: the experiments
-and activities, and with them, when the directory holds them, the load
-evidence (`load_results.parquet` and `probe_samples.parquet`, both or
-neither) and the run roots with the version history (`run_roots.parquet`
-and `version_sightings.parquet`, both or neither), so that a performance
-verdict can be computed from the imported runs. Rows the store already
-holds are left as they are; importing a directory twice adds nothing. This
-does not restore a complete operational backup; use `tumult store restore`
-for that.
-
-```
-tumult import <parquet-dir>
-```
-
-Transactional import — each pair of files is committed only if both load successfully.
+`tumult import <PARQUET_DIR>` reads the directory that `tumult store
+export` writes into the store: runs and steps, and the load samples and
+version history when the directory holds them. A row the store already
+has is skipped, and each pair of files is committed only when both load.
 
 ## tumult store
 
-Manage the persistent analytics store.
+`tumult store <SUBCOMMAND>` looks after the store, `~/.tumult/lake.duckdb`
+(`TUMULT_LAKE_PATH` moves it).
 
-```
-tumult store <subcommand>
-```
+| Subcommand | Flags | What it does |
+|---|---|---|
+| `stats` | | Count runs and steps, show the file size |
+| `backup` | `--output <OUTPUT>` (default `tumult-backup`) | Copy the whole database with a checksum manifest. Stop every writer first; the copy holds credentials |
+| `restore` | `--input <INPUT>`, `--output <OUTPUT>` | Check a backup and restore it into a new database file. Never overwrites |
+| `export` | `--output <OUTPUT>` (default `tumult-export`) | Write the Parquet directory that `tumult import` reads. Refuses a directory that already holds one |
+| `purge` | `--older-than-days <OLDER_THAN_DAYS>` | Delete runs older than N days, with their steps, load results, probe samples, verdicts and graph rows. Telemetry, the run registry, the audit trail, manual records, forecasts, sightings and the autopilot tables stay |
+| `path` | | Print the path of the store |
+| `migrate` | | Copy the store to ClickHouse (deprecated; Tumult 3.1 removes ClickHouse) |
+| `import-legacy` | `--analytics-db <ANALYTICS_DB>`, `--kronika-db <KRONIKA_DB>`, `--store <STORE>` | Read the databases of older installs into the store; rows already there are skipped |
 
-| Subcommand | Description |
-|------------|-------------|
-| `stats` | Show experiment/activity counts and store file size |
-| `backup [--output <dir>]` | Copy the complete database and checksum manifest; stop writers first, protect credentials in backup |
-| `export [--output <dir>]` | Write the Parquet directory `tumult import` reads (experiments, activities, load results, probe samples, run roots, version history); refuses a directory that already holds one |
-| `restore --input <dir> --output <new-db>` | Verify a complete backup and restore into a new database; never overwrite an existing destination |
-| `purge --older-than-days <N>` | Delete experiments older than N days, with their activities, load results, probe samples, NFR verdicts and own graph rows; telemetry, the run registry and audit trail, manual records, forecasts, sightings and autopilot tables are kept |
-| `path` | Print the store file path |
-| `migrate` | Deprecated: copy the store to ClickHouse. See the note below |
-| `import-legacy [--analytics-db <path>] [--kronika-db <path>] [--store <path>]` | Import databases from older installs (old analytics store and/or kronika lake) into the current store; idempotent |
-
-### Examples
-
-```bash
-tumult store stats
-tumult store backup --output ~/tumult-backup-2026-10
-tumult store restore --input ~/tumult-backup-2026-10 --output ~/tumult-restored.duckdb
-tumult store purge --older-than-days 90
-tumult store import-legacy --analytics-db ~/.tumult/analytics.duckdb
-```
-
-ClickHouse is deprecated and Tumult 3.1 removes it. When
-`TUMULT_CLICKHOUSE_URL` is set, `tumult run` writes the journal to
-ClickHouse and not to the store, and it logs the warning
-`cli.clickhouse.deprecated`. Leave the variable unset to use the store.
-
-See [Data portability and recovery](data-portability.md) for archive coverage,
-backup assets and restoration checks. A Parquet archive is not an operational
-backup; ordinary queries do not automatically read cold archive files.
+A backup and a Parquet export are not the same thing; read
+[Data portability and recovery](data-portability.md) before you rely on
+one. With `TUMULT_CLICKHOUSE_URL` set, `tumult run` writes to ClickHouse
+and not to the store, and warns that ClickHouse is deprecated.
 
 ## tumult recommend
 
-Recommend the next useful experiment from deterministic heuristics over the analytics store (coverage gaps, failing experiments, stale experiments), optionally enhanced by a local agent CLI.
+`tumult recommend [OPTIONS]` suggests the next useful experiment from the
+gaps, failures and stale runs in the store. An agent command line can add
+its own ideas; see [Agentic recommendations](agentic-recommendations.md).
 
-```
-tumult recommend [OPTIONS]
-```
-
-| Flag | Description |
-|------|-------------|
-| `--goal <GOAL>` | Recommendation goal or operator intent |
-| `--store-path <PATH>` | Analytics store path to inspect (default: persistent store) |
-| `--model <MODEL>` | Model label to include in deterministic recommendation metadata |
-| `--no-draft` | Do not include a draft TOON experiment |
-| `--format <text\|json>` | Output format (default: `text`) |
-| `--agent <NAME>` | Enhance recommendations with an agent CLI adapter (`claude-code`, `codex`) |
-| `--agent-model <MODEL>` | Model override passed to the agent CLI (requires `--agent`) |
-| `--agent-timeout <SECS>` | Agent CLI timeout in seconds (default: 120) |
-| `--generate-experiments <DIR>` | Write validated agent-proposed experiments into `<DIR>` (requires `--agent`) |
-
-With `--agent`, the heuristic output is printed first, followed by an "Agent-enhanced recommendations" section. With `--generate-experiments`, every proposed experiment is parsed and validated (`parse_experiment` + `validate_experiment`) before writing; valid ones are written to `<DIR>/<title-slug>.toon` (collisions get `-2`, `-3`, ... — never overwritten), invalid ones are rejected with the validation error and counted in a summary line. In JSON mode the output gains an `agent` object: `{ adapter, model, recommendations, experiments_written, experiments_rejected }`.
-
-### Examples
-
-```bash
-# Deterministic heuristics only
-tumult recommend --goal "harden the cache tier"
-
-# Enhanced by Claude Code, generating experiment files
-tumult recommend --agent claude-code --generate-experiments out/experiments
-
-# Enhanced by Codex with model + timeout overrides, JSON output
-tumult recommend --agent codex --agent-model gpt-5-codex --agent-timeout 300 --format json
-```
-
-See the [Agentic Recommendations guide](agentic-recommendations.md) for how the prompt is built and how the validation gate works.
+| Flag | Default | What it does |
+|---|---|---|
+| `--goal <GOAL>` | none | What you want to improve |
+| `--store-path <STORE_PATH>` | the store | Store to read |
+| `--model <MODEL>` | none | Model label put in the output |
+| `--no-draft` | off | Leave out the draft experiment |
+| `--format <FORMAT>` | `text` | `text` or `json` |
+| `--agent <AGENT>` | none | Agent command line to ask: `claude-code` or `codex` |
+| `--agent-model <AGENT_MODEL>` | none | Model the agent uses. Needs `--agent` |
+| `--agent-timeout <AGENT_TIMEOUT>` | `120` | Seconds the agent may take |
+| `--generate-experiments <DIR>` | none | Write the agent's experiments that pass validation to this folder; never overwrites. Needs `--agent` |
 
 ## tumult agents
 
-List agent CLI adapters and their detected state: name, installed, version, auth detail, and an install hint when the binary is missing.
+`tumult agents` lists the agent command lines (`claude-code`, `codex`):
+installed or not, version and sign-in state, with an install hint when one
+is missing. It has no flags. `CLAUDE_CODE_BIN` and `CODEX_BIN` point at a
+binary that is not on the `PATH`.
 
-```
-tumult agents
-```
+## tumult agentic
 
-```
-ADAPTER        INSTALLED  VERSION    DETAIL
-claude-code    yes        2.0.13     Authenticated via ANTHROPIC_API_KEY.
-codex          no         -          Codex CLI not found on PATH. Install with: npm i -g @openai/codex
-```
+`tumult agentic <SUBCOMMAND>` runs fault scenarios for AI agents: on fixed
+local fixtures, or through a proxy on live model traffic. See the
+[Agentic quickstart](agentic-quickstart.md).
 
-Binary resolution honors the `CLAUDE_CODE_BIN` / `CODEX_BIN` env overrides.
+| Subcommand | Flags (default) | What it does |
+|---|---|---|
+| `list-packs` | | List the bundled scenario packs |
+| `smoke` | `--journal` (`target/agentic/smoke-journal.toon`) | Run the local smoke test |
+| `run` | `--scenario` (`malformed-json-recovery`), `--journal` (`target/agentic/run-journal.toon`) | Run a scenario pack on local fixtures |
+| `trajectory` | `--pack` (`rag-grounding-failure`), `--journal` (`target/agentic/trajectory-journal.toon`) | Fault one step of a multi-turn trajectory and check its contracts. No network |
+| `replay` | `--fixture` (`examples/agentic/malformed-json-recovery.fixture.json`), `--journal` (`target/agentic/replay-journal.toon`) | Check a replay fixture |
+| `proxy` | `--listen` (`127.0.0.1:8080`), `--upstream` (`https://api.anthropic.com`), `--scenario` (`malformed-json-recovery`), `--journal`, `--seed` (`1`), `--client` (`unknown`) | Stand between an agent and its model, and inject the pack's faults |
+| `run-live` | `--prompt`, `--scenario` (`malformed-json-recovery`), `--base-url` (`http://127.0.0.1:8080`), `--otlp`, `--client` (`claude-code`) | Run `claude -p` through the proxy with Tumult as the trace root, and check the pack's contracts |
+
+## tumult gameday
+
+`tumult gameday <SUBCOMMAND>` runs many experiments as one campaign under a
+shared load, and scores it. A schedule of the daemon runs registered
+experiments only. To run a GameDay on a timer, use cron or a systemd timer
+([Scheduling](scheduling.md#without-the-daemon)).
+
+| Subcommand | Flags | What it does |
+|---|---|---|
+| `create <NAME>` | `--experiments <EXPERIMENTS>` (comma-separated), `--load` (`k6`, `oha` or `none`), `--load-script <LOAD_SCRIPT>`, `--load-vus <LOAD_VUS>`, `--framework` (`dora`, `nis2`, `pci-dss`, `iso-22301`, `iso-27001`, `soc2` or `basel-iii`) | Write a `.gameday.toon` file from experiment files |
+| `run <GAMEDAY>` | `--force` | Run every experiment of the GameDay. `--force` overwrites the journal of an earlier run |
+| `analyze <GAMEDAY>` | | Sum up a finished GameDay from the journals next to it |
+
+`tumult gameday run` writes its journal, then exits `0` when the GameDay is
+`COMPLIANT` and `1` when it is `PARTIAL`, `NON-COMPLIANT` or could not run.
 
 ## tumult mcp serve
 
-Start the MCP (Model Context Protocol) server from the main `tumult` binary. This is the way to start the server on a host: the release archives ship `tumult`, not `tumult-mcp`. The server runs in the same process.
+`tumult mcp serve [OPTIONS]` starts the MCP server, so an AI agent can call
+Tumult as tools. The release archives ship this command. Roles, TLS and
+the service files are in [Production deployment](production-deployment.md).
 
-```
-tumult mcp serve                                    # stdio (IDE integration)
-tumult mcp serve --transport http --port 3100       # Streamable HTTP (containers, CI/CD)
-tumult mcp serve --transport http --token my-secret # require bearer auth
-```
-
-| Option | Description |
-|--------|-------------|
-| `--transport <stdio\|http>` | Transport mode (default: `stdio`) |
-| `--host <addr>` | Bind address for HTTP transport and health endpoint (default: `127.0.0.1`; a non-loopback bind such as `0.0.0.0` requires `--token`) |
-| `--port <port>` | Port for the HTTP transport (default: `3100`) |
-| `--health-port <port>` | Port for the `/health` endpoint (default: `port + 1`) |
-| `--token <token>` | Require this bearer token on every request (sets `TUMULT_MCP_TOKEN`, mapped to the `operator` role) |
-| `--auth-config <path>` | TOML auth config granting per-token roles (viewer/operator); overrides `--token` (sets `TUMULT_MCP_AUTH_CONFIG`) |
-
-The exposed tools, authentication, and data model are identical to the standalone binary documented next.
+| Flag | Default | What it does |
+|---|---|---|
+| `--transport <TRANSPORT>` | `stdio` | `stdio` for a local agent, `http` for the network |
+| `--host <HOST>` | `127.0.0.1` | Bind address. Another address needs `--token` or `--auth-config` |
+| `--port <PORT>` | `3100` | Port of the HTTP transport |
+| `--health-port <HEALTH_PORT>` | port + 1 | Port of `GET /health` |
+| `--token <TOKEN>` | none | Require this bearer token (the `operator` role) |
+| `--auth-config <AUTH_CONFIG>` | none | TOML file that gives each token a role; wins over `--token` |
 
 ## tumult-mcp
 
-Start the MCP (Model Context Protocol) server: a separate binary using stdio by default or Streamable HTTP. Equivalent to `tumult mcp serve`, with the same options. It is in the container images and in a build from source, not in the release archives.
-
-```
-tumult-mcp                                # stdio (IDE integration)
-tumult-mcp --transport http --port 3100   # Streamable HTTP (containers, CI/CD)
-```
-
-Exposes 40 tools to AI assistants, grouped by area:
+`tumult-mcp [OPTIONS]` is a separate binary with the same server and the
+same flags as `tumult mcp serve`. It is in the container images and in a
+build from source, not in the release archives. It offers 40 tools; the
+[MCP guide](mcp-guide.md) explains each one.
 
 | Area | Tools |
 |---|---|
@@ -547,245 +335,138 @@ Exposes 40 tools to AI assistants, grouped by area:
 | Autopilot | `tumult_autopilot_run`, `tumult_autopilot_status`, `tumult_autopilot_respond`, `tumult_autopilot_export`, `tumult_autopilot_notify` |
 | Access | `tumult_whoami` |
 
-Every tool carries MCP tool annotations (`readOnlyHint` / `destructiveHint` / `idempotentHint` / `openWorldHint`), 30 tools return `structuredContent` with advertised output schemas, and workspace files are served as `tumult://journal|experiment|gameday/{file}` resources. The four destructive-annotated tools are `tumult_run_experiment`, `tumult_gameday_run`, `tumult_autopilot_run`, and `tumult_autopilot_respond`. See the [MCP Guide](mcp-guide.md) for the full data model.
-
-Tool failures are returned with `isError: true` per the MCP specification. Authentication and rate-limit rejections are reported as such — not as "Unknown tool".
-
-### Authentication
-
-Set `TUMULT_MCP_TOKEN` to require bearer token auth on all tool calls. If not set, the server runs without authentication (log warning emitted).
-
-```bash
-TUMULT_MCP_TOKEN=my-secret tumult mcp serve
-```
-
-Callers must pass `Authorization: Bearer my-secret` in MCP request metadata.
-
 ## tumult chaosgraph
 
-Query the ChaosGraph knowledge graph — the typed node/edge model over accumulated chaos data that also backs the `chaosgraph_*` MCP tools. These commands read the analytics store directly, so an operator can explore the graph without an MCP client.
+`tumult chaosgraph <SUBCOMMAND>` queries the graph of experiments, faults,
+services and journals in the store. Each subcommand takes `--format`
+(`text` or `json`, default `text`) and `--store <STORE>`. See
+[ChaosGraph](chaosgraph.md).
 
-```
-tumult chaosgraph query --kind <kind> [--filter <substr>]
-tumult chaosgraph neighbors --node <id> [--rel <rel>] [--depth <n>]
-tumult chaosgraph coverage-gaps [--framework <fw>] [--domain <plugin>]
-```
-
-| Option | Description |
-|--------|-------------|
-| `--kind <kind>` | Node kind to list: `experiment`, `fault`, `service`, `journal`, … |
-| `--filter <substr>` | Case-insensitive label substring filter (query) |
-| `--node <id>` | Node id to center on, e.g. `exp:My experiment` (neighbors) |
-| `--rel <rel>` | Restrict traversal to one relation, e.g. `injects`, `targets` (neighbors) |
-| `--depth <n>` | Traversal depth in hops (neighbors, default `1`) |
-| `--framework <fw>` | Annotate gaps with a framework's still-unevidenced articles (coverage-gaps) |
-| `--domain <plugin>` | Filter gaps to a fault domain / plugin (coverage-gaps) |
-| `--refresh` | Also persist the derived gap sub-graph into the store so `chaosgraph query/neighbors` can navigate it — takes a write lock, so it conflicts with a running MCP server on the same store (coverage-gaps) |
-| `--format <text\|json>` | Output format (all; default `text`) |
-| `--store <path>` | Analytics store path (all; default `~/.tumult/lake.duckdb`) |
-
-### Examples
-
-```bash
-# Every fault primitive that has appeared in a run
-tumult chaosgraph query --kind fault
-
-# What one experiment touched — nodes and edges within 1 hop
-tumult chaosgraph neighbors --node "exp:Redis connectivity — verify basic key operations"
-
-# Untested actions, with DORA articles still lacking evidence
-tumult chaosgraph coverage-gaps --framework dora
-
-# Structured output for scripting
-tumult chaosgraph query --kind service --format json
-```
-
-The store must exist (run at least one experiment first); a missing store yields a clean `store not found` error.
-
-## tumult new
-
-Interactive experiment builder: pick a fault (domain → action → args → target → probe → title) and get a validated, ready-to-run experiment. With `--from <template>` it instantiates a curated starter non-interactively.
-
-```
-tumult new [--from <template>] [--set KEY=VALUE]... [--out <path>]
-```
-
-### Examples
-
-```bash
-# Interactive picker
-tumult new
-
-# Instantiate a curated starter with parameter overrides
-tumult new --from postgres-connection-kill --set host=db.internal --out pg-kill.toon
-```
-
-## tumult templates
-
-List the curated starter templates (name, description, params) accepted by `tumult new --from`.
-
-```
-tumult templates
-```
-
-## tumult agentic
-
-Agentic AI fault-injection scenarios and local smoke tests — scenario packs, deterministic fixtures, multi-turn trajectories, and a live-traffic proxy.
-
-```
-tumult agentic <list-packs|smoke|run|trajectory|replay|proxy|run-live>
-```
-
-See the [Agentic Scenarios guide](agentic-scenarios.md) for pack authoring and the [Agentic Observability guide](agentic-observability.md) for trace capture.
-
-## tumult gameday
-
-Coordinated experiment campaigns with resilience scoring and compliance mapping.
-
-```
-tumult gameday <create|run|analyze>
-```
-
-| Subcommand | Description |
-|------------|-------------|
-| `create` | Create a `.gameday.toon` file from experiment paths |
-| `run` | Run all experiments in a GameDay under shared load |
-| `analyze` | Show aggregate analysis of a completed GameDay |
-
-`tumult gameday run` writes its journal first and then exits with a code that says how the GameDay went.
-
-| Code | Meaning |
-|------|---------|
-| 0 | The GameDay is `COMPLIANT` |
-| 1 | The GameDay is `PARTIAL` or `NON-COMPLIANT`, or it could not run |
-
-Before 3.0.2 the command exited with 0 for every GameDay that wrote a journal.
-
-`tumult gameday run` keeps the journal of an earlier run (`<name>.gameday.journal.toon`): it stops before the first experiment unless you pass `--force`, as `tumult run` does.
-
-See the [Experiment Scheduling guide](scheduling.md) for recurring GameDays.
+| Subcommand | Flags (default) | What it does |
+|---|---|---|
+| `query` | `--kind <KIND>`, `--filter <FILTER>` | List the nodes of one kind, such as `experiment`, `fault`, `service` or `journal`; the filter matches the label, any case |
+| `neighbors` | `--node <NODE>`, `--rel <REL>`, `--depth` (`1`) | Show the nodes around one node, such as `exp:My experiment`, along one relation when `--rel` is given |
+| `coverage-gaps` | `--framework <FRAMEWORK>`, `--domain <DOMAIN>`, `--refresh` | List actions no tested run has used. `--refresh` also writes the gaps into the store, which takes the write lock |
 
 ## tumult topology
 
-Declared service topology, compliance lineage, and injection recommendations over the analytics store.
+`tumult topology <SUBCOMMAND>` handles the declared service topology, the
+compliance lineage and the next faults to inject. Each subcommand except
+`discover-k8s` takes `--store <STORE>`. See
+[ChaosGraph and topology](chaosgraph.md).
 
-```
-tumult topology <import|discover-k8s|map|lineage|recommend>
-```
-
-| Subcommand | Description |
-|------------|-------------|
-| `import` | Import a declared topology TOML (services + `depends_on`) into the store |
-| `discover-k8s` | Propose a topology TOML from a live cluster (never writes the store) |
-| `map` | Render the compliance-aware service map (text, Mermaid, or JSON) |
-| `lineage` | Show the (article × service) compliance lineage matrix |
-| `recommend` | Rank the next most valuable fault injections, with reasons |
-
-See the [Topology guide](topology.md).
+| Subcommand | Flags (default) | What it does |
+|---|---|---|
+| `import <PATH>` | | Read a topology TOML (services and `depends_on`) into the store |
+| `discover-k8s` | `--namespace` (repeat; all but `kube-system`), `--output <OUTPUT>` | Propose a topology TOML from the Services of a live cluster. Never writes the store |
+| `map` | `--framework`, `--control`, `--format` (`text`, or `mermaid`, `json`), `--no-recommend`, `--limit` (`3`) | Draw the service map with its compliance state |
+| `lineage` | `--framework`, `--control`, `--service`, `--format` (`text`, or `json`) | Show which service gives evidence for which article |
+| `recommend` | `--framework`, `--limit` (`3`), `--format` (`text`, or `json`) | Rank the next fault injections, with reasons |
 
 ## tumult autopilot
 
-Policy-gated autopilot: decide, record, and (only when told to) enact the next compliance-driven fault injections. Audit-before-act: decisions are persisted before anything runs.
+`tumult autopilot <SUBCOMMAND>` decides the next faults by policy and
+records each decision before anything runs. Nothing is injected without
+`--execute`. Each subcommand takes `--store <STORE>`. See
+[Autopilot](autopilot.md).
 
-```
-tumult autopilot <once|status|approve|deny|notify-change|export>
-```
-
-| Subcommand | Description |
-|------------|-------------|
-| `once` | Run one pass of the decision loop (without `--execute` nothing is injected) |
-| `status` | List recorded decisions with their latest lifecycle event |
-| `approve` | Approve a proposed decision — its playbook runs only if the re-gate now answers enact |
-| `deny` | Deny a proposed decision — records veto feedback |
-| `notify-change` | Record a deploy/config change event against a service |
-| `export` | Export the decision and event tables as Parquet files |
-
-See the [Autopilot guide](autopilot.md).
+| Subcommand | Flags (default) | What it does |
+|---|---|---|
+| `once` | `--policy <POLICY>`, `--execute`, `--limit` (`3`, at most `10`) | One pass: gate the candidates and record each decision |
+| `status` | `--verdict` (`enact`, `downgrade`, `propose` or `veto`), `--limit` (`20`), `--format` (`text`, or `json`) | List the decisions with their latest event |
+| `approve <ID>` | `--policy <POLICY>` | Approve a proposal. It is gated again first, and runs only if that answers enact |
+| `deny <ID>` | `--reason <REASON>` | Deny a proposal and record why |
+| `notify-change` | `--service <SERVICE>`, `--source` (`manual`), `--detail <DETAIL>` | Record a deploy or config change; the next pass treats that service's evidence as out of date |
+| `export <DIR>` | | Write the decision and event tables as Parquet |
 
 ## tumult gate
 
-Ask the daemon's CI gate (`GET /api/gate/{target}`) for a target's resilience verdict and exit non-zero when it does not pass. Meant for a pipeline step before promotion.
+`tumult gate <TARGET> [OPTIONS]` asks the daemon whether a target may be
+promoted (`GET /api/gate/{target}`). Use it as a pipeline step; CI
+templates are in `deploy/ci/`.
 
 ```bash
-export TUMULT_DAEMON_URL=http://tumultd.internal:4318
-export TUMULT_DAEMON_TOKEN=kro_...   # viewer role is enough
+export TUMULT_DAEMON_URL=https://tumultd.internal:4318
+export TUMULT_DAEMON_TOKEN=kro_...   # a viewer token is enough
 tumult gate payments-api --min-score 70 --max-age-days 30 --env prod
 ```
 
-| Flag | Description |
-|------|-------------|
-| `--min-score <0-100>` | Score floor (daemon default 70, the `good` band) |
-| `--max-age-days <n>` | Evidence older than this is stale (daemon default 30) |
-| `--env <name>` | Restrict the verdict to one environment (403 outside a scoped token's environments) |
-| `--daemon-url <url>` | Overrides `TUMULT_DAEMON_URL` |
-| `--fail-on fail\|warn\|never` | Which verdicts exit non-zero (default `fail`) |
-| `--json` | Print the daemon's JSON answer |
+| Flag | Default | What it does |
+|---|---|---|
+| `--min-score <MIN_SCORE>` | `70` (daemon) | Lowest score that passes, 0 to 100 |
+| `--max-age-days <MAX_AGE_DAYS>` | `30` (daemon) | Evidence older than this is stale |
+| `--env <ENV>` | none | One environment only |
+| `--daemon-url <DAEMON_URL>` | `TUMULT_DAEMON_URL` | The daemon |
+| `--fail-on <FAIL_ON>` | `fail` | `fail`, `warn` or `never`: which verdicts exit non-zero |
+| `--json` | off | Print the daemon's JSON answer |
 
-Verdicts: `pass` (score at or above the floor, fresh evidence, no failing experiment), `warn` (stale evidence or a failed experiment on the latest run), `fail` (below the floor or no evidence). An unknown target is an error, never a silent pass. Pipeline templates for GitHub Actions and GitLab CI live in `deploy/ci/`.
+The verdict is `fail` below the score or with no run, `warn` on stale
+evidence or a failed experiment, and `pass` otherwise. The command exits
+`0` when the verdict passes `--fail-on`, and `1` when it does not or when
+the daemon answers with an error, such as for an unknown target.
 
 ## tumult perf
 
-Ask the daemon for a target's performance regression verdict (`GET /api/perf/{target}`; with `--store`, `POST /api/perf/{target}/verdicts`): the latency samples of two of its `service.version`s inside one environment — by default the two deployed last — compared with a bootstrap confidence interval over whole runs, after what became of the requests. Exits 3 on a regression and, by default, 4 when the evidence gives no verdict. Meant for the pipeline step after a build has been deployed and exercised.
+`tumult perf <TARGET> [OPTIONS]` asks the daemon whether the latest build
+of a target is slower than the one before (`GET /api/perf/{target}`). Use
+it after a build is deployed and under load. The rules are in
+[Performance regression](performance-regression.md).
 
 ```bash
-export TUMULT_DAEMON_URL=http://tumultd.internal:4318
-export TUMULT_DAEMON_TOKEN=kro_...   # viewer reads; --store needs operator
 tumult perf checkout --quantile p95 --margin-pct 5 --env staging --store
 ```
 
-| Flag | Description |
-|------|-------------|
-| `--probe <series>` | The `probe_samples` series compared (daemon default `load.latency_p95_ms`) |
-| `--quantile p50\|p95\|p99` | Quantile the verdict is keyed on (daemon default p95) |
-| `--min-samples <n>` | Fewer samples on either side is inconclusive (daemon default 20; the daemon also asks for three runs a side) |
-| `--min-runs <n>` | Fewer runs with samples on either side is inconclusive (daemon default 3; from 1 to 1000). An interval from fewer than 5 runs a side says so in the headline and among the reasons |
-| `--seed <n>` | Seed of the resampling; the same runs and seed give the same interval (daemon default fixed) |
-| `--margin-pct <n>` | Noise margin as a percentage of the baseline quantile (daemon default 5) |
-| `--env <name>` | The environment the verdict is for, matched exactly (403 outside a scoped token's environments; 404 when the target has no telemetry tagged with it). Required when the target has versions in several environments and the named versions do not single one out |
-| `--candidate <version>` | The version judged, instead of the one deployed latest. At most 128 characters, no control characters |
-| `--baseline <version>` | The version compared against, instead of the one deployed just before the candidate. Same bounds |
-| `--range <span>` | How far back runs and samples are read, such as `30d` or `12h` (daemon default `30d`). The order of the versions does not depend on it |
-| `--include partial` | Keep the latency samples of aborted and truncated runs, which are left out by default |
-| `--store` | Append the verdict to the daemon's `perf_verdicts` history (`POST`, operator role); without it the command only reads. A retry with the same evidence appends nothing and still counts as stored. Exits non-zero when the daemon did not store, whatever `--fail-on` says |
-| `--daemon-url <url>` | Overrides `TUMULT_DAEMON_URL` |
-| `--fail-on <verdicts>` | Which verdicts exit non-zero, comma-separated: `regressed`, `inconclusive`, or `never` alone (default `regressed,inconclusive`). Given without `--candidate`, the command warns on stderr that it gates on the version deployed latest |
-| `--json` | Print the daemon's JSON answer |
+| Flag | Default | What it does |
+|---|---|---|
+| `--probe <PROBE>` | `load.latency_p95_ms` (daemon) | The probe series compared |
+| `--quantile <QUANTILE>` | `p95` (daemon) | `p50`, `p95` or `p99` |
+| `--min-samples <MIN_SAMPLES>` | `20` (daemon) | Fewer samples on a side is inconclusive |
+| `--min-runs <MIN_RUNS>` | `3` (daemon) | Fewer runs on a side is inconclusive; 1 to 1000 |
+| `--seed <SEED>` | fixed (daemon) | Seed of the resampling; the same runs and seed give the same answer |
+| `--margin-pct <MARGIN_PCT>` | `5` (daemon) | Noise margin, in percent of the baseline |
+| `--env <ENV>` | none | The environment. Needed when the target has versions in more than one |
+| `--baseline <BASELINE>` | the version before the candidate | The version compared against |
+| `--candidate <CANDIDATE>` | the version deployed last | The version judged |
+| `--store` | off | Save the verdict in the daemon (operator role) |
+| `--daemon-url <DAEMON_URL>` | `TUMULT_DAEMON_URL` | The daemon |
+| `--range <RANGE>` | `30d` (daemon) | How far back samples are read, such as `12h` |
+| `--include <INCLUDE>` | none | `partial` also counts aborted and cut runs |
+| `--fail-on <FAIL_ON>` | `regressed,inconclusive` | Which verdicts exit non-zero, comma-separated; `never` alone always exits 0 |
+| `--json` | off | Print the daemon's JSON answer |
 
 | Exit code | Meaning |
-|-----------|---------|
+|---|---|
 | `0` | `improved` or `unchanged`, or a verdict `--fail-on` lets pass |
-| `1` | The command failed: daemon unreachable, an HTTP error, `--store` that did not store, or a verdict this build does not know |
-| `2` | Usage error |
+| `1` | The command failed, or `--store` did not store |
+| `2` | Wrong flags |
 | `3` | `regressed` |
 | `4` | `inconclusive` |
 
-**Behaviour change.** The default was `--fail-on regressed`, under which `inconclusive` exited 0 and a regression exited 1. A pipeline that relied on that now fails on `inconclusive` with exit 4 and on a regression with exit 3. Pass `--fail-on regressed` to let `inconclusive` through again; a gate that passes because nothing could be measured is seldom what a pipeline wants.
-
-Verdicts: `improved`, `unchanged`, `regressed` (slower beyond the margin, a failure share above the baseline's, or a candidate that left more than a tenth of its load windows unanswered while the baseline did not), `inconclusive` (fewer than three runs or twenty samples on a side, one version only, an interval too wide to tell, a significant shift whose size against the margin is unresolved, a baseline that lost more than a tenth of its load windows to silence, or a result that rests on a latency censored at the request timeout). With `--store` the verdict is appended to the lake's `perf_verdicts` table. See the [Performance Regression guide](performance-regression.md) for the rules.
-
 ## tumult tui
 
-Open the interactive analytics TUI over the store (read-only dashboard).
+`tumult tui [OPTIONS]` opens a read-only dashboard of the store in the
+terminal. `tumult dashboard` is the same command.
 
-```
-tumult tui [--store <path>] [--refresh-secs <n>]
-```
+| Flag | Default | What it does |
+|---|---|---|
+| `--store <STORE>` | the store | Store to read |
+| `--refresh-secs <REFRESH_SECS>` | `2` | Seconds between refreshes, at least 1 |
 
-## Environment Variables
+## Environment variables
 
-| Variable | Description |
-|----------|-------------|
-| `TUMULT_PLUGIN_PATH` | Additional plugin search paths (colon-separated) |
-| `TUMULT_LAKE_PATH` | Path of the persistent store (default: `~/.tumult/lake.duckdb`) |
-| `TUMULT_OTEL_ENABLED` | Enable/disable OTel (default: `true`) |
-| `TUMULT_OTEL_CONSOLE` | Print spans to console (default: `false`) |
-| `RUST_LOG` | Tracing filter. When unset **and** no OTLP endpoint is configured, the CLI defaults it to `warn` to keep interactive output clean; set it explicitly (e.g. `info`) to see audit/telemetry logs |
-| `TUMULT_MCP_TOKEN` | Bearer token for MCP server authentication |
-| `TUMULT_DAEMON_URL` | Daemon URL (e.g. `http://localhost:4318`) — `tumult run` POSTs journals to the daemon's `/api/import/journal` instead of writing the store directly (see Auto-Ingest under `tumult run`) |
-| `TUMULT_DAEMON_TOKEN` | `kro_...` API token sent as `Authorization: Bearer` on daemon journal POSTs |
-| `CLAUDE_CODE_BIN` | Explicit path to the Claude Code binary for `recommend --agent` / `agents` |
-| `CODEX_BIN` | Explicit path to the Codex binary for `recommend --agent` / `agents` |
-| `TUMULT_CLICKHOUSE_URL` | Deprecated: `tumult run` writes to ClickHouse, not to the store. See `tumult store` |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP endpoint URL |
-| `OTEL_SERVICE_NAME` | Service name for telemetry (default: `tumult`) |
-| `DATABASE_HOST` / custom | Resolved via `configuration` blocks in experiment |
+| Variable | What it does |
+|---|---|
+| `TUMULT_LAKE_PATH` | Path of the store. Default `~/.tumult/lake.duckdb` |
+| `TUMULT_PLUGIN_PATH` | More script plugin folders, split by `:` |
+| `TUMULT_DAEMON_URL` | Daemon for `run`, `gate` and `perf`, such as `http://localhost:4318` |
+| `TUMULT_DAEMON_TOKEN` | `kro_` API token sent to that daemon |
+| `TUMULT_TRACE_UI_BASE` | Default of `report --trace-ui-base` |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | Where traces, metrics and logs go. Unset: they are not sent |
+| `OTEL_SERVICE_NAME` | Service name of the telemetry. Default `tumult` |
+| `TUMULT_OTEL_ENABLED` | `false` or `0` turns telemetry off. Default `true` |
+| `TUMULT_OTEL_CONSOLE` | `true` also prints spans to the console. Default `false` |
+| `RUST_LOG`, `TUMULT_LOG_FORMAT` | Log level and format; see [Logging](logging.md) |
+| `TUMULT_MCP_TOKEN`, `TUMULT_MCP_AUTH_CONFIG` | Auth of the MCP server; `--token` and `--auth-config` set them |
+| `CLAUDE_CODE_BIN`, `CODEX_BIN` | Path of an agent binary for `recommend` and `agents` |
+| `TUMULT_CLICKHOUSE_URL` | Deprecated: `run` writes to ClickHouse instead of the store |
+| Your own names | Read by the `configuration` and `secrets` blocks of an experiment |

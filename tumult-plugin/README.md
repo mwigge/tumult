@@ -1,22 +1,29 @@
 # tumult-plugin
 
-Plugin system for the Tumult resilience intelligence platform -- define and load external actions and probes.
+The plugin system of Tumult. It finds script plugins on disk, runs their
+scripts, and defines the trait that native plugins implement. To write a
+script plugin, read [Write a plugin](../docs/plugins/authoring-guide.md).
 
-## Key Types
+## Key types
 
-- `NativeExecutor` -- trait for implementing custom chaos actions and probes
-- `discovery` -- discovers and loads script plugins (`plugin.toon`)
-- `NativeError` -- error result from a plugin
+| Item | What it does |
+|---|---|
+| `NativeExecutor` | The trait of a native plugin: a name, a list of functions, and `execute` |
+| `NativeExecutorRegistry` | Dispatches `plugin::function` to the executor that owns it |
+| `ScriptPluginManifest` | The parsed `plugin.toon` of a script plugin |
+| `discovery` | Finds script plugins in `./plugins`, `~/.tumult/plugins` and `TUMULT_PLUGIN_PATH` |
+| `executor` | Runs a script with `/bin/sh`, its arguments as `TUMULT_*` variables, with a timeout |
+| `NativeError` | The error of a native plugin call |
 
-## Usage
+## A native plugin
 
 ```rust
 use tumult_plugin::{NativeArgs, NativeError, NativeExecutor};
 
-struct MyAction;
+struct MyPlugin;
 
 #[async_trait::async_trait(?Send)]
-impl NativeExecutor for MyAction {
+impl NativeExecutor for MyPlugin {
     fn name(&self) -> &'static str {
         "my-plugin"
     }
@@ -26,11 +33,11 @@ impl NativeExecutor for MyAction {
     }
 
     async fn execute(&self, function: &str, args: &NativeArgs) -> Result<String, NativeError> {
-        // custom chaos logic
+        let _ = (function, args); // inject the fault here
+        Ok("done".to_string())
     }
 }
 ```
 
-## More Information
-
-See the [main README](../README.md) for project overview and setup.
+Register it in the native registry of `tumult-exec` (`tumult-exec/src/native.rs`),
+and `tumult discover` and the runner both see it.

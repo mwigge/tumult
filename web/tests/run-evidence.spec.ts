@@ -377,6 +377,36 @@ test('the charts of the run follow the theme', async ({ page }) => {
     await expect.poll(colour).toBe('#c0392b');
 });
 
+test('the charts of the run are drawn in the colours of the light theme on a direct load', async ({
+    page,
+}) => {
+    await page.addInitScript(() => localStorage.setItem('tumult.theme', 'light'));
+    await open(page, FULL);
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+    const colours = () =>
+        page.evaluate(() => {
+            type Option = {
+                tooltip?: { backgroundColor?: string }[];
+                series?: { data?: { itemStyle?: { color?: string } }[] }[];
+            };
+            const w = window as Window & { __tumultCharts?: Record<string, unknown> };
+            const of = (id: string) => w.__tumultCharts?.[id] as Option | undefined;
+            return {
+                latency: of('run-load-latency')?.tooltip?.[0]?.backgroundColor,
+                throughput: of('run-load-throughput')?.tooltip?.[0]?.backgroundColor,
+                samples: of('run-probe-samples')?.tooltip?.[0]?.backgroundColor,
+                // The sample out of tolerance is drawn in the colour of a failure.
+                failed: of('run-probe-samples')?.series?.[0]?.data?.[2]?.itemStyle?.color,
+            };
+        });
+    await expect.poll(colours).toEqual({
+        latency: '#ffffff',
+        throughput: '#ffffff',
+        samples: '#ffffff',
+        failed: '#c0392b',
+    });
+});
+
 test('a run without a steady state, an objective, a load or a sample says so', async ({ page }) => {
     await open(page, NOTHING);
 

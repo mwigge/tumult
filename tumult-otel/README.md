@@ -1,24 +1,21 @@
 # tumult-otel
 
-OpenTelemetry instrumentation for the Tumult resilience intelligence platform -- traces, metrics, and logs for experiment observability.
+OpenTelemetry for Tumult: the traces, metrics and logs of a run.
 
-## Key Types
+## Key types
 
-- `TelemetryConfig` -- configures OTLP exporters and resource attributes
-- `TumultTelemetry::new` -- initializes the OpenTelemetry SDK with tracing bridge
-- `TumultTelemetry::shutdown` -- flushes and shuts down exporters
+- `TelemetryConfig`: the OTLP exporters and resource attributes, read from the environment
+- `TumultTelemetry::new`: starts the OpenTelemetry SDK with the tracing bridge
+- `TumultTelemetry::shutdown`: flushes and stops the exporters
 
-## Usage
+## Use it from Rust
 
 ```rust
 use tumult_otel::{TelemetryConfig, TumultTelemetry};
 
-let config = TelemetryConfig::from_env();
-let telemetry = TumultTelemetry::new(config);
-// spans and metrics are now exported via OTLP
+let telemetry = TumultTelemetry::new(TelemetryConfig::from_env());
+// spans and metrics now go out over OTLP
 telemetry.shutdown();
 ```
 
-## More Information
-
-See the [main README](../README.md) for project overview and setup.
+Where to send the data: [Observability setup](../docs/guides/observability-setup.md).

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import re
+import subprocess
 import sys
 from pathlib import Path
 from urllib.parse import unquote
@@ -22,8 +23,135 @@ DOC_FILES = (
 )
 
 
+# Paths the docs name that git does not hold: a build or the user makes them.
+GENERATED_PATHS = {
+    "web/build": "the build of the web UI, made by npm --prefix web run build",
+    "chaos-lab/.env": "the file of local overrides that the user writes",
+}
+# Pages that record the past: they name paths that were true at their date.
+DATED = ("docs/releases/", "docs/blog/")
+HEADING = re.compile(r"^#{1,6}\s+(.+?)(?:\s+#+)?\s*$")
+HTML_ANCHOR = re.compile(r"""\b(?:id|name)=["']([^"']+)["']""")
+ANCHOR_LINK = re.compile(r"(?<!!)\[[^]]*\]\(([^)\s#]*)#([^)\s]+)\)")
+CODE_SPAN = re.compile(r"`[^`]*`")
+BACKTICKED = re.compile(r"`([^`\s]+)`")
+LINE_SUFFIX = re.compile(r":\d+(-\d+)?(,\d+)*$")
+
+
 def fail(errors: list[str], path: Path, message: str) -> None:
     errors.append(f"{path.relative_to(ROOT)}: {message}")
+
+
+def repository_files(root: Path) -> list[str]:
+    """Tracked files that are still there, and new files git does not ignore."""
+    out = subprocess.run(
+        ["git", "-C", str(root), "ls-files", "-z", "--cached", "--others"]
+        + ["--exclude-standard"],
+        capture_output=True,
+        check=True,
+    ).stdout.decode("utf-8")
+    names = sorted({name for name in out.split("\0") if name})
+    return [name for name in names if (root / name).is_file()]
+
+
+def prose_lines(text: str) -> list[tuple[int, str]]:
+    """The numbered lines of a page outside its fenced code blocks."""
+    lines, fence = [], False
+    for number, line in enumerate(text.splitlines(), 1):
+        if line.lstrip().startswith(("```", "~~~")):
+            fence = not fence
+            continue
+        if not fence:
+            lines.append((number, line))
+    return lines
+
+
+def slug(heading: str) -> str:
+    """The anchor of a heading, as GitHub and the site make it."""
+    text = re.sub(r"<[^>]+>", "", heading)
+    text = re.sub(r"\[([^]]*)\]\([^)]*\)", r"\1", text)
+    text = re.sub(r"[^\w\- ]", "", text.replace("`", "").strip().lower())
+    return text.replace(" ", "-")
+
+
+def anchors(text: str) -> set[str]:
+    """The headings of a page as anchors, a repeated one with `-1`, `-2`."""
+    found: set[str] = set()
+    seen: dict[str, int] = {}
+    for _, line in prose_lines(text):
+        found.update(HTML_ANCHOR.findall(line))
+        heading = HEADING.match(line)
+        if not heading:
+            continue
+        name = slug(heading[1])
+        count = seen.get(name, 0)
+        seen[name] = count + 1
+        found.add(f"{name}-{count}" if count else name)
+    return found
+
+
+def check_anchors(errors: list[str], root: Path = ROOT) -> None:
+    """Every link to `#anchor` of a markdown page lands on one of its
+    headings: the page itself, or the `.md` page the link names."""
+    pages = [name for name in repository_files(root) if name.endswith(".md")]
+    for page in pages:
+        path = root / page
+        text = path.read_text(encoding="utf-8")
+        for _, line in prose_lines(text):
+            for target, anchor in ANCHOR_LINK.findall(CODE_SPAN.sub("", line)):
+                if target and not target.endswith(".md"):
+                    continue
+                linked = (path.parent / unquote(target)).resolve() if target else path
+                if not linked.is_file():
+                    continue
+                if anchor not in anchors(linked.read_text(encoding="utf-8")):
+                    errors.append(
+                        f"{page}: link to a missing heading: {target}#{anchor}"
+                    )
+
+
+def repository_path(token: str, top: set[str]) -> str | None:
+    """The repository path a backticked token names, or None when it is not
+    one: no `/`, a glob or a placeholder, or a first part that is not a
+    top-level entry of the repository. A line suffix (`:12`) is dropped."""
+    path = LINE_SUFFIX.sub("", token).rstrip("/.,")
+    if "/" not in path or any(c in path for c in "*{}<>$?|"):
+        return None
+    return path if path.split("/", 1)[0] in top else None
+
+
+def check_repo_paths(
+    errors: list[str], root: Path = ROOT, generated: dict[str, str] = GENERATED_PATHS
+) -> None:
+    """Every backticked repository path of a markdown page exists, except in
+    the dated records. A page of a sub-project (`chaos-lab/`) may also name a
+    path from its own folder."""
+    files = repository_files(root)
+    present = set(files)
+    for name in files:
+        parts = name.split("/")
+        present.update("/".join(parts[:end]) for end in range(1, len(parts)))
+    top = {name.split("/", 1)[0] for name in files}
+    named = set()
+    for page in files:
+        dated = page.endswith("CHANGELOG.md") or page.startswith(DATED)
+        if not page.endswith(".md") or dated:
+            continue
+        project = page.split("/", 1)[0] + "/" if "/" in page else ""
+        text = (root / page).read_text(encoding="utf-8")
+        for number, line in enumerate(text.splitlines(), 1):
+            for token in BACKTICKED.findall(line):
+                path = repository_path(token, top)
+                if path is None or path in present or project + path in present:
+                    continue
+                if path in generated:
+                    named.add(path)
+                    continue
+                errors.append(f"{page}:{number}: no such repository path: {token}")
+    for path in sorted(set(generated) - named):
+        errors.append(
+            f"scripts/check-docs.py: GENERATED_PATHS lists {path}, no page names it"
+        )
 
 
 def check_links(errors: list[str]) -> None:
@@ -118,7 +246,7 @@ def check_mcp_inventory(errors: list[str]) -> None:
 def check_stale_claims(errors: list[str]) -> None:
     active = [
         ROOT / "README.md",
-        ROOT / "QUICKSTART.md",
+        ROOT / "docs/get-started/index.md",
         ROOT / "SECURITY.md",
         ROOT / "docs/blog/index.md",
     ]
@@ -191,12 +319,17 @@ def main() -> int:
     check_cli_reference_claims(errors)
     check_blog_tool_counts(errors)
     check_mermaid_accessibility(errors)
+    check_anchors(errors)
+    check_repo_paths(errors)
     if errors:
         print("Documentation checks failed:", file=sys.stderr)
         for error in errors:
             print(f"- {error}", file=sys.stderr)
         return 1
-    print("Documentation checks passed: local links, 27-post index, and MCP inventory.")
+    print(
+        "Documentation checks passed: local links and anchors, repository paths,"
+        " 27-post index, and MCP inventory."
+    )
     return 0
 
 

@@ -2,12 +2,14 @@
 title: "Chaos Without Root: The tumult-net Proxy"
 parent: Blog
 nav_order: 19
-updated: 2026-07-21
+updated: 2026-11-21
 ---
 
 # Chaos Without Root: The tumult-net Proxy
 
 *2026-07-04*
+
+*(Update 2026-11: this post shows the example as it was in 2.0.0. Since 3.0.2 [`examples/net-chaos.toon`](https://github.com/mwigge/tumult/blob/main/examples/net-chaos.toon) also names its `kind` and `target`, and its method ends with a `remove-latency` step that stops the proxy. A run that completes runs no rollback by default.)*
 
 Network chaos has always had a bouncer at the door. `tc netem` wants root. `iptables` wants `NET_ADMIN`. Container-scoped tooling wants a Docker socket. Great tools; but the moment you try to run a latency experiment inside a locked-down CI container, the door closes.
 
