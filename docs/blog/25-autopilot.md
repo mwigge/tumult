@@ -2,12 +2,14 @@
 title: "Autopilot: Decisions With an Audit Trail"
 parent: Blog
 nav_order: 25
-updated: 2026-07-21
+updated: 2026-11-21
 ---
 
 # Autopilot: Decisions With an Audit Trail
 
 *Originally published 2026-07-07; verified against Tumult 2.16.1 on 2026-07-21.*
+
+*(Update 2026-11: since 2.17 an approval does not go straight to a run. It runs the safety gate again on the current state, and the playbook runs only if the answer is enact. The [autopilot guide](../guides/autopilot.md) shows the current flow.)*
 
 Tumult 2.15 introduced an autopilot workflow that turns recommendations into
 recorded decisions. It can propose an experiment, evaluate it against a safety

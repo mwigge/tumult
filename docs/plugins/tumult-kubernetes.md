@@ -4,99 +4,97 @@ parent: Plugins
 nav_order: 4
 ---
 
-# tumult-kubernetes — Kubernetes Chaos
+# tumult-kubernetes
 
-Native Rust plugin using `kube-rs` for Kubernetes chaos engineering. Follows patterns from LitmusChaos, Chaos Mesh, and Chaos Toolkit.
+Break and read Kubernetes objects. This native plugin talks to the API
+server with `kube-rs`, so it needs no `kubectl`.
 
-## Features
+```mermaid
+flowchart LR
+    accTitle: How tumult-kubernetes reaches a cluster
+    accDescr: Tumult calls the Kubernetes API server. Most faults change an object such as a pod, a deployment or a node. The two pod faults add a short-lived ephemeral container to the target pod.
+    step[Step in tumult] -->|kube API| api[API server]
+    api --> objects[Pods, deployments, nodes, policies]
+    api -->|pod faults| eph[Ephemeral container in the pod]
+```
 
-- **Pod deletion** — immediate (SIGKILL) or graceful with configurable grace period
-- **Deployment scaling** — scale to zero, scale down, or scale up
-- **Node drain** — cordon + evict all non-DaemonSet pods
-- **Network policy** — apply/remove network policies to simulate partition
-- **Label selector targeting** — target pods by labels (like Chaos Mesh / LitmusChaos)
-- **Structured probes** — typed status responses as JSON for journal analytics
+Tumult logs in like `kubectl`: with `KUBECONFIG`, with `~/.kube/config`,
+or with the service account of its pod. An OIDC login works through the
+`id-token` in the kubeconfig, which Tumult does not refresh.
 
-## Authentication
+## Faults
 
-Supports these `kube-rs` auth methods:
-- **Kubeconfig** — `~/.kube/config` or `KUBECONFIG` env var
-- **In-cluster** — service account token (for running inside K8s)
-- **OIDC** identity provider tokens, read as the `id-token` of the kubeconfig and not refreshed
-
-## Actions
-
-| Action | Description | Parameters |
-|--------|-------------|------------|
-| `delete_pod` | Delete a specific pod | `namespace`, `name`, `grace_period_seconds` |
-| `scale_deployment` | Scale replicas | `namespace`, `name`, `replicas` |
-| `cordon_node` | Mark node unschedulable | `name` |
-| `uncordon_node` | Mark node schedulable | `name` |
-| `drain_node` | Cordon + evict pods | `name`, `grace_period_seconds` |
-| `apply_network_policy` | Create a network policy | `namespace`, `policy` (NetworkPolicy object) |
-| `delete_network_policy` | Remove a network policy | `namespace`, `name` |
-| `pod_network_latency` | Add egress latency to a pod with an ephemeral `tc netem` container | `namespace`, `pod` or `label_selector`, `delay_ms`, `jitter_ms`, `duration_s`, `iface`, `image` |
-| `pod_stress` | Add CPU or memory stress inside a pod with an ephemeral `stress-ng` container | `namespace`, `pod` or `label_selector`, `cpu_workers` or `mem_bytes`, `duration_s`, `target_container`, `image` |
+| Function | What it does | Arguments |
+|---|---|---|
+| `delete_pod` | Deletes one pod | `namespace`, `name`, `grace_period_seconds` (optional; 0 kills at once) |
+| `scale_deployment` | Sets the number of replicas | `namespace`, `name`, `replicas` |
+| `cordon_node` | Marks a node unschedulable | `name` |
+| `uncordon_node` | Marks it schedulable again | `name` |
+| `drain_node` | Cordons a node and evicts every pod that no DaemonSet owns | `name`, `grace_period_seconds` (optional) |
+| `apply_network_policy` | Creates a network policy | `namespace`, `policy` (a NetworkPolicy object) |
+| `delete_network_policy` | Deletes it | `namespace`, `name` |
+| `pod_network_latency` | Adds latency to the traffic out of a pod | `namespace`, `pod` or `label_selector`, `delay_ms`; optional `jitter_ms` (0), `duration_s` (30), `iface` (`eth0`), `image` |
+| `pod_stress` | Loads the CPU or the memory inside a pod | `namespace`, `pod` or `label_selector`, `cpu_workers` or `mem_bytes`; optional `duration_s` (30), `target_container`, `image` |
 
 ## Probes
 
-| Probe | Description | Returns |
-|-------|-------------|---------|
-| `pod_is_ready` | Is a specific pod ready? | `bool` |
-| `all_pods_ready` | Are all matching pods ready? | `{"total":N,"ready":N}` |
-| `deployment_is_ready` | Deployment replica status | `DeploymentStatus` |
-| `node_status` | Node conditions + schedulability | `NodeStatus` |
-| `service_has_endpoints` | Does service have backends? | `bool` |
-| `count_pods_in_phase` | Count pods in specific phase | `usize` |
+| Function | Arguments | Result |
+|---|---|---|
+| `pod_is_ready` | `namespace`, `name` | `true` or `false` |
+| `all_pods_ready` | `namespace`, `label_selector` | `{"total":3,"ready":3}` |
+| `deployment_is_ready` | `namespace`, `name` | JSON with `desired`, `ready`, `available`, `up_to_date` |
+| `node_status` | `name` | JSON with `ready`, `schedulable` and the conditions |
+| `service_has_endpoints` | `namespace`, `name` | `true` or `false` |
+| `count_pods_in_phase` | `namespace`, `label_selector`, `phase` | A number |
 
-## Example Experiment
+## Example
 
 ```toon
-title: API deployment survives pod deletion
-description: Delete API pods and verify recovery within 30s
-
-tags[2]: kubernetes, resilience
+title: The API keeps its backends when a pod dies
 
 steady_state_hypothesis:
-  title: API deployment is healthy
+  title: The API service has backends
   probes[1]:
-    - name: api-pods-ready
+    - name: api-has-endpoints
       activity_type: probe
       provider:
         type: native
         plugin: tumult-kubernetes
-        function: all_pods_ready
+        function: service_has_endpoints
         arguments:
-          namespace: production
-          label_selector: app=api-server
+          namespace: shop
+          name: api
+      tolerance:
+        type: exact
+        value: true
 
 method[1]:
-  - name: delete-api-pod
+  - name: delete-an-api-pod
     activity_type: action
     provider:
       type: native
       plugin: tumult-kubernetes
       function: delete_pod
       arguments:
-        namespace: production
-        name: api-server-7b8c9d-xk2p1
+        namespace: shop
+        name: api-7b8c9d-xk2p1
         grace_period_seconds: 0
-
-rollbacks[1]:
-  - name: uncordon-if-needed
-    activity_type: action
-    provider:
-      type: native
-      plugin: tumult-kubernetes
-      function: scale_deployment
-      arguments:
-        namespace: production
-        name: api-server
-        replicas: 3
 ```
 
-## Implementation Notes
+The deployment starts a new pod by itself, so this needs no rollback.
 
-- Uses `kube-rs` 4.2 — async-native, no kubectl dependency
-- K8s API version: v1.32 (via `k8s-openapi` feature flag)
-- See ADR-007 for the rationale behind native vs script approach
+## Limits of the pod faults
+
+`pod_network_latency` and `pod_stress` add an ephemeral container to the
+pod, the way `kubectl debug` does. There is no agent to install.
+
+- The cluster must run Kubernetes 1.25 or later.
+- Kubernetes cannot remove an ephemeral container. It ends itself after
+  `duration_s` and stays in the pod as `Terminated` until the pod is
+  replaced.
+- `tc` needs `NET_ADMIN`. A `restricted` PodSecurity profile refuses the
+  latency container, and the step fails.
+- The stress container has its own cgroup. It competes with the target
+  container; it does not fill the limit of that container exactly.
+- The step returns when the API server accepts the container. Watch the
+  effect with probes and traces.

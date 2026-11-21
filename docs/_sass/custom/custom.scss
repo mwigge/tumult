@@ -1,46 +1,228 @@
-// Tumult custom polish — imported last by just-the-docs, after the color
-// scheme. Pure CSS: no JavaScript, no external assets, so offline builds
-// keep working and the theme's accessibility features (skip links, focus
-// rings, reduced-motion handling) are untouched.
+// Tumult layer over the theme: type, space, code, tables, pictures, diagrams
+// and the sidebar, for a light page that is easy to read. Colours come from
+// the colour scheme (_sass/color_schemes/tumult.scss) through the theme's
+// variables: the theme also builds its stock light and dark sheets with this
+// file, so it may only use variables that every scheme sets.
+//
+// GitHub Pages compiles this with Ruby Sass 3: no `@use`, no CSS `min()`,
+// `max()` or `:has()`, no space-separated `rgb()`. The theme sets type sizes
+// with `!important`, so the sizes here need it too.
 
-// Ambient glow over the graphite base — a background image only, so the
-// color scheme's background color is preserved underneath.
-body {
-  background-image: radial-gradient(
-    1200px 480px at 50% -160px,
-    rgba(94, 177, 239, 0.07),
-    rgba(94, 177, 239, 0)
-  );
-  background-repeat: no-repeat;
+// One root size on every screen: the theme drops it to 14px on phones.
+html {
+  font-size: 1rem !important;
 }
 
-// Typography: tighten headings to match the application's compact chrome.
-h1,
-h2,
-h3,
-h4 {
+// Text: 17px, open line height, about 70 characters to a line. Code, tables,
+// pictures and diagrams keep the full column.
+.main-content {
+  font-size: 1.0625rem;
+  line-height: 1.65;
+}
+
+.main-content main > p,
+.main-content main > ul,
+.main-content main > ol,
+.main-content main > dl,
+.main-content main > blockquote,
+.main-content main > h1,
+.main-content main > h2,
+.main-content main > h3,
+.main-content main > h4 {
+  max-width: 40rem;
+}
+
+.main-content li {
+  margin: 0.4em 0;
+}
+
+.main-content main > ul,
+.main-content main > ol {
+  margin-bottom: 1.25em;
+}
+
+a:not([class]) {
+  text-decoration-color: rgba($link-color, 0.35);
+}
+
+a:not([class]):hover {
+  text-decoration-color: $link-color;
+}
+
+// Headings: weight, and room above each section. The landing page sets its
+// own, so only headings straight in the page text are changed.
+.main-content main > h1 {
+  font-size: 1.875rem !important;
+  font-weight: 650;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  margin-bottom: 1rem;
+}
+
+.main-content main > h2:not(.text-delta) {
+  font-size: 1.375rem !important;
+  font-weight: 600;
+  line-height: 1.25;
   letter-spacing: -0.01em;
+  margin-top: 2.5rem;
+  margin-bottom: 0.75rem;
 }
 
-// Code: panel background with a hairline border, rounded like the app UI.
-div.highlight,
-pre.highlight {
-  border: 1px solid #242d36;
-  border-radius: 6px;
+.main-content main > h3 {
+  font-size: 1.1875rem !important;
+  font-weight: 600;
+  line-height: 1.3;
+  margin-top: 2rem;
+  margin-bottom: 0.5rem;
 }
 
-// Tables: replace the default drop shadow with a flat bordered panel.
+.main-content main > h4 {
+  font-size: 1.0625rem !important;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
+  margin-top: 1.75rem;
+  margin-bottom: 0.5rem;
+}
+
+@include mq(sm) {
+  .main-content main > h1 {
+    font-size: 2.25rem !important;
+  }
+
+  .main-content main > h2:not(.text-delta) {
+    font-size: 1.625rem !important;
+    margin-top: 3.25rem;
+  }
+
+  .main-content main > h3 {
+    font-size: 1.25rem !important;
+    margin-top: 2.25rem;
+  }
+}
+
+// Code blocks: one light panel with room inside, 14px text.
+div.highlighter-rouge,
+figure.highlight {
+  margin: 1.25rem 0 1.75rem;
+  border: 1px solid $border-color;
+  border-radius: 8px;
+}
+
+div.highlighter-rouge .highlight,
+figure.highlight pre {
+  background-color: transparent;
+}
+
+div.highlighter-rouge div.highlight,
+figure.highlight pre {
+  padding: 1rem 1.25rem;
+}
+
+div.highlighter-rouge pre.highlight code,
+figure.highlight pre code {
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+
+// A block in a language the highlighter does not know (TOON, PromQL, LogQL)
+// has no panel of its own, so it gets the same one. Mermaid is drawn instead.
+.main-content pre:not(.highlight) > code:not(.language-mermaid) {
+  display: block;
+  margin: 1.25rem 0 1.75rem;
+  padding: 1rem 1.25rem;
+  overflow-x: auto;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: $body-text-color;
+  background-color: $code-background-color;
+  border: 1px solid $border-color;
+  border-radius: 8px;
+}
+
+// Code in a sentence: a little smaller than the text, on the code panel.
+:not(pre, figure) > code {
+  padding: 0.1em 0.35em;
+  font-size: 0.875em;
+  color: $body-heading-color;
+  border-radius: 4px;
+}
+
+// Tables: no column lines and no shadow. Rows split by a hairline, headers
+// on the left, text at the top of the cell. A long name in code may break
+// across lines, so that fewer tables scroll sideways.
 .table-wrapper {
-  border: 1px solid #242d36;
-  border-radius: 6px;
+  margin: 1.5rem 0 2rem;
+  border-radius: 0;
   box-shadow: none;
 }
 
-// Mermaid diagrams sit on the panel background so dark-scheme diagrams
-// keep readable contrast against the page.
+table {
+  border-collapse: collapse;
+}
+
+th,
+td {
+  min-width: 5rem;
+  padding: 0.625rem 0.75rem 0.625rem 0;
+  font-size: 0.875rem !important;
+  line-height: 1.55;
+  text-align: left;
+  vertical-align: top;
+  background-color: transparent;
+  border-bottom: 1px solid $border-color;
+  border-left: 0;
+}
+
+th {
+  font-weight: 600;
+}
+
+td code {
+  overflow-wrap: anywhere;
+}
+
+thead th {
+  border-bottom: 1px solid rgba($body-heading-color, 0.25);
+}
+
+@include mq(sm) {
+  th,
+  td {
+    min-width: 7rem;
+    padding-right: 1.25rem;
+    font-size: 0.9375rem !important;
+  }
+}
+
+// Pictures in the text: a hairline frame, a soft shadow and room around.
+.main-content main > p img {
+  display: block;
+  margin: 1.5rem 0;
+  border: 1px solid $border-color;
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(27, 35, 41, 0.04), 0 8px 24px rgba(27, 35, 41, 0.06);
+}
+
+// Diagrams: Mermaid draws them in place of the code block. Until it has,
+// or if it cannot load, the source scrolls inside its own box.
 .language-mermaid {
-  background-color: #151b21;
-  border: 1px solid #242d36;
-  border-radius: 6px;
-  padding: 1rem;
+  display: block;
+  margin: 1.5rem 0 2rem;
+  overflow-x: auto;
+}
+
+.language-mermaid svg {
+  display: block;
+  margin: 0 auto;
+}
+
+// Sidebar: links in the text colour, the open page in the link colour.
+.site-nav .nav-list .nav-list-item .nav-list-link {
+  color: $body-text-color;
+}
+
+.site-nav .nav-list .nav-list-item .nav-list-link.active,
+.site-nav .nav-list .nav-list-item .nav-list .nav-list-item .nav-list-link.active {
+  color: $link-color;
 }

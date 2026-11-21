@@ -1,88 +1,58 @@
 # tumult-timewarp
 
-Clock-skew and entropy/crypto-skew fault injection for Tumult.
+A script plugin for faults of time and randomness: a skewed clock, a
+certificate or a token that expires, and a random number generator under
+load. Tumult finds it in `plugins/`.
 
-A script plugin (no Rust changes) discovered from `plugins/`. It injects the
-kinds of faults that time drift and RNG starvation cause in real systems:
-expired certs/tokens, failed TLS handshakes, and degraded crypto throughput.
+It runs where Tumult runs (in the demo, the `tumult-mcp` container). A
+step acts on that machine, or on a sibling container through
+`docker exec` when you set `target`.
 
-Runs from any Tumult runner (in the demo, the `tumult-mcp` container). Targets
-can be the runner itself (helper processes) or sibling containers via
-`docker exec` (`TUMULT_TARGET`).
+## Why it does not change the clock
 
-## What this plugin actually does to the clock
+Containers share the clock of the host kernel. A time namespace does not
+give a container its own wall clock, and `date -s` moves the clock of the
+host for every container at once. So the plugin does two safe things
+instead:
 
-Containers in docker-compose **share the host kernel clock**. Two things follow
-that shape every action here:
-
-1. Linux **time namespaces virtualize only `CLOCK_MONOTONIC` / `CLOCK_BOOTTIME`,
-   not `CLOCK_REALTIME`** (wall clock). You cannot give a container its own wall
-   clock with namespaces.
-2. `date -s` needs `CAP_SYS_TIME` and moves the **host** clock — unsafe, usually
-   denied, and it would skew every container at once.
-
-So the realistic per-target wall-clock lever is **libfaketime** (`LD_PRELOAD`),
-which shifts the perceived time of the single process it wraps. Everything else
-in this plugin proves clock-driven *consequences* (cert/token expiry, crypto
-slowdown) without touching any system clock — which is exactly what you want in
-a shared-kernel environment.
+```mermaid
+flowchart TD
+    accTitle: How tumult-timewarp fakes time
+    accDescr: skew-clock wraps one process in libfaketime, so only that process sees a shifted clock. The certificate and token actions feed a verifier a future time, which is what a drifted clock would do. No system clock changes.
+    goal[Make a service see the wrong time] --> one[skew-clock: libfaketime shifts the clock of one process]
+    goal --> feed[cert and token actions: give the verifier a future time]
+    one --> safe[No system clock changes]
+    feed --> safe
+```
 
 ## Actions
 
-| Action | Mechanism | Limit |
+| Action | What it does | Arguments |
 |---|---|---|
-| `skew-clock` | `faketime "+Ns" <cmd>` — per-process wall-clock offset via libfaketime | Affects only the wrapped process; requires `libfaketime` present (on the runner, or in `TUMULT_TARGET`). Not installed in the stock demo image — the action detects this and exits 1 with guidance. |
-| `advance-clock-past-cert-expiry` | Mints a short-lived self-signed cert, then `openssl verify -attime <now>` (valid) vs `-attime <now+skew>` (expired) | Models skew by feeding the verifier a future time — the exact input a drifted clock would give. Requires `openssl`. Writes `cert-result.txt` (`EXPIRED_UNDER_SKEW`). |
-| `token-ttl` | Mints an HMAC (`sha256sum`) bearer token with a short TTL, validates at real now (accept) vs skewed now (reject) | Pure coreutils — most portable. Writes `token-result.txt` (`REJECTED_UNDER_SKEW`). |
-| `entropy-drain` | N background `dd if=/dev/random` reader workers (setsid process groups, `timeout`-bounded) | On kernels ≥ 5.6 the CRNG never blocks, so `entropy_avail` stays ~constant (~256): this is RNG **read/CPU pressure**, not true pool depletion. Genuinely drains only on older kernels. |
-| `rng-pressure` | N background workers generating random bytes in a loop (`openssl rand`, else `/dev/urandom`) | Contention-driven crypto slowdown, not entropy depletion. Measure the effect with `crypto-throughput`. |
-| `stop-entropy-drain` | Rollback: `kill -TERM -<pgid>` on each recorded worker group | Kills the whole worker tree (timeout + reader) as a unit; no orphans. Idempotent. |
-| `restore-clock` | Rollback: removes temp cert/token state | Nothing else to undo — faketime is per-process and no system clock was changed. Idempotent. |
+| `skew-clock` | Runs a command under `faketime`, so it sees a shifted clock. Needs libfaketime on the runner or in `target`; it exits 1 with a hint when it is missing. | `skew_seconds` (3600, may be negative), `faketime_cmd` (`date -u +%s`), `target` |
+| `advance-clock-past-cert-expiry` | Makes a short-lived certificate, then checks it with `openssl verify -attime` now (valid) and at now plus the skew (expired). Writes `cert-result.txt`. | `cert_ttl_seconds` (5), `skew_seconds` (8640000, 100 days) |
+| `token-ttl` | Makes an HMAC token with a short life, then checks it now (accepted) and at a skewed now (refused). Writes `token-result.txt`. | `token_ttl_seconds` (2), `skew_seconds` (3600), `token_secret` |
+| `entropy-drain` | Starts readers of `/dev/random` in the background | `drain_workers` (4), `drain_duration` (60) |
+| `rng-pressure` | Starts workers that make random bytes in a loop | `rng_workers` (4), `rng_duration` (60) |
+| `stop-entropy-drain` | Rollback: stops the workers of the two actions above. Safe to run twice. | |
+| `restore-clock` | Rollback: removes the certificate and token files. Safe to run twice. | |
+
+Every action keeps its files in `tw_state_dir` (`/tmp/tumult-timewarp`).
+On Linux 5.6 and later, reading `/dev/random` never blocks, so
+`entropy-drain` adds read and CPU load but does not empty the pool.
 
 ## Probes
 
-| Probe | Output | Notes |
+| Probe | Result | Arguments |
 |---|---|---|
-| `entropy-available` | integer, `/proc/sys/kernel/random/entropy_avail` | ~256 constant on modern kernels; the correct signal on old ones. |
-| `crypto-throughput` | integer ms to generate `TUMULT_CRYPTO_BYTES` of randomness | Rises under `rng-pressure` / CPU contention. |
-| `clock-offset` | integer seconds `target_epoch − runner_epoch` | 0 when clocks agree (shared kernel), and 0 when `TUMULT_TARGET` is unset; non-zero only when a target process is faketime-skewed. Fails when `docker exec` fails or the target answers no number. |
-
-## Deliberately skipped
-
-- **`docker exec <target> date -s <time>` (host-clock skew).** Rejected: it
-  needs `CAP_SYS_TIME`, is denied for unprivileged demo containers, and when it
-  *does* work it moves the shared host clock — skewing SigNoz, the collector,
-  the runner and every sibling at once. That is not a targeted fault; it is a
-  self-inflicted outage of the whole stack. `skew-clock` (faketime) is the
-  contained substitute.
-- **Time-namespace wall-clock skew (`unshare --time`).** Rejected: time
-  namespaces do not virtualize `CLOCK_REALTIME`, so they cannot skew wall clock
-  at all — only monotonic/boottime, which cert/token/TLS logic does not use.
-
-## Environment variables
-
-Shared: `TUMULT_TW_STATE_DIR` (default `/tmp/tumult-timewarp`), `TUMULT_TARGET`
-(optional container for `docker exec`).
-
-- `skew-clock`: `TUMULT_SKEW_SECONDS` (default 3600, may be negative),
-  `TUMULT_FAKETIME_CMD` (default `date -u +%s`).
-- `advance-clock-past-cert-expiry`: `TUMULT_CERT_TTL_SECONDS` (default 5),
-  `TUMULT_SKEW_SECONDS` (default 8640000 = 100d).
-- `token-ttl`: `TUMULT_TOKEN_TTL_SECONDS` (default 2), `TUMULT_SKEW_SECONDS`
-  (default 3600), `TUMULT_TOKEN_SECRET`.
-- `entropy-drain`: `TUMULT_DRAIN_WORKERS` (default 4), `TUMULT_DRAIN_DURATION`
-  (default 60).
-- `rng-pressure`: `TUMULT_RNG_WORKERS` (default 4), `TUMULT_RNG_DURATION`
-  (default 60).
-- `crypto-throughput`: `TUMULT_CRYPTO_BYTES` (default 33554432 = 32 MiB).
-- `clock-offset`: `TUMULT_TARGET_CMD` (default `date -u +%s`).
+| `entropy-available` | `/proc/sys/kernel/random/entropy_avail`, in bits. About 256 on a modern kernel. | `target` |
+| `crypto-throughput` | Milliseconds to make a fixed amount of random bytes. It rises under `rng-pressure`. | `crypto_bytes` (33554432, 32 MiB) |
+| `clock-offset` | Seconds that the clock of `target` is ahead of the runner. 0 when the clocks agree or `target` is not set. It fails when `docker exec` fails or the target answers no number. | `target`, `target_cmd` (`date -u +%s`) |
 
 ## Demo experiments
 
-- `demo/experiments/demo-timewarp-clock.toon` — clock skew rejects a
-  once-valid token (`token-ttl`), demo-app stays healthy, rollback cleans state.
-- `demo/experiments/demo-timewarp-entropy.toon` — sustained `rng-pressure`;
-  crypto still completes and entropy stays readable (resilience), rollback stops
-  the load.
-
-Both pass `tumult validate` and are designed to run to a clean `Completed`.
+- `demo/experiments/demo-timewarp-clock.toon`: a skewed clock refuses a
+  token that was valid, the demo app stays healthy, and the rollback
+  cleans up.
+- `demo/experiments/demo-timewarp-entropy.toon`: under `rng-pressure`,
+  crypto work still completes and the entropy stays readable.

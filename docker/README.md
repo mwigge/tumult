@@ -1,237 +1,144 @@
-# Tumult Docker Infrastructure
+# Tumult Docker lab
 
-For guided browser lessons with an optional AI tutor, start with the
-[Chaos Lab](../chaos-lab/README.md). It needs only Docker to run the experiments.
+Compose files for a Tumult lab: test targets to break, SigNoz to watch,
+and the Tumult MCP server. For the shortest way in, see
+[Get started](../docs/get-started/index.md). For guided lessons in a
+browser, see the [Chaos Lab](../chaos-lab/README.md).
 
-Four composable bundles for a complete Tumult lab.
+## Images
 
-## Pre-built Images
-
-Published to [GitHub Container Registry](https://github.com/mwigge?tab=packages) on every release:
-
-```bash
-docker pull ghcr.io/mwigge/tumult:latest        # CLI + MCP server
-docker pull ghcr.io/mwigge/tumult-mcp:latest     # MCP server (HTTP entrypoint)
-```
-
-Both images contain `tumult`, `tumult-mcp` and `tumult-net-proxyd`, plus 11
-script plugins, example experiments and GameDay definitions. The repository has
-35 workspace crates; these images do not include `tumultd` or its web UI.
-With the bundled manifests, `tumult discover` lists 16 plugins (11 script and
-5 native) and 91 actions (56 script actions plus 35 native functions, including
-probes). Provider tools, permissions and the host OS determine what can execute.
-The daemon and embedded web UI ship separately as `ghcr.io/mwigge/tumultd:latest`.
-
-## Architecture
-
-```
-┌────────────────────────────────────────────────────────────────────────────┐
-│  ./start.sh all                                                            │
-├──────────────────┬──────────────────┬─────────────────┬────────────────────┤
-│  infra           │  observe         │  tumult         │  aqe               │
-│  (chaos targets) │  (observability) │  (MCP server)   │  (agent fleet)     │
-│                  │                  │                 │                    │
-│  PostgreSQL 16   │  SigNoz UI :3301 │  tumult-mcp     │  Agentic QE Fleet  │
-│  :15432          │                  │  :3100 (HTTP)   │                    │
-│                  │  OTel Collector  │                 │  → tumult-mcp:3100 │
-│  Redis 7         │  :14317 (OTLP)   │  40 MCP tools   │                    │
-│  :16379          │  :18889 (prom)   │  DuckDB store   │                    │
-│  MySQL 8 :13306  │                  │  11 script      │                    │
-│  Kafka 3.8       │  ClickHouse      │  plugins        │                    │
-│  :19092          │  (in SigNoz)     │                 │                    │
-│                  │                  │  91 listed      │                    │
-│  SSH Server      │                  │  actions        │                    │
-│  :12222          │                  │                 │                    │
-└──────────────────┴──────────────────┴─────────────────┴────────────────────┘
-                              │                  │
-                              ▼                  ▼
-                  ┌──────────────────────────────────────┐
-                  │  tumult-e2e Docker network            │
-                  └──────────────────────────────────────┘
-```
-
-## Quick Start
-
-Run these commands from the repository root; `start.sh` is not in `docker/`.
+Each release publishes these to the GitHub Container Registry:
 
 ```bash
-# Required only for the tumultd demo stack (docker-compose.kronika.yml):
-# copy the template and fill in the three KRONIKA_* values.
-cp .env.example .env
-
-# Full e2e environment (chaos targets + observability)
-./start.sh
-
-# Run a chaos experiment with OTel traces
-export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:14317
-tumult run examples/postgres-failover.toon
-
-# View traces in SigNoz
-open http://localhost:3301
-
-# Analyze results
-tumult analyze --all
-
-# Start MCP server for agent access
-export OTEL_EXPORTER_OTLP_ENDPOINT=http://tumult-collector:4317
-./start.sh tumult
-# → http://localhost:3100/mcp
-
-# If aqe was started, stop it separately before removing the network:
-# docker compose -f docker/docker-compose.aqe.yml down
-# Stop infra, observe and tumult (does not stop aqe)
-./start.sh down
+docker pull ghcr.io/mwigge/tumult:latest       # tumult CLI
+docker pull ghcr.io/mwigge/tumult-mcp:latest   # MCP server over HTTP
+docker pull ghcr.io/mwigge/tumultd:latest      # daemon with the Krönika web UI
 ```
 
-The MCP compose file's fallback hostname is `otel-collector`; the observe bundle
-names its collector `tumult-collector`, so set the endpoint as above. The MCP
-and aqe bundles need the `tumult-e2e` network; start infra first. The aqe compose
-file hardcodes `http://otel-collector:4317`, so a host `export` does not reach it;
-add an override file and pass it after the base file:
-
-```yaml
-# docker/docker-compose.aqe.override.yml
-services:
-  agentic-qe:
-    environment:
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://tumult-collector:4317
-```
-
-```bash
-docker compose -f docker/docker-compose.aqe.yml -f docker/docker-compose.aqe.override.yml up -d
-```
-The MCP image is a thin layer over a local `tumult` base when built: pull the published
-image with `docker compose -f docker/docker-compose.tumult.yml pull`, or build
-the base with `docker build -f docker/Dockerfile.tumult -t tumult .` first.
+`tumult` and `tumult-mcp` hold the binaries `tumult`, `tumult-mcp` and
+`tumult-net-proxyd`, the script plugins, the example experiments and the
+GameDay files. `tumult discover` in them lists every plugin. Which faults
+can run depends on the tools, the rights and the system of the host.
 
 ## Bundles
 
-| Bundle | Compose File | Command | What starts |
-|--------|-------------|---------|-------------|
-| **infra** | `docker-compose.yml` | `./start.sh infra` | PG, Redis, MySQL, Kafka, SSH |
-| **observe** | `docker-compose.observability.yml` | `./start.sh observe` | SigNoz + OTel Collector |
-| **tumult** | `docker-compose.tumult.yml` | `./start.sh tumult` | MCP server (Streamable HTTP) |
-| **aqe** | `docker-compose.aqe.yml` | `./start.sh aqe` | Agentic QE Fleet (requires sibling `../agentic-qe` clone) |
+`./start.sh` in the repository root starts the bundles you name:
 
-Combine freely from the repository root: `./start.sh infra observe tumult`.
-`./start.sh all` includes aqe and fails if its sibling clone is missing.
-The daemon demo is separate: `docker compose -f docker/docker-compose.kronika.yml up -d --build`.
-
-## Port Map
-
-Target and collector ports mostly use the `1xxxx` range. SigNoz and MCP use
-the exceptions below. The observe and daemon demo stacks both publish
-`14317`/`14318`; do not start both with their default port mappings.
-
-| Bundle | Service | Port | Purpose |
-|--------|---------|------|---------|
-| infra | PostgreSQL 16 | 15432 | Database chaos target |
-| infra | Redis 7 | 16379 | Cache chaos target |
-| infra | MySQL 8 | 13306 | Database chaos target |
-| infra | Kafka 3.8 (KRaft) | 19092 | Message broker chaos target |
-| infra | SSH Server | 12222 | Remote execution target |
-| observe | SigNoz UI | 3301 | Traces, metrics, logs dashboard |
-| observe | OTel Collector (OTLP) | 14317 | OTLP gRPC ingest |
-| observe | OTel Collector (OTLP HTTP) | 14318 | OTLP HTTP ingest |
-| observe | OTel Collector (Arrow) | 14319 | OTel Arrow gRPC ingest |
-| observe | OTel Collector (Prometheus) | 18889 | Host + APM span metrics |
-| observe | OTel Collector (health) | 13133 | Health check endpoint |
-| observe | OTel Collector (self-telemetry) | 18888 | Collector metrics |
-| observe | SigNoz OTLP | 4317 / 4318 | Direct gRPC / HTTP ingest |
-| tumult | MCP Server (Streamable HTTP) | 3100 | MCP tools for agents |
-| daemon demo | tumultd | 14317 / 14318 | OTLP gRPC / HTTP, web UI and JSON API |
-| classic | Jaeger | 16686 | Trace visualization (opt) |
-| classic | Prometheus | 19090 | Scrape dashboard (opt) |
-| classic | Grafana | 13000 | Dashboards (opt) |
-
-## OTel Data Flow
-
+```mermaid
+flowchart TD
+    accTitle: The bundles of the Docker lab
+    accDescr: The infra bundle holds the targets, the observe bundle holds the OTel Collector and SigNoz, and the tumult bundle holds the MCP server. Tumult runs break the targets and send their spans to the collector, which forwards them to SigNoz. All bundles share the tumult-e2e network.
+    subgraph infra[infra: test targets]
+        targets[PostgreSQL, Redis, MySQL, Kafka, SSH server]
+    end
+    subgraph observe[observe]
+        col[OTel Collector :14317] --> signoz[SigNoz :3301]
+    end
+    subgraph tumult[tumult]
+        mcp[tumult-mcp :3100]
+    end
+    run[tumult run] -->|faults| targets
+    run -->|spans| col
+    mcp -->|faults| targets
 ```
-tumult run experiment.toon
-    │
-    │ Core execution and ingest span names (not a fixed per-run count):
-    │   resilience.experiment
-    │   resilience.hypothesis.before / .after
-    │   resilience.action / .probe / .rollback
-    │   resilience.analytics.ingest
-    │
-    ▼ OTLP gRPC :14317
-┌───────────────────────┐
-│  OTel Collector       │  Contrib image (no build needed):
-│  (tumult-collector)   │  - OTLP + Arrow receivers
-│                       │  - Span-to-metrics (APM)
-│                       │  - Host metrics
-│                       │  - Prometheus exporter (:18889)
-└───────────┬───────────┘
-            │ OTLP gRPC :4317
-            ▼
-┌───────────────────────┐
-│  SigNoz Standalone    │  All-in-one:
-│  (all-in-one)         │  - ClickHouse storage
-│                       │  - Trace explorer
-│                       │  - Metrics dashboard
-│  UI: :3301            │  - Alerting
-└───────────────────────┘
+
+| Bundle | Compose file | Command | What starts |
+|---|---|---|---|
+| **infra** | `docker-compose.yml` | `./start.sh infra` | PostgreSQL 16, Redis 7, MySQL 8, Kafka 3.8, an SSH server |
+| **observe** | `docker-compose.observability.yml` | `./start.sh observe` | SigNoz and the OTel Collector |
+| **tumult** | `docker-compose.tumult.yml` | `./start.sh tumult` | The MCP server (Streamable HTTP) |
+| **aqe** | `docker-compose.aqe.yml` | `./start.sh aqe` | Agentic QE Fleet; needs a clone in `../agentic-qe` |
+
+`./start.sh` alone starts infra and observe. `./start.sh all` starts all
+four, `./start.sh status` lists the containers, and `./start.sh down`
+stops infra, observe and tumult. Start infra first: the other bundles use
+its `tumult-e2e` network.
+
+The Krönika demo is separate. Copy `.env.example` to `.env`, fill in the
+`KRONIKA_*` values, then run
+`docker compose -f docker/docker-compose.kronika.yml up -d --build`.
+
+## Run an experiment against the lab
+
+```bash
+./start.sh
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:14317
+tumult run examples/postgres-failover.toon
+open http://localhost:3301                     # the traces in SigNoz
 ```
+
+Settings for the plugins and the lab targets:
+
+```bash
+export TUMULT_PG_HOST=localhost TUMULT_PG_PORT=15432
+export TUMULT_PG_USER=tumult TUMULT_PG_PASSWORD=tumult_test TUMULT_PG_DATABASE=tumult_test
+export TUMULT_REDIS_HOST=localhost TUMULT_REDIS_PORT=16379
+export TUMULT_KAFKA_BOOTSTRAP=localhost:19092
+export TUMULT_MCP_TOKEN=replace-with-a-secret   # the compose default is a dev token
+```
+
+`make ssh-key` copies the test key of the SSH server (user `tumult`, key
+login only) to `/tmp/tumult-test-key`.
+
+### The MCP server
+
+```bash
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://tumult-collector:4317
+./start.sh tumult                              # then http://localhost:3100/mcp
+```
+
+The MCP compose file falls back to `otel-collector`, while the observe
+bundle names its collector `tumult-collector`, so set the endpoint as
+above. To pull the image instead of building it:
+`docker compose -f docker/docker-compose.tumult.yml pull`.
+
+The aqe compose file sets `http://otel-collector:4317` itself. To send its
+spans to `tumult-collector`, add an override file with
+`OTEL_EXPORTER_OTLP_ENDPOINT` for the `agentic-qe` service, and pass it
+after the base file.
+
+## Ports
+
+Targets and the collector use ports from 10000 up. The observe bundle and
+the Krönika demo both publish `14317` and `14318`, so do not run both with
+the default ports.
+
+| Bundle | Service | Port |
+|---|---|---|
+| infra | PostgreSQL, Redis, MySQL | 15432, 16379, 13306 |
+| infra | Kafka (KRaft), SSH server | 19092, 12222 |
+| observe | SigNoz UI | 3301 |
+| observe | SigNoz OTLP gRPC and HTTP | 4317, 4318 |
+| observe | Collector OTLP gRPC, HTTP, Arrow | 14317, 14318, 14319 |
+| observe | Collector Prometheus, self-telemetry, health | 18889, 18888, 13133 |
+| observe, profile `classic` | Jaeger, Prometheus, Grafana | 16686, 19090, 13000 |
+| tumult | MCP server | 3100 |
+| Krönika demo | tumultd: OTLP, web UI and API | 14317, 14318 |
 
 ## Files
 
-| File | Purpose |
-|------|---------|
-| `docker-compose.yml` | Chaos targets (PG, Redis, MySQL, Kafka, SSH) |
-| `docker-compose.observability.yml` | SigNoz + OTel Collector + classic profile |
-| `docker-compose.tumult.yml` | Tumult MCP server |
+| File | What it is |
+|---|---|
+| `docker-compose.yml` | The test targets |
+| `docker-compose.observability.yml` | SigNoz, the OTel Collector, and the `classic` profile |
+| `docker-compose.tumult.yml` | The MCP server |
 | `docker-compose.aqe.yml` | Agentic QE Fleet |
-| `docker-compose.kronika.yml` | tumultd demo stack (daemon + web UI + seed + report) |
-| `docker-compose.kronika-collector.yml` | Optional dev OTel Collector that forwards to a tumultd on the host (`otel-collector-kronika.yaml`) |
-| `docker-compose.grafana-full.yml` | Grafana stack reference: Tempo + Mimir + Loki + Grafana (see `docs/guides/grafana-stack.md`) |
-| `docker-compose.demo.yml` | One-command demo stack for `make demo` (see `demo/README.md`) |
-| `Dockerfile.tumult` | CLI + MCP image (both binaries) |
-| `Dockerfile.tumultd` | tumultd image (web UI build + daemon + CLI) |
-| `Dockerfile.tumult-mcp` | MCP server entrypoint variant |
-| `Dockerfile.sshd` | SSH test target (`tumult-sshd:lab`), and the stress-ng image of the Pumba stress steps |
-| `Dockerfile.demo-app`, `Dockerfile.demo-control-panel`, `Dockerfile.demo-traffic` | Images of the demo stack |
-| `tumult-collector/config.yaml` | OTel Collector pipeline config |
-| `init-postgres.sql` | PostgreSQL test schema |
-| `prometheus.yml` | Prometheus scrape config (classic) |
-| `grafana/` | Grafana provisioning (classic) |
-| `grafana-full/` | Tempo, Mimir and Loki config for `docker-compose.grafana-full.yml` |
-| `signoz/` | SigNoz dashboard definitions |
+| `docker-compose.kronika.yml` | The Krönika demo: tumultd, seed, report and forecast |
+| `docker-compose.kronika-collector.yml` | An optional collector that forwards to a tumultd on the host |
+| `docker-compose.grafana-full.yml` | Tempo, Mimir, Loki and Grafana; see the [Grafana guide](../docs/guides/grafana-stack.md) |
+| `docker-compose.demo.yml` | The one-command demo of `make demo`; see the [demo README](../demo/README.md) |
+| `Dockerfile.tumult`, `Dockerfile.tumult-mcp`, `Dockerfile.tumultd` | The three published images |
+| `Dockerfile.sshd` | The SSH test target `tumult-sshd:lab`, also the stress-ng of the Pumba stress steps |
+| `Dockerfile.demo-*` | The images of the demo stack |
+| `tumult-collector/config.yaml` | The collector pipeline |
+| `signoz/` | SigNoz dashboards |
 
-## Environment Variables
+## When something goes wrong
 
-```bash
-# PostgreSQL
-export TUMULT_PG_HOST=localhost TUMULT_PG_PORT=15432
-export TUMULT_PG_USER=tumult TUMULT_PG_PASSWORD=tumult_test
-export TUMULT_PG_DATABASE=tumult_test
-
-# Redis
-export TUMULT_REDIS_HOST=localhost TUMULT_REDIS_PORT=16379
-
-# Kafka
-export TUMULT_KAFKA_BOOTSTRAP=localhost:19092
-
-# OTel
-export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:14317
-
-# MCP auth (compose defaults to a local development token; replace it)
-export TUMULT_MCP_TOKEN=replace-with-a-secret
-```
-
-## SSH Server
-
-- **User:** `tumult` (key-based auth only)
-- **Tools:** `stress-ng`, `procps`, `coreutils`
-- **Key:** `make ssh-key` from the repository root extracts the container's
-  generated test key to `/tmp/tumult-test-key`.
-
-## Troubleshooting
-
-| Issue | Fix |
-|-------|-----|
-| Port conflict | Change ports in compose files |
-| Docker build slow | Use pre-built GHCR images: `docker compose pull` |
-| Kafka slow to start | ~30s for KRaft init: `docker compose logs kafka` |
-| SigNoz empty | Wait 30s for first scrape cycle |
-| ClickHouse OOM | Increase Docker memory limit to 4GB+ |
+| Problem | Fix |
+|---|---|
+| A port is taken | Change the port in the compose file |
+| The build is slow | Pull the published images: `docker compose pull` |
+| Kafka is slow to start | KRaft needs about 30 seconds: `docker compose logs kafka` |
+| SigNoz shows nothing | Wait 30 seconds for the first data |
+| ClickHouse runs out of memory | Give Docker 4 GB or more |

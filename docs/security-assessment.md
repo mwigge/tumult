@@ -1,356 +1,149 @@
-# Tumult Security Assessment
-
-**Date:** 2026-06-08 (tumult 1.3.0)  
-**Scope:** Full workspace — 13 crates (incl. `tumult-agentic`, `tumult-otel`, `tumult-intelligence`), 10 script plugins, the agentic fault-injection proxy, and Docker infrastructure  
-**Tools:** cargo-audit, cargo-geiger, manual source review  
-**References:** [Rust Foundation Security Initiative](https://rustfoundation.org/security-initiative/), [RustSec Advisory Database](https://rustsec.org/), [OpenCVE Rust](https://app.opencve.io/cve/?vendor=rust-lang)
-
+---
+title: Security assessment
+# Linked from SECURITY.md and the agentic guides; not in the sidebar.
+nav_exclude: true
+summary: "What the source of Tumult does for security, where it does it, and what was not checked"
 ---
 
-## Executive Summary
+# Security assessment
 
-The Tumult codebase has **zero unsafe code in production**, **zero known HIGH/CRITICAL vulnerabilities**, and **zero hardcoded credentials**. The primary risk surface is transitive dependency maintenance (5 unmaintained crates via `toon-format`) and the inherent trust boundary at script plugin execution.
+This page says what the source of Tumult does for security, where it does
+it, and what was not checked. It was checked on 2026-11-21 against the
+source of Tumult 3.0.3: 35 Rust crates, the images, the compose files and
+the deploy files. To report a flaw, see [SECURITY.md](https://github.com/mwigge/tumult/blob/main/SECURITY.md).
 
-| Category | Finding | Severity |
-|----------|---------|----------|
-| Unsafe code (our crates) | 0 `unsafe` blocks in production code | None |
-| `.unwrap()` in production | 0 (all 492 occurrences are in test code or doc examples) | None |
-| SQL injection | 0 string-formatted SQL queries | None |
-| Command injection | Null-byte validation on arguments; process path from experiment definition, not user input | Low |
-| Hardcoded secrets | 0 | None |
-| Credential files in repo | 0 | None |
-| TLS verification bypass | 0 | None |
-| Path traversal | 0 | None |
-| cargo-audit advisories | 5 warnings (all transitive, all unmaintained/unsound — no active exploits) | Low |
+## Who can reach what
 
----
-
-## 1. cargo-audit Results
-
-### Advisory Summary
-
-| Crate | Version | Advisory | Type | Severity | Direct? |
-|-------|---------|----------|------|----------|---------|
-| `bincode` | 1.3.3 | RUSTSEC-2025-0141 | Unmaintained | Low | No — via `syntect` -> `toon-format` |
-| `paste` | 1.0.15 | RUSTSEC-2024-0436 | Unmaintained | Low | No — via `ratatui` -> `toon-format` |
-| `yaml-rust` | 0.4.5 | RUSTSEC-2024-0320 | Unmaintained | Low | No — via `syntect` -> `toon-format` |
-| `rustls-pemfile` | 2.2.0 | RUSTSEC-2025-0134 | Unmaintained | Low | No — via `axum-server` -> `rust-mcp-sdk` |
-| `lru` | 0.12.5 | RUSTSEC-2026-0002 | Unsound (`IterMut` Stacked Borrows) | Medium | No — via `ratatui` -> `toon-format` |
-
-### Risk Assessment
-
-- **No HIGH or CRITICAL advisories.** All 5 are transitive dependencies.
-- **4 of 5 trace through `toon-format`** (the TOON parser). Upstream `toon-format` owns these dependency choices.
-- **`lru` unsoundness (RUSTSEC-2026-0002)** is the most notable: a Stacked Borrows violation in `IterMut`. Tumult does not use `lru` directly — it's pulled in by `ratatui` (TUI rendering in `toon-format`). The `IterMut` API is not exercised in our usage path. Risk: **theoretical, not exploitable in Tumult's context.**
-- **`rustls-pemfile`** is pulled by the MCP SDK's HTTP server. It handles PEM certificate parsing. While unmaintained, no active CVEs exist against it.
-
-### Remediation
-
-- Monitor `toon-format` for dependency updates (primary vector for 4 of 5 advisories)
-- Consider `Cargo.toml` `[patch]` overrides if upstream is slow to update
-- Track `lru` for a fixed release addressing RUSTSEC-2026-0002
-
----
-
-## 2. Unsafe Code Analysis
-
-### Our Crates: Zero Unsafe
-
-```
-tumult-core:       0 unsafe blocks
-tumult-cli:        0 unsafe blocks
-tumult-analytics:  0 unsafe blocks
-tumult-otel:       0 unsafe blocks
-tumult-plugin:     0 unsafe blocks
-tumult-ssh:        0 unsafe blocks
-tumult-clickhouse: 0 unsafe blocks
-tumult-mcp:        0 unsafe blocks
-tumult-kubernetes: 0 unsafe blocks
-tumult-test-utils: 0 unsafe blocks
+```mermaid
+flowchart TD
+    accTitle: Who can reach what
+    accDescr: A user at a shell runs the CLI. Beyond loopback, the MCP server needs a token and the daemon needs a login or a token. All three run steps from experiment files, plugin scripts and policies, which are trusted input. Every step runs with the rights of the Tumult process and reaches the targets.
+    shell[A user at a shell] --> cli[tumult CLI]
+    client[MCP client] -->|a token beyond loopback| mcp[tumult-mcp]
+    browser[Browser or API client] -->|a login or a token beyond loopback| daemon[tumultd and the web UI]
+    cli --> steps[Steps run with the rights of the process]
+    mcp --> steps
+    daemon --> steps
+    files[Experiment files, plugin scripts, policies] -->|trusted input| steps
+    steps --> targets[Hosts, containers, clusters and clouds]
 ```
 
-The single reference to `unsafe` in the codebase is a comment in `tumult-core/src/runner.rs:563` explaining why a safe pattern was chosen over an unsafe alternative.
-
-### Dependencies with Unsafe
-
-Unsafe code exists in transitive dependencies (expected for systems crates):
-- `libduckdb-sys` — FFI bindings to DuckDB C library (required for embedded analytics)
-- `russh` — SSH protocol implementation (uses unsafe for crypto primitives)
-- `opentelemetry` SDK internals
-- `tokio` runtime internals
-
-These are well-audited, widely-used crates. The unsafe usage is appropriate for their function (FFI, crypto, async runtime).
-
----
-
-## 3. `.unwrap()` Analysis
-
-| Location | Count | Assessment |
-|----------|-------|-----------|
-| Test code (`#[cfg(test)]`, `tests/`) | 487 | Acceptable — panics in tests are expected |
-| Doc examples (`///`) | 5 | Acceptable — illustrative code |
-| Production code | 0 | Clean |
-
-All `.expect()` calls (12 total) are in test code.
-
----
-
-## 4. Injection Surface Analysis
-
-### Command Execution
-
-Tumult executes external processes in three places:
-
-1. **`tumult-plugin/src/executor.rs:112`** — Script plugin execution via `/bin/sh`
-   - **Input:** Script path from plugin manifest (`plugin.toon`), arguments from experiment definition
-   - **Validation:** Null-byte check on all arguments (`validate_arguments`)
-   - **Mitigation:** Scripts are pre-registered via discovery, not user-supplied at runtime. Arguments pass through environment variables (`TUMULT_*` prefix), not command-line interpolation.
-
-2. **`tumult-cli/src/commands.rs:109`** — Process provider execution
-   - **Input:** `path` and `arguments` from experiment `.toon` file
-   - **Validation:** Null-byte check inherited from core types
-   - **Mitigation:** The experiment file is authored by the operator, not external input.
-
-3. **`tumult-mcp/src/handler.rs:169`** — MCP tool execution
-   - **Input:** Experiment path from MCP client
-   - **Risk:** MCP clients can specify arbitrary experiment paths
-   - **Mitigation:** MCP server runs locally; authentication required via MCP protocol
-
-### SQL Queries
-
-- **Zero string-formatted SQL.** All DuckDB queries use the `tumult analyze --query` CLI flag, which passes the query string directly to DuckDB without interpolation.
-- The DuckDB store uses parameterized inserts via Arrow record batches, not SQL string construction.
-
-### Deserialization
-
-- **2 `serde_json::from_str` calls** in production:
-  1. `tumult-core/src/runner.rs:450` — Parses probe output for tolerance evaluation. Input is stdout from a subprocess we spawned.
-  2. `tumult-plugin/src/lib.rs:103` — Parses plugin manifest. Input is a file on disk authored by the plugin developer.
-- Both deserialize into `serde_json::Value` (generic), not into types with custom `Deserialize` implementations that could trigger logic bugs.
-
----
-
-## 5. Integer Cast Analysis
-
-30 `as` casts in production code. All are in safe contexts:
-
-| Pattern | Count | Risk |
-|---------|-------|------|
-| `count as usize` (DuckDB row counts) | 4 | None — DuckDB returns positive integers |
-| `elapsed().as_millis() as u64` (timing) | 2 | None — durations are always positive |
-| `count as u64` (OTel gauge values) | 6 | None — counters are positive |
-| `float.floor() as usize` (percentile index) | 4 | Low — bounded by input array length |
-| `samples as usize` (statistics) | 2 | None — sample counts are positive |
-| Other metric/gauge casts | 12 | None — all positive bounded values |
-
-No truncation risk. No user-controlled values in cast expressions.
-
----
-
-## 6. Credential and Secret Handling
-
-- **Zero hardcoded credentials** in source code
-- **`resolve_secrets()` in `tumult-cli`** reads secrets from environment variables at runtime, not from files
-- **SSH keys** are handled by `tumult-ssh` via `russh` — keys are loaded from paths specified in experiment definitions, never embedded
-- **ClickHouse** connection strings use environment variables (`CLICKHOUSE_ENDPOINT`, `TUMULT_CLICKHOUSE_URL`)
-- **Docker test infrastructure** uses non-production credentials (`tumult_test` / `tumult_test`) in `docker-compose.yml` — appropriate for test fixtures
-- **No `.env` files** in the repository
-
----
-
-## 7. Supply Chain Assessment
-
-### Direct Dependencies (Cargo.toml)
-
-| Crate | Purpose | Maintenance | Last Updated |
-|-------|---------|-------------|--------------|
-| `tokio` | Async runtime | Active | 2026 |
-| `opentelemetry` | Telemetry | Active | 2026 |
-| `duckdb` | Embedded analytics | Active | 2026 |
-| `arrow` | Columnar data | Active (Apache) | 2026 |
-| `russh` | SSH protocol | Active | 2026 |
-| `kube` | Kubernetes client | Active | 2026 |
-| `clap` | CLI parsing | Active | 2026 |
-| `thiserror` | Error types | Active | 2026 |
-| `anyhow` | Error handling | Active | 2026 |
-| `serde` / `serde_json` | Serialization | Active | 2026 |
-| `toon-format` | TOON parser | Active | 2026 |
-| `rust-mcp-sdk` | MCP server | Active | 2026 |
-| `clickhouse` | ClickHouse client | Active | 2026 |
-
-### Total Dependency Tree
-
-- **675 crate dependencies** in `Cargo.lock`
-- **5 advisories** (all Low/Medium, all transitive)
-- **0 actively exploited vulnerabilities**
-
----
-
-## 8. Script Plugin Security
-
-Script plugins execute shell scripts as subprocesses. Security boundaries:
-
-| Control | Implementation |
-|---------|---------------|
-| Null-byte injection | Validated in `validate_arguments()` |
-| Argument passing | Via `TUMULT_*` env vars, not shell interpolation |
-| Timeout enforcement | `tokio::time::timeout` with `kill_on_drop(true)` |
-| Output capture | stdout/stderr captured, not re-executed |
-| W3C trace context | Injected as `TRACEPARENT`/`TRACESTATE` env vars (read-only) |
-| Plugin discovery | Scripts must be in registered plugin directories with `plugin.toon` manifest |
-
-### Risk: Script Content
-
-Tumult trusts the content of plugin scripts. A malicious `plugin.toon` + script could execute arbitrary commands. This is by design — script plugins are the extensibility mechanism, similar to how `kubectl` plugins or Git hooks work.
-
-**Mitigations:**
-- Plugin directories are configured, not auto-discovered from arbitrary paths
-- Scripts require execute permission
-- All script output is logged and captured in journals
-
----
-
-## 9. Docker Infrastructure Security
-
-| Item | Status |
-|------|--------|
-| Docker socket exposure | Mounted read-only (`:ro`) where needed |
-| Container networking | Isolated `tumult-e2e` network |
-| ClickHouse auth | Default user, no password (test only — not for production) |
-| SSH test container | Key-based auth only, `PasswordAuthentication no` |
-| Image pinning | All images pinned to specific versions |
-| Resource limits | ClickHouse: 4 CPU / 4GB, Collector: 2 CPU / 1GB |
-
----
-
-## 10. Agentic Fault Injection Security
-
-The `tumult-agentic` proxy (`tumult agentic proxy`) and orchestrator (`tumult
-agentic run-live`) introduce a new, deliberately privileged surface: they sit
-in the path between a real coding agent and its model provider. This section
-documents that trust boundary and its mitigations.
-
-### 10.1 Trust boundary — credential and payload forwarding
-
-| Concern | Behavior | Mitigation |
-|---------|----------|------------|
-| **API credentials** | The proxy is a transparent forwarder: it does **not** strip `Authorization` / `x-api-key`, so the agent's real provider credentials flow *through* tumult to the configured `--upstream`. | The proxy is operator-run and binds to `127.0.0.1` by default; it forwards only to the single `--upstream` you configure (no open relay). Treat it like any local TLS-terminating dev proxy. |
-| **Prompts / completions** | Request and response bodies pass through tumult in memory (some are mutated for fault injection). | **Metadata-only capture is the default** — no prompt, completion, tool payload, or body content is written to the journal or telemetry. Only counts, durations, fault types, and contract verdicts are recorded. |
-| **Egress** | The proxy forwards to `--upstream` only; it never fans out to other hosts. | Operator controls the upstream. `accept-encoding`, `host`, and `content-length` are stripped/managed; inbound `traceparent`/`tracestate` are replaced with tumult's own. |
-
-**Operator guidance:** point a client at the proxy only for throwaway/test work,
-keep the listener on `127.0.0.1`, and never expose the proxy port to a network.
-Pointing a production client at it means trusting the local tumult process with
-that session's credentials and traffic.
-
-### 10.2 `run-live` subprocess
-
-`tumult agentic run-live` spawns `claude -p` with a constructed environment
-(`TRACEPARENT`, `CLAUDE_CODE_*` telemetry flags, `ANTHROPIC_BASE_URL`,
-`OTEL_EXPORTER_OTLP_ENDPOINT`). It sets only these well-known variables, inherits
-the operator's environment, and passes the prompt via stdin — never as an
-argument, since argv is visible in `ps` to other local users — with no shell
-interpolation. The agent binary itself (`claude`) is trusted operator-installed
-tooling, run with the operator's own credentials.
-
-### 10.3 Telemetry privacy
-
-All agentic spans/metrics follow the `metadata_only` capture policy by default
-(`resilience.agent.payload.capture_policy = metadata_only`). W3C trace context
-is propagated, but the W3C spec carries no payload. The OTLP collector config
-(`collector/otel-agentic-normalization.yaml`) only tags and renames attributes;
-it does not capture content. Operators who opt into content capture (client-side
-`OTEL_LOG_*` flags) must ensure their backend is approved for that data.
-
-### 10.4 Surface unchanged
-
-The proxy adds no `unsafe`, no new credential storage, and no new network
-listeners beyond the operator-launched proxy port. The MCP tool-surface span
-wrapping added in 1.3.0 does not change MCP authentication.
-
----
-
-## 11. Prompt injection and agent-driven operation
-
-The recommendation and autopilot features close a loop that deserves its own
-threat model: content from experiment journals influences a prompt, the prompt
-drives a model, and the model's output can become an executable experiment.
-
-### 11.1 The indirect-injection chain
-
-1. **Journals become prompt material.** `tumult_recommend --agent` assembles
-   its prompt from analytics-store content: journal titles, experiment
-   metadata, failure reasons, and coverage gaps. Anything that previously ran
-   — including an experiment whose definition contained attacker-influenced
-   strings — contributes to that prompt.
-2. **The prompt drives an external agent.** The configured agent CLI
-   (`claude`, `codex`) answers with an experiment definition. Model output is
-   not trustworthy by construction: a crafted journal entry can steer the
-   generated target, plugin action, or arguments (classic indirect prompt
-   injection).
-3. **The output is executable.** A generated experiment file can be run by
-   `tumult_run_experiment` directly, or enter the autopilot queue and later
-   be enacted by `tumult_autopilot_run` / approved via
-   `tumult_autopilot_respond`.
-
-### 11.2 What validation does and does not cover
-
-Generated experiments pass **structural validation only**: the TOON parser,
-the experiment validator (steady-state hypothesis present, exactly one
-fault, rollback declared), and — on the autopilot path — the deterministic
-policy gate (enrollment, blast-radius bounds, concurrency, cooldown, guard
-telemetry pre-flight). These checks establish that an experiment is
-well-formed and within the operator's declared policy. They do **not**
-establish that its target or arguments are semantically appropriate: a
-well-formed experiment can still be the wrong experiment.
-
-### 11.3 Required operational controls
-
-- **Review before execution.** An operator must read any agent-generated
-  experiment before it runs. Generation and execution are separate tools
-  precisely so this review has a place to happen.
-- **Human-in-the-loop by name, not by annotation.** MCP clients must gate
-  the destructive tools on explicit human approval, matching on tool name:
-  `tumult_run_experiment`, `tumult_gameday_run`, `tumult_autopilot_run`
-  (when `execute=true`), and `tumult_autopilot_respond` (when
-  `approve=true`). Annotations are advisory metadata for the client UI; they
-  are not an enforcement mechanism, and a compromised or confused client
-  cannot be assumed to honor them.
-- **Server-side backstops.** Independent of client behavior, the server
-  requires the operator role for every destructive tool, re-evaluates the
-  full autopilot gate against current state before any approval executes
-  (a stale approval is refused and the refusal is recorded), and holds a
-  server-wide enactment lock so at most one fault-injection enactment runs
-  at a time.
-
-None of this removes the prompt-injection risk at the model boundary; it
-bounds what a successful injection can reach. Treat journal content as
-untrusted input to the model, and model output as untrusted input to the
-runner.
-
----
-
-## 12. Recommendations
-
-### Immediate (P0)
-
-None required. No active vulnerabilities.
-
-### Short-term (P1)
-
-1. **Pin `toon-format` to a version that updates `lru`** when RUSTSEC-2026-0002 is fixed upstream
-2. **Add `cargo-deny`** to CI for license compliance and duplicate dependency detection
-3. **Add `SECURITY.md`** to the repository with responsible disclosure instructions
-
-### Medium-term (P2)
-
-4. **Run `cargo-geiger`** in CI to track unsafe usage in the dependency tree over time
-5. **Add input validation for MCP experiment paths** — reject paths outside the workspace
-6. **Consider `seccomp` profiles** for Docker containers in production deployments
-7. **Add `Cargo.toml` `[lints]` section** to enforce `clippy::undocumented_unsafe_blocks` workspace-wide
-
-### Long-term (P3)
-
-8. **Fuzz testing** for TOON parser and tolerance evaluation (untrusted input paths)
-9. **Miri CI job** for detecting undefined behavior in test suite
-10. **SBOM generation** (CycloneDX or SPDX) for supply chain transparency
+Tumult trusts the files it runs. An experiment, a plugin script or an
+autopilot policy can do anything the user that runs Tumult can do. Keep
+them in a reviewed repository.
+
+## What the code does
+
+| Area | What the code does | Where |
+|---|---|---|
+| Listeners | The MCP server refuses to serve HTTP beyond loopback without a token or an auth file. `tumultd` refuses to serve its API beyond loopback while it has no user. On loopback with no auth, every caller has full access | `tumult-mcp/src/server.rs`, `tumultd/src/admin.rs` |
+| TLS | `tumultd` serves TLS when `KRONIKA_TLS_CERT` and `KRONIKA_TLS_KEY` are set. The MCP server has no TLS: put a TLS proxy in front of it | `tumult-ingest/src/config.rs` |
+| Logins | Passwords are hashed with argon2id, and tokens are stored as their SHA-256. After 5 failed logins, one more try is allowed every 10 seconds, per address and user name | `tumult-auth/src/lib.rs`, `tumult-api/src/auth/rate_limit.rs` |
+| MCP roles | A read-only tool needs the viewer role. Every other tool, and any unknown tool name, needs the operator role | `tumult-mcp/src/handler/dispatch.rs` |
+| MCP paths | A path that a client sends must stay inside the working directory of the server | `tumult-mcp/src/tools/validation.rs` |
+| Script plugins | The script must sit inside its plugin folder. Arguments reach it as `TUMULT_*` environment variables, never on a command line. A null byte or a bad name is refused. A timeout kills the whole process group. The script inherits the environment of Tumult | `tumult-plugin/src/executor.rs` |
+| Process steps | The program runs without a shell. Each output stream is capped at 8 MiB | `tumult-exec/src/process.rs` |
+| Secrets | Secrets are read from environment variables or files when the run starts | `tumult-core/src/engine/config.rs` |
+| SSH | Host keys are checked against `known_hosts` by default | `tumult-ssh/src/config.rs` |
+| Web UI | Cookies are marked secure when `tumultd` listens beyond loopback. No `Content-Security-Policy` header is set | `tumultd/src/serve/mod.rs` |
+
+## Unsafe code
+
+Outside tests there are 6 `unsafe` blocks. Each one is a Unix call to wait
+for a process or to signal a process group, and each has a safety comment.
+
+| File | Blocks | What for |
+|---|---|---|
+| `tumult-core/src/runner/oha.rs` | 4 | `waitid` on the oha process (3), `kill` of its process group (1) |
+| `tumult-exec/src/process.rs` | 1 | `kill` of the process group of a process step |
+| `tumult-plugin/src/executor.rs` | 1 | `kill` of the process group of a script |
+
+Counted with `git grep -nw unsafe -- '*.rs'`, with comments, the `tests/`
+folders and the `#[cfg(test)]` modules left out. No crate forbids unsafe
+code, and no lint asks for the safety comment.
+
+## Dependencies and CI
+
+- The Cargo Deny job of CI runs `cargo deny check` (advisories, licenses,
+  bans and sources) on every pull request (`.github/workflows/ci.yml`).
+- `deny.toml` ignores 11 advisories, each with its reason. Nine say a crate
+  is no longer maintained. Two, RUSTSEC-2026-0194 and RUSTSEC-2026-0195,
+  are flaws in quick-xml. It comes in through typst, which renders only the
+  bundled report templates, so no outside XML reaches it.
+- The web UI job runs `npm audit --audit-level=moderate`.
+- Each action in `.github/workflows/` is pinned to a commit. The example
+  gate `deploy/ci/github-gate.yml` uses a tag.
+- Dependabot watches Cargo and GitHub Actions (`.github/dependabot.yml`),
+  not npm, pip or Docker images.
+- A release has a `SHA256SUMS.txt` for its archives
+  (`.github/workflows/release.yml`). There is no signature and no SBOM.
+- The fuzz target in `tumult-core/fuzz/` exists, but no CI job runs it.
+
+## Images and compose files
+
+| Pin | Images |
+|---|---|
+| By digest | `python:3.12-slim` of the Chaos Lab, `alpine:3.20.10` of the SSH test server, the Python base of forecastd |
+| To a version | `rust:1.92.0-bookworm`, the OpenTelemetry Collector, Jaeger, Grafana, Tempo, Mimir, Loki, Prometheus, Kafka, curl |
+| A tag that moves | `debian:bookworm-slim`, `node:22-bookworm-slim`, `postgres:16-alpine`, `redis:7-alpine`, `mysql:8.0`, `python:3.12-slim` of the OTel example |
+| `latest` | SigNoz in `docker/docker-compose.demo.yml` and `docker/docker-compose.observability.yml`, the Collector in `docker/docker-compose.kronika-collector.yml`, `ghcr.io/mwigge/tumult-mcp` in `docker/docker-compose.tumult.yml`, `ghcr.io/mwigge/tumult` in `deploy/ci/` |
+
+- The images of `tumultd`, forecastd, the Chaos Lab, the demo app and the
+  demo traffic run as a user that is not root. The CLI image
+  (`docker/Dockerfile.tumult`), the MCP image built on it
+  (`docker/Dockerfile.tumult-mcp`), the demo control panel, the SSH test
+  server and the OTel example app run as root. The CLI and MCP images carry
+  the Docker CLI.
+- `docker/docker-compose.demo.yml` and `docker/docker-compose.tumult.yml`
+  mount the Docker socket, writable, into the MCP container. They publish
+  port 3100 on every address of the host, and without `TUMULT_MCP_TOKEN`
+  they use a fixed token (`tumult-demo`, `tumult-dev`). Whoever reaches
+  that port with the token controls Docker on the host. Run them on a
+  trusted machine, or set a strong token.
+- The demo and test compose files use fixed passwords (`demo`, `tumult`,
+  `tumult_test`). `docker/docker-compose.kronika.yml` needs its passwords
+  and tokens set, and publishes its ports on 127.0.0.1 only.
+- The manifests in `deploy/k8s/` run each pod as a user that is not root,
+  with a read-only root file system and every capability dropped. The
+  units in `deploy/systemd/` use `DynamicUser`, `NoNewPrivileges` and
+  `ProtectSystem=strict`.
+
+## The agentic proxy
+
+`tumult agentic proxy` listens on `127.0.0.1:8080` by default and forwards
+to the one `--upstream` it is given. It passes the `authorization` and
+`x-api-key` headers on, so it sees the API key of the agent. It drops
+`proxy-authorization`, the hop-by-hop headers and `accept-encoding`, and
+sends its own `traceparent` (`tumult-agentic/src/proxy/forward.rs`). By
+default its journal keeps metadata only: no prompt and no answer
+(`tumult-agentic/src/model.rs`).
+
+## Agents and prompt injection
+
+With an `agent`, `tumult_recommend` puts signals from the journals into the
+prompt of an agent, and the agent answers with experiments
+(`tumult-intelligence/src/agent.rs`). The text from the journals is cleaned
+of control characters and cut to length first. The experiments that come
+back are checked for their form, and on the autopilot path by the safety
+gate, but not for their intent. So:
+
+- Read an experiment from an agent before it runs.
+- Have the MCP client ask a person before `tumult_run_experiment`,
+  `tumult_gameday_run`, `tumult_autopilot_run` with `execute` and
+  `tumult_autopilot_respond` with `approve`.
+- On the server, these tools need the operator role, and an approval runs
+  the safety gate again on the current state.
+
+## Not assessed
+
+- No penetration test, and no test against a running deployment.
+- The code of the 910 packages in `Cargo.lock`, unsafe code included,
+  beyond what `cargo deny` reports.
+- The built images were not scanned for known flaws.
+- Not every SQL statement was read to check that it binds its values.
+- The web UI code, such as cross-site scripting, beyond the headers above.
+- The cloud, Kubernetes and Windows plugins, ClickHouse, and the scripts
+  in `plugins/`.
+- The Python services (forecastd, the Chaos Lab) beyond their Dockerfiles.
+- The git history was not scanned for secrets.
+- `unwrap` calls and integer casts in production code were not counted.

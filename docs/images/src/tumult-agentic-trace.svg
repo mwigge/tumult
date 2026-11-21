@@ -7,8 +7,8 @@
     .who{font-size:11px;fill:#6b7785}
     .note{font-size:12px;fill:#a1531a;font-weight:600}
   </style>
-  <text x="40" y="44" class="title">One trace. Inject the fault, watch the agent flinch.</text>
-  <text x="40" y="70" class="sub">tumult is the root; the client's own spans nest underneath — so you see cause and effect together.</text>
+  <text x="40" y="44" class="title">One trace, from the fault to the reaction of the agent</text>
+  <text x="40" y="70" class="sub">Tumult starts the trace. The spans of the client nest under it, so cause and effect sit together.</text>
 
   <!-- waterfall bars: x grid 300..900 -->
   <!-- row 1 root -->
@@ -45,5 +45,5 @@
   <!-- legend -->
   <rect x="40" y="392" width="880" height="46" rx="10" fill="#f6f7fa" stroke="#d6dbe4"/>
   <text x="60" y="414" font-size="12.5" fill="#3a4654">The experiment side (faults, contracts, score) and the target side (the agent's real reaction) land in</text>
-  <text x="60" y="430" font-size="12.5" fill="#3a4654">one distributed trace — correlated by a <tspan font-family="monospace" fill="#1f2a44">tumult.client</tspan> tag when a client can't propagate context.</text>
+  <text x="60" y="430" font-size="12.5" fill="#3a4654">one trace. A client that does not pass the trace on is joined by its <tspan font-family="monospace" fill="#1f2a44">tumult.client</tspan> tag instead.</text>
 </svg>

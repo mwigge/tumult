@@ -73,23 +73,33 @@ export function chartTheme(): ChartTheme {
         : 'tumult-dark';
 }
 
+// The surfaces a chart of the UI draws on, per theme (lib/theme.css). They
+// are kept here, and not in chart-theme.ts, so that the script of the CLI
+// report stays the same.
+const SURFACES = {
+    'tumult-dark': { bg: '#0b0e11', panel: '#151b21', hover: '#1c242c', accentDim: '#2d5d84' },
+    'tumult-light': { bg: '#f4f6f8', panel: '#ffffff', hover: '#e9eef2', accentDim: '#9cc4e4' },
+} as const;
+
 /** Colour tokens for the theme in force (for series and marks). */
 export function chartTokens(theme: ChartTheme = chartTheme()) {
-    return theme === 'tumult-light' ? LIGHT : DARK;
+    return { ...(theme === 'tumult-light' ? LIGHT : DARK), ...SURFACES[theme] };
 }
 
-// Dark tokens, kept for the pages that still build options by hand.
-export const CHART = {
-    text: '#8b98a5',
-    axis: '#33404c',
-    split: '#242d36',
-    accent: '#5eb1ef',
-    ok: '#34d399',
-    warn: '#f59e0b',
-    fail: '#ef4444',
-    tooltip: {
-        backgroundColor: '#151b21',
-        borderColor: '#33404c',
-        textStyle: { color: '#d8dee4', fontSize: 12 },
-    },
-} as const;
+/**
+ * Call `onchange` with the theme in force now and each time it changes.
+ * A page keeps the theme in a `$state`, so that it builds the options of
+ * its charts again in the new colours. Returns what stops it.
+ */
+export function followTheme(onchange: (theme: ChartTheme) => void): () => void {
+    const update = () => onchange(chartTheme());
+    update();
+    const mo = new MutationObserver(update);
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    const mq = window.matchMedia?.('(prefers-color-scheme: light)');
+    mq?.addEventListener?.('change', update);
+    return () => {
+        mo.disconnect();
+        mq?.removeEventListener?.('change', update);
+    };
+}

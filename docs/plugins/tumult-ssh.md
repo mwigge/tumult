@@ -4,26 +4,24 @@ parent: Plugins
 nav_order: 3
 ---
 
-# tumult-ssh — SSH Remote Execution
+# tumult-ssh
 
-Remote command execution over SSH for the Tumult resilience intelligence platform.
+Run a command on another host over SSH. A step runs on the machine that
+runs Tumult, so this native plugin is how a step reaches another host.
 
-## Features
+```mermaid
+flowchart LR
+    accTitle: A step that runs a command over SSH
+    accDescr: Tumult connects to the host, checks its host key, logs in with a key or the SSH agent, runs the command and reads back its output and exit code.
+    step[Step in tumult] -->|connect, check host key| host[Remote host]
+    host -->|stdout and exit code| step
+```
 
-- **Remote command execution** with stdout/stderr capture and exit code
-- **Key-based authentication** (ed25519, ECDSA)
-- **SSH agent authentication** (ssh-agent)
-- **Host key verification** against `known_hosts` (default), trust-on-first-use, or accept-any
-- **Configurable timeouts** for both connection and command execution
-- **Native plugin function** `execute` for use in experiments via the `native` provider
-
-## Native `execute` Function
-
-Experiments call the plugin through the `native` provider. The `host_key_policy` argument controls host key verification and defaults to `verify`:
+## Run a command
 
 ```toon
 method[1]:
-  - name: restart-service-remote
+  - name: restart-the-database
     activity_type: action
     provider:
       type: native
@@ -31,144 +29,50 @@ method[1]:
       function: execute
       arguments:
         host: db-primary.example.com
-        port: 22
         user: ops
-        key_file: /home/ops/.ssh/id_ed25519
+        key_file: /home/ops/.ssh/tumult_ed25519
         command: systemctl restart postgresql
-        host_key_policy: verify
 ```
 
-| Argument | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `host` | Yes | — | Remote host |
-| `user` | Yes | — | SSH user |
-| `command` | Yes | — | Command to run |
-| `port` | No | `22` | SSH port |
-| `key_file` | No | agent auth | Path to a private key; omit to use the SSH agent |
-| `host_key_policy` | No | `verify` | `verify`, `trust-on-first-use`, or `accept-any` |
+`execute` is the only function. Its arguments:
 
-`verify` checks the server key against `known_hosts` and fails with a typed error on unknown or changed keys. `accept-any` is an explicit opt-in for ephemeral targets with unverifiable keys — the old implicit accept-all behaviour is gone. Unknown function names error with the list of available functions.
+| Argument | Default | What it does |
+|---|---|---|
+| `host` | required | The host to connect to |
+| `user` | required | The user to log in as |
+| `command` | required | The command to run |
+| `port` | `22` | The SSH port |
+| `key_file` | the SSH agent | A private key. Without it, Tumult asks the agent that `SSH_AUTH_SOCK` names. |
+| `host_key_policy` | `verify` | How to check the host key, see below |
 
-## One way to run on a remote host
+The output of the command is the result of the step. A command that exits
+with another code than 0 fails the step, with that code and its stderr.
+Tumult waits up to 30 seconds for the connection and 60 seconds for the
+command.
 
-A step runs on the machine that runs Tumult. The `execute` function above
-is the way to run a command on another host. There is no
-`execution_target:` key on a step: Tumult rejects it, so a step written
-for a remote host cannot run on the local one by mistake.
+## Host keys
 
-```toon
-method[1]:
-  - name: stress-cpu-remote
-    activity_type: action
-    provider:
-      type: native
-      plugin: tumult-ssh
-      function: execute
-      arguments:
-        host: db-primary.example.com
-        user: ops
-        key_file: /home/ops/.ssh/id_ed25519
-        command: stress-ng --cpu 4 --timeout 30s
-```
+| Policy | What it does |
+|---|---|
+| `verify` | Checks the key against `~/.ssh/known_hosts` of the user that runs Tumult. An unknown or a changed key fails the step. |
+| `trust-on-first-use` | Writes an unknown key to `known_hosts` the first time, then checks it |
+| `accept-any` | Checks nothing. Use it only for a throwaway lab host. |
 
-## Authentication
+## Keys
 
-### Key-based
-
-```rust
-let config = SshConfig::with_key(
-    "db-primary.example.com",
-    "ops",
-    PathBuf::from("/home/ops/.ssh/id_ed25519"),
-);
-```
-
-Supported key types: Ed25519, ECDSA (P-256, P-384, P-521). RSA key files are not supported.
-
-### SSH Agent
-
-```rust
-let config = SshConfig::with_agent("db-primary.example.com", "ops");
-```
-
-Uses the `SSH_AUTH_SOCK` environment variable to connect to a running SSH agent.
-
-## API
-
-### Connect
-
-```rust
-let session = SshSession::connect(config).await?;
-```
-
-### Execute Command
-
-```rust
-let result = session.execute("uname -a").await?;
-println!("stdout: {}", result.stdout);
-println!("exit code: {}", result.exit_code);
-assert!(result.success());
-```
-
-### Close
-
-```rust
-session.close().await?;
-```
-
-## Timeouts
-
-```rust
-let config = SshConfig::with_key("host", "user", key_path)
-    .connect_timeout(Duration::from_secs(30))  // Connection timeout
-    .command_timeout(Duration::from_secs(60));  // Per-command timeout
-```
-
-## Error Handling
-
-All SSH operations return `Result<_, SshError>` with these variants:
-
-| Error | Cause |
-|-------|-------|
-| `ConnectionFailed` | TCP connection or SSH handshake failed |
-| `AuthenticationFailed` | Key rejected or agent not available |
-| `HostKeyNotFound` | Server key not present in `known_hosts` (policy `verify`) |
-| `HostKeyMismatch` | Server key differs from the `known_hosts` entry (possible MITM) |
-| `KnownHostsIo` | Failed to read or write the `known_hosts` file |
-| `KeyNotFound` | Private key file does not exist |
-| `KeyPermissionsTooOpen` | Private key file mode is looser than 0600 |
-| `KeyParseError` | Private key file is malformed |
-| `ExecutionFailed` | Command could not be started |
-| `ChannelError` | SSH channel operation failed |
-| `Timeout` | Connection or command timed out |
-
-## Security Notes
-
-### Host Key Verification
-
-Host key verification defaults to **`verify`**: `SshSession::connect` checks the server's key against `known_hosts` and returns a typed `HostKeyNotFound` or `HostKeyMismatch` error when the key is unknown or has changed. Two relaxations are available via `HostKeyPolicy` (or the `host_key_policy` argument of the native `execute` function):
-
-- `trust-on-first-use` — record an unknown key on first connection, then verify it on subsequent connections
-- `accept-any` — skip verification entirely; an explicit opt-in for trusted internal networks and ephemeral instances, NOT for production use over untrusted networks
-
-### RSA Key Vulnerability (RUSTSEC-2023-0071)
-
-The `rsa` crate has a known timing side-channel vulnerability ([Marvin Attack](https://rustsec.org/advisories/RUSTSEC-2023-0071), CVSS 5.9 medium). This affects **RSA key authentication only**. Tumult builds `russh` 0.65 without its `rsa` feature, so the `rsa` crate is not in the build and an RSA key file cannot be used.
-
-**Mitigation:** Use **Ed25519 keys** (recommended) or **ECDSA keys** instead of RSA keys. Ed25519 is not affected by this vulnerability and is the preferred key type for modern SSH.
+Use an Ed25519 key, or an ECDSA key (P-256, P-384 or P-521). The key file
+must be readable by its owner only (mode `0600`). A `key_file` with a
+passphrase does not work: load that key into the SSH agent instead.
 
 ```bash
-# Generate an Ed25519 key (recommended)
-ssh-keygen -t ed25519 -C "tumult-chaos" -f ~/.ssh/tumult_ed25519
-
-# Use it in your experiment: the key_file argument of the execute function
-#   key_file: /home/ops/.ssh/tumult_ed25519
+ssh-keygen -t ed25519 -f ~/.ssh/tumult_ed25519
 ```
 
-No upstream fix is available for the `rsa` crate, so the `rsa` feature stays off.
+RSA keys do not work. Tumult builds its SSH library without RSA, because
+the `rsa` crate has a timing flaw with no fix
+([RUSTSEC-2023-0071](https://rustsec.org/advisories/RUSTSEC-2023-0071)).
 
-## Implementation Notes
+## Next
 
-- Uses `russh` 0.65 with the `aws-lc-rs` crypto backend, which builds the C library AWS-LC
-- Async-native with tokio
-- Authentication is bounded by `connect_timeout` to prevent stalls
+- Run a plugin script on another host: copy it there and call it with `execute`.
+- Use the SSH code from Rust: the [crate README](https://github.com/mwigge/tumult/blob/main/tumult-ssh/README.md).

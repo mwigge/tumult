@@ -59,8 +59,8 @@ distinguish local, CI, and live-environment evidence.
 
 ## How progress is reported
 
-The [changelog](../../CHANGELOG.md) records shipped behavior. The
-[verification protocol](../testprotocol.md) describes the test matrix. Each
+The [changelog](https://github.com/mwigge/tumult/blob/main/CHANGELOG.md) records shipped behavior. The
+[verification protocol](https://github.com/mwigge/tumult/blob/v3.0.2/docs/testprotocol.md) describes the test matrix. Each
 release verification report records which parts ran locally, in CI, in Docker,
 or against an external system.
 

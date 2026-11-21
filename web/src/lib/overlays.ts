@@ -4,26 +4,26 @@
 //
 // One helper, used by the Overview and Metrics pages. Attach the returned
 // series to any chart with a time x-axis (for a category axis, pass `toX`
-// mapping ms → the category label, e.g. the day string).
+// mapping ms → the category label, e.g. the day string). The colours come
+// from the tokens of the theme the chart is drawn in.
 
-import { CHART } from '#lib/echarts.js';
-import type { EChartsCoreOption } from '#lib/echarts.js';
+import type { chartTokens, EChartsCoreOption } from '#lib/echarts.js';
 import type { LegendItem } from '#lib/legend.js';
 import { RUN_TONE, runTone, type Tone } from '#lib/tone.js';
 import type { ExperimentWindow } from '#lib/types.js';
 
 type Series = EChartsCoreOption['series'] extends Array<infer S> ? S : Record<string, unknown>;
 
-const TONE_COLOR: Record<Tone, string> = {
-    ok: CHART.ok,
-    warn: CHART.warn,
-    fail: CHART.fail,
-    neutral: CHART.text,
-};
+/** The tokens an overlay is drawn with. */
+export type OverlayTokens = Pick<ReturnType<typeof chartTokens>, 'ok' | 'warn' | 'fail' | 'text'>;
 
-/** Outcome → band color (theme Okabe-Ito hues), in the tone of its verdict. */
-export function outcomeColor(outcome: string | null): string {
-    return TONE_COLOR[runTone(outcome) ?? 'neutral'];
+function toneColor(tone: Tone, t: OverlayTokens): string {
+    return tone === 'neutral' ? t.text : t[tone];
+}
+
+/** Outcome → band color in the tokens `t`, in the tone of its verdict. */
+export function outcomeColor(outcome: string | null, t: OverlayTokens): string {
+    return toneColor(runTone(outcome) ?? 'neutral', t);
 }
 
 /** What a run that has not ended is called in the legend; its band is neutral. */
@@ -33,12 +33,12 @@ const NOT_ENDED = 'not ended';
  * The legend of the band colours: each colour with the statuses of the
  * runs it is drawn for. A run with no status yet has the neutral colour.
  */
-export function outcomeLegend(): LegendItem[] {
+export function outcomeLegend(t: OverlayTokens): LegendItem[] {
     const tones: Tone[] = ['ok', 'warn', 'fail', 'neutral'];
     return tones.flatMap((tone) => {
         const statuses = Object.keys(RUN_TONE).filter((status) => RUN_TONE[status] === tone);
         const words = tone === 'neutral' ? [...statuses, NOT_ENDED] : statuses;
-        return words.length === 0 ? [] : [{ label: words.join(', '), color: TONE_COLOR[tone] }];
+        return words.length === 0 ? [] : [{ label: words.join(', '), color: toneColor(tone, t) }];
     });
 }
 
@@ -57,9 +57,9 @@ function groupByX(runs: ExperimentWindow[], toX: (ms: number) => X): Map<X, Expe
 }
 
 /** One start marker per x: a lone run is named, a group is counted. */
-function startMarker(x: X, group: ExperimentWindow[]): Record<string, unknown> {
-    const colors = new Set(group.map((r) => outcomeColor(r.outcome)));
-    const color = colors.size === 1 ? [...colors][0] : CHART.text;
+function startMarker(x: X, group: ExperimentWindow[], t: OverlayTokens): Record<string, unknown> {
+    const colors = new Set(group.map((r) => outcomeColor(r.outcome, t)));
+    const color = colors.size === 1 ? [...colors][0] : t.text;
     const base = { xAxis: x, lineStyle: { color, type: 'dashed', width: 1 } };
     const [only] = group;
     if (group.length !== 1 || only === undefined) {
@@ -133,20 +133,22 @@ function thinLabels(
 }
 
 /**
- * A silent series carrying the overlay. `toX` converts epoch ms to the
- * x-axis value (identity for time axes; day-string for category axes).
+ * A silent series carrying the overlay, in the tokens `t`. `toX` converts
+ * epoch ms to the x-axis value (identity for time axes; day-string for
+ * category axes).
  * On a time axis, `labelGap` hides the name of a run that starts closer
  * than that to the last named one; hovering its line still names it.
  * With `axis`, a name at an end of the axis is anchored to stay inside.
  */
 export function experimentOverlay(
     runs: ExperimentWindow[],
+    t: OverlayTokens,
     toX: (ms: number) => X = (ms) => ms,
     labelGap = 0,
     axis?: TimeAxis,
 ): Series | null {
     if (runs.length === 0) return null;
-    const markers = [...groupByX(runs, toX)].map(([x, group]) => startMarker(x, group));
+    const markers = [...groupByX(runs, toX)].map(([x, group]) => startMarker(x, group, t));
     return {
         type: 'line',
         data: [],
@@ -157,7 +159,7 @@ export function experimentOverlay(
                 {
                     xAxis: toX(r.start_ns / 1e6),
                     runId: r.id,
-                    itemStyle: { color: `${outcomeColor(r.outcome)}1a` }, // ~10% opacity
+                    itemStyle: { color: `${outcomeColor(r.outcome, t)}1a` }, // ~10% opacity
                 },
                 { xAxis: toX(r.end_ns / 1e6) },
             ]),
@@ -171,7 +173,7 @@ export function experimentOverlay(
                 show: true,
                 position: 'end',
                 fontSize: 10,
-                color: CHART.text,
+                color: t.text,
                 width: 160,
                 overflow: 'truncate',
                 formatter: (p: { name?: string }) => p.name ?? '',

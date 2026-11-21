@@ -2,11 +2,13 @@
 
 ## Supported Versions
 
-| Version | Supported          |
-|---------|--------------------|
-| 2.20.x  | :white_check_mark: |
-| 2.19.x  | :white_check_mark: |
-| < 2.19  | :x:                |
+Only the latest 3.0.x release gets security fixes.
+
+| Version      | Supported          |
+|--------------|--------------------|
+| latest 3.0.x | :white_check_mark: |
+| older 3.0.x  | :x:                |
+| < 3.0        | :x:                |
 
 ## Reporting a Vulnerability
 
