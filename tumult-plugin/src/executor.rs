@@ -250,7 +250,7 @@ pub async fn execute_script_until<S: std::hash::BuildHasher>(
 
     cmd.kill_on_drop(true); // Kill child process if future is dropped (timeout)
 
-    let mut child = cmd.spawn().map_err(ExecutorError::ExecutionFailed)?;
+    let mut child = tumult_spawn::alone(|| cmd.spawn()).map_err(ExecutorError::ExecutionFailed)?;
 
     // Drain the pipes concurrently with waiting: a script whose output
     // exceeds the OS pipe buffer would otherwise block on write and be
