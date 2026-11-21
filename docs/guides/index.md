@@ -9,7 +9,7 @@ has_children: true
 Tumult collects resilience evidence, stores it, and tells you what it means.
 The guides follow that loop.
 
-![The evidence loop](../images/3.0/diagrams/flow-evidence-loop.png)
+![The evidence loop](../images/3.0/diagrams/flow-evidence-loop.svg)
 
 New here? Start with the [Platform Walkthrough](platform-walkthrough.md).
 

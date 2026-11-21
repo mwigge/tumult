@@ -46,10 +46,10 @@ not being renamed.
 
 | Level | Diagram |
 |---|---|
-| 1, context | ![C4 level 1: who uses Tumult and what it talks to](../images/3.0/diagrams/c4-1-context.png) |
-| 2, containers | ![C4 level 2: the programs that make up Tumult](../images/3.0/diagrams/c4-2-containers.png) |
-| 3, ingest and store | ![C4 level 3: the parts of tumultd that receive telemetry and write the lake](../images/3.0/diagrams/c4-3a-ingest-and-store.png) |
-| 3, intelligence and API | ![C4 level 3: the parts of tumultd that answer the API and build the evidence](../images/3.0/diagrams/c4-3b-intelligence-and-api.png) |
+| 1, context | ![C4 level 1: who uses Tumult and what it talks to](../images/3.0/diagrams/c4-1-context.svg) |
+| 2, containers | ![C4 level 2: the programs that make up Tumult](../images/3.0/diagrams/c4-2-containers.svg) |
+| 3, ingest and store | ![C4 level 3: the parts of tumultd that receive telemetry and write the lake](../images/3.0/diagrams/c4-3a-ingest-and-store.svg) |
+| 3, intelligence and API | ![C4 level 3: the parts of tumultd that answer the API and build the evidence](../images/3.0/diagrams/c4-3b-intelligence-and-api.svg) |
 
 The source of each diagram is the `.json` file beside it.
 
