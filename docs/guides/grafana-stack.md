@@ -106,6 +106,8 @@ Loki 3.x ingests OTLP natively (the collector's `otlp_http/loki` exporter posts 
 - **Only a few labels are indexed**: `service_name` and `deployment_environment`. Everything else — including all `resilience.*` attributes, with dots converted to underscores — is stored as **structured metadata**: queryable per line, but not indexed. Filter on it *after* the stream selector.
 - **JSON log bodies** (Tumult's audit events are JSON strings) need `| json` before you can use their fields.
 
+<!-- {% raw %} -->
+
 ```logql
 # all tumult logs
 {service_name="tumult"}
@@ -125,6 +127,8 @@ Loki 3.x ingests OTLP natively (the collector's `otlp_http/loki` exporter posts 
 # count audit events per minute
 sum by (event) (count_over_time({service_name="tumult"} | json [1m]))
 ```
+
+<!-- {% endraw %} -->
 
 Because `trace_id` is attached to every log record as structured metadata, Grafana's Tempo→Loki correlation works: from a trace span, "Logs for this span" jumps to the matching log lines.
 

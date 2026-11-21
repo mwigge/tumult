@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 142 36" width="142" height="36" role="img">
+  <title>Tumult</title>
+  <!-- The mark: a ring, and a wave that is pushed out and settles again. -->
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.6">
+    <circle cx="18" cy="18" r="14" stroke="#1f6fb2"/>
+    <path d="M8.5 18h2.5c1.6 0 2-8 4-8s2.4 13 4.4 13 2-6 3.4-6 1.4 1 2.2 1h4.5" stroke="#c87533"/>
+    <!-- The word, drawn as lines so it needs no font. -->
+    <g stroke="#1b2329">
+      <path d="M44 9.6h14M51 9.6v16.8"/>
+      <path d="M61.5 15.6v5.8a5 5 0 0 0 10 0M71.5 15.6v10.8"/>
+      <path d="M78.7 15.6v10.8M78.7 20.6a5 5 0 0 1 10 0v5.8M88.7 20.6a5 5 0 0 1 10 0v5.8"/>
+      <path d="M105.9 15.6v5.8a5 5 0 0 0 10 0M115.9 15.6v10.8"/>
+      <path d="M123.1 8v18.4"/>
+      <path d="M132.8 10v13.4a3 3 0 0 0 3 3h1.2M130.3 15.6h6"/>
+    </g>
+  </g>
+</svg>
