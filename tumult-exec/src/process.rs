@@ -39,7 +39,7 @@ pub(super) fn execute_process(
             .kill_on_drop(true);
         #[cfg(unix)]
         command.process_group(0);
-        let mut child = match command.spawn() {
+        let mut child = match tumult_core::spawn::alone(|| command.spawn()) {
             Ok(child) => child,
             Err(error) => return failure(path, &format!("failed to execute: {error}"), start),
         };

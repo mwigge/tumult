@@ -129,7 +129,7 @@ impl AnalyticsStore {
     /// Import what [`AnalyticsStore::export_load_tables`] wrote, in one
     /// transaction. A file written before a column existed imports with
     /// that column unknown. Rows the lake already holds (by
-    /// [`LOAD_RESULTS`] and [`PROBE_SAMPLES`]) are left as they are, so
+    /// `LOAD_RESULTS` and `PROBE_SAMPLES`) are left as they are, so
     /// importing a backup twice, or into a lake that has some of its
     /// runs, adds each row once.
     ///

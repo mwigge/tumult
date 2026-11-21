@@ -31,7 +31,7 @@
 //!
 //! Everything a payload declares (row counts, body lengths, decompressed
 //! sizes, ids) is checked against [`limits::OtapLimits`] before memory is
-//! committed to it; see [`decode`] and the `hostile` tests. A batch that
+//! committed to it; see `decode` and the `hostile` tests. A batch that
 //! cannot be decoded ends its stream: the IPC state after it is unknown.
 
 mod admission;
@@ -78,7 +78,7 @@ pub enum OtapError {
     #[error("unknown OTAP payload type {0}")]
     UnknownPayloadType(i32),
 
-    /// `schema_id` is cleaned ([`crate::log_guard::clean`]) by whoever
+    /// `schema_id` is cleaned (`crate::log_guard::clean`) by whoever
     /// builds this, quotes included: the id cannot leave its own quotes.
     #[error("{payload} payload for schema \"{schema_id}\" carries no record batch")]
     EmptyPayload {

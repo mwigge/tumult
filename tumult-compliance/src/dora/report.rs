@@ -5,7 +5,7 @@
 //! - [`dora`]: coverage per article and per function (or org unit), the
 //!   expectation table and the reporting-readiness facts;
 //! - [`article`]: one article with every evidence row behind each cell;
-//! - [`maturity`]: the internal level of the legal entity with its
+//! - [`maturity()`]: the internal level of the legal entity with its
 //!   pillars and gates, and the per-node roll-up with the cap chain.
 //!
 //! No number leaves this module without the unknown share it must be

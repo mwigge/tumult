@@ -1,0 +1,31 @@
+# Failures of the docs site that are known and allowed for now. Read by
+# scripts/site-check.py and scripts/site-shots.mjs (its overflow-<width>
+# lines). One `page::rule  # reason` per line, the reason is required. A line
+# that matches no failure fails the check, so the pull request that fixes a
+# failure deletes its line. Found on 2026-11-21 in the pages tumult.rs serves.
+
+# The diagrams show as source text: docs/_config.yml sets no `mermaid:` (PR 10).
+blog/11-agentic-fault-injection.html::raw-mermaid  # mermaid is not set (PR 10)
+blog/24-topology-compliance-lineage.html::raw-mermaid  # mermaid is not set (PR 10)
+blog/25-autopilot.html::raw-mermaid  # mermaid is not set (PR 10)
+blog/26-web-ui-getting-started.html::raw-mermaid  # mermaid is not set (PR 10)
+blog/27-kronika-getting-started.html::raw-mermaid  # mermaid is not set (PR 10)
+guides/mcp-guide.html::raw-mermaid  # mermaid is not set (PR 10)
+guides/platform-walkthrough.html::raw-mermaid  # mermaid is not set (PR 10)
+
+# Pages wider than the screen, so they scroll sideways.
+index.html::overflow-390  # the install line runs off a phone screen, 589 px (PR 10)
+guides/platform-walkthrough.html::overflow-1440  # raw mermaid text is 1,715 px wide (PR 10)
+guides/platform-walkthrough.html::overflow-390  # raw mermaid text is 1,091 px wide (PR 10)
+
+# Liquid prints Go templates as nothing.
+guides/grafana-stack.html::liquid-ate-braces  # {{.event}} {{.status}} show as line_format " " (PR 10)
+testprotocol.html::liquid-ate-braces  # five {{.X}} in docker commands; the page leaves the site (PR 11, D7)
+
+# Links to files that are not on the site.
+blog/26-web-ui-getting-started.html::broken-link  # docs/architecture/ is not built yet (PR 11)
+blog/27-kronika-getting-started.html::broken-link  # docs/architecture/ is not built yet (PR 11)
+guides/platform-walkthrough.html::broken-link  # docs/architecture/ is not built yet (PR 11)
+blog/15-road-ahead.html::broken-link  # links ../../CHANGELOG.md, a repository file Pages does not serve (PR 11)
+guides/agentic-cross-client-observability.html::broken-link  # links a collector file outside docs/ (PR 11)
+guides/mcp-guide.html::broken-link  # links ../../README.md, a repository file Pages does not serve (PR 11)

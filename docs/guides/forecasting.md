@@ -685,5 +685,3 @@ with no egress.
   the output; the built-in fit bridges them internally by interpolation.
 * **Recovery resolution** is one sampling step. A probe sampled every five
   seconds cannot show a two-second recovery.
-* **ClickHouse backend.** The `forecasts` cache and probe samples are
-  DuckDB-lake only.

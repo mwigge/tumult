@@ -32,3 +32,6 @@ http-body-util = "0.1"
 # rustls has no process-level default provider; the tests install one
 # explicitly, mirroring `tumultd::serve`.
 rustls = { version = "0.23.45", features = ["aws-lc-rs"] }
+
+[lints]
+workspace = true

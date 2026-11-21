@@ -123,8 +123,10 @@ async fn dispatch(command: Commands) -> anyhow::Result<()> {
                 var_map,
                 load_override,
                 match baseline_mode {
-                    cli::BaselineMode::Full => tumult_core::runner::BaselineMode::Full,
-                    cli::BaselineMode::Skip => tumult_core::runner::BaselineMode::Skip,
+                    // `skip` stays valid on the command line and runs as `full`.
+                    cli::BaselineMode::Full | cli::BaselineMode::Skip => {
+                        tumult_core::runner::BaselineMode::Full
+                    }
                     cli::BaselineMode::Only => tumult_core::runner::BaselineMode::Only,
                 },
                 target_version.as_deref(),

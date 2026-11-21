@@ -33,8 +33,8 @@ spec:
       containers:
         - name: tumult-mcp
           image: ghcr.io/mwigge/tumult-mcp:3.0.2
-          # Explicit command also supports older images with flags in ENTRYPOINT.
-          command: ["tumult-mcp"]
+          # No command: the image entrypoint runs tini as PID 1, then
+          # tumult-mcp. The args replace the image CMD.
           args: ["--transport", "http", "--host", "0.0.0.0", "--port", "3100"]
           workingDir: /home/tumult/.tumult
           ports:

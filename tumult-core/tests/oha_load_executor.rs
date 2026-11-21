@@ -174,6 +174,33 @@ fn flat_config_is_one_window_and_one_sample() {
     assert_eq!(recorded(&dir, "timeouts"), vec!["750ms"]);
 }
 
+/// A load tool that starts while a probe makes its pipes would keep a copy
+/// of them on macOS, and the probe would wait for the load to end. So a
+/// window starts only when no other spawn runs.
+#[test]
+fn a_window_starts_only_when_no_other_spawn_runs() {
+    let mut env = EnvGuard::lock();
+    let dir = tempfile::tempdir().expect("tempdir");
+    install_fake_oha(&mut env, &dir, FAKE_OHA_JSON);
+    let executor = OhaLoadExecutor::default();
+
+    let handle = tumult_core::spawn::alone(|| {
+        let handle = executor.start(&config(None, 1.0)).expect("fake oha starts");
+        // sleep: there is no event for a file that must stay absent; wait
+        // past the time the window would need to start.
+        std::thread::sleep(Duration::from_millis(500));
+        assert!(
+            recorded(&dir, "calls").is_empty(),
+            "a window started during another spawn"
+        );
+        handle
+    });
+
+    wait_for_calls(&dir, 1);
+    let result = executor.stop(handle).expect("fake oha stops");
+    assert_eq!(result.execution.completed_windows, Some(1));
+}
+
 #[test]
 fn the_request_timeout_follows_the_window_up_to_thirty_seconds() {
     let mut env = EnvGuard::lock();

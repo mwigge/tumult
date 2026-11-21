@@ -428,7 +428,7 @@ tumult store <subcommand>
 | `restore --input <dir> --output <new-db>` | Verify a complete backup and restore into a new database; never overwrite an existing destination |
 | `purge --older-than-days <N>` | Delete experiments older than N days, with their activities, load results, probe samples, NFR verdicts and own graph rows; telemetry, the run registry and audit trail, manual records, forecasts, sightings and autopilot tables are kept |
 | `path` | Print the store file path |
-| `migrate` | Migrate data from DuckDB to ClickHouse backend |
+| `migrate` | Deprecated: copy the store to ClickHouse. See the note below |
 | `import-legacy [--analytics-db <path>] [--kronika-db <path>] [--store <path>]` | Import databases from older installs (old analytics store and/or kronika lake) into the current store; idempotent |
 
 ### Examples
@@ -438,9 +438,13 @@ tumult store stats
 tumult store backup --output ~/tumult-backup-2026-10
 tumult store restore --input ~/tumult-backup-2026-10 --output ~/tumult-restored.duckdb
 tumult store purge --older-than-days 90
-tumult store migrate   # requires TUMULT_CLICKHOUSE_URL
 tumult store import-legacy --analytics-db ~/.tumult/analytics.duckdb
 ```
+
+ClickHouse is deprecated and Tumult 3.1 removes it. When
+`TUMULT_CLICKHOUSE_URL` is set, `tumult run` writes the journal to
+ClickHouse and not to the store, and it logs the warning
+`cli.clickhouse.deprecated`. Leave the variable unset to use the store.
 
 See [Data portability and recovery](data-portability.md) for archive coverage,
 backup assets and restoration checks. A Parquet archive is not an operational
@@ -501,7 +505,7 @@ Binary resolution honors the `CLAUDE_CODE_BIN` / `CODEX_BIN` env overrides.
 
 ## tumult mcp serve
 
-Start the MCP (Model Context Protocol) server from the main `tumult` binary. This is the recommended way to launch the server — it runs in-process, so no separate `tumult-mcp` executable needs to be installed alongside the CLI. (The standalone `tumult-mcp` binary below remains available and behaves identically.)
+Start the MCP (Model Context Protocol) server from the main `tumult` binary. This is the way to start the server on a host: the release archives ship `tumult`, not `tumult-mcp`. The server runs in the same process.
 
 ```
 tumult mcp serve                                    # stdio (IDE integration)
@@ -522,7 +526,7 @@ The exposed tools, authentication, and data model are identical to the standalon
 
 ## tumult-mcp
 
-Start the MCP (Model Context Protocol) server: a separate binary using stdio by default or Streamable HTTP. Equivalent to `tumult mcp serve`.
+Start the MCP (Model Context Protocol) server: a separate binary using stdio by default or Streamable HTTP. Equivalent to `tumult mcp serve`, with the same options. It is in the container images and in a build from source, not in the release archives.
 
 ```
 tumult-mcp                                # stdio (IDE integration)
@@ -552,7 +556,7 @@ Tool failures are returned with `isError: true` per the MCP specification. Authe
 Set `TUMULT_MCP_TOKEN` to require bearer token auth on all tool calls. If not set, the server runs without authentication (log warning emitted).
 
 ```bash
-TUMULT_MCP_TOKEN=my-secret tumult-mcp
+TUMULT_MCP_TOKEN=my-secret tumult mcp serve
 ```
 
 Callers must pass `Authorization: Bearer my-secret` in MCP request metadata.
@@ -781,7 +785,7 @@ tumult tui [--store <path>] [--refresh-secs <n>]
 | `TUMULT_DAEMON_TOKEN` | `kro_...` API token sent as `Authorization: Bearer` on daemon journal POSTs |
 | `CLAUDE_CODE_BIN` | Explicit path to the Claude Code binary for `recommend --agent` / `agents` |
 | `CODEX_BIN` | Explicit path to the Codex binary for `recommend --agent` / `agents` |
-| `TUMULT_CLICKHOUSE_URL` | ClickHouse URL for SigNoz cross-correlation mode |
+| `TUMULT_CLICKHOUSE_URL` | Deprecated: `tumult run` writes to ClickHouse, not to the store. See `tumult store` |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP endpoint URL |
 | `OTEL_SERVICE_NAME` | Service name for telemetry (default: `tumult`) |
 | `DATABASE_HOST` / custom | Resolved via `configuration` blocks in experiment |

@@ -27,3 +27,6 @@ tempfile = { workspace = true }
 tokio = { version = "1", features = ["rt", "time", "fs", "io-util", "macros", "net"] }
 tumult-plugin = { path = "../tumult-plugin" }
 tumult-test-utils = { path = "../tumult-test-utils", default-features = false, features = ["otel"] }
+
+[lints]
+workspace = true

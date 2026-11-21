@@ -33,11 +33,19 @@ const OUTSIDE: &str = "the output is outside the tolerance";
 /// reached.
 const TARGET: &str = r#"read -r state left < state
 echo "$state" >> reads
-if test -n "$left" && test "$left" -gt 1; then echo "$state $((left - 1))" > state
-elif test -n "$left"; then echo ok > state
+if test -n "$left" && test "$left" -gt 1; then sh set-state.sh "$state" $((left - 1))
+elif test -n "$left"; then sh set-state.sh ok
 fi
 if test "$state" = refused; then echo "connection refused" >&2; exit 7; fi
 echo "$state"
+"#;
+
+/// `sh set-state.sh down 2` makes `down 2` the state of the target. The
+/// new state goes to a file of its own first and is then moved in place,
+/// so a read at the same time sees the old state or the new one, never an
+/// empty file.
+const SET_STATE: &str = r#"echo "$*" > "state.$$"
+mv "state.$$" state
 "#;
 
 /// Runs the process of a step in the directory of the lab. What it printed
@@ -50,6 +58,7 @@ impl InLab {
     fn new() -> Self {
         let lab = Self(tempfile::TempDir::new().expect("lab directory"));
         std::fs::write(lab.path().join("target.sh"), TARGET).expect("target script");
+        std::fs::write(lab.path().join("set-state.sh"), SET_STATE).expect("state script");
         std::fs::write(lab.path().join("state"), "ok\n").expect("state file");
         lab
     }
@@ -227,7 +236,7 @@ fn a_sample_under_the_fault_outside_its_tolerance_has_a_span_that_says_so() {
     // The target is down for two reads, then up. The method waits for the
     // sampler to read it four times from the fault on.
     let fault = format!(
-        "n=$(wc -l < reads); echo down 2 > state; {}",
+        "n=$(wc -l < reads); sh set-state.sh down 2; {}",
         until_read("$((n + 4))")
     );
     let experiment = experiment(vec![reads_ok("steady")], &fault);
@@ -247,7 +256,7 @@ fn a_sample_after_the_method_outside_its_tolerance_has_a_span_that_says_so() {
     let lab = InLab::new();
     // One read before the method and one while it runs, then the target is
     // down for three reads after it.
-    let fault = format!("{}; echo down 3 > state", until_read("2"));
+    let fault = format!("{}; sh set-state.sh down 3", until_read("2"));
     let experiment = experiment(vec![reads_ok("steady")], &fault);
 
     let (journal, spans) = capture_spans(|| run(&experiment, lab, &sampling(1)));
@@ -261,7 +270,7 @@ fn a_sample_after_the_method_outside_its_tolerance_has_a_span_that_says_so() {
 #[test]
 fn a_sample_its_plugin_could_not_take_keeps_the_error_of_the_plugin() {
     let lab = InLab::new();
-    let fault = format!("{}; echo refused 2 > state", until_read("2"));
+    let fault = format!("{}; sh set-state.sh refused 2", until_read("2"));
     let experiment = experiment(vec![reads_ok("steady")], &fault);
 
     let (journal, spans) = capture_spans(|| run(&experiment, lab, &sampling(1)));
@@ -341,7 +350,7 @@ fn a_probe_that_panics_after_the_method_is_a_failed_sample_and_the_run_has_a_jou
     let lab = InLab::new();
     // One read before the method and one while it runs. The first read
     // after it makes the plugin panic, the next one reads ok.
-    let fault = format!("{}; echo crash 1 > state", until_read("2"));
+    let fault = format!("{}; sh set-state.sh crash 1", until_read("2"));
     let experiment = experiment(vec![reads_ok("steady")], &fault);
 
     let ran = std::panic::catch_unwind(|| run(&experiment, lab, &sampling(1)));
@@ -362,7 +371,7 @@ fn the_sampler_goes_on_after_a_probe_that_panicked() {
     // The read after the fault makes the plugin panic. The method waits for
     // the sampler to read the target three times from the fault on.
     let fault = format!(
-        "n=$(wc -l < reads); echo crash 1 > state; {}",
+        "n=$(wc -l < reads); sh set-state.sh crash 1; {}",
         until_read("$((n + 3))")
     );
     let experiment = experiment(vec![reads_ok("steady")], &fault);
@@ -389,7 +398,7 @@ fn a_probe_that_panics_in_the_check_before_the_method_ends_the_run_with_a_journa
     let lab = InLab::new();
     // The first read of the target makes the plugin panic.
     std::fs::write(lab.path().join("state"), "crash\n").expect("state file");
-    let experiment = experiment(vec![reads_ok("steady")], "echo down > state");
+    let experiment = experiment(vec![reads_ok("steady")], "sh set-state.sh down");
 
     let journal = run(&experiment, lab, &sampling(1));
 
@@ -414,12 +423,12 @@ fn a_probe_that_panics_in_the_check_after_the_method_fails_the_check_and_the_rol
     let lab = InLab::new();
     // One read before the method and one while it runs. From then on every
     // read makes the plugin panic, until the rollback restores the target.
-    let fault = format!("{}; echo crash > state", until_read("2"));
+    let fault = format!("{}; sh set-state.sh crash", until_read("2"));
     let experiment = Experiment {
         rollbacks: vec![step(
             "restore",
             ActivityType::Action,
-            "echo ok > state; echo restored",
+            "sh set-state.sh ok; echo restored",
         )],
         ..experiment(vec![reads_ok("steady")], &fault)
     };

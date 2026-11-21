@@ -5,10 +5,8 @@
 //!
 //! # Features
 //!
-//! - Connection pooling with automatic reconnection
 //! - Key-based and SSH agent authentication
 //! - Command execution with stdout/stderr capture
-//! - File upload over an SSH channel (`cat > path`) for deploying stress scripts
 //!
 //! # Authentication methods
 //!
@@ -28,12 +26,10 @@
 pub mod config;
 pub mod error;
 pub mod native;
-pub mod pool;
 pub mod session;
 pub(crate) mod telemetry;
 
 pub use config::{AuthMethod, HostKeyPolicy, SshConfig};
 pub use error::SshError;
 pub use native::SshExecutor;
-pub use pool::SshPool;
 pub use session::{CommandResult, SshSession};

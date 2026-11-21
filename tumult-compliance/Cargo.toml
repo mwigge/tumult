@@ -25,3 +25,6 @@ tumult-exec = { path = "../tumult-exec" }
 tumult-otlp.workspace = true
 opentelemetry-proto.workspace = true
 opentelemetry_sdk.workspace = true
+
+[lints]
+workspace = true

@@ -16,5 +16,6 @@
 ARG BASE=tumult
 FROM ${BASE}
 
-ENTRYPOINT ["tumult-mcp"]
+# tini comes from the base image and stays PID 1, as in the CLI image.
+ENTRYPOINT ["/usr/bin/tini", "--", "tumult-mcp"]
 CMD ["--transport", "http", "--host", "0.0.0.0"]

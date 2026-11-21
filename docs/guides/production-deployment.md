@@ -134,7 +134,8 @@ spoofed telemetry from anyone. Loopback binds stay open for local dev.
 ## 2. Deploy
 
 **systemd** (`deploy/systemd/tumult-mcp.service`) — a hardened unit binding
-localhost; front it with a TLS reverse proxy:
+localhost; front it with a TLS reverse proxy. It runs `tumult mcp serve` from
+the `tumult` binary of the release archive, installed in `/usr/local/bin`:
 
 ```bash
 install -Dm600 /dev/stdin /etc/tumult/mcp.env <<'EOF'

@@ -23,3 +23,6 @@ axum = { workspace = true }
 opentelemetry = { workspace = true }
 tumult-test-utils = { path = "../tumult-test-utils", default-features = false, features = ["otel"] }
 tempfile = { workspace = true }
+
+[lints]
+workspace = true
