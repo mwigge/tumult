@@ -3,9 +3,10 @@
     // coverage gaps first (the passive scan runs with no faults), then the
     // continuous resilience score per target (/api/posture). Operators can
     // accept a finding for a while; suppressions are hash-chained server side.
+    import { onMount } from 'svelte';
     import { api, fmtAgo } from '#lib/api.js';
     import type { EChartsCoreOption } from '#lib/echarts.js';
-    import { chartTokens } from '#lib/echarts.js';
+    import { chartTheme, chartTokens, followTheme } from '#lib/echarts.js';
     import type { LegendItem } from '#lib/legend.js';
     import { coverageLabels, disciplineLabel, stackedLabel } from '#lib/coverage.js';
     import { sparkTrend } from '#lib/org-score.js';
@@ -110,18 +111,21 @@
     };
     const bandClass = (b: string) => (b === 'good' ? 'ok' : b === 'fair' ? 'warn' : 'fail');
 
-    const t = chartTokens();
+    // The charts are drawn in the colours of the theme in force.
+    let theme = $state(chartTheme());
+    onMount(() => followTheme((next) => (theme = next)));
+    const t = $derived(chartTokens(theme));
     // The three states of a coverage cell in the order of their value, each
     // in the colour the heatmap and its legend draw it in.
-    const COVERAGE_STATES: LegendItem[] = [
+    const coverageStates: LegendItem[] = $derived([
         { label: 'missing', color: t.fail },
         { label: 'stale', color: t.warn },
         { label: 'covered', color: t.ok },
-    ];
-    const STATUS_VALUE: Record<string, number> = Object.fromEntries(
-        COVERAGE_STATES.map((state, value) => [state.label, value]),
+    ]);
+    const statusValue: Record<string, number> = $derived(
+        Object.fromEntries(coverageStates.map((state, value) => [state.label, value])),
     );
-    const axisName = { color: t.text };
+    const axisName = $derived({ color: t.text });
 
     // Coverage heatmap: targets × disciplines, hue = covered / stale / missing.
     const heatmapOption: EChartsCoreOption | null = $derived.by(() => {
@@ -129,7 +133,7 @@
         const kinds = report.coverage.kinds;
         const targets = coverageLabels(report.coverage.targets);
         const data = report.coverage.targets.flatMap((c, y) =>
-            c.cells.map((cell) => [kinds.indexOf(cell.kind), y, STATUS_VALUE[cell.status] ?? 0]),
+            c.cells.map((cell) => [kinds.indexOf(cell.kind), y, statusValue[cell.status] ?? 0]),
         );
         return {
             grid: { left: 150, right: 16, top: 26, bottom: 58 },
@@ -137,7 +141,7 @@
                 ...t.tooltip,
                 formatter: tipFormatter((p: { data?: number[] }) => {
                     const [x, y, v] = p.data ?? [0, 0, 0];
-                    const status = COVERAGE_STATES[v]?.label ?? '';
+                    const status = coverageStates[v]?.label ?? '';
                     return tip([strong(targets[y]), ` · ${disciplineLabel(kinds[x])}`], status);
                 }),
             },
@@ -162,8 +166,8 @@
             visualMap: {
                 show: false,
                 min: 0,
-                max: COVERAGE_STATES.length - 1,
-                inRange: { color: COVERAGE_STATES.map((state) => state.color) },
+                max: coverageStates.length - 1,
+                inRange: { color: coverageStates.map((state) => state.color) },
             },
             series: [
                 {
@@ -207,17 +211,17 @@
     const NO_MARGIN = { met: 0.5, breached: -0.5, other: 0 } as const;
     // The margin scale, low to high, each part in the colour the heatmap
     // and its legend draw it in.
-    const MARGIN_SCALE: LegendItem[] = [
+    const marginScale: LegendItem[] = $derived([
         { label: 'margin on the bad side', color: t.fail },
         { label: 'margin near zero', color: t.warn },
         { label: 'margin on the good side', color: t.ok },
-    ];
-    const nfrLegend: LegendItem[] = [
-        ...MARGIN_SCALE,
+    ]);
+    const nfrLegend: LegendItem[] = $derived([
+        ...marginScale,
         {
             label: `no margin: met counts as ${NO_MARGIN.met}, breached as ${NO_MARGIN.breached}, any other verdict as ${NO_MARGIN.other}`,
         },
-    ];
+    ]);
 
     // NFR heatmap: targets × objectives, hue = margin (negative = breached).
     const nfrOption: EChartsCoreOption | null = $derived.by(() => {
@@ -282,7 +286,7 @@
                 dimension: 2,
                 min: -span,
                 max: span,
-                inRange: { color: MARGIN_SCALE.map((part) => part.color) },
+                inRange: { color: marginScale.map((part) => part.color) },
             },
             series: [
                 {
@@ -429,7 +433,7 @@
                         label="Evidence coverage per target and discipline"
                         height={Math.max(160, 28 * report.coverage.targets.length + 94)}
                     />
-                    <ChartLegend id="coverage" items={COVERAGE_STATES} />
+                    <ChartLegend id="coverage" items={coverageStates} />
                 {/if}
                 {#if radarOption}
                     <EChart

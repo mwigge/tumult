@@ -342,7 +342,7 @@ describe('the tooltip guard', () => {
     it('accepts a formatter made by tipFormatter and a label formatter', () => {
         const ok = [
             'x = { tooltip: { ...t.tooltip, formatter: tipFormatter((p) => tip(p.name)) } }',
-            'x = { tooltip: { ...CHART.tooltip, trigger: "axis" } }',
+            'x = { tooltip: { ...tokens.tooltip, trigger: "axis" } }',
             'x = { tooltip: t.tooltip, series: [{ tooltip: { show: false } }] }',
             'x = { label: { formatter: (p) => p.name } }',
             'x = { tooltip: { formatter: tipFormatter((p) => tip([p.name, " (", p.v, ")"])) } }',

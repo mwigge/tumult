@@ -24,6 +24,16 @@ MERMAID_SCRIPT = (
     '<script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js">'
     "</script>"
 )
+# What just-the-docs writes for `mermaid: version` 10 or later.
+MERMAID_MODULE = (
+    '<script type="module">\n'
+    "  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11.17.2/dist/"
+    "mermaid.esm.min.mjs';\n"
+    "  var config = {};\n"
+    "  mermaid.initialize(config);\n"
+    "  mermaid.run({\n    querySelector: '.language-mermaid',\n  });\n"
+    "</script>"
+)
 
 
 def page(body, head=""):
@@ -87,6 +97,19 @@ class RawMermaid(SiteTest):
         self.assertEqual(
             self.failures({"guides/flow.html": page(MERMAID_BLOCK, MERMAID_SCRIPT)}),
             [],
+        )
+
+    def test_a_mermaid_block_on_a_page_that_imports_mermaid_in_a_module_passes(self):
+        self.assertEqual(
+            self.failures({"guides/flow.html": page(MERMAID_BLOCK + MERMAID_MODULE)}),
+            [],
+        )
+
+    def test_a_script_that_only_names_mermaid_does_not_load_it(self):
+        script = '<script>console.log("mermaid is not here");</script>'
+        self.assertEqual(
+            self.failures({"guides/flow.html": page(MERMAID_BLOCK + script)}),
+            [("guides/flow.html", "raw-mermaid")],
         )
 
     def test_a_page_with_no_mermaid_block_needs_no_mermaid_script(self):

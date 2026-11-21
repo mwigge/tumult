@@ -19,7 +19,6 @@ import type {
     GameDayEntry,
     ExperimentRow,
     ExperimentWindow,
-    ForecastResponse,
     LogEntry,
     LoginResponse,
     LogVolume,
@@ -50,14 +49,12 @@ import type {
     ScaffoldRequest,
     ScaffoldResponse,
     Schedule,
-    Scorecard,
     StarMap,
     GateVerdict,
     PerfParams,
     PerfTargets,
     PerfVerdict,
     ScoreTree,
-    Timeseries,
     TraceDetail,
     TraceDurations,
     TraceRow,
@@ -146,9 +143,6 @@ export const api = {
 
     overview: (range: string) => get<Overview>(`/api/overview?range=${range}`),
 
-    timeseries: (metric: string, interval: string, range: string) =>
-        get<Timeseries>(`/api/timeseries?metric=${metric}&interval=${interval}&range=${range}`),
-
     experiments: (params: Record<string, string>) => {
         const qs = new URLSearchParams(
             Object.entries(params).filter(([, v]) => v !== ''),
@@ -170,8 +164,6 @@ export const api = {
     metrics: () => get<{ metrics: MetricDefInfo[] }>('/api/metrics'),
 
     reports: () => get<{ reports: ReportFile[] }>('/api/reports'),
-
-    scores: (range: string) => get<Scorecard>(`/api/scores?range=${range}`),
 
     // --- Passive risk scan + posture ---------------------------------------
 
@@ -344,16 +336,6 @@ export const api = {
             note,
         }),
 
-    manualAttach: (id: string, kind: string, uri: string, label: string | null, addedBy: string) =>
-        send<{ id: string }>(
-            'POST',
-            `/api/manual/experiments/${encodeURIComponent(id)}/attachments`,
-            { kind, uri, label, added_by: addedBy },
-        ),
-
-    manualImport: (label: string | null, records: ManualRecordInput[]) =>
-        send<{ batch_id: string; ids: string[] }>('POST', '/api/manual/import', { label, records }),
-
     // --- UI execution: registry + runs ----------------------------------------
 
     registry: () => get<{ count: number; definitions: RegistryEntry[] }>('/api/registry'),
@@ -390,18 +372,6 @@ export const api = {
 
     // Counterfactual impact of a run; rejects (404) when it has no samples.
     runImpact: (id: string) => get<RunImpact>(`/api/runs/${encodeURIComponent(id)}/impact`),
-
-    forecast: (
-        metric: string,
-        opts: { target?: string; env?: string; range?: string; horizon?: number } = {},
-    ) => {
-        const qs = new URLSearchParams({ metric });
-        if (opts.target) qs.set('target', opts.target);
-        if (opts.env) qs.set('env', opts.env);
-        if (opts.range) qs.set('range', opts.range);
-        if (opts.horizon) qs.set('horizon', String(opts.horizon));
-        return get<ForecastResponse>(`/api/forecast?${qs}`);
-    },
 
     stopRun: (id: string) =>
         send<{ run_id: string; stop: string }>(

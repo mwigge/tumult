@@ -120,4 +120,4 @@ tumult agentic smoke      # deterministic, offline, 10 seconds
 
 Go break your agent. On purpose. While it's still cheap.
 
-— see the [Agentic Quickstart](../guides/agentic-quickstart.md), [Live Clients](../guides/agentic-live-clients.md), and [Cross-Client Observability](../guides/agentic-cross-client-observability.md) guides to dig in.
+See the [Agentic Quickstart](../guides/agentic-quickstart.md), [Live Clients](../guides/agentic-live-clients.md), and [Agentic Observability](../guides/agentic-observability.md) guides to dig in.

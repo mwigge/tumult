@@ -1,0 +1,10 @@
+# Image files under docs/images and docs/assets that no page names on
+# purpose. Read by scripts/check-images.py. One `path  # reason` per line;
+# the reason is required. A line whose file is gone, or that a page names,
+# fails the check, so the pull request that shows a picture deletes its line.
+
+# The sources of the agentic diagrams that the agentic guides show. Render
+# one with: rsvg-convert -z 1.6 -b white docs/images/src/<name>.svg -o docs/images/<name>.png
+docs/images/src/tumult-agentic-clients.svg  # source of tumult-agentic-clients.png
+docs/images/src/tumult-agentic-proxy.svg  # source of tumult-agentic-proxy.png
+docs/images/src/tumult-agentic-trace.svg  # source of tumult-agentic-trace.png

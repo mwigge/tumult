@@ -1,147 +1,103 @@
 ---
-title: Agentic Fault Injection Against Live Clients
-parent: Guides
-nav_order: 9
+title: Agentic live clients
+parent: Work with AI agents
+grand_parent: Guides
+nav_order: 3
+summary: "Faults for Claude Code, Codex and OpenCode traffic"
 ---
 
-# Agentic Fault Injection Against Live Clients
+# Agentic live clients
 
-The [quickstart](agentic-quickstart.md) runs faults against deterministic local
-fixtures. This guide runs the *same* faults against a **real** coding agent —
-Claude Code, the Codex CLI, OpenCode, or GitHub Copilot — by putting Tumult
-between the agent and its model provider.
+Run the faults of a scenario pack against a real coding agent. Tumult sits
+between the agent and its model as a local proxy, forwards the traffic, and
+breaks some of it on purpose.
 
-Every mainstream agent can be pointed at a custom model base URL (or an HTTP
-proxy). Tumult's `agentic proxy` listens on a local port, forwards traffic to
-the real provider, and injects a scenario pack's faults into the live stream.
+![The agentic proxy between coding agents and the model provider](../images/tumult-agentic-proxy.png)
 
-```
-  ┌────────────┐   model API    ┌──────────────────┐   model API   ┌──────────────┐
-  │  agent     │ ─────────────► │ tumult agentic   │ ────────────► │  provider    │
-  │ (claude    │                │ proxy            │               │ (anthropic,  │
-  │  code,     │ ◄───────────── │  · injects faults│ ◄──────────── │  openai,...) │
-  │  codex,...)│   faulted resp │  · scores traffic│   real resp   │              │
-  └────────────┘                └──────────────────┘               └──────────────┘
-```
-
-## Start the Proxy
+## Start the proxy
 
 ```bash
-# Faults from the malformed-json-recovery pack, forwarded to Anthropic.
 tumult agentic proxy \
   --listen 127.0.0.1:8080 \
   --upstream https://api.anthropic.com \
   --scenario malformed-json-recovery \
+  --client claude-code \
   --journal target/agentic/proxy.jsonl
 ```
 
-The proxy prints the exact wiring for each client on startup:
+The first lines it prints:
 
 ```text
 Tumult agentic fault-injecting proxy
   listening: http://127.0.0.1:8080
   upstream:  https://api.anthropic.com
   scenario:  malformed-json-recovery
-  client:    unknown
+  client:    claude-code
+  base-url:  set ANTHROPIC_BASE_URL=http://127.0.0.1:8080
   faults:    malformed_output
   journal:   target/agentic/proxy.jsonl
-
-Point your agent at the proxy, then drive it as usual:
-  Claude Code:  ANTHROPIC_BASE_URL=http://127.0.0.1:8080 claude
-  Codex CLI:    OPENAI_BASE_URL=http://127.0.0.1:8080/v1 codex
-  OpenCode:     OPENAI_BASE_URL=http://127.0.0.1:8080/v1 opencode
-  Copilot CLI:  HTTPS_PROXY=http://127.0.0.1:8080 copilot
-
-Press Ctrl-C to stop.
 ```
 
-## Wire Up Each Client
+`--client` (`claude-code`, `codex`, `copilot` or `opencode`) tags the spans of
+the proxy with `tumult.client`, so you can compare clients later.
 
-Run the proxy in one terminal, then start your agent in another with the
-matching environment variable.
+## Wire up a client
 
-### Claude Code
+Leave the proxy running and start the agent in a second terminal.
 
-```bash
-ANTHROPIC_BASE_URL=http://127.0.0.1:8080 claude
-```
+| Client | Start it with | `--upstream` |
+|---|---|---|
+| Claude Code | `ANTHROPIC_BASE_URL=http://127.0.0.1:8080 claude` | `https://api.anthropic.com` (the default) |
+| Codex CLI | `OPENAI_BASE_URL=http://127.0.0.1:8080/v1 codex` | `https://api.openai.com` |
+| OpenCode | `OPENAI_BASE_URL=http://127.0.0.1:8080/v1 opencode`, or the provider `baseURL` in its config | The API of its provider |
 
-Use `--scenario malformed-json-recovery` (corrupts model output so you can watch
-Claude Code recover) or `--scenario concurrency-storm` (returns synthetic `429`s
-so you can watch its backoff).
+The proxy is a base URL for the agent. It does not open an HTTPS tunnel, so
+an agent that only takes `HTTPS_PROXY`, such as the Copilot CLI, gets its
+`CONNECT` refused and cannot be faulted this way.
 
-### Codex CLI
+Start with `--scenario malformed-json-recovery`, which breaks the answers, or
+`--scenario concurrency-storm`, which answers 429 so you can watch the
+backoff.
 
-```bash
-OPENAI_BASE_URL=http://127.0.0.1:8080/v1 codex
-```
+## How faults map to HTTP
 
-Forward to OpenAI: `--upstream https://api.openai.com`.
+| Fault | What the proxy does |
+|---|---|
+| `model_latency`, `tool_latency` | Waits before it forwards the request |
+| `rate_limit` | Answers `429` with `retry-after`, without calling the provider |
+| `provider_error` | Answers with the status code of the fault |
+| `model_timeout` | Answers `504` |
+| `malformed_output`, `output_truncation` | Breaks or cuts the answer |
+| `tool_failure` | Swaps the answer for a tool error |
+| `retrieval_poisoning` | Adds poisoned content to the answer |
+| `hallucinated_tool_call`, `context_truncation`, `token_budget_exhaustion`, `retry_loop_pressure` | Records them and forwards the answer unchanged |
 
-### OpenCode
+The faults of the last row live inside the agent, so the proxy cannot force
+them. Use `tumult agentic run` for those.
 
-Point the provider `baseURL` at the proxy in OpenCode's config, or for an
-OpenAI-compatible provider:
+Each request draws its faults from `--seed` (default 1) plus its number, so a
+second run makes the same choices. The bundled packs fault every request.
 
-```bash
-OPENAI_BASE_URL=http://127.0.0.1:8080/v1 opencode
-```
+## The evidence
 
-### GitHub Copilot CLI
-
-```bash
-HTTPS_PROXY=http://127.0.0.1:8080 copilot
-```
-
-## How Faults Map to HTTP
-
-| Fault (from the pack)                  | Live proxy behaviour                              |
-|----------------------------------------|---------------------------------------------------|
-| `model_latency`, `tool_latency`        | delay before forwarding (damages time-to-first-token) |
-| `rate_limit`                           | synthetic `429` + `retry-after` (no upstream call) |
-| `provider_error`                       | synthetic provider status code                    |
-| `model_timeout`                        | synthetic `504`                                   |
-| `malformed_output`, `output_truncation`| corrupt / truncate the response body              |
-| `tool_failure`                         | replace the body with a tool-error envelope       |
-| `retrieval_poisoning`                  | inject poisoned content into the response body    |
-| token / retry / hallucination / context| agent-internal — recorded, forwarded unchanged    |
-
-The last row matters: token-budget, retry-loop, hallucinated-tool-call, and
-context-truncation faults describe agent *internal* state that cannot be forced
-from the HTTP boundary. The proxy records that they were selected but forwards
-the response untouched. Use the offline `tumult agentic run --scenario ...` path
-to exercise those against synthetic baselines.
-
-## Watch the Evidence
-
-Each proxied request is logged and, with `--journal`, appended as one JSONL row.
-No raw prompt or completion is stored — only metadata and contract verdicts, in
-line with the metadata-only capture default:
+Each request gets a log line, a `tumult.agentic.fault` span, and with
+`--journal` one JSON line:
 
 ```json
-{"scenario":"malformed-json-recovery","method":"POST","path":"/v1/messages","status":200,"latency_ms":312,"faults":["malformed_output"],"contracts":["valid_json=fail","graceful_error=pass"],"body_bytes":15}
+{"scenario":"malformed-json-recovery","method":"POST","path":"/v1/messages","status":200,"latency_ms":1,"faults":["malformed_output"],"contracts":["valid_json=fail","graceful_error=pass"],"body_bytes":15}
 ```
 
-## Reproducibility
+No prompt or answer is stored: only counts, times, fault names and contract
+verdicts. See [Agentic observability](agentic-observability.md).
 
-Fault selection is seeded per request from `--seed` (default `1`). The bundled
-packs all use probability `1.0`, so every matching request is faulted; lower the
-probability in a custom pack and the same `--seed` replays the same decisions.
+## Safety
 
-## Safety Notes
+- The proxy forwards your real credentials, the `authorization` header
+  included, to the upstream. Keep it on `127.0.0.1`.
+- It drops `accept-encoding` so it can read the answer, drops the hop-by-hop
+  headers, and sends its own `traceparent` in place of the one it got.
+- The agent gets broken answers on purpose. Give it a throwaway task, not
+  real work.
 
-- The proxy forwards your real credentials to the real upstream — run it locally
-  and never expose the listen port beyond `127.0.0.1`.
-- `accept-encoding` is stripped so responses arrive uncompressed and can be
-  inspected and mutated. Hop-by-hop headers are dropped, and the proxy sends
-  its own trace context in place of the inbound `traceparent` and
-  `tracestate`. Everything else (including `authorization`) is forwarded
-  verbatim.
-- Bodies pass through tumult in memory, but **capture is metadata-only by
-  default** — no prompt, completion, or body content is written to the journal or
-  telemetry (only counts, durations, fault types, and contract verdicts).
-- Faults are injected, so the agent will receive corrupted or error responses by
-  design. Point it at a throwaway task, not production work.
-
-See the [Security Assessment](../security-assessment.md) (§10, Agentic Fault
-Injection Security) for the full trust-boundary analysis.
+The [security assessment](../security-assessment.md) has the full trust
+boundary analysis.

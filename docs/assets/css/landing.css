@@ -1,143 +1,165 @@
 /* Landing page styles for docs/index.html.
-   Palette: graphite chrome from the product UI (web/src/lib/theme.css),
-   with the copper brand accent from the logo and banner, and the SPA's
-   status hues (emerald/amber/red) reserved for data and terminal output. */
+   Palette: the light tokens of the product UI (web/src/lib/theme.css), with
+   the copper brand accent of the logo. The GameDay terminal stays dark, like
+   the terminal player above it.
+   Contrast (WCAG AA, 4.5 : 1 for text): text 15.9, dim 5.8 and copper 5.8 on
+   white; dim 5.3 and copper 5.3 on the raised bands, #f4f6f8. The bright
+   copper is 3.5 on white, so it draws arrows and marks only. */
 
 :root {
   /* brand */
-  --copper: #c87533;
-  --copper-light: #e89a4f;
-  /* graphite chrome (web/src/lib/theme.css) */
-  --bg: #0b0e11;
-  --bg-raised: #11161b;
-  --bg-panel: #151b21;
-  --bg-hover: #1c242c;
-  --border: #242d36;
-  --border-strong: #33404c;
-  --text: #d8dee4;
-  --text-dim: #8b98a5;
-  --text-faint: #5b6772;
-  --accent: #5eb1ef;
-  --accent-dim: #2d5d84;
-  /* status hues — data only */
-  --ok: #34d399;
-  --warn: #f59e0b;
-  --fail: #ef4444;
+  --copper: #9a5320;
+  --copper-hover: #7f4419;
+  --copper-bright: #c87533;
+  /* light chrome (web/src/lib/theme.css) */
+  --bg: #ffffff;
+  --bg-raised: #f4f6f8;
+  --bg-panel: #ffffff;
+  --border: #e3e8ed;
+  --border-strong: #c5ced6;
+  --text: #1b2329;
+  --text-dim: #5b6772;
+  --shadow: 0 1px 2px rgba(27, 35, 41, 0.04), 0 8px 24px rgba(27, 35, 41, 0.06);
+  /* the dark terminal */
+  --term-bg: #0b0e11;
+  --term-bar: #11161b;
+  --term-border: #242d36;
+  --term-text: #d8dee4;
+  --term-dim: #8b98a5;
+  --term-ok: #34d399;
+  --term-accent: #5eb1ef;
 }
 
-/* Override just-the-docs defaults for the landing page */
+/* The page has no sidebar (nav_enabled: false in index.html), so it can use
+   the whole width of the screen. */
+.main { max-width: none; }
+.main-content-wrap { padding: 0; }
 .main-content { max-width: 100%; padding: 0; }
-.side-bar { display: none; }
-@media (min-width: 66.5rem) { .main-content { margin-left: 0; } }
+/* The landing has its own footer, so the theme's one is not shown. */
+.main-content > hr, .main-content > footer { display: none; }
+
+/* The theme sets heading sizes with !important, so these need it too. */
+.hero h1 { font-size: 2.75rem !important; }
+.flow-section h2, .section-heading h2, .demo-section h2, .arch-section h2,
+.cta h2 { font-size: 1.75rem !important; font-weight: 700; }
+.feature-card h3 { font-size: 1.125rem !important; font-weight: 600; }
+@media (max-width: 560px) {
+  .hero h1 { font-size: 2.25rem !important; }
+  .flow-section h2, .section-heading h2, .demo-section h2, .arch-section h2,
+  .cta h2 { font-size: 1.5rem !important; }
+}
 
 /* ── Hero ──────────────────────────────────────────── */
 .hero {
   background:
-    radial-gradient(900px 420px at 50% -140px, rgba(200, 117, 51, 0.16), rgba(200, 117, 51, 0) 70%),
-    linear-gradient(180deg, var(--bg-raised) 0%, var(--bg) 100%);
-  padding: 4rem 2rem 3rem;
+    radial-gradient(900px 420px at 50% -160px, rgba(200, 117, 51, 0.10), rgba(200, 117, 51, 0) 70%),
+    var(--bg);
+  padding: 4.5rem 1.25rem 3.5rem;
   text-align: center;
-  border-bottom: 1px solid var(--border);
 }
-.hero-logo { max-width: 120px; margin-bottom: 1.5rem; }
+.hero-logo { width: 260px; max-width: 80%; margin-bottom: 2rem; }
 .hero h1 {
-  font-size: 3rem; font-weight: 800; color: #fff;
-  margin: 0 0 0.5rem; letter-spacing: -0.02em;
+  font-weight: 800; color: var(--text);
+  margin: 0 0 0.75rem; letter-spacing: -0.02em; line-height: 1.15;
 }
 .hero h1 span { color: var(--copper); }
 .hero .tagline {
   font-size: 1.25rem; color: var(--text-dim);
-  max-width: 720px; margin: 0 auto 2rem; line-height: 1.6;
+  max-width: 720px; margin: 0 auto 2.25rem; line-height: 1.6;
+}
+@media (max-width: 560px) {
+  .hero { padding-top: 3rem; }
+  .hero .tagline { font-size: 1.125rem; }
 }
 
 /* ── Install box ──────────────────────────────────── */
 .install-box {
-  background: var(--bg-panel); border: 1px solid var(--border);
-  border-radius: 8px; padding: 1rem 1.5rem;
-  max-width: 620px; margin: 0 auto 1.5rem;
+  background: var(--bg-raised); border: 1px solid var(--border);
+  border-radius: 8px; padding: 0.9rem 1.25rem;
+  max-width: 840px; margin: 0 auto 1rem;
   font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
-  font-size: 0.95rem; color: var(--copper-light);
-  display: flex; align-items: center; justify-content: space-between;
+  font-size: 0.875rem; line-height: 1.5; color: var(--copper);
+  text-align: left;
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
   cursor: pointer; transition: border-color 0.2s;
 }
-.install-box:hover { border-color: var(--copper); }
+.install-box:hover { border-color: var(--copper-bright); }
+.install-box > div { min-width: 0; overflow-wrap: anywhere; }
 .install-box .prompt { color: var(--text-dim); margin-right: 0.5rem; }
 .install-box .copy-hint {
-  color: var(--text-faint); font-size: 0.75rem;
+  flex: none; color: var(--text-dim); font-size: 0.75rem;
   font-family: -apple-system, sans-serif;
 }
+@media (max-width: 560px) {
+  .install-box .copy-hint { display: none; }
+}
 
-.hero-buttons { margin-top: 1.5rem; }
+.hero-buttons { margin-top: 1.75rem; }
 .hero-buttons a {
-  display: inline-block; padding: 0.75rem 2rem;
+  display: inline-block; padding: 0.75rem 1.75rem;
   border-radius: 6px; font-weight: 600; font-size: 1rem;
-  text-decoration: none; margin: 0 0.5rem 0.5rem;
+  text-decoration: none; margin: 0 0.4rem 0.75rem;
   transition: all 0.2s;
 }
 .btn-primary-custom {
   background: var(--copper); color: #fff;
 }
-.btn-primary-custom:hover { background: var(--copper-light); color: #fff; }
+.btn-primary-custom:hover { background: var(--copper-hover); color: #fff; }
 .btn-secondary-custom {
-  background: transparent; color: var(--text);
+  background: var(--bg-panel); color: var(--text);
   border: 1px solid var(--border-strong);
 }
-.btn-secondary-custom:hover { border-color: var(--copper); color: var(--copper-light); }
-
-/* ── Banner ───────────────────────────────────────── */
-.banner {
-  max-width: 900px; margin: 2rem auto 0;
-  border-radius: 12px; overflow: hidden;
-  border: 1px solid var(--border);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-}
-.banner img { width: 100%; display: block; }
+.btn-secondary-custom:hover { border-color: var(--copper); color: var(--copper); }
 
 /* ── Stats bar ────────────────────────────────────── */
 .stats {
-  display: flex; justify-content: center; gap: 3rem;
-  padding: 2rem; background: var(--bg-raised);
-  border-bottom: 1px solid var(--border);
-  flex-wrap: wrap;
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 2.5rem 2rem;
+  padding: 3rem max(2rem, calc((100% - 1000px) / 2)); background: var(--bg-raised);
+}
+@media (max-width: 700px) {
+  .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 .stat { text-align: center; }
 .stat .num { font-size: 2rem; font-weight: 800; color: var(--copper); }
+/* `.label` is also a class of the theme (a blue pill), so reset its look. */
 .stat .label {
-  font-size: 0.85rem; color: var(--text-dim);
-  text-transform: uppercase; letter-spacing: 0.05em;
+  display: block; margin: 0.25rem 0 0; padding: 0;
+  background: none; border-radius: 0; vertical-align: baseline;
+  font-size: 0.8rem !important; color: var(--text-dim);
+  text-transform: uppercase; letter-spacing: 0.05em; line-height: 1.4;
 }
 
 /* ── Flow diagram ─────────────────────────────────── */
 .flow-section {
-  max-width: 1100px; margin: 0 auto; padding: 3rem 2rem 1rem;
+  max-width: 1240px; margin: 0 auto; padding: 4rem 2rem 1rem;
   text-align: center;
 }
-.flow-section h2 { color: #fff; margin-bottom: 0.75rem; }
+.flow-section h2 { color: var(--text); margin-bottom: 0.75rem; }
 .flow-section .lead {
   color: var(--text-dim); max-width: 720px;
-  margin: 0 auto 2rem; line-height: 1.6;
+  margin: 0 auto 2.25rem; line-height: 1.6;
 }
 .flow {
   display: flex; flex-wrap: wrap; justify-content: center;
-  align-items: stretch; gap: 0.75rem;
+  align-items: stretch; gap: 0.5rem;
 }
 .flow-step {
   background: var(--bg-panel); border: 1px solid var(--border);
-  border-radius: 10px; padding: 1rem 1.25rem;
-  min-width: 120px; flex: 1; max-width: 160px;
+  border-radius: 10px; padding: 1rem; box-shadow: var(--shadow);
+  min-width: 120px; flex: 1; max-width: 132px;
   display: flex; flex-direction: column; justify-content: center;
 }
 .flow-step .step-name {
-  color: var(--copper-light); font-weight: 700; font-size: 0.95rem;
+  color: var(--copper); font-weight: 700; font-size: 0.95rem;
   margin-bottom: 0.35rem;
 }
-.flow-step .step-desc { color: var(--text-dim); font-size: 0.8rem; line-height: 1.45; }
+.flow-step .step-desc { color: var(--text-dim); font-size: 0.85rem; line-height: 1.45; }
 .flow-arrow {
-  color: var(--copper); font-size: 1.5rem; font-weight: 700;
+  color: var(--copper-bright); font-size: 1.5rem; font-weight: 700;
   align-self: center;
 }
 .flow-loop {
-  margin-top: 1.5rem; color: var(--text-dim); font-size: 0.85rem;
+  margin-top: 1.75rem; color: var(--text-dim); font-size: 0.9rem;
 }
 .flow-loop .loop-arrow { color: var(--copper); }
 
@@ -146,114 +168,122 @@
   max-width: 1100px; margin: 0 auto;
   padding: 3rem 2rem;
   display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 1.5rem;
+  gap: 2rem;
 }
 .section-heading {
-  max-width: 1100px; margin: 0 auto; padding: 2rem 2rem 0;
+  max-width: 1100px; margin: 0 auto; padding: 3rem 2rem 0;
 }
-.section-heading h2 { color: #fff; margin-bottom: 0.5rem; }
+.section-heading h2 { color: var(--text); margin-bottom: 0.5rem; }
 .section-heading p { color: var(--text-dim); line-height: 1.6; }
 .feature-card {
   background: var(--bg-panel); border: 1px solid var(--border);
-  border-radius: 10px; padding: 1.5rem;
+  border-radius: 10px; padding: 1.5rem; box-shadow: var(--shadow);
   transition: border-color 0.2s, transform 0.2s;
 }
-.feature-card:hover { border-color: var(--copper); transform: translateY(-2px); }
+.feature-card:hover { border-color: var(--copper-bright); transform: translateY(-2px); }
 .feature-card .piece {
-  display: inline-block; font-size: 0.7rem; font-weight: 700;
+  display: inline-block; font-size: 0.75rem; font-weight: 700;
   text-transform: uppercase; letter-spacing: 0.08em;
   color: var(--copper); margin-bottom: 0.5rem;
 }
 .feature-card h3 {
-  font-size: 1.1rem; color: #fff; margin: 0 0 0.5rem;
+  color: var(--text); margin: 0 0 0.5rem;
 }
-.feature-card p { color: var(--text-dim); font-size: 0.9rem; line-height: 1.6; margin: 0; }
+.feature-card p { color: var(--text-dim); font-size: 0.95rem; line-height: 1.65; margin: 0; }
 .feature-card code { color: var(--text); }
 
 /* ── Terminal demo ────────────────────────────────── */
 .demo-section {
-  max-width: 800px; margin: 0 auto; padding: 2rem 2rem 3rem;
+  max-width: 800px; margin: 0 auto; padding: 3rem 2rem;
 }
-.demo-section h2 { text-align: center; color: #fff; margin-bottom: 1.5rem; }
+.demo-section h2 { text-align: center; color: var(--text); margin-bottom: 1.5rem; }
 .terminal {
-  background: var(--bg); border: 1px solid var(--border);
+  background: var(--term-bg); border: 1px solid var(--term-border);
   border-radius: 10px; overflow: hidden;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 4px 24px rgba(27, 35, 41, 0.18);
 }
 .terminal-bar {
-  background: var(--bg-raised); padding: 0.5rem 1rem;
-  border-bottom: 1px solid var(--border);
+  background: var(--term-bar); padding: 0.5rem 1rem;
+  border-bottom: 1px solid var(--term-border);
   display: flex; align-items: center; gap: 6px;
 }
 .terminal-dot { width: 12px; height: 12px; border-radius: 50%; }
 .terminal-dot.red { background: #ff5f57; }
 .terminal-dot.yellow { background: #febc2e; }
 .terminal-dot.green { background: #28c840; }
-.terminal-body {
-  padding: 1.25rem; font-family: 'SF Mono', 'Fira Code', monospace;
-  font-size: 0.85rem; line-height: 1.7; color: var(--text);
-  overflow-x: auto;
+/* A <pre>, so the lines of the run keep their breaks. */
+.terminal .terminal-body {
+  margin: 0; padding: 1.25rem; font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 0.85rem; line-height: 1.7; color: var(--term-text);
+  background: none; border: 0; white-space: pre; overflow-x: auto;
 }
-.terminal-body .prompt-sign { color: var(--copper); }
+.terminal-body .prompt-sign { color: var(--copper-bright); }
 .terminal-body .cmd { color: #fff; }
-.terminal-body .output { color: var(--text-dim); }
-.terminal-body .success { color: var(--ok); }
-.terminal-body .info { color: var(--accent); }
+.terminal-body .output { color: var(--term-dim); }
+.terminal-body .success { color: var(--term-ok); }
+.terminal-body .info { color: var(--term-accent); }
 
 /* ── Architecture ─────────────────────────────────── */
 .arch-section {
-  max-width: 900px; margin: 0 auto; padding: 2rem;
+  max-width: 900px; margin: 0 auto; padding: 3rem 2rem 2rem;
   text-align: center;
 }
-.arch-section h2 { color: #fff; margin-bottom: 1.5rem; }
+.arch-section h2 { color: var(--text); margin-bottom: 1.5rem; }
 .arch-section img {
   max-width: 100%; border-radius: 10px;
   border: 1px solid var(--border);
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--shadow);
 }
 
 /* ── Screenshot gallery ───────────────────────────── */
 .shots {
   max-width: 1100px; margin: 0 auto; padding: 0 2rem 3rem;
   display: grid; grid-template-columns: repeat(auto-fit, minmax(480px, 1fr));
-  gap: 1.5rem;
+  gap: 2rem;
 }
 @media (max-width: 560px) {
   .shots { grid-template-columns: 1fr; }
 }
 .shot-card {
   background: var(--bg-panel); border: 1px solid var(--border);
-  border-radius: 10px; overflow: hidden;
+  border-radius: 10px; overflow: hidden; box-shadow: var(--shadow);
   transition: border-color 0.2s, transform 0.2s;
 }
-.shot-card:hover { border-color: var(--copper); transform: translateY(-2px); }
+.shot-card:hover { border-color: var(--copper-bright); transform: translateY(-2px); }
 .shot-card img {
   width: 100%; display: block;
   border-bottom: 1px solid var(--border);
 }
 .shot-card .caption {
   padding: 0.9rem 1.1rem; color: var(--text-dim);
-  font-size: 0.85rem; line-height: 1.5;
+  font-size: 0.95rem; line-height: 1.6;
 }
-.shot-card .caption b { color: #fff; display: block; font-size: 0.95rem; margin-bottom: 0.2rem; }
+.shot-card .caption b { color: var(--text); display: block; font-size: 1rem; margin-bottom: 0.2rem; }
 
 /* ── CTA ──────────────────────────────────────────── */
 .cta {
-  text-align: center; padding: 3rem 2rem;
-  background:
-    radial-gradient(700px 300px at 50% -80px, rgba(200, 117, 51, 0.12), rgba(200, 117, 51, 0) 70%),
-    linear-gradient(180deg, var(--bg-raised), var(--bg));
-  border-top: 1px solid var(--border);
+  text-align: center; padding: 4rem 2rem;
+  background: var(--bg-raised);
 }
-.cta h2 { color: #fff; font-size: 1.8rem; margin-bottom: 1rem; }
+.cta h2 { color: var(--text); margin-bottom: 1rem; }
 .cta p { color: var(--text-dim); margin-bottom: 1.5rem; max-width: 520px; margin-left: auto; margin-right: auto; }
 
 /* ── Footer ───────────────────────────────────────── */
 .landing-footer {
-  text-align: center; padding: 2rem;
-  color: var(--text-dim); font-size: 0.85rem;
-  border-top: 1px solid var(--border);
+  text-align: center; padding: 2.5rem 2rem;
+  color: var(--text-dim); font-size: 0.9rem;
 }
-.landing-footer a { color: var(--copper-light); text-decoration: none; }
+.landing-footer a { color: var(--copper); text-decoration: none; }
 .landing-footer a:hover { text-decoration: underline; }
-.footer-links { display: flex; justify-content: center; gap: 2rem; margin-bottom: 1rem; flex-wrap: wrap; }
+.footer-links { display: flex; justify-content: center; gap: 1rem 2rem; margin-bottom: 1rem; flex-wrap: wrap; }
+
+/* ── Phones ───────────────────────────────────────── */
+@media (max-width: 560px) {
+  .stats, .flow-section, .features, .section-heading, .demo-section,
+  .arch-section, .shots, .cta, .landing-footer {
+    padding-left: 1.25rem; padding-right: 1.25rem;
+  }
+  .features { grid-template-columns: 1fr; }
+  /* The steps wrap two to a row, so the arrows would point at nothing. */
+  .flow-arrow { display: none; }
+}

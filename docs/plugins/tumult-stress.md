@@ -4,58 +4,76 @@ parent: Plugins
 nav_order: 8
 ---
 
-# tumult-stress — CPU, Memory, and IO Stress
+# tumult-stress
 
-Script-based plugin for injecting resource stress via [stress-ng](https://github.com/ColinIanKing/stress-ng).
+Load the CPU, the memory or the disk of the machine that runs Tumult with
+[stress-ng](https://github.com/ColinIanKing/stress-ng), and read how busy
+it is. Install `stress-ng` first (`apt install stress-ng` or
+`brew install stress-ng`).
 
-## Prerequisites
+```mermaid
+flowchart LR
+    accTitle: A stress step and its probes
+    accDescr: The stress action runs stress-ng for a set time and returns when it ends. The utilization probes read the load of the machine before and after.
+    before[Probe: CPU in use] --> stress[cpu-stress runs stress-ng for timeout seconds] --> after[Probe: CPU in use again]
+```
 
-- `stress-ng` installed on the target host (`apt install stress-ng` / `brew install stress-ng`)
+## Faults
 
-## Actions
+Each action runs `stress-ng` for `timeout` seconds (30) and returns when it
+ends.
 
-| Action | Description | Key Variables |
-|--------|-------------|---------------|
-| `cpu-stress` | Inject CPU stress | `TUMULT_WORKERS`, `TUMULT_LOAD` (0-100), `TUMULT_TIMEOUT` |
-| `memory-stress` | Inject memory pressure | `TUMULT_WORKERS`, `TUMULT_BYTES` (e.g., 256m), `TUMULT_TIMEOUT` |
-| `io-stress` | Inject IO stress | `TUMULT_WORKERS`, `TUMULT_HDD_BYTES` (e.g., 1g), `TUMULT_TIMEOUT` |
-| `combined-stress` | CPU + memory + IO combined | `TUMULT_CPU_WORKERS`, `TUMULT_CPU_LOAD`, `TUMULT_VM_WORKERS`, `TUMULT_VM_BYTES`, `TUMULT_HDD_WORKERS`, `TUMULT_TIMEOUT` |
+| Action | What it loads | Arguments |
+|---|---|---|
+| `cpu-stress` | CPU | `workers` (0 means one per CPU), `load` in percent (100) |
+| `memory-stress` | Memory | `workers` (1), `bytes` per worker (`256m`) |
+| `io-stress` | Disk | `workers` (1), `hdd_bytes` (`1g`) |
+| `combined-stress` | All three | `cpu_workers` (2), `cpu_load` (80), `vm_workers` (1), `vm_bytes` (`256m`), `hdd_workers` (1) |
 
 ## Probes
 
-| Probe | Description | Output |
-|-------|-------------|--------|
-| `cpu-utilization` | Current CPU usage | Float 0-100 |
-| `memory-utilization` | Current memory usage | Float 0-100 |
-| `io-utilization` | Current IO wait | Float 0-100 |
+| Probe | Result |
+|---|---|
+| `cpu-utilization` | CPU in use, 0 to 100 |
+| `memory-utilization` | Memory in use, 0 to 100 |
+| `io-utilization` | Time waiting for IO, 0 to 100 |
 
-Probes work on both Linux (`/proc/stat`, `/proc/meminfo`) and macOS (`top`, `vm_stat`, `iostat`).
+The probes read `/proc` on Linux, and `top`, `vm_stat` and `iostat` on
+macOS.
 
-## Example Experiment
+## Example
 
 ```toon
-method[1]:
-  - name: stress-cpu
-    activity_type: action
-    provider:
-      type: process
-      path: plugins/tumult-stress/actions/cpu-stress.sh
-      env:
-        TUMULT_WORKERS: 4
-        TUMULT_LOAD: 80
-        TUMULT_TIMEOUT: 60
-    background: false
+title: The host recovers from CPU load
 
 steady_state_hypothesis:
-  title: CPU below 90%
+  title: CPU below 90 percent
   probes[1]:
-    - name: check-cpu
+    - name: cpu-in-use
       activity_type: probe
       provider:
-        type: process
-        path: plugins/tumult-stress/probes/cpu-utilization.sh
+        type: script
+        plugin: tumult-stress
+        function: cpu-utilization
       tolerance:
         type: range
         from: 0.0
         to: 90.0
+
+method[1]:
+  - name: load-the-cpu
+    activity_type: action
+    provider:
+      type: script
+      plugin: tumult-stress
+      function: cpu-stress
+      arguments:
+        workers: 4
+        load: 80
+        timeout: 60
+      timeout_s: 90.0
 ```
+
+To load another host, run `stress-ng` there with
+[tumult-ssh](tumult-ssh.md). To load one container, use
+`stress-container` of [tumult-pumba](tumult-pumba.md).

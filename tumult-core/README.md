@@ -1,15 +1,18 @@
 # tumult-core
 
-Core engine for the Tumult resilience intelligence platform -- experiment parsing, execution, journaling, and hypothesis evaluation.
+The engine of Tumult: it parses an experiment, runs it, judges the steady
+state and writes the journal.
 
-## Key Types
+## Key types
 
-- `Experiment` -- parsed experiment definition
-- `run_experiment` -- orchestrates experiment execution
-- `Journal` -- records experiment results in TOON format
-- `Hypothesis` -- the steady-state probes and their tolerances
+| Item | What it does |
+|---|---|
+| `Experiment` | A parsed experiment definition |
+| `Hypothesis` | The steady-state probes and their tolerances |
+| `run_experiment` | Runs an experiment and returns its journal |
+| `Journal` | The record of a run, written as TOON |
 
-## Usage
+## Use it from Rust
 
 ```rust
 use std::sync::Arc;
@@ -24,6 +27,4 @@ let controls = Arc::new(ControlRegistry::new());
 let journal = run_experiment(&experiment, &executor, &controls, &RunConfig::default())?;
 ```
 
-## More Information
-
-See the [main README](../README.md) for project overview and setup.
+The order of a run is in [Execution flow](../docs/guides/execution-flow.md).
