@@ -1,182 +1,111 @@
 ---
-title: Agentic Fault Injection Quickstart
-parent: Guides
-nav_order: 8
+title: Agentic quickstart
+parent: Work with AI agents
+grand_parent: Guides
+nav_order: 2
+summary: "Inject faults into AI agents and check how they cope"
+redirect_from:
+  - /guides/agentic-scenarios.html
 ---
 
-# Agentic Fault Injection Quickstart
+# Agentic quickstart
 
-Tumult agentic fault injection tests how an AI agent behaves when model output,
-tool calls, retrieval, context, or retry behavior becomes slow, partial, or
-wrong. The local smoke path is deterministic and does not call an external LLM,
-network endpoint, MCP server, or secret store.
+Test how an AI agent copes when its model or its tools go wrong: slow, broken
+or plain wrong answers. Tumult injects a fault, checks the reaction of the
+agent against contracts, and gives a score. Everything on this page runs on
+your machine, with no model, network or secret.
 
-The module is implemented in `tumult-agentic` and is surfaced through the
-`tumult agentic` CLI group.
-
-## List Scenario Packs
-
-```bash
-tumult agentic list-packs
+```mermaid
+flowchart LR
+    accTitle: How an agentic scenario runs
+    accDescr: A scenario pack injects a fault into a fake agent or a replay, checks the contracts, and writes a score and a journal.
+    pack[Scenario pack] --> fault[Inject the fault]
+    fault --> agent[Fake agent or replay]
+    agent --> contract[Check the contracts]
+    contract --> score[Score, journal, lake rows]
 ```
 
-Expected output includes bundled packs and their fault/contract matrix:
-
-```text
-Agentic scenario packs
-count: 6
-
-- concurrency-storm
-  adapters: http, mcp, replay
-  faults: rate_limit, retry_loop_pressure
-  contracts: max_latency, retry_budget, graceful_error
-
-- hallucination-under-timeout
-  adapters: http, mcp, replay
-  faults: model_timeout, hallucinated_tool_call
-  contracts: max_tool_calls, graceful_error, fallback_used
-
-- cost-explosion-detector
-  adapters: http, replay
-  faults: token_budget_exhaustion, retry_loop_pressure
-  contracts: max_token_usage, retry_budget
-
-- malformed-json-recovery
-  adapters: http, replay
-  faults: malformed_output
-  contracts: valid_json, graceful_error
-
-- tool-timeout-fallback
-  adapters: mcp, replay
-  faults: tool_latency, tool_failure
-  contracts: fallback_used, max_latency
-
-- retrieval-poisoning
-  adapters: http, replay
-  faults: retrieval_poisoning
-  contracts: required_citation, no_pii, no_secret_leakage
-```
-
-See [Agentic Scenarios](agentic-scenarios.md) for the full fault and contract
-catalogue.
-
-## Run the Local Smoke Path
+## Run the smoke test
 
 ```bash
 tumult agentic smoke
-tumult agentic run --scenario cost-explosion-detector
-tumult agentic replay --fixture examples/agentic/malformed-json-recovery.fixture.json
 ```
 
-The smoke path injects malformed JSON into a fake HTTP agent response and
-expects the `valid_json` contract to fail. That failure is the success signal:
-the fault was applied, the contract detected it, and the CLI reported the
-feedback loop clearly.
-
-Expected passing output:
+The output, cut to the main lines:
 
 ```text
 Agentic smoke: malformed-json-recovery
 adapter: fake_http
-target_type: http
-scenario: fake-http-malformed-json
 fault: malformed_output
 fault_applied: true
 contract: valid_json
 expected_contract: contract_failed:invalid_json
 actual_contract: contract_failed:invalid_json
-reason: invalid_json
 resilience_score: 0.000
-trace_id: trace-smoke-http
 journal: target/agentic/smoke-journal.toon
-analytics_store: /home/ops/.tumult/lake.duckdb
 analytics_ingested: true
-trace_assertions: trace_id_present=true span_id_present=true capture_policy=metadata_only
 network: not required
-next: cargo test -p tumult-agentic smoke_fake_http -- --nocapture
 result: pass (fault observed and contract feedback captured)
 ```
 
-If the smoke path fails, the output names the adapter, scenario, fault, contract,
-expected value, actual value, and next diagnostic command. Use that output as the
-first feedback loop before running broader crate or workspace tests.
+The smoke test breaks the JSON of a fake answer and expects the `valid_json`
+contract to fail. That failure is the good result: the fault landed and the
+contract saw it. When something is off, the output names the adapter, the
+fault, the contract, what was expected and what came, and the next command
+to try.
 
-## Run Against a Live Client
+## Run a scenario pack
 
-The smoke, run, and replay paths above exercise faults against deterministic
-local baselines. To inject the *same* faults into a real agent — Claude Code,
-the Codex CLI, OpenCode, or GitHub Copilot — run the fault-injecting proxy in
-front of the provider endpoint and point the agent at it:
-
-```bash
-tumult agentic proxy \
-  --listen 127.0.0.1:8080 \
-  --upstream https://api.anthropic.com \
-  --scenario malformed-json-recovery
-```
+A pack joins faults to the contracts the agent must keep.
 
 ```bash
-# in another terminal
-ANTHROPIC_BASE_URL=http://127.0.0.1:8080 claude
+tumult agentic list-packs
+tumult agentic run --scenario cost-explosion-detector
+tumult agentic replay --fixture examples/agentic/malformed-json-recovery.fixture.json
 ```
 
-See [Agentic Live Clients](agentic-live-clients.md) for per-client wiring
-(Claude Code, Codex, OpenCode, Copilot) and how each fault maps onto HTTP
-behaviour.
+| Pack | Faults | Contracts | Checks that the agent |
+|---|---|---|---|
+| `concurrency-storm` | `rate_limit`, `retry_loop_pressure` | `max_latency`, `retry_budget`, `graceful_error` | backs off under rate limits |
+| `hallucination-under-timeout` | `model_timeout`, `hallucinated_tool_call` | `max_tool_calls`, `graceful_error`, `fallback_used` | invents no tool when the model times out |
+| `cost-explosion-detector` | `token_budget_exhaustion`, `retry_loop_pressure` | `max_token_usage`, `retry_budget` | keeps tokens and retries in budget |
+| `malformed-json-recovery` | `malformed_output` | `valid_json`, `graceful_error` | survives a broken JSON answer |
+| `tool-timeout-fallback` | `tool_latency`, `tool_failure` | `fallback_used`, `max_latency` | falls back when a tool fails |
+| `retrieval-poisoning` | `retrieval_poisoning` | `required_citation`, `no_pii`, `no_secret_leakage` | leaks nothing from poisoned documents |
 
-## Observe the Run
-
-The smoke path is local, but it still reports the trace correlation fields that
-real HTTP, MCP, and replay adapters should preserve. Agentic telemetry uses both
-Tumult resilience attributes and GenAI semantic attributes:
-
-```text
-resilience.agent.scenario=malformed-json-recovery
-resilience.agent.fault.type=malformed_output
-resilience.agent.payload.capture_policy=metadata_only
-gen_ai.operation.name=invoke_agent
-gen_ai.evaluation.result=fail
-```
-
-See [Agentic Observability](agentic-observability.md) for the full attribute
-reference and privacy defaults.
-
-## Fixture Example
-
-A minimal provider-free fixture lives at
-`examples/agentic/malformed-json-recovery.fixture.json`. It models the same
-malformed structured-response case used by the smoke path and can be extended
-for replay regression work.
-
-## Analytics
-
-Agentic smoke, run, and replay commands write metadata-only rows into the
-default analytics store when available:
-
-- `agentic_runs`
-- `agentic_contract_outcomes`
-- `agentic_fault_applications`
-- `agentic_replay_outcomes`
-
-Repeated deterministic runs may report `analytics_ingested: false` when the
-same run ID already exists; this is duplicate protection, not a failed smoke.
-
-## Quality Gate
-
-Use the narrow smoke loop first:
+`list-packs` also shows three multi-turn packs, which break one step of a
+longer chain of model and tool calls:
 
 ```bash
-cargo test -p tumult-cli parse_agentic
-cargo run -p tumult-cli -- agentic list-packs
-cargo run -p tumult-cli -- agentic smoke
-cargo run -p tumult-cli -- agentic run --scenario cost-explosion-detector
-cargo run -p tumult-cli -- agentic replay --fixture examples/agentic/malformed-json-recovery.fixture.json
+tumult agentic trajectory --pack rag-grounding-failure   # also reflection-loop, multi-tool-cascade
 ```
 
-Then run the broader agentic gate:
+## Faults and contracts
 
-```bash
-cargo test -p tumult-agentic
-cargo fmt --check
-cargo clippy -p tumult-agentic -- -D warnings -W clippy::pedantic
-```
+| Faults | Contracts |
+|---|---|
+| `model_latency`, `model_timeout`, `provider_error`, `rate_limit`, `malformed_output`, `output_truncation`, `hallucinated_tool_call`, `tool_latency`, `tool_failure`, `retrieval_poisoning`, `context_truncation`, `token_budget_exhaustion`, `retry_loop_pressure` | `valid_json`, `required_citation`, `no_pii`, `no_secret_leakage`, `max_latency`, `retry_budget`, `max_tool_calls`, `max_token_usage`, `fallback_used`, `graceful_error` |
+
+The packs are built in. Each lists the targets it fits: an HTTP agent, an MCP
+tool, or a replay of a recorded session. The commands above use local fakes
+and fixtures; `examples/agentic/malformed-json-recovery.fixture.json` is a
+small replay to copy.
+
+## What a run leaves
+
+- A journal, such as `target/agentic/smoke-journal.toon` (`--journal` sets
+  another path). It holds metadata only: no prompt and no answer.
+- Rows in the lake tables `agentic_runs`, `agentic_contract_outcomes`,
+  `agentic_fault_applications` and `agentic_replay_outcomes`. A second run
+  with the same id prints `analytics_ingested: false`: that is duplicate
+  protection, not a failure.
+
+The MCP server runs the same checks as `tumult_agentic_smoke` and
+`tumult_agentic_run_experiment`.
+
+## Next
+
+- [Live clients](agentic-live-clients.md): the same faults against Claude
+  Code, Codex or OpenCode.
+- [Agentic observability](agentic-observability.md): the spans, metrics and
+  lake rows.

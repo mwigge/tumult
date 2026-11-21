@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Cheap test-hygiene guard. See docs/guides/testing.md.
+"""Cheap test-hygiene guard. See CONTRIBUTING.md.
 
 Fails on:
   no-assert      a Rust test whose body asserts nothing
@@ -839,7 +839,7 @@ def run(root: Path, allowlist: Path, out=sys.stdout) -> int:
         failures += 1
     if failures:
         print(
-            f"{failures} test hygiene failure(s). See docs/guides/testing.md.",
+            f"{failures} test hygiene failure(s). See CONTRIBUTING.md.",
             file=out,
         )
         return 1

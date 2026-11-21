@@ -4,106 +4,85 @@ parent: Plugins
 nav_order: 5
 ---
 
-# tumult-network — Network Chaos
+# tumult-network
 
-Script-based plugin for network fault injection. Covers latency, packet loss, corruption, DNS disruption (blocking, delay, redirect), and host partitioning.
+Slow down, drop or cut network traffic on the host that runs Tumult. This
+script plugin uses `tc netem`, `iptables` and `/etc/hosts`.
 
-## Prerequisites
+## Pick the layer
 
-- **Linux** with `tc` (iproute2) and `iptables` for network-level actions
-- **Root/sudo** access for tc netem and iptables rules
-- DNS redirect and targeted DNS block use `/etc/hosts` — works on Linux, macOS, and containers without `CAP_NET_ADMIN`
-- Probes (ping, DNS) work on both Linux and macOS
+Tumult has three ways to break a network. Pick the one that fits where
+your service runs.
 
-## Actions
+```mermaid
+flowchart TD
+    accTitle: Which network plugin to use
+    accDescr: tumult-network changes the network of the whole host and needs root. tumult-pumba changes the network of one Docker container through the Docker socket. tumult-net is a TCP proxy in front of one service and needs no root.
+    q{What do you want to slow or break?}
+    q -->|the whole host| host[tumult-network: tc, iptables, /etc/hosts. Needs root on Linux]
+    q -->|one container| one[tumult-pumba: Pumba through the Docker socket]
+    q -->|one TCP service, no root| proxy[tumult-net: a proxy in front of it]
+```
 
-| Action | Description | Key Variables |
-|--------|-------------|---------------|
-| `add-latency` | Add network latency (tc netem) | `TUMULT_INTERFACE`, `TUMULT_DELAY_MS`, `TUMULT_JITTER_MS`, `TUMULT_TARGET_IP` |
-| `add-packet-loss` | Add packet loss (tc netem) | `TUMULT_INTERFACE`, `TUMULT_LOSS_PCT`, `TUMULT_CORRELATION` |
-| `add-corruption` | Add packet corruption | `TUMULT_INTERFACE`, `TUMULT_CORRUPTION_PCT` |
-| `reset-tc` | Remove all tc rules (rollback) | `TUMULT_INTERFACE` |
-| `block-dns` | Block DNS — all traffic via iptables, or targeted domain via `/etc/hosts` | `TUMULT_DNS_PORT`, `TUMULT_DNS_DOMAIN` (optional) |
-| `delay-dns` | Add latency to DNS queries (tc netem on port 53) | `TUMULT_INTERFACE`, `TUMULT_DNS_DELAY_MS`, `TUMULT_DNS_JITTER_MS` |
-| `redirect-dns` | Redirect a domain to a wrong IP via `/etc/hosts` | `TUMULT_DNS_DOMAIN` (required), `TUMULT_DNS_REDIRECT` |
-| `block-dns-rollback` | Remove DNS block entries from `/etc/hosts` and iptables | — |
-| `redirect-dns-rollback` | Remove DNS redirect entries from `/etc/hosts` (idempotent) | — |
-| `partition-host` | Network partition via iptables DROP | `TUMULT_TARGET_IP` (required), `TUMULT_DIRECTION` |
-| `partition-host-rollback` | Remove the iptables DROP rules added by `partition-host` (idempotent) | `TUMULT_TARGET_IP` |
+[tumult-pumba](tumult-pumba.md) and tumult-net ([blog post](../blog/19-net-chaos-proxy.md))
+have their own pages.
+
+## Faults
+
+| Action | What it does | Arguments |
+|---|---|---|
+| `add-latency` | Adds latency with `tc netem` | `delay_ms` (100), `jitter_ms` (10), `interface` (`eth0`), `target_ip` (optional: only traffic to this address) |
+| `add-packet-loss` | Drops packets | `loss_pct` (10), `correlation` (25), `interface` |
+| `add-corruption` | Corrupts packets | `corruption_pct` (5), `interface` |
+| `delay-dns` | Adds latency to DNS traffic on port 53 | `dns_delay_ms` (500), `dns_jitter_ms` (50), `interface` |
+| `reset-tc` | Removes every `tc` rule of the interface: the rollback of the four above | `interface` |
+| `block-dns` | Without `dns_domain`, drops all DNS traffic with `iptables`. With it, points that one name to `127.0.0.1` in `/etc/hosts`. | `dns_port` (53), `dns_domain` (optional) |
+| `block-dns-rollback` | Removes what `block-dns` added | |
+| `redirect-dns` | Points a name to a wrong address in `/etc/hosts` | `dns_domain` (required), `dns_redirect` (`127.0.0.1`) |
+| `redirect-dns-rollback` | Removes what `redirect-dns` added. Safe to run twice. | |
+| `partition-host` | Drops all traffic to and from an address with `iptables` | `target_ip` (required), `direction`: `both`, `ingress` or `egress` (`both`) |
+| `partition-host-rollback` | Removes those rules. Safe to run twice. | `target_ip`, `direction` |
+
+`tc` and `iptables` need Linux and root. The `/etc/hosts` faults also work
+on macOS and in a container, but need write access to `/etc/hosts`.
+
+A DNS name travels in a packet as labels with lengths, not as dotted text,
+so `iptables --string` cannot match it. That is why the targeted DNS faults
+edit `/etc/hosts`.
 
 ## Probes
 
-| Probe | Description | Output |
-|-------|-------------|--------|
-| `ping-latency` | Round-trip latency (ms) | Float. A host that does not answer fails the probe with the message of `ping` |
-| `dns-resolve` | DNS resolution check | IP address or `"failed"` |
-| `dns-latency` | DNS resolution time (ms) | Integer ms or `"error"` |
+| Probe | Result | Arguments |
+|---|---|---|
+| `ping-latency` | The mean round trip in milliseconds. A host that does not answer fails the probe. | `target_host` (required), `ping_count` (3) |
+| `dns-resolve` | The address of the name, or `failed` | `target_host` (required) |
+| `dns-latency` | The lookup time in milliseconds, or `error` | `target_host` (required), `dns_server` (optional) |
 
-## DNS Chaos
+The probes work on Linux and macOS.
 
-### Targeted DNS blocking
+## Example: send a name to the wrong address
 
-Block a specific domain without affecting all DNS traffic:
-
-```bash
-TUMULT_DNS_DOMAIN=api.example.com tumult run block-dns-experiment.toon
-```
-
-Uses `/etc/hosts` — portable, works in containers, no `CAP_NET_ADMIN` needed.
-
-### DNS latency injection
-
-Slow down all DNS queries without blocking them:
-
-```bash
-TUMULT_DNS_DELAY_MS=500 TUMULT_DNS_JITTER_MS=50 tumult run delay-dns-experiment.toon
-```
-
-Uses `tc netem` on port 53 — works on DNS wire format regardless of encoding.
-
-### DNS redirect
-
-Point a domain to a wrong IP to test failover/retry behavior:
-
-```bash
-TUMULT_DNS_DOMAIN=upstream.service TUMULT_DNS_REDIRECT=127.0.0.1 tumult run redirect-dns-experiment.toon
-```
-
-### Design note
-
-DNS actions use `/etc/hosts` and `tc netem` instead of `iptables --string` matching. DNS wire format encodes domains as length-prefixed labels (`\x06google\x03com\x00`), not dot-separated strings. `iptables --string "google.com"` will not match DNS packets.
-
-## Rollback
-
-For tc netem rules (latency, delay-dns):
 ```toon
-rollbacks[1]:
-  - name: cleanup
+method[1]:
+  - name: redirect-the-upstream
     activity_type: action
     provider:
       type: script
       plugin: tumult-network
-      function: reset-tc
-```
+      function: redirect-dns
+      arguments:
+        dns_domain: upstream.example.internal
+        dns_redirect: 127.0.0.1
+      timeout_s: 10.0
 
-For DNS block (`/etc/hosts` + iptables):
-```toon
 rollbacks[1]:
-  - name: cleanup-dns
-    activity_type: action
-    provider:
-      type: script
-      plugin: tumult-network
-      function: block-dns-rollback
-```
-
-For DNS redirect (`/etc/hosts` entries added by `redirect-dns`):
-```toon
-rollbacks[1]:
-  - name: cleanup-dns-redirect
+  - name: restore-dns
     activity_type: action
     provider:
       type: script
       plugin: tumult-network
       function: redirect-dns-rollback
+      timeout_s: 10.0
 ```
+
+`examples/dns-redirect-chaos.toon` is a full experiment with this fault.

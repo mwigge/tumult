@@ -139,7 +139,7 @@ when the UI displays it,
 then it appears as inert text,
 and it cannot create HTML elements or execute browser code.
 
-## Verification record — 2026-10-09
+## Verification record of 2026-10-09
 
 Validated on Linux amd64 using Docker Compose, the pinned Tumult 2.22.0 release, Python 3.12 in containers, Python 3.14 for the development suite, and headless Chromium.
 

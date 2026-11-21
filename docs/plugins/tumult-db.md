@@ -4,115 +4,95 @@ parent: Plugins
 nav_order: 6
 ---
 
-# tumult-db — Database Chaos
+# tumult-db
 
-Script-based plugins for PostgreSQL, MySQL, and Redis chaos engineering.
+Three script plugins that break and read a database: `tumult-db-postgres`,
+`tumult-db-mysql` and `tumult-db-redis`. Each one drives the client tool of
+its database, so that tool must be on the machine that runs Tumult.
 
-## Data Capture
+```mermaid
+flowchart LR
+    accTitle: How the database plugins reach a database
+    accDescr: Each plugin calls the client tool of its database over the network. psql reaches PostgreSQL, mysql reaches MySQL and redis-cli reaches Redis.
+    tumult[tumult] --> psql[psql] --> pg[(PostgreSQL)]
+    tumult --> mysql[mysql] --> my[(MySQL)]
+    tumult --> rcli[redis-cli] --> redis[(Redis)]
+```
 
-Each probe prints its reading (a number, a word or a JSON object), and the reading gets recorded in the experiment journal. When used as hypothesis probes, the data is captured at both the **before** (baseline) and **after** (post-fault) checkpoints, giving you a pre/post comparison.
+## PostgreSQL
 
-The run also samples the hypothesis probes while the method runs and after it, and keeps these samples in the journal.
+Arguments of every function: `pg_host` (`localhost`), `pg_port` (`5432`),
+`pg_user` (`postgres`), `pg_password` (empty; Tumult writes it to a
+temporary `.pgpass` file, not to the command line).
 
-## PostgreSQL (tumult-db-postgres)
+| Function | Kind | What it does | More arguments |
+|---|---|---|---|
+| `kill-connections` | action | Ends every connection to a database and prints how many | `pg_database` (required) |
+| `lock-table` | action | Holds an exclusive lock on a table | `pg_database`, `pg_table` (required), `duration` in seconds (10) |
+| `inject-latency` | action | Runs `pg_sleep` in the database | `pg_database` (required), `latency_ms` (100) |
+| `exhaust-connections` | action | Opens idle connections and holds them | `pg_database` (required), `connection_count` (50, at most 500), `duration` in seconds (30) |
+| `connection-count` | probe | The number of connections | `pg_database` (optional: only that database) |
+| `replication-lag` | probe | Replica lag in seconds, 0 on a primary | |
+| `pool-utilization` | probe | JSON: `current_connections`, `max_connections`, `utilization_pct` | |
 
-### Prerequisites
-- `psql` client installed
-- Network access to the PostgreSQL instance
+## MySQL
 
-### Actions
+Arguments of every function: `mysql_host` (`localhost`), `mysql_port`
+(`3306`), `mysql_user` (`root`), `mysql_password` (empty).
 
-| Action | Description | Key Variables |
-|--------|-------------|---------------|
-| `kill-connections` | Terminate all connections to a database | `TUMULT_PG_DATABASE` (required) |
-| `lock-table` | Exclusive lock for a duration | `TUMULT_PG_DATABASE`, `TUMULT_PG_TABLE`, `TUMULT_DURATION` |
-| `inject-latency` | pg_sleep to simulate slow queries | `TUMULT_PG_DATABASE`, `TUMULT_LATENCY_MS` |
-| `exhaust-connections` | Open N idle connections | `TUMULT_PG_DATABASE`, `TUMULT_CONNECTION_COUNT`, `TUMULT_DURATION` |
+| Function | Kind | What it does | More arguments |
+|---|---|---|---|
+| `kill-connections` | action | Kills the connections to a database and prints how many it killed | `mysql_database` (required) |
+| `lock-table` | action | Holds `LOCK TABLES ... WRITE` | `mysql_database`, `mysql_table` (required), `duration` in seconds (10) |
+| `connection-count` | probe | The number of connections | |
 
-### Probes
+## Redis
 
-| Probe | Description | Output |
-|-------|-------------|--------|
-| `connection-count` | Active connection count | Integer |
-| `replication-lag` | Replica lag in seconds | Float (0 if primary) |
-| `pool-utilization` | Connection pool stats | JSON: `{current_connections, max_connections, utilization_pct}` |
+Arguments of every function: `redis_host` (`localhost`), `redis_port`
+(`6379`), `redis_auth` (the password, empty).
 
-### Common Variables
+| Function | Kind | What it does | More arguments |
+|---|---|---|---|
+| `flush-all` | action | Deletes every key in every database (`FLUSHALL`). It cannot be undone. | |
+| `block-clients` | action | Pauses all clients (`CLIENT PAUSE`) | `duration` in milliseconds (5000) |
+| `simulate-failover` | action | Makes Redis hang (`DEBUG SLEEP`) and returns at once | `duration` in seconds (5) |
+| `redis-ping` | probe | `PONG` when Redis answers | |
+| `redis-info` | probe | JSON: `connected_clients`, `used_memory_bytes`, `ops_per_sec` and more. A reply without these fields fails the probe. | |
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `TUMULT_PG_HOST` | `localhost` | PostgreSQL host |
-| `TUMULT_PG_PORT` | `5432` | PostgreSQL port |
-| `TUMULT_PG_USER` | `postgres` | PostgreSQL user |
-| `TUMULT_PG_PASSWORD` | (empty) | Password (written to a temporary `.pgpass` file) |
-
-## MySQL (tumult-db-mysql)
-
-### Prerequisites
-- `mysql` client installed
-
-### Actions
-
-| Action | Description | Key Variables |
-|--------|-------------|---------------|
-| `kill-connections` | Kill connections via KILL command; counts only the ones it ended | `TUMULT_MYSQL_DATABASE` (required) |
-| `lock-table` | LOCK TABLES WRITE for a duration | `TUMULT_MYSQL_DATABASE`, `TUMULT_MYSQL_TABLE`, `TUMULT_DURATION` |
-
-### Probes
-
-| Probe | Description | Output |
-|-------|-------------|--------|
-| `connection-count` | Active connection count | Integer |
-
-## Redis (tumult-db-redis)
-
-### Prerequisites
-- `redis-cli` installed
-
-### Actions
-
-| Action | Description | Key Variables |
-|--------|-------------|---------------|
-| `flush-all` | FLUSHALL — delete all data | (destructive!) |
-| `block-clients` | CLIENT PAUSE for N ms | `TUMULT_DURATION` (ms) |
-| `simulate-failover` | DEBUG SLEEP — hang Redis | `TUMULT_DURATION` (seconds) |
-
-### Probes
-
-| Probe | Description | Output |
-|-------|-------------|--------|
-| `redis-ping` | PING/PONG liveness check | `"PONG"` or error |
-| `redis-info` | Connection + memory stats | JSON: `{connected_clients, used_memory_bytes, ops_per_sec, ...}`. Fails when the reply lacks a field |
-
-## Example: PostgreSQL Connection Pool Exhaustion
+## Example
 
 ```toon
-title: Application survives connection pool exhaustion
-description: Exhaust PostgreSQL connections and verify app recovers
+title: The app survives a full connection pool
 
 steady_state_hypothesis:
-  title: Database pool has capacity
+  title: The pool has room
   probes[1]:
-    - name: pool-check
+    - name: connections
       activity_type: probe
       provider:
-        type: process
-        path: plugins/tumult-db-postgres/probes/connection-count.sh
-        env:
-          TUMULT_PG_DATABASE: myapp
+        type: script
+        plugin: tumult-db-postgres
+        function: connection-count
+        arguments:
+          pg_database: myapp
       tolerance:
         type: range
         from: 0.0
         to: 80.0
 
 method[1]:
-  - name: exhaust-pool
+  - name: fill-the-pool
     activity_type: action
     provider:
-      type: process
-      path: plugins/tumult-db-postgres/actions/exhaust-connections.sh
-      env:
-        TUMULT_PG_DATABASE: myapp
-        TUMULT_CONNECTION_COUNT: 80
-        TUMULT_DURATION: 30
+      type: script
+      plugin: tumult-db-postgres
+      function: exhaust-connections
+      arguments:
+        pg_database: myapp
+        connection_count: 80
+        duration: 30
+      timeout_s: 60.0
 ```
+
+The step holds the connections for 30 seconds, then lets them go. The
+steady state is checked again after that.

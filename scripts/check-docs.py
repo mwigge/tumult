@@ -118,7 +118,7 @@ def check_mcp_inventory(errors: list[str]) -> None:
 def check_stale_claims(errors: list[str]) -> None:
     active = [
         ROOT / "README.md",
-        ROOT / "QUICKSTART.md",
+        ROOT / "docs/get-started/index.md",
         ROOT / "SECURITY.md",
         ROOT / "docs/blog/index.md",
     ]

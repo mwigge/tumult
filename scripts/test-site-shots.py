@@ -14,6 +14,7 @@ from pathlib import Path
 SCRIPT = Path(__file__).with_name("site-shots.mjs")
 PAGES = {
     "index.html": "Landing",
+    "get-started/index.html": "Get started",
     "guides/index.html": "Docs home",
     "guides/observability-setup.html": "A guide",
     "guides/platform-walkthrough.html": "The walkthrough",
@@ -96,12 +97,12 @@ class Shots(unittest.TestCase):
         result = self.shoot()
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         names = sorted(path.name for path in self.out.glob("*.png"))
-        self.assertEqual(len(names), 24, names)
+        self.assertEqual(len(names), 28, names)
         self.assertEqual(png_size(self.out / "releases-390-fold.png"), (390, 844))
         self.assertEqual(png_size(self.out / "landing-1440-fold.png"), (1440, 900))
         self.assertEqual(png_size(self.out / "landing-390-full.png")[0], 390)
         summary = json.loads((self.out / "shots.json").read_text("utf-8"))
-        self.assertEqual(len(summary), 12)
+        self.assertEqual(len(summary), 14)
 
     def test_a_known_overflow_passes_and_is_printed(self):
         self.build(wide=["index.html"])
