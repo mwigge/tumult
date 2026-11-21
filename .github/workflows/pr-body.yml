@@ -1,0 +1,27 @@
+name: Pull request body
+
+# The body of a pull request has the headings Why, What changed, Scope,
+# Tradeoffs, Blast Radius and Verification, in this order, and at most 40
+# lines (scripts/check-pr-body.py). The body reaches the script through an
+# environment variable, so no text of it runs as a shell command. A pull
+# request by Dependabot is skipped by the script.
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  body:
+    name: Pull request body
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - name: The body has the six headings and at most 40 lines
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: python3 scripts/check-pr-body.py

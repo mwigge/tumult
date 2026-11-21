@@ -11,7 +11,7 @@
 #   make e2e             Run e2e tests (requires up)
 #   make lint            Run fmt + clippy + pedantic warnings
 #   make demo-test       Run fmt + clippy + tests of the three demo crates
-#   make precommit       Run all quality gates (lint + demo-test + test + audit)
+#   make precommit       Run the checks of CI, then the mutation tests
 #   make build           Build release binary
 
 COMPOSE_TARGETS = docker compose -f docker/docker-compose.yml
@@ -166,9 +166,10 @@ mutants:
 
 # ── Quality ────────────────────────────────────────────────────
 
+# The clippy lints are in [workspace.lints] of Cargo.toml.
 lint:
 	cargo fmt --all -- --check
-	cargo clippy --all-targets --all-features -- -D warnings -W clippy::pedantic -D clippy::print_stdout -D clippy::print_stderr -D clippy::dbg_macro
+	cargo clippy --all-targets --all-features -- -D warnings
 
 # demo/app, demo/control-panel and demo/traffic are cargo workspaces of
 # their own, so `lint` and `test` do not reach them. Their tests need no
@@ -184,9 +185,31 @@ demo-test:
 	  cargo test --manifest-path $$crate/Cargo.toml --locked; \
 	done
 
-precommit: lint demo-test
-	cargo test --workspace
-	cargo audit
+# The checks of the CI jobs Format, Test, Demo crates, Cargo Deny and
+# Documentation checks (scripts/test-quality-gates.py keeps them equal to
+# ci.yml), then the mutation tests of the changed lines. It installs no
+# tools: it needs cargo-nextest, cargo-machete, cargo-deny, cargo-mutants,
+# protoc and the chromium of Playwright
+# (npm --prefix web exec -- playwright install chromium).
+TARGET_DIR = $(abspath $(or $(CARGO_TARGET_DIR),target))
+
+precommit:
+	npm --prefix web run build
+	$(MAKE) lint
+	cargo check -p tumult-lake --no-default-features
+	cargo machete --with-metadata
+	cargo nextest run --all-features
+	cd web && TUMULT_BIN=$(TARGET_DIR)/debug/tumult npm run test:report
+	cd web && TUMULT_BIN=$(TARGET_DIR)/debug/tumult \
+	  TUMULTD_BIN=$(TARGET_DIR)/debug/tumultd npm run test:live
+	cargo test -p tumult-ingest --test otap_proto_drift -- --ignored
+	$(MAKE) demo-test
+	cargo deny check advisories
+	cargo deny check
+	python3 scripts/check-docs.py
+	python3 scripts/check-citations.py
+	python3 scripts/check-prose.py
+	$(MAKE) mutants
 
 build:
 	cargo build --release -p tumult-cli

@@ -28,3 +28,6 @@ zeroize = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 axum = { workspace = true }
 tumult-test-utils = { path = "../tumult-test-utils", default-features = false }
+
+[lints]
+workspace = true

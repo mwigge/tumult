@@ -21,3 +21,6 @@ tracing.workspace = true
 tempfile.workspace = true
 # The telemetry and journals of real runs, for the digest kept with the tests.
 tumult-test-utils = { path = "../tumult-test-utils", features = ["recorded"] }
+
+[lints]
+workspace = true

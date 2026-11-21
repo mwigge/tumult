@@ -24,3 +24,6 @@ tokio = { version = "1", features = ["rt", "macros"] }
 # does not require it.
 name = "winfault"
 path = "src/bin/winfault.rs"
+
+[lints]
+workspace = true
