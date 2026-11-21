@@ -1,17 +1,15 @@
-//! Tumult Plugin — Plugin trait definitions, registry, and manifest loader.
+//! Tumult Plugin: native executors, registry, and manifest loader.
 //!
-//! Provides the [`TumultPlugin`] trait for native Rust plugins and the
+//! Provides the [`NativeExecutor`] trait for native Rust plugins and the
 //! script plugin manifest parser for community plugins.
 //!
 //! # Overview
 //!
 //! Tumult uses a dual plugin model:
 //!
-//! - **Native plugins** implement the [`TumultPlugin`] trait in Rust.
-//!   They are compiled into the binary and registered at startup via
-//!   [`PluginRegistry::register_native`]. Plugins that execute functions
-//!   for the experiment runner additionally implement [`NativeExecutor`]
-//!   and are dispatched through a [`NativeExecutorRegistry`].
+//! - **Native plugins** implement [`NativeExecutor`] in Rust. They are
+//!   compiled into the binary and dispatched through a
+//!   [`NativeExecutorRegistry`].
 //! - **Script plugins** are directories containing a `plugin.toon` manifest
 //!   and shell-script actions/probes. They are discovered at runtime by
 //!   [`discovery`] and registered with [`PluginRegistry::register_script`].
@@ -20,10 +18,9 @@
 //!
 //! | Type | Purpose |
 //! |--------------------------|---------------------------------------------|
-//! | [`TumultPlugin`] | Trait that native plugins implement |
-//! | [`NativeExecutor`] | Trait for executing native plugin functions |
+//! | [`NativeExecutor`] | Trait that native plugins implement |
 //! | [`NativeExecutorRegistry`]| Dispatch table for native executors |
-//! | [`PluginRegistry`] | Central lookup for actions and probes |
+//! | [`PluginRegistry`] | Lookup of the script plugins and their actions |
 //! | [`ScriptPluginManifest`] | Deserialized `plugin.toon` descriptor |
 //! | [`ActionDescriptor`] | Metadata for a single chaos action |
 //! | [`ProbeDescriptor`] | Metadata for a single steady-state probe |
@@ -46,7 +43,7 @@ pub mod traits;
 pub use manifest::ScriptPluginManifest;
 pub use native::{NativeArgs, NativeError, NativeExecutor, NativeExecutorRegistry};
 pub use registry::PluginRegistry;
-pub use traits::{ActionDescriptor, ActionOutput, ProbeDescriptor, ProbeOutput, TumultPlugin};
+pub use traits::{ActionDescriptor, ProbeDescriptor};
 
 #[cfg(test)]
 mod tests {
@@ -106,15 +103,6 @@ mod tests {
     // ── PluginRegistry ─────────────────────────────────────────
 
     #[test]
-    fn registry_registers_native_plugin() {
-        let mut registry = PluginRegistry::new();
-        registry.register_native(Box::new(MockPlugin::new()));
-        let plugins = registry.list_plugins();
-        assert_eq!(plugins.len(), 1);
-        assert_eq!(plugins[0], "mock-plugin");
-    }
-
-    #[test]
     fn registry_registers_script_plugin() {
         let mut registry = PluginRegistry::new();
         let manifest = ScriptPluginManifest {
@@ -128,83 +116,5 @@ mod tests {
         let plugins = registry.list_plugins();
         assert_eq!(plugins.len(), 1);
         assert_eq!(plugins[0], "tumult-kafka");
-    }
-
-    #[test]
-    fn registry_finds_action_in_native_plugin() {
-        let mut registry = PluginRegistry::new();
-        registry.register_native(Box::new(MockPlugin::new()));
-        assert!(registry.has_action("mock-plugin", "kill"));
-        assert!(!registry.has_action("mock-plugin", "nonexistent"));
-        assert!(!registry.has_action("wrong-plugin", "kill"));
-    }
-
-    #[test]
-    fn registry_finds_probe_in_native_plugin() {
-        let mut registry = PluginRegistry::new();
-        registry.register_native(Box::new(MockPlugin::new()));
-        assert!(registry.has_probe("mock-plugin", "health-check"));
-        assert!(!registry.has_probe("mock-plugin", "nonexistent"));
-    }
-
-    #[test]
-    fn registry_finds_action_in_script_plugin() {
-        let mut registry = PluginRegistry::new();
-        registry.register_script(ScriptPluginManifest {
-            name: "tumult-kafka".into(),
-            version: "0.1.0".into(),
-            description: "Kafka chaos".into(),
-            actions: vec![manifest::ScriptAction {
-                name: "kill-broker".into(),
-                script: PathBuf::from("actions/kill-broker.sh"),
-                description: "Kill broker".into(),
-            }],
-            probes: vec![],
-        });
-        assert!(registry.has_action("tumult-kafka", "kill-broker"));
-        assert!(!registry.has_action("tumult-kafka", "nonexistent"));
-    }
-
-    // ── Mock plugin for testing ────────────────────────────────
-
-    struct MockPlugin {
-        actions: Vec<ActionDescriptor>,
-        probes: Vec<ProbeDescriptor>,
-    }
-
-    impl MockPlugin {
-        fn new() -> Self {
-            Self {
-                actions: vec![ActionDescriptor {
-                    name: "kill".into(),
-                    description: "Kill something".into(),
-                    arguments: vec!["target".into()],
-                }],
-                probes: vec![ProbeDescriptor {
-                    name: "health-check".into(),
-                    description: "Check health".into(),
-                    arguments: vec![],
-                }],
-            }
-        }
-    }
-
-    impl crate::traits::private::Sealed for MockPlugin {}
-    impl TumultPlugin for MockPlugin {
-        fn name(&self) -> &'static str {
-            "mock-plugin"
-        }
-        fn version(&self) -> &'static str {
-            "0.1.0"
-        }
-        fn description(&self) -> &'static str {
-            "A mock plugin for testing"
-        }
-        fn actions(&self) -> &[ActionDescriptor] {
-            &self.actions
-        }
-        fn probes(&self) -> &[ProbeDescriptor] {
-            &self.probes
-        }
     }
 }

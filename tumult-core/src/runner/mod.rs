@@ -324,11 +324,6 @@ pub struct RunConfig {
     /// ([`load_executor_for`]); tests give a stand-in here. The runner
     /// starts the load in the background during method execution.
     pub load_executor: Option<std::sync::Arc<dyn LoadExecutor>>,
-    /// Optional override for the experiment's `max_concurrent_faults`
-    /// blast-radius cap. When `Some`, it takes precedence over the value
-    /// declared in the experiment; when `None`, the experiment's value (if
-    /// any) is used.
-    pub max_concurrent_faults: Option<u32>,
     /// Optional source of the target's observed version. Without one a
     /// run whose definition declares no `target.version` records none.
     pub version_resolver: Option<std::sync::Arc<dyn TargetVersionResolver>>,
@@ -342,7 +337,6 @@ impl Default for RunConfig {
             cancellation_token: None,
             parent_context: None,
             load_executor: None,
-            max_concurrent_faults: None,
             version_resolver: None,
         }
     }

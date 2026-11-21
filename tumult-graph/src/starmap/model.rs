@@ -357,25 +357,6 @@ pub struct StarCluster {
     pub worst: ClusterWorst,
 }
 
-/// Whether an overlay source answered.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum SourceState {
-    Ok,
-    /// The source does not exist yet, or did not answer.
-    Unavailable,
-}
-
-/// Which overlay sources answered.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct Sources {
-    pub slo: SourceState,
-    pub dora: SourceState,
-    pub maturity: SourceState,
-    pub conformance: SourceState,
-    pub graph: SourceState,
-}
-
 /// Totals for the legend.
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
 pub struct Counts {
@@ -409,7 +390,6 @@ pub struct StarMap {
     /// A source table was longer than its row limit: evidence edges,
     /// articles, gaps or declared dependencies may be missing.
     pub truncated: bool,
-    pub sources: Sources,
     pub maturity: Option<serde_json::Value>,
     pub counts: Counts,
     pub nodes: Vec<StarNode>,

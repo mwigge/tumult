@@ -49,7 +49,7 @@ method[2]:
     provider:
       type: process
       path: sh
-      arguments[2]: "-c", "docker run --rm --name tumult-saturation-stress -v /var/run/docker.sock:/var/run/docker.sock ghcr.io/alexei-led/pumba:latest stress --duration 120s --stressors '--cpu 2 --timeout 120s' demo-app"
+      arguments[2]: "-c", "docker run --rm --name tumult-saturation-stress -v /var/run/docker.sock:/var/run/docker.sock ghcr.io/alexei-led/pumba:1.6.0@sha256:11ed15538c7ec688628e2f53917d949e8c16418c146742731c3030ef276b6057 stress --stress-image tumult-sshd:lab --pull-image=false --duration 120s --stressors '--cpu 2 --timeout 120s' demo-app"
       timeout_s: 180.0
   - name: process-still-up
     activity_type: probe

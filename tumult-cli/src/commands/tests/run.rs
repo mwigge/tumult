@@ -472,18 +472,6 @@ fn init_creates_experiment_file() {
 }
 
 #[test]
-fn init_with_plugin_includes_plugin_name() {
-    let dir = TempDir::new().unwrap();
-    let path = dir.path().join("experiment.toon");
-
-    let result = init_at(&path, Some("tumult-kafka"));
-
-    assert!(result.is_ok());
-    let content = std::fs::read_to_string(&path).unwrap();
-    assert!(content.contains("tumult-kafka"));
-}
-
-#[test]
 fn init_fails_if_file_exists() {
     let dir = TempDir::new().unwrap();
     let path = dir.path().join("experiment.toon");
@@ -491,23 +479,6 @@ fn init_fails_if_file_exists() {
 
     let result = init_at(&path, None);
     assert!(result.is_err());
-}
-
-// ── generate_template tests ───────────────────────────────
-
-#[test]
-fn template_contains_required_sections() {
-    let template = generate_template(None);
-    assert!(template.contains("title:"));
-    assert!(template.contains("steady_state_hypothesis:"));
-    assert!(template.contains("method"));
-    assert!(template.contains("rollbacks"));
-}
-
-#[test]
-fn template_uses_plugin_name() {
-    let template = generate_template(Some("tumult-db"));
-    assert!(template.contains("tumult-db"));
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

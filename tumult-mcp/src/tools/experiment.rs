@@ -213,7 +213,6 @@ pub fn run_experiment(request: RunExperimentRequest<'_>) -> Result<StructuredRep
         parent_context: request.parent_context,
         // The runner runs a declared load with the adapter of its tool.
         load_executor: None,
-        max_concurrent_faults: None,
     };
 
     let output = JournalOutput::prepare(
@@ -285,13 +284,24 @@ fn ingest_journal(
         .map_err(|e| ToolError::Store(e.to_string()))
 }
 
-/// Create an experiment file from a template.
+/// Create an experiment file from the starter template. With `plugin`,
+/// its first step reads a probe of that script plugin.
 ///
 /// # Errors
 ///
-/// Returns [`ToolError::AlreadyExists`] if the file already exists, or
-/// [`ToolError::Io`] if the file cannot be written.
+/// Returns [`ToolError::AlreadyExists`] if the file already exists,
+/// [`ToolError::InvalidInput`] if no installed script plugin `plugin` has
+/// a probe, or [`ToolError::Io`] if the file cannot be written.
 pub fn create_experiment(output_path: &str, plugin: Option<&str>) -> Result<String, ToolError> {
+    create_experiment_from(output_path, plugin, tumult_authoring::build_catalog)
+}
+
+/// [`create_experiment`], with the fault catalog from `catalog`.
+fn create_experiment_from<E: std::fmt::Display>(
+    output_path: &str,
+    plugin: Option<&str>,
+    catalog: impl FnOnce() -> Result<tumult_authoring::FaultCatalog, E>,
+) -> Result<String, ToolError> {
     let path = Path::new(output_path);
     if path.exists() {
         return Err(ToolError::AlreadyExists(format!(
@@ -299,39 +309,18 @@ pub fn create_experiment(output_path: &str, plugin: Option<&str>) -> Result<Stri
         )));
     }
 
-    let plugin_name = plugin.unwrap_or("tumult-example");
-    let template = format!(
-        r#"title: My chaos experiment
-description: Describe what this experiment validates
+    let experiment = match plugin {
+        None => tumult_authoring::starter(),
+        Some(plugin) => {
+            let catalog = catalog().map_err(|e| ToolError::Execution(e.to_string()))?;
+            tumult_authoring::starter_for(&catalog, plugin)
+        }
+    }
+    .map_err(|e| ToolError::InvalidInput(e.to_string()))?;
+    let toon = tumult_authoring::encode_experiment(&experiment)
+        .map_err(|e| ToolError::Execution(e.to_string()))?;
 
-tags[2]: resilience, testing
-
-steady_state_hypothesis:
-  title: System is reachable
-  probes[1]:
-    - name: system-check
-      activity_type: probe
-      provider:
-        type: process
-        path: uname
-        arguments[1]: "-a"
-        timeout_s: 5.0
-      tolerance:
-        type: regex
-        pattern: "."
-
-method[1]:
-  - name: inject-fault
-    activity_type: action
-    provider:
-      type: process
-      path: echo
-      arguments[1]: "fault injected via {plugin_name}"
-      timeout_s: 30.0
-"#
-    );
-
-    std::fs::write(path, &template)?;
+    std::fs::write(path, &toon)?;
     Ok(format!("Created {output_path}"))
 }
 
@@ -614,14 +603,49 @@ method[1]:
         assert!(content.contains("title:"));
     }
 
+    /// The catalog of the script plugins shipped in the repository.
+    fn shipped_catalog() -> Result<tumult_authoring::FaultCatalog, String> {
+        let plugins = Path::new(env!("CARGO_MANIFEST_DIR")).join("../plugins");
+        let config = tumult_plugin::discovery::PluginDiscoveryConfig {
+            plugin_paths: vec![plugins],
+        };
+        tumult_authoring::build_catalog_with_config(&config).map_err(|e| e.to_string())
+    }
+
     #[test]
-    fn create_experiment_with_plugin() {
+    fn create_experiment_with_plugin_first_reads_a_probe_of_it() {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("kafka.toon");
-        let result = create_experiment(path.to_str().unwrap(), Some("tumult-kafka"));
-        assert!(result.is_ok());
+
+        create_experiment_from(
+            path.to_str().unwrap(),
+            Some("tumult-kafka"),
+            shipped_catalog,
+        )
+        .unwrap();
+
         let content = std::fs::read_to_string(&path).unwrap();
-        assert!(content.contains("tumult-kafka"));
+        let experiment = tumult_core::engine::parse_experiment(&content).unwrap();
+        assert!(
+            matches!(&experiment.method[0].provider,
+                tumult_core::types::Provider::Script { plugin, .. } if plugin == "tumult-kafka"),
+            "{content}"
+        );
+    }
+
+    #[test]
+    fn create_experiment_refuses_a_plugin_without_a_probe() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("none.toon");
+
+        let result =
+            create_experiment_from(path.to_str().unwrap(), Some("tumult-nope"), shipped_catalog);
+
+        assert!(
+            matches!(result, Err(ToolError::InvalidInput(_))),
+            "{result:?}"
+        );
+        assert!(!path.exists());
     }
 
     #[test]

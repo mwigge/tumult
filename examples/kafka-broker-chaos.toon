@@ -28,7 +28,7 @@ method[2]:
     provider:
       type: process
       path: sh
-      arguments[2]: "-c", "docker run --rm -v /var/run/docker.sock:/var/run/docker.sock ghcr.io/alexei-led/pumba:latest pause -d 3s docker-kafka-1"
+      arguments[2]: "-c", "docker run --rm -v /var/run/docker.sock:/var/run/docker.sock ghcr.io/alexei-led/pumba:1.6.0@sha256:11ed15538c7ec688628e2f53917d949e8c16418c146742731c3030ef276b6057 pause -d 3s docker-kafka-1"
       timeout_s: 20.0
   - name: verify-broker-recovered
     activity_type: probe

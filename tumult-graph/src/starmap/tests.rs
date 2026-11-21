@@ -1257,17 +1257,11 @@ fn nodes_and_edges_are_sorted_and_counted() {
 }
 
 #[test]
-fn overlay_sources_that_do_not_exist_yet_are_unavailable_and_null() {
+fn overlays_that_do_not_exist_yet_are_null() {
     let map = build(&large());
-    assert_eq!(map.sources.slo, SourceState::Unavailable);
-    assert_eq!(map.sources.dora, SourceState::Unavailable);
-    assert_eq!(map.sources.maturity, SourceState::Unavailable);
-    assert_eq!(map.sources.graph, SourceState::Ok);
     assert!(map.maturity.is_none());
     assert!(map.disclaimer.contains("EVIDENCE"));
     let json = serde_json::to_value(&map).expect("serialise");
-    assert_eq!(json["sources"]["slo"], "unavailable");
-    assert_eq!(json["sources"]["conformance"], "ok");
     for n in json["nodes"].as_array().expect("nodes") {
         assert!(n["slo"].is_null());
         assert!(n["dora"].is_null());

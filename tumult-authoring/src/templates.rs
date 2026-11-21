@@ -13,10 +13,10 @@ use std::collections::HashMap;
 use indexmap::IndexMap;
 
 use tumult_core::engine::{apply_vars, parse_experiment, validate_experiment};
-use tumult_core::types::Experiment;
+use tumult_core::types::{Activity, ActivityType, Experiment, Provider};
 
 use crate::builder::{encode_experiment, AuthoringError};
-use crate::catalog::Domain;
+use crate::catalog::{ActionKind, CatalogAction, Domain, FaultCatalog};
 
 /// A single template parameter with a documented default.
 #[derive(Debug, Clone, Copy)]
@@ -165,10 +165,21 @@ const AGENTIC_SMOKE_PARAMS: &[TemplateParam] = &[
     ),
 ];
 
+/// The name of the starter template: a first experiment that reads the
+/// local system and injects no fault. `tumult init` writes it.
+pub const STARTER: &str = "starter";
+
 /// All curated templates, in a stable order.
 #[must_use]
 pub fn all_templates() -> Vec<Template> {
     vec![
+        Template {
+            name: STARTER,
+            description: "A first experiment: read the local system, inject no fault",
+            domain: Domain::Other,
+            params: &[],
+            body: include_str!("templates/starter.toon"),
+        },
         Template {
             name: "net-latency",
             description: "Add network latency (tc netem) and verify connectivity survives",
@@ -314,6 +325,77 @@ impl Template {
     }
 }
 
+/// The [`STARTER`] experiment.
+///
+/// # Errors
+///
+/// Returns the errors of [`Template::instantiate`].
+pub fn starter() -> Result<Experiment, AuthoringError> {
+    let template =
+        find_template(STARTER).ok_or_else(|| AuthoringError::UnknownTemplate(STARTER.into()))?;
+    template.instantiate(&HashMap::new())
+}
+
+/// The [`STARTER`] experiment whose first step reads the first probe of
+/// the script plugin `plugin` in `catalog`. A native plugin is compiled in
+/// and not in the catalog: it gets the plain [`starter`].
+///
+/// # Errors
+///
+/// Returns [`AuthoringError::PluginWithoutProbe`] when `plugin` is not
+/// native and `catalog` has no probe of it, and otherwise the errors of
+/// [`starter`].
+pub fn starter_for(catalog: &FaultCatalog, plugin: &str) -> Result<Experiment, AuthoringError> {
+    if crate::builder::NATIVE_PLUGINS.contains(&plugin) {
+        return starter();
+    }
+    let probe = catalog
+        .all_actions()
+        .find(|a| a.plugin == plugin && a.kind == ActionKind::Probe)
+        .ok_or_else(|| AuthoringError::PluginWithoutProbe {
+            plugin: plugin.to_string(),
+            installed: plugins_with_a_probe(catalog),
+        })?;
+    let mut experiment = starter()?;
+    experiment.method.insert(0, reading(probe));
+    validate_experiment(&experiment).map_err(|e| AuthoringError::Validation(e.to_string()))?;
+    Ok(experiment)
+}
+
+/// A step that reads `probe` with no arguments.
+fn reading(probe: &CatalogAction) -> Activity {
+    Activity {
+        name: probe.name.clone(),
+        activity_type: ActivityType::Probe,
+        provider: Provider::Script {
+            plugin: probe.plugin.clone(),
+            function: probe.name.clone(),
+            arguments: HashMap::new(),
+            timeout_s: None,
+        },
+        tolerance: None,
+        pause_before_s: None,
+        pause_after_s: None,
+        background: false,
+        label_selector: None,
+    }
+}
+
+/// The plugins of `catalog` with a probe, sorted, or `none`.
+fn plugins_with_a_probe(catalog: &FaultCatalog) -> String {
+    let mut plugins: Vec<&str> = catalog
+        .all_actions()
+        .filter(|a| a.kind == ActionKind::Probe)
+        .map(|a| a.plugin.as_str())
+        .collect();
+    plugins.sort_unstable();
+    plugins.dedup();
+    if plugins.is_empty() {
+        return "none".to_string();
+    }
+    plugins.join(", ")
+}
+
 /// Parse `key=value` override strings into a map.
 ///
 /// # Errors
@@ -336,13 +418,95 @@ mod tests {
     use std::collections::HashMap;
 
     #[test]
-    fn there_are_ten_templates_with_unique_names() {
+    fn there_are_eleven_templates_with_unique_names() {
         let templates = all_templates();
-        assert_eq!(templates.len(), 10);
+        assert_eq!(templates.len(), 11);
         let mut names: Vec<&str> = templates.iter().map(|t| t.name).collect();
         names.sort_unstable();
         names.dedup();
-        assert_eq!(names.len(), 10, "template names must be unique");
+        assert_eq!(names.len(), 11, "template names must be unique");
+    }
+
+    /// A catalog with the plugin `lab-target`, one action and one probe.
+    fn lab_catalog() -> FaultCatalog {
+        let entry = |name: &str, kind: ActionKind| CatalogAction {
+            plugin: "lab-target".into(),
+            name: name.into(),
+            description: String::new(),
+            kind,
+            args: vec![],
+        };
+        FaultCatalog {
+            domains: vec![crate::catalog::CatalogDomain {
+                domain: Domain::Other,
+                label: "Other".into(),
+                actions: vec![
+                    entry("take-down", ActionKind::Action),
+                    entry("read", ActionKind::Probe),
+                    // A plugin with an action and no probe.
+                    CatalogAction {
+                        plugin: "lab-cache".into(),
+                        ..entry("flush", ActionKind::Action)
+                    },
+                ],
+            }],
+        }
+    }
+
+    #[test]
+    fn the_starter_reads_the_local_system_and_injects_no_fault() {
+        let experiment = starter().unwrap();
+
+        assert!(experiment.steady_state_hypothesis.is_some());
+        assert_eq!(experiment.method.len(), 2);
+        assert!(experiment
+            .method
+            .iter()
+            .all(|step| step.activity_type == ActivityType::Probe
+                && matches!(step.provider, Provider::Process { .. })));
+        assert!(experiment.rollbacks.is_empty());
+    }
+
+    #[test]
+    fn the_starter_for_a_plugin_first_reads_its_first_probe() {
+        let experiment = starter_for(&lab_catalog(), "lab-target").unwrap();
+
+        let first = &experiment.method[0];
+        assert_eq!(first.name, "read");
+        assert_eq!(first.activity_type, ActivityType::Probe);
+        assert!(
+            matches!(&first.provider, Provider::Script { plugin, function, .. }
+                if plugin == "lab-target" && function == "read"),
+            "{first:?}"
+        );
+        assert_eq!(experiment.method.len(), 3);
+    }
+
+    #[test]
+    fn the_starter_for_a_native_plugin_is_the_plain_starter() {
+        // Native plugins are compiled in, not in the script catalog: `tumult
+        // init --plugin tumult-kubernetes` worked before and still works.
+        let empty = FaultCatalog { domains: vec![] };
+
+        let experiment = starter_for(&empty, "tumult-kubernetes").unwrap();
+
+        assert_eq!(experiment, starter().unwrap());
+    }
+
+    #[test]
+    fn the_starter_for_a_plugin_without_a_probe_names_the_ones_with_one() {
+        let err = starter_for(&lab_catalog(), "lab-cache").unwrap_err();
+
+        assert_eq!(
+            err.to_string(),
+            "no script plugin 'lab-cache' with a probe is installed \
+             (plugins with a probe: lab-target)"
+        );
+        let empty = FaultCatalog { domains: vec![] };
+        assert!(starter_for(&empty, "lab-target")
+            .unwrap_err()
+            .to_string()
+            .ends_with("(plugins with a probe: none)"));
     }
 
     #[test]

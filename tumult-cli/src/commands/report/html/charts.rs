@@ -214,7 +214,7 @@ fn step_bar(step: &ActivityResult, phase: &str, axis: &TimeAxis) -> Bar {
     let label = format!("{}{phase}", step.name);
     let colour = match step.status {
         ActivityStatus::Succeeded => OK,
-        ActivityStatus::Failed | ActivityStatus::Timeout => FAIL,
+        ActivityStatus::Failed => FAIL,
         ActivityStatus::Skipped => MUTED,
     };
     Bar {

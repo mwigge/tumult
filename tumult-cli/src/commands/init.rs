@@ -4,6 +4,7 @@ use std::path::Path;
 
 use anyhow::{bail, Result};
 
+use tumult_authoring::{build_catalog, encode_experiment};
 use tumult_core::types::{Experiment, ExperimentTarget, LoadConfig, LoadProfile};
 
 // ── Init command ──────────────────────────────────────────────
@@ -24,69 +25,23 @@ pub(crate) fn init_at(path: &Path, plugin: Option<&str>) -> Result<()> {
         );
     }
 
-    let template = generate_template(plugin);
-    std::fs::write(path, &template)?;
+    let experiment = match plugin {
+        None => tumult_authoring::starter()?,
+        Some(plugin) => tumult_authoring::starter_for(&build_catalog()?, plugin)?,
+    };
+    std::fs::write(path, encode_experiment(&experiment)?)?;
 
-    crate::outln!("Created {} from a template", path.display());
+    crate::outln!("Created {} from the starter template", path.display());
     if let Some(p) = plugin {
         crate::outln!(
-            "Template references the {p} plugin — edit the method steps to use its actions"
+            "The first step reads {p}::{}. Set its arguments, and add a fault of {p}.",
+            experiment.method[0].name
         );
     }
     crate::outln!("Edit the file to configure your experiment, then run:");
     crate::outln!("  tumult run {}", path.display());
 
     Ok(())
-}
-
-pub(crate) fn generate_template(plugin: Option<&str>) -> String {
-    let plugin_name = plugin.unwrap_or("tumult-example");
-    format!(
-        r#"title: System information check
-description: Verify system is accessible and report CPU and memory info
-
-tags[2]: resilience, baseline
-
-steady_state_hypothesis:
-  title: System is reachable
-  probes[1]:
-    - name: system-check
-      activity_type: probe
-      provider:
-        type: process
-        path: uname
-        arguments[1]: "-a"
-        timeout_s: 5.0
-      tolerance:
-        type: regex
-        pattern: "."
-
-method[2]:
-  - name: check-cpu
-    activity_type: probe
-    provider:
-      type: process
-      path: sh
-      arguments[2]: "-c", "cat /proc/cpuinfo 2>/dev/null | head -20 || sysctl -n machdep.cpu.brand_string"
-      timeout_s: 10.0
-  - name: check-memory
-    activity_type: probe
-    provider:
-      type: process
-      path: sh
-      arguments[2]: "-c", "cat /proc/meminfo 2>/dev/null | head -5 || sysctl -n hw.memsize"
-      timeout_s: 10.0
-
-rollbacks[1]:
-  - name: log-complete
-    activity_type: action
-    provider:
-      type: process
-      path: echo
-      arguments[1]: "system check completed via {plugin_name}"
-      timeout_s: 5.0
-"#
-    )
 }
 
 // ── Dry run ───────────────────────────────────────────────────

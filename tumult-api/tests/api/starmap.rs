@@ -274,15 +274,11 @@ async fn starmap_builds_the_spine_from_resource_attributes() {
 }
 
 #[tokio::test]
-async fn starmap_reports_unavailable_sources_as_null_blocks() {
+async fn starmap_reports_overlays_that_do_not_exist_yet_as_null_blocks() {
     let srv = spawn_server().await;
     seed_services(&srv).await;
     let (status, body) = get(&srv.base, "/api/starmap").await;
     assert_eq!(status, 200, "{body}");
-    assert_eq!(body["sources"]["slo"], "unavailable");
-    assert_eq!(body["sources"]["dora"], "unavailable");
-    assert_eq!(body["sources"]["maturity"], "unavailable");
-    assert_eq!(body["sources"]["graph"], "ok");
     assert!(body["maturity"].is_null());
     let nodes = body["nodes"].as_array().unwrap();
     assert!(!nodes.is_empty());

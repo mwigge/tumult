@@ -24,7 +24,8 @@ use crate::error::WindowsError;
 ///
 /// Returns [`WindowsError::Spawn`] if the program cannot be launched (the
 /// expected result on a non-Windows host) and [`WindowsError::CommandFailed`]
-/// if it exits non-zero.
+/// if it exits non-zero, with what it wrote on stderr, or on stdout when
+/// stderr is empty (`netsh` writes its errors there).
 fn run(program: &str, args: &[String]) -> Result<String, WindowsError> {
     let output = Command::new(program)
         .args(args)
@@ -34,15 +35,16 @@ fn run(program: &str, args: &[String]) -> Result<String, WindowsError> {
             source,
         })?;
 
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
     if output.status.success() {
-        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
-    } else {
-        Err(WindowsError::CommandFailed {
-            program: program.to_string(),
-            code: output.status.code().unwrap_or(-1),
-            stderr: String::from_utf8_lossy(&output.stderr).trim().to_string(),
-        })
+        return Ok(stdout);
     }
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    Err(WindowsError::CommandFailed {
+        program: program.to_string(),
+        code: output.status.code().unwrap_or(-1),
+        stderr: if stderr.is_empty() { stdout } else { stderr },
+    })
 }
 
 /// Outcome of a [`process_kill`] fault.
@@ -158,6 +160,33 @@ pub fn network_blackhole(target: &BlackholeTarget) -> Result<BlackholeReport, Wi
 pub fn network_blackhole_rollback(rule_name: &str) -> Result<String, WindowsError> {
     let args = build_blackhole_delete_args(rule_name);
     run(NETSH, &args)
+}
+
+/// What `netsh` prints when no firewall rule has the name.
+const NO_SUCH_RULE: &str = "No rules match the specified criteria";
+
+/// Remove the blackhole on `target`: delete the rule that
+/// [`network_blackhole`] added for it, found by its name. Returns what
+/// `netsh` said, or `None` when no rule had the name. That rule is gone
+/// already, so this can run more than once.
+///
+/// # Errors
+///
+/// Returns [`WindowsError::Spawn`] if `netsh` is unavailable, or
+/// [`WindowsError::CommandFailed`] if the rule cannot be deleted.
+pub fn remove_network_blackhole(target: &BlackholeTarget) -> Result<Option<String>, WindowsError> {
+    delete_rule(NETSH, &target.rule_name())
+}
+
+/// Delete the firewall rule `rule_name` with the `netsh` at `program`.
+fn delete_rule(program: &str, rule_name: &str) -> Result<Option<String>, WindowsError> {
+    match run(program, &build_blackhole_delete_args(rule_name)) {
+        Ok(stdout) => Ok(Some(stdout)),
+        Err(WindowsError::CommandFailed { stderr, .. }) if stderr.contains(NO_SUCH_RULE) => {
+            Ok(None)
+        }
+        Err(err) => Err(err),
+    }
 }
 
 /// Outcome of a [`cpu_stress`] run.
@@ -298,6 +327,64 @@ mod tests {
         assert_eq!(
             report.rollback_command(),
             "netsh advfirewall firewall delete rule name=tumult-blackhole-port-8080"
+        );
+    }
+
+    /// A stand-in for `netsh` that prints `output` on stdout, as `netsh`
+    /// does, and ends with `code`.
+    #[cfg(unix)]
+    fn netsh_stand_in(dir: &tempfile::TempDir, output: &str, code: i32) -> String {
+        let body = format!("echo '{output}'\nexit {code}");
+        let path = tumult_test_utils::fake_bin(dir.path(), "netsh", &body);
+        path.display().to_string()
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn deleting_a_rule_that_is_there_returns_what_netsh_said() {
+        let dir = tempfile::tempdir().unwrap();
+        let netsh = netsh_stand_in(&dir, "Deleted 1 rule(s).", 0);
+
+        let deleted = delete_rule(&netsh, "tumult-blackhole-port-443").unwrap();
+
+        assert_eq!(deleted.as_deref(), Some("Deleted 1 rule(s)."));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn deleting_a_rule_that_is_not_there_counts_as_removed() {
+        let dir = tempfile::tempdir().unwrap();
+        let netsh = netsh_stand_in(&dir, "No rules match the specified criteria.", 1);
+
+        let deleted = delete_rule(&netsh, "tumult-blackhole-port-443").unwrap();
+
+        assert_eq!(deleted, None);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn any_other_failure_to_delete_a_rule_is_an_error_with_the_words_of_netsh() {
+        let dir = tempfile::tempdir().unwrap();
+        let netsh = netsh_stand_in(&dir, "The requested operation requires elevation.", 1);
+
+        let err = delete_rule(&netsh, "tumult-blackhole-port-443").unwrap_err();
+
+        assert!(
+            matches!(&err, WindowsError::CommandFailed { code: 1, stderr, .. }
+                if stderr == "The requested operation requires elevation."),
+            "{err:?}"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_command_that_a_signal_ends_has_the_exit_code_minus_one() {
+        // A process ended by a signal has no exit code of its own.
+        let err = run("sh", &["-c".to_string(), "kill -KILL $$".to_string()]).unwrap_err();
+
+        assert!(
+            matches!(&err, WindowsError::CommandFailed { code: -1, .. }),
+            "{err:?}"
         );
     }
 }

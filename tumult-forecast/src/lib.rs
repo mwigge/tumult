@@ -17,8 +17,6 @@
 //! * [`recovery::recovery_time`] — when the observed series re-entered the
 //!   forecast band after the fault ended and stayed there: measured RTO for
 //!   disaster-recovery runs, MTTR for chaos runs.
-//! * [`steady::steady_state`] — whether the latest window sits inside its
-//!   own forecast band, the pre-run gate.
 //!
 //! [`resample`] turns the lake's irregular `(ts_ns, value)` points into the
 //! regular-step series with `NaN` gaps every provider expects (the series
@@ -38,7 +36,6 @@ pub mod impact;
 pub mod recovery;
 pub mod resample;
 pub mod stats;
-pub mod steady;
 
 use std::fmt;
 

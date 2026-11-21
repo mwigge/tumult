@@ -40,7 +40,7 @@ TOON Journal (.toon) → Arrow RecordBatch (columnar) → DuckDB (SQL) → Parqu
 | experiment_id | VARCHAR | Links to experiments |
 | name | VARCHAR | Activity name |
 | activity_type | VARCHAR | action or probe |
-| status | VARCHAR | succeeded, failed, timeout, skipped |
+| status | VARCHAR | succeeded, failed, skipped |
 | started_at_ns | BIGINT | Start time |
 | duration_ms | UBIGINT | Execution duration |
 | output | VARCHAR | Activity output |

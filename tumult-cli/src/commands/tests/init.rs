@@ -1,5 +1,5 @@
-//! Tests for `tumult init` scaffolding (`init_at`, `generate_template`) and
-//! the dry-run renderer (`print_dry_run`) via `cmd_run --dry-run`.
+//! Tests for `tumult init` scaffolding (`init_at`) and the dry-run renderer
+//! (`print_dry_run`) via `cmd_run --dry-run`.
 
 use super::super::*;
 use tempfile::TempDir;
@@ -11,41 +11,27 @@ use tumult_core::types::{
 };
 
 #[test]
-fn init_at_writes_parseable_template_with_default_plugin() {
+fn init_at_writes_the_starter_template() {
     let dir = TempDir::new().unwrap();
     let path = dir.path().join("experiment.toon");
 
     init_at(&path, None).unwrap();
 
     let content = std::fs::read_to_string(&path).unwrap();
-    assert!(content.contains("tumult-example"), "{content}");
-    // The scaffold is a valid experiment: hypothesis, method, rollbacks.
     let experiment = tumult_core::engine::parse_experiment(&content).unwrap();
-    assert!(experiment.steady_state_hypothesis.is_some());
-    assert_eq!(experiment.method.len(), 2);
-    assert_eq!(experiment.rollbacks.len(), 1);
+    assert_eq!(experiment, tumult_authoring::starter().unwrap());
 }
 
 #[test]
-fn init_at_embeds_plugin_name_and_refuses_to_clobber() {
+fn init_at_refuses_to_clobber() {
     let dir = TempDir::new().unwrap();
     let path = dir.path().join("experiment.toon");
-
-    init_at(&path, Some("tumult-pg")).unwrap();
-    let content = std::fs::read_to_string(&path).unwrap();
-    assert!(content.contains("tumult-pg"), "{content}");
+    std::fs::write(&path, "kept").unwrap();
 
     let err = init_at(&path, None).unwrap_err();
-    assert!(err.to_string().contains("already exists"), "{err}");
-}
 
-#[test]
-fn generate_template_distinguishes_default_and_named_plugin() {
-    let default = generate_template(None);
-    let named = generate_template(Some("tumult-redis"));
-    assert!(default.contains("tumult-example"));
-    assert!(named.contains("tumult-redis"));
-    assert!(!named.contains("tumult-example"));
+    assert!(err.to_string().contains("already exists"), "{err}");
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "kept");
 }
 
 /// A dry run must render every optional section (estimate, baseline,

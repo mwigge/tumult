@@ -166,7 +166,8 @@ fn is_valid_env_identifier(name: &str) -> bool {
         && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
-/// Execute a script at the given path with TUMULT_* env vars.
+/// Execute a script at the given path with TUMULT_* env vars, ended early
+/// when `stop` completes.
 ///
 /// `plugin_root` is the canonical directory the plugin was loaded from.
 /// The script path is resolved relative to `plugin_root` and must remain
@@ -174,7 +175,9 @@ fn is_valid_env_identifier(name: &str) -> bool {
 /// that specify `../../etc/passwd` as the script path.
 ///
 /// The shell runs in its own process group: on timeout the whole group is
-/// killed (Unix), so children the script spawned don't survive it.
+/// killed (Unix), so children the script spawned don't survive it. A stop
+/// kills the process group of the script, like a timeout does, so
+/// children the script started do not outlive it.
 ///
 /// # Errors
 ///
@@ -186,26 +189,8 @@ fn is_valid_env_identifier(name: &str) -> bool {
 /// Returns [`ExecutorError::ConflictingArgumentNames`] if two keys uppercase to the same name.
 /// Returns [`ExecutorError::ExecutionFailed`] if the process cannot be spawned.
 /// Returns [`ExecutorError::Timeout`] if the script does not finish within the given duration.
-#[cfg(not(windows))]
-pub async fn execute_script<S: std::hash::BuildHasher>(
-    script_path: &Path,
-    plugin_root: &Path,
-    arguments: &HashMap<String, String, S>,
-    timeout: Option<Duration>,
-) -> Result<ScriptResult, ExecutorError> {
-    let never = std::future::pending();
-    execute_script_until(script_path, plugin_root, arguments, timeout, never).await
-}
-
-/// [`execute_script`], ended early when `stop` completes.
-///
-/// A stop kills the process group of the script, like a timeout does, so
-/// children the script started do not outlive it.
-///
-/// # Errors
-///
 /// Returns [`ExecutorError::Stopped`] if `stop` completes before the script
-/// ends, and otherwise the errors of [`execute_script`].
+/// ends.
 #[cfg(not(windows))]
 pub async fn execute_script_until<S: std::hash::BuildHasher>(
     script_path: &Path,
@@ -352,25 +337,10 @@ async fn wait_for_exit(
     }
 }
 
-/// Windows counterpart of the POSIX [`execute_script`]: script plugins run
-/// through `/bin/sh`, which does not exist on Windows, so dispatch fails
-/// fast with a clear error rather than an opaque spawn failure.
-///
-/// # Errors
-///
-/// Always returns [`ExecutorError::UnsupportedPlatform`].
-#[cfg(windows)]
-pub async fn execute_script<S: std::hash::BuildHasher>(
-    script_path: &Path,
-    plugin_root: &Path,
-    arguments: &HashMap<String, String, S>,
-    timeout: Option<Duration>,
-) -> Result<ScriptResult, ExecutorError> {
-    let _ = (script_path, plugin_root, arguments, timeout);
-    Err(ExecutorError::UnsupportedPlatform)
-}
-
-/// Windows counterpart of the POSIX [`execute_script_until`].
+/// Windows counterpart of the POSIX [`execute_script_until`]: script
+/// plugins run through `/bin/sh`, which does not exist on Windows, so
+/// dispatch fails fast with a clear error rather than an opaque spawn
+/// failure.
 ///
 /// # Errors
 ///
@@ -383,8 +353,9 @@ pub async fn execute_script_until<S: std::hash::BuildHasher>(
     timeout: Option<Duration>,
     stop: impl std::future::Future<Output = ()>,
 ) -> Result<ScriptResult, ExecutorError> {
+    let _ = (script_path, plugin_root, arguments, timeout);
     drop(stop);
-    execute_script(script_path, plugin_root, arguments, timeout).await
+    Err(ExecutorError::UnsupportedPlatform)
 }
 
 /// Most bytes kept from one output stream of a script. A script is
@@ -647,6 +618,17 @@ mod tests {
         script_path
     }
 
+    /// [`execute_script_until`] with a stop that never comes.
+    async fn run_to_end(
+        script_path: &Path,
+        plugin_root: &Path,
+        arguments: &HashMap<String, String>,
+        timeout: Option<Duration>,
+    ) -> Result<ScriptResult, ExecutorError> {
+        let never = std::future::pending();
+        execute_script_until(script_path, plugin_root, arguments, timeout, never).await
+    }
+
     // ── build_env_vars ─────────────────────────────────────────
 
     #[test]
@@ -721,7 +703,7 @@ mod tests {
     async fn execute_script_captures_stdout() {
         let dir = TempDir::new().unwrap();
         let script = create_test_script(dir.path(), "test.sh", "#!/bin/bash\necho hello");
-        let result = execute_script(&script, dir.path(), &HashMap::new(), None)
+        let result = run_to_end(&script, dir.path(), &HashMap::new(), None)
             .await
             .unwrap();
         assert_eq!(result.exit_status, ScriptExitStatus::Code(0));
@@ -734,7 +716,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let script =
             create_test_script(dir.path(), "test.sh", "#!/bin/bash\necho error >&2\nexit 1");
-        let result = execute_script(&script, dir.path(), &HashMap::new(), None)
+        let result = run_to_end(&script, dir.path(), &HashMap::new(), None)
             .await
             .unwrap();
         assert_eq!(result.exit_status, ScriptExitStatus::Code(1));
@@ -748,16 +730,14 @@ mod tests {
         let script =
             create_test_script(dir.path(), "test.sh", "#!/bin/bash\necho $TUMULT_BROKER_ID");
         let args = HashMap::from([("broker_id".into(), "42".into())]);
-        let result = execute_script(&script, dir.path(), &args, None)
-            .await
-            .unwrap();
+        let result = run_to_end(&script, dir.path(), &args, None).await.unwrap();
         assert_eq!(result.stdout.trim(), "42");
     }
 
     #[tokio::test]
     async fn execute_script_not_found_returns_error() {
         let dir = TempDir::new().unwrap();
-        let result = execute_script(
+        let result = run_to_end(
             Path::new("/nonexistent/script.sh"),
             dir.path(),
             &HashMap::new(),
@@ -773,7 +753,7 @@ mod tests {
     async fn execute_script_timeout_returns_error() {
         let dir = TempDir::new().unwrap();
         let script = create_test_script(dir.path(), "test.sh", "#!/bin/bash\nsleep 10");
-        let result = execute_script(
+        let result = run_to_end(
             &script,
             dir.path(),
             &HashMap::new(),
@@ -801,7 +781,7 @@ mod tests {
                 marker.display()
             ),
         );
-        let result = execute_script(
+        let result = run_to_end(
             &script,
             dir.path(),
             &HashMap::new(),
@@ -842,7 +822,7 @@ mod tests {
             "#!/bin/bash\necho \"traceparent=${TRACEPARENT}\"",
         );
 
-        let (result, spans) = tumult_test_utils::capture_spans_async(execute_script(
+        let (result, spans) = tumult_test_utils::capture_spans_async(run_to_end(
             &script,
             dir.path(),
             &HashMap::new(),
@@ -884,7 +864,7 @@ mod tests {
         let escaped_script =
             create_test_script(outside.path(), "evil.sh", "#!/bin/bash\necho pwned");
 
-        let result = execute_script(&escaped_script, root.path(), &HashMap::new(), None).await;
+        let result = run_to_end(&escaped_script, root.path(), &HashMap::new(), None).await;
         assert!(
             matches!(result, Err(ExecutorError::ScriptNotFound(_))),
             "expected ScriptNotFound when script is outside plugin root, got: {result:?}"
@@ -917,7 +897,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let script = create_test_script(dir.path(), "test.sh", "#!/bin/bash\necho hi");
         let args = HashMap::from([("foo-bar".to_string(), "v".to_string())]);
-        let result = execute_script(&script, dir.path(), &args, None).await;
+        let result = run_to_end(&script, dir.path(), &args, None).await;
         assert!(
             matches!(result, Err(ExecutorError::InvalidArgumentName(_))),
             "expected InvalidArgumentName, got: {result:?}"
@@ -932,7 +912,7 @@ mod tests {
             ("foo".to_string(), "1".to_string()),
             ("FOO".to_string(), "2".to_string()),
         ]);
-        let result = execute_script(&script, dir.path(), &args, None).await;
+        let result = run_to_end(&script, dir.path(), &args, None).await;
         assert!(
             matches!(result, Err(ExecutorError::ConflictingArgumentNames { .. })),
             "expected ConflictingArgumentNames, got: {result:?}"
@@ -944,7 +924,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let script = create_test_script(dir.path(), "test.sh", "#!/bin/bash\necho hi");
         let args = HashMap::from([("key".to_string(), "va\0lue".to_string())]);
-        let result = execute_script(&script, dir.path(), &args, None).await;
+        let result = run_to_end(&script, dir.path(), &args, None).await;
         assert!(
             matches!(result, Err(ExecutorError::NullByteInArgument(_))),
             "expected NullByteInArgument, got: {result:?}"
@@ -957,7 +937,7 @@ mod tests {
         // must report Signal rather than a bogus code.
         let dir = TempDir::new().unwrap();
         let script = create_test_script(dir.path(), "test.sh", "#!/bin/bash\nkill -9 $$");
-        let result = execute_script(&script, dir.path(), &HashMap::new(), None)
+        let result = run_to_end(&script, dir.path(), &HashMap::new(), None)
             .await
             .unwrap();
         assert_eq!(result.exit_status, ScriptExitStatus::Signal);
@@ -1079,7 +1059,7 @@ mod tests {
             "#!/bin/sh\nprintf '{\"rows\":\"'\nhead -c 9000000 /dev/zero | tr '\\0' 'x'\necho quiet >&2\nexit 2\n",
         );
         let logs = capture(tracing::Level::DEBUG);
-        let result = execute_script(&script, dir.path(), &HashMap::new(), None)
+        let result = run_to_end(&script, dir.path(), &HashMap::new(), None)
             .await
             .unwrap();
         let logs = logs.snapshot();
@@ -1134,11 +1114,11 @@ mod tests {
         let passing = create_test_script(dir.path(), "ok.sh", "#!/bin/sh\necho out\nexit 0\n");
         let logs = capture(tracing::Level::DEBUG);
 
-        let result = execute_script(&failing, dir.path(), &HashMap::new(), None)
+        let result = run_to_end(&failing, dir.path(), &HashMap::new(), None)
             .await
             .unwrap();
         let after_the_failing_script = logs.snapshot();
-        execute_script(&passing, dir.path(), &HashMap::new(), None)
+        run_to_end(&passing, dir.path(), &HashMap::new(), None)
             .await
             .unwrap();
         let after_both = logs.snapshot();
@@ -1294,7 +1274,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let script = create_test_script(dir.path(), "slow.sh", "#!/bin/sh\nsleep 10\n");
         let logs = capture(tracing::Level::INFO);
-        let result = execute_script(
+        let result = run_to_end(
             &script,
             dir.path(),
             &HashMap::new(),

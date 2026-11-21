@@ -211,7 +211,6 @@ pub async fn cmd_run_with_baseline_mode<S: ::std::hash::BuildHasher>(
         parent_context: None,
         // The runner runs a declared load with the adapter of its tool.
         load_executor: None,
-        max_concurrent_faults: None,
     };
 
     crate::outln!("Running experiment: {}", experiment.title);

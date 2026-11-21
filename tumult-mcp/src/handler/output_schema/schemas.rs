@@ -184,7 +184,7 @@ fn activity_result_schema() -> Value {
         "properties": {
             "name": { "type": "string" },
             "activity_type": { "type": "string", "enum": ["action", "probe"] },
-            "status": { "type": "string", "enum": ["succeeded", "failed", "timeout", "skipped"] },
+            "status": { "type": "string", "enum": ["succeeded", "failed", "skipped"] },
             "started_at_ns": { "type": "integer" },
             "duration_ms": { "type": "integer" },
             "output": {

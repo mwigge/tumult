@@ -56,7 +56,7 @@ fn run_of_every_step() -> Journal {
         method_results: vec![
             step("break", ActivityStatus::Succeeded, 2000, 500),
             step("wait", ActivityStatus::Failed, 2500, 1500),
-            step("ask", ActivityStatus::Timeout, 4000, 30_000),
+            step("ask", ActivityStatus::Failed, 4000, 30_000),
             step("tidy", ActivityStatus::Skipped, 34_000, 0),
         ],
         steady_state_after: Some(checked(vec![step(
@@ -153,7 +153,7 @@ fn a_bar_of_the_timeline_says_in_words_what_it_shows() {
             "api (before): succeeded, began at +100 ms, took 50 ms",
             "break: succeeded, began at +2.0 s, took 500 ms",
             "wait: failed, began at +2.5 s, took 1.5 s",
-            "ask: timeout, began at +4.0 s, took 30.0 s",
+            "ask: failed, began at +4.0 s, took 30.0 s",
             "tidy: skipped, began at +34.0 s, took 0 ms",
             "api (after): failed, began at +35.0 s, took 75 ms",
             "undo (rollback): succeeded, began at +35.5 s, took 250 ms"

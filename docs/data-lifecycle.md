@@ -15,7 +15,7 @@ results are absent when their phase does not run.
 |---|---|---|
 | Estimate | Preserve the optional operator estimate in the journal. | A prediction is not a measured result. |
 | Baseline | Evaluate the declared steady-state probes before faults. | Statistical baseline acquisition is a separate library capability; ordinary runs do not acquire or apply derived tolerances. |
-| During | Sample hypothesis probes while the method executes. | Probe timing, errors and tolerance breaches are measured; degradation onset, peak and shape classification are reserved. |
+| During | Sample hypothesis probes while the method executes. | Probe timing, errors and tolerance breaches are measured. |
 | Post | Sample hypothesis probes after method completion, before final hypothesis and rollback. | Stops after one round in which all probes pass, cancellation, or timeout. This is not sustained recovery after cleanup. |
 | Analysis | Compare an optional estimate to the run outcome. | Runner scores are binary indicators; cross-run trends and report scoring are separate analytics operations. |
 
@@ -43,13 +43,6 @@ error rate and tolerance breaches. The default interval is one second, with
 at most 300 sampling rounds. There is no sampling when the experiment has no
 hypothesis probes.
 
-These `DuringResult` fields are reserved and remain absent (`None`):
-
-- `degradation_onset_s`
-- `degradation_peak_s`
-- `degradation_magnitude`
-- `graceful_degradation`
-
 The duration statistics describe execution of the probe, not arbitrary numeric
 values printed by it. A database integrity check must be supplied as an
 explicit probe with an appropriate tolerance.
@@ -68,12 +61,6 @@ The runner does not require ten consecutive successful samples.
 failed. Always inspect the recovery flag alongside timings: a duration alone
 does not prove recovery. Final hypothesis and rollback results are separate
 evidence.
-
-These `PostResult` fields are reserved and remain absent (`None`):
-
-- `residual_degradation`
-- `data_integrity_verified`
-- `data_loss_detected`
 
 The runner does not automatically verify data integrity or assert absence of
 data loss. Post sampling precedes rollback, so a fault requiring explicit

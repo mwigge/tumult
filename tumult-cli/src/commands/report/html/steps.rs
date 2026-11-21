@@ -88,16 +88,13 @@ pub(crate) fn step_row(
 }
 
 fn failed(result: &ActivityResult) -> bool {
-    matches!(
-        result.status,
-        ActivityStatus::Failed | ActivityStatus::Timeout
-    )
+    result.status == ActivityStatus::Failed
 }
 
 fn status(status: &ActivityStatus) -> String {
     let class = match status {
         ActivityStatus::Succeeded => "ok",
-        ActivityStatus::Failed | ActivityStatus::Timeout => "fail",
+        ActivityStatus::Failed => "fail",
         ActivityStatus::Skipped => "muted",
     };
     badge(class, &status.to_string())

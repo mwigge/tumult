@@ -151,10 +151,6 @@ pub fn during() -> DuringResult {
                 breach_count: 0,
             },
         ],
-        degradation_onset_s: None,
-        degradation_peak_s: None,
-        degradation_magnitude: None,
-        graceful_degradation: None,
     }
 }
 
@@ -185,9 +181,6 @@ pub fn post() -> PostResult {
         ],
         recovery_time_s: 30.0,
         full_recovery: false,
-        residual_degradation: None,
-        data_integrity_verified: None,
-        data_loss_detected: None,
         mttr_s: None,
     }
 }

@@ -34,10 +34,7 @@ pub fn deviation_detail(journal: &Journal, experiment: Option<&Experiment>) -> D
     let failing: Vec<&str> = journal
         .method_results
         .iter()
-        .filter(|r| {
-            r.activity_type == ActivityType::Action
-                && matches!(r.status, ActivityStatus::Failed | ActivityStatus::Timeout)
-        })
+        .filter(|r| r.activity_type == ActivityType::Action && r.status == ActivityStatus::Failed)
         .map(|r| r.name.as_str())
         .collect();
 
@@ -306,7 +303,7 @@ mod tests {
             ExperimentStatus::Deviated,
             vec![
                 action_result("dns-chaos", ActivityStatus::Failed),
-                action_result("stress", ActivityStatus::Timeout),
+                action_result("stress", ActivityStatus::Failed),
             ],
             None,
         );

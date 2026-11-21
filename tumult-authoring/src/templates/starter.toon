@@ -1,0 +1,36 @@
+title: System information check
+description: Verify system is accessible and report CPU and memory info
+
+tags[2]: resilience, baseline
+
+steady_state_hypothesis:
+  title: System is reachable
+  probes[1]:
+    - name: system-check
+      activity_type: probe
+      provider:
+        type: process
+        path: uname
+        arguments[1]: "-a"
+        timeout_s: 5.0
+      tolerance:
+        type: regex
+        pattern: "."
+
+method[2]:
+  - name: check-cpu
+    activity_type: probe
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "cat /proc/cpuinfo 2>/dev/null | head -20 || sysctl -n machdep.cpu.brand_string"
+      timeout_s: 10.0
+  - name: check-memory
+    activity_type: probe
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "cat /proc/meminfo 2>/dev/null | head -5 || sysctl -n hw.memsize"
+      timeout_s: 10.0
+
+rollbacks[0]:

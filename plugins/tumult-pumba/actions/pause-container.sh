@@ -6,13 +6,13 @@
 # Environment variables:
 #   TUMULT_CONTAINER   — target container name or ID (required)
 #   TUMULT_DURATION    — pause duration e.g. "10s", "1m" (default: 10s)
-#   TUMULT_PUMBA_IMAGE — Pumba image (default: ghcr.io/alexei-led/pumba:latest)
+#   TUMULT_PUMBA_IMAGE — Pumba image (default: ghcr.io/alexei-led/pumba:1.6.0, pinned by digest)
 
 set -eu
 
 CONTAINER="${TUMULT_CONTAINER:?error: TUMULT_CONTAINER is required}"
 DURATION="${TUMULT_DURATION:-10s}"
-PUMBA_IMAGE="${TUMULT_PUMBA_IMAGE:-ghcr.io/alexei-led/pumba:latest}"
+PUMBA_IMAGE="${TUMULT_PUMBA_IMAGE:-ghcr.io/alexei-led/pumba:1.6.0@sha256:11ed15538c7ec688628e2f53917d949e8c16418c146742731c3030ef276b6057}"
 
 PUMBA_ARGS="pause -d ${DURATION}"
 

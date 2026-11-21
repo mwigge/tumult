@@ -11,7 +11,8 @@
 //!   target, and a steady-state probe, construct a validated
 //!   [`Experiment`](tumult_core::types::Experiment) and serialize it to TOON.
 //! - [`templates`] — ~10 curated, parameterized starter templates covering the
-//!   main domains; every one validates.
+//!   main domains, and the [`STARTER`] that `tumult init` writes; every one
+//!   validates.
 //! - [`scaffold`] — the catalog-checked scaffold orchestration shared by the
 //!   REST authoring endpoint and the MCP scaffold tool (probe-kind catalog
 //!   entries are rejected in both).
@@ -32,4 +33,7 @@ pub use catalog::{
 pub use scaffold::{
     catalog_summary, scaffold_from_catalog, ScaffoldError, ScaffoldInput, ScaffoldOutcome,
 };
-pub use templates::{all_templates, find_template, parse_overrides, Template, TemplateParam};
+pub use templates::{
+    all_templates, find_template, parse_overrides, starter, starter_for, Template, TemplateParam,
+    STARTER,
+};

@@ -237,9 +237,9 @@ tumult init [OPTIONS]
 
 | Option | Description |
 |--------|-------------|
-| `--plugin <name>` | Reference a specific plugin name in the generated template |
+| `--plugin <name>` | Start the method with a step that reads a probe of this script plugin |
 
-Scaffolds `experiment.toon` in the current directory from a bundled, self-contained template (steady-state hypothesis, method, and rollbacks built only on `uname`/`sh`/`echo` — no Docker or network needed). This writes a static template; it does not prompt interactively.
+Writes `experiment.toon` in the current directory from the `starter` template: a steady-state hypothesis and a method built only on `uname` and `sh`. It injects no fault and needs no Docker or network. With `--plugin`, the first step of the method reads the first probe of that script plugin; set its arguments and add a fault of the plugin. A native plugin (built into Tumult) gets the plain starter. A plugin that is not installed is refused. It does not prompt.
 
 ### Example
 

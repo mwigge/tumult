@@ -51,16 +51,12 @@ const RUN_PILLS: [(ExperimentStatus, &str); 6] = [
 ];
 
 /// The pill of each status a step ends with.
-const STEP_PILLS: [(ActivityStatus, StatusKind); 4] = [
+const STEP_PILLS: [(ActivityStatus, StatusKind); 3] = [
     (
         ActivityStatus::Succeeded,
         StatusKind::new("PASS", Tone::Pass),
     ),
     (ActivityStatus::Failed, StatusKind::new("FAIL", Tone::Fail)),
-    (
-        ActivityStatus::Timeout,
-        StatusKind::new("TIMEOUT", Tone::Fail),
-    ),
     (
         ActivityStatus::Skipped,
         StatusKind::new("SKIPPED", Tone::Neutral),
@@ -410,10 +406,6 @@ mod tests {
         assert_eq!(StatusKind::of_run("weird"), StatusKind::OTHER);
         assert_eq!(pill(StatusKind::of_step("succeeded")), ("PASS", Tone::Pass));
         assert_eq!(pill(StatusKind::of_step("Failed")), ("FAIL", Tone::Fail));
-        assert_eq!(
-            pill(StatusKind::of_step("timeout")),
-            ("TIMEOUT", Tone::Fail)
-        );
         assert_eq!(
             pill(StatusKind::of_step("skipped")),
             ("SKIPPED", Tone::Neutral)

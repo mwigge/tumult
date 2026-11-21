@@ -89,18 +89,6 @@ pub struct DuringResult {
     /// Interval in seconds between probe samples.
     pub sample_interval_s: f64,
     pub probes: Vec<ProbeDuring>,
-    /// Seconds from fault start until degradation was first observed.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub degradation_onset_s: Option<f64>,
-    /// Seconds from fault start until peak degradation.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub degradation_peak_s: Option<f64>,
-    /// Magnitude of the worst observed deviation from baseline.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub degradation_magnitude: Option<f64>,
-    /// Whether the system degraded gradually rather than failing abruptly.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub graceful_degradation: Option<bool>,
 }
 
 // ── Post Result (Phase 3 output) ───────────────────────────────
@@ -138,15 +126,6 @@ pub struct PostResult {
     pub recovery_time_s: f64,
     /// Whether every probe returned to baseline.
     pub full_recovery: bool,
-    /// Deviation from baseline still present at phase end, if any.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub residual_degradation: Option<f64>,
-    /// Whether post-run data integrity was verified (`None` when not checked).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub data_integrity_verified: Option<bool>,
-    /// Whether data loss was detected (`None` when not checked).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub data_loss_detected: Option<bool>,
     /// Mean time to recovery in seconds.
     ///
     /// Measured as elapsed time from `started_at_ns` (method end) until the
@@ -549,10 +528,6 @@ mod tests {
                 breached_at_ns: Some(1_774_980_136_000_000_000),
                 breach_count: 18,
             }],
-            degradation_onset_s: Some(1.0),
-            degradation_peak_s: Some(8.3),
-            degradation_magnitude: Some(35.8),
-            graceful_degradation: Some(true),
         };
         let decoded: DuringResult = toon_round_trip(&result);
         assert_eq!(decoded, result);
@@ -589,9 +564,6 @@ mod tests {
             }],
             recovery_time_s: 12.4,
             full_recovery: true,
-            residual_degradation: Some(0.1),
-            data_integrity_verified: Some(true),
-            data_loss_detected: Some(false),
             mttr_s: None,
         };
         let decoded: PostResult = toon_round_trip(&result);

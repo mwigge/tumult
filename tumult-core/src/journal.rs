@@ -482,6 +482,66 @@ mod tests {
         assert!(matches!(result, Err(JournalError::WriteError(_))));
     }
 
+    /// The text of a journal that a run recorded, with each `(from, to)`
+    /// edit made once.
+    fn recorded_journal_with(edits: &[(&str, &str)]) -> String {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../examples/recorded/api-saturation.journal.toon");
+        let mut text = std::fs::read_to_string(path).unwrap();
+        for (from, to) in edits {
+            assert!(text.contains(from), "the recorded journal has no {from:?}");
+            text = text.replacen(from, to, 1);
+        }
+        text
+    }
+
+    /// `text` written to a journal file in `dir` and read back.
+    fn read_text(dir: &TempDir, name: &str, text: &str) -> Journal {
+        let path = dir.path().join(name);
+        std::fs::write(&path, text).unwrap();
+        read_journal(&path).unwrap()
+    }
+
+    /// The measurement keys of the during phase that 3.0.2 still had.
+    const OLD_DURING_KEYS: &str = "  sample_interval_s: 1
+  degradation_onset_s: 1.5
+  degradation_peak_s: 4
+  degradation_magnitude: 0.4
+  graceful_degradation: true
+";
+
+    /// The measurement keys of the post phase that 3.0.2 still had.
+    const OLD_POST_KEYS: &str = "  mttr_s: 0
+  residual_degradation: 0.5
+  data_integrity_verified: true
+  data_loss_detected: false
+";
+
+    #[test]
+    fn a_journal_that_still_has_the_removed_measurement_keys_reads_as_before() {
+        let dir = TempDir::new().unwrap();
+        let old = recorded_journal_with(&[
+            ("  sample_interval_s: 1\n", OLD_DURING_KEYS),
+            ("  mttr_s: 0\n", OLD_POST_KEYS),
+        ]);
+
+        let read = read_text(&dir, "old.journal.toon", &old);
+
+        let without_keys = read_text(&dir, "new.journal.toon", &recorded_journal_with(&[]));
+        assert_eq!(read, without_keys);
+    }
+
+    #[test]
+    fn a_step_that_a_journal_stored_as_timeout_reads_as_failed() {
+        let dir = TempDir::new().unwrap();
+        let old = recorded_journal_with(&[("    status: succeeded\n", "    status: timeout\n")]);
+
+        let read = read_text(&dir, "old.journal.toon", &old);
+
+        assert_eq!(read.method_results[0].name, "process-still-up");
+        assert_eq!(read.method_results[0].status, ActivityStatus::Failed);
+    }
+
     #[test]
     fn read_corrupted_file_returns_decode_error() {
         let dir = TempDir::new().unwrap();

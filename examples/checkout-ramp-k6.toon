@@ -49,7 +49,7 @@ method[1]:
     provider:
       type: process
       path: sh
-      arguments[2]: "-c", "docker run --rm --name tumult-ramp-netem -v /var/run/docker.sock:/var/run/docker.sock ghcr.io/alexei-led/pumba:latest netem -d 115s -i eth0 delay -t 20 demo-postgres"
+      arguments[2]: "-c", "docker run --rm --name tumult-ramp-netem -v /var/run/docker.sock:/var/run/docker.sock ghcr.io/alexei-led/pumba:1.6.0@sha256:11ed15538c7ec688628e2f53917d949e8c16418c146742731c3030ef276b6057 netem -d 115s -i eth0 delay -t 20 demo-postgres"
       timeout_s: 150.0
 
 rollbacks[1]:

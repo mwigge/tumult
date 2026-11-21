@@ -201,14 +201,19 @@ fn every_run_status() -> Vec<ExperimentStatus> {
 }
 
 /// Every status a step can end with, so that a status added to
-/// `ActivityStatus` is in the list.
+/// `ActivityStatus` is in the list. An old name that reads as another
+/// status is in it once.
 fn every_step_status() -> Vec<ActivityStatus> {
     let refused =
         serde_json::from_str::<ActivityStatus>("\"none\"").expect_err("no step ends as none");
-    names_expected(&refused)
-        .into_iter()
-        .map(|name| serde_json::from_value(name).unwrap())
-        .collect()
+    let mut statuses = Vec::new();
+    for name in names_expected(&refused) {
+        let status: ActivityStatus = serde_json::from_value(name).unwrap();
+        if !statuses.contains(&status) {
+            statuses.push(status);
+        }
+    }
+    statuses
 }
 
 /// A lake with one run for each of `statuses`, a minute apart. Each run has
@@ -623,7 +628,6 @@ fn the_timeline_draws_each_step_in_the_tone_of_how_it_ended() {
         [
             ("step-succeeded".to_string(), Some(Color::Green)),
             ("step-failed".to_string(), Some(Color::Red)),
-            ("step-timeout".to_string(), Some(Color::Red)),
             ("step-skipped".to_string(), Some(Color::Gray)),
         ],
         "{}",
