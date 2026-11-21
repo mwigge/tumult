@@ -9,7 +9,7 @@ summary: "What the source of Tumult does for security, where it does it, and wha
 
 This page says what the source of Tumult does for security, where it does
 it, and what was not checked. It was checked on 2026-11-21 against the
-source of Tumult 3.0.3: 34 Rust crates, the images, the compose files and
+source of Tumult 3.0.3: 35 Rust crates, the images, the compose files and
 the deploy files. To report a flaw, see [SECURITY.md](https://github.com/mwigge/tumult/blob/main/SECURITY.md).
 
 ## Who can reach what
