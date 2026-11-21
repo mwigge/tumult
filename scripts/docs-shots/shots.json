@@ -1,0 +1,323 @@
+[
+ {
+  "name": "login",
+  "route": "/login",
+  "login": false
+ },
+ {
+  "name": "overview",
+  "route": "/"
+ },
+ {
+  "name": "posture",
+  "route": "/resilience"
+ },
+ {
+  "name": "posture-suppressed",
+  "route": "/resilience",
+  "steps": [
+   {
+    "click": "text=/\\d+ suppressed/"
+   },
+   {
+    "wait": 600
+   },
+   {
+    "scrollTo": "h2:has-text(\"Accepted for now\")",
+    "offset": 300
+   }
+  ]
+ },
+ {
+  "name": "posture-score",
+  "route": "/resilience",
+  "height": 1000,
+  "steps": [
+   {
+    "scrollTo": "h2:has-text(\"Objectives\")",
+    "offset": 40
+   }
+  ]
+ },
+ {
+  "name": "scores",
+  "route": "/scores"
+ },
+ {
+  "name": "scores-teams",
+  "route": "/scores?node=platform"
+ },
+ {
+  "name": "scores-dora",
+  "route": "/scores?view=dora",
+  "height": 1180
+ },
+ {
+  "name": "scores-maturity",
+  "route": "/scores?view=dora",
+  "height": 1000,
+  "steps": [
+   {
+    "scrollTo": "h2:has-text(\"Maturity\")",
+    "offset": 40
+   }
+  ]
+ },
+ {
+  "name": "starmap",
+  "route": "/starmap",
+  "height": 1026
+ },
+ {
+  "name": "starmap-risk",
+  "route": "/starmap?lens=risk",
+  "height": 1026
+ },
+ {
+  "name": "starmap-focus",
+  "route": "/starmap?focus=sys%3Ademo%2Fmessage-queue&sel=sys%3Ademo%2Fmessage-queue",
+  "height": 1060,
+  "steps": [
+   {
+    "blur": true
+   }
+  ]
+ },
+ {
+  "name": "performance",
+  "route": "/performance?target=checkout",
+  "height": 990
+ },
+ {
+  "name": "performance-verdicts",
+  "route": "/performance?target=checkout",
+  "height": 700,
+  "steps": [
+   {
+    "scrollTo": "h2:has-text(\"Stored verdicts\")",
+    "offset": 420
+   }
+  ]
+ },
+ {
+  "name": "experiments",
+  "route": "/experiments",
+  "height": 914
+ },
+ {
+  "name": "run-detail",
+  "route": "/experiments/{experiment.cpu}",
+  "height": 580
+ },
+ {
+  "name": "experiment-evidence",
+  "route": "/experiments/{experiment.soak}",
+  "height": 1400
+ },
+ {
+  "name": "author",
+  "route": "/author"
+ },
+ {
+  "name": "author-new",
+  "route": "/author/new?plugin=tumult-containers&action=pause-container",
+  "height": 1100,
+  "steps": [
+   {
+    "fill": [
+     "input[placeholder^=\"pause-container\"]",
+     "orders database pause, checkout retries"
+    ]
+   },
+   {
+    "fill": [
+     "input[placeholder=\"e.g. demo-postgres\"]",
+     "orders-db"
+    ]
+   },
+   {
+    "fill": [
+     "input[placeholder=\"Target container id or name\"]",
+     "orders-db"
+    ]
+   },
+   {
+    "fill": [
+     "input[placeholder^=\"Container runtime\"]",
+     "docker"
+    ]
+   },
+   {
+    "fill": [
+     "input[placeholder^=\"pg_isready\"]",
+     "pg_isready -h orders-db"
+    ]
+   },
+   {
+    "fill": [
+     "input[placeholder=\"accepting connections\"]",
+     "accepting connections"
+    ]
+   },
+   {
+    "click": "button:has-text(\"Generate TOON\")"
+   },
+   {
+    "blur": true
+   }
+  ]
+ },
+ {
+  "name": "runs-new",
+  "route": "/runs/new?registry_id={registry.governed}",
+  "height": 1220,
+  "steps": [
+   {
+    "fill": [
+     "input[placeholder=\"staging or production\"]",
+     "dev"
+    ]
+   },
+   {
+    "fill": [
+     "label:has-text(\"hold_s\") input",
+     "30"
+    ]
+   },
+   {
+    "click": "button:has-text(\"Dry run\")"
+   },
+   {
+    "waitFor": "text=Blast radius"
+   },
+   {
+    "blur": true
+   }
+  ]
+ },
+ {
+  "name": "run-pending-approval",
+  "route": "/runs/{run.pending}",
+  "height": 1100
+ },
+ {
+  "name": "approvals",
+  "route": "/approvals"
+ },
+ {
+  "name": "runs",
+  "route": "/runs"
+ },
+ {
+  "name": "manual",
+  "route": "/manual",
+  "steps": [
+   {
+    "click": "button:has-text(\"All records\")"
+   }
+  ]
+ },
+ {
+  "name": "gamedays",
+  "route": "/gamedays"
+ },
+ {
+  "name": "gameday-detail",
+  "route": "/gamedays/{gameday}"
+ },
+ {
+  "name": "schedules",
+  "route": "/schedules",
+  "height": 1000
+ },
+ {
+  "name": "reports",
+  "route": "/reports",
+  "steps": [
+   {
+    "wait": 500
+   }
+  ]
+ },
+ {
+  "name": "report-html",
+  "file": "report.html",
+  "height": 1400
+ },
+ {
+  "name": "traces",
+  "route": "/traces"
+ },
+ {
+  "name": "logs",
+  "route": "/logs"
+ },
+ {
+  "name": "metrics",
+  "route": "/metrics"
+ },
+ {
+  "name": "events",
+  "route": "/events"
+ },
+ {
+  "name": "ask",
+  "route": "/ask",
+  "steps": [
+   {
+    "click": "button:has-text(\"What is the pass rate?\")"
+   },
+   {
+    "wait": 1500
+   }
+  ]
+ },
+ {
+  "name": "users",
+  "route": "/users",
+  "steps": [
+   {
+    "blur": true
+   }
+  ]
+ },
+ {
+  "name": "webhooks",
+  "route": "/webhooks"
+ },
+ {
+  "name": "run-stop-confirm",
+  "route": "/runs/{run.stop}",
+  "height": 1000,
+  "steps": [
+   {
+    "click": "button:has-text(\"Stop run\")"
+   }
+  ]
+ },
+ {
+  "name": "run-stopped",
+  "route": "/runs/{run.stop}",
+  "height": 1300,
+  "steps": [
+   {
+    "click": "button:has-text(\"Stop run\")"
+   },
+   {
+    "click": "button:has-text(\"Confirm stop\")"
+   },
+   {
+    "waitFor": "text=aborted"
+   },
+   {
+    "wait": 15000
+   },
+   {
+    "reload": true
+   },
+   {
+    "waitFor": "text=open the full experiment view"
+   }
+  ]
+ }
+]

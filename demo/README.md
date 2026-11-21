@@ -1,244 +1,134 @@
 # Tumult one-command demo
 
-For guided browser lessons with an optional AI tutor, start with the
-[Chaos Lab](../chaos-lab/README.md). It needs only Docker to run the experiments.
+One command starts a small real system and Tumult next to it: an order
+service on Postgres under steady load, the Tumult MCP server, an OTel
+Collector, SigNoz and a web control panel. It then runs one fault per
+domain, so the dashboards have data when you open them.
 
-A single, self-contained chaos-engineering showcase. One command stands up a
-small but real system — an OTel-instrumented order service backed by Postgres,
-under continuous load — plus the full Tumult platform (MCP chaos engine, OTel
-collector, SigNoz) and a web control panel. It then injects one fault per
-domain so the dashboards are populated the moment you open them.
+Other ways to try Tumult, such as the Krönika web UI or the Chaos Lab, are
+on [Get started](../docs/get-started/other-ways-to-run.md).
 
-Everything runs on a single Docker network, `tumult-demo`, and every action in
-the control panel is a single MCP `tools/call` against `tumult-mcp`. The
-interface contract (names, ports, env) is pinned in [`CONTRACT.md`](./CONTRACT.md).
+## Start it
+
+```bash
+make demo          # build, start, run the fault sweep once, print the URLs
+# explore, then:
+make demo-down     # stop and remove the volumes
+```
+
+Open the control panel at **http://localhost:8088**.
+
+## What runs
+
+Everything is on one Docker network, `tumult-demo`. Names, ports and
+environment are fixed in [`CONTRACT.md`](./CONTRACT.md).
+
+```mermaid
+flowchart TD
+    accTitle: The demo stack
+    accDescr: demo-traffic sends load to demo-app, which uses demo-postgres. The control panel calls tumult-mcp over MCP. tumult-mcp runs the experiments and reaches the targets through the Docker socket, the tumult-net proxy and SSH to demo-sshd. demo-app and the runs send telemetry to the collector, which forwards it to SigNoz.
+    traffic[demo-traffic] -->|HTTP| app[demo-app :8080]
+    app -->|SQL| pg[(demo-postgres :5433)]
+    panel[demo-control-panel :8088] -->|MCP over HTTP| mcp[tumult-mcp :3100]
+    mcp -->|Docker socket, net proxy| app
+    mcp -->|SSH| sshd[demo-sshd :2222]
+    app -->|OTLP| col[tumult-collector]
+    mcp -->|OTLP| col
+    col --> signoz[SigNoz :3301]
+```
+
+- **demo-app** sends a span per request; **demo-traffic** keeps a steady
+  load on it, so there is always live signal to disrupt.
+- **tumult-mcp** is the MCP server. It runs the experiments with the
+  Tumult engine, and has the Docker socket so it can reach sibling
+  containers. The control panel is its MCP client.
+- **tumult-collector** takes spans from the app and from the runs and
+  sends them to **SigNoz**.
 
 ## The golden path
 
-The demo tells one cohesive story on one stack. From the control panel at
-**http://localhost:8088** you walk a single path — each step is an existing MCP
-tool:
+Each step in the control panel is one MCP tool call:
 
-1. **Inject a fault** — click **Run** on any fault card (`tumult_run_experiment`).
-2. **Observe** — follow the trace link into SigNoz and filter on `service = demo-app`.
-3. **Analyze** — the **Analytics** card queries recent runs (`tumult_analyze_store`).
-4. **Check compliance** — the **Compliance** card renders the DORA evidence
-   pass rate, verdict, citations and scope disclaimer (`tumult_compliance`).
-5. **Explore the ChaosGraph** — the **ChaosGraph** card shows fault nodes, an
-   experiment's ego sub-graph and coverage gaps (`tumult_chaosgraph_query` /
-   `_neighbors` / `_coverage_gaps`).
+1. **Inject a fault**: click **Run** on a fault card (`tumult_run_experiment`).
+2. **Observe**: follow the trace link into SigNoz and filter on `service = demo-app`.
+3. **Analyze**: the **Analytics** card lists recent runs (`tumult_analyze_store`).
+4. **Check compliance**: the **Compliance** card shows the DORA evidence (`tumult_compliance`).
+5. **Explore the ChaosGraph**: faults, the graph around one experiment and the coverage gaps (`tumult_chaosgraph_query`, `_neighbors`, `_coverage_gaps`).
 
-A **Safety guardrail** card and a **full chaos loop** timeline
-(`discover → validate → run → analyze → recommend`) round out the same path.
+The **Safety guardrail** card runs `demo-guard-halt.toon`: its guard halts
+the run when demo-app turns unhealthy, so **Halted** is the expected
+result. The **chaos loop** card runs discover, validate, run, analyze and
+recommend as five calls.
 
-## Quickstart
-
-```bash
-make demo          # build + up, import dashboards, run the fault sweep, print URLs
-# ... explore, then:
-make demo-down     # tear down and remove volumes
-```
-
-`make demo` builds the `tumult` base image (the MCP server is built from it),
-brings the stack up, waits for health, runs the fault sweep once to warm the
-dashboards (and populate the analytics store the payoff cards read), imports
-the SigNoz dashboards, and prints the URLs.
-
-Open the **control panel at http://localhost:8088** and walk the golden path
-above — start by clicking **Run** on any fault card.
-
-## Architecture
-
-```
-                                  host ports
-  ┌──────────────────────────────────────────────────────────────────────┐
-  │  docker network: tumult-demo                                          │
-  │                                                                        │
-  │   demo-traffic ──HTTP──▶ demo-app ──SQL──▶ demo-postgres              │
-  │   (baseline load)        :8080             :5433                       │
-  │                            │                                           │
-  │                            │ OTLP/http :4318                           │
-  │                            ▼                                           │
-  │                     tumult-collector ──────▶ signoz                    │
-  │                     :14317/:14318            :3301  (traces/metrics)   │
-  │                            ▲                                           │
-  │                            │ OTLP/grpc :4317 (experiment run spans)    │
-  │                            │                                           │
-  │   demo-control-panel ──MCP──▶ tumult-mcp ──┬─ docker.sock ─▶ faults    │
-  │   :8088  (web UI)      http  :3100         ├─ native net proxy         │
-  │                                            ├─ native ssh ─▶ demo-sshd  │
-  │                                            └─ reads /demo/experiments  │
-  │                                                              :2222     │
-  └──────────────────────────────────────────────────────────────────────┘
-```
-
-- **demo-app** emits a span per request; **demo-traffic** keeps a steady
-  baseline so there is always live signal to disrupt.
-- **tumult-mcp** is the chaos engine. The control panel is an MCP client of it;
-  `make demo-check` drives the same `tumult run` path directly. It has the
-  Docker socket mounted so container-scoped faults can reach sibling
-  containers, and it ships the compiled native plugins (net, ssh).
-- **tumult-collector** receives spans from both the app and the experiment runs
-  and forwards them to **SigNoz**.
+The MCP token comes from `TUMULT_MCP_TOKEN` (default `tumult-demo`).
+`DEMO_JOURNALS_DIR` (default `/journals`) and `DEMO_COMPLIANCE_FRAMEWORK`
+(default `dora`) set what the Compliance card reads.
 
 ## Fault domains
 
-One experiment per domain under [`experiments/`](./experiments/). Each has a
-steady-state hypothesis, injects a real fault against the demo stack, and
-verifies recovery — so a passing run is a resilience result, not just a
-smoke-test tick.
+One experiment per domain in [`experiments/`](./experiments/). Each checks
+the steady state, injects a real fault and checks recovery.
 
-| Domain     | Experiment                | Plugin / action (real)                          | What it does |
-|------------|---------------------------|-------------------------------------------------|--------------|
-| net        | `demo-net.toon`           | `tumult-net` native `inject_latency` / `stop_proxy` | Userspace tokio-netem proxy in front of demo-app; probes succeed through the +300ms delayed path |
-| postgres   | `demo-postgres.toon`      | `docker exec demo-postgres psql` → `pg_terminate_backend` | Kills every active backend, verifies the DB keeps accepting connections |
-| container  | `demo-container.toon`     | `docker pause` / `docker unpause demo-postgres` | Freezes the DB container briefly, unpauses, verifies recovery |
-| stress     | `demo-stress.toon`        | Pumba `stress` (stress-ng sidecar) on demo-app  | Real CPU pressure inside demo-app's namespaces; app stays healthy |
-| process    | `demo-process.toon`       | `docker kill -s SIGSTOP/SIGCONT demo-app`       | Suspends then resumes the app's main process, verifies recovery |
-| ssh        | `demo-ssh.toon`           | `tumult-ssh` native `execute` → demo-sshd       | Runs commands (incl. a stress-ng burst) over SSH on the sshd target |
-| agentic    | `demo-agentic.toon`       | `tumult agentic smoke` (bundled fake HTTP adapter) | Injects malformed model output and asserts the contract-feedback loop fires — no external API |
-| agentic-trajectory | `demo-agentic-trajectory.toon` | `tumult agentic trajectory` (bundled fake adapters) | Multi-turn agent-graph: poisons retrieval at step 0, proves the answer step loses grounding, and detects a reflection loop — whole-trajectory contracts + agentic subscores, no external API |
-| timewarp-clock | `demo-timewarp-clock.toon` | `tumult-timewarp` clock-skew (`token-ttl.sh` / `restore-clock.sh`) | Advances a validator's clock past a short-TTL HMAC token's expiry, proves the once-valid token is rejected, and confirms demo-app stays healthy |
-| timewarp-entropy | `demo-timewarp-entropy.toon` | `tumult-timewarp` RNG pressure (`rng-pressure.sh` / `crypto-throughput.sh`) | Applies sustained RNG/crypto pressure on the runner and proves crypto operations still complete and entropy stays readable |
+| Domain | Experiment | How |
+|---|---|---|
+| net | `demo-net.toon` | `tumult-net` proxy in front of demo-app adds 300 ms |
+| postgres | `demo-postgres.toon` | `pg_terminate_backend` through `docker exec demo-postgres psql` |
+| container | `demo-container.toon` | `docker pause` and `unpause` of demo-postgres |
+| stress | `demo-stress.toon` | Pumba `stress` inside demo-app |
+| process | `demo-process.toon` | `SIGSTOP` and `SIGCONT` to the main process of demo-app |
+| ssh | `demo-ssh.toon` | `tumult-ssh` runs commands, also a stress-ng burst, on demo-sshd |
+| agentic | `demo-agentic.toon` | `tumult agentic smoke`: bad model output, with a fake adapter |
+| agentic-trajectory | `demo-agentic-trajectory.toon` | `tumult agentic trajectory`: a poisoned retrieval and a reflection loop |
+| timewarp-clock | `demo-timewarp-clock.toon` | A skewed clock refuses a short-lived token |
+| timewarp-entropy | `demo-timewarp-entropy.toon` | Load on the random number generator; crypto still completes |
 
-A safety-guardrail experiment, `demo-guard-halt.toon`, is **not** in the sweep
-above: it arms an auto-halt guard so its expected outcome is `Halted`, not
-`Completed`. It runs from the control panel's **Safety guardrail** card and in
-`make demo-check`.
+Outside the sweep: `demo-guard-halt.toon` (the guardrail card), and
+`demo-topo-blind.toon` with `demo-topo-recommended.toon`, which belong to
+[`scripts/demo-topology.sh`](../scripts/demo-topology.sh).
+`make demo-check` runs all of them.
 
-The topology/compliance pair — `demo-topo-blind.toon` and
-`demo-topo-recommended.toon` — is likewise outside the sweep: both validate
-demo-postgres recovery to close the NIS2 BC/DR gap flagged by the
-recommender, and they belong to the topology proof flow in
-[`scripts/demo-topology.sh`](../scripts/demo-topology.sh) (the blind variant
-also serves as the autopilot playbook in
-[`demo/topology/autopilot-blind.toml`](./topology/autopilot-blind.toml)).
-`make demo-check` runs both as well.
+## make demo-check
 
-Validate them yourself:
+The smoke test of the demo. It starts the stack, waits for health, runs
+the sweep and checks three things. It exits with a code other than 0 on
+any failure.
 
-```bash
-cargo build -p tumult-cli --bin tumult
-for f in demo/experiments/*.toon; do ./target/debug/tumult validate "$f"; done
-```
+1. **Each journal is as expected**: `scripts/check-proof-journals.py`
+   compares each journal with `demo/experiments/expectations.json`
+   (status, steady state before and after, rollbacks, objective verdicts).
+2. **Telemetry arrived**: the collector counts accepted spans on `:18888`.
+3. **The Star Map holds**: it starts a Krönika demo from
+   `docker/docker-compose.kronika.yml`, seeds it, checks the seed journals
+   and the Star Map, and removes it.
 
-## Using the control panel
+`make demo` uses the same script to warm the dashboards, without failing.
 
-http://localhost:8088 has a section in its navigation for each part of the golden path:
+## Ports
 
-- **Fault domains** — one card per domain with a **Run** button that calls the
-  MCP `tumult_run_experiment` tool for that domain's experiment. Destructive
-  actions are badged (a confirm step) using the tool's MCP annotations. Live
-  status shows running / passed / deviated / failed and the run duration, and the trace
-  link opens SigNoz with an explicit `filter service = demo-app` instruction
-  (the traces-explorer page; SigNoz pre-filter query params vary by version).
-- **Safety guardrail** — runs `demo-guard-halt.toon`. The auto-halt guard pulls
-  the run the moment demo-app turns unhealthy and rollback restores Postgres, so
-  the expected, badged outcome is **Halted** (not Completed).
-- **The enterprise payoff** — three read-only cards over the persistent
-  analytics store:
-  - **Compliance** — `tumult_compliance {framework: dora, journals_path: /journals}`:
-    the evidence pass rate, recovery proxy, verdict, sourced control citations,
-    and the tool's own scope disclaimer (evidence toward controls, not an
-    attestation).
-  - **Analytics** — `tumult_analyze_store`: the most recent experiments
-    (title / status / duration) as a compact table.
-  - **ChaosGraph** — `tumult_chaosgraph_query {kind: fault}`, then
-    `tumult_chaosgraph_neighbors` on a chosen experiment (its ego sub-graph),
-    plus `tumult_chaosgraph_coverage_gaps {framework: dora}` (untested actions
-    and unevidenced framework articles).
-- **Run the whole chaos loop** — a timeline that drives
-  `discover → validate → run → analyze → recommend` as five separate MCP calls.
+| Port | Service |
+|---|---|
+| 8080 | demo-app |
+| 8088 | demo-control-panel |
+| 5433 | demo-postgres |
+| 2222 | demo-sshd |
+| 3100 | tumult-mcp (HTTP) |
+| 3301 | SigNoz UI |
+| 14317, 14318 | Collector OTLP gRPC and HTTP |
+| 18888, 18889, 13133 | Collector self-telemetry, Prometheus, health |
 
-The MCP bearer token comes from the `TUMULT_MCP_TOKEN` env var (`tumult-demo`
-by default) — no build-time secrets. The Compliance corpus directory and
-framework are configurable via `DEMO_JOURNALS_DIR` (default `/journals`) and
-`DEMO_COMPLIANCE_FRAMEWORK` (default `dora`).
+## Limits
 
-### `scripts/gameday-demo.sh` — the advanced / CI path
+The demo runs in plain Docker Compose; the only extra right is the Docker
+socket.
 
-`scripts/gameday-demo.sh` is a scripted, non-interactive GameDay walkthrough
-(discover → GameDay run → resilience analysis → analytics → compliance mapping)
-intended for CI and terminal demos. It exercises the same MCP surface without
-the web UI. Prefer `make demo` and the control panel for the interactive story;
-reach for `gameday-demo.sh` when you want a headless, log-driven run.
-
-## `make demo-check` — the smoke test
-
-`make demo-check` is the headless functional smoke test used in development:
-
-```bash
-make demo-check    # up, wait for health, run the fault sweep, assert telemetry and the Star Map, exit code
-```
-
-It brings the stack up, waits for every service to report healthy, runs each
-experiment in the sweep via `docker compose exec tumult-mcp tumult run …`, runs
-the first once more in the same stack (the journal check judges that run), and
-asserts:
-
-1. **Each journal says what is expected** — `demo/experiments/expectations.json`
-   names, for each experiment, the status, the hypothesis before and after,
-   the number of rollbacks and each objective verdict.
-   `scripts/check-proof-journals.py` compares the journal of each run with it.
-   A run that halts by design passes when its journal says `halted`.
-2. **Telemetry landed** — it scrapes the collector's self-telemetry on
-   `:18888` and asserts `otelcol_receiver_accepted_spans > 0` (falling back to
-   grepping the collector logs for exported spans).
-3. **The Star Map holds.** It brings up a Krönika demo of its own from
-   `docker/docker-compose.kronika.yml`, runs its seed, compares each seed
-   journal with `demo/kronika/experiments/expectations.json` and checks the
-   Star Map with `scripts/starmap-check.py`. Then it removes that stack.
-
-It prints `PASS`/`FAIL` per experiment and a final summary, and **exits non-zero
-on any failure**. When a journal is not as expected, the journals and run logs
-are kept and the path is printed. The same script backs `make demo` in
-`--mode populate`, where it runs the ten domains best-effort to warm the
-dashboards without failing the caller.
-
-## Ports (host)
-
-| Port  | Service            |
-|-------|--------------------|
-| 8080  | demo-app           |
-| 8088  | demo-control-panel |
-| 5433  | demo-postgres      |
-| 2222  | demo-sshd          |
-| 3100  | tumult-mcp (HTTP)  |
-| 3301  | SigNoz UI          |
-| 14317 | collector OTLP gRPC |
-| 14318 | collector OTLP HTTP |
-| 18888 | collector self-telemetry (span counters) |
-| 18889 | collector Prometheus (host + APM metrics) |
-| 13133 | collector health   |
-
-## Caveats
-
-This demo runs in pure `docker compose` with no extra privilege beyond the
-Docker socket. A few domains are scoped to what actually works in that
-topology:
-
-- **Kubernetes is intentionally excluded.** The demo is Docker-only; there is
-  no k8s target. The `tumult-kubernetes` native plugin is still compiled into
-  the MCP image and usable against a real cluster outside the demo.
-- **net** — the tumult-net proxy sits **in front of demo-app** (probed via
-  curl), not transparently between demo-app and demo-postgres. The app's DB URL
-  is fixed at container start and cannot be rewired at runtime to route through
-  the proxy, so we demonstrate the userspace latency proxy on a path we *can*
-  route through. The latency injection itself is real.
-- **postgres** — the runner image ships no `psql`, so connection-kill runs
-  `docker exec demo-postgres psql …` (psql lives in the Postgres image) rather
-  than the `tumult-db-postgres` script plugin's own client. Same SQL, same
-  effect.
-- **stress** — the `tumult-stress` plugin runs stress-ng in-process and cannot
-  target another container. To genuinely pressure **demo-app** we use Pumba's
-  `stress`, which launches a stress-ng sidecar sharing demo-app's cgroup/
-  namespaces. First run pulls `ghcr.io/alexei-led/pumba` and its stress image.
-- **process** — suspend/resume targets the app's main process via
-  `docker kill -s SIGSTOP/SIGCONT` (signal to PID 1), which needs nothing
-  installed inside the app container.
-- **ssh** — `demo-sshd` copies its build-time private key onto a volume shared
-  read-only with `tumult-mcp` so the native SSH executor can authenticate;
-  `host_key_policy: accept-any` is used because the host key is ephemeral.
-- **agentic** — the domain is exercised as a regular experiment whose method
-  invokes `tumult agentic smoke` (the bundled fake-HTTP adapter), so it
-  validates and runs like the others and needs **no external API**.
+- **No Kubernetes.** The `tumult-kubernetes` plugin is in the image and
+  works against a real cluster.
+- **net**: the proxy sits in front of demo-app, not between demo-app and
+  Postgres, because the database URL of the app is fixed at start.
+- **postgres**: the runner image has no `psql`, so the step uses the one in
+  the Postgres container. Same SQL as `tumult-db-postgres`.
+- **stress**: `tumult-stress` loads its own machine, so the demo uses Pumba
+  to load demo-app.
+- **ssh**: the host key of demo-sshd changes with each build, so the step
+  uses `host_key_policy: accept-any`.
+- **agentic**: the fake adapters need no external API.

@@ -61,8 +61,8 @@ pub(super) fn gameday_run(handler: &TumultHandler, params: &CallToolRequestParam
     Ok(result.map(ToolOutput::from))
 }
 
-/// Dispatch `tumult_gameday_analyze`: analyze a completed `GameDay` journal —
-/// resilience score, per-experiment results, and compliance article mapping.
+/// Dispatch `tumult_gameday_analyze`: analyze a completed `GameDay` journal:
+/// the `GameDay` score, per-experiment results, and compliance article mapping.
 pub(super) fn gameday_analyze(
     handler: &TumultHandler,
     params: &CallToolRequestParams,

@@ -41,6 +41,7 @@ const PLAYWRIGHT = join(ROOT, 'web', 'node_modules', 'playwright', 'index.mjs');
 // The pages to shoot: picture name and the path the site serves it at.
 const PAGES = [
   ['landing', '/'],
+  ['get-started', '/get-started/'],
   ['docs-home', '/guides/'],
   ['guide', '/guides/observability-setup.html'],
   ['walkthrough', '/guides/platform-walkthrough.html'],

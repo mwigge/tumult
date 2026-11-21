@@ -264,7 +264,7 @@ pub fn gameday_run(gameday_path: &str, force: bool) -> Result<String, ToolError>
     writeln!(output, "Duration: {:.1}s", journal.duration_s).ok();
     writeln!(
         output,
-        "Resilience Score: {:.2}",
+        "GameDay score: {:.2}",
         journal.resilience_score.overall
     )
     .ok();
@@ -683,7 +683,7 @@ mod tests {
         let report = gameday_run(out.to_str().unwrap(), false).unwrap();
         assert!(report.contains("GameDay: unit-gd"), "{report}");
         assert!(report.contains("Status:"), "{report}");
-        assert!(report.contains("Resilience Score:"), "{report}");
+        assert!(report.contains("GameDay score: "), "{report}");
         assert!(
             report.contains("Experiments: 1/1 passed"),
             "echo experiment must pass: {report}"

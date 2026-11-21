@@ -51,8 +51,9 @@ pub(crate) enum AgenticAction {
     /// Inject a scenario pack's faults into a live agent's model traffic
     ///
     /// Stands up a local reverse proxy in front of a provider endpoint; point
-    /// any base-URL-configurable agent (Claude Code, Codex, Copilot, and others)
-    /// at it via its base-URL or proxy environment variable.
+    /// any base-URL-configurable agent (Claude Code, Codex, and others) at it
+    /// via its base-URL environment variable. It opens no tunnel, so an agent
+    /// that only takes `HTTPS_PROXY` cannot use it.
     Proxy {
         /// Address to listen on — set your agent's base URL to this
         #[arg(long, default_value = "127.0.0.1:8080")]

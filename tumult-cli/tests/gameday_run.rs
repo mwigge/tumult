@@ -162,7 +162,7 @@ fn the_recovery_score_is_the_share_of_runs_that_came_back_within_the_target() {
     assert_eq!(journal.compliance_status, "COMPLIANT");
     for line in [
         "Status:  3/3 PASS (COMPLIANT)\n",
-        "\nResilience Score: 0.92\n",
+        "\nGameDay score: 0.92\n",
         "  Pass rate:        1.00\n",
         "  Recovery:         0.67\n",
         "  Load impact:      1.00\n",
@@ -174,7 +174,7 @@ fn the_recovery_score_is_the_share_of_runs_that_came_back_within_the_target() {
     let analysed = gameday(&lab, "analyze", &[]);
     assert!(
         analysed.contains(
-            "\nResilience Score: 0.92\n  \
+            "\nGameDay score: 0.92\n  \
              Pass rate:    1.00  Recovery: 0.67  Load: 1.00  Compliance: 1.00\n  \
              Status: COMPLIANT\n"
         ),

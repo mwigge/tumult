@@ -241,6 +241,20 @@ fn parse_run_invalid_output_format_is_error() {
     assert!(result.is_err());
 }
 
+// ── Gate ──────────────────────────────────────────────────
+
+#[test]
+fn the_help_of_the_gate_says_it_gates_on_the_compliance_score() {
+    let help = Cli::try_parse_from(["tumult", "gate", "--help"])
+        .unwrap_err()
+        .to_string();
+
+    // The help may wrap a long line: compare the words.
+    let words = help.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert!(words.contains("compliance score"), "{help}");
+    assert!(!words.contains("resilience verdict"), "{help}");
+}
+
 // ── Perf gate ─────────────────────────────────────────────
 
 #[test]

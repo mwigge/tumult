@@ -14,7 +14,7 @@
 # Run it three times in a row before a release.
 #
 #   cargo build -p tumultd -p tumult-cli && (cd web && npm ci && npm run build)
-#   python3 -m venv "$FORECASTD_VENV"            # see docs/guides/forecasting.md
+#   python3 -m venv "$FORECASTD_VENV"            # see forecastd/README.md
 #   bash scripts/proof/rip-phase3-forecast/proof.sh [run-number]
 #
 # Environment:
@@ -192,9 +192,9 @@ if [[ "${PROOF_OFFLINE_STUB:-}" == 1 ]]; then
     echo "OFFLINE MODE: forecastd serves its stub, not the Timestral model. This run proves the wiring only."
 else
     MODEL_KIND=timestral; EXPECT_MODEL=timestral
-    [[ -x "$VENV/bin/python" ]] || { echo "  no virtualenv at $VENV: set FORECASTD_VENV (docs/guides/forecasting.md)"; exit 2; }
+    [[ -x "$VENV/bin/python" ]] || { echo "  no virtualenv at $VENV: set FORECASTD_VENV (forecastd/README.md)"; exit 2; }
     "$VENV/bin/python" -c 'import torch, timestral' 2>/dev/null ||
-        { echo "  $VENV has no torch/timestral: install them (docs/guides/forecasting.md)"; exit 2; }
+        { echo "  $VENV has no torch/timestral: install them (forecastd/README.md)"; exit 2; }
     command -v systemd-run >/dev/null || { echo "  this proof needs systemd-run for the memory ceiling"; exit 2; }
     SIDECAR_RUN=(systemd-run --user --scope -q -p "MemoryMax=$MEMORY" "$VENV/bin/python")
 fi

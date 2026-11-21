@@ -63,7 +63,7 @@ Environment=TUMULTD_WEBHOOK_ENDPOINT_BUDGET_S=120
 # SSRF escape hatches for demos ONLY (never production):
 #   TUMULTD_WEBHOOK_ALLOW_INSECURE=1 (permits http) / TUMULTD_WEBHOOK_ALLOW_LOCAL=1 (permits loopback+private)
 # Parquet lake export + telemetry retention:
-#   KRONIKA_LAKE_DIR (default <db dir>/lake) / KRONIKA_LAKE_INTERVAL (default 6h) / KRONIKA_RETENTION_DAYS (default 0 = keep)
+#   KRONIKA_LAKE_DIR (default <db dir>/lake) / KRONIKA_LAKE_INTERVAL (default 24h, 0 or off turns it off) / KRONIKA_RETENTION_DAYS (default 0 = keep)
 
 # --- Hardening ---
 DynamicUser=yes

@@ -8,7 +8,7 @@
     import { goto } from '$app/navigation';
     import { page } from '$app/state';
     import { ApiError, api, fmtAgo, fmtTs } from '#lib/api.js';
-    import { chartTokens } from '#lib/echarts.js';
+    import { chartTheme, chartTokens, followTheme } from '#lib/echarts.js';
     import type { EChartsCoreOption } from '#lib/echarts.js';
     import {
         PERF_QUANTILES,
@@ -99,7 +99,10 @@
 
     const sides = $derived(answer ? perfSides(answer) : []);
     const hasSamples = $derived(sides.some(({ side }) => side.distribution.length > 0));
-    const tokens = chartTokens();
+    // The chart is drawn in the colours of the theme in force.
+    let theme = $state(chartTheme());
+    onMount(() => followTheme((next) => (theme = next)));
+    const tokens = $derived(chartTokens(theme));
     const chartOption: EChartsCoreOption | null = $derived(
         answer ? perfDistributionOption(answer, tokens) : null,
     );

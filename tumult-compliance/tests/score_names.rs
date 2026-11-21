@@ -1,31 +1,32 @@
 //! Each score has one name. The compliance score of `scoring` is never
 //! called a resilience score: that is the name of the continuous score of
-//! `/api/posture`, which the Resilience page shows. The `GameDay` score has
-//! a resilience score of its own.
+//! `/api/posture`, which the Resilience page shows. The `GameDay` score and
+//! the agentic score have names of their own.
 //!
 //! The tests read the sources a person reads a score from (the pages, the
-//! report builders, the commands and the terminal UI) and the reports kept
-//! with the tests.
+//! report builders, the commands, the MCP tools, the agentic scores, the
+//! journal types and the terminal UI) and the reports kept with the tests.
 
 use std::path::{Path, PathBuf};
 
 use tumult_compliance::scoring::COMPLIANCE_SCORE_LINE;
 
 /// The folders that are read, from the root of the workspace.
-const READ: [&str; 6] = [
+const READ: [&str; 9] = [
     "web/src",
     "tumult-compliance/src",
     "tumult-compliance/tests/golden",
     "tumult-cli/src",
     "tumult-cli/tests/golden",
     "tumult-tui/src",
+    "tumult-mcp/src",
+    "tumult-agentic/src",
+    "tumult-core/src",
 ];
 
 /// The files that may call a score a resilience score, and on how many
 /// lines.
-const RESILIENCE_SCORE_LINES: [(&str, usize); 3] = [
-    // The GameDay score.
-    ("tumult-cli/src/commands/gameday.rs", 2),
+const RESILIENCE_SCORE_LINES: [(&str, usize); 2] = [
     // The continuous score of `/api/posture`.
     ("web/src/lib/score-names.ts", 2),
     ("web/src/routes/resilience/+page.svelte", 1),
@@ -92,7 +93,7 @@ fn resilience_score_lines() -> Vec<(String, usize)> {
 }
 
 #[test]
-fn only_the_resilience_page_and_the_game_day_call_a_score_a_resilience_score() {
+fn only_the_resilience_page_calls_a_score_a_resilience_score() {
     let allowed: Vec<(String, usize)> = RESILIENCE_SCORE_LINES
         .iter()
         .map(|(path, lines)| ((*path).to_string(), *lines))
