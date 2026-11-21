@@ -2,61 +2,56 @@
 title: Get started
 nav_order: 1
 has_children: true
-# The page links its two child pages, so no list of them at the end.
+# The page links its child pages, so no list of them at the end.
 has_toc: false
 ---
 
 # Get started
 
-Install Tumult, start the test targets and run your first experiment, in
-about 10 minutes.
+Install Tumult, start some test targets and run your first experiment. It
+takes about 10 minutes.
 
 ```mermaid
-flowchart LR
-    accTitle: Tumult quickstart path
-    accDescr: Install Tumult, start test targets, run an experiment, look at the results, then open the web UI to see scores and risks.
+flowchart TD
+    accTitle: The Get started path
+    accDescr: Install Tumult, start the test targets, run an experiment, look at the results, then open the web UI to see scores and risks.
     install[1. Install] --> targets[2. Start targets]
-    targets --> run[3. Run]
-    run --> look[4. Look at results]
+    targets --> run[3. Run an experiment]
+    run --> look[4. Look at the results]
     look -.-> ui[5. Open the web UI]
 ```
 
-This page runs Tumult from a terminal. To learn in a browser first, or to
-start the whole platform with demo data, see
-[other ways to run](other-ways-to-run.md).
+To learn in a browser first, or to see the whole platform with demo data,
+see [other ways to run](other-ways-to-run.md).
 
 ## 1. Install
 
-Pick one.
-
-**From source** (needs [Rust](https://rustup.rs/), Git, Make, Docker):
+You need Git, Make, Docker and [Rust](https://rustup.rs/) 1.92.0 or newer.
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/mwigge/tumult/main/install.sh | sh
+cd tumult
 ```
 
-**Clone and build:**
+The script clones the repository into `tumult`, builds the CLI, starts the
+test targets of step 2 and runs a short check. It copies `tumult` to
+`/usr/local/bin` when it may. If it may not, it tells you what to do.
+
+Or build it yourself:
 
 ```bash
 git clone https://github.com/mwigge/tumult.git && cd tumult
-cargo build --release --locked -p tumult-cli -p tumult-mcp -p tumult-net
+cargo build --release --locked -p tumult-cli -p tumult-net
 export PATH="$PWD/target/release:$PATH"
 ```
 
-**Docker only** (no Rust needed):
-
-```bash
-docker pull ghcr.io/mwigge/tumult:latest
-docker run --rm ghcr.io/mwigge/tumult discover
-```
-
-The Docker image is good for a first look. To run experiments from a
-container you also need the access described in the
-[deployment guide](../guides/production-deployment.md#provider-capabilities).
+No Rust? Each [release](https://github.com/mwigge/tumult/releases) has
+`tumult` for Linux and macOS. Put `tumult` and `tumult-net-proxyd` from the
+archive on your `PATH`, and clone the repository for the examples.
 
 ## 2. Start targets
 
-Run this from the repository root.
+From the root of the repository:
 
 ```bash
 make up-targets
@@ -87,12 +82,9 @@ Journal SHA-256: 5f0c…e91a
 Ingested into persistent analytics store
 ```
 
-The `Journal SHA-256` line is the SHA-256 of the journal file.
-`sha256sum journal.toon` gives the same value, and so does the footer of
-the HTML report.
-
-This first one pauses Redis, checks that it gives no answer, and reads its
-key back afterwards. Now try some more:
+It pauses Redis, shows that Redis gives no answer, and reads its key back
+afterwards. The journal is the record of the run; `sha256sum journal.toon`
+gives the same hash. Now try more:
 
 | Experiment | Command |
 |---|---|
@@ -102,21 +94,21 @@ key back afterwards. Now try some more:
 
 ## 4. Look at the results
 
-Every run writes a journal file and goes into the local database.
+Every run goes into a local database, the lake.
 
 ```bash
 tumult analyze --query "SELECT title, status, duration_ms FROM experiments ORDER BY started_at_ns DESC"
-tumult report --format html journal.toon      # HTML report
-tumult export --format parquet journal.toon   # for BI tools
-tumult compliance --framework dora .          # evidence summary
+tumult report --format html journal.toon      # an HTML report
+tumult compliance --framework dora .          # an evidence summary
 tumult discover                               # what can I break?
-tumult init                                   # start a new experiment file
 ```
+
+![The HTML report of one run](../images/3.0/screenshots/report-html.png)
 
 ## 5. Open the web UI
 
-This is where the evidence becomes scores, risks and verdicts. The web UI
-runs in a stack of its own, with demo data: start
+The web UI turns the evidence into scores, risks and verdicts. It runs in a
+stack of its own, with demo data: start
 [the whole platform](other-ways-to-run.md#the-whole-platform-in-the-web-ui).
 
 ![The Star Map on the demo data](../images/3.0/screenshots/starmap.png)
@@ -124,95 +116,16 @@ runs in a stack of its own, with demo data: start
 The [platform walkthrough](../guides/platform-walkthrough.md) shows each
 page.
 
-## More things to try
+## Stop
 
-**A GameDay.** Four PostgreSQL experiments, scored and mapped to DORA
-articles, in one command:
+`make down` stops the targets.
 
-```bash
-./scripts/gameday-demo.sh
-```
+## Next
 
-**AI agents.** Give an agent the same tools over MCP:
-
-```bash
-tumult mcp serve                                              # local, stdio
-tumult mcp serve --transport http --port 3100 --token "$MCP_TOKEN"
-```
-
-Without a token, HTTP listens on loopback only.
-
-**The knowledge graph.**
-
-```bash
-tumult chaosgraph query --kind fault
-tumult chaosgraph coverage-gaps --framework dora
-```
-
-## Test your own service
-
-Write a file like this. It checks a health URL, stops a dependency, and
-starts it again.
-
-```toon
-title: My service health check
-description: Verify my-service handles connection loss
-
-tags[1]: my-service
-
-steady_state_hypothesis:
-  title: Service responds 200
-  probes[1]:
-    - name: health-check
-      activity_type: probe
-      provider:
-        type: process
-        path: curl
-        arguments[6]: "-s", "-o", "/dev/null", "-w", "%{http_code}", "http://localhost:8080/health"
-        timeout_s: 5.0
-      tolerance:
-        type: regex
-        pattern: "200"
-
-method[1]:
-  - name: kill-dependency
-    activity_type: action
-    provider:
-      type: process
-      path: sh
-      arguments[2]: "-c", "docker stop my-dependency-container"
-      timeout_s: 10.0
-    pause_after_s: 5.0
-
-rollbacks[1]:
-  - name: restart-dependency
-    activity_type: action
-    provider:
-      type: process
-      path: sh
-      arguments[2]: "-c", "docker start my-dependency-container"
-      timeout_s: 10.0
-```
-
-```bash
-tumult validate my-experiment.toon
-tumult run my-experiment.toon
-```
-
-## Stop everything
-
-```bash
-make down
-```
-
-## Next steps
-
-| Topic | Guide |
-|---|---|
-| Other ways to start Tumult | [Other ways to run](other-ways-to-run.md) |
-| Every page of the web UI | [Platform walkthrough](../guides/platform-walkthrough.md) |
-| Load tests and version verdicts | [Load testing](../guides/load-testing-guide.md), [performance](../guides/performance-regression.md) |
-| Star Map, DORA score, forecasts | [Star Map](../guides/star-map.md), [DORA score](../guides/dora-score.md), [forecasting](../guides/forecasting.md) |
-| Send telemetry from your services | [Auto-instrumentation](../guides/otel-autoinstrumentation.md), [entity events](../guides/entity-events.md) |
-| Write experiments | [Experiment format](../guides/experiment-format.md), [plugins](../plugins/index.md) |
-| All guides | [Guides](../guides/index.md) |
+- [Other ways to run](other-ways-to-run.md): Chaos Lab, the demo, Docker.
+- [Your first experiment](first-experiment.md): test your own service.
+- [Platform walkthrough](../guides/platform-walkthrough.md): every page of
+  the web UI.
+- [How a run works](../guides/execution-flow.md) and the
+  [experiment format](../guides/experiment-format.md).
+- [MCP guide](../guides/mcp-guide.md): give an AI agent the same tools.
