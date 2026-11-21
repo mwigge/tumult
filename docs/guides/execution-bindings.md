@@ -1,6 +1,8 @@
 ---
 title: Execution bindings
-parent: Guides
+parent: Operate
+nav_order: 2
+summary: "Which targets the daemon may touch"
 ---
 
 # Bind execution inputs to an environment

@@ -1,7 +1,8 @@
 ---
 title: Logging
-parent: Guides
-nav_order: 29
+parent: Operate
+nav_order: 4
+summary: "Structured JSON logs"
 ---
 
 # Logging

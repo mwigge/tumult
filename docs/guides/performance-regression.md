@@ -1,7 +1,9 @@
 ---
 title: Performance Regression Verdicts
-parent: Guides
-nav_order: 8
+parent: Read the evidence
+grand_parent: Guides
+nav_order: 3
+summary: "Is the new version slower?"
 ---
 
 # Performance Regression Verdicts

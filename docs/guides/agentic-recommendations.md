@@ -1,7 +1,9 @@
 ---
 title: Agentic Recommendations
-parent: Guides
-nav_order: 14
+parent: Work with AI agents
+grand_parent: Guides
+nav_order: 8
+summary: "Let a local agent suggest experiments"
 ---
 
 # Agentic Recommendations

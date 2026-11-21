@@ -1,7 +1,9 @@
 ---
 title: Agentic Observability
-parent: Guides
-nav_order: 10
+parent: Work with AI agents
+grand_parent: Guides
+nav_order: 6
+summary: "Spans and metrics for agent runs"
 ---
 
 # Agentic Observability

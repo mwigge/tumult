@@ -1,7 +1,8 @@
 ---
 title: Data portability and recovery
-parent: Guides
-nav_order: 30
+parent: Operate
+nav_order: 3
+summary: "Export, back up and restore"
 ---
 
 # Data portability and recovery

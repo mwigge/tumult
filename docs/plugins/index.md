@@ -1,7 +1,9 @@
 ---
 title: Plugins
-nav_order: 3
+nav_order: 5
 has_children: true
+# The tables below list the plugins, so no list of child pages.
+has_toc: false
 ---
 
 # Plugins
@@ -54,7 +56,7 @@ total (`tumult discover` prints the authoritative list for your build).
 | tumult-net | Privilege-free userspace TCP chaos proxy — latency, bandwidth throttle, fragmentation, byte corruption, connection termination |
 | [tumult-kubernetes](tumult-kubernetes.md) | Pod delete, deployment scale, node cordon/drain, status probes |
 | tumult-cloud | AWS (EC2 stop/terminate, FIS experiments), Azure Chaos, GCP compute stop |
-| tumult-windows | Native Windows faults: process-kill, CPU stress, firewall blackhole |
+| [tumult-windows](../guides/windows-faults.md) | Native Windows faults: process-kill, CPU stress, firewall blackhole |
 
 ### Script plugins (11)
 
