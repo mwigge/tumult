@@ -14,7 +14,12 @@ use crate::error::WindowsError;
 use crate::{commands::BlackholeTarget, faults};
 
 /// Functions `tumult-windows` provides to the experiment runner.
-const FUNCTIONS: &[&str] = &["process_kill", "cpu_stress", "network_blackhole"];
+const FUNCTIONS: &[&str] = &[
+    "process_kill",
+    "cpu_stress",
+    "network_blackhole",
+    "network_blackhole_rollback",
+];
 
 /// Default CPU-stress duration, in seconds, when `duration_secs` is absent.
 const DEFAULT_CPU_DURATION_SECS: u64 = 10;
@@ -98,6 +103,18 @@ impl NativeExecutor for WindowsExecutor {
                 let report = faults::network_blackhole(&target).map_err(to_native)?;
                 Ok(report.to_json().to_string())
             }
+            "network_blackhole_rollback" => {
+                let port = arg_num::<u16>(args, "port");
+                let remote_host = opt_str(args, "remote_host");
+                let target = BlackholeTarget::from_args(port, remote_host).map_err(to_native)?;
+                let removed = faults::remove_network_blackhole(&target).map_err(to_native)?;
+                let json = serde_json::json!({
+                    "rule_name": target.rule_name(),
+                    "deleted": removed.is_some(),
+                    "stdout": removed.unwrap_or_default(),
+                });
+                Ok(json.to_string())
+            }
             _ => Err(NativeError::unknown_function(
                 self.name(),
                 function,
@@ -117,7 +134,12 @@ mod tests {
         assert_eq!(executor.name(), "tumult-windows");
         assert_eq!(
             executor.functions(),
-            &["process_kill", "cpu_stress", "network_blackhole"]
+            &[
+                "process_kill",
+                "cpu_stress",
+                "network_blackhole",
+                "network_blackhole_rollback"
+            ]
         );
     }
 
@@ -153,6 +175,34 @@ mod tests {
             .await
             .unwrap_err();
         assert!(matches!(err, NativeError::InvalidArgument { .. }));
+    }
+
+    #[tokio::test]
+    async fn the_blackhole_rollback_without_target_is_invalid_argument() {
+        let err = WindowsExecutor
+            .execute("network_blackhole_rollback", &NativeArgs::new())
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(err, NativeError::InvalidArgument { .. }),
+            "expected InvalidArgument, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn the_blackhole_rollback_on_non_windows_surfaces_execution_error() {
+        if cfg!(not(windows)) {
+            let args = NativeArgs::from([("port".into(), serde_json::json!(443))]);
+            let err = WindowsExecutor
+                .execute("network_blackhole_rollback", &args)
+                .await
+                .unwrap_err();
+            // netsh cannot spawn on Linux: the rollback reached it.
+            assert!(
+                matches!(err, NativeError::Execution { .. }),
+                "expected Execution, got: {err:?}"
+            );
+        }
     }
 
     #[tokio::test]

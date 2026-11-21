@@ -264,7 +264,7 @@ pub(crate) enum Commands {
     },
     /// Scaffold a new experiment.toon from a bundled template
     Init {
-        /// Plugin name to reference in the generated template
+        /// Script plugin whose first probe the first step reads
         #[arg(long)]
         plugin: Option<String>,
     },

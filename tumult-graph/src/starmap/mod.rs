@@ -22,7 +22,7 @@ pub use input::{
 };
 pub use model::{
     ClusterWorst, Counts, EdgeSource, Evidence, Flag, Gap, Posture, RiskSummary, Rollup,
-    SourceState, Sources, StarCluster, StarEdge, StarKind, StarMap, StarNode, StarRel,
+    StarCluster, StarEdge, StarKind, StarMap, StarNode, StarRel,
 };
 
 /// The node id a `focus` names. Entity ids carry the lower-case form
@@ -94,13 +94,6 @@ pub fn assemble(inputs: &StarInputs, query: &StarQuery) -> StarMap {
         depth,
         disclaimer: tumult_core::compliance::EVIDENCE_DISCLAIMER,
         truncated: inputs.truncated,
-        sources: Sources {
-            slo: SourceState::Unavailable,
-            dora: SourceState::Unavailable,
-            maturity: SourceState::Unavailable,
-            conformance: SourceState::Ok,
-            graph: SourceState::Ok,
-        },
         maturity: None,
         counts,
         nodes: graph.nodes.into_values().collect(),

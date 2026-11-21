@@ -145,7 +145,8 @@ pub struct DiscoverTool {}
 pub struct CreateExperimentTool {
     /// Where to write the new experiment file.
     pub output_path: String,
-    /// Optional plugin to template the experiment from.
+    /// Optional script plugin: the first step of the starter reads one of
+    /// its probes.
     pub plugin: Option<String>,
 }
 

@@ -30,7 +30,7 @@ pub use native::registry as native_registry;
 ///
 /// Supports Process, Script, and Native (Rust) providers. Script plugins
 /// resolve through the filesystem discovery search paths and run via
-/// `tumult_plugin::executor::execute_script`; native plugins dispatch
+/// `tumult_plugin::executor::execute_script_until`; native plugins dispatch
 /// through the `tumult_plugin::native::NativeExecutorRegistry` composition
 /// root in the native executor, via async execution on the Tokio runtime.
 ///

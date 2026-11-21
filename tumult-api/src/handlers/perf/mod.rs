@@ -794,14 +794,6 @@ fn ruling_before_latency(
     }
 }
 
-fn quantile_of(summary: &SampleSummary, quantile: Quantile) -> Option<f64> {
-    match quantile {
-        Quantile::P50 => summary.p50,
-        Quantile::P95 => summary.p95,
-        Quantile::P99 => summary.p99,
-    }
-}
-
 /// Why `side`'s quantile is a floor rather than a measurement: it is at
 /// or above a sample that is a request given up on at its timeout.
 fn censored_reason(
@@ -811,7 +803,7 @@ fn censored_reason(
     c: &Comparison,
 ) -> Option<String> {
     let floor = side.censored_floor?;
-    let at = quantile_of(summary, c.quantile)?;
+    let at = summary.quantile(c.quantile)?;
     if at < floor {
         return None;
     }

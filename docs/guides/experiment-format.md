@@ -293,8 +293,6 @@ Computed onto the journal after the run when the experiment has an `estimate`, c
 | `estimate_recovery_delta_s` | *Reserved, not populated* |
 | `trend` | *Reserved, not populated* |
 
-The degradation fields on during/post results (`degradation_onset_s`, `degradation_peak_s`, `degradation_magnitude`, `graceful_degradation`, `residual_degradation`) are likewise reserved and not populated.
-
 ## Journal Export
 
 `tumult export <journal> --format <fmt>` writes the journal in four formats. `json` is the whole journal, pretty-printed. `parquet` (Apache Parquet), `csv` and `arrow` (Apache Arrow IPC file format, suitable for zero-copy analytics interchange) are tables: the run is one row of `<journal-stem>.<ext>` and its steps are the rows of `activities/<journal-stem>.<ext>`.

@@ -71,10 +71,3 @@ fn validate_accepts_valid_regex_pattern() {
 
 // This is a K8s integration test — verified at the type level
 // since we can't call the K8s API without a cluster.
-
-// ── APP-10: all_succeeded empty returns false ─────────────────
-
-#[test]
-fn all_succeeded_empty_is_false() {
-    assert!(!tumult_core::execution::all_succeeded(&[]));
-}

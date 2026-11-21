@@ -144,7 +144,6 @@ fn runner_emits_resilience_rollback_span() {
         cancellation_token: None,
         parent_context: None,
         load_executor: None,
-        max_concurrent_faults: None,
     };
     run_experiment(&exp, &executor, &controls, &config).unwrap();
 

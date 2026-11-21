@@ -16,6 +16,9 @@ serde_json = { workspace = true }
 # Runtime for the `#[tokio::test]` async-dispatch tests only. The library and
 # the `winfault` binary need no async runtime themselves.
 tokio = { version = "1", features = ["rt", "macros"] }
+# A stand-in netsh for the rollback tests.
+tempfile = { workspace = true }
+tumult-test-utils = { path = "../tumult-test-utils", default-features = false }
 
 [[bin]]
 # Standalone, dependency-light fault runner the orchestrator cross-compiles to

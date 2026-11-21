@@ -91,8 +91,7 @@ below. The phase results of `Journal` (`steady_state_before`, `steady_state_afte
 | `Journal` | `halt`, `blast_radius`, `objectives`, `probe_samples` (when empty), `target_version`, `target` |
 | `ActivityResult` | `output`, `error` |
 | `BaselineResult` | `sigma` |
-| `DuringResult` | `degradation_onset_s`, `degradation_peak_s`, `degradation_magnitude`, `graceful_degradation` |
-| `PostResult` | `residual_degradation`, `data_integrity_verified`, `data_loss_detected`, `mttr_s` |
+| `PostResult` | `mttr_s` |
 | `ProbeDuring` | `breached_at_ns` |
 | `AnalysisResult` | `estimate_accuracy`, `estimate_recovery_delta_s`, `trend`, `resilience_score` |
 

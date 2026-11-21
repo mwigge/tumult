@@ -243,9 +243,6 @@ fn compliance_runs_over_journal_with_mttr() {
         probes: vec![],
         recovery_time_s: 5.0,
         full_recovery: true,
-        residual_degradation: None,
-        data_integrity_verified: None,
-        data_loss_detected: None,
         mttr_s: Some(5.0),
     });
     write_journal(&journal, &journal_path).unwrap();

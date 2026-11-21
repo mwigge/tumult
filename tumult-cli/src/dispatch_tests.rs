@@ -176,13 +176,11 @@ async fn dispatch_init_scaffolds_template_in_cwd() {
     let dir = TempDir::new().unwrap();
     let _cwd = CwdGuard::enter(dir.path());
 
-    run_argv(&["tumult", "init", "--plugin", "tumult-pg"])
-        .await
-        .unwrap();
+    run_argv(&["tumult", "init"]).await.unwrap();
 
     let content = std::fs::read_to_string(dir.path().join("experiment.toon")).unwrap();
-    assert!(content.contains("tumult-pg"), "{content}");
-    tumult_core::engine::parse_experiment(&content).unwrap();
+    let experiment = tumult_core::engine::parse_experiment(&content).unwrap();
+    assert_eq!(experiment, tumult_authoring::starter().unwrap());
 
     // A second init refuses to clobber the scaffold.
     let err = run_argv(&["tumult", "init"]).await.unwrap_err();

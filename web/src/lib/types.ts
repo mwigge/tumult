@@ -397,8 +397,6 @@ export interface StarCluster {
     worst: { gap: StarGap | null; risk: string | null };
 }
 
-export type StarSource = 'ok' | 'unavailable';
-
 /** `GET /api/starmap` */
 export interface StarMap {
     as_of_ns: number;
@@ -411,7 +409,6 @@ export interface StarMap {
     disclaimer: string;
     /** A source table was longer than its row limit; the map is incomplete. */
     truncated: boolean;
-    sources: Record<'slo' | 'dora' | 'maturity' | 'conformance' | 'graph', StarSource>;
     maturity: unknown;
     counts: {
         nodes: number;

@@ -21,8 +21,8 @@ mod stats;
 
 pub use rng::SplitMix64;
 pub use stats::{
-    bootstrap_difference, cluster_bootstrap_difference, percentile_sorted, percentiles,
-    weighted_percentile, Interval, Percentiles, Quantile, Window,
+    cluster_bootstrap_difference, percentile_sorted, weighted_percentile, Interval, Quantile,
+    Window,
 };
 
 /// The outcome of a comparison.
@@ -124,7 +124,9 @@ impl SampleSummary {
         }
     }
 
-    fn quantile(&self, q: Quantile) -> Option<f64> {
+    /// The value of this side at `q`; `None` without samples.
+    #[must_use]
+    pub fn quantile(&self, q: Quantile) -> Option<f64> {
         match q {
             Quantile::P50 => self.p50,
             Quantile::P95 => self.p95,

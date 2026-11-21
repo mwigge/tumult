@@ -39,9 +39,9 @@ pub enum ExperimentStatus {
 #[serde(rename_all = "snake_case")]
 pub enum ActivityStatus {
     Succeeded,
+    /// Also read from `timeout`, a status that older versions knew and no run wrote.
+    #[serde(alias = "timeout")]
     Failed,
-    /// The activity exceeded its timeout and was terminated.
-    Timeout,
     /// The activity was not executed.
     Skipped,
 }
@@ -275,7 +275,6 @@ impl std::fmt::Display for ActivityStatus {
         match self {
             Self::Succeeded => write!(f, "succeeded"),
             Self::Failed => write!(f, "failed"),
-            Self::Timeout => write!(f, "timeout"),
             Self::Skipped => write!(f, "skipped"),
         }
     }
@@ -477,7 +476,6 @@ mod tests {
         for status in [
             ActivityStatus::Succeeded,
             ActivityStatus::Failed,
-            ActivityStatus::Timeout,
             ActivityStatus::Skipped,
         ] {
             let decoded: ActivityStatus = toon_round_trip(&status);
@@ -586,7 +584,6 @@ mod tests {
 
         assert_eq!(ActivityStatus::Succeeded.to_string(), "succeeded");
         assert_eq!(ActivityStatus::Failed.to_string(), "failed");
-        assert_eq!(ActivityStatus::Timeout.to_string(), "timeout");
         assert_eq!(ActivityStatus::Skipped.to_string(), "skipped");
 
         assert_eq!(ContainerRuntime::Docker.to_string(), "docker");

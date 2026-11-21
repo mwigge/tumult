@@ -203,7 +203,6 @@ pub fn cmd_gameday_run(gameday_path: &std::path::Path, force: bool) -> Result<()
         parent_context: None,
         // The runner runs a declared load with the adapter of its tool.
         load_executor: None,
-        max_concurrent_faults: None,
     };
 
     // The journal is reserved before the first experiment runs, at the

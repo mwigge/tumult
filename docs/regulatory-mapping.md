@@ -83,7 +83,7 @@ DORA is the most prescriptive framework for resilience testing in financial serv
 | Requirement | Tumult Evidence | Attributes |
 |-------------|----------------|------------|
 | Backup and restoration procedures tested periodically (Art. 12(2)) | Dated restore and recovery experiments with measured recovery duration | `resilience.post.recovery_time_s`, journal `started_at_ns` |
-| Integrity checked on recovery (Art. 12(7)) | Data integrity verification post-fault | `resilience.post.data_integrity_verified`, `resilience.post.data_loss_detected` |
+| Integrity checked on recovery (Art. 12(7)) | An integrity probe you declare, read after the fault | `resilience.post.probe.{name}.returned_to_baseline` |
 
 ---
 
@@ -99,7 +99,7 @@ NIS2 applies to essential and important entities across 18 sectors. It requires 
 |-------------|----------------|------------|
 | Business continuity validated | Experiments that inject faults and measure recovery | `resilience.post.recovery_time_s`, `resilience.post.full_recovery` |
 | Crisis management tested | Multi-fault experiments, cascading failure scenarios | `resilience.experiment.title`, `resilience.action.name` |
-| Backup and recovery procedures | Data integrity verification post-fault | `resilience.post.data_integrity_verified`, `resilience.post.data_loss_detected` |
+| Backup and recovery procedures | An integrity probe you declare, read after the fault | `resilience.post.probe.{name}.returned_to_baseline` |
 
 ### Article 21(2)(b) — Incident handling
 
@@ -154,7 +154,7 @@ PCI-DSS applies to any entity that stores, processes, or transmits cardholder da
 |-------------|----------------|------------|
 | BC exercises under severe-but-plausible scenarios | Fault-injection experiments modelling plausible disruptions | `resilience.experiment.title`, `resilience.during.*` |
 | Ability to deliver critical operations through disruption | During-fault probes on critical systems | `resilience.target.criticality`, `resilience.during.*` |
-| Recovery of critical operations | Phase 3 recovery measurement | `resilience.post.recovery_time_s`, `resilience.post.data_integrity_verified` |
+| Recovery of critical operations | Phase 3 recovery measurement | `resilience.post.recovery_time_s`, `resilience.post.full_recovery` |
 
 ### BCBS 239 — Principle 6 (Adaptability) — *indirect*
 
@@ -165,7 +165,7 @@ PCI-DSS applies to any entity that stores, processes, or transmits cardholder da
 | Requirement | Tumult Evidence | Attributes |
 |-------------|----------------|------------|
 | Reporting capability available under stress | Probes measuring query performance and data availability during faults | `resilience.baseline.probe.{name}.mean`, `resilience.during.probe.{name}.max` |
-| Recovery of reporting capability | Phase 3 recovery measurement for data systems | `resilience.post.recovery_time_s`, `resilience.post.data_integrity_verified` |
+| Recovery of reporting capability | Phase 3 recovery measurement for data systems | `resilience.post.recovery_time_s`, `resilience.post.full_recovery` |
 
 ---
 
@@ -274,7 +274,7 @@ TOON journals are the primary audit artefact. Every journal contains:
 | What was the baseline | `steady_state_before`, the hypothesis checked before the fault | Proves normal operating parameters |
 | What happened under fault | Phase 2 during-fault observations | Proves impact assessment |
 | How fast recovery occurred | Phase 3 recovery measurement | Proves RTO compliance |
-| Whether data was lost | An integrity probe you declare (`post_result.data_integrity_verified` is always absent) | Proves data integrity |
+| Whether data was lost | An integrity probe you declare | Proves data integrity |
 | What was predicted vs actual | Phase 0 estimate vs Phase 2/3 observations | Proves organizational learning |
 | Full trace lineage | `trace_id`, `span_id` on every activity result | Proves end-to-end auditability |
 

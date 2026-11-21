@@ -275,7 +275,6 @@ pub fn run_gameday_with_wiring(
             // The shared load is the game day's; a load the experiment
             // declares itself runs with the tool it names.
             load_executor: None,
-            max_concurrent_faults: config.max_concurrent_faults,
             version_resolver: config.version_resolver.clone(),
         };
         let wiring = wiring(index, experiment);

@@ -394,12 +394,17 @@ mod tests {
     }
 
     #[test]
-    fn discover_lists_tumult_windows_with_its_three_functions() {
+    fn discover_lists_tumult_windows_with_its_four_functions() {
         let dir = TempDir::new().unwrap();
         let _env = crate::tools::test_support::catalog_guard(dir.path(), &[]);
         let output = discover_plugins();
         assert!(output.contains("tumult-windows (native)"), "{output}");
-        for function in ["process_kill", "cpu_stress", "network_blackhole"] {
+        for function in [
+            "process_kill",
+            "cpu_stress",
+            "network_blackhole",
+            "network_blackhole_rollback",
+        ] {
             assert!(
                 output.contains(&format!("tumult-windows::{function}")),
                 "{function}: {output}"

@@ -260,22 +260,6 @@ fn during(during: &DuringResult) -> String {
     let rows = [
         fact("Fault active", &seconds(during.fault_active_s)),
         fact("Sample interval", &seconds(during.sample_interval_s)),
-        optional(
-            "Degradation first seen after",
-            during.degradation_onset_s.map(seconds),
-        ),
-        optional(
-            "Degradation at its peak after",
-            during.degradation_peak_s.map(seconds),
-        ),
-        optional(
-            "Worst deviation from the baseline",
-            during.degradation_magnitude.map(number),
-        ),
-        optional(
-            "Degraded gradually",
-            during.graceful_degradation.map(yes_no),
-        ),
     ]
     .concat();
     let probes: String = during
@@ -331,15 +315,6 @@ fn post(post: &PostResult) -> String {
         ),
         fact("Full recovery", &yes_no(post.full_recovery)),
         optional("MTTR", post.mttr_s.map(seconds)),
-        optional(
-            "Deviation left at the end",
-            post.residual_degradation.map(number),
-        ),
-        optional(
-            "Data integrity verified",
-            post.data_integrity_verified.map(yes_no),
-        ),
-        optional("Data loss detected", post.data_loss_detected.map(yes_no)),
     ]
     .concat();
     let probes: String = post.probes.iter().map(post_row).collect();

@@ -1,4 +1,4 @@
-//! Percentiles and the bootstrap interval on a quantile difference.
+//! Percentiles and the cluster bootstrap interval on a quantile difference.
 
 use crate::rng::SplitMix64;
 
@@ -33,25 +33,6 @@ impl std::fmt::Display for Quantile {
     }
 }
 
-/// p50 / p95 / p99 of one sample set.
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct Percentiles {
-    pub p50: f64,
-    pub p95: f64,
-    pub p99: f64,
-}
-
-impl Percentiles {
-    #[must_use]
-    pub fn get(&self, q: Quantile) -> f64 {
-        match q {
-            Quantile::P50 => self.p50,
-            Quantile::P95 => self.p95,
-            Quantile::P99 => self.p99,
-        }
-    }
-}
-
 /// Nearest-rank index of percentile `p` (0..=100) in a set of `n` values:
 /// the `ceil(p/100 * n)`-th smallest, 1-based, clamped into range.
 fn rank(p: f64, n: usize) -> usize {
@@ -72,29 +53,6 @@ pub fn percentile_sorted(sorted: &[f64], p: f64) -> Option<f64> {
         return None;
     }
     Some(sorted[rank(p, sorted.len())])
-}
-
-/// Nearest-rank percentile of an unsorted scratch buffer, selecting in
-/// place (O(n)) rather than sorting.
-fn percentile_scratch(scratch: &mut [f64], p: f64) -> f64 {
-    let i = rank(p, scratch.len());
-    let (_, value, _) = scratch.select_nth_unstable_by(i, f64::total_cmp);
-    *value
-}
-
-/// p50 / p95 / p99 of `values` (any order); `None` when empty.
-#[must_use]
-pub fn percentiles(values: &[f64]) -> Option<Percentiles> {
-    if values.is_empty() {
-        return None;
-    }
-    let mut sorted = values.to_vec();
-    sorted.sort_by(f64::total_cmp);
-    Some(Percentiles {
-        p50: sorted[rank(50.0, sorted.len())],
-        p95: sorted[rank(95.0, sorted.len())],
-        p99: sorted[rank(99.0, sorted.len())],
-    })
 }
 
 /// One load window: the latency it measured and the seconds of load
@@ -192,42 +150,6 @@ pub struct Interval {
     pub high: f64,
 }
 
-/// Percentile bootstrap of `quantile(candidate) - quantile(baseline)`:
-/// both sets are resampled with replacement `iterations` times from a
-/// generator seeded with `seed`, and the interval is the central
-/// `confidence` share of the resampled differences. Deterministic for the
-/// same inputs. Both inputs must be non-empty and `iterations` positive.
-#[must_use]
-pub fn bootstrap_difference(
-    baseline: &[f64],
-    candidate: &[f64],
-    quantile: Quantile,
-    confidence: f64,
-    iterations: usize,
-    seed: u64,
-) -> Interval {
-    debug_assert!(!baseline.is_empty() && !candidate.is_empty() && iterations > 0);
-    let mut rng = SplitMix64::new(seed);
-    let p = quantile.percent();
-    let mut base_scratch = vec![0.0; baseline.len()];
-    let mut cand_scratch = vec![0.0; candidate.len()];
-    let mut diffs = Vec::with_capacity(iterations);
-    for _ in 0..iterations {
-        resample(baseline, &mut base_scratch, &mut rng);
-        resample(candidate, &mut cand_scratch, &mut rng);
-        let b = percentile_scratch(&mut base_scratch, p);
-        let c = percentile_scratch(&mut cand_scratch, p);
-        diffs.push(c - b);
-    }
-    central(&mut diffs, confidence)
-}
-
-fn resample(from: &[f64], into: &mut [f64], rng: &mut SplitMix64) {
-    for slot in into.iter_mut() {
-        *slot = from[rng.below(from.len())];
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -239,63 +161,10 @@ mod tests {
     }
 
     #[test]
-    fn nearest_rank_percentiles_of_one_to_hundred() {
-        let p = percentiles(&one_to(100)).expect("non-empty");
-        assert!((p.p50 - 50.0).abs() < f64::EPSILON);
-        assert!((p.p95 - 95.0).abs() < f64::EPSILON);
-        assert!((p.p99 - 99.0).abs() < f64::EPSILON);
-    }
-
-    #[test]
-    fn percentiles_of_small_and_unsorted_sets() {
-        let p = percentiles(&[30.0, 10.0, 20.0]).expect("non-empty");
-        assert!((p.p50 - 20.0).abs() < f64::EPSILON);
-        assert!((p.p99 - 30.0).abs() < f64::EPSILON);
-        let single = percentiles(&[7.0]).expect("non-empty");
-        assert!((single.p50 - 7.0).abs() < f64::EPSILON);
-        assert!((single.p99 - 7.0).abs() < f64::EPSILON);
-        assert_eq!(percentiles(&[]), None);
-        assert_eq!(percentile_sorted(&[], 50.0), None);
-    }
-
-    #[test]
-    fn scratch_selection_agrees_with_sorting() {
-        let values = [5.0, 1.0, 4.0, 2.0, 3.0, 9.0, 8.0];
-        let mut scratch = values.to_vec();
-        let selected = percentile_scratch(&mut scratch, 95.0);
-        let mut sorted = values.to_vec();
-        sorted.sort_by(f64::total_cmp);
-        assert!((selected - percentile_sorted(&sorted, 95.0).unwrap()).abs() < f64::EPSILON);
-    }
-
-    #[test]
-    fn bootstrap_is_deterministic_for_a_seed() {
-        let base = one_to(50);
-        let cand: Vec<f64> = one_to(50).iter().map(|v| v + 10.0).collect();
-        let a = bootstrap_difference(&base, &cand, Quantile::P95, 0.95, 500, 1);
-        let b = bootstrap_difference(&base, &cand, Quantile::P95, 0.95, 500, 1);
-        assert_eq!(a, b);
-        let c = bootstrap_difference(&base, &cand, Quantile::P95, 0.95, 500, 2);
-        let degenerate = (a.low - a.high).abs() < f64::EPSILON;
-        assert!(
-            a != c || degenerate,
-            "a different seed should usually move the interval"
-        );
-    }
-
-    #[test]
-    fn bootstrap_interval_brackets_a_known_shift() {
-        let base = one_to(200);
-        let cand: Vec<f64> = base.iter().map(|v| v + 40.0).collect();
-        let ci = bootstrap_difference(&base, &cand, Quantile::P50, 0.95, 1000, 3);
-        assert!(ci.low <= 40.0 && 40.0 <= ci.high, "{ci:?}");
-        assert!(ci.low >= 10.0 && ci.high <= 70.0, "{ci:?}");
-    }
-
-    #[test]
     fn a_weighted_percentile_gives_a_short_window_less_say() {
         let mut none: Vec<Window> = Vec::new();
         assert_eq!(weighted_percentile(&mut none, 50.0), None);
+        assert_eq!(percentile_sorted(&[], 50.0), None);
         // Equal weights: the nearest-rank percentile.
         let mut equal: Vec<Window> = one_to(100).into_iter().rev().map(Window::whole).collect();
         for p in [0.0, 1.0, 50.0, 95.0, 99.0, 100.0] {
@@ -347,13 +216,24 @@ mod tests {
         ci.high - ci.low
     }
 
+    /// Every window of `runs` as a run of its own: the plain bootstrap,
+    /// which takes the windows to be independent.
+    fn as_independent(runs: &[Vec<Window>]) -> Vec<Vec<Window>> {
+        runs.iter().flatten().map(|w| vec![*w]).collect()
+    }
+
     #[test]
     fn the_cluster_interval_is_wider_than_the_iid_one_for_autocorrelated_windows() {
         let base = autocorrelated(11, 8, 40, 100.0, 0.95);
         let cand = autocorrelated(12, 8, 40, 100.0, 0.95);
-        let flat =
-            |runs: &[Vec<Window>]| -> Vec<f64> { runs.iter().flatten().map(|w| w.value).collect() };
-        let iid = bootstrap_difference(&flat(&base), &flat(&cand), Quantile::P50, 0.95, 2000, 5);
+        let iid = cluster_bootstrap_difference(
+            &as_independent(&base),
+            &as_independent(&cand),
+            Quantile::P50,
+            0.95,
+            2000,
+            5,
+        );
         let cluster = cluster_bootstrap_difference(&base, &cand, Quantile::P50, 0.95, 2000, 5);
         assert!(
             width(cluster) > 2.0 * width(iid),
@@ -370,9 +250,9 @@ mod tests {
                     .collect()
             })
             .collect();
-        let iid = bootstrap_difference(
-            &flat(&independent),
-            &flat(&cand),
+        let iid = cluster_bootstrap_difference(
+            &as_independent(&independent),
+            &as_independent(&cand),
             Quantile::P50,
             0.95,
             2000,
@@ -399,29 +279,21 @@ mod tests {
         let one_cand = vec![cand[0].clone()];
         let ci = cluster_bootstrap_difference(&one_base, &one_cand, Quantile::P95, 0.95, 200, 7);
         assert!((ci.high - ci.low).abs() < f64::EPSILON, "{ci:?}");
-        // Runs of one window each are the plain bootstrap, draw for draw.
-        let values = one_to(50);
-        let shifted: Vec<f64> = values.iter().map(|v| v + 10.0).collect();
+        // Runs of one window each: the interval brackets a known shift.
         let singles = |values: &[f64]| -> Vec<Vec<Window>> {
             values.iter().map(|v| vec![Window::whole(*v)]).collect()
         };
-        assert_eq!(
-            cluster_bootstrap_difference(
-                &singles(&values),
-                &singles(&shifted),
-                Quantile::P95,
-                0.95,
-                500,
-                1
-            ),
-            bootstrap_difference(&values, &shifted, Quantile::P95, 0.95, 500, 1)
+        let values = one_to(200);
+        let shifted: Vec<f64> = values.iter().map(|v| v + 40.0).collect();
+        let ci = cluster_bootstrap_difference(
+            &singles(&values),
+            &singles(&shifted),
+            Quantile::P50,
+            0.95,
+            1000,
+            3,
         );
-    }
-
-    #[test]
-    fn bootstrap_of_identical_sets_contains_zero() {
-        let base = one_to(100);
-        let ci = bootstrap_difference(&base, &base, Quantile::P95, 0.95, 1000, 9);
-        assert!(ci.low <= 0.0 && 0.0 <= ci.high, "{ci:?}");
+        assert!(ci.low <= 40.0 && 40.0 <= ci.high, "{ci:?}");
+        assert!(ci.low >= 10.0 && ci.high <= 70.0, "{ci:?}");
     }
 }

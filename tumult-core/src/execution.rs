@@ -2,19 +2,6 @@
 
 use crate::types::{Activity, ActivityResult, ActivityStatus, ActivityType, SpanId, TraceId};
 
-use thiserror::Error;
-
-/// Errors produced while executing a method or rollback activity.
-///
-/// Retained for future provider-level error propagation.
-#[allow(dead_code)]
-#[derive(Error, Debug)]
-pub enum ExecutionError {
-    /// An activity's provider reported a failure.
-    #[error("activity '{name}' failed: {reason}")]
-    ActivityFailed { name: String, reason: String },
-}
-
 /// Rollback strategy — when to execute rollbacks.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RollbackStrategy {
@@ -80,15 +67,6 @@ pub fn make_result(params: ResultParams<'_>) -> ActivityResult {
     }
 }
 
-/// Check if all activity results succeeded.
-#[must_use]
-pub fn all_succeeded(results: &[ActivityResult]) -> bool {
-    !results.is_empty()
-        && results
-            .iter()
-            .all(|r| r.status == ActivityStatus::Succeeded)
-}
-
 /// Whether the method applied its fault as written: it ran a step, and
 /// every action in it succeeded. A probe of the method is judged by
 /// [`probes_held`].
@@ -101,23 +79,13 @@ pub fn actions_succeeded(results: &[ActivityResult]) -> bool {
             .all(|r| r.status == ActivityStatus::Succeeded)
 }
 
-/// Whether every probe in these results held: none failed and none timed
-/// out. A probe that was skipped read nothing, so it says nothing.
+/// Whether every probe in these results held: none failed. A probe that
+/// was skipped read nothing, so it says nothing.
 #[must_use]
 pub fn probes_held(results: &[ActivityResult]) -> bool {
-    !results.iter().any(|r| {
-        r.activity_type == ActivityType::Probe
-            && matches!(r.status, ActivityStatus::Failed | ActivityStatus::Timeout)
-    })
-}
-
-/// Count activities by type in a method.
-#[must_use]
-pub fn count_by_type(activities: &[Activity], activity_type: &ActivityType) -> usize {
-    activities
+    !results
         .iter()
-        .filter(|a| a.activity_type == *activity_type)
-        .count()
+        .any(|r| r.activity_type == ActivityType::Probe && r.status == ActivityStatus::Failed)
 }
 
 /// Separate method steps into sequential and background activities.
@@ -154,24 +122,6 @@ mod tests {
             pause_before_s: None,
             pause_after_s: None,
             background,
-            label_selector: None,
-        }
-    }
-
-    fn test_probe(name: &str) -> Activity {
-        Activity {
-            name: name.into(),
-            activity_type: ActivityType::Probe,
-            provider: Provider::Process {
-                path: "scripts/health-check.sh".into(),
-                arguments: vec![],
-                env: HashMap::new(),
-                timeout_s: Some(5.0),
-            },
-            tolerance: None,
-            pause_before_s: None,
-            pause_after_s: None,
-            background: false,
             label_selector: None,
         }
     }
@@ -275,88 +225,12 @@ mod tests {
     }
 
     #[test]
-    fn a_probe_that_timed_out_did_not_hold_and_a_skipped_one_says_nothing() {
-        assert!(!probes_held(&[step(
-            ActivityType::Probe,
-            ActivityStatus::Timeout
-        )]));
+    fn a_skipped_probe_says_nothing() {
         assert!(probes_held(&[step(
             ActivityType::Probe,
             ActivityStatus::Skipped
         )]));
         assert!(probes_held(&[]));
-    }
-
-    // ── all_succeeded ──────────────────────────────────────────
-
-    #[test]
-    fn all_succeeded_empty_is_false() {
-        assert!(!all_succeeded(&[]));
-    }
-
-    #[test]
-    fn all_succeeded_with_success() {
-        let results = vec![ActivityResult {
-            name: "a".into(),
-            activity_type: ActivityType::Action,
-            status: ActivityStatus::Succeeded,
-            started_at_ns: 0,
-            duration_ms: 0,
-            output: None,
-            error: None,
-            trace_id: "".into(),
-            span_id: "".into(),
-        }];
-        assert!(all_succeeded(&results));
-    }
-
-    #[test]
-    fn all_succeeded_with_failure() {
-        let results = vec![
-            ActivityResult {
-                name: "a".into(),
-                activity_type: ActivityType::Action,
-                status: ActivityStatus::Succeeded,
-                started_at_ns: 0,
-                duration_ms: 0,
-                output: None,
-                error: None,
-                trace_id: "".into(),
-                span_id: "".into(),
-            },
-            ActivityResult {
-                name: "b".into(),
-                activity_type: ActivityType::Action,
-                status: ActivityStatus::Failed,
-                started_at_ns: 0,
-                duration_ms: 0,
-                output: None,
-                error: None,
-                trace_id: "".into(),
-                span_id: "".into(),
-            },
-        ];
-        assert!(!all_succeeded(&results));
-    }
-
-    // ── count_by_type ──────────────────────────────────────────
-
-    #[test]
-    fn count_actions_and_probes() {
-        let activities = vec![
-            test_action("a1", false),
-            test_probe("p1"),
-            test_action("a2", false),
-            test_probe("p2"),
-            test_probe("p3"),
-        ];
-        assert_eq!(count_by_type(&activities, &ActivityType::Action), 2);
-        assert_eq!(count_by_type(&activities, &ActivityType::Probe), 3);
-    }
-
-    #[test]
-    fn count_empty_method() {
-        assert_eq!(count_by_type(&[], &ActivityType::Action), 0);
     }
 
     // ── partition_background ───────────────────────────────────

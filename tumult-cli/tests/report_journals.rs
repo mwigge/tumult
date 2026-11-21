@@ -108,7 +108,7 @@ fn the_steps_of_a_run_say_how_each_ended_and_when() {
         method_results: vec![
             ActivityResult {
                 output: Some("partial output".into()),
-                ..step("timed-out", ActivityStatus::Timeout, 1500, 30_000)
+                ..step("timed-out", ActivityStatus::Failed, 1500, 30_000)
             },
             ActivityResult {
                 activity_type: ActivityType::Probe,
@@ -142,7 +142,7 @@ fn the_steps_of_a_run_say_how_each_ended_and_when() {
                 "method",
                 "timed-out",
                 "action",
-                "timeout",
+                "failed",
                 "+1.5 s",
                 "30.0 s",
                 "",
@@ -205,7 +205,6 @@ fn the_steps_of_a_run_say_how_each_ended_and_when() {
         ["method", "method", "method", "rollback"]
     );
     for badge in [
-        r#"<span class="badge fail">timeout</span>"#,
         r#"<span class="badge muted">skipped</span>"#,
         r#"<span class="badge fail">failed</span>"#,
         r#"<span class="badge ok">succeeded</span>"#,
@@ -663,23 +662,16 @@ fn the_measurements_of_a_run_are_those_of_each_probe_during_and_after_the_fault(
 }
 
 #[test]
-fn what_a_run_measured_of_its_degradation_and_its_data_is_in_the_report() {
+fn the_time_a_run_took_to_recover_is_in_the_report() {
     let html = report_for(&Journal {
         during_result: Some(DuringResult {
             probes: vec![],
-            degradation_onset_s: Some(1.2),
-            degradation_peak_s: Some(4.0),
-            degradation_magnitude: Some(0.375),
-            graceful_degradation: Some(true),
             ..during()
         }),
         post_result: Some(PostResult {
             probes: vec![],
             recovery_time_s: 4.2,
             full_recovery: true,
-            residual_degradation: Some(0.125),
-            data_integrity_verified: Some(true),
-            data_loss_detected: Some(false),
             mttr_s: Some(5.5),
             ..post()
         }),
@@ -691,18 +683,11 @@ fn what_a_run_measured_of_its_degradation_and_its_data_is_in_the_report() {
         [
             row(&["Fault active", "12.5 s"]),
             row(&["Sample interval", "500 ms"]),
-            row(&["Degradation first seen after", "1.2 s"]),
-            row(&["Degradation at its peak after", "4.0 s"]),
-            row(&["Worst deviation from the baseline", "0.375"]),
-            row(&["Degraded gradually", "yes"]),
             row(&["Watched for", "30.0 s"]),
             row(&["Samples", "30"]),
             row(&["Recovery time", "4.2 s"]),
             row(&["Full recovery", "yes"]),
             row(&["MTTR", "5.5 s"]),
-            row(&["Deviation left at the end", "0.125"]),
-            row(&["Data integrity verified", "yes"]),
-            row(&["Data loss detected", "no"]),
         ]
     );
 }

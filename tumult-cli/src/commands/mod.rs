@@ -83,7 +83,7 @@ mod tests;
 #[cfg(test)]
 pub(crate) use compliance::compliance_verdict;
 #[cfg(test)]
-pub(crate) use init::{generate_template, init_at};
+pub(crate) use init::init_at;
 #[cfg(test)]
 pub(crate) use load::*;
 #[cfg(test)]
