@@ -1,99 +1,81 @@
 ---
-title: Experiment Scheduling
+title: Experiment scheduling
 parent: Run experiments
 grand_parent: Guides
-nav_order: 3
-summary: "Run experiments and GameDays on a timer"
+nav_order: 5
+summary: "Run experiments on a timer"
 ---
 
-# Experiment Scheduling
+# Experiment scheduling
 
-The `tumultd` daemon runs registered experiment definitions on a fixed
-interval. Schedules are managed from the web UI (**Schedules** page,
-operator role) or the JSON API, and the daemon fires them in the
-background.
+A schedule runs a registered experiment again and again, on a fixed interval.
+The daemon `tumultd` fires it, so fresh evidence arrives without anyone
+starting a run.
 
-## How it works
+![The Schedules page: two schedules and the form for a new one](../images/3.0/screenshots/schedules.png)
 
-- A schedule points at a definition in the registry (`registry_id`) and
-  fires every `interval_s` seconds. The first fire is one interval after
-  creation.
-- The interval must be between 60 seconds and 30 days — below 60s the
-  scheduler's tick cannot keep up meaningfully.
-- The daemon's schedule scheduler ticks every `TUMULTD_SCHEDULE_TICK_S`
-  seconds (default 30, minimum 1; invalid values fall back to the default)
-  and fires every due, enabled schedule.
-- Scheduled runs go through the **normal run path** — the same tier
-  classification and approval gating as `POST /api/runs` — so a scheduled
-  production-tier run still parks for approval.
-- Fired runs are recorded with the user who created the schedule as their
-  actor and appear in the audit trail like any other run.
-- Missed fires collapse: after daemon downtime a schedule fires exactly once
-  on the first tick back, never a piled-up backlog. A full run queue retries
-  the fire next tick; a broken definition advances the schedule anyway so it
-  does not error every tick.
+## Create a schedule
 
-## API
+On the **Schedules** page (operator role), pick a registered definition, an
+interval (every 15 minutes up to weekly), an environment, and variables if the
+experiment needs them. The page lists each schedule with its next fire, last
+run and status, and can disable or delete it.
 
-- `GET /api/schedules` — list every schedule in the caller's environments,
-  with its definition name.
-- `POST /api/schedules` — create an enabled schedule:
+The same through the API:
 
-  ```json
-  {
-    "name": "hourly-latency",
-    "registry_id": "<registry id>",
-    "interval_s": 3600,
-    "vars": {"duration_s": "30"},
-    "env": "dev",
-    "target": "optional-target"
-  }
-  ```
+```bash
+curl -X POST http://127.0.0.1:4318/api/schedules \
+  -H "Authorization: Bearer $TUMULT_TOKEN" -H "Content-Type: application/json" \
+  -d '{"name": "hourly-latency", "registry_id": "<registry id>",
+       "interval_s": 3600, "vars": {"duration_s": "30"}, "env": "dev"}'
+```
 
-  `vars`, `env` (default `dev`) and `target` are optional. Creation
-  validates the interval bounds and that the definition resolves with the
-  supplied variables — a bad schedule fails fast with 400 instead of
-  erroring every tick.
-- `POST /api/schedules/{id}/enable` with `{"enabled": false}` — disable (or
-  re-enable) a schedule.
-- `POST /api/schedules/{id}/delete` — remove a schedule. Runs it already
-  fired are untouched.
+| Call | Does |
+|---|---|
+| `GET /api/schedules` | Lists the schedules of your environments |
+| `POST /api/schedules` | Creates an enabled schedule. `vars`, `env` (default `dev`) and `target` are optional |
+| `POST /api/schedules/{id}/enable` with `{"enabled": false}` | Disables it (`true` enables it again) |
+| `POST /api/schedules/{id}/delete` | Deletes it. Runs it already fired stay |
 
-## Web UI
+The interval is 60 seconds to 30 days. Creation checks that the definition
+resolves with the given variables, so a broken schedule fails at once with a
+400.
 
-The **Schedules** page lists every schedule with its interval, next and
-last run, environment and status, and offers create, enable/disable and
-delete.
+## How a schedule fires
 
-## CLI-only alternative
+```mermaid
+flowchart TD
+    accTitle: How a schedule fires
+    accDescr: The daemon ticks, finds due schedules, and sends each through the normal run path with tiers and approvals.
+    tick[Daemon tick, every 30 s] --> due{Schedule due and enabled?}
+    due -->|no| tick
+    due -->|yes| run[Normal run path: tier check and approval]
+    run --> next[Next fire: now plus the interval]
+```
 
-For a CLI-only setup without the daemon, cron or a systemd timer invoking
-`tumult run` still works:
+- The first fire is one interval after creation.
+- A scheduled run goes through the same tier check and approval as any run,
+  so a production run still waits for approval. Its actor is the person who
+  made the schedule, and it shows in the audit trail.
+- After the daemon was down, a schedule fires once on the first tick back.
+  Missed fires do not pile up.
+- A full run queue tries again on the next tick. A definition that no longer
+  resolves moves on to its next fire, so it does not fail every tick.
+- `TUMULTD_SCHEDULE_TICK_S` sets the tick (default 30, at least 1).
+
+## Without the daemon
+
+Use cron or a systemd timer. This also works for a GameDay, which schedules do
+not run:
 
 ```cron
-# Run a chaos experiment every weekday at 10:00 UTC
+# Every weekday at 10:00
 0 10 * * 1-5 /usr/local/bin/tumult run /etc/tumult/experiments/api-latency.toon
+0 11 * * 1   /usr/local/bin/tumult gameday run /etc/tumult/gamedays/weekly.toon
 ```
 
-```ini
-# /etc/systemd/system/tumult-experiment.timer
-[Unit]
-Description=Run Tumult experiment on schedule
+## Next
 
-[Timer]
-OnCalendar=Mon..Fri 10:00 UTC
-Persistent=true
-
-[Install]
-WantedBy=timers.target
-```
-
-```ini
-# /etc/systemd/system/tumult-experiment.service
-[Unit]
-Description=Tumult chaos experiment
-
-[Service]
-Type=oneshot
-ExecStart=/usr/local/bin/tumult run /etc/tumult/experiments/api-latency.toon
-```
+- [Production deployment](production-deployment.md): run the daemon.
+- [Variables and secrets](variables-and-secrets.md): the values a schedule
+  sends.

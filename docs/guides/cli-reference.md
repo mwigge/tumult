@@ -637,7 +637,7 @@ Agentic AI fault-injection scenarios and local smoke tests — scenario packs, d
 tumult agentic <list-packs|smoke|run|trajectory|replay|proxy|run-live>
 ```
 
-See the [Agentic Scenarios guide](agentic-scenarios.md) for pack authoring and the [Agentic Observability guide](agentic-observability.md) for trace capture.
+See the [Agentic quickstart](agentic-quickstart.md) for the packs and the [Agentic Observability guide](agentic-observability.md) for trace capture.
 
 ## tumult gameday
 
