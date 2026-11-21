@@ -189,7 +189,7 @@ tumult run experiment.toon
 | `Dockerfile.tumult` | CLI + MCP image (both binaries) |
 | `Dockerfile.tumultd` | tumultd image (web UI build + daemon + CLI) |
 | `Dockerfile.tumult-mcp` | MCP server entrypoint variant |
-| `Dockerfile.sshd` | SSH test target |
+| `Dockerfile.sshd` | SSH test target (`tumult-sshd:lab`), and the stress-ng image of the Pumba stress steps |
 | `Dockerfile.demo-app`, `Dockerfile.demo-control-panel`, `Dockerfile.demo-traffic` | Images of the demo stack |
 | `tumult-collector/config.yaml` | OTel Collector pipeline config |
 | `init-postgres.sql` | PostgreSQL test schema |

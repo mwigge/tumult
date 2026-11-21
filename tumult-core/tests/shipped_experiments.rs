@@ -817,3 +817,88 @@ fn the_dns_example_looks_at_the_name_it_redirected() {
 
     assert!(seen_after, "no probe resolves the redirected name");
 }
+
+// ── Pumba in the lab ───────────────────────────────────────────
+
+/// The experiments that the examples proof runs against the lab.
+const LAB_DIRS: &[&str] = &["examples", "gamedays"];
+
+/// The Pumba image of the lab, pinned by tag and digest. A tag alone can
+/// move under a run, and the workflow pulls this one before the runs.
+const PUMBA_IMAGE: &str = "ghcr.io/alexei-led/pumba:1.6.0@sha256:11ed15538c7ec688628e2f53917d949e8c16418c146742731c3030ef276b6057";
+
+/// The stress-ng image a stress step of the lab gives Pumba. The default
+/// image of Pumba picks its code by the model of the CPU, and it stopped
+/// with SIGILL on a runner where AVX-512 could not run. The SSH server
+/// image of the lab is Alpine, whose stress-ng has no such code. The lab
+/// builds it, so Pumba must not pull it.
+const LAB_STRESS_IMAGE: &str = "--stress-image tumult-sshd:lab --pull-image=false";
+
+/// Each shell command of a lab experiment that runs Pumba, with its file.
+fn pumba_commands() -> Vec<(String, String)> {
+    LAB_DIRS
+        .iter()
+        .flat_map(|dir| toon_files(dir))
+        .filter(|p| !is_gameday(p) && !is_journal(p))
+        .flat_map(|p| {
+            let experiment = load(&p).unwrap_or_else(|e| panic!("{}: {e}", shown(&p)));
+            let probes = experiment.steady_state_hypothesis.map(|h| h.probes);
+            let steps = experiment
+                .method
+                .into_iter()
+                .chain(experiment.rollbacks)
+                .chain(probes.into_iter().flatten());
+            let file = shown(&p);
+            steps
+                .filter_map(|step| match step.provider {
+                    Provider::Process { arguments, .. } => Some(arguments),
+                    _ => None,
+                })
+                .flatten()
+                .filter(|argument| argument.contains("alexei-led/pumba"))
+                .map(move |command| (file.clone(), command))
+                .collect::<Vec<_>>()
+        })
+        .collect()
+}
+
+/// The words of a command after the Pumba image: the Pumba command and
+/// its flags.
+fn pumba_words(command: &str) -> Vec<&str> {
+    command
+        .split_whitespace()
+        .skip_while(|word| !word.contains("alexei-led/pumba"))
+        .skip(1)
+        .collect()
+}
+
+#[test]
+fn every_pumba_step_of_the_lab_runs_the_pinned_image() {
+    let commands = pumba_commands();
+    assert!(!commands.is_empty(), "no lab experiment runs Pumba");
+
+    let unpinned: Vec<String> = commands
+        .iter()
+        .filter(|(_, command)| !command.contains(&format!(" {PUMBA_IMAGE} ")))
+        .map(|(file, command)| format!("{file}: {command}"))
+        .collect();
+
+    assert!(unpinned.is_empty(), "{}", unpinned.join("\n"));
+}
+
+#[test]
+fn every_pumba_stress_step_of_the_lab_uses_the_stress_ng_of_the_lab() {
+    let stress: Vec<(String, String)> = pumba_commands()
+        .into_iter()
+        .filter(|(_, command)| pumba_words(command).first() == Some(&"stress"))
+        .collect();
+    assert!(!stress.is_empty(), "no lab experiment runs a Pumba stress");
+
+    let default_image: Vec<String> = stress
+        .iter()
+        .filter(|(_, command)| !pumba_words(command).join(" ").contains(LAB_STRESS_IMAGE))
+        .map(|(file, command)| format!("{file}: {command}"))
+        .collect();
+
+    assert!(default_image.is_empty(), "{}", default_image.join("\n"));
+}

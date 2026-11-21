@@ -10,7 +10,12 @@
 #   TUMULT_CPU_WORKERS  — number of CPU stress workers (default: 1)
 #   TUMULT_MEM_WORKERS  — number of memory stress workers (default: 1)
 #   TUMULT_IO_WORKERS   — number of IO stress workers (default: 1)
-#   TUMULT_PUMBA_IMAGE  — Pumba image (default: ghcr.io/alexei-led/pumba:latest)
+#   TUMULT_PUMBA_IMAGE  — Pumba image (default: ghcr.io/alexei-led/pumba:1.6.0, pinned by digest)
+#   TUMULT_STRESS_IMAGE - stress-ng image that Pumba starts (default:
+#                         ghcr.io/alexei-led/stress-ng:0.20.01, pinned by digest).
+#                         That stress-ng picks code by CPU model, so it can stop
+#                         with SIGILL on a VM where AVX-512 cannot run. A
+#                         stress-ng built on Alpine does not do that.
 
 set -eu
 
@@ -22,7 +27,8 @@ STRESS_TYPE="${TUMULT_STRESS_TYPE:-cpu}"
 CPU_WORKERS="${TUMULT_CPU_WORKERS:-1}"
 MEM_WORKERS="${TUMULT_MEM_WORKERS:-1}"
 IO_WORKERS="${TUMULT_IO_WORKERS:-1}"
-PUMBA_IMAGE="${TUMULT_PUMBA_IMAGE:-ghcr.io/alexei-led/pumba:latest}"
+PUMBA_IMAGE="${TUMULT_PUMBA_IMAGE:-ghcr.io/alexei-led/pumba:1.6.0@sha256:11ed15538c7ec688628e2f53917d949e8c16418c146742731c3030ef276b6057}"
+STRESS_IMAGE="${TUMULT_STRESS_IMAGE:-ghcr.io/alexei-led/stress-ng:0.20.01@sha256:6f5de54261666970ce98abb2d710b6337c44575cd31c5886c63745323a7c12a2}"
 
 validate_enum "TUMULT_STRESS_TYPE" "$STRESS_TYPE" "cpu memory io all"
 validate_integer "TUMULT_CPU_WORKERS" "$CPU_WORKERS"
@@ -35,15 +41,16 @@ case "$STRESS_TYPE" in
     all) STRESSORS="--cpu ${CPU_WORKERS} --vm ${MEM_WORKERS} --io ${IO_WORKERS} --timeout ${DURATION}" ;;
 esac
 
-PUMBA_ARGS="stress -d ${DURATION} --stressors=${STRESSORS}"
+# The pumba argv as discrete quoted words: the stressors are one argument.
+set -- stress -d "${DURATION}" --stress-image "${STRESS_IMAGE}" "--stressors=${STRESSORS}"
 
 if command -v pumba >/dev/null 2>&1; then
-    pumba ${PUMBA_ARGS} "${CONTAINER}" >/dev/null 2>&1
+    pumba "$@" "${CONTAINER}" >/dev/null 2>&1
 else
     DOCKER_SOCK="${DOCKER_HOST:-unix:///var/run/docker.sock}"
     SOCK_PATH="$(echo "$DOCKER_SOCK" | sed 's|unix://||')"
     docker run --rm -v "${SOCK_PATH}:${SOCK_PATH}" -e "DOCKER_HOST=${DOCKER_SOCK}" \
-        "${PUMBA_IMAGE}" ${PUMBA_ARGS} "${CONTAINER}" >/dev/null 2>&1
+        "${PUMBA_IMAGE}" "$@" "${CONTAINER}" >/dev/null 2>&1
 fi
 
 cat <<EOF

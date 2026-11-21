@@ -1,12 +1,19 @@
 # Minimal SSH server for Tumult e2e testing.
 # Accepts key-based auth only. No password auth.
 #
+# The Pumba stress steps of the lab examples also start this image, as
+# tumult-sshd:lab, for its stress-ng at /stress-ng. The default
+# stress-ng image of Pumba picks its code by CPU model, and it stopped
+# with SIGILL on a runner where AVX-512 could not run. Alpine builds
+# stress-ng with musl, which does not pick code that way.
+#
 # Build: docker build -f Dockerfile.sshd -t tumult-sshd .
 # Test:  ssh -p 12222 -i ./test_key tumult@localhost uname -a
 
-FROM alpine:3.20
+FROM alpine:3.20.10@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc
 
 RUN apk add --no-cache openssh-server stress-ng procps coreutils \
+    && ln -s /usr/bin/stress-ng /stress-ng \
     && ssh-keygen -A \
     && adduser -D -s /bin/sh tumult \
     && mkdir -p /home/tumult/.ssh \
