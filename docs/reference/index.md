@@ -6,4 +6,6 @@ has_children: true
 
 # Reference
 
-Deep technical reference documentation for Tumult internals, data models, and standards.
+Pages to look things up in: every CLI command and flag, every page of the web
+UI, the `resilience.*` attribute names, and how the evidence maps to the
+regulations.
