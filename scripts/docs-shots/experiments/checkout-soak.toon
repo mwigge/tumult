@@ -1,0 +1,47 @@
+title: checkout soak, latency under steady load
+description: Twenty-four seconds of steady load against the checkout service, sampled every second, so the run leaves 24 load windows for the performance verdict to compare.
+
+tags[2]: demo, performance
+kind: performance
+target:
+  system: checkout
+  technology: http
+  environment: demo
+nfr[1]:
+  - id: p95-sane
+    kind: latency
+    metric: load.latency_p95_ms
+    operator: lte
+    threshold: 2000
+    criticality: minor
+
+load:
+  tool: oha
+  script: "http://127.0.0.1:${port}/"
+  vus: 4
+  duration_s: 24
+  profile:
+    type: soak
+    sample_interval_s: 1
+
+steady_state_hypothesis:
+  title: Checkout answers
+  probes[1]:
+    - name: health
+      activity_type: probe
+      provider:
+        type: process
+        path: sh
+        arguments[2]: "-c", "curl -fsS -o /dev/null http://127.0.0.1:${port}/ready"
+        timeout_s: 5.0
+
+method[1]:
+  - name: hold-for-the-soak
+    activity_type: probe
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "sleep 25 && curl -fsS -o /dev/null http://127.0.0.1:${port}/ready"
+      timeout_s: 90.0
+
+rollbacks[0]:

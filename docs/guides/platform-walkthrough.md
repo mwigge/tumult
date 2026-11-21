@@ -30,7 +30,7 @@ You cannot approve your own run. To approve a run you started as `admin`,
 sign in as `bob` with the password `demo-bob-permanent-pw` (local demo
 only).
 
-![Login page](../assets/login.png)
+![Login page](../images/3.0/screenshots/login.png)
 
 ## Part 1: What does the evidence say?
 
@@ -117,16 +117,16 @@ flowchart LR
 The Author page lists every fault and probe your plugins offer. Pick one
 and a wizard writes the experiment file for you.
 
-![Author page with the fault catalog](../assets/author-catalog.png)
+![Author page with the fault catalog](../images/3.0/screenshots/author.png)
 
-![The wizard for one fault](../assets/author-new.png)
+![The wizard for one fault](../images/3.0/screenshots/author-new.png)
 
 ### 2. Dry run, then start
 
 Choose the experiment, fill in its values, and look at the dry run. It
 shows the exact steps and rollbacks. Then start.
 
-![New run with a dry-run preview](../assets/runs-new-dry-run.png)
+![New run with a dry-run preview](../images/3.0/screenshots/runs-new.png)
 
 ### 3. Approval
 
@@ -139,9 +139,9 @@ is an [execution binding](execution-bindings.md). Without one, the run is
 treated as the highest tier, and the approval queue cannot release it:
 **Approve** says that the binding is missing.
 
-![A run waiting for approval](../assets/run-pending-approval.png)
+![A run waiting for approval](../images/3.0/screenshots/run-pending-approval.png)
 
-![The approver reviews the request](../assets/approvals-queue-review.png)
+![The approver reviews the request](../images/3.0/screenshots/approvals.png)
 
 ### 4. Read the result
 
@@ -159,9 +159,9 @@ More: [forecasting and run impact](forecasting.md).
 Stopping takes two clicks, so it cannot happen by accident. A stopped run
 rolls back. **Halt all** on the Runs page stops everything at once.
 
-![Stop confirmation](../assets/run-estop-confirm.png)
+![Stop confirmation](../images/3.0/screenshots/run-stop-confirm.png)
 
-![A stopped run](../assets/run-estop-aborted.png)
+![A stopped run](../images/3.0/screenshots/run-stopped.png)
 
 ## Part 3: Reports
 
@@ -176,19 +176,19 @@ Tumult makes three PDF reports from the stored evidence.
 Reports summarise evidence. They do not certify compliance. Users who may
 see only some environments get reports for those environments only.
 
-![Reports page](../assets/reports-evidence-pack.png)
+![Reports page](../images/3.0/screenshots/reports.png)
 
 ## Part 4: Daily work
 
 | Page | What it is for | Picture |
 |---|---|---|
-| Runs | All runs, with filters and **Halt all** | ![Runs](../assets/runs-stop-all.png) |
-| Manual | Records of exercises that telemetry cannot see. A second person verifies each one. | ![Manual evidence](../assets/manual-evidence.png) |
-| GameDays | Groups of experiments run as one scored campaign | ![GameDays](../assets/gamedays.png) |
-| Schedules | Run experiments on a timer | ![Schedules](../assets/schedules.png) |
-| Events | Who did what, newest first | ![Events](../assets/events.png) |
-| Webhooks | Send events to other tools, signed | ![Webhooks](../assets/webhooks.png) |
-| Users | Accounts, roles and API tokens | ![Users](../assets/users.png) |
+| Runs | All runs, with filters and **Halt all** | ![Runs](../images/3.0/screenshots/runs.png) |
+| Manual | Records of exercises that telemetry cannot see. A second person verifies each one. | ![Manual evidence](../images/3.0/screenshots/manual.png) |
+| GameDays | Groups of experiments run as one scored campaign | ![GameDays](../images/3.0/screenshots/gamedays.png) |
+| Schedules | Run experiments on a timer | ![Schedules](../images/3.0/screenshots/schedules.png) |
+| Events | Who did what, newest first | ![Events](../images/3.0/screenshots/events.png) |
+| Webhooks | Send events to other tools, signed | ![Webhooks](../images/3.0/screenshots/webhooks.png) |
+| Users | Accounts, roles and API tokens | ![Users](../images/3.0/screenshots/users.png) |
 
 ## All pages
 

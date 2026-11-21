@@ -338,5 +338,8 @@ jobs:
       - run: python3 scripts/test-check-test-hygiene.py
       - run: python3 scripts/check-test-hygiene.py
       - run: python3 scripts/test-check-prose.py
+      # Every picture a page names exists, and every picture of docs/images
+      # and docs/assets is named by a page or listed in images-allow.txt.
+      - run: python3 scripts/test-check-images.py
       - run: python3 scripts/test-check-pr-body.py
       - run: python3 scripts/test-quality-gates.py

@@ -1,0 +1,13 @@
+# Image files under docs/images and docs/assets that no page names on
+# purpose. Read by scripts/check-images.py. One `path  # reason` per line;
+# the reason is required. A line whose file is gone, or that a page names,
+# fails the check, so the pull request that shows a picture deletes its line.
+
+# Light diagrams of the agentic guides, still true; the agentic guides take
+# them in the 3.0.3 page rewrite. The SVG files are their sources.
+docs/images/tumult-agentic-clients.png  # for guides/agentic-cross-client-observability.md
+docs/images/tumult-agentic-proxy.png  # for guides/agentic-quickstart.md
+docs/images/tumult-agentic-trace.png  # for guides/agentic-observability.md
+docs/images/src/tumult-agentic-clients.svg  # source of tumult-agentic-clients.png
+docs/images/src/tumult-agentic-proxy.svg  # source of tumult-agentic-proxy.png
+docs/images/src/tumult-agentic-trace.svg  # source of tumult-agentic-trace.png
