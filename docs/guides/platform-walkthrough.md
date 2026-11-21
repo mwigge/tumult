@@ -54,7 +54,7 @@ Double-click a node to focus on it. The drawer shows its evidence.
 
 ![Star Map focused on one system](../images/3.0/screenshots/starmap-focus.png)
 
-![How the Star Map is built](../images/3.0/diagrams/flow-star-map.png)
+![How the Star Map is built](../images/3.0/diagrams/flow-star-map.svg)
 
 More: [Star Map guide](star-map.md).
 
@@ -81,7 +81,7 @@ The score shows what evidence exists. It does not say that you comply.
 
 ![DORA coverage and maturity](../images/3.0/screenshots/scores-dora.png)
 
-![From evidence to a DORA score](../images/3.0/diagrams/flow-dora-score.png)
+![From evidence to a DORA score](../images/3.0/diagrams/flow-dora-score.svg)
 
 More: [DORA score guide](dora-score.md).
 
@@ -92,7 +92,7 @@ and gives a verdict: better, worse, the same, or not enough data.
 
 ![Performance page with a version verdict](../images/3.0/screenshots/performance.png)
 
-![From a load run to a verdict](../images/3.0/diagrams/flow-performance-verdict.png)
+![From a load run to a verdict](../images/3.0/diagrams/flow-performance-verdict.svg)
 
 More: [performance guide](performance-regression.md).
 

@@ -36,14 +36,14 @@ rand = "0.9"
 # in the slim runtime image.
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "registry", "fmt"] }
-opentelemetry = { version = "0.32", features = ["trace"] }
-opentelemetry_sdk = { version = "0.32", features = ["trace"] }
-opentelemetry-otlp = { version = "0.32", default-features = false, features = [
+opentelemetry = { version = "0.33", features = ["trace"] }
+opentelemetry_sdk = { version = "0.33", features = ["trace"] }
+opentelemetry-otlp = { version = "0.33", default-features = false, features = [
     "http-proto",
     "reqwest-blocking-client",
     "reqwest-rustls",
 ] }
-tracing-opentelemetry = "0.33"
+tracing-opentelemetry = "0.34"
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }

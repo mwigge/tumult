@@ -9,6 +9,7 @@ description = "TCP chaos proxy actions and probes for the Tumult platform (wraps
 [dependencies]
 tumult-otel = { path = "../tumult-otel" }
 tumult-plugin = { path = "../tumult-plugin" }
+tumult-spawn = { path = "../tumult-spawn" }
 tokio-netem = { workspace = true }
 # Minimal tokio features — library crate plus the tumult-net-proxyd daemon binary.
 # "rt-multi-thread" + "macros" drive the daemon's #[tokio::main]; "net"/"io-util"

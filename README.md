@@ -14,7 +14,7 @@ wrong, and how do we know?**
 You test your systems. Tumult keeps the results and tells you what they
 mean.
 
-![The evidence loop: plan, run, observe, store, score, find risks, pick the next test](docs/images/3.0/diagrams/flow-evidence-loop.png)
+![The evidence loop: plan, run, observe, store, score, find risks, pick the next test](docs/images/3.0/diagrams/flow-evidence-loop.svg)
 
 ## What it does
 
@@ -77,9 +77,9 @@ Open <http://localhost:8089>. Four guided lessons, no setup. See the
 
 ## How it is built
 
-![C4 level 1: Tumult and the people and systems around it](docs/images/3.0/diagrams/c4-1-context.png)
+![C4 level 1: Tumult and the people and systems around it](docs/images/3.0/diagrams/c4-1-context.svg)
 
-![C4 level 2: the parts inside Tumult](docs/images/3.0/diagrams/c4-2-containers.png)
+![C4 level 2: the parts inside Tumult](docs/images/3.0/diagrams/c4-2-containers.svg)
 
 | Part | Job |
 |---|---|

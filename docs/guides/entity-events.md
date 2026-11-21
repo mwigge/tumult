@@ -23,7 +23,7 @@ back.
 This is the first step: ingest, storage and two read endpoints. The Star
 Map, the maturity roll-up and the web UI do not read entities yet.
 
-![How entity events travel from the Collector into the lake](../images/3.0/diagrams/flow-entity-events.png)
+![How entity events travel from the Collector into the lake](../images/3.0/diagrams/flow-entity-events.svg)
 
 ## 1. Switching it on
 

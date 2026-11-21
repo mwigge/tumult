@@ -8,6 +8,10 @@ name: Site preview
 # can be seen before it merges. Failures that a later pull request fixes are
 # listed in scripts/site-known.txt; the pages that must keep answering are in
 # scripts/site-baseline.txt.
+#
+# The diagrams job draws every diagram from its source with the pinned tools
+# of scripts/diagrams and fails when a committed picture is not what its
+# source draws (scripts/render-diagrams.mjs --check).
 
 on:
   pull_request:
@@ -16,6 +20,9 @@ on:
       - ".github/workflows/site-preview.yml"
       - "scripts/site-*"
       - "scripts/test-site-*"
+      - "scripts/render-diagrams.mjs"
+      - "scripts/test-render-diagrams.py"
+      - "scripts/diagrams/**"
   workflow_dispatch:
 
 permissions:
@@ -83,3 +90,32 @@ jobs:
             site-shots
           if-no-files-found: error
           retention-days: 14
+
+  diagrams:
+    name: Diagrams
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      # archify checks each source path of a diagram at the commit the
+      # diagram pins, so the job needs the history, not only the last commit.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: scripts/diagrams/package-lock.json
+
+      - name: Install the pinned diagram tools and their browser
+        working-directory: scripts/diagrams
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Tests of the render command
+        run: python3 scripts/test-render-diagrams.py
+
+      - name: Every diagram is what its source draws
+        run: node scripts/render-diagrams.mjs --check

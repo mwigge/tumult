@@ -35,6 +35,8 @@ successfully and satisfy its tolerance to pass.
 
 ## Normal execution order
 
+![How a run executes: check the run, steady state, load, method, recovery, steady state again, status and rollback, journal](../images/3.0/diagrams/flow-execution.svg)
+
 1. The entrypoint parses, resolves configuration/secrets and validates the
    definition. Daemon runs also require an authorized execution binding and
    any required approvals before dispatch; see [Execution bindings](execution-bindings.md).

@@ -337,6 +337,43 @@ fn run_applies_env_overlay_and_closes_stdin_when_absent() {
     );
 }
 
+/// A child that another thread spawns while the agent CLI gets its pipes
+/// would keep a copy of them on macOS, and the run would wait for that
+/// child to end. So the CLI starts only when no other spawn runs.
+#[test]
+fn run_starts_the_cli_only_when_no_other_spawn_runs() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let marker = dir.path().join("started");
+    let bin = fake_bin(
+        dir.path(),
+        "agent",
+        &format!("touch '{}'", marker.display()),
+    );
+    let invocation = CliInvocation {
+        argv: vec![bin.display().to_string()],
+        stdin: None,
+        cwd: dir.path().to_path_buf(),
+        env: Vec::new(),
+        timeout: Duration::from_secs(4),
+    };
+
+    let ran = tumult_spawn::alone(|| {
+        let ran = std::thread::spawn(move || run("stub", &invocation));
+        // sleep: there is no event for a file that must stay absent; wait
+        // past the time the CLI would need to start.
+        std::thread::sleep(Duration::from_millis(500));
+        assert!(
+            !marker.exists(),
+            "the agent CLI started during another spawn"
+        );
+        ran
+    });
+
+    let raw = ran.join().expect("the run ends").expect("the run succeeds");
+    assert_eq!(raw.exit_code, Some(0));
+    assert!(marker.exists(), "the agent CLI did not run");
+}
+
 #[test]
 fn codex_explain_failure_describes_exit() {
     let raw = RawOutput {
