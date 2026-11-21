@@ -784,6 +784,29 @@ mod tests {
     }
 
     #[test]
+    fn a_step_result_of_every_status_fits_the_schema_of_a_journal_step() {
+        let step = &journal_schema()["properties"]["method_results"]["items"];
+        let statuses = step["properties"]["status"]["enum"].as_array().unwrap();
+
+        for status in ["succeeded", "failed", "skipped"] {
+            let result: tumult_core::types::ActivityResult = serde_json::from_value(json!({
+                "name": "read", "activity_type": "probe", "status": status,
+                "started_at_ns": 1, "duration_ms": 2, "trace_id": "", "span_id": "",
+            }))
+            .unwrap();
+            let value = serde_json::to_value(&result).unwrap();
+
+            assert!(
+                statuses.contains(&value["status"]),
+                "{status}: {statuses:?}"
+            );
+            for name in step["required"].as_array().unwrap() {
+                assert!(value.get(name.as_str().unwrap()).is_some(), "{name}");
+            }
+        }
+    }
+
+    #[test]
     fn every_structured_tool_has_a_schema_and_only_those() {
         for name in STRUCTURED_TOOLS {
             assert!(
