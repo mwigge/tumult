@@ -207,6 +207,7 @@ precommit:
 	cargo deny check advisories
 	cargo deny check
 	python3 scripts/check-docs.py
+	python3 scripts/check-kronika-pages.py
 	python3 scripts/check-citations.py
 	python3 scripts/check-prose.py
 	$(MAKE) mutants
