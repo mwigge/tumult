@@ -6,14 +6,26 @@
     import type { ExperimentWindow, MetricCatalogEntry, MetricQueryResult } from '#lib/types.js';
     import RangeSwitch from '#lib/components/RangeSwitch.svelte';
     import EChart from '#lib/components/EChart.svelte';
-    import { CHART } from '#lib/echarts.js';
+    import { chartTheme, chartTokens, followTheme } from '#lib/echarts.js';
     import type { EChartsCoreOption } from '#lib/echarts.js';
     import { experimentOverlay, labelGap, overlayRunId } from '#lib/overlays.js';
     import { RANGE_SECONDS, rangeAxis } from '#lib/ranges.js';
 
     const INTERVALS = ['5m', '1h', '1d'];
     const CHART_TYPES = ['line', 'area', 'bar'] as const;
-    const PALETTE = [CHART.accent, CHART.ok, CHART.warn, CHART.fail, '#a78bfa', '#f472b6'];
+
+    // The chart is drawn in the colours of the theme in force.
+    let theme = $state(chartTheme());
+    onMount(() => followTheme((next) => (theme = next)));
+    const tokens = $derived(chartTokens(theme));
+    const palette = $derived([
+        tokens.accent,
+        tokens.ok,
+        tokens.warn,
+        tokens.fail,
+        '#a78bfa',
+        '#f472b6',
+    ]);
 
     const filters = $derived({
         name: page.url.searchParams.get('name') ?? '',
@@ -113,22 +125,28 @@
         // The selected range up to now: one bucket alone would leave the
         // axis to guess, and it guessed days into the future.
         const axis = rangeAxis(filters.range, Date.now(), xs);
-        const overlay = experimentOverlay(runs, undefined, labelGap([axis.min, axis.max]), axis);
+        const overlay = experimentOverlay(
+            runs,
+            tokens,
+            undefined,
+            labelGap([axis.min, axis.max]),
+            axis,
+        );
         return {
             // Room under the legend for the upright run labels.
             grid: { left: 56, right: 20, top: 48, bottom: 24 },
-            tooltip: { trigger: 'axis', ...CHART.tooltip },
-            legend: { textStyle: { color: CHART.text }, top: 0 },
+            tooltip: { trigger: 'axis', ...tokens.tooltip },
+            legend: { textStyle: { color: tokens.text }, top: 0 },
             xAxis: {
                 type: 'time',
                 ...axis,
-                axisLine: { lineStyle: { color: CHART.axis } },
-                axisLabel: { color: CHART.text },
+                axisLine: { lineStyle: { color: tokens.axis } },
+                axisLabel: { color: tokens.text },
             },
             yAxis: {
                 type: 'value',
-                axisLabel: { color: CHART.text },
-                splitLine: { lineStyle: { color: CHART.split } },
+                axisLabel: { color: tokens.text },
+                splitLine: { lineStyle: { color: tokens.split } },
             },
             series: [
                 ...series.map((s, i) => ({
@@ -141,7 +159,7 @@
                     showSymbol: filters.chart !== 'bar',
                     symbol: 'circle',
                     symbolSize: 6,
-                    itemStyle: { color: PALETTE[i % PALETTE.length] },
+                    itemStyle: { color: palette[i % palette.length] },
                     data: s.data,
                 })),
                 ...(overlay ? [overlay] : []),

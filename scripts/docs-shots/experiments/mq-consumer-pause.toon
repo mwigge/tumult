@@ -1,0 +1,41 @@
+title: message-queue consumer pause, orders queue up and drain
+description: Pause the order consumers for a while and check that the queue drains when they come back
+
+tags[2]: pause, resilience
+kind: chaos
+target:
+  system: message-queue
+  technology: queue
+  environment: demo
+
+steady_state_hypothesis:
+  title: Consumers keep up
+  probes[1]:
+    - name: consumers-keep-up
+      activity_type: probe
+      provider:
+        type: process
+        path: sh
+        arguments[2]: "-c", "echo keeping-up"
+        timeout_s: 5.0
+      tolerance:
+        type: regex
+        pattern: "^keeping-up$"
+
+method[1]:
+  - name: pause-consumers
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "echo consumers-paused; sleep ${hold_s}; echo consumers-back"
+      timeout_s: 1200.0
+
+rollbacks[1]:
+  - name: resume-consumers
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "echo consumers-resumed"
+      timeout_s: 5.0

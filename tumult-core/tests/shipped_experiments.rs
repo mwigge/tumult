@@ -20,6 +20,7 @@ const EXPERIMENT_DIRS: &[&str] = &[
     "gamedays",
     "scripts/proof/rip-phase2",
     "scripts/proof/rip-phase4",
+    "scripts/docs-shots/experiments",
 ];
 
 /// Each `GameDay` definition with the directory its experiments are read

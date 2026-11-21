@@ -1,3 +1,10 @@
+---
+title: Architecture
+parent: Concepts
+nav_order: 3
+summary: "The daemon, the lake and the web UI, with the C4 diagrams"
+---
+
 # Architecture: tumultd, the lake and Krönika
 
 This is the architecture of the part of Tumult that turns resilience
@@ -416,9 +423,9 @@ embeds the live waterfall as loopback spans land, and exposes the
 two-step e-stop with rollback status — all role-aware (viewer is
 read-only).
 
-![The Run page: pick a registered definition, dry-run the resolved plan, start](../assets/runs-new-dry-run.png)
+![The Run page: pick a registered definition, dry-run the resolved plan, start](../images/3.0/screenshots/runs-new.png)
 
-![Run detail after an approved run: telemetry waterfall, rollback status, audit trail](../assets/run-estop-aborted.png)
+![Run detail after an approved run: telemetry waterfall, rollback status, audit trail](../images/3.0/screenshots/run-stopped.png)
 
 ## Authentication and RBAC (schema v6)
 
@@ -477,7 +484,7 @@ approve/reject/break-glass endpoints (route-table roles), the
 "Approval chain (change management)" section in the R2 evidence pack
 (SOC 2 CC8.1).
 
-![The approvals queue: an approver reviews a pending T2 run against its pin](../assets/approvals-queue-review.png)
+![The approvals queue: a pending run waits for a second person](../images/3.0/screenshots/approvals.png)
 
 ## Parquet lake + retention (durability story)
 

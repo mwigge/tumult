@@ -1,26 +1,129 @@
-// Tumult color scheme — based on the theme's dark scheme, re-paletted on
-// the product UI tokens (web/src/lib/theme.css): near-black graphite
-// chrome, cool text, and a calm blue accent for links and primary
-// controls. Saturated hues stay reserved for status and data, matching
-// the application. Basing on `dark` keeps its OneDark syntax highlighting
-// and `color-scheme: dark` for native widgets.
+// Tumult colour scheme: the light tokens of the product UI
+// (web/src/lib/theme.css). The theme loads its light scheme before this file,
+// so only the values that differ are set here.
+//
+// Every text colour is at least 4.5 : 1 on the background it sits on (WCAG
+// AA): text #1b2329 15.9, dim #5b6772 5.8 and link #1f6fb2 5.3 on white;
+// dim 5.3 and link 4.9 on the sidebar and the code panel, #f4f6f8.
 
-@import "./color_schemes/dark";
+$body-background-color: #ffffff;
+$sidebar-color: #f4f6f8;
+$border-color: #e3e8ed;
+$feedback-color: #e9eef2;
 
-$body-background-color: #0b0e11;
-$sidebar-color: #11161b;
-$border-color: #242d36;
+$body-heading-color: #1b2329;
+$body-text-color: #1b2329;
+$nav-child-link-color: #5b6772;
+$search-result-preview-color: #5b6772;
 
-$body-text-color: #d8dee4;
-$body-heading-color: #eef2f6;
-$nav-child-link-color: #8b98a5;
+$link-color: #1f6fb2;
+$btn-primary-color: #1f6fb2;
 
-$link-color: #5eb1ef;
-$btn-primary-color: #2d5d84;
-$base-button-color: #1c242c;
+$code-background-color: #f4f6f8;
 
-$code-background-color: #151b21;
-$search-background-color: #11161b;
-$search-result-preview-color: #8b98a5;
-$table-background-color: #11161b;
-$feedback-color: #0d1114;
+// The theme's dim grey colours list numbers, the sidebar footer and the
+// search. Its own value is 3.0 : 1 on white; the product's dim text passes.
+$grey-dk-000: #5b6772;
+
+// Code colours. The One Light colours of the light scheme are below 4.5 : 1
+// on the code panel (comments 2.5), so each group takes a product hue,
+// darkened where needed. Ratio on #f4f6f8 after each.
+$tumult-code-comment: #5b6772; // 5.3
+$tumult-code-keyword: #b5352a; // 5.5
+$tumult-code-string: #0a7550; // 5.3
+$tumult-code-number: #a74c08; // 5.3
+$tumult-code-name: #1f6fb2; // 4.9
+
+.highlight .c,
+.highlight .ch,
+.highlight .cd,
+.highlight .cm,
+.highlight .cp,
+.highlight .cpf,
+.highlight .c1,
+.highlight .cs,
+.highlight .gp,
+.highlight .go {
+  color: $tumult-code-comment;
+}
+
+.highlight .c,
+.highlight .ch,
+.highlight .cd,
+.highlight .cm,
+.highlight .cp,
+.highlight .cpf,
+.highlight .c1,
+.highlight .cs {
+  font-style: italic;
+}
+
+.highlight .k,
+.highlight .kd,
+.highlight .kn,
+.highlight .kp,
+.highlight .kr,
+.highlight .kt,
+.highlight .kv,
+.highlight .gd,
+.highlight .err {
+  color: $tumult-code-keyword;
+}
+
+.highlight .err {
+  background-color: transparent;
+}
+
+.highlight .s,
+.highlight .sa,
+.highlight .sb,
+.highlight .sc,
+.highlight .sd,
+.highlight .s1,
+.highlight .s2,
+.highlight .se,
+.highlight .sh,
+.highlight .si,
+.highlight .sx,
+.highlight .dl,
+.highlight .l,
+.highlight .ld,
+.highlight .gi {
+  color: $tumult-code-string;
+}
+
+.highlight .m,
+.highlight .mb,
+.highlight .mf,
+.highlight .mh,
+.highlight .mi,
+.highlight .mo,
+.highlight .mx,
+.highlight .il,
+.highlight .kc,
+.highlight .nb,
+.highlight .bp,
+.highlight .nc,
+.highlight .no,
+.highlight .nd,
+.highlight .ni,
+.highlight .ne,
+.highlight .language-json .kc {
+  color: $tumult-code-number;
+}
+
+.highlight .na,
+.highlight .nl,
+.highlight .nt,
+.highlight .nv,
+.highlight .py,
+.highlight .vc,
+.highlight .vg,
+.highlight .vi,
+.highlight .sr,
+.highlight .ss,
+.highlight .gh,
+.highlight .gu,
+.highlight .language-json .w + .s2 {
+  color: $tumult-code-name;
+}

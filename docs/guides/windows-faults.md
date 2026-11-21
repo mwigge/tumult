@@ -1,7 +1,7 @@
 ---
 title: Windows Faults
-parent: Guides
-nav_order: 21
+parent: Plugins
+nav_order: 13
 ---
 
 # Windows Faults

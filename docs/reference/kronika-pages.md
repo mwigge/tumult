@@ -1,163 +1,349 @@
 ---
 title: Krönika pages
 parent: Reference
-nav_order: 3
+nav_order: 2
+summary: "Every page of the web UI: what it shows, its evidence and its API calls"
 ---
 
-# Krönika pages, charts and evidence
+# Krönika pages
 
-The full list of pages in the web UI: the charts on each, the evidence they
-show, and the API behind them. For a picture tour, read the
+Every page of the web UI, by sidebar group: what you see, where the data
+comes from, and the API calls the page makes. For a guided tour, read the
 [platform walkthrough](../guides/platform-walkthrough.md).
 
-Krönika is the web UI embedded in `tumultd`. Every page reads the lake
-through the JSON API with the signed-in user's role and environment
-scopes; a page stores nothing of its own. The list below groups the pages of
-the sidebar and names, for each page, the charts on it and the evidence they
-are drawn from. Pages without a chart are tables or forms and say so.
+Krönika is the web UI inside `tumultd`. Each page reads the lake through the
+JSON API, with the role and environment scopes of the user who signed in. A
+page keeps no data of its own. Every page also calls `GET /api/me`, and
+`POST /api/auth/logout` when you sign out.
+
+## Colours of a run
+
+Badges, chart bands and legends use one colour for each way a run can end.
+
+```mermaid
+flowchart LR
+  accTitle: The three colours of a run
+  accDescr: A completed run is a pass in green. A deviated, failed or halted run is a fail in red. An aborted or interrupted run is no evidence in grey.
+  pass["completed<br/>pass"]:::pass
+  fail["deviated, failed, halted<br/>fail"]:::fail
+  none["aborted, interrupted<br/>no evidence"]:::none
+  classDef pass fill:#d1fae5,stroke:#059669,color:#064e3b
+  classDef fail fill:#fee2e2,stroke:#dc2626,color:#7f1d1d
+  classDef none fill:#f3f4f6,stroke:#6b7280,color:#374151
+```
+
+| Colour | Run ended as | What it means |
+|---|---|---|
+| Green | `completed` | A pass: the hypothesis held. |
+| Red | `deviated`, `failed`, `halted` | A fail. |
+| Grey | `aborted`, `interrupted` | No evidence: the run proves nothing either way. It is left out of counts, rates and scores. |
+
+A run that has not ended yet (queued, running) is grey too. Amber marks a
+state in between: a manual record that partly passed, a pending rollback, or
+an approval request that was rejected or expired.
+
+## The two scores
+
+Both run from 0 to 100.
+
+- **Compliance score** (Scores page, the gate, the digest). The latest run of
+  each experiment: pass 100, pass older than 30 days 75, failure 50, never
+  run 0. Averaged per target.
+- **Resilience score** (Resilience page). A continuous score from objective
+  margins, discipline coverage, evidence freshness and recovery against
+  target, per target and weighted by criticality.
 
 ## Evidence and intelligence
 
-| Page | Charts and panels | Evidence shown | API |
-|---|---|---|---|
-| **Overview** (`/`) | KPI cards with sparklines (experiments, run pass rate, deviation rate, mean time to recover, target coverage); runs per day as a bar chart for `24h`, with a band per run in the colour of its outcome, and a calendar heatmap for longer ranges, each with a colour legend; fault injections pie (the action steps of the runs per fault type and plugin, without probe samples and rollback steps); target systems table | Runs in the selected range and their fault injection steps, with run windows overlaid on the `24h` chart | `GET /api/overview`, `GET /api/experiments/windows` |
-| **Resilience** (`/resilience`) | Top risks list with inline accept; accepted findings; coverage heatmap of targets against the four disciplines with a legend (missing, stale, covered) and a radar of the share of targets covered per discipline, 0 to 1; objectives heatmap of targets against every objective, coloured by margin, with a legend; compliance score line over 14 days; telemetry contract table; resilience score per target | Findings of the passive risk scan, objective verdicts, discipline coverage, the score history, and which services carry the OpenTelemetry naming contract | `GET /api/risks`, `GET /api/posture`, `GET /api/scores/tree`, `GET /api/otel/conformance`, `POST /api/risks/{id}/suppress` |
-| **Performance** (`/performance`) | Target picker; verdict with how the two versions were selected and attributed; difference at the compared quantile with its confidence interval; latency distribution chart (percentile curves of baseline and candidate, the baseline dashed); tables of latency, partial runs and windows, requests and runs by version; stored verdict history | Load and probe latency samples of two `service.version`s of one target in one environment, and the verdicts an operator stored | `GET /api/perf`, `GET /api/perf/{target}`, `POST /api/perf/{target}/verdicts` |
-| **Scores** (`/scores`) | Company score with a trend sparkline; treemap of domains (area by experiments and criticality, colour by band) that drills from company to domain to member; member table (the row of the node has a sparkline) | Latest run per experiment rolled up through the `org.yaml` hierarchy, with coverage against expected evidence | `GET /api/scores/tree` |
-| **DORA** (`/scores?view=dora`) | Legal entity picker; heatmap of articles against functions or org units with a colour legend (coverage stops at 50 % and 80 %, or evidence status) and a table alternative; expected and actual evidence status with the largest gap first and an evidence drawer per row; maturity gauge, component bars on a 0 to 100 axis with a legend for the component that caps the level, and a level-and-index line per quarter with a legend; maturity per node with the node that caps the level; reporting readiness of the function register | Runs and manual records matched to the DORA requirement registry, the stored daily snapshots, and the function register declared in `org.yaml` | `GET /api/dora`, `GET /api/dora/{article}`, `GET /api/maturity` |
-| **Star Map** (`/starmap`) | One graph of organisation units, ICT entities, systems, components, services, workloads and definitions; lens switch (evidence, risk, conformance); environment and range pickers; focus on a neighbourhood; node list with a filter; evidence drawer with coverage by discipline, runs, gate verdict, objective verdicts, manual records and risks | Spans, runs, verified manual records, risk suppressions, `org.yaml` and the manifests under `KRONIKA_MANIFESTS_DIR`, assembled per request | `GET /api/starmap`, `GET /api/gate/{target}` (drawer) |
+### Overview
 
-The two scores run from 0 to 100, and each says what it measures:
+Route `/`. KPI cards with sparklines, runs per day (one band per run in the
+colour of its outcome), a pie of fault injections by type and plugin, and the
+target systems.
 
-- **Compliance score** (Scores, the gate, the digest). Latest run of each experiment: pass 100, pass older than 30 days 75, failure 50, never run 0. Averaged per target.
-- **Resilience score** (Resilience). Continuous score: objective margins, discipline coverage, evidence freshness and recovery against target, per target and criticality weighted.
+![Overview: KPI cards, runs per day with the outcome legend, fault injections](../images/3.0/screenshots/overview.png)
 
-The Resilience page was called Posture. It reads `GET /api/posture`, and
-old `/posture` links open it.
+- **Evidence:** the runs in the range you pick and their fault steps.
+- **API:** `GET /api/overview`, `GET /api/experiments/windows`.
 
-The DORA page reports what evidence exists. It does not state that an
-entity complies; see the [DORA score guide](../guides/dora-score.md). The Star Map
-lenses and marks are explained in the [Star Map guide](../guides/star-map.md), and
-the performance verdict in
-[Performance Regression](../guides/performance-regression.md). `/topology` is kept
-as a redirect to the Star Map.
+### Resilience
 
-## Experiments and runs
-
-| Page | Charts and panels | Evidence shown | API |
-|---|---|---|---|
-| **Experiments** (`/experiments`) | Filterable table: status, experiment, ID, started, duration, faults, target | The newest 500 experiment runs in the lake, from the CLI, MCP, the daemon or a manual record | `GET /api/experiments`, `GET /api/dimensions` |
-| **Experiment detail** (`/experiments/{id}`) | Panels **Steady state** (kind of test, met before and after, recovery time and point), **Objectives**, **Steps**, **Load** (totals, and charts of latency, throughput and error rate over the run) and **Probe samples** (a chart with the time of the fault marked); trace waterfall with a span drawer; logs and metric points | The journal of the run as the lake keeps it: every step with its result, every objective with its verdict, the windows of the load, the samples of the probes. The spans the engine emitted for the run. The metric points with the name of the experiment in the time of the run | `GET /api/experiments/{id}` |
-| **Runs** (`/runs`) | Table with state filters and the two-step **Halt all** | Daemon runs and their states | `GET /api/runs`, `POST /api/runs/stop-all` |
-| **New run** (`/runs/new`) | Definition picker, parameter form, dry-run preview of the resolved plan | Registered definitions | `GET /api/registry`, `POST /api/runs/dry-run`, `POST /api/runs` |
-| **Run detail** (`/runs/{id}`) | Run header with e-stop; **Planned blast radius**: what the definition of the run plans to hit, which is a plan and not a measure of what the run did; live trace waterfall; **Impact** panel: one chart per probe of observed values against the counterfactual median and its 80 % band, with the fault window and peak and recovery marks, and the model that produced it; approval chain with the approvals so far out of the number needed; hash-chained audit timeline | The run's state and audit rows, the plan of its definition, its spans, and its raw probe samples compared with a forecast | `GET /api/runs/{id}`, `POST /api/runs/dry-run`, `GET /api/experiments/{id}`, `GET /api/runs/{id}/impact` |
-| **Author** (`/author`, `/author/new`) | Fault catalog browser; scaffolding wizard with a TOON editor | The actions and probes of the mounted plugins | `GET /api/authoring/catalog`, `POST /api/authoring/scaffold`, `POST /api/runs/validate` |
-| **GameDays** (`/gamedays`, `/gamedays/{id}`) | Campaign table and registration form; campaign detail with its child runs, and an **Environment** field: the campaign runs in the environment you type | Registered campaigns and the runs they started | `GET /api/gamedays`, `GET /api/gamedays/{id}`, `POST /api/gamedays/{id}/runs`, `GET /api/runs?registry_id=` (the campaigns of the GameDay), `GET /api/runs?gameday_id=` (the runs of one campaign) |
-| **Approvals** (`/approvals`) | Queue of pending requests with approve and reject | Approval requests with their content-hash pin | `GET /api/approvals`, `POST /api/runs/{id}/approve`, `POST /api/runs/{id}/reject` |
-| **Schedules** (`/schedules`, operator) | Table and form | Recurring runs of registered definitions | `GET /api/schedules` |
-| **Manual** (`/manual`) | Entry and review tabs | Manual evidence records in their draft, submitted, verified or rejected state | `GET /api/manual/experiments` |
-
-The Impact panel is described in
-[Forecasting and run impact](../guides/forecasting.md). It is the only place in the
-UI that draws a forecast: `GET /api/forecast` returns forecast bands for
-semantic metrics, and no page charts them yet.
-
-## Telemetry explorers
-
-| Page | Charts and panels | Evidence shown | API |
-|---|---|---|---|
-| **Logs** (`/logs`) | Log volume by severity as a bar chart; searchable table with attribute filters | Log records ingested over OTLP and OTel-Arrow | `GET /api/logs`, `GET /api/logs/volume` |
-| **Traces** (`/traces`, `/traces/{id}`) | Scatter chart of trace durations; trace table; per-trace waterfall with a span drawer | Spans grouped into traces | `GET /api/traces`, `GET /api/traces/durations`, `GET /api/traces/{id}` |
-| **Metrics** (`/metrics`) | One chart of a chosen metric as line, area or bar, optionally grouped by an attribute, with experiment windows overlaid | Raw sums, gauges and histograms | `GET /api/metrics/catalog`, `GET /api/metrics/query`, `GET /api/experiments/windows` |
-| **Ask** (`/ask`) | Question box, the generated SQL and a result table | Whatever the guarded, read-only query returns from the lake | `POST /api/ask` |
-
-## Reports and administration
-
-| Page | Charts and panels | Evidence shown | API |
-|---|---|---|---|
-| **Reports** (`/reports`) | Compliance report table (R1, R2, R3) with SHA-256, HTML preview and PDF download; quick digests | Generated documents and the coverage each was built from | `GET /api/reports/v2`, `POST /api/reports/v2/generate`, `GET /api/reports` |
-| **Events** (`/events`) | Table, newest first | Run lifecycle events with their actor | `GET /api/events` |
-| **Users** (`/users`, admin) | Accounts, roles, environment scopes, API tokens | The auth tables | `GET /api/users`, `GET /api/tokens` |
-| **Webhooks** (`/webhooks`, admin) | Table and form | Configured sinks for run events | `GET /api/webhooks` |
-| **Login** (`/login`) | Sign-in and first-login password change | | `POST /api/auth/login` |
-
-Entities stored from [entity events](../guides/entity-events.md) have no page yet;
-they are read through `GET /api/entities`. Charts follow the theme
-(`dark`, `light` or `auto`), and tooltips escape every value that comes
-from the lake.
-
-## Pictures
-
-Taken from the seeded demo.
-
-### Star Map, risk view
-
-![Star Map, risk view](../images/3.0/screenshots/starmap-risk.png)
-
-### Resilience: objectives, telemetry contract and resilience score
+Route `/resilience`; old `/posture` links open it. Top risks with an inline
+accept, accepted risks, a coverage heatmap and radar of the four
+disciplines, an objectives heatmap coloured by margin, the compliance score
+over 14 days, the telemetry contract and the resilience score per target.
 
 ![Resilience: objectives, telemetry contract and resilience score](../images/3.0/screenshots/posture-score.png)
 
-### Resilience: accepted risks
-
 ![Resilience: accepted risks](../images/3.0/screenshots/posture-suppressed.png)
 
-### Scores: one unit and its members
+- **Evidence:** findings of the passive risk scan, objective verdicts,
+  discipline coverage, score history, and which services follow the
+  OpenTelemetry naming contract.
+- **API:** `GET /api/risks`, `GET /api/posture`, `GET /api/scores/tree`,
+  `GET /api/otel/conformance`, `POST /api/risks/{id}/suppress`.
+
+### Performance
+
+Route `/performance`. Pick a target. The page shows the verdict for two
+versions, the difference at the compared quantile with its confidence
+interval, the latency distribution, tables per version, and the stored
+verdicts. Read [Performance regression](../guides/performance-regression.md)
+for how a verdict is made.
+
+![Performance: the stored verdicts of one target](../images/3.0/screenshots/performance-verdicts.png)
+
+- **Evidence:** latency samples of two `service.version`s of one target in
+  one environment, and the verdicts an operator stored.
+- **API:** `GET /api/perf`, `GET /api/perf/{target}`,
+  `POST /api/perf/{target}/verdicts`.
+
+### Scores
+
+Route `/scores`. The company score with a trend, a treemap of domains that
+drills down to members, and a member table.
 
 ![Scores: one unit and its members](../images/3.0/screenshots/scores-teams.png)
 
-### DORA and maturity: level, gates and nodes
+- **Evidence:** the latest run of each experiment, rolled up through the
+  `org.yaml` hierarchy, with coverage against expected evidence.
+- **API:** `GET /api/scores/tree`.
 
-![DORA and maturity: level, gates and nodes](../images/3.0/screenshots/scores-maturity.png)
+### DORA
 
-### Performance: stored verdicts
+Route `/scores?view=dora`. A heatmap of DORA articles against functions or
+org units, expected against actual evidence with an evidence drawer per row,
+and the maturity level with the component that caps it. The page reports
+what evidence exists; it does not say that an entity complies. Read the
+[DORA score guide](../guides/dora-score.md).
 
-![Performance: stored verdicts](../images/3.0/screenshots/performance-verdicts.png)
+![DORA: maturity level, gates and nodes](../images/3.0/screenshots/scores-maturity.png)
+
+- **Evidence:** runs and manual records matched to the DORA requirements,
+  the daily snapshots, and the function register in `org.yaml`.
+- **API:** `GET /api/dora`, `GET /api/dora/{article}`, `GET /api/maturity`.
+
+### Star Map
+
+Route `/starmap`; old `/topology` links point to it. One graph of org units,
+ICT entities, systems, components, services, workloads and definitions, with
+three lenses (evidence, risk, conformance) and an evidence drawer per node.
+Read the [Star Map guide](../guides/star-map.md).
+
+![Star Map, risk lens](../images/3.0/screenshots/starmap-risk.png)
+
+- **Evidence:** spans, runs, verified manual records, accepted risks,
+  `org.yaml` and the manifests under `KRONIKA_MANIFESTS_DIR`.
+- **API:** `GET /api/starmap`, and in the drawer `GET /api/gate/{target}`
+  and `GET /api/experiments`.
+
+## Experiments and runs
 
 ### Experiments
 
+Route `/experiments`. A table you can filter: status, experiment, ID, start,
+duration, faults and target.
+
 ![Experiments](../images/3.0/screenshots/experiments.png)
+
+- **Evidence:** the newest 500 runs in the lake, from the CLI, MCP, the
+  daemon or a manual record.
+- **API:** `GET /api/experiments`, `GET /api/dimensions`.
+
+### Experiment detail
+
+Route `/experiments/{id}`. Steady state, objectives, steps, load charts,
+probe samples with the fault window marked, the trace waterfall, logs and
+metric points.
+
+![Experiment detail: steady state, objectives and steps](../images/3.0/screenshots/run-detail.png)
+
+- **Evidence:** the journal of the run as the lake keeps it, and the spans
+  and metric points of the run.
+- **API:** `GET /api/experiments/{id}`, `GET /api/experiments/windows`.
 
 ### Runs
 
+Route `/runs`. Daemon runs with state filters and a two-step **Halt all**.
+
 ![Runs](../images/3.0/screenshots/runs.png)
 
-### Author an experiment
+- **API:** `GET /api/runs`, `POST /api/runs/stop-all`.
 
-![Author an experiment](../images/3.0/screenshots/author.png)
+### New run
+
+Route `/runs/new`. Pick a definition, fill in its parameters and see a dry
+run of the resolved plan before you start it.
+
+![New run with a dry run](../images/3.0/screenshots/runs-new.png)
+
+- **API:** `GET /api/registry`, `GET /api/registry/{id}`,
+  `POST /api/runs/dry-run`, `POST /api/runs`.
+
+### Run detail
+
+Route `/runs/{id}`. The run header with the stop button, the planned blast
+radius (a plan, not a measure), the live trace, the **Impact** panel (each
+probe against its forecast band), the approval chain and the audit timeline.
+The Impact panel is the only chart of a forecast; see
+[Forecasting](../guides/forecasting.md).
+
+![A stopped run: aborted in grey, rollback completed](../images/3.0/screenshots/run-stopped.png)
+
+- **API:** `GET /api/runs/{id}`, `GET /api/runs/{id}/impact`,
+  `GET /api/experiments/{id}`, `GET /api/experiments/windows`,
+  `POST /api/runs/dry-run`, `POST /api/runs/{id}/stop`,
+  `POST /api/runs/{id}/approve`, `POST /api/runs/{id}/reject`,
+  `POST /api/runs/{id}/break-glass`.
+
+### Author
+
+Routes `/author` and `/author/new`. The fault catalog of the mounted plugins
+and a wizard that writes a TOON experiment.
+
+![Author: the fault catalog](../images/3.0/screenshots/author.png)
+
+- **API:** `GET /api/authoring/catalog`, `POST /api/authoring/scaffold`,
+  `POST /api/runs/validate`.
 
 ### GameDays
 
-![GameDays](../images/3.0/screenshots/gamedays.png)
-
-### One GameDay with its regulatory mapping
+Routes `/gamedays` and `/gamedays/{id}`. Campaigns and a form to register
+one; a campaign with its child runs and the **Environment** it runs in.
 
 ![One GameDay with its regulatory mapping](../images/3.0/screenshots/gameday-detail.png)
 
+- **API:** `GET /api/gamedays`, `GET /api/gamedays/{id}`,
+  `POST /api/gamedays/validate`, `POST /api/gamedays/{id}/runs`,
+  `GET /api/runs` (with `registry_id` or `gameday_id`), `GET /api/runs/{id}`.
+
 ### Approvals
+
+Route `/approvals`. Pending requests with approve and reject. Each request
+is pinned to the hash of its content.
 
 ![Approvals](../images/3.0/screenshots/approvals.png)
 
-### Manual evidence
+- **API:** `GET /api/approvals`, `POST /api/runs/{id}/approve`,
+  `POST /api/runs/{id}/reject`.
+
+### Schedules
+
+Route `/schedules`, for operators. Recurring runs of registered definitions.
+
+![Schedules](../images/3.0/screenshots/schedules.png)
+
+- **API:** `GET /api/schedules`, `GET /api/registry`, `POST /api/schedules`,
+  `POST /api/schedules/{id}/enable`, `POST /api/schedules/{id}/delete`.
+
+### Manual
+
+Route `/manual`. Entry and review of manual evidence: draft, submitted,
+verified or rejected.
 
 ![Manual evidence](../images/3.0/screenshots/manual.png)
 
-### Events
+- **API:** `GET /api/manual/experiments`, `GET /api/manual/experiments/{id}`,
+  `POST /api/manual/experiments`, `PUT /api/manual/experiments/{id}`,
+  `POST /api/manual/experiments/{id}/submit`,
+  `POST /api/manual/experiments/{id}/verify`,
+  `POST /api/manual/experiments/{id}/reject`.
 
-![Events](../images/3.0/screenshots/events.png)
+## Telemetry explorers
 
 ### Logs
 
+Route `/logs`. Log volume by severity and a table you can search, for the
+log records that came in over OTLP and OTel-Arrow.
+
 ![Logs](../images/3.0/screenshots/logs.png)
+
+- **API:** `GET /api/logs`, `GET /api/logs/volume`.
 
 ### Traces
 
+Routes `/traces` and `/traces/{id}`. A scatter of trace durations, a trace
+table, and a waterfall per trace with a span drawer.
+
 ![Traces](../images/3.0/screenshots/traces.png)
+
+- **API:** `GET /api/traces`, `GET /api/traces/durations`,
+  `GET /api/traces/{id}`, `GET /api/experiments/windows`.
+
+### Metrics
+
+Route `/metrics`. One metric as a line, area or bar chart, grouped by an
+attribute if you like, with experiment windows on top.
+
+![Metrics](../images/3.0/screenshots/metrics.png)
+
+- **API:** `GET /api/metrics/catalog`, `GET /api/metrics/query`,
+  `GET /api/experiments/windows`.
 
 ### Ask
 
+Route `/ask`. Ask a question; see the SQL it became and the result. The
+query is read only.
+
 ![Ask](../images/3.0/screenshots/ask.png)
+
+- **API:** `POST /api/ask`.
+
+## Reports and administration
 
 ### Reports
 
+Route `/reports`. Compliance reports R1, R2 and R3 with their SHA-256, an
+HTML preview and a PDF download, and quick metric digests.
+
 ![Reports](../images/3.0/screenshots/reports.png)
+
+- **API:** `GET /api/reports/v2`, `POST /api/reports/v2/generate`,
+  `GET /api/reports`, `POST /api/reports/generate`, `GET /api/experiments`,
+  `GET /api/metrics`.
+
+### Events
+
+Route `/events`. Run lifecycle events with their actor, newest first.
+
+![Events](../images/3.0/screenshots/events.png)
+
+- **API:** `GET /api/events`.
+
+### Users
+
+Route `/users`, for admins. Accounts, roles, environment scopes and API
+tokens.
+
+![Users](../images/3.0/screenshots/users.png)
+
+- **API:** `GET /api/users`, `POST /api/users`,
+  `POST /api/users/{id}/role`, `POST /api/users/{id}/scopes`,
+  `POST /api/users/{id}/password`, `POST /api/users/{id}/disable`,
+  `GET /api/tokens`, `POST /api/tokens`, `POST /api/tokens/{id}/revoke`.
+
+### Webhooks
+
+Route `/webhooks`, for admins. Sinks for run events.
+
+![Webhooks](../images/3.0/screenshots/webhooks.png)
+
+- **API:** `GET /api/webhooks`, `POST /api/webhooks`,
+  `POST /api/webhooks/{id}/enable`, `POST /api/webhooks/{id}/delete`.
+
+### Login
+
+Route `/login`. Sign in, and change the password at the first sign in.
+
+![Login](../images/3.0/screenshots/login.png)
+
+- **API:** `POST /api/auth/login`, `POST /api/auth/change-password`.
+
+## Not on a page yet
+
+- Entities from [entity events](../guides/entity-events.md): read them with
+  `GET /api/entities`.
+- Forecast bands of semantic metrics: `GET /api/forecast`.
+
+Charts follow the theme you pick (dark, light or auto), and tooltips escape
+every value that comes from the lake.
