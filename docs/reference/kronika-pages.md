@@ -155,6 +155,10 @@ Taken from the seeded demo.
 
 ![Traces](../images/3.0/screenshots/traces.png)
 
+### Metrics
+
+![Metrics](../images/3.0/screenshots/metrics.png)
+
 ### Ask
 
 ![Ask](../images/3.0/screenshots/ask.png)
