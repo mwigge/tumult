@@ -1,8 +1,8 @@
-use super::serve;
 use super::tls::load_tls;
 use super::ui::{metrics_page_for_browsers, ui_handler, wants_html, UiAssets};
 use super::until_both_stop;
 use super::{finish, Workers};
+use super::{serve_on, Bound};
 use axum::http::StatusCode;
 use axum::response::Response;
 use std::path::PathBuf;
@@ -265,14 +265,15 @@ dimensions: [experiment_name]
 condition: { column: span_name, equals: "resilience.experiment" }
 "#;
 
-/// A currently-free loopback port (the listener is dropped before the
-/// server binds it).
-fn free_port() -> u16 {
-    std::net::TcpListener::bind("127.0.0.1:0")
-        .unwrap()
-        .local_addr()
-        .unwrap()
-        .port()
+/// A listener on a loopback port of its own, and the port. The test
+/// hands the listener to the daemon, so no other test can take the port
+/// between the pick and the start.
+async fn loopback_listener() -> (tokio::net::TcpListener, u16) {
+    let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+        .await
+        .unwrap();
+    let port = listener.local_addr().unwrap().port();
+    (listener, port)
 }
 
 /// Minimal HTTP/1.0 GET against a loopback server; returns the raw
@@ -824,14 +825,23 @@ async fn a_daemon_that_cannot_bind_starts_no_work() {
         leave_a_queued_run(&db);
         let taken = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let taken_port = taken.local_addr().unwrap().port();
+        // The daemon binds the taken address and gets the other one bound.
+        let (free, free_port) = loopback_listener().await;
+        let mut bound = Bound::default();
         let (grpc_port, http_port) = match taken_address {
-            "gRPC" => (taken_port, free_port()),
-            _ => (free_port(), taken_port),
+            "gRPC" => {
+                bound.http = Some(free);
+                (taken_port, free_port)
+            }
+            _ => {
+                bound.grpc = Some(free);
+                (free_port, taken_port)
+            }
         };
         daemon_env(&mut env, dir.path(), grpc_port, http_port);
         let before = alive_tasks();
 
-        let outcome = tokio::time::timeout(std::time::Duration::from_secs(30), serve())
+        let outcome = tokio::time::timeout(std::time::Duration::from_secs(30), serve_on(bound))
             .await
             .expect("the daemon exits");
 
@@ -860,10 +870,14 @@ async fn serve_exits_when_the_http_address_is_taken() {
     let dir = tempfile::tempdir().unwrap();
     let taken = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let http_port = taken.local_addr().unwrap().port();
-    let grpc_port = free_port();
+    let (grpc, grpc_port) = loopback_listener().await;
     daemon_env(&mut env, dir.path(), grpc_port, http_port);
+    let bound = Bound {
+        grpc: Some(grpc),
+        ..Bound::default()
+    };
 
-    let outcome = tokio::time::timeout(std::time::Duration::from_secs(30), serve())
+    let outcome = tokio::time::timeout(std::time::Duration::from_secs(30), serve_on(bound))
         .await
         .expect("the daemon exits instead of serving gRPC alone");
     let error = format!("{:#}", outcome.expect_err("a taken address is an error"));
@@ -874,8 +888,9 @@ async fn serve_exits_when_the_http_address_is_taken() {
     drop(taken);
 }
 
-/// The whole daemon in-process: bind both listeners on loopback, serve
-/// the health and live-report endpoints, then stop cleanly on SIGTERM.
+/// The whole daemon in-process, on two loopback listeners the test bound:
+/// serve the health and live-report endpoints, then stop cleanly on
+/// SIGTERM.
 /// Holds the env guard for its whole lifetime: the configuration is
 /// process-global, and the guard only ever blocks other tests that change
 /// the environment, on which this test's own progress never depends.
@@ -886,11 +901,15 @@ async fn serve_binds_serves_and_shuts_down_cleanly_on_sigterm() {
     let metrics_dir = dir.path().join("metrics");
     std::fs::create_dir_all(&metrics_dir).unwrap();
     std::fs::write(metrics_dir.join("experiment_count.yaml"), METRIC_YAML).unwrap();
-    let grpc_port = free_port();
-    let http_port = free_port();
+    let (grpc, grpc_port) = loopback_listener().await;
+    let (http, http_port) = loopback_listener().await;
     daemon_env(&mut env, dir.path(), grpc_port, http_port);
+    let bound = Bound {
+        grpc: Some(grpc),
+        http: Some(http),
+    };
 
-    let mut daemon = tokio::spawn(serve());
+    let mut daemon = tokio::spawn(serve_on(bound));
 
     // Wait for the HTTP listener, then probe the health and live report
     // endpoints while the daemon holds the store.
@@ -1014,11 +1033,16 @@ async fn closed_by_the_daemon(client: &mut tokio::net::TcpStream) -> bool {
 async fn the_pre_bound_grpc_listener_enforces_the_connection_limits() {
     let mut env = EnvGuard::lock();
     let dir = tempfile::tempdir().unwrap();
-    let (grpc_port, http_port) = (free_port(), free_port());
+    let (grpc, grpc_port) = loopback_listener().await;
+    let (http, http_port) = loopback_listener().await;
     daemon_env(&mut env, dir.path(), grpc_port, http_port);
     env.set("KRONIKA_GRPC_MAX_CONNECTIONS", "1");
+    let bound = Bound {
+        grpc: Some(grpc),
+        http: Some(http),
+    };
 
-    let mut daemon = tokio::spawn(serve());
+    let mut daemon = tokio::spawn(serve_on(bound));
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
     while http_get(http_port, "/healthz").await.is_err() {
         assert!(!daemon.is_finished(), "daemon exited before serving");

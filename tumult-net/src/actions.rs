@@ -209,12 +209,13 @@ async fn spawn_proxy(
     // *why* a dead-on-arrival daemon failed. The log removes itself when
     // this function leaves without a running daemon.
     let (log, stderr_file) = create_startup_log(log_dirs(listen)).await?;
-    let mut child = std::process::Command::new(&daemon)
+    let mut command = std::process::Command::new(&daemon);
+    command
         .args(spec.to_argv())
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::from(stderr_file))
-        .spawn()?;
+        .stderr(Stdio::from(stderr_file));
+    let mut child = tumult_spawn::alone(|| command.spawn())?;
     let pid = child.id();
 
     let failure = match await_startup(&mut child, &pidfile).await {

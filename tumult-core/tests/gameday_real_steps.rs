@@ -8,7 +8,7 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -30,7 +30,8 @@ echo read >> "$1.reads"
 test "$(wc -l < "$1.reads")" -lt "$2" || echo ok > "$state"
 "#;
 
-/// Runs the process of a step in the directory of the lab.
+/// Runs the process of a step in the directory of the lab. It spawns
+/// through `tumult_core::spawn::alone`, as the process steps do.
 struct InLab(PathBuf);
 
 impl ActivityExecutor for InLab {
@@ -42,11 +43,17 @@ impl ActivityExecutor for InLab {
             panic!("the steps of this lab are processes");
         };
         let started = Instant::now();
-        let output = Command::new(path)
+        let mut command = Command::new(path);
+        command
             .args(arguments)
             .current_dir(&self.0)
-            .output()
-            .expect("the process starts");
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        let output = tumult_core::spawn::alone(|| command.spawn())
+            .expect("the process starts")
+            .wait_with_output()
+            .expect("the process ends");
         ActivityOutcome {
             success: output.status.success(),
             output: Some(String::from_utf8_lossy(&output.stdout).trim().to_string()),
@@ -374,4 +381,35 @@ fn a_cancelled_game_day_cuts_its_load_and_keeps_what_it_measured() {
         .collect();
     assert_eq!(ended, [&ExperimentStatus::Interrupted]);
     assert_the_load_was_cut(&journal);
+}
+
+/// On macOS a load window that starts while a step makes its pipes keeps a
+/// copy of them, and the step waits for the load to end. So the lab starts
+/// a step only when no other spawn runs, as the process steps do.
+#[test]
+fn a_step_of_the_lab_starts_only_when_no_other_spawn_runs() {
+    // The load tests take this lock too, so none of their windows waits
+    // while this test holds the spawn lock.
+    let _env = EnvGuard::lock();
+    let lab = tempfile::TempDir::new().expect("lab directory");
+    let started = lab.path().join("started");
+    let in_lab = InLab(lab.path().to_path_buf());
+    let (ready, is_ready) = std::sync::mpsc::channel();
+
+    let ran = tumult_core::spawn::alone(|| {
+        let ran = std::thread::spawn(move || {
+            ready.send(()).expect("the test waits for the step");
+            in_lab.execute(&step("start", ActivityType::Action, "touch started"))
+        });
+        is_ready.recv().expect("the step is about to start");
+        // sleep: there is no event for a file that must stay absent; wait
+        // past the time the step would need to start.
+        std::thread::sleep(Duration::from_millis(100));
+        assert!(!started.exists(), "the step started during another spawn");
+        ran
+    });
+
+    let outcome = ran.join().expect("the step ends");
+    assert!(outcome.success, "{:?}", outcome.error);
+    assert!(started.exists(), "the step did not run");
 }

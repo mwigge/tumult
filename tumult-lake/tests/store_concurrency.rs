@@ -60,9 +60,11 @@ fn run_child(mode: &str, path: &Path) -> String {
         .output()
         .expect("spawn child test process");
     let stdout = String::from_utf8_lossy(&output.stdout);
+    // With one test thread (as under coverage) libtest prints the name of the
+    // test before its output, so the marker can sit inside a line.
     stdout
         .lines()
-        .find_map(|line| line.strip_prefix(MARK))
+        .find_map(|line| line.split_once(MARK).map(|(_, token)| token))
         .unwrap_or_else(|| panic!("child printed no {MARK} marker; stdout:\n{stdout}"))
         .to_string()
 }
