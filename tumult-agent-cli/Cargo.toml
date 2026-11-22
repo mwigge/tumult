@@ -13,6 +13,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
 tumult-otel = { path = "../tumult-otel" }
+tumult-spawn = { path = "../tumult-spawn" }
 
 [dev-dependencies]
 tempfile = { workspace = true }
