@@ -4,6 +4,8 @@ members = [
     "tumult-cli",
     "tumult-core",
     "tumult-plugin",
+    # One spawn of a child process at a time, for every crate that spawns
+    "tumult-spawn",
     # Shared provider executor (used by tumult-cli and tumultd)
     "tumult-exec",
     # Shared auth primitives: RBAC roles, argon2id password hashing, token generation
