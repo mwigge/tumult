@@ -1,13 +1,19 @@
 # tumult-clickhouse
 
-ClickHouse analytics backend for Tumult -- enables shared storage with SigNoz for cross-tool observability.
+A ClickHouse store for Tumult journals, shared with SigNoz.
 
-## Key Types
+**Deprecated.** Tumult 3.1 removes this crate. When `TUMULT_CLICKHOUSE_URL`
+is set, `tumult run` writes to ClickHouse and logs a warning once. Unset it
+to write to the lake.
 
-- `ClickHouseStore` -- connection and query interface, and writes experiment data to ClickHouse tables
-- `ClickHouseConfig` -- the URL, database and user, read from `TUMULT_CLICKHOUSE_*`
+## Key types
 
-## Usage
+| Item | What it does |
+|---|---|
+| `ClickHouseStore` | Connects, writes journals and queries them |
+| `ClickHouseConfig` | The URL, database, user and password, read from `TUMULT_CLICKHOUSE_*` |
+
+## Use it from Rust
 
 ```rust
 use tumult_clickhouse::{ClickHouseConfig, ClickHouseStore};
@@ -15,7 +21,3 @@ use tumult_clickhouse::{ClickHouseConfig, ClickHouseStore};
 let store = ClickHouseStore::connect(&ClickHouseConfig::from_env()).await?;
 store.ingest_journal_async(&journal).await?;
 ```
-
-## More Information
-
-See the [main README](../README.md) for project overview and setup.

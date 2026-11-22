@@ -1,42 +1,51 @@
 ---
-title: Plugin Authoring Guide
+title: Write a plugin
 parent: Plugins
 nav_order: 1
+redirect_from:
+  - /plugins/plugin-manifest-spec.html
 ---
 
-# Plugin Authoring Guide
+# Write a plugin
 
-Create community plugins for Tumult without a Rust toolchain. A plugin is a directory with a manifest and executable scripts.
+A script plugin is a folder with a manifest and shell scripts. You need no
+Rust. This page builds a small plugin for nginx, then tests it.
 
-## Directory Structure
+```mermaid
+sequenceDiagram
+    accTitle: How Tumult runs a plugin script
+    accDescr: Tumult runs the script with /bin/sh and passes each argument as a TUMULT variable. The script prints its result and exits. Exit code 0 means the step succeeded, and the printed text becomes the result of the step.
+    participant T as tumult
+    participant S as Your script
+    T->>S: /bin/sh script, arguments as TUMULT_ variables
+    S-->>T: stdout, stderr and an exit code
+    Note over T: exit 0 is success, stdout is the result
+```
+
+## 1. Make the folder
 
 ```
 tumult-nginx/
-├── plugin.toon          # manifest declaring actions and probes
+├── plugin.toon              # the manifest
 ├── actions/
-│   ├── kill-worker.sh   # action: kill an nginx worker process
-│   └── reload-config.sh # action: force config reload
-├── probes/
-│   └── connection-count.sh  # probe: count active connections
-└── README.md            # optional documentation
+│   └── kill-worker.sh       # a fault
+└── probes/
+    └── connection-count.sh  # a reading
 ```
 
-## Manifest Format
+## 2. Write the manifest
 
-The manifest file (`plugin.toon`) declares the plugin's identity and capabilities:
+`plugin.toon` names the plugin and lists its scripts:
 
 ```toon
 name: tumult-nginx
 version: 0.1.0
-description: Nginx chaos actions and probes
+description: Nginx faults and probes
 
-actions[2]:
+actions[1]:
   - name: kill-worker
     script: actions/kill-worker.sh
     description: Kill an nginx worker process
-  - name: reload-config
-    script: actions/reload-config.sh
-    description: Force nginx config reload
 
 probes[1]:
   - name: connection-count
@@ -44,45 +53,43 @@ probes[1]:
     description: Count active nginx connections
 ```
 
-See `docs/plugins/plugin-manifest-spec.md` for the full specification.
+| Field | What it holds |
+|---|---|
+| `name` | The plugin name, such as `tumult-nginx`. It must be unique in all plugin folders. |
+| `version` | A version, such as `0.1.0` |
+| `description` | One line about the plugin |
+| `actions` | The faults. Each has a `name`, a `script` and a `description`. The list may be empty: `actions[0]:` |
+| `probes` | The readings, with the same three fields. The list may be empty. |
 
-## Script Contract
+All fields are required. A `script` path starts at the plugin folder and
+must stay inside it. Name an action with a verb and a noun
+(`kill-worker`), and a probe with a noun (`connection-count`).
 
-Every script follows the same contract:
+## 3. Write the scripts
 
-### Input
+What a script gets, and what it gives back:
 
-Arguments are passed as environment variables with the `TUMULT_` prefix. Keys are uppercased:
+| | |
+|---|---|
+| In | Each argument of the step as `TUMULT_<NAME>`: `worker_pid` becomes `TUMULT_WORKER_PID`. Every value is text. |
+| In | `TUMULT_CONFIG_<NAME>` and `TUMULT_SECRET_<GROUP>_<KEY>` from the `configuration:` and `secrets:` of the experiment |
+| In | `TRACEPARENT` of the step, so a tool the script calls can join the trace |
+| Out | stdout is the result of the step. stderr is kept as the error text. |
+| Out | Exit code `0` means success. Any other code fails the step. |
 
-| Experiment argument | Environment variable |
-|--------------------|--------------------|
-| `worker_pid` | `TUMULT_WORKER_PID` |
-| `signal` | `TUMULT_SIGNAL` |
-| `max_wait` | `TUMULT_MAX_WAIT` |
+Tumult runs each script with `/bin/sh`, whatever its first line names, so
+write plain POSIX shell. An argument name must be a valid variable name,
+and two names that differ only in case are refused. On a timeout or a
+stop, Tumult ends the script and every process it started. It keeps at
+most 8 MiB of each output stream.
 
-### Output
-
-| Channel | Purpose |
-|---------|---------|
-| `stdout` | Structured output (captured by engine) |
-| `stderr` | Diagnostic messages (captured, logged) |
-
-### Exit Code
-
-| Code | Meaning |
-|------|---------|
-| `0` | Success |
-| Non-zero | Failure |
-
-### Example Action Script
+An action, `actions/kill-worker.sh`:
 
 ```bash
 #!/bin/sh
 set -eu
 
-# Receives: TUMULT_WORKER_PID or discovers one
 WORKER_PID="${TUMULT_WORKER_PID:-$(pgrep -f 'nginx: worker' | head -1)}"
-
 if [ -z "$WORKER_PID" ]; then
     echo "no nginx worker process found" >&2
     exit 1
@@ -92,74 +99,50 @@ kill -9 "$WORKER_PID"
 echo "killed nginx worker pid=$WORKER_PID"
 ```
 
-### Example Probe Script
+A probe, `probes/connection-count.sh`. It prints one number that a
+tolerance can check:
 
 ```bash
 #!/bin/sh
 set -eu
 
-# Count active connections from nginx stub_status
-CONNECTIONS=$(curl -s http://localhost:8080/nginx_status | grep 'Active connections' | awk '{print $3}')
-
+CONNECTIONS=$(curl -s http://localhost:8080/nginx_status | awk '/Active connections/ {print $3}')
 if [ -z "$CONNECTIONS" ]; then
     echo "failed to read nginx status" >&2
     exit 1
 fi
-
 echo "$CONNECTIONS"
 ```
 
-## Plugin Discovery
+## 4. Test it
 
-Tumult searches for plugins in this order:
-
-1. `./plugins/` — in the directory you run `tumult` from
-2. `~/.tumult/plugins/` — user-global
-3. `TUMULT_PLUGIN_PATH` environment variable — colon-separated custom paths
-
-First-found-wins: if two plugins share the same name, the one discovered first is used.
-
-## Testing Locally
-
-Place your plugin directory in `./plugins/` next to your experiment file, and run `tumult` from that directory:
-
-```
-my-project/
-├── plugins/
-│   └── tumult-nginx/
-│       ├── plugin.toon
-│       ├── actions/
-│       │   └── kill-worker.sh
-│       └── probes/
-│           └── connection-count.sh
-└── experiment.toon
-```
-
-Verify discovery:
+Put the folder in `./plugins/` next to your experiment and run `tumult`
+from there. See [where Tumult finds plugins](index.md#where-tumult-finds-script-plugins).
 
 ```bash
-tumult discover --plugin tumult-nginx
+tumult discover --plugin tumult-nginx       # Tumult sees the plugin
+TUMULT_WORKER_PID=12345 sh plugins/tumult-nginx/actions/kill-worker.sh
+tumult init --plugin tumult-nginx           # experiment.toon that reads your first probe
+tumult validate experiment.toon
 ```
 
-Test a single action:
+`tumult init --plugin` writes a starter experiment whose first step reads
+the first probe of your plugin. Add a step that calls your action, then
+`tumult run experiment.toon`. Each step shows its output in the journal
+and on the run page of Krönika:
 
-```bash
-# Set env vars manually and run the script directly
-TUMULT_WORKER_PID=12345 ./plugins/tumult-nginx/actions/kill-worker.sh
-```
+![The steps of a run, each with its result](../images/3.0/screenshots/run-detail.png)
 
-## Publishing
+## 5. Share it
 
-There is no central registry. Share your plugin by:
+There is no central registry. Pack the folder as a `.tar.gz`, keep it in a
+git repository that people clone into `~/.tumult/plugins/`, or copy it
+into a container image next to `tumult`. Add a `README.md` that names the
+arguments of each script.
 
-- Packaging the directory as a `.tar.gz` and distributing via your team's artifact repository
-- Hosting in a git repository — users clone into their `~/.tumult/plugins/` directory
-- Including in a container image alongside the `tumult` binary
+Tips:
 
-## Best Practices
-
-- Always use `set -eu`. Tumult runs each script with `/bin/sh`, whatever its first line names
-- Write idempotent actions where possible (running twice produces the same result)
-- Include a `README.md` describing what the plugin does and what arguments it accepts
-- Test scripts independently before wrapping in a plugin manifest
-- Use descriptive names: `tumult-<technology>` (e.g., `tumult-nginx`, `tumult-haproxy`)
+- Start each script with `set -eu`.
+- Make an action safe to run twice where you can.
+- Add a rollback action for each fault that does not end by itself.
+- Name the plugin `tumult-<technology>`.
