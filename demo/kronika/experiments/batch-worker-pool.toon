@@ -1,5 +1,5 @@
 title: batch worker pool — all jobs complete without strays
-description: Fan out a small batch of background jobs and verify every one of them completes
+description: Fan out a small batch of background jobs and verify every one of them completes. The batch-scratch control clears the scratch area before and after the run, so the steady-state probe only reads.
 
 tags[2]: process, resilience
 kind: robustness
@@ -8,15 +8,23 @@ target:
   technology: process
   environment: demo
 
+controls[1]:
+  - name: batch-scratch
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "d=/tmp/kd-demo/batch; case \"$TUMULT_CONTROL_EVENT\" in before_experiment|after_experiment) mkdir -p $d; rm -f $d/done-*; echo cleared;; esac"
+      timeout_s: 5.0
+
 steady_state_hypothesis:
-  title: Batch scratch area is clean and ready
+  title: Batch scratch area is ready
   probes[1]:
     - name: batch-ready
       activity_type: probe
       provider:
         type: process
         path: sh
-        arguments[2]: "-c", "mkdir -p /tmp/kd-demo/batch; rm -f /tmp/kd-demo/batch/done-*; echo ready"
+        arguments[2]: "-c", "[ -d /tmp/kd-demo/batch ] && [ -w /tmp/kd-demo/batch ] && echo ready || echo missing"
         timeout_s: 5.0
       tolerance:
         type: regex
