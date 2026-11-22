@@ -533,6 +533,7 @@ rollbacks[1]:
         LoadOverride::Keep,
         tumult_core::runner::BaselineMode::Only,
         None,
+        None,
     )
     .await
     .unwrap();
@@ -578,6 +579,7 @@ async fn run_with_version(
         LoadOverride::Keep,
         tumult_core::runner::BaselineMode::Full,
         version,
+        None,
     )
     .await?;
     Ok(tumult_core::journal::read_journal(&journal).unwrap())
@@ -632,4 +634,123 @@ method[1]:
     assert!(error.to_string().contains("no `target` block"), "{error}");
     assert!(!marker.exists());
     assert!(!dir.path().join("journal.toon").exists());
+}
+
+/// A DR experiment on the file `up`: the method removes it and leaves a
+/// process behind that puts it back 1.5 s later. The file watches for
+/// `window_s` seconds and reads the target every tenth of a second.
+fn outage_toon(up: &Path, window_s: f64) -> String {
+    format!(
+        r#"title: The target comes back
+kind: dr
+rto_target_s: 5
+recovery:
+  window_s: {window_s}
+  interval_s: 0.1
+steady_state_hypothesis:
+  title: The target is there
+  probes[1]:
+    - name: up
+      activity_type: probe
+      provider:
+        type: process
+        path: test
+        arguments[2]: "-f", "{up}"
+method[1]:
+  - name: remove the target
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "rm -f {up}; (sleep 1.5; touch {up}) >/dev/null 2>&1 &"
+"#,
+        up = up.display()
+    )
+}
+
+/// Run the outage in a lab of its own, with `--recovery-window` set to
+/// `recovery_window_s`. The file watches for half a second.
+async fn run_outage(
+    lab: &Path,
+    recovery_window_s: Option<f64>,
+) -> (anyhow::Result<()>, Option<tumult_core::types::Journal>) {
+    let up = lab.join("up");
+    std::fs::write(&up, "").unwrap();
+    let experiment = lab.join("outage.toon");
+    std::fs::write(&experiment, outage_toon(&up, 0.5)).unwrap();
+    let journal = lab.join("journal.toon");
+    let ended = cmd_run_with_baseline_mode(
+        &experiment,
+        &journal,
+        false,
+        false,
+        RollbackStrategy::OnDeviation,
+        false,
+        std::collections::HashMap::new(),
+        LoadOverride::Keep,
+        tumult_core::runner::BaselineMode::Full,
+        None,
+        recovery_window_s,
+    )
+    .await;
+    let journal = journal
+        .exists()
+        .then(|| tumult_core::journal::read_journal(&journal).unwrap());
+    (ended, journal)
+}
+
+fn rto_of(journal: &tumult_core::types::Journal) -> &tumult_core::types::NfrVerdict {
+    journal
+        .objectives
+        .as_ref()
+        .and_then(|objectives| objectives.verdicts.iter().find(|v| v.nfr_id == "rto"))
+        .expect("a verdict on the rto")
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_recovery_window_flag_overrides_the_window_of_the_file() {
+    use tumult_core::types::{ExperimentStatus, NfrState};
+
+    // The file watches half a second, and the outage outlasts it.
+    let lab = TempDir::new().unwrap();
+    let (ended, journal) = run_outage(lab.path(), None).await;
+    let error = ended.unwrap_err();
+    assert!(
+        matches!(
+            error.downcast_ref::<NotCompleted>(),
+            Some(NotCompleted(ExperimentStatus::Deviated))
+        ),
+        "{error}"
+    );
+    let journal = journal.expect("a journal");
+    let post = journal.post_result.as_ref().expect("the run watched");
+    assert!(post.duration_s <= 0.5, "{post:?}");
+    let rto = rto_of(&journal);
+    assert_eq!(rto.state, NfrState::Breached, "{rto:?}");
+    assert_eq!(rto.recovered, Some(false));
+
+    // The flag watches four seconds, and the run sees the target come back.
+    let lab = TempDir::new().unwrap();
+    let (ended, journal) = run_outage(lab.path(), Some(4.0)).await;
+    ended.unwrap();
+    let journal = journal.expect("a journal");
+    let post = journal.post_result.as_ref().expect("the run watched");
+    assert!(post.full_recovery, "{post:?}");
+    assert!(post.duration_s < 3.9, "{post:?}");
+    let rto = rto_of(&journal);
+    assert_eq!(rto.state, NfrState::Met, "{rto:?}");
+    let measured = rto.observed.expect("a recovery time");
+    assert!((1.3..2.5).contains(&measured), "{measured}");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn run_refuses_a_recovery_window_above_an_hour_before_anything_executes() {
+    let lab = TempDir::new().unwrap();
+
+    let (ended, journal) = run_outage(lab.path(), Some(3601.0)).await;
+
+    let error = ended.unwrap_err();
+    assert!(format!("{error:#}").contains("3600"), "{error:#}");
+    assert!(journal.is_none());
+    assert!(lab.path().join("up").exists(), "the method ran");
 }

@@ -79,6 +79,10 @@ pub enum EngineError {
     /// The declared `target.version` is outside the bounds (see `reason`).
     #[error("target.version is invalid: {reason}")]
     TargetVersionInvalid { reason: String },
+    /// The `recovery` block asks for a window the post phase cannot watch
+    /// (see `reason`).
+    #[error("recovery is invalid: {reason}")]
+    RecoveryInvalid { reason: String },
     /// The load profile cannot be turned into a plan (see `reason`).
     #[error("load profile is invalid: {reason}")]
     LoadProfileInvalid { reason: String },

@@ -86,6 +86,7 @@ async fn e2e_run_analyze_export() {
         nfr: vec![],
         rto_target_s: None,
         rpo_target_s: None,
+        recovery: None,
     };
 
     // Run experiment

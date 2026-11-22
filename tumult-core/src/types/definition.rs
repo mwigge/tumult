@@ -164,6 +164,71 @@ pub struct BaselineConfig {
     pub confidence: Option<f64>,
 }
 
+// ── Recovery window (Phase 3) ──────────────────────────────────
+
+/// How the post phase watches for recovery after the method: it reads the
+/// steady-state probes every `interval_s` until they pass or `window_s`
+/// has passed. An experiment without the block watches as
+/// [`RecoveryConfig::default`] says: 30 seconds, read every second.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RecoveryConfig {
+    /// Seconds the post phase watches, at most
+    /// [`RecoveryConfig::MAX_WINDOW_S`].
+    #[serde(default = "default_recovery_window_s")]
+    pub window_s: f64,
+    /// Seconds between two reads of the probes, at most `window_s`.
+    #[serde(default = "default_recovery_interval_s")]
+    pub interval_s: f64,
+}
+
+impl RecoveryConfig {
+    /// The longest window a run may watch: one hour. A run must not wait
+    /// for ever on a target that does not come back.
+    pub const MAX_WINDOW_S: f64 = 3600.0;
+
+    /// Why the post phase cannot watch this window, or `None` when it can:
+    /// both numbers are above 0, the window is at most an hour, and the
+    /// interval is at most the window. Validation and the runner both ask.
+    #[must_use]
+    pub fn invalid_reason(&self) -> Option<String> {
+        if self.window_s.is_nan() || self.window_s <= 0.0 {
+            return Some("window_s must be above 0".into());
+        }
+        if self.window_s > Self::MAX_WINDOW_S {
+            return Some(format!(
+                "window_s must be at most {} seconds",
+                Self::MAX_WINDOW_S
+            ));
+        }
+        if self.interval_s.is_nan() || self.interval_s <= 0.0 {
+            return Some("interval_s must be above 0".into());
+        }
+        if self.interval_s > self.window_s {
+            return Some("interval_s must not exceed window_s".into());
+        }
+        None
+    }
+}
+
+impl Default for RecoveryConfig {
+    fn default() -> Self {
+        Self {
+            window_s: default_recovery_window_s(),
+            interval_s: default_recovery_interval_s(),
+        }
+    }
+}
+
+fn default_recovery_window_s() -> f64 {
+    30.0
+}
+
+fn default_recovery_interval_s() -> f64 {
+    1.0
+}
+
+// ── Load Config ────────────────────────────────────────────────
 // ── Load Config ────────────────────────────────────────────────
 
 /// Shape of the traffic a load generator produces over `duration_s`. Every
@@ -348,6 +413,10 @@ pub struct Experiment {
     /// Recovery point objective in seconds of tolerated data loss.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rpo_target_s: Option<f64>,
+    /// How long the post phase watches for recovery; `None` watches for
+    /// the default window.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recovery: Option<RecoveryConfig>,
     /// Configuration values resolved from the environment (or inlined) at
     /// load time and substituted into provider arguments.
     #[serde(default)]
@@ -408,6 +477,7 @@ impl Default for Experiment {
             nfr: vec![],
             rto_target_s: None,
             rpo_target_s: None,
+            recovery: None,
             configuration: IndexMap::new(),
             secrets: IndexMap::new(),
             controls: vec![],
@@ -650,6 +720,7 @@ mod tests {
             nfr: vec![],
             rto_target_s: None,
             rpo_target_s: None,
+            recovery: None,
             method: vec![],
             rollbacks: vec![],
             estimate: None,
@@ -745,6 +816,44 @@ mod tests {
         assert_eq!(exp.nfr[1].operator, NfrOperator::Gte);
         let back = toon_round_trip(&exp);
         assert_eq!(back, exp);
+    }
+
+    #[test]
+    fn a_recovery_block_parses_with_its_defaults_and_an_old_file_has_none() {
+        let toon = "title: t\nkind: dr\nrto_target_s: 60\nrecovery:\n  window_s: 60\n";
+        let exp: Experiment = toon_format::decode_default(toon).expect("parse");
+        assert_eq!(
+            exp.recovery,
+            Some(RecoveryConfig {
+                window_s: 60.0,
+                interval_s: 1.0
+            })
+        );
+        assert_eq!(toon_round_trip(&exp), exp);
+
+        let both = "title: t\nrecovery:\n  window_s: 120\n  interval_s: 5\n";
+        let exp: Experiment = toon_format::decode_default(both).expect("parse");
+        assert_eq!(
+            exp.recovery,
+            Some(RecoveryConfig {
+                window_s: 120.0,
+                interval_s: 5.0
+            })
+        );
+        let interval_only = "title: t\nrecovery:\n  interval_s: 2\n";
+        let exp: Experiment = toon_format::decode_default(interval_only).expect("parse");
+        assert_eq!(exp.recovery.map(|r| r.window_s), Some(30.0));
+
+        // A file written before the block reads as it did, and writes no
+        // block.
+        let old: Experiment = toon_format::decode_default("title: t\n").expect("parse");
+        assert_eq!(old.recovery, None);
+        let written = toon_format::encode_default(&old).expect("encode");
+        assert!(!written.contains("recovery"), "{written}");
+
+        // A key the block does not know is an error.
+        let unknown = "title: t\nrecovery:\n  timeout_s: 90\n";
+        assert!(toon_format::decode_default::<Experiment>(unknown).is_err());
     }
 
     #[test]

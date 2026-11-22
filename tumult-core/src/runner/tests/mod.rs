@@ -197,6 +197,7 @@ fn fast_sampling() -> SamplingConfig {
         interval: std::time::Duration::from_millis(10),
         max_during_samples: 50,
         recovery_timeout: std::time::Duration::from_millis(80),
+        recovery_interval: std::time::Duration::from_millis(10),
     }
 }
 

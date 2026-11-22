@@ -99,6 +99,7 @@ fn report_of_a_run(title: &str, after: &str) -> (Journal, ReportDoc) {
         interval: Duration::from_millis(10),
         max_during_samples: 50,
         recovery_timeout: Duration::from_millis(500),
+        recovery_interval: Duration::from_millis(10),
     };
     let (journal, spans) = capture_spans(|| {
         run_experiment_with_sampling(

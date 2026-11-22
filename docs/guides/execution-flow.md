@@ -30,7 +30,9 @@ from the CLI, the MCP server and the daemon.
    steady-state probes are sampled every second (at most 300 times) and the
    guards are watched.
 6. **Measure recovery.** Right after the method, before any cleanup, the
-   probes are sampled until they all pass, for at most 30 seconds.
+   probes are sampled until they all pass, for at most 30 seconds. The
+   [recovery window](objectives.md#set-the-recovery-window) of the file
+   can change that.
 7. **Steady state again.** The load stops. Each objective gets a verdict,
    then the probes must hold once more.
 8. **Status and rollback.** Tumult sets the status, then runs the rollbacks

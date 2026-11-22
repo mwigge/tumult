@@ -96,6 +96,7 @@ fn run(experiment: &Experiment) -> (Journal, Vec<SpanData>) {
         interval: Duration::from_millis(10),
         max_during_samples: 50,
         recovery_timeout: Duration::from_millis(200),
+        recovery_interval: Duration::from_millis(10),
     };
     capture_spans(|| {
         run_experiment_with_sampling(

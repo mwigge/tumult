@@ -83,6 +83,33 @@ method failed, or that was stopped, measures no recovery: its RTO is
 `rpo_target_s` is recorded with the run. Only an `nfr` entry of `kind: rpo`
 measures it; without one its verdict is `inconclusive`.
 
+## Set the recovery window
+
+After the method, the run reads the steady-state probes until they pass. By
+default it reads once a second, for at most 30 seconds. A slower failover
+needs a longer window. Set it in the `recovery` block:
+
+```toon
+kind: dr
+rto_target_s: 60
+recovery:
+  window_s: 90
+  interval_s: 1
+```
+
+| Field | Default | What it does |
+|---|---|---|
+| `window_s` | `30` | How many seconds the run watches. Above 0, at most `3600` |
+| `interval_s` | `1` | Seconds between two reads. Above 0, at most `window_s` |
+
+The run stops watching when the probes pass, or when the window ends.
+`tumult run --recovery-window 90` sets `window_s` for one run.
+
+Make the window at least as long as `rto_target_s`. A run that comes back
+after the window ends breaches its RTO, even when it comes back within
+`rto_target_s`. `tumult validate` warns when the RTO is longer than the
+window.
+
 ## Next
 
 - [Load testing](load-testing-guide.md): the source of the `load.*` metrics.

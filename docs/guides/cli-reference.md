@@ -66,6 +66,7 @@ and stores the run.
 | `--output-format <OUTPUT_FORMAT>` | none | `json`: print the journal as JSON on stdout when the run ends; the summary goes to stderr. Not with `--dry-run` |
 | `--var <KEY=VALUE>` | none | Fill `${KEY}` in every string of the file. Repeat for more |
 | `--target-version <VERSION>` | none | The version of the target this run measures, kept as `declared` |
+| `--recovery-window <SECONDS>` | none | How many seconds the run watches for recovery after the method. It sets `recovery.window_s` of the file, at most `3600` |
 | `--load <LOAD>` | none | `k6` or `oha` runs this load with the method; `none` drops the load of the file |
 | `--load-script <LOAD_SCRIPT>` | `load.js` | The k6 script, or the URL that oha calls |
 | `--load-vus <LOAD_VUS>` | `10` | Virtual users of the load |
