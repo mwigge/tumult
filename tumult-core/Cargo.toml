@@ -33,6 +33,8 @@ libc = { workspace = true }
 [dev-dependencies]
 opentelemetry_sdk = { workspace = true, features = ["testing"] }
 tumult-test-utils = { path = "../tumult-test-utils", features = ["otel"] }
+# Parses the JUnit XML of a report to check it against the schema.
+roxmltree = { workspace = true }
 
 [lints]
 workspace = true
