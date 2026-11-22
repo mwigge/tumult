@@ -227,6 +227,9 @@ pub(crate) fn migrate(conn: &Connection) -> Result<(), duckdb::Error> {
     if stored.is_some_and(|v| (2..8).contains(&v)) {
         conn.execute_batch(schema::MIGRATE_V8_MANUAL_EXPERIMENTS_INDEX_FREE)?;
     }
+    // v22: the DR columns of the manual tables. After the v8 rebuild, which
+    // copies the v8 columns of `manual_experiments` by position.
+    conn.execute_batch(schema::MANUAL_V22_COLUMNS)?;
     // < v6: seed the `legacy` backfill identity so pre-auth free-text
     // `entered_by` / `reviewed_by` values on manual-experiment rows
     // semantically belong to a real (but un-loginable: password_hash '!',

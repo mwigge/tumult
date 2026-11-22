@@ -9,6 +9,9 @@
 //! [`crate::auth`]) the body fields are required, exactly as before auth
 //! existed. The store enforces the lifecycle rules (draft mutability,
 //! attestation on submit, reviewer ≠ enterer) regardless.
+//!
+//! Every request body refuses a field it does not know (422, naming the
+//! field), so a client never takes a dropped value for a stored one.
 
 use crate::error::ApiError;
 use std::sync::{Arc, Mutex};
@@ -21,7 +24,8 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use tumult_ingest::Batch;
 use tumult_lake::{
-    AttachmentKind, ExerciseType, ManualError, ManualOutcome, NewManualExperiment, Store, Writer,
+    ActionItem, AttachmentKind, ExerciseDetail, ExerciseLink, ExerciseStep, ExerciseType, LinkKind,
+    ManualError, ManualOutcome, NewManualExperiment, Participant, StepResult, Store, Writer,
 };
 
 use crate::auth::Principal;
@@ -121,8 +125,9 @@ where
 /// JSON body for create/update: content fields of a manual test record.
 /// Enum-typed fields arrive as their lowercase string forms. `entered_by` is
 /// ignored when auth is enabled (the principal's username wins); while auth
-/// is open it is required.
+/// is open it is required. `recovery_time_s` is the actual RTO.
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ManualRecordRequest {
     experiment_name: String,
     exercise_type: String,
@@ -144,10 +149,141 @@ pub struct ManualRecordRequest {
     renewal_due_ns: Option<i64>,
     #[serde(default)]
     framework_refs: Vec<String>,
+    /// The planned RTO, in seconds.
+    rto_target_s: Option<f64>,
+    /// The planned RPO: the seconds of committed writes from before the
+    /// outage that may be lost, as the automated RPO metric means it.
+    rpo_target_s: Option<f64>,
+    /// The actual RPO: the seconds of committed writes from before the
+    /// outage that were lost.
+    rpo_measured_s: Option<f64>,
+    /// Whether the data was checked after the recovery: `true` complete,
+    /// `false` loss or corruption found, absent not checked.
+    data_verified: Option<bool>,
+    #[serde(default)]
+    participants: Vec<ParticipantRequest>,
+    /// The timeline, in the order the steps were taken.
+    #[serde(default)]
+    steps: Vec<StepRequest>,
+    /// The actions with owners. A new client sends these: they are the
+    /// actions of a record from schema v22 on. `action_items` is the older
+    /// list of plain texts, still stored for the clients that send it.
+    #[serde(default)]
+    actions: Vec<ActionRequest>,
+    /// What the exercise tested.
+    #[serde(default)]
+    links: Vec<LinkRequest>,
+}
+
+/// One person who took part, and their role.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ParticipantRequest {
+    name: String,
+    role: Option<String>,
+}
+
+/// One step of the timeline.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StepRequest {
+    title: String,
+    actor: Option<String>,
+    started_at_ns: Option<i64>,
+    ended_at_ns: Option<i64>,
+    /// `done`, `failed` or `skipped`.
+    result: Option<String>,
+    note: Option<String>,
+}
+
+/// One action with the person who owns it.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ActionRequest {
+    title: String,
+    owner: String,
+    due_at_ns: Option<i64>,
+    /// A ticket key or URL that tracks the action.
+    ticket: Option<String>,
+}
+
+/// One link to what the exercise tested.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LinkRequest {
+    /// `function`, `entity`, `registry`, `run` or `gameday`.
+    kind: String,
+    linked_id: String,
+    label: Option<String>,
+}
+
+impl StepRequest {
+    fn into_step(self) -> Result<ExerciseStep, ManualError> {
+        Ok(ExerciseStep {
+            title: self.title,
+            actor: self.actor,
+            started_at_ns: self.started_at_ns,
+            ended_at_ns: self.ended_at_ns,
+            result: self.result.as_deref().map(StepResult::parse).transpose()?,
+            note: self.note,
+        })
+    }
+}
+
+impl LinkRequest {
+    fn into_link(self) -> Result<ExerciseLink, ManualError> {
+        Ok(ExerciseLink {
+            kind: LinkKind::parse(&self.kind)?,
+            linked_id: self.linked_id,
+            label: self.label,
+        })
+    }
+}
+
+impl From<ParticipantRequest> for Participant {
+    fn from(p: ParticipantRequest) -> Self {
+        Self {
+            name: p.name,
+            role: p.role,
+        }
+    }
+}
+
+impl From<ActionRequest> for ActionItem {
+    fn from(a: ActionRequest) -> Self {
+        Self {
+            title: a.title,
+            owner: a.owner,
+            due_at_ns: a.due_at_ns,
+            ticket: a.ticket,
+        }
+    }
 }
 
 impl ManualRecordRequest {
     fn into_new(self, entered_by: String) -> Result<NewManualExperiment, ManualError> {
+        let exercise = ExerciseDetail {
+            rto_target_s: self.rto_target_s,
+            rpo_target_s: self.rpo_target_s,
+            rpo_measured_s: self.rpo_measured_s,
+            data_verified: self.data_verified,
+            participants: self
+                .participants
+                .into_iter()
+                .map(Participant::from)
+                .collect(),
+            steps: self
+                .steps
+                .into_iter()
+                .map(StepRequest::into_step)
+                .collect::<Result<_, _>>()?,
+            actions: self.actions.into_iter().map(ActionItem::from).collect(),
+            links: self
+                .links
+                .into_iter()
+                .map(LinkRequest::into_link)
+                .collect::<Result<_, _>>()?,
+        };
         Ok(NewManualExperiment {
             experiment_name: self.experiment_name,
             exercise_type: ExerciseType::parse(&self.exercise_type)?,
@@ -167,6 +303,7 @@ impl ManualRecordRequest {
             attestation: self.attestation,
             renewal_due_ns: self.renewal_due_ns,
             framework_refs: self.framework_refs,
+            exercise,
         })
     }
 }
@@ -266,6 +403,7 @@ pub async fn update(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SubmitRequest {
     by: Option<String>,
     attestation: Option<String>,
@@ -288,6 +426,7 @@ pub async fn submit(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct VerifyRequest {
     reviewer: Option<String>,
     note: Option<String>,
@@ -310,6 +449,7 @@ pub async fn verify(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct RejectRequest {
     reviewer: Option<String>,
     note: String,
@@ -332,6 +472,7 @@ pub async fn reject(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct AttachmentRequest {
     kind: String,
     uri: String,
@@ -371,6 +512,7 @@ pub async fn attach(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ImportRequest {
     label: Option<String>,
     records: Vec<ManualRecordRequest>,

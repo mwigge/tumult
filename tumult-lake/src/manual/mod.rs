@@ -37,6 +37,10 @@ pub enum ExerciseType {
     /// from an ordinary penetration test.
     Tlpt,
     Drill,
+    /// A restore from a backup, tested end to end.
+    Restore,
+    /// A backup taken and checked that it can be read back.
+    Backup,
     Other,
 }
 
@@ -49,6 +53,8 @@ impl ExerciseType {
             Self::Pentest => "pentest",
             Self::Tlpt => "tlpt",
             Self::Drill => "drill",
+            Self::Restore => "restore",
+            Self::Backup => "backup",
             Self::Other => "other",
         }
     }
@@ -61,11 +67,13 @@ impl ExerciseType {
             "pentest" => Self::Pentest,
             "tlpt" => Self::Tlpt,
             "drill" => Self::Drill,
+            "restore" => Self::Restore,
+            "backup" => Self::Backup,
             "other" => Self::Other,
             other => {
                 return Err(ManualError::Invalid(format!(
                     "unknown exercise_type '{other}' \
-                     (gameday|tabletop|failover|pentest|tlpt|drill|other)"
+                     (gameday|tabletop|failover|pentest|tlpt|drill|restore|backup|other)"
                 )))
             }
         })
@@ -141,6 +149,189 @@ impl AttachmentKind {
     }
 }
 
+/// The result of one step of an exercise.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StepResult {
+    Done,
+    Failed,
+    Skipped,
+}
+
+impl StepResult {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Done => "done",
+            Self::Failed => "failed",
+            Self::Skipped => "skipped",
+        }
+    }
+
+    pub fn parse(s: &str) -> Result<Self, ManualError> {
+        Ok(match s {
+            "done" => Self::Done,
+            "failed" => Self::Failed,
+            "skipped" => Self::Skipped,
+            other => {
+                return Err(ManualError::Invalid(format!(
+                    "unknown step result '{other}' (done|failed|skipped)"
+                )))
+            }
+        })
+    }
+}
+
+/// What a link of a record points at. Only the kind is checked: the thing
+/// itself may be registered or run later, and may live in another lake.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LinkKind {
+    /// A function of the register, by `ict_functions.function_id`.
+    Function,
+    /// A telemetry entity, by its `ict.entity.id`.
+    Entity,
+    /// A registered definition, by `run_registry.id`.
+    Registry,
+    /// An automated run, by its experiment id.
+    Run,
+    /// A GameDay campaign, by its daemon run id.
+    GameDay,
+}
+
+impl LinkKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Function => "function",
+            Self::Entity => "entity",
+            Self::Registry => "registry",
+            Self::Run => "run",
+            Self::GameDay => "gameday",
+        }
+    }
+
+    pub fn parse(s: &str) -> Result<Self, ManualError> {
+        Ok(match s {
+            "function" => Self::Function,
+            "entity" => Self::Entity,
+            "registry" => Self::Registry,
+            "run" => Self::Run,
+            "gameday" => Self::GameDay,
+            other => {
+                return Err(ManualError::Invalid(format!(
+                    "unknown link kind '{other}' (function|entity|registry|run|gameday)"
+                )))
+            }
+        })
+    }
+}
+
+/// One person who took part in an exercise, and the role they had.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Participant {
+    pub name: String,
+    pub role: Option<String>,
+}
+
+/// One step of the timeline of an exercise, in the order it was taken.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExerciseStep {
+    pub title: String,
+    pub actor: Option<String>,
+    pub started_at_ns: Option<i64>,
+    pub ended_at_ns: Option<i64>,
+    pub result: Option<StepResult>,
+    pub note: Option<String>,
+}
+
+/// An action that came out of an exercise, with the person who owns it.
+/// It is stored `open`; closing it later does not change the sealed record.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ActionItem {
+    pub title: String,
+    pub owner: String,
+    pub due_at_ns: Option<i64>,
+    /// A ticket key or URL that tracks the action.
+    pub ticket: Option<String>,
+}
+
+/// A link from a record to what the exercise tested.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExerciseLink {
+    pub kind: LinkKind,
+    pub linked_id: String,
+    pub label: Option<String>,
+}
+
+/// The DR facts of an exercise (schema v22). The actual RTO is
+/// [`NewManualExperiment::recovery_time_s`]. Every field is optional, so a
+/// record without them is the record of 3.0.3.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct ExerciseDetail {
+    /// The planned RTO, in seconds.
+    pub rto_target_s: Option<f64>,
+    /// The planned RPO: the seconds of committed writes from before the
+    /// outage that may be lost, as the automated RPO metric means it.
+    pub rpo_target_s: Option<f64>,
+    /// The actual RPO: the seconds of committed writes from before the
+    /// outage that were lost.
+    pub rpo_measured_s: Option<f64>,
+    /// Whether the data was checked after the recovery: `true` complete,
+    /// `false` loss or corruption found, `None` not checked.
+    pub data_verified: Option<bool>,
+    pub participants: Vec<Participant>,
+    pub steps: Vec<ExerciseStep>,
+    /// The actions with owners. From schema v22 on these are the actions of
+    /// a record; [`NewManualExperiment::action_items`] is the older list of
+    /// plain texts, kept for the clients that still send it.
+    pub actions: Vec<ActionItem>,
+    pub links: Vec<ExerciseLink>,
+}
+
+/// `Invalid` naming `field` of the `n`th (1-based) `what` when `value` is blank.
+fn require(what: &str, n: usize, field: &str, value: &str) -> Result<(), ManualError> {
+    if value.trim().is_empty() {
+        return Err(ManualError::Invalid(format!(
+            "{what} {n}: '{field}' must not be empty"
+        )));
+    }
+    Ok(())
+}
+
+impl ExerciseDetail {
+    fn validate(&self) -> Result<(), ManualError> {
+        for (field, value) in [
+            ("rto_target_s", self.rto_target_s),
+            ("rpo_target_s", self.rpo_target_s),
+            ("rpo_measured_s", self.rpo_measured_s),
+        ] {
+            if value.is_some_and(|v| !(v.is_finite() && v >= 0.0)) {
+                return Err(ManualError::Invalid(format!(
+                    "'{field}' must be a number of seconds at or above 0"
+                )));
+            }
+        }
+        for (n, p) in (1..).zip(&self.participants) {
+            require("participant", n, "name", &p.name)?;
+        }
+        for (n, step) in (1..).zip(&self.steps) {
+            require("step", n, "title", &step.title)?;
+            if let (Some(start), Some(end)) = (step.started_at_ns, step.ended_at_ns) {
+                if end < start {
+                    return Err(ManualError::Invalid(format!(
+                        "step {n} ends before it starts"
+                    )));
+                }
+            }
+        }
+        for (n, action) in (1..).zip(&self.actions) {
+            require("action", n, "title", &action.title)?;
+            require("action", n, "owner", &action.owner)?;
+        }
+        for (n, link) in (1..).zip(&self.links) {
+            require("link", n, "linked_id", &link.linked_id)?;
+        }
+        Ok(())
+    }
+}
+
 /// Errors from the manual-evidence lifecycle. The API layer maps:
 /// `Invalid`/`SelfReview` → 400, `NotFound` → 404, `WrongStatus` → 409,
 /// `Store` → 500.
@@ -213,6 +404,8 @@ pub struct NewManualExperiment {
     pub attestation: String,
     pub renewal_due_ns: Option<i64>,
     pub framework_refs: Vec<String>,
+    /// The DR facts, participants, steps, actions and links (schema v22).
+    pub exercise: ExerciseDetail,
 }
 
 impl NewManualExperiment {
@@ -233,7 +426,7 @@ impl NewManualExperiment {
                 "'executed_at_ns' must be a positive unix-nanos timestamp".into(),
             ));
         }
-        Ok(())
+        self.exercise.validate()
     }
 }
 
@@ -250,6 +443,8 @@ mod tests {
             ("pentest", ExerciseType::Pentest),
             ("tlpt", ExerciseType::Tlpt),
             ("drill", ExerciseType::Drill),
+            ("restore", ExerciseType::Restore),
+            ("backup", ExerciseType::Backup),
             ("other", ExerciseType::Other),
         ] {
             assert_eq!(ExerciseType::parse(s).unwrap(), want);
@@ -299,6 +494,42 @@ mod tests {
     }
 
     #[test]
+    fn step_result_parses_every_result_and_rejects_unknown() {
+        for (s, want) in [
+            ("done", StepResult::Done),
+            ("failed", StepResult::Failed),
+            ("skipped", StepResult::Skipped),
+        ] {
+            assert_eq!(StepResult::parse(s).unwrap(), want);
+            assert_eq!(want.as_str(), s);
+        }
+        let err = StepResult::parse("ok").unwrap_err();
+        assert!(
+            matches!(&err, ManualError::Invalid(msg) if msg.contains("unknown step result 'ok'")),
+            "{err:?}"
+        );
+    }
+
+    #[test]
+    fn link_kind_parses_every_kind_and_rejects_unknown() {
+        for (s, want) in [
+            ("function", LinkKind::Function),
+            ("entity", LinkKind::Entity),
+            ("registry", LinkKind::Registry),
+            ("run", LinkKind::Run),
+            ("gameday", LinkKind::GameDay),
+        ] {
+            assert_eq!(LinkKind::parse(s).unwrap(), want);
+            assert_eq!(want.as_str(), s);
+        }
+        let err = LinkKind::parse("service").unwrap_err();
+        assert!(
+            matches!(&err, ManualError::Invalid(msg) if msg.contains("unknown link kind 'service'")),
+            "{err:?}"
+        );
+    }
+
+    #[test]
     fn manual_error_display_names_each_cause() {
         assert_eq!(
             ManualError::Invalid("bad".into()).to_string(),
@@ -342,6 +573,7 @@ mod tests {
             attestation: "attested".into(),
             renewal_due_ns: None,
             framework_refs: vec![],
+            exercise: ExerciseDetail::default(),
         }
     }
 

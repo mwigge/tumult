@@ -98,8 +98,3 @@ fn a_v20_lake_gains_the_log_columns_and_keeps_its_logs() {
     assert_eq!(rows[1]["event_name"], "entity.state");
     assert_eq!(rows[1]["flag"], "true");
 }
-
-#[test]
-fn the_schema_is_at_version_21() {
-    assert_eq!(CURRENT_SCHEMA_VERSION, 21);
-}

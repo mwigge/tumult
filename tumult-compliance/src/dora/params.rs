@@ -407,6 +407,8 @@ impl Default for HouseParams {
         let manual_kinds = [
             ("failover", "dr"),
             ("drill", "dr"),
+            ("restore", "dr"),
+            ("backup", "dr"),
             ("gameday", "chaos"),
             ("pentest", "security"),
             ("tlpt", "security"),
@@ -963,6 +965,8 @@ mod tests {
             ExerciseType::Pentest,
             ExerciseType::Tlpt,
             ExerciseType::Drill,
+            ExerciseType::Restore,
+            ExerciseType::Backup,
             ExerciseType::Other,
         ]
         .into_iter()
@@ -980,6 +984,8 @@ mod tests {
                 ("pentest", Some("security"), Some("security")),
                 ("tlpt", Some("security"), Some("security")),
                 ("drill", Some("dr"), Some("robustness")),
+                ("restore", Some("dr"), Some("robustness")),
+                ("backup", Some("dr"), Some("robustness")),
                 ("other", None, None),
             ]
         );
