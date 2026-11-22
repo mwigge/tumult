@@ -123,6 +123,28 @@ class DistributionTests(unittest.TestCase):
             'test "$MUTANTS" = success || test "$MUTANTS" = skipped', check[1]
         )
 
+    def test_every_tool_a_workflow_installs_with_cargo_is_pinned(self):
+        # Without a version, cargo installs the newest release of a tool.
+        # That release may need a newer Rust than the workspace toolchain,
+        # or change what the tool reports.
+        installs = 0
+        for workflow in sorted((ROOT / ".github/workflows").glob("*.yml")):
+            text = workflow.read_text()
+            for line in re.findall(r"^\s*[^#\s].*\bcargo install\b.*$", text, re.M):
+                installs += 1
+                with self.subTest(workflow=workflow.name, line=line.strip()):
+                    self.assertRegex(line, r" --locked\b")
+                    version = re.search(r" --version[ =]\"?([^\s\"]+)", line)
+                    self.assertIsNotNone(version, "no --version")
+                    value = version[1]
+                    if value.startswith("$"):
+                        name = value.strip("${}")
+                        env = re.search(rf"^\s+{name}: (\S+)$", text, re.M)
+                        self.assertIsNotNone(env, f"{name} is not set")
+                        value = env[1]
+                    self.assertRegex(value, r"^\d+\.\d+\.\d+$")
+        self.assertGreater(installs, 0)
+
     def test_daemon_templates_disable_automatic_retention(self):
         manifest = (ROOT / "deploy/k8s/tumultd.yaml").read_text()
         unit = (ROOT / "deploy/systemd/tumultd.service").read_text()

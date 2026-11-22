@@ -1,0 +1,10 @@
+[package]
+name = "tumult-spawn"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "One spawn of a child process at a time, for every Tumult crate that starts one"
+
+[lints]
+workspace = true
