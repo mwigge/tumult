@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 import { statusClass } from './api';
-import { CHART } from './echarts';
+import { chartTokens } from './echarts';
 import { outcomeColor } from './overlays';
 import { RUN_TONE } from './tone';
 
@@ -23,7 +23,8 @@ const VERDICTS: Record<string, Verdict> = JSON.parse(
 
 /** A run that passed is ok, one that failed is fail, one that proves nothing is neutral. */
 const BADGE: Record<Verdict, string> = { pass: 'ok', fail: 'fail', no_evidence: 'neutral' };
-const BAND: Record<Verdict, string> = { pass: CHART.ok, fail: CHART.fail, no_evidence: CHART.text };
+const T = chartTokens('tumult-dark');
+const BAND: Record<Verdict, string> = { pass: T.ok, fail: T.fail, no_evidence: T.text };
 
 describe('the tone of the end of a run', () => {
     it('has a tone for each status the lake has a verdict for, and for no other', () => {
@@ -41,8 +42,8 @@ describe('the tone of the end of a run', () => {
     it.each(Object.entries(VERDICTS))(
         'draws the band of the status %s as its verdict %s',
         (status, verdict) => {
-            expect(outcomeColor(status)).toBe(BAND[verdict]);
-            expect(outcomeColor(status.toUpperCase())).toBe(BAND[verdict]);
+            expect(outcomeColor(status, T)).toBe(BAND[verdict]);
+            expect(outcomeColor(status.toUpperCase(), T)).toBe(BAND[verdict]);
         },
     );
 });
@@ -58,11 +59,11 @@ describe('the tone of what is not the end of a run', () => {
         expect(statusClass('orphaned')).toBe('fail');
         expect(statusClass('running')).toBe('neutral');
         expect(statusClass(null)).toBe('neutral');
-        expect(outcomeColor(null)).toBe(CHART.text);
+        expect(outcomeColor(null, T)).toBe(T.text);
     });
 
     it('reads a word every object has as no ending of a run', () => {
         expect(statusClass('constructor')).toBe('neutral');
-        expect(outcomeColor('toString')).toBe(CHART.text);
+        expect(outcomeColor('toString', T)).toBe(T.text);
     });
 });
