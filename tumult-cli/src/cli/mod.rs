@@ -369,8 +369,8 @@ pub(crate) enum Commands {
         #[command(subcommand)]
         action: AutopilotAction,
     },
-    /// CI gate: ask the daemon for a target's resilience verdict and exit
-    /// non-zero when it does not pass (`GET /api/gate/{target}`)
+    /// CI gate: ask the daemon for a verdict on a target's compliance score
+    /// and exit non-zero when it does not pass (`GET /api/gate/{target}`)
     Gate {
         /// Target system as recorded on the experiments (e.g. `payments-api`)
         target: String,

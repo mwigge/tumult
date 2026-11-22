@@ -216,7 +216,7 @@ pub fn cmd_agentic_replay(fixture_path: &Path, journal_path: &Path) -> Result<St
 
 /// Runs a fault-injecting proxy in front of a live agent's model endpoint.
 ///
-/// Point any agentic client (Claude Code, Codex, Copilot, and other
+/// Point any agentic client (Claude Code, Codex, and other
 /// base-URL-configurable agents) at the printed address and the chosen scenario
 /// pack's faults are injected into the client's real model traffic. Runs until
 /// interrupted.
@@ -273,7 +273,6 @@ pub async fn cmd_agentic_proxy(
     crate::outln!("  Claude Code:  ANTHROPIC_BASE_URL={base} claude");
     crate::outln!("  Codex CLI:    OPENAI_BASE_URL={base}/v1 codex");
     crate::outln!("  OpenCode:     OPENAI_BASE_URL={base}/v1 opencode");
-    crate::outln!("  Copilot CLI:  HTTPS_PROXY={base} copilot");
     crate::outln!();
     crate::outln!("Press Ctrl-C to stop.");
 

@@ -196,8 +196,9 @@ pub(crate) fn recommendations_for(
 /// (a JSON object: bare service name or `svc:` id → relative rate, e.g.
 /// spans/min extracted from an `OTel` backend). Absent/invalid = empty map =
 /// neutral factor. File-based on purpose: the derivation from `OTel` happens
-/// in whatever pipeline owns your telemetry (see the autopilot guide for
-/// the SigNoz/ClickHouse one-liner); tumult consumes a reviewable artifact.
+/// in whatever pipeline owns your telemetry (`scripts/demo-topology.sh 5`
+/// builds one from the span counts of `SigNoz` on the demo); tumult consumes
+/// a reviewable artifact.
 pub(crate) fn criticality_from_env() -> std::collections::HashMap<String, f64> {
     let Ok(path) = std::env::var("TUMULT_CRITICALITY_FILE") else {
         return std::collections::HashMap::new();

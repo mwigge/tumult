@@ -16,20 +16,15 @@ already holds.
 ```mermaid
 flowchart TD
     accTitle: SigNoz bulk import
-    accDescr: The daemon exports the lake to Parquet. The script reads the spans snapshot and inserts it into the SigNoz index and resource tables in ClickHouse.
-    A[(Lake)] -- "POST /api/lake/export" --> B["snapshots/spans/*.parquet"]
+    accDescr: The daemon exports the lake to Parquet. The script reads the spans snapshot that _meta.json names and inserts it into the SigNoz index and resource tables in ClickHouse.
+    A[(Lake)] -- "POST /api/lake/export" --> B["_meta.json names snapshots/spans/fingerprint.parquet"]
     B -- "signoz-bulk-import.sh" --> C[("ClickHouse: signoz_index_v3, traces_v3_resource")]
     C --> D[SigNoz UI]
 ```
 
-> **The script does not match the current lake export.** By default it
-> looks for `<lake>/spans/date=YYYY-MM-DD/*.parquet`, a layout the lake
-> no longer writes. The export now writes one full snapshot of each
-> table, named in `<lake>/_meta.json`, and keeps older snapshots next to
-> it. Every snapshot holds every span, so importing two of them stores
-> each span twice. Until the script reads `_meta.json`, import the
-> current snapshot once, as below, and only into a SigNoz that holds no
-> earlier import.
+The export writes one full snapshot of each table and names the current
+one in `<lake>/_meta.json`. Older snapshots stay next to it. The script
+reads only the spans snapshot that `_meta.json` names, and only once.
 
 ## Import the current snapshot
 
@@ -44,12 +39,11 @@ curl -X POST -H "Authorization: Bearer $KRO_TOKEN" http://127.0.0.1:24318/api/la
 
 The export needs the Operator role.
 
-Point the script at the one spans file that `_meta.json` names. Try a
-dry run first: it counts the rows and changes nothing.
+Point the script at the lake folder. It needs `python3` to read
+`_meta.json`. Try a dry run first: it counts the rows and changes nothing.
 
 ```bash
 export KRONIKA_LAKE_DIR=~/.tumult/lake   # where tumultd exports
-export PARQUET_GLOB="$KRONIKA_LAKE_DIR/$(jq -r .snapshots.spans "$KRONIKA_LAKE_DIR/_meta.json")"
 export SIGNOZ_DOCKER_CONTAINER=docker-signoz-1
 scripts/signoz-bulk-import.sh --dry-run
 scripts/signoz-bulk-import.sh
@@ -67,13 +61,12 @@ carry the attribute `tumult.import=signoz-bulk-import`.
 | `CLICKHOUSE_HOST`, `CLICKHOUSE_PORT` | `localhost`, `9000` | The native protocol, not HTTP |
 | `CLICKHOUSE_USER`, `CLICKHOUSE_PASSWORD` | `default`, none | |
 | `CLICKHOUSE_DB` | `signoz_traces` | |
-| `KRONIKA_LAKE_DIR` | `~/.tumult/lake` | The export folder |
-| `PARQUET_GLOB` | `<lake>/spans/date=*/*.parquet` | The files to import |
-| `PARQUET_SERVER_DIR` | none | Local `clickhouse-client` only: the same files as the server sees them, under its `user_files` |
-| `SIGNOZ_IMPORT_STATE` | `<lake>/.signoz-import-ledger` | The list of files already imported |
+| `KRONIKA_LAKE_DIR` | `~/.tumult/lake` | The export folder, with its `_meta.json` |
+| `PARQUET_SERVER_DIR` | none | Local `clickhouse-client` only: the export folder as the server sees it, under its `user_files` |
+| `SIGNOZ_IMPORT_STATE` | `<lake>/.signoz-import-ledger` | The list of snapshots already imported |
 
 `--dry-run` counts and inserts nothing. `--force` ignores the list of
-imported files and stores every row again.
+imported snapshots and stores every row again.
 
 ## What lands in SigNoz
 
@@ -85,8 +78,10 @@ and metrics are not imported.
 
 ## Before you import
 
-- ClickHouse does not remove duplicates here. The list of imported files
-  is the only guard, and it does not know that two snapshots share rows.
+- ClickHouse does not remove duplicates here. The list of imported
+  snapshots is the only guard. A second run of the same snapshot does
+  nothing. After an import, a newer snapshot is refused, because it holds
+  the imported spans too.
 - SigNoz removes trace rows after its retention time, so spans older
   than that disappear at the next merge unless you raise it.
 - The script computes its own resource fingerprint. A service can show
@@ -107,7 +102,9 @@ ALTER TABLE signoz_traces.signoz_index_v3
 
 | Message | Fix |
 |---|---|
-| `no parquet files matched` | Export the lake, and set `PARQUET_GLOB` as above |
+| `no lake manifest` | Export the lake, and set `KRONIKA_LAKE_DIR` to the export folder |
+| `PARQUET_GLOB is not read any more` | Unset `PARQUET_GLOB`: the script reads `_meta.json` |
+| `would store them twice` | The spans are in SigNoz already. Use `--force` only into a SigNoz without the earlier import |
 | `cannot reach ClickHouse` | Check the container name with `docker ps`, or use port 9000 |
 | `target tables not found` | Check `CLICKHOUSE_DB` and that SigNoz has created its schema |
 

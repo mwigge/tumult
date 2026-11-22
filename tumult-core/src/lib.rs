@@ -13,7 +13,8 @@
 //!    declared only, and the tolerances stay as written.
 //! 3. **Method / During** (Phase 2) — execute chaos actions while sampling probes.
 //! 4. **Post** (Phase 3) — measure recovery after actions complete.
-//! 5. **Analysis** (Phase 4) — compare estimate vs. actual, compute resilience score.
+//! 5. **Analysis** (Phase 4): compare estimate vs. actual, and record whether
+//!    the run completed.
 //!
 //! # Key modules
 //!
@@ -28,8 +29,8 @@
 //!
 //! # Getting started
 //!
-//! See the [data lifecycle guide](https://github.com/mwigge/tumult/blob/main/docs/data-lifecycle.md)
-//! for an end-to-end walkthrough of experiment authoring through journal analysis.
+//! See [how a run works](https://tumult.rs/guides/execution-flow.html) for the
+//! steps of a run, what the journal records and where the data goes.
 
 /// Regulatory compliance domain logic shared by the CLI and MCP server.
 pub mod compliance;

@@ -42,9 +42,9 @@ A run that has not ended yet (queued, running) is grey too. Amber marks a
 state in between: a manual record that partly passed, a pending rollback, or
 an approval request that was rejected or expired.
 
-## The two scores
+## The scores
 
-Both run from 0 to 100.
+The compliance and resilience scores run from 0 to 100 and belong to a target.
 
 - **Compliance score** (Scores page, the gate, the digest). The latest run of
   each experiment: pass 100, pass older than 30 days 75, failure 50, never
@@ -52,6 +52,13 @@ Both run from 0 to 100.
 - **Resilience score** (Resilience page). A continuous score from objective
   margins, discipline coverage, evidence freshness and recovery against
   target, per target and weighted by criticality.
+
+Two more scores run from 0 to 1 and belong to one run:
+
+- **GameDay score** (`tumult gameday run` and `analyze`). Pass rate 30 %,
+  recovery 25 %, load impact 25 % and compliance coverage 20 %.
+- **Agentic score** (agentic runs). The share of contracts that passed,
+  weighted by their severity.
 
 ## Evidence and intelligence
 

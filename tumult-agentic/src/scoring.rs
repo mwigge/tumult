@@ -42,7 +42,7 @@ impl ScoreMatrix {
 #[derive(Debug, thiserror::Error)]
 pub enum ScoreGateError {
     #[error(
-        "resilience score gate failed: score {score:.3} below threshold {threshold:.3} by {delta:.3}; scenario={scenario} contract={contract} reason={reason}"
+        "agentic score gate failed: score {score:.3} below threshold {threshold:.3} by {delta:.3}; scenario={scenario} contract={contract} reason={reason}"
     )]
     BelowThreshold {
         score: f64,
@@ -90,7 +90,7 @@ pub fn score_matrix(outcomes: &[ContractOutcome]) -> ScoreMatrix {
 
 /// # Errors
 ///
-/// Returns [`ScoreGateError::BelowThreshold`] when the overall resilience score
+/// Returns [`ScoreGateError::BelowThreshold`] when the overall agentic score
 /// is below the requested threshold.
 pub fn evaluate_score_gate(
     score: &ScoreMatrix,
@@ -170,7 +170,7 @@ impl AgenticDimension {
     }
 }
 
-/// Rolled-up agentic resilience score for a trajectory run: an overall figure
+/// Rolled-up agentic score for a trajectory run: an overall figure
 /// plus the per-dimension subscores that explain it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct AgenticScore {

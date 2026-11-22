@@ -12,7 +12,7 @@
 # reverse proxy (nginx/Caddy) in front of it. See docs/guides/production-deployment.md.
 
 [Unit]
-Description=Tumult MCP server (chaos engine)
+Description=Tumult MCP server
 After=network-online.target
 Wants=network-online.target
 

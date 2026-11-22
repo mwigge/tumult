@@ -107,6 +107,19 @@ fn parse_agentic_requires_subcommand() {
 }
 
 #[test]
+fn the_help_of_the_agentic_proxy_asks_for_a_base_url_and_no_proxy_variable() {
+    let help = Cli::try_parse_from(["tumult", "agentic", "proxy", "--help"])
+        .unwrap_err()
+        .to_string();
+
+    // The help may wrap a long line: compare the words.
+    let words = help.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert!(words.contains("base-URL environment variable"), "{help}");
+    assert!(!words.contains("proxy environment variable"), "{help}");
+    assert!(!words.contains("Copilot"), "{help}");
+}
+
+#[test]
 fn parse_agentic_proxy() {
     let cli = Cli::try_parse_from([
         "tumult",

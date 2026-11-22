@@ -3,10 +3,13 @@
 # signoz-bulk-import.sh — backfill Tumult lake spans (Parquet) into SigNoz's
 # ClickHouse trace tables, bypassing the OTel collector.
 #
-# Reads '<lake>/spans/date=YYYY-MM-DD/data-*.parquet' and inserts into
+# Reads the spans snapshot that '<lake>/_meta.json' names
+# (snapshots/spans/<fingerprint>.parquet) and inserts it into
 # signoz_traces.signoz_index_v3 (via its Distributed wrapper when present)
 # plus the companion resource table (traces_v3_resource) that the SigNoz UI
 # needs to resolve services. Logs and metric_* tables are out of scope.
+# Older snapshots stay next to the current one and are not read: each
+# snapshot holds every span.
 #
 # Two transport modes:
 #   docker  SIGNOZ_DOCKER_CONTAINER=<name> — SQL runs via `docker exec` and
@@ -18,9 +21,12 @@
 #           directory; set PARQUET_SERVER_DIR to the server-side path that
 #           corresponds to KRONIKA_LAKE_DIR.
 #
-# Idempotency: signoz_index_v3 is a plain MergeTree (no dedup), so the
-# script keeps a ledger of imported files (one line per file) and skips
-# them on re-runs. --force re-imports everything and WILL duplicate rows.
+# Once only: signoz_index_v3 is a plain MergeTree (no dedup), and a new
+# snapshot holds the spans of the snapshots before it. The script keeps a
+# ledger of what it imported. A second run of the same snapshot does
+# nothing. A newer snapshot after an import is refused, because it would
+# store the imported spans twice. --force ignores the ledger and WILL
+# duplicate rows.
 #
 # Usage:
 #   scripts/signoz-bulk-import.sh [--dry-run] [--force]
@@ -34,18 +40,17 @@
 #   CLICKHOUSE_PASSWORD      default empty
 #   CLICKHOUSE_DB            default signoz_traces
 #   KRONIKA_LAKE_DIR         default ~/.tumult/lake
-#   PARQUET_GLOB             explicit local glob, overrides the lake layout
 #   PARQUET_SERVER_DIR       server-side path for KRONIKA_LAKE_DIR (local mode)
 #   SIGNOZ_IMPORT_STATE      ledger path, default <lake>/.signoz-import-ledger
 #
-# Exit codes: 0 ok (or dry-run), 1 runtime failure, 2 usage/config error.
+# Exit codes: 0 ok (or dry-run, or already imported), 1 runtime failure or a
+# refused newer snapshot, 2 usage/config error.
 
 set -euo pipefail
 
 # ── Config ────────────────────────────────────────────────────────
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LAKE_DIR="${KRONIKA_LAKE_DIR:-${HOME}/.tumult/lake}"
-PARQUET_GLOB="${PARQUET_GLOB:-${LAKE_DIR}/spans/date=*/*.parquet}"
 SERVER_DIR="${PARQUET_SERVER_DIR:-}"
 STATE_FILE="${SIGNOZ_IMPORT_STATE:-${LAKE_DIR}/.signoz-import-ledger}"
 DOCKER_CTR="${SIGNOZ_DOCKER_CONTAINER:-}"
@@ -112,9 +117,9 @@ ch_query() {
 
 # Stage one local parquet file where the server can read it; prints the
 # path to use inside file(). Docker mode: docker cp into user_files under
-# a flattened name (ClickHouse file() globs do not cross directory levels,
-# and the flat name keeps the 'date=' partition marker for dry-run output).
-# Local mode: SERVER_DIR/<relative-path> (must sit under user_files).
+# a flat name (snapshots__spans__<fingerprint>.parquet), in a folder of
+# this run. Local mode: SERVER_DIR/<relative-path> (must sit under
+# user_files).
 STAGE_DIR="signoz-bulk-import-$$"
 stage_file() {
   local src="$1" rel="$2" flat
@@ -225,11 +230,29 @@ FROM file('"'"'__REF__'"'"', Parquet)
 '
 
 # ── Preflight ─────────────────────────────────────────────────────
-shopt -s nullglob
-# Expand the local glob (handles both the lake layout and PARQUET_GLOB).
-FILES=( $PARQUET_GLOB )
-shopt -u nullglob
-[[ ${#FILES[@]} -gt 0 ]] || die "no parquet files matched: $PARQUET_GLOB (set KRONIKA_LAKE_DIR or PARQUET_GLOB)" 2
+# Prints the spans snapshot that a v2 manifest names, as the lake export
+# writes it: snapshots/spans/<fingerprint>.parquet.
+spans_snapshot() {
+  python3 -c '
+import json, re, sys
+meta = json.load(open(sys.argv[1], encoding="utf-8"))
+fingerprint = meta.get("fingerprints", {}).get("spans", "")
+path = meta.get("snapshots", {}).get("spans", "")
+if meta.get("format_version") != 2 or not re.fullmatch("[0-9a-f]{64}", fingerprint):
+    sys.exit(1)
+if path != f"snapshots/spans/{fingerprint}.parquet":
+    sys.exit(1)
+print(path)
+' "$1"
+}
+
+META="${LAKE_DIR}/_meta.json"
+[[ -z "${PARQUET_GLOB:-}" ]] || die "PARQUET_GLOB is not read any more: the script imports the spans snapshot that ${META} names" 2
+[[ -f "$META" ]] || die "no lake manifest at ${META}: export the lake first (POST /api/lake/export), or set KRONIKA_LAKE_DIR" 2
+command -v python3 >/dev/null 2>&1 || die "python3 not found; the script reads ${META} with it" 2
+SNAPSHOT_REL="$(spans_snapshot "$META")" || die "${META} names no spans snapshot of a v2 lake export" 2
+SNAPSHOT="${LAKE_DIR}/${SNAPSHOT_REL}"
+[[ -f "$SNAPSHOT" ]] || die "the spans snapshot that ${META} names is missing: ${SNAPSHOT}" 2
 
 if [[ -n "$DOCKER_CTR" ]]; then
   docker inspect "$DOCKER_CTR" >/dev/null 2>&1 || die "docker container not found: $DOCKER_CTR" 2
@@ -250,71 +273,50 @@ fi
 [[ "$(ch_query "SELECT count() FROM system.tables WHERE database='${CH_DB}' AND name IN ('${INDEX_TABLE}','${RESOURCE_TABLE}')")" == "2" ]] \
   || die "target tables not found in ${CH_DB} (${INDEX_TABLE}, ${RESOURCE_TABLE}); is this a SigNoz ClickHouse?"
 
-# Ledger: one '<relpath>\t<rows>\t<iso-time>' line per imported file.
+# Ledger: one '<snapshot>\t<rows>\t<iso-time>' line per import. The state
+# of the snapshot: pending, imported (the ledger names it) or refused (the
+# ledger names an earlier import only).
 touch "$STATE_FILE"
-is_imported() {
-  [[ $FORCE -eq 0 ]] || return 1
-  awk -F '\t' -v r="$1" '$1 == r { found=1 } END { exit !found }' "$STATE_FILE"
+snapshot_state() {
+  if [[ $FORCE -eq 1 ]]; then echo pending; return; fi
+  awk -F '\t' -v r="$SNAPSHOT_REL" '
+    $1 == r { mine = 1 }
+    $1 != "" && $1 != r { other = 1 }
+    END { print (mine ? "imported" : (other ? "refused" : "pending")) }' "$STATE_FILE"
 }
+STATE="$(snapshot_state)"
 
-# Base dir for relative paths: the lake root, or the glob's static prefix.
-BASE_DIR="$LAKE_DIR"
-if [[ "$PARQUET_GLOB" != "${LAKE_DIR}/spans/date=*/*.parquet" ]]; then
-  BASE_DIR="${PARQUET_GLOB%%\**}"; BASE_DIR="${BASE_DIR%/}"
-fi
-rel_path() { local p="${1#$BASE_DIR/}"; printf '%s' "${p#/}"; }
-
-# ── Dry run ───────────────────────────────────────────────────────
 echo "=================================================================="
 echo " SigNoz bulk import — $([[ $DRY_RUN -eq 1 ]] && echo 'DRY RUN' || echo 'IMPORT')"
-echo " source:  $PARQUET_GLOB"
+echo " source:  $SNAPSHOT"
 echo " target:  ${CH_DB}.${INDEX_TABLE} + ${CH_DB}.${RESOURCE_TABLE}"
 echo " mode:    $([[ -n "$DOCKER_CTR" ]] && echo "docker exec ($DOCKER_CTR)" || echo "clickhouse-client ($CH_HOST:$CH_PORT)")"
 echo "=================================================================="
 
+# ── Dry run ───────────────────────────────────────────────────────
 if [[ $DRY_RUN -eq 1 ]]; then
-  # Count each file server-side and aggregate per date partition in bash.
-  # Per-file queries keep this identical in docker and local modes.
-  declare -A part_rows=() part_files=()
-  pending=0; done_ct=0; total=0
-  for f in "${FILES[@]}"; do
-    rel="$(rel_path "$f")"
-    part="$(basename "$(dirname "$f")")"
-    [[ "$part" == date=* ]] || part="(no partition)"
-    ref="$(stage_file "$f" "$rel")"
-    rows="$(ch_query "SELECT count() FROM file('${ref}', Parquet)")"
-    part_rows[$part]=$(( ${part_rows[$part]:-0} + rows ))
-    part_files[$part]=$(( ${part_files[$part]:-0} + 1 ))
-    total=$((total + rows))
-    if is_imported "$rel"; then done_ct=$((done_ct + 1)); else pending=$((pending + 1)); fi
-  done
-  for part in "${!part_rows[@]}"; do
-    printf "  %-18s %8d rows  (%d file(s))\n" "$part" "${part_rows[$part]}" "${part_files[$part]}"
-  done | sort
-  echo ""
-  info "files: ${#FILES[@]} total ($total rows), $pending pending, $done_ct already in ledger ($STATE_FILE)"
+  ref="$(stage_file "$SNAPSHOT" "$SNAPSHOT_REL")"
+  rows="$(ch_query "SELECT count() FROM file('${ref}', Parquet)")"
+  info "${SNAPSHOT_REL}: ${rows} rows, ${STATE} (ledger ${STATE_FILE})"
   if [[ $FORCE -eq 1 ]]; then warn "--force: ledger ignored, re-import duplicates rows"; fi
   exit 0
 fi
 
 # ── Import ────────────────────────────────────────────────────────
-imported_files=0; imported_rows=0; skipped=0
-for f in "${FILES[@]}"; do
-  rel="$(rel_path "$f")"
-  if is_imported "$rel"; then
-    skipped=$((skipped + 1)); continue
-  fi
-  ref="$(stage_file "$f" "$rel")"
-  rows="$(ch_query "SELECT count() FROM file('${ref}', Parquet)")"
-  ch_query "INSERT INTO ${CH_DB}.${INDEX_TABLE} ${INDEX_COLS} ${MAPPED_SELECT//__REF__/$ref}"
-  ch_query "INSERT INTO ${CH_DB}.${RESOURCE_TABLE} (labels, fingerprint, seen_at_ts_bucket_start) ${RESOURCE_INSERT_SUFFIX//__REF__/$ref}"
-  printf '%s\t%s\t%s\n' "$rel" "$rows" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$STATE_FILE"
-  pass "$rel  ($rows rows)"
-  imported_files=$((imported_files + 1)); imported_rows=$((imported_rows + rows))
-done
+if [[ "$STATE" == imported ]]; then
+  pass "${SNAPSHOT_REL} is already imported (ledger ${STATE_FILE}); nothing to do"
+  exit 0
+fi
+if [[ "$STATE" == refused ]]; then
+  die "the ledger ${STATE_FILE} names an earlier import, and ${SNAPSHOT_REL} holds those spans too: importing it would store them twice. Use --force only into a SigNoz without the earlier import." 1
+fi
+ref="$(stage_file "$SNAPSHOT" "$SNAPSHOT_REL")"
+rows="$(ch_query "SELECT count() FROM file('${ref}', Parquet)")"
+ch_query "INSERT INTO ${CH_DB}.${INDEX_TABLE} ${INDEX_COLS} ${MAPPED_SELECT//__REF__/$ref}"
+ch_query "INSERT INTO ${CH_DB}.${RESOURCE_TABLE} (labels, fingerprint, seen_at_ts_bucket_start) ${RESOURCE_INSERT_SUFFIX//__REF__/$ref}"
+printf '%s\t%s\t%s\n' "$SNAPSHOT_REL" "$rows" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$STATE_FILE"
 
 echo ""
 echo "------------------------------------------------------------------"
-pass "imported $imported_rows rows from $imported_files file(s); skipped $skipped already-ledgered"
-if [[ $skipped -gt 0 ]]; then info "use --force to re-import ledgered files (duplicates rows!)"; fi
+pass "imported $rows rows from ${SNAPSHOT_REL}"
 echo "------------------------------------------------------------------"

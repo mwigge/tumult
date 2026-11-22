@@ -435,7 +435,7 @@ pub struct AnalysisResult {
     /// historical journals; not populated in this version (always `None`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub trend: Option<Trend>,
-    /// Overall resilience score (0.0-1.0).
+    /// 1.0 when the run completed, 0.0 when it did not.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resilience_score: Option<f64>,
 }
