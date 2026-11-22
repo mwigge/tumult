@@ -556,9 +556,16 @@ fn is_running(pid: u32) -> bool {
 #[cfg(all(unix, not(target_os = "linux")))]
 fn is_running(pid: u32) -> bool {
     let state_of = |pid: u32| {
-        let ps = std::process::Command::new("ps")
-            .args(["-o", "stat=", "-p", &pid.to_string()])
-            .output()
+        let mut ps = std::process::Command::new("ps");
+        ps.args(["-o", "stat=", "-p", &pid.to_string()])
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped());
+        // A k6 of another test that starts while ps gets its pipes would
+        // keep them on macOS, and ps would be read until that k6 ends.
+        let ps = tumult_core::spawn::alone(|| ps.spawn())
+            .expect("run ps")
+            .wait_with_output()
             .expect("run ps");
         String::from_utf8_lossy(&ps.stdout).trim().to_string()
     };

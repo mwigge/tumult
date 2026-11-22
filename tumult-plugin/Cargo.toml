@@ -8,6 +8,7 @@ description = "Plugin system for the Tumult resilience intelligence platform"
 
 [dependencies]
 tumult-otel = { path = "../tumult-otel" }
+tumult-spawn = { path = "../tumult-spawn" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 toon-format = { workspace = true }
