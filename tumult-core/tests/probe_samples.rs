@@ -27,6 +27,11 @@ use tumult_test_utils::{capture_spans, span_attribute};
 
 const OUTSIDE: &str = "the output is outside the tolerance";
 
+/// Sampler rounds that take longer than a fault waits (500 polls of
+/// 10 ms), so the sampler does not stop before the fault has seen what it
+/// waits for.
+const OUTLASTS_THE_WAIT: u32 = 1000;
+
 /// The target of the lab prints its state and counts each read in `reads`.
 /// A state with a count, such as `down 3`, holds for that many reads, then
 /// the target is `ok` again. In the state `refused` the target cannot be
@@ -125,6 +130,17 @@ fn reads_ok(name: &str) -> Activity {
 fn until_read(count: &str) -> String {
     format!(
         "i=0; until test \"$(wc -l < reads)\" -ge {count} || test $i -ge 500; \
+         do sleep 0.01; i=$((i + 1)); done"
+    )
+}
+
+/// Shell that waits until the target was read in the state `first` and,
+/// after that, in the state `then`, for five seconds at most. While the
+/// method runs only the sampler reads the target, so these reads are
+/// samples taken under the fault.
+fn until_read_as(first: &str, then: &str) -> String {
+    format!(
+        "i=0; until sed -n '/^{first}$/,$p' reads | grep -qx {then} || test $i -ge 500; \
          do sleep 0.01; i=$((i + 1)); done"
     )
 }
@@ -233,15 +249,12 @@ fn assert_spans_agree(
 #[test]
 fn a_sample_under_the_fault_outside_its_tolerance_has_a_span_that_says_so() {
     let lab = InLab::new();
-    // The target is down for two reads, then up. The method waits for the
-    // sampler to read it four times from the fault on.
-    let fault = format!(
-        "n=$(wc -l < reads); sh set-state.sh down 2; {}",
-        until_read("$((n + 4))")
-    );
+    // The target is down for two reads, then up. The method waits until
+    // the sampler has read it down and then up again.
+    let fault = format!("sh set-state.sh down 2; {}", until_read_as("down", "ok"));
     let experiment = experiment(vec![reads_ok("steady")], &fault);
 
-    let (journal, spans) = capture_spans(|| run(&experiment, lab, &sampling(50)));
+    let (journal, spans) = capture_spans(|| run(&experiment, lab, &sampling(OUTLASTS_THE_WAIT)));
 
     let failed = assert_spans_agree(&journal, &spans, SamplePhase::During, OUTSIDE);
     let during = journal.during_result.expect("sampled during the method");
@@ -368,15 +381,12 @@ fn a_probe_that_panics_after_the_method_is_a_failed_sample_and_the_run_has_a_jou
 #[test]
 fn the_sampler_goes_on_after_a_probe_that_panicked() {
     let lab = InLab::new();
-    // The read after the fault makes the plugin panic. The method waits for
-    // the sampler to read the target three times from the fault on.
-    let fault = format!(
-        "n=$(wc -l < reads); sh set-state.sh crash 1; {}",
-        until_read("$((n + 3))")
-    );
+    // The read after the fault makes the plugin panic. The method waits
+    // until the sampler has read the crash and then read ok again.
+    let fault = format!("sh set-state.sh crash 1; {}", until_read_as("crash", "ok"));
     let experiment = experiment(vec![reads_ok("steady")], &fault);
 
-    let journal = run(&experiment, lab, &sampling(50));
+    let journal = run(&experiment, lab, &sampling(OUTLASTS_THE_WAIT));
 
     let during: Vec<bool> = samples(&journal, SamplePhase::During)
         .iter()
