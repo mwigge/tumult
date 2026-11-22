@@ -1,187 +1,109 @@
 ---
-title: Analytics Guide
+title: SQL analytics
 parent: Read the evidence
 grand_parent: Guides
 nav_order: 5
 summary: "SQL over your results"
 ---
 
-# Analytics Guide
+# SQL analytics
 
-Tumult embeds DuckDB and Apache Arrow for SQL analytics over experiment journals.
+Every run lands in one DuckDB store, the lake. You can ask it anything
+in SQL, from the command line, without a server.
 
-## Architecture
-
+```mermaid
+flowchart LR
+    accTitle: From a run to SQL
+    accDescr: Each run writes a journal. The journal goes into the DuckDB lake. You query the lake with tumult analyze, or export a journal to Parquet, CSV, JSON or Arrow.
+    A["tumult run"] --> B["Journal .toon"]
+    B --> C[(DuckDB lake)]
+    C --> D["tumult analyze --query"]
+    B --> E["tumult export"]
 ```
-TOON Journal (.toon) → Arrow RecordBatch (columnar) → DuckDB (SQL) → Parquet (export)
+
+## Where the lake is
+
+`tumult run` adds each journal to `~/.tumult/lake.duckdb`. Set
+`TUMULT_LAKE_PATH` to put it somewhere else.
+
+```bash
+tumult store path     # where the lake is
+tumult store stats    # how much it holds
 ```
 
-## Tables
+`--no-ingest` runs an experiment without adding it to the lake.
 
-### experiments
+## Ask a question
 
-| Column | Type | Description |
-|--------|------|-------------|
-| experiment_id | VARCHAR | UUID per run |
-| title | VARCHAR | Experiment title |
-| status | VARCHAR | completed, deviated, failed, aborted, interrupted, halted |
-| started_at_ns | BIGINT | Start time (epoch nanoseconds) |
-| ended_at_ns | BIGINT | End time |
-| duration_ms | UBIGINT | Total duration |
-| method_step_count | BIGINT | Method steps executed |
-| rollback_count | BIGINT | Rollback steps executed |
-| hypothesis_before_met | BOOLEAN | Steady state before? |
-| hypothesis_after_met | BOOLEAN | Steady state after? |
-| estimate_accuracy | DOUBLE | Estimate vs actual (0-1) |
-| resilience_score | DOUBLE | 0 or 1: 1 when the run completed. Empty when the experiment has no `estimate` |
+```bash
+# A summary of the latest run
+tumult analyze
 
-### activity_results
+# Any SQL, read-only
+tumult analyze --query "SELECT status, count(*) FROM experiments GROUP BY status"
 
-| Column | Type | Description |
-|--------|------|-------------|
-| experiment_id | VARCHAR | Links to experiments |
-| name | VARCHAR | Activity name |
-| activity_type | VARCHAR | action or probe |
-| status | VARCHAR | succeeded, failed, skipped |
-| started_at_ns | BIGINT | Start time |
-| duration_ms | UBIGINT | Execution duration |
-| output | VARCHAR | Activity output |
-| error | VARCHAR | Error message |
-| phase | VARCHAR | hypothesis_before, method, hypothesis_after, rollback |
+# The same over journal files, without the lake
+tumult analyze journals/ --query "SELECT * FROM experiments WHERE status = 'deviated'"
+```
 
-## Example Queries
+Useful queries:
 
 ```sql
--- Summary by status
-SELECT status, count(*) as runs, avg(duration_ms) as avg_ms
+-- Runs and average time by status
+SELECT status, count(*) AS runs, avg(duration_ms) AS avg_ms
 FROM experiments GROUP BY status;
 
--- Slowest activities
-SELECT name, phase, avg(duration_ms) as avg_ms
+-- The slowest steps
+SELECT name, phase, avg(duration_ms) AS avg_ms
 FROM activity_results GROUP BY name, phase ORDER BY avg_ms DESC LIMIT 10;
 
--- Failure rate
-SELECT count(*) FILTER (WHERE status != 'completed')::float / count(*) * 100 as failure_pct
+-- Share of runs that did not complete
+SELECT count(*) FILTER (WHERE status != 'completed')::float / count(*) * 100 AS failure_pct
 FROM experiments;
 ```
 
-## Persistent Store
+## The main tables
 
-Every `tumult run` automatically ingests the journal into a persistent DuckDB store at `~/.tumult/lake.duckdb`. This enables cross-run analytics without manually specifying journal paths.
+| Table | One row per |
+|---|---|
+| `experiments` | run: title, `status`, times, `duration_ms`, hypothesis before and after, `test_kind`, `target_version` |
+| `activity_results` | step of a run: `name`, `activity_type`, `status`, `phase`, `duration_ms`, `output`, `error` |
+| `load_results` | load test: tool, throughput, p50, p95 and p99 latency, error rate |
+| `probe_samples` | sample of a probe or of a load window, with its phase |
+| `spans`, `logs` | span and log record the daemon received |
 
-Upgrading from an older install? Import the old databases (the analytics store and/or the kronika lake) into the current store — the import is idempotent:
+`status` of a run is `completed`, `deviated`, `failed`, `aborted`,
+`interrupted` or `halted`. `phase` of a step is `hypothesis_before`,
+`method`, `hypothesis_after` or `rollback`. To see every column of a
+table:
 
 ```bash
-tumult store import-legacy --analytics-db ~/.tumult/analytics.duckdb
+tumult analyze --query "DESCRIBE experiments"
 ```
 
-```bash
-# Query the persistent store (no path needed)
-tumult analyze --query "SELECT status, count(*) FROM experiments GROUP BY status"
-
-# View store statistics
-tumult store stats
-
-# Show store path
-tumult store path
-```
-
-### Backup and Restore
+## Export and trends
 
 ```bash
-# Export runs, steps, load results, probe samples, run roots and version history to Parquet
-tumult store export --output my-export/
-
-# Import those Parquet files into the persistent store
-tumult import my-export/
-
-# Back up the complete store, credentials included (stop the daemon first)
-tumult store backup --output my-backup/
-
-# Restore that backup into a new database file
-tumult store restore --input my-backup/ --output restored.duckdb
-```
-
-### SigNoz backfill
-
-The daemon's Parquet lake (`KRONIKA_LAKE_DIR`, exported on `KRONIKA_LAKE_INTERVAL` or via `POST /api/lake/export`) can be backfilled straight into SigNoz's ClickHouse — see the [SigNoz Bulk Import](signoz-bulk-import.md) guide.
-
-### Retention
-
-```bash
-# Purge experiments older than 90 days
-tumult store purge --older-than-days 90
-```
-
-### Disabling Auto-Ingest
-
-```bash
-# Run without ingesting into persistent store
-tumult run experiment.toon --no-ingest
-```
-
-## Security
-
-DuckDB does not encrypt data at rest by default. The persistent store at `~/.tumult/lake.duckdb` is written as plaintext on disk. For environments where experiment data is sensitive, take the following steps:
-
-### Filesystem-level encryption
-
-Place the store on an encrypted volume appropriate for your OS:
-
-| OS | Recommended approach |
-|----|----------------------|
-| Linux | LUKS full-disk encryption, or directory-level encryption with `fscrypt` / `ecryptfs` |
-| macOS | FileVault 2 (whole-disk), or an encrypted APFS volume |
-| Windows | BitLocker, or an encrypted home directory |
-
-### Redirect the store path
-
-Use the `TUMULT_LAKE_PATH` environment variable to point the persistent store at a location on an encrypted volume:
-
-```bash
-export TUMULT_LAKE_PATH=/mnt/encrypted/tumult/lake.duckdb
-tumult run experiment.toon
-```
-
-### Directory permissions
-
-`AnalyticsStore::open` automatically creates the store directory with mode `0700` (owner read/write/execute only). This limits file-system access to the process owner, but is not a substitute for encryption — a privileged user or physical attacker with direct disk access can read the file without filesystem permission checks.
-
-## Journal Format for LLM Consumption
-
-Tumult journals use the TOON format, which is concise, structured, and uses deterministic key ordering via `IndexMap`. This makes journals predictable and easy for LLMs to parse.
-
-Key properties of the journal format:
-- **Compact**: TOON uses 40-50% fewer tokens than equivalent JSON
-- **Deterministic key order**: Keys always appear in insertion order (`IndexMap`), so LLMs see a consistent structure across runs
-- **Structured phases**: Each journal section (hypothesis_before, method, rollbacks, hypothesis_after) is clearly delimited
-
-Best practices for LLM consumption:
-- Use `tumult export --format json` to convert journals to JSON for LLM input when broader tool compatibility is needed
-- Query journals directly via the MCP tool `tumult_read_journal` for interactive LLM workflows
-- For batch analysis, load journals into DuckDB and export query results as CSV
-
-## CLI Usage
-
-```bash
-# Default summary (from persistent store)
-tumult analyze
-
-# Load from journal files
-tumult analyze journals/
-
-# Custom SQL
-tumult analyze journals/ --query "SELECT * FROM experiments WHERE status = 'deviated'"
-
-# Single journal
-tumult analyze journal.toon
-
-# Export to Parquet: the run in journal.parquet, its steps in activities/journal.parquet
+# The run in journal.parquet, its steps in activities/journal.parquet
 tumult export journal.toon --format parquet
 
-# Export to CSV
+# Also csv, json or arrow
 tumult export journal.toon --format csv
 
-# Trend analysis
+# How a metric moves across runs
 tumult trend journals/ --metric resilience_score --last 30d
 ```
+
+## Keep the lake safe
+
+DuckDB does not encrypt the file. Tumult creates the lake folder for the
+owner only, but put it on an encrypted volume when the data is sensitive
+(`TUMULT_LAKE_PATH=/mnt/encrypted/tumult/lake.duckdb`).
+
+To back it up, export it or remove old runs, see
+[Data portability](data-portability.md).
+
+## Next
+
+- [ChaosGraph](chaosgraph.md): the same results as a graph.
+- [MCP guide](mcp-guide.md): let an agent query the lake.
