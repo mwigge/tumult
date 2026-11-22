@@ -6,9 +6,75 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [3.0.3] - 2026-11-22
+
+This release makes the docs short, light and true, with a picture for each
+idea, and CI checks them against the code. It also starts child processes
+one at a time on macOS, names each score for what it is, and removes code
+that nothing used. There is no schema change, and the lake stays on v21.
+Read the [3.0.3 release notes](docs/releases/3.0.3.md) before you upgrade.
+
+### Added
+
+- Docs: new pages for one task each: Your first experiment, Runs and approvals, Variables and secrets, Objectives, the telemetry reference, Daemon settings and health, and a page for the Windows plugin.
+- Docs site: a light design from the colours of the web UI, mermaid diagrams drawn on the site, a new mark and an SVG favicon.
+- Docs: the diagrams are drawn from their sources as SVG (`scripts/render-diagrams.mjs`, tools pinned in `scripts/diagrams/`), and a new diagram shows how a run executes.
+- Docs: one command takes every Kronika screenshot from a seeded stack (`scripts/docs-shots/shoot.sh`); 38 current pictures replace the dark 2.x ones.
+- Windows: the native function `network_blackhole_rollback` deletes the firewall rule of `network_blackhole`. It takes the same `port` or `remote_host`. A rule that is not there counts as removed, so it can run twice, and an experiment can now declare the rollback.
+- CI: every pull request that touches the docs builds the site with the Pages builder, checks it and shoots it at desktop and phone width (`Site preview`), and checks that each diagram is what its source draws.
+- CI: the docs are checked against the code. The CLI reference must name every flag, default and subcommand of `--help`; the Kronika pages reference must list the API calls each page makes and the run colours of `web/src/lib/tone.ts`; every in-page link must land on a heading; every repository path a page names must exist; every image a page names must exist, and every image must be named by a page.
+- CI: a prose check fails a pull request that adds an em or en dash or a Title Case heading to the docs, and a pull request body needs the headings Why, What changed, Scope, Tradeoffs, Blast Radius and Verification in at most 40 lines.
+
 ### Changed
 
-- CI: `Mutation tests` is one check that every pull request reports, and it must pass before a merge to `main`. A pull request that changes no Rust skips the sixteen parts, and a part may run for 350 minutes.
+- GameDay: `tumult gameday run` and `tumult gameday analyze`, and the MCP tool `tumult_gameday_run`, print "GameDay score" where they printed "Resilience Score". The resilience score is another score, on the Resilience page. Field names do not change.
+- Agentic: the error of the score gate says "agentic score gate failed", not "resilience score gate failed".
+- CLI: the help of `tumult gate` says it asks for a verdict on the compliance score of a target.
+- CLI: `tumult init` and the MCP tool `tumult_create_experiment` write one `starter` template, which `tumult new --from starter` also gives. With `--plugin`, the first step of the method reads the first probe of that script plugin, and a plugin that is not installed is refused. The plugin only went into an `echo` before. A native plugin gets the plain starter.
+- Journals: a step stored as `timeout` reads as `failed`. No run wrote that status. The MCP output schema of a step lists `succeeded`, `failed` and `skipped`.
+- Web: the charts of Overview, Logs, Metrics, Traces, Scores, Resilience, Performance and the forecast follow the theme button, also on a direct load in the light theme.
+- Docs: the sidebar follows tasks (Get started, Concepts, Guides in four groups, Reference, Plugins, Operate, Releases, Blog). Guides are short, with a picture for each idea; pages that covered one topic are merged, and their old addresses redirect. The test protocol and the other contributor pages leave the site; `CONTRIBUTING.md` says how we test.
+- Docs: claims that did not match the code are fixed against it, for example the action count (92), the ChaosGraph node kinds and relations, the capture policy of agentic spans, the default of `KRONIKA_LAKE_INTERVAL` (24h), the org file path of the DORA score and the flags of every command.
+- Docs: the security assessment describes 3.0.3 and names what it did not assess, and `SECURITY.md` supports the latest 3.0.x only.
+- CI: `Mutation tests` is one check that every pull request reports, and it must pass before a merge to `main`. A pull request that changes no Rust skips the sixteen parts, and a part may run for 350 minutes. `Demo crates` is a required check too.
+- CI: `cargo deny` replaces `cargo audit`, every crate reads the workspace lints, the Documentation check runs on pull requests with rustdoc warnings as errors, and `make precommit` runs what CI runs, plus the mutation tests of the changed lines.
+- CI: Coverage fits the runner disk (the llvm engine of tarpaulin, debug info stripped at link), and cargo-tarpaulin, cargo-nextest and cross are pinned.
+- Workspace: the spawn lock lives in the new crate `tumult-spawn`, so every crate that starts a child can take it. `tumult_core::spawn::alone` still works.
+
+### Deprecated
+
+- ClickHouse as the store of `tumult run`. When `TUMULT_CLICKHOUSE_URL` is set, a run logs the warning `cli.clickhouse.deprecated`. Tumult 3.1 removes ClickHouse.
+
+### Removed
+
+- The `tumult-baseline` crate and the statistical baselines guide. No run used them. `--baseline-mode skip` still works and runs as `full`. The `baseline:` block of an experiment stays valid.
+- `SshPool` and `SshSession::upload_file` in `tumult-ssh`, with the `UploadFailed` and `InvalidPath` errors. No step used them.
+- The agentic evidence record in `tumult-otel` (`TelemetryEvidence`, `PayloadMetadata`, `AgenticTraceContext`, `GenAiOperation`). No run sent it.
+- The baseline panels of the SigNoz dashboard `tumult-plugins-baseline`. No code sends those metrics.
+- Journals and reports: the fields `degradation_onset_s`, `degradation_peak_s`, `degradation_magnitude`, `graceful_degradation`, `residual_degradation`, `data_integrity_verified` and `data_loss_detected`, and their rows in the HTML report. They were always empty. A journal that still has them reads as before.
+- API: the `sources` block of `GET /api/starmap`. It was the same in every answer.
+- Rust API: `TumultPlugin`, `PluginOutput`, `ActionOutput`, `ProbeOutput`, `PluginRegistry::register_native`, `has_action` and `has_probe`, `executor::execute_script` (use `execute_script_until`), `tumult_forecast::steady`, `tumult_perf::percentiles`, `Percentiles` and `bootstrap_difference`, `tumult_core::execution::ExecutionError`, `all_succeeded` and `count_by_type`, and `RunConfig::max_concurrent_faults` (the `max_concurrent_faults` of the experiment still caps faults).
+- Web: the client calls `scores`, `timeseries`, `forecast`, `manualAttach` and `manualImport`, which had no caller.
+- Scripts: `scripts/aqe-mcp-client.mjs`, `scripts/demo-mcp-http.sh`, `scripts/ui-authoring-check.sh` and `scripts/proof/structured-logging/proof.sh`. Nothing ran them.
+
+### Fixed
+
+- Runs: on macOS a probe, a process step, a script plugin step, the network proxy or an agent CLI no longer waits until its timeout, or until an unrelated load window ends, when another child starts at the same moment. A child started between the two steps of a macOS pipe kept the pipe open. Every child with piped output now starts one at a time.
+- Images: the CLI and MCP images run tini as PID 1, so a process an experiment leaves behind is reaped. The systemd unit of the MCP server runs `tumult mcp serve` from the `tumult` binary of the release archive.
+- Agentic: `tumult agentic proxy` no longer prints an `HTTPS_PROXY` hint for Copilot. The proxy is a base URL and opens no tunnel.
+- SigNoz: `scripts/signoz-bulk-import.sh` imports the spans snapshot that `_meta.json` of the lake export names, and only once. It looked for a path the export never writes. `PARQUET_GLOB` is refused.
+- Deploy: the systemd unit of tumultd gives the default of `KRONIKA_LAKE_INTERVAL` as 24h, and the MCP unit is described as the MCP server.
+- Examples: the process kill example starts its target in the method, and its steady-state probe only reads. The probe started a `sleep 300` itself, so a sample taken while the method ran could start a new target after the kill, and the run deviated. The check that the target is gone waits up to five seconds for the kill to take effect.
+- Kronika demo: `batch-worker-pool` no longer races its sampler. Its hypothesis probe removed the `done-*` files, so a sample between the batch and the count emptied the count. A `batch-scratch` control clears the files before and after the run, and the probe only reads.
+- Examples: the Pumba stress steps of `api-saturation`, `pg-cpu-stress` and `pg-mem-stress` use the stress-ng of the lab SSH image, `tumult-sshd:lab`. The default stress-ng image of Pumba picks its code by CPU model, and it stopped with SIGILL on a runner where AVX-512 could not run. The lab experiments run Pumba 1.6.0 pinned by digest.
+- Plugins: the `tumult-pumba` actions run Pumba 1.6.0 pinned by digest. `stress-container` names its stress-ng image (`TUMULT_STRESS_IMAGE`, default `ghcr.io/alexei-led/stress-ng:0.20.01` pinned by digest) and gives Pumba its stressors as one argument. The shell split them into words, so Pumba got only the first word.
+- Docs: 35 broken links in the code docs.
+- Docs: the date of 3.0.2 is 2026-11-20.
+- Tests: flaky tests are fixed at their cause: a truncating write in a lab, a pid file written too late, two samples that counted reads of the old state, daemon tests that picked a port and bound it later, and game day lab steps that started outside the spawn lock.
+
+### Security
+
+- `url` 2.5.9 for RUSTSEC-2026-0592 (a stack overflow in `Url::origin()` on nested `blob:` URLs), in the workspace, the demo apps and the fuzz crate.
 
 ## [3.0.2] - 2026-11-20
 

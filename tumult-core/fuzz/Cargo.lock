@@ -2525,7 +2525,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-core"
-version = "3.0.2"
+version = "3.0.3"
 dependencies = [
  "chrono",
  "indexmap",
@@ -2556,7 +2556,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-otel"
-version = "3.0.2"
+version = "3.0.3"
 dependencies = [
  "chrono",
  "opentelemetry",
@@ -2577,7 +2577,7 @@ dependencies = [
 
 [[package]]
 name = "tumult-spawn"
-version = "3.0.2"
+version = "3.0.3"
 
 [[package]]
 name = "unicode-ident"
