@@ -1,24 +1,30 @@
 <script lang="ts">
     import { page } from '$app/state';
     import { goto } from '$app/navigation';
+    import { onMount } from 'svelte';
     import { api, fmtAgo, fmtTs } from '#lib/api.js';
     import type { LogEntry, LogVolume } from '#lib/types.js';
     import RangeSwitch from '#lib/components/RangeSwitch.svelte';
     import EChart from '#lib/components/EChart.svelte';
-    import { CHART } from '#lib/echarts.js';
+    import { chartTheme, chartTokens, followTheme } from '#lib/echarts.js';
     import type { EChartsCoreOption } from '#lib/echarts.js';
     import { bucketAxis } from '#lib/ranges.js';
 
     const SEVERITIES = ['ERROR', 'WARN', 'INFO', 'DEBUG', 'TRACE'];
-    const SEV_COLORS: Record<string, string> = {
-        ERROR: CHART.fail,
-        FATAL: CHART.fail,
-        WARN: CHART.warn,
-        WARNING: CHART.warn,
-        INFO: CHART.ok,
-        DEBUG: CHART.text,
-        TRACE: CHART.text,
-    };
+
+    // The chart is drawn in the colours of the theme in force.
+    let theme = $state(chartTheme());
+    onMount(() => followTheme((next) => (theme = next)));
+    const tokens = $derived(chartTokens(theme));
+    const sevColors: Record<string, string> = $derived({
+        ERROR: tokens.fail,
+        FATAL: tokens.fail,
+        WARN: tokens.warn,
+        WARNING: tokens.warn,
+        INFO: tokens.ok,
+        DEBUG: tokens.text,
+        TRACE: tokens.text,
+    });
 
     const filters = $derived({
         range: page.url.searchParams.get('range') ?? '24h',
@@ -105,8 +111,8 @@
         const byKey = new Map(volume.rows.map((r) => [`${r.ts}|${r.severity}`, r.count]));
         return {
             grid: { left: 48, right: 16, top: 28, bottom: 24 },
-            tooltip: { trigger: 'axis', ...CHART.tooltip },
-            legend: { textStyle: { color: CHART.text }, top: 0 },
+            tooltip: { trigger: 'axis', ...tokens.tooltip },
+            legend: { textStyle: { color: tokens.text }, top: 0 },
             xAxis: {
                 type: 'time',
                 // Bars would otherwise widen the axis by half a bucket,
@@ -118,21 +124,21 @@
                     buckets.map((ts) => ts * 1000),
                 ),
                 containShape: false,
-                axisLine: { lineStyle: { color: CHART.axis } },
-                axisLabel: { color: CHART.text },
+                axisLine: { lineStyle: { color: tokens.axis } },
+                axisLabel: { color: tokens.text },
             },
             yAxis: {
                 type: 'value',
                 minInterval: 1,
-                axisLabel: { color: CHART.text },
-                splitLine: { lineStyle: { color: CHART.split } },
+                axisLabel: { color: tokens.text },
+                splitLine: { lineStyle: { color: tokens.split } },
             },
             series: sevs.map((sev) => ({
                 name: sev,
                 type: 'bar',
                 stack: 'volume',
                 barMaxWidth: 40,
-                itemStyle: { color: SEV_COLORS[sev.toUpperCase()] ?? CHART.accent },
+                itemStyle: { color: sevColors[sev.toUpperCase()] ?? tokens.accent },
                 data: buckets.map((b) => [b * 1000, byKey.get(`${b}|${sev}`) ?? 0]),
             })),
         };

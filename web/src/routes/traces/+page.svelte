@@ -1,12 +1,13 @@
 <script lang="ts">
     import { page } from '$app/state';
     import { goto } from '$app/navigation';
+    import { onMount } from 'svelte';
     import { api, fmtAgo, fmtDuration, shortId } from '#lib/api.js';
     import type { TraceDurations, TraceRow } from '#lib/types.js';
     import StatusBadge from '#lib/components/StatusBadge.svelte';
     import RangeSwitch from '#lib/components/RangeSwitch.svelte';
     import EChart from '#lib/components/EChart.svelte';
-    import { CHART } from '#lib/echarts.js';
+    import { chartTheme, chartTokens, followTheme } from '#lib/echarts.js';
     import { strong, tip, tipFormatter } from '#lib/tooltip.js';
     import type { EChartsCoreOption } from '#lib/echarts.js';
 
@@ -23,6 +24,11 @@
     let durations: TraceDurations | null = $state(null);
     let maxDuration = $state(1);
     let error: string | null = $state(null);
+
+    // The chart is drawn in the colours of the theme in force.
+    let theme = $state(chartTheme());
+    onMount(() => followTheme((next) => (theme = next)));
+    const tokens = $derived(chartTokens(theme));
 
     $effect(() => {
         // Touch every filter so the effect re-runs on any change; debounce for
@@ -62,9 +68,9 @@
     const scatterOption: EChartsCoreOption = $derived.by(() => {
         if (!durations || durations.points.length === 0) return {};
         const markLines = [
-            { v: durations.p50_ms, label: 'p50', color: CHART.text },
-            { v: durations.p95_ms, label: 'p95', color: CHART.warn },
-            { v: durations.p99_ms, label: 'p99', color: CHART.fail },
+            { v: durations.p50_ms, label: 'p50', color: tokens.text },
+            { v: durations.p95_ms, label: 'p95', color: tokens.warn },
+            { v: durations.p99_ms, label: 'p99', color: tokens.fail },
         ].filter((l) => l.v !== null);
         const data: [number, number, string][] = durations.points.map((p) => [
             p.ts_ns / 1e6,
@@ -74,7 +80,7 @@
         return {
             grid: { left: 64, right: 24, top: 20, bottom: 24 },
             tooltip: {
-                ...CHART.tooltip,
+                ...tokens.tooltip,
                 formatter: tipFormatter((p: { data?: [number, number, string] }) => {
                     const d = p.data;
                     if (!d) return null;
@@ -87,26 +93,26 @@
             },
             xAxis: {
                 type: 'time',
-                axisLine: { lineStyle: { color: CHART.axis } },
-                axisLabel: { color: CHART.text },
+                axisLine: { lineStyle: { color: tokens.axis } },
+                axisLabel: { color: tokens.text },
             },
             yAxis: {
                 type: 'log',
                 name: 'duration ms',
-                nameTextStyle: { color: CHART.text },
-                axisLabel: { color: CHART.text },
-                splitLine: { lineStyle: { color: CHART.split } },
+                nameTextStyle: { color: tokens.text },
+                axisLabel: { color: tokens.text },
+                splitLine: { lineStyle: { color: tokens.split } },
             },
             series: [
                 {
                     type: 'scatter',
                     symbolSize: 9,
-                    itemStyle: { color: CHART.accent },
+                    itemStyle: { color: tokens.accent },
                     data,
                     markLine: {
                         silent: true,
                         symbol: 'none',
-                        label: { color: CHART.text, formatter: '{b}' },
+                        label: { color: tokens.text, formatter: '{b}' },
                         lineStyle: { type: 'dashed' },
                         data: markLines.map((l) => ({
                             name: l.label,
