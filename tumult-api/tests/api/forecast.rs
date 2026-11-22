@@ -97,20 +97,28 @@ async fn horizons_in_one_bucket_share_a_cache_entry() {
     let observed = 24 * 60;
     assert_eq!(a["series"]["ts"].as_array().unwrap().len(), observed + 30);
     assert_eq!(b["series"]["ts"].as_array().unwrap().len(), observed + 90);
+    // A try that crossed a window boundary left rows of its own window;
+    // the pair that matched is in the newest one.
     assert_eq!(
-        forecast_rows(&srv, "horizon = 96"),
+        forecast_rows(&srv, &format!("horizon = 96 AND {NEWEST_WINDOW}")),
         1,
         "one row, fitted at the bucket"
     );
-    assert_eq!(forecast_rows(&srv, "true"), 1);
+    assert_eq!(forecast_rows(&srv, NEWEST_WINDOW), 1);
 
     // Another bucket is another entry.
     let longer = "/api/forecast?metric=experiment_count&range=24h&horizon=97";
     let (_, c) = get_in_one_window(&srv, long, longer).await;
     assert_eq!(c["cached"], false, "{c}");
     assert_eq!(c["forecast"]["quantiles"].as_array().unwrap().len(), 97);
-    assert_eq!(forecast_rows(&srv, "horizon = 384"), 1);
+    assert_eq!(
+        forecast_rows(&srv, &format!("horizon = 384 AND {NEWEST_WINDOW}")),
+        1
+    );
 }
+
+/// The rows of the newest window that any forecast was fitted on.
+const NEWEST_WINDOW: &str = "context_end_ns = (SELECT max(context_end_ns) FROM forecasts)";
 
 /// How many `forecasts` rows match `predicate`.
 fn forecast_rows(srv: &TestServer, predicate: &str) -> u64 {

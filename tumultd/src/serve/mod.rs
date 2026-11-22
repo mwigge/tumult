@@ -195,8 +195,15 @@ where
 }
 
 /// Bind one of the daemon's public addresses, naming it when it cannot
-/// be had.
-async fn bind(addr: std::net::SocketAddr, name: &'static str) -> Result<tokio::net::TcpListener> {
+/// be had. A listener the caller bound already is used as it is.
+async fn bind(
+    bound: Option<tokio::net::TcpListener>,
+    addr: std::net::SocketAddr,
+    name: &'static str,
+) -> Result<tokio::net::TcpListener> {
+    if let Some(listener) = bound {
+        return Ok(listener);
+    }
     tokio::net::TcpListener::bind(addr)
         .await
         .with_context(|| format!("{name}: bind {addr}"))
@@ -283,7 +290,23 @@ async fn grpc_shutdown(name: &'static str, telemetry: Option<Arc<TelemetryShutdo
     shutdown_after_telemetry_flush(name, telemetry).await;
 }
 
+/// The public listeners a caller has bound already, so that no other
+/// socket can take their ports before the daemon starts. An address with
+/// no listener here is bound from the configuration.
+#[derive(Default)]
+struct Bound {
+    grpc: Option<tokio::net::TcpListener>,
+    http: Option<tokio::net::TcpListener>,
+}
+
 pub(crate) async fn serve() -> Result<()> {
+    serve_on(Bound::default()).await
+}
+
+/// [`serve`], on the listeners in `bound`. Each one must be bound to its
+/// configured address: the daemon exports its own telemetry to the
+/// configured gRPC address.
+async fn serve_on(bound: Bound) -> Result<()> {
     let config = Config::from_env().map_err(anyhow::Error::msg)?;
     // Fail-closed: refuse a token-less OTLP ingest on a network interface.
     config.ensure_ingest_auth().map_err(anyhow::Error::msg)?;
@@ -337,8 +360,8 @@ pub(crate) async fn serve() -> Result<()> {
     // Both public addresses are bound here, before the writer, the run
     // queue or any background task exists: a daemon that cannot have its
     // addresses exits having started, and touched, nothing.
-    let grpc_listener = bind(config.otlp_grpc_addr, "gRPC server").await?;
-    let http_listener = bind(config.otlp_http_addr, "HTTP server").await?;
+    let grpc_listener = bind(bound.grpc, config.otlp_grpc_addr, "gRPC server").await?;
+    let http_listener = bind(bound.http, config.otlp_http_addr, "HTTP server").await?;
 
     // The daemon's own telemetry starts only now that the address it is
     // exported to is bound: started earlier, a slow start (a large store

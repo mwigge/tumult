@@ -110,9 +110,8 @@ pub fn run(adapter_name: &str, invocation: &CliInvocation) -> Result<RawOutput, 
         },
         "spawning agent CLI subprocess"
     );
-    let mut child = command
-        .spawn()
-        .map_err(|e| AgentCliError::InvocationFailed {
+    let mut child =
+        tumult_spawn::alone(|| command.spawn()).map_err(|e| AgentCliError::InvocationFailed {
             name: adapter_name.to_string(),
             explain: format!("failed to spawn `{program}`: {e}"),
         })?;
