@@ -171,9 +171,10 @@ share of the runs that watched for recovery whose target came back within
 
 The HTML report is one file with every table and up to five charts, and
 needs no network. `pdf` writes the HTML and prints how to turn it into a
-PDF. `junit` has one test case per step and per steady-state check, so a
-deviated run fails in CI. `SOURCE_DATE_EPOCH` (seconds) fixes the date the
-report shows.
+PDF. `junit` has one test case per step, per steady-state check and per
+objective, so a deviated run fails in CI. A breached blocking objective,
+such as the RTO, is a failure. An objective the run did not measure is
+skipped. `SOURCE_DATE_EPOCH` (seconds) fixes the date the report shows.
 
 ## tumult trend
 

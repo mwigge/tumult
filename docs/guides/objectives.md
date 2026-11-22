@@ -55,6 +55,10 @@ A breached `blocking` objective turns a completed run into `deviated`. A
 verdicts are in the journal (`objectives.verdicts`) and in the lake table
 `nfr_verdicts`.
 
+In a JUnit report (`tumult report --format junit`) each objective is a test
+case. A breached `blocking` objective fails it, as it fails the run. An
+`inconclusive` objective is skipped.
+
 ## Metrics
 
 | Metric | Comes from |
