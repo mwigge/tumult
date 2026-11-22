@@ -535,12 +535,12 @@ mod tests {
     }
 
     fn spawn_piped(program: &str, args: &[&str]) -> std::process::Child {
-        std::process::Command::new(program)
+        let mut command = std::process::Command::new(program);
+        command
             .args(args)
             .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
-            .spawn()
-            .expect("spawn test child")
+            .stderr(std::process::Stdio::piped());
+        crate::spawn::alone(|| command.spawn()).expect("spawn test child")
     }
 
     #[test]
