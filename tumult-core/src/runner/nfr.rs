@@ -145,8 +145,8 @@ pub(crate) fn evaluate(experiment: &Experiment, m: &Measurements<'_>) -> Option<
 
 /// The verdict on the recovery time objective. A run that did not recover
 /// while the post phase watched in full breaches it: the time it watched
-/// is a lower bound of the recovery time, so the verdict has no margin.
-/// Pure.
+/// is a lower bound of the recovery time, so the verdict has no margin
+/// (such a run has no MTTR, so the measured verdict has none). Pure.
 fn rto_verdict(objective: &NfrObjective, m: &Measurements<'_>) -> NfrVerdict {
     let measured = verdict_for(objective, m.post.and_then(|p| p.mttr_s));
     let Some(post) = m.post.filter(|_| m.watched_in_full) else {
@@ -161,7 +161,6 @@ fn rto_verdict(objective: &NfrObjective, m: &Measurements<'_>) -> NfrVerdict {
     NfrVerdict {
         observed: Some(post.recovery_time_s),
         state: NfrState::Breached,
-        margin: None,
         recovered: Some(false),
         ..measured
     }
