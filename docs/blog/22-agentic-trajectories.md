@@ -149,4 +149,4 @@ Three packs, three failure modes, no setup. Watch a poisoned retrieval at step 0
 
 ---
 
-*Multi-turn agent-graph fault modeling ships in 2.6.0 in the `tumult-agentic` crate: `execute_trajectory` with per-step and whole-trajectory contracts, four agentic subscores, and three bundled packs. Validated on the live demo (`demo-agentic-trajectory`) in the standard sweep. The [agentic scenarios guide](../guides/agentic-scenarios.md) covers the pack model; [Bring Your Own Agent](18-agentic-recommendations.md) and the live-client path cover pointing it at a real agent CLI.*
+*Multi-turn agent-graph fault modeling ships in 2.6.0 in the `tumult-agentic` crate: `execute_trajectory` with per-step and whole-trajectory contracts, four agentic subscores, and three bundled packs. Validated on the live demo (`demo-agentic-trajectory`) in the standard sweep. The [agentic quickstart](../guides/agentic-quickstart.md) covers the pack model; [Bring Your Own Agent](18-agentic-recommendations.md) and the live-client path cover pointing it at a real agent CLI.*
