@@ -6,5 +6,7 @@ has_children: true
 
 # Operate
 
-Run Tumult for real: deploy it, decide which targets it may touch, back up
-its data and read its logs.
+Run Tumult for real: deploy it, tune and watch the daemon, decide which
+targets runs may touch, back up the lake and read the logs.
+
+![The programs that make up Tumult and what they talk to](../images/3.0/diagrams/c4-2-containers.svg)

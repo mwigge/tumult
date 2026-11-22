@@ -1,703 +1,347 @@
 ---
-title: Resilience Metadata Standard
+title: Resilience metadata standard
 parent: Reference
 nav_order: 3
-summary: "The full resilience.* OTel attribute namespace, cardinality rules and scoring model"
+summary: "The resilience.* names for spans, attributes and metrics, and what Tumult writes"
 ---
 
-# Tumult Metadata Model
-
-**Version**: 2.0.0
-**Last Updated**: 2026-03-29
-**Namespace**: `resilience.*`
-
----
-
-## Abstract
-
-This document defines the Tumult Metadata Model for resilience testing. It provides a structured vocabulary for describing experiments, targets, faults, measurements, outcomes, scoring, and regulatory evidence. The model follows [OpenTelemetry Semantic Convention](https://opentelemetry.io/docs/specs/semconv/) naming rules and is designed to be carried as span attributes, resource attributes, and metric dimensions within OTel-instrumented systems.
-
-The namespace is **`resilience.*`**. All attributes defined here live under this single root.
-
-### Requirement Tiers
-
-The model is organised into three tiers:
-
-| Tier | Groups | When |
-|------|--------|------|
-| **Required** | `experiment`, `target`, `fault`, `outcome` | Every experiment |
-| **Phase data** (required if enabled) | `estimate`, `baseline`, `during`, `post`, `analysis` | When five-phase execution is active |
-| **Optional enrichment** | `taxonomy`, `safety`, `environment`, `load`, `regulatory`, `score` | Enhances analytics, compliance, and scoring |
-
----
-
-## Table of Contents
-
-- [1. Conventions](#1-conventions)
-- [2. Required Attribute Groups](#2-required-attribute-groups)
-  - [2.1 resilience.experiment.*](#21-resilienceexperiment)
-  - [2.2 resilience.target.*](#22-resiliencetarget)
-  - [2.3 resilience.fault.*](#23-resiliencefault)
-  - [2.4 resilience.outcome.*](#24-resilienceoutcome)
-- [3. Phase Data Attribute Groups](#3-phase-data-attribute-groups)
-  - [3.1 resilience.estimate.*](#31-resilienceestimate)
-  - [3.2 resilience.baseline.*](#32-resiliencebaseline)
-  - [3.3 resilience.during.*](#33-resilienceduring)
-  - [3.4 resilience.post.*](#34-resiliencepost)
-  - [3.5 resilience.analysis.*](#35-resilienceanalysis)
-- [4. Optional Enrichment Groups](#4-optional-enrichment-groups)
-  - [4.1 resilience.taxonomy.*](#41-resiliencetaxonomy) (NEW)
-  - [4.2 resilience.safety.*](#42-resiliencesafety)
-  - [4.3 resilience.environment.*](#43-resilienceenvironment)
-  - [4.4 resilience.load.*](#44-resilienceload) (NEW)
-  - [4.5 resilience.regulatory.*](#45-resilienceregulatory)
-  - [4.6 resilience.score.*](#46-resiliencescore) (NEW — 3 layers)
-- [5. Fault Subtype Taxonomy](#5-fault-subtype-taxonomy)
-- [6. Time Standard](#6-time-standard)
-- [7. Cardinality Rules](#7-cardinality-rules)
-- [8. OTel Integration Rules](#8-otel-integration-rules)
-- [9. Scientific Rules](#9-scientific-rules)
-- [10. Scoring Methodology](#10-scoring-methodology)
-- [11. Conformance](#11-conformance)
-
----
-
-## 1. Conventions
-
-| Convention | Rule |
-|---|---|
-| Naming | Dot-separated, lowercase, snake_case segments: `resilience.<group>.<attribute>` |
-| Requirement levels | **Required** -- MUST be present on every conforming span. **Recommended** -- SHOULD be present when the information is available. **Optional** -- MAY be present. **Conditional** -- MUST be present when a stated condition is true. |
-| Enums | Closed sets. Implementations MUST NOT invent values outside the documented set without proposing an addition to this standard. |
-| Arrays | Denoted as `string[]`. Serialised as JSON arrays in span attributes and as repeated fields in protobuf. |
-| Timestamps | Epoch nanoseconds (`int64`). See [Time Standard](#4-time-standard). |
-| Durations | Seconds as `float64`. |
-
----
-
-## 2. Required Attribute Groups
-
-These four groups MUST be present on every experiment.
-
-### 2.1 resilience.experiment.*
-
-Identity and lineage of a single experiment run.
-
-| Attribute | Type | Requirement | Description |
-|---|---|---|---|
-| `resilience.experiment.id` | `string` | Required | UUID v4 uniquely identifying this experiment run. |
-| `resilience.experiment.name` | `string` | Required | Human-readable experiment name. Stable across runs (e.g. `postgresql-failover-recovery`). |
-| `resilience.experiment.version` | `string` | Recommended | Semantic version of the experiment definition (e.g. `2.1.0`). |
-| `resilience.experiment.suite` | `string` | Optional | Parent campaign or suite that groups related experiments. |
-| `resilience.experiment.tags` | `string[]` | Optional | Free-form tags for filtering and grouping (e.g. `["network", "critical-path", "dora"]`). |
-| `resilience.test.kind` | `string` | Recommended | Resilience discipline of the run: `chaos`, `performance` (load and performance), `robustness`, `dr`, `security`. A reader counts `load` as `performance`, and counts `dr` towards the robustness discipline. Emitted on the experiment root span; drives per-discipline coverage. |
-| `resilience.experiment.created_by` | `string` | Recommended | Identity of the user or system that initiated the run. |
-| `resilience.experiment.run_number` | `int` | Recommended | Monotonically increasing run counter for this experiment name. Enables trend analysis across runs. |
-
----
-
-### 2.2 resilience.target.*
-
-The system, service, or component under test.
-
-| Attribute | Type | Requirement | Description | Enum Values |
-|---|---|---|---|---|
-| `resilience.target.system` | `string` | Required | Category of the target system. | `database`, `cache`, `message-broker`, `api`, `container`, `vm`, `host`, `kubernetes`, `network`, `application`, `middleware`, `cloud-service` |
-| `resilience.target.technology` | `string` | Required | Specific technology or product name. | Examples: `postgresql`, `mysql`, `mariadb`, `oracle`, `redis`, `memcached`, `kafka`, `rabbitmq`, `nats`, `pulsar`, `docker`, `podman`, `kubernetes`, `nginx`, `envoy`, `haproxy`, `jvm`, `dotnet`, `nodejs` |
-| `resilience.target.component` | `string` | Required | Specific instance or component identifier (e.g. `payments-db-primary`, `cart-service-pod-3`). High-cardinality -- see [Cardinality Rules](#5-cardinality-rules). |
-| `resilience.target.tier` | `string` | Recommended | Architectural tier of the target. | `frontend`, `backend`, `data`, `infrastructure`, `network`, `platform` |
-| `resilience.target.criticality` | `string` | Recommended | Business criticality classification. | `critical`, `high`, `medium`, `low` |
-| `resilience.target.environment` | `string` | Required | Deployment environment where the experiment runs. | `production`, `staging`, `development`, `sandbox` |
-| `resilience.target.region` | `string` | Optional | Cloud region or data centre location (e.g. `eu-west-1`, `us-east-1`, `dc-ams-01`). |
-
----
-
-### 2.3 resilience.fault.*
-
-The fault being injected.
-
-| Attribute | Type | Requirement | Description | Enum Values |
-|---|---|---|---|---|
-| `resilience.fault.type` | `string` | Required | Top-level fault category. | `termination`, `resource-stress`, `network`, `state`, `dependency`, `configuration`, `data` |
-| `resilience.fault.subtype` | `string` | Required | Specific fault action within the type. See [Fault Subtype Taxonomy](#3-fault-subtype-taxonomy) for the full closed set per type. | See Section 3 |
-| `resilience.fault.severity` | `string` | Required | Expected severity of the injected fault. | `minor`, `moderate`, `major`, `catastrophic` |
-| `resilience.fault.duration_s` | `float` | Recommended | Planned duration of fault injection in seconds. |  |
-| `resilience.fault.blast_radius` | `string` | Required | Scope of impact of the fault. | `single-instance`, `service`, `availability-zone`, `region`, `global` |
-| `resilience.fault.reversible` | `boolean` | Required | Whether the fault can be automatically reversed after the experiment. |  |
-| `resilience.fault.plugin` | `string` | Required | Name of the chaos plugin or driver executing the fault (e.g. `chaostooling-extension-db`, `litmus`, `toxiproxy`). |  |
-| `resilience.fault.action` | `string` | Required | Fully qualified action identifier within the plugin (e.g. `kill_postgresql_process`, `inject_network_latency`). |  |
-
----
-
-### 2.4 resilience.outcome.*
-
-Final outcome of the experiment run. Moved here as a required group — see original definition below.
-
----
-
-## 3. Phase Data Attribute Groups
-
-These groups are required when five-phase execution is active (estimate → baseline → during → post → analysis).
-
-### 3.1 resilience.estimate.*
-
-Pre-experiment predictions. These are recorded before fault injection begins and are compared against actual outcomes in `resilience.analysis.*`.
-
-| Attribute | Type | Requirement | Description | Enum Values |
-|---|---|---|---|---|
-| `resilience.estimate.expected_outcome` | `string` | Required | Predicted outcome category. | `deviated`, `recovered`, `unaffected` |
-| `resilience.estimate.expected_recovery_s` | `float` | Recommended | Predicted time to recovery in seconds. |  |
-| `resilience.estimate.expected_degradation` | `string` | Recommended | Predicted level of service degradation during fault. | `none`, `minor`, `moderate`, `severe` |
-| `resilience.estimate.expected_data_loss` | `boolean` | Recommended | Whether data loss is expected. |  |
-| `resilience.estimate.confidence` | `string` | Recommended | Confidence level in the prediction. | `low`, `medium`, `high` |
-| `resilience.estimate.rationale` | `string` | Recommended | Free-text explanation of why this outcome is expected. Stored on traces only (high cardinality). |  |
-| `resilience.estimate.prior_runs` | `int` | Optional | Number of prior runs of this experiment used to inform the estimate. |  |
-
----
-
-### 2.5 resilience.baseline.*
-
-Steady-state measurements captured before fault injection. These establish the "normal" against which deviation is measured.
-
-#### Top-level baseline attributes
-
-| Attribute | Type | Requirement | Description | Enum Values |
-|---|---|---|---|---|
-| `resilience.baseline.method` | `string` | Required | Statistical method used to establish baseline thresholds. | `static`, `percentile`, `mean-stddev`, `iqr`, `learned` |
-| `resilience.baseline.started_at` | `int64` | Required | Epoch nanoseconds when baseline collection began. |  |
-| `resilience.baseline.ended_at` | `int64` | Required | Epoch nanoseconds when baseline collection ended. |  |
-| `resilience.baseline.duration_s` | `float` | Required | Total baseline collection duration in seconds. |  |
-| `resilience.baseline.warmup_s` | `float` | Recommended | Warm-up period in seconds excluded from statistical calculations. |  |
-| `resilience.baseline.samples` | `int` | Required | Total number of samples collected during the baseline window. |  |
-| `resilience.baseline.interval_s` | `float` | Required | Sampling interval in seconds. |  |
-| `resilience.baseline.confidence` | `float` | Recommended | Statistical confidence level, `0.0` to `1.0` (e.g. `0.95` for 95% confidence). |  |
-| `resilience.baseline.sigma` | `float` | Conditional | Number of standard deviations used for threshold. Required when `method` is `mean-stddev`. |  |
-| `resilience.baseline.source` | `string` | Recommended | Origin of the baseline data. | `live`, `historical`, `aqe` |
-| `resilience.baseline.anomaly_detected` | `boolean` | Recommended | Whether anomalies were detected in the baseline window that may affect reliability. |  |
-
-#### Per-probe baseline metrics
-
-For each probe `{name}`, the following attributes are emitted under `resilience.baseline.probe.{name}.*`:
-
-| Attribute | Type | Requirement | Description |
-|---|---|---|---|
-| `resilience.baseline.probe.{name}.mean` | `float` | Required | Arithmetic mean of probe values during baseline. |
-| `resilience.baseline.probe.{name}.stddev` | `float` | Recommended | Standard deviation of probe values. |
-| `resilience.baseline.probe.{name}.p50` | `float` | Recommended | 50th percentile (median). |
-| `resilience.baseline.probe.{name}.p95` | `float` | Recommended | 95th percentile. |
-| `resilience.baseline.probe.{name}.p99` | `float` | Recommended | 99th percentile. |
-| `resilience.baseline.probe.{name}.min` | `float` | Recommended | Minimum observed value. |
-| `resilience.baseline.probe.{name}.max` | `float` | Recommended | Maximum observed value. |
-| `resilience.baseline.probe.{name}.error_rate` | `float` | Recommended | Proportion of failed probe executions, `0.0` to `1.0`. |
-
-> `{name}` is the probe's stable identifier (e.g. `query_latency`, `connection_count`). It MUST be lowercase snake_case.
-
----
-
-### 2.6 resilience.during.*
-
-Measurements captured while the fault is active.
-
-#### Top-level during-fault attributes
-
-| Attribute | Type | Requirement | Description |
-|---|---|---|---|
-| `resilience.during.started_at` | `int64` | Required | Epoch nanoseconds when fault injection began. |
-| `resilience.during.ended_at` | `int64` | Required | Epoch nanoseconds when fault injection ended. |
-| `resilience.during.fault_active_s` | `float` | Required | Actual duration the fault was active in seconds. |
-| `resilience.during.sample_interval_s` | `float` | Required | Sampling interval in seconds during the fault window. |
-
-#### Per-probe during-fault metrics
-
-For each probe `{name}`:
-
-| Attribute | Type | Requirement | Description |
-|---|---|---|---|
-| `resilience.during.probe.{name}.samples` | `int` | Required | Number of samples collected for this probe during the fault window. |
-| `resilience.during.probe.{name}.mean` | `float` | Required | Mean probe value during the fault. |
-| `resilience.during.probe.{name}.max` | `float` | Recommended | Maximum probe value during the fault. |
-| `resilience.during.probe.{name}.min` | `float` | Recommended | Minimum probe value during the fault. |
-| `resilience.during.probe.{name}.error_rate` | `float` | Recommended | Proportion of failed probe executions, `0.0` to `1.0`. |
-| `resilience.during.probe.{name}.breached_at` | `int64` | Recommended | Epoch nanoseconds of the first threshold breach. Absent if no breach occurred. |
-| `resilience.during.probe.{name}.breach_count` | `int` | Recommended | Number of times the probe breached its baseline threshold. |
-
----
-
-### 2.7 resilience.post.*
-
-Measurements captured after fault removal to assess recovery.
-
-#### Top-level post-fault attributes
-
-| Attribute | Type | Requirement | Description |
-|---|---|---|---|
-| `resilience.post.started_at` | `int64` | Required | Epoch nanoseconds when post-fault observation began. |
-| `resilience.post.ended_at` | `int64` | Required | Epoch nanoseconds when post-fault observation ended. |
-| `resilience.post.duration_s` | `float` | Required | Total post-fault observation duration in seconds. |
-| `resilience.post.samples` | `int` | Required | Total number of samples collected during the post-fault window. |
-| `resilience.post.recovery_time_s` | `float` | Required | Mean Time to Recovery (MTTR) -- seconds from fault removal to all probes returning within baseline thresholds. When a probe did not return, the largest value of a probe: recovery takes at least this long. |
-| `resilience.post.full_recovery` | `boolean` | Required | Whether the system fully returned to baseline levels. |
-
-#### Per-probe post-fault metrics
-
-For each probe `{name}`:
-
-| Attribute | Type | Requirement | Description |
-|---|---|---|---|
-| `resilience.post.probe.{name}.mean` | `float` | Required | Mean probe value during the post-fault window. |
-| `resilience.post.probe.{name}.p95` | `float` | Recommended | 95th percentile during the post-fault window. |
-| `resilience.post.probe.{name}.error_rate` | `float` | Recommended | Error rate during the post-fault window, `0.0` to `1.0`. |
-| `resilience.post.probe.{name}.returned_to_baseline` | `boolean` | Required | Whether this probe returned to within baseline thresholds. |
-| `resilience.post.probe.{name}.recovery_time_s` | `float` | Required | Seconds from fault removal until this probe returned to baseline. When it did not return, the seconds until its last failing sample: it was still failing then. |
-
----
-
-### 2.8 resilience.outcome.*
-
-Final outcome of the experiment run.
-
-| Attribute | Type | Requirement | Description | Enum Values |
-|---|---|---|---|---|
-| `resilience.outcome.status` | `string` | Required | Terminal status of the experiment run. | `completed`, `deviated`, `aborted`, `failed`, `interrupted`, `halted` |
-| `resilience.outcome.hypothesis_met` | `boolean` | Required | Whether the experiment's hypothesis was confirmed. |  |
-| `resilience.outcome.deviation_detected` | `boolean` | Required | Whether the system deviated from expected behaviour. |  |
-| `resilience.outcome.deviation_magnitude` | `float` | Conditional | Magnitude of deviation in sigma. Required when `deviation_detected` is `true`. |  |
-| `resilience.outcome.recovery_time_s` | `float` | Recommended | Observed total recovery time in seconds. |  |
-| `resilience.outcome.mttr_s` | `float` | Recommended | Mean Time to Recovery in seconds. Equivalent to `resilience.post.recovery_time_s` but included here for query convenience. |  |
-| `resilience.outcome.data_loss` | `boolean` | Recommended | Whether data loss occurred during the experiment. |  |
-| `resilience.outcome.rollback_executed` | `boolean` | Required | Whether a rollback action was triggered (manual or automatic). |  |
-| `resilience.outcome.rollback_success` | `boolean` | Conditional | Whether the rollback succeeded. Required when `rollback_executed` is `true`. |  |
-
----
-
-### 2.9 resilience.safety.*
-
-Safety constraints and guardrails for the experiment.
-
-| Attribute | Type | Requirement | Description | Enum Values |
-|---|---|---|---|---|
-| `resilience.safety.abort_conditions` | `string[]` | Recommended | List of conditions that trigger automatic experiment abort (e.g. `["error_rate > 0.5", "p95_latency > 10s", "data_loss detected"]`). |  |
-| `resilience.safety.max_duration_s` | `float` | Recommended | Maximum allowed experiment duration in seconds. The engine MUST abort if exceeded. |  |
-| `resilience.safety.max_blast_radius` | `string` | Recommended | Maximum allowed blast radius. The engine MUST NOT inject faults beyond this scope. |  |
-| `resilience.safety.requires_approval` | `boolean` | Optional | Whether this experiment requires manual approval before fault injection. |  |
-| `resilience.safety.rollback_strategy` | `string` | Required | Strategy for rollback after fault injection. | `always`, `on-deviation`, `never`, `manual` |
-
----
-
-### 2.10 resilience.environment.*
-
-Infrastructure context where the experiment runs.
-
-| Attribute | Type | Requirement | Description | Enum Values |
-|---|---|---|---|---|
-| `resilience.environment.platform` | `string` | Required | Compute platform type. | `bare-metal`, `vm`, `container`, `kubernetes`, `serverless` |
-| `resilience.environment.cloud_provider` | `string` | Optional | Cloud provider, if applicable. | `aws`, `gcp`, `azure`, `on-premise` |
-| `resilience.environment.cluster` | `string` | Optional | Cluster name or identifier (e.g. `prod-eu-01`, `staging-k8s`). |  |
-| `resilience.environment.namespace` | `string` | Optional | Kubernetes namespace or equivalent isolation boundary. |  |
-
----
-
-### 2.11 resilience.regulatory.*
-
-Regulatory and compliance mapping for audit evidence.
-
-| Attribute | Type | Requirement | Description | Enum Values |
-|---|---|---|---|---|
-| `resilience.regulatory.frameworks` | `string[]` | Recommended | Regulatory frameworks this experiment provides evidence for. | `DORA`, `NIS2`, `PCI-DSS`, `ISO-22301`, `ISO-27001`, `SOC2`, `Basel-III` |
-| `resilience.regulatory.requirement_id` | `string` | Recommended | Specific requirement or control identifier within the framework (e.g. `DORA-Art.25`, `PCI-DSS-12.10.2`). |  |
-| `resilience.regulatory.evidence_type` | `string` | Recommended | Type of evidence this experiment run produces (e.g. `recovery-test`, `failover-validation`, `backup-verification`). |  |
-| `resilience.regulatory.compliance_status` | `string` | Recommended | Compliance determination based on experiment outcome. | `compliant`, `non-compliant`, `partial` |
-
----
-
-### 2.12 resilience.analysis.*
-
-Post-experiment analysis comparing predictions to actuals and tracking trends.
-
-| Attribute | Type | Requirement | Description | Enum Values |
-|---|---|---|---|---|
-| `resilience.analysis.estimate_accuracy` | `float` | Recommended | Accuracy of the pre-experiment estimate, `0.0` to `1.0`. `1.0` means the prediction exactly matched the outcome. |  |
-| `resilience.analysis.estimate_recovery_delta` | `float` | Recommended | Difference between predicted and actual recovery time in seconds (`predicted - actual`). Positive means recovery was faster than predicted. |  |
-| `resilience.analysis.trend` | `string` | Recommended | Resilience trend based on comparison with prior runs of the same experiment. | `improving`, `stable`, `degrading` |
-| `resilience.analysis.resilience_score` | `float` | Recommended | `0` or `1`: `1` when the run completed. |  |
-| `resilience.analysis.regulatory_evidence` | `string[]` | Recommended | List of regulatory evidence artefact identifiers produced by this run (e.g. report IDs, audit log references). |  |
-
----
-
-## 3. Fault Subtype Taxonomy
-
-Every `resilience.fault.subtype` value MUST belong to exactly one `resilience.fault.type`. The following is the complete closed set.
-
-### termination
-
-Faults that stop processes, containers, or hosts.
-
-| Subtype | Description |
-|---|---|
-| `process-kill` | Kill a specific OS process (SIGKILL or equivalent). |
-| `container-kill` | Stop and remove a container. |
-| `vm-stop` | Power off a virtual machine. |
-| `node-shutdown` | Shut down a physical or virtual node. |
-| `pod-delete` | Delete a Kubernetes pod. |
-| `service-stop` | Stop a systemd/init service. |
-
-### resource-stress
-
-Faults that exhaust compute, memory, storage, or OS resources.
-
-| Subtype | Description |
-|---|---|
-| `cpu-stress` | Saturate CPU cores to a target utilisation. |
-| `memory-stress` | Allocate memory to a target utilisation or OOM threshold. |
-| `io-stress` | Generate sustained disk I/O load. |
-| `disk-fill` | Fill a filesystem to a target percentage. |
-| `fd-exhaustion` | Exhaust available file descriptors. |
-| `thread-exhaustion` | Exhaust available threads or goroutines. |
-
-### network
-
-Faults that degrade or disrupt network communication.
-
-| Subtype | Description |
-|---|---|
-| `latency-injection` | Add artificial latency to network packets. |
-| `packet-loss` | Drop a percentage of network packets. |
-| `partition` | Create a network partition between components. |
-| `dns-failure` | Cause DNS resolution failures. |
-| `bandwidth-limit` | Throttle network bandwidth. |
-| `corruption` | Corrupt network packet payloads. |
-| `port-block` | Block traffic on specific ports. |
-| `connection-reset` | Force TCP connection resets. |
-
-### state
-
-Faults that manipulate internal system state.
-
-| Subtype | Description |
-|---|---|
-| `connection-kill` | Terminate active database or service connections. |
-| `lock-injection` | Inject lock contention or deadlocks. |
-| `replication-lag` | Introduce artificial replication delay. |
-| `failover-trigger` | Force a failover from primary to replica. |
-| `leader-election` | Trigger a leader re-election in a consensus group. |
-| `cache-flush` | Flush in-memory caches, forcing cold-start behaviour. |
-
-### dependency
-
-Faults that affect upstream or downstream dependencies.
-
-| Subtype | Description |
-|---|---|
-| `upstream-timeout` | Cause upstream service calls to time out. |
-| `downstream-error` | Make a downstream dependency return errors. |
-| `circuit-break` | Force a circuit breaker to open state. |
-| `service-unavailable` | Make a dependency completely unreachable. |
-
-### configuration
-
-Faults that alter runtime configuration.
-
-| Subtype | Description |
-|---|---|
-| `config-change` | Modify a runtime configuration parameter. |
-| `feature-toggle` | Flip a feature flag to an unexpected state. |
-| `resource-limit` | Reduce resource limits (connection pools, memory caps, rate limits). |
-| `permission-revoke` | Revoke permissions or credentials at runtime. |
-
-### data
-
-Faults that affect data integrity or ordering.
-
-| Subtype | Description |
-|---|---|
-| `corruption` | Corrupt stored or in-flight data. |
-| `deletion` | Delete data records or files. |
-| `reorder` | Reorder messages or events. |
-| `duplication` | Duplicate messages or records. |
-| `schema-drift` | Introduce schema changes that cause incompatibility. |
-
----
-
-## 4. Time Standard
-
-All temporal values in this standard follow a single set of rules to eliminate ambiguity and conversion overhead.
-
-| Context | Format | Example |
+# Resilience metadata standard
+
+The `resilience.*` names for the telemetry of a resilience test: what ran,
+what it hit, which fault it injected and how it ended. They follow the
+[OpenTelemetry semantic conventions](https://opentelemetry.io/docs/specs/semconv/),
+so any tool can write them. The first section says what Tumult writes.
+
+On this page:
+
+- [What Tumult writes](#what-tumult-writes)
+- [Conventions](#conventions)
+- [Required groups](#required-groups): [experiment](#experiment), [target](#target), [fault](#fault), [outcome](#outcome)
+- [Phase groups](#phase-groups): [estimate](#estimate), [baseline](#baseline), [during the fault](#during-the-fault), [after the fault](#after-the-fault), [analysis](#analysis)
+- [Optional groups](#optional-groups): [safety](#safety), [environment](#environment), [regulatory](#regulatory), [load](#load), [taxonomy](#taxonomy), [scores](#scores)
+- [Fault types and subtypes](#fault-types-and-subtypes)
+- [Metrics](#metrics)
+- [Scientific rules](#scientific-rules)
+- [Conformance](#conformance)
+
+## What Tumult writes
+
+A Tumult run writes one trace. Its spans and the attributes of each are on
+the [telemetry reference](guides/telemetry-reference.md). This section says
+which groups of the standard they carry, and where they differ.
+
+```mermaid
+flowchart TD
+  accTitle: Which groups of the standard Tumult writes
+  accDescr: On its spans Tumult writes part of the experiment, target, fault, outcome and load groups, and resilience.test.kind. The estimate, during, after and analysis phases and the regulatory block are kept in the journal only. Baseline, safety, environment, taxonomy and scores are not written.
+  spans["On the spans, in part<br/>experiment, target, fault, outcome, load, test.kind"]:::some
+  journal["In the journal only<br/>estimate, during, after, analysis, regulatory block"]:::journal
+  none["Not written<br/>baseline, safety, environment, taxonomy, scores"]:::none
+  spans ~~~ journal ~~~ none
+  classDef some fill:#d1fae5,stroke:#059669,color:#064e3b
+  classDef journal fill:#e0f2fe,stroke:#0284c7,color:#0c4a6e
+  classDef none fill:#f3f4f6,stroke:#6b7280,color:#374151
+```
+
+| Group | What Tumult writes | Where it differs from the standard |
 |---|---|---|
-| Timestamps in span attributes and journals | Epoch nanoseconds (`int64`) | `1711670400000000000` |
-| Durations in span attributes and journals | Seconds (`float64`) | `12.345` |
-| Experiment definitions (human-authored JSON/YAML) | Human-friendly strings | `120s`, `5m`, `1h` |
-| Internal storage and analytics | Epoch nanoseconds | Native in ClickHouse, DuckDB, OTel |
+| experiment | `id` and `title` on the root span; `name` only as a label of the deviation metric | `title` is not in the standard. `version`, `suite`, `tags`, `created_by` and `run_number` are not written |
+| `resilience.test.kind` | on the root span | |
+| target | `system`, `technology`, `environment`, `criticality`, `version` and `version_source` on the root span, from the `target` block; `type`, `name` and `component` on step spans | `type` is `process`, `native` or `script`. `version`, `version_source` and `name` are not in the standard. `tier` and `region` are not written |
+| fault | `type` and `name` on step spans; `blast_radius` on the root span | `type` is `injection` for an action and `observation` for a probe, not a value of the closed set. `blast_radius` is the free note of the definition. `subtype`, `severity`, `duration_s`, `reversible`, `plugin` and `action` are not written; the plugin is `resilience.plugin.name` |
+| outcome | `status`, `hypothesis_met` and `recovery_time_s` on the root span, the last two only when the run measured them | the other outcome attributes are not written |
+| load | on the `resilience.load` span | also `script`, `latency_p50_ms`, `latency_p99_ms`, `total_requests`, `aborted`, `truncated`, the window counts, `reason` and `error` |
+| estimate, during, after, analysis | no span attribute | the journal keeps them as `estimate`, `during_result`, `post_result` and `analysis` |
+| baseline, safety, environment, regulatory, taxonomy, scores | nothing | the journal keeps the `regulatory` block of the definition |
 
-**Rationale**:
+The daemon reads these names from any sender. It keeps `experiment.id`,
+`experiment.name` (or `.title`), `outcome.status`, `.hypothesis_met`,
+`.recovery_time_s`, `fault.type`, `.subtype`, `.severity`, `.blast_radius`,
+`.plugin` (or `plugin.name`) and `target.system`, `.technology` and
+`.environment` (or `deployment.environment.name`) in columns of its span
+table, and every other attribute in a map.
 
-- **OTel native**: OpenTelemetry's protobuf encoding uses `fixed64` nanosecond timestamps. No conversion is needed at the exporter boundary.
-- **Database native**: ClickHouse `DateTime64(9)` and DuckDB `TIMESTAMP_NS` store nanosecond precision natively.
-- **Zero conversion**: A single canonical format eliminates an entire class of timezone, precision, and parsing bugs.
-
-Experiment engines MUST convert human-friendly durations in experiment definitions to `float64` seconds before emitting span attributes. The human-friendly format is a convenience for authors, not a wire format.
-
----
-
-## 5. Cardinality Rules
-
-Controlling attribute cardinality is essential for metric backends (Prometheus, ClickHouse, etc.) that create time series per unique label combination.
+## Conventions
 
 | Rule | Detail |
 |---|---|
-| Enum attributes use finite, documented values only | Implementations MUST NOT add ad-hoc enum values. New values require a standard revision. |
-| No free-text in metric dimensions | Attributes like `resilience.estimate.rationale` are high-cardinality and MUST NOT be used as metric labels. They belong on spans only. |
-| `resilience.target.component` is high-cardinality | Use on traces and logs. NEVER use as a metric dimension. |
-| Metric-safe fault dimensions | `resilience.fault.type` and `resilience.fault.subtype` are bounded enums and are safe for metric dimensions. |
-| Metric-safe target dimensions | `resilience.target.system`, `resilience.target.technology`, and `resilience.target.environment` are bounded and metric-safe. |
-| Per-probe attributes are inherently high-cardinality | The `probe.{name}.*` pattern creates attributes dynamically. Use these on traces. For metrics, emit per-probe data as separate metric instruments (e.g. `resilience.probe.latency{probe.name="query_latency"}`). |
+| Names | Lowercase, dot-separated, snake_case segments: `resilience.<group>.<attribute>` |
+| Levels | **Required**: on every conforming span. **Recommended**: when known. **Optional**: may be present. **Conditional**: required when a stated condition is true |
+| Enums | Closed sets. Add a value by changing this standard |
+| Arrays | `string[]`, a JSON array on a span |
+| Timestamps | Epoch nanoseconds, `int64`, such as `1711670400000000000` |
+| Durations | Seconds, `float64`. A definition may say `120s` or `5m`; a runner turns that into seconds before it writes an attribute |
+| Spans | Every attribute is a span attribute. `resilience.experiment.*` is also a resource attribute of the root span, and `resilience.target.*` goes on every span of the trace |
+| Metric labels | Only bounded values: `fault.type` (7), `fault.subtype` (about 35), `target.system` (12), `target.technology`, `target.environment` (4), `outcome.status` (6). Never free text, `target.component` or `probe.{name}.*`; for a probe, use one instrument with a `probe.name` label |
 
----
+## Required groups
 
-## 6. OTel Integration Rules
+These four groups must be on every experiment.
 
-### Span Attributes
+### Experiment
 
-All `resilience.*` attributes are carried as **span attributes** on the spans emitted by the chaos engine during experiment execution.
+| Attribute | Type | Level | Meaning |
+|---|---|---|---|
+| `resilience.experiment.id` | `string` | Required | UUID v4 of this run |
+| `resilience.experiment.name` | `string` | Required | Stable name of the experiment, the same for every run |
+| `resilience.experiment.version` | `string` | Recommended | Version of the definition, such as `2.1.0` |
+| `resilience.experiment.suite` | `string` | Optional | Campaign or suite the experiment belongs to |
+| `resilience.experiment.tags` | `string[]` | Optional | Free tags for filters |
+| `resilience.test.kind` | `string` | Recommended | Discipline: `chaos`, `performance`, `robustness`, `dr`, `security`. A reader counts `load` as `performance` and `dr` towards robustness |
+| `resilience.experiment.created_by` | `string` | Recommended | User or system that started the run |
+| `resilience.experiment.run_number` | `int` | Recommended | Run counter per experiment name, for trends |
 
-### Resource Attributes
+### Target
 
-`resilience.experiment.*` attributes are set as **resource attributes** on the root span of the experiment trace. This ensures they propagate to all child spans and are available for trace-level queries.
+| Attribute | Type | Level | Meaning | Values |
+|---|---|---|---|---|
+| `resilience.target.system` | `string` | Required | Kind of system | `database`, `cache`, `message-broker`, `api`, `container`, `vm`, `host`, `kubernetes`, `network`, `application`, `middleware`, `cloud-service` |
+| `resilience.target.technology` | `string` | Required | Product, such as `postgresql`, `redis`, `kafka`, `nginx` | open, bounded |
+| `resilience.target.component` | `string` | Required | Instance, such as `payments-db-primary`. High cardinality | |
+| `resilience.target.tier` | `string` | Recommended | Tier | `frontend`, `backend`, `data`, `infrastructure`, `network`, `platform` |
+| `resilience.target.criticality` | `string` | Recommended | Business criticality | `critical`, `high`, `medium`, `low` |
+| `resilience.target.environment` | `string` | Required | Where the run happens | `production`, `staging`, `development`, `sandbox` |
+| `resilience.target.region` | `string` | Optional | Region or data centre, such as `eu-west-1` | |
 
-### Span Propagation
+### Fault
 
-`resilience.target.*` attributes are set on **every span** within the experiment trace. This enables filtering any span in the trace by target system, technology, or environment.
+| Attribute | Type | Level | Meaning | Values |
+|---|---|---|---|---|
+| `resilience.fault.type` | `string` | Required | Fault category | see [fault types](#fault-types-and-subtypes) |
+| `resilience.fault.subtype` | `string` | Required | Fault within the type | see [fault types](#fault-types-and-subtypes) |
+| `resilience.fault.severity` | `string` | Required | Expected severity | `minor`, `moderate`, `major`, `catastrophic` |
+| `resilience.fault.duration_s` | `float` | Recommended | Planned length of the fault | |
+| `resilience.fault.blast_radius` | `string` | Required | Planned scope | `single-instance`, `service`, `availability-zone`, `region`, `global` |
+| `resilience.fault.reversible` | `boolean` | Required | Whether the fault can be undone by itself | |
+| `resilience.fault.plugin` | `string` | Required | Plugin that injects the fault | |
+| `resilience.fault.action` | `string` | Required | Action within the plugin, such as `kill_postgresql_process` | |
 
-### Metric Dimensions
+### Outcome
 
-The following attributes are approved for use as metric label dimensions:
+| Attribute | Type | Level | Meaning | Values |
+|---|---|---|---|---|
+| `resilience.outcome.status` | `string` | Required | How the run ended | `completed`, `deviated`, `aborted`, `failed`, `interrupted`, `halted` |
+| `resilience.outcome.hypothesis_met` | `boolean` | Required | Whether the hypothesis held | |
+| `resilience.outcome.deviation_detected` | `boolean` | Required | Whether the system deviated | |
+| `resilience.outcome.deviation_magnitude` | `float` | Conditional | Size of the deviation in sigma, when one was detected | |
+| `resilience.outcome.recovery_time_s` | `float` | Recommended | Seconds until the target recovered | |
+| `resilience.outcome.mttr_s` | `float` | Recommended | Mean time to recovery, the same as `resilience.post.recovery_time_s` | |
+| `resilience.outcome.data_loss` | `boolean` | Recommended | Whether data was lost | |
+| `resilience.outcome.rollback_executed` | `boolean` | Required | Whether a rollback ran | |
+| `resilience.outcome.rollback_success` | `boolean` | Conditional | Whether the rollback worked, when one ran | |
 
-| Metric Dimension | Cardinality | Source Group |
-|---|---|---|
-| `resilience.fault.type` | 7 values | `resilience.fault.*` |
-| `resilience.fault.subtype` | ~35 values | `resilience.fault.*` |
-| `resilience.target.system` | 12 values | `resilience.target.*` |
-| `resilience.target.technology` | Open but bounded | `resilience.target.*` |
-| `resilience.target.environment` | 4 values | `resilience.target.*` |
-| `resilience.outcome.status` | 6 values | `resilience.outcome.*` |
+## Phase groups
 
-### Recommended Metric Instruments
+A run in five phases (estimate, baseline, during, after, analysis) needs
+these groups.
 
-| Metric Name | Type | Unit | Dimensions |
+### Estimate
+
+The prediction, written before the fault.
+
+| Attribute | Type | Level | Meaning | Values |
+|---|---|---|---|---|
+| `resilience.estimate.expected_outcome` | `string` | Required | Predicted outcome | `deviated`, `recovered`, `unaffected` |
+| `resilience.estimate.expected_recovery_s` | `float` | Recommended | Predicted recovery time | |
+| `resilience.estimate.expected_degradation` | `string` | Recommended | Predicted degradation | `none`, `minor`, `moderate`, `severe` |
+| `resilience.estimate.expected_data_loss` | `boolean` | Recommended | Whether data loss is expected | |
+| `resilience.estimate.confidence` | `string` | Recommended | Confidence in the prediction | `low`, `medium`, `high` |
+| `resilience.estimate.rationale` | `string` | Recommended | Why. High cardinality: spans only | |
+| `resilience.estimate.prior_runs` | `int` | Optional | Earlier runs the estimate used | |
+
+### Baseline
+
+The steady state before the fault: the normal that deviation is measured
+against.
+
+| Attribute | Type | Level | Meaning | Values |
+|---|---|---|---|---|
+| `resilience.baseline.method` | `string` | Required | How thresholds are set | `static`, `percentile`, `mean-stddev`, `iqr`, `learned` |
+| `resilience.baseline.started_at` | `int64` | Required | Start of the window | |
+| `resilience.baseline.ended_at` | `int64` | Required | End of the window | |
+| `resilience.baseline.duration_s` | `float` | Required | Length of the window | |
+| `resilience.baseline.warmup_s` | `float` | Recommended | Warm-up left out of the statistics | |
+| `resilience.baseline.samples` | `int` | Required | Samples in the window | |
+| `resilience.baseline.interval_s` | `float` | Required | Time between samples | |
+| `resilience.baseline.confidence` | `float` | Recommended | Confidence level, `0.0` to `1.0` | |
+| `resilience.baseline.sigma` | `float` | Conditional | Standard deviations of the threshold, when the method is `mean-stddev` | |
+| `resilience.baseline.source` | `string` | Recommended | Where the data came from | `live`, `historical`, `aqe` |
+| `resilience.baseline.anomaly_detected` | `boolean` | Recommended | Whether the window held anomalies | |
+
+Per probe `{name}` (lowercase snake_case, such as `query_latency`), under
+`resilience.baseline.probe.{name}.*`: `mean` (Required), and `stddev`,
+`p50`, `p95`, `p99`, `min`, `max` and `error_rate` (`0.0` to `1.0`), all
+Recommended `float`.
+
+### During the fault
+
+| Attribute | Type | Level | Meaning |
+|---|---|---|---|
+| `resilience.during.started_at` | `int64` | Required | When the fault started |
+| `resilience.during.ended_at` | `int64` | Required | When the fault ended |
+| `resilience.during.fault_active_s` | `float` | Required | How long the fault was active |
+| `resilience.during.sample_interval_s` | `float` | Required | Time between samples |
+
+Per probe, under `resilience.during.probe.{name}.*`: `samples` (`int`) and
+`mean` (`float`), Required; `max`, `min` and `error_rate` (`float`),
+`breached_at` (`int64`, the first breach, absent without one) and
+`breach_count` (`int`), Recommended.
+
+### After the fault
+
+| Attribute | Type | Level | Meaning |
+|---|---|---|---|
+| `resilience.post.started_at` | `int64` | Required | Start of the recovery window |
+| `resilience.post.ended_at` | `int64` | Required | End of the recovery window |
+| `resilience.post.duration_s` | `float` | Required | Length of the window |
+| `resilience.post.samples` | `int` | Required | Samples in the window |
+| `resilience.post.recovery_time_s` | `float` | Required | Seconds from the end of the fault until every probe is back within its threshold. When a probe did not come back: the largest time of a probe, so recovery takes at least this long |
+| `resilience.post.full_recovery` | `boolean` | Required | Whether every probe came back |
+
+Per probe, under `resilience.post.probe.{name}.*`: `mean` (`float`),
+`returned_to_baseline` (`boolean`) and `recovery_time_s` (`float`; when the
+probe did not come back, the time of its last failing sample), Required;
+`p95` and `error_rate` (`float`), Recommended.
+
+### Analysis
+
+| Attribute | Type | Level | Meaning | Values |
+|---|---|---|---|---|
+| `resilience.analysis.estimate_accuracy` | `float` | Recommended | How well the estimate matched, `0.0` to `1.0` | |
+| `resilience.analysis.estimate_recovery_delta` | `float` | Recommended | Predicted minus actual recovery time; positive means faster than predicted | |
+| `resilience.analysis.trend` | `string` | Recommended | Trend against earlier runs | `improving`, `stable`, `degrading` |
+| `resilience.analysis.resilience_score` | `float` | Recommended | `1` when the run completed, else `0` | |
+| `resilience.analysis.regulatory_evidence` | `string[]` | Recommended | Ids of the evidence the run produced, such as report ids | |
+
+## Optional groups
+
+### Safety
+
+| Attribute | Type | Level | Meaning | Values |
+|---|---|---|---|---|
+| `resilience.safety.abort_conditions` | `string[]` | Recommended | Conditions that stop the run, such as `error_rate > 0.5` | |
+| `resilience.safety.max_duration_s` | `float` | Recommended | Longest allowed run; a runner must stop the run after it | |
+| `resilience.safety.max_blast_radius` | `string` | Recommended | Widest allowed scope; a runner must not go beyond it | |
+| `resilience.safety.requires_approval` | `boolean` | Optional | Whether a person must approve the fault | |
+| `resilience.safety.rollback_strategy` | `string` | Required | When rollbacks run | `always`, `on-deviation`, `never`, `manual` |
+
+### Environment
+
+| Attribute | Type | Level | Meaning | Values |
+|---|---|---|---|---|
+| `resilience.environment.platform` | `string` | Required | Compute platform | `bare-metal`, `vm`, `container`, `kubernetes`, `serverless` |
+| `resilience.environment.cloud_provider` | `string` | Optional | Cloud provider | `aws`, `gcp`, `azure`, `on-premise` |
+| `resilience.environment.cluster` | `string` | Optional | Cluster, such as `prod-eu-01` | |
+| `resilience.environment.namespace` | `string` | Optional | Kubernetes namespace or a similar boundary | |
+
+### Regulatory
+
+| Attribute | Type | Level | Meaning | Values |
+|---|---|---|---|---|
+| `resilience.regulatory.frameworks` | `string[]` | Recommended | Frameworks the run is evidence for | `DORA`, `NIS2`, `PCI-DSS`, `ISO-22301`, `ISO-27001`, `SOC2`, `Basel-III` |
+| `resilience.regulatory.requirement_id` | `string` | Recommended | Control within the framework, such as `DORA-Art.25` | |
+| `resilience.regulatory.evidence_type` | `string` | Recommended | Kind of evidence, such as `recovery-test` | |
+| `resilience.regulatory.compliance_status` | `string` | Recommended | Status the outcome supports | `compliant`, `non-compliant`, `partial` |
+
+How Tumult maps runs to frameworks is in [Regulatory mapping](regulatory-mapping.md).
+
+### Load
+
+For a load test that runs with the experiment, with k6 or oha.
+
+| Attribute | Type | Level | Meaning |
+|---|---|---|---|
+| `resilience.load.tool` | `string` | Optional | `k6` or `oha` |
+| `resilience.load.vus` | `int` | Optional | Virtual users |
+| `resilience.load.duration_s` | `float` | Optional | Length of the load |
+| `resilience.load.throughput_rps` | `float` | Optional | Requests per second |
+| `resilience.load.latency_p95_ms` | `float` | Optional | 95th percentile latency in milliseconds |
+| `resilience.load.error_rate` | `float` | Optional | Error rate, `0.0` to `1.0` |
+| `resilience.load.thresholds_met` | `boolean` | Optional | Whether every threshold of the load passed |
+
+### Taxonomy
+
+Classes to slice experiments by. All are Optional `string`.
+
+| Attribute | Values |
+|---|---|
+| `resilience.taxonomy.track` | `chaos`, `security`, `performance`, `continuity` |
+| `resilience.taxonomy.category` | `fault_injection`, `latency`, `resource_stress`, `state_manipulation`, `dependency_failure` |
+| `resilience.taxonomy.domain` | `compute`, `network`, `storage`, `data`, `platform`, `application` |
+| `resilience.taxonomy.component` | `cpu`, `memory`, `io`, `disk`, `broker`, `primary`, `replica`, `pod`, `node`, `gateway` |
+| `resilience.taxonomy.scenario` | `cpu_stress`, `memory_pressure`, `io_saturation`, `partition`, `failover`, `leader_election`, `connection_kill` |
+
+### Scores
+
+Three optional layers, computed from journals after a run. Tumult writes
+none of these attributes; its own scores are computed in the daemon.
+
+| Attributes | Meaning |
+|---|---|
+| `resilience.score.quality.complexity`, `.risk` | `low`, `medium`, `high`, `critical`, from steps, settings, rollbacks, a missing hypothesis and past deviations |
+| `resilience.score.quality.blast_radius` | `contained`, `moderate`, `broad`, `systemic` |
+| `resilience.score.quality.rollback` | `none`, `weak`, `good`, `excellent` |
+| `resilience.score.quality.grade` | `A` (90 % or more of the last 10 runs passed), `B` (70 %), `C` (50 %), `D` (less) |
+| `resilience.score.quality.otel_score`, `.needs_review` | `0` to `100` for trends; true when risk is high or critical and blast radius is broad or systemic |
+| `resilience.fault.fmea_severity`, `.fmea_detectability`, `.fmea_rpn` | FMEA ratings from 1 to 10 (IEC 60812:2018), and their product |
+| `resilience.score.devops.deployment_frequency_per_day`, `.lead_time_hours`, `.change_failure_rate`, `.mttr_hours`, `.chaos_coverage_pct` | The Accelerate four keys, plus the share of services with runs |
+| `resilience.score.regulatory.framework`, `.control_id` | Framework and control, such as `PCI-DSS-12.10.2` |
+| `resilience.score.regulatory.confidence` | `0.0` to `1.0`: base weight x quality x complexity factor x rollback factor x min(probes / threshold, 1) x outcome factor |
+| `resilience.score.regulatory.outcome_factor` | Passed `1.0`, failed with a good rollback `0.85`, failed `0.30` |
+
+The `devops` layer (Forsgren, Humble and Kim, *Accelerate*, 2018) needs
+data from CI and incident tools. It is not the EU Digital Operational
+Resilience Act, which has the same short name DORA.
+
+## Fault types and subtypes
+
+Each subtype belongs to exactly one type.
+
+| Type | Subtypes |
+|---|---|
+| `termination` | `process-kill`, `container-kill`, `vm-stop`, `node-shutdown`, `pod-delete`, `service-stop` |
+| `resource-stress` | `cpu-stress`, `memory-stress`, `io-stress`, `disk-fill`, `fd-exhaustion`, `thread-exhaustion` |
+| `network` | `latency-injection`, `packet-loss`, `partition`, `dns-failure`, `bandwidth-limit`, `corruption`, `port-block`, `connection-reset` |
+| `state` | `connection-kill`, `lock-injection`, `replication-lag`, `failover-trigger`, `leader-election`, `cache-flush` |
+| `dependency` | `upstream-timeout`, `downstream-error`, `circuit-break`, `service-unavailable` |
+| `configuration` | `config-change`, `feature-toggle`, `resource-limit`, `permission-revoke` |
+| `data` | `corruption`, `deletion`, `reorder`, `duplication`, `schema-drift` |
+
+## Metrics
+
+Recommended metric instruments:
+
+| Metric | Type | Unit | Labels |
 |---|---|---|---|
 | `resilience.experiment.duration` | Histogram | `s` | `fault.type`, `target.system`, `outcome.status` |
 | `resilience.experiment.count` | Counter | `{experiment}` | `fault.type`, `target.system`, `outcome.status` |
 | `resilience.recovery.duration` | Histogram | `s` | `fault.type`, `target.system` |
 | `resilience.deviation.count` | Counter | `{deviation}` | `fault.type`, `target.system`, `fault.severity` |
 
-### Telemetry Naming Across the Workspace
-
-The `resilience.*` namespace defined here is one of three dotted prefixes
-used across tumult telemetry:
-
-| Prefix | Used for | Examples |
-|---|---|---|
-| `tumult.*` | Metrics (counters, histograms, gauges) | `tumult.experiments.total`, `tumult.experiment.duration` |
-| `resilience.*` | Experiment/runner spans and their attributes | `resilience.experiment`, `resilience.probe`, `resilience.analytics.ingest` |
-| `<component>.*` | Component and client spans, one prefix per subsystem | `k8s.*`, `clickhouse.*`, `cypher.*` |
-
-Log events follow the same idea: the event name is `<component>.<thing>.<what happened>` (`daemon.starting`, `cli.journal.skipped`), control-plane identifiers on a log event use the `resilience.*` attribute names (`resilience.run.id`, `resilience.experiment.id`), and errors are `error.message` and `error.type`. The full table is in [the logging guide](guides/logging.md).
-
-**Known quirk — duplicate root span names.** The core runner's experiment
-root span is `resilience.experiment`, while the agentic runner
-(tumult-agentic) roots its traces at `tumult.experiment`. The two names are
-kept as-is for dashboard and alert compatibility; they are documented here
-as a deliberate inconsistency to be unified under a single name in a future
-major version. Do not rename either span in a minor release.
-
----
-
-## 7. Scientific Rules
-
-Resilience testing produces evidence. Evidence must meet scientific standards to be credible, reproducible, and useful for regulatory audit.
-
-### 1. Reproducibility
-
-Experiment metadata MUST be sufficient to re-run the experiment identically. This means:
-
-- All `resilience.experiment.*`, `resilience.target.*`, `resilience.fault.*`, `resilience.safety.*`, and `resilience.environment.*` attributes are populated.
-- The experiment definition (JSON/YAML) is version-controlled and referenced by `resilience.experiment.version`.
-- Any external state dependency (e.g. "requires 3-node cluster") is documented.
-
-### 2. Falsifiability
-
-Every hypothesis MUST have measurable bounds:
-
-- `resilience.estimate.expected_outcome` declares what the experimenter expects.
-- `resilience.estimate.expected_recovery_s` sets a numeric threshold.
-- `resilience.outcome.hypothesis_met` provides a boolean verdict.
-
-A hypothesis of "the system should be resilient" is not falsifiable. A hypothesis of "the system will recover to baseline within 30 seconds after primary database failover" is.
-
-### 3. Baseline Integrity
-
-Raw samples MUST be preserved, not just derived thresholds:
-
-- `resilience.baseline.samples` records the count.
-- Per-probe `.mean`, `.stddev`, `.p50`, `.p95`, `.p99`, `.min`, `.max` provide distributional summary.
-- Implementations SHOULD additionally store raw sample arrays in the experiment journal for full reproducibility.
-
-### 4. Controlled Variables
-
-The environment MUST be recorded so that changes between runs are visible:
-
-- `resilience.environment.*` captures platform, provider, cluster, and namespace.
-- `resilience.target.*` captures the specific component under test.
-- Differences between runs (e.g. changed cluster size) surface automatically in attribute comparison.
-
-### 5. Blast Radius Accounting
-
-Scope MUST be declared before injection and enforced during:
-
-- `resilience.fault.blast_radius` declares intended scope.
-- `resilience.safety.max_blast_radius` sets the hard limit.
-- The engine MUST abort if observed impact exceeds the declared blast radius.
-
-### 6. Prediction Tracking
-
-Estimate vs actual MUST be compared to enable organisational learning:
-
-- `resilience.estimate.*` records predictions before injection.
-- `resilience.analysis.estimate_accuracy` and `resilience.analysis.estimate_recovery_delta` compare predictions to outcomes.
-- Over time, improving estimate accuracy demonstrates growing system understanding.
-- `resilience.analysis.trend` tracks whether resilience is improving, stable, or degrading.
-
----
-
-## 8. Conformance
-
-An implementation is **conformant** with this standard if:
-
-1. All attributes marked **Required** are present on every experiment span.
-2. All attributes marked **Conditional** are present when their stated condition is true.
-3. All enum values are drawn from the documented closed sets.
-4. Timestamps use epoch nanoseconds (`int64`).
-5. Durations use seconds (`float64`).
-6. The fault subtype taxonomy in Section 3 is respected -- subtypes are not mixed across types.
-7. Per-probe attributes follow the `probe.{name}.*` naming pattern with lowercase snake_case probe names.
-8. High-cardinality attributes (`resilience.target.component`, `resilience.estimate.rationale`, per-probe attributes) are not used as metric dimensions.
-
-Implementations MAY extend this standard with additional attributes under a vendor-specific namespace (e.g. `resilience.vendor.mycompany.*`), provided the core `resilience.*` attributes remain conformant.
-
----
-
----
-
-## 10. Scoring Methodology (Optional — 3 Layers)
-
-The scoring model is optional but enables deep analytics when populated. Tumult does not compute these scores in this version. An implementation computes them from journal data, not during experiment execution.
-
-### Layer 1 — Experiment Quality (`resilience.score.quality.*`)
-
-Six orthogonal signals computed per experiment. Scientific basis: cyclomatic complexity (McCabe, 1976), FMEA severity (IEC 60812:2018), chaos engineering principles (Basiri et al., 2016).
-
-| Attribute | Type | Description | Values |
-|---|---|---|---|
-| `resilience.score.quality.complexity` | `string` | Structural complexity based on step count, config params, rollback presence. | `low`, `medium`, `high`, `critical` |
-| `resilience.score.quality.blast_radius` | `string` | Fault propagation scope based on fault type analysis. | `contained`, `moderate`, `broad`, `systemic` |
-| `resilience.score.quality.risk` | `string` | Operational risk combining hypothesis absence, rollback quality, deviation history. | `low`, `medium`, `high`, `critical` |
-| `resilience.score.quality.rollback` | `string` | Rollback completeness: action present, verification probe, idempotent pattern. | `none`, `weak`, `good`, `excellent` |
-| `resilience.score.quality.grade` | `string` | Run history grade based on success rate over trailing 10 runs. | `A` (>=90%), `B` (>=70%), `C` (>=50%), `D` (<50%) |
-| `resilience.score.quality.otel_score` | `float` | Continuous 0-100 score for time-series trending. Weighted combination of complexity, risk, probe count, rollback ratio. | `0.0` to `100.0` |
-| `resilience.score.quality.needs_review` | `boolean` | Automatically set when risk is HIGH/CRITICAL AND blast_radius is BROAD/SYSTEMIC. | |
-
-#### FMEA Extension (`resilience.fault.fmea_*`)
-
-Optional FMEA (Failure Mode and Effects Analysis) attributes per IEC 60812:2018:
-
-| Attribute | Type | Description |
-|---|---|---|
-| `resilience.fault.fmea_severity` | `int` | Severity rating 1-10 (10 = most severe). |
-| `resilience.fault.fmea_detectability` | `int` | Detectability rating 1-10 (10 = hardest to detect). |
-| `resilience.fault.fmea_rpn` | `int` | Risk Priority Number = severity x detectability. |
-
-### Layer 2 — DevOps Performance Metrics / Accelerate Four Keys (`resilience.score.devops.*`)
-
-Operational performance metrics from the Accelerate / Four Keys research programme. Requires external data (CI/CD events, incident management). This layer is an **integration point**. Tumult neither computes these values nor reads them from external systems in this version.
-
-Scientific basis: Forsgren, Humble, Kim (2018), *Accelerate*; State of DevOps Reports.
-
-> **Note:** These DevOps performance metrics are distinct from **DORA (EU 2022/2554)** — the Digital Operational Resilience Act — which is a regulatory compliance framework covered in [Layer 3](#layer-3--regulatory-confidence-resiliencescoreregulatory) and the [Regulatory Mapping](regulatory-mapping.md) document.
-
-| Attribute | Type | Description |
-|---|---|---|
-| `resilience.score.devops.deployment_frequency_per_day` | `float` | Deployments per calendar day. |
-| `resilience.score.devops.lead_time_hours` | `float` | Mean time from commit to production deploy. |
-| `resilience.score.devops.change_failure_rate` | `float` | Proportion of deployments causing incidents (0.0-1.0). |
-| `resilience.score.devops.mttr_hours` | `float` | Mean time to recovery from incidents. |
-| `resilience.score.devops.chaos_coverage_pct` | `float` | Proportion of services with experiment runs in period (0.0-1.0). |
-
-### Layer 3 — Regulatory Confidence (`resilience.score.regulatory.*`)
-
-Per-control compliance confidence. Scientific basis: ISO 31000:2018 risk treatment confidence model. The multiplicative formula ensures a single failing factor reduces overall confidence proportionally.
-
-| Attribute | Type | Description |
-|---|---|---|
-| `resilience.score.regulatory.framework` | `string` | Framework identifier (DORA, NIS2, PCI-DSS, ISO-22301, ISO-27001, SOC2). |
-| `resilience.score.regulatory.control_id` | `string` | Specific control (e.g. DORA-Art25.1, PCI-DSS-12.10.2). |
-| `resilience.score.regulatory.confidence` | `float` | Confidence score 0.0-1.0, computed as: `base_weight x quality_score x complexity_factor x rollback_factor x min(probe_count/threshold, 1.0) x outcome_factor`. |
-| `resilience.score.regulatory.outcome_factor` | `float` | PASSED=1.0, FAILED_ROLLBACK_OK=0.85, FAILED=0.30. A failed experiment with successful rollback is stronger evidence than untested. |
-
-### Scoring References
-
-1. McCabe, T.J. (1976). *A Complexity Measure*. IEEE TSE, 2(4), 308-320.
-2. IEC 60812:2018. *Failure modes and effects analysis (FMEA and FMECA)*.
-3. Forsgren, N., Humble, J. & Kim, G. (2018). *Accelerate*. IT Revolution Press.
-4. ISO 31000:2018. *Risk management — Guidelines*.
-5. Basiri, A. et al. (2016). *Chaos Engineering*. IEEE Software, 33(3), 35-41.
-6. EU Regulation 2022/2554. *Digital Operational Resilience Act (DORA)*.
-
----
-
-## Appendix A: resilience.taxonomy.* (Optional Classification)
-
-Domain classification for slicing experiments by what is being tested. Optional — enhances analytics but is not required for experiment execution.
-
-| Attribute | Type | Requirement | Description | Enum Values |
-|---|---|---|---|---|
-| `resilience.taxonomy.track` | `string` | Optional | Testing track. | `chaos`, `security`, `performance`, `continuity` |
-| `resilience.taxonomy.category` | `string` | Optional | Fault injection category. | `fault_injection`, `latency`, `resource_stress`, `state_manipulation`, `dependency_failure` |
-| `resilience.taxonomy.domain` | `string` | Optional | Infrastructure domain. | `compute`, `network`, `storage`, `data`, `platform`, `application` |
-| `resilience.taxonomy.component` | `string` | Optional | Specific component class. | `cpu`, `memory`, `io`, `disk`, `broker`, `primary`, `replica`, `pod`, `node`, `gateway` |
-| `resilience.taxonomy.scenario` | `string` | Optional | Named scenario pattern. | `cpu_stress`, `memory_pressure`, `io_saturation`, `partition`, `failover`, `leader_election`, `connection_kill` |
-
-### Analytics Example
-
-Tumult does not write the taxonomy attributes, and its store has no `journals` table. The query shows the shape of such an analysis. It does not run on the Tumult store.
-
-```sql
-SELECT
-    taxonomy_domain,
-    taxonomy_scenario,
-    AVG(post_recovery_time_s) as avg_mttr,
-    COUNT(*) as runs
-FROM journals
-WHERE taxonomy_track = 'chaos'
-GROUP BY taxonomy_domain, taxonomy_scenario
-ORDER BY avg_mttr DESC
-```
-
----
-
-## Appendix B: resilience.load.* (Optional Load Integration)
-
-Attributes for correlating experiments with load testing tools (k6 and oha).
-
-| Attribute | Type | Requirement | Description |
-|---|---|---|---|
-| `resilience.load.tool` | `string` | Optional | Load testing tool. Values: `k6`, `oha`. |
-| `resilience.load.vus` | `int` | Optional | Virtual users / threads. |
-| `resilience.load.duration_s` | `float` | Optional | Load test duration in seconds. |
-| `resilience.load.throughput_rps` | `float` | Optional | Observed requests per second. |
-| `resilience.load.latency_p95_ms` | `float` | Optional | 95th percentile response time in milliseconds. |
-| `resilience.load.error_rate` | `float` | Optional | Error rate 0.0-1.0 during load. |
-| `resilience.load.thresholds_met` | `boolean` | Optional | Whether all load thresholds passed. |
-
----
-
-*Tumult Metadata Model v2.0. The `resilience.*` namespace is designed for OTel compatibility and can be adopted by any resilience testing platform.*
+Tumult itself uses `tumult.*` for metrics, `resilience.*` for the spans of
+a run, and one prefix per component for other spans (`k8s.*`, `cypher.*`).
+Its [log events](guides/logging.md) use the `resilience.*` names for ids.
+
+## Scientific rules
+
+| Rule | What it asks |
+|---|---|
+| Reproducible | The experiment, target, fault, safety and environment groups are filled, and the definition is under version control and named by `resilience.experiment.version` |
+| Falsifiable | The hypothesis has numbers: `estimate.expected_outcome`, `estimate.expected_recovery_s`, and a verdict in `outcome.hypothesis_met`. "Recovers within 30 seconds after a failover" can fail; "is resilient" cannot |
+| Raw samples | The baseline count and summary are written, and the journal keeps the raw samples |
+| Controlled variables | `environment.*` and `target.*` show what changed between runs |
+| Blast radius | `fault.blast_radius` is declared before the fault and `safety.max_blast_radius` is the hard limit; a runner stops a run that goes beyond it |
+| Predictions | `estimate.*` before the fault, `analysis.estimate_accuracy` and `analysis.trend` after it |
+
+## Conformance
+
+An implementation conforms when:
+
+1. Every Required attribute is on every experiment span.
+2. Every Conditional attribute is there when its condition is true.
+3. Enum values come from the documented sets.
+4. Timestamps are epoch nanoseconds and durations are seconds.
+5. Each fault subtype is used with its own type.
+6. Probe attributes follow `probe.{name}.*` with a lowercase snake_case name.
+7. High-cardinality attributes are not metric labels.
+8. Extra attributes use a prefix of their own, such as `resilience.vendor.mycompany.*`.
