@@ -1,109 +1,146 @@
 ---
-title: Execution Flow
+title: How a run works
 parent: Concepts
 nav_order: 1
-summary: "The five phases of a run"
+summary: "The steps of a run, what the journal records, and where the data goes"
+redirect_from:
+  - /data-lifecycle.html
 ---
 
-# Execution Flow
+# How a run works
 
-The experiment runner executes declared probes, faults and cleanup, and returns
-a journal. The five-phase model names the intended evidence categories;
-statistical baseline acquisition and several analysis fields are not integrated
-into ordinary execution. [Data Lifecycle](../data-lifecycle.md) identifies
-implemented and reserved measurements.
+A run takes one experiment file through a fixed order of steps and writes a
+journal: the record of every check, fault and cleanup. The order is the same
+from the CLI, the MCP server and the daemon.
 
-## Runtime inputs
+![How a run executes: check the run, tell the controls, steady state, start load, run the method, measure recovery, steady state again, status and rollback, return the journal, save the evidence](../images/3.0/diagrams/flow-execution.svg)
 
-`run_experiment()` receives an `Experiment`, an `ActivityExecutor`, a
-`ControlRegistry` and `RunConfig`. The executor selects process, script or
-native providers. CLI, MCP and daemon use the shared provider implementation;
-target access, credentials and installed tools still determine which actions
-can run. [Production Deployment](production-deployment.md#provider-capabilities)
-lists those prerequisites.
+## The steps
 
-`run_experiment_with_sampling()` additionally takes `SamplingConfig`:
+1. **Check the run.** Tumult reads the file, fills in its values and
+   validates it. The daemon also needs an
+   [execution binding](execution-bindings.md) and any approvals first.
+2. **Tell the controls.** Controls hear that the run starts. They run code
+   of their own, so treat them as part of the experiment.
+3. **Steady state.** The probes of the steady-state hypothesis must hold. If
+   one does not, no fault runs and the run ends as `aborted`.
+4. **Start load.** A declared load starts (k6 or oha). If it cannot start,
+   the run fails before any fault.
+5. **Run the method.** The faults and probes run in order. Meanwhile the
+   steady-state probes are sampled every second (at most 300 times) and the
+   guards are watched.
+6. **Measure recovery.** Right after the method, before any cleanup, the
+   probes are sampled until they all pass, for at most 30 seconds.
+7. **Steady state again.** The load stops. Each objective gets a verdict,
+   then the probes must hold once more.
+8. **Status and rollback.** Tumult sets the status, then runs the rollbacks
+   that the [rollback strategy](#rollback-strategy) asks for.
+9. **Return the journal.** The journal gets every result.
+10. **Save the evidence.** The journal goes to a file and into the lake.
 
-| Field | Default | Meaning |
-|---|---|---|
-| `interval` | 1s | Pause between during/post sampling rounds |
-| `max_during_samples` | 300 | Maximum during-phase rounds |
-| `recovery_timeout` | 30s | Post-phase sampling timeout |
+A rollback is a step you write. Tumult does not guess how to undo a fault.
 
-Experiments without hypothesis probes skip sampling. A probe must execute
-successfully and satisfy its tolerance to pass.
+## How a run ends
 
-## Normal execution order
+| Status | When |
+|---|---|
+| `completed` | Nothing went wrong. |
+| `deviated` | After the method the steady state did not hold, a probe of the method did not hold, a blocking objective was breached, or the load missed its thresholds. |
+| `aborted` | The steady state did not hold before the method. No fault ran. |
+| `failed` | An action failed, or the load did not start or left no result. |
+| `halted` | A guard breached while the fault was on. |
+| `interrupted` | You stopped the run. |
 
-![How a run executes: check the run, steady state, load, method, recovery, steady state again, status and rollback, journal](../images/3.0/diagrams/flow-execution.svg)
+A guard breach or a stop ends the method at once. A `process` or `script`
+step is killed with its process group, and its error ends in `stopped before
+it finished`. A `native` step runs to its end. Rollbacks are never cut short.
 
-1. The entrypoint parses, resolves configuration/secrets and validates the
-   definition. Daemon runs also require an authorized execution binding and
-   any required approvals before dispatch; see [Execution bindings](execution-bindings.md).
-2. The runner records the optional estimate and invokes `BeforeExperiment`.
-   Automatic statistical baseline acquisition does not run here.
-3. It evaluates the steady-state hypothesis. A failed precondition aborts the
-   method and applies the selected rollback strategy.
-4. It starts configured load after the precondition succeeds. Missing load
-   executor support is rejected before activities; load startup failure prevents
-   method execution. Install the load tool and supply its script before use.
-5. It starts during-phase probe sampling and guard monitoring, then executes
-   the method. Background actions honor the concurrency limit. Cancellation
-   interrupts pre-action pauses and waiting slots and prevents later dispatch.
-   A guard breach or a stop also ends the step that is running: the process
-   group of a `process` or `script` step is killed, and the step is recorded
-   as failed with an error that ends in `stopped before it finished`. A
-   `native` step runs to its end. Rollbacks are never ended this way.
-6. It stops the during sampler and guard monitor. A guard breach or cancellation
-   stops the method, stops load, and applies the rollback strategy. Such a run
-   cannot be reported Completed.
-7. On the normal path, it samples post-phase probes immediately after method
-   completion, before cleanup. Sampling ends on the first passing round,
-   cancellation or timeout. When an action of the method failed, the samples
-   stay in the journal and the run reports no time to recovery. There is no
-   automatic data-integrity verification or requirement for sustained recovery.
-8. It stops load, collects its result, and evaluates the final hypothesis
-   unless cancellation has been requested.
-9. It determines status and applies the rollback strategy. A rollback is an
-   explicitly supplied activity; the runner does not infer how to undo a fault.
-10. It computes available analysis fields, records rollback failures, invokes
-    `AfterExperiment`, and returns the journal. The entrypoint persists evidence
-    and flushes configured telemetry.
-
-A running provider call may finish or reach its own timeout before a stop can
-complete. A stop request is not proof of instantaneous target cleanup. Inspect
-the terminal status and every rollback result before declaring recovery.
-
-## Baseline-only observation
-
-`--baseline-mode only` takes a separate path: it evaluates the declared
-hypothesis probes once and returns an observation journal. It excludes
-controls, method, load and rollback, and the CLI skips automatic fault-evidence
-ingestion. `full` and `skip` currently both use declared tolerances; neither
-silently derives a statistical baseline.
+A stop is a request: a step that runs may still finish or time out first.
+Read the status and every rollback result before you call the target clean.
+When the daemon restarts during a run, it tries the rollbacks of that run
+again.
 
 ## Rollback strategy
 
-| Strategy | Behavior |
+Set it with `tumult run --rollback-strategy`.
+
+| Strategy | Rollbacks run |
 |---|---|
-| `always` | Run supplied rollbacks after normal execution and on abort/interruption paths that require cleanup. |
-| `on-deviation` (default) | Roll back on failed preconditions, deviation, guard halt, or failure/interruption after a fault starts. |
-| `never` | Skip rollback, including interruption; the operator is responsible for cleanup. |
+| `on-deviation` (default) | When the run deviated, aborted or halted, or failed or was stopped after a fault started. |
+| `always` | After every run. |
+| `never` | Never. You clean up. |
 
-Baseline-only observation never runs rollback. Cancellation before a method
-starts does not initiate cleanup for a fault that was never dispatched.
-Rollback failures are recorded separately; a terminal run status alone is
-insufficient evidence of a clean target.
+## Baseline mode
 
-## Controls and errors
+Set it with `tumult run --baseline-mode`.
 
-Controls receive synchronous lifecycle events and can execute code; treat them
-as part of the approved experiment. Ordinary provider failures are recorded as
-activity results. Failed steady-state probes prevent injection; a matching
-output string cannot override a failed process exit. Definition/dispatch/load
-setup errors fail the run rather than silently omitting configured work.
+| Mode | What runs |
+|---|---|
+| `full` (default) | Everything, with the tolerances the file declares. |
+| `skip` | The same. Tumult does not derive a statistical baseline in a run. |
+| `only` | The steady-state probes, once. No controls, method, load or rollback. The journal is an observation and does not go into the lake. |
 
-Daemon dispatch persists its start and approval state before injection.
-Restart reconciliation retries unresolved cleanup using the persisted recovery
-plan. Recovery can still fail if credentials, target reachability or provider
-tools are unavailable; examine recovery audit events and failed rollbacks.
+## What the journal records
+
+| Field | What it holds |
+|---|---|
+| `steady_state_before`, `steady_state_after` | Each probe of the steady state, and whether it held. |
+| `method_results`, `rollback_results` | Each step: status, output, error and time. |
+| `during_result` | Samples per probe while the fault was on: count, mean, min and max duration, error rate, breaches. |
+| `post_result` | Recovery: `full_recovery`, `recovery_time_s` and `mttr_s`. |
+| `load_result` | What the load tool measured. |
+| `objectives` | A verdict per objective: met, breached or inconclusive. |
+| `halt` | The guard that stopped the run, and when. |
+| `analysis` | Only with an `estimate`: whether your guess was right, as 1 or 0. |
+
+Read these with care:
+
+- `mttr_s` is empty when recovery was not seen, or when an action of the
+  method failed.
+- Recovery is measured before the rollbacks, so a fault that needs a
+  rollback may still be on.
+- The probe numbers are how long each probe took, not a value it printed.
+- Tumult does not check your data for loss. Write a probe for that.
+- Units are in the name: `_ns` is nanoseconds since 1970, `_ms`
+  milliseconds, `_s` seconds.
+
+## Where the data goes
+
+```mermaid
+flowchart TD
+    accTitle: Where the data of a run goes
+    accDescr: The run writes a journal file. The CLI imports the journal into the lake, itself or through the daemon. With an OTLP endpoint set, the spans, metrics and logs of the run go to tumultd or to a collector.
+    run[Run] --> file[Journal file]
+    file --> lake[(Lake)]
+    run -.->|OTEL_EXPORTER_OTLP_ENDPOINT| otlp[tumultd or a collector]
+```
+
+- The CLI writes `journal.toon` (`--journal-path` sets another name), then
+  imports it into the lake. `--no-ingest` skips the import.
+- With `TUMULT_DAEMON_URL` set, the daemon does the import. Without it, the
+  CLI opens the lake file itself (`TUMULT_LAKE_PATH`, by default
+  `~/.tumult/lake.duckdb`). Only one process can write a lake, so use the
+  daemon when one is running.
+- Spans, metrics and logs go out only when `OTEL_EXPORTER_OTLP_ENDPOINT` is
+  set. See [observability setup](observability-setup.md).
+
+The imported runs are in the tables `experiments`, `activity_results`,
+`load_results`, `probe_samples` and `nfr_verdicts`. For example, the failed
+steps of each run:
+
+```sql
+SELECT e.title, a.name, a.phase, a.error
+FROM experiments e
+JOIN activity_results a ON a.experiment_id = e.experiment_id
+WHERE a.status = 'failed'
+ORDER BY a.started_at_ns DESC;
+```
+
+Run it with `tumult analyze --query "..."`. Backups and the Parquet archive
+are in [data portability](data-portability.md).
+
+## Next
+
+- [Experiment format](experiment-format.md): write the file a run reads.
+- [Architecture](../architecture/kronika-architecture.md): the parts that
+  store and read the data.

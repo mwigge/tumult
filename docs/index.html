@@ -1,5 +1,5 @@
 ---
-title: "Tumult: Rust-Native Resilience Intelligence"
+title: "Tumult: resilience intelligence in Rust"
 layout: default
 nav_exclude: true
 nav_enabled: false
@@ -37,7 +37,7 @@ image: /images/tumult-banner.png
   </div>
 
   <div class="hero-buttons">
-    <a href="/get-started/" class="btn-primary-custom">Get Started</a>
+    <a href="/get-started/" class="btn-primary-custom">Get started</a>
     <a href="https://github.com/mwigge/tumult" class="btn-secondary-custom">GitHub</a>
     <a href="/releases/" class="btn-secondary-custom">Release notes</a>
     <a href="/blog/" class="btn-secondary-custom">Blog</a>
@@ -51,21 +51,21 @@ image: /images/tumult-banner.png
 <!-- Stats                                                -->
 <!-- ════════════════════════════════════════════════════ -->
 <section class="stats">
-  <div class="stat"><div class="num">1,300+</div><div class="label">Unit Tests</div></div>
-  <div class="stat"><div class="num">40</div><div class="label">MCP Tools</div></div>
+  <div class="stat"><div class="num">5,000+</div><div class="label">Rust tests</div></div>
+  <div class="stat"><div class="num">40</div><div class="label">MCP tools</div></div>
   <div class="stat"><div class="num">16</div><div class="label">Plugins</div></div>
-  <div class="stat"><div class="num">91</div><div class="label">Chaos Actions</div></div>
-  <div class="stat"><div class="num">T0–T3</div><div class="label">Approval Risk Tiers</div></div>
-  <div class="stat"><div class="num">2</div><div class="label">Unsafe Blocks (audited — process-group kills)</div></div>
-  <div class="stat"><div class="num">7</div><div class="label">Compliance Frameworks</div></div>
-  <div class="stat"><div class="num">4</div><div class="label">Resilience Disciplines</div></div>
+  <div class="stat"><div class="num">92</div><div class="label">Chaos actions</div></div>
+  <div class="stat"><div class="num">4</div><div class="label">Risk tiers, T0 to T3</div></div>
+  <div class="stat"><div class="num">6</div><div class="label">Unsafe blocks, all for child processes</div></div>
+  <div class="stat"><div class="num">7</div><div class="label">Compliance frameworks</div></div>
+  <div class="stat"><div class="num">4</div><div class="label">Resilience disciplines</div></div>
 </section>
 
 <!-- ════════════════════════════════════════════════════ -->
 <!-- One platform, end to end                              -->
 <!-- ════════════════════════════════════════════════════ -->
 <section class="flow-section">
-  <h2>How It Works</h2>
+  <h2>How it works</h2>
   <p class="lead">
     Evidence goes in. Answers come out. Each answer points to the next test.
   </p>
@@ -95,43 +95,43 @@ image: /images/tumult-banner.png
 <!-- The parts                                              -->
 <!-- ════════════════════════════════════════════════════ -->
 <div class="section-heading">
-  <h2>What You Get</h2>
+  <h2>What you get</h2>
   <p>Chaos testing is one source of evidence among several.</p>
 </div>
 <section class="features" style="padding-top: 1.5rem;">
   <div class="feature-card">
     <span class="piece">Collect</span>
-    <h3>Many Kinds of Evidence</h3>
+    <h3>Many kinds of evidence</h3>
     <p>Chaos experiments, <a href="/guides/load-testing-guide.html" style="color: var(--copper);">load tests</a>, <a href="/guides/otel-autoinstrumentation.html" style="color: var(--copper);">telemetry from your services</a>, <a href="/guides/entity-events.html" style="color: var(--copper);">entity events</a> and manual records of exercises.</p>
   </div>
   <div class="feature-card">
     <span class="piece">Author &amp; run</span>
-    <h3>Pick a Fault, Run It</h3>
-    <p>Choose from 91 actions in 16 plugins: databases, Kafka, containers, Kubernetes, network, SSH, CPU and memory. A wizard writes the experiment file.</p>
+    <h3>Pick a fault, run it</h3>
+    <p>Choose from 92 actions in 16 plugins, for databases, Kafka, containers, Kubernetes, clouds, networks, hosts and clocks. A wizard writes the experiment file.</p>
   </div>
   <div class="feature-card">
     <span class="piece">Govern</span>
-    <h3>Approvals, Stop &amp; Audit</h3>
-    <p>Every run gets a risk tier, T0–T3. Risky runs wait for a second person. Two clicks stop everything. Every action is in a tamper-evident audit trail.</p>
+    <h3>Approvals, stop and audit</h3>
+    <p>Every run gets a risk tier, T0 to T3. Risky runs wait for a second person. Two clicks stop everything. Every action goes into an audit trail that shows any change.</p>
   </div>
   <div class="feature-card">
     <span class="piece">Store</span>
-    <h3>One Lake</h3>
+    <h3>One lake</h3>
     <p>The daemon takes in traces, metrics and logs over OTLP and OTel-Arrow and keeps them in one DuckDB database. <a href="/guides/observability-setup.html" style="color: var(--copper);">Setup guide</a>.</p>
   </div>
   <div class="feature-card">
     <span class="piece">Score</span>
-    <h3>Resilience, Scores &amp; DORA</h3>
+    <h3>Resilience, scores and DORA</h3>
     <p>Ranked risks without running a fault. Scores per team and company. A <a href="/guides/dora-score.html" style="color: var(--copper);">DORA score</a> that shows what evidence exists. It does not say that you comply.</p>
   </div>
   <div class="feature-card">
     <span class="piece">Judge</span>
-    <h3>Verdicts &amp; CI Gate</h3>
+    <h3>Verdicts and a CI gate</h3>
     <p>Met, breached or not enough data, for each objective. <a href="/guides/performance-regression.html" style="color: var(--copper);">Version against version</a> for performance. <code>tumult gate</code> gives pass, warn or fail to a pipeline.</p>
   </div>
   <div class="feature-card">
     <span class="piece">Forecast</span>
-    <h3>Forecasts &amp; Impact</h3>
+    <h3>Forecasts and impact</h3>
     <p>The <a href="/guides/forecasting.html" style="color: var(--copper);">expected range</a> of a metric, how far a fault pushed it, and how long it took to come back. Works offline.</p>
   </div>
   <div class="feature-card">
@@ -146,7 +146,7 @@ image: /images/tumult-banner.png
   </div>
   <div class="feature-card">
     <span class="piece">Close the loop</span>
-    <h3>AI Agents</h3>
+    <h3>AI agents</h3>
     <p>40 MCP tools let an agent run experiments, query results and suggest the next test. Tumult can also inject faults into AI agents themselves.</p>
   </div>
 </section>
@@ -155,11 +155,11 @@ image: /images/tumult-banner.png
 <!-- Why it works well                                       -->
 <!-- ════════════════════════════════════════════════════ -->
 <div class="section-heading">
-  <h2>Built to Run Anywhere</h2>
+  <h2>Built to run anywhere</h2>
 </div>
 <section class="features" style="padding-top: 1.5rem;">
   <div class="feature-card">
-    <h3>Single Binary</h3>
+    <h3>Single binary</h3>
     <p>The daemon holds the lake, the schedulers and the web UI in one file. The CLI is another. Built for macOS and Linux.</p>
   </div>
   <div class="feature-card">
@@ -167,19 +167,19 @@ image: /images/tumult-banner.png
     <p>Every step of a run is a span. Send it to SigNoz, Jaeger or any OTLP backend. <a href="/guides/logging.html" style="color: var(--copper);">Logs</a> are structured JSON.</p>
   </div>
   <div class="feature-card">
-    <h3>Memory Safe</h3>
-    <p>Safe Rust, with two audited <code>unsafe</code> blocks. Strict lints and a dependency audit on every commit.</p>
+    <h3>Memory safe</h3>
+    <p>Safe Rust, with six small <code>unsafe</code> blocks, all for child processes. Strict lints and a dependency audit on every commit.</p>
   </div>
   <div class="feature-card">
     <h3>GameDays</h3>
     <p>Run a group of experiments as one scored campaign, with one command.</p>
   </div>
   <div class="feature-card">
-    <h3>Docker Images</h3>
+    <h3>Docker images</h3>
     <p>Ready on GHCR. No Rust needed: <code>docker pull ghcr.io/mwigge/tumult</code>.</p>
   </div>
   <div class="feature-card">
-    <h3>Works With Your Stack</h3>
+    <h3>Works with your stack</h3>
     <p>An OpenTelemetry Collector in front, SigNoz or Grafana behind. No custom build.</p>
   </div>
 </section>
@@ -190,7 +190,7 @@ image: /images/tumult-banner.png
 <link rel="stylesheet" type="text/css" href="/demo/asciinema-player.css" />
 
 <section class="demo-section">
-  <h2>See It in Action</h2>
+  <h2>See it in action</h2>
   <div id="demo-player" style="max-width: 800px; margin: 0 auto; border-radius: 10px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.3);"></div>
   <p style="text-align:center; margin-top: 0.8rem;"><a href="/watch/" style="color: var(--copper);">↗ share this demo: tumult.rs/watch</a></p>
 </section>
@@ -217,7 +217,7 @@ image: /images/tumult-banner.png
 <!-- GameDay Results                                       -->
 <!-- ════════════════════════════════════════════════════ -->
 <section class="demo-section">
-  <h2>GameDay: One Command, Evidence Mapped</h2>
+  <h2>A GameDay in one command</h2>
   <div class="terminal">
     <div class="terminal-bar">
       <div class="terminal-dot red"></div>
@@ -227,25 +227,22 @@ image: /images/tumult-banner.png
     <pre class="terminal-body">
 <span class="prompt-sign">$</span> <span class="cmd">./scripts/gameday-demo.sh</span>
 <span class="output">
-Targets: ✓ postgres  ✓ redis  ✓ kafka
-MCP Session: 2609892c-8e73-4587-b96a-56eaf6020ec6
+Targets:
+  ✓ postgres
+  ✓ redis
+  ✓ kafka
 
-Discovering chaos capabilities:
-  Plugins: 16 | Actions: 91
+── Discovering chaos capabilities ──
+  Plugins: 16
+  Actions: 92
 
-Running Q2 PostgreSQL Resilience GameDay...
-  Compliance: DORA EU 2022/2554 Art. 11, 24, 25 | NIS2
+── Running Q2 PostgreSQL Resilience GameDay ──
+  Experiments: connection kill, container pause, CPU stress, memory stress
+  Compliance: DORA EU 2022/2554 Articles 11, 24, 25
 </span>
 <span class="success">  GameDay: Q2 PostgreSQL Resilience Programme
   Status: COMPLIANT
-  Resilience Score: 1.00
-    #1 [PASS] Connection kill under load       (2197ms)
-    #2 [PASS] Container pause — total outage   (7402ms)
-    #3 [PASS] CPU stress — resource pressure   (9331ms)
-    #4 [PASS] Memory stress — resource pressure (9305ms)</span>
-<span class="output">
-  Score: Pass 1.00 | Recovery 1.00 | Load 1.00 | Compliance 1.00
-  Store: 67 experiments, 244 activities (DuckDB)</span></pre>
+  Experiments: 4/4 passed</span></pre>
   </div>
   <p style="text-align:center; color: var(--text-dim); font-size: 0.8rem; margin-top: 0.8rem;">Compliance reports are evidence summaries, not legal or audit attestations.</p>
 </section>
@@ -254,7 +251,7 @@ Running Q2 PostgreSQL Resilience GameDay...
 <!-- The platform, running                                  -->
 <!-- ════════════════════════════════════════════════════ -->
 <section class="arch-section" style="padding-bottom: 1rem;">
-  <h2>See It Running</h2>
+  <h2>See it running</h2>
   <p style="color: var(--text-dim); max-width: 720px; margin: 0 auto 1.5rem;">
     The web UI on the demo data. Take the full tour in the
     <a href="/guides/platform-walkthrough.html" style="color: var(--copper);">platform walkthrough</a>.
@@ -299,7 +296,7 @@ Running Q2 PostgreSQL Resilience GameDay...
 <!-- Architecture                                         -->
 <!-- ════════════════════════════════════════════════════ -->
 <section class="arch-section">
-  <h2>How It Is Built</h2>
+  <h2>How it is built</h2>
   <img src="/images/3.0/diagrams/c4-2-containers.svg" alt="C4 container diagram of Tumult: CLI, daemon, web UI, lake, MCP server, forecast sidecar and plugins">
 </section>
 
@@ -307,7 +304,7 @@ Running Q2 PostgreSQL Resilience GameDay...
 <!-- Observability                                        -->
 <!-- ════════════════════════════════════════════════════ -->
 <section class="arch-section">
-  <h2>Native Observability</h2>
+  <h2>Native observability</h2>
   <p style="color: var(--text-dim); max-width: 720px; margin: 0 auto 1.5rem;">
     Every probe, action and rollback is a span. Set one variable, <code>OTEL_EXPORTER_OTLP_ENDPOINT</code>, to send them to your backend.
   </p>
@@ -318,13 +315,13 @@ Running Q2 PostgreSQL Resilience GameDay...
 <!-- CTA                                                  -->
 <!-- ════════════════════════════════════════════════════ -->
 <section class="cta">
-  <h2>Ready to Build Resilience?</h2>
+  <h2>Ready to start?</h2>
   <p>One command to install. One compose file to see it all on demo data.</p>
   <div class="hero-buttons">
     <a href="https://github.com/mwigge/tumult" class="btn-primary-custom">View on GitHub</a>
     <a href="/get-started/" class="btn-secondary-custom">Get started</a>
-    <a href="/guides/platform-walkthrough.html" class="btn-secondary-custom">Platform Walkthrough</a>
-    <a href="/blog/14-gameday-is-here.html" class="btn-secondary-custom">GameDay Guide</a>
+    <a href="/guides/platform-walkthrough.html" class="btn-secondary-custom">Platform walkthrough</a>
+    <a href="/blog/14-gameday-is-here.html" class="btn-secondary-custom">GameDay guide</a>
   </div>
 </section>
 
