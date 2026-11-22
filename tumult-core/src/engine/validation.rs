@@ -24,7 +24,8 @@ use super::EngineError;
 /// This holds for every step: method, rollbacks, hypothesis probes, guards and controls.
 /// Returns [`EngineError::InvalidSeconds`] if a timeout or a pause of any of those steps,
 /// or the duration of a flat load, is not a number of seconds from 0 up to 2^64.
-/// Returns [`EngineError::NfrInvalid`] if an objective names a metric no run can measure.
+/// Returns [`EngineError::NfrInvalid`] if an objective names a metric no run can measure,
+/// or a metric that does not measure the kind of the objective.
 /// Returns [`EngineError::LoadProfileInvalid`] if the load names a tool with no adapter,
 /// an oha threshold the adapter does not check, or a profile that does not fit the run.
 ///
@@ -321,6 +322,12 @@ fn validate_objectives(experiment: &Experiment) -> Result<(), EngineError> {
             });
         }
         if let Some(reason) = crate::runner::nfr::metric_fault(&o.metric, &probes) {
+            return Err(EngineError::NfrInvalid {
+                id: o.id.clone(),
+                reason,
+            });
+        }
+        if let Some(reason) = crate::runner::nfr::kind_fault(o.kind, &o.metric) {
             return Err(EngineError::NfrInvalid {
                 id: o.id.clone(),
                 reason,
