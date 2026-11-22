@@ -2,6 +2,8 @@
 title: Releases
 nav_order: 5
 has_children: true
+# The table below lists the releases, so no list of child pages.
+has_toc: false
 ---
 
 # Releases

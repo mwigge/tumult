@@ -2,6 +2,7 @@
 title: "Tumult: Rust-Native Resilience Intelligence"
 layout: default
 nav_exclude: true
+nav_enabled: false
 description: "Tumult is a resilience intelligence platform: chaos experiments, load and performance runs, OpenTelemetry telemetry and manual records go into one DuckDB lake, and scores, verdicts, forecasts, the Star Map and evidence reports come out of it."
 image: /images/tumult-banner.png
 ---
@@ -12,7 +13,7 @@ image: /images/tumult-banner.png
 <!-- Hero                                                 -->
 <!-- ════════════════════════════════════════════════════ -->
 <section class="hero">
-  <img src="/images/tumult.png" alt="Tumult" class="hero-logo">
+  <img src="/images/tumult-logo.svg" alt="Tumult" class="hero-logo">
   <h1>Embrace the <span>Tumult</span></h1>
   <p class="tagline">
     Resilience intelligence, built in Rust. Test your systems, keep the
@@ -27,7 +28,7 @@ image: /images/tumult-banner.png
     <span class="copy-hint">click to copy</span>
   </div>
 
-  <div class="install-box" onclick="navigator.clipboard.writeText('docker pull ghcr.io/mwigge/tumult:latest')" style="max-width: 480px;">
+  <div class="install-box" onclick="navigator.clipboard.writeText('docker pull ghcr.io/mwigge/tumult:latest')">
     <div>
       <span class="prompt">$</span>
       docker pull ghcr.io/mwigge/tumult:latest
@@ -44,10 +45,6 @@ image: /images/tumult-banner.png
   <p style="margin-top: 1rem; font-size: 0.95rem; color: var(--text-dim);">
     Latest release: <a href="/releases/3.0.2.html" style="color: var(--copper);">3.0.2</a>
   </p>
-
-  <div class="banner">
-    <img src="/images/tumult-banner.png" alt="Tumult — Embrace the Tumult. Build Resilience.">
-  </div>
 </section>
 
 <!-- ════════════════════════════════════════════════════ -->
@@ -227,7 +224,7 @@ image: /images/tumult-banner.png
       <div class="terminal-dot yellow"></div>
       <div class="terminal-dot green"></div>
     </div>
-    <div class="terminal-body">
+    <pre class="terminal-body">
 <span class="prompt-sign">$</span> <span class="cmd">./scripts/gameday-demo.sh</span>
 <span class="output">
 Targets: ✓ postgres  ✓ redis  ✓ kafka
@@ -248,8 +245,7 @@ Running Q2 PostgreSQL Resilience GameDay...
     #4 [PASS] Memory stress — resource pressure (9305ms)</span>
 <span class="output">
   Score: Pass 1.00 | Recovery 1.00 | Load 1.00 | Compliance 1.00
-  Store: 67 experiments, 244 activities (DuckDB)</span>
-    </div>
+  Store: 67 experiments, 244 activities (DuckDB)</span></pre>
   </div>
   <p style="text-align:center; color: var(--text-dim); font-size: 0.8rem; margin-top: 0.8rem;">Compliance reports are evidence summaries, not legal or audit attestations.</p>
 </section>
@@ -290,11 +286,11 @@ Running Q2 PostgreSQL Resilience GameDay...
     <div class="caption"><b>Run detail</b>One run, the whole story.</div>
   </div>
   <div class="shot-card">
-    <img src="assets/approvals-queue-review.png" alt="Approvals queue: an approver reviews a pending run">
+    <img src="/images/3.0/screenshots/approvals.png" alt="Approvals queue: an approver reviews a pending run">
     <div class="caption"><b>Approvals</b>Risky runs wait for a second person.</div>
   </div>
   <div class="shot-card">
-    <img src="assets/reports-evidence-pack.png" alt="Reports page: an evidence pack as PDF">
+    <img src="/images/3.0/screenshots/reports.png" alt="Reports page: an evidence pack as PDF">
     <div class="caption"><b>Reports</b>Evidence packs as PDF, with a checksum.</div>
   </div>
 </section>
