@@ -1,7 +1,9 @@
 ---
 title: Agentic Fault Injection Quickstart
-parent: Guides
-nav_order: 8
+parent: Work with AI agents
+grand_parent: Guides
+nav_order: 3
+summary: "Inject faults into AI agents"
 ---
 
 # Agentic Fault Injection Quickstart

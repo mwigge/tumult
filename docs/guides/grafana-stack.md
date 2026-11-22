@@ -1,7 +1,9 @@
 ---
 title: Grafana Stack
-parent: Guides
-nav_order: 23
+parent: Send telemetry
+grand_parent: Guides
+nav_order: 4
+summary: "A ready Tempo, Mimir and Loki setup"
 ---
 
 # Grafana Stack (Tempo + Mimir + Loki)

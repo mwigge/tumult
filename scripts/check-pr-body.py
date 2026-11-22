@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check the body of a pull request. See docs/guides/quality-and-release.md.
+"""Check the body of a pull request. See CONTRIBUTING.md.
 
 The body has these `##` headings in this order: Why, What changed, Scope,
 Tradeoffs, Blast Radius, Verification. A section with nothing to say may be
@@ -84,7 +84,7 @@ def main() -> int:
     for problem in found:
         print(f"pull request body: {problem}")
     if found:
-        print("See docs/guides/quality-and-release.md.")
+        print("See CONTRIBUTING.md.")
         return 1
     print("Pull request body check passed.")
     return 0

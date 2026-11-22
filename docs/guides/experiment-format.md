@@ -1,7 +1,9 @@
 ---
 title: Experiment Format
-parent: Guides
+parent: Run experiments
+grand_parent: Guides
 nav_order: 1
+summary: "How to write an experiment file"
 ---
 
 # Experiment Format

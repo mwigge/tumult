@@ -1,7 +1,8 @@
 ---
 title: CLI Reference
-parent: Guides
-nav_order: 3
+parent: Reference
+nav_order: 1
+summary: "Every command"
 ---
 
 # CLI Reference

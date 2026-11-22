@@ -1,7 +1,9 @@
 ---
 title: Experiment Scheduling
-parent: Guides
-nav_order: 19
+parent: Run experiments
+grand_parent: Guides
+nav_order: 3
+summary: "Run experiments and GameDays on a timer"
 ---
 
 # Experiment Scheduling

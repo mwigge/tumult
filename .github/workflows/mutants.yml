@@ -3,7 +3,7 @@ name: Mutation tests
 # cargo-mutants changes each Rust line a pull request touches, one small step
 # at a time, and runs the tests of the crate after each step. A change that
 # no test notices fails the job: the tests did not prove that line.
-# The policy is in docs/guides/testing.md. Locally: `make mutants`.
+# The policy is in CONTRIBUTING.md. Locally: `make mutants`.
 #
 # The job "Mutation tests" is a required check, so the workflow runs on every
 # pull request. A pull request that changes no Rust skips the parts, and the

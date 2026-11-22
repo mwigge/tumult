@@ -1,7 +1,9 @@
 ---
 title: Star Map
-parent: Guides
-nav_order: 28
+parent: Read the evidence
+grand_parent: Guides
+nav_order: 1
+summary: "One graph from organisation to workload"
 ---
 
 # Star Map

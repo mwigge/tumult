@@ -1,7 +1,8 @@
 ---
 title: Production Deployment
-parent: Guides
-nav_order: 20
+parent: Operate
+nav_order: 1
+summary: "Binaries, containers and hardening"
 ---
 
 # Production Deployment

@@ -1,3 +1,10 @@
+---
+title: Architecture
+parent: Concepts
+nav_order: 3
+summary: "The daemon, the lake and the web UI, with the C4 diagrams"
+---
+
 # Architecture: tumultd, the lake and Krönika
 
 This is the architecture of the part of Tumult that turns resilience

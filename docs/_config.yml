@@ -57,10 +57,11 @@ callouts:
 # Exclude from build
 exclude:
   - "*.drawio"
-  - "architecture/"
   - "plans/"
 
-# Plugins
+# Plugins. jekyll-redirect-from keeps the old address of a page that moved
+# or left the site working: redirect_from or redirect_to in front matter.
 plugins:
   - jekyll-seo-tag
   - jekyll-github-metadata
+  - jekyll-redirect-from

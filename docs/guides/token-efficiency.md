@@ -1,7 +1,9 @@
 ---
 title: Token Efficiency
-parent: Guides
-nav_order: 15
+parent: Work with AI agents
+grand_parent: Guides
+nav_order: 2
+summary: "Keep agent context small"
 ---
 
 # Token Efficiency
