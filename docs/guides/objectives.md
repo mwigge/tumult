@@ -74,6 +74,12 @@ of the steady-state hypothesis: no run could measure it.
 `rto_target_s` adds a blocking objective: `recovery.mttr_s` at most that many
 seconds. A run of `kind: dr` must set it.
 
+A run that does not recover while the recovery check watches breaches its
+RTO. The verdict says `recovered: false`, its `observed` is the time the check
+watched, and it has no margin. The true recovery time is longer. A run whose
+method failed, or that was stopped, measures no recovery: its RTO is
+`inconclusive`.
+
 `rpo_target_s` is recorded with the run. Only an `nfr` entry of `kind: rpo`
 measures it; without one its verdict is `inconclusive`.
 

@@ -374,6 +374,41 @@ fn a_recovery_target_without_a_verdict_is_shown_without_a_count() {
 }
 
 #[test]
+fn the_rto_of_a_run_that_never_recovered_says_so_and_has_no_margin() {
+    let html = report_for(&Journal {
+        objectives: Some(ObjectiveOutcome {
+            rto_target_s: Some(2.0),
+            verdicts: vec![NfrVerdict {
+                kind: NfrKind::Rto,
+                metric: "recovery.mttr_s".into(),
+                observed: Some(29.1),
+                criticality: NfrCriticality::Blocking,
+                recovered: Some(false),
+                ..verdict("rto", NfrOperator::Lte, 2.0, NfrState::Breached)
+            }],
+            ..ObjectiveOutcome::default()
+        }),
+        ..journal()
+    });
+
+    let objectives = section(&html, "objectives");
+    assert_eq!(
+        rows(objectives)[3],
+        row(&[
+            "rto",
+            "rto",
+            "recovery.mttr_s",
+            "at most 2",
+            "at least 29.1, not recovered",
+            "",
+            "breached",
+            "blocking"
+        ])
+    );
+    assert_eq!(failed_rows(objectives), ["rto"]);
+}
+
+#[test]
 fn objectives_that_say_nothing_are_no_section() {
     let html = report_for(&Journal {
         objectives: Some(ObjectiveOutcome::default()),

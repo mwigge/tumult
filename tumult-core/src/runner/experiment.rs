@@ -407,6 +407,8 @@ pub fn run_experiment_with_sampling(
             post: post_result.as_ref(),
             load: load_result.as_ref(),
             samples: &probe_samples,
+            watched_in_full: actions_succeeded
+                && !super::activity::is_cancelled(config.cancellation_token.as_ref()),
         },
     );
     let blocking_breach = objectives

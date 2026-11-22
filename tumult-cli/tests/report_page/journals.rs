@@ -81,6 +81,7 @@ pub fn verdict(id: &str, operator: NfrOperator, threshold: f64, state: NfrState)
         state,
         margin: None,
         criticality: NfrCriticality::Major,
+        recovered: None,
     }
 }
 

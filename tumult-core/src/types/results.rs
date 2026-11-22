@@ -385,10 +385,17 @@ pub struct NfrVerdict {
     pub state: NfrState,
     /// Signed headroom: positive when met with margin, negative when
     /// breached. For `lte` this is `threshold - observed`; for `gte` it is
-    /// `observed - threshold`; `None` when inconclusive.
+    /// `observed - threshold`; `None` when inconclusive, and when the run
+    /// did not recover.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub margin: Option<f64>,
     pub criticality: NfrCriticality,
+    /// The recovery time objective only: whether the run recovered while
+    /// the post phase watched. `Some(false)`: it did not, so `observed` is
+    /// the time it watched, a lower bound. `None` for any other objective,
+    /// for a watch that does not count, and in an older journal.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recovered: Option<bool>,
 }
 
 /// Objective outcome of a run: the declared recovery targets, what was
@@ -399,7 +406,8 @@ pub struct ObjectiveOutcome {
     pub rto_target_s: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rpo_target_s: Option<f64>,
-    /// Measured recovery time (post-phase MTTR), when observed.
+    /// Measured recovery time (post-phase MTTR), when observed. `None` for
+    /// a run that did not recover: its `rto` verdict holds the lower bound.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rto_measured_s: Option<f64>,
     /// Measured data-loss window, when an `rpo` objective resolved.
@@ -720,5 +728,34 @@ mod tests {
         };
         let decoded: AnalysisResult = toon_round_trip(&result);
         assert_eq!(decoded, result);
+    }
+
+    #[test]
+    fn an_rto_verdict_says_the_run_did_not_recover_and_an_older_one_still_reads() {
+        let older = NfrVerdict {
+            nfr_id: "rto".into(),
+            kind: NfrKind::Rto,
+            metric: "recovery.mttr_s".into(),
+            operator: NfrOperator::Lte,
+            threshold: 2.0,
+            observed: None,
+            state: NfrState::Inconclusive,
+            margin: None,
+            criticality: NfrCriticality::Blocking,
+            recovered: None,
+        };
+        let written = toon_format::encode_default(&older).expect("encode");
+        assert!(!written.contains("recovered"), "{written}");
+        let read: NfrVerdict = toon_format::decode_default(&written).expect("decode");
+        assert_eq!(read, older);
+
+        let unrecovered = NfrVerdict {
+            observed: Some(29.1),
+            state: NfrState::Breached,
+            recovered: Some(false),
+            ..older
+        };
+        let decoded: NfrVerdict = toon_round_trip(&unrecovered);
+        assert_eq!(decoded, unrecovered);
     }
 }
