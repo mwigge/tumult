@@ -190,6 +190,9 @@ pub(crate) enum Commands {
     Validate {
         /// Path to experiment .toon file
         experiment: PathBuf,
+        /// The value the run gives a template variable: KEY=VALUE (may be repeated)
+        #[arg(long = "var", value_name = "KEY=VALUE", action = clap::ArgAction::Append)]
+        vars: Vec<String>,
     },
     /// List all discovered plugins, actions, and probes
     Discover {
