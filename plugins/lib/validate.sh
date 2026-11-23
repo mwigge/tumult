@@ -51,3 +51,18 @@ validate_enum() {
     echo "error: ${VAR_NAME} must be one of: ${ALLOWED}, got: '${VALUE}'" >&2
     exit 1
 }
+
+# Validate that a value is a plain file path: letters, digits, '_', '.', '/'
+# and '-', and no '-' first
+# Usage: validate_path "TUMULT_BACKUP_PATH" "$BACKUP_PATH"
+validate_path() {
+    VAR_NAME="$1"
+    VALUE="$2"
+    case "${VALUE}" in
+        ''|-*|*[!a-zA-Z0-9_./-]*)
+            echo "error: ${VAR_NAME} must be a plain file path, got: '${VALUE}'" >&2
+            echo "  allowed: letters, digits, '_', '.', '/', '-' (not first)" >&2
+            exit 1
+            ;;
+    esac
+}
