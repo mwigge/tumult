@@ -481,13 +481,24 @@ impl ObjectiveOutcome {
 /// Phase 4 output: estimate-vs-actual comparison and resilience scoring.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AnalysisResult {
-    /// How close the Phase 0 estimate was to the observed outcome (0.0-1.0).
+    /// 1.0 when the expected outcome of the estimate is the outcome the run
+    /// measured (unaffected, recovered or deviated), else 0.0. `None` when
+    /// the run has no such outcome: its method failed, it was stopped, or
+    /// it completed with no probe that watched for an outage.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub estimate_accuracy: Option<f64>,
-    /// Estimated vs. measured recovery time delta in seconds. Reserved:
-    /// not populated in this version (always `None`).
+    /// The measured recovery time (`post_result.mttr_s`, the number
+    /// `objectives.rto_measured_s` holds) minus `expected_recovery_s`, in
+    /// seconds: positive means slower than expected. `None` unless both
+    /// are there.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub estimate_recovery_delta_s: Option<f64>,
+    /// Whether `expected_data_loss` says what the run measured: data was
+    /// lost when `objectives.rpo_measured_s` is above 0. `None` when the
+    /// estimate says nothing of data loss, when the run measured no RPO,
+    /// and in a journal written before 3.0.4.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub estimate_data_loss_correct: Option<bool>,
     /// Direction of change versus previous runs. Reserved: requires
     /// historical journals; not populated in this version (always `None`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -775,11 +786,38 @@ mod tests {
         let result = AnalysisResult {
             estimate_accuracy: Some(0.83),
             estimate_recovery_delta_s: Some(-2.6),
+            estimate_data_loss_correct: None,
             trend: Some(Trend::Improving),
             resilience_score: Some(0.92),
         };
         let decoded: AnalysisResult = toon_round_trip(&result);
         assert_eq!(decoded, result);
+    }
+
+    #[test]
+    fn an_analysis_keeps_whether_the_data_loss_estimate_was_right_and_an_older_one_still_reads() {
+        let older = AnalysisResult {
+            estimate_accuracy: Some(1.0),
+            estimate_recovery_delta_s: Some(1.0),
+            estimate_data_loss_correct: None,
+            trend: None,
+            resilience_score: Some(1.0),
+        };
+        let written = toon_format::encode_default(&older).expect("encode");
+        assert!(!written.contains("estimate_data_loss_correct"), "{written}");
+        let read: AnalysisResult = toon_format::decode_default(&written).expect("decode");
+        assert_eq!(read, older);
+
+        let judged = AnalysisResult {
+            estimate_data_loss_correct: Some(false),
+            ..older
+        };
+        let written = toon_format::encode_default(&judged).expect("encode");
+        assert!(
+            written.contains("estimate_data_loss_correct: false"),
+            "{written}"
+        );
+        assert_eq!(toon_round_trip(&judged), judged);
     }
 
     #[test]

@@ -172,6 +172,7 @@ mod tests {
         journal.analysis = Some(crate::types::AnalysisResult {
             estimate_accuracy: None,
             estimate_recovery_delta_s: None,
+            estimate_data_loss_correct: None,
             trend: None,
             resilience_score: Some(1.0),
         });

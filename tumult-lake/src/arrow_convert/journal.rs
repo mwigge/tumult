@@ -260,6 +260,7 @@ mod tests {
             analysis: Some(AnalysisResult {
                 estimate_accuracy: Some(0.85),
                 estimate_recovery_delta_s: None,
+                estimate_data_loss_correct: None,
                 trend: None,
                 resilience_score: Some(0.92),
             }),

@@ -207,8 +207,9 @@ probe did not come back, the time of its last failing sample), Required;
 
 | Attribute | Type | Level | Meaning | Values |
 |---|---|---|---|---|
-| `resilience.analysis.estimate_accuracy` | `float` | Recommended | How well the estimate matched, `0.0` to `1.0` | |
-| `resilience.analysis.estimate_recovery_delta` | `float` | Recommended | Predicted minus actual recovery time; positive means faster than predicted | |
+| `resilience.analysis.estimate_accuracy` | `float` | Recommended | `1` when the predicted outcome is the outcome the run measured, else `0`. Empty for a run that failed or was stopped | |
+| `resilience.analysis.estimate_recovery_delta` | `float` | Recommended | Measured minus predicted recovery time; positive means slower than predicted | |
+| `resilience.analysis.estimate_data_loss_correct` | `boolean` | Optional | Whether the predicted data loss is what the measured RPO shows | |
 | `resilience.analysis.trend` | `string` | Recommended | Trend against earlier runs | `improving`, `stable`, `degrading` |
 | `resilience.analysis.resilience_score` | `float` | Recommended | `1` when the run completed, else `0` | |
 | `resilience.analysis.regulatory_evidence` | `string[]` | Recommended | Ids of the evidence the run produced, such as report ids | |

@@ -65,6 +65,7 @@ fn a_run_that_only_completed_is_no_sign_of_recovery() {
     journal.analysis = Some(tumult_core::types::AnalysisResult {
         estimate_accuracy: None,
         estimate_recovery_delta_s: None,
+        estimate_data_loss_correct: None,
         trend: None,
         resilience_score: Some(1.0),
     });

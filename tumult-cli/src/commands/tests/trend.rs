@@ -45,6 +45,7 @@ fn journal(id: &str, title: &str, started_at_ns: i64) -> Journal {
         analysis: Some(AnalysisResult {
             estimate_accuracy: Some(0.9),
             estimate_recovery_delta_s: None,
+            estimate_data_loss_correct: None,
             trend: None,
             resilience_score: Some(0.95),
         }),
@@ -377,6 +378,7 @@ fn measured(id: &str, second: i64, duration_ms: u64, steps: usize, score: f64) -
     run.analysis = Some(AnalysisResult {
         estimate_accuracy: Some(score / 2.0),
         estimate_recovery_delta_s: None,
+        estimate_data_loss_correct: None,
         trend: None,
         resilience_score: Some(score),
     });

@@ -348,6 +348,7 @@ pub fn sample_journal(
         analysis: Some(AnalysisResult {
             estimate_accuracy: Some(1.0),
             estimate_recovery_delta_s: None,
+            estimate_data_loss_correct: None,
             trend: None,
             resilience_score: Some(0.95),
         }),

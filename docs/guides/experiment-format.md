@@ -86,7 +86,7 @@ Only `method` is required.
 | `nfr`, `rto_target_s`, `rpo_target_s` | [Objectives](objectives.md) the run is checked against. A `dr` run needs `rto_target_s` |
 | `recovery` | How long the run watches for recovery after the method: `window_s` (default 30) and `interval_s` (default 1). See [Objectives](objectives.md) |
 | `load` | Traffic during the method, see [Load testing](load-testing-guide.md) |
-| `estimate` | Your guess before the run: `expected_outcome` (`recovered`, `deviated`, `unaffected`), `expected_recovery_s`, `confidence` and more |
+| `estimate` | Your guess before the run: `expected_outcome` (`recovered`, `deviated`, `unaffected`), `expected_recovery_s`, `confidence` and more. See [The estimate](#the-estimate) |
 | `blast_radius`, `max_concurrent_faults` | A note for the audit, and a cap on background faults at once |
 | `regulatory` | The frameworks and requirements the run gives evidence for |
 | `version` | `v1`, the default |
@@ -164,6 +164,47 @@ applied as written.
 
 `nfr`, `rto_target_s` and `rpo_target_s` set the numbers a run must meet,
 such as a p95 latency under 250 ms. See [Objectives](objectives.md).
+
+## The estimate
+
+The `estimate` block is your guess before the run. After the run, Tumult
+compares it with what the run measured and writes the result to `analysis`
+in the journal.
+
+```toon
+estimate:
+  expected_outcome: recovered
+  expected_recovery_s: 5
+  expected_data_loss: false
+  confidence: medium
+```
+
+The run measured one of three outcomes:
+
+```mermaid
+flowchart LR
+    accTitle: The outcome a run measured
+    accDescr: A run that deviated is deviated. Otherwise a run whose probes saw no outage is unaffected. A run that saw an outage is recovered when it came back, and deviated when it did not.
+    run[The run ends] -->|deviated| deviated[deviated]
+    run -->|completed| seen{Did a probe see an outage?}
+    seen -->|no| unaffected[unaffected]
+    seen -->|yes| back{Back before the watch ended?}
+    back -->|yes| recovered[recovered]
+    back -->|no| deviated
+```
+
+| `analysis` field | How the run judges it |
+|---|---|
+| `estimate_accuracy` | `1` when `expected_outcome` is the outcome the run measured, else `0`. Empty when the method failed, the run was stopped, or no steady-state probe watched |
+| `estimate_recovery_delta_s` | The measured RTO minus `expected_recovery_s`, in seconds. Above 0 means slower than you guessed. Empty when the run measured no RTO: it saw no outage, did not recover, or its method failed |
+| `estimate_data_loss_correct` | Whether `expected_data_loss` is what the run measured: data is lost when the measured RPO is above 0. Empty when the run measured no RPO, see [Measure the RPO](objectives.md#measure-the-rpo) |
+
+The measured RTO is `post_result.mttr_s`, see
+[Recovery targets](objectives.md#recovery-targets). `expected_degradation`,
+`confidence`, `rationale` and `prior_runs` are kept with the run and not
+judged. The HTML report shows the result under **Analysis**. The lake keeps
+`estimate_accuracy` in `experiments`, and
+`tumult trend <journals> --metric estimate_accuracy` follows it over runs.
 
 ## Write it in the web UI
 
