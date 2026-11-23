@@ -22,7 +22,7 @@ use tumult_core::compliance::{
     applicable, EvidenceStrength, Feed, Requirement, Selector, ARTICLES, REQUIREMENTS,
 };
 
-use super::model::{day_of, Evidence, Function, IncidentFeed, Inputs, SloFeed, Source};
+use super::model::{day_of, Evidence, Function, IncidentFeed, Inputs, Outcome, SloFeed, Source};
 use super::params::HouseParams;
 use super::status;
 
@@ -260,6 +260,40 @@ impl<'a> Ctx<'a> {
             .collect()
     }
 
+    /// Tests of a backup or restore for a function, scored against the
+    /// row's window. A run counts only when it ran a backup or restore
+    /// step, and a run whose step failed is a failed test, whatever the
+    /// run ended as. A manual record counts as it does for any row of
+    /// `kinds`: when `manual_kinds` maps its exercise type to one of them.
+    /// The `restore` and `backup` types of the manual DR record join here
+    /// once that map lists them.
+    fn restore_rows(
+        &self,
+        req: &Requirement,
+        function: &str,
+        kinds: &[&str],
+        as_of_ns: i64,
+    ) -> Vec<Scored<'a>> {
+        self.evidence_for(function, as_of_ns)
+            .filter_map(|e| {
+                let outcome = match (e.source, e.restore_step) {
+                    (Source::Run, None) => return None,
+                    (Source::Run, Some(false)) => Outcome::Failed,
+                    (Source::Run, Some(true)) => e.outcome,
+                    (Source::Manual, _) => {
+                        let kind = e.kind.as_deref()?;
+                        if !kinds.contains(&kind) {
+                            return None;
+                        }
+                        e.outcome
+                    }
+                };
+                let o = outcome.factor(self.params);
+                Some(self.score(e, as_of_ns, req.window_days, o, self.test_strength(req, e)))
+            })
+            .collect()
+    }
+
     fn recovery_rows(
         &self,
         req: &Requirement,
@@ -343,6 +377,7 @@ impl<'a> Ctx<'a> {
         let id = function.id.as_str();
         let mut rows = match req.selector {
             Selector::Run { kinds } => self.test_rows(req, id, kinds, as_of_ns, req.window_days),
+            Selector::Restore { kinds } => self.restore_rows(req, id, kinds, as_of_ns),
             Selector::Disciplines { .. } | Selector::Remediation | Selector::PlanExecuted => {
                 self.test_rows(req, id, &[], as_of_ns, req.window_days)
             }
@@ -374,6 +409,9 @@ impl<'a> Ctx<'a> {
         match req.selector {
             Selector::Run { kinds } => {
                 Cell::best_of(self.test_rows(req, id, kinds, as_of_ns, req.window_days))
+            }
+            Selector::Restore { kinds } => {
+                Cell::best_of(self.restore_rows(req, id, kinds, as_of_ns))
             }
             Selector::Disciplines { min } => self.disciplines(req, id, min, as_of_ns),
             Selector::Remediation => self.remediation(req, function, as_of_ns),
@@ -692,7 +730,7 @@ impl<'a> Ctx<'a> {
         match req.selector {
             Selector::RecoveryMet => function.rto_s.is_some(),
             Selector::RecoveryPoint => function.rpo_s.is_some(),
-            Selector::Run { kinds } => {
+            Selector::Run { kinds } | Selector::Restore { kinds } => {
                 function.scheduled
                     || function
                         .test_plan
