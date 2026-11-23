@@ -68,6 +68,12 @@ value = freshness × outcome × strength
 | Outcome | passed 1, partial 0.75, failed 0.5. An aborted or interrupted run is no evidence |
 | Strength | direct 1, supporting 0.75, indirect 0.25, manual test record 0.75 |
 
+The recovery rows, Art. 12(6) and 12(7), judge each DR run and each
+verified manual record against its own RTO and RPO first, and those of its
+function second. A run that did not recover failed its recovery. A run that
+measured no recovery (no outage seen, a failed method, a watch cut short)
+is no evidence for these rows.
+
 Coverage of an article is the mean of these values, weighted by the row
 and by the tier of the function (critical 3, important 2, other 1.5).
 Every number comes with its unknown share, the hatched part of a cell:

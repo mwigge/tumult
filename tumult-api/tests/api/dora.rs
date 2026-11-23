@@ -624,3 +624,51 @@ async fn conformance_bounds_the_malformed_ids_in_length_and_in_number() {
     assert_eq!(body["malformed_entity_ids_truncated"], true);
     assert_eq!(list(&body["malformed_entity_ids"])[0]["truncated"], false);
 }
+
+/// The cited experiment and outcome factor of every evidence row of the
+/// requirement `id` in an article document of one function, sorted.
+fn evidence_rows(doc: &Value, id: &str) -> Vec<(String, f64)> {
+    let req = list(&doc["requirements"])
+        .iter()
+        .find(|r| r["id"] == id)
+        .unwrap_or_else(|| panic!("no {id} in {doc}"));
+    let mut rows: Vec<(String, f64)> = list(&req["entities"])
+        .iter()
+        .flat_map(|e| list(&e["evidence"]))
+        .map(|row| {
+            let experiment = row["experiment"].as_str().unwrap().to_string();
+            (experiment, row["o"].as_f64().unwrap())
+        })
+        .collect();
+    rows.sort_by(|a, b| a.0.cmp(&b.0));
+    rows
+}
+
+/// Art. 12(6) fails a run that did not recover, as it fails one that
+/// took too long, and has no row for a run that saw no outage. Art. 12(7)
+/// fails a run that lost more data than its RPO allows. The runs are
+/// journals as the runner writes them, read through the lake and the
+/// score.
+#[tokio::test]
+async fn article_12_fails_a_run_that_did_not_recover_and_one_that_lost_data() {
+    let srv = spawn_server().await;
+    register(&srv).await;
+    let runs = crate::risks::recovery_runs("payments-api", "payments-api", "ledger-archive");
+    crate::risks::store_runs(&srv, runs).await;
+
+    let (status, doc) = get(&srv.base, "/api/dora/12?entity=cif-0001&profile=full").await;
+
+    assert_eq!(status, 200, "{doc}");
+    let failed = 0.5;
+    assert_eq!(
+        evidence_rows(&doc, "dora.art12.6"),
+        [
+            ("ledger-archive-restore".to_string(), failed),
+            ("payments-api-failover".to_string(), failed),
+        ]
+    );
+    assert_eq!(
+        evidence_rows(&doc, "dora.art12.7"),
+        [("ledger-archive-restore".to_string(), failed)]
+    );
+}

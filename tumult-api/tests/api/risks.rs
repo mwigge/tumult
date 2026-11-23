@@ -4,7 +4,11 @@
 use std::collections::BTreeSet;
 
 use serde_json::{json, Value};
-use tumult_lake::{ExerciseType, ManualOutcome, NewManualExperiment, SpanRow};
+use tumult_core::types::{
+    Experiment, ExperimentStatus, ExperimentTarget, Journal, NfrCriticality, NfrKind, NfrOperator,
+    NfrState, NfrVerdict, ObjectiveOutcome, TestKind,
+};
+use tumult_lake::{ExerciseDetail, ExerciseType, ManualOutcome, NewManualExperiment, SpanRow};
 
 use crate::common::*;
 
@@ -631,5 +635,270 @@ async fn a_house_that_counts_a_tabletop_as_chaos_moves_every_view_alike() {
     assert_eq!(
         on_the_map("sys:demo/ledger-archive")["robustness"],
         "missing"
+    );
+}
+
+/// A stored run: its journal and its definition.
+pub(crate) type StoredRun = (Journal, Experiment);
+
+/// The journal of the dr run `name` of `system` in `demo`, ended
+/// `status` an hour ago, with the objectives the runner wrote.
+fn dr_run(
+    name: &str,
+    system: &str,
+    status: ExperimentStatus,
+    objectives: ObjectiveOutcome,
+) -> StoredRun {
+    let started_at_ns = now_ns() - 3600 * NS;
+    let journal = Journal {
+        experiment_title: name.into(),
+        kind: TestKind::Dr,
+        started_at_ns,
+        ended_at_ns: started_at_ns + 60 * NS,
+        duration_ms: 60_000,
+        objectives: Some(objectives),
+        ..tumult_lake::duckdb_store::sample_journal(name, status)
+    };
+    let definition = Experiment {
+        title: name.into(),
+        target: Some(ExperimentTarget {
+            system: system.into(),
+            technology: None,
+            environment: Some("demo".into()),
+            criticality: None,
+            namespace: None,
+            version: None,
+        }),
+        ..Experiment::default()
+    };
+    (journal, definition)
+}
+
+/// A blocking verdict of `kind` against `threshold`, as the runner writes
+/// it: a run that did not recover has a lower bound and no margin.
+fn objective(
+    kind: NfrKind,
+    threshold: f64,
+    observed: Option<f64>,
+    state: NfrState,
+    recovered: Option<bool>,
+) -> NfrVerdict {
+    NfrVerdict {
+        nfr_id: kind.to_string(),
+        kind,
+        metric: "recovery.mttr_s".into(),
+        operator: NfrOperator::Lte,
+        threshold,
+        observed,
+        state,
+        margin: observed
+            .filter(|_| recovered != Some(false))
+            .map(|o| threshold - o),
+        criticality: NfrCriticality::Blocking,
+        recovered,
+        reason: None,
+    }
+}
+
+/// The objectives of a run that saw no outage: its RTO is inconclusive.
+fn no_outage(rto_target_s: f64) -> ObjectiveOutcome {
+    ObjectiveOutcome {
+        rto_target_s: Some(rto_target_s),
+        verdicts: vec![objective(
+            NfrKind::Rto,
+            rto_target_s,
+            None,
+            NfrState::Inconclusive,
+            None,
+        )],
+        ..ObjectiveOutcome::default()
+    }
+}
+
+/// Three dr runs: `<not_back>-failover` did not recover within a watch of
+/// 29.1 s against an RTO of 2 s, `<unseen>-switchover` saw no outage, and
+/// `<lossy>-restore` recovered in 3 s and lost 2.035 s of data against an
+/// RPO of 1 s.
+pub(crate) fn recovery_runs(not_back: &str, unseen: &str, lossy: &str) -> Vec<StoredRun> {
+    let never_back = ObjectiveOutcome {
+        rto_target_s: Some(2.0),
+        verdicts: vec![objective(
+            NfrKind::Rto,
+            2.0,
+            Some(29.1),
+            NfrState::Breached,
+            Some(false),
+        )],
+        ..ObjectiveOutcome::default()
+    };
+    let lost_data = ObjectiveOutcome {
+        rto_target_s: Some(30.0),
+        rto_measured_s: Some(3.0),
+        rpo_target_s: Some(1.0),
+        rpo_measured_s: Some(2.035),
+        verdicts: vec![
+            objective(NfrKind::Rto, 30.0, Some(3.0), NfrState::Met, Some(true)),
+            objective(NfrKind::Rpo, 1.0, Some(2.035), NfrState::Breached, None),
+        ],
+    };
+    vec![
+        dr_run(
+            &format!("{not_back}-failover"),
+            not_back,
+            ExperimentStatus::Deviated,
+            never_back,
+        ),
+        dr_run(
+            &format!("{unseen}-switchover"),
+            unseen,
+            ExperimentStatus::Completed,
+            no_outage(30.0),
+        ),
+        dr_run(
+            &format!("{lossy}-restore"),
+            lossy,
+            ExperimentStatus::Deviated,
+            lost_data,
+        ),
+    ]
+}
+
+/// Store `runs` as journals.
+pub(crate) async fn store_runs(srv: &TestServer, runs: Vec<StoredRun>) {
+    exec_write(srv, move |writer| {
+        for (journal, definition) in &runs {
+            writer
+                .ingest_journal(journal, Some(definition))
+                .map_err(|e| e.to_string())?;
+        }
+        Ok(())
+    })
+    .await;
+}
+
+/// A verified manual `exercise` named `name` of `target` that recovered in
+/// `recovery_s` against an RTO of 3600 s and lost 60 s of data against an
+/// RPO of 300 s.
+fn dr_record(
+    name: &str,
+    exercise: ExerciseType,
+    target: &str,
+    recovery_s: f64,
+) -> NewManualExperiment {
+    NewManualExperiment {
+        recovery_time_s: Some(recovery_s),
+        exercise: ExerciseDetail {
+            rto_target_s: Some(3600.0),
+            rpo_target_s: Some(300.0),
+            rpo_measured_s: Some(60.0),
+            ..ExerciseDetail::default()
+        },
+        ..manual_record(name, exercise, target, ManualOutcome::Passed)
+    }
+}
+
+/// The finding of `rule` about `target`.
+fn finding<'a>(report: &'a Value, target: &str, rule: &str) -> &'a Value {
+    report["risks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["target"] == target && r["rule"] == rule)
+        .unwrap_or_else(|| panic!("no {rule} about {target} in {report}"))
+}
+
+fn text<'a>(value: &'a Value, key: &str) -> &'a str {
+    value[key].as_str().unwrap_or_default()
+}
+
+/// A run that did not recover misses its RTO and says it did not
+/// recover. A target whose only dr run saw no outage has an RTO that is
+/// not proved. A run that lost more data than its RPO allows misses it.
+/// A verified manual failover over its RTO misses it, named as a manual
+/// record, and a verified manual restore within its targets proves the
+/// RTO of its target. The resilience score gives the run that did not
+/// recover 0 for recovery and leaves the run that saw no outage out.
+#[tokio::test]
+async fn recovery_findings_and_scores_read_what_the_runs_and_records_measured() {
+    let srv = spawn_server().await;
+    let mut runs = recovery_runs("orders-db", "search", "ledger");
+    runs.push(dr_run(
+        "catalog-switchover",
+        "catalog",
+        ExperimentStatus::Completed,
+        no_outage(30.0),
+    ));
+    store_runs(&srv, runs).await;
+    let failover = dr_record(
+        "payments-db-failover",
+        ExerciseType::Failover,
+        "payments-db",
+        4100.0,
+    );
+    let restore = dr_record("catalog-restore", ExerciseType::Restore, "catalog", 1200.0);
+    add_verified(&srv, failover).await;
+    add_verified(&srv, restore).await;
+
+    let (status, risks) = get(&srv.base, "/api/risks").await;
+
+    assert_eq!(status, 200, "{risks}");
+    let not_back = finding(&risks, "orders-db", "recovery_target_missed");
+    assert_eq!(not_back["subject"], "orders-db-failover/rto");
+    assert!(
+        text(not_back, "title").contains("did not recover"),
+        "{not_back}"
+    );
+    assert!(
+        text(not_back, "detail").contains("at least 29.1s"),
+        "{not_back}"
+    );
+    let breached = finding(&risks, "orders-db", "objective_breached");
+    assert!(
+        text(breached, "detail").contains("not recovered"),
+        "{breached}"
+    );
+    let unproved = finding(&risks, "search", "recovery_not_measured");
+    assert_eq!(unproved["severity"], "low", "{unproved}");
+    assert_eq!(unproved["evidence"], json!(["search-switchover"]));
+    let lossy = finding(&risks, "ledger", "rpo_missed");
+    assert_eq!(lossy["subject"], "ledger-restore/rpo");
+    assert!(
+        text(lossy, "title").contains("2.0s") && text(lossy, "title").contains("1.0s"),
+        "{lossy}"
+    );
+    let drill = finding(&risks, "payments-db", "recovery_target_missed");
+    assert!(
+        text(drill, "title").starts_with("Manual record payments-db-failover"),
+        "{drill}"
+    );
+    assert!(text(drill, "detail").contains("4100.0s"), "{drill}");
+    let catalog = findings_of(&risks, "catalog");
+    assert!(
+        catalog
+            .iter()
+            .all(|f| !f.starts_with("recovery_") && !f.starts_with("rpo_")),
+        "the restore within its targets proves the RTO: {catalog:?}"
+    );
+
+    let (status, posture) = get(&srv.base, "/api/posture").await;
+    assert_eq!(status, 200, "{posture}");
+    let recovery = |target: &str| -> Value {
+        posture["posture"]["targets"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|t| t["target"] == target)
+            .unwrap_or_else(|| panic!("no posture of {target} in {posture}"))["components"]
+            ["recovery"]
+            .clone()
+    };
+    assert_eq!(recovery("orders-db"), json!(0.0));
+    assert_eq!(recovery("search"), Value::Null);
+    assert_eq!(recovery("ledger"), json!(100.0));
+    assert_eq!(recovery("catalog"), json!(100.0));
+    let over = recovery("payments-db").as_f64().unwrap();
+    assert!(
+        (over - 100.0 * (1.0 - 500.0 / 3600.0)).abs() < 1e-9,
+        "{over}"
     );
 }

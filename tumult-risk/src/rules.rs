@@ -8,7 +8,9 @@
 //! | `discipline_gap` | a target has never been exercised in chaos, load or dr |
 //! | `stale_evidence` | a target's latest evidence in a discipline is older than 30 days (90: high) |
 //! | `objective_breached` | the latest run of an experiment breached an objective |
-//! | `recovery_target_missed` | the latest dr run measured an RTO above its target |
+//! | `recovery_target_missed` | the latest dr run or a verified manual record measured an RTO above its target, or the run did not recover |
+//! | `recovery_not_measured` | a target declares an RTO and its dr runs of the last 30 days all measured no recovery |
+//! | `rpo_missed` | the latest dr run or a verified manual record lost more data than its RPO allows |
 //! | `latest_run_failed` | the latest run of an experiment did not pass (and no breached objective already explains it) |
 //! | `untested_dependency` | a service other services call has no experiments at all |
 //! | `never_run_definition` | a registered definition has never run |
@@ -22,7 +24,8 @@ use sha2::{Digest, Sha256};
 use std::fmt::Write as _;
 
 use crate::model::{
-    Inputs, Risk, Severity, TargetEvidence, Workload, DAY_NS, STALE_AFTER_NS, VERY_STALE_AFTER_NS,
+    ExperimentLatest, Inputs, Risk, Severity, TargetEvidence, Verdict, Workload, DAY_NS,
+    STALE_AFTER_NS, VERY_STALE_AFTER_NS,
 };
 
 /// Disciplines whose absence is a risk in itself. The other four only show
@@ -179,18 +182,11 @@ fn experiment_rules(t: &TargetEvidence, out: &mut Vec<Risk>) {
                 "major" => Severity::Medium,
                 _ => Severity::Low,
             };
-            let observed = v
-                .observed
-                .map_or_else(|| "no observation".to_string(), |o| format!("{o}"));
             out.push(build(Draft {
                 rule: "objective_breached",
                 severity,
                 title: format!("{} breached objective {}", e.name, v.nfr_id),
-                detail: format!(
-                    "The latest run of {} observed {observed} against a threshold of {} \
-                     ({} objective).",
-                    e.name, v.threshold, v.criticality
-                ),
+                detail: breach_detail(e, v),
                 target: Some(&t.target),
                 environment: t.environment.as_deref(),
                 subject: format!("{}/{}", e.name, v.nfr_id),
@@ -198,32 +194,8 @@ fn experiment_rules(t: &TargetEvidence, out: &mut Vec<Risk>) {
                 evidence: e.evidence_id.iter().cloned().collect(),
             }));
         }
-        if let (Some(target_s), Some(measured_s)) = (e.rto_target_s, e.rto_measured_s) {
-            if measured_s > target_s {
-                out.push(build(Draft {
-                    rule: "recovery_target_missed",
-                    severity: if is_critical(t) {
-                        Severity::Critical
-                    } else {
-                        Severity::High
-                    },
-                    title: format!(
-                        "{} recovered in {measured_s:.1}s against an RTO of {target_s:.1}s",
-                        e.name
-                    ),
-                    detail: format!(
-                        "The latest disaster-recovery run of {} measured a recovery time of \
-                         {measured_s:.1}s; the declared recovery time objective is {target_s:.1}s.",
-                        e.name
-                    ),
-                    target: Some(&t.target),
-                    environment: t.environment.as_deref(),
-                    subject: format!("{}/rto", e.name),
-                    recommended_kind: Some("dr"),
-                    evidence: e.evidence_id.iter().cloned().collect(),
-                }));
-            }
-        }
+        out.extend(recovery_target_missed(t, e));
+        out.extend(rpo_missed(t, e));
         if !e.passed && !breached {
             out.push(build(Draft {
                 rule: "latest_run_failed",
@@ -248,6 +220,190 @@ fn experiment_rules(t: &TargetEvidence, out: &mut Vec<Risk>) {
             }));
         }
     }
+}
+
+/// What the latest run saw of a breached objective: the value it
+/// observed, or, for a run that did not recover, that it did not.
+fn breach_detail(e: &ExperimentLatest, v: &Verdict) -> String {
+    let against = format!(
+        "against a threshold of {} ({} objective)",
+        v.threshold, v.criticality
+    );
+    if v.recovered == Some(false) {
+        let watched = v
+            .observed
+            .map_or_else(String::new, |o| format!(", at least {o}s after the outage"));
+        return format!(
+            "The latest run of {} was not recovered when its watch ended{watched}, {against}.",
+            e.name
+        );
+    }
+    let observed = v
+        .observed
+        .map_or_else(|| "no observation".to_string(), |o| format!("{o}"));
+    format!(
+        "The latest run of {} observed {observed} {against}.",
+        e.name
+    )
+}
+
+/// How a title names the evidence: a manual record says so.
+fn named(e: &ExperimentLatest) -> String {
+    if e.manual {
+        return format!("Manual record {}", e.name);
+    }
+    e.name.clone()
+}
+
+/// How a detail names the evidence: the latest run, or a manual record.
+fn source(e: &ExperimentLatest) -> String {
+    if e.manual {
+        return format!("The verified manual record {}", e.name);
+    }
+    format!("The latest disaster-recovery run of {}", e.name)
+}
+
+/// A missed recovery target weighs high, and critical on a critical target.
+fn recovery_severity(t: &TargetEvidence) -> Severity {
+    if is_critical(t) {
+        return Severity::Critical;
+    }
+    Severity::High
+}
+
+/// `recovery_target_missed`: a recovery time above the RTO, or a run that
+/// did not recover at all.
+fn recovery_target_missed(t: &TargetEvidence, e: &ExperimentLatest) -> Option<Risk> {
+    let target_s = e.rto_target_s?;
+    let (title, detail) = match (e.rto_measured_s, e.unrecovered()) {
+        (Some(measured_s), _) if measured_s > target_s => (
+            format!(
+                "{} recovered in {measured_s:.1}s against an RTO of {target_s:.1}s",
+                named(e)
+            ),
+            format!(
+                "{} measured a recovery time of {measured_s:.1}s; the declared recovery time \
+                 objective is {target_s:.1}s.",
+                source(e)
+            ),
+        ),
+        (None, Some(v)) => {
+            let watched = v.observed.map_or_else(String::new, |o| {
+                format!(", at least {o:.1}s after the outage")
+            });
+            (
+                format!(
+                    "{} did not recover against an RTO of {target_s:.1}s",
+                    named(e)
+                ),
+                format!(
+                    "{} was not recovered when its watch ended{watched}; the declared recovery \
+                     time objective is {target_s:.1}s.",
+                    source(e)
+                ),
+            )
+        }
+        _ => return None,
+    };
+    Some(build(Draft {
+        rule: "recovery_target_missed",
+        severity: recovery_severity(t),
+        title,
+        detail,
+        target: Some(&t.target),
+        environment: t.environment.as_deref(),
+        subject: format!("{}/rto", e.name),
+        recommended_kind: Some("dr"),
+        evidence: e.evidence_id.iter().cloned().collect(),
+    }))
+}
+
+/// `rpo_missed`: more data lost than the RPO allows.
+fn rpo_missed(t: &TargetEvidence, e: &ExperimentLatest) -> Option<Risk> {
+    let (target_s, measured_s) = (e.rpo_target_s?, e.rpo_measured_s?);
+    if measured_s <= target_s {
+        return None;
+    }
+    Some(build(Draft {
+        rule: "rpo_missed",
+        severity: recovery_severity(t),
+        title: format!(
+            "{} lost {measured_s:.1}s of data against an RPO of {target_s:.1}s",
+            named(e)
+        ),
+        detail: format!(
+            "{} measured a recovery point of {measured_s:.1}s: the writes of the last \
+             {measured_s:.1}s before the outage were lost. The declared recovery point objective \
+             is {target_s:.1}s.",
+            source(e)
+        ),
+        target: Some(&t.target),
+        environment: t.environment.as_deref(),
+        subject: format!("{}/rpo", e.name),
+        recommended_kind: Some("dr"),
+        evidence: e.evidence_id.iter().cloned().collect(),
+    }))
+}
+
+/// Whether a measured recovery met its targets: the RTO, and the RPO when
+/// one was measured against a target.
+fn within_targets(e: &ExperimentLatest) -> bool {
+    let rto = matches!(
+        (e.rto_measured_s, e.rto_target_s),
+        (Some(measured), Some(target)) if measured <= target
+    );
+    let rpo = match (e.rpo_measured_s, e.rpo_target_s) {
+        (Some(measured), Some(target)) => measured <= target,
+        _ => true,
+    };
+    rto && rpo
+}
+
+/// `recovery_not_measured`: the target declares an RTO, and each of its dr
+/// runs of the last 30 days measured no recovery. A verified manual record
+/// of that time that recovered within its targets proves the RTO too.
+fn recovery_not_measured(t: &TargetEvidence, as_of_ns: i64, out: &mut Vec<Risk>) {
+    let recent = |e: &&ExperimentLatest| {
+        e.rto_target_s.is_some() && as_of_ns - e.last_run_ns <= STALE_AFTER_NS
+    };
+    let runs: Vec<&ExperimentLatest> = t
+        .experiments
+        .iter()
+        .filter(|e| !e.manual)
+        .filter(recent)
+        .collect();
+    let proved = runs.iter().any(|e| e.measured_recovery())
+        || t.experiments
+            .iter()
+            .filter(|e| e.manual)
+            .filter(recent)
+            .any(within_targets);
+    if runs.is_empty() || proved {
+        return;
+    }
+    let severity = if is_critical(t) {
+        Severity::Medium
+    } else {
+        Severity::Low
+    };
+    out.push(build(Draft {
+        rule: "recovery_not_measured",
+        severity,
+        title: format!("{} has no measured recovery in 30 days", t.target),
+        detail: format!(
+            "{} run(s) against {} in the last 30 days declare an RTO, and none measured a \
+             recovery: no outage was seen, the method failed or the watch was cut short. The \
+             RTO of {} is not proved.",
+            runs.len(),
+            t.target,
+            t.target
+        ),
+        target: Some(&t.target),
+        environment: t.environment.as_deref(),
+        subject: "rto".to_string(),
+        recommended_kind: Some("dr"),
+        evidence: runs.iter().filter_map(|e| e.evidence_id.clone()).collect(),
+    }));
 }
 
 fn kind_const(kind: &str) -> Option<&'static str> {
@@ -503,6 +659,7 @@ pub fn evaluate(inputs: &Inputs) -> Vec<Risk> {
         discipline_gaps(t, &mut out);
         stale_evidence(t, inputs.as_of_ns, &mut out);
         experiment_rules(t, &mut out);
+        recovery_not_measured(t, inputs.as_of_ns, &mut out);
     }
     untested_dependencies(inputs, &mut out);
     never_run(inputs, &mut out);
@@ -685,6 +842,9 @@ mod tests {
             verdicts,
             rto_target_s: None,
             rto_measured_s: None,
+            rpo_target_s: None,
+            rpo_measured_s: None,
+            manual: false,
         }
     }
 
@@ -697,6 +857,7 @@ mod tests {
             threshold: 0.99,
             observed: Some(0.9),
             margin: Some(-0.09),
+            recovered: None,
         }
     }
 
@@ -816,6 +977,290 @@ mod tests {
             ..Default::default()
         };
         assert!(!rules_of(&evaluate(&inputs)).contains(&"recovery_target_missed"));
+    }
+
+    /// The `rto` verdict of a run that watched for `watched_s` after the
+    /// outage and did not recover, as the runner writes it.
+    fn not_recovered(target_s: f64, watched_s: f64) -> Verdict {
+        Verdict {
+            nfr_id: "rto".into(),
+            kind: "rto".into(),
+            state: "breached".into(),
+            criticality: "blocking".into(),
+            threshold: target_s,
+            observed: Some(watched_s),
+            margin: None,
+            recovered: Some(false),
+        }
+    }
+
+    /// The `rto` verdict of a run that measured no recovery: no outage
+    /// seen, a failed method or a watch cut short.
+    fn no_recovery_measured(target_s: f64) -> Verdict {
+        Verdict {
+            nfr_id: "rto".into(),
+            kind: "rto".into(),
+            state: "inconclusive".into(),
+            criticality: "blocking".into(),
+            threshold: target_s,
+            observed: None,
+            margin: None,
+            recovered: None,
+        }
+    }
+
+    /// A run of `name` that declares an RTO of `target_s`, its evidence
+    /// id `run-<name>`, and `age_days` old.
+    fn dr_run(
+        name: &str,
+        target_s: f64,
+        age_days: i64,
+        verdicts: Vec<Verdict>,
+    ) -> ExperimentLatest {
+        ExperimentLatest {
+            rto_target_s: Some(target_s),
+            last_run_ns: NOW - age_days * DAY_NS,
+            evidence_id: Some(format!("run-{name}")),
+            ..experiment(name, true, verdicts)
+        }
+    }
+
+    fn scan_one(t: TargetEvidence) -> Vec<Risk> {
+        let inputs = Inputs {
+            as_of_ns: NOW,
+            targets: vec![t],
+            ..Default::default()
+        };
+        evaluate(&inputs)
+    }
+
+    fn one_of<'a>(risks: &'a [Risk], rule: &str) -> &'a Risk {
+        let found: Vec<&Risk> = risks.iter().filter(|r| r.rule == rule).collect();
+        assert_eq!(found.len(), 1, "one {rule} in {risks:?}");
+        found[0]
+    }
+
+    #[test]
+    fn a_run_that_did_not_recover_missed_its_recovery_target() {
+        let mut t = target("db", None, vec![evidence("robustness", 1)]);
+        let mut run = dr_run("failover", 2.0, 1, vec![not_recovered(2.0, 29.1)]);
+        run.passed = false;
+        t.experiments.push(run);
+
+        let risks = scan_one(t);
+
+        let missed = one_of(&risks, "recovery_target_missed");
+        assert_eq!(missed.severity, Severity::High);
+        assert_eq!(missed.subject, "failover/rto");
+        assert_eq!(missed.evidence, ["run-failover".to_string()]);
+        assert!(missed.title.contains("did not recover"), "{}", missed.title);
+        assert!(
+            missed.detail.contains("at least 29.1s") && missed.detail.contains("2.0s"),
+            "{}",
+            missed.detail
+        );
+        let breached = one_of(&risks, "objective_breached");
+        assert!(
+            breached.detail.contains("not recovered") && breached.detail.contains("29.1"),
+            "{}",
+            breached.detail
+        );
+        assert!(!breached.detail.contains("observed"), "{}", breached.detail);
+    }
+
+    #[test]
+    fn a_run_that_measured_no_recovery_missed_no_recovery_target() {
+        let mut t = target("db", None, vec![evidence("robustness", 1)]);
+        t.experiments
+            .push(dr_run("failover", 2.0, 1, vec![no_recovery_measured(2.0)]));
+
+        let risks = scan_one(t);
+
+        assert!(!rules_of(&risks).contains(&"recovery_target_missed"));
+        assert!(!rules_of(&risks).contains(&"objective_breached"));
+    }
+
+    #[test]
+    fn a_target_whose_dr_runs_all_measured_no_recovery_has_an_unproved_rto() {
+        let mut t = target("db", None, vec![evidence("robustness", 1)]);
+        t.experiments.extend([
+            dr_run("failover", 30.0, 1, vec![no_recovery_measured(30.0)]),
+            dr_run("restore", 60.0, 3, vec![no_recovery_measured(60.0)]),
+            // A run that declares no RTO is no DR run.
+            experiment("latency", true, vec![]),
+        ]);
+
+        let risks = scan_one(t);
+
+        let unproved = one_of(&risks, "recovery_not_measured");
+        assert_eq!(unproved.severity, Severity::Low);
+        assert_eq!(unproved.rank, Severity::Low.base_rank());
+        assert_eq!(unproved.subject, "rto");
+        assert_eq!(unproved.target.as_deref(), Some("db"));
+        assert_eq!(unproved.environment.as_deref(), Some("prod"));
+        assert_eq!(unproved.recommended_kind.as_deref(), Some("dr"));
+        assert_eq!(
+            unproved.evidence,
+            ["run-failover".to_string(), "run-restore".to_string()]
+        );
+        assert!(unproved.title.contains("db"), "{}", unproved.title);
+        assert!(
+            unproved.detail.contains("2 run(s)") && unproved.detail.contains("30 days"),
+            "{}",
+            unproved.detail
+        );
+    }
+
+    #[test]
+    fn an_unproved_rto_weighs_medium_on_a_critical_target() {
+        let mut t = target("pay", Some("critical"), vec![evidence("robustness", 1)]);
+        t.experiments.push(dr_run(
+            "failover",
+            30.0,
+            1,
+            vec![no_recovery_measured(30.0)],
+        ));
+
+        let risks = scan_one(t);
+
+        let unproved = one_of(&risks, "recovery_not_measured");
+        assert_eq!(unproved.severity, Severity::Medium);
+        assert_eq!(unproved.rank, Severity::Medium.base_rank() + 8);
+    }
+
+    /// A measured recovery proves the RTO, in time or not; a recovery that
+    /// did not come back is a failed one, not an unmeasured one; runs
+    /// older than the 30 day window and runs that declare no RTO do not
+    /// count; and a verified manual record that recovered within its
+    /// targets is recovery evidence for its target.
+    #[test]
+    fn an_rto_is_unproved_only_while_every_recent_dr_run_measured_no_recovery() {
+        let unmeasured = || dr_run("failover", 30.0, 1, vec![no_recovery_measured(30.0)]);
+        let measured = ExperimentLatest {
+            rto_measured_s: Some(42.0),
+            ..dr_run("restore", 30.0, 2, vec![])
+        };
+        let failed = dr_run("restore", 2.0, 2, vec![not_recovered(2.0, 29.1)]);
+        let record = ExperimentLatest {
+            rto_measured_s: Some(1200.0),
+            rpo_target_s: Some(300.0),
+            rpo_measured_s: Some(60.0),
+            manual: true,
+            ..dr_run("restore-drill", 3600.0, 5, vec![])
+        };
+        let cases = [
+            ("a measured recovery", vec![unmeasured(), measured]),
+            (
+                "a recovery that did not come back",
+                vec![unmeasured(), failed],
+            ),
+            ("a verified manual record", vec![unmeasured(), record]),
+            (
+                "only old runs",
+                vec![dr_run(
+                    "failover",
+                    30.0,
+                    31,
+                    vec![no_recovery_measured(30.0)],
+                )],
+            ),
+            (
+                "no run with an RTO",
+                vec![experiment("latency", true, vec![])],
+            ),
+        ];
+        for (case, experiments) in cases {
+            let mut t = target("db", None, vec![evidence("robustness", 1)]);
+            t.experiments = experiments;
+            let risks = scan_one(t);
+            assert!(
+                !rules_of(&risks).contains(&"recovery_not_measured"),
+                "{case}: {risks:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_run_that_lost_more_data_than_its_rpo_allows_missed_it() {
+        let lossy = |name: &str, measured_s: f64| ExperimentLatest {
+            rpo_target_s: Some(1.0),
+            rpo_measured_s: Some(measured_s),
+            ..dr_run(name, 30.0, 1, vec![])
+        };
+        let mut critical = target("ledger", Some("critical"), vec![evidence("robustness", 1)]);
+        critical
+            .experiments
+            .extend([lossy("restore", 2.035), lossy("replica", 0.5)]);
+        let mut plain = target("cache", None, vec![evidence("robustness", 1)]);
+        plain.experiments.push(lossy("restore", 2.035));
+        let inputs = Inputs {
+            as_of_ns: NOW,
+            targets: vec![critical, plain],
+            ..Default::default()
+        };
+
+        let risks = evaluate(&inputs);
+
+        let missed: Vec<&Risk> = risks.iter().filter(|r| r.rule == "rpo_missed").collect();
+        assert_eq!(missed.len(), 2, "only the runs over the RPO: {missed:?}");
+        let ledger = missed
+            .iter()
+            .find(|r| r.target.as_deref() == Some("ledger"))
+            .unwrap();
+        assert_eq!(ledger.severity, Severity::Critical);
+        assert_eq!(ledger.subject, "restore/rpo");
+        assert_eq!(ledger.evidence, ["run-restore".to_string()]);
+        assert_eq!(ledger.recommended_kind.as_deref(), Some("dr"));
+        assert!(
+            ledger.title.contains("2.0s") && ledger.title.contains("1.0s"),
+            "{}",
+            ledger.title
+        );
+        assert!(
+            ledger.detail.contains("2.0s") && ledger.detail.contains("1.0s"),
+            "{}",
+            ledger.detail
+        );
+        let cache = missed
+            .iter()
+            .find(|r| r.target.as_deref() == Some("cache"))
+            .unwrap();
+        assert_eq!(cache.severity, Severity::High);
+    }
+
+    #[test]
+    fn a_manual_record_over_its_targets_gives_the_findings_of_a_run_and_says_so() {
+        let mut t = target("db", None, vec![evidence("robustness", 1)]);
+        t.experiments.push(ExperimentLatest {
+            rto_measured_s: Some(4100.0),
+            rpo_target_s: Some(300.0),
+            rpo_measured_s: Some(420.0),
+            manual: true,
+            ..dr_run("db-failover-drill", 3600.0, 1, vec![])
+        });
+
+        let risks = scan_one(t);
+
+        for rule in ["recovery_target_missed", "rpo_missed"] {
+            let risk = one_of(&risks, rule);
+            assert_eq!(risk.severity, Severity::High, "{rule}");
+            assert_eq!(risk.evidence, ["run-db-failover-drill".to_string()]);
+            assert!(risk.title.starts_with("Manual record "), "{}", risk.title);
+            assert!(risk.detail.contains("manual record"), "{}", risk.detail);
+        }
+        let rto = one_of(&risks, "recovery_target_missed");
+        assert!(
+            rto.detail.contains("4100.0s") && rto.detail.contains("3600.0s"),
+            "{}",
+            rto.detail
+        );
+        let rpo = one_of(&risks, "rpo_missed");
+        assert!(
+            rpo.detail.contains("420.0s") && rpo.detail.contains("300.0s"),
+            "{}",
+            rpo.detail
+        );
+        assert!(!rules_of(&risks).contains(&"recovery_not_measured"));
     }
 
     #[test]

@@ -90,6 +90,28 @@ over 14 days, the telemetry contract and the resilience score per target.
 - **API:** `GET /api/risks`, `GET /api/posture`, `GET /api/scores/tree`,
   `GET /api/otel/conformance`, `POST /api/risks/{id}/suppress`.
 
+#### Findings about recovery
+
+The risk scan reads the RTO and the RPO of each DR run and of each verified
+manual record. A record is judged against its own targets. Four rules look
+at recovery. A critical target here is one of criticality `critical` or
+`high`.
+
+| Rule | It fires when | Severity |
+|---|---|---|
+| `recovery_target_missed` | The latest run took longer than its RTO, or did not recover at all. A manual record over its RTO fires it too, and the finding says it is a manual record. | High, critical on a critical target |
+| `rpo_missed` | The latest run or a manual record lost more data than its RPO allows. The finding gives the RPO measured and the target. | High, critical on a critical target |
+| `recovery_not_measured` | The target declares an RTO, and none of its DR runs of the last 30 days measured a recovery: no outage was seen, the method failed or the watch was cut short. A manual record of that time that recovered within its targets proves the RTO. | Low, medium on a critical target |
+| `objective_breached` | The latest run breached an objective. For a run that did not recover, the text says "not recovered" and gives the time it watched. | By the objective: blocking is high |
+
+The recovery part of the resilience score reads the same facts:
+
+- A run within its RTO scores 100. A slower run scores less, and 0 at
+  twice its RTO.
+- A run that did not recover scores 0.
+- A run that measured no recovery is left out.
+- A manual record with a recovery time and an RTO counts as a run does.
+
 ### Performance
 
 Route `/performance`. Pick a target. The page shows the verdict for two

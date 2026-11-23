@@ -719,13 +719,15 @@ fn within(measured: Option<f64>, target: Option<f64>) -> Option<bool> {
 
 /// Whether a measured recovery met its targets: recovery time within the
 /// target and, when a recovery point was measured against a target, that
-/// too. `None` when no recovery time was measured against a target.
+/// too. A run that did not recover failed. `None` when no recovery time
+/// was measured against a target.
 #[must_use]
 pub fn recovery_met(evidence: &Evidence, function: &Function) -> Option<bool> {
-    let time = within(
-        evidence.rto_measured_s,
-        evidence.rto_target_s.or(function.rto_s),
-    )?;
+    let target = evidence.rto_target_s.or(function.rto_s);
+    if evidence.unrecovered && target.is_some() {
+        return Some(false);
+    }
+    let time = within(evidence.rto_measured_s, target)?;
     Some(time && recovery_point_met(evidence, function).unwrap_or(true))
 }
 

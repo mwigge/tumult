@@ -44,6 +44,11 @@ pub struct Verdict {
     pub threshold: f64,
     pub observed: Option<f64>,
     pub margin: Option<f64>,
+    /// `Some(false)` on the `rto` verdict of a run that watched for
+    /// recovery and did not recover: `observed` is then a lower bound and
+    /// there is no margin.
+    #[serde(default)]
+    pub recovered: Option<bool>,
 }
 
 /// The latest run of one experiment against a target.
@@ -61,6 +66,28 @@ pub struct ExperimentLatest {
     pub verdicts: Vec<Verdict>,
     pub rto_target_s: Option<f64>,
     pub rto_measured_s: Option<f64>,
+    pub rpo_target_s: Option<f64>,
+    pub rpo_measured_s: Option<f64>,
+    /// A verified manual record, not a run.
+    #[serde(default)]
+    pub manual: bool,
+}
+
+impl ExperimentLatest {
+    /// The `rto` verdict of a run that did not recover, when it is one.
+    #[must_use]
+    pub fn unrecovered(&self) -> Option<&Verdict> {
+        self.verdicts
+            .iter()
+            .find(|v| v.kind == "rto" && v.recovered == Some(false))
+    }
+
+    /// Whether the run measured its recovery: a recovery time, or a
+    /// recovery that did not come back.
+    #[must_use]
+    pub fn measured_recovery(&self) -> bool {
+        self.rto_measured_s.is_some() || self.unrecovered().is_some()
+    }
 }
 
 /// Everything known about one target system in one environment.

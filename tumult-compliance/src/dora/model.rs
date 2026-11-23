@@ -251,6 +251,9 @@ pub struct Evidence {
     pub rto_measured_s: Option<f64>,
     pub rpo_target_s: Option<f64>,
     pub rpo_measured_s: Option<f64>,
+    /// The run watched for recovery and its target did not come back: a
+    /// failed recovery with no recovery time.
+    pub unrecovered: bool,
 }
 
 impl Evidence {
@@ -276,6 +279,7 @@ impl Evidence {
             rto_measured_s: None,
             rpo_target_s: None,
             rpo_measured_s: None,
+            unrecovered: false,
         }
     }
 
