@@ -100,8 +100,10 @@ fn gameday_score_reflects_failures() {
     assert!(result.resilience_score.pass_rate < 1.0);
     // Compliance: ART-1 met (pass), ART-2 not met (fail) → 0.5
     assert!(result.resilience_score.compliance_coverage < 1.0);
-    // Overall = 0.5*0.3 + 1.0*0.25 + 1.0*0.25 + 0.5*0.2 = 0.75 → PARTIAL
-    assert_eq!(result.compliance_status, "PARTIAL");
+    // No run watched for recovery, so the other three share its weight:
+    // (0.5*0.3 + 1.0*0.25 + 0.5*0.2) / 0.75 = 0.67 → NON-COMPLIANT
+    assert_eq!(result.resilience_score.recovery_compliance, None);
+    assert_eq!(result.compliance_status, "NON-COMPLIANT");
 }
 
 #[test]
@@ -151,14 +153,29 @@ fn gameday_experiment_count_mismatch_returns_error() {
 
 // -- GameDay scoring tests
 
-/// Probes answer; every action of the method fails.
-struct FailingMethodExecutor;
+/// Probes answer, except the first read after an action, which fails: the
+/// probes see an outage and its recovery. Every action of the method
+/// fails.
+#[derive(Default)]
+struct FailingMethodExecutor {
+    down_reads: AtomicUsize,
+}
 
 impl ActivityExecutor for FailingMethodExecutor {
     fn execute(&self, activity: &Activity) -> ActivityOutcome {
         let is_probe = activity.activity_type == ActivityType::Probe;
+        if !is_probe {
+            self.down_reads.store(1, Ordering::SeqCst);
+        }
+        let down = is_probe
+            && self
+                .down_reads
+                .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |left| {
+                    left.checked_sub(1)
+                })
+                .is_ok();
         ActivityOutcome {
-            success: is_probe,
+            success: is_probe && !down,
             output: Some("200".into()),
             error: None,
             duration_ms: 1,
@@ -167,40 +184,46 @@ impl ActivityExecutor for FailingMethodExecutor {
 }
 
 #[test]
-fn a_run_whose_method_failed_is_not_a_recovery_within_target() {
+fn a_run_whose_method_failed_measures_no_recovery_and_fails_one_that_is_required() {
     use crate::types::{GameDay, GameDayExperiment, ScoringConfig};
 
-    let gameday = GameDay {
-        title: "Failed method".into(),
-        description: None,
-        tags: vec![],
-        regulatory: None,
-        load: None,
-        experiments: vec![GameDayExperiment {
-            path: "fail.toon".into(),
-            compliance_maps: vec![],
-        }],
-        scoring: ScoringConfig::default(),
-    };
-    let executor: Arc<dyn ActivityExecutor> = Arc::new(FailingMethodExecutor);
+    // Left out of the share, the run leaves no recovery to score. Required,
+    // it is a recovery that failed.
+    for (recovery_required, recovery) in [(false, None), (true, Some(0.0))] {
+        let gameday = GameDay {
+            title: "Failed method".into(),
+            description: None,
+            tags: vec![],
+            regulatory: None,
+            load: None,
+            experiments: vec![GameDayExperiment {
+                path: "fail.toon".into(),
+                compliance_maps: vec![],
+            }],
+            scoring: ScoringConfig {
+                recovery_required,
+                ..ScoringConfig::default()
+            },
+        };
+        let executor: Arc<dyn ActivityExecutor> = Arc::new(FailingMethodExecutor::default());
 
-    let result = run_gameday(
-        &gameday,
-        &[experiment_with_hypothesis()],
-        &executor,
-        &Arc::new(ControlRegistry::new()),
-        &default_config(),
-    )
-    .expect("gameday should run");
+        let result = run_gameday(
+            &gameday,
+            &[experiment_with_hypothesis()],
+            &executor,
+            &Arc::new(ControlRegistry::new()),
+            &default_config(),
+        )
+        .expect("gameday should run");
 
-    let journal = &result.experiment_journals[0];
-    assert_eq!(journal.status, ExperimentStatus::Failed);
-    assert!(journal.post_result.is_some(), "the probes were sampled");
-    assert!(
-        result.resilience_score.recovery_compliance.abs() < f64::EPSILON,
-        "got {}",
-        result.resilience_score.recovery_compliance
-    );
+        let journal = &result.experiment_journals[0];
+        assert_eq!(journal.status, ExperimentStatus::Failed);
+        assert!(journal.post_result.is_some(), "the probes were sampled");
+        assert_eq!(
+            result.resilience_score.recovery_compliance, recovery,
+            "required: {recovery_required}"
+        );
+    }
 }
 
 // -- The shared load of a game day

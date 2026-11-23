@@ -47,8 +47,9 @@ pub fn run_orphan_rollback(
     )
 }
 
-/// Run an experiment through the five-phase lifecycle with the default
-/// probe-sampling cadence (see [`SamplingConfig::default`]).
+/// Run an experiment through the five-phase lifecycle with the
+/// probe-sampling cadence of its `recovery` block (see
+/// [`SamplingConfig::for_experiment`]).
 ///
 /// This is the main entry point for experiment execution. It takes an
 /// experiment definition, an executor for running activities, a controls
@@ -59,6 +60,7 @@ pub fn run_orphan_rollback(
 /// # Errors
 ///
 /// Returns [`RunnerError::EmptyMethod`] if the experiment has no method steps,
+/// [`RunnerError::InvalidRecovery`] if its recovery window cannot be watched,
 /// and [`RunnerError::LoadStart`] if the declared load has no adapter or does
 /// not start; no fault runs then.
 pub fn run_experiment(
@@ -67,20 +69,16 @@ pub fn run_experiment(
     controls: &Arc<ControlRegistry>,
     config: &RunConfig,
 ) -> Result<Journal, RunnerError> {
-    run_experiment_with_sampling(
-        experiment,
-        executor,
-        controls,
-        config,
-        &SamplingConfig::default(),
-    )
+    let sampling = SamplingConfig::for_experiment(experiment)?;
+    run_experiment_with_sampling(experiment, executor, controls, config, &sampling)
 }
 
 /// Run an experiment through the five-phase lifecycle with an explicit
 /// probe-sampling cadence.
 ///
 /// Like [`run_experiment`], but `sampling` controls the during-phase probe
-/// sampling interval and the post-phase recovery timeout.
+/// sampling interval and the post-phase recovery window. The `recovery`
+/// block of the experiment is not read.
 ///
 /// # Errors
 ///
@@ -373,8 +371,10 @@ pub fn run_experiment_with_sampling(
     // method completes (and before hypothesis-after / rollback run), so
     // `post_result.recovery_time_s` reflects recovery from the fault itself
     // rather than from rollback actions. Probes are sampled on the
-    // configured interval until they pass their tolerance (recovery) or the
-    // recovery timeout elapses.
+    // recovery interval until they pass their tolerance (recovery) or the
+    // recovery window ends. The time to recovery (`mttr_s`) runs from the
+    // outage the samples of both phases saw, so an outage inside the
+    // method counts.
     let post_result = experiment
         .steady_state_hypothesis
         .as_ref()
@@ -384,13 +384,13 @@ pub fn run_experiment_with_sampling(
             let samples = collect_post_samples(
                 hypothesis,
                 executor.as_ref(),
-                sampling.interval,
+                sampling.recovery_interval,
                 sampling.recovery_timeout,
                 config.cancellation_token.as_ref(),
             );
             let ended_at_ns = epoch_nanos_now();
             probe_samples.extend(samples_for_journal(SamplePhase::Post, &samples));
-            build_post_result(started_at_ns, ended_at_ns, &samples)
+            build_post_result(started_at_ns, ended_at_ns, &samples, &probe_samples)
         })
         .map(|post| recovery_measured(post, actions_succeeded));
 

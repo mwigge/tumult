@@ -170,6 +170,7 @@ fn run(
         interval: Duration::from_millis(10),
         max_during_samples: 50,
         recovery_timeout: Duration::from_millis(80),
+        recovery_interval: Duration::from_millis(10),
     };
     let started = Instant::now();
     let journal = run_experiment_with_sampling(

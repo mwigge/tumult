@@ -136,6 +136,32 @@ fn parse_run_baseline_only_mode() {
 }
 
 #[test]
+fn parse_run_recovery_window_in_seconds() {
+    let cli =
+        Cli::try_parse_from(["tumult", "run", "exp.toon", "--recovery-window", "60"]).unwrap();
+    let Commands::Run {
+        recovery_window, ..
+    } = cli.command
+    else {
+        panic!("expected Run command");
+    };
+    assert_eq!(recovery_window, Some(60.0));
+
+    // Without the flag, the file decides.
+    let cli = Cli::try_parse_from(["tumult", "run", "exp.toon"]).unwrap();
+    let Commands::Run {
+        recovery_window, ..
+    } = cli.command
+    else {
+        panic!("expected Run command");
+    };
+    assert_eq!(recovery_window, None);
+
+    let words = Cli::try_parse_from(["tumult", "run", "exp.toon", "--recovery-window", "1m"]);
+    assert!(words.is_err());
+}
+
+#[test]
 fn parse_run_rollback_never() {
     let cli =
         Cli::try_parse_from(["tumult", "run", "exp.toon", "--rollback-strategy", "never"]).unwrap();

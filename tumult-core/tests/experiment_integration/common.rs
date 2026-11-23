@@ -186,6 +186,7 @@ pub(crate) fn fast_sampling() -> SamplingConfig {
         interval: std::time::Duration::from_millis(10),
         max_during_samples: 50,
         recovery_timeout: std::time::Duration::from_millis(80),
+        recovery_interval: std::time::Duration::from_millis(10),
     }
 }
 
@@ -213,5 +214,6 @@ pub(crate) fn experiment_builder() -> Experiment {
         nfr: vec![],
         rto_target_s: None,
         rpo_target_s: None,
+        recovery: None,
     }
 }

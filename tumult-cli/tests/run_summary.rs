@@ -146,6 +146,29 @@ fn a_run_whose_target_never_came_back_says_its_rto_was_breached_and_not_recovere
 }
 
 #[test]
+fn a_run_whose_fault_had_no_visible_effect_says_that_no_outage_was_observed() {
+    let lab = Lab::with_state("ok");
+    let no_effect = step("inject", "action", "true");
+
+    let printed = run(&lab, &experiment(&no_effect, &leave_marker()));
+
+    assert_eq!(printed.status, ExperimentStatus::Completed);
+    assert_eq!(printed.code, Some(0));
+    assert_eq!(
+        printed.stdout,
+        expected(
+            &printed,
+            "Completed",
+            "Method steps: 1 executed\n",
+            "Hypothesis: met before, met after\n\
+             Objectives: 0 met, 0 breached, 1 inconclusive\n\
+             \x20 inconclusive: rto: recovery.mttr_s must be at most 30, \
+             no outage observed\n",
+        )
+    );
+}
+
+#[test]
 fn a_run_that_starts_on_a_target_that_is_down_says_that_nothing_was_checked_after() {
     let lab = Lab::with_state("down");
 
@@ -216,7 +239,9 @@ load:
 fn a_run_counts_its_objectives_and_names_each_one_that_was_not_met() {
     let lab = Lab::with_state("ok");
     let method = [
-        step("inject", "action", "echo down > state; sleep 1"),
+        // The probes read once a second: the read one second in sees the
+        // target down, so the RTO is measured.
+        step("inject", "action", "echo down > state; sleep 1.5"),
         heal(),
     ]
     .concat();

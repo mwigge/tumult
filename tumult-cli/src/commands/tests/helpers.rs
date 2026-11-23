@@ -87,6 +87,7 @@ pub(crate) fn write_valid_experiment(dir: &Path) -> std::path::PathBuf {
         nfr: vec![],
         rto_target_s: None,
         rpo_target_s: None,
+        recovery: None,
     };
     let toon = toon_format::encode_default(&exp).unwrap();
     std::fs::write(&path, toon).unwrap();
@@ -142,6 +143,7 @@ pub(crate) fn write_empty_method_experiment(dir: &Path) -> std::path::PathBuf {
         nfr: vec![],
         rto_target_s: None,
         rpo_target_s: None,
+        recovery: None,
     };
     let toon = toon_format::encode_default(&exp).unwrap();
     std::fs::write(&path, toon).unwrap();
@@ -260,6 +262,7 @@ pub(crate) fn write_config_secrets_experiment(dir: &Path) -> std::path::PathBuf 
         nfr: vec![],
         rto_target_s: None,
         rpo_target_s: None,
+        recovery: None,
     };
     let toon = toon_format::encode_default(&exp).unwrap();
     std::fs::write(&path, toon).unwrap();
@@ -323,6 +326,7 @@ pub(crate) fn write_control_experiment(dir: &Path) -> (std::path::PathBuf, std::
         nfr: vec![],
         rto_target_s: None,
         rpo_target_s: None,
+        recovery: None,
     };
     let toon = toon_format::encode_default(&exp).unwrap();
     std::fs::write(&path, toon).unwrap();

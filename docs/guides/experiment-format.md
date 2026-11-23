@@ -84,6 +84,7 @@ Only `method` is required.
 | `configuration`, `secrets` | Values for the steps, see [Variables and secrets](variables-and-secrets.md) |
 | `controls` | Hooks called at each event of the run. A `process` hook reads the event from `TUMULT_CONTROL_EVENT`. A failing hook is logged and the run goes on |
 | `nfr`, `rto_target_s`, `rpo_target_s` | [Objectives](objectives.md) the run is checked against. A `dr` run needs `rto_target_s` |
+| `recovery` | How long the run watches for recovery after the method: `window_s` (default 30) and `interval_s` (default 1). See [Objectives](objectives.md) |
 | `load` | Traffic during the method, see [Load testing](load-testing-guide.md) |
 | `estimate` | Your guess before the run: `expected_outcome` (`recovered`, `deviated`, `unaffected`), `expected_recovery_s`, `confidence` and more |
 | `blast_radius`, `max_concurrent_faults` | A note for the audit, and a cap on background faults at once |

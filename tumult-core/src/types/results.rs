@@ -123,18 +123,39 @@ pub struct PostResult {
     pub probes: Vec<ProbePost>,
     /// Seconds from method end until full recovery was observed.
     /// Without full recovery, the largest time of a probe: a lower bound.
+    /// It does not see an outage that ended inside the method: the
+    /// recovery time objective reads `mttr_s`.
     pub recovery_time_s: f64,
     /// Whether every probe returned to baseline.
     pub full_recovery: bool,
-    /// Mean time to recovery in seconds.
+    /// Time to recovery in seconds: from the outage seen
+    /// (`outage_started_at_ns`) to the recovery seen (`recovered_at_ns`).
+    /// The recovery time objective and the `recovery.mttr_s` metric read
+    /// it.
     ///
-    /// Measured as elapsed time from `started_at_ns` (method end) until the
-    /// first probe sample that falls within baseline tolerance. `None` if
-    /// recovery was never observed in the post-phase window, no samples
-    /// were taken, or an action of the method failed: such a run did not
-    /// apply its fault as written, so it does not measure recovery from it.
+    /// `None` when the post phase ended without full recovery, when no
+    /// sample saw an outage (a run that saw none is no evidence of
+    /// recovery), when no samples were taken, or when an action of the
+    /// method failed: such a run did not apply its fault as written, so it
+    /// does not measure recovery from it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mttr_s: Option<f64>,
+    /// Whether a sample of a steady-state probe failed after the method
+    /// started, in the during or the post phase: the run saw an outage.
+    /// `None` in a journal written before 3.0.4.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub impact_observed: Option<bool>,
+    /// Epoch-nanosecond start of the first failing sample of a
+    /// steady-state probe after the method started: the outage seen.
+    /// `None` when the run saw no outage.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outage_started_at_ns: Option<i64>,
+    /// Epoch-nanosecond start of the first passing sample after the last
+    /// failure, the latest over the probes that failed: the recovery seen.
+    /// `None` when the run saw no outage, and when the post phase ended
+    /// without full recovery.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recovered_at_ns: Option<i64>,
 }
 
 // ── Load Result ────────────────────────────────────────────────
@@ -396,6 +417,18 @@ pub struct NfrVerdict {
     /// for a watch that does not count, and in an older journal.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub recovered: Option<bool>,
+    /// Why the verdict is what it is when its numbers do not say. The
+    /// recovery time objective of a run that saw no outage is
+    /// inconclusive with the reason [`NfrVerdict::NO_OUTAGE_OBSERVED`].
+    /// `None` for any other verdict and in an older journal.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+impl NfrVerdict {
+    /// The reason of the recovery time objective of a run whose samples
+    /// saw no outage: the run is no evidence of recovery.
+    pub const NO_OUTAGE_OBSERVED: &'static str = "no outage observed";
 }
 
 /// Objective outcome of a run: the declared recovery targets, what was
@@ -406,8 +439,9 @@ pub struct ObjectiveOutcome {
     pub rto_target_s: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rpo_target_s: Option<f64>,
-    /// Measured recovery time (post-phase MTTR), when observed. `None` for
-    /// a run that did not recover: its `rto` verdict holds the lower bound.
+    /// Measured recovery time (post-phase MTTR): from the outage seen to
+    /// the recovery seen. `None` for a run that did not recover (its `rto`
+    /// verdict holds the lower bound) and for one that saw no outage.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rto_measured_s: Option<f64>,
     /// Measured data-loss window, when an `rpo` objective resolved.
@@ -573,6 +607,9 @@ mod tests {
             recovery_time_s: 12.4,
             full_recovery: true,
             mttr_s: None,
+            impact_observed: None,
+            outage_started_at_ns: None,
+            recovered_at_ns: None,
         };
         let decoded: PostResult = toon_round_trip(&result);
         assert_eq!(decoded, result);
@@ -743,6 +780,7 @@ mod tests {
             margin: None,
             criticality: NfrCriticality::Blocking,
             recovered: None,
+            reason: None,
         };
         let written = toon_format::encode_default(&older).expect("encode");
         assert!(!written.contains("recovered"), "{written}");
@@ -757,5 +795,73 @@ mod tests {
         };
         let decoded: NfrVerdict = toon_round_trip(&unrecovered);
         assert_eq!(decoded, unrecovered);
+    }
+
+    #[test]
+    fn a_post_result_keeps_the_outage_it_saw_and_an_older_one_still_reads() {
+        let older = PostResult {
+            started_at_ns: 1_774_980_165_000_000_000,
+            ended_at_ns: 1_774_980_170_000_000_000,
+            duration_s: 5.0,
+            samples: 5,
+            probes: vec![],
+            recovery_time_s: 4.0,
+            full_recovery: true,
+            mttr_s: Some(4.0),
+            impact_observed: None,
+            outage_started_at_ns: None,
+            recovered_at_ns: None,
+        };
+        let written = toon_format::encode_default(&older).expect("encode");
+        for key in ["impact_observed", "outage_started_at_ns", "recovered_at_ns"] {
+            assert!(!written.contains(key), "{written}");
+        }
+        let read: PostResult = toon_format::decode_default(&written).expect("decode");
+        assert_eq!(read, older);
+
+        let timed = PostResult {
+            mttr_s: Some(7.5),
+            impact_observed: Some(true),
+            outage_started_at_ns: Some(1_774_980_161_500_000_000),
+            recovered_at_ns: Some(1_774_980_169_000_000_000),
+            ..older.clone()
+        };
+        assert_eq!(toon_round_trip(&timed), timed);
+
+        let unaffected = PostResult {
+            mttr_s: None,
+            impact_observed: Some(false),
+            ..older
+        };
+        let written = toon_format::encode_default(&unaffected).expect("encode");
+        assert!(written.contains("impact_observed: false"), "{written}");
+        assert_eq!(toon_round_trip(&unaffected), unaffected);
+    }
+
+    #[test]
+    fn an_rto_verdict_says_why_it_is_inconclusive_and_an_older_one_still_reads() {
+        let older = NfrVerdict {
+            nfr_id: "rto".into(),
+            kind: NfrKind::Rto,
+            metric: "recovery.mttr_s".into(),
+            operator: NfrOperator::Lte,
+            threshold: 2.0,
+            observed: None,
+            state: NfrState::Inconclusive,
+            margin: None,
+            criticality: NfrCriticality::Blocking,
+            recovered: None,
+            reason: None,
+        };
+        let written = toon_format::encode_default(&older).expect("encode");
+        assert!(!written.contains("reason"), "{written}");
+        let read: NfrVerdict = toon_format::decode_default(&written).expect("decode");
+        assert_eq!(read, older);
+
+        let unaffected = NfrVerdict {
+            reason: Some(NfrVerdict::NO_OUTAGE_OBSERVED.into()),
+            ..older
+        };
+        assert_eq!(toon_round_trip(&unaffected), unaffected);
     }
 }

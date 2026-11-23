@@ -103,6 +103,7 @@ async fn run_bails_when_experiment_does_not_complete() {
         nfr: vec![],
         rto_target_s: None,
         rpo_target_s: None,
+        recovery: None,
     };
     let exp_path = dir.path().join("failing.toon");
     std::fs::write(&exp_path, toon_format::encode_default(&experiment).unwrap()).unwrap();

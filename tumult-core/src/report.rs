@@ -418,6 +418,7 @@ mod tests {
             margin: observed.map(|value| 2.0 - value),
             criticality,
             recovered: None,
+            reason: None,
         }
     }
 

@@ -16,6 +16,7 @@ mod halt_tests;
 mod load_tests;
 pub(crate) mod log_capture;
 mod outcome_log_tests;
+mod recovery_clock_tests;
 mod rollback_tests;
 mod sampling_tests;
 mod version_tests;
@@ -197,6 +198,7 @@ fn fast_sampling() -> SamplingConfig {
         interval: std::time::Duration::from_millis(10),
         max_during_samples: 50,
         recovery_timeout: std::time::Duration::from_millis(80),
+        recovery_interval: std::time::Duration::from_millis(10),
     }
 }
 
