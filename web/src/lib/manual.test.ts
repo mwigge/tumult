@@ -4,6 +4,7 @@ import {
     applyPlan,
     dayEndNs,
     detailToForm,
+    emptyAction,
     emptyForm,
     emptyPlanForm,
     fmtBytes,
@@ -67,7 +68,13 @@ describe('the record the form sends', () => {
         const form = {
             ...filledForm(),
             actions: [
-                { title: 'Raise the pool size', owner: 'dave', due: '2026-12-01', ticket: 'OPS-7' },
+                {
+                    ...emptyAction(),
+                    title: 'Raise the pool size',
+                    owner: 'dave',
+                    due: '2026-12-01',
+                    ticket: 'OPS-7',
+                },
             ],
         };
         const record = formToRecord(form, 'alice');
@@ -77,6 +84,8 @@ describe('the record the form sends', () => {
                 owner: 'dave',
                 due_at_ns: local(2026, 11, 1, 23, 59, 59, 999),
                 ticket: 'OPS-7',
+                severity: null,
+                retest: null,
             },
         ]);
         expect(record).not.toHaveProperty('action_items');
@@ -158,6 +167,55 @@ describe('the record the form sends', () => {
                 plan_id: null,
             },
         );
+    });
+
+    it('sends the severities, the tester and a retest of an action', () => {
+        const form = {
+            ...filledForm(),
+            findings_severity: 'high',
+            tester_name: ' Red Team Ltd ',
+            tester_kind: 'external',
+            actions: [
+                {
+                    ...emptyAction(),
+                    title: 'Remove stale accounts',
+                    owner: 'carol',
+                    severity: 'critical',
+                    retest_kind: 'record',
+                    retest_id: ' rec-9 ',
+                },
+            ],
+        };
+        const record = formToRecord(form, 'alice');
+        expect(record).toMatchObject({
+            findings_severity: 'high',
+            tester: { name: 'Red Team Ltd', kind: 'external' },
+        });
+        expect(record.actions?.[0]).toMatchObject({
+            severity: 'critical',
+            retest: { kind: 'record', id: 'rec-9' },
+        });
+        expect(formToRecord(filledForm(), 'alice')).toMatchObject({
+            findings_severity: null,
+            tester: null,
+        });
+    });
+
+    it('sends the TLPT block for a record of type tlpt only', () => {
+        const form = {
+            ...filledForm(),
+            exercise_type: 'tlpt',
+            tlpt_attestation_ref: 'ATT-1',
+            tlpt_attested: '2026-11-02',
+            tlpt_summary_ref: '',
+        };
+        expect(formToRecord(form, 'alice').tlpt).toEqual({
+            attestation_ref: 'ATT-1',
+            attested_at_ns: local(2026, 10, 2),
+            summary_report_ref: null,
+        });
+        expect(formToRecord({ ...form, exercise_type: 'pentest' }, 'alice').tlpt).toBeNull();
+        expect(formToRecord({ ...filledForm(), exercise_type: 'tlpt' }, 'alice').tlpt).toBeNull();
     });
 
     it('keeps the links of a draft', () => {
@@ -246,8 +304,53 @@ describe('a draft read back into the form', () => {
         });
         // The older plain action becomes an action that still needs an owner.
         expect(form.actions).toEqual([
-            { title: 'Raise the pool size', owner: 'dave', due: '2026-12-01', ticket: '' },
-            { title: 'Update the runbook', owner: '', due: '', ticket: '' },
+            { ...emptyAction(), title: 'Raise the pool size', owner: 'dave', due: '2026-12-01' },
+            { ...emptyAction(), title: 'Update the runbook' },
+        ]);
+    });
+
+    it('holds the severities, the tester, the TLPT block and the retests', () => {
+        const tlpt = {
+            ...experiment,
+            exercise_type: 'tlpt',
+            findings_severity: 'high',
+            tester: 'Red Team Ltd',
+            tester_kind: 'external',
+            tlpt_attestation_ref: 'ATT-1',
+            tlpt_attested_at_ns: local(2026, 10, 2, 12, 0),
+            tlpt_summary_ref: 'TSR-1',
+        } as ManualExperiment;
+        const form = detailToForm({
+            experiment: { ...tlpt, action_items: [] },
+            audit: [],
+            attachments: [],
+            actions: [
+                {
+                    title: 'Remove stale accounts',
+                    owner: 'carol',
+                    severity: 'critical',
+                    retest_kind: 'run',
+                    retest_id: 'exp-1',
+                },
+            ],
+        });
+        expect(form).toMatchObject({
+            findings_severity: 'high',
+            tester_name: 'Red Team Ltd',
+            tester_kind: 'external',
+            tlpt_attestation_ref: 'ATT-1',
+            tlpt_attested: '2026-11-02',
+            tlpt_summary_ref: 'TSR-1',
+        });
+        expect(form.actions).toEqual([
+            {
+                ...emptyAction(),
+                title: 'Remove stale accounts',
+                owner: 'carol',
+                severity: 'critical',
+                retest_kind: 'run',
+                retest_id: 'exp-1',
+            },
         ]);
     });
 

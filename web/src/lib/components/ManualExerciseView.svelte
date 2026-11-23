@@ -1,7 +1,8 @@
 <script lang="ts">
     // The DR detail of a stored record: the recovery against its targets,
-    // the participants, the steps in order, the actions with owners and the
-    // links to what was tested.
+    // the participants and the tester, the TLPT block, the steps in order,
+    // the actions with owners, severities and retests, and the links to what
+    // was tested.
     import { fmtDuration, fmtTs } from '#lib/api.js';
     import { localDay, recoveryVerdict } from '#lib/manual.js';
     import type { ManualDetail } from '#lib/types.js';
@@ -30,6 +31,17 @@
         start && end ? fmtDuration(end - start) : '';
     const dataText = (v: boolean | null | undefined) =>
         v === true ? 'complete' : v === false ? 'loss or corruption found' : 'not checked';
+    const severityClass = (s: string | null | undefined) =>
+        s === 'critical' || s === 'high' ? 'fail' : s === 'medium' ? 'warn' : 'neutral';
+    const tlpt = $derived(
+        rec.tlpt_attestation_ref || rec.tlpt_attested_at_ns || rec.tlpt_summary_ref
+            ? {
+                  attestation: rec.tlpt_attestation_ref ?? '—',
+                  attested: rec.tlpt_attested_at_ns ? localDay(rec.tlpt_attested_at_ns) : '—',
+                  summary: rec.tlpt_summary_ref ?? '—',
+              }
+            : null,
+    );
 </script>
 
 <div class="exercise">
@@ -54,6 +66,27 @@
             </tbody>
         </table>
         <p class="line">Data verified: <b>{dataText(rec.data_verified)}</b></p>
+        {#if rec.findings_severity}
+            <p class="line">
+                Findings severity:
+                <span class="badge {severityClass(rec.findings_severity)}"
+                    >{rec.findings_severity}</span
+                >
+            </p>
+        {/if}
+        {#if rec.tester}
+            <p class="line">
+                Tester: <b>{rec.tester}</b>
+                {#if rec.tester_kind}<span class="dim">· {rec.tester_kind}</span>{/if}
+            </p>
+        {/if}
+        {#if tlpt}
+            <h3>TLPT</h3>
+            <p class="line">
+                Attestation <b>{tlpt.attestation}</b> of {tlpt.attested}
+            </p>
+            <p class="line">Test summary report <b>{tlpt.summary}</b></p>
+        {/if}
         {#if rec.plan_id}
             <p class="line">Fulfils plan <b>{planName || rec.plan_id}</b></p>
         {/if}
@@ -106,7 +139,7 @@
                 {/each}
             </ol>
         {/if}
-        <h3>Actions</h3>
+        <h3>{rec.exercise_type === 'tlpt' ? 'Remediation plan' : 'Actions'}</h3>
         {#if actions.length === 0 && older.length === 0}
             <div class="dim">No actions recorded.</div>
         {:else}
@@ -118,7 +151,14 @@
                                 · due {localDay(a.due_at_ns)}</span
                             >{/if}
                         {#if a.ticket}<span class="dim"> · {a.ticket}</span>{/if}
+                        {#if a.severity}<span class="badge {severityClass(a.severity)}"
+                                >{a.severity}</span
+                            >{/if}
                         {#if a.status}<span class="badge neutral">{a.status}</span>{/if}
+                        {#if a.retest_id}<div class="dim">
+                                retested by {a.retest_kind}
+                                <span class="mono">{a.retest_id}</span>
+                            </div>{/if}
                     </li>
                 {/each}
                 {#each older as text, i (i)}

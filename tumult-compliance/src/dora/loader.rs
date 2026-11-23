@@ -8,7 +8,8 @@
 //!   function whose service globs match its target.
 //! - **Manual records**: verified, conclusive rows of
 //!   `manual_experiments`. A record with no target speaks for the whole
-//!   legal entity; its `framework_refs` are the requirement ids it cites.
+//!   legal entity; its `framework_refs` are the requirement ids it cites,
+//!   an older form read as the registry id it names.
 //!   Its recovery time is the measured RTO, and the RTO and RPO it planned
 //!   are its targets before those of its function.
 //! - **Services**: every `service.name` that emitted spans, with the
@@ -37,7 +38,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
 use serde_json::Value;
-use tumult_core::compliance::{entity_id_is_valid, truncated, EntityProfile};
+use tumult_core::compliance::{entity_id_is_valid, requirement_id, truncated, EntityProfile};
 use tumult_core::types::canonical_kind;
 use tumult_lake::{
     scope, IctFunction, IctFunctionService, IctLegalEntity, IctRegister, Reader, RunVerdict,
@@ -604,13 +605,17 @@ fn run_of(row: &Value, functions: Vec<String>) -> Option<Evidence> {
     })
 }
 
+/// The framework references of a record, each DORA one read as the
+/// registry id it names ([`requirement_id`]), so a record stored with
+/// `DORA Art. 24(6)` cites `dora.art24.6`. A reference to another
+/// framework stays as written.
 fn cited(row: &Value) -> Vec<String> {
     row.get("refs")
         .and_then(Value::as_array)
         .into_iter()
         .flatten()
         .filter_map(Value::as_str)
-        .map(str::to_owned)
+        .map(|reference| requirement_id(reference).unwrap_or_else(|| reference.to_owned()))
         .collect()
 }
 
@@ -1871,6 +1876,45 @@ functions:
             .evidence
             .iter()
             .all(|e| e.source == Source::Manual));
+    }
+
+    /// A record stored with an older form of a requirement id cites the
+    /// registry id it names; another framework, and a paragraph the
+    /// registry has no row of, cite no row.
+    #[test]
+    fn a_record_stored_with_an_old_form_cites_the_registry_row() {
+        let (_dir, store) = store_with(ORG);
+        let writer = store.writer().unwrap();
+        writer
+            .execute(
+                &format!(
+                    "INSERT INTO manual_experiments (id, experiment_name, exercise_type, \
+                     executed_at_ns, hypothesis, method, outcome_status, target_environment, \
+                     entered_by, entered_at_ns, attestation, status, framework_refs, \
+                     content_hash) VALUES ('m-old', 'tabletop', 'tabletop', {at}, 'h', 'm', \
+                     'passed', 'prod', 'ada', {at}, 'a', 'verified', ['DORA Art. 11(7)', \
+                     'dora.art12.1', 'ISO 27001 A.5.30', 'DORA Art. 24(2)'], 'hash')",
+                    at = NOW - DAY_NS
+                ),
+                [],
+            )
+            .unwrap();
+        let loaded = loaded(&store, request(&[]));
+        let record = loaded
+            .inputs
+            .evidence
+            .iter()
+            .find(|e| e.id == "m-old")
+            .expect("the verified record is evidence");
+        assert_eq!(
+            record.cited,
+            [
+                "dora.art11.7",
+                "dora.art12.1",
+                "ISO 27001 A.5.30",
+                "dora.art24"
+            ]
+        );
     }
 
     /// A manual restore test is judged against the RTO and RPO it planned,

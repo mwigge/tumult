@@ -86,6 +86,45 @@ describe('the DR detail of a record', () => {
         expect(html).toContain('payments-db failover');
     });
 
+    it('shows the severities, the tester, the TLPT block and what retested an action', () => {
+        const tlpt: ManualDetail = {
+            ...detail,
+            experiment: {
+                ...experiment,
+                exercise_type: 'tlpt',
+                findings_severity: 'high',
+                tester: 'Red Team Ltd',
+                tester_kind: 'external',
+                tlpt_attestation_ref: 'ATT-1',
+                tlpt_attested_at_ns: T,
+                tlpt_summary_ref: 'TSR-1',
+            },
+            actions: [
+                {
+                    ordinal: 1,
+                    title: 'Remove stale accounts',
+                    owner: 'carol',
+                    status: 'open',
+                    severity: 'critical',
+                    retest_kind: 'run',
+                    retest_id: 'exp-retest-1',
+                },
+            ],
+        };
+        const html = shown(tlpt);
+        expect(html).toMatch(/Findings severity:[\s\S]*badge fail[^>]*>high</);
+        expect(html).toContain('Red Team Ltd');
+        expect(html).toContain('external');
+        expect(html).toMatch(/Attestation <b>ATT-1<\/b> of 2026-11-20/);
+        expect(html).toContain('Test summary report <b>TSR-1</b>');
+        expect(html).toContain('Remediation plan');
+        expect(html).toMatch(/badge fail[^>]*>critical</);
+        expect(html).toMatch(/retested by run[\s\S]*exp-retest-1/);
+        const plain = shown(detail);
+        expect(plain).not.toContain('TLPT');
+        expect(plain).not.toContain('Tester:');
+    });
+
     it('says what was not recorded', () => {
         const bare = {
             experiment: {

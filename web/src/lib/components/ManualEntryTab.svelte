@@ -1,8 +1,8 @@
 <script lang="ts">
     // Entry tab: the record of a DR exercise, or of any hand-executed test:
     // what was tested and the plan it fulfils, the recovery against its
-    // targets, the people, the steps, the actions with owners, and the
-    // attestation. The form state is owned by the page (bindable) so a
+    // targets, the people and the tester, the TLPT block of a TLPT, the
+    // steps, the actions with owners and severities, and the attestation. The form state is owned by the page (bindable) so a
     // half-filled draft survives switching to another tab and back. Once the
     // draft is saved, evidence can be attached to it before it is submitted.
     import { api } from '#lib/api.js';
@@ -13,6 +13,7 @@
         EXERCISE_TYPES,
         formToRecord,
         OUTCOMES,
+        SEVERITIES,
         type ManualForm,
     } from '#lib/manual.js';
     import type { ManualDetail, ManualPlan } from '#lib/types.js';
@@ -22,6 +23,8 @@
     import ManualPlanPicker from './ManualPlanPicker.svelte';
     import ManualRecoveryFields from './ManualRecoveryFields.svelte';
     import ManualStepsEditor from './ManualStepsEditor.svelte';
+    import ManualTesterFields from './ManualTesterFields.svelte';
+    import ManualTlptFields from './ManualTlptFields.svelte';
 
     let {
         actor,
@@ -168,6 +171,13 @@
                     >Findings
                     <textarea rows="2" bind:value={form.findings}></textarea>
                 </label>
+                <label
+                    >Findings severity
+                    <select bind:value={form.findings_severity}>
+                        <option value="">not set</option>
+                        {#each SEVERITIES as s (s)}<option value={s}>{s}</option>{/each}
+                    </select>
+                </label>
                 <div class="row2">
                     <label>Blast radius <input type="text" bind:value={form.blast_radius} /></label>
                     <label
@@ -182,7 +192,7 @@
                     >Framework refs (comma-sep) <input
                         type="text"
                         bind:value={form.framework_refs}
-                        placeholder="DORA Art. 24(6), ISO 27001 A.5.30"
+                        placeholder="dora.art24.6, ISO 27001 A.5.30"
                     /></label
                 >
             </div>
@@ -196,6 +206,16 @@
                 <h2>Participants</h2>
                 <ManualParticipantsEditor bind:rows={form.participants} />
             </div>
+            <div class="panel">
+                <h2>Tester</h2>
+                <ManualTesterFields bind:form />
+            </div>
+            {#if form.exercise_type === 'tlpt'}
+                <div class="panel">
+                    <h2>TLPT</h2>
+                    <ManualTlptFields bind:form />
+                </div>
+            {/if}
         </div>
     </div>
     <div class="panel">
@@ -203,7 +223,7 @@
         <ManualStepsEditor bind:rows={form.steps} />
     </div>
     <div class="panel">
-        <h2>Actions</h2>
+        <h2>{form.exercise_type === 'tlpt' ? 'Remediation plan' : 'Actions'}</h2>
         <ManualActionsEditor bind:rows={form.actions} />
     </div>
     <div class="grid cols-2">

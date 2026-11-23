@@ -6,12 +6,14 @@
 use rust_mcp_sdk::schema::CallToolRequestParams;
 use tumult_lake::{
     ActionItem, ExerciseDetail, ExerciseLink, ExerciseStep, ExerciseType, LinkKind, ManualError,
-    ManualOutcome, NewManualExperiment, Participant, PlanFilter, StepResult,
+    ManualOutcome, NewManualExperiment, Participant, PlanFilter, Retest, RetestKind, Severity,
+    StepResult, Tester, TesterKind, TlptDetail,
 };
 
 use crate::error::ToolError;
 use crate::handler::schema::{
-    ManualCreateDraftTool, ManualGetTool, ManualListTool, ManualPlansListTool, ManualStepArg,
+    ManualActionArg, ManualCreateDraftTool, ManualGetTool, ManualListTool, ManualPlansListTool,
+    ManualStepArg, ManualTesterArg,
 };
 use crate::handler::Role;
 use crate::tools;
@@ -98,6 +100,39 @@ fn step(arg: ManualStepArg) -> Result<ExerciseStep, ManualError> {
     })
 }
 
+fn action(arg: ManualActionArg) -> Result<ActionItem, ManualError> {
+    let retest = arg
+        .retest
+        .map(|r| -> Result<Retest, ManualError> {
+            Ok(Retest {
+                kind: RetestKind::parse(&r.kind)?,
+                id: r.id,
+            })
+        })
+        .transpose()?;
+    Ok(ActionItem {
+        title: arg.title,
+        owner: arg.owner,
+        due_at_ns: arg.due_at_ns,
+        ticket: arg.ticket,
+        severity: arg.severity.as_deref().map(Severity::parse).transpose()?,
+        retest,
+    })
+}
+
+fn tester(arg: ManualTesterArg) -> Result<Tester, ManualError> {
+    let kind = TesterKind::parse(&arg.kind).ok_or_else(|| {
+        ManualError::Invalid(format!(
+            "unknown tester kind '{}' (internal|external)",
+            arg.kind
+        ))
+    })?;
+    Ok(Tester {
+        name: arg.name,
+        kind,
+    })
+}
+
 /// The record the body of a draft describes, as the API reads its body.
 fn new_record(args: ManualCreateDraftTool) -> Result<NewManualExperiment, ManualError> {
     let exercise = ExerciseDetail {
@@ -124,13 +159,8 @@ fn new_record(args: ManualCreateDraftTool) -> Result<NewManualExperiment, Manual
             .actions
             .unwrap_or_default()
             .into_iter()
-            .map(|a| ActionItem {
-                title: a.title,
-                owner: a.owner,
-                due_at_ns: a.due_at_ns,
-                ticket: a.ticket,
-            })
-            .collect(),
+            .map(action)
+            .collect::<Result<_, _>>()?,
         links: args
             .links
             .unwrap_or_default()
@@ -144,6 +174,17 @@ fn new_record(args: ManualCreateDraftTool) -> Result<NewManualExperiment, Manual
             })
             .collect::<Result<_, ManualError>>()?,
         plan_id: args.plan_id,
+        findings_severity: args
+            .findings_severity
+            .as_deref()
+            .map(Severity::parse)
+            .transpose()?,
+        tester: args.tester.map(tester).transpose()?,
+        tlpt: args.tlpt.map(|t| TlptDetail {
+            attestation_ref: t.attestation_ref,
+            attested_at_ns: t.attested_at_ns,
+            summary_report_ref: t.summary_report_ref,
+        }),
     };
     Ok(NewManualExperiment {
         experiment_name: args.experiment_name,

@@ -97,4 +97,11 @@ pub enum EngineError {
         field: String,
         value: f64,
     },
+    /// A requirement of the regulatory block names a DORA requirement the
+    /// registry does not know.
+    #[error("regulatory requirement: {0}")]
+    UnknownRequirement(crate::compliance::UnknownRequirement),
+    /// The regulatory block is malformed (see `reason`).
+    #[error("regulatory.{reason}")]
+    RegulatoryInvalid { reason: String },
 }

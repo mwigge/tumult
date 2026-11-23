@@ -120,6 +120,7 @@ async fn dry_run_renders_all_optional_sections_without_executing() {
         regulatory: Some(RegulatoryMapping {
             frameworks: vec!["dora".into()],
             requirements: vec![],
+            tester: None,
         }),
         guards: vec![],
         blast_radius: None,

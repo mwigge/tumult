@@ -373,6 +373,37 @@ fn validate_target_version(experiment: &Experiment) -> Result<(), EngineError> {
     })
 }
 
+/// Check the regulatory block of an experiment as it is written: every
+/// DORA requirement names a row or an article of the requirement registry
+/// (in its registry id or an older form of it), and a tester has a name.
+/// `tumult validate` runs it. A run does not: an experiment that names an
+/// id the registry does not know still runs, as it did before the check.
+///
+/// # Errors
+///
+/// Returns [`EngineError::UnknownRequirement`] with the nearest registry id
+/// if a DORA requirement is not in the registry, and
+/// [`EngineError::RegulatoryInvalid`] if the tester has no name.
+pub fn validate_regulatory(experiment: &Experiment) -> Result<(), EngineError> {
+    let Some(mapping) = experiment.regulatory.as_ref() else {
+        return Ok(());
+    };
+    for requirement in &mapping.requirements {
+        crate::compliance::check_run_requirement(&mapping.frameworks, &requirement.id)
+            .map_err(EngineError::UnknownRequirement)?;
+    }
+    if mapping
+        .tester
+        .as_ref()
+        .is_some_and(|tester| tester.name.trim().is_empty())
+    {
+        return Err(EngineError::RegulatoryInvalid {
+            reason: "tester.name must not be empty".into(),
+        });
+    }
+    Ok(())
+}
+
 fn validate_load(experiment: &Experiment) -> Result<(), EngineError> {
     let Some(load) = experiment.load.as_ref() else {
         return Ok(());

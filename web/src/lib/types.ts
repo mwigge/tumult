@@ -712,6 +712,34 @@ export interface ManualExperiment {
     /** The plan the record fulfils once it is verified. */
     plan_id?: string | null;
     hash_version?: number | null;
+    /** `low`, `medium`, `high` or `critical`. */
+    findings_severity?: string | null;
+    /** Who ran the test, and whether `internal` or `external`. */
+    tester?: string | null;
+    tester_kind?: string | null;
+    /** The TLPT block of a record of type `tlpt`. */
+    tlpt_attestation_ref?: string | null;
+    tlpt_attested_at_ns?: number | null;
+    tlpt_summary_ref?: string | null;
+}
+
+/** Who ran a test: `internal` or `external`. */
+export interface ManualTester {
+    name: string;
+    kind: string;
+}
+
+/** The TLPT facts of a record: the attestation and the test summary report. */
+export interface ManualTlpt {
+    attestation_ref: string | null;
+    attested_at_ns: number | null;
+    summary_report_ref: string | null;
+}
+
+/** What retested an action: a `run` by its id, or a `record` by its id. */
+export interface ManualRetest {
+    kind: string;
+    id: string;
 }
 
 export interface ManualParticipant {
@@ -741,6 +769,13 @@ export interface ManualAction {
     ticket?: string | null;
     /** `open`, `done` or `dropped`; set by the store. */
     status?: string;
+    /** `low`, `medium`, `high` or `critical`. */
+    severity?: string | null;
+    /** What retested it, as the page sends it. */
+    retest?: ManualRetest | null;
+    /** What retested it, as the store keeps it. */
+    retest_kind?: string | null;
+    retest_id?: string | null;
 }
 
 /** What an exercise tested: `function`, `entity`, `registry`, `run` or `gameday`. */
@@ -914,6 +949,9 @@ export interface ManualRecordInput {
     actions?: ManualAction[];
     links?: ManualLink[];
     plan_id?: string | null;
+    findings_severity?: string | null;
+    tester?: ManualTester | null;
+    tlpt?: ManualTlpt | null;
 }
 
 // --- auth (tumultd session API) ---------------------------------------------

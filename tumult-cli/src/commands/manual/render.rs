@@ -108,6 +108,35 @@ fn head(out: &mut String, record: &Value) {
     if let Some(plan) = text(record, "plan_id") {
         let _ = writeln!(out, "  plan {plan}");
     }
+    if let Some(severity) = text(record, "findings_severity") {
+        let _ = writeln!(out, "  findings severity {severity}");
+    }
+    if let Some(tester) = text(record, "tester") {
+        let _ = writeln!(
+            out,
+            "  tester {tester} ({})",
+            or_dash(record, "tester_kind")
+        );
+    }
+    tlpt(out, record);
+}
+
+/// The TLPT block of a record: the attestation and the test summary
+/// report, when the record holds either.
+fn tlpt(out: &mut String, record: &Value) {
+    let attestation = text(record, "tlpt_attestation_ref");
+    let summary = text(record, "tlpt_summary_ref");
+    let attested = record["tlpt_attested_at_ns"].as_i64();
+    if attestation.is_none() && summary.is_none() && attested.is_none() {
+        return;
+    }
+    let _ = writeln!(
+        out,
+        "  TLPT attestation {} of {}, test summary report {}",
+        attestation.unwrap_or("-"),
+        date(attested),
+        summary.unwrap_or("-"),
+    );
 }
 
 /// A part of the record with a title and one line per item; nothing when
@@ -148,11 +177,17 @@ fn action(a: &Value) -> String {
         or_dash(a, "owner"),
         or_dash(a, "status"),
     );
+    if let Some(severity) = text(a, "severity") {
+        let _ = write!(line, ", severity {severity}");
+    }
     if let Some(due) = a["due_at_ns"].as_i64() {
         let _ = write!(line, ", due {}", date(Some(due)));
     }
     if let Some(ticket) = text(a, "ticket") {
         let _ = write!(line, ", ticket {ticket}");
+    }
+    if let Some(retest) = text(a, "retest_id") {
+        let _ = write!(line, ", retested by {} {retest}", or_dash(a, "retest_kind"));
     }
     line
 }
@@ -381,6 +416,38 @@ mod tests {
             verdict("r1", &fine),
             "r1: ok (seal form 2, 0 legacy audit rows)\n"
         );
+    }
+
+    #[test]
+    fn a_tlpt_record_shows_its_severity_tester_attestation_and_retests() {
+        let detail = json!({
+            "experiment": {"id": "r2", "experiment_name": "Payments TLPT", "exercise_type": "tlpt",
+                           "status": "draft", "outcome_status": "partial", "entered_by": "alice",
+                           "executed_at_ns": 1_794_000_000_000_000_000_i64,
+                           "findings_severity": "high", "tester": "Red Team Ltd",
+                           "tester_kind": "external", "tlpt_attestation_ref": "ATT-1",
+                           "tlpt_attested_at_ns": 1_795_000_000_000_000_000_i64,
+                           "tlpt_summary_ref": "TSR-1"},
+            "steps": [], "links": [], "attachments": [], "signoffs": [],
+            "actions": [
+                {"ordinal": 1, "title": "Remove stale VPN accounts", "owner": "carol",
+                 "status": "open", "severity": "critical", "retest_kind": "run",
+                 "retest_id": "exp-1"},
+                {"ordinal": 2, "title": "Alert on VPN logins", "owner": "dave", "status": "open"}
+            ],
+            "signoffs_required": 1, "signoffs_needed": 1
+        });
+        let text = record(&detail);
+        for line in [
+            "  findings severity high\n",
+            "  tester Red Team Ltd (external)\n",
+            "  TLPT attestation ATT-1 of 2026-11-18, test summary report TSR-1\n",
+            "  1. Remove stale VPN accounts, owner carol, open, severity critical, \
+             retested by run exp-1\n",
+            "  2. Alert on VPN logins, owner dave, open\n",
+        ] {
+            assert!(text.contains(line), "{line:?} not in:\n{text}");
+        }
     }
 
     #[test]

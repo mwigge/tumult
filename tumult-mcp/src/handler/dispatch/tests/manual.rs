@@ -204,6 +204,44 @@ async fn a_draft_the_lake_refuses_is_a_tool_error_that_says_why() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_draft_takes_the_tlpt_block_the_severities_and_the_tester_as_the_api_does() {
+    let tmp = tempfile::tempdir().unwrap();
+    let store = lake(tmp.path());
+    let handler = open_handler(tmp.path());
+    let mut body = draft(&store);
+    body["exercise_type"] = serde_json::json!("tlpt");
+    body["framework_refs"] = serde_json::json!(["dora.art26.1"]);
+    body["findings_severity"] = serde_json::json!("high");
+    body["tester"] = serde_json::json!({"name": "Red Team Ltd", "kind": "external"});
+    body["tlpt"] = serde_json::json!({"attestation_ref": "ATT-1", "summary_report_ref": "TSR-1"});
+    body["actions"][0]["severity"] = serde_json::json!("critical");
+    body["actions"][0]["retest"] = serde_json::json!({"kind": "run", "id": "exp-retest"});
+    let created = structured(&handler, "tumult_manual_create_draft", body).await;
+    let detail = structured(
+        &handler,
+        "tumult_manual_get",
+        serde_json::json!({"store_path": store, "id": created["id"]}),
+    )
+    .await;
+    assert_eq!(detail["experiment"]["tester_kind"], "external");
+    assert_eq!(detail["experiment"]["tlpt_summary_ref"], "TSR-1");
+    assert_eq!(detail["experiment"]["findings_severity"], "high");
+    assert_eq!(detail["actions"][0]["retest_id"], "exp-retest");
+
+    let mut typo = draft(&store);
+    typo["framework_refs"] = serde_json::json!(["dora.art24.7"]);
+    let result = call(&handler, "tumult_manual_create_draft", typo, None)
+        .await
+        .unwrap();
+    assert_eq!(result.is_error, Some(true));
+    assert!(
+        result_text(&result).contains("did you mean 'dora.art24.1'?"),
+        "{}",
+        result_text(&result)
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn no_tool_submits_signs_off_verifies_or_attaches() {
     let tmp = tempfile::tempdir().unwrap();
     let handler = open_handler(tmp.path());
@@ -516,6 +554,9 @@ fn the_draft_schema_is_the_record_body_of_the_api_and_nothing_more() {
         "actions",
         "links",
         "plan_id",
+        "findings_severity",
+        "tester",
+        "tlpt",
     ];
     body.sort_unstable();
     assert_eq!(fields, body);

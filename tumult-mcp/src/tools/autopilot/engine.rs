@@ -489,17 +489,11 @@ pub(super) fn playbook_article(experiment_path: &str) -> Result<Option<String>, 
     let Some(regulatory) = exp.regulatory.as_ref() else {
         return Ok(None);
     };
-    for framework in &regulatory.frameworks {
-        for req in &regulatory.requirements {
-            if let Some(citation) = tumult_graph::resolve_citation(framework, &req.id) {
-                return Ok(Some(tumult_graph::compliance_article_id(
-                    citation.framework,
-                    citation.control_id,
-                )));
-            }
-        }
-    }
-    Ok(None)
+    Ok(tumult_graph::regulatory_citations(regulatory)
+        .first()
+        .map(|citation| {
+            tumult_graph::compliance_article_id(citation.framework, citation.control_id)
+        }))
 }
 
 /// The trigger kind as a decision record stores it. [`trigger_of_record`]

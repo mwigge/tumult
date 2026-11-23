@@ -265,6 +265,7 @@ fn regulatory_preserved_in_journal() {
             description: "ICT resilience testing".into(),
             evidence: "Recovery within RTO".into(),
         }],
+        tester: None,
     });
     let executor: Arc<dyn ActivityExecutor> = Arc::new(MockExecutor::always_succeed());
     let controls = Arc::new(ControlRegistry::new());

@@ -1,8 +1,10 @@
 import { render } from 'svelte/server';
 import { describe, expect, it } from 'vitest';
 
+import { emptyForm } from '../manual';
 import type { ManualDetail, ManualExperiment } from '../types';
 import ManualAuditList from './ManualAuditList.svelte';
+import ManualEntryTab from './ManualEntryTab.svelte';
 import ManualPlansTab from './ManualPlansTab.svelte';
 import ManualRecordDetail from './ManualRecordDetail.svelte';
 
@@ -37,6 +39,33 @@ describe('an opened record', () => {
         expect(html).toContain('No evidence attached yet.');
         expect(html).toContain('>Verify audit trail<');
         expect(html).toContain('I attest');
+    });
+});
+
+describe('the entry form', () => {
+    const entry = (exercise_type: string) =>
+        render(ManualEntryTab, {
+            props: {
+                actor: 'alice',
+                form: { ...emptyForm(), exercise_type },
+                entryMsg: null,
+                busy: false,
+            },
+        }).body;
+
+    it('takes the tester and the severity of the findings for every type', () => {
+        const html = entry('failover');
+        expect(html).toContain('Tester kind');
+        expect(html).toContain('Findings severity');
+        expect(html).not.toContain('Attestation reference');
+        expect(html).toContain('placeholder="dora.art24.6, ISO 27001 A.5.30"');
+    });
+
+    it('takes the TLPT block and calls the actions the remediation plan for a TLPT', () => {
+        const html = entry('tlpt');
+        expect(html).toContain('Attestation reference');
+        expect(html).toContain('Test summary report reference');
+        expect(html).toContain('Remediation plan');
     });
 });
 

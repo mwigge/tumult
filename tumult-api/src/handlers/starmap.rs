@@ -568,10 +568,15 @@ fn definitions(inputs: &Inputs) -> Vec<DefinitionRow> {
 }
 
 /// The `ChaosGraph` article id a hand-written framework reference names,
-/// for example `DORA Art. 25(1)` to `compliance:DORA/Art.25`. A paragraph
-/// suffix falls back to its article. `None` when the registry has no such
-/// citation.
+/// for example `DORA Art. 25(1)` to `compliance:DORA/Art.25`. A DORA
+/// reference is read as its registry id first (`dora.art25.1` names the
+/// same article), as the score reads it. A paragraph suffix falls back to
+/// its article. `None` when the registry has no such citation.
 fn manual_article(reference: &str) -> Option<String> {
+    if let Some(id) = tumult_core::compliance::requirement_id(reference) {
+        return tumult_core::compliance::citation_of(&id)
+            .map(|c| tumult_graph::compliance_article_id(c.framework, c.control_id));
+    }
     let reference = reference.trim();
     reference
         .match_indices(char::is_whitespace)
@@ -1084,6 +1089,7 @@ mod tests {
                     description: "Testing of ICT tools and systems".into(),
                     evidence: "scenario-based fault injection".into(),
                 }],
+                tester: None,
             }),
             ..Experiment::default()
         };
@@ -1212,6 +1218,32 @@ mod tests {
         );
         assert_eq!(manual_article("DORA"), None);
         assert_eq!(manual_article("Company policy 7"), None);
+    }
+
+    #[test]
+    fn a_registry_id_falls_under_the_article_the_old_form_of_it_does() {
+        for (registry, old, article) in [
+            ("dora.art25.1", "DORA Art. 25(1)", "compliance:DORA/Art.25"),
+            (
+                "dora.art24.6",
+                "DORA Art. 24(6)",
+                "compliance:DORA/Art.24(6)",
+            ),
+            ("dora.art12.1", "DORA Art. 12(1)", "compliance:DORA/Art.12"),
+            ("dora.art11", "DORA-Art11", "compliance:DORA/Art.11"),
+        ] {
+            assert_eq!(
+                manual_article(registry).as_deref(),
+                Some(article),
+                "{registry}"
+            );
+            assert_eq!(manual_article(old).as_deref(), Some(article), "{old}");
+        }
+        assert_eq!(
+            manual_article("NIS2 Art. 21(2)(c)").as_deref(),
+            Some("compliance:NIS2/Art.21(2)(c)")
+        );
+        assert_eq!(manual_article("dora.art5.2"), None);
     }
 
     #[test]

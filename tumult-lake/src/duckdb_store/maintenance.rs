@@ -538,6 +538,7 @@ mod tests {
                     description: "Testing of ICT tools and systems".into(),
                     evidence: "scenario-based fault injection".into(),
                 }],
+                tester: None,
             }),
             ..Default::default()
         }

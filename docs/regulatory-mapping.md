@@ -122,10 +122,26 @@ journal, and `tumult compliance` counts the journals that have one.
 regulatory:
   frameworks[2]: DORA, NIS2
   requirements[1]:
-    - id: DORA-Art24
-      description: ICT resilience testing programme
+    - id: dora.art24.6
+      description: Yearly test of the systems of a critical function
       evidence: Experiment definition and dated journals
+  tester:
+    name: Platform resilience team
+    kind: internal
 ```
+
+- Name a DORA requirement by its registry id, as the
+  [DORA score](guides/dora-score.md#requirement-ids) does. `tumult
+  validate` refuses a DORA id the registry does not know, and names the
+  nearest one. A run of the file still runs, as it did before.
+- The older forms still read as the same id: `DORA-Art24`,
+  `DORA Art. 24(6)`, and a bare `Art. 24(6)` when DORA is the only
+  framework of the block. The HTML report shows the registry id next to
+  the id as written.
+- An id of another framework, such as `Art. 21(2)(c)` of NIS2, is kept as
+  written and not checked.
+- `tester` says who ran the test and whether the tester is `internal` or
+  `external` (DORA Art. 24(4)). It is optional.
 
 Then read a directory of journals for one framework:
 

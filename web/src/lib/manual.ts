@@ -4,6 +4,7 @@
 // value; the page sends what was typed and shows the reason of a refusal.
 
 import type {
+    ManualAction,
     ManualDetail,
     ManualImportInput,
     ManualLink,
@@ -11,6 +12,8 @@ import type {
     ManualPlanInput,
     ManualRecordInput,
     ManualStep,
+    ManualTester,
+    ManualTlpt,
 } from './types';
 
 /** The exercise types of the store, in its order. */
@@ -29,6 +32,15 @@ export const EXERCISE_TYPES = [
 export const OUTCOMES = ['passed', 'partial', 'failed', 'inconclusive'] as const;
 
 export const STEP_RESULTS = ['done', 'failed', 'skipped'] as const;
+
+/** How much a finding or an action matters (DORA Art. 24(5)). */
+export const SEVERITIES = ['low', 'medium', 'high', 'critical'] as const;
+
+/** Who ran a test: from inside the entity or from outside it (DORA Art. 24(4)). */
+export const TESTER_KINDS = ['internal', 'external'] as const;
+
+/** What retested an action: an automated run or another record. */
+export const RETEST_KINDS = ['run', 'record'] as const;
 
 /** A number input: a number, or a blank as the empty text or nothing. */
 export type NumberField = number | string | null | undefined;
@@ -54,6 +66,10 @@ export interface ActionRow {
     /** A date: the action is due by the end of that day. */
     due: string;
     ticket: string;
+    severity: string;
+    /** The run or the record that retested it: a kind and an id. */
+    retest_kind: string;
+    retest_id: string;
 }
 
 export const emptyParticipant = (): ParticipantRow => ({ name: '', role: '' });
@@ -67,7 +83,15 @@ export const emptyStep = (): StepRow => ({
     note: '',
 });
 
-export const emptyAction = (): ActionRow => ({ title: '', owner: '', due: '', ticket: '' });
+export const emptyAction = (): ActionRow => ({
+    title: '',
+    owner: '',
+    due: '',
+    ticket: '',
+    severity: '',
+    retest_kind: '',
+    retest_id: '',
+});
 
 export const emptyForm = () => ({
     experiment_name: '',
@@ -97,6 +121,14 @@ export const emptyForm = () => ({
     actions: [] as ActionRow[],
     /** The links of a draft, sent back as they are. */
     links: [] as ManualLink[],
+    findings_severity: '',
+    tester_name: '',
+    tester_kind: '',
+    /** The TLPT block, sent for a record of type `tlpt` only. */
+    tlpt_attestation_ref: '',
+    /** A date `YYYY-MM-DD`: the attestation was issued that day. */
+    tlpt_attested: '',
+    tlpt_summary_ref: '',
 });
 
 export type ManualForm = ReturnType<typeof emptyForm>;
@@ -174,6 +206,35 @@ function stepOf(row: StepRow): ManualStep {
     };
 }
 
+function actionOf(row: ActionRow): ManualAction {
+    const retest = row.retest_id.trim();
+    return {
+        title: row.title.trim(),
+        owner: row.owner.trim(),
+        due_at_ns: dayEndNs(row.due),
+        ticket: text(row.ticket),
+        severity: row.severity || null,
+        retest: retest ? { kind: row.retest_kind, id: retest } : null,
+    };
+}
+
+/** The tester the form names; the API checks its kind. */
+function testerOf(form: ManualForm): ManualTester | null {
+    const name = form.tester_name.trim();
+    return name || form.tester_kind ? { name, kind: form.tester_kind } : null;
+}
+
+/** The TLPT block of a record of type `tlpt`, when the form holds any of it. */
+function tlptOf(form: ManualForm): ManualTlpt | null {
+    if (form.exercise_type !== 'tlpt') return null;
+    const tlpt = {
+        attestation_ref: text(form.tlpt_attestation_ref),
+        attested_at_ns: dayStartNs(form.tlpt_attested),
+        summary_report_ref: text(form.tlpt_summary_ref),
+    };
+    return Object.values(tlpt).some((v) => v !== null) ? tlpt : null;
+}
+
 /** The body of a create or an edit. It sends `actions`, never the older
     `action_items` list. */
 export function formToRecord(form: ManualForm, actor: string): ManualRecordInput {
@@ -206,16 +267,12 @@ export function formToRecord(form: ManualForm, actor: string): ManualRecordInput
             .filter((p) => !blank(p))
             .map((p) => ({ name: p.name.trim(), role: text(p.role) })),
         steps: form.steps.filter((s) => !blank(s)).map(stepOf),
-        actions: form.actions
-            .filter((a) => !blank(a))
-            .map((a) => ({
-                title: a.title.trim(),
-                owner: a.owner.trim(),
-                due_at_ns: dayEndNs(a.due),
-                ticket: text(a.ticket),
-            })),
+        actions: form.actions.filter((a) => !blank(a)).map(actionOf),
         links: form.links,
         plan_id: form.plan_id || null,
+        findings_severity: form.findings_severity || null,
+        tester: testerOf(form),
+        tlpt: tlptOf(form),
     };
 }
 
@@ -268,6 +325,9 @@ export function detailToForm(detail: ManualDetail): ManualForm {
                 owner: a.owner,
                 due: localDay(a.due_at_ns),
                 ticket: a.ticket ?? '',
+                severity: a.severity ?? '',
+                retest_kind: a.retest_kind ?? '',
+                retest_id: a.retest_id ?? '',
             })),
             ...older.map((title) => ({ ...emptyAction(), title })),
         ],
@@ -276,6 +336,12 @@ export function detailToForm(detail: ManualDetail): ManualForm {
             linked_id: l.linked_id,
             label: l.label ?? null,
         })),
+        findings_severity: rec.findings_severity ?? '',
+        tester_name: rec.tester ?? '',
+        tester_kind: rec.tester_kind ?? '',
+        tlpt_attestation_ref: rec.tlpt_attestation_ref ?? '',
+        tlpt_attested: localDay(rec.tlpt_attested_at_ns),
+        tlpt_summary_ref: rec.tlpt_summary_ref ?? '',
     };
 }
 

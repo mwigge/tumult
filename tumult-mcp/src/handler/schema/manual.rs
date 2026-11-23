@@ -85,6 +85,38 @@ pub struct ManualActionArg {
     pub due_at_ns: Option<i64>,
     /// A ticket key or URL that tracks the action.
     pub ticket: Option<String>,
+    /// `low`, `medium`, `high` or `critical`.
+    pub severity: Option<String>,
+    pub retest: Option<ManualRetestArg>,
+}
+
+/// The run or the record that retested an action.
+#[derive(Debug, serde::Deserialize, serde::Serialize, macros::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ManualRetestArg {
+    /// `run` (an automated run, by its experiment id) or `record` (a manual
+    /// record, by its id).
+    pub kind: String,
+    pub id: String,
+}
+
+/// Who ran the test.
+#[derive(Debug, serde::Deserialize, serde::Serialize, macros::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ManualTesterArg {
+    pub name: String,
+    /// `internal` or `external`.
+    pub kind: String,
+}
+
+/// The TLPT facts of a record of type `tlpt`: the attestation of the TLPT
+/// authority and its date, and the test summary report.
+#[derive(Debug, serde::Deserialize, serde::Serialize, macros::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ManualTlptArg {
+    pub attestation_ref: Option<String>,
+    pub attested_at_ns: Option<i64>,
+    pub summary_report_ref: Option<String>,
 }
 
 /// One link to what the exercise tested.
@@ -135,7 +167,9 @@ pub struct ManualCreateDraftTool {
     /// The statement the person who submits the record stands by.
     pub attestation: String,
     pub renewal_due_ns: Option<i64>,
-    /// Requirement ids, such as `DORA Art. 24(6)`.
+    /// Requirement ids: a DORA requirement by its registry id, such as
+    /// `dora.art24.6`, or a reference to another framework. A DORA id the
+    /// registry does not know is refused with the nearest one.
     pub framework_refs: Option<Vec<String>>,
     /// The planned RTO, in seconds.
     pub rto_target_s: Option<f64>,
@@ -155,6 +189,12 @@ pub struct ManualCreateDraftTool {
     pub links: Option<Vec<ManualLinkArg>>,
     /// The plan the exercise fulfils once the record is verified.
     pub plan_id: Option<String>,
+    /// How much the findings matter: `low`, `medium`, `high` or `critical`.
+    pub findings_severity: Option<String>,
+    /// Who ran the test, internal or external (DORA Art. 24(4)).
+    pub tester: Option<ManualTesterArg>,
+    /// The TLPT facts of a record of type `tlpt`.
+    pub tlpt: Option<ManualTlptArg>,
     #[serde(default = "default_store_path")]
     pub store_path: String,
 }

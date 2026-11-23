@@ -27,6 +27,16 @@ describe('the editors of the lists of a record', () => {
         expect(html).toContain('>Add action<');
     });
 
+    it('take the severity of an action and the run or record that retested it', () => {
+        const html = render(ManualActionsEditor, { props: { rows: [emptyAction()] } }).body;
+        for (const field of ['severity', 'retest kind', 'retest id']) {
+            expect(html).toContain(`aria-label="Action 1 ${field}"`);
+        }
+        for (const value of ['low', 'medium', 'high', 'critical', 'run', 'record']) {
+            expect(html).toContain(`<option value="${value}"`);
+        }
+    });
+
     it('label the name and the role of a participant', () => {
         const html = render(ManualParticipantsEditor, {
             props: { rows: [emptyParticipant()] },

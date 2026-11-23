@@ -288,6 +288,13 @@ failover drill or a tabletop:
   data was verified after the recovery.
 - the participants with their roles, the steps in order with their start,
   end and result, and the actions with an owner and a due date.
+- how much the findings matter and how much each action matters: `low`,
+  `medium`, `high` or `critical` (DORA Art. 24(5)). An action can also name
+  the run or the record that retested it.
+- the tester, and whether the tester is `internal` or `external` (DORA
+  Art. 24(4)).
+- the requirements the record is evidence for, in **Framework refs**. See
+  [Cite a requirement](#cite-a-requirement).
 
 The form sends the actions as `actions`. It no longer sends the older
 `action_items` list. When you edit an older draft, each of its plain action
@@ -295,6 +302,71 @@ items becomes an action that still needs an owner.
 
 Save the draft first. Then attach files and links to it in **Evidence**, and
 submit it with **Save & submit**.
+
+#### Cite a requirement
+
+A record names the requirements it is evidence for in `framework_refs`.
+Name a DORA requirement by its registry id: `dora.art12.1` for Art. 12(1),
+`dora.art12` for the article. The
+[DORA score](../guides/dora-score.md#requirement-ids) explains the ids.
+
+- A DORA id the registry does not know is refused with 422, and nothing is
+  stored. The answer names the nearest registry id:
+  `'dora.art12.9' is not a requirement id of the DORA registry; did you mean 'dora.art12.1'?`.
+  A reference that names no framework, such as a bare `Art. 12(1)`, is
+  refused the same way. The same check runs on a draft edit, an import and
+  a draft over MCP.
+- An older form of a known id, such as `DORA Art. 12(1)`, is taken and kept
+  as written. The score, the Star Map and a run report read it as
+  `dora.art12.1`, so they show the same requirement.
+- A reference to another framework, such as `ISO 27001 A.5.30` or
+  `NIS2 Art. 21(2)(c)`, is kept as written and not checked: the registry
+  holds DORA only.
+
+#### Record a TLPT
+
+A record of type `tlpt` is a threat-led penetration test. Next to the
+fields of any record it takes the TLPT block, from the TLPT RTS
+(Delegated Regulation (EU) 2025/1190): the reference and the date of the
+attestation the TLPT authority issued (Art. 14), and the reference of the
+test summary report (Art. 12). Its actions are the remediation plan
+(Art. 13): each item has an owner, a due date, a severity, and the run or
+the record that retested it.
+
+```mermaid
+flowchart LR
+  accTitle: The parts of a TLPT record
+  accDescr: A TLPT record holds the attestation of the TLPT authority and the test summary report. Its actions are the remediation plan. Each item names the run or the record that retested it.
+  tlpt["record of type tlpt<br/>tester: external"] --> att["attestation<br/>reference and date"]
+  tlpt --> tsr["test summary report<br/>reference"]
+  tlpt --> plan["remediation plan<br/>the actions"]
+  plan --> item["item: owner, due date,<br/>severity"]
+  item -->|retested by| retest["a run or a record"]
+```
+
+On the page, choose the type `tlpt`: the **TLPT** panel opens and
+**Actions** becomes **Remediation plan**. With the API:
+
+```json
+{"exercise_type": "tlpt", "findings_severity": "high",
+ "tester": {"name": "Red Team Ltd", "kind": "external"},
+ "tlpt": {"attestation_ref": "TLPT-ATT-2026-07", "attested_at_ns": 1795000000000000000,
+          "summary_report_ref": "TSR-2026-07"},
+ "actions": [{"title": "Remove stale VPN accounts", "owner": "carol", "severity": "critical",
+              "retest": {"kind": "run", "id": "exp-vpn-retest"}}]}
+```
+
+- The `tlpt` block is refused with 400 on a record of another type.
+- A severity is `low`, `medium`, `high` or `critical`; a tester kind is
+  `internal` or `external`; a retest kind is `run` (an automated run, by its
+  id) or `record` (a manual record, by its id). Any other value is refused
+  with 400 and the values it may be.
+- The record reads them back as `findings_severity`, `tester`,
+  `tester_kind`, `tlpt_attestation_ref`, `tlpt_attested_at_ns` and
+  `tlpt_summary_ref`, and each action as `severity`, `retest_kind` and
+  `retest_id`.
+- All of them are part of the seal of the record, so the audit verify finds
+  a direct edit of any of them.
 
 #### Plan an exercise
 
@@ -509,7 +581,9 @@ flowchart LR
   A field the API does not know is refused, and the error names it.
 - `list` filters by `--status`, `--type`, `--target`, `--from` and `--to`.
   `show` prints the steps, actions, links, attachments and sign-offs, and how
-  many sign-offs are still needed.
+  many sign-offs are still needed. It also prints the severity of the
+  findings and of each action, the tester, the TLPT block and what retested
+  an action.
 - Every read takes `--format json` and prints what the API answered.
 - While the daemon has no user yet, `--by` names who acts. With auth on, the
   user of the token acts.
