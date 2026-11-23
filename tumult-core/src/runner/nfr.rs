@@ -165,6 +165,10 @@ pub(crate) struct Measurements<'a> {
     pub post: Option<&'a PostResult>,
     pub load: Option<&'a LoadResult>,
     pub samples: &'a [ProbeSample],
+    /// Whether the post phase watched the recovery from the fault as
+    /// written: every action of the method succeeded and no cancel cut
+    /// the watch short. Only such a watch shows that a run did not recover.
+    pub watched_in_full: bool,
 }
 
 /// Evaluate every declared objective and the recovery targets. Returns
@@ -195,7 +199,7 @@ pub(crate) fn evaluate(experiment: &Experiment, m: &Measurements<'_>) -> Option<
             criticality: NfrCriticality::Blocking,
             description: Some("recovery time objective".into()),
         };
-        verdicts.push(verdict_for(&implicit, rto_measured_s));
+        verdicts.push(rto_verdict(&implicit, m));
     }
     let rpo_measured_s = verdicts
         .iter()
@@ -214,6 +218,7 @@ pub(crate) fn evaluate(experiment: &Experiment, m: &Measurements<'_>) -> Option<
                 state: NfrState::Inconclusive,
                 margin: None,
                 criticality: NfrCriticality::Blocking,
+                recovered: None,
             });
         }
     }
@@ -224,6 +229,29 @@ pub(crate) fn evaluate(experiment: &Experiment, m: &Measurements<'_>) -> Option<
         rpo_measured_s,
         verdicts,
     })
+}
+
+/// The verdict on the recovery time objective. A run that did not recover
+/// while the post phase watched in full breaches it: the time it watched
+/// is a lower bound of the recovery time, so the verdict has no margin
+/// (such a run has no MTTR, so the measured verdict has none). Pure.
+fn rto_verdict(objective: &NfrObjective, m: &Measurements<'_>) -> NfrVerdict {
+    let measured = verdict_for(objective, m.post.and_then(|p| p.mttr_s));
+    let Some(post) = m.post.filter(|_| m.watched_in_full) else {
+        return measured;
+    };
+    if post.full_recovery {
+        return NfrVerdict {
+            recovered: Some(true),
+            ..measured
+        };
+    }
+    NfrVerdict {
+        observed: Some(post.recovery_time_s),
+        state: NfrState::Breached,
+        recovered: Some(false),
+        ..measured
+    }
 }
 
 /// Compare one observation against an objective. Pure.
@@ -262,6 +290,7 @@ pub(crate) fn verdict_for(o: &NfrObjective, observed: Option<f64>) -> NfrVerdict
         state,
         margin,
         criticality: o.criticality,
+        recovered: None,
     }
 }
 
@@ -446,6 +475,7 @@ mod tests {
             post: Some(&post),
             load: Some(&l),
             samples: &samples,
+            watched_in_full: true,
         };
         let probe_metrics = PROBE_STATS
             .iter()
@@ -513,6 +543,7 @@ mod tests {
             post: Some(&post),
             load: Some(&l),
             samples: &samples,
+            watched_in_full: true,
         };
         assert_eq!(resolve("load.latency_p95_ms", &m), Some(180.0));
         assert_eq!(resolve("load.total_requests", &m), Some(1200.0));
@@ -533,6 +564,7 @@ mod tests {
             post: Some(&post),
             load: Some(&idle),
             samples: &samples,
+            watched_in_full: true,
         };
         assert_eq!(resolve("load.latency_p50_ms", &no_requests), None);
         // Every request failed: an error rate, but still no latency.
@@ -550,6 +582,7 @@ mod tests {
             post: Some(&post),
             load: Some(&all_failed),
             samples: &samples,
+            watched_in_full: true,
         };
         assert_eq!(resolve("load.latency_p95_ms", &nothing_answered), None);
         assert_eq!(resolve("load.error_rate", &nothing_answered), Some(1.0));
@@ -580,6 +613,7 @@ mod tests {
             post: None,
             load: None,
             samples: &[],
+            watched_in_full: true,
         };
         assert!(evaluate(&exp, &m).is_none());
 
@@ -617,6 +651,7 @@ mod tests {
             post: Some(&post),
             load: Some(&l),
             samples: &[],
+            watched_in_full: true,
         };
         let out = evaluate(&exp, &m).unwrap();
         assert_eq!(out.rto_measured_s, Some(1000.0));
@@ -626,5 +661,118 @@ mod tests {
         assert!(out.has_blocking_breach());
         let p95 = out.verdicts.iter().find(|v| v.nfr_id == "p95").unwrap();
         assert_eq!(p95.state, NfrState::Met);
+    }
+
+    /// The post phase of a restore that never came back: the probe still
+    /// failed when the window closed, 29.1 s after the method.
+    fn never_recovered() -> PostResult {
+        PostResult {
+            started_at_ns: 0,
+            ended_at_ns: 30_000_000_000,
+            duration_s: 30.0,
+            samples: 30,
+            probes: vec![],
+            recovery_time_s: 29.1,
+            full_recovery: false,
+            mttr_s: None,
+        }
+    }
+
+    fn with_rto(target_s: f64) -> Experiment {
+        Experiment {
+            rto_target_s: Some(target_s),
+            ..Experiment::default()
+        }
+    }
+
+    fn rto(outcome: &ObjectiveOutcome) -> &NfrVerdict {
+        outcome
+            .verdicts
+            .iter()
+            .find(|v| v.nfr_id == "rto")
+            .expect("a verdict on the rto")
+    }
+
+    #[test]
+    fn a_run_that_never_recovered_breaches_its_rto_with_the_time_it_watched() {
+        let post = never_recovered();
+        let m = Measurements {
+            during: None,
+            post: Some(&post),
+            load: None,
+            samples: &[],
+            watched_in_full: true,
+        };
+
+        let out = evaluate(&with_rto(2.0), &m).expect("an rto target");
+
+        let verdict = rto(&out);
+        assert_eq!(verdict.state, NfrState::Breached);
+        assert_eq!(verdict.observed, Some(29.1));
+        assert_eq!(verdict.margin, None);
+        assert_eq!(verdict.recovered, Some(false));
+        assert!(out.has_blocking_breach());
+        assert_eq!(out.rto_measured_s, None);
+    }
+
+    #[test]
+    fn a_run_that_never_recovered_breaches_an_rto_longer_than_its_watch() {
+        let post = never_recovered();
+        let m = Measurements {
+            during: None,
+            post: Some(&post),
+            load: None,
+            samples: &[],
+            watched_in_full: true,
+        };
+
+        let out = evaluate(&with_rto(60.0), &m).expect("an rto target");
+
+        let verdict = rto(&out);
+        assert_eq!(verdict.state, NfrState::Breached);
+        assert_eq!(verdict.observed, Some(29.1));
+        assert_eq!(verdict.margin, None);
+        assert_eq!(verdict.recovered, Some(false));
+    }
+
+    #[test]
+    fn a_watch_that_does_not_count_measures_no_recovery() {
+        let post = never_recovered();
+        let m = Measurements {
+            during: None,
+            post: Some(&post),
+            load: None,
+            samples: &[],
+            watched_in_full: false,
+        };
+
+        let out = evaluate(&with_rto(2.0), &m).expect("an rto target");
+
+        let verdict = rto(&out);
+        assert_eq!(verdict.state, NfrState::Inconclusive);
+        assert_eq!(verdict.observed, None);
+        assert_eq!(verdict.recovered, None);
+        assert!(!out.has_blocking_breach());
+    }
+
+    #[test]
+    fn a_run_that_recovered_late_breaches_its_rto_by_the_time_it_took() {
+        let post = full_post();
+        let m = Measurements {
+            during: None,
+            post: Some(&post),
+            load: None,
+            samples: &[],
+            watched_in_full: true,
+        };
+
+        let out = evaluate(&with_rto(2.0), &m).expect("an rto target");
+
+        let verdict = rto(&out);
+        assert_eq!(verdict.state, NfrState::Breached);
+        assert_eq!(verdict.observed, Some(3.5));
+        assert_eq!(verdict.margin, Some(-1.5));
+        assert_eq!(verdict.recovered, Some(true));
+        assert_eq!(out.rto_measured_s, Some(3.5));
     }
 }

@@ -55,6 +55,10 @@ A breached `blocking` objective turns a completed run into `deviated`. A
 verdicts are in the journal (`objectives.verdicts`) and in the lake table
 `nfr_verdicts`.
 
+In a JUnit report (`tumult report --format junit`) each objective is a test
+case. A breached `blocking` objective fails it, as it fails the run. An
+`inconclusive` objective is skipped.
+
 ## Metrics
 
 | Metric | Comes from |
@@ -90,6 +94,12 @@ Validation refuses any other pair, such as an `rpo` objective on
 
 `rto_target_s` adds a blocking objective: `recovery.mttr_s` at most that many
 seconds. A run of `kind: dr` must set it.
+
+A run that does not recover while the recovery check watches breaches its
+RTO. The verdict says `recovered: false`, its `observed` is the time the check
+watched, and it has no margin. The true recovery time is longer. A run whose
+method failed, or that was stopped, measures no recovery: its RTO is
+`inconclusive`.
 
 `rpo_target_s` is recorded with the run. No metric counts lost data yet, so
 no objective can measure it, and its verdict is `inconclusive`.
