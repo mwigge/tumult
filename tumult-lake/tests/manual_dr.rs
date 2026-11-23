@@ -73,6 +73,7 @@ fn dr_detail() -> ExerciseDetail {
                 label: None,
             },
         ],
+        plan_id: None,
     }
 }
 
@@ -445,7 +446,10 @@ const V21_MANUAL: &[&str] = &[
         CAST('[\"tune the restore\"]' AS JSON), 'payments-db', 'production', 4100.0,
         'alice', 1000, 'att', 'draft', ['DORA Art. 12(2)'], 'hash-v21')",
     "INSERT INTO manual_experiment_audit VALUES
-        ('a-v21', 'm-v21', 'alice', 1000, 'create', '{}', NULL, 'hash-v21')",
+        ('a-v21', 'm-v21', 'alice', 1000, 'create', '{}', NULL, 'hash-v21'),
+        ('a-v21-attach', 'm-v21', 'alice', 1000, 'attach',
+         '{\"attachment_id\":\"e-v21\",\"kind\":\"url\",\"uri\":\"https://wiki.example/drill\",\"label\":\"log\"}',
+         'hash-v21', 'hash-v21')",
     "INSERT INTO evidence_attachments VALUES
         ('e-v21', 'm-v21', 'url', 'https://wiki.example/drill', 'log', NULL, 'alice', 1000)",
     "UPDATE schema_meta SET value = 21 WHERE key = 'version'",
@@ -558,5 +562,150 @@ fn a_v21_lake_gains_the_dr_columns_and_keeps_its_records() {
     assert_eq!(
         detail.audit.last().unwrap()["new_hash"],
         detail.experiment["content_hash"]
+    );
+}
+
+/// The version 1 seal of the record `m-v1` below in `status`: SHA-256 of
+/// the canonical JSON of 3.0.3, written out by hand.
+fn v1_seal(status: &str) -> String {
+    use sha2::{Digest, Sha256};
+    use std::fmt::Write as _;
+    let json = format!(
+        "{{\"experiment_name\":\"payments-db drill\",\"exercise_type\":\"drill\",\
+         \"executed_at_ns\":1000,\"hypothesis\":\"h\",\"method\":\"m\",\
+         \"outcome_status\":\"passed\",\"hypothesis_met\":true,\"findings\":\"f\",\
+         \"action_items\":[\"tune\"],\"target_system\":\"payments-db\",\
+         \"target_environment\":\"production\",\"blast_radius\":null,\
+         \"recovery_time_s\":40.0,\"duration_s\":null,\"entered_by\":\"alice\",\
+         \"attestation\":\"att\",\"renewal_due_ns\":null,\
+         \"framework_refs\":[\"DORA Art. 12(2)\"],\"status\":\"{status}\"}}"
+    );
+    Sha256::digest(json.as_bytes())
+        .iter()
+        .fold(String::new(), |mut hex, b| {
+            write!(hex, "{b:02x}").unwrap();
+            hex
+        })
+}
+
+/// A record verified by a v21 build: its seal in version 1 and three audit
+/// rows with no link hash.
+fn verified_v1_record() -> Vec<String> {
+    let (draft, submitted, verified) =
+        (v1_seal("draft"), v1_seal("submitted"), v1_seal("verified"));
+    vec![
+        format!(
+            "INSERT INTO manual_experiments (id, experiment_name, exercise_type, executed_at_ns,
+                hypothesis, method, outcome_status, hypothesis_met, findings, action_items,
+                target_system, target_environment, recovery_time_s, entered_by, entered_at_ns,
+                attestation, status, reviewed_by, reviewed_at_ns, framework_refs, content_hash)
+             VALUES ('m-v1', 'payments-db drill', 'drill', 1000, 'h', 'm', 'passed', true, 'f',
+                CAST('[\"tune\"]' AS JSON), 'payments-db', 'production', 40.0, 'alice', 1000,
+                'att', 'verified', 'bob', 3000, ['DORA Art. 12(2)'], '{verified}')"
+        ),
+        format!(
+            "INSERT INTO manual_experiment_audit VALUES
+                ('a-v1-1', 'm-v1', 'alice', 1000, 'create', '{{}}', NULL, '{draft}'),
+                ('a-v1-2', 'm-v1', 'alice', 2000, 'submit', '{{}}', '{draft}', '{submitted}'),
+                ('a-v1-3', 'm-v1', 'bob', 3000, 'verify', '{{}}', '{submitted}', '{verified}')"
+        ),
+    ]
+}
+
+#[test]
+fn a_v1_record_of_a_v21_lake_verifies_and_its_audit_rows_are_a_legacy_prefix() {
+    let d = tempfile::TempDir::new().unwrap();
+    let path = d.path().join("kronika.duckdb");
+    {
+        let store = Store::open(&path).unwrap();
+        let writer = store.writer().unwrap();
+        for sql in V21_MANUAL {
+            writer.execute(sql, []).unwrap();
+        }
+        for sql in verified_v1_record() {
+            writer.execute(&sql, []).unwrap();
+        }
+    }
+    let store = Store::open(&path).unwrap();
+    let verdict = store
+        .read_only()
+        .unwrap()
+        .verify_manual_record("m-v1")
+        .unwrap()
+        .unwrap();
+    assert!(verdict.ok, "{verdict:?}");
+    assert_eq!(verdict.hash_version, Some(1));
+    assert_eq!(verdict.legacy_rows, 3);
+    assert!(verdict.problems.is_empty(), "{verdict:?}");
+
+    // The v21 draft is submitted now: the chain starts after its legacy
+    // create and attach rows, and the new row links.
+    let writer = store.writer().unwrap();
+    writer.submit_manual("m-v21", None, "alice").unwrap();
+    let reader = store.read_only().unwrap();
+    let verdict = reader.verify_manual_record("m-v21").unwrap().unwrap();
+    assert!(verdict.ok, "{verdict:?}");
+    assert_eq!((verdict.hash_version, verdict.legacy_rows), (Some(2), 2));
+    let audit = reader
+        .manual_experiment_detail("m-v21")
+        .unwrap()
+        .unwrap()
+        .audit;
+    assert_eq!(audit[0]["link_hash"], Value::Null);
+    assert_eq!(audit[1]["link_hash"], Value::Null);
+    assert_eq!(audit[2]["link_hash"].as_str().map(str::len), Some(64));
+
+    // The version 1 seal still covers the content, and the audit trail
+    // names the reviewer the seal leaves out. A reader opened after each
+    // write sees it.
+    let now = || {
+        store
+            .read_only()
+            .unwrap()
+            .verify_manual_record("m-v1")
+            .unwrap()
+            .unwrap()
+    };
+    for (column, value, field) in [
+        ("findings", "'f'", None),
+        ("reviewed_by", "'bob'", Some("reviewed_by")),
+    ] {
+        let set =
+            |to: &str| format!("UPDATE manual_experiments SET {column} = {to} WHERE id = 'm-v1'");
+        writer.execute(&set("'mallory'"), []).unwrap();
+        let verdict = now();
+        writer.execute(&set(value), []).unwrap();
+        assert!(!verdict.ok, "{column}");
+        assert!(
+            verdict
+                .problems
+                .iter()
+                .any(|p| p.table == "manual_experiments"
+                    && p.row == "m-v1"
+                    && p.field.as_deref() == field),
+            "{column}: {verdict:?}"
+        );
+    }
+    let verdict = now();
+    assert!(verdict.ok, "{verdict:?}");
+
+    // A legacy row has no link hash, but the seal chain still shows it
+    // was deleted.
+    writer
+        .execute(
+            "DELETE FROM manual_experiment_audit WHERE id = 'a-v1-2'",
+            [],
+        )
+        .unwrap();
+    let verdict = now();
+    assert!(!verdict.ok);
+    assert!(
+        verdict
+            .problems
+            .iter()
+            .any(|p| p.table == "manual_experiment_audit"
+                && p.row == "a-v1-3"
+                && p.field.as_deref() == Some("prev_hash")),
+        "{verdict:?}"
     );
 }

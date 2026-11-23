@@ -13,8 +13,8 @@
 
 /// Hand-entered test records (game days, tabletops, failovers, …) with
 /// attestation, a draft → submitted → verified/rejected review lifecycle,
-/// an append-only hash-chained audit trail, and external evidence links
-/// (no file storage — URIs only).
+/// an append-only hash-chained audit trail, and evidence: links, and files
+/// kept in the lake folder by their SHA-256 (`file_hash`).
 ///
 /// `manual_exercise_steps`, `manual_action_items` and
 /// `manual_experiment_links` hold the timeline, the actions with owners
@@ -174,8 +174,11 @@ CREATE TABLE IF NOT EXISTS manual_signoffs (
 /// `role`. `plan_id` names the plan a record fulfils. `hash_version` is
 /// the form `content_hash` was computed in: 1 for a row sealed before v22,
 /// which keeps it until its next lifecycle write. On the attachments,
-/// `media_type` and `size_bytes` describe a stored file; on the audit,
-/// `link_hash` chains the audit rows themselves.
+/// `media_type` and `size_bytes` describe a stored file; on the record
+/// and plan audit, `link_hash` chains the audit rows themselves.
+/// `manual_plan_audit.link_hash` came after the table: a v22 lake written
+/// before it has the table without the column, which `CREATE TABLE IF NOT
+/// EXISTS` does not add, so it is added here like the others.
 pub(crate) const V22_COLUMNS: &str = "
 ALTER TABLE manual_experiments ADD COLUMN IF NOT EXISTS rto_target_s DOUBLE;
 ALTER TABLE manual_experiments ADD COLUMN IF NOT EXISTS rpo_target_s DOUBLE;
@@ -187,4 +190,5 @@ ALTER TABLE manual_experiments ADD COLUMN IF NOT EXISTS hash_version INTEGER DEF
 ALTER TABLE evidence_attachments ADD COLUMN IF NOT EXISTS media_type VARCHAR;
 ALTER TABLE evidence_attachments ADD COLUMN IF NOT EXISTS size_bytes BIGINT;
 ALTER TABLE manual_experiment_audit ADD COLUMN IF NOT EXISTS link_hash VARCHAR;
+ALTER TABLE manual_plan_audit ADD COLUMN IF NOT EXISTS link_hash VARCHAR;
 ";

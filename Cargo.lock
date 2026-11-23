@@ -8223,6 +8223,7 @@ dependencies = [
  "tracing",
  "tumult-core",
  "tumult-graph",
+ "tumult-otel",
  "tumult-test-utils",
 ]
 

@@ -15,16 +15,40 @@
 //! `draft`/`submitted` records count toward coverage as "pending
 //! verification" with zero score weight; `inconclusive` outcomes are
 //! excluded from scoring entirely.
+//!
+//! A plan (schema v22, [`plans`]) says which exercise is due when. It can
+//! be edited while it is planned; the verified record that names it
+//! fulfils it, and the record stays as it was signed off.
+//!
+//! Verifying a record is a sign-off (schema v22): a record stays
+//! `submitted` until it has the approvals its exercise type needs, each
+//! from another user, and a reject by any reviewer rejects it. Each
+//! sign-off is a `manual_signoffs` row chained to the one before it, and
+//! every audit row links the row before it ([`chain`]), so the audit
+//! verify ([`verify`]) finds a direct edit or a deleted row.
+//!
+//! A file may be attached as evidence in any status ([`files`]): it is
+//! stored once in the lake folder by its SHA-256, and its attach audit
+//! row names it without changing the seal.
 
+mod chain;
+pub(crate) mod files;
 mod hash;
+mod plans;
 mod reader;
+mod verify;
 mod writer;
 
 use std::fmt;
 
 use crate::StoreError;
 
+pub use files::{
+    attachments_dir, stored_file, FileError, FileUpload, StagedFile, MAX_FILE_BYTES, MEDIA_TYPES,
+};
+pub use plans::{NewExercisePlan, PlanDetail, PlanEdit, PlanFilter, PlanStatus};
 pub use reader::ManualDetail;
+pub use verify::{AuditProblem, AuditVerdict};
 
 /// Exercise kinds for a manual test record.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -114,8 +138,8 @@ impl ManualOutcome {
     }
 }
 
-/// Evidence attachment kinds. The API currently accepts `url` and `ticket`
-/// only (no file storage); `file` and `log_excerpt` are reserved.
+/// Evidence attachment kinds. A `url` or a `ticket` is a link; a `file` is
+/// stored in the lake folder ([`files`]). `log_excerpt` is reserved.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AttachmentKind {
     File,
@@ -283,6 +307,9 @@ pub struct ExerciseDetail {
     /// plain texts, kept for the clients that still send it.
     pub actions: Vec<ActionItem>,
     pub links: Vec<ExerciseLink>,
+    /// The plan this exercise fulfils once the record is verified. It must
+    /// name a planned plan of the same exercise type.
+    pub plan_id: Option<String>,
 }
 
 /// `Invalid` naming `field` of the `n`th (1-based) `what` when `value` is blank.
@@ -328,12 +355,83 @@ impl ExerciseDetail {
         for (n, link) in (1..).zip(&self.links) {
             require("link", n, "linked_id", &link.linked_id)?;
         }
+        if self
+            .plan_id
+            .as_deref()
+            .is_some_and(|id| id.trim().is_empty())
+        {
+            return Err(ManualError::Invalid("'plan_id' must not be empty".into()));
+        }
         Ok(())
     }
 }
 
+/// How a reviewer decides on a submitted record.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SignOffDecision {
+    Approved,
+    Rejected,
+}
+
+impl SignOffDecision {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Approved => "approved",
+            Self::Rejected => "rejected",
+        }
+    }
+}
+
+/// One sign-off of a submitted record. A reject needs a note.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SignOff<'a> {
+    pub by: &'a str,
+    pub note: Option<&'a str>,
+    pub decision: SignOffDecision,
+}
+
+/// Where a record stands after a sign-off.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SignOffOutcome {
+    /// `submitted` while approvals are missing, else `verified` or
+    /// `rejected`.
+    pub status: String,
+    /// The approving sign-offs the record has now.
+    pub approvals: u32,
+    /// The approvals its exercise type needs.
+    pub required: u32,
+}
+
+/// Errors about a plan. The API layer maps: `Invalid` → 400, `NotFound` →
+/// 404, `WrongStatus` → 409, `Unusable` → 422.
+#[derive(Debug)]
+pub enum PlanError {
+    /// Bad input (empty required field, interval out of range).
+    Invalid(String),
+    /// No plan with this id.
+    NotFound(String),
+    /// The plan is no longer planned, so it cannot take this action.
+    WrongStatus { status: String, action: String },
+    /// A record names a plan it cannot fulfil: the message says why.
+    Unusable(String),
+}
+
+impl fmt::Display for PlanError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Invalid(msg) => write!(f, "invalid plan: {msg}"),
+            Self::NotFound(id) => write!(f, "plan '{id}' not found"),
+            Self::WrongStatus { status, action } => {
+                write!(f, "cannot {action} a plan in status '{status}'")
+            }
+            Self::Unusable(msg) => write!(f, "{msg}"),
+        }
+    }
+}
+
 /// Errors from the manual-evidence lifecycle. The API layer maps:
-/// `Invalid`/`SelfReview` → 400, `NotFound` → 404, `WrongStatus` → 409,
+/// `Invalid` → 400, `NotFound` → 404, `WrongStatus` → 409,
+/// `SelfReview`/`AlreadySigned` → 422, `Plan` as [`PlanError`] says,
 /// `Store` → 500.
 #[derive(Debug)]
 pub enum ManualError {
@@ -345,6 +443,10 @@ pub enum ManualError {
     WrongStatus { status: String, action: String },
     /// Reviewer must not have contributed to the record.
     SelfReview,
+    /// This user has signed the record off already: one user signs once.
+    AlreadySigned(String),
+    /// A plan write that cannot be done, or a plan a record cannot fulfil.
+    Plan(PlanError),
     /// Underlying store failure.
     Store(StoreError),
 }
@@ -363,12 +465,20 @@ impl fmt::Display for ManualError {
                     "reviewer must not have created, edited, submitted, or attached evidence to the record"
                 )
             }
+            Self::AlreadySigned(by) => write!(f, "'{by}' has already signed off this record"),
+            Self::Plan(e) => write!(f, "{e}"),
             Self::Store(e) => write!(f, "store error: {e}"),
         }
     }
 }
 
 impl std::error::Error for ManualError {}
+
+impl From<PlanError> for ManualError {
+    fn from(e: PlanError) -> Self {
+        Self::Plan(e)
+    }
+}
 
 impl From<StoreError> for ManualError {
     fn from(e: StoreError) -> Self {
@@ -404,7 +514,8 @@ pub struct NewManualExperiment {
     pub attestation: String,
     pub renewal_due_ns: Option<i64>,
     pub framework_refs: Vec<String>,
-    /// The DR facts, participants, steps, actions and links (schema v22).
+    /// The DR facts, participants, steps, actions, links and the plan the
+    /// record fulfils (schema v22).
     pub exercise: ExerciseDetail,
 }
 
