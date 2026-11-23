@@ -46,6 +46,8 @@ pub const ROUTE_TABLE: &[(&str, &str, Role)] = &[
     ("GET", "/api/runs/{id}/impact", Role::Viewer),
     ("GET", "/api/manual/experiments", Role::Viewer),
     ("GET", "/api/manual/experiments/{id}", Role::Viewer),
+    ("GET", "/api/manual/plans", Role::Viewer),
+    ("GET", "/api/manual/plans/{id}", Role::Viewer),
     ("GET", "/api/authoring/catalog", Role::Viewer),
     ("GET", "/api/registry", Role::Viewer),
     ("GET", "/api/registry/{id}", Role::Viewer),
@@ -99,6 +101,9 @@ pub const ROUTE_TABLE: &[(&str, &str, Role)] = &[
         Role::Operator,
     ),
     ("POST", "/api/manual/import", Role::Operator),
+    ("POST", "/api/manual/plans", Role::Operator),
+    ("PATCH", "/api/manual/plans/{id}", Role::Operator),
+    ("POST", "/api/manual/plans/{id}/cancel", Role::Operator),
     ("POST", "/api/reports/generate", Role::Operator),
     ("POST", "/api/reports/v2/generate", Role::Operator),
     ("POST", "/api/lake/export", Role::Operator),
@@ -265,6 +270,18 @@ mod tests {
         assert_eq!(
             required_role("POST", "/api/manual/experiments/x/reject"),
             Role::Approver
+        );
+        // Plans are entered like records; reading them is a view.
+        assert_eq!(required_role("GET", "/api/manual/plans"), Role::Viewer);
+        assert_eq!(required_role("GET", "/api/manual/plans/x"), Role::Viewer);
+        assert_eq!(required_role("POST", "/api/manual/plans"), Role::Operator);
+        assert_eq!(
+            required_role("PATCH", "/api/manual/plans/x"),
+            Role::Operator
+        );
+        assert_eq!(
+            required_role("POST", "/api/manual/plans/x/cancel"),
+            Role::Operator
         );
         assert_eq!(required_role("POST", "/api/users"), Role::Admin);
         assert_eq!(required_role("GET", "/api/tokens"), Role::Admin);

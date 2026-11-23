@@ -73,6 +73,7 @@ fn dr_detail() -> ExerciseDetail {
                 label: None,
             },
         ],
+        plan_id: None,
     }
 }
 

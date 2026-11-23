@@ -256,6 +256,51 @@ verified or rejected.
   `POST /api/manual/experiments/{id}/verify`,
   `POST /api/manual/experiments/{id}/reject`.
 
+#### Plan an exercise
+
+A plan says which manual exercise is due when, and who owns it. The page
+does not show plans yet: use the API. Send `POST /api/manual/plans` with a
+name, an exercise type, the target system and environment, an owner and a
+due date (`due_at_ns`). A plan can also name a function of the register
+(`function_id`), what it will test (`scope`), a planned date, an interval
+in days and the planned RTO and RPO.
+
+```mermaid
+flowchart LR
+  accTitle: The life of a plan
+  accDescr: A plan starts as planned. A verified record that names it fulfils it, and a plan with an interval then comes back as a new planned plan. Someone can cancel a planned plan. A planned plan past its due date is overdue.
+  planned["planned"] -->|record verified| fulfilled["fulfilled"]
+  planned -->|cancel| cancelled["cancelled"]
+  planned -->|due date passed| overdue["overdue finding"]
+  fulfilled -->|interval| next["next plan, planned"]
+```
+
+- A plan of a DR type that names no interval comes back every 365 days.
+  The DR types are the ones the house counts as `dr`: by default
+  `failover`, `drill`, `restore` and `backup`.
+- Change a planned plan with `PATCH /api/manual/plans/{id}`. A field you
+  send as `null` is cleared. Cancel it with
+  `POST /api/manual/plans/{id}/cancel`.
+- Every change seals the plan and adds a row to its audit trail.
+  `GET /api/manual/plans/{id}` shows both.
+- To fulfil the plan, send its id as `plan_id` with the record of the
+  exercise. The plan must still be planned, and the record must test what
+  the plan planned: the same exercise type, and the same target system,
+  target environment and function (a `function` link) where the plan sets
+  them. If not, the API answers 422 and names the field that differs. The
+  same check runs again when the record is verified.
+- When a second person verifies the record, the plan is fulfilled. A plan
+  with an interval then comes back, due one interval after the day the
+  exercise ran. A rejected record leaves the plan as it was.
+
+#### When a plan is overdue
+
+A plan that is still planned after its due date is a finding on the
+Resilience page, with the rule `manual_exercise_overdue`. It is medium for
+the first 30 days past the due date, and high after that. The finding goes
+away when a verified record fulfils the plan, or when someone cancels it.
+An overdue plan does not change the compliance score.
+
 ## Telemetry explorers
 
 ### Logs
@@ -351,6 +396,8 @@ Route `/login`. Sign in, and change the password at the first sign in.
 - Entities from [entity events](../guides/entity-events.md): read them with
   `GET /api/entities`.
 - Forecast bands of semantic metrics: `GET /api/forecast`.
+- Plans of manual exercises: `GET /api/manual/plans`, see
+  [Plan an exercise](#plan-an-exercise).
 
 Charts follow the theme you pick (dark, light or auto), and tooltips escape
 every value that comes from the lake.

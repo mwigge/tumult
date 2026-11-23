@@ -5,7 +5,10 @@
 use duckdb::{params, Connection};
 
 use super::hash::{fetch_row, now_ns, reseal, status_of, ulid};
-use super::{AttachmentKind, ExerciseDetail, ManualError, NewManualExperiment, StepResult};
+use super::plans::{check_tested, fulfil, usable_plan, Tested};
+use super::{
+    AttachmentKind, ExerciseDetail, LinkKind, ManualError, NewManualExperiment, StepResult,
+};
 use crate::{with_tx, Writer};
 
 /// The statements that remove the steps, actions and links of a record.
@@ -76,6 +79,27 @@ fn insert_children(
     Ok(())
 }
 
+/// Refuse the plan `new` names unless the record can fulfil it: the plan
+/// is planned, of the record's type, and plans what the record tests.
+fn check_plan(conn: &Connection, new: &NewManualExperiment) -> Result<(), ManualError> {
+    let Some(plan_id) = &new.exercise.plan_id else {
+        return Ok(());
+    };
+    let row = usable_plan(conn, plan_id, new.exercise_type.as_str())?;
+    let tested = Tested {
+        target_system: new.target_system.as_deref(),
+        target_environment: new.target_environment.as_deref(),
+        functions: new
+            .exercise
+            .links
+            .iter()
+            .filter(|l| l.kind == LinkKind::Function)
+            .map(|l| l.linked_id.as_str())
+            .collect(),
+    };
+    check_tested(&row, plan_id, &tested)
+}
+
 /// Insert the experiment row and its child rows, then seal it (no
 /// transaction; caller wraps). The row is sealed from what was stored, as
 /// every later write seals it.
@@ -84,6 +108,7 @@ fn insert_draft(
     new: &NewManualExperiment,
     batch_id: Option<&str>,
 ) -> Result<(String, String), ManualError> {
+    check_plan(conn, new)?;
     let id = ulid();
     let detail = &new.exercise;
     conn.execute(
@@ -94,9 +119,10 @@ fn insert_draft(
             recovery_time_s, duration_s, origin,
             entered_by, entered_at_ns, attestation, status,
             renewal_due_ns, framework_refs, batch_id, content_hash,
-            rto_target_s, rpo_target_s, rpo_measured_s, data_verified, participants
+            rto_target_s, rpo_target_s, rpo_measured_s, data_verified, participants,
+            plan_id
          ) VALUES (?,?,?,?,?,?,?,?,?,CAST(? AS JSON),?,?,?,?,?,?,
-                   ?,?,?,?,?, CAST(? AS VARCHAR[]),?,?,?,?,?,?,CAST(? AS JSON))",
+                   ?,?,?,?,?, CAST(? AS VARCHAR[]),?,?,?,?,?,?,CAST(? AS JSON),?)",
         params![
             id,
             new.experiment_name,
@@ -128,6 +154,7 @@ fn insert_draft(
             detail.rpo_measured_s,
             detail.data_verified,
             participants_json(detail),
+            detail.plan_id,
         ],
     )?;
     insert_children(conn, &id, detail)?;
@@ -222,6 +249,7 @@ impl Writer {
                 .and_then(serde_json::Value::as_str)
                 .unwrap_or_default()
                 .to_string();
+            check_plan(&self.conn, new)?;
             self.conn.execute(
                 "UPDATE manual_experiments SET
                     experiment_name = ?, exercise_type = ?, executed_at_ns = ?,
@@ -231,7 +259,7 @@ impl Writer {
                     recovery_time_s = ?, duration_s = ?, attestation = ?,
                     renewal_due_ns = ?, framework_refs = CAST(? AS VARCHAR[]),
                     rto_target_s = ?, rpo_target_s = ?, rpo_measured_s = ?,
-                    data_verified = ?, participants = CAST(? AS JSON)
+                    data_verified = ?, participants = CAST(? AS JSON), plan_id = ?
                  WHERE id = ?",
                 params![
                     new.experiment_name,
@@ -256,6 +284,7 @@ impl Writer {
                     new.exercise.rpo_measured_s,
                     new.exercise.data_verified,
                     participants_json(&new.exercise),
+                    new.exercise.plan_id,
                     id,
                 ],
             )?;
@@ -277,7 +306,8 @@ impl Writer {
                         "action_items","target_system","target_environment","blast_radius",
                         "recovery_time_s","duration_s","attestation","renewal_due_ns",
                         "framework_refs","rto_target_s","rpo_target_s","rpo_measured_s",
-                        "data_verified","participants","steps","actions","links"
+                        "data_verified","participants","steps","actions","links",
+                        "plan_id"
                     ],
                 }),
                 Some(&prev_hash),
@@ -432,6 +462,12 @@ impl Writer {
                 Some(&prev_hash),
                 &hash,
             )?;
+            // A verified record fulfils the plan it names; a rejected one
+            // leaves the plan as it was.
+            let plan_id = row.get("plan_id").and_then(serde_json::Value::as_str);
+            if let Some(plan_id) = plan_id.filter(|_| approve) {
+                fulfil(&self.conn, plan_id, &row, reviewer)?;
+            }
             Ok(())
         })
     }

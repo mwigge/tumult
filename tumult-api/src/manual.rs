@@ -25,7 +25,8 @@ use serde_json::{json, Value};
 use tumult_ingest::Batch;
 use tumult_lake::{
     ActionItem, AttachmentKind, ExerciseDetail, ExerciseLink, ExerciseStep, ExerciseType, LinkKind,
-    ManualError, ManualOutcome, NewManualExperiment, Participant, StepResult, Store, Writer,
+    ManualError, ManualOutcome, NewManualExperiment, Participant, PlanError, Reader, StepResult,
+    Store, Writer,
 };
 
 use crate::auth::Principal;
@@ -35,7 +36,7 @@ use crate::ApiState;
 /// The acting identity for a mutation: the authenticated principal's
 /// username when auth is enabled, else the request-supplied field (required,
 /// as before auth existed).
-fn actor_or(
+pub(crate) fn actor_or(
     principal: &Principal,
     field: Option<String>,
     name: &str,
@@ -48,12 +49,20 @@ fn actor_or(
         .ok_or_else(|| ManualError::Invalid(format!("'{name}' must not be empty")))
 }
 
-/// Map a lifecycle error to an HTTP response.
-fn manual_error(err: &ManualError) -> ApiError {
+/// Map a lifecycle error to an HTTP response. A record that names a plan
+/// it cannot fulfil is 422.
+pub(crate) fn manual_error(err: &ManualError) -> ApiError {
     let status = match err {
-        ManualError::Invalid(_) | ManualError::SelfReview => StatusCode::BAD_REQUEST,
-        ManualError::NotFound(_) => StatusCode::NOT_FOUND,
-        ManualError::WrongStatus { .. } => StatusCode::CONFLICT,
+        ManualError::Invalid(_)
+        | ManualError::SelfReview
+        | ManualError::Plan(PlanError::Invalid(_)) => StatusCode::BAD_REQUEST,
+        ManualError::NotFound(_) | ManualError::Plan(PlanError::NotFound(_)) => {
+            StatusCode::NOT_FOUND
+        }
+        ManualError::WrongStatus { .. } | ManualError::Plan(PlanError::WrongStatus { .. }) => {
+            StatusCode::CONFLICT
+        }
+        ManualError::Plan(PlanError::Unusable(_)) => StatusCode::UNPROCESSABLE_ENTITY,
         ManualError::Store(_) => StatusCode::INTERNAL_SERVER_ERROR,
     };
     (status, Json(json!({"error": err.to_string()})))
@@ -61,14 +70,91 @@ fn manual_error(err: &ManualError) -> ApiError {
         .into()
 }
 
+/// What a write touches, read before it runs to check the caller's
+/// environment scopes.
+pub(crate) enum Subject {
+    /// A record: 404 outside the scopes. The plan it names is checked too.
+    Record(String),
+    /// A plan: 404 outside the scopes.
+    Plan(String),
+    /// The plan a record names: 422 outside the scopes, as a plan that
+    /// does not exist.
+    NamedPlan(String),
+}
+
+fn in_scopes(env: Option<&str>, scopes: &[String]) -> bool {
+    env.is_some_and(|env| scopes.iter().any(|s| s == env))
+}
+
+/// Refuse `subject` unless its environment is one of `scopes`.
+fn check_scope(reader: &Reader, scopes: &[String], subject: &Subject) -> Result<(), ManualError> {
+    let plan_env = |id: &str| -> Result<Option<String>, ManualError> {
+        let detail = reader.manual_plan_detail(id)?;
+        Ok(detail.and_then(|d| d.plan["target_environment"].as_str().map(str::to_owned)))
+    };
+    match subject {
+        Subject::Record(id) => {
+            let detail = reader.manual_experiment_detail(id)?;
+            let row = detail.as_ref().map(|d| &d.experiment);
+            if !in_scopes(row.and_then(|r| r["target_environment"].as_str()), scopes) {
+                return Err(ManualError::NotFound(id.clone()));
+            }
+            match row.and_then(|r| r["plan_id"].as_str()) {
+                Some(plan) => check_scope(reader, scopes, &Subject::NamedPlan(plan.to_owned())),
+                None => Ok(()),
+            }
+        }
+        Subject::Plan(id) => {
+            if in_scopes(plan_env(id)?.as_deref(), scopes) {
+                return Ok(());
+            }
+            Err(PlanError::NotFound(id.clone()).into())
+        }
+        Subject::NamedPlan(id) => {
+            if in_scopes(plan_env(id)?.as_deref(), scopes) {
+                return Ok(());
+            }
+            Err(PlanError::Unusable(format!("plan '{id}' does not exist")).into())
+        }
+    }
+}
+
 /// Run a typed manual-evidence mutation on the single writer and surface
-/// the typed result (the `Batch::Exec` closure itself always "succeeds" so
-/// the channel ack stays clean; the real outcome travels in `slot`).
-/// Every mutation that succeeds clears the Star Map cache.
+/// the typed result. `resource_id` is the record it touches, if any.
 async fn exec_manual<T>(
     state: &ApiState,
     principal: &Principal,
     resource_id: Option<&str>,
+    f: impl FnOnce(&Writer) -> Result<T, ManualError> + Send + 'static,
+) -> Result<T, ApiError>
+where
+    T: Send + 'static,
+{
+    let subjects = resource_id
+        .map(|id| Subject::Record(id.to_owned()))
+        .into_iter()
+        .collect();
+    exec_scoped(state, principal, subjects, f).await
+}
+
+/// The plans the record bodies name, to check against the caller's scopes.
+fn named_plans<'a>(plan_ids: impl IntoIterator<Item = &'a Option<String>>) -> Vec<Subject> {
+    plan_ids
+        .into_iter()
+        .flatten()
+        .map(|id| Subject::NamedPlan(id.clone()))
+        .collect()
+}
+
+/// Run a typed manual-evidence mutation on the single writer and surface
+/// the typed result (the `Batch::Exec` closure itself always "succeeds" so
+/// the channel ack stays clean; the real outcome travels in `slot`). Each
+/// of `subjects` must lie in the caller's environment scopes. Every
+/// mutation that succeeds clears the Star Map cache.
+pub(crate) async fn exec_scoped<T>(
+    state: &ApiState,
+    principal: &Principal,
+    subjects: Vec<Subject>,
     f: impl FnOnce(&Writer) -> Result<T, ManualError> + Send + 'static,
 ) -> Result<T, ApiError>
 where
@@ -83,7 +169,6 @@ where
             .into());
     };
     let scopes = principal.env_scopes.clone();
-    let resource_id = resource_id.map(str::to_owned);
     let db = state.db_path.as_ref().clone();
     let slot = Arc::new(Mutex::new(None));
     let slot2 = Arc::clone(&slot);
@@ -92,14 +177,10 @@ where
             // Resolve scope inside the serialized writer operation: an edit cannot
             // move the record between authorization and mutation.
             let result = (|| {
-                if let Some(id) = resource_id.filter(|_| !scopes.is_empty()) {
-                    let detail = Store::at(&db).read_only()?.manual_experiment_detail(&id)?;
-                    let allowed = detail
-                        .as_ref()
-                        .and_then(|d| d.experiment["target_environment"].as_str())
-                        .is_some_and(|env| scopes.iter().any(|s| s == env));
-                    if !allowed {
-                        return Err(ManualError::NotFound(id));
+                if !scopes.is_empty() && !subjects.is_empty() {
+                    let reader = Store::at(&db).read_only()?;
+                    for subject in &subjects {
+                        check_scope(&reader, &scopes, subject)?;
                     }
                 }
                 f(writer)
@@ -173,6 +254,9 @@ pub struct ManualRecordRequest {
     /// What the exercise tested.
     #[serde(default)]
     links: Vec<LinkRequest>,
+    /// The plan the exercise fulfils once the record is verified: a
+    /// planned plan of the same exercise type.
+    plan_id: Option<String>,
 }
 
 /// One person who took part, and their role.
@@ -283,6 +367,7 @@ impl ManualRecordRequest {
                 .into_iter()
                 .map(LinkRequest::into_link)
                 .collect::<Result<_, _>>()?,
+            plan_id: self.plan_id,
         };
         Ok(NewManualExperiment {
             experiment_name: self.experiment_name,
@@ -321,8 +406,9 @@ pub async fn create(
     let entered_by =
         actor_or(&principal, req.entered_by.clone(), "entered_by").map_err(bad_request)?;
     check_environment(&principal, req.target_environment.as_deref())?;
+    let subjects = named_plans([&req.plan_id]);
     let new = req.into_new(entered_by).map_err(bad_request)?;
-    let id = exec_manual(&state, &principal, None, move |w| {
+    let id = exec_scoped(&state, &principal, subjects, move |w| {
         w.create_manual_draft(&new)
     })
     .await?;
@@ -393,9 +479,10 @@ pub async fn update(
     let changed_by =
         actor_or(&principal, req.entered_by.clone(), "entered_by").map_err(bad_request)?;
     check_environment(&principal, req.target_environment.as_deref())?;
+    let mut subjects = named_plans([&req.plan_id]);
+    subjects.push(Subject::Record(id.clone()));
     let new = req.into_new(changed_by.clone()).map_err(bad_request)?;
-    let resource_id = id.clone();
-    exec_manual(&state, &principal, Some(&resource_id), move |w| {
+    exec_scoped(&state, &principal, subjects, move |w| {
         w.update_manual_draft(&id, &new, &changed_by)
     })
     .await?;
@@ -526,6 +613,7 @@ pub async fn import(
     Extension(principal): Extension<Principal>,
     Json(req): Json<ImportRequest>,
 ) -> Result<(StatusCode, Json<Value>), ApiError> {
+    let subjects = named_plans(req.records.iter().map(|r| &r.plan_id));
     let mut items = Vec::with_capacity(req.records.len());
     for record in req.records {
         check_environment(&principal, record.target_environment.as_deref())?;
@@ -534,7 +622,7 @@ pub async fn import(
         items.push(record.into_new(entered_by).map_err(bad_request)?);
     }
     let label = req.label.clone();
-    let (batch_id, ids) = exec_manual(&state, &principal, None, move |w| {
+    let (batch_id, ids) = exec_scoped(&state, &principal, subjects, move |w| {
         w.import_manual_drafts(&items, label)
     })
     .await?;
@@ -544,7 +632,7 @@ pub async fn import(
     ))
 }
 
-fn check_environment(principal: &Principal, env: Option<&str>) -> Result<(), ApiError> {
+pub(crate) fn check_environment(principal: &Principal, env: Option<&str>) -> Result<(), ApiError> {
     if !principal.env_allowed(env.unwrap_or_default()) {
         return Err(crate::error::forbidden(
             "environment is outside the principal's scopes",

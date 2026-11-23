@@ -12,6 +12,7 @@
 //! | `latest_run_failed` | the latest run of an experiment did not pass (and no breached objective already explains it) |
 //! | `untested_dependency` | a service other services call has no experiments at all |
 //! | `never_run_definition` | a registered definition has never run |
+//! | `manual_exercise_overdue` | a planned manual exercise is past its due date (more than 30 days: high) |
 //! | `single_replica` | a `Deployment` or `StatefulSet` manifest runs one replica |
 //! | `no_resource_limits` | a container has no resource limits |
 //! | `no_pod_disruption_budget` | no `PodDisruptionBudget` selects the workload |
@@ -305,6 +306,49 @@ fn never_run(inputs: &Inputs, out: &mut Vec<Risk>) {
     }
 }
 
+fn overdue_exercises(inputs: &Inputs, out: &mut Vec<Risk>) {
+    for p in inputs
+        .plans
+        .iter()
+        .filter(|p| p.due_at_ns < inputs.as_of_ns)
+    {
+        let late = inputs.as_of_ns - p.due_at_ns;
+        let severity = if late > STALE_AFTER_NS {
+            Severity::High
+        } else {
+            Severity::Medium
+        };
+        let target = p.target.as_deref();
+        let mut risk = build(Draft {
+            rule: "manual_exercise_overdue",
+            severity,
+            title: format!("{} exercise {} is overdue", p.exercise_type, p.name),
+            detail: format!(
+                "The planned {} exercise {} against {} was due {} day(s) ago and no verified \
+                 record fulfils it. Its owner is {}.",
+                p.exercise_type,
+                p.name,
+                target.unwrap_or("no named target"),
+                days(late),
+                p.owner
+            ),
+            target,
+            environment: p.environment.as_deref(),
+            subject: p.id.clone(),
+            recommended_kind: None,
+            evidence: vec![
+                format!("plan_id={}", p.id),
+                format!("due_at_ns={}", p.due_at_ns),
+            ],
+        });
+        // Longer overdue ranks higher, up to five points, as stale evidence.
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let bump = (days(late) / 30).clamp(0, 5) as u32;
+        risk.rank += bump;
+        out.push(risk);
+    }
+}
+
 /// The label a manifest uses to say which environment it deploys to.
 const ENVIRONMENT_LABEL: &str = "resilience.target.environment";
 
@@ -462,6 +506,7 @@ pub fn evaluate(inputs: &Inputs) -> Vec<Risk> {
     }
     untested_dependencies(inputs, &mut out);
     never_run(inputs, &mut out);
+    overdue_exercises(inputs, &mut out);
     workload_rules(inputs, &mut out);
     // Target criticality lifts every finding against that target.
     for r in &mut out {
@@ -478,7 +523,7 @@ mod tests {
     use super::*;
     use crate::model::{
         Container, Definition, Dependency, DisruptionBudget, ExperimentLatest, KindEvidence,
-        Verdict,
+        PlannedExercise, Verdict,
     };
 
     const NOW: i64 = 2000 * DAY_NS;
@@ -938,5 +983,95 @@ mod tests {
             ..Default::default()
         };
         assert!(evaluate(&inputs).is_empty());
+    }
+
+    /// A plan of a failover of `db` in `prod`, due `days_ago` days before now.
+    fn plan(id: &str, days_ago: i64) -> PlannedExercise {
+        PlannedExercise {
+            id: id.into(),
+            name: "db failover".into(),
+            exercise_type: "failover".into(),
+            target: Some("db".into()),
+            environment: Some("prod".into()),
+            owner: "alice".into(),
+            due_at_ns: NOW - days_ago * DAY_NS,
+        }
+    }
+
+    #[test]
+    fn a_plan_past_its_due_date_is_overdue_and_weighs_more_the_longer_it_waits() {
+        let inputs = Inputs {
+            as_of_ns: NOW,
+            plans: vec![
+                plan("due-yesterday", 1),
+                plan("due-45-days-ago", 45),
+                plan("due-400-days-ago", 400),
+                plan("due-now", 0),
+                plan("due-tomorrow", -1),
+            ],
+            ..Default::default()
+        };
+        let risks = evaluate(&inputs);
+        let overdue: BTreeMap<&str, &Risk> = risks
+            .iter()
+            .filter(|r| r.rule == "manual_exercise_overdue")
+            .map(|r| (r.subject.as_str(), r))
+            .collect();
+        assert_eq!(
+            overdue.keys().copied().collect::<Vec<_>>(),
+            ["due-400-days-ago", "due-45-days-ago", "due-yesterday"],
+            "a plan is overdue only once its due date has passed"
+        );
+
+        let yesterday = overdue["due-yesterday"];
+        assert_eq!(yesterday.severity, Severity::Medium);
+        assert_eq!(yesterday.rank, Severity::Medium.base_rank());
+        assert_eq!(yesterday.target.as_deref(), Some("db"));
+        assert_eq!(yesterday.environment.as_deref(), Some("prod"));
+        assert_eq!(yesterday.recommended_kind, None);
+        assert!(yesterday.title.contains("overdue"), "{}", yesterday.title);
+        assert!(
+            yesterday.detail.contains("1 day(s) ago") && yesterday.detail.contains("alice"),
+            "{}",
+            yesterday.detail
+        );
+        assert_eq!(
+            yesterday.evidence,
+            [
+                "plan_id=due-yesterday".to_string(),
+                format!("due_at_ns={}", NOW - DAY_NS)
+            ]
+        );
+
+        // More than 30 days past due is high, and older ranks higher, up
+        // to five points, as stale evidence does.
+        let late = overdue["due-45-days-ago"];
+        assert_eq!(late.severity, Severity::High);
+        assert_eq!(late.rank, Severity::High.base_rank() + 1);
+        let later = overdue["due-400-days-ago"];
+        assert_eq!(later.severity, Severity::High);
+        assert_eq!(later.rank, Severity::High.base_rank() + 5);
+        assert_ne!(late.id, later.id, "one finding per plan");
+    }
+
+    #[test]
+    fn an_overdue_plan_weighs_more_against_a_critical_target() {
+        let inputs = Inputs {
+            as_of_ns: NOW,
+            targets: vec![target(
+                "db",
+                Some("critical"),
+                vec![
+                    evidence("chaos", 1),
+                    evidence("performance", 1),
+                    evidence("robustness", 1),
+                ],
+            )],
+            plans: vec![plan("due-yesterday", 1)],
+            ..Default::default()
+        };
+        let risks = evaluate(&inputs);
+        assert_eq!(rules_of(&risks), ["manual_exercise_overdue"]);
+        assert_eq!(risks[0].rank, Severity::Medium.base_rank() + 8);
     }
 }

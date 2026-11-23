@@ -15,8 +15,13 @@
 //! `draft`/`submitted` records count toward coverage as "pending
 //! verification" with zero score weight; `inconclusive` outcomes are
 //! excluded from scoring entirely.
+//!
+//! A plan (schema v22, [`plans`]) says which exercise is due when. It can
+//! be edited while it is planned; the verified record that names it
+//! fulfils it, and the record stays as it was signed off.
 
 mod hash;
+mod plans;
 mod reader;
 mod writer;
 
@@ -24,6 +29,7 @@ use std::fmt;
 
 use crate::StoreError;
 
+pub use plans::{NewExercisePlan, PlanDetail, PlanEdit, PlanFilter, PlanStatus};
 pub use reader::ManualDetail;
 
 /// Exercise kinds for a manual test record.
@@ -283,6 +289,9 @@ pub struct ExerciseDetail {
     /// plain texts, kept for the clients that still send it.
     pub actions: Vec<ActionItem>,
     pub links: Vec<ExerciseLink>,
+    /// The plan this exercise fulfils once the record is verified. It must
+    /// name a planned plan of the same exercise type.
+    pub plan_id: Option<String>,
 }
 
 /// `Invalid` naming `field` of the `n`th (1-based) `what` when `value` is blank.
@@ -328,13 +337,47 @@ impl ExerciseDetail {
         for (n, link) in (1..).zip(&self.links) {
             require("link", n, "linked_id", &link.linked_id)?;
         }
+        if self
+            .plan_id
+            .as_deref()
+            .is_some_and(|id| id.trim().is_empty())
+        {
+            return Err(ManualError::Invalid("'plan_id' must not be empty".into()));
+        }
         Ok(())
+    }
+}
+
+/// Errors about a plan. The API layer maps: `Invalid` → 400, `NotFound` →
+/// 404, `WrongStatus` → 409, `Unusable` → 422.
+#[derive(Debug)]
+pub enum PlanError {
+    /// Bad input (empty required field, interval out of range).
+    Invalid(String),
+    /// No plan with this id.
+    NotFound(String),
+    /// The plan is no longer planned, so it cannot take this action.
+    WrongStatus { status: String, action: String },
+    /// A record names a plan it cannot fulfil: the message says why.
+    Unusable(String),
+}
+
+impl fmt::Display for PlanError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Invalid(msg) => write!(f, "invalid plan: {msg}"),
+            Self::NotFound(id) => write!(f, "plan '{id}' not found"),
+            Self::WrongStatus { status, action } => {
+                write!(f, "cannot {action} a plan in status '{status}'")
+            }
+            Self::Unusable(msg) => write!(f, "{msg}"),
+        }
     }
 }
 
 /// Errors from the manual-evidence lifecycle. The API layer maps:
 /// `Invalid`/`SelfReview` → 400, `NotFound` → 404, `WrongStatus` → 409,
-/// `Store` → 500.
+/// `Plan` as [`PlanError`] says, `Store` → 500.
 #[derive(Debug)]
 pub enum ManualError {
     /// Bad input (unknown enum value, empty required field).
@@ -345,6 +388,8 @@ pub enum ManualError {
     WrongStatus { status: String, action: String },
     /// Reviewer must not have contributed to the record.
     SelfReview,
+    /// A plan write that cannot be done, or a plan a record cannot fulfil.
+    Plan(PlanError),
     /// Underlying store failure.
     Store(StoreError),
 }
@@ -363,12 +408,19 @@ impl fmt::Display for ManualError {
                     "reviewer must not have created, edited, submitted, or attached evidence to the record"
                 )
             }
+            Self::Plan(e) => write!(f, "{e}"),
             Self::Store(e) => write!(f, "store error: {e}"),
         }
     }
 }
 
 impl std::error::Error for ManualError {}
+
+impl From<PlanError> for ManualError {
+    fn from(e: PlanError) -> Self {
+        Self::Plan(e)
+    }
+}
 
 impl From<StoreError> for ManualError {
     fn from(e: StoreError) -> Self {
@@ -404,7 +456,8 @@ pub struct NewManualExperiment {
     pub attestation: String,
     pub renewal_due_ns: Option<i64>,
     pub framework_refs: Vec<String>,
-    /// The DR facts, participants, steps, actions and links (schema v22).
+    /// The DR facts, participants, steps, actions, links and the plan the
+    /// record fulfils (schema v22).
     pub exercise: ExerciseDetail,
 }
 
