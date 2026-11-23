@@ -20,6 +20,8 @@ mod gamedays;
 mod gate;
 mod journal_only;
 mod manual;
+mod manual_plans;
+mod manual_signoffs;
 mod perf;
 mod query;
 #[cfg(unix)]

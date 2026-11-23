@@ -110,14 +110,14 @@ async fn manual_evidence_lifecycle_end_to_end() {
         .unwrap();
     assert_eq!(resp.status(), 409);
 
-    // Same-user verify → 400 (segregation of duties).
+    // Same-user verify → 422 (segregation of duties).
     let resp = client
         .post(format!("{base}/api/manual/experiments/{id}/verify"))
         .json(&json!({"reviewer": "alice"}))
         .send()
         .await
         .unwrap();
-    assert_eq!(resp.status(), 400);
+    assert_eq!(resp.status(), 422);
 
     // A second user verifies.
     let resp = client

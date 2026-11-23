@@ -116,8 +116,10 @@ pub use ict::{
 };
 #[cfg(feature = "duckdb")]
 pub use manual::{
-    ActionItem, AttachmentKind, ExerciseDetail, ExerciseLink, ExerciseStep, ExerciseType, LinkKind,
-    ManualDetail, ManualError, ManualOutcome, NewManualExperiment, Participant, StepResult,
+    ActionItem, AttachmentKind, AuditProblem, AuditVerdict, ExerciseDetail, ExerciseLink,
+    ExerciseStep, ExerciseType, LinkKind, ManualDetail, ManualError, ManualOutcome,
+    NewExercisePlan, NewManualExperiment, Participant, PlanDetail, PlanEdit, PlanError, PlanFilter,
+    PlanStatus, SignOff, SignOffDecision, SignOffOutcome, StepResult,
 };
 #[cfg(feature = "duckdb")]
 pub use perf::PerfVerdictRow;
