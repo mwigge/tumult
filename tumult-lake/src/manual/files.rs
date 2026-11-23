@@ -18,7 +18,7 @@ use std::fmt;
 use std::fs::{File, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use sha2::{Digest, Sha256};
 
@@ -547,12 +547,16 @@ pub(crate) fn bring_back(
 }
 
 /// Remove the temporary files of uploads in the attachments folder `files`
-/// that were last written more than `age` ago: uploads cut off by a stop
-/// or a crash. Returns how many were removed.
+/// that were last written more than `age` before `now`: uploads cut off by
+/// a stop or a crash. Returns how many were removed.
 ///
 /// # Errors
 /// Returns an error when the folder cannot be read or a file removed.
-pub(crate) fn sweep_uploads(files: &Path, age: Duration) -> std::io::Result<usize> {
+pub(crate) fn sweep_uploads(
+    files: &Path,
+    age: Duration,
+    now: SystemTime,
+) -> std::io::Result<usize> {
     let entries = match std::fs::read_dir(files) {
         Ok(entries) => entries,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(0),
@@ -565,7 +569,9 @@ pub(crate) fn sweep_uploads(files: &Path, age: Duration) -> std::io::Result<usiz
             continue;
         }
         let meta = entry.metadata()?;
-        let stale = meta.modified()?.elapsed().is_ok_and(|since| since > age);
+        let stale = now
+            .duration_since(meta.modified()?)
+            .is_ok_and(|since| since > age);
         if meta.is_file() && stale {
             std::fs::remove_file(entry.path())?;
             removed += 1;
@@ -696,5 +702,35 @@ mod tests {
             attachments_dir(&Path::new("lake").join("store.duckdb")),
             dir
         );
+    }
+
+    #[test]
+    fn the_text_check_carries_only_a_character_cut_in_two() {
+        let mut check = TextCheck::default();
+        check.feed(b"ab\xc3");
+        assert_eq!(check.carry, b"\xc3");
+        assert!(!check.broken);
+        check.feed(b"\xa5 and the rest");
+        assert!(check.carry.is_empty() && check.is_text());
+        // A byte that starts no character ends the check, and nothing of
+        // the file is kept after it.
+        check.feed(b"\xff\xfe and more");
+        assert!(check.broken);
+        assert!(check.carry.is_empty(), "{:?}", check.carry);
+        assert!(!check.is_text());
+    }
+
+    #[test]
+    fn an_upload_is_stale_only_once_it_waited_longer_than_the_age() {
+        let dir = tempfile::tempdir().unwrap();
+        let upload = dir.path().join(".upload-cut-off");
+        std::fs::write(&upload, b"partial").unwrap();
+        let written = std::fs::metadata(&upload).unwrap().modified().unwrap();
+        let age = Duration::from_secs(3600);
+        assert_eq!(sweep_uploads(dir.path(), age, written + age).unwrap(), 0);
+        assert!(upload.exists(), "exactly the age is not yet stale");
+        let later = written + age + Duration::from_nanos(1);
+        assert_eq!(sweep_uploads(dir.path(), age, later).unwrap(), 1);
+        assert!(!upload.exists());
     }
 }

@@ -378,4 +378,56 @@ mod tests {
         }
         assert_eq!(sent(&HeaderMap::new()), Sent::Other);
     }
+
+    /// A body of `frames` frames of `size` bytes each.
+    struct Frames {
+        frames: usize,
+        size: usize,
+    }
+
+    impl HttpBody for Frames {
+        type Data = Bytes;
+        type Error = std::convert::Infallible;
+
+        fn poll_frame(
+            mut self: Pin<&mut Self>,
+            _cx: &mut std::task::Context<'_>,
+        ) -> std::task::Poll<Option<Result<http_body::Frame<Bytes>, Self::Error>>> {
+            if self.frames == 0 {
+                return std::task::Poll::Ready(None);
+            }
+            self.frames -= 1;
+            let data = Bytes::from(vec![b'a'; self.size]);
+            std::task::Poll::Ready(Some(Ok(http_body::Frame::data(data))))
+        }
+    }
+
+    /// The frames left in `body`.
+    async fn left(body: &mut Body) -> usize {
+        let mut frames = 0;
+        while next_bytes(body).await.unwrap().is_some() {
+            frames += 1;
+        }
+        frames
+    }
+
+    #[tokio::test]
+    async fn a_refused_body_is_read_up_to_the_limit_and_no_further() {
+        // Ten frames of 100 bytes and a limit of 400: four frames are read
+        // and dropped, so the frame that reaches the limit is the last.
+        let mut body = Body::new(Frames {
+            frames: 10,
+            size: 100,
+        });
+        drain(&mut body, 400).await;
+        assert_eq!(left(&mut body).await, 6);
+
+        // A shorter body is read to its end.
+        let mut body = Body::new(Frames {
+            frames: 3,
+            size: 100,
+        });
+        drain(&mut body, 400).await;
+        assert_eq!(left(&mut body).await, 0);
+    }
 }

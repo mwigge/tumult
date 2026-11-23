@@ -167,3 +167,68 @@ fn every_new_audit_row_of_a_record_and_a_plan_links_the_row_before_it() {
         .is_none());
     assert!(reader.verify_manual_plan("no-such-plan").unwrap().is_none());
 }
+
+#[test]
+fn verify_names_the_reviewer_of_a_rejected_record_that_was_changed() {
+    let (_d, store, writer) = temp_writer();
+    let id = writer.create_manual_draft(&failover("alice")).unwrap();
+    writer.submit_manual(&id, None, "alice").unwrap();
+    writer
+        .reject_manual(&id, "bob", "the promotion log is missing")
+        .unwrap();
+    let verdict = || {
+        store
+            .read_only()
+            .unwrap()
+            .verify_manual_record(&id)
+            .unwrap()
+            .unwrap()
+    };
+    assert!(verdict().ok, "{:?}", verdict());
+
+    writer
+        .execute(
+            &format!("UPDATE manual_experiments SET reviewed_by = 'mallory' WHERE id = '{id}'"),
+            [],
+        )
+        .unwrap();
+    let changed = verdict();
+    assert!(!changed.ok);
+    let problem = changed
+        .problems
+        .iter()
+        .find(|p| p.field.as_deref() == Some("reviewed_by"))
+        .unwrap_or_else(|| panic!("no reviewed_by problem: {changed:?}"));
+    assert_eq!(problem.row, id);
+    assert_eq!(
+        problem.problem,
+        "reviewed_by is 'mallory', but the reject row of the audit trail is by 'bob'"
+    );
+}
+
+#[test]
+fn a_user_who_submitted_or_attached_to_a_record_may_not_sign_it_off() {
+    let (_d, _store, writer) = temp_writer();
+    let id = writer.create_manual_draft(&failover("alice")).unwrap();
+    writer
+        .add_manual_attachment(
+            &id,
+            tumult_lake::AttachmentKind::Url,
+            "https://wiki.example/failover",
+            None,
+            None,
+            "dan",
+        )
+        .unwrap();
+    writer.submit_manual(&id, None, "carol").unwrap();
+    for by in ["carol", "dan"] {
+        let err = writer
+            .sign_off_manual(&id, &approve(by), two_for_a_failover)
+            .unwrap_err();
+        assert!(matches!(err, ManualError::SelfReview), "{by}: {err:?}");
+    }
+    let outcome = writer
+        .sign_off_manual(&id, &approve("bob"), two_for_a_failover)
+        .unwrap();
+    assert_eq!(outcome.approvals, 1);
+}
