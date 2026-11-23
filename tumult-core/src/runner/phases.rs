@@ -302,11 +302,11 @@ impl<'a> ProbeOutage<'a> {
         self.last_failed_at_ns = self.last_failed_at_ns.max(at_ns);
     }
 
-    /// Count a passing sample. Call it once every failure is counted.
+    /// Count a passing sample. Call it once every failure is counted. The
+    /// samples may come in any order, so the earliest pass is kept.
     fn passed(&mut self, at_ns: i64) {
-        let after_the_last_failure = at_ns > self.last_failed_at_ns;
-        if after_the_last_failure && self.passed_at_ns.is_none_or(|first| at_ns < first) {
-            self.passed_at_ns = Some(at_ns);
+        if at_ns > self.last_failed_at_ns {
+            self.passed_at_ns = Some(self.passed_at_ns.map_or(at_ns, |first| first.min(at_ns)));
         }
     }
 
@@ -323,7 +323,8 @@ impl<'a> ProbeOutage<'a> {
 /// failing sample to the first passing sample after the last failure,
 /// when the post phase ended recovered. A run whose samples never failed
 /// saw no outage, so it has no time to recovery: it is no evidence of
-/// recovery. Pure.
+/// recovery, and any clock `post` held (as a stored journal read again
+/// may) is cleared. Pure.
 pub(crate) fn timed_from_outage(post: PostResult, run_samples: &[ProbeSample]) -> PostResult {
     let Some(outage) = outage_seen(run_samples) else {
         return PostResult {
