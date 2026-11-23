@@ -105,11 +105,6 @@ fn titles(rows: &[Value]) -> Vec<&str> {
 }
 
 #[test]
-fn the_schema_is_at_version_22() {
-    assert_eq!(CURRENT_SCHEMA_VERSION, 22);
-}
-
-#[test]
 fn a_restore_test_keeps_its_targets_steps_actions_and_links() {
     let (_d, store, writer) = temp_writer();
     let id = writer.create_manual_draft(&restore_test("alice")).unwrap();

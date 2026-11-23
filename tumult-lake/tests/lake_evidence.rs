@@ -35,6 +35,7 @@ fn sample(phase: SamplePhase, ts_ns: i64, duration_ms: u64, ok: bool) -> ProbeSa
         ts_ns,
         duration_ms,
         ok,
+        reading: None,
     }
 }
 

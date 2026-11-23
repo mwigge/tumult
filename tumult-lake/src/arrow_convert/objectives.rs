@@ -20,6 +20,7 @@ pub fn journal_probe_samples_schema() -> Schema {
         Field::new("ts_ns", DataType::Int64, false),
         Field::new("value", DataType::Float64, false),
         Field::new("ok", DataType::Boolean, false),
+        Field::new("reading", DataType::Float64, true),
     ])
 }
 
@@ -41,7 +42,8 @@ pub fn nfr_verdicts_schema() -> Schema {
 }
 
 /// The journal's raw probe samples as a `probe_samples` batch. `value` is
-/// the probe duration in milliseconds.
+/// the probe duration in milliseconds, `reading` the number the probe
+/// printed.
 ///
 /// # Errors
 ///
@@ -54,6 +56,7 @@ pub fn journal_to_probe_samples_batch(journal: &Journal) -> Result<RecordBatch, 
     let mut ts = Vec::with_capacity(n);
     let mut values = Vec::with_capacity(n);
     let mut oks = Vec::with_capacity(n);
+    let mut readings = Vec::with_capacity(n);
     for s in &journal.probe_samples {
         ids.push(journal.experiment_id.as_str());
         names.push(s.probe.as_str());
@@ -63,6 +66,7 @@ pub fn journal_to_probe_samples_batch(journal: &Journal) -> Result<RecordBatch, 
         #[allow(clippy::cast_precision_loss)]
         values.push(s.duration_ms as f64);
         oks.push(s.ok);
+        readings.push(s.reading);
     }
     Ok(RecordBatch::try_new(
         Arc::new(journal_probe_samples_schema()),
@@ -73,6 +77,7 @@ pub fn journal_to_probe_samples_batch(journal: &Journal) -> Result<RecordBatch, 
             Arc::new(Int64Array::from(ts)),
             Arc::new(Float64Array::from(values)),
             Arc::new(BooleanArray::from(oks)),
+            Arc::new(Float64Array::from(readings)),
         ],
     )?)
 }

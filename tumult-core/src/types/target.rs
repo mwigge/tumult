@@ -126,6 +126,17 @@ pub enum Tolerance {
     Range { from: f64, to: f64 },
     /// The actual value's text form must match `pattern`.
     Regex { pattern: String },
+    /// The actual value must be one finite number, any number.
+    Number,
+}
+
+impl Tolerance {
+    /// Whether the tolerance reads the output as a number: `number`, and
+    /// `range`. The samples of such a probe keep the number it read.
+    #[must_use]
+    pub fn reads_number(&self) -> bool {
+        matches!(self, Self::Number | Self::Range { .. })
+    }
 }
 
 // ── Config and Secrets ─────────────────────────────────────────
@@ -280,6 +291,17 @@ mod tests {
         };
         let decoded: Tolerance = toon_round_trip(&t);
         assert_eq!(decoded, t);
+    }
+
+    #[test]
+    fn tolerance_number_round_trips_and_reads_as_its_type() {
+        let t = Tolerance::Number;
+        let decoded: Tolerance = toon_round_trip(&t);
+        assert_eq!(decoded, t);
+        let written = toon_format::encode_default(&t).expect("encode");
+        assert_eq!(written.trim(), "type: number");
+        let read: Tolerance = toon_format::decode_default("type: number\n").expect("decode");
+        assert_eq!(read, Tolerance::Number);
     }
 
     #[test]

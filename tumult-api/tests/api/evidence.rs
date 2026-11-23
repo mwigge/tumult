@@ -238,6 +238,7 @@ fn sample_at(journal: &Journal, probe: &str, phase: SamplePhase, at_s: i64) -> P
         ts_ns: journal.started_at_ns + at_s * NS,
         duration_ms: 7,
         ok: at_s % 2 == 0,
+        reading: None,
     }
 }
 

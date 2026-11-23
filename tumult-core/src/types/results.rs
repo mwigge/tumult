@@ -385,10 +385,16 @@ pub struct ProbeSample {
     pub phase: SamplePhase,
     /// Epoch-nanosecond timestamp at which the sample started.
     pub ts_ns: i64,
-    /// Probe execution time in milliseconds (the measured value).
+    /// Probe execution time in milliseconds.
     pub duration_ms: u64,
     /// Whether the sample was within tolerance.
     pub ok: bool,
+    /// The number the probe printed, for a probe whose tolerance reads one
+    /// (`number` or `range`), also when it was outside a range. `None` for
+    /// any other probe, for an output that is no number, and in an older
+    /// journal.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reading: Option<f64>,
 }
 
 /// Evaluation of one [`NfrObjective`](crate::types::NfrObjective) against
@@ -419,8 +425,10 @@ pub struct NfrVerdict {
     pub recovered: Option<bool>,
     /// Why the verdict is what it is when its numbers do not say. The
     /// recovery time objective of a run that saw no outage is
-    /// inconclusive with the reason [`NfrVerdict::NO_OUTAGE_OBSERVED`].
-    /// `None` for any other verdict and in an older journal.
+    /// inconclusive with the reason [`NfrVerdict::NO_OUTAGE_OBSERVED`],
+    /// and an `rpo_target_s` that no objective measures with the reason
+    /// [`NfrVerdict::NO_RPO_OBJECTIVE`]. `None` for any other verdict and
+    /// in an older journal.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
 }
@@ -429,6 +437,10 @@ impl NfrVerdict {
     /// The reason of the recovery time objective of a run whose samples
     /// saw no outage: the run is no evidence of recovery.
     pub const NO_OUTAGE_OBSERVED: &'static str = "no outage observed";
+
+    /// The reason of the verdict on `rpo_target_s` of a run whose
+    /// objectives have no `rpo` objective: nothing read the data back.
+    pub const NO_RPO_OBJECTIVE: &'static str = "no objective measures lost data";
 }
 
 /// Objective outcome of a run: the declared recovery targets, what was
@@ -444,7 +456,10 @@ pub struct ObjectiveOutcome {
     /// verdict holds the lower bound) and for one that saw no outage.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rto_measured_s: Option<f64>,
-    /// Measured data-loss window, when an `rpo` objective resolved.
+    /// Measured recovery point: the seconds of committed writes from
+    /// before the outage that the run lost, as the probe of the `rpo`
+    /// objective read them back after the recovery. `None` when no such
+    /// objective resolved.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rpo_measured_s: Option<f64>,
     #[serde(default)]
@@ -836,6 +851,30 @@ mod tests {
         let written = toon_format::encode_default(&unaffected).expect("encode");
         assert!(written.contains("impact_observed: false"), "{written}");
         assert_eq!(toon_round_trip(&unaffected), unaffected);
+    }
+
+    #[test]
+    fn a_probe_sample_keeps_the_number_it_read_and_an_older_one_still_reads() {
+        let older = ProbeSample {
+            probe: "data-lost".into(),
+            phase: SamplePhase::Post,
+            ts_ns: 1_774_980_165_000_000_000,
+            duration_ms: 12,
+            ok: true,
+            reading: None,
+        };
+        let written = toon_format::encode_default(&older).expect("encode");
+        assert!(!written.contains("reading"), "{written}");
+        let read: ProbeSample = toon_format::decode_default(&written).expect("decode");
+        assert_eq!(read, older);
+
+        let read_back = ProbeSample {
+            reading: Some(2.0),
+            ..older
+        };
+        let written = toon_format::encode_default(&read_back).expect("encode");
+        assert!(written.contains("reading: 2"), "{written}");
+        assert_eq!(toon_round_trip(&read_back), read_back);
     }
 
     #[test]

@@ -389,7 +389,7 @@ pub fn run_experiment_with_sampling(
                 config.cancellation_token.as_ref(),
             );
             let ended_at_ns = epoch_nanos_now();
-            probe_samples.extend(samples_for_journal(SamplePhase::Post, &samples));
+            probe_samples.extend(samples_for_journal(SamplePhase::Post, &samples, hypothesis));
             build_post_result(started_at_ns, ended_at_ns, &samples, &probe_samples)
         })
         .map(|post| recovery_measured(post, actions_succeeded));

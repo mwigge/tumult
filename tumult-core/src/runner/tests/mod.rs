@@ -16,6 +16,7 @@ mod halt_tests;
 mod load_tests;
 pub(crate) mod log_capture;
 mod outcome_log_tests;
+mod reading_tests;
 mod recovery_clock_tests;
 mod rollback_tests;
 mod sampling_tests;

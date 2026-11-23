@@ -912,10 +912,10 @@ fn a_refused_kind_is_told_the_metrics_that_measure_it() {
     );
 }
 
-/// No metric of the catalogue counts lost data, so an `rpo` objective has
-/// nothing to measure it. Before, any metric passed for one.
+/// Only lost data measures an `rpo` objective. Before, any metric passed
+/// for one.
 #[test]
-fn an_rpo_objective_is_refused_on_every_metric_of_the_catalogue() {
+fn an_rpo_objective_is_refused_on_every_metric_but_lost_data() {
     for metric in [
         "load.throughput_rps",
         "load.latency_p95_ms",
@@ -932,10 +932,116 @@ fn an_rpo_objective_is_refused_on_every_metric_of_the_catalogue() {
         let err = validate_experiment(&with_kind_and_metric(NfrKind::Rpo, metric)).unwrap_err();
         assert!(
             err.to_string()
-                .contains("no metric of the catalogue measures rpo"),
+                .ends_with("; the metrics of rpo are probe.<name>.lost_s"),
             "{metric}: {err}"
         );
     }
+}
+
+/// An experiment whose probe `lost` has `tolerance`, with an rpo objective
+/// `operator` `threshold` on the data it reads lost, and `rpo_target_s`.
+fn with_rpo(
+    tolerance: Option<Tolerance>,
+    operator: NfrOperator,
+    threshold: f64,
+    rpo_target_s: Option<f64>,
+) -> Experiment {
+    let mut exp = with_kind_and_metric(NfrKind::Rpo, "probe.lost.lost_s");
+    exp.nfr[0].id = "rpo".into();
+    exp.nfr[0].operator = operator;
+    exp.nfr[0].threshold = threshold;
+    exp.rpo_target_s = rpo_target_s;
+    exp.steady_state_hypothesis = Some(Hypothesis {
+        title: "the store answers".into(),
+        probes: vec![Activity {
+            name: "lost".into(),
+            activity_type: ActivityType::Probe,
+            tolerance,
+            ..Default::default()
+        }],
+    });
+    exp
+}
+
+fn refusal(exp: &Experiment) -> String {
+    let err = validate_experiment(exp).unwrap_err();
+    assert!(matches!(err, EngineError::NfrInvalid { .. }), "{err}");
+    err.to_string()
+}
+
+#[test]
+fn an_rpo_objective_on_the_data_a_number_probe_reads_lost_passes() {
+    for target in [Some(1.0), None] {
+        let exp = with_rpo(Some(Tolerance::Number), NfrOperator::Lte, 1.0, target);
+        assert!(validate_experiment(&exp).is_ok(), "{target:?}");
+    }
+}
+
+#[test]
+fn lost_data_of_a_probe_whose_tolerance_reads_no_number_is_refused() {
+    for tolerance in [
+        None,
+        Some(Tolerance::Regex {
+            pattern: "^ok$".into(),
+        }),
+        Some(Tolerance::Exact {
+            value: serde_json::json!(0),
+        }),
+    ] {
+        let exp = with_rpo(tolerance, NfrOperator::Lte, 1.0, None);
+        assert_eq!(
+            refusal(&exp),
+            "nfr objective 'rpo' is invalid: metric 'probe.lost.lost_s' reads the number the \
+             probe 'lost' prints, and its tolerance reads none: give the probe the tolerance \
+             type number"
+        );
+    }
+}
+
+#[test]
+fn lost_data_of_a_probe_with_a_range_is_refused() {
+    let range = Tolerance::Range { from: 0.0, to: 1.0 };
+    let exp = with_rpo(Some(range), NfrOperator::Lte, 1.0, None);
+    assert_eq!(
+        refusal(&exp),
+        "nfr objective 'rpo' is invalid: the probe 'lost' has a range tolerance: data lost \
+         beyond it holds up the recovery and the RPO is not measured; give it the tolerance \
+         type number"
+    );
+}
+
+#[test]
+fn an_rpo_objective_that_is_not_an_upper_bound_is_refused() {
+    for operator in [NfrOperator::Gte, NfrOperator::Eq] {
+        let exp = with_rpo(Some(Tolerance::Number), operator, 1.0, None);
+        assert_eq!(
+            refusal(&exp),
+            "nfr objective 'rpo' is invalid: an rpo objective is met when at most threshold \
+             seconds are lost: use operator lte"
+        );
+    }
+}
+
+#[test]
+fn an_rpo_objective_with_another_number_than_the_rpo_target_is_refused() {
+    let exp = with_rpo(Some(Tolerance::Number), NfrOperator::Lte, 1.0, Some(60.0));
+    assert_eq!(
+        refusal(&exp),
+        "nfr objective 'rpo' is invalid: rpo_target_s is 60 and the threshold is 1: give both \
+         the same number"
+    );
+}
+
+#[test]
+fn lost_data_does_not_measure_another_kind() {
+    let mut exp = with_rpo(Some(Tolerance::Number), NfrOperator::Lte, 1.0, None);
+    exp.nfr[0].kind = NfrKind::DataIntegrity;
+    assert_eq!(
+        refusal(&exp),
+        "nfr objective 'rpo' is invalid: kind data_integrity does not fit metric \
+         'probe.lost.lost_s', which measures rpo; the metrics of data_integrity are \
+         probe.<name>.error_rate"
+    );
 }
 
 #[test]

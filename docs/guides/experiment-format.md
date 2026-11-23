@@ -135,6 +135,7 @@ use `docker exec` or the `tumult-containers` plugin, and for a pod,
 | `exact` | `value` | equals the value |
 | `range` | `from`, `to` | is a number in the range |
 | `regex` | `pattern` | matches the pattern |
+| `number` | none | is one number. The journal keeps it, see [Measure the RPO](objectives.md#measure-the-rpo) |
 
 A probe outside its tolerance is a failed step, with the error `the output is
 outside the tolerance`. What that does depends on where the probe is:

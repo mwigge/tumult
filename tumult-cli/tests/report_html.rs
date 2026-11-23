@@ -295,7 +295,7 @@ fn the_report_shows_the_objectives_and_the_load_of_the_run() {
             "rpo",
             "rpo",
             "at most 5",
-            "not measured",
+            "no objective measures lost data",
             "",
             "inconclusive",
             "blocking"

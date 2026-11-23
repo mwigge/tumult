@@ -11,6 +11,7 @@ use tokio_util::sync::CancellationToken;
 use crate::types::{
     ActivityResult, ActivityStatus, AnalysisResult, DuringResult, ExpectedOutcome, Experiment,
     ExperimentStatus, Hypothesis, PostResult, ProbeDuring, ProbePost, ProbeSample, SamplePhase,
+    Tolerance,
 };
 
 use super::activity::sample_probe;
@@ -85,20 +86,51 @@ fn sample_probe_round(
 }
 
 /// Flatten per-probe samples into journal [`ProbeSample`]s tagged with
-/// `phase`, in collection order per probe.
-pub(crate) fn samples_for_journal(phase: SamplePhase, samples: &ProbeSamples) -> Vec<ProbeSample> {
-    samples
+/// `phase`, in collection order per probe. A sample of a probe of
+/// `hypothesis` whose tolerance reads a number keeps the number it read.
+pub(crate) fn samples_for_journal(
+    phase: SamplePhase,
+    samples: &ProbeSamples,
+    hypothesis: &Hypothesis,
+) -> Vec<ProbeSample> {
+    // Sized up front: a long run has thousands of samples, and growing the
+    // vector would copy them over and over.
+    let mut journal = Vec::with_capacity(samples.iter().map(|(_, results)| results.len()).sum());
+    for (name, results) in samples {
+        let reads_number = reads_number(hypothesis, name);
+        journal.extend(results.iter().map(|r| ProbeSample {
+            probe: name.clone(),
+            phase,
+            ts_ns: r.started_at_ns,
+            duration_ms: r.duration_ms,
+            ok: r.status == ActivityStatus::Succeeded,
+            reading: reading_of(r, reads_number),
+        }));
+    }
+    journal
+}
+
+/// The number a sample read, when its probe reads one.
+fn reading_of(sample: &ActivityResult, reads_number: bool) -> Option<f64> {
+    if !reads_number {
+        return None;
+    }
+    sample.output.as_deref().and_then(crate::engine::reading)
+}
+
+/// Whether the probe `name` of `hypothesis` has a tolerance that reads a
+/// number.
+fn reads_number(hypothesis: &Hypothesis, name: &str) -> bool {
+    hypothesis
+        .probes
         .iter()
-        .flat_map(|(name, results)| {
-            results.iter().map(move |r| ProbeSample {
-                probe: name.clone(),
-                phase,
-                ts_ns: r.started_at_ns,
-                duration_ms: r.duration_ms,
-                ok: r.status == ActivityStatus::Succeeded,
-            })
+        .filter(|probe| probe.name == name)
+        .any(|probe| {
+            probe
+                .tolerance
+                .as_ref()
+                .is_some_and(Tolerance::reads_number)
         })
-        .collect()
 }
 
 /// Append one round of samples to the per-probe map.

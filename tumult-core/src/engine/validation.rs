@@ -25,7 +25,9 @@ use super::EngineError;
 /// Returns [`EngineError::InvalidSeconds`] if a timeout or a pause of any of those steps,
 /// or the duration of a flat load, is not a number of seconds from 0 up to 2^64.
 /// Returns [`EngineError::NfrInvalid`] if an objective names a metric no run can measure,
-/// or a metric that does not measure the kind of the objective.
+/// or a metric that does not measure the kind of the objective. An objective on the data
+/// a probe reads back lost needs that probe to have the tolerance `number`, and an `rpo`
+/// objective must be `lte`, with the threshold `rpo_target_s` when that is set.
 /// Returns [`EngineError::RecoveryInvalid`] if the `recovery` block asks for a window
 /// that is not above 0 or longer than an hour, or for an interval longer than the window.
 /// An RTO longer than the window is valid and logs `recovery.window.shorter_than_rto`.
@@ -304,12 +306,12 @@ fn validate_script_name(activity: &str, field: &str, value: &str) -> Result<(), 
 /// Objectives and recovery targets: unique, well-formed objectives; finite
 /// positive RTO/RPO; a `dr` run must declare its RTO.
 fn validate_objectives(experiment: &Experiment) -> Result<(), EngineError> {
-    let probes: Vec<&str> = experiment
+    let sampled: Vec<&Activity> = experiment
         .steady_state_hypothesis
         .iter()
         .flat_map(|hypothesis| &hypothesis.probes)
-        .map(|probe| probe.name.as_str())
         .collect();
+    let probes: Vec<&str> = sampled.iter().map(|probe| probe.name.as_str()).collect();
     let mut seen = std::collections::HashSet::new();
     for o in &experiment.nfr {
         if o.id.trim().is_empty() {
@@ -339,10 +341,22 @@ fn validate_objectives(experiment: &Experiment) -> Result<(), EngineError> {
                 reason,
             });
         }
+        if let Some(reason) = crate::runner::nfr::reading_fault(&o.metric, &sampled) {
+            return Err(EngineError::NfrInvalid {
+                id: o.id.clone(),
+                reason,
+            });
+        }
         if !o.threshold.is_finite() {
             return Err(EngineError::NfrInvalid {
                 id: o.id.clone(),
                 reason: "threshold must be finite".into(),
+            });
+        }
+        if let Some(reason) = crate::runner::nfr::rpo_fault(o, experiment.rpo_target_s) {
+            return Err(EngineError::NfrInvalid {
+                id: o.id.clone(),
+                reason,
             });
         }
         if o.window_s.is_some_and(|w| !(w.is_finite() && w > 0.0)) {

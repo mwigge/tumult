@@ -23,6 +23,7 @@ fn sample(probe: &str, phase: SamplePhase, second: f64, ok: bool) -> ProbeSample
         ts_ns: at(second),
         duration_ms: 5,
         ok,
+        reading: None,
     }
 }
 

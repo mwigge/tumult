@@ -29,3 +29,9 @@ CREATE TABLE IF NOT EXISTS nfr_verdicts (
 );
 CREATE INDEX IF NOT EXISTS idx_nfr_verdicts_experiment_id ON nfr_verdicts (experiment_id);
 ";
+
+/// v23: `probe_samples.reading`, the number a probe printed when its
+/// tolerance reads one. Added last, as the appender writes by position, and
+/// NULL on the rows stored before. `value` keeps its meaning.
+pub(super) const READING_COLUMN: &str =
+    "ALTER TABLE probe_samples ADD COLUMN IF NOT EXISTS reading DOUBLE;";

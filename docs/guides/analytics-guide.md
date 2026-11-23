@@ -69,7 +69,7 @@ FROM experiments;
 | `experiments` | run: title, `status`, times, `duration_ms`, hypothesis before and after, `test_kind`, `target_version` |
 | `activity_results` | step of a run: `name`, `activity_type`, `status`, `phase`, `duration_ms`, `output`, `error` |
 | `load_results` | load test: tool, throughput, p50, p95 and p99 latency, error rate |
-| `probe_samples` | sample of a probe or of a load window, with its phase |
+| `probe_samples` | sample of a probe or of a load window, with its phase. `value` is the probe duration, `reading` the number a `number` or `range` probe printed |
 | `spans`, `logs` | span and log record the daemon received |
 
 `status` of a run is `completed`, `deviated`, `failed`, `aborted`,

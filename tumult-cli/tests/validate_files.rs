@@ -7,7 +7,7 @@
 
 mod lab;
 
-use lab::{experiment, fatal_error, heal, inject, leave_marker, with_block, Lab};
+use lab::{experiment, fatal_error, heal, indented, inject, leave_marker, step, with_block, Lab};
 
 /// The manifest of the plugin `name` with one action and one probe.
 fn manifest(name: &str, action: &str, probe: &str) -> String {
@@ -226,7 +226,7 @@ fn an_objective_on_a_metric_no_run_measures_is_refused_with_the_ones_a_run_does(
         .unwrap_or_else(|| panic!("{error}"));
     assert!(known.starts_with("load.throughput_rps, "), "{known}");
     assert!(
-        known.ends_with(", probe.<name>.<mean_ms|max_ms|p95_ms|error_rate>)"),
+        known.ends_with(", probe.<name>.<mean_ms|max_ms|p95_ms|error_rate|lost_s>)"),
         "{known}"
     );
 }
@@ -243,8 +243,82 @@ fn an_rpo_objective_on_a_metric_that_does_not_count_lost_data_is_refused() {
     assert_eq!(
         error,
         "nfr objective 'lost' is invalid: kind rpo does not fit metric 'fault.duration_s', \
-         which measures recovery; no metric of the catalogue measures rpo"
+         which measures recovery; the metrics of rpo are probe.<name>.lost_s"
     );
+}
+
+/// A DR experiment with an RPO of 1 s whose steady-state probe `lost`
+/// prints the seconds of data lost and has `tolerance`, and whose
+/// objectives are `nfr`.
+fn rpo_experiment(tolerance: &str, nfr: &str) -> String {
+    let probe = format!("{}{tolerance}", step("lost", "probe", "echo 0"));
+    format!(
+        "title: Lost data\nkind: dr\nrto_target_s: 30.0\nrpo_target_s: 1.0\n\n{nfr}\n\
+         steady_state_hypothesis:\n  title: The store answers\n  probes[1]:\n{probe}\
+         method[1]:\n{inject}",
+        probe = indented(&probe),
+        inject = inject(),
+    )
+}
+
+/// An rpo objective `operator` `threshold` on the data the probe `lost`
+/// reads lost.
+fn rpo_objective(operator: &str, threshold: &str) -> String {
+    format!(
+        "nfr[1]{{id,kind,metric,operator,threshold}}:\n  rpo,rpo,probe.lost.lost_s,{operator},{threshold}\n"
+    )
+}
+
+const NUMBER: &str = "    tolerance:\n      type: number\n";
+
+#[test]
+fn an_rpo_objective_on_the_data_a_number_probe_reads_lost_passes() {
+    let definition = rpo_experiment(NUMBER, &rpo_objective("lte", "1"));
+
+    let (passed, stdout, error) = validate(&Lab::with_state("ok"), &definition);
+
+    assert!(passed, "{stdout}{error}");
+    assert!(stdout.ends_with("\nValidation passed.\n"), "{stdout}");
+}
+
+#[test]
+fn an_rpo_objective_that_does_not_fit_its_probe_or_its_target_is_refused() {
+    let range = "    tolerance:\n      type: range\n      from: 0\n      to: 1\n";
+    for (tolerance, operator, threshold, reason) in [
+        (
+            "",
+            "lte",
+            "1",
+            "metric 'probe.lost.lost_s' reads the number the probe 'lost' prints, and its \
+             tolerance reads none: give the probe the tolerance type number",
+        ),
+        (
+            range,
+            "lte",
+            "1",
+            "the probe 'lost' has a range tolerance: data lost beyond it holds up the recovery \
+             and the RPO is not measured; give it the tolerance type number",
+        ),
+        (
+            NUMBER,
+            "gte",
+            "1",
+            "an rpo objective is met when at most threshold seconds are lost: use operator lte",
+        ),
+        (
+            NUMBER,
+            "lte",
+            "2.5",
+            "rpo_target_s is 1 and the threshold is 2.5: give both the same number",
+        ),
+    ] {
+        let definition = rpo_experiment(tolerance, &rpo_objective(operator, threshold));
+
+        let (passed, stdout, error) = validate(&Lab::with_state("ok"), &definition);
+
+        assert!(!passed, "{stdout}");
+        assert_eq!(error, format!("nfr objective 'rpo' is invalid: {reason}"));
+    }
 }
 
 /// A step of the script plugin `lab-target` that takes down the node `node`.

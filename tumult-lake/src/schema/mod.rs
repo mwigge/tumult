@@ -108,6 +108,11 @@
 //! Every statement is `IF NOT EXISTS`, so a database at v21 migrates on
 //! open and its records keep their version 1 seal.
 //!
+//! v23 adds `probe_samples.reading` (`objectives.rs`), an additive ALTER:
+//! the number a probe printed when its tolerance reads one, NULL on rows
+//! stored before v23. `value` keeps the probe duration. A database at v21
+//! or v22 migrates on open.
+//!
 //! The DDL is split by feature area: [`telemetry`] (v1), [`manual`] (v2/v8
 //! shape), [`analytics`] (v3), [`runs`] (v4–v7), [`auth`] (v6/v9),
 //! [`table_stakes`] (v10–v13), [`migrations`] (the versioned rebuilds).
@@ -131,7 +136,7 @@ mod telemetry;
 pub(crate) use manual::V22_COLUMNS as MANUAL_V22_COLUMNS;
 pub use migrations::{MIGRATE_V5_RUN_TABLES_INDEX_FREE, MIGRATE_V8_MANUAL_EXPERIMENTS_INDEX_FREE};
 
-pub const CURRENT_SCHEMA_VERSION: i64 = 22;
+pub const CURRENT_SCHEMA_VERSION: i64 = 23;
 
 /// The full DDL, one batch per feature area, executed in order. All DDL is
 /// `IF NOT EXISTS`, so this doubles as the idempotent v0 → v1 migration on
@@ -144,6 +149,7 @@ pub const CREATE_TABLES: &[&str] = &[
     auth::DDL,
     table_stakes::DDL,
     objectives::DDL,
+    objectives::READING_COLUMN,
     risk::DDL,
     perf::DDL,
     forecast::DDL,

@@ -4,7 +4,7 @@
 
 use std::sync::{mpsc, Arc, Mutex, PoisonError};
 
-use crate::types::{DuringResult, Experiment, ProbeSample, SamplePhase};
+use crate::types::{DuringResult, Experiment, Hypothesis, ProbeSample, SamplePhase};
 
 use super::phases::{
     build_during_result, collect_during_samples, samples_for_journal, ProbeSampleMap,
@@ -23,6 +23,8 @@ pub(super) struct DuringSampler {
     /// a sampler panic are not lost.
     samples: Arc<Mutex<ProbeSampleMap>>,
     started_at_ns: i64,
+    /// The hypothesis it samples, for the numbers its probes read.
+    hypothesis: Hypothesis,
 }
 
 /// Spawn the during-phase sampler thread, if the experiment has hypothesis
@@ -52,10 +54,11 @@ pub(super) fn spawn_during_sampler(
     // it the experiment context explicitly — otherwise its probe spans would
     // start new traces instead of parenting to this run.
     let parent_cx = opentelemetry::Context::current();
+    let in_thread = hypothesis.clone();
     let handle = std::thread::spawn(move || {
         let _parent_guard = parent_cx.attach();
         collect_during_samples(
-            &hypothesis,
+            &in_thread,
             executor.as_ref(),
             interval,
             max_samples,
@@ -70,6 +73,7 @@ pub(super) fn spawn_during_sampler(
         handle,
         samples,
         started_at_ns,
+        hypothesis,
     })
 }
 
@@ -85,6 +89,7 @@ pub(super) fn finish_during_sampler(
         handle,
         samples,
         started_at_ns,
+        hypothesis,
     } = sampler;
 
     // Dropping the sender disconnects the sampler's receiver, waking it
@@ -108,7 +113,7 @@ pub(super) fn finish_during_sampler(
         .drain(..)
         .collect();
 
-    let raw = samples_for_journal(SamplePhase::During, &collected);
+    let raw = samples_for_journal(SamplePhase::During, &collected, &hypothesis);
     (
         build_during_result(started_at_ns, ended_at_ns, sample_interval_s, &collected),
         raw,

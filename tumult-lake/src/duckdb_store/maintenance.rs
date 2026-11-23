@@ -557,6 +557,7 @@ mod tests {
             ts_ns: started_at_ns,
             duration_ms: 120,
             ok: true,
+            reading: None,
         }];
         journal.objectives = Some(ObjectiveOutcome {
             rto_target_s: Some(900.0),
@@ -1132,6 +1133,50 @@ mod tests {
             )
             .unwrap();
         assert_eq!(rows[0].join("|"), "r1|400|true|true");
+    }
+
+    #[test]
+    fn probe_samples_exported_before_the_reading_still_import() {
+        use super::{export_parquet, journal_probe_samples_schema, load_results_schema};
+
+        let d = tempfile::TempDir::new().unwrap();
+        let (loads, samples) = (d.path().join("l.parquet"), d.path().join("s.parquet"));
+        let older = AnalyticsStore::in_memory().unwrap();
+        let mut journal = sample_journal("r1", ExperimentStatus::Completed);
+        journal.probe_samples = vec![ProbeSample {
+            probe: "data-lost".into(),
+            phase: SamplePhase::Post,
+            ts_ns: 2_000,
+            duration_ms: 12,
+            ok: true,
+            reading: Some(2.0),
+        }];
+        older.ingest_journal(&journal).unwrap();
+        let narrow = older
+            .query_to_batch(
+                "SELECT experiment_id, probe_name, phase, ts_ns, value, ok FROM probe_samples",
+            )
+            .unwrap();
+        export_parquet(&narrow, &samples).unwrap();
+        let none =
+            arrow::record_batch::RecordBatch::new_empty(std::sync::Arc::new(load_results_schema()));
+        export_parquet(&none, &loads).unwrap();
+
+        let s = AnalyticsStore::in_memory().unwrap();
+        s.import_load_tables(&loads, &samples).unwrap();
+        let rows = s
+            .query("SELECT probe_name, value, reading IS NULL FROM probe_samples")
+            .unwrap();
+        assert_eq!(rows[0].join("|"), "data-lost|12.0000|true");
+
+        // A file of this version keeps the reading.
+        let (loads, samples) = (d.path().join("l2.parquet"), d.path().join("s2.parquet"));
+        older.export_load_tables(&loads, &samples).unwrap();
+        let s = AnalyticsStore::in_memory().unwrap();
+        s.import_load_tables(&loads, &samples).unwrap();
+        let rows = s.query("SELECT reading FROM probe_samples").unwrap();
+        assert_eq!(rows[0].join("|"), "2.0000");
+        assert_eq!(journal_probe_samples_schema().fields().len(), 7);
     }
 
     #[test]
