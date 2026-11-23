@@ -99,6 +99,15 @@
 //! `IF NOT EXISTS` or `CREATE OR REPLACE`, so a database at v20 migrates on
 //! open.
 //!
+//! v22 makes a manual record a DR record (`manual.rs`): planned and actual
+//! RTO and RPO, the data verified flag, participants, the plan it fulfils
+//! and the version of its seal as columns of `manual_experiments`, added
+//! after the v8 rebuild; the steps, actions and links of a record; and,
+//! for later changes of v22, the plans, their audit, the sign-offs, the
+//! file columns of `evidence_attachments` and `manual_experiment_audit.link_hash`.
+//! Every statement is `IF NOT EXISTS`, so a database at v21 migrates on
+//! open and its records keep their version 1 seal.
+//!
 //! The DDL is split by feature area: [`telemetry`] (v1), [`manual`] (v2/v8
 //! shape), [`analytics`] (v3), [`runs`] (v4–v7), [`auth`] (v6/v9),
 //! [`table_stakes`] (v10–v13), [`migrations`] (the versioned rebuilds).
@@ -119,9 +128,10 @@ mod runs;
 mod table_stakes;
 mod telemetry;
 
+pub(crate) use manual::V22_COLUMNS as MANUAL_V22_COLUMNS;
 pub use migrations::{MIGRATE_V5_RUN_TABLES_INDEX_FREE, MIGRATE_V8_MANUAL_EXPERIMENTS_INDEX_FREE};
 
-pub const CURRENT_SCHEMA_VERSION: i64 = 21;
+pub const CURRENT_SCHEMA_VERSION: i64 = 22;
 
 /// The full DDL, one batch per feature area, executed in order. All DDL is
 /// `IF NOT EXISTS`, so this doubles as the idempotent v0 → v1 migration on

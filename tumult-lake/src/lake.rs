@@ -35,6 +35,13 @@ const TABLES: &[&str] = &[
     "manual_experiment_audit",
     "manual_experiments",
     "evidence_attachments",
+    // The DR detail of a manual record, its plans and its sign-offs.
+    "manual_exercise_steps",
+    "manual_action_items",
+    "manual_experiment_links",
+    "manual_exercise_plans",
+    "manual_plan_audit",
+    "manual_signoffs",
     "import_batches",
     "experiments",
     "activity_results",

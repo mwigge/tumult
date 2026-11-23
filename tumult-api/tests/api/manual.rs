@@ -405,3 +405,184 @@ async fn manual_record_writes_drop_the_cached_star_maps() {
     .await;
     assert_eq!(starmap_as_of(&base).await, kept);
 }
+
+/// A restore test with every DR field of schema v22.
+fn restore_body(by: &str) -> Value {
+    let mut body = manual_body(by);
+    body["experiment_name"] = json!("payments-db-restore");
+    body["exercise_type"] = json!("restore");
+    body["recovery_time_s"] = json!(3000.0);
+    body["rto_target_s"] = json!(3600.0);
+    body["rpo_target_s"] = json!(300.0);
+    body["rpo_measured_s"] = json!(120.0);
+    body["data_verified"] = json!(true);
+    body["participants"] = json!([
+        {"name": "alice", "role": "dr lead"},
+        {"name": "carol"}
+    ]);
+    let start = now_ns() - 3600 * NS;
+    body["steps"] = json!([
+        {"title": "Stop the primary", "actor": "alice",
+         "started_at_ns": start, "ended_at_ns": start + 60 * NS, "result": "done"},
+        {"title": "Restore the backup", "actor": "carol", "result": "failed",
+         "note": "first restore ran out of disk"}
+    ]);
+    body["actions"] = json!([
+        {"title": "Grow the restore volume", "owner": "carol",
+         "due_at_ns": now_ns() + 30 * 86_400 * NS, "ticket": "OPS-12"}
+    ]);
+    body["links"] = json!([
+        {"kind": "function", "linked_id": "cif-0001", "label": "payments"},
+        {"kind": "run", "linked_id": "exp-restore-1"}
+    ]);
+    body
+}
+
+#[tokio::test]
+async fn a_dr_exercise_keeps_every_field_it_was_sent() {
+    let srv = spawn_server().await;
+    let base = srv.base.clone();
+    let created = manual_post(&base, "experiments", restore_body("alice"), 201).await;
+    let id = created["id"].as_str().unwrap().to_string();
+
+    let (status, detail) = get(&base, &format!("/api/manual/experiments/{id}")).await;
+    assert_eq!(status, 200, "{detail}");
+    let row = &detail["experiment"];
+    assert_eq!(row["exercise_type"], "restore");
+    assert_eq!(row["rto_target_s"], 3600.0);
+    assert_eq!(row["rpo_target_s"], 300.0);
+    assert_eq!(row["rpo_measured_s"], 120.0);
+    assert_eq!(row["data_verified"], true);
+    assert_eq!(
+        row["participants"],
+        json!([{"name": "alice", "role": "dr lead"}, {"name": "carol", "role": null}])
+    );
+    let steps = detail["steps"].as_array().unwrap();
+    assert_eq!(steps.len(), 2);
+    assert_eq!(steps[0]["ordinal"], 1);
+    assert_eq!(steps[1]["result"], "failed");
+    assert_eq!(steps[1]["note"], "first restore ran out of disk");
+    let actions = detail["actions"].as_array().unwrap();
+    assert_eq!(actions.len(), 1);
+    assert_eq!(actions[0]["owner"], "carol");
+    assert_eq!(actions[0]["ticket"], "OPS-12");
+    assert_eq!(actions[0]["status"], "open");
+    let links = detail["links"].as_array().unwrap();
+    assert_eq!(links[0]["kind"], "function");
+    assert_eq!(links[1]["linked_id"], "exp-restore-1");
+
+    // The list carries the DR numbers too.
+    let (_, list) = get(&base, "/api/manual/experiments?status=draft").await;
+    assert_eq!(list["records"][0]["rpo_measured_s"], 120.0);
+
+    // A bad step result or link kind is refused with the reason.
+    for (field, value, needle) in [
+        (
+            "steps",
+            json!([{"title": "t", "result": "ok"}]),
+            "unknown step result 'ok'",
+        ),
+        (
+            "links",
+            json!([{"kind": "service", "linked_id": "x"}]),
+            "unknown link kind 'service'",
+        ),
+        (
+            "rto_target_s",
+            json!(-5.0),
+            "'rto_target_s' must be a number",
+        ),
+    ] {
+        let mut bad = restore_body("alice");
+        bad[field] = value;
+        let body = manual_post(&base, "experiments", bad, 400).await;
+        assert!(body["error"].as_str().unwrap().contains(needle), "{body}");
+    }
+}
+
+/// POST  and return the status and the body as text.
+async fn post_text(base: &str, path: &str, body: &Value) -> (u16, String) {
+    let resp = reqwest::Client::new()
+        .post(format!("{base}/api/manual/{path}"))
+        .json(body)
+        .send()
+        .await
+        .unwrap();
+    (resp.status().as_u16(), resp.text().await.unwrap())
+}
+
+#[tokio::test]
+async fn every_manual_body_refuses_a_field_it_does_not_know() {
+    let srv = spawn_server().await;
+    let base = srv.base.clone();
+    let id = submitted(&base).await;
+    let draft = manual_post(&base, "experiments", manual_body("alice"), 201).await;
+    let draft = draft["id"].as_str().unwrap().to_string();
+
+    let mut record = manual_body("alice");
+    record["rpo_measured"] = json!(720);
+    let mut step = restore_body("alice");
+    step["steps"][0]["owner"] = json!("alice");
+    let mut participant = restore_body("alice");
+    participant["participants"][0]["team"] = json!("ops");
+    let mut action = restore_body("alice");
+    action["actions"][0]["status"] = json!("done");
+    let mut link = restore_body("alice");
+    link["links"][0]["url"] = json!("https://example.com");
+    let mut imported = manual_body("carol");
+    imported["participants_list"] = json!(["carol"]);
+    let cases = [
+        ("experiments".to_string(), record, "rpo_measured"),
+        ("experiments".to_string(), step, "owner"),
+        ("experiments".to_string(), participant, "team"),
+        ("experiments".to_string(), action, "status"),
+        ("experiments".to_string(), link, "url"),
+        (
+            "import".to_string(),
+            json!({"label": "q4", "batch": 1, "records": [manual_body("carol")]}),
+            "batch",
+        ),
+        (
+            "import".to_string(),
+            json!({"records": [imported]}),
+            "participants_list",
+        ),
+        (
+            format!("experiments/{draft}/submit"),
+            json!({"by": "alice", "signed": true}),
+            "signed",
+        ),
+        (
+            format!("experiments/{id}/verify"),
+            json!({"reviewer": "bob", "role": "dr owner"}),
+            "role",
+        ),
+        (
+            format!("experiments/{id}/reject"),
+            json!({"reviewer": "bob", "note": "no", "reason": "x"}),
+            "reason",
+        ),
+        (
+            format!("experiments/{draft}/attachments"),
+            json!({"kind": "url", "uri": "https://wiki.example/x", "added_by": "alice", "file_hash": "00"}),
+            "file_hash",
+        ),
+    ];
+    for (path, body, field) in &cases {
+        let (status, text) = post_text(&base, path, body).await;
+        assert_eq!(status, 422, "{path} {field}: {text}");
+        assert!(
+            text.contains(&format!("unknown field `{field}`")),
+            "{path}: {text}"
+        );
+    }
+
+    // Nothing of the refused bodies was stored or changed.
+    let (_, all) = get(&base, "/api/manual/experiments").await;
+    assert_eq!(all["records"].as_array().unwrap().len(), 2);
+    let (_, detail) = get(&base, &format!("/api/manual/experiments/{id}")).await;
+    assert_eq!(detail["experiment"]["status"], "submitted");
+    let (_, detail) = get(&base, &format!("/api/manual/experiments/{draft}")).await;
+    assert_eq!(detail["experiment"]["status"], "draft");
+    assert!(detail["attachments"].as_array().unwrap().is_empty());
+}

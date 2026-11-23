@@ -4,39 +4,88 @@
 
 use duckdb::{params, Connection};
 
-use super::hash::{content_hash, fetch_row, now_ns, rehash, status_of, ulid, CanonicalContent};
-use super::{AttachmentKind, ManualError, NewManualExperiment};
+use super::hash::{fetch_row, now_ns, reseal, status_of, ulid};
+use super::{AttachmentKind, ExerciseDetail, ManualError, NewManualExperiment, StepResult};
 use crate::{with_tx, Writer};
 
-/// Insert the experiment row (no transaction; caller wraps).
+/// The statements that remove the steps, actions and links of a record.
+const DELETE_CHILDREN: [&str; 3] = [
+    "DELETE FROM manual_exercise_steps WHERE experiment_id = ?",
+    "DELETE FROM manual_action_items WHERE experiment_id = ?",
+    "DELETE FROM manual_experiment_links WHERE experiment_id = ?",
+];
+
+/// The participants as the JSON list the `participants` column holds.
+fn participants_json(detail: &ExerciseDetail) -> String {
+    let list: Vec<serde_json::Value> = detail
+        .participants
+        .iter()
+        .map(|p| serde_json::json!({"name": p.name, "role": p.role}))
+        .collect();
+    serde_json::Value::from(list).to_string()
+}
+
+/// Write the steps, actions and links of record `id`, numbered from 1 in
+/// the order given. Actions start `open` (no transaction; caller wraps).
+fn insert_children(
+    conn: &Connection,
+    id: &str,
+    detail: &ExerciseDetail,
+) -> Result<(), ManualError> {
+    for (ordinal, step) in (1_i64..).zip(&detail.steps) {
+        conn.execute(
+            "INSERT INTO manual_exercise_steps (
+                experiment_id, ordinal, title, actor, started_at_ns, ended_at_ns, result, note
+             ) VALUES (?,?,?,?,?,?,?,?)",
+            params![
+                id,
+                ordinal,
+                step.title,
+                step.actor,
+                step.started_at_ns,
+                step.ended_at_ns,
+                step.result.map(StepResult::as_str),
+                step.note,
+            ],
+        )?;
+    }
+    for (ordinal, action) in (1_i64..).zip(&detail.actions) {
+        conn.execute(
+            "INSERT INTO manual_action_items (
+                id, experiment_id, ordinal, title, owner, due_at_ns, ticket
+             ) VALUES (?,?,?,?,?,?,?)",
+            params![
+                ulid(),
+                id,
+                ordinal,
+                action.title,
+                action.owner,
+                action.due_at_ns,
+                action.ticket,
+            ],
+        )?;
+    }
+    for (ordinal, link) in (1_i64..).zip(&detail.links) {
+        conn.execute(
+            "INSERT INTO manual_experiment_links (
+                experiment_id, ordinal, kind, linked_id, label
+             ) VALUES (?,?,?,?,?)",
+            params![id, ordinal, link.kind.as_str(), link.linked_id, link.label],
+        )?;
+    }
+    Ok(())
+}
+
+/// Insert the experiment row and its child rows, then seal it (no
+/// transaction; caller wraps). The row is sealed from what was stored, as
+/// every later write seals it.
 fn insert_draft(
     conn: &Connection,
     new: &NewManualExperiment,
     batch_id: Option<&str>,
 ) -> Result<(String, String), ManualError> {
     let id = ulid();
-    let canonical = CanonicalContent {
-        experiment_name: &new.experiment_name,
-        exercise_type: new.exercise_type.as_str(),
-        executed_at_ns: new.executed_at_ns,
-        hypothesis: &new.hypothesis,
-        method: &new.method,
-        outcome_status: new.outcome.as_str(),
-        hypothesis_met: new.hypothesis_met,
-        findings: new.findings.as_deref(),
-        action_items: &new.action_items,
-        target_system: new.target_system.as_deref(),
-        target_environment: new.target_environment.as_deref(),
-        blast_radius: new.blast_radius.as_deref(),
-        recovery_time_s: new.recovery_time_s,
-        duration_s: new.duration_s,
-        entered_by: &new.entered_by,
-        attestation: &new.attestation,
-        renewal_due_ns: new.renewal_due_ns,
-        framework_refs: &new.framework_refs,
-        status: "draft",
-    };
-    let hash = content_hash(&canonical);
+    let detail = &new.exercise;
     conn.execute(
         "INSERT INTO manual_experiments (
             id, experiment_name, exercise_type, executed_at_ns, hypothesis, method,
@@ -44,9 +93,10 @@ fn insert_draft(
             target_system, target_environment, blast_radius,
             recovery_time_s, duration_s, origin,
             entered_by, entered_at_ns, attestation, status,
-            renewal_due_ns, framework_refs, batch_id, content_hash
+            renewal_due_ns, framework_refs, batch_id, content_hash,
+            rto_target_s, rpo_target_s, rpo_measured_s, data_verified, participants
          ) VALUES (?,?,?,?,?,?,?,?,?,CAST(? AS JSON),?,?,?,?,?,?,
-                   ?,?,?,?,?, CAST(? AS VARCHAR[]),?,?)",
+                   ?,?,?,?,?, CAST(? AS VARCHAR[]),?,?,?,?,?,?,CAST(? AS JSON))",
         params![
             id,
             new.experiment_name,
@@ -71,9 +121,17 @@ fn insert_draft(
             new.renewal_due_ns,
             serde_json::to_string(&new.framework_refs).unwrap_or_else(|_| "[]".into()),
             batch_id,
-            hash,
+            // Replaced by the seal below, in the same transaction.
+            "",
+            detail.rto_target_s,
+            detail.rpo_target_s,
+            detail.rpo_measured_s,
+            detail.data_verified,
+            participants_json(detail),
         ],
     )?;
+    insert_children(conn, &id, detail)?;
+    let hash = reseal(conn, &id)?;
     Ok((id, hash))
 }
 
@@ -171,7 +229,9 @@ impl Writer {
                     hypothesis_met = ?, findings = ?, action_items = CAST(? AS JSON),
                     target_system = ?, target_environment = ?, blast_radius = ?,
                     recovery_time_s = ?, duration_s = ?, attestation = ?,
-                    renewal_due_ns = ?, framework_refs = CAST(? AS VARCHAR[])
+                    renewal_due_ns = ?, framework_refs = CAST(? AS VARCHAR[]),
+                    rto_target_s = ?, rpo_target_s = ?, rpo_measured_s = ?,
+                    data_verified = ?, participants = CAST(? AS JSON)
                  WHERE id = ?",
                 params![
                     new.experiment_name,
@@ -191,14 +251,19 @@ impl Writer {
                     new.attestation,
                     new.renewal_due_ns,
                     serde_json::to_string(&new.framework_refs).unwrap_or_else(|_| "[]".into()),
+                    new.exercise.rto_target_s,
+                    new.exercise.rpo_target_s,
+                    new.exercise.rpo_measured_s,
+                    new.exercise.data_verified,
+                    participants_json(&new.exercise),
                     id,
                 ],
             )?;
-            let hash = rehash(&self.conn, id)?;
-            self.conn.execute(
-                "UPDATE manual_experiments SET content_hash = ? WHERE id = ?",
-                params![hash, id],
-            )?;
+            for sql in DELETE_CHILDREN {
+                self.conn.execute(sql, params![id])?;
+            }
+            insert_children(&self.conn, id, &new.exercise)?;
+            let hash = reseal(&self.conn, id)?;
             append_audit(
                 &self.conn,
                 id,
@@ -211,7 +276,8 @@ impl Writer {
                         "method","outcome_status","hypothesis_met","findings",
                         "action_items","target_system","target_environment","blast_radius",
                         "recovery_time_s","duration_s","attestation","renewal_due_ns",
-                        "framework_refs"
+                        "framework_refs","rto_target_s","rpo_target_s","rpo_measured_s",
+                        "data_verified","participants","steps","actions","links"
                     ],
                 }),
                 Some(&prev_hash),
@@ -266,11 +332,7 @@ impl Writer {
                  WHERE id = ?",
                 params![effective, id],
             )?;
-            let hash = rehash(&self.conn, id)?;
-            self.conn.execute(
-                "UPDATE manual_experiments SET content_hash = ? WHERE id = ?",
-                params![hash, id],
-            )?;
+            let hash = reseal(&self.conn, id)?;
             append_audit(
                 &self.conn,
                 id,
@@ -356,11 +418,7 @@ impl Writer {
                  reviewed_at_ns = ?, review_note = ? WHERE id = ?",
                 params![to_status, reviewer, now_ns(), note, id],
             )?;
-            let hash = rehash(&self.conn, id)?;
-            self.conn.execute(
-                "UPDATE manual_experiments SET content_hash = ? WHERE id = ?",
-                params![hash, id],
-            )?;
+            let hash = reseal(&self.conn, id)?;
             append_audit(
                 &self.conn,
                 id,
