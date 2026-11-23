@@ -6,6 +6,7 @@
 //! | metric | source |
 //! |---|---|
 //! | `load.throughput_rps`, `load.latency_p50_ms`, `load.latency_p95_ms`, `load.latency_p99_ms`, `load.error_rate`, `load.total_requests` | the load result |
+//! | `load.p95_drift_pct`, `load.error_rate_drift`, `load.spike_recovery_s` | the windows of the load ([`super::robustness`]) |
 //! | `recovery.mttr_s`, `recovery.time_s` | the post-phase result |
 //! | `during.error_rate`, `during.availability`, `post.error_rate`, `post.availability` | raw probe samples of that phase |
 //! | `probe.<name>.mean_ms`, `probe.<name>.max_ms`, `probe.<name>.p95_ms`, `probe.<name>.error_rate` | raw during-phase samples of one probe |
@@ -20,9 +21,10 @@
 //! not measure ([`kind_fault`]): a latency is no availability, and no
 //! metric counts lost data, so an `rpo` objective has none yet.
 
+use super::robustness::{self, Judged};
 use crate::types::{
-    DuringResult, Experiment, LoadResult, NfrCriticality, NfrKind, NfrObjective, NfrOperator,
-    NfrState, NfrVerdict, ObjectiveOutcome, PostResult, ProbeSample, SamplePhase,
+    DuringResult, Experiment, LoadProfile, LoadResult, NfrCriticality, NfrKind, NfrObjective,
+    NfrOperator, NfrState, NfrVerdict, ObjectiveOutcome, PostResult, ProbeSample, SamplePhase,
 };
 
 /// A response time.
@@ -45,9 +47,14 @@ const REQUESTS: &[NfrKind] = &[NfrKind::Throughput, NfrKind::Capacity];
 const RECOVERY_TIME: &[NfrKind] = &[NfrKind::Rto, NfrKind::Recovery];
 /// The time the fault was active.
 const FAULT_TIME: &[NfrKind] = &[NfrKind::Recovery];
+/// How much the error rate rose over a soak.
+const ERROR_DRIFT: &[NfrKind] = &[NfrKind::ErrorRate];
+/// The time the latency took to come back after a spike.
+const BACK_AFTER_SPIKE: &[NfrKind] = &[NfrKind::Latency, NfrKind::Recovery];
 
 /// The metrics with one fixed spelling, each with the kinds of objective
-/// it measures. [`resolve`] answers each of them.
+/// it measures. [`robustness::judge`] answers the robustness metrics, and
+/// [`resolve`] each of the others.
 pub(crate) const FIXED_METRICS: &[(&str, &[NfrKind])] = &[
     ("load.throughput_rps", REQUESTS),
     ("load.latency_p50_ms", LATENCY),
@@ -55,6 +62,9 @@ pub(crate) const FIXED_METRICS: &[(&str, &[NfrKind])] = &[
     ("load.latency_p99_ms", LATENCY),
     ("load.error_rate", SHARE),
     ("load.total_requests", REQUESTS),
+    (robustness::P95_DRIFT_PCT, LATENCY),
+    (robustness::ERROR_RATE_DRIFT, ERROR_DRIFT),
+    (robustness::SPIKE_RECOVERY_S, BACK_AFTER_SPIKE),
     ("recovery.mttr_s", RECOVERY_TIME),
     ("recovery.time_s", RECOVERY_TIME),
     ("during.error_rate", SHARE),
@@ -182,10 +192,11 @@ pub(crate) fn evaluate(experiment: &Experiment, m: &Measurements<'_>) -> Option<
     {
         return None;
     }
+    let profile = experiment.load.as_ref().and_then(|l| l.profile.as_ref());
     let mut verdicts: Vec<NfrVerdict> = experiment
         .nfr
         .iter()
-        .map(|o| verdict_for(o, resolve(&o.metric, m)))
+        .map(|o| objective_verdict(o, profile, m))
         .collect();
     let rto_measured_s = m.post.and_then(|p| p.mttr_s);
     if let Some(target) = experiment.rto_target_s {
@@ -274,6 +285,35 @@ fn watched_since_outage_s(post: &PostResult) -> f64 {
         .outage_started_at_ns
         .map_or(0.0, |at| (post.started_at_ns - at) as f64 / 1_000_000_000.0);
     before_the_watch_s + post.recovery_time_s
+}
+
+/// The verdict on a declared objective. A robustness metric is judged
+/// from the windows of the load, run with `profile`: with too few windows
+/// it is inconclusive and says so, and a target that was not back after
+/// the spike breaches it with the time watched, a lower bound, as a run
+/// that does not recover breaches its RTO. Any other metric is resolved
+/// from the measurements. Pure.
+fn objective_verdict(
+    o: &NfrObjective,
+    profile: Option<&LoadProfile>,
+    m: &Measurements<'_>,
+) -> NfrVerdict {
+    let Some(judged) = robustness::judge(&o.metric, profile, m.load) else {
+        return verdict_for(o, resolve(&o.metric, m));
+    };
+    match judged {
+        Judged::Value(value) => verdict_for(o, Some(value)),
+        Judged::NotBack(watched_s) => NfrVerdict {
+            observed: Some(watched_s),
+            state: NfrState::Breached,
+            recovered: Some(false),
+            ..verdict_for(o, None)
+        },
+        Judged::TooFewWindows => NfrVerdict {
+            reason: Some(NfrVerdict::TOO_FEW_WINDOWS.into()),
+            ..verdict_for(o, None)
+        },
+    }
 }
 
 /// Compare one observation against an objective. Pure.
@@ -489,9 +529,38 @@ mod tests {
         }
     }
 
+    /// A load that kept a window each second for eight seconds, around a
+    /// spike from 2 to 4 s.
+    fn windowed() -> (LoadResult, LoadProfile) {
+        let window = |at_s: i64| crate::types::LoadSample {
+            ts_ns: at_s * 1_000_000_000,
+            duration_s: 1.0,
+            vus: 5,
+            throughput_rps: 120.0,
+            latency_p50_ms: 40.0,
+            latency_p95_ms: 180.0,
+            latency_p99_ms: 400.0,
+            error_rate: 0.02,
+            requests: 120,
+            counts: None,
+            request_timeout_ms: None,
+        };
+        let spike = LoadProfile::Spike {
+            peak_vus: 50,
+            after_s: 2.0,
+            hold_s: 2.0,
+            sample_interval_s: Some(1.0),
+        };
+        let l = LoadResult {
+            samples: (0..8).map(window).collect(),
+            ..load()
+        };
+        (l, spike)
+    }
+
     #[test]
     fn the_resolver_knows_every_metric_the_catalogue_accepts() {
-        let (l, post, during) = (load(), full_post(), full_during());
+        let ((l, spike), post, during) = (windowed(), full_post(), full_during());
         let samples = vec![
             sample("health", SamplePhase::During, 1, 100, true),
             sample("health", SamplePhase::Post, 2, 50, true),
@@ -509,7 +578,9 @@ mod tests {
         let fixed = FIXED_METRICS.iter().map(|(name, _)| (*name).to_string());
         for metric in fixed.chain(probe_metrics) {
             assert_eq!(metric_fault(&metric, &["health"]), None, "{metric}");
-            assert!(resolve(&metric, &m).is_some(), "{metric} is not resolved");
+            let o = objective("any", &metric, NfrOperator::Lte, 0.0);
+            let verdict = objective_verdict(&o, Some(&spike), &m);
+            assert!(verdict.observed.is_some(), "{metric} is not resolved");
         }
     }
 
@@ -521,6 +592,36 @@ mod tests {
         }
         let fault = metric_fault("probe.other.p95_ms", &["health"]).expect("a fault");
         assert!(fault.contains("'other'"), "{fault}");
+    }
+
+    #[test]
+    fn a_target_not_back_after_the_spike_breaches_with_the_time_it_watched() {
+        // The windows before the spike read 100 ms, so the band is up to
+        // 120 ms, and every window after it reads 180 ms.
+        let (mut l, spike) = windowed();
+        for w in l.samples.iter_mut().filter(|w| w.ts_ns < 2_000_000_000) {
+            w.latency_p95_ms = 100.0;
+        }
+        let m = Measurements {
+            during: None,
+            post: None,
+            load: Some(&l),
+            samples: &[],
+            watched_in_full: true,
+        };
+        let o = NfrObjective {
+            kind: NfrKind::Recovery,
+            ..objective("back", "load.spike_recovery_s", NfrOperator::Lte, 30.0)
+        };
+
+        let verdict = objective_verdict(&o, Some(&spike), &m);
+
+        assert_eq!(verdict.state, NfrState::Breached);
+        // From the end of the spike at 4 s to the end of the window at 7 s.
+        assert_eq!(verdict.observed, Some(4.0));
+        assert_eq!(verdict.margin, None);
+        assert_eq!(verdict.recovered, Some(false));
+        assert_eq!(verdict.reason, None);
     }
 
     #[test]

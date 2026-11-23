@@ -16,7 +16,7 @@
     "net-chaos.toon": {"proof": "examples-proof", "expect": {"status": "completed", "hypothesis_before": true, "hypothesis_after": true, "rollbacks": 0, "objectives": {}}},
     "api-malformed-input.toon": {"proof": "examples-proof", "expect": {"status": "completed", "hypothesis_before": true, "hypothesis_after": true, "rollbacks": 0, "load_result": true, "objectives": {"survives-garbage": "met"}}},
     "api-saturation.toon": {"proof": "examples-proof", "expect": {"status": "completed", "hypothesis_before": true, "hypothesis_after": true, "rollbacks": 0, "load_result": true, "objectives": {"health-survives": "met", "recovers": "met"}}},
-    "checkout-spike-oha.toon": {"proof": "examples-proof", "expect": {"status": "completed", "hypothesis_before": true, "hypothesis_after": true, "rollbacks": 0, "load_result": true, "objectives": {"p99-spike": "met", "spike-errors": "met"}}},
+    "checkout-spike-oha.toon": {"proof": "examples-proof", "expect": {"status": "completed", "hypothesis_before": true, "hypothesis_after": true, "rollbacks": 0, "load_result": true, "objectives": {"p99-spike": "met", "spike-errors": "met", "back-after-spike": "met"}}},
     "checkout-ramp-k6.toon": {"proof": "examples-proof", "expect": {"status": "completed", "hypothesis_before": true, "hypothesis_after": true, "rollbacks": 0, "load_result": true, "objectives": {"p95-under-load": "met", "errors": "met"}}},
     "checkout-soak-oha.toon": {"proof": "validate-only", "reason": "runs for two hours; scripts/proof/rip-phase4 proves the soak profile in minutes"},
     "aws-fis-experiment.toon": {"proof": "validate-only", "reason": "needs an AWS account with a FIS experiment template"},

@@ -526,6 +526,7 @@ mod tests {
             peak_vus: 100,
             after_s: 20.0,
             hold_s: 10.0,
+            sample_interval_s: None,
         };
         let args = k6_shape_args(&config(Some(spike)));
         assert_eq!(&args[..2], &["--vus", "10"]);

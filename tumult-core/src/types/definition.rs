@@ -255,6 +255,11 @@ pub enum LoadProfile {
         after_s: f64,
         /// Seconds the spike is held.
         hold_s: f64,
+        /// Seconds between streamed samples. Each stage is cut into
+        /// windows this long, so the windows after the spike show when
+        /// the target is back. Unset, each stage is one window.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        sample_interval_s: Option<f64>,
     },
     /// Constant `vus` for the whole (long) duration, with the tool's
     /// summary sampled every `sample_interval_s` so the run streams a time
@@ -922,6 +927,27 @@ mod tests {
             exp.load.as_ref().and_then(|l| l.profile.as_ref()),
             Some(LoadProfile::Soak { .. })
         ));
+    }
+
+    #[test]
+    fn a_spike_with_a_sample_interval_parses_and_one_without_writes_none() {
+        let spike = "title: t\nload:\n  tool: oha\n  script: http://localhost:8080/\n  vus: 10\n  duration_s: 60\n  profile:\n    type: spike\n    peak_vus: 200\n    after_s: 20\n    hold_s: 10\n    sample_interval_s: 2\n";
+        let exp: Experiment = toon_format::decode_default(spike).expect("parse spike");
+        assert_eq!(
+            exp.load.as_ref().and_then(|l| l.profile.clone()),
+            Some(LoadProfile::Spike {
+                peak_vus: 200,
+                after_s: 20.0,
+                hold_s: 10.0,
+                sample_interval_s: Some(2.0),
+            })
+        );
+        assert_eq!(toon_round_trip(&exp), exp);
+
+        let without = spike.replace("    sample_interval_s: 2\n", "");
+        let exp: Experiment = toon_format::decode_default(&without).expect("parse spike");
+        let written = toon_format::encode_default(&exp).expect("encode");
+        assert!(!written.contains("sample_interval_s"), "{written}");
     }
 
     #[test]
