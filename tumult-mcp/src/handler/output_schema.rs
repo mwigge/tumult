@@ -15,7 +15,8 @@ use serde_json::json;
 
 use schemas::{
     autopilot_decision_schema, graph_node_summary_schema, journal_schema, journal_summary_schema,
-    lineage_cell_schema, recommendation_schema, schema_object,
+    lineage_cell_schema, manual_row_schema, manual_rows_schema, recommendation_schema,
+    schema_object,
 };
 
 /// Names of every tool that sets `structured_content` on its results and
@@ -53,6 +54,10 @@ pub(crate) const STRUCTURED_TOOLS: &[&str] = &[
     "tumult_autopilot_status",
     "tumult_autopilot_respond",
     "tumult_autopilot_export",
+    "tumult_manual_list",
+    "tumult_manual_get",
+    "tumult_manual_create_draft",
+    "tumult_manual_plans_list",
 ];
 
 /// Returns the output schema for `tool_name`, or `None` for tools that only
@@ -722,6 +727,59 @@ pub(crate) fn output_schema_for(tool_name: &str) -> Option<ToolOutputSchema> {
             &["dir"],
             json!({
                 "dir": { "type": "string", "description": "Directory the Parquet files were written to." },
+            }),
+        )),
+        "tumult_manual_list" => Some(schema_object(
+            &["items", "total", "offset", "limit"],
+            json!({
+                "items": {
+                    "type": "array",
+                    "description": "Records of the manual registry on this page, newest entry first, with every column of manual_experiments.",
+                    "items": manual_row_schema(&["id", "experiment_name", "exercise_type", "status", "executed_at_ns"]),
+                },
+                "total": { "type": "integer", "description": "Total matches before pagination." },
+                "offset": { "type": "integer" },
+                "limit": { "type": "integer" },
+            }),
+        )),
+        "tumult_manual_get" => Some(schema_object(
+            &[
+                "experiment",
+                "audit",
+                "attachments",
+                "steps",
+                "actions",
+                "links",
+                "signoffs",
+            ],
+            json!({
+                "experiment": manual_row_schema(&["id", "experiment_name", "exercise_type", "status", "content_hash"]),
+                "audit": manual_rows_schema("The audit trail, oldest row first."),
+                "attachments": manual_rows_schema("Files and links kept as evidence, oldest first."),
+                "steps": manual_rows_schema("The timeline, by ordinal."),
+                "actions": manual_rows_schema("The actions with owners, by ordinal."),
+                "links": manual_rows_schema("What the exercise tested, by ordinal."),
+                "signoffs": manual_rows_schema("The sign-offs, oldest first."),
+            }),
+        )),
+        "tumult_manual_create_draft" => Some(schema_object(
+            &["id", "status"],
+            json!({
+                "id": { "type": "string", "description": "The id of the new record." },
+                "status": { "type": "string", "enum": ["draft"], "description": "A new record is always a draft." },
+            }),
+        )),
+        "tumult_manual_plans_list" => Some(schema_object(
+            &["items", "total", "offset", "limit"],
+            json!({
+                "items": {
+                    "type": "array",
+                    "description": "Plans on this page, the soonest due first, with every column of manual_exercise_plans.",
+                    "items": manual_row_schema(&["id", "name", "exercise_type", "status", "due_at_ns"]),
+                },
+                "total": { "type": "integer", "description": "Total matches before pagination." },
+                "offset": { "type": "integer" },
+                "limit": { "type": "integer" },
             }),
         )),
         _ => None,

@@ -78,7 +78,7 @@ summarise evidence; they are not legal or audit statements.
 
 ## AI agents
 
-Tumult exposes 40 tools over MCP, on stdio or HTTP. Read-only tools need the
+Tumult exposes 44 tools over MCP, on stdio or HTTP. Read-only tools need the
 `viewer` role. Tools that change or break things need `operator`.
 
 ```bash
@@ -87,7 +87,7 @@ tumult mcp serve --transport http --port 3100 --token "$MCP_TOKEN"
 ```
 
 <details>
-<summary>All 40 tools</summary>
+<summary>All 44 tools</summary>
 
 | Area | Tools |
 |---|---|
@@ -99,9 +99,10 @@ tumult mcp serve --transport http --port 3100 --token "$MCP_TOKEN"
 | ChaosGraph | `tumult_chaosgraph_query`, `tumult_chaosgraph_neighbors`, `tumult_chaosgraph_coverage_gaps`, `tumult_chaosgraph_cypher` |
 | Topology | `tumult_topology_import`, `tumult_topology_map`, `tumult_compliance_lineage`, `tumult_recommend_injection` |
 | Autopilot | `tumult_autopilot_run`, `tumult_autopilot_status`, `tumult_autopilot_respond`, `tumult_autopilot_export`, `tumult_autopilot_notify` |
+| Manual registry | `tumult_manual_list`, `tumult_manual_get`, `tumult_manual_create_draft`, `tumult_manual_plans_list` |
 | Access | `tumult_whoami` |
 
-Thirty tools return structured content with an output schema. Four tools can
+Thirty-four tools return structured content with an output schema. Four tools can
 break things: `tumult_run_experiment`, `tumult_gameday_run`,
 `tumult_autopilot_run` (with `execute=true`) and `tumult_autopilot_respond`
 (with `approve=true`).

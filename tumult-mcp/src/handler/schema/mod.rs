@@ -7,6 +7,7 @@ mod chaosgraph;
 mod core_tools;
 mod gameday;
 mod intelligence;
+mod manual;
 mod topology;
 
 pub use agentic::*;
@@ -16,6 +17,7 @@ pub use chaosgraph::*;
 pub use core_tools::*;
 pub use gameday::*;
 pub use intelligence::*;
+pub use manual::*;
 pub use topology::*;
 
 /// Default page size for the paginating list tools (journals, experiments,

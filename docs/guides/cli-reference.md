@@ -13,11 +13,11 @@ command and every flag; `tumult <command> --help` prints the same list.
 ```mermaid
 flowchart TD
   accTitle: The commands of tumult, grouped by task
-  accDescr: You write an experiment, run it, then keep and read the results. From the store you gate a pipeline on the daemon and plan the next run.
+  accDescr: You write an experiment, run it, then keep and read the results. From the store you ask the daemon to gate a pipeline or to keep manual records, and you plan the next run.
   W["Write an experiment<br/>init, new, templates, validate, discover"] --> R["Run it<br/>run, gameday, agentic"]
   R --> S["Keep the results<br/>store, import, export"]
   R --> A["Read the results<br/>analyze, report, trend, compliance, tui"]
-  S --> G["Gate a pipeline on the daemon<br/>gate, perf"]
+  S --> G["Ask the daemon<br/>gate, perf, manual"]
   S --> P["Plan the next run<br/>recommend, agents, chaosgraph, topology, autopilot, mcp"]
 ```
 
@@ -46,6 +46,7 @@ flowchart TD
 | [`autopilot`](#tumult-autopilot) | Decide and record the next faults, by policy |
 | [`gate`](#tumult-gate) | Pass or fail a target in CI |
 | [`perf`](#tumult-perf) | Performance regression verdict in CI |
+| [`manual`](#tumult-manual) | Manual records and planned exercises in the daemon |
 | [`tui`](#tumult-tui) | Dashboard of the store in the terminal |
 
 Every command also takes `-h, --help` and `-V, --version`.
@@ -320,7 +321,7 @@ the service files are in [Production deployment](production-deployment.md).
 
 `tumult-mcp [OPTIONS]` is a separate binary with the same server and the
 same flags as `tumult mcp serve`. It is in the container images and in a
-build from source, not in the release archives. It offers 40 tools; the
+build from source, not in the release archives. It offers 44 tools; the
 [MCP guide](mcp-guide.md) explains each one.
 
 | Area | Tools |
@@ -333,6 +334,7 @@ build from source, not in the release archives. It offers 40 tools; the
 | ChaosGraph | `tumult_chaosgraph_query`, `tumult_chaosgraph_neighbors`, `tumult_chaosgraph_coverage_gaps`, `tumult_chaosgraph_cypher` |
 | Topology | `tumult_topology_import`, `tumult_topology_map`, `tumult_compliance_lineage`, `tumult_recommend_injection` |
 | Autopilot | `tumult_autopilot_run`, `tumult_autopilot_status`, `tumult_autopilot_respond`, `tumult_autopilot_export`, `tumult_autopilot_notify` |
+| Manual registry | `tumult_manual_list`, `tumult_manual_get`, `tumult_manual_create_draft`, `tumult_manual_plans_list` |
 | Access | `tumult_whoami` |
 
 ## tumult chaosgraph
@@ -442,6 +444,41 @@ tumult perf checkout --quantile p95 --margin-pct 5 --env staging --store
 | `3` | `regressed` |
 | `4` | `inconclusive` |
 
+## tumult manual
+
+`tumult manual <SUBCOMMAND>` works with the manual registry of the daemon:
+DR exercises, drills, tabletops and other manual tests, and the plans for
+them. Every subcommand is a request to the daemon API, which checks the
+roles and the rules. The CLI never opens the lake. Each subcommand takes
+`--daemon-url <DAEMON_URL>` (default `TUMULT_DAEMON_URL`) and sends
+`TUMULT_DAEMON_TOKEN`. A read takes `--output` (`text`, or `json`, default
+`text`). See [Krönika pages](../reference/kronika-pages.md#from-the-command-line).
+
+```bash
+tumult manual create --file failover.toon
+tumult manual submit 01KAQ...
+tumult manual sign-off 01KAQ... --approve --note "Checked the restore log"
+tumult manual verify 01KAQ...
+```
+
+| Subcommand | Flags (default) | What it does |
+|---|---|---|
+| `list` | `--status`, `--type <TYPE>`, `--target`, `--from`, `--to`, `--output` | List the records, newest entry first. `--from` and `--to` take a date (`YYYY-MM-DD`, UTC) or an RFC 3339 time; a date as `--to` counts its whole day |
+| `show <ID>` | `--output` | Show a record with its steps, actions, links, attachments and sign-offs, and how many sign-offs are still needed |
+| `create` | `--file <FILE>`, `--by` | Create a draft from a TOON or JSON file (JSON when the name ends in `.json`) with the record body the API takes. A field the API does not know is refused, with its name |
+| `submit <ID>` | `--attestation`, `--by` | Submit a draft for sign-off |
+| `sign-off <ID>` | `--approve` or `--reject`, `--note`, `--by` | Approve or reject a submitted record. A reject needs `--note` |
+| `attach <ID> [FILE]` | `--link <LINK>`, `--label`, `--by` | Attach a file (PDF, PNG, JPEG, text, CSV or JSON, at most 25 MB), or a link with `--link` |
+| `verify <ID>` | `--output` | Check the seal, the audit trail, the sign-offs and the files of a record. Prints each problem and exits `1` when it is not ok |
+| `plans list` | `--status`, `--target`, `--output` | List the plans, the soonest due first |
+| `plans show <ID>` | `--output` | Show a plan with its audit trail |
+| `plans create` | `--file <FILE>`, `--by` | Create a plan from a TOON or JSON file with the plan body the API takes |
+| `plans cancel <ID>` | `--reason`, `--by` | Cancel a planned plan |
+
+While the daemon runs without auth (no user yet), `--by` names who acts. With
+auth on, the user of the token acts and `--by` is not used. The command exits
+`1` when the daemon refuses a request, and shows what it said.
+
 ## tumult tui
 
 `tumult tui [OPTIONS]` opens a read-only dashboard of the store in the
@@ -458,7 +495,7 @@ terminal. `tumult dashboard` is the same command.
 |---|---|
 | `TUMULT_LAKE_PATH` | Path of the store. Default `~/.tumult/lake.duckdb` |
 | `TUMULT_PLUGIN_PATH` | More script plugin folders, split by `:` |
-| `TUMULT_DAEMON_URL` | Daemon for `run`, `gate` and `perf`, such as `http://localhost:4318` |
+| `TUMULT_DAEMON_URL` | Daemon for `run`, `gate`, `perf` and `manual`, such as `http://localhost:4318` |
 | `TUMULT_DAEMON_TOKEN` | `kro_` API token sent to that daemon |
 | `TUMULT_TRACE_UI_BASE` | Default of `report --trace-ui-base` |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | Where traces, metrics and logs go. Unset: they are not sent |

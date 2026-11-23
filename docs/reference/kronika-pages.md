@@ -430,6 +430,44 @@ the `table` and the `row`, and the `field` when the check can tell.
    "problem": "reviewed_by is 'mallory', but the verify row of the audit trail is by 'carol'"}]}
 ```
 
+#### From the command line
+
+`tumult manual` does all of this from a terminal or a script. It sends each
+request to the daemon API, with the URL of `TUMULT_DAEMON_URL` and the token
+of `TUMULT_DAEMON_TOKEN`, so the same roles and rules apply. The
+[CLI reference](../guides/cli-reference.md#tumult-manual) lists every flag.
+
+```bash
+tumult manual create --file failover.toon     # the record body, as TOON or JSON
+tumult manual submit 01KAQ...
+tumult manual sign-off 01KAQ... --approve     # as another user
+tumult manual attach 01KAQ... runbook-log.pdf
+tumult manual verify 01KAQ...                 # exits 1 when it is not ok
+tumult manual show 01KAQ... --output json
+```
+
+```mermaid
+flowchart LR
+  accTitle: Who does what from the command line and over MCP
+  accDescr: An agent over MCP may list and read records and plans, and draft a record. A person with tumult manual submits the draft, other people sign it off, and anyone may verify it. Both reach the same records.
+  agent["agent over MCP<br/>list, read, draft"] --> lake["manual records"]
+  person["person with tumult manual<br/>submit, sign off, attach, verify"] --> api["daemon API"] --> lake
+```
+
+- The file of `create` is the body that `POST /api/manual/experiments`
+  takes, and the file of `plans create` the body of `POST /api/manual/plans`.
+  A field the API does not know is refused, and the error names it.
+- `list` filters by `--status`, `--type`, `--target`, `--from` and `--to`.
+  `show` prints the steps, actions, links, attachments and sign-offs, and how
+  many sign-offs are still needed.
+- Every read takes `--output json` and prints what the API answered.
+- While the daemon has no user yet, `--by` names who acts. With auth on, the
+  user of the token acts.
+- The MCP tools `tumult_manual_list`, `tumult_manual_get`,
+  `tumult_manual_create_draft` and `tumult_manual_plans_list` let an agent
+  read and draft. No MCP tool submits, signs off, verifies or attaches: an
+  agent may draft, a person signs.
+
 ## Telemetry explorers
 
 ### Logs
