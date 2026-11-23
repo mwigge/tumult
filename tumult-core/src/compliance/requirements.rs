@@ -282,6 +282,11 @@ pub enum Selector {
     /// A run (or verified manual exercise) of one of these disciplines
     /// against the function; an empty list accepts every discipline.
     Run { kinds: &'static [&'static str] },
+    /// A test that backs up or restores data, or fails over to a standby:
+    /// a run that ran a backup, restore or promote step, or a verified
+    /// manual exercise of one of these disciplines. A run whose step
+    /// failed is a failed test.
+    Restore { kinds: &'static [&'static str] },
     /// Runs in at least `min` distinct disciplines inside the window.
     Disciplines { min: usize },
     /// Every failed test is followed by a passing run of the same test.
@@ -665,7 +670,7 @@ pub const REQUIREMENTS: &[Requirement] = &[
         "Switchover between primary and redundant capacity tested yearly",
         5,
         Test,
-        Selector::Run { kinds: DR },
+        Selector::Restore { kinds: DR },
     )
     .full()
     .micro(MicroRule::Exempt)
@@ -732,7 +737,7 @@ pub const REQUIREMENTS: &[Requirement] = &[
         "Backup and restoration procedures tested periodically",
         3,
         Test,
-        Selector::Run { kinds: DR },
+        Selector::Restore { kinds: DR },
     )
     .full(),
     row(
@@ -850,7 +855,7 @@ pub const REQUIREMENTS: &[Requirement] = &[
         "Continuity ensured through backup and restoration measures",
         3,
         Test,
-        Selector::Run { kinds: DR },
+        Selector::Restore { kinds: DR },
     )
     .simplified(),
     row(
@@ -890,7 +895,7 @@ pub const REQUIREMENTS: &[Requirement] = &[
         "Backup and restore procedures tested at least once every year",
         5,
         Test,
-        Selector::Run { kinds: DR },
+        Selector::Restore { kinds: DR },
     )
     .simplified(),
     // ── Chapter III: incidents (every profile) ──────────────────────────

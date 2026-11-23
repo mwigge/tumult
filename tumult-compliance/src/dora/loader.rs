@@ -5,7 +5,10 @@
 //! - **Runs**: every `resilience.experiment` root span up to the as-of
 //!   time, with its completion status and measured recovery. A run
 //!   belongs to the function its `ict.entity.id` names, else to the
-//!   function whose service globs match its target.
+//!   function whose service globs match its target. A run that ran a
+//!   step backing up or restoring data ([`RESTORE_FUNCTIONS`]) carries
+//!   whether that step succeeded: read from the spans of its steps when
+//!   it sent its trace, else from the graph of its definition.
 //! - **Manual records**: verified, conclusive rows of
 //!   `manual_experiments`. A record with no target speaks for the whole
 //!   legal entity; its `framework_refs` are the requirement ids it cites.
@@ -92,6 +95,19 @@ pub const STATUS_ROW_LIMIT: usize = 1_000_000;
 pub const LOG_VALUE_MAX_LEN: usize = 128;
 /// Discipline of an automated run that names none.
 pub const DEFAULT_RUN_KIND: &str = "chaos";
+/// The plugin functions whose step backs up or restores data, or
+/// promotes a standby, as `(plugin, function)`: a row that asks for a
+/// backup, restore or switchover test (Art. 12(2) and the like) takes a
+/// run only when it ran one. The Postgres plugin is the one plugin that
+/// ships any. The
+/// `restore-clock` of tumult-timewarp puts a clock back, and the
+/// `simulate-failover` of tumult-db-redis hangs the server: neither
+/// touches data.
+pub const RESTORE_FUNCTIONS: [(&str, &str); 3] = [
+    ("tumult-db-postgres", "backup"),
+    ("tumult-db-postgres", "restore"),
+    ("tumult-db-postgres", "promote-replica"),
+];
 /// Name shown for the stand-in legal entity of a deployment that has
 /// registered none.
 pub const UNREGISTERED_NAME: &str = "(no legal entity registered)";
@@ -422,6 +438,40 @@ fn runs_sql(as_of_ns: i64, envs: &[String]) -> String {
     )
 }
 
+/// The backup and restore steps of every run, one row a step: the id of
+/// the run and whether the step failed. A run that sent its trace is
+/// read from the spans of its steps, in the method and the rollbacks,
+/// where a step is named `plugin::function`. A run stored as its journal
+/// with its definition is read from the graph: the method actions the
+/// definition names (`fault:plugin::function`), and the ones its
+/// deviation was caused by, which failed. The graph has no rollbacks, and
+/// it names the actions of a halted run that did not get to them; a
+/// halted run is a failed run either way.
+fn restore_steps_sql() -> Sql {
+    let marks = vec!["?"; RESTORE_FUNCTIONS.len()].join(", ");
+    let text = format!(
+        "SELECT r.experiment_id AS id, a.status_code = 'Error' AS failed \
+         FROM spans a \
+         INNER JOIN spans r ON r.trace_id = a.trace_id \
+         WHERE r.span_name = 'resilience.experiment' AND r.experiment_id IS NOT NULL \
+         AND a.span_name = 'resilience.action' \
+         AND a.span_attrs['resilience.target.component'] IN ({marks}) \
+         UNION ALL \
+         SELECT i.run_id AS id, c.run_id IS NOT NULL AS failed \
+         FROM graph_edges i \
+         LEFT JOIN graph_edges c \
+         ON c.run_id = i.run_id AND c.rel = 'caused_by' AND c.dst = i.dst \
+         WHERE i.rel = 'injects' AND i.dst IN ({marks})"
+    );
+    let steps = RESTORE_FUNCTIONS.iter();
+    let binds = steps
+        .clone()
+        .map(|(plugin, function)| format!("{plugin}::{function}"))
+        .chain(steps.map(|(plugin, function)| format!("fault:{plugin}::{function}")))
+        .collect();
+    Sql { text, binds }
+}
+
 fn manual_sql(as_of_ns: i64, envs: &[String]) -> String {
     let scope = scope::and(scope::in_list("m.target_environment", envs));
     format!(
@@ -656,7 +706,29 @@ impl Loader<'_> {
         Some(functions)
     }
 
-    fn runs(&self, rows: &[Value]) -> Vec<Evidence> {
+    /// For each run that ran a backup or restore step, whether every such
+    /// step succeeded, by run id. A row that does not say it succeeded is
+    /// taken as failed.
+    fn restore_steps(&self) -> Result<BTreeMap<String, bool>, LoadError> {
+        let sql = restore_steps_sql();
+        let binds: Vec<&str> = sql.binds.iter().map(String::as_str).collect();
+        let rows = self
+            .reader
+            .query_json_rows_bound(&sql.text, &binds)
+            .map_err(store)?;
+        let mut steps = BTreeMap::new();
+        for row in &rows {
+            let Some(id) = text(row, "id") else {
+                continue;
+            };
+            let succeeded = row.get("failed").and_then(Value::as_bool) == Some(false);
+            let all = steps.entry(id).or_insert(true);
+            *all = *all && succeeded;
+        }
+        Ok(steps)
+    }
+
+    fn runs(&self, rows: &[Value], restores: &BTreeMap<String, bool>) -> Vec<Evidence> {
         let mut seen = BTreeSet::new();
         let mut runs = Vec::new();
         for row in rows {
@@ -665,9 +737,10 @@ impl Loader<'_> {
             let Some(functions) = self.bind(text(row, "entity").as_deref(), &names) else {
                 continue;
             };
-            let Some(run) = run_of(row, functions) else {
+            let Some(mut run) = run_of(row, functions) else {
                 continue;
             };
+            run.restore_step = restores.get(&run.id).copied();
             if seen.insert(run.id.clone()) {
                 runs.push(run);
             }
@@ -891,7 +964,7 @@ fn load_entity(
             ..StoredDays::default()
         }
     };
-    let mut evidence = loader.runs(&run_rows);
+    let mut evidence = loader.runs(&run_rows, &loader.restore_steps()?);
     evidence.extend(loader.manual()?);
     let inputs = Inputs {
         functions,
@@ -1865,5 +1938,259 @@ functions:
             .evidence
             .iter()
             .all(|e| e.source == Source::Manual));
+    }
+
+    /// The span of one action of run `id`, as the runner sends it: a
+    /// step of the Postgres plugin that ran `function`, in the method or
+    /// the rollbacks. A step that failed has an error status.
+    fn step(id: &str, function: &str, ok: bool, ts: i64) -> SpanRow {
+        let name = format!("{function} the database");
+        let component = format!("tumult-db-postgres::{function}");
+        SpanRow {
+            ts_ns: ts,
+            trace_id: format!("t-{id}"),
+            span_id: format!("s-{id}-{function}"),
+            parent_span_id: Some(format!("s-{id}")),
+            span_name: "resilience.action".into(),
+            span_kind: "Internal".into(),
+            status_code: if ok { "Unset" } else { "Error" }.into(),
+            service_name: "tumult".into(),
+            fault_type: Some("injection".into()),
+            plugin_name: Some("tumult-db-postgres".into()),
+            span_attrs: pairs(&[
+                ("resilience.action.name", &name),
+                ("resilience.activity.type", "action"),
+                ("resilience.target.type", "script"),
+                ("resilience.target.name", "tumult-db-postgres"),
+                ("resilience.target.component", &component),
+            ]),
+            events: "[]".into(),
+            ..SpanRow::default()
+        }
+    }
+
+    /// A `dr` run of payments-db stored only as its journal, with the
+    /// definition it ran: one action of the Postgres plugin that ran
+    /// `function`. A run whose action failed ended as failed.
+    fn journal_run(store: &Store, id: &str, function: &str, ok: bool, at: i64) {
+        use std::collections::HashMap;
+        use tumult_core::types::{
+            Activity, ActivityStatus, ActivityType, Experiment, ExperimentStatus, ExperimentTarget,
+            Journal, Provider, TestKind,
+        };
+        let name = format!("{function} the database");
+        let status = if ok {
+            ExperimentStatus::Completed
+        } else {
+            ExperimentStatus::Failed
+        };
+        let mut journal = Journal {
+            experiment_title: format!("payments-db {function}"),
+            started_at_ns: at,
+            ended_at_ns: at + 60_000_000_000,
+            kind: TestKind::Dr,
+            ..tumult_lake::duckdb_store::sample_journal(id, status)
+        };
+        journal.method_results[0].name.clone_from(&name);
+        journal.method_results[0].status = if ok {
+            ActivityStatus::Succeeded
+        } else {
+            ActivityStatus::Failed
+        };
+        let definition = Experiment {
+            title: journal.experiment_title.clone(),
+            target: Some(ExperimentTarget {
+                system: "payments-db".into(),
+                technology: None,
+                environment: Some("prod".into()),
+                criticality: None,
+                namespace: None,
+                version: None,
+            }),
+            method: vec![Activity {
+                name,
+                activity_type: ActivityType::Action,
+                provider: Provider::Script {
+                    plugin: "tumult-db-postgres".into(),
+                    function: function.into(),
+                    arguments: HashMap::new(),
+                    timeout_s: None,
+                },
+                ..Activity::default()
+            }],
+            ..Experiment::default()
+        };
+        assert!(store
+            .writer()
+            .unwrap()
+            .ingest_journal(&journal, Some(&definition))
+            .unwrap());
+    }
+
+    /// The evidence the requirement row `id` accepts for cif-0001 under
+    /// `profile`, best first: `(id, v)`.
+    fn accepted(store: &Store, profile: &str, id: &str) -> Vec<(String, f64)> {
+        let request = Request {
+            profile: Some(profile),
+            ..request(&[])
+        };
+        let loaded = loaded(store, request);
+        let params = HouseParams::default();
+        let ctx = super::super::coverage::Ctx::new(&loaded.inputs, &params);
+        let payments = loaded.inputs.function("cif-0001").unwrap();
+        let row = tumult_core::compliance::requirement(id).unwrap();
+        ctx.evidence_rows(row, payments, loaded.inputs.as_of_ns)
+            .iter()
+            .map(|scored| (scored.evidence.id.clone(), scored.v))
+            .collect()
+    }
+
+    /// The evidence Art. 12(2) accepts for cif-0001, best first.
+    fn art_12_2(store: &Store) -> Vec<(String, f64)> {
+        accepted(store, "full", "dora.art12.2")
+    }
+
+    /// A lake with two `dr` runs of payments-db that only kill
+    /// connections, one traced and one stored as its journal, and one
+    /// older run stored as its journal that ran `function`.
+    fn kills_and_one(function: &str) -> (tempfile::TempDir, Store) {
+        let (dir, store) = store_with(ORG);
+        let (traced, traced_log) = run("r1", "payments-db", "dr", "Completed", NOW - 2 * DAY_NS);
+        let kill = step("r1", "kill-connections", true, NOW - 2 * DAY_NS);
+        seed(&store, &[traced, kill], &[traced_log]);
+        journal_run(&store, "j1", "kill-connections", true, NOW - DAY_NS);
+        journal_run(&store, "j-step", function, true, NOW - 3 * DAY_NS);
+        (dir, store)
+    }
+
+    #[test]
+    fn a_dr_run_that_only_kills_connections_is_no_art_12_2_test() {
+        let (_dir, store) = store_with(ORG);
+        let (traced, traced_log) = run("r1", "payments-db", "dr", "Completed", NOW - 2 * DAY_NS);
+        let kill = step("r1", "kill-connections", true, NOW - 2 * DAY_NS);
+        seed(&store, &[traced, kill], &[traced_log]);
+        journal_run(&store, "j1", "kill-connections", true, NOW - DAY_NS);
+
+        assert_eq!(art_12_2(&store), [], "no step backed up or restored");
+        // Both are still evidence, for the rows that take any dr run.
+        let ids: Vec<String> = loaded(&store, request(&[]))
+            .inputs
+            .evidence
+            .iter()
+            .map(|e| e.id.clone())
+            .collect();
+        assert_eq!(ids, ["r1", "j1"]);
+    }
+
+    #[test]
+    fn a_run_with_a_succeeded_backup_or_restore_step_is_an_art_12_2_test() {
+        let (_dir, store) = store_with(ORG);
+        let (kill, kill_log) = run("r-kill", "payments-db", "dr", "Completed", NOW - DAY_NS);
+        let kill_step = step("r-kill", "kill-connections", true, NOW - DAY_NS);
+        // A traced run: the trace holds the steps of the method and of
+        // the rollbacks.
+        let (restore, restore_log) = run(
+            "r-restore",
+            "payments-db",
+            "dr",
+            "Completed",
+            NOW - 3 * DAY_NS,
+        );
+        let restore_step = step("r-restore", "restore", true, NOW - 3 * DAY_NS);
+        seed(
+            &store,
+            &[kill, kill_step, restore, restore_step],
+            &[kill_log, restore_log],
+        );
+        // A run stored only as its journal: its definition names the step.
+        journal_run(&store, "j-kill", "kill-connections", true, NOW - DAY_NS);
+        journal_run(&store, "j-backup", "backup", true, NOW - 4 * DAY_NS);
+        journal_run(
+            &store,
+            "j-promote",
+            "promote-replica",
+            true,
+            NOW - 5 * DAY_NS,
+        );
+
+        assert_eq!(
+            art_12_2(&store),
+            [
+                ("r-restore".to_string(), 1.0),
+                ("j-backup".to_string(), 1.0),
+                ("j-promote".to_string(), 1.0),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_run_whose_restore_step_failed_is_a_failed_art_12_2_test() {
+        let (_dir, store) = store_with(ORG);
+        let (fresh, fresh_log) = run("r-kill", "payments-db", "dr", "Completed", NOW - DAY_NS);
+        let fresh_step = step("r-kill", "kill-connections", true, NOW - DAY_NS);
+        // The steady state held, and the restore of the rollbacks failed.
+        let (held, held_log) = run("r-held", "payments-db", "dr", "Completed", NOW - 2 * DAY_NS);
+        let held_step = step("r-held", "restore", false, NOW - 2 * DAY_NS);
+        let (ok, ok_log) = run("r-ok", "payments-db", "dr", "Completed", NOW - 5 * DAY_NS);
+        let ok_step = step("r-ok", "restore", true, NOW - 5 * DAY_NS);
+        seed(
+            &store,
+            &[fresh, fresh_step, held, held_step, ok, ok_step],
+            &[fresh_log, held_log, ok_log],
+        );
+        journal_run(&store, "j-failed", "restore", false, NOW - 3 * DAY_NS);
+
+        assert_eq!(
+            art_12_2(&store),
+            [
+                ("r-ok".to_string(), 1.0),
+                ("r-held".to_string(), 0.5),
+                ("j-failed".to_string(), 0.5),
+            ]
+        );
+        // Each run says whether its steps succeeded, and keeps how it
+        // ended: only Art. 12(2) reads the failed step of r-held.
+        let seen: Vec<(String, Outcome, Option<bool>)> = loaded(&store, request(&[]))
+            .inputs
+            .evidence
+            .iter()
+            .map(|e| (e.id.clone(), e.outcome, e.restore_step))
+            .collect();
+        assert_eq!(
+            seen,
+            [
+                ("r-ok".to_string(), Outcome::Passed, Some(true)),
+                ("j-failed".to_string(), Outcome::Failed, Some(false)),
+                ("r-held".to_string(), Outcome::Passed, Some(false)),
+                ("r-kill".to_string(), Outcome::Passed, None),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_dr_run_that_only_kills_connections_is_no_switchover_test() {
+        let (_dir, store) = kills_and_one("promote-replica");
+        assert_eq!(
+            accepted(&store, "full", "dora.art11.6.switchover"),
+            [("j-step".to_string(), 1.0)]
+        );
+    }
+
+    #[test]
+    fn a_dr_run_that_only_kills_connections_is_no_art_16_1_f_test() {
+        let (_dir, store) = kills_and_one("restore");
+        assert_eq!(
+            accepted(&store, "simplified", "dora.art16.1.f"),
+            [("j-step".to_string(), 1.0)]
+        );
+    }
+
+    #[test]
+    fn a_dr_run_that_only_kills_connections_is_no_yearly_restore_test() {
+        let (_dir, store) = kills_and_one("backup");
+        assert_eq!(
+            accepted(&store, "simplified", "rts1774.art40"),
+            [("j-step".to_string(), 1.0)]
+        );
     }
 }
