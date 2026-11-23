@@ -22,9 +22,16 @@ import type {
     LogEntry,
     LoginResponse,
     LogVolume,
+    EvidenceAttachment,
     ManualDetail,
     ManualExperiment,
+    ManualImportInput,
+    ManualPlan,
+    ManualPlanDetail,
+    ManualPlanInput,
     ManualRecordInput,
+    ManualSignOffResult,
+    ManualVerdict,
     MeResponse,
     MetricCatalogEntry,
     MetricDefInfo,
@@ -103,14 +110,33 @@ export class ApiError extends Error {
     }
 }
 
+/** The error of an answer that is not ok: the `error` of a JSON body, else
+    the text of a plain body (axum answers a body it cannot read in plain
+    text), else the status. */
+async function failure(resp: Response, path: string): Promise<ApiError> {
+    redirectOnUnauthorized(resp, path);
+    const text = (await resp.text().catch(() => '')).trim();
+    let reason = text;
+    try {
+        const body = JSON.parse(text);
+        reason = typeof body?.error === 'string' ? body.error : '';
+    } catch {
+        // Not JSON: the text is the reason.
+    }
+    return new ApiError(reason || `HTTP ${resp.status}`, resp.status);
+}
+
+/** A request whose body or answer is not JSON: the answer, when it is ok. */
+async function raw(method: string, path: string, init: RequestInit = {}): Promise<Response> {
+    const resp = await fetch(path, { ...init, method });
+    if (!resp.ok) throw await failure(resp, path);
+    return resp;
+}
+
 async function get<T>(path: string): Promise<T> {
     const resp = await fetch(path);
-    const body = await resp.json().catch(() => ({}));
-    if (!resp.ok) {
-        redirectOnUnauthorized(resp, path);
-        throw new ApiError(body.error ?? `HTTP ${resp.status}`, resp.status);
-    }
-    return body as T;
+    if (!resp.ok) throw await failure(resp, path);
+    return (await resp.json().catch(() => ({}))) as T;
 }
 
 async function send<T>(method: string, path: string, payload: unknown): Promise<T> {
@@ -119,12 +145,8 @@ async function send<T>(method: string, path: string, payload: unknown): Promise<
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(payload),
     });
-    const body = await resp.json().catch(() => ({}));
-    if (!resp.ok) {
-        redirectOnUnauthorized(resp, path);
-        throw new ApiError(body.error ?? `HTTP ${resp.status}`, resp.status);
-    }
-    return body as T;
+    if (!resp.ok) throw await failure(resp, path);
+    return (await resp.json().catch(() => ({}))) as T;
 }
 
 export const api = {
@@ -324,16 +346,82 @@ export const api = {
             attestation: attestation ?? null,
         }),
 
+    /** An approving sign-off; the answer says how many are still needed. */
     manualVerify: (id: string, reviewer: string, note?: string) =>
-        send<{ ok: boolean }>('POST', `/api/manual/experiments/${encodeURIComponent(id)}/verify`, {
-            reviewer,
-            note: note ?? null,
-        }),
+        send<ManualSignOffResult>(
+            'POST',
+            `/api/manual/experiments/${encodeURIComponent(id)}/verify`,
+            { reviewer, note: note ?? null },
+        ),
 
     manualReject: (id: string, reviewer: string, note: string) =>
-        send<{ ok: boolean }>('POST', `/api/manual/experiments/${encodeURIComponent(id)}/reject`, {
-            reviewer,
-            note,
+        send<ManualSignOffResult>(
+            'POST',
+            `/api/manual/experiments/${encodeURIComponent(id)}/reject`,
+            { reviewer, note },
+        ),
+
+    manualAuditVerify: (id: string) =>
+        get<ManualVerdict>(`/api/manual/experiments/${encodeURIComponent(id)}/audit/verify`),
+
+    /** A file as evidence: its bytes as the body, its name in the query. */
+    manualAttachFile: async (id: string, file: File, addedBy: string) => {
+        const query = new URLSearchParams({ name: file.name });
+        if (addedBy.trim()) query.set('added_by', addedBy.trim());
+        const resp = await raw(
+            'POST',
+            `/api/manual/experiments/${encodeURIComponent(id)}/attachments?${query}`,
+            { headers: { 'content-type': 'application/octet-stream' }, body: file },
+        );
+        return (await resp.json()) as EvidenceAttachment;
+    },
+
+    /** A link (`url` or `ticket`) as evidence. */
+    manualAttachLink: (
+        id: string,
+        link: { kind: string; uri: string; label: string | null; added_by: string },
+    ) =>
+        send<{ id: string }>(
+            'POST',
+            `/api/manual/experiments/${encodeURIComponent(id)}/attachments`,
+            link,
+        ),
+
+    /** The bytes of an attached file. */
+    manualDownload: async (id: string, attachmentId: string) => {
+        const resp = await raw(
+            'GET',
+            `/api/manual/experiments/${encodeURIComponent(id)}/attachments/${encodeURIComponent(attachmentId)}/file`,
+        );
+        return resp.blob();
+    },
+
+    manualImport: (body: ManualImportInput) =>
+        send<{ batch_id: string; ids: string[] }>('POST', '/api/manual/import', body),
+
+    manualPlans: (status = '') =>
+        get<{ plans: ManualPlan[] }>(
+            `/api/manual/plans${status ? `?status=${encodeURIComponent(status)}` : ''}`,
+        ),
+
+    /** One plan with its audit trail, oldest row first. */
+    manualPlanDetail: (id: string) =>
+        get<ManualPlanDetail>(`/api/manual/plans/${encodeURIComponent(id)}`),
+
+    manualPlanAuditVerify: (id: string) =>
+        get<ManualVerdict>(`/api/manual/plans/${encodeURIComponent(id)}/audit/verify`),
+
+    manualPlanCreate: (plan: ManualPlanInput) =>
+        send<{ id: string }>('POST', '/api/manual/plans', plan),
+
+    /** Each field sent replaces the stored one; `null` clears it. */
+    manualPlanEdit: (id: string, patch: Partial<ManualPlanInput>) =>
+        send<{ ok: boolean }>('PATCH', `/api/manual/plans/${encodeURIComponent(id)}`, patch),
+
+    manualPlanCancel: (id: string, by: string, reason?: string) =>
+        send<{ ok: boolean }>('POST', `/api/manual/plans/${encodeURIComponent(id)}/cancel`, {
+            by,
+            reason: reason ?? null,
         }),
 
     // --- UI execution: registry + runs ----------------------------------------

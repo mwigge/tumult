@@ -245,25 +245,66 @@ Route `/schedules`, for operators. Recurring runs of registered definitions.
 
 ### Manual
 
-Route `/manual`. Entry and review of manual evidence: draft, submitted,
-verified or rejected.
+Route `/manual`. Manual evidence: DR exercises and other tests run by hand.
+You plan them, record them, attach evidence, sign them off and verify their
+audit trail. A record is a draft, submitted, verified or rejected.
 
 ![Manual evidence](../images/3.0/screenshots/manual.png)
+
+The page has five tabs:
+
+- **New entry** records an exercise. See [Record a DR exercise](#record-a-dr-exercise).
+- **Plans** lists the plans with their due dates, and plans an exercise.
+- **Verification queue** lists the submitted records. Open one to sign it off.
+- **All records** lists every record. Open one to see its steps, actions,
+  evidence, sign-offs and audit trail, and to verify it.
+- **Import** takes records as JSON, as drafts in one batch.
+
+When the API refuses a change, the page shows the reason the API gives.
 
 - **API:** `GET /api/manual/experiments`, `GET /api/manual/experiments/{id}`,
   `POST /api/manual/experiments`, `PUT /api/manual/experiments/{id}`,
   `POST /api/manual/experiments/{id}/submit`,
   `POST /api/manual/experiments/{id}/verify`,
-  `POST /api/manual/experiments/{id}/reject`.
+  `POST /api/manual/experiments/{id}/reject`,
+  `GET /api/manual/experiments/{id}/audit/verify`,
+  `POST /api/manual/experiments/{id}/attachments`,
+  `GET /api/manual/experiments/{id}/attachments/{attachment_id}/file`,
+  `POST /api/manual/import`, `GET /api/manual/plans`,
+  `POST /api/manual/plans`, `GET /api/manual/plans/{id}`,
+  `PATCH /api/manual/plans/{id}`, `POST /api/manual/plans/{id}/cancel`,
+  `GET /api/manual/plans/{id}/audit/verify`.
+
+#### Record a DR exercise
+
+The form of **New entry** takes what an auditor asks of a restore test, a
+failover drill or a tabletop:
+
+- the exercise type, `restore` and `backup` included, the target system and
+  environment, and the plan it fulfils. The list shows the planned plans of
+  the same type and target. A plan you pick fills the target and the planned
+  RTO and RPO where the form is blank.
+- the planned RTO and RPO, the actual recovery time and RPO, and whether the
+  data was verified after the recovery.
+- the participants with their roles, the steps in order with their start,
+  end and result, and the actions with an owner and a due date.
+
+The form sends the actions as `actions`. It no longer sends the older
+`action_items` list. When you edit an older draft, each of its plain action
+items becomes an action that still needs an owner.
+
+Save the draft first. Then attach files and links to it in **Evidence**, and
+submit it with **Save & submit**.
 
 #### Plan an exercise
 
-A plan says which manual exercise is due when, and who owns it. The page
-does not show plans yet: use the API. Send `POST /api/manual/plans` with a
-name, an exercise type, the target system and environment, an owner and a
-due date (`due_at_ns`). A plan can also name a function of the register
+A plan says which manual exercise is due when, and who owns it. Plan one on
+the **Plans** tab, or send `POST /api/manual/plans` with a name, an exercise
+type, the target system and environment, an owner and a due date
+(`due_at_ns`). A plan can also name a function of the register
 (`function_id`), what it will test (`scope`), a planned date, an interval
-in days and the planned RTO and RPO.
+in days and the planned RTO and RPO. On the page a due date holds the whole
+day: the plan is due at the end of it.
 
 ```mermaid
 flowchart LR
@@ -278,11 +319,13 @@ flowchart LR
 - A plan of a DR type that names no interval comes back every 365 days.
   The DR types are the ones the house counts as `dr`: by default
   `failover`, `drill`, `restore` and `backup`.
-- Change a planned plan with `PATCH /api/manual/plans/{id}`. A field you
-  send as `null` is cleared. Cancel it with
+- Change a planned plan with **Edit** on its row, or with
+  `PATCH /api/manual/plans/{id}`. A field you send as `null` is cleared.
+  Cancel it with **Cancel** and a reason, or with
   `POST /api/manual/plans/{id}/cancel`.
 - Every change seals the plan and adds a row to its audit trail.
-  `GET /api/manual/plans/{id}` shows both.
+  `GET /api/manual/plans/{id}` shows both. On the page, open the row of the
+  plan.
 - To fulfil the plan, send its id as `plan_id` with the record of the
   exercise. The plan must still be planned, and the record must test what
   the plan planned: the same exercise type, and the same target system,
@@ -296,8 +339,9 @@ flowchart LR
 
 #### When a plan is overdue
 
-A plan that is still planned after its due date is a finding on the
-Resilience page, with the rule `manual_exercise_overdue`. It is medium for
+A plan that is still planned after its due date is marked overdue on the
+**Plans** tab. It is also a finding on the Resilience page, with the rule
+`manual_exercise_overdue`. It is medium for
 the first 30 days past the due date, and high after that. The finding goes
 away when a verified record fulfils the plan, or when someone cancels it.
 An overdue plan does not change the compliance score.
@@ -324,6 +368,9 @@ flowchart LR
   one -->|reject| rejected
 ```
 
+- On the page, open the record in **Verification queue** and choose
+  **Approve** or **Reject** with a note. The page says how many sign-offs
+  are still needed.
 - Approve with `POST /api/manual/experiments/{id}/verify`. Reject with
   `POST /api/manual/experiments/{id}/reject` and a note. The answer gives
   the `status` and the sign-offs still needed (`signoffs_needed`).
@@ -339,8 +386,10 @@ flowchart LR
 #### Attach a file
 
 A record can keep files as evidence: a runbook log, a screenshot, an export
-of the data you restored. The page does not attach files yet: use the API.
-Send the bytes of one file as the body, and its name in the query:
+of the data you restored. On the page, choose the file in **Evidence** of the
+record and **Upload file**. The list shows the type, the size and the SHA-256
+of each file, and **Download** gives it back. With the API, send the bytes of
+one file as the body, and its name in the query:
 
 ```bash
 curl -H "Authorization: Bearer $TOKEN" --data-binary @runbook-log.pdf \
@@ -390,7 +439,8 @@ flowchart LR
 `GET /api/manual/experiments/{id}/audit/verify` and
 `GET /api/manual/plans/{id}/audit/verify` check a record or a plan again,
 straight from the lake. They need the Viewer role, as the verify of a run
-does.
+does. On the page, open the record or the plan and choose **Verify audit
+trail**: it says ok, or lists each problem.
 
 ```mermaid
 flowchart LR
@@ -563,16 +613,6 @@ Route `/login`. Sign in, and change the password at the first sign in.
 - Entities from [entity events](../guides/entity-events.md): read them with
   `GET /api/entities`.
 - Forecast bands of semantic metrics: `GET /api/forecast`.
-- Plans of manual exercises: `GET /api/manual/plans`, see
-  [Plan an exercise](#plan-an-exercise).
-- The audit verify of a manual record or plan:
-  `GET /api/manual/experiments/{id}/audit/verify` and
-  `GET /api/manual/plans/{id}/audit/verify`, see
-  [Verify the audit trail](#verify-the-audit-trail).
-- Files attached to a manual record:
-  `POST /api/manual/experiments/{id}/attachments` and
-  `GET /api/manual/experiments/{id}/attachments/{attachment_id}/file`, see
-  [Attach a file](#attach-a-file).
 
 Charts follow the theme you pick (dark, light or auto), and tooltips escape
 every value that comes from the lake.
