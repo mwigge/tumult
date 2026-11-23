@@ -602,7 +602,29 @@ functions:
             log_attrs: pairs(&[("experiment_id", "restore-1"), ("status", "completed")]),
             ..tumult_lake::LogRow::default()
         };
-        d.ingest.write(Batch::Spans(vec![span])).await.unwrap();
+        // The step that restored, as the runner sends it: only a run with a
+        // backup or restore step counts for the yearly restore test.
+        let step = tumult_lake::SpanRow {
+            ts_ns: ts,
+            trace_id: "t-restore".into(),
+            span_id: "s-restore-step".into(),
+            parent_span_id: Some("s-restore".into()),
+            span_name: "resilience.action".into(),
+            span_kind: "Internal".into(),
+            service_name: "tumult".into(),
+            plugin_name: Some("tumult-db-postgres".into()),
+            span_attrs: pairs(&[
+                ("resilience.action.name", "restore the database"),
+                ("resilience.activity.type", "action"),
+                ("resilience.target.component", "tumult-db-postgres::restore"),
+            ]),
+            events: "[]".into(),
+            ..tumult_lake::SpanRow::default()
+        };
+        d.ingest
+            .write(Batch::Spans(vec![span, step]))
+            .await
+            .unwrap();
         d.ingest.write(Batch::Logs(vec![log])).await.unwrap();
     }
 

@@ -612,6 +612,7 @@ fn validate_accepts_well_formed_load_profiles() {
         peak_vus: 200,
         after_s: 20.0,
         hold_s: 10.0,
+        sample_interval_s: None,
     };
     assert!(validate_experiment(&with_load(Some(spike), Some(10), Some(60.0))).is_ok());
     let soak = LoadProfile::Soak {
@@ -655,6 +656,7 @@ fn validate_rejects_spike_that_does_not_fit_or_does_not_rise() {
         peak_vus: 200,
         after_s: 55.0,
         hold_s: 10.0,
+        sample_interval_s: None,
     };
     assert!(
         load_error(&with_load(Some(overflow), Some(10), Some(60.0))).contains("after_s + hold_s")
@@ -663,6 +665,7 @@ fn validate_rejects_spike_that_does_not_fit_or_does_not_rise() {
         peak_vus: 10,
         after_s: 5.0,
         hold_s: 10.0,
+        sample_interval_s: None,
     };
     assert!(load_error(&with_load(Some(flat), Some(10), Some(60.0))).contains("peak_vus"));
 }
@@ -689,6 +692,33 @@ fn validate_rejects_a_soak_interval_below_one_second() {
 }
 
 #[test]
+fn a_spike_sample_interval_is_held_to_the_bounds_of_a_soak_one() {
+    let spike = |sample_interval_s: f64| LoadProfile::Spike {
+        peak_vus: 20,
+        after_s: 20.0,
+        hold_s: 10.0,
+        sample_interval_s: Some(sample_interval_s),
+    };
+    let short = load_error(&with_load(Some(spike(0.5)), Some(10), Some(60.0)));
+    assert!(short.contains("at least 1 second"), "{short}");
+    let long = load_error(&with_load(Some(spike(100.0)), Some(10), Some(60.0)));
+    assert!(long.contains("must not exceed duration_s"), "{long}");
+    let nan = load_error(&with_load(Some(spike(f64::NAN)), Some(10), Some(60.0)));
+    assert!(nan.contains("finite"), "{nan}");
+    assert!(validate_experiment(&with_load(Some(spike(1.0)), Some(10), Some(60.0))).is_ok());
+}
+
+#[test]
+fn a_sample_interval_of_zero_or_infinity_is_not_a_window_and_one_as_long_as_the_run_fits() {
+    let soak = |sample_interval_s: f64| LoadProfile::Soak { sample_interval_s };
+    for bad in [0.0, f64::INFINITY] {
+        let error = load_error(&with_load(Some(soak(bad)), None, Some(60.0)));
+        assert!(error.contains("finite and positive"), "{bad}: {error}");
+    }
+    assert!(validate_experiment(&with_load(Some(soak(60.0)), None, Some(60.0))).is_ok());
+}
+
+#[test]
 fn validate_rejects_zero_users_anywhere() {
     assert!(load_error(&with_load(None, Some(0), None)).contains("vus"));
     let ramp = LoadProfile::Ramp {
@@ -700,6 +730,7 @@ fn validate_rejects_zero_users_anywhere() {
         peak_vus: 0,
         after_s: 1.0,
         hold_s: 1.0,
+        sample_interval_s: None,
     };
     assert!(load_error(&with_load(Some(spike), None, Some(60.0))).contains("peak_vus"));
 }
@@ -908,7 +939,8 @@ fn a_refused_kind_is_told_the_metrics_that_measure_it() {
         "nfr objective 'a' is invalid: kind latency does not fit metric \
          'during.availability', which measures error_rate or availability; the metrics of \
          latency are load.latency_p50_ms, load.latency_p95_ms, load.latency_p99_ms, \
-         probe.<name>.mean_ms, probe.<name>.max_ms, probe.<name>.p95_ms"
+         load.p95_drift_pct, load.spike_recovery_s, probe.<name>.mean_ms, \
+         probe.<name>.max_ms, probe.<name>.p95_ms"
     );
 }
 

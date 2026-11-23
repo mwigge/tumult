@@ -123,6 +123,44 @@ flowchart LR
 - An id of another framework, such as `ISO 27001 A.5.30`, is kept as
   written. The registry holds DORA only.
 
+## What counts as a restore test
+
+Four rows ask that a backup, a restore or a switchover is tested. A run
+counts for them only when it ran a step that backs up or restores data,
+or promotes a standby. The kind of the run does not decide: a `dr` run
+that only kills connections is no test of a restore.
+
+| Row | Profile | Asks for |
+|---|---|---|
+| Art. 12(2) | full | Backup and restoration tested |
+| Art. 11(6), switchover | full | Switchover to redundant capacity tested yearly |
+| Art. 16(1)(f) | simplified | Continuity through backup and restoration |
+| RTS 2024/1774 Art. 40 | simplified | Backup and restore tested every year |
+
+Under `simplified`, the test coverage pillar (T) of the maturity level
+reads the RTS row.
+
+```mermaid
+flowchart LR
+  accTitle: Which runs count as a restore test
+  accDescr: A run counts only when it ran a backup or restore step. A run whose step failed is a failed test. A run whose step succeeded counts with the outcome of the run.
+  run["A run"] --> step{"Ran a backup or<br/>restore step?"}
+  step -->|no| none["No evidence for these rows"]
+  step -->|"yes, it failed"| failed["A failed test"]
+  step -->|"yes, it succeeded"| outcome["The outcome of the run"]
+```
+
+| Plugin | Steps that count |
+|---|---|
+| `tumult-db-postgres` | `backup`, `restore`, `promote-replica` |
+
+- Tumult reads the steps from the trace of the run, in the method and in
+  the rollbacks. For a run that sent no trace, it reads the actions of the
+  method from the definition the run was stored with.
+- A `process` step names no plugin function, so it does not count.
+- A verified manual record counts as before: an exercise whose type
+  `manual_kinds` maps to `dr` (`failover` and `drill` by default).
+
 ## Maturity
 
 ![The maturity level with its pillars and gates](../images/3.0/screenshots/scores-maturity.png)
