@@ -37,6 +37,8 @@ tracing.workspace = true
 rust-embed.workspace = true
 mime_guess.workspace = true
 uuid.workspace = true
+# The SHA-256 of a DR report the report subcommand writes.
+sha2.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

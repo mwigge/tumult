@@ -15,28 +15,11 @@ fn doc_id_format() {
 }
 
 #[test]
-fn framework_lists_cover_all_four() {
+fn every_framework_but_dora_lists_its_clauses_and_dora_reads_the_registry() {
     assert_eq!(FRAMEWORK_CLAUSES.len(), 4);
-    for (_, clauses) in FRAMEWORK_CLAUSES {
-        assert!(!clauses.is_empty());
+    for (name, clauses) in FRAMEWORK_CLAUSES {
+        assert_eq!(clauses.is_empty(), *name == "dora", "{name}");
     }
-}
-
-#[test]
-fn dora_clauses_cite_the_plan_paragraphs_and_leave_out_tlpt() {
-    let dora = FRAMEWORK_CLAUSES
-        .iter()
-        .find(|(name, _)| *name == "dora")
-        .map(|(_, clauses)| *clauses)
-        .expect("dora clause list");
-    assert_eq!(
-        dora,
-        [
-            "Art. 11(3), 11(4), 11(6) — response and recovery plans",
-            "Art. 12(2) — backup, restoration and recovery",
-            "Art. 24–25 — resilience testing programme",
-        ]
-    );
 }
 
 const BASE_NS: i64 = 1_785_000_000_000_000_000;
@@ -153,7 +136,15 @@ fn evidence_pack_lists_approval_chain() {
     let (_d, store) = gated_fixture();
     let reader = store.read_only().unwrap();
     let now = BASE_NS + DAY_NS + 12 * HOUR_NS;
-    let doc = build_evidence_pack(&reader, "soc2", None, now, &[]).unwrap();
+    let doc = build_evidence_pack(
+        &reader,
+        "soc2",
+        None,
+        now,
+        &[],
+        &House::of(&crate::dora::HouseParams::default()),
+    )
+    .unwrap();
 
     let (headers, rows) = approval_table(&doc);
     assert!(headers.iter().any(|h| h == "Tier"));
@@ -176,7 +167,15 @@ fn evidence_pack_approval_chain_empty_message() {
     let d = tempfile::TempDir::new().unwrap();
     let store = tumult_lake::Store::open(&d.path().join("kronika.duckdb")).unwrap();
     let reader = store.read_only().unwrap();
-    let doc = build_evidence_pack(&reader, "soc2", None, BASE_NS, &[]).unwrap();
+    let doc = build_evidence_pack(
+        &reader,
+        "soc2",
+        None,
+        BASE_NS,
+        &[],
+        &House::of(&crate::dora::HouseParams::default()),
+    )
+    .unwrap();
     assert!(doc.blocks.iter().any(|b| matches!(
         b,
         Block::Paragraph(p) if p == "No approval-gated runs in the selected sample for this scope and period."
@@ -190,15 +189,30 @@ fn evidence_pack_approval_chain_respects_period() {
     let now = BASE_NS + DAY_NS + 12 * HOUR_NS;
 
     // A one-hour period excludes both requests.
-    let doc = build_evidence_pack(&reader, "soc2", Some(HOUR_NS), now, &[]).unwrap();
+    let doc = build_evidence_pack(
+        &reader,
+        "soc2",
+        Some(HOUR_NS),
+        now,
+        &[],
+        &House::of(&crate::dora::HouseParams::default()),
+    )
+    .unwrap();
     assert!(doc.blocks.iter().any(|b| matches!(
         b,
         Block::Paragraph(p) if p == "No approval-gated runs in the selected sample for this scope and period."
     )));
 
     // A period reaching back past run-b but not run-a only keeps run-b.
-    let doc =
-        build_evidence_pack(&reader, "soc2", Some(DAY_NS + 12 * HOUR_NS - 1), now, &[]).unwrap();
+    let doc = build_evidence_pack(
+        &reader,
+        "soc2",
+        Some(DAY_NS + 12 * HOUR_NS - 1),
+        now,
+        &[],
+        &House::of(&crate::dora::HouseParams::default()),
+    )
+    .unwrap();
     let (_, rows) = approval_table(&doc);
     assert_eq!(rows.len(), 1, "rows: {rows:?}");
     assert!(row_text(&rows[0]).contains("T1"));
@@ -270,7 +284,15 @@ fn evidence_pack_scoped_confines_register_and_approvals() {
     let reader = store.read_only().unwrap();
     let now = BASE_NS + DAY_NS + 12 * HOUR_NS;
 
-    let scoped = build_evidence_pack(&reader, "soc2", None, now, &["staging".to_string()]).unwrap();
+    let scoped = build_evidence_pack(
+        &reader,
+        "soc2",
+        None,
+        now,
+        &["staging".to_string()],
+        &House::of(&crate::dora::HouseParams::default()),
+    )
+    .unwrap();
     // Test register: only the staging experiment.
     let register = scoped
         .blocks
@@ -294,7 +316,15 @@ fn evidence_pack_rejects_unknown_framework() {
     let d = tempfile::TempDir::new().unwrap();
     let store = tumult_lake::Store::open(&d.path().join("kronika.duckdb")).unwrap();
     let reader = store.read_only().unwrap();
-    let err = build_evidence_pack(&reader, "pci-dss", None, BASE_NS, &[]).unwrap_err();
+    let err = build_evidence_pack(
+        &reader,
+        "pci-dss",
+        None,
+        BASE_NS,
+        &[],
+        &House::of(&crate::dora::HouseParams::default()),
+    )
+    .unwrap_err();
     assert!(err.contains("unknown framework"), "{err}");
     assert!(err.contains("dora"), "{err}");
 }
@@ -405,7 +435,15 @@ fn evidence_pack_renders_register_provenance_attestation_and_findings() {
     let (_d, store) = findings_fixture();
     let reader = store.read_only().unwrap();
     let now = BASE_NS + 6 * HOUR_NS;
-    let doc = build_evidence_pack(&reader, "dora", Some(12 * HOUR_NS), now, &[]).unwrap();
+    let doc = build_evidence_pack(
+        &reader,
+        "dora",
+        Some(12 * HOUR_NS),
+        now,
+        &[],
+        &House::of(&crate::dora::HouseParams::default()),
+    )
+    .unwrap();
 
     assert_eq!(doc.meta.framework.as_deref(), Some("DORA"));
     assert_eq!(doc.meta.period, Some((now - 12 * HOUR_NS, now)));
@@ -414,7 +452,8 @@ fn evidence_pack_renders_register_provenance_attestation_and_findings() {
         b,
         Block::Paragraph(p) if p.contains("DORA") && p.contains('–') && p.contains("experiments are on record")
     )));
-    // Every clause stays unmapped until evidence applicability is reviewed.
+    // The DORA matrix is every row of the requirement registry. No function
+    // of a register binds these targets, so no row names their evidence.
     let matrix = doc
         .blocks
         .iter()
@@ -424,8 +463,8 @@ fn evidence_pack_renders_register_provenance_attestation_and_findings() {
             _ => None,
         })
         .expect("traceability matrix");
-    assert_eq!(matrix.len(), 3);
-    assert!(matrix.iter().all(|row| row_text(row).contains("Unmapped")));
+    assert_eq!(matrix.len(), tumult_core::compliance::REQUIREMENTS.len());
+    assert!(matrix.iter().all(|row| !row_text(row).contains("Unmapped")));
     assert!(matrix
         .iter()
         .all(|row| !row_text(row).contains("flaky-exp") && !row_text(row).contains("drill-exp")));
@@ -493,7 +532,15 @@ fn a_verified_manual_partial_is_open_in_the_digest_and_in_the_evidence_pack() {
     let now = BASE_NS + 6 * HOUR_NS;
 
     let digest = build_executive(&reader, &OrgTree::empty(), now, 7 * DAY_NS, now, &[]).unwrap();
-    let pack = build_evidence_pack(&reader, "dora", Some(12 * HOUR_NS), now, &[]).unwrap();
+    let pack = build_evidence_pack(
+        &reader,
+        "dora",
+        Some(12 * HOUR_NS),
+        now,
+        &[],
+        &House::of(&crate::dora::HouseParams::default()),
+    )
+    .unwrap();
 
     let open = rows_under(&digest, "Open weaknesses and decisions needed");
     assert!(
@@ -537,7 +584,15 @@ fn an_open_weakness_with_no_severity_on_record_says_not_recorded() {
 fn the_evidence_pack_says_where_an_outcome_comes_from() {
     let (_d, store) = findings_fixture();
     let reader = store.read_only().unwrap();
-    let doc = build_evidence_pack(&reader, "dora", None, BASE_NS + 6 * HOUR_NS, &[]).unwrap();
+    let doc = build_evidence_pack(
+        &reader,
+        "dora",
+        None,
+        BASE_NS + 6 * HOUR_NS,
+        &[],
+        &House::of(&crate::dora::HouseParams::default()),
+    )
+    .unwrap();
 
     let scope = doc
         .blocks
@@ -580,7 +635,15 @@ fn evidence_pack_does_not_infer_clause_coverage_from_many_experiments() {
         .insert_spans(&(0..4).map(root).collect::<Vec<_>>())
         .unwrap();
     let reader = store.read_only().unwrap();
-    let doc = build_evidence_pack(&reader, "nis2", None, BASE_NS + HOUR_NS, &[]).unwrap();
+    let doc = build_evidence_pack(
+        &reader,
+        "nis2",
+        None,
+        BASE_NS + HOUR_NS,
+        &[],
+        &House::of(&crate::dora::HouseParams::default()),
+    )
+    .unwrap();
     let matrix = doc
         .blocks
         .iter()
@@ -1370,12 +1433,29 @@ fn evidence_pack_does_not_assert_unverified_independence_or_clause_coverage() {
         None,
         BASE_NS + 2 * HOUR_NS,
         &[],
+        &House::of(&crate::dora::HouseParams::default()),
     )
     .unwrap();
     let text = format!("{doc:?}");
     assert!(!text.contains("Testing performed in line with"));
     assert!(text.contains("Independence has not been verified"));
-    assert!(text.contains("Unmapped"));
+    // No function binds the runs of this lake: no row of the DORA matrix
+    // claims evidence.
+    let matrix = doc
+        .blocks
+        .iter()
+        .skip_while(|b| !matches!(b, Block::H2(t) if t == "Traceability matrix"))
+        .find_map(|b| match b {
+            Block::Table { rows, .. } => Some(rows.clone()),
+            _ => None,
+        })
+        .expect("traceability matrix");
+    assert!(
+        matrix
+            .iter()
+            .all(|row| row[2] == Cell::text("not applicable")),
+        "{matrix:?}"
+    );
 }
 
 #[test]
@@ -3034,7 +3114,15 @@ fn an_evidence_pack_of_one_experiment_says_one_experiment() {
     let (_d, store) = one_run("queue-restart", "completed");
     let reader = store.read_only().unwrap();
 
-    let doc = build_evidence_pack(&reader, "dora", None, BASE_NS + HOUR_NS, &[]).unwrap();
+    let doc = build_evidence_pack(
+        &reader,
+        "dora",
+        None,
+        BASE_NS + HOUR_NS,
+        &[],
+        &House::of(&crate::dora::HouseParams::default()),
+    )
+    .unwrap();
 
     let scope = doc
         .blocks

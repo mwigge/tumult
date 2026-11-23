@@ -416,7 +416,15 @@ fn main() {
         ),
         (
             "r2",
-            builders::build_evidence_pack(&reader, "dora", Some(14 * DAY), now, &[]).unwrap(),
+            builders::build_evidence_pack(
+                &reader,
+                "dora",
+                Some(14 * DAY),
+                now,
+                &[],
+                &builders::House::of(&tumult_compliance::dora::HouseParams::default()),
+            )
+            .unwrap(),
         ),
     ];
     for (tag, doc) in &docs {
