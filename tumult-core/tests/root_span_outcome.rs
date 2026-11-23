@@ -445,6 +445,38 @@ fn a_run_that_never_recovered_says_its_rto_breached_and_that_it_did_not_recover(
 }
 
 #[test]
+fn the_rto_facts_come_from_the_verdict_on_the_rto_target_and_not_from_another_rto_objective() {
+    // A declared objective of kind rto comes before the verdict on
+    // `rto_target_s`. It reads the MTTR, which a run that never came back
+    // does not have.
+    let experiment = Experiment {
+        nfr: vec![NfrObjective {
+            id: "failover-time".into(),
+            kind: NfrKind::Rto,
+            metric: "recovery.mttr_s".into(),
+            operator: NfrOperator::Lte,
+            threshold: 600.0,
+            window_s: None,
+            criticality: NfrCriticality::Major,
+            description: None,
+        }],
+        ..with_rto("never back", 30.0)
+    };
+
+    let (journal, root) = run(
+        &experiment,
+        Target::answers("ok", "down"),
+        &RunConfig::default(),
+    );
+
+    let verdicts = &journal.objectives.as_ref().expect("objectives").verdicts;
+    assert_eq!(verdicts[0].nfr_id, "failover-time");
+    assert_eq!(verdicts[0].state, NfrState::Inconclusive);
+    assert_eq!(text(&root, RTO_STATE).as_deref(), Some("breached"));
+    assert_eq!(flag(&root, RECOVERED), Some(false));
+}
+
+#[test]
 fn a_run_that_saw_no_outage_says_so_and_nothing_of_a_recovery() {
     let (journal, root) = run(
         &with_rto("no outage", 30.0),

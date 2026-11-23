@@ -661,6 +661,47 @@ async fn a_run_that_did_not_recover_says_the_least_its_rto_was() {
 }
 
 #[tokio::test]
+async fn a_run_that_did_not_recover_says_the_least_its_rto_was_when_a_later_test_is_the_last() {
+    let srv = spawn_server().await;
+    let now = now_ns();
+    let runs = vec![
+        dr_run(
+            "ledger-lost",
+            "ledger",
+            "prod",
+            now - 200 * DAY,
+            Seen::NeverBack,
+        ),
+        dr_run("ledger-back", "ledger", "prod", now - 10 * DAY, Seen::Met),
+    ];
+    exec_write(&srv, move |w| {
+        for (journal, definition) in &runs {
+            w.ingest_journal(journal, Some(definition))
+                .map_err(|e| e.to_string())?;
+        }
+        Ok(())
+    })
+    .await;
+
+    let (status, view) = get(&srv.base, "/api/dr").await;
+
+    assert_eq!(status, 200, "{view}");
+    let ledger = target_of(&view, "ledger");
+    assert_eq!(ledger["last_test"]["id"], "automated:ledger-back");
+    assert_eq!(ledger["rto_at_least_s"], Value::Null, "{ledger}");
+    let lost = view["tests"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|t| t["test_id"] == "automated:ledger-lost")
+        .unwrap_or_else(|| panic!("no lost run: {view}"));
+    assert_eq!(
+        lost["rto_at_least_s"], 30.1,
+        "the run is on the page, though no target has it as its last test"
+    );
+}
+
+#[tokio::test]
 async fn a_period_keeps_the_tests_that_ran_inside_it_and_not_the_targets() {
     let srv = spawn_server().await;
     let seeded = seed_dr(&srv).await;

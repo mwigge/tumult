@@ -1276,6 +1276,49 @@ mod tests {
     }
 
     #[test]
+    fn a_dr_test_thirty_days_past_due_is_still_medium() {
+        // The last test ran 395 days ago: the next was due 30 days ago.
+        let inputs = Inputs {
+            as_of_ns: NOW,
+            dr_register: vec![dr_due("db", 395, None)],
+            ..Default::default()
+        };
+
+        let risks = evaluate(&inputs);
+
+        let overdue = overdue_tests(&risks);
+        assert_eq!(overdue["db"].severity, Severity::Medium, "{risks:?}");
+        assert_eq!(overdue["db"].rank, Severity::Medium.base_rank() + 1);
+    }
+
+    #[test]
+    fn an_overdue_dr_test_keeps_its_severity_when_only_another_target_is_critical() {
+        let covered = vec![
+            evidence("chaos", 1),
+            evidence("performance", 1),
+            evidence("robustness", 1),
+        ];
+        let inputs = Inputs {
+            as_of_ns: NOW,
+            targets: vec![
+                target("db", Some("low"), covered.clone()),
+                target("ledger", Some("critical"), covered),
+            ],
+            dr_register: vec![dr_due("db", 366, None)],
+            ..Default::default()
+        };
+
+        let risks = evaluate(&inputs);
+
+        let overdue = overdue_tests(&risks);
+        assert_eq!(
+            overdue["db"].severity,
+            Severity::Medium,
+            "the db is not critical, the ledger is: {risks:?}"
+        );
+    }
+
+    #[test]
     fn an_overdue_dr_test_is_one_step_more_severe_on_a_critical_target() {
         let covered = vec![
             evidence("chaos", 1),
