@@ -94,6 +94,7 @@ async fn dispatch(command: Commands) -> anyhow::Result<()> {
             output_format,
             vars,
             target_version,
+            recovery_window,
             load,
             load_script,
             load_vus,
@@ -130,6 +131,7 @@ async fn dispatch(command: Commands) -> anyhow::Result<()> {
                     cli::BaselineMode::Only => tumult_core::runner::BaselineMode::Only,
                 },
                 target_version.as_deref(),
+                recovery_window,
             )
             .await;
             // A run that did not complete wrote a journal too. Any other
@@ -142,8 +144,8 @@ async fn dispatch(command: Commands) -> anyhow::Result<()> {
             }
             ended?;
         }
-        Commands::Validate { experiment } => {
-            commands::cmd_validate(&experiment)?;
+        Commands::Validate { experiment, vars } => {
+            commands::cmd_validate(&experiment, &parse_var_args(&vars)?)?;
         }
         Commands::Discover { plugin } => {
             commands::cmd_discover(plugin.as_deref())?;

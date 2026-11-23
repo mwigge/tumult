@@ -193,9 +193,9 @@ fn during_phase_samples_are_collected() {
 }
 
 #[test]
-fn mttr_calculated_on_recovery() {
-    // Arrange: executor that always succeeds — all post-phase samples succeed
-    // so system is immediately "recovered", and mttr_s should be Some(...)
+fn no_mttr_when_the_probes_saw_no_outage() {
+    // Arrange: executor that always succeeds: no sample fails, so the
+    // probes saw no outage and nothing recovered.
     let exp = experiment_with_hypothesis();
     let executor: Arc<dyn ActivityExecutor> = Arc::new(MockExecutor::with_output("200"));
     let controls = Arc::new(ControlRegistry::new());
@@ -203,17 +203,15 @@ fn mttr_calculated_on_recovery() {
     // Act
     let journal = run_experiment(&exp, &executor, &controls, &default_config()).unwrap();
 
-    // Assert: post_result.mttr_s is populated
+    // Assert: the post phase ran, saw no outage, and has no MTTR
     assert!(
         journal.post_result.is_some(),
         "post_result should be populated when hypothesis is present"
     );
     let post = journal.post_result.as_ref().unwrap();
-    assert!(
-        post.mttr_s.is_some(),
-        "mttr_s should be Some when post-phase probes are collected"
-    );
-    assert!(post.mttr_s.unwrap() >= 0.0, "mttr_s must be non-negative");
+    assert!(post.full_recovery);
+    assert_eq!(post.impact_observed, Some(false));
+    assert_eq!(post.mttr_s, None, "a run that saw no outage is no recovery");
 }
 
 #[test]

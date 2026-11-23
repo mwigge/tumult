@@ -116,7 +116,7 @@ pub(crate) fn output_schema_for(tool_name: &str) -> Option<ToolOutputSchema> {
                 "pass_rate": { "type": "number", "description": "Fraction of journals that completed (0.0-1.0)." },
                 "recovery_compliance": {
                     "type": ["number", "null"],
-                    "description": "Of the runs that watched for recovery, the share (0.0-1.0) that saw their target recover within the target time; null when no run watched for recovery (pass-rate-only verdict).",
+                    "description": "Of the runs that measured a recovery, the share (0.0-1.0) that saw their target recover within the RTO of the run, or within 30 s for a run that declares none. A run that measured no recovery (no outage seen, method failed, watch cut short) is left out. null when no run measured a recovery: not measured (pass-rate-only verdict).",
                 },
                 "verdict": {
                     "type": "string",

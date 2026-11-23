@@ -81,6 +81,8 @@ pub fn verdict(id: &str, operator: NfrOperator, threshold: f64, state: NfrState)
         state,
         margin: None,
         criticality: NfrCriticality::Major,
+        recovered: None,
+        reason: None,
     }
 }
 
@@ -182,5 +184,8 @@ pub fn post() -> PostResult {
         recovery_time_s: 30.0,
         full_recovery: false,
         mttr_s: None,
+        impact_observed: None,
+        outage_started_at_ns: None,
+        recovered_at_ns: None,
     }
 }

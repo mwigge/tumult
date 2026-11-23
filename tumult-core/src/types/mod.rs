@@ -144,6 +144,7 @@ mod tests {
             nfr: vec![],
             rto_target_s: None,
             rpo_target_s: None,
+            recovery: None,
         }
     }
 

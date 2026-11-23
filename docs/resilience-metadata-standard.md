@@ -49,7 +49,7 @@ flowchart TD
 | `resilience.test.kind` | on the root span | |
 | target | `system`, `technology`, `environment`, `criticality`, `version` and `version_source` on the root span, from the `target` block; `type`, `name` and `component` on step spans | `type` is `process`, `native` or `script`. `version`, `version_source` and `name` are not in the standard. `tier` and `region` are not written |
 | fault | `type` and `name` on step spans; `blast_radius` on the root span | `type` is `injection` for an action and `observation` for a probe, not a value of the closed set. `blast_radius` is the free note of the definition. `subtype`, `severity`, `duration_s`, `reversible`, `plugin` and `action` are not written; the plugin is `resilience.plugin.name` |
-| outcome | `status`, `hypothesis_met` and `recovery_time_s` on the root span, the last two only when the run measured them | the other outcome attributes are not written |
+| outcome | `status`, `hypothesis_met` and `recovery_time_s` on the root span, the last two only when the run measured them | `recovery_time_s` runs from the outage the probes saw, not from the end of the fault. The other outcome attributes are not written |
 | load | on the `resilience.load` span | also `script`, `latency_p50_ms`, `latency_p99_ms`, `total_requests`, `aborted`, `truncated`, the window counts, `reason` and `error` |
 | estimate, during, after, analysis | no span attribute | the journal keeps them as `estimate`, `during_result`, `post_result` and `analysis` |
 | baseline, safety, environment, regulatory, taxonomy, scores | nothing | the journal keeps the `regulatory` block of the definition |

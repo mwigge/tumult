@@ -10,7 +10,7 @@ use tumult_core::engine::{
 use tumult_core::execution::RollbackStrategy;
 use tumult_core::journal::{encode_journal, ExistingJournal, JournalError, JournalOutput};
 use tumult_core::runner::{run_experiment, RunConfig};
-use tumult_core::types::{Experiment, ExperimentStatus, Journal};
+use tumult_core::types::{Experiment, ExperimentStatus, Journal, RecoveryConfig};
 
 use tumult_exec::ProviderExecutor;
 
@@ -66,13 +66,15 @@ pub async fn cmd_run<S: ::std::hash::BuildHasher>(
         load_override.map_or(LoadOverride::Keep, LoadOverride::Replace),
         tumult_core::runner::BaselineMode::Full,
         None,
+        None,
     )
     .await
 }
 
 /// Runs an experiment with an explicitly enforced measurement mode.
 /// `target_version` declares the version of the target the run measures,
-/// over one the file declares.
+/// over one the file declares. `recovery_window_s` is how many seconds the
+/// run watches for recovery, over the `recovery.window_s` of the file.
 ///
 /// # Errors
 /// Returns an error when validation, measurement, execution or journal writing fails.
@@ -88,6 +90,7 @@ pub async fn cmd_run_with_baseline_mode<S: ::std::hash::BuildHasher>(
     load_override: LoadOverride,
     baseline_mode: tumult_core::runner::BaselineMode,
     target_version: Option<&str>,
+    recovery_window_s: Option<f64>,
 ) -> Result<()> {
     // S-C3: File size limit before deserialization (10MB max)
     let file_size = tokio::fs::metadata(experiment_path)
@@ -138,6 +141,14 @@ pub async fn cmd_run_with_baseline_mode<S: ::std::hash::BuildHasher>(
         LoadOverride::Keep => {}
         LoadOverride::Remove => experiment.load = None,
         LoadOverride::Replace(load) => experiment.load = Some(load),
+    }
+    // The window of --recovery-window replaces the one of the file. Before
+    // validation, so the window that is checked is the one the run watches.
+    if let Some(window_s) = recovery_window_s {
+        experiment
+            .recovery
+            .get_or_insert_with(RecoveryConfig::default)
+            .window_s = window_s;
     }
     validate_experiment(&experiment)?;
 

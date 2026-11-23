@@ -14,7 +14,7 @@
 use std::time::Duration;
 
 use crate::execution::RollbackStrategy;
-use crate::types::{Activity, LoadConfig, LoadResult, LoadTool, VersionShare};
+use crate::types::{Activity, Experiment, LoadConfig, LoadResult, LoadTool, VersionShare};
 
 use thiserror::Error;
 use tokio_util::sync::CancellationToken;
@@ -54,6 +54,10 @@ pub enum RunnerError {
     /// A `GameDay` declares a different number of experiments than were provided.
     #[error("gameday declares {declared} experiments but {provided} were provided")]
     ExperimentCountMismatch { declared: usize, provided: usize },
+    /// The `recovery` block asks for a window the post phase cannot watch
+    /// (see [`crate::types::RecoveryConfig::invalid_reason`]). No fault ran.
+    #[error("recovery is invalid: {0}")]
+    InvalidRecovery(String),
 }
 
 /// Probe sampling cadence for during-phase and post-phase collection.
@@ -66,7 +70,8 @@ pub enum RunnerError {
 /// experiments see no added latency.
 #[derive(Debug, Clone)]
 pub struct SamplingConfig {
-    /// Pause between probe sampling rounds in both phases.
+    /// Pause between probe sampling rounds of the during phase, and
+    /// between two reads of the guards.
     pub interval: Duration,
     /// Upper bound on during-phase sampling rounds, guarding against
     /// unbounded sample growth for long-running methods.
@@ -74,6 +79,8 @@ pub struct SamplingConfig {
     /// How long the post phase keeps sampling while waiting for probes to
     /// return within tolerance (recovery) before giving up.
     pub recovery_timeout: Duration,
+    /// Pause between probe sampling rounds of the post phase.
+    pub recovery_interval: Duration,
 }
 
 impl Default for SamplingConfig {
@@ -82,7 +89,32 @@ impl Default for SamplingConfig {
             interval: Duration::from_secs(1),
             max_during_samples: 300,
             recovery_timeout: Duration::from_secs(30),
+            recovery_interval: Duration::from_secs(1),
         }
+    }
+}
+
+impl SamplingConfig {
+    /// The cadence of a run of `experiment`: its `recovery` block sets how
+    /// long the post phase watches and how often it reads the probes. An
+    /// experiment without the block gets [`SamplingConfig::default`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RunnerError::InvalidRecovery`] for a window the post phase
+    /// cannot watch.
+    pub fn for_experiment(experiment: &Experiment) -> Result<Self, RunnerError> {
+        let Some(recovery) = experiment.recovery else {
+            return Ok(Self::default());
+        };
+        if let Some(reason) = recovery.invalid_reason() {
+            return Err(RunnerError::InvalidRecovery(reason));
+        }
+        Ok(Self {
+            recovery_timeout: Duration::from_secs_f64(recovery.window_s),
+            recovery_interval: Duration::from_secs_f64(recovery.interval_s),
+            ..Self::default()
+        })
     }
 }
 

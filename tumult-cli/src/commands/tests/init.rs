@@ -130,6 +130,7 @@ async fn dry_run_renders_all_optional_sections_without_executing() {
         nfr: vec![],
         rto_target_s: None,
         rpo_target_s: None,
+        recovery: None,
     };
     let exp_path = dir.path().join("rich.toon");
     std::fs::write(&exp_path, toon_format::encode_default(&experiment).unwrap()).unwrap();

@@ -482,6 +482,37 @@ mod tests {
         assert!(matches!(result, Err(JournalError::WriteError(_))));
     }
 
+    /// A journal that 3.0.3 recorded holds none of the facts of the
+    /// recovery clock. It reads, and it writes back as it was.
+    #[test]
+    fn a_journal_written_by_3_0_3_reads_and_writes_back_as_it_was() {
+        let dir = TempDir::new().unwrap();
+        let recorded = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../examples/recorded/postgres-failover.journal.toon");
+
+        let journal = read_journal(&recorded).unwrap();
+
+        let post = journal.post_result.as_ref().unwrap();
+        assert_eq!(post.mttr_s, Some(0.0));
+        assert_eq!(post.impact_observed, None);
+        assert_eq!(post.outage_started_at_ns, None);
+        assert_eq!(post.recovered_at_ns, None);
+        let objectives = journal.objectives.as_ref().unwrap();
+        assert!(objectives.verdicts.iter().all(|v| v.reason.is_none()));
+        let copy = dir.path().join("copy.journal.toon");
+        write_journal(&journal, &copy).unwrap();
+        assert_eq!(read_journal(&copy).unwrap(), journal);
+        let written = std::fs::read_to_string(&copy).unwrap();
+        for key in [
+            "impact_observed",
+            "outage_started_at_ns",
+            "recovered_at_ns",
+            "reason",
+        ] {
+            assert!(!written.contains(key), "{written}");
+        }
+    }
+
     /// The text of a journal that a run recorded, with each `(from, to)`
     /// edit made once.
     fn recorded_journal_with(edits: &[(&str, &str)]) -> String {

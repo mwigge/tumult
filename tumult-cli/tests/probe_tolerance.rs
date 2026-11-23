@@ -30,10 +30,16 @@ fn a_probe_of_the_method_that_reads_the_wrong_value_deviates_the_run() {
     assert!(lab.rolled_back(), "a deviation gets its rollback");
 }
 
+/// A step that keeps the fault in for a second and a half: the steady
+/// state, read once a second, sees the outage.
+fn hold() -> String {
+    step("hold", "action", "sleep 1.5")
+}
+
 #[test]
 fn the_fault_was_applied_so_recovery_is_still_measured() {
     let lab = Lab::with_state("ok");
-    let method = [inject(), reads("during", "ok"), heal()].concat();
+    let method = [inject(), reads("during", "ok"), hold(), heal()].concat();
 
     let (_, journal) = lab.run(&method);
 
@@ -65,7 +71,7 @@ fn a_probe_of_the_method_that_reads_what_it_expects_completes_the_run() {
 fn a_probe_of_the_method_that_cannot_run_deviates_the_run() {
     let lab = Lab::with_state("ok");
     let broken = step("during", "probe", "exit 3");
-    let method = [inject(), broken, heal()].concat();
+    let method = [inject(), broken, hold(), heal()].concat();
 
     let (code, journal) = lab.run(&method);
 

@@ -25,10 +25,15 @@ pub struct ScoringConfig {
     /// Minimum experiment pass rate (0.0-1.0) for compliance.
     #[serde(default = "default_pass_threshold")]
     pub pass_threshold: f64,
-    /// Maximum acceptable MTTR in seconds.
+    /// Maximum acceptable MTTR in seconds of a run that declares no
+    /// `rto_target_s`. A run that declares one is judged against it.
     #[serde(default = "default_mttr_target")]
     pub mttr_target_s: f64,
-    /// Whether full recovery is required for compliance.
+    /// Whether each run must show a recovery. When it is set, a run that
+    /// watched for recovery and measured none (its probes saw no outage,
+    /// its method failed, or a stop cut the watch short) counts as a
+    /// recovery that failed. When it is not, such a run is left out of the
+    /// recovery score.
     #[serde(default)]
     pub recovery_required: bool,
 }
@@ -76,13 +81,19 @@ pub struct GameDay {
 ///
 /// Each component is a value between 0.0 and 1.0. The overall score
 /// is a weighted mean: `pass_rate` (0.30) + recovery (0.25) +
-/// `load_impact` (0.25) + compliance (0.20).
+/// `load_impact` (0.25) + compliance (0.20). A game day where no run
+/// measured a recovery has no recovery component: the overall score is
+/// then the weighted mean of the other three, over their weights (0.75).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ResilienceScore {
     /// Fraction of experiments that completed successfully.
     pub pass_rate: f64,
-    /// Recovery compliance: 1.0 if all MTTR < target, scales down.
-    pub recovery_compliance: f64,
+    /// Recovery compliance: of the runs that measured a recovery, the
+    /// share that came back within the RTO of the run, or within
+    /// `scoring.mttr_target_s` for a run that declares none. `None` when
+    /// no run measured one: not measured, never full marks.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recovery_compliance: Option<f64>,
     /// Load impact tolerance: 1.0 if degradation within bounds.
     pub load_impact_tolerance: f64,
     /// Fraction of mapped compliance articles that are met.
@@ -92,10 +103,24 @@ pub struct ResilienceScore {
 }
 
 impl ResilienceScore {
-    /// Computes the weighted overall score from the four components.
+    /// What a report shows of a recovery compliance that was not measured.
+    pub const NOT_MEASURED: &'static str = "not measured";
+
+    /// Computes the weighted overall score from the four components. A
+    /// recovery that was not measured leaves the mean, and the other three
+    /// share its weight.
     #[must_use]
-    pub fn compute(pass_rate: f64, recovery: f64, load_impact: f64, compliance: f64) -> Self {
-        let overall = pass_rate * 0.30 + recovery * 0.25 + load_impact * 0.25 + compliance * 0.20;
+    pub fn compute(
+        pass_rate: f64,
+        recovery: Option<f64>,
+        load_impact: f64,
+        compliance: f64,
+    ) -> Self {
+        let others = pass_rate * 0.30 + load_impact * 0.25 + compliance * 0.20;
+        let overall = match recovery {
+            Some(recovery) => others + recovery * 0.25,
+            None => others / 0.75,
+        };
         Self {
             pass_rate,
             recovery_compliance: recovery,
@@ -103,6 +128,16 @@ impl ResilienceScore {
             compliance_coverage: compliance,
             overall,
         }
+    }
+
+    /// The recovery compliance as a report shows it: two decimals, or
+    /// [`NOT_MEASURED`](Self::NOT_MEASURED).
+    #[must_use]
+    pub fn recovery_text(&self) -> String {
+        self.recovery_compliance.map_or_else(
+            || Self::NOT_MEASURED.to_string(),
+            |share| format!("{share:.2}"),
+        )
     }
 
     /// Interprets the overall score as a compliance status string.
@@ -297,9 +332,41 @@ mod tests {
 
     #[test]
     fn resilience_score_round_trips() {
-        let score = ResilienceScore::compute(0.8, 1.0, 0.9, 0.75);
+        let score = ResilienceScore::compute(0.8, Some(1.0), 0.9, 0.75);
         let decoded: ResilienceScore = toon_round_trip(&score);
         assert_eq!(decoded, score);
+    }
+
+    #[test]
+    fn a_score_without_a_measured_recovery_shares_its_weight_among_the_other_three() {
+        let measured = ResilienceScore::compute(0.5, Some(1.0), 1.0, 1.0);
+        let not_measured = ResilienceScore::compute(0.5, None, 1.0, 1.0);
+
+        assert!((measured.overall - 0.85).abs() < 1e-9, "{measured:?}");
+        assert_eq!(not_measured.recovery_compliance, None);
+        // (0.30 * 0.5 + 0.25 * 1.0 + 0.20 * 1.0) / 0.75
+        assert!(
+            (not_measured.overall - 0.8).abs() < 1e-9,
+            "{not_measured:?}"
+        );
+        assert_eq!(measured.recovery_text(), "1.00");
+        assert_eq!(not_measured.recovery_text(), "not measured");
+        let full = ResilienceScore::compute(1.0, None, 1.0, 1.0);
+        assert!((full.overall - 1.0).abs() < 1e-9, "{full:?}");
+    }
+
+    #[test]
+    fn a_score_with_no_recovery_writes_none_and_an_older_one_still_reads() {
+        let not_measured = ResilienceScore::compute(1.0, None, 1.0, 1.0);
+        let written = toon_format::encode_default(&not_measured).expect("encode");
+        assert!(!written.contains("recovery_compliance"), "{written}");
+        assert_eq!(toon_round_trip(&not_measured), not_measured);
+
+        let older = "pass_rate: 1\nrecovery_compliance: 1\nload_impact_tolerance: 1\n\
+                     compliance_coverage: 1\noverall: 1\n";
+        let read: ResilienceScore = toon_format::decode_default(older).expect("decode");
+        assert_eq!(read.recovery_compliance, Some(1.0));
+        assert!((read.overall - 1.0).abs() < f64::EPSILON);
     }
 
     #[test]
@@ -332,7 +399,7 @@ mod tests {
                 samples: vec![],
                 execution: crate::types::LoadExecution::default(),
             }),
-            resilience_score: ResilienceScore::compute(1.0, 1.0, 0.9, 1.0),
+            resilience_score: ResilienceScore::compute(1.0, Some(1.0), 0.9, 1.0),
             compliance_status: "COMPLIANT".into(),
             regulatory: None,
         };
@@ -342,14 +409,14 @@ mod tests {
 
     #[test]
     fn resilience_score_all_pass() {
-        let score = ResilienceScore::compute(1.0, 1.0, 1.0, 1.0);
+        let score = ResilienceScore::compute(1.0, Some(1.0), 1.0, 1.0);
         assert!((score.overall - 1.0).abs() < f64::EPSILON);
         assert_eq!(score.status(), "COMPLIANT");
     }
 
     #[test]
     fn resilience_score_partial() {
-        let score = ResilienceScore::compute(0.75, 0.80, 0.70, 0.80);
+        let score = ResilienceScore::compute(0.75, Some(0.80), 0.70, 0.80);
         assert!(score.overall >= 0.75);
         assert!(score.overall < 0.90);
         assert_eq!(score.status(), "PARTIAL");
@@ -357,7 +424,7 @@ mod tests {
 
     #[test]
     fn resilience_score_non_compliant() {
-        let score = ResilienceScore::compute(0.50, 0.50, 0.50, 0.50);
+        let score = ResilienceScore::compute(0.50, Some(0.50), 0.50, 0.50);
         assert!(score.overall < 0.75);
         assert_eq!(score.status(), "NON-COMPLIANT");
     }

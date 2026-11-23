@@ -60,6 +60,8 @@ fn journal_with_a_verdict() -> tumult_core::types::Journal {
             state: NfrState::Met,
             margin: Some(857.5),
             criticality: NfrCriticality::Blocking,
+            recovered: None,
+            reason: None,
         }],
     });
     journal

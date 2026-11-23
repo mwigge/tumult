@@ -520,6 +520,8 @@ mod tests {
                 state: NfrState::Met,
                 margin: Some(857.5),
                 criticality: NfrCriticality::Blocking,
+                recovered: None,
+                reason: None,
             }],
         });
         s.ingest_journal(&journal).unwrap();

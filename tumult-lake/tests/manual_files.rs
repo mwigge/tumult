@@ -165,10 +165,16 @@ fn a_file_over_the_cap_is_refused_while_it_is_written_and_leaves_nothing() {
     let (_d, store, _writer) = temp_writer();
     let dir = attachments_dir(store.path());
     let mut upload = FileUpload::begin(&dir).unwrap();
-    let cap = usize::try_from(MAX_FILE_BYTES).unwrap();
+    // 25 MB, written out: the cap the docs and the API promise.
+    let cap = 25 * 1024 * 1024;
+    assert_eq!(MAX_FILE_BYTES, 26_214_400);
     upload.write(&vec![b'a'; cap]).unwrap();
     let err = upload.write(b"a").unwrap_err();
     assert!(matches!(err, FileError::TooLarge), "{err:?}");
+    assert_eq!(
+        err.to_string(),
+        "the file is larger than 25 MB (26214400 bytes)"
+    );
     drop(upload);
     assert_eq!(files_under(&dir), Vec::<PathBuf>::new());
 }
@@ -387,8 +393,12 @@ fn the_lake_export_carries_the_files_and_a_fresh_lake_gets_them_back() {
         meta["attachments"][&hash],
         format!("attachments/{}/{hash}", &hash[..2])
     );
-    // A second export finds the file in place.
+    // A second export finds the file in place, and a copy that no longer
+    // has the bytes of its hash is written again.
     assert_eq!(export(&reader, &cfg).unwrap().attachments, 1);
+    std::fs::write(&carried, b"%PDF-1.4 damaged in the archive").unwrap();
+    assert_eq!(export(&reader, &cfg).unwrap().attachments, 1);
+    assert_eq!(std::fs::read(&carried).unwrap(), PDF);
 
     let (_other_dir, other, restored) = import(&cfg);
     assert_eq!(restored, 1);
@@ -512,4 +522,129 @@ fn stale_upload_files_are_removed_when_the_store_opens_and_logged() {
 
 fn stored_path(db: &Path, hash: &str) -> PathBuf {
     attachments_dir(db).join(&hash[..2]).join(hash)
+}
+
+/// The answer to `bytes` sent as `name`: the media type, or why not.
+fn type_of(store: &Store, name: &str, bytes: &[u8]) -> Result<&'static str, String> {
+    let mut upload = FileUpload::begin(&attachments_dir(store.path())).unwrap();
+    upload.write(bytes).unwrap();
+    upload
+        .finish(name)
+        .map(|staged| staged.media_type())
+        .map_err(|e| e.to_string())
+}
+
+#[test]
+fn a_jpeg_name_must_have_jpeg_bytes_and_a_name_may_be_255_characters() {
+    let (_d, store, _writer) = temp_writer();
+    for name in ["photo.jpg", "photo.JPEG"] {
+        let err = type_of(&store, name, PDF).unwrap_err();
+        assert!(
+            err.contains("the name says image/jpeg, but the bytes are application/pdf"),
+            "{name}: {err}"
+        );
+    }
+    let longest = format!("{}.pdf", "a".repeat(251));
+    assert_eq!(longest.chars().count(), 255);
+    assert_eq!(type_of(&store, &longest, PDF), Ok("application/pdf"));
+    let longer = format!("{}.pdf", "a".repeat(252));
+    let err = type_of(&store, &longer, PDF).unwrap_err();
+    assert_eq!(err, "the file name is longer than 255 characters");
+}
+
+#[test]
+fn a_temporary_file_that_is_already_gone_is_not_logged_and_one_that_stays_is() {
+    let (_d, store, _writer) = temp_writer();
+    let dir = attachments_dir(store.path());
+    let temp_of = || {
+        let found: Vec<PathBuf> = files_under(&dir)
+            .into_iter()
+            .filter(|p| {
+                p.file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .starts_with(".upload-")
+            })
+            .collect();
+        assert_eq!(found.len(), 1, "{found:?}");
+        found[0].clone()
+    };
+    let level = tracing::Level::WARN;
+
+    // Removed by someone else first: nothing to say.
+    let upload = FileUpload::begin(&dir).unwrap();
+    std::fs::remove_file(temp_of()).unwrap();
+    let logs = tumult_otel::logging::testing::capture_json(level, || drop(upload));
+    assert!(logs.events.is_empty(), "{}", logs.raw);
+
+    // In its place a folder, which a file removal cannot take: a warning.
+    let upload = FileUpload::begin(&dir).unwrap();
+    let temp = temp_of();
+    std::fs::remove_file(&temp).unwrap();
+    std::fs::create_dir(&temp).unwrap();
+    let logs = tumult_otel::logging::testing::capture_json(level, || drop(upload));
+    assert_eq!(logs.events.len(), 1, "{}", logs.raw);
+    assert!(
+        logs.raw.contains("could not remove a temporary file"),
+        "{}",
+        logs.raw
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn a_file_whose_place_cannot_be_looked_at_is_not_stored() {
+    use std::os::unix::fs::PermissionsExt;
+    let (_d, store, writer) = temp_writer();
+    let id = writer.create_manual_draft(&restore_drill("alice")).unwrap();
+    let hash = sha256(PDF);
+    let folder = attachments_dir(store.path()).join(&hash[..2]);
+    std::fs::create_dir_all(&folder).unwrap();
+    std::fs::set_permissions(&folder, std::fs::Permissions::from_mode(0o000)).unwrap();
+    // Where the folder can still be read (as root), the case cannot be made.
+    let shut = std::fs::read_dir(&folder).is_err();
+    let staged = stage(&store, "runbook.pdf", PDF);
+    let placed = writer.add_manual_file(&id, staged, "alice");
+    std::fs::set_permissions(&folder, std::fs::Permissions::from_mode(0o700)).unwrap();
+    if !shut {
+        return;
+    }
+    let err = placed.unwrap_err();
+    assert!(matches!(err, tumult_lake::ManualError::Store(_)), "{err:?}");
+    assert!(
+        !folder.join(&hash).exists(),
+        "never written past a check that failed"
+    );
+    let reader = store.read_only().unwrap();
+    let detail = reader.manual_experiment_detail(&id).unwrap().unwrap();
+    assert!(detail.attachments.is_empty());
+}
+
+#[test]
+fn the_sweep_says_nothing_without_a_folder_and_warns_when_it_cannot_read_one() {
+    let level = tracing::Level::WARN;
+    let d = tempfile::TempDir::new().unwrap();
+    let db = d.path().join("kronika.duckdb");
+    let logs = tumult_otel::logging::testing::capture_json(level, || {
+        Store::open(&db).unwrap();
+    });
+    assert!(!attachments_dir(&db).exists());
+    assert!(
+        logs.named("lake.attachments.sweep_failed").is_empty(),
+        "{}",
+        logs.raw
+    );
+
+    // A file where the folder should be: the sweep cannot read it, says
+    // so, and the store opens.
+    std::fs::write(attachments_dir(&db), b"not a folder").unwrap();
+    let logs = tumult_otel::logging::testing::capture_json(level, || {
+        Store::open(&db).unwrap();
+    });
+    assert_eq!(
+        logs.named("lake.attachments.sweep_failed").len(),
+        1,
+        "{}",
+        logs.raw
+    );
 }

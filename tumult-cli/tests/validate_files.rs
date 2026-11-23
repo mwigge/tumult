@@ -60,9 +60,19 @@ fn script_step(plugin: &str, function: &str) -> String {
 
 /// Validate `definition`; whether it passed, what was printed and the error.
 fn validate(lab: &Lab, definition: &str) -> (bool, String, String) {
+    validate_with(lab, definition, &[])
+}
+
+/// Validate `definition` with the flags `args` after the file.
+fn validate_with(lab: &Lab, definition: &str, args: &[&str]) -> (bool, String, String) {
     std::fs::write(lab.path("experiment.toon"), definition).expect("experiment");
+    let command: Vec<&str> = ["validate", "experiment.toon"]
+        .iter()
+        .chain(args)
+        .copied()
+        .collect();
     let output = lab
-        .command(&["validate", "experiment.toon"])
+        .command(&command)
         .env_remove("TUMULT_PLUGIN_PATH")
         .output()
         .expect("run tumult");
@@ -218,6 +228,80 @@ fn an_objective_on_a_metric_no_run_measures_is_refused_with_the_ones_a_run_does(
     assert!(
         known.ends_with(", probe.<name>.<mean_ms|max_ms|p95_ms|error_rate>)"),
         "{known}"
+    );
+}
+
+#[test]
+fn an_rpo_objective_on_a_metric_that_does_not_count_lost_data_is_refused() {
+    let definition = experiment_with(
+        "nfr[1]{id,kind,metric,operator,threshold}:\n  lost,rpo,fault.duration_s,lte,5\n",
+    );
+
+    let (passed, stdout, error) = validate(&Lab::with_state("ok"), &definition);
+
+    assert!(!passed, "{stdout}");
+    assert_eq!(
+        error,
+        "nfr objective 'lost' is invalid: kind rpo does not fit metric 'fault.duration_s', \
+         which measures recovery; no metric of the catalogue measures rpo"
+    );
+}
+
+/// A step of the script plugin `lab-target` that takes down the node `node`.
+fn take_down(node: &str) -> String {
+    format!(
+        "  - name: take-down
+    activity_type: action
+    provider:
+      type: script
+      plugin: lab-target
+      function: take-down
+      arguments:
+        node: {node}
+"
+    )
+}
+
+#[test]
+fn a_placeholder_that_nothing_fills_is_refused_and_named() {
+    let definition = experiment(&take_down("${zone_a_node}"), &leave_marker());
+
+    let (passed, stdout, error) = validate(&lab_with_plugins(), &definition);
+
+    assert!(!passed, "{stdout}");
+    assert_eq!(
+        error,
+        "nothing fills ${zone_a_node}: give a ${name} with --var name=value, and declare a \
+         ${config.name} or ${secrets.group.key} under configuration or secrets"
+    );
+}
+
+#[test]
+fn a_placeholder_that_a_var_fills_passes() {
+    let definition = experiment(&take_down("${zone_a_node}"), &leave_marker());
+
+    let (passed, stdout, error) = validate_with(
+        &lab_with_plugins(),
+        &definition,
+        &["--var", "zone_a_node=node-1"],
+    );
+
+    assert!(passed, "{stdout}{error}");
+}
+
+#[test]
+fn a_placeholder_of_a_declared_entry_passes_while_its_variable_is_not_set() {
+    let definition = with_block(
+        &experiment(&take_down("${config.zone_a_node}"), &leave_marker()),
+        "configuration:\n  zone_a_node:\n    type: env\n    key: LAB_ZONE_A_NODE\n",
+    );
+
+    let (passed, stdout, error) = validate(&lab_with_plugins(), &definition);
+
+    assert!(passed, "{stdout}{error}");
+    assert!(
+        stdout.contains("references env var 'LAB_ZONE_A_NODE' which is not set"),
+        "{stdout}"
     );
 }
 

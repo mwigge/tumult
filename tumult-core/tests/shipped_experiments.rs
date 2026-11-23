@@ -5,9 +5,10 @@
 //! This test parses and validates each of them, so a broken file fails a
 //! pull request instead of a demo.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use tumult_core::engine::{parse_experiment, validate_experiment};
+use tumult_core::engine::{parse_experiment, validate_experiment, validate_placeholders};
 use tumult_core::types::{
     Activity, Experiment, GameDay, GameDayJournal, LoadConfig, LoadTool, Provider,
 };
@@ -85,10 +86,43 @@ fn read(path: &Path) -> String {
     std::fs::read_to_string(path).unwrap_or_else(|e| panic!("read {}: {e}", shown(path)))
 }
 
+/// The `--var` values a file is run with, for the files that take any.
+/// The scripts of the docs screenshots give these two their values.
+const VARS: &[(&str, &[(&str, &str)])] = &[
+    (
+        "scripts/docs-shots/experiments/checkout-soak.toon",
+        &[("port", "8080")],
+    ),
+    (
+        "scripts/docs-shots/experiments/mq-consumer-pause.toon",
+        &[("hold_s", "30")],
+    ),
+];
+
+fn vars_of(path: &Path) -> HashMap<String, String> {
+    let file = shown(path);
+    VARS.iter()
+        .filter(|(listed, _)| *listed == file)
+        .flat_map(|(_, vars)| vars.iter())
+        .map(|(key, value)| ((*key).to_string(), (*value).to_string()))
+        .collect()
+}
+
+/// What `tumult validate` checks: the file, then its placeholders with
+/// the values the file is run with.
 fn load(path: &Path) -> Result<Experiment, String> {
     let experiment = parse_experiment(&read(path)).map_err(|e| e.to_string())?;
     validate_experiment(&experiment).map_err(|e| e.to_string())?;
+    validate_placeholders(&experiment, &vars_of(path)).map_err(|e| e.to_string())?;
     Ok(experiment)
+}
+
+#[test]
+fn every_file_with_vars_is_a_shipped_experiment() {
+    let files: Vec<String> = experiment_files().iter().map(|p| shown(p)).collect();
+    for (file, _) in VARS {
+        assert!(files.iter().any(|f| f == file), "{file} is not shipped");
+    }
 }
 
 fn load_gameday(file: &str, children: &str) -> Result<(), String> {
@@ -414,7 +448,10 @@ fn check_doc_block(block: &str) -> Option<Result<(), String>> {
         DocBlock::Part(text) => Some(parse_experiment(&text).map(drop).map_err(|e| e.to_string())),
         DocBlock::Whole(text) => Some(
             parse_experiment(&text)
-                .and_then(|experiment| validate_experiment(&experiment))
+                .and_then(|experiment| {
+                    validate_experiment(&experiment)?;
+                    validate_placeholders(&experiment, &HashMap::new())
+                })
                 .map_err(|e| e.to_string()),
         ),
     }

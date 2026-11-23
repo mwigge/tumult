@@ -5,7 +5,7 @@
 use tumult_core::types::{HypothesisResult, Journal, LoadResult, NfrState, NfrVerdict};
 
 use super::report::html::fmt::{latency, number, percent, rate};
-use super::report::html::measures::must_be;
+use super::report::html::measures::{must_be, observed, unmeasured};
 
 /// The lines about the run of `journal`. A run without a steady state,
 /// objectives or a load has no line about it.
@@ -61,10 +61,8 @@ fn verdicts(verdicts: &[NfrVerdict]) -> String {
 }
 
 fn not_met(verdict: &NfrVerdict) -> String {
-    let observed = verdict.observed.map_or_else(
-        || "not measured".to_string(),
-        |value| format!("observed {}", number(value)),
-    );
+    let observed =
+        observed(verdict).map_or_else(|| unmeasured(verdict), |value| format!("observed {value}"));
     format!(
         "  {}: {}: {} must be {} {}, {observed}\n",
         verdict.state,

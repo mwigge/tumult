@@ -36,6 +36,11 @@ fn without_steady_state() -> String {
 /// Run `definition` and keep its journal as `journals/<name>.toon`. The
 /// journal, as the JSON the run prints.
 fn run(lab: &Lab, name: &str, definition: &str) -> Value {
+    run_ending(lab, name, definition, 0)
+}
+
+/// Like [`run`], for a run that ends with the exit code `code`.
+fn run_ending(lab: &Lab, name: &str, definition: &str, code: i32) -> Value {
     std::fs::create_dir_all(lab.path(JOURNALS)).expect("journals directory");
     let file = format!("{name}.toon");
     std::fs::write(lab.path(&file), definition).expect("experiment");
@@ -52,7 +57,7 @@ fn run(lab: &Lab, name: &str, definition: &str) -> Value {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert_eq!(
         output.status.code(),
-        Some(0),
+        Some(code),
         "{name}: {}",
         String::from_utf8_lossy(&output.stderr)
     );
@@ -160,22 +165,73 @@ fn compliance_counts_recovery_from_the_runs_that_watched_for_it() {
     assert!(
         report.contains(
             "  Pass rate: 100.0%\n  \
-             Recovery within 30s: not measured, no run watched for recovery. \
+             Recovery within target: not measured, no run measured a recovery. \
              The verdict rests on the pass rate only (reduced assurance).\n  \
              Evidence verdict: COMPLIANT (pass-rate only)\n"
         ),
         "{report}"
     );
 
-    let method = [inject(), heal()].concat();
+    // The fault holds past one read of the probes, so the run sees the
+    // outage and measures its recovery.
+    let method = [inject(), step("hold", "action", "sleep 1.5"), heal()].concat();
     run(&lab, "watched", &experiment(&method, &leave_marker()));
 
     let report = printed(&lab, &["compliance", JOURNALS, "--framework", "dora"]);
     assert!(
         report.contains(
             "  Pass rate: 100.0%\n  \
-             Recovery within 30s: 100.0% of the runs that watched for recovery (1 of 1)\n  \
+             Recovery within target: 100.0% of the runs that measured a recovery \
+             (1 of 1; 1 against their own RTO, 0 against 30s)\n  \
              Evidence verdict: COMPLIANT\n"
+        ),
+        "{report}"
+    );
+}
+
+#[test]
+fn compliance_judges_each_run_against_its_own_rto_and_says_when_none_measured_a_recovery() {
+    let lab = Lab::with_state("ok");
+    // The fault has no visible effect: the run watched and measured no
+    // recovery.
+    let still = step("fault", "action", "true");
+    run(&lab, "still", &experiment(&still, &leave_marker()));
+
+    let output = lab.tumult(&["compliance", JOURNALS, "--framework", "dora"]);
+    let report = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(output.status.code(), Some(0), "{report}");
+    assert!(
+        report.contains(
+            "  Pass rate: 100.0%\n  \
+             Recovery within target: not measured, no run measured a recovery. \
+             The verdict rests on the pass rate only (reduced assurance).\n  \
+             Evidence verdict: COMPLIANT (pass-rate only)\n"
+        ),
+        "{report}"
+    );
+
+    // The target is down for about two seconds after the method. That is
+    // within the 30 s of a run with no RTO, and outside the RTO of one
+    // second this run declares, so the run deviates.
+    let slow = step(
+        "fault",
+        "action",
+        "echo down > state; (sleep 2; echo ok > state) >/dev/null 2>&1 &",
+    );
+    let tight =
+        experiment(&slow, &leave_marker()).replacen("rto_target_s: 30.0", "rto_target_s: 1.0", 1);
+    run_ending(&lab, "tight", &tight, 1);
+
+    let output = lab.tumult(&["compliance", JOURNALS, "--framework", "dora"]);
+    let report = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(output.status.code(), Some(0), "{report}");
+    assert!(
+        report.contains(
+            "  Pass rate: 50.0%\n  \
+             Recovery within target: 0.0% of the runs that measured a recovery \
+             (0 of 1; 1 against their own RTO, 0 against 30s). \
+             Left out: 1 run(s) that measured no recovery.\n  \
+             Evidence verdict: NON-COMPLIANT\n"
         ),
         "{report}"
     );

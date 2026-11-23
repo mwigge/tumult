@@ -79,12 +79,23 @@ pub enum EngineError {
     /// The declared `target.version` is outside the bounds (see `reason`).
     #[error("target.version is invalid: {reason}")]
     TargetVersionInvalid { reason: String },
+    /// The `recovery` block asks for a window the post phase cannot watch
+    /// (see `reason`).
+    #[error("recovery is invalid: {reason}")]
+    RecoveryInvalid { reason: String },
     /// The load profile cannot be turned into a plan (see `reason`).
     #[error("load profile is invalid: {reason}")]
     LoadProfileInvalid { reason: String },
     /// The experiment template references variables that were never defined.
     #[error("experiment template references undefined variables: {names}")]
     UndefinedVars { names: String },
+    /// A `${...}` placeholder of the file has nothing that fills it: no
+    /// `--var` and no declared configuration or secrets entry.
+    #[error(
+        "nothing fills {names}: give a ${{name}} with --var name=value, and declare a \
+         ${{config.name}} or ${{secrets.group.key}} under configuration or secrets"
+    )]
+    PlaceholderUndefined { names: String },
     /// A script provider reference is invalid (see `reason`).
     #[error("invalid script provider in activity '{activity}': {reason}")]
     InvalidScriptProvider { activity: String, reason: String },
