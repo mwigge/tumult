@@ -151,14 +151,29 @@ fn gameday_experiment_count_mismatch_returns_error() {
 
 // -- GameDay scoring tests
 
-/// Probes answer; every action of the method fails.
-struct FailingMethodExecutor;
+/// Probes answer, except the first read after an action, which fails: the
+/// probes see an outage and its recovery. Every action of the method
+/// fails.
+#[derive(Default)]
+struct FailingMethodExecutor {
+    down_reads: AtomicUsize,
+}
 
 impl ActivityExecutor for FailingMethodExecutor {
     fn execute(&self, activity: &Activity) -> ActivityOutcome {
         let is_probe = activity.activity_type == ActivityType::Probe;
+        if !is_probe {
+            self.down_reads.store(1, Ordering::SeqCst);
+        }
+        let down = is_probe
+            && self
+                .down_reads
+                .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |left| {
+                    left.checked_sub(1)
+                })
+                .is_ok();
         ActivityOutcome {
-            success: is_probe,
+            success: is_probe && !down,
             output: Some("200".into()),
             error: None,
             duration_ms: 1,
@@ -182,7 +197,7 @@ fn a_run_whose_method_failed_is_not_a_recovery_within_target() {
         }],
         scoring: ScoringConfig::default(),
     };
-    let executor: Arc<dyn ActivityExecutor> = Arc::new(FailingMethodExecutor);
+    let executor: Arc<dyn ActivityExecutor> = Arc::new(FailingMethodExecutor::default());
 
     let result = run_gameday(
         &gameday,

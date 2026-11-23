@@ -3,7 +3,7 @@
 
 use super::*;
 use crate::controls::ControlRegistry;
-use crate::runner::phases::{build_post_result, collect_post_samples};
+use crate::runner::phases::{build_post_result, collect_post_samples, samples_for_journal};
 use std::sync::atomic::AtomicI64;
 use std::sync::Mutex;
 use std::time::Duration;
@@ -185,7 +185,13 @@ fn post_phase_samples_until_probe_recovers() {
         "two failing rounds plus the recovering round"
     );
 
-    let post = build_post_result(started_at_ns, ended_at_ns, &samples).unwrap();
+    let post = build_post_result(
+        started_at_ns,
+        ended_at_ns,
+        &samples,
+        &samples_for_journal(SamplePhase::Post, &samples),
+    )
+    .unwrap();
     assert!(post.full_recovery);
     assert!(post.probes[0].returned_to_baseline);
     assert!(
@@ -194,7 +200,10 @@ fn post_phase_samples_until_probe_recovers() {
         post.recovery_time_s
     );
     assert!(post.recovery_time_s <= post.duration_s);
-    assert_eq!(post.mttr_s, Some(post.recovery_time_s));
+    // The outage was seen at the first sample, just after the phase began.
+    assert_eq!(post.impact_observed, Some(true));
+    let mttr = post.mttr_s.expect("the recovery was seen");
+    assert!(mttr > 0.0 && mttr <= post.recovery_time_s, "{post:?}");
 }
 
 #[test]
@@ -227,7 +236,13 @@ fn post_phase_stops_at_timeout_when_probe_never_recovers() {
         probe_samples.len()
     );
 
-    let post = build_post_result(started_at_ns, ended_at_ns, &samples).unwrap();
+    let post = build_post_result(
+        started_at_ns,
+        ended_at_ns,
+        &samples,
+        &samples_for_journal(SamplePhase::Post, &samples),
+    )
+    .unwrap();
     assert!(!post.full_recovery);
     assert!(!post.probes[0].returned_to_baseline);
     assert_eq!(

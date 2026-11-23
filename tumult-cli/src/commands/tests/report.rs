@@ -244,6 +244,9 @@ fn compliance_runs_over_journal_with_mttr() {
         recovery_time_s: 5.0,
         full_recovery: true,
         mttr_s: Some(5.0),
+        impact_observed: None,
+        outage_started_at_ns: None,
+        recovered_at_ns: None,
     });
     write_journal(&journal, &journal_path).unwrap();
 

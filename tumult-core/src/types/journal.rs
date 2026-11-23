@@ -346,9 +346,10 @@ impl Journal {
         (!before.met).then_some(false)
     }
 
-    /// The measured recovery time: seconds from the end of the method until
-    /// every hypothesis probe was back within tolerance. `None` when the
-    /// run did not see the target recover.
+    /// The measured recovery time: seconds from the outage the hypothesis
+    /// probes saw to the sample where they were all back within tolerance
+    /// (`post_result.mttr_s`). `None` when the run did not see the target
+    /// recover, and when it saw no outage.
     #[must_use]
     pub fn recovery_time_s(&self) -> Option<f64> {
         self.post_result.as_ref()?.mttr_s

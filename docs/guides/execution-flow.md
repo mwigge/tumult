@@ -89,7 +89,7 @@ Set it with `tumult run --baseline-mode`.
 | `steady_state_before`, `steady_state_after` | Each probe of the steady state, and whether it held. |
 | `method_results`, `rollback_results` | Each step: status, output, error and time. |
 | `during_result` | Samples per probe while the fault was on: count, mean, min and max duration, error rate, breaches. |
-| `post_result` | Recovery: `full_recovery`, `recovery_time_s` and `mttr_s`. |
+| `post_result` | Recovery: `full_recovery`, `recovery_time_s`, `mttr_s`, and the outage the probes saw: `impact_observed`, `outage_started_at_ns` and `recovered_at_ns`. |
 | `load_result` | What the load tool measured. |
 | `objectives` | A verdict per objective: met, breached or inconclusive. |
 | `halt` | The guard that stopped the run, and when. |
@@ -97,8 +97,11 @@ Set it with `tumult run --baseline-mode`.
 
 Read these with care:
 
-- `mttr_s` is empty when recovery was not seen, or when an action of the
-  method failed.
+- `mttr_s` runs from the first probe read that failed after the method
+  started to the read where all probes were back. `recovery_time_s` runs
+  from the end of the method, so it misses an outage inside the method.
+- `mttr_s` is empty when recovery was not seen, when no read saw an
+  outage, or when an action of the method failed.
 - Recovery is measured before the rollbacks, so a fault that needs a
   rollback may still be on.
 - The probe numbers are how long each probe took, not a value it printed.

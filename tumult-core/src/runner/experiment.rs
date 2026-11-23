@@ -372,7 +372,9 @@ pub fn run_experiment_with_sampling(
     // `post_result.recovery_time_s` reflects recovery from the fault itself
     // rather than from rollback actions. Probes are sampled on the
     // recovery interval until they pass their tolerance (recovery) or the
-    // recovery window ends.
+    // recovery window ends. The time to recovery (`mttr_s`) runs from the
+    // outage the samples of both phases saw, so an outage inside the
+    // method counts.
     let post_result = experiment
         .steady_state_hypothesis
         .as_ref()
@@ -388,7 +390,7 @@ pub fn run_experiment_with_sampling(
             );
             let ended_at_ns = epoch_nanos_now();
             probe_samples.extend(samples_for_journal(SamplePhase::Post, &samples));
-            build_post_result(started_at_ns, ended_at_ns, &samples)
+            build_post_result(started_at_ns, ended_at_ns, &samples, &probe_samples)
         })
         .map(|post| recovery_measured(post, actions_succeeded));
 

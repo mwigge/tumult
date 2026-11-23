@@ -5,7 +5,7 @@
 //! whether the steady state held, the recovery time and the declared blast
 //! radius. Only a completed run has span status Ok.
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -26,12 +26,14 @@ const RECOVERY_TIME_S: &str = "resilience.outcome.recovery_time_s";
 const BLAST_RADIUS: &str = "resilience.fault.blast_radius";
 
 /// What the scripted target does: a probe prints `before` until an action
-/// has run and `after` from then on. An action cancels `cancel`, when given,
-/// and fails when `action_fails`.
+/// has run and `after` from then on, except that the first `down_reads`
+/// reads after the action print `down`. An action cancels `cancel`, when
+/// given, and fails when `action_fails`.
 struct Target {
     before: &'static str,
     after: &'static str,
     acted: AtomicBool,
+    down_reads: AtomicUsize,
     cancel: Option<CancellationToken>,
     action_fails: bool,
 }
@@ -42,15 +44,26 @@ impl Target {
             before,
             after,
             acted: AtomicBool::new(false),
+            down_reads: AtomicUsize::new(0),
             cancel: None,
             action_fails: false,
         }
+    }
+
+    /// Is the read of a probe after the action one of the `down_reads`?
+    fn reads_down(&self) -> bool {
+        self.down_reads
+            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |left| {
+                left.checked_sub(1)
+            })
+            .is_ok()
     }
 }
 
 impl ActivityExecutor for Target {
     fn execute(&self, activity: &Activity) -> ActivityOutcome {
         let output = match activity.activity_type {
+            ActivityType::Probe if self.acted.load(Ordering::SeqCst) && self.reads_down() => "down",
             ActivityType::Probe if self.acted.load(Ordering::SeqCst) => self.after,
             ActivityType::Probe => self.before,
             ActivityType::Action => {
@@ -229,14 +242,15 @@ fn a_run_without_a_hypothesis_gives_no_verdict_on_it_and_no_recovery_time() {
 
 #[test]
 fn the_recovery_time_is_the_one_the_journal_measured() {
-    let (journal, root) = run(
-        &with_hypothesis("recovered"),
-        Target::answers("ok", "ok"),
-        &RunConfig::default(),
-    );
+    let target = Target {
+        down_reads: AtomicUsize::new(2),
+        ..Target::answers("ok", "ok")
+    };
+
+    let (journal, root) = run(&with_hypothesis("recovered"), target, &RunConfig::default());
 
     let measured = journal.recovery_time_s();
-    assert!(measured.is_some(), "the target was back at once");
+    assert!(measured.is_some(), "the target was down, then back");
     assert_eq!(seconds(&root, RECOVERY_TIME_S), measured);
 }
 
@@ -327,7 +341,16 @@ fn a_run_that_never_recovered_breaches_its_rto_with_the_time_it_watched() {
     let rto = &objectives.verdicts[0];
     assert_eq!(rto.nfr_id, "rto");
     assert_eq!(rto.state, NfrState::Breached);
-    assert_eq!(rto.observed, Some(post.recovery_time_s));
+    // The time watched runs from the outage seen, not from the end of the
+    // method.
+    let outage = post.outage_started_at_ns.expect("the outage seen");
+    #[allow(clippy::cast_precision_loss)]
+    let before_the_watch_s = (post.started_at_ns - outage) as f64 / 1e9;
+    let watched = rto.observed.expect("a lower bound");
+    assert!(
+        (watched - (before_the_watch_s + post.recovery_time_s)).abs() < 1e-9,
+        "{rto:?} against {post:?}"
+    );
     assert_eq!(rto.margin, None);
     assert_eq!(rto.recovered, Some(false));
     let dir = tempfile::TempDir::new().expect("a journal directory");

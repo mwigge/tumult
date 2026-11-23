@@ -78,6 +78,15 @@ pub(in crate::commands) fn observed(verdict: &NfrVerdict) -> Option<String> {
     Some(value)
 }
 
+/// What a verdict that observed nothing says in its place: its reason, or
+/// that it was not measured.
+pub(in crate::commands) fn unmeasured(verdict: &NfrVerdict) -> String {
+    verdict
+        .reason
+        .clone()
+        .unwrap_or_else(|| "not measured".to_string())
+}
+
 fn verdict_row(verdict: &NfrVerdict) -> String {
     let class = match verdict.state {
         NfrState::Met => "ok",
@@ -95,7 +104,7 @@ fn verdict_row(verdict: &NfrVerdict) -> String {
                 must_be(verdict.operator),
                 number(verdict.threshold)
             ),
-            observed(verdict).unwrap_or_else(|| "not measured".to_string()),
+            observed(verdict).unwrap_or_else(|| unmeasured(verdict)),
             verdict.margin.map_or_else(String::new, number),
             badge(class, &verdict.state.to_string()),
             verdict.criticality.to_string(),

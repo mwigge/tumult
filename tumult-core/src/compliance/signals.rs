@@ -13,7 +13,8 @@ pub const DEFAULT_MTTR_TARGET_S: f64 = 30.0;
 /// watched their target after the fault and saw it come back within the
 /// target time. A run watches for recovery when it has a post phase, and
 /// that takes a steady state to probe. A run that only completed says
-/// nothing of recovery, so it is in the pass rate and nowhere else.
+/// nothing of recovery, so it is in the pass rate and nowhere else. Nor
+/// does a run whose probes saw no outage: nothing recovered.
 #[derive(Debug, Clone, Default)]
 pub struct ComplianceSignals {
     /// Total journals accumulated.
@@ -22,7 +23,8 @@ pub struct ComplianceSignals {
     pub completed_journals: usize,
     /// Journals that declared a regulatory mapping.
     pub journals_with_regulatory: usize,
-    /// Journals of runs that watched for recovery: they have a post phase.
+    /// Journals of runs that watched for recovery: they have a post phase,
+    /// and their probes did not say that they saw no outage.
     pub recovery_watched: usize,
     /// The recovery times, in seconds, of the watched runs that saw their
     /// target recover.
@@ -41,7 +43,8 @@ impl ComplianceSignals {
         if journal.regulatory.is_some() {
             self.journals_with_regulatory += 1;
         }
-        if journal.post_result.is_some() {
+        let watched = journal.post_result.as_ref();
+        if watched.is_some_and(|post| post.impact_observed != Some(false)) {
             self.recovery_watched += 1;
         }
         if let Some(recovery_time_s) = journal.recovery_time_s() {

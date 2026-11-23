@@ -161,7 +161,8 @@ fn the_recovery_score_is_the_share_of_runs_that_came_back_within_the_target() {
     let fast = down("back-fast");
     let slow = down("back-slow");
     let experiments = [
-        // The fault changes nothing: the first read after it says ok.
+        // The fault changes nothing: no read sees an outage, so the run
+        // measures no recovery.
         experiment("stays-up", &["true"], 1),
         // Down on the first read, back on the second, one second later.
         experiment("back-fast", &[&fast[0], &fast[1]], 1),
@@ -171,26 +172,25 @@ fn the_recovery_score_is_the_share_of_runs_that_came_back_within_the_target() {
 
     let journal = run(&experiments, None, 2.0);
 
-    let recoveries: Vec<f64> = journal
+    let recoveries: Vec<Option<f64>> = journal
         .experiment_journals
         .iter()
-        .map(|run| run.recovery_time_s().expect("the target came back"))
+        .map(Journal::recovery_time_s)
         .collect();
-    assert!(recoveries[0] < 0.5, "stays-up: {recoveries:?}");
+    assert_eq!(recoveries[0], None, "stays-up: {recoveries:?}");
     assert!(
-        (0.5..1.5).contains(&recoveries[1]),
+        recoveries[1].is_some_and(|s| (0.5..1.5).contains(&s)),
         "back-fast: {recoveries:?}"
     );
     assert!(
-        (2.5..10.0).contains(&recoveries[2]),
+        recoveries[2].is_some_and(|s| (2.5..10.0).contains(&s)),
         "back-slow: {recoveries:?}"
     );
-    // Two of three runs came back within the two seconds of the target.
+    // Of the two runs that saw an outage, one came back within the two
+    // seconds of the target. Stays-up saw nothing to recover from, so it
+    // is not in the share.
     let score = journal.resilience_score;
-    assert!(
-        (score.recovery_compliance - 2.0 / 3.0).abs() < 1e-9,
-        "{score:?}"
-    );
+    assert!((score.recovery_compliance - 0.5).abs() < 1e-9, "{score:?}");
     assert!((score.pass_rate - 1.0).abs() < 1e-9, "{score:?}");
 }
 

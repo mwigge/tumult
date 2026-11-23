@@ -108,7 +108,8 @@ fn down(name: &str) -> String {
     .concat()
 }
 
-/// A game day passes when two thirds of its runs come back in two seconds.
+/// A game day passes when two thirds of the runs that saw an outage come
+/// back in two seconds.
 const SCORING: &str =
     "scoring:\n  pass_threshold: 0.75\n  mttr_target_s: 2.0\n  recovery_required: true\n";
 
@@ -118,13 +119,18 @@ fn the_recovery_score_is_the_share_of_runs_that_came_back_within_the_target() {
     write_gameday(
         &lab,
         &[
-            // The fault changes nothing: the first read after it says ok.
+            // The fault changes nothing: no read sees an outage, so the
+            // run measures no recovery and is not in the share.
             (
                 "stays-up",
                 experiment("stays-up", &step("fault", "action", "true"), 1),
             ),
             // Down on the first read, back on the second, one second later.
             ("back-fast", experiment("back-fast", &down("back-fast"), 1)),
+            (
+                "back-fast-too",
+                experiment("back-fast-too", &down("back-fast-too"), 1),
+            ),
             // Down on three reads, back on the fourth, three seconds later.
             ("back-slow", experiment("back-slow", &down("back-slow"), 3)),
         ],
@@ -134,21 +140,24 @@ fn the_recovery_score_is_the_share_of_runs_that_came_back_within_the_target() {
     let printed = gameday(&lab, "run", &[]);
 
     let journal = journal(&lab);
-    let recoveries: Vec<f64> = journal
+    let recoveries: Vec<Option<f64>> = journal
         .experiment_journals
         .iter()
-        .map(|run| run.recovery_time_s().expect("the target came back"))
+        .map(tumult_core::types::Journal::recovery_time_s)
         .collect();
-    assert!(recoveries[0] < 0.5, "stays-up: {recoveries:?}");
+    assert_eq!(recoveries[0], None, "stays-up: {recoveries:?}");
+    for fast in [1, 2] {
+        assert!(
+            recoveries[fast].is_some_and(|s| (0.5..1.5).contains(&s)),
+            "back-fast: {recoveries:?}"
+        );
+    }
     assert!(
-        (0.5..1.5).contains(&recoveries[1]),
-        "back-fast: {recoveries:?}"
-    );
-    assert!(
-        (2.5..10.0).contains(&recoveries[2]),
+        recoveries[3].is_some_and(|s| (2.5..10.0).contains(&s)),
         "back-slow: {recoveries:?}"
     );
-    // Two of three runs came back within the two seconds of the target.
+    // Two of the three runs that saw an outage came back within the two
+    // seconds of the target.
     let score = &journal.resilience_score;
     assert!(
         (score.recovery_compliance - 2.0 / 3.0).abs() < 1e-9,
@@ -161,7 +170,7 @@ fn the_recovery_score_is_the_share_of_runs_that_came_back_within_the_target() {
     );
     assert_eq!(journal.compliance_status, "COMPLIANT");
     for line in [
-        "Status:  3/3 PASS (COMPLIANT)\n",
+        "Status:  4/4 PASS (COMPLIANT)\n",
         "\nGameDay score: 0.92\n",
         "  Pass rate:        1.00\n",
         "  Recovery:         0.67\n",
@@ -185,8 +194,9 @@ fn the_recovery_score_is_the_share_of_runs_that_came_back_within_the_target() {
 #[test]
 fn a_game_day_that_is_not_compliant_ends_with_an_error_after_it_wrote_its_journal() {
     let lab = Lab::with_state("ok");
-    // One of the two runs comes back within the target: half of the
-    // recovery score, and 0.875 in all.
+    // Stays-up sees no outage, so only back-slow watched for recovery, and
+    // it does not come back within the target: no recovery score, and
+    // 0.75 in all.
     write_gameday(
         &lab,
         &[

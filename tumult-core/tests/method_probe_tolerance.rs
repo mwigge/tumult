@@ -200,18 +200,26 @@ fn a_failed_action_still_makes_the_run_failed() {
     assert_eq!(journal.status, ExperimentStatus::Failed);
 }
 
+/// The steady state of this target never fails, so the run sees no
+/// outage. The reason of its RTO shows that the watch still counted: a
+/// failed action would leave the RTO without one.
 #[test]
-fn a_run_with_a_method_probe_outside_its_tolerance_still_measures_recovery() {
+fn a_run_with_a_method_probe_outside_its_tolerance_still_watches_for_recovery() {
     let target = Target::healthy().with("during", Step::Prints("down"));
 
     let journal = run(&with_hypothesis(), target);
 
     assert_eq!(journal.status, ExperimentStatus::Deviated);
     assert_eq!(journal.hypothesis_met(), Some(true));
-    assert!(journal.recovery_time_s().is_some());
+    let post = journal.post_result.as_ref().expect("the run watched");
+    assert_eq!(post.impact_observed, Some(false));
     let objectives = journal.objectives.expect("the run has a recovery target");
     assert_eq!(objectives.verdicts[0].nfr_id, "rto");
-    assert_eq!(objectives.verdicts[0].state, NfrState::Met);
+    assert_eq!(objectives.verdicts[0].state, NfrState::Inconclusive);
+    assert_eq!(
+        objectives.verdicts[0].reason.as_deref(),
+        Some(NfrVerdict::NO_OUTAGE_OBSERVED)
+    );
 }
 
 #[test]

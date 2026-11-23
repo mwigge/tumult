@@ -95,6 +95,9 @@ mod tests {
             recovery_time_s: mttr_s.unwrap_or(0.0),
             full_recovery: mttr_s.is_some(),
             mttr_s,
+            impact_observed: None,
+            outage_started_at_ns: None,
+            recovered_at_ns: None,
         });
         journal
     }
@@ -133,6 +136,34 @@ mod tests {
         );
         assert_eq!(signals.recovery_compliance(30.5), Some(0.75));
         assert_eq!(signals.recovery_compliance(1.0), Some(0.0));
+    }
+
+    /// A run whose probes saw no outage watched nothing recover: it is no
+    /// sign of recovery, for it or against it.
+    #[test]
+    fn a_run_that_saw_no_outage_is_not_a_run_that_watched_for_recovery() {
+        let seen = |mttr_s: Option<f64>, impact_observed: bool| {
+            let mut journal = watched(mttr_s);
+            let post = journal.post_result.as_mut().expect("a post phase");
+            post.full_recovery = true;
+            post.impact_observed = Some(impact_observed);
+            journal
+        };
+
+        let signals = signals_of(&[seen(None, false), seen(Some(10.0), true)]);
+
+        assert_eq!(signals.recovery_watched, 1);
+        assert_eq!(signals.mttrs, [10.0]);
+        assert_eq!(
+            signals.recovery_compliance(DEFAULT_MTTR_TARGET_S),
+            Some(1.0)
+        );
+        let nothing_seen = signals_of(&[seen(None, false)]);
+        assert_eq!(nothing_seen.recovery_watched, 0);
+        assert_eq!(
+            nothing_seen.recovery_compliance(DEFAULT_MTTR_TARGET_S),
+            None
+        );
     }
 
     #[test]
