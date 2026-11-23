@@ -169,7 +169,7 @@ const STALE_UPLOAD: Duration = Duration::from_secs(3600);
 /// A failure is logged and does not stop the store from opening.
 fn sweep_stale_uploads(path: &Path) {
     let files = crate::attachments_dir(path);
-    match crate::manual::files::sweep_uploads(&files, STALE_UPLOAD) {
+    match crate::manual::files::sweep_uploads(&files, STALE_UPLOAD, std::time::SystemTime::now()) {
         Ok(0) => {}
         Ok(removed) => tracing::info!(
             name: "lake.attachments.swept",

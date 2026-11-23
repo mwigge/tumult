@@ -1075,6 +1075,7 @@ mod tests {
             as_of_ns: NOW,
             plans: vec![
                 plan("due-yesterday", 1),
+                plan("due-30-days-ago", 30),
                 plan("due-45-days-ago", 45),
                 plan("due-400-days-ago", 400),
                 plan("due-now", 0),
@@ -1090,7 +1091,12 @@ mod tests {
             .collect();
         assert_eq!(
             overdue.keys().copied().collect::<Vec<_>>(),
-            ["due-400-days-ago", "due-45-days-ago", "due-yesterday"],
+            [
+                "due-30-days-ago",
+                "due-400-days-ago",
+                "due-45-days-ago",
+                "due-yesterday"
+            ],
             "a plan is overdue only once its due date has passed"
         );
 
@@ -1113,6 +1119,11 @@ mod tests {
                 format!("due_at_ns={}", NOW - DAY_NS)
             ]
         );
+
+        // The first 30 days past due are medium.
+        let month = overdue["due-30-days-ago"];
+        assert_eq!(month.severity, Severity::Medium);
+        assert_eq!(month.rank, Severity::Medium.base_rank() + 1);
 
         // More than 30 days past due is high, and older ranks higher, up
         // to five points, as stale evidence does.

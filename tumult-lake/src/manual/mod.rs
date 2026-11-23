@@ -139,7 +139,7 @@ impl ManualOutcome {
 }
 
 /// Evidence attachment kinds. A `url` or a `ticket` is a link; a `file` is
-/// stored in the lake folder ([`files`]). `log_excerpt` is reserved.
+/// stored in the lake folder (the `files` module). `log_excerpt` is reserved.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AttachmentKind {
     File,
@@ -715,5 +715,49 @@ mod tests {
             matches!(&err, ManualError::Invalid(msg) if msg.contains("positive unix-nanos")),
             "{err:?}"
         );
+    }
+
+    fn step(started_at_ns: i64, ended_at_ns: i64) -> ExerciseStep {
+        ExerciseStep {
+            title: "Promote the standby".into(),
+            actor: None,
+            started_at_ns: Some(started_at_ns),
+            ended_at_ns: Some(ended_at_ns),
+            result: None,
+            note: None,
+        }
+    }
+
+    #[test]
+    fn a_step_may_end_when_it_starts_and_a_dr_number_may_be_zero() {
+        // A step that took no time, and an RTO and RPO of 0 s (no outage,
+        // no data lost), are what was seen: they are kept.
+        let mut at_the_bounds = valid();
+        at_the_bounds.exercise.steps = vec![step(5, 5)];
+        at_the_bounds.exercise.rto_target_s = Some(0.0);
+        at_the_bounds.exercise.rpo_target_s = Some(0.0);
+        at_the_bounds.exercise.rpo_measured_s = Some(0.0);
+        assert!(
+            at_the_bounds.validate().is_ok(),
+            "{:?}",
+            at_the_bounds.validate()
+        );
+
+        let mut backwards = valid();
+        backwards.exercise.steps = vec![step(5, 4)];
+        let err = backwards.validate().unwrap_err();
+        assert!(
+            matches!(&err, ManualError::Invalid(msg) if msg == "step 1 ends before it starts"),
+            "{err:?}"
+        );
+        for bad in [-0.001, f64::NAN, f64::INFINITY] {
+            let mut below = valid();
+            below.exercise.rpo_measured_s = Some(bad);
+            let err = below.validate().unwrap_err();
+            assert!(
+                matches!(&err, ManualError::Invalid(msg) if msg.contains("'rpo_measured_s'")),
+                "{bad}: {err:?}"
+            );
+        }
     }
 }

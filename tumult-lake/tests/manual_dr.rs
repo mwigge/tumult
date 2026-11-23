@@ -709,3 +709,50 @@ fn a_v1_record_of_a_v21_lake_verifies_and_its_audit_rows_are_a_legacy_prefix() {
         "{verdict:?}"
     );
 }
+
+#[test]
+fn the_seal_problem_says_what_the_seal_of_its_version_covers() {
+    let d = tempfile::TempDir::new().unwrap();
+    let path = d.path().join("kronika.duckdb");
+    {
+        let store = Store::open(&path).unwrap();
+        let writer = store.writer().unwrap();
+        for sql in V21_MANUAL {
+            writer.execute(sql, []).unwrap();
+        }
+        for sql in verified_v1_record() {
+            writer.execute(&sql, []).unwrap();
+        }
+    }
+    let store = Store::open(&path).unwrap();
+    let writer = store.writer().unwrap();
+    let v2 = writer.create_manual_draft(&restore_test("alice")).unwrap();
+    writer
+        .execute(
+            "UPDATE manual_experiments SET findings = 'changed later'",
+            [],
+        )
+        .unwrap();
+
+    let reader = store.read_only().unwrap();
+    let says = |id: &str| {
+        let verdict = reader.verify_manual_record(id).unwrap().unwrap();
+        verdict
+            .problems
+            .into_iter()
+            .find(|p| p.table == "manual_experiments" && p.field.is_none())
+            .unwrap_or_else(|| panic!("no seal problem for {id}"))
+            .problem
+    };
+    assert_eq!(
+        says("m-v1"),
+        "the stored seal is not the seal of the record: a column of the record was \
+         changed after it was sealed (a version 1 seal does not cover the reviewer, the \
+         steps, the actions or the links)"
+    );
+    assert_eq!(
+        says(&v2),
+        "the stored seal is not the seal of the record: a column of the record, a step, an \
+         action or a link was changed after it was sealed"
+    );
+}

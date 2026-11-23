@@ -206,6 +206,9 @@ sha2 = "0.11"
 rust-embed = "8"
 mime_guess = "2"
 
+# Reads back the JUnit XML of a report, in tests (the version usvg uses).
+roxmltree = "0.21"
+
 # Speed up dev builds for heavy C/C++ dependencies (DuckDB, Arrow, Parquet).
 # Only affects dependencies, not workspace crates (those stay at -O0 for fast
 # incremental compilation with debug info).

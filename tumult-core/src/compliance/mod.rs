@@ -32,7 +32,7 @@ pub use requirements::{
     ARTICLES, CORE_WEIGHT_MIN, EXPECTED_STATUS_DESIGNED, EXPECTED_STATUS_EXISTING,
     EXPECTED_STATUS_OPERATING, FLAG_NAMES, GATING_WEIGHT, REQUIREMENTS, REQUIREMENTS_VERSION,
 };
-pub use signals::{compliance_verdict, ComplianceSignals, DEFAULT_MTTR_TARGET_S};
+pub use signals::{compliance_verdict, ComplianceSignals, RecoveryMeasure, DEFAULT_MTTR_TARGET_S};
 
 #[cfg(test)]
 mod tests {
@@ -82,10 +82,26 @@ mod tests {
         assert_eq!(compliance_verdict(0.50, None), "NON-COMPLIANT");
     }
 
-    /// A completed run that watched for recovery and saw it after `mttr_s`
-    /// seconds, or did not see it.
+    /// One action of a method that ended with `status`.
+    fn action(status: crate::types::ActivityStatus) -> crate::types::ActivityResult {
+        crate::types::ActivityResult {
+            name: "fault".into(),
+            activity_type: crate::types::ActivityType::Action,
+            status,
+            started_at_ns: 0,
+            duration_ms: 0,
+            output: None,
+            error: None,
+            trace_id: "".into(),
+            span_id: "".into(),
+        }
+    }
+
+    /// A completed run whose fault went in and that watched for recovery
+    /// to the end: it saw it after `mttr_s` seconds, or did not see it.
     fn watched(mttr_s: Option<f64>) -> Journal {
         let mut journal = bare_journal(crate::types::ExperimentStatus::Completed);
+        journal.method_results = vec![action(crate::types::ActivityStatus::Succeeded)];
         journal.post_result = Some(crate::types::PostResult {
             started_at_ns: 0,
             ended_at_ns: 0,
@@ -127,8 +143,6 @@ mod tests {
         let signals = mixed_runs();
 
         assert!((signals.pass_rate() - 1.0).abs() < f64::EPSILON);
-        assert_eq!(signals.recovery_watched, 4);
-        assert_eq!(signals.mttrs, [10.0, 30.0, 30.5]);
         assert_eq!(signals.recovered_within(DEFAULT_MTTR_TARGET_S), 2);
         assert_eq!(
             signals.recovery_compliance(DEFAULT_MTTR_TARGET_S),
@@ -152,16 +166,131 @@ mod tests {
 
         let signals = signals_of(&[seen(None, false), seen(Some(10.0), true)]);
 
-        assert_eq!(signals.recovery_watched, 1);
-        assert_eq!(signals.mttrs, [10.0]);
+        assert_eq!(signals.recovered_within(DEFAULT_MTTR_TARGET_S), 1);
         assert_eq!(
             signals.recovery_compliance(DEFAULT_MTTR_TARGET_S),
             Some(1.0)
         );
         let nothing_seen = signals_of(&[seen(None, false)]);
-        assert_eq!(nothing_seen.recovery_watched, 0);
         assert_eq!(
             nothing_seen.recovery_compliance(DEFAULT_MTTR_TARGET_S),
+            None
+        );
+    }
+
+    /// A run that declares a recovery time objective of `rto_target_s` and
+    /// came back after `mttr_s` seconds.
+    fn with_rto(rto_target_s: f64, mttr_s: f64) -> Journal {
+        let mut journal = watched(Some(mttr_s));
+        journal.objectives = Some(crate::types::ObjectiveOutcome {
+            rto_target_s: Some(rto_target_s),
+            rpo_target_s: None,
+            rto_measured_s: Some(mttr_s),
+            rpo_measured_s: None,
+            verdicts: vec![],
+        });
+        journal
+    }
+
+    #[test]
+    fn a_run_is_judged_against_its_own_rto_and_a_run_without_one_against_the_default() {
+        // 40 s is within an RTO of 60 s, though above the default of 30 s.
+        let slow_failover = signals_of(&[with_rto(60.0, 40.0)]);
+        assert_eq!(slow_failover.recovered_within(DEFAULT_MTTR_TARGET_S), 1);
+        assert_eq!(
+            slow_failover.recovery_compliance(DEFAULT_MTTR_TARGET_S),
+            Some(1.0)
+        );
+        // 4 s is above an RTO of 2 s, though within the default.
+        let tight = signals_of(&[with_rto(2.0, 4.0)]);
+        assert_eq!(tight.recovery_compliance(DEFAULT_MTTR_TARGET_S), Some(0.0));
+        // A run with no RTO of its own is judged against the default.
+        let mixed = signals_of(&[
+            with_rto(60.0, 40.0),
+            watched(Some(30.0)),
+            watched(Some(31.0)),
+        ]);
+        assert_eq!(mixed.recovered_within(DEFAULT_MTTR_TARGET_S), 2);
+        assert_eq!(mixed.recovered_within(31.0), 3);
+    }
+
+    /// A run whose probes saw an outage that had not ended when the watch
+    /// ended, but which measured no recovery from its fault: the method
+    /// failed, or a stop cut the watch short.
+    fn measured_none(status: crate::types::ExperimentStatus) -> Journal {
+        let mut journal = watched(None);
+        if status == crate::types::ExperimentStatus::Failed {
+            journal.method_results = vec![action(crate::types::ActivityStatus::Failed)];
+        }
+        let post = journal.post_result.as_mut().expect("a post phase");
+        post.impact_observed = Some(true);
+        journal.status = status;
+        journal
+    }
+
+    #[test]
+    fn a_run_that_watched_and_measured_no_recovery_is_left_out_of_the_share() {
+        use crate::types::ExperimentStatus;
+        let method_failed = measured_none(ExperimentStatus::Failed);
+        let cut_short = measured_none(ExperimentStatus::Interrupted);
+
+        let signals = signals_of(&[
+            method_failed.clone(),
+            cut_short.clone(),
+            watched(Some(10.0)),
+        ]);
+
+        assert_eq!(
+            signals.recovery_compliance(DEFAULT_MTTR_TARGET_S),
+            Some(1.0)
+        );
+        let none_measured = signals_of(&[method_failed, cut_short]);
+        assert_eq!(
+            none_measured.recovery_compliance(DEFAULT_MTTR_TARGET_S),
+            None
+        );
+        // A run that watched to the end and did not see its target come
+        // back measured a recovery that failed.
+        let not_back = signals_of(&[watched(None), watched(Some(10.0))]);
+        assert_eq!(
+            not_back.recovery_compliance(DEFAULT_MTTR_TARGET_S),
+            Some(0.5)
+        );
+    }
+
+    #[test]
+    fn a_run_that_measured_no_recovery_fails_a_recovery_that_is_required() {
+        use crate::types::ExperimentStatus;
+        let no_outage = {
+            let mut journal = watched(None);
+            let post = journal.post_result.as_mut().expect("a post phase");
+            post.full_recovery = true;
+            post.impact_observed = Some(false);
+            journal
+        };
+        let signals = signals_of(&[
+            watched(Some(10.0)),
+            measured_none(ExperimentStatus::Failed),
+            measured_none(ExperimentStatus::Interrupted),
+            no_outage,
+            bare_journal(ExperimentStatus::Completed),
+        ]);
+
+        // Left out, the three runs that measured none leave one run, and it
+        // came back within the target.
+        assert_eq!(
+            signals.recovery_compliance(DEFAULT_MTTR_TARGET_S),
+            Some(1.0)
+        );
+        // Required, they are recoveries that failed. The run that did not
+        // watch is in neither share.
+        assert_eq!(
+            signals.required_recovery_compliance(DEFAULT_MTTR_TARGET_S),
+            Some(0.25)
+        );
+        let unwatched = signals_of(&[bare_journal(ExperimentStatus::Completed)]);
+        assert_eq!(
+            unwatched.required_recovery_compliance(DEFAULT_MTTR_TARGET_S),
             None
         );
     }
@@ -180,7 +309,6 @@ mod tests {
         let signals = signals_of(&[journal]);
 
         assert!((signals.pass_rate() - 1.0).abs() < f64::EPSILON);
-        assert_eq!(signals.recovery_watched, 0);
         assert_eq!(signals.recovery_compliance(DEFAULT_MTTR_TARGET_S), None);
     }
 
@@ -190,21 +318,34 @@ mod tests {
 
         assert_eq!(
             signals.recovery_line(DEFAULT_MTTR_TARGET_S),
-            "Recovery within 30s: 50.0% of the runs that watched for recovery (2 of 4)"
+            "Recovery within target: 50.0% of the runs that measured a recovery \
+             (2 of 4; 0 against their own RTO, 4 against 30s)"
         );
         assert_eq!(
             signals.recovery_line(30.5),
-            "Recovery within 30.5s: 75.0% of the runs that watched for recovery (3 of 4)"
+            "Recovery within target: 75.0% of the runs that measured a recovery \
+             (3 of 4; 0 against their own RTO, 4 against 30.5s)"
+        );
+        let own = signals_of(&[
+            with_rto(60.0, 40.0),
+            watched(Some(10.0)),
+            measured_none(crate::types::ExperimentStatus::Failed),
+        ]);
+        assert_eq!(
+            own.recovery_line(DEFAULT_MTTR_TARGET_S),
+            "Recovery within target: 100.0% of the runs that measured a recovery \
+             (2 of 2; 1 against their own RTO, 1 against 30s). \
+             Left out: 1 run(s) that measured no recovery."
         );
     }
 
     #[test]
-    fn the_recovery_line_says_when_no_run_watched_for_recovery() {
+    fn the_recovery_line_says_when_no_run_measured_a_recovery() {
         let signals = signals_of(&[bare_journal(crate::types::ExperimentStatus::Completed)]);
 
         assert_eq!(
             signals.recovery_line(DEFAULT_MTTR_TARGET_S),
-            "Recovery within 30s: not measured, no run watched for recovery. \
+            "Recovery within target: not measured, no run measured a recovery. \
              The verdict rests on the pass rate only (reduced assurance)."
         );
     }
@@ -397,7 +538,6 @@ mod tests {
         assert_eq!(signals.total_journals, 2);
         assert_eq!(signals.completed_journals, 1);
         assert_eq!(signals.journals_with_regulatory, 0);
-        assert!(signals.mttrs.is_empty());
-        assert_eq!(signals.recovery_watched, 0);
+        assert_eq!(signals.recovery_compliance(DEFAULT_MTTR_TARGET_S), None);
     }
 }

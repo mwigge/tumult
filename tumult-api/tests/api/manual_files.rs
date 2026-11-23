@@ -414,6 +414,19 @@ async fn verify_names_a_changed_file_a_deleted_file_and_a_deleted_attach_row() {
         names(&deleted, TABLE, text, Some("file_hash"), says),
         "{deleted}"
     );
+    // The download says the file is missing; a file it cannot read is a
+    // fault of the server, not a missing file.
+    let file = format!("/api/manual/experiments/{id}/attachments/{text}/file");
+    let (status, body) = get(base, &file).await;
+    assert_eq!(status, 409, "{body}");
+    assert!(
+        body["error"].as_str().unwrap().contains("missing"),
+        "{body}"
+    );
+    std::fs::create_dir(&path).unwrap();
+    let (status, body) = get(base, &file).await;
+    assert_eq!(status, 500, "{body}");
+    std::fs::remove_dir(&path).unwrap();
     std::fs::write(&path, log).unwrap();
     assert_eq!(verdict(base, &id).await["ok"], true);
 
