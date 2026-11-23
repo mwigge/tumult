@@ -124,6 +124,40 @@ after the window ends breaches its RTO, even when it comes back within
 `rto_target_s`. `tumult validate` warns when the RTO is longer than the
 window.
 
+## Recovery over many runs
+
+`tumult compliance` and the GameDay score both give a recovery share: of
+the runs that measured a recovery, the share that came back in time. Each
+run is judged against its own `rto_target_s`. A run that declares none is
+judged against a default target: 30 seconds for `tumult compliance`, and
+`scoring.mttr_target_s` (default 30) for a GameDay.
+
+```mermaid
+flowchart TD
+  accTitle: How one run counts in the recovery share
+  accDescr: A run without a steady state is left out. A run that watched and measured no recovery is left out, or counts as late when the GameDay requires recovery. A run that came back is in time when it came back within its RTO, or within the default target when it has no RTO. A run that did not come back is late.
+  run["A run"] --> watched{"Did it watch<br/>for recovery?"}
+  watched -->|"no steady state"| out["Left out"]
+  watched -->|yes| measured{"Did it measure<br/>a recovery?"}
+  measured -->|"no outage seen, method failed,<br/>or watch cut short"| required{"recovery_required?"}
+  required -->|no| out
+  required -->|yes| late["Late"]
+  measured -->|"did not come back"| late
+  measured -->|"came back"| target{"Within its RTO,<br/>or the default target?"}
+  target -->|yes| time["In time"]
+  target -->|no| late
+```
+
+| A run | In the recovery share |
+|---|---|
+| Came back within its `rto_target_s`, or within the default target when it has none | In time |
+| Came back later, or watched to the end and did not come back | Late |
+| Saw no outage, its method failed, or a stop cut its watch short | Left out. Late when the GameDay sets `recovery_required: true` |
+| Has no steady state, so it watched nothing | Left out. It counts in the pass rate only |
+
+The share is the runs in time over the runs in time and late. When no run
+is in time or late, the recovery is `not measured`. It is never full marks.
+
 ## Next
 
 - [Load testing](load-testing-guide.md): the source of the `load.*` metrics.

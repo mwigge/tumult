@@ -56,7 +56,9 @@ The compliance and resilience scores run from 0 to 100 and belong to a target.
 Two more scores run from 0 to 1 and belong to one run:
 
 - **GameDay score** (`tumult gameday run` and `analyze`). Pass rate 30 %,
-  recovery 25 %, load impact 25 % and compliance coverage 20 %.
+  recovery 25 %, load impact 25 % and compliance coverage 20 %. Each run is
+  judged against its own RTO. When no run measured a recovery, the recovery
+  is `not measured` and the other three share its weight.
 - **Agentic score** (agentic runs). The share of contracts that passed,
   weighted by their severity.
 
