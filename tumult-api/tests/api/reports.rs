@@ -248,6 +248,7 @@ fn payments_record(env: Option<&str>) -> tumult_lake::NewManualExperiment {
         attestation: "attested".into(),
         renewal_due_ns: None,
         framework_refs: vec![],
+        exercise: tumult_lake::ExerciseDetail::default(),
     }
 }
 

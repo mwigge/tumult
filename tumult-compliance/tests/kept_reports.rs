@@ -113,6 +113,7 @@ fn enter_drill(writer: &Writer, executed_at_ns: i64) {
             attestation: "I attest that this record reflects the exercise.".into(),
             renewal_due_ns: None,
             framework_refs: vec!["DORA Art. 24(6)".into(), "ISO 27001 A.5.29".into()],
+            exercise: tumult_lake::ExerciseDetail::default(),
         })
         .expect("a draft");
     writer.submit_manual(&id, None, "alice").expect("submitted");

@@ -165,7 +165,8 @@ fn audit_exports_but_is_never_deleted() {
     let old = now_ns() - 3 * DAY_NS;
     writer
         .execute(
-            "INSERT INTO manual_experiment_audit VALUES \
+            "INSERT INTO manual_experiment_audit (id, experiment_id, changed_by, \
+             changed_at_ns, action, diff, prev_hash, new_hash) VALUES \
              ('a1', 'exp-1', 'alice', ?, 'create', NULL, NULL, 'hash1')",
             [old],
         )

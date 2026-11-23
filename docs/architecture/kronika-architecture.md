@@ -85,7 +85,7 @@ The size limits of the gRPC port are in
 | Telemetry | `spans`, `logs`, `metric_sums`, `metric_gauges`, `metric_histograms` |
 | Journals | `experiments`, `activity_results`, `load_results`, `probe_samples`, `nfr_verdicts` |
 | Daemon runs | `run_registry`, `runs`, `run_audit`, `approval_requests`, `approval_decisions`, `run_schedules` |
-| Manual evidence | `manual_experiments`, `manual_experiment_audit`, `evidence_attachments` |
+| Manual evidence | `manual_experiments`, `manual_experiment_audit`, `evidence_attachments`, `manual_exercise_steps`, `manual_action_items`, `manual_experiment_links`, `manual_exercise_plans`, `manual_plan_audit`, `manual_signoffs` |
 | Scores and findings | `requirement_status_daily`, `maturity_daily`, `risk_suppressions`, `perf_verdicts`, `forecasts` |
 | Entities | `entity_versions`, written only with `KRONIKA_ENTITY_EVENTS` set |
 | Access | `users`, `sessions`, `tokens`, `user_env_scopes` |

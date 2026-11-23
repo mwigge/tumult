@@ -4,9 +4,18 @@
 //! included, including future schema additions. The daemon must be stopped for
 //! CLI backup/restore: native DuckDB cannot share a writer across processes.
 //! Portable customer exports use [`crate::lake`] instead.
+//!
+//! The files attached to manual records travel with the database: each is
+//! copied, hash-checked, to `attachments/<first 2 hex>/<sha256>` in the
+//! backup and named in the `attachments` map of the manifest. A restore
+//! brings them back, hash-checked, and never writes over a file that is
+//! there. A backup made before files were attached has no such map and
+//! restores with no files.
 use crate::file_integrity::{checksum, entry_exists};
-use crate::{Store, StoreError};
+use crate::manual::files::{bring_back, carry, FILE_HASHES_SQL};
+use crate::{attachments_dir, Store, StoreError};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::fs::{File, OpenOptions};
 use std::io::Write;
 use std::path::Path;
@@ -17,6 +26,21 @@ struct Manifest {
     sha256: String,
     schema_version: i64,
     credential_policy: String,
+    /// The files attached to manual records: each SHA-256 with its path in
+    /// the backup. Left out when there are none, as in a backup made
+    /// before files were attached.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    attachments: BTreeMap<String, String>,
+}
+
+/// What a backup holds of the files attached to manual records.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct BackupReport {
+    /// The files the backup holds.
+    pub attachments: usize,
+    /// The hashes of files whose stored file is missing or does not hash
+    /// to its name, so the backup does not hold them.
+    pub missing_attachments: Vec<String>,
 }
 fn schema_version(reader: &crate::Reader) -> Result<i64, StoreError> {
     reader
@@ -41,11 +65,13 @@ fn private_file(path: &Path) -> Result<File, StoreError> {
 
 /// Create a complete operational backup in a new directory. It contains
 /// password hashes, tokens and webhook secrets; protect it as the live DB.
+/// The files attached to manual records are copied with it; a stored file
+/// that is missing or changed is logged and named in the report.
 ///
 /// # Errors
 /// Refuses an existing destination or unavailable/locked source. A failed
 /// backup has no completed manifest and must not be used for restore.
-pub fn create(source: &Path, directory: &Path) -> Result<(), StoreError> {
+pub fn create(source: &Path, directory: &Path) -> Result<BackupReport, StoreError> {
     if !source.is_file() {
         return Err(StoreError::Internal("backup source does not exist".into()));
     }
@@ -67,27 +93,44 @@ pub fn create(source: &Path, directory: &Path) -> Result<(), StoreError> {
         std::fs::set_permissions(&snapshot, std::fs::Permissions::from_mode(0o600))?;
     }
     File::open(&snapshot)?.sync_all()?;
+    // The source is held read-only, so no write can come between the copy
+    // of the database and the list of its files.
+    let hashes: Vec<String> = source_reader
+        .query_json_rows(FILE_HASHES_SQL)?
+        .iter()
+        .filter_map(|row| row["h"].as_str().map(str::to_owned))
+        .collect();
+    let (attachments, missing) = carry(&attachments_dir(source), directory, &hashes)?;
     let manifest = Manifest {
         format_version: 1,
         sha256: checksum(&snapshot)?,
         schema_version,
         credential_policy: "complete-installation-including-credentials".into(),
+        attachments,
     };
     let mut file = private_file(&directory.join("manifest.json"))?;
     file.write_all(&serde_json::to_vec_pretty(&manifest)?)?;
     file.sync_all()?;
     #[cfg(unix)]
     File::open(directory)?.sync_all()?;
-    Ok(())
+    Ok(BackupReport {
+        attachments: manifest.attachments.len(),
+        missing_attachments: missing,
+    })
 }
 
 /// Restore a verified complete backup to a new database path. Does not replace
 /// an existing database or WAL; restart services only after selecting the new
-/// path and reviewing restored schedules/webhook credentials.
+/// path and reviewing restored schedules/webhook credentials. The files
+/// attached to manual records are brought into the attachments folder next
+/// to `destination` first, each hash-checked, and a file that is there
+/// already is never written again. Returns the files copied.
 ///
 /// # Errors
-/// Rejects incomplete/tampered backups, unsupported versions and existing paths.
-pub fn restore(directory: &Path, destination: &Path) -> Result<(), StoreError> {
+/// Rejects incomplete/tampered backups, unsupported versions and existing
+/// paths, and a file of the backup that is missing or does not hash to its
+/// name; then no database is restored.
+pub fn restore(directory: &Path, destination: &Path) -> Result<usize, StoreError> {
     let manifest: Manifest =
         serde_json::from_slice(&std::fs::read(directory.join("manifest.json"))?)?;
     if manifest.format_version != 1
@@ -119,6 +162,11 @@ pub fn restore(directory: &Path, destination: &Path) -> Result<(), StoreError> {
             "backup schema version mismatch".into(),
         ));
     }
+    let files = bring_back(
+        directory,
+        &manifest.attachments,
+        &attachments_dir(destination),
+    )?;
     let temp = destination.with_extension("restore.tmp");
     let mut out = private_file(&temp)?;
     let result = (|| {
@@ -148,5 +196,5 @@ pub fn restore(directory: &Path, destination: &Path) -> Result<(), StoreError> {
     if let Err(cleanup) = std::fs::remove_file(&temp) {
         tracing::error!(error = %cleanup, "failed to remove restore temporary file");
     }
-    result
+    result.map(|()| files)
 }
