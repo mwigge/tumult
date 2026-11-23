@@ -139,7 +139,7 @@ impl ManualOutcome {
 }
 
 /// Evidence attachment kinds. A `url` or a `ticket` is a link; a `file` is
-/// stored in the lake folder ([`files`]). `log_excerpt` is reserved.
+/// stored in the lake folder (the `files` module). `log_excerpt` is reserved.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AttachmentKind {
     File,
