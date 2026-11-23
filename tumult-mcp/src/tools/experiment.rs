@@ -12,11 +12,16 @@ use crate::tools::StructuredReport;
 /// Returns a [`ToolError`] if the file cannot be read, parsed, or fails
 /// validation.
 pub fn validate_experiment(experiment_path: &str) -> Result<String, ToolError> {
-    use tumult_core::engine::{parse_experiment, validate_experiment};
+    use tumult_core::engine::{parse_experiment, validate_experiment, validate_placeholders};
 
     let content = std::fs::read_to_string(Path::new(experiment_path))?;
     let experiment = parse_experiment(&content).map_err(|e| ToolError::Parse(e.to_string()))?;
     validate_experiment(&experiment).map_err(|e| ToolError::Validation(e.to_string()))?;
+    // A run over MCP gets no template values: nothing but configuration
+    // and secrets can fill a placeholder.
+    let no_vars = std::collections::HashMap::<String, String>::new();
+    validate_placeholders(&experiment, &no_vars)
+        .map_err(|e| ToolError::Validation(e.to_string()))?;
 
     Ok(format!(
         "Valid: '{}' — {} method steps, {} rollbacks",
@@ -339,6 +344,25 @@ mod tests {
         let result = validate_experiment(&path);
         assert!(result.is_ok());
         assert!(result.unwrap().contains("MCP test experiment"));
+    }
+
+    /// A `${...}` that nothing fills reaches its step as it stands. The
+    /// tool refuses it, as `tumult validate` does.
+    #[test]
+    fn validate_refuses_a_placeholder_that_nothing_fills() {
+        let dir = TempDir::new().unwrap();
+        let path = write_valid_experiment(dir.path());
+        let text = std::fs::read_to_string(&path).unwrap();
+        let drain = text.replacen("MCP test experiment", "drain ${zone_a_node}", 1);
+        std::fs::write(&path, drain).unwrap();
+
+        let err = validate_experiment(&path).unwrap_err();
+
+        assert!(matches!(err, ToolError::Validation(_)), "{err}");
+        assert!(
+            err.to_string().contains("nothing fills ${zone_a_node}"),
+            "{err}"
+        );
     }
 
     #[test]

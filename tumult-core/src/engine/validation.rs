@@ -24,7 +24,8 @@ use super::EngineError;
 /// This holds for every step: method, rollbacks, hypothesis probes, guards and controls.
 /// Returns [`EngineError::InvalidSeconds`] if a timeout or a pause of any of those steps,
 /// or the duration of a flat load, is not a number of seconds from 0 up to 2^64.
-/// Returns [`EngineError::NfrInvalid`] if an objective names a metric no run can measure.
+/// Returns [`EngineError::NfrInvalid`] if an objective names a metric no run can measure,
+/// or a metric that does not measure the kind of the objective.
 /// Returns [`EngineError::RecoveryInvalid`] if the `recovery` block asks for a window
 /// that is not above 0 or longer than an hour, or for an interval longer than the window.
 /// An RTO longer than the window is valid and logs `recovery.window.shorter_than_rto`.
@@ -327,6 +328,12 @@ fn validate_objectives(experiment: &Experiment) -> Result<(), EngineError> {
             });
         }
         if let Some(reason) = crate::runner::nfr::metric_fault(&o.metric, &probes) {
+            return Err(EngineError::NfrInvalid {
+                id: o.id.clone(),
+                reason,
+            });
+        }
+        if let Some(reason) = crate::runner::nfr::kind_fault(o.kind, &o.metric) {
             return Err(EngineError::NfrInvalid {
                 id: o.id.clone(),
                 reason,

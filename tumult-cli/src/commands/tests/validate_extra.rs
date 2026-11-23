@@ -18,7 +18,7 @@ fn validate_rejects_oversized_experiment_file() {
     // Just over the 10MB limit enforced before parsing.
     std::fs::write(&path, "x".repeat(11 * 1024 * 1024)).unwrap();
 
-    let err = cmd_validate(&path).unwrap_err();
+    let err = cmd_validate(&path, &std::collections::HashMap::new()).unwrap_err();
     assert!(
         err.to_string().contains("experiment file too large"),
         "{err}"
@@ -33,7 +33,7 @@ fn validate_renders_summary_for_full_featured_experiment() {
     let dir = TempDir::new().unwrap();
     let path = write_config_secrets_experiment(dir.path());
 
-    let (result, printed) = capture(|| cmd_validate(&path));
+    let (result, printed) = capture(|| cmd_validate(&path, &std::collections::HashMap::new()));
 
     result.unwrap();
     let out = printed.stdout;
@@ -83,7 +83,7 @@ fn validated(experiment: &Experiment) -> (anyhow::Result<()>, String) {
     let dir = TempDir::new().unwrap();
     let path = dir.path().join("exp.toon");
     std::fs::write(&path, toon_format::encode_default(experiment).unwrap()).unwrap();
-    let (result, printed) = capture(|| cmd_validate(&path));
+    let (result, printed) = capture(|| cmd_validate(&path, &std::collections::HashMap::new()));
     (result, printed.stdout)
 }
 
