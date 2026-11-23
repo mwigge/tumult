@@ -204,6 +204,7 @@ pub mod handlers;
 pub mod import;
 pub mod lake;
 pub mod manual;
+pub mod manual_files;
 pub mod manual_plans;
 pub mod registry;
 pub mod runs;
@@ -590,6 +591,10 @@ pub fn router(state: ApiState) -> Router {
         .route(
             "/api/manual/experiments/{id}/attachments",
             post(manual::attach),
+        )
+        .route(
+            "/api/manual/experiments/{id}/attachments/{attachment_id}/file",
+            get(manual_files::download),
         )
         .route("/api/manual/import", post(manual::import))
         .route(

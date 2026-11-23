@@ -64,7 +64,8 @@ async fn manual_evidence_lifecycle_end_to_end() {
         .unwrap();
     assert_eq!(resp.status(), 200);
 
-    // Attach evidence (url ok, file kind rejected — no file storage).
+    // Attach evidence (url ok; a file kind in JSON is refused: a file is
+    // sent as a form).
     let resp = client
         .post(format!("{base}/api/manual/experiments/{id}/attachments"))
         .json(&json!({

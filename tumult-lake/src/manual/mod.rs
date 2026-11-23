@@ -26,8 +26,13 @@
 //! sign-off is a `manual_signoffs` row chained to the one before it, and
 //! every audit row links the row before it ([`chain`]), so the audit
 //! verify ([`verify`]) finds a direct edit or a deleted row.
+//!
+//! A file may be attached as evidence in any status ([`files`]): it is
+//! stored once in the lake folder by its SHA-256, and its attach audit
+//! row names it without changing the seal.
 
 mod chain;
+pub(crate) mod files;
 mod hash;
 mod plans;
 mod reader;
@@ -38,6 +43,9 @@ use std::fmt;
 
 use crate::StoreError;
 
+pub use files::{
+    attachments_dir, stored_file, FileError, FileUpload, StagedFile, MAX_FILE_BYTES, MEDIA_TYPES,
+};
 pub use plans::{NewExercisePlan, PlanDetail, PlanEdit, PlanFilter, PlanStatus};
 pub use reader::ManualDetail;
 pub use verify::{AuditProblem, AuditVerdict};
@@ -130,8 +138,8 @@ impl ManualOutcome {
     }
 }
 
-/// Evidence attachment kinds. The API currently accepts `url` and `ticket`
-/// only (no file storage); `file` and `log_excerpt` are reserved.
+/// Evidence attachment kinds. A `url` or a `ticket` is a link; a `file` is
+/// stored in the lake folder ([`files`]). `log_excerpt` is reserved.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AttachmentKind {
     File,

@@ -6,6 +6,9 @@
 //! tied event timestamps and mutable rows are covered by complete snapshots.
 //! Credentials and operational recovery state are deliberately excluded; use
 //! [`crate::backup`] for a complete privileged installation backup.
+//! The files of file attachments travel with the tables: each is copied to
+//! `attachments/<first 2 hex>/<sha256>` and named in the `attachments` map
+//! of the manifest, and [`restore_attachments`] brings them back.
 //! Hot retention is disabled until historical queries can read the archive.
 
 use std::collections::BTreeMap;
@@ -14,7 +17,8 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use crate::file_integrity::checksum;
-use crate::{Reader, StoreError, Writer};
+use crate::manual::files::{bring_back, carry, FILE_HASHES_SQL};
+use crate::{attachments_dir, Reader, Store, StoreError, Writer};
 use serde::{Deserialize, Serialize};
 
 #[doc(hidden)]
@@ -151,6 +155,11 @@ pub struct ExportReport {
     pub lake_dir: String,
     pub retention_days: u64,
     pub tables: Vec<TableExport>,
+    /// The files of file attachments the archive holds.
+    pub attachments: u64,
+    /// The hashes of file attachments whose stored file is missing or does
+    /// not hash to its name, so the archive does not hold them.
+    pub missing_attachments: Vec<String>,
 }
 #[derive(Clone, Debug, Serialize)]
 pub struct LakeStatus {
@@ -176,6 +185,9 @@ struct LakeMeta {
     file_checksums: BTreeMap<String, String>,
     #[serde(default)]
     excluded_tables: Vec<String>,
+    /// The SHA-256 of each attachment file the archive holds, and its path.
+    #[serde(default)]
+    attachments: BTreeMap<String, String>,
 }
 #[doc(hidden)]
 pub fn meta_path(dir: &Path) -> PathBuf {
@@ -321,15 +333,25 @@ pub fn export(reader: &Reader, cfg: &LakeConfig) -> Result<ExportReport, StoreEr
                 files: if unchanged { vec![] } else { vec![rel] },
             });
         }
-        Ok::<_, StoreError>(())
+        let hashes: Vec<String> = reader
+            .query_json_rows(FILE_HASHES_SQL)?
+            .iter()
+            .filter_map(|row| row["h"].as_str().map(str::to_owned))
+            .collect();
+        Ok::<_, StoreError>(hashes)
     })();
-    if let Err(error) = result {
-        if let Err(rollback) = reader.execute_batch("ROLLBACK") {
-            tracing::error!(error = %rollback, "failed to roll back export snapshot");
+    let hashes = match result {
+        Ok(hashes) => hashes,
+        Err(error) => {
+            if let Err(rollback) = reader.execute_batch("ROLLBACK") {
+                tracing::error!(error = %rollback, "failed to roll back export snapshot");
+            }
+            return Err(error);
         }
-        return Err(error);
-    }
+    };
     reader.execute_batch("COMMIT")?;
+    let (carried, missing) = carry(&attachments_dir(&reader.path), &cfg.dir, &hashes)?;
+    meta.attachments = carried;
     meta.last_export_ns = Some(run_ns);
     write_meta(&cfg.dir, &meta)?;
     Ok(ExportReport {
@@ -337,7 +359,29 @@ pub fn export(reader: &Reader, cfg: &LakeConfig) -> Result<ExportReport, StoreEr
         lake_dir: cfg.dir.display().to_string(),
         retention_days: cfg.retention_days,
         tables,
+        attachments: meta.attachments.len() as u64,
+        missing_attachments: missing,
     })
+}
+
+/// Bring the attachment files of the archive at `cfg` into the attachments
+/// folder of `store`, after its tables are imported from the snapshots.
+/// A file that is there already is never written again. Returns the files
+/// copied.
+///
+/// # Errors
+/// Rejects an archive before manifest v2, a manifest entry that is not a
+/// SHA-256 and its path, and a file of the archive that is missing or does
+/// not hash to its name. The files copied before stay, and a second run
+/// goes on from there.
+pub fn restore_attachments(cfg: &LakeConfig, store: &Store) -> Result<usize, StoreError> {
+    let meta = read_meta(&cfg.dir)?;
+    if meta.format_version != 2 {
+        return Err(StoreError::Internal(
+            "archive requires a v2 snapshot export".into(),
+        ));
+    }
+    bring_back(&cfg.dir, &meta.attachments, &attachments_dir(store.path()))
 }
 
 /// Return the single committed version of a portable table. Never glob files.

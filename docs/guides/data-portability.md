@@ -39,7 +39,9 @@ flowchart TD
    ```
 
    The folder gets `store.duckdb` and `manifest.json` (format, schema
-   version, credential policy, SHA-256). On Unix only the owner can read it.
+   version, credential policy, SHA-256), and the files attached to manual
+   records in `attachments/`, each checked against its SHA-256. On Unix
+   only the owner can read it.
 3. Restore into a new file:
 
    ```bash
@@ -47,7 +49,10 @@ flowchart TD
    ```
 
    Restore checks the manifest and the checksum, and refuses a changed or
-   incomplete backup. It never overwrites a database or its WAL file.
+   incomplete backup. It never overwrites a database or its WAL file. It
+   brings the attachment files back into the `attachments` folder next to
+   the new file, each checked against its SHA-256, and never writes over a
+   file that is there. A backup made before 3.0.4 restores with no files.
 4. Point `TUMULT_LAKE_PATH` at the restored file, review its schedules and
    webhooks, then start the daemon.
 
@@ -74,7 +79,9 @@ It holds telemetry, runs and their steps, load results, probe samples,
 verdicts, forecasts, manual evidence, approvals, audit trails, schedules, the
 graph and the function register. It leaves out users, sessions, tokens,
 environment scopes, webhook settings, recovery plans and execution pins; the
-manifest lists them. Attachments that live elsewhere are only referenced.
+manifest lists them. The files attached to manual records travel with it,
+in its `attachments` folder, each named by its SHA-256 in the `attachments`
+map of `_meta.json`. Links to evidence elsewhere are only referenced.
 
 Your own data can still be sensitive: telemetry and definitions may hold
 application data. The archive is not redacted, so share it only with people

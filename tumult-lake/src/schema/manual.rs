@@ -13,8 +13,8 @@
 
 /// Hand-entered test records (game days, tabletops, failovers, …) with
 /// attestation, a draft → submitted → verified/rejected review lifecycle,
-/// an append-only hash-chained audit trail, and external evidence links
-/// (no file storage — URIs only).
+/// an append-only hash-chained audit trail, and evidence: links, and files
+/// kept in the lake folder by their SHA-256 (`file_hash`).
 ///
 /// `manual_exercise_steps`, `manual_action_items` and
 /// `manual_experiment_links` hold the timeline, the actions with owners

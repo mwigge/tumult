@@ -336,6 +336,55 @@ flowchart LR
 - A sign-off is a row of `manual_signoffs`. It keeps the seal of the record
   it signed (`signed_hash`) and links the sign-off before it.
 
+#### Attach a file
+
+A record can keep files as evidence: a runbook log, a screenshot, an export
+of the data you restored. The page does not attach files yet: use the API.
+Send the bytes of one file as the body, and its name in the query:
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" --data-binary @runbook-log.pdf \
+  -H 'Content-Type: application/octet-stream' \
+  "$TUMULT/api/manual/experiments/$ID/attachments?name=runbook-log.pdf"
+```
+
+While auth is open, also send who attaches it, with `&added_by=alice`.
+
+```mermaid
+flowchart LR
+  accTitle: How a file becomes evidence
+  accDescr: The bytes of the file are sent as the body. Tumult reads its type from the bytes and stores it once in the lake folder by its SHA-256. An attach row of the audit trail names the file and its hash. The seal of the record stays as it was.
+  body["bytes of one file<br/>application/octet-stream"] --> check["type read from the bytes<br/>at most 25 MB"]
+  check --> store["lake folder<br/>attachments/3f/3f9a..."]
+  check --> audit["audit row: attach<br/>names the file and its hash"]
+```
+
+- A file can be at most 25 MB (26,214,400 bytes). A larger file is
+  refused with 413, and nothing of it is kept.
+- The allowed types are PDF, PNG, JPEG, plain text, CSV and JSON. Tumult
+  reads the type from the bytes, not from what the client says. Text is CSV
+  or JSON when the name ends in `.csv` or `.json`. Any other file, and a
+  name that says another type than the bytes are, is refused with 415 and
+  the list of allowed types.
+- The file is stored once, by its SHA-256, in the `attachments` folder next
+  to the lake database. The same file sent twice is one stored file.
+- You can attach a file in any status, also after the record is verified.
+  The attach is a row of the audit trail that names the file and its hash.
+  It does not change the seal of the record. A file cannot be removed.
+- The body must be `application/octet-stream`. Any other content type,
+  such as a form or plain text, is refused with 415. A page on another site
+  cannot send this type without asking first, so it cannot attach a file
+  in your name.
+- A link (`url` or `ticket`) is still sent as JSON, while the record is a
+  draft or submitted.
+- `GET /api/manual/experiments/{id}` lists each file with its
+  `file_hash`, `media_type`, `size_bytes`, and its name as `label`.
+- `GET /api/manual/experiments/{id}/attachments/{attachment_id}/file`
+  downloads a file (Viewer). It always comes as a download, never as a
+  page the browser opens.
+- The lake export and the full backup carry the files, in their
+  `attachments` folder, and a restore brings them back.
+
 #### Verify the audit trail
 
 `GET /api/manual/experiments/{id}/audit/verify` and
@@ -366,6 +415,9 @@ flowchart LR
 - The reviewer must be the one of the verify or reject row. Each sign-off
   must link the one before it, sign a seal the audit trail holds, and have
   the audit row that names it.
+- Each attachment must have the attach row that names it, and each attach
+  row must name an attachment that is there. Each stored file must be in
+  the lake folder and hash to its `file_hash`.
 
 The answer is `ok: true`, or `ok: false` with `problems`. Each problem names
 the `table` and the `row`, and the `field` when the check can tell.
@@ -479,6 +531,10 @@ Route `/login`. Sign in, and change the password at the first sign in.
   `GET /api/manual/experiments/{id}/audit/verify` and
   `GET /api/manual/plans/{id}/audit/verify`, see
   [Verify the audit trail](#verify-the-audit-trail).
+- Files attached to a manual record:
+  `POST /api/manual/experiments/{id}/attachments` and
+  `GET /api/manual/experiments/{id}/attachments/{attachment_id}/file`, see
+  [Attach a file](#attach-a-file).
 
 Charts follow the theme you pick (dark, light or auto), and tooltips escape
 every value that comes from the lake.

@@ -18,12 +18,15 @@
 //! `manual_required_signoffs` asks for its exercise type (one by
 //! default). A signer who entered or changed the record, or signed it off
 //! before, is refused with 422. `GET .../audit/verify` checks the seal,
-//! the audit trail and the sign-offs again.
+//! the audit trail, the sign-offs and the attachments again.
+//!
+//! Evidence is a link sent as JSON, or the bytes of a file sent as
+//! `application/octet-stream` ([`crate::manual_files`]).
 
 use crate::error::ApiError;
 use std::sync::{Arc, Mutex};
 
-use axum::extract::{Path, Query, State};
+use axum::extract::{FromRequest, Path, Query, Request, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::{Extension, Json};
@@ -130,7 +133,7 @@ fn check_scope(reader: &Reader, scopes: &[String], subject: &Subject) -> Result<
 
 /// Run a typed manual-evidence mutation on the single writer and surface
 /// the typed result. `resource_id` is the record it touches, if any.
-async fn exec_manual<T>(
+pub(crate) async fn exec_manual<T>(
     state: &ApiState,
     principal: &Principal,
     resource_id: Option<&str>,
@@ -703,14 +706,29 @@ pub struct AttachmentRequest {
     added_by: Option<String>,
 }
 
-/// `POST /api/manual/experiments/{id}/attachments` — external evidence
-/// links. Only `url` and `ticket` are accepted: there is no file storage.
+/// `POST /api/manual/experiments/{id}/attachments`: evidence for a record.
+/// A link (`url` or `ticket`) is a JSON body, while the record is a draft
+/// or submitted. A file is its bytes as an `application/octet-stream` body
+/// with `?name=`, in any status (see [`crate::manual_files`]). Any other
+/// content type is 415.
 pub async fn attach(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
-    Json(req): Json<AttachmentRequest>,
+    request: Request,
 ) -> Result<(StatusCode, Json<Value>), ApiError> {
+    match crate::manual_files::sent(request.headers()) {
+        crate::manual_files::Sent::File => {
+            return crate::manual_files::upload(state, principal, id, request).await;
+        }
+        crate::manual_files::Sent::Other => {
+            return Err(crate::manual_files::not_a_link_or_a_file(request).await);
+        }
+        crate::manual_files::Sent::Link => {}
+    }
+    let Json(req) = Json::<AttachmentRequest>::from_request(request, &state)
+        .await
+        .map_err(|rejection| ApiError::from(rejection.into_response()))?;
     let kind = match req.kind.as_str() {
         "url" => AttachmentKind::Url,
         "ticket" => AttachmentKind::Ticket,
@@ -718,7 +736,8 @@ pub async fn attach(
             return Err((
                 StatusCode::BAD_REQUEST,
                 Json(json!({"error": format!(
-                    "attachment kind '{other}' not accepted (url|ticket only; no file storage)"
+                    "attachment kind '{other}' not accepted as JSON (url|ticket); \
+                     send a file as application/octet-stream with ?name=<file name>"
                 )})),
             )
                 .into_response()

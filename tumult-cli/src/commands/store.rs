@@ -181,11 +181,15 @@ pub fn cmd_store_backup(output_dir: &Path) -> Result<()> {
     if !db_path.exists() {
         bail!("no persistent store found at: {}", db_path.display());
     }
-    tumult_lake::backup::create(&db_path, output_dir)?;
+    let report = tumult_lake::backup::create(&db_path, output_dir)?;
     crate::outln!(
         "Complete operational backup: {} (includes credentials)",
         output_dir.display()
     );
+    crate::outln!("Attachment files: {}", report.attachments);
+    for hash in &report.missing_attachments {
+        crate::errln!("Attachment file {hash} is missing or changed: not in the backup");
+    }
     Ok(())
 }
 
@@ -195,8 +199,9 @@ pub fn cmd_store_backup(output_dir: &Path) -> Result<()> {
 /// Rejects corrupted backups and existing destinations.
 #[must_use = "callers must handle restore errors"]
 pub fn cmd_store_restore(input: &Path, output: &Path) -> Result<()> {
-    tumult_lake::backup::restore(input, output)?;
+    let files = tumult_lake::backup::restore(input, output)?;
     crate::outln!("Restored database: {}", output.display());
+    crate::outln!("Attachment files restored: {files}");
     Ok(())
 }
 

@@ -7,18 +7,23 @@
 //! the one before); the last `new_hash` must be the stored seal; the
 //! reviewer must be the one of the last verify or reject row; and the
 //! sign-offs must chain, each signing a seal the audit trail holds and
-//! each named by its audit row. A plan is checked the same way, without
-//! the reviewer. Audit rows with no
+//! each named by its audit row. Each attachment must be named by its attach
+//! row and say what that row says, each attach row must name an attachment
+//! that is there, and each stored file must be there with the bytes of its
+//! hash. A plan is checked the same way, without the reviewer and the
+//! attachments. Audit rows with no
 //! `link_hash` at the start of a trail were written before the link hash
 //! existed: they are counted as legacy rows, not as problems.
 
 use std::collections::BTreeSet;
+use std::path::Path;
 
 use duckdb::Connection;
 use serde::Serialize;
 use serde_json::Value;
 
 use super::chain::{AuditLink, SignoffLink, Trail, SIGNOFFS_SQL};
+use super::files::{attachments_dir, stored_file};
 use super::hash::{content_hash, fetch_plan_row, fetch_row, plan_seal_of, seal_of};
 use crate::{Reader, StoreError};
 
@@ -235,6 +240,118 @@ fn check_signoff_rows(audit: &[Value], signoffs: &[Value], problems: &mut Proble
     }
 }
 
+/// The columns of an attachment that its attach audit row names.
+const ATTACHED: [&str; 6] = [
+    "kind",
+    "uri",
+    "label",
+    "file_hash",
+    "media_type",
+    "size_bytes",
+];
+
+/// The table of the attachments.
+const ATTACHMENTS: &str = "evidence_attachments";
+
+/// Each attachment has the attach audit row that names it by
+/// `attachment_id` and holds what that row says, and each attachment an
+/// attach row names is there. An attach leaves the seal as it was, so a
+/// deleted last attach row shows only here. The file of each file
+/// attachment is checked under `files`.
+fn check_attachments(
+    files: &Path,
+    audit: &[Value],
+    attachments: &[Value],
+    problems: &mut Problems,
+) {
+    let named: Vec<(&str, Value)> = audit
+        .iter()
+        .filter(|row| text(row, "action") == Some("attach"))
+        .filter_map(|row| {
+            let diff = serde_json::from_str(text(row, "diff")?).ok()?;
+            Some((text(row, "id").unwrap_or_default(), diff))
+        })
+        .collect();
+    let names =
+        |diff: &Value, id: &str| diff.get("attachment_id").and_then(Value::as_str) == Some(id);
+    for (row, diff) in &named {
+        let id = diff
+            .get("attachment_id")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        if !attachments.iter().any(|a| text(a, "id") == Some(id)) {
+            problems.add(
+                Trail::Record.table(),
+                row,
+                Some("diff"),
+                format!("the row names attachment '{id}', which is not in {ATTACHMENTS}"),
+            );
+        }
+    }
+    for attachment in attachments {
+        let id = text(attachment, "id").unwrap_or_default();
+        let Some((_, diff)) = named.iter().find(|(_, diff)| names(diff, id)) else {
+            problems.add(
+                ATTACHMENTS,
+                id,
+                None,
+                "no audit row names this attachment: its attach row was deleted".into(),
+            );
+            continue;
+        };
+        for field in ATTACHED {
+            if diff
+                .get(field)
+                .is_some_and(|want| attachment.get(field) != Some(want))
+            {
+                problems.add(
+                    ATTACHMENTS,
+                    id,
+                    Some(field),
+                    format!("{field} is not what the attach row of the audit trail names"),
+                );
+            }
+        }
+        if text(attachment, "kind") == Some("file") {
+            check_file(files, id, text(attachment, "file_hash"), problems);
+        }
+    }
+}
+
+/// The file of attachment `id` is stored under `files` and hashes to
+/// `hash`.
+fn check_file(files: &Path, id: &str, hash: Option<&str>, problems: &mut Problems) {
+    let field = Some("file_hash");
+    let Some(path) = hash.and_then(|hash| stored_file(files, hash)) else {
+        problems.add(ATTACHMENTS, id, field, "file_hash is not a SHA-256".into());
+        return;
+    };
+    if !path.is_file() {
+        problems.add(
+            ATTACHMENTS,
+            id,
+            field,
+            "the stored file is missing: it was deleted or moved".into(),
+        );
+        return;
+    }
+    match crate::file_integrity::checksum(&path) {
+        Ok(found) if Some(found.as_str()) == hash => {}
+        Ok(_) => problems.add(
+            ATTACHMENTS,
+            id,
+            field,
+            "the stored file does not hash to file_hash: it was changed".into(),
+        ),
+        Err(e) => problems.add(
+            ATTACHMENTS,
+            id,
+            field,
+            format!("the stored file cannot be read: {e}"),
+        ),
+    }
+}
+
 /// Every seal the audit rows hold, before and after each write.
 fn seals_of(rows: &[Value]) -> BTreeSet<&str> {
     rows.iter()
@@ -325,10 +442,12 @@ fn verdict(problems: Problems, hash_version: Option<i64>, legacy_rows: usize) ->
     }
 }
 
-/// The audit verify of record `id`; `None` when there is no such record.
+/// The audit verify of record `id`, whose stored files are under
+/// `files`; `None` when there is no such record.
 pub(crate) fn verify_record(
     conn: &Connection,
     id: &str,
+    files: &Path,
 ) -> Result<Option<AuditVerdict>, StoreError> {
     let Some(row) = fetch_row(conn, id)? else {
         return Ok(None);
@@ -343,6 +462,12 @@ pub(crate) fn verify_record(
     let signoffs = crate::query_json_rows_bound(conn, SIGNOFFS_SQL, &["record", id])?;
     check_signoffs(&signoffs, &seals_of(&audit), &mut problems);
     check_signoff_rows(&audit, &signoffs, &mut problems);
+    let attachments = crate::query_json_rows_bound(
+        conn,
+        "SELECT * FROM evidence_attachments WHERE experiment_id = ? ORDER BY added_at_ns, id",
+        &[id],
+    )?;
+    check_attachments(files, &audit, &attachments, &mut problems);
     Ok(Some(verdict(problems, Some(version), legacy)))
 }
 
@@ -372,13 +497,13 @@ pub(crate) fn verify_plan(conn: &Connection, id: &str) -> Result<Option<AuditVer
 
 impl Reader {
     /// Check everything the lake holds about manual record `id` again: its
-    /// seal, its audit trail, its reviewer and its sign-offs. `None` when
-    /// there is no such record.
+    /// seal, its audit trail, its reviewer, its sign-offs, its attachments
+    /// and their stored files. `None` when there is no such record.
     ///
     /// # Errors
     /// Returns an error if a query fails.
     pub fn verify_manual_record(&self, id: &str) -> Result<Option<AuditVerdict>, StoreError> {
-        verify_record(&self.conn, id)
+        verify_record(&self.conn, id, &attachments_dir(&self.path))
     }
 
     /// Check everything the lake holds about plan `id` again: its seal, its

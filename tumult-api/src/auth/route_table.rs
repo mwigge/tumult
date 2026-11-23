@@ -54,6 +54,11 @@ pub const ROUTE_TABLE: &[(&str, &str, Role)] = &[
         Role::Viewer,
     ),
     ("GET", "/api/manual/plans/{id}/audit/verify", Role::Viewer),
+    (
+        "GET",
+        "/api/manual/experiments/{id}/attachments/{attachment_id}/file",
+        Role::Viewer,
+    ),
     ("GET", "/api/authoring/catalog", Role::Viewer),
     ("GET", "/api/registry", Role::Viewer),
     ("GET", "/api/registry/{id}", Role::Viewer),
@@ -284,6 +289,15 @@ mod tests {
         );
         assert_eq!(
             required_role("GET", "/api/manual/plans/x/audit/verify"),
+            Role::Viewer
+        );
+        // A file is sent as evidence is entered, and read as a record is.
+        assert_eq!(
+            required_role("POST", "/api/manual/experiments/x/attachments"),
+            Role::Operator
+        );
+        assert_eq!(
+            required_role("GET", "/api/manual/experiments/x/attachments/y/file"),
             Role::Viewer
         );
         // Plans are entered like records; reading them is a view.

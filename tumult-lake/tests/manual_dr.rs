@@ -451,7 +451,10 @@ const V21_MANUAL: &[&str] = &[
         CAST('[\"tune the restore\"]' AS JSON), 'payments-db', 'production', 4100.0,
         'alice', 1000, 'att', 'draft', ['DORA Art. 12(2)'], 'hash-v21')",
     "INSERT INTO manual_experiment_audit VALUES
-        ('a-v21', 'm-v21', 'alice', 1000, 'create', '{}', NULL, 'hash-v21')",
+        ('a-v21', 'm-v21', 'alice', 1000, 'create', '{}', NULL, 'hash-v21'),
+        ('a-v21-attach', 'm-v21', 'alice', 1000, 'attach',
+         '{\"attachment_id\":\"e-v21\",\"kind\":\"url\",\"uri\":\"https://wiki.example/drill\",\"label\":\"log\"}',
+         'hash-v21', 'hash-v21')",
     "INSERT INTO evidence_attachments VALUES
         ('e-v21', 'm-v21', 'url', 'https://wiki.example/drill', 'log', NULL, 'alice', 1000)",
     "UPDATE schema_meta SET value = 21 WHERE key = 'version'",
@@ -641,20 +644,21 @@ fn a_v1_record_of_a_v21_lake_verifies_and_its_audit_rows_are_a_legacy_prefix() {
     assert!(verdict.problems.is_empty(), "{verdict:?}");
 
     // The v21 draft is submitted now: the chain starts after its legacy
-    // create row, and the new row links.
+    // create and attach rows, and the new row links.
     let writer = store.writer().unwrap();
     writer.submit_manual("m-v21", None, "alice").unwrap();
     let reader = store.read_only().unwrap();
     let verdict = reader.verify_manual_record("m-v21").unwrap().unwrap();
     assert!(verdict.ok, "{verdict:?}");
-    assert_eq!((verdict.hash_version, verdict.legacy_rows), (Some(2), 1));
+    assert_eq!((verdict.hash_version, verdict.legacy_rows), (Some(2), 2));
     let audit = reader
         .manual_experiment_detail("m-v21")
         .unwrap()
         .unwrap()
         .audit;
     assert_eq!(audit[0]["link_hash"], Value::Null);
-    assert_eq!(audit[1]["link_hash"].as_str().map(str::len), Some(64));
+    assert_eq!(audit[1]["link_hash"], Value::Null);
+    assert_eq!(audit[2]["link_hash"].as_str().map(str::len), Some(64));
 
     // The version 1 seal still covers the content, and the audit trail
     // names the reviewer the seal leaves out. A reader opened after each

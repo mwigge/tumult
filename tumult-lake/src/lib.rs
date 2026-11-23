@@ -116,10 +116,11 @@ pub use ict::{
 };
 #[cfg(feature = "duckdb")]
 pub use manual::{
-    ActionItem, AttachmentKind, AuditProblem, AuditVerdict, ExerciseDetail, ExerciseLink,
-    ExerciseStep, ExerciseType, LinkKind, ManualDetail, ManualError, ManualOutcome,
-    NewExercisePlan, NewManualExperiment, Participant, PlanDetail, PlanEdit, PlanError, PlanFilter,
-    PlanStatus, SignOff, SignOffDecision, SignOffOutcome, StepResult,
+    attachments_dir, stored_file, ActionItem, AttachmentKind, AuditProblem, AuditVerdict,
+    ExerciseDetail, ExerciseLink, ExerciseStep, ExerciseType, FileError, FileUpload, LinkKind,
+    ManualDetail, ManualError, ManualOutcome, NewExercisePlan, NewManualExperiment, Participant,
+    PlanDetail, PlanEdit, PlanError, PlanFilter, PlanStatus, SignOff, SignOffDecision,
+    SignOffOutcome, StagedFile, StepResult, MAX_FILE_BYTES, MEDIA_TYPES,
 };
 #[cfg(feature = "duckdb")]
 pub use perf::PerfVerdictRow;

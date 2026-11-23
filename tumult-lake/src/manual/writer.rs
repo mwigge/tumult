@@ -5,13 +5,14 @@
 use duckdb::{params, Connection};
 
 use super::chain::{self, insert_signoff, NewSignoff, Trail};
+use super::files::StagedFile;
 use super::hash::{fetch_row, now_ns, reseal, status_of, ulid};
 use super::plans::{check_tested, fulfil, usable_plan, Tested};
 use super::{
     AttachmentKind, ExerciseDetail, LinkKind, ManualError, NewManualExperiment, SignOff,
     SignOffDecision, SignOffOutcome, StepResult,
 };
-use crate::{with_tx, Writer};
+use crate::{with_tx, StoreError, Writer};
 
 /// The statements that remove the steps, actions and links of a record.
 const DELETE_CHILDREN: [&str; 3] = [
@@ -554,11 +555,12 @@ impl Writer {
     }
 
     /// Attach an external evidence link to a draft or submitted record.
-    /// Returns the attachment id.
+    /// Returns the attachment id. A file is attached with
+    /// [`Self::add_manual_file`], which stores it.
     ///
     /// # Errors
     /// Returns `NotFound`, `WrongStatus` (verified/rejected records are
-    /// locked), or `Invalid` for an empty URI.
+    /// locked), or `Invalid` for an empty URI or the kind `file`.
     pub fn add_manual_attachment(
         &self,
         experiment_id: &str,
@@ -568,6 +570,11 @@ impl Writer {
         file_hash: Option<&str>,
         added_by: &str,
     ) -> Result<String, ManualError> {
+        if kind == AttachmentKind::File {
+            return Err(ManualError::Invalid(
+                "a file is attached with its bytes, not as a link".into(),
+            ));
+        }
         if uri.trim().is_empty() {
             return Err(ManualError::Invalid(
                 "attachment uri must not be empty".into(),
@@ -622,6 +629,84 @@ impl Writer {
             )?;
             Ok(attachment_id)
         })
+    }
+
+    /// Store `file` by its hash and attach it to record `experiment_id`, in
+    /// any status: the attach audit row names the attachment and the hash,
+    /// and the seal of the record stays as it was. Returns the attachment
+    /// id. A file stored here and not there before is removed again when
+    /// the row cannot be written.
+    ///
+    /// # Errors
+    /// Returns `NotFound`, `Invalid` for an empty `added_by`, or `Store`
+    /// when the file or the row cannot be written.
+    pub fn add_manual_file(
+        &self,
+        experiment_id: &str,
+        mut file: StagedFile,
+        added_by: &str,
+    ) -> Result<String, ManualError> {
+        if added_by.trim().is_empty() {
+            return Err(ManualError::Invalid("'added_by' must not be empty".into()));
+        }
+        let placed = file.place().map_err(StoreError::from)?;
+        let stored = with_tx(&self.conn, || {
+            let row = fetch_row(&self.conn, experiment_id)?
+                .ok_or_else(|| ManualError::NotFound(experiment_id.to_string()))?;
+            let seal = row
+                .get("content_hash")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default()
+                .to_string();
+            let attachment_id = ulid();
+            // Where the daemon serves the file, so a link to the attachment
+            // opens it.
+            let uri =
+                format!("/api/manual/experiments/{experiment_id}/attachments/{attachment_id}/file");
+            let size = i64::try_from(file.size_bytes()).unwrap_or(i64::MAX);
+            self.conn.execute(
+                "INSERT INTO evidence_attachments (
+                    id, experiment_id, kind, uri, label, file_hash, added_by, added_at_ns,
+                    media_type, size_bytes
+                 ) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                params![
+                    attachment_id,
+                    experiment_id,
+                    AttachmentKind::File.as_str(),
+                    uri,
+                    file.name(),
+                    file.hash(),
+                    added_by,
+                    now_ns(),
+                    file.media_type(),
+                    size,
+                ],
+            )?;
+            append_audit(
+                &self.conn,
+                experiment_id,
+                added_by,
+                "attach",
+                &serde_json::json!({
+                    "attachment_id": attachment_id,
+                    "kind": AttachmentKind::File.as_str(),
+                    "uri": uri,
+                    "label": file.name(),
+                    "file_hash": file.hash(),
+                    "media_type": file.media_type(),
+                    "size_bytes": size,
+                }),
+                Some(&seal),
+                &seal,
+            )?;
+            Ok(attachment_id)
+        });
+        if stored.is_err() && placed.new {
+            if let Err(e) = std::fs::remove_file(&placed.path) {
+                tracing::warn!(path = %placed.path.display(), error = %e, "could not remove a file whose row was not written");
+            }
+        }
+        stored
     }
 
     /// Bulk-import records as drafts in one transaction, recording an
