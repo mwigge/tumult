@@ -204,6 +204,8 @@ pub mod handlers;
 pub mod import;
 pub mod lake;
 pub mod manual;
+pub mod manual_files;
+pub mod manual_plans;
 pub mod registry;
 pub mod runs;
 pub mod schedules;
@@ -583,10 +585,31 @@ pub fn router(state: ApiState) -> Router {
         .route("/api/manual/experiments/{id}/verify", post(manual::verify))
         .route("/api/manual/experiments/{id}/reject", post(manual::reject))
         .route(
+            "/api/manual/experiments/{id}/audit/verify",
+            get(manual::audit_verify),
+        )
+        .route(
             "/api/manual/experiments/{id}/attachments",
             post(manual::attach),
         )
+        .route(
+            "/api/manual/experiments/{id}/attachments/{attachment_id}/file",
+            get(manual_files::download),
+        )
         .route("/api/manual/import", post(manual::import))
+        .route(
+            "/api/manual/plans",
+            get(manual_plans::list).post(manual_plans::create),
+        )
+        .route(
+            "/api/manual/plans/{id}",
+            get(manual_plans::detail).patch(manual_plans::edit),
+        )
+        .route("/api/manual/plans/{id}/cancel", post(manual_plans::cancel))
+        .route(
+            "/api/manual/plans/{id}/audit/verify",
+            get(manual_plans::audit_verify),
+        )
         .route("/api/import/journal", post(import::import_journal))
         .route("/api/authoring/catalog", get(authoring::catalog))
         .route("/api/authoring/scaffold", post(authoring::scaffold))

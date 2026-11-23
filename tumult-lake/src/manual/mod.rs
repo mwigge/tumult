@@ -15,16 +15,40 @@
 //! `draft`/`submitted` records count toward coverage as "pending
 //! verification" with zero score weight; `inconclusive` outcomes are
 //! excluded from scoring entirely.
+//!
+//! A plan (schema v22, [`plans`]) says which exercise is due when. It can
+//! be edited while it is planned; the verified record that names it
+//! fulfils it, and the record stays as it was signed off.
+//!
+//! Verifying a record is a sign-off (schema v22): a record stays
+//! `submitted` until it has the approvals its exercise type needs, each
+//! from another user, and a reject by any reviewer rejects it. Each
+//! sign-off is a `manual_signoffs` row chained to the one before it, and
+//! every audit row links the row before it ([`chain`]), so the audit
+//! verify ([`verify`]) finds a direct edit or a deleted row.
+//!
+//! A file may be attached as evidence in any status ([`files`]): it is
+//! stored once in the lake folder by its SHA-256, and its attach audit
+//! row names it without changing the seal.
 
+mod chain;
+pub(crate) mod files;
 mod hash;
+mod plans;
 mod reader;
+mod verify;
 mod writer;
 
 use std::fmt;
 
 use crate::StoreError;
 
+pub use files::{
+    attachments_dir, stored_file, FileError, FileUpload, StagedFile, MAX_FILE_BYTES, MEDIA_TYPES,
+};
+pub use plans::{NewExercisePlan, PlanDetail, PlanEdit, PlanFilter, PlanStatus};
 pub use reader::ManualDetail;
+pub use verify::{AuditProblem, AuditVerdict};
 
 /// Exercise kinds for a manual test record.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -37,6 +61,10 @@ pub enum ExerciseType {
     /// from an ordinary penetration test.
     Tlpt,
     Drill,
+    /// A restore from a backup, tested end to end.
+    Restore,
+    /// A backup taken and checked that it can be read back.
+    Backup,
     Other,
 }
 
@@ -49,6 +77,8 @@ impl ExerciseType {
             Self::Pentest => "pentest",
             Self::Tlpt => "tlpt",
             Self::Drill => "drill",
+            Self::Restore => "restore",
+            Self::Backup => "backup",
             Self::Other => "other",
         }
     }
@@ -61,11 +91,13 @@ impl ExerciseType {
             "pentest" => Self::Pentest,
             "tlpt" => Self::Tlpt,
             "drill" => Self::Drill,
+            "restore" => Self::Restore,
+            "backup" => Self::Backup,
             "other" => Self::Other,
             other => {
                 return Err(ManualError::Invalid(format!(
                     "unknown exercise_type '{other}' \
-                     (gameday|tabletop|failover|pentest|tlpt|drill|other)"
+                     (gameday|tabletop|failover|pentest|tlpt|drill|restore|backup|other)"
                 )))
             }
         })
@@ -106,8 +138,8 @@ impl ManualOutcome {
     }
 }
 
-/// Evidence attachment kinds. The API currently accepts `url` and `ticket`
-/// only (no file storage); `file` and `log_excerpt` are reserved.
+/// Evidence attachment kinds. A `url` or a `ticket` is a link; a `file` is
+/// stored in the lake folder (the `files` module). `log_excerpt` is reserved.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AttachmentKind {
     File,
@@ -141,8 +173,265 @@ impl AttachmentKind {
     }
 }
 
+/// The result of one step of an exercise.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StepResult {
+    Done,
+    Failed,
+    Skipped,
+}
+
+impl StepResult {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Done => "done",
+            Self::Failed => "failed",
+            Self::Skipped => "skipped",
+        }
+    }
+
+    pub fn parse(s: &str) -> Result<Self, ManualError> {
+        Ok(match s {
+            "done" => Self::Done,
+            "failed" => Self::Failed,
+            "skipped" => Self::Skipped,
+            other => {
+                return Err(ManualError::Invalid(format!(
+                    "unknown step result '{other}' (done|failed|skipped)"
+                )))
+            }
+        })
+    }
+}
+
+/// What a link of a record points at. Only the kind is checked: the thing
+/// itself may be registered or run later, and may live in another lake.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LinkKind {
+    /// A function of the register, by `ict_functions.function_id`.
+    Function,
+    /// A telemetry entity, by its `ict.entity.id`.
+    Entity,
+    /// A registered definition, by `run_registry.id`.
+    Registry,
+    /// An automated run, by its experiment id.
+    Run,
+    /// A GameDay campaign, by its daemon run id.
+    GameDay,
+}
+
+impl LinkKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Function => "function",
+            Self::Entity => "entity",
+            Self::Registry => "registry",
+            Self::Run => "run",
+            Self::GameDay => "gameday",
+        }
+    }
+
+    pub fn parse(s: &str) -> Result<Self, ManualError> {
+        Ok(match s {
+            "function" => Self::Function,
+            "entity" => Self::Entity,
+            "registry" => Self::Registry,
+            "run" => Self::Run,
+            "gameday" => Self::GameDay,
+            other => {
+                return Err(ManualError::Invalid(format!(
+                    "unknown link kind '{other}' (function|entity|registry|run|gameday)"
+                )))
+            }
+        })
+    }
+}
+
+/// One person who took part in an exercise, and the role they had.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Participant {
+    pub name: String,
+    pub role: Option<String>,
+}
+
+/// One step of the timeline of an exercise, in the order it was taken.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExerciseStep {
+    pub title: String,
+    pub actor: Option<String>,
+    pub started_at_ns: Option<i64>,
+    pub ended_at_ns: Option<i64>,
+    pub result: Option<StepResult>,
+    pub note: Option<String>,
+}
+
+/// An action that came out of an exercise, with the person who owns it.
+/// It is stored `open`; closing it later does not change the sealed record.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ActionItem {
+    pub title: String,
+    pub owner: String,
+    pub due_at_ns: Option<i64>,
+    /// A ticket key or URL that tracks the action.
+    pub ticket: Option<String>,
+}
+
+/// A link from a record to what the exercise tested.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExerciseLink {
+    pub kind: LinkKind,
+    pub linked_id: String,
+    pub label: Option<String>,
+}
+
+/// The DR facts of an exercise (schema v22). The actual RTO is
+/// [`NewManualExperiment::recovery_time_s`]. Every field is optional, so a
+/// record without them is the record of 3.0.3.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct ExerciseDetail {
+    /// The planned RTO, in seconds.
+    pub rto_target_s: Option<f64>,
+    /// The planned RPO: the seconds of committed writes from before the
+    /// outage that may be lost, as the automated RPO metric means it.
+    pub rpo_target_s: Option<f64>,
+    /// The actual RPO: the seconds of committed writes from before the
+    /// outage that were lost.
+    pub rpo_measured_s: Option<f64>,
+    /// Whether the data was checked after the recovery: `true` complete,
+    /// `false` loss or corruption found, `None` not checked.
+    pub data_verified: Option<bool>,
+    pub participants: Vec<Participant>,
+    pub steps: Vec<ExerciseStep>,
+    /// The actions with owners. From schema v22 on these are the actions of
+    /// a record; [`NewManualExperiment::action_items`] is the older list of
+    /// plain texts, kept for the clients that still send it.
+    pub actions: Vec<ActionItem>,
+    pub links: Vec<ExerciseLink>,
+    /// The plan this exercise fulfils once the record is verified. It must
+    /// name a planned plan of the same exercise type.
+    pub plan_id: Option<String>,
+}
+
+/// `Invalid` naming `field` of the `n`th (1-based) `what` when `value` is blank.
+fn require(what: &str, n: usize, field: &str, value: &str) -> Result<(), ManualError> {
+    if value.trim().is_empty() {
+        return Err(ManualError::Invalid(format!(
+            "{what} {n}: '{field}' must not be empty"
+        )));
+    }
+    Ok(())
+}
+
+impl ExerciseDetail {
+    fn validate(&self) -> Result<(), ManualError> {
+        for (field, value) in [
+            ("rto_target_s", self.rto_target_s),
+            ("rpo_target_s", self.rpo_target_s),
+            ("rpo_measured_s", self.rpo_measured_s),
+        ] {
+            if value.is_some_and(|v| !(v.is_finite() && v >= 0.0)) {
+                return Err(ManualError::Invalid(format!(
+                    "'{field}' must be a number of seconds at or above 0"
+                )));
+            }
+        }
+        for (n, p) in (1..).zip(&self.participants) {
+            require("participant", n, "name", &p.name)?;
+        }
+        for (n, step) in (1..).zip(&self.steps) {
+            require("step", n, "title", &step.title)?;
+            if let (Some(start), Some(end)) = (step.started_at_ns, step.ended_at_ns) {
+                if end < start {
+                    return Err(ManualError::Invalid(format!(
+                        "step {n} ends before it starts"
+                    )));
+                }
+            }
+        }
+        for (n, action) in (1..).zip(&self.actions) {
+            require("action", n, "title", &action.title)?;
+            require("action", n, "owner", &action.owner)?;
+        }
+        for (n, link) in (1..).zip(&self.links) {
+            require("link", n, "linked_id", &link.linked_id)?;
+        }
+        if self
+            .plan_id
+            .as_deref()
+            .is_some_and(|id| id.trim().is_empty())
+        {
+            return Err(ManualError::Invalid("'plan_id' must not be empty".into()));
+        }
+        Ok(())
+    }
+}
+
+/// How a reviewer decides on a submitted record.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SignOffDecision {
+    Approved,
+    Rejected,
+}
+
+impl SignOffDecision {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Approved => "approved",
+            Self::Rejected => "rejected",
+        }
+    }
+}
+
+/// One sign-off of a submitted record. A reject needs a note.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SignOff<'a> {
+    pub by: &'a str,
+    pub note: Option<&'a str>,
+    pub decision: SignOffDecision,
+}
+
+/// Where a record stands after a sign-off.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SignOffOutcome {
+    /// `submitted` while approvals are missing, else `verified` or
+    /// `rejected`.
+    pub status: String,
+    /// The approving sign-offs the record has now.
+    pub approvals: u32,
+    /// The approvals its exercise type needs.
+    pub required: u32,
+}
+
+/// Errors about a plan. The API layer maps: `Invalid` → 400, `NotFound` →
+/// 404, `WrongStatus` → 409, `Unusable` → 422.
+#[derive(Debug)]
+pub enum PlanError {
+    /// Bad input (empty required field, interval out of range).
+    Invalid(String),
+    /// No plan with this id.
+    NotFound(String),
+    /// The plan is no longer planned, so it cannot take this action.
+    WrongStatus { status: String, action: String },
+    /// A record names a plan it cannot fulfil: the message says why.
+    Unusable(String),
+}
+
+impl fmt::Display for PlanError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Invalid(msg) => write!(f, "invalid plan: {msg}"),
+            Self::NotFound(id) => write!(f, "plan '{id}' not found"),
+            Self::WrongStatus { status, action } => {
+                write!(f, "cannot {action} a plan in status '{status}'")
+            }
+            Self::Unusable(msg) => write!(f, "{msg}"),
+        }
+    }
+}
+
 /// Errors from the manual-evidence lifecycle. The API layer maps:
-/// `Invalid`/`SelfReview` → 400, `NotFound` → 404, `WrongStatus` → 409,
+/// `Invalid` → 400, `NotFound` → 404, `WrongStatus` → 409,
+/// `SelfReview`/`AlreadySigned` → 422, `Plan` as [`PlanError`] says,
 /// `Store` → 500.
 #[derive(Debug)]
 pub enum ManualError {
@@ -154,6 +443,10 @@ pub enum ManualError {
     WrongStatus { status: String, action: String },
     /// Reviewer must not have contributed to the record.
     SelfReview,
+    /// This user has signed the record off already: one user signs once.
+    AlreadySigned(String),
+    /// A plan write that cannot be done, or a plan a record cannot fulfil.
+    Plan(PlanError),
     /// Underlying store failure.
     Store(StoreError),
 }
@@ -172,12 +465,20 @@ impl fmt::Display for ManualError {
                     "reviewer must not have created, edited, submitted, or attached evidence to the record"
                 )
             }
+            Self::AlreadySigned(by) => write!(f, "'{by}' has already signed off this record"),
+            Self::Plan(e) => write!(f, "{e}"),
             Self::Store(e) => write!(f, "store error: {e}"),
         }
     }
 }
 
 impl std::error::Error for ManualError {}
+
+impl From<PlanError> for ManualError {
+    fn from(e: PlanError) -> Self {
+        Self::Plan(e)
+    }
+}
 
 impl From<StoreError> for ManualError {
     fn from(e: StoreError) -> Self {
@@ -213,6 +514,9 @@ pub struct NewManualExperiment {
     pub attestation: String,
     pub renewal_due_ns: Option<i64>,
     pub framework_refs: Vec<String>,
+    /// The DR facts, participants, steps, actions, links and the plan the
+    /// record fulfils (schema v22).
+    pub exercise: ExerciseDetail,
 }
 
 impl NewManualExperiment {
@@ -233,7 +537,7 @@ impl NewManualExperiment {
                 "'executed_at_ns' must be a positive unix-nanos timestamp".into(),
             ));
         }
-        Ok(())
+        self.exercise.validate()
     }
 }
 
@@ -250,6 +554,8 @@ mod tests {
             ("pentest", ExerciseType::Pentest),
             ("tlpt", ExerciseType::Tlpt),
             ("drill", ExerciseType::Drill),
+            ("restore", ExerciseType::Restore),
+            ("backup", ExerciseType::Backup),
             ("other", ExerciseType::Other),
         ] {
             assert_eq!(ExerciseType::parse(s).unwrap(), want);
@@ -299,6 +605,42 @@ mod tests {
     }
 
     #[test]
+    fn step_result_parses_every_result_and_rejects_unknown() {
+        for (s, want) in [
+            ("done", StepResult::Done),
+            ("failed", StepResult::Failed),
+            ("skipped", StepResult::Skipped),
+        ] {
+            assert_eq!(StepResult::parse(s).unwrap(), want);
+            assert_eq!(want.as_str(), s);
+        }
+        let err = StepResult::parse("ok").unwrap_err();
+        assert!(
+            matches!(&err, ManualError::Invalid(msg) if msg.contains("unknown step result 'ok'")),
+            "{err:?}"
+        );
+    }
+
+    #[test]
+    fn link_kind_parses_every_kind_and_rejects_unknown() {
+        for (s, want) in [
+            ("function", LinkKind::Function),
+            ("entity", LinkKind::Entity),
+            ("registry", LinkKind::Registry),
+            ("run", LinkKind::Run),
+            ("gameday", LinkKind::GameDay),
+        ] {
+            assert_eq!(LinkKind::parse(s).unwrap(), want);
+            assert_eq!(want.as_str(), s);
+        }
+        let err = LinkKind::parse("service").unwrap_err();
+        assert!(
+            matches!(&err, ManualError::Invalid(msg) if msg.contains("unknown link kind 'service'")),
+            "{err:?}"
+        );
+    }
+
+    #[test]
     fn manual_error_display_names_each_cause() {
         assert_eq!(
             ManualError::Invalid("bad".into()).to_string(),
@@ -342,6 +684,7 @@ mod tests {
             attestation: "attested".into(),
             renewal_due_ns: None,
             framework_refs: vec![],
+            exercise: ExerciseDetail::default(),
         }
     }
 
@@ -372,5 +715,49 @@ mod tests {
             matches!(&err, ManualError::Invalid(msg) if msg.contains("positive unix-nanos")),
             "{err:?}"
         );
+    }
+
+    fn step(started_at_ns: i64, ended_at_ns: i64) -> ExerciseStep {
+        ExerciseStep {
+            title: "Promote the standby".into(),
+            actor: None,
+            started_at_ns: Some(started_at_ns),
+            ended_at_ns: Some(ended_at_ns),
+            result: None,
+            note: None,
+        }
+    }
+
+    #[test]
+    fn a_step_may_end_when_it_starts_and_a_dr_number_may_be_zero() {
+        // A step that took no time, and an RTO and RPO of 0 s (no outage,
+        // no data lost), are what was seen: they are kept.
+        let mut at_the_bounds = valid();
+        at_the_bounds.exercise.steps = vec![step(5, 5)];
+        at_the_bounds.exercise.rto_target_s = Some(0.0);
+        at_the_bounds.exercise.rpo_target_s = Some(0.0);
+        at_the_bounds.exercise.rpo_measured_s = Some(0.0);
+        assert!(
+            at_the_bounds.validate().is_ok(),
+            "{:?}",
+            at_the_bounds.validate()
+        );
+
+        let mut backwards = valid();
+        backwards.exercise.steps = vec![step(5, 4)];
+        let err = backwards.validate().unwrap_err();
+        assert!(
+            matches!(&err, ManualError::Invalid(msg) if msg == "step 1 ends before it starts"),
+            "{err:?}"
+        );
+        for bad in [-0.001, f64::NAN, f64::INFINITY] {
+            let mut below = valid();
+            below.exercise.rpo_measured_s = Some(bad);
+            let err = below.validate().unwrap_err();
+            assert!(
+                matches!(&err, ManualError::Invalid(msg) if msg.contains("'rpo_measured_s'")),
+                "{bad}: {err:?}"
+            );
+        }
     }
 }

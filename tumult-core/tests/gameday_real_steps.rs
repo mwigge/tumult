@@ -105,8 +105,19 @@ fn experiment(name: &str, method: &[&str], reads: u32) -> Experiment {
 
 /// Run `experiments` as one game day in a new lab.
 fn run(experiments: &[Experiment], load: Option<LoadConfig>, mttr_target_s: f64) -> GameDayJournal {
+    let scoring = ScoringConfig {
+        mttr_target_s,
+        ..ScoringConfig::default()
+    };
     let lab = tempfile::TempDir::new().expect("lab directory");
-    run_in(lab.path(), experiments, load, mttr_target_s, None)
+    run_in(lab.path(), experiments, load, scoring, None)
+}
+
+/// Run `experiments` as one game day in a new lab, with no load, scored by
+/// `scoring`.
+fn scored(experiments: &[Experiment], scoring: ScoringConfig) -> GameDayJournal {
+    let lab = tempfile::TempDir::new().expect("lab directory");
+    run_in(lab.path(), experiments, None, scoring, None)
 }
 
 /// Run `experiments` as one game day in `lab`. `token` cancels it.
@@ -114,7 +125,7 @@ fn run_in(
     lab: &Path,
     experiments: &[Experiment],
     load: Option<LoadConfig>,
-    mttr_target_s: f64,
+    scoring: ScoringConfig,
     token: Option<CancellationToken>,
 ) -> GameDayJournal {
     std::fs::write(lab.join("target.sh"), TARGET).expect("target script");
@@ -130,10 +141,7 @@ fn run_in(
                 compliance_maps: vec![],
             })
             .collect(),
-        scoring: ScoringConfig {
-            mttr_target_s,
-            ..ScoringConfig::default()
-        },
+        scoring,
         load: load.clone(),
     };
     let executor: Arc<dyn ActivityExecutor> = Arc::new(InLab(lab.to_path_buf()));
@@ -190,8 +198,85 @@ fn the_recovery_score_is_the_share_of_runs_that_came_back_within_the_target() {
     // seconds of the target. Stays-up saw nothing to recover from, so it
     // is not in the share.
     let score = journal.resilience_score;
-    assert!((score.recovery_compliance - 0.5).abs() < 1e-9, "{score:?}");
+    assert_eq!(score.recovery_compliance, Some(0.5), "{score:?}");
     assert!((score.pass_rate - 1.0).abs() < 1e-9, "{score:?}");
+}
+
+/// The target `name` goes down half a second into the method, and is back
+/// about three seconds later. The experiment declares an RTO of ten
+/// seconds. It is the short form of a failover that is back in 40 s
+/// against an RTO of 60 s, on a game day whose own target is 30 s.
+fn failover(name: &str) -> Experiment {
+    let down = ["sleep 0.5".to_string(), format!("echo down > {name}.state")];
+    Experiment {
+        rto_target_s: Some(10.0),
+        ..experiment(name, &[&down[0], &down[1]], 3)
+    }
+}
+
+/// The scoring of a game day whose target is two seconds, for a step that
+/// declares no RTO of its own.
+fn two_seconds(recovery_required: bool) -> ScoringConfig {
+    ScoringConfig {
+        mttr_target_s: 2.0,
+        recovery_required,
+        ..ScoringConfig::default()
+    }
+}
+
+#[test]
+fn a_step_is_judged_against_its_own_rto_and_a_step_whose_fault_had_no_effect_is_left_out() {
+    let steps = [failover("failover"), experiment("stays-up", &["true"], 1)];
+
+    let journal = scored(&steps, two_seconds(false));
+
+    let back = journal.experiment_journals[0].recovery_time_s();
+    assert!(
+        back.is_some_and(|s| (2.5..10.0).contains(&s)),
+        "failover: {back:?}"
+    );
+    assert_eq!(journal.experiment_journals[1].recovery_time_s(), None);
+    // Back within the RTO of ten seconds of the step, though not within
+    // the two of the game day. Stays-up measured no recovery.
+    let score = &journal.resilience_score;
+    assert_eq!(score.recovery_compliance, Some(1.0), "{score:?}");
+    assert!((score.overall - 1.0).abs() < 1e-9, "{score:?}");
+    assert_eq!(journal.compliance_status, "COMPLIANT");
+}
+
+#[test]
+fn a_step_that_measured_no_recovery_fails_a_game_day_that_requires_recovery() {
+    let steps = [failover("failover"), experiment("stays-up", &["true"], 1)];
+
+    let journal = scored(&steps, two_seconds(true));
+
+    // Stays-up watched and saw no outage: a recovery that is required and
+    // was not measured.
+    let score = &journal.resilience_score;
+    assert_eq!(score.recovery_compliance, Some(0.5), "{score:?}");
+    // 0.30 pass rate + 0.25 * 0.5 recovery + 0.25 load + 0.20 compliance.
+    assert!((score.overall - 0.875).abs() < 1e-9, "{score:?}");
+    assert_eq!(journal.compliance_status, "PARTIAL");
+}
+
+#[test]
+fn a_game_day_where_no_step_watched_for_recovery_has_no_recovery_score() {
+    // Stays-up saw no outage. Blind has no steady state to watch, and its
+    // method fails.
+    let blind = Experiment {
+        title: "blind".into(),
+        method: vec![step("fault", ActivityType::Action, "exit 1")],
+        ..Experiment::default()
+    };
+    let steps = [experiment("stays-up", &["true"], 1), blind];
+
+    let journal = scored(&steps, two_seconds(false));
+
+    let score = &journal.resilience_score;
+    assert_eq!(score.recovery_compliance, None, "{score:?}");
+    // The other three share the weight: (0.30 * 0.5 + 0.25 + 0.20) / 0.75.
+    assert!((score.overall - 0.8).abs() < 1e-9, "{score:?}");
+    assert_eq!(journal.compliance_status, "PARTIAL");
 }
 
 /// A stand-in for the `oha` binary, which the machines that run these tests
@@ -322,7 +407,7 @@ fn a_game_day_cancelled_before_it_starts_runs_no_step_and_cuts_its_load() {
         lab.path(),
         &experiments,
         Some(load(30.0, None)),
-        30.0,
+        ScoringConfig::default(),
         Some(token),
     );
 
@@ -370,7 +455,7 @@ fn a_cancelled_game_day_cuts_its_load_and_keeps_what_it_measured() {
         lab.path(),
         &[experiment("cancelled", &["touch started; sleep 1"], 1)],
         Some(load(30.0, None)),
-        30.0,
+        ScoringConfig::default(),
         Some(token),
     );
 

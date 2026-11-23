@@ -12,7 +12,7 @@ use std::io::{BufRead, BufReader, Read};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
-use lab::{count, fatal_error, indented, step, step_within, wait_for, Lab};
+use lab::{count, fatal_error, indented, step, step_within, wait_for, with_block, Lab};
 use serde_json::Value;
 use tumult_core::types::{ExperimentStatus, GameDayJournal};
 
@@ -108,9 +108,14 @@ fn down(name: &str) -> String {
     .concat()
 }
 
-/// A game day passes when two thirds of the runs that saw an outage come
-/// back in two seconds.
+/// A game day passes when two thirds of the runs that measured a recovery
+/// come back in two seconds. A run that measured none is left out.
 const SCORING: &str =
+    "scoring:\n  pass_threshold: 0.75\n  mttr_target_s: 2.0\n  recovery_required: false\n";
+
+/// The same scoring, but each run must show a recovery: a run that
+/// measured none counts as a recovery that failed.
+const REQUIRED: &str =
     "scoring:\n  pass_threshold: 0.75\n  mttr_target_s: 2.0\n  recovery_required: true\n";
 
 #[test]
@@ -160,7 +165,9 @@ fn the_recovery_score_is_the_share_of_runs_that_came_back_within_the_target() {
     // seconds of the target.
     let score = &journal.resilience_score;
     assert!(
-        (score.recovery_compliance - 2.0 / 3.0).abs() < 1e-9,
+        score
+            .recovery_compliance
+            .is_some_and(|share| (share - 2.0 / 3.0).abs() < 1e-9),
         "{score:?}"
     );
     // 0.30 pass rate + 0.25 * 2/3 recovery + 0.25 load + 0.20 compliance.
@@ -194,8 +201,8 @@ fn the_recovery_score_is_the_share_of_runs_that_came_back_within_the_target() {
 #[test]
 fn a_game_day_that_is_not_compliant_ends_with_an_error_after_it_wrote_its_journal() {
     let lab = Lab::with_state("ok");
-    // Stays-up sees no outage, so only back-slow watched for recovery, and
-    // it does not come back within the target: no recovery score, and
+    // Stays-up sees no outage, so only back-slow measured a recovery, and
+    // it does not come back within the target: a recovery score of 0, and
     // 0.75 in all.
     write_gameday(
         &lab,
@@ -229,6 +236,138 @@ fn a_game_day_that_is_not_compliant_ends_with_an_error_after_it_wrote_its_journa
         "{printed}"
     );
     assert_eq!(journal(&lab).compliance_status, "PARTIAL");
+}
+
+/// A failover of the target `name`: down for about three seconds after the
+/// method, with an RTO of ten seconds. It is the short form of a failover
+/// that is back in 40 s against an RTO of 60 s, on a game day whose own
+/// target is 30 s.
+fn failover(name: &str) -> String {
+    with_block(&experiment(name, &down(name), 3), "rto_target_s: 10.0\n")
+}
+
+/// An experiment whose fault changes nothing: no read sees an outage.
+fn stays_up() -> String {
+    experiment("stays-up", &step("fault", "action", "true"), 1)
+}
+
+/// An experiment with no steady state to watch, whose fault fails.
+fn blind() -> String {
+    let method = step("fault", "action", "exit 1");
+    format!(
+        "title: blind\ndescription: Nothing to watch, and the fault fails\n\nmethod[{steps}]:\n{method}",
+        steps = count(&method),
+    )
+}
+
+#[test]
+fn a_step_is_judged_against_its_own_rto_and_a_step_whose_fault_had_no_effect_is_left_out() {
+    let lab = Lab::with_state("ok");
+    write_gameday(
+        &lab,
+        &[("failover", failover("failover")), ("stays-up", stays_up())],
+        SCORING,
+    );
+
+    let printed = gameday(&lab, "run", &[]);
+
+    // Back in about three seconds: within the RTO of ten of the step,
+    // though not within the two of the game day.
+    let back = journal(&lab).experiment_journals[0].recovery_time_s();
+    assert!(
+        back.is_some_and(|s| (2.5..10.0).contains(&s)),
+        "failover: {back:?}"
+    );
+    for line in [
+        "Status:  2/2 PASS (COMPLIANT)\n",
+        "\nGameDay score: 1.00\n",
+        "  Recovery:         1.00\n",
+    ] {
+        assert!(printed.contains(line), "no {line:?} in:\n{printed}");
+    }
+}
+
+#[test]
+fn a_game_day_that_requires_recovery_fails_a_step_that_measured_none() {
+    let lab = Lab::with_state("ok");
+    write_gameday(
+        &lab,
+        &[("failover", failover("failover")), ("stays-up", stays_up())],
+        REQUIRED,
+    );
+
+    let output = lab
+        .command(&["gameday", "run", "lab.gameday.toon"])
+        .output()
+        .expect("run tumult");
+
+    // Stays-up saw no outage: a recovery that is required and was not
+    // measured. 0.30 + 0.25 * 0.5 + 0.25 + 0.20 is below 0.90.
+    let printed = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(output.status.code(), Some(1), "{printed}");
+    assert_eq!(
+        fatal_error(&output.stderr),
+        "game day finished with status: PARTIAL"
+    );
+    for line in [
+        "Status:  2/2 PASS (PARTIAL)\n",
+        "  Recovery:         0.50\n",
+    ] {
+        assert!(printed.contains(line), "no {line:?} in:\n{printed}");
+    }
+    let score = journal(&lab).resilience_score;
+    assert!((score.overall - 0.875).abs() < 1e-9, "{score:?}");
+}
+
+#[test]
+fn a_game_day_where_no_step_measured_a_recovery_says_not_measured() {
+    let lab = Lab::with_state("ok");
+    write_gameday(&lab, &[("stays-up", stays_up())], SCORING);
+
+    let printed = gameday(&lab, "run", &[]);
+
+    for line in [
+        "Status:  1/1 PASS (COMPLIANT)\n",
+        "\nGameDay score: 1.00\n",
+        "  Recovery:         not measured\n",
+    ] {
+        assert!(printed.contains(line), "no {line:?} in:\n{printed}");
+    }
+    let analysed = gameday(&lab, "analyze", &[]);
+    assert!(
+        analysed.contains(
+            "  Pass rate:    1.00  Recovery: not measured  Load: 1.00  Compliance: 1.00\n"
+        ),
+        "{analysed}"
+    );
+
+    // The other three components share the weight of the recovery:
+    // (0.30 * 0.5 + 0.25 + 0.20) / 0.75 is 0.80.
+    let lab = Lab::with_state("ok");
+    write_gameday(
+        &lab,
+        &[("stays-up", stays_up()), ("blind", blind())],
+        SCORING,
+    );
+
+    let output = lab
+        .command(&["gameday", "run", "lab.gameday.toon"])
+        .output()
+        .expect("run tumult");
+
+    let printed = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(output.status.code(), Some(1), "{printed}");
+    assert_eq!(
+        fatal_error(&output.stderr),
+        "game day finished with status: PARTIAL"
+    );
+    for line in [
+        "Status:  1/2 PASS (PARTIAL)\n",
+        "\nGameDay score: 0.80\n",
+        "  Recovery:         not measured\n",
+    ] {
+        assert!(printed.contains(line), "no {line:?} in:\n{printed}");
+    }
 }
 
 /// A game day of one experiment whose step adds a line to the file `ran`

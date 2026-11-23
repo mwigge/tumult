@@ -90,6 +90,7 @@ impl Store {
         // Open once read-write to initialise/migrate the schema.
         let writer = store.writer()?;
         writer.migrate()?;
+        sweep_stale_uploads(path);
         Ok(store)
     }
 
@@ -153,7 +154,33 @@ impl Store {
             let config = Config::default().access_mode(AccessMode::ReadOnly)?;
             Connection::open_with_flags(&self.path, config)
         })?;
-        Ok(Reader { conn })
+        Ok(Reader {
+            conn,
+            path: self.path.clone(),
+        })
+    }
+}
+
+/// How long the temporary file of an upload may go unwritten before the
+/// store, when it opens, takes it for one cut off by a stop or a crash.
+const STALE_UPLOAD: Duration = Duration::from_secs(3600);
+
+/// Remove the stale temporary upload files next to the store at `path`.
+/// A failure is logged and does not stop the store from opening.
+fn sweep_stale_uploads(path: &Path) {
+    let files = crate::attachments_dir(path);
+    match crate::manual::files::sweep_uploads(&files, STALE_UPLOAD, std::time::SystemTime::now()) {
+        Ok(0) => {}
+        Ok(removed) => tracing::info!(
+            name: "lake.attachments.swept",
+            removed,
+            "removed stale upload files from the attachments folder"
+        ),
+        Err(e) => tracing::warn!(
+            name: "lake.attachments.sweep_failed",
+            error = %e,
+            "could not remove stale upload files from the attachments folder"
+        ),
     }
 }
 
@@ -227,6 +254,9 @@ pub(crate) fn migrate(conn: &Connection) -> Result<(), duckdb::Error> {
     if stored.is_some_and(|v| (2..8).contains(&v)) {
         conn.execute_batch(schema::MIGRATE_V8_MANUAL_EXPERIMENTS_INDEX_FREE)?;
     }
+    // v22: the DR columns of the manual tables. After the v8 rebuild, which
+    // copies the v8 columns of `manual_experiments` by position.
+    conn.execute_batch(schema::MANUAL_V22_COLUMNS)?;
     // < v6: seed the `legacy` backfill identity so pre-auth free-text
     // `entered_by` / `reviewed_by` values on manual-experiment rows
     // semantically belong to a real (but un-loginable: password_hash '!',

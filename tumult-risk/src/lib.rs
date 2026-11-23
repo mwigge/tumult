@@ -24,8 +24,8 @@ pub mod rules;
 
 pub use model::{
     Coverage, CoverageCell, CoverageStatus, Definition, Dependency, DisruptionBudget,
-    ExperimentLatest, Inputs, KindCoverage, KindEvidence, Report, Risk, Severity, Summary,
-    Suppression, TargetCoverage, TargetEvidence, Verdict, Workload, KINDS,
+    ExperimentLatest, Inputs, KindCoverage, KindEvidence, PlannedExercise, Report, Risk, Severity,
+    Summary, Suppression, TargetCoverage, TargetEvidence, Verdict, Workload, KINDS,
 };
 pub use posture::{Components, Posture, TargetPosture};
 

@@ -374,6 +374,7 @@ fn manual_record(
         attestation: "attested".into(),
         renewal_due_ns: None,
         framework_refs: vec![],
+        exercise: tumult_lake::ExerciseDetail::default(),
     }
 }
 

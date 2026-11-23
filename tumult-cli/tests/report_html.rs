@@ -512,8 +512,15 @@ load:
 #[test]
 fn the_report_of_a_halted_run_names_the_guard_and_says_that_the_load_was_cut() {
     let lab = Lab::with_state("ok");
-    // The step would run for a minute. It breaks the guard at once.
-    let method = step_within("inject", "action", "echo down > state; sleep 60", 90.0);
+    // The step would run for a minute. It breaks the guard at once. The
+    // state is written to a new file and moved into place, so the guard
+    // never reads it half written.
+    let method = step_within(
+        "inject",
+        "action",
+        "echo down > state.new; mv state.new state; sleep 60",
+        90.0,
+    );
     let definition = with_block(&experiment(&method, &leave_marker()), GUARD_AND_LOAD);
     let output = lab
         .run_command(&definition)

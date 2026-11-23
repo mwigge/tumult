@@ -171,6 +171,20 @@ impl Suppression {
     }
 }
 
+/// A manual exercise that is planned and not yet fulfilled or cancelled.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PlannedExercise {
+    /// The plan id.
+    pub id: String,
+    pub name: String,
+    pub exercise_type: String,
+    pub target: Option<String>,
+    pub environment: Option<String>,
+    pub owner: String,
+    /// When the exercise must have run.
+    pub due_at_ns: i64,
+}
+
 /// Everything the scanner looks at.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct Inputs {
@@ -187,6 +201,9 @@ pub struct Inputs {
     pub budgets: Vec<DisruptionBudget>,
     #[serde(default)]
     pub suppressions: Vec<Suppression>,
+    /// The planned manual exercises.
+    #[serde(default)]
+    pub plans: Vec<PlannedExercise>,
 }
 
 /// How much a finding matters. Ordered so `Critical > High > Medium > Low`.

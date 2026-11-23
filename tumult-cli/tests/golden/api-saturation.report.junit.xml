@@ -1,9 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="Checkout API sheds load instead of collapsing at saturation" tests="6" failures="0" time="122.684">
+<testsuite name="Checkout API sheds load instead of collapsing at saturation" tests="8" failures="0" errors="0" skipped="0" time="122.684">
   <testcase name="Checkout answers" classname="hypothesis_before" time="0.006"></testcase>
   <testcase name="health" classname="hypothesis_before" time="0.006"></testcase>
   <testcase name="process-still-up" classname="method" time="120.023"></testcase>
   <testcase name="cpu-stress" classname="method" time="122.663"></testcase>
   <testcase name="Checkout answers" classname="hypothesis_after" time="0.005"></testcase>
   <testcase name="health" classname="hypothesis_after" time="0.005"></testcase>
+  <testcase name="health-survives" classname="objective.availability.during.availability" time="0.000"></testcase>
+  <testcase name="recovers" classname="objective.availability.post.availability" time="0.000"></testcase>
 </testsuite>

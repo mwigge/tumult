@@ -608,6 +608,7 @@ pub async fn break_glass(
         ),
         renewal_due_ns: None,
         framework_refs: vec![],
+        exercise: tumult_lake::ExerciseDetail::default(),
     };
     let result = exec_write(&state, move |writer| {
         writer.create_manual_draft(&new).map_err(|e| e.to_string())

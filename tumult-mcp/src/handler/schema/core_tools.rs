@@ -219,7 +219,7 @@ pub struct ListExperimentsTool {
 /// Inline output is capped at 512 KiB; HTML/PDF reports are CLI-only.
 #[macros::mcp_tool(
     name = "tumult_report",
-    description = "Render an experiment journal as a report: format=json (raw journal JSON, default) or format=junit (JUnit XML, one testcase per step and one per check of the steady state). With output_path the report is written inside the workspace and the path is returned; otherwise the content is returned inline (capped at 512 KiB). HTML/PDF reports are CLI-only.",
+    description = "Render an experiment journal as a report: format=json (raw journal JSON, default) or format=junit (JUnit XML, one testcase per step, one per check of the steady state and one per objective). With output_path the report is written inside the workspace and the path is returned; otherwise the content is returned inline (capped at 512 KiB). HTML/PDF reports are CLI-only.",
     destructive_hint = false,
     read_only_hint = false,
     idempotent_hint = true,
