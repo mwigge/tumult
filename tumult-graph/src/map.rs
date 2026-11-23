@@ -19,7 +19,7 @@ use tumult_core::types::{
     ActivityType, Experiment, ExperimentStatus, Journal, Provider, RegulatoryMapping,
 };
 
-use crate::compliance::resolve_citation;
+use crate::compliance::regulatory_citations;
 use crate::model::{Edge, EdgeRel, GraphDelta, Node, NodeKind};
 use crate::service::{service_from_arguments, service_from_process};
 
@@ -207,27 +207,22 @@ fn map_compliance(
     mapping: &RegulatoryMapping,
     completed: bool,
 ) {
-    for framework in &mapping.frameworks {
-        for requirement in &mapping.requirements {
-            let Some(citation) = resolve_citation(framework, &requirement.id) else {
-                continue;
-            };
-            let article_id =
-                crate::compliance::compliance_article_id(citation.framework, citation.control_id);
-            let attrs = serde_json::json!({
-                "strength": citation.strength.as_str(),
-                "framework": citation.framework.as_report_str(),
-                "control_id": citation.control_id,
-            });
-            builder.push_edge_with_attrs(
-                exp_id,
-                EdgeRel::MapsToCompliance,
-                &article_id,
-                attrs.clone(),
-            );
-            if completed {
-                builder.push_edge_with_attrs(exp_id, EdgeRel::Evidences, &article_id, attrs);
-            }
+    for citation in regulatory_citations(mapping) {
+        let article_id =
+            crate::compliance::compliance_article_id(citation.framework, citation.control_id);
+        let attrs = serde_json::json!({
+            "strength": citation.strength.as_str(),
+            "framework": citation.framework.as_report_str(),
+            "control_id": citation.control_id,
+        });
+        builder.push_edge_with_attrs(
+            exp_id,
+            EdgeRel::MapsToCompliance,
+            &article_id,
+            attrs.clone(),
+        );
+        if completed {
+            builder.push_edge_with_attrs(exp_id, EdgeRel::Evidences, &article_id, attrs);
         }
     }
 }
@@ -514,6 +509,7 @@ mod tests {
                 description: "Testing of ICT tools and systems".into(),
                 evidence: "scenario-based fault injection".into(),
             }],
+            tester: None,
         });
         exp
     }
@@ -563,6 +559,7 @@ mod tests {
                 description: "not a real control".into(),
                 evidence: "n/a".into(),
             }],
+            tester: None,
         });
         let journal = base_journal("run-x", ExperimentStatus::Completed);
         let delta = journal_to_graph(&journal, Some(&exp));
@@ -570,6 +567,63 @@ mod tests {
             .edges
             .iter()
             .any(|e| matches!(e.rel, EdgeRel::Evidences | EdgeRel::MapsToCompliance)));
+    }
+
+    /// The article nodes the run of `exp` maps to, from its regulatory block.
+    fn mapped_articles(exp: &Experiment) -> Vec<String> {
+        let journal = base_journal("run-reg", ExperimentStatus::Completed);
+        let mut articles: Vec<String> = journal_to_graph(&journal, Some(exp))
+            .edges
+            .iter()
+            .filter(|e| e.rel == EdgeRel::MapsToCompliance)
+            .map(|e| e.dst.clone())
+            .collect();
+        articles.sort();
+        articles
+    }
+
+    #[test]
+    fn a_run_block_in_the_registry_form_maps_to_the_star_map_article() {
+        use tumult_core::types::{RegulatoryMapping, RegulatoryRequirement};
+        let requirement = |id: &str| RegulatoryRequirement {
+            id: id.into(),
+            description: "d".into(),
+            evidence: "e".into(),
+        };
+        let mut exp = latency_experiment();
+        exp.regulatory = Some(RegulatoryMapping {
+            frameworks: vec!["DORA".into()],
+            requirements: vec![
+                requirement("dora.art25.1"),
+                requirement("dora.art24.6"),
+                requirement("DORA Art. 12(1)"),
+            ],
+            tester: None,
+        });
+        assert_eq!(
+            mapped_articles(&exp),
+            [
+                "compliance:DORA/Art.12",
+                "compliance:DORA/Art.24(6)",
+                "compliance:DORA/Art.25"
+            ]
+        );
+    }
+
+    #[test]
+    fn a_run_block_of_another_framework_maps_as_before() {
+        use tumult_core::types::{RegulatoryMapping, RegulatoryRequirement};
+        let mut exp = latency_experiment();
+        exp.regulatory = Some(RegulatoryMapping {
+            frameworks: vec!["DORA".into(), "NIS2".into()],
+            requirements: vec![RegulatoryRequirement {
+                id: "Art. 21(2)(c)".into(),
+                description: "d".into(),
+                evidence: "e".into(),
+            }],
+            tester: None,
+        });
+        assert_eq!(mapped_articles(&exp), ["compliance:NIS2/Art.21(2)(c)"]);
     }
 
     #[test]

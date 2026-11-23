@@ -119,8 +119,9 @@ pub use manual::{
     attachments_dir, stored_file, ActionItem, AttachmentKind, AuditProblem, AuditVerdict,
     ExerciseDetail, ExerciseLink, ExerciseStep, ExerciseType, FileError, FileUpload, LinkKind,
     ManualDetail, ManualError, ManualOutcome, NewExercisePlan, NewManualExperiment, Participant,
-    PlanDetail, PlanEdit, PlanError, PlanFilter, PlanStatus, SignOff, SignOffDecision,
-    SignOffOutcome, StagedFile, StepResult, MAX_FILE_BYTES, MEDIA_TYPES,
+    PlanDetail, PlanEdit, PlanError, PlanFilter, PlanStatus, Retest, RetestKind, Severity, SignOff,
+    SignOffDecision, SignOffOutcome, StagedFile, StepResult, Tester, TesterKind, TlptDetail,
+    MAX_FILE_BYTES, MEDIA_TYPES,
 };
 #[cfg(feature = "duckdb")]
 pub use perf::PerfVerdictRow;

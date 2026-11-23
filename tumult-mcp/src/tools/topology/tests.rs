@@ -55,6 +55,7 @@ fn seed_broken_store(dir: &std::path::Path) -> std::path::PathBuf {
                 description: "Testing of ICT tools and systems".into(),
                 evidence: "scenario-based fault injection".into(),
             }],
+            tester: None,
         }),
         ..Default::default()
     };
@@ -256,6 +257,7 @@ fn seed_broken_thing_store(dir: &std::path::Path) -> String {
                 description: "Testing of ICT tools and systems".into(),
                 evidence: "scenario-based fault injection".into(),
             }],
+            tester: None,
         }),
         ..Default::default()
     };

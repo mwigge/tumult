@@ -1231,3 +1231,85 @@ fn a_flat_load_with_a_duration_that_is_not_a_number_of_seconds_is_refused() {
     assert!(validate_experiment(&with_load(None, None, Some(0.0))).is_ok());
     assert!(validate_experiment(&with_load(None, None, Some(30.0))).is_ok());
 }
+
+/// An experiment with one method step and a regulatory block of
+/// `frameworks` and requirement `ids`.
+fn mapped(frameworks: &[&str], ids: &[&str]) -> Experiment {
+    Experiment {
+        title: "mapped".into(),
+        method: vec![Activity {
+            name: "action".into(),
+            ..Default::default()
+        }],
+        regulatory: Some(RegulatoryMapping {
+            frameworks: frameworks.iter().map(|f| (*f).to_owned()).collect(),
+            requirements: ids
+                .iter()
+                .map(|id| RegulatoryRequirement {
+                    id: (*id).to_owned(),
+                    description: "d".into(),
+                    evidence: "e".into(),
+                })
+                .collect(),
+            tester: None,
+        }),
+        ..Default::default()
+    }
+}
+
+#[test]
+fn validate_refuses_a_dora_requirement_the_registry_does_not_know_and_names_the_nearest() {
+    let err = validate_regulatory(&mapped(&["DORA"], &["Art. 25", "dora.art24.7"])).unwrap_err();
+    assert!(
+        matches!(&err, EngineError::UnknownRequirement(e) if e.reference == "dora.art24.7"),
+        "{err:?}"
+    );
+    assert_eq!(
+        err.to_string(),
+        "regulatory requirement: 'dora.art24.7' is not a requirement id of the DORA \
+         registry; did you mean 'dora.art24.1'?"
+    );
+    let bare = validate_regulatory(&mapped(&["DORA"], &["Art. 99"])).unwrap_err();
+    assert!(
+        bare.to_string().contains("did you mean 'dora.art9'"),
+        "{bare}"
+    );
+}
+
+#[test]
+fn validate_accepts_the_registry_id_and_the_old_forms_of_a_run_block() {
+    for (frameworks, id) in [
+        (&["DORA"][..], "dora.art12.1"),
+        (&["DORA"][..], "Art. 11"),
+        (&["DORA"][..], "Art. 24(6)"),
+        (&["DORA", "NIS2"][..], "DORA-Art24"),
+        (&["DORA", "NIS2"][..], "Art. 21(2)(c)"),
+        (&["NIS2"][..], "Art. 21(2)(c)"),
+        (&["PCI-DSS"][..], "Req. 12.10.2"),
+    ] {
+        assert!(
+            validate_regulatory(&mapped(frameworks, &[id])).is_ok(),
+            "{frameworks:?} {id}"
+        );
+    }
+}
+
+#[test]
+fn validate_refuses_a_tester_with_no_name() {
+    let mut exp = mapped(&["DORA"], &["Art. 25"]);
+    if let Some(mapping) = exp.regulatory.as_mut() {
+        mapping.tester = Some(Tester {
+            name: "  ".into(),
+            kind: TesterKind::External,
+        });
+    }
+    let err = validate_regulatory(&exp).unwrap_err();
+    assert_eq!(err.to_string(), "regulatory.tester.name must not be empty");
+}
+
+#[test]
+fn an_experiment_with_a_requirement_the_registry_does_not_know_still_runs() {
+    let exp = mapped(&["DORA"], &["DORA-25"]);
+    assert!(validate_regulatory(&exp).is_err());
+    assert!(validate_experiment(&exp).is_ok());
+}

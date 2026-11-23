@@ -7,6 +7,7 @@ use anyhow::{bail, Context, Result};
 
 use tumult_core::engine::{
     parse_experiment, resolve_config, resolve_secrets, validate_experiment, validate_placeholders,
+    validate_regulatory,
 };
 use tumult_core::types::{Experiment, Provider};
 use tumult_plugin::native::NativeExecutorRegistry;
@@ -61,6 +62,7 @@ pub fn cmd_validate<S: ::std::hash::BuildHasher>(
     };
 
     validate_experiment(&experiment)?;
+    validate_regulatory(&experiment)?;
     validate_placeholders(&experiment, vars)?;
 
     refuse_unknown_plugin_refs(&experiment)?;
@@ -91,8 +93,15 @@ pub fn cmd_validate<S: ::std::hash::BuildHasher>(
     if experiment.baseline.is_some() {
         crate::outln!("Baseline: declared, but a run does not use it (tolerances stay as written)");
     }
-    if experiment.regulatory.is_some() {
+    if let Some(mapping) = &experiment.regulatory {
         crate::outln!("Regulatory: mapped");
+        for requirement in &mapping.requirements {
+            if let Some(id) =
+                tumult_core::compliance::run_requirement_id(&mapping.frameworks, &requirement.id)
+            {
+                crate::outln!("  {} is the DORA requirement {id}", requirement.id);
+            }
+        }
     }
 
     // Report config/secret resolution

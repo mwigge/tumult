@@ -12,11 +12,14 @@ use crate::tools::StructuredReport;
 /// Returns a [`ToolError`] if the file cannot be read, parsed, or fails
 /// validation.
 pub fn validate_experiment(experiment_path: &str) -> Result<String, ToolError> {
-    use tumult_core::engine::{parse_experiment, validate_experiment, validate_placeholders};
+    use tumult_core::engine::{
+        parse_experiment, validate_experiment, validate_placeholders, validate_regulatory,
+    };
 
     let content = std::fs::read_to_string(Path::new(experiment_path))?;
     let experiment = parse_experiment(&content).map_err(|e| ToolError::Parse(e.to_string()))?;
     validate_experiment(&experiment).map_err(|e| ToolError::Validation(e.to_string()))?;
+    validate_regulatory(&experiment).map_err(|e| ToolError::Validation(e.to_string()))?;
     // A run over MCP gets no template values: nothing but configuration
     // and secrets can fill a placeholder.
     let no_vars = std::collections::HashMap::<String, String>::new();
@@ -363,6 +366,28 @@ mod tests {
             err.to_string().contains("nothing fills ${zone_a_node}"),
             "{err}"
         );
+    }
+
+    #[test]
+    fn validate_refuses_a_dora_requirement_the_registry_does_not_know() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("mapped.toon");
+        let mapped = |id: &str| {
+            format!(
+                "title: Mapped\nregulatory:\n  frameworks[1]: DORA\n  requirements[1]:\n    \
+                 - id: {id}\n      description: d\n      evidence: e\nmethod[1]:\n  - name: a\n    \
+                 activity_type: action\n    provider:\n      type: process\n      path: \
+                 \"true\"\nrollbacks[0]:\n"
+            )
+        };
+        std::fs::write(&path, mapped("dora.art12.9")).unwrap();
+        let err = validate_experiment(path.to_str().unwrap()).unwrap_err();
+        assert!(
+            err.to_string().contains("did you mean 'dora.art12.1'?"),
+            "{err}"
+        );
+        std::fs::write(&path, mapped("Art. 12(1)")).unwrap();
+        assert!(validate_experiment(path.to_str().unwrap()).is_ok());
     }
 
     #[test]

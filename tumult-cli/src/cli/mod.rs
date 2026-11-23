@@ -14,6 +14,7 @@ mod agentic;
 mod autopilot;
 mod chaosgraph;
 mod gameday;
+mod manual;
 mod mcp;
 mod store;
 mod topology;
@@ -30,6 +31,7 @@ pub(crate) use agentic::AgenticAction;
 pub(crate) use autopilot::AutopilotAction;
 pub(crate) use chaosgraph::ChaosGraphAction;
 pub(crate) use gameday::GameDayAction;
+pub(crate) use manual::{ManualAction, ManualPlansAction};
 pub(crate) use mcp::{McpAction, McpTransport};
 pub(crate) use store::StoreAction;
 // Used by the parser tests via `crate::cli::*`; `main.rs` only calls methods
@@ -461,6 +463,16 @@ pub(crate) enum Commands {
         /// Print the daemon's JSON answer instead of the summary
         #[arg(long)]
         json: bool,
+    },
+    /// Manual records and planned exercises in the daemon: list, show,
+    /// create, submit, sign off, attach evidence and verify
+    /// (`/api/manual/*`)
+    Manual {
+        /// Daemon base URL (default: `TUMULT_DAEMON_URL`)
+        #[arg(long, global = true)]
+        daemon_url: Option<String>,
+        #[command(subcommand)]
+        action: ManualAction,
     },
     /// Open the interactive analytics TUI over the store (read-only dashboard)
     #[command(alias = "dashboard")]

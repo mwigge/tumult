@@ -1,32 +1,30 @@
-<script lang="ts" module>
-    export const emptyForm = () => ({
-        experiment_name: '',
-        exercise_type: 'gameday',
-        executed: '',
-        hypothesis: '',
-        method: '',
-        outcome_status: 'passed',
-        hypothesis_met: 'unknown',
-        findings: '',
-        action_items: '',
-        target_system: '',
-        target_environment: '',
-        blast_radius: '',
-        recovery_time_s: '',
-        duration_s: '',
-        framework_refs: '',
-        renewal: '',
-        attestation: '',
-    });
-    export type ManualForm = ReturnType<typeof emptyForm>;
-</script>
-
 <script lang="ts">
-    // Entry tab: the hand-executed test record form plus the attestation panel.
-    // The form state is owned by the page (bindable) so a half-filled draft
-    // survives switching to another tab and back.
+    // Entry tab: the record of a DR exercise, or of any hand-executed test:
+    // what was tested and the plan it fulfils, the recovery against its
+    // targets, the people and the tester, the TLPT block of a TLPT, the
+    // steps, the actions with owners and severities, and the attestation. The form state is owned by the page (bindable) so a
+    // half-filled draft survives switching to another tab and back. Once the
+    // draft is saved, evidence can be attached to it before it is submitted.
     import { api } from '#lib/api.js';
-    import type { ManualRecordInput } from '#lib/types.js';
+    import {
+        checkForm,
+        emptyForm,
+        errorText,
+        EXERCISE_TYPES,
+        formToRecord,
+        OUTCOMES,
+        SEVERITIES,
+        type ManualForm,
+    } from '#lib/manual.js';
+    import type { ManualDetail, ManualPlan } from '#lib/types.js';
+    import ManualActionsEditor from './ManualActionsEditor.svelte';
+    import ManualAttachments from './ManualAttachments.svelte';
+    import ManualParticipantsEditor from './ManualParticipantsEditor.svelte';
+    import ManualPlanPicker from './ManualPlanPicker.svelte';
+    import ManualRecoveryFields from './ManualRecoveryFields.svelte';
+    import ManualStepsEditor from './ManualStepsEditor.svelte';
+    import ManualTesterFields from './ManualTesterFields.svelte';
+    import ManualTlptFields from './ManualTlptFields.svelte';
 
     let {
         actor,
@@ -44,62 +42,36 @@
         busy: boolean;
     } = $props();
 
-    function toNs(local: string): number | null {
-        if (!local) return null;
-        const ms = new Date(local).getTime();
-        return Number.isNaN(ms) ? null : ms * 1_000_000;
-    }
+    let plans: ManualPlan[] = $state([]);
+    let draft: ManualDetail | null = $state(null);
 
-    function buildRecord(): ManualRecordInput | string {
-        const executed_at_ns = toNs(form.executed);
-        if (!executed_at_ns) return 'executed date/time is required';
-        if (!form.experiment_name.trim()) return 'experiment name is required';
-        if (!form.hypothesis.trim()) return 'hypothesis is required';
-        if (
-            allowedEnvironments.length &&
-            !allowedEnvironments.includes(form.target_environment.trim())
-        ) {
-            return `Choose a target environment allowed by your account: ${allowedEnvironments.join(', ')}`;
-        }
-        if (!form.method.trim()) return 'method is required';
-        if (!form.attestation.trim()) return 'attestation is required';
-        if (!actor.trim()) return 'set the "acting as" name first';
-        return {
-            experiment_name: form.experiment_name.trim(),
-            exercise_type: form.exercise_type,
-            executed_at_ns,
-            hypothesis: form.hypothesis.trim(),
-            method: form.method.trim(),
-            outcome_status: form.outcome_status,
-            hypothesis_met:
-                form.hypothesis_met === 'unknown' ? null : form.hypothesis_met === 'met',
-            findings: form.findings.trim() || null,
-            action_items: form.action_items
-                .split('\n')
-                .map((s) => s.trim())
-                .filter(Boolean),
-            target_system: form.target_system.trim() || null,
-            target_environment: form.target_environment.trim() || null,
-            blast_radius: form.blast_radius.trim() || null,
-            recovery_time_s: form.recovery_time_s ? Number(form.recovery_time_s) : null,
-            duration_s: form.duration_s ? Number(form.duration_s) : null,
-            entered_by: actor.trim(),
-            attestation: form.attestation.trim(),
-            renewal_due_ns: form.renewal ? toNs(`${form.renewal}T00:00`) : null,
-            framework_refs: form.framework_refs
-                .split(',')
-                .map((s) => s.trim())
-                .filter(Boolean),
-        };
+    $effect(() => {
+        api.manualPlans('planned')
+            .then((r) => (plans = r.plans ?? []))
+            .catch((e) => (entryMsg = { ok: false, text: errorText(e) }));
+    });
+
+    function loadDraft(id: string) {
+        api.manualDetail(id)
+            .then((d) => {
+                if (editingId === id) draft = d;
+            })
+            .catch((e) => (entryMsg = { ok: false, text: errorText(e) }));
     }
+    $effect(() => {
+        const id = editingId;
+        draft = null;
+        if (id) loadDraft(id);
+    });
 
     async function save(andSubmit: boolean) {
-        const rec = buildRecord();
         entryMsg = null;
-        if (typeof rec === 'string') {
-            entryMsg = { ok: false, text: rec };
+        const refused = checkForm(form, actor, allowedEnvironments);
+        if (refused) {
+            entryMsg = { ok: false, text: refused };
             return;
         }
+        const rec = formToRecord(form, actor);
         busy = true;
         try {
             if (editingId) {
@@ -121,193 +93,199 @@
                 editingId = null;
             }
         } catch (e) {
-            entryMsg = { ok: false, text: String(e) };
+            entryMsg = { ok: false, text: errorText(e) };
         } finally {
             busy = false;
         }
     }
 </script>
 
-<div class="grid cols-2">
-    <div class="panel">
-        <h2>Test record</h2>
-        <div class="form">
-            <label
-                >Experiment name
-                <input
-                    type="text"
-                    bind:value={form.experiment_name}
-                    placeholder="cdn failover — edge PoP loss"
-                />
-            </label>
-            <div class="row2">
+<div class="entry">
+    <div class="grid cols-2">
+        <div class="panel">
+            <h2>Exercise</h2>
+            <div class="form">
                 <label
-                    >Exercise type
-                    <select bind:value={form.exercise_type}>
-                        {#each ['gameday', 'tabletop', 'failover', 'pentest', 'tlpt', 'drill', 'other'] as t (t)}
-                            <option value={t}>{t}</option>
-                        {/each}
-                    </select>
+                    >Experiment name
+                    <input
+                        type="text"
+                        bind:value={form.experiment_name}
+                        placeholder="payments-db failover to the standby"
+                    />
                 </label>
-                <label
-                    >Executed at
-                    <input type="datetime-local" bind:value={form.executed} />
-                </label>
-            </div>
-            <label
-                >Hypothesis
-                <textarea
-                    rows="2"
-                    bind:value={form.hypothesis}
-                    placeholder="What steady state did you expect?"></textarea>
-            </label>
-            <label
-                >Method
-                <textarea rows="3" bind:value={form.method} placeholder="How was the test executed?"
-                ></textarea>
-            </label>
-            <div class="row2">
-                <label
-                    >Outcome
-                    <select bind:value={form.outcome_status}>
-                        {#each ['passed', 'partial', 'failed', 'inconclusive'] as o (o)}
-                            <option value={o}>{o}</option>
-                        {/each}
-                    </select>
-                </label>
+                <div class="row2">
+                    <label
+                        >Exercise type
+                        <select bind:value={form.exercise_type}>
+                            {#each EXERCISE_TYPES as t (t)}<option value={t}>{t}</option>{/each}
+                        </select>
+                    </label>
+                    <label
+                        >Executed at
+                        <input type="datetime-local" bind:value={form.executed} />
+                    </label>
+                </div>
+                <div class="row2">
+                    <label
+                        >Target system <input type="text" bind:value={form.target_system} /></label
+                    >
+                    <label
+                        >Target environment <input
+                            type="text"
+                            bind:value={form.target_environment}
+                        /></label
+                    >
+                </div>
+                <ManualPlanPicker bind:form {plans} />
                 <label
                     >Hypothesis
-                    <select bind:value={form.hypothesis_met}>
-                        <option value="unknown">not recorded</option>
-                        <option value="met">met</option>
-                        <option value="not-met">not met</option>
+                    <textarea
+                        rows="2"
+                        bind:value={form.hypothesis}
+                        placeholder="What steady state did you expect?"></textarea>
+                </label>
+                <label
+                    >Method
+                    <textarea
+                        rows="3"
+                        bind:value={form.method}
+                        placeholder="How was the test executed?"></textarea>
+                </label>
+                <div class="row2">
+                    <label
+                        >Outcome
+                        <select bind:value={form.outcome_status}>
+                            {#each OUTCOMES as o (o)}<option value={o}>{o}</option>{/each}
+                        </select>
+                    </label>
+                    <label
+                        >Hypothesis held
+                        <select bind:value={form.hypothesis_met}>
+                            <option value="unknown">not recorded</option>
+                            <option value="met">met</option>
+                            <option value="not-met">not met</option>
+                        </select>
+                    </label>
+                </div>
+                <label
+                    >Findings
+                    <textarea rows="2" bind:value={form.findings}></textarea>
+                </label>
+                <label
+                    >Findings severity
+                    <select bind:value={form.findings_severity}>
+                        <option value="">not set</option>
+                        {#each SEVERITIES as s (s)}<option value={s}>{s}</option>{/each}
                     </select>
                 </label>
-            </div>
-            <label
-                >Findings
-                <textarea rows="2" bind:value={form.findings}></textarea>
-            </label>
-            <label
-                >Action items (one per line)
-                <textarea rows="2" bind:value={form.action_items}></textarea>
-            </label>
-            <div class="row2">
-                <label>Target system <input type="text" bind:value={form.target_system} /></label>
-                <label
-                    >Target environment <input
-                        type="text"
-                        bind:value={form.target_environment}
-                    /></label
-                >
-            </div>
-            <div class="row2">
-                <label>Blast radius <input type="text" bind:value={form.blast_radius} /></label>
-                <label
-                    >Recovery time (s) <input
-                        type="number"
-                        step="0.1"
-                        bind:value={form.recovery_time_s}
-                    /></label
-                >
-            </div>
-            <div class="row2">
-                <label
-                    >Duration (s) <input
-                        type="number"
-                        step="1"
-                        bind:value={form.duration_s}
-                    /></label
-                >
+                <div class="row2">
+                    <label>Blast radius <input type="text" bind:value={form.blast_radius} /></label>
+                    <label
+                        >Duration (s) <input
+                            type="number"
+                            step="1"
+                            bind:value={form.duration_s}
+                        /></label
+                    >
+                </div>
                 <label
                     >Framework refs (comma-sep) <input
                         type="text"
                         bind:value={form.framework_refs}
-                        placeholder="DORA Art. 24(6), ISO 27001 A.5.30"
+                        placeholder="dora.art24.6, ISO 27001 A.5.30"
                     /></label
                 >
             </div>
         </div>
+        <div class="stack">
+            <div class="panel">
+                <h2>Recovery</h2>
+                <ManualRecoveryFields bind:form />
+            </div>
+            <div class="panel">
+                <h2>Participants</h2>
+                <ManualParticipantsEditor bind:rows={form.participants} />
+            </div>
+            <div class="panel">
+                <h2>Tester</h2>
+                <ManualTesterFields bind:form />
+            </div>
+            {#if form.exercise_type === 'tlpt'}
+                <div class="panel">
+                    <h2>TLPT</h2>
+                    <ManualTlptFields bind:form />
+                </div>
+            {/if}
+        </div>
     </div>
     <div class="panel">
-        <h2>Attestation</h2>
-        <div class="form">
-            <label
-                >Renewal due (optional)
-                <input type="date" bind:value={form.renewal} />
-            </label>
-            <label
-                >Attestation text
-                <textarea
-                    rows="5"
-                    bind:value={form.attestation}
-                    placeholder="I attest this record reflects the exercise as executed, and the findings are complete to the best of my knowledge."
-                ></textarea>
-            </label>
-            <p class="note">
-                Submitting locks the record. Verification requires a reviewer other than
-                <b>{actor.trim() || 'the person entering it'}</b>. Verified records score like
-                automated runs (passed 100 / partial 75 / failed 50; inconclusive is excluded);
-                drafts and submitted records count toward coverage as pending.
-            </p>
-            <div class="actions">
-                <button class="btn" disabled={busy} onclick={() => save(false)}>Save draft</button>
-                <button class="btn primary" disabled={busy} onclick={() => save(true)}
-                    >Save &amp; submit</button
-                >
+        <h2>Steps</h2>
+        <ManualStepsEditor bind:rows={form.steps} />
+    </div>
+    <div class="panel">
+        <h2>{form.exercise_type === 'tlpt' ? 'Remediation plan' : 'Actions'}</h2>
+        <ManualActionsEditor bind:rows={form.actions} />
+    </div>
+    <div class="grid cols-2">
+        <div class="panel">
+            <h2>Attestation</h2>
+            <div class="form">
+                <label
+                    >Renewal due (optional)
+                    <input type="date" bind:value={form.renewal} />
+                </label>
+                <label
+                    >Attestation text
+                    <textarea
+                        rows="5"
+                        bind:value={form.attestation}
+                        placeholder="I attest this record reflects the exercise as executed, and the findings are complete to the best of my knowledge."
+                    ></textarea>
+                </label>
+                <p class="note">
+                    Submitting locks the record. Each sign-off needs a reviewer other than
+                    <b>{actor.trim() || 'the person entering it'}</b>. Verified records score like
+                    automated runs (passed 100 / partial 75 / failed 50; inconclusive is excluded);
+                    drafts and submitted records count toward coverage as pending.
+                </p>
+                <div class="actions">
+                    <button class="btn" disabled={busy} onclick={() => save(false)}
+                        >Save draft</button
+                    >
+                    <button class="btn primary" disabled={busy} onclick={() => save(true)}
+                        >Save &amp; submit</button
+                    >
+                </div>
+                {#if entryMsg}
+                    <div class="state" class:error={!entryMsg.ok} role="status">
+                        {entryMsg.text}
+                    </div>
+                {/if}
             </div>
-            {#if entryMsg}
-                <div class="state" class:error={!entryMsg.ok}>{entryMsg.text}</div>
+        </div>
+        <div class="panel">
+            <h2>Evidence</h2>
+            {#if draft?.experiment}
+                <ManualAttachments
+                    experimentId={draft.experiment.id}
+                    attachments={draft.attachments}
+                    status={draft.experiment.status}
+                    {actor}
+                    canWrite={true}
+                    onchange={() => editingId && loadDraft(editingId)}
+                />
+            {:else}
+                <p class="note">Save the draft to attach files and links to it.</p>
             {/if}
         </div>
     </div>
 </div>
 
 <style>
-    .form {
+    .entry,
+    .stack {
         display: flex;
         flex-direction: column;
-        gap: 10px;
-    }
-    .form label {
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-        font-size: 12px;
-        color: var(--text-dim);
-    }
-    .row2 {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 10px;
-    }
-    .note {
-        color: var(--text-faint);
-        font-size: 12px;
-        line-height: 1.5;
-    }
-    .actions {
-        display: flex;
-        gap: 8px;
-    }
-    .btn {
-        background: var(--bg-hover);
-        border: 1px solid var(--border-strong);
-        color: var(--text);
-        border-radius: 6px;
-        padding: 6px 14px;
-        cursor: pointer;
-        font-size: 13px;
-    }
-    .btn:hover {
-        border-color: var(--accent-dim);
-    }
-    .btn.primary {
-        background: var(--accent-dim);
-        border-color: var(--accent-dim);
-    }
-    .btn:disabled {
-        opacity: 0.5;
-        cursor: default;
+        gap: 14px;
     }
 </style>

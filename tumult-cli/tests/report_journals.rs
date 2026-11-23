@@ -23,8 +23,8 @@ use tumult_core::types::{
     DegradationLevel, DuringResult, Estimate, ExpectedOutcome, ExperimentStatus, HaltRecord,
     HypothesisResult, Journal, LoadExecution, LoadResult, LoadSample, NfrCriticality, NfrKind,
     NfrOperator, NfrState, NfrVerdict, ObjectiveOutcome, PostResult, ProbeDuring, ProbePost,
-    RegulatoryMapping, RegulatoryRequirement, RequestCounts, TargetVersion, TraceId, Trend,
-    VersionShare, VersionSource,
+    RegulatoryMapping, RegulatoryRequirement, RequestCounts, TargetVersion, Tester, TesterKind,
+    TraceId, Trend, VersionShare, VersionSource,
 };
 
 /// Every section a report can have but its summary.
@@ -851,6 +851,7 @@ fn what_a_run_was_planned_with_is_shown_as_far_as_it_was_said() {
         regulatory: Some(RegulatoryMapping {
             frameworks: vec!["dora".into()],
             requirements: vec![],
+            tester: None,
         }),
         ..journal()
     });
@@ -933,6 +934,7 @@ fn an_analysis_and_a_mapping_that_say_nothing_are_no_sections() {
         regulatory: Some(RegulatoryMapping {
             frameworks: vec![],
             requirements: vec![],
+            tester: None,
         }),
         ..journal()
     });
@@ -951,6 +953,7 @@ fn requirements_without_a_framework_are_a_table_alone() {
                 description: "Continuity is tested".into(),
                 evidence: "This run".into(),
             }],
+            tester: None,
         }),
         ..journal()
     });
@@ -962,6 +965,45 @@ fn requirements_without_a_framework_are_a_table_alone() {
         [
             row(&["Requirement", "Description", "Evidence"]),
             row(&["A.17.1", "Continuity is tested", "This run"]),
+        ]
+    );
+}
+
+#[test]
+fn a_dora_requirement_shows_the_registry_id_it_names_and_the_tester_is_named() {
+    let requirement = |id: &str| RegulatoryRequirement {
+        id: id.into(),
+        description: "d".into(),
+        evidence: "e".into(),
+    };
+    let html = report_for(&Journal {
+        regulatory: Some(RegulatoryMapping {
+            frameworks: vec!["DORA".into()],
+            requirements: vec![
+                requirement("Art. 12(1)"),
+                requirement("dora.art25.1"),
+                requirement("DORA-Art24"),
+            ],
+            tester: Some(Tester {
+                name: "Red Team Ltd".into(),
+                kind: TesterKind::External,
+            }),
+        }),
+        ..journal()
+    });
+
+    let regulatory = section(&html, "regulatory");
+    assert!(
+        words(regulatory).contains("Tester: Red Team Ltd (external)"),
+        "{regulatory}"
+    );
+    assert_eq!(
+        rows(regulatory),
+        [
+            row(&["Requirement", "Description", "Evidence"]),
+            row(&["Art. 12(1) (dora.art12.1)", "d", "e"]),
+            row(&["dora.art25.1", "d", "e"]),
+            row(&["DORA-Art24 (dora.art24)", "d", "e"]),
         ]
     );
 }
@@ -1076,6 +1118,7 @@ fn journal_of_markup() -> (Journal, u32) {
                 description: markup(&mut n),
                 evidence: markup(&mut n),
             }],
+            tester: None,
         }),
         ..journal()
     };
