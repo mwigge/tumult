@@ -142,8 +142,8 @@ async fn dispatch(command: Commands) -> anyhow::Result<()> {
             }
             ended?;
         }
-        Commands::Validate { experiment } => {
-            commands::cmd_validate(&experiment)?;
+        Commands::Validate { experiment, vars } => {
+            commands::cmd_validate(&experiment, &parse_var_args(&vars)?)?;
         }
         Commands::Discover { plugin } => {
             commands::cmd_discover(plugin.as_deref())?;

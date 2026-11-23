@@ -109,6 +109,42 @@ fn a_run_whose_target_stays_down_says_that_its_steady_state_was_not_met_after() 
     );
 }
 
+/// `value` as the summary writes a number: three decimals at most.
+fn written(value: f64) -> String {
+    let fixed = format!("{value:.3}");
+    fixed
+        .trim_end_matches('0')
+        .trim_end_matches('.')
+        .to_string()
+}
+
+#[test]
+fn a_run_whose_target_never_came_back_says_its_rto_was_breached_and_not_recovered() {
+    let lab = Lab::with_state("ok");
+
+    let printed = run(&lab, &experiment(&inject(), &leave_marker()));
+
+    let journal = tumult_core::journal::read_journal(&lab.path("journal.toon")).expect("journal");
+    let rto = &journal.objectives.expect("a recovery target").verdicts[0];
+    let watched = rto.observed.map_or_else(String::new, written);
+    assert_eq!(printed.status, ExperimentStatus::Deviated);
+    assert_eq!(printed.code, Some(1));
+    assert_eq!(
+        printed.stdout,
+        expected(
+            &printed,
+            "Deviated",
+            "Method steps: 1 executed\nRollbacks: 1 executed\n",
+            &format!(
+                "Hypothesis: met before, not met after\n\
+                 Objectives: 0 met, 1 breached, 0 inconclusive\n\
+                 \x20 breached: rto: recovery.mttr_s must be at most 30, \
+                 observed at least {watched}, not recovered\n"
+            ),
+        )
+    );
+}
+
 #[test]
 fn a_run_that_starts_on_a_target_that_is_down_says_that_nothing_was_checked_after() {
     let lab = Lab::with_state("down");

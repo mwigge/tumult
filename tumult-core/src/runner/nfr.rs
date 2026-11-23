@@ -14,48 +14,136 @@
 //! A metric that the run did not produce yields an `inconclusive` verdict:
 //! an objective is never silently met. A metric outside this catalogue can
 //! never be produced, so validation refuses it ([`metric_fault`]).
+//!
+//! Each metric measures some kinds of objective, as the catalogue below
+//! lists them. Validation refuses an objective whose kind its metric does
+//! not measure ([`kind_fault`]): a latency is no availability, and no
+//! metric counts lost data, so an `rpo` objective has none yet.
 
 use crate::types::{
     DuringResult, Experiment, LoadResult, NfrCriticality, NfrKind, NfrObjective, NfrOperator,
     NfrState, NfrVerdict, ObjectiveOutcome, PostResult, ProbeSample, SamplePhase,
 };
 
-/// The metrics with one fixed spelling. [`resolve`] answers each of them.
-pub(crate) const FIXED_METRICS: &[&str] = &[
-    "load.throughput_rps",
-    "load.latency_p50_ms",
-    "load.latency_p95_ms",
-    "load.latency_p99_ms",
-    "load.error_rate",
-    "load.total_requests",
-    "recovery.mttr_s",
-    "recovery.time_s",
-    "during.error_rate",
-    "during.availability",
-    "post.error_rate",
-    "post.availability",
-    "fault.duration_s",
+/// A response time.
+const LATENCY: &[NfrKind] = &[NfrKind::Latency];
+/// The share of samples or requests that failed, or that passed: each is
+/// the rest of the other.
+const SHARE: &[NfrKind] = &[NfrKind::ErrorRate, NfrKind::Availability];
+/// That share after the method, where the target recovers.
+const SHARE_AFTER: &[NfrKind] = &[NfrKind::ErrorRate, NfrKind::Availability, NfrKind::Recovery];
+/// The share of failed samples of one probe. A probe that checks the data
+/// measures its integrity this way.
+const PROBE_SHARE: &[NfrKind] = &[
+    NfrKind::ErrorRate,
+    NfrKind::Availability,
+    NfrKind::DataIntegrity,
+];
+/// Requests served, in all or per second.
+const REQUESTS: &[NfrKind] = &[NfrKind::Throughput, NfrKind::Capacity];
+/// The time the target took to recover.
+const RECOVERY_TIME: &[NfrKind] = &[NfrKind::Rto, NfrKind::Recovery];
+/// The time the fault was active.
+const FAULT_TIME: &[NfrKind] = &[NfrKind::Recovery];
+
+/// The metrics with one fixed spelling, each with the kinds of objective
+/// it measures. [`resolve`] answers each of them.
+pub(crate) const FIXED_METRICS: &[(&str, &[NfrKind])] = &[
+    ("load.throughput_rps", REQUESTS),
+    ("load.latency_p50_ms", LATENCY),
+    ("load.latency_p95_ms", LATENCY),
+    ("load.latency_p99_ms", LATENCY),
+    ("load.error_rate", SHARE),
+    ("load.total_requests", REQUESTS),
+    ("recovery.mttr_s", RECOVERY_TIME),
+    ("recovery.time_s", RECOVERY_TIME),
+    ("during.error_rate", SHARE),
+    ("during.availability", SHARE),
+    ("post.error_rate", SHARE_AFTER),
+    ("post.availability", SHARE_AFTER),
+    ("fault.duration_s", FAULT_TIME),
 ];
 
-/// The statistics of a `probe.<name>.<stat>` metric.
-pub(crate) const PROBE_STATS: &[&str] = &["mean_ms", "max_ms", "p95_ms", "error_rate"];
+/// The statistics of a `probe.<name>.<stat>` metric, each with the kinds
+/// of objective it measures.
+pub(crate) const PROBE_STATS: &[(&str, &[NfrKind])] = &[
+    ("mean_ms", LATENCY),
+    ("max_ms", LATENCY),
+    ("p95_ms", LATENCY),
+    ("error_rate", PROBE_SHARE),
+];
+
+/// The names of a table of the catalogue.
+fn names(table: &[(&'static str, &[NfrKind])]) -> Vec<&'static str> {
+    table.iter().map(|(name, _)| *name).collect()
+}
+
+/// The statistic of a `probe.<name>.<stat>` metric, with its kinds, when
+/// the catalogue holds that statistic.
+fn probe_stat(metric: &str) -> Option<(&str, &'static [NfrKind])> {
+    let (name, stat) = metric.strip_prefix("probe.")?.rsplit_once('.')?;
+    let (_, kinds) = PROBE_STATS.iter().find(|(known, _)| *known == stat)?;
+    Some((name, *kinds))
+}
+
+/// The kinds of objective `metric` measures: none when the catalogue does
+/// not hold it.
+fn kinds_of(metric: &str) -> &'static [NfrKind] {
+    if let Some((_, kinds)) = FIXED_METRICS.iter().find(|(known, _)| *known == metric) {
+        return kinds;
+    }
+    match probe_stat(metric) {
+        Some((_, kinds)) => kinds,
+        None => &[],
+    }
+}
+
+/// The metrics that measure `kind`, a probe metric as `probe.<name>.<stat>`.
+fn metrics_of(kind: NfrKind) -> Vec<String> {
+    let fixed = FIXED_METRICS
+        .iter()
+        .filter(|(_, kinds)| kinds.contains(&kind))
+        .map(|(name, _)| (*name).to_string());
+    let probe = PROBE_STATS
+        .iter()
+        .filter(|(_, kinds)| kinds.contains(&kind))
+        .map(|(stat, _)| format!("probe.<name>.{stat}"));
+    fixed.chain(probe).collect()
+}
+
+/// Why an objective of `kind` cannot be measured by `metric`, or `None`
+/// when the metric measures that kind. Asked after [`metric_fault`], of a
+/// metric the catalogue holds. Pure.
+pub(crate) fn kind_fault(kind: NfrKind, metric: &str) -> Option<String> {
+    let fits = kinds_of(metric);
+    if fits.contains(&kind) {
+        return None;
+    }
+    let measures: Vec<String> = fits.iter().map(ToString::to_string).collect();
+    let others = metrics_of(kind);
+    let instead = if others.is_empty() {
+        format!("no metric of the catalogue measures {kind}")
+    } else {
+        format!("the metrics of {kind} are {}", others.join(", "))
+    };
+    Some(format!(
+        "kind {kind} does not fit metric '{metric}', which measures {}; {instead}",
+        measures.join(" or ")
+    ))
+}
 
 /// Why no run can measure `metric`, or `None` when the catalogue holds it.
 /// `probes` are the probes of the steady-state hypothesis: the only ones a
 /// run samples. Pure.
 pub(crate) fn metric_fault(metric: &str, probes: &[&str]) -> Option<String> {
-    if FIXED_METRICS.contains(&metric) {
+    if FIXED_METRICS.iter().any(|(known, _)| *known == metric) {
         return None;
     }
-    let probe_stat = metric
-        .strip_prefix("probe.")
-        .and_then(|rest| rest.rsplit_once('.'))
-        .filter(|(_, stat)| PROBE_STATS.contains(stat));
-    let Some((name, _)) = probe_stat else {
+    let Some((name, _)) = probe_stat(metric) else {
         return Some(format!(
             "metric '{metric}' is not in the catalogue (known: {}, probe.<name>.<{}>)",
-            FIXED_METRICS.join(", "),
-            PROBE_STATS.join("|")
+            names(FIXED_METRICS).join(", "),
+            names(PROBE_STATS).join("|")
         ));
     };
     if probes.contains(&name) {
@@ -77,6 +165,10 @@ pub(crate) struct Measurements<'a> {
     pub post: Option<&'a PostResult>,
     pub load: Option<&'a LoadResult>,
     pub samples: &'a [ProbeSample],
+    /// Whether the post phase watched the recovery from the fault as
+    /// written: every action of the method succeeded and no cancel cut
+    /// the watch short. Only such a watch shows that a run did not recover.
+    pub watched_in_full: bool,
 }
 
 /// Evaluate every declared objective and the recovery targets. Returns
@@ -107,7 +199,7 @@ pub(crate) fn evaluate(experiment: &Experiment, m: &Measurements<'_>) -> Option<
             criticality: NfrCriticality::Blocking,
             description: Some("recovery time objective".into()),
         };
-        verdicts.push(verdict_for(&implicit, rto_measured_s));
+        verdicts.push(rto_verdict(&implicit, m));
     }
     let rpo_measured_s = verdicts
         .iter()
@@ -126,6 +218,7 @@ pub(crate) fn evaluate(experiment: &Experiment, m: &Measurements<'_>) -> Option<
                 state: NfrState::Inconclusive,
                 margin: None,
                 criticality: NfrCriticality::Blocking,
+                recovered: None,
             });
         }
     }
@@ -136,6 +229,29 @@ pub(crate) fn evaluate(experiment: &Experiment, m: &Measurements<'_>) -> Option<
         rpo_measured_s,
         verdicts,
     })
+}
+
+/// The verdict on the recovery time objective. A run that did not recover
+/// while the post phase watched in full breaches it: the time it watched
+/// is a lower bound of the recovery time, so the verdict has no margin
+/// (such a run has no MTTR, so the measured verdict has none). Pure.
+fn rto_verdict(objective: &NfrObjective, m: &Measurements<'_>) -> NfrVerdict {
+    let measured = verdict_for(objective, m.post.and_then(|p| p.mttr_s));
+    let Some(post) = m.post.filter(|_| m.watched_in_full) else {
+        return measured;
+    };
+    if post.full_recovery {
+        return NfrVerdict {
+            recovered: Some(true),
+            ..measured
+        };
+    }
+    NfrVerdict {
+        observed: Some(post.recovery_time_s),
+        state: NfrState::Breached,
+        recovered: Some(false),
+        ..measured
+    }
 }
 
 /// Compare one observation against an objective. Pure.
@@ -174,6 +290,7 @@ pub(crate) fn verdict_for(o: &NfrObjective, observed: Option<f64>) -> NfrVerdict
         state,
         margin,
         criticality: o.criticality,
+        recovered: None,
     }
 }
 
@@ -358,11 +475,12 @@ mod tests {
             post: Some(&post),
             load: Some(&l),
             samples: &samples,
+            watched_in_full: true,
         };
         let probe_metrics = PROBE_STATS
             .iter()
-            .map(|stat| format!("probe.health.{stat}"));
-        let fixed = FIXED_METRICS.iter().map(ToString::to_string);
+            .map(|(stat, _)| format!("probe.health.{stat}"));
+        let fixed = FIXED_METRICS.iter().map(|(name, _)| (*name).to_string());
         for metric in fixed.chain(probe_metrics) {
             assert_eq!(metric_fault(&metric, &["health"]), None, "{metric}");
             assert!(resolve(&metric, &m).is_some(), "{metric} is not resolved");
@@ -425,6 +543,7 @@ mod tests {
             post: Some(&post),
             load: Some(&l),
             samples: &samples,
+            watched_in_full: true,
         };
         assert_eq!(resolve("load.latency_p95_ms", &m), Some(180.0));
         assert_eq!(resolve("load.total_requests", &m), Some(1200.0));
@@ -445,6 +564,7 @@ mod tests {
             post: Some(&post),
             load: Some(&idle),
             samples: &samples,
+            watched_in_full: true,
         };
         assert_eq!(resolve("load.latency_p50_ms", &no_requests), None);
         // Every request failed: an error rate, but still no latency.
@@ -462,6 +582,7 @@ mod tests {
             post: Some(&post),
             load: Some(&all_failed),
             samples: &samples,
+            watched_in_full: true,
         };
         assert_eq!(resolve("load.latency_p95_ms", &nothing_answered), None);
         assert_eq!(resolve("load.error_rate", &nothing_answered), Some(1.0));
@@ -492,6 +613,7 @@ mod tests {
             post: None,
             load: None,
             samples: &[],
+            watched_in_full: true,
         };
         assert!(evaluate(&exp, &m).is_none());
 
@@ -529,6 +651,7 @@ mod tests {
             post: Some(&post),
             load: Some(&l),
             samples: &[],
+            watched_in_full: true,
         };
         let out = evaluate(&exp, &m).unwrap();
         assert_eq!(out.rto_measured_s, Some(1000.0));
@@ -538,5 +661,118 @@ mod tests {
         assert!(out.has_blocking_breach());
         let p95 = out.verdicts.iter().find(|v| v.nfr_id == "p95").unwrap();
         assert_eq!(p95.state, NfrState::Met);
+    }
+
+    /// The post phase of a restore that never came back: the probe still
+    /// failed when the window closed, 29.1 s after the method.
+    fn never_recovered() -> PostResult {
+        PostResult {
+            started_at_ns: 0,
+            ended_at_ns: 30_000_000_000,
+            duration_s: 30.0,
+            samples: 30,
+            probes: vec![],
+            recovery_time_s: 29.1,
+            full_recovery: false,
+            mttr_s: None,
+        }
+    }
+
+    fn with_rto(target_s: f64) -> Experiment {
+        Experiment {
+            rto_target_s: Some(target_s),
+            ..Experiment::default()
+        }
+    }
+
+    fn rto(outcome: &ObjectiveOutcome) -> &NfrVerdict {
+        outcome
+            .verdicts
+            .iter()
+            .find(|v| v.nfr_id == "rto")
+            .expect("a verdict on the rto")
+    }
+
+    #[test]
+    fn a_run_that_never_recovered_breaches_its_rto_with_the_time_it_watched() {
+        let post = never_recovered();
+        let m = Measurements {
+            during: None,
+            post: Some(&post),
+            load: None,
+            samples: &[],
+            watched_in_full: true,
+        };
+
+        let out = evaluate(&with_rto(2.0), &m).expect("an rto target");
+
+        let verdict = rto(&out);
+        assert_eq!(verdict.state, NfrState::Breached);
+        assert_eq!(verdict.observed, Some(29.1));
+        assert_eq!(verdict.margin, None);
+        assert_eq!(verdict.recovered, Some(false));
+        assert!(out.has_blocking_breach());
+        assert_eq!(out.rto_measured_s, None);
+    }
+
+    #[test]
+    fn a_run_that_never_recovered_breaches_an_rto_longer_than_its_watch() {
+        let post = never_recovered();
+        let m = Measurements {
+            during: None,
+            post: Some(&post),
+            load: None,
+            samples: &[],
+            watched_in_full: true,
+        };
+
+        let out = evaluate(&with_rto(60.0), &m).expect("an rto target");
+
+        let verdict = rto(&out);
+        assert_eq!(verdict.state, NfrState::Breached);
+        assert_eq!(verdict.observed, Some(29.1));
+        assert_eq!(verdict.margin, None);
+        assert_eq!(verdict.recovered, Some(false));
+    }
+
+    #[test]
+    fn a_watch_that_does_not_count_measures_no_recovery() {
+        let post = never_recovered();
+        let m = Measurements {
+            during: None,
+            post: Some(&post),
+            load: None,
+            samples: &[],
+            watched_in_full: false,
+        };
+
+        let out = evaluate(&with_rto(2.0), &m).expect("an rto target");
+
+        let verdict = rto(&out);
+        assert_eq!(verdict.state, NfrState::Inconclusive);
+        assert_eq!(verdict.observed, None);
+        assert_eq!(verdict.recovered, None);
+        assert!(!out.has_blocking_breach());
+    }
+
+    #[test]
+    fn a_run_that_recovered_late_breaches_its_rto_by_the_time_it_took() {
+        let post = full_post();
+        let m = Measurements {
+            during: None,
+            post: Some(&post),
+            load: None,
+            samples: &[],
+            watched_in_full: true,
+        };
+
+        let out = evaluate(&with_rto(2.0), &m).expect("an rto target");
+
+        let verdict = rto(&out);
+        assert_eq!(verdict.state, NfrState::Breached);
+        assert_eq!(verdict.observed, Some(3.5));
+        assert_eq!(verdict.margin, Some(-1.5));
+        assert_eq!(verdict.recovered, Some(true));
+        assert_eq!(out.rto_measured_s, Some(3.5));
     }
 }

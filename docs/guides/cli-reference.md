@@ -100,10 +100,17 @@ format is in [Experiment format](experiment-format.md).
 
 ## tumult validate
 
-`tumult validate <EXPERIMENT>` checks an experiment file: its syntax, its
-structure and every plugin, action and objective metric it names. It has no
-flags. It does not read `.gameday.toon` files; `tumult gameday run` checks
-those.
+`tumult validate <EXPERIMENT> [--var <KEY=VALUE>]` checks an experiment
+file: its syntax, its structure, every plugin, action and objective metric it
+names, and that each metric measures the kind of its objective. It does not
+read `.gameday.toon` files; `tumult gameday run` checks those.
+
+| Flag | What it does |
+|---|---|
+| `--var <KEY=VALUE>` | The value the run gives `${KEY}`. Repeat for more |
+
+A `${...}` that nothing fills is refused, see
+[Variables and secrets](variables-and-secrets.md#check-the-placeholders).
 
 ## tumult discover
 
@@ -171,9 +178,10 @@ share of the runs that watched for recovery whose target came back within
 
 The HTML report is one file with every table and up to five charts, and
 needs no network. `pdf` writes the HTML and prints how to turn it into a
-PDF. `junit` has one test case per step and per steady-state check, so a
-deviated run fails in CI. `SOURCE_DATE_EPOCH` (seconds) fixes the date the
-report shows.
+PDF. `junit` has one test case per step, per steady-state check and per
+objective, so a deviated run fails in CI. A breached blocking objective,
+such as the RTO, is a failure. An objective the run did not measure is
+skipped. `SOURCE_DATE_EPOCH` (seconds) fixes the date the report shows.
 
 ## tumult trend
 

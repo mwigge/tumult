@@ -303,6 +303,60 @@ fn a_run_whose_method_failed_measures_no_recovery() {
     assert_eq!(objectives.verdicts[0].state, NfrState::Inconclusive);
 }
 
+#[test]
+fn a_run_that_never_recovered_breaches_its_rto_with_the_time_it_watched() {
+    let experiment = Experiment {
+        rto_target_s: Some(30.0),
+        rpo_target_s: Some(60.0),
+        ..with_hypothesis("never back")
+    };
+
+    let (journal, root) = run(
+        &experiment,
+        Target::answers("ok", "down"),
+        &RunConfig::default(),
+    );
+
+    assert_eq!(journal.status, ExperimentStatus::Deviated);
+    assert_eq!(seconds(&root, RECOVERY_TIME_S), None);
+    let post = journal.post_result.as_ref().expect("the run watched");
+    assert!(!post.full_recovery);
+    let objectives = journal.objectives.as_ref().expect("a recovery target");
+    assert_eq!(objectives.rto_measured_s, None);
+    let rto = &objectives.verdicts[0];
+    assert_eq!(rto.nfr_id, "rto");
+    assert_eq!(rto.state, NfrState::Breached);
+    assert_eq!(rto.observed, Some(post.recovery_time_s));
+    assert_eq!(rto.margin, None);
+    assert_eq!(rto.recovered, Some(false));
+    let dir = tempfile::TempDir::new().expect("a journal directory");
+    let path = dir.path().join("journal.toon");
+    tumult_core::journal::write_journal(&journal, &path).expect("write the journal");
+    let read = tumult_core::journal::read_journal(&path).expect("read the journal");
+    assert_eq!(read, journal);
+}
+
+#[test]
+fn a_run_whose_method_failed_and_never_recovered_measures_no_recovery() {
+    let experiment = Experiment {
+        rto_target_s: Some(30.0),
+        ..with_hypothesis("failed, never back")
+    };
+    let target = Target {
+        action_fails: true,
+        ..Target::answers("ok", "down")
+    };
+
+    let (journal, _) = run(&experiment, target, &RunConfig::default());
+
+    assert_eq!(journal.status, ExperimentStatus::Failed);
+    let objectives = journal.objectives.expect("the run has a recovery target");
+    assert_eq!(objectives.verdicts[0].nfr_id, "rto");
+    assert_eq!(objectives.verdicts[0].state, NfrState::Inconclusive);
+    assert_eq!(objectives.verdicts[0].observed, None);
+    assert_eq!(objectives.verdicts[0].recovered, None);
+}
+
 /// One action under an oha load whose binary is missing.
 fn under_missing_oha(title: &str) -> (Experiment, RunConfig) {
     let experiment = Experiment {

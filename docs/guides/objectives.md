@@ -55,6 +55,10 @@ A breached `blocking` objective turns a completed run into `deviated`. A
 verdicts are in the journal (`objectives.verdicts`) and in the lake table
 `nfr_verdicts`.
 
+In a JUnit report (`tumult report --format junit`) each objective is a test
+case. A breached `blocking` objective fails it, as it fails the run. An
+`inconclusive` objective is skipped.
+
 ## Metrics
 
 | Metric | Comes from |
@@ -69,13 +73,36 @@ verdicts are in the journal (`objectives.verdicts`) and in the lake table
 Validation refuses any other metric, and a `probe.<name>` that is not a probe
 of the steady-state hypothesis: no run could measure it.
 
+## Kinds
+
+The `kind` of an objective must be one that its metric measures.
+
+| Kind | Metrics |
+|---|---|
+| `latency` | `load.latency_p50_ms`, `load.latency_p95_ms`, `load.latency_p99_ms`, `probe.<name>.mean_ms`, `.max_ms`, `.p95_ms` |
+| `error_rate`, `availability` | `load.error_rate`, `during.error_rate`, `during.availability`, `post.error_rate`, `post.availability`, `probe.<name>.error_rate` |
+| `throughput`, `capacity` | `load.throughput_rps`, `load.total_requests` |
+| `rto` | `recovery.mttr_s`, `recovery.time_s` |
+| `recovery` | `recovery.mttr_s`, `recovery.time_s`, `post.error_rate`, `post.availability`, `fault.duration_s` |
+| `data_integrity` | `probe.<name>.error_rate`, for a probe that checks the data |
+| `rpo` | None yet: no metric counts lost data |
+
+Validation refuses any other pair, such as an `rpo` objective on
+`fault.duration_s`.
+
 ## Recovery targets
 
 `rto_target_s` adds a blocking objective: `recovery.mttr_s` at most that many
 seconds. A run of `kind: dr` must set it.
 
-`rpo_target_s` is recorded with the run. Only an `nfr` entry of `kind: rpo`
-measures it; without one its verdict is `inconclusive`.
+A run that does not recover while the recovery check watches breaches its
+RTO. The verdict says `recovered: false`, its `observed` is the time the check
+watched, and it has no margin. The true recovery time is longer. A run whose
+method failed, or that was stopped, measures no recovery: its RTO is
+`inconclusive`.
+
+`rpo_target_s` is recorded with the run. No metric counts lost data yet, so
+no objective can measure it, and its verdict is `inconclusive`.
 
 ## Next
 
