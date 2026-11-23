@@ -98,7 +98,7 @@ pub use approvals::{approval_pin, ApprovalDecision, ApprovalRequest, CanonicalPi
 pub use auth::{SessionRow, TokenRow, UserRow};
 pub use backend::{AnalyticsBackend, StoreStats};
 #[cfg(feature = "duckdb")]
-pub use dr::{DrScope, DEFAULT_DR_EXERCISE_TYPES};
+pub use dr::{DrScope, DrTestFilter, DrTestPosition, DEFAULT_DR_EXERCISE_TYPES};
 #[cfg(feature = "duckdb")]
 pub use entities::{
     entity_key, EntityApplied, EntityEventKind, EntityEventRow, EntityEvictions, EntityLimits,

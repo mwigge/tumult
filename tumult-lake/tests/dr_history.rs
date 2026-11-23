@@ -15,9 +15,10 @@ use tumult_core::types::{
 };
 use tumult_lake::duckdb_store::sample_journal;
 use tumult_lake::{
-    DrScope, ExerciseDetail, ExerciseType, IctFunction, IctFunctionService, IctLegalEntity,
-    IctRegister, ManualOutcome, NewExercisePlan, NewManualExperiment, PlannedTest, Store, Writer,
-    CURRENT_SCHEMA_VERSION, DEFAULT_DR_EXERCISE_TYPES,
+    DrScope, DrTestFilter, DrTestPosition, ExerciseDetail, ExerciseType, IctFunction,
+    IctFunctionService, IctLegalEntity, IctRegister, ManualOutcome, NewExercisePlan,
+    NewManualExperiment, PlannedTest, Store, Writer, CURRENT_SCHEMA_VERSION,
+    DEFAULT_DR_EXERCISE_TYPES,
 };
 
 const S: i64 = 1_000_000_000;
@@ -943,4 +944,273 @@ fn a_v24_lake_gains_the_dr_history_and_keeps_its_runs_and_records() {
     assert_eq!(register.len(), 1, "{register:?}");
     assert_eq!(register[0]["state"], "ok");
     assert_eq!(register[0]["last_test_at_ns"], AS_OF - 20 * DAY);
+}
+
+/// The test ids of `rows`, in their order.
+fn test_ids(rows: &[Value]) -> Vec<&str> {
+    rows.iter()
+        .map(|r| r["test_id"].as_str().unwrap())
+        .collect()
+}
+
+/// A page of the DR tests of `store`, at most `limit` long.
+fn page_of(
+    store: &Store,
+    scope: &DrScope,
+    filter: &DrTestFilter,
+    after: Option<&DrTestPosition>,
+    limit: u32,
+) -> Vec<Value> {
+    store
+        .read_only()
+        .unwrap()
+        .dr_tests_page(scope, filter, after, limit)
+        .unwrap()
+}
+
+/// Where `row` stands in the order of a page.
+fn position_of(row: &Value) -> DrTestPosition {
+    (
+        row["executed_at_ns"].as_i64().unwrap(),
+        row["test_id"].as_str().unwrap().to_string(),
+    )
+}
+
+#[test]
+fn the_dr_tests_come_newest_first_and_a_page_goes_on_after_its_last_test() {
+    let (_d, store) = temp_store();
+    let Seeded {
+        catalog, ledger, ..
+    } = seed_register(&store.writer().unwrap());
+    let all = DrTestFilter::default();
+    let catalog = format!("manual:{catalog}");
+    let ledger = format!("manual:{ledger}");
+
+    let first = page_of(&store, &default_scope(), &all, None, 3);
+    let after_first = position_of(first.last().unwrap());
+    let second = page_of(&store, &default_scope(), &all, Some(&after_first), 3);
+    let after_second = position_of(second.last().unwrap());
+    let third = page_of(&store, &default_scope(), &all, Some(&after_second), 3);
+
+    assert_eq!(
+        test_ids(&first),
+        [
+            "automated:nowhere",
+            "automated:orders-aborted",
+            "automated:orders-10"
+        ],
+        "two tests of the same time come by their id"
+    );
+    assert_eq!(
+        test_ids(&second),
+        [
+            "automated:payments-100",
+            "automated:billing-200",
+            catalog.as_str()
+        ]
+    );
+    assert_eq!(test_ids(&third), [ledger.as_str()]);
+    assert_eq!(first[2], {
+        let rows = view_rows(&store);
+        row_of(&rows, "orders-10").clone()
+    });
+    let tie = (AS_OF - DAY, "automated:nowhere".to_string());
+    assert_eq!(
+        test_ids(&page_of(&store, &default_scope(), &all, Some(&tie), 1)),
+        ["automated:orders-aborted"],
+        "a page goes on with the next test of the same time"
+    );
+}
+
+#[test]
+fn a_filter_keeps_the_dr_tests_of_one_target_in_one_period_and_scope() {
+    let (_d, store) = temp_store();
+    seed_register(&store.writer().unwrap());
+    let ids = |scope: &DrScope, filter: &DrTestFilter| -> Vec<String> {
+        test_ids(&page_of(&store, scope, filter, None, 100))
+            .into_iter()
+            .map(str::to_string)
+            .collect()
+    };
+
+    let orders = DrTestFilter {
+        target: Some("orders".into()),
+        ..DrTestFilter::default()
+    };
+    assert_eq!(
+        ids(&default_scope(), &orders),
+        ["automated:orders-aborted", "automated:orders-10"]
+    );
+    let period = DrTestFilter {
+        from_ns: Some(AS_OF - 200 * DAY),
+        to_ns: Some(AS_OF - 10 * DAY),
+        ..DrTestFilter::default()
+    };
+    assert_eq!(
+        ids(&default_scope(), &period),
+        [
+            "automated:orders-10",
+            "automated:payments-100",
+            "automated:billing-200"
+        ],
+        "both ends of the period are in it"
+    );
+    let prod = DrScope {
+        envs: vec!["prod".into()],
+        ..default_scope()
+    };
+    let recent = DrTestFilter {
+        from_ns: Some(AS_OF - 10 * DAY),
+        ..DrTestFilter::default()
+    };
+    assert_eq!(
+        ids(&prod, &recent),
+        ["automated:orders-aborted", "automated:orders-10"],
+        "a run with no target is in no environment"
+    );
+    let staging = DrScope {
+        envs: vec!["staging".into()],
+        ..default_scope()
+    };
+    assert_eq!(
+        ids(&staging, &DrTestFilter::default()),
+        Vec::<String>::new()
+    );
+}
+
+#[test]
+fn the_dr_tests_are_counted_per_origin_and_verdict() {
+    let (_d, store) = temp_store();
+    seed_register(&store.writer().unwrap());
+    let reader = store.read_only().unwrap();
+
+    let counts = reader
+        .dr_test_counts(&default_scope(), &DrTestFilter::default())
+        .unwrap();
+    let orders = reader
+        .dr_test_counts(
+            &default_scope(),
+            &DrTestFilter {
+                target: Some("orders".into()),
+                to_ns: Some(AS_OF - 5 * DAY),
+                ..DrTestFilter::default()
+            },
+        )
+        .unwrap();
+
+    assert_eq!(
+        counts,
+        [
+            json!({"origin": "automated", "verdict": "met", "tests": 5}),
+            json!({"origin": "manual", "verdict": "not_measured", "tests": 2}),
+        ]
+    );
+    assert_eq!(
+        orders,
+        [json!({"origin": "automated", "verdict": "met", "tests": 1})]
+    );
+}
+
+#[test]
+fn each_target_of_the_register_has_its_last_test_and_the_targets_it_is_held_to() {
+    let (_d, store) = temp_store();
+    let writer = store.writer().unwrap();
+    ingest(&writer, &[dr_run("orders-10", "orders", 10)]);
+    let mut failover = exercise("ledger failover", ExerciseType::Failover, "ledger", 20);
+    failover.recovery_time_s = Some(600.0);
+    failover.exercise.rto_target_s = Some(900.0);
+    let ledger = record(&writer, &failover, Review::Verified);
+    let mut ledger_plan = plan(
+        "ledger failover",
+        ExerciseType::Failover,
+        "ledger",
+        5,
+        Some(90),
+    );
+    ledger_plan.rto_target_s = Some(300.0);
+    ledger_plan.rpo_target_s = Some(30.0);
+    let ledger_plan = writer.create_manual_plan(&ledger_plan, "alice").unwrap();
+    let mut archive_plan = plan("archive backup", ExerciseType::Backup, "archive", 20, None);
+    archive_plan.rto_target_s = Some(120.0);
+    archive_plan.rpo_target_s = Some(60.0);
+    writer.create_manual_plan(&archive_plan, "alice").unwrap();
+    drop(writer);
+    let reader = store.read_only().unwrap();
+
+    let rows = reader.dr_targets(&default_scope(), None, AS_OF).unwrap();
+
+    let targets: Vec<&str> = rows
+        .iter()
+        .map(|r| r["target_system"].as_str().unwrap())
+        .collect();
+    assert_eq!(targets, ["archive", "ledger", "orders"]);
+    assert_eq!(
+        due_of(&rows, "ledger"),
+        &json!({
+            "target_system": "ledger",
+            "target_environment": "prod",
+            "state": "ok",
+            "last_test_id": format!("manual:{ledger}"),
+            "last_test_at_ns": AS_OF - 20 * DAY,
+            "last_test_origin": "manual",
+            "last_test_verdict": "met",
+            "next_due_at_ns": AS_OF + 70 * DAY,
+            "interval_days": 90,
+            "interval_source": "plan",
+            "plan_id": ledger_plan,
+            "plan_due_at_ns": AS_OF + 5 * DAY,
+            "rto_target_s": 900.0,
+            "rpo_target_s": 30.0,
+            "rto_measured_s": 600.0,
+            "rpo_measured_s": null,
+            "recovered": true,
+        }),
+        "a target the last test sets none of comes from the plan"
+    );
+    let orders = due_of(&rows, "orders");
+    assert_eq!(
+        (
+            &orders["last_test_origin"],
+            &orders["last_test_verdict"],
+            &orders["rto_target_s"],
+            &orders["rto_measured_s"],
+            &orders["recovered"],
+        ),
+        (
+            &json!("automated"),
+            &json!("met"),
+            &json!(10.0),
+            &json!(4.0),
+            &json!(true)
+        )
+    );
+    let archive = due_of(&rows, "archive");
+    assert_eq!(
+        (
+            &archive["state"],
+            &archive["last_test_origin"],
+            &archive["rto_target_s"],
+            &archive["rpo_target_s"],
+            &archive["recovered"],
+        ),
+        (
+            &json!("never_tested"),
+            &Value::Null,
+            &json!(120.0),
+            &json!(60.0),
+            &Value::Null
+        ),
+        "with no last test the targets are those of the plan"
+    );
+
+    let one = reader
+        .dr_targets(&default_scope(), Some("ledger"), AS_OF)
+        .unwrap();
+    assert_eq!(one.len(), 1);
+    assert_eq!(one[0]["target_system"], "ledger");
+    let staging = DrScope {
+        envs: vec!["staging".into()],
+        ..default_scope()
+    };
+    assert!(reader.dr_targets(&staging, None, AS_OF).unwrap().is_empty());
 }

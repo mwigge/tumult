@@ -54,7 +54,12 @@ pub(crate) struct SuppressRequest {
     actor: Option<String>,
 }
 
-fn envs_for(principal: &Principal, env: Option<String>) -> Result<Vec<String>, ApiError> {
+/// The environments a read of `principal` covers: its scopes, or `env`
+/// alone when it is one of them (`403` when it is not).
+pub(crate) fn envs_for(
+    principal: &Principal,
+    env: Option<String>,
+) -> Result<Vec<String>, ApiError> {
     let Some(env) = env else {
         return Ok(principal.env_scopes.clone());
     };

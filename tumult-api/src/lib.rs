@@ -124,6 +124,13 @@
 //!   gated and recorded when a policy is loaded (Operator);
 //!   `GET /api/posture?env=` — the continuous posture score next to the
 //!   risk summary and the top findings.
+//! * `GET /api/dr?target=&environment=&from=&to=&limit=&cursor=`: the DR
+//!   view. Per target of the DR test register: its state (`ok`, `due`,
+//!   `overdue`, `never_tested`), last DR test, next due date and interval,
+//!   covering plan, and RTO and RPO. Then the DR tests of the period (by
+//!   default the last 365 days), newest first and paged as the entity list
+//!   is, and the counts per state, origin and verdict. A query field it
+//!   does not know is refused.
 //! * `GET /api/dora?lei=&profile=&by=entity|org&env=` — DORA coverage per
 //!   article and function of one legal entity, each number with its
 //!   unknown share, the expectation table (expected against actual
@@ -560,6 +567,7 @@ pub fn router(state: ApiState) -> Router {
             post(handlers::recommend::recommend),
         )
         .route("/api/posture", get(handlers::risks::posture))
+        .route("/api/dr", get(handlers::dr::view))
         .route("/api/forecast", get(forecast::forecast))
         .route("/api/runs/{id}/impact", get(forecast::run_impact))
         .route(

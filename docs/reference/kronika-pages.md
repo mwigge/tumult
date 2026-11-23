@@ -553,6 +553,25 @@ Route `/login`. Sign in, and change the password at the first sign in.
   `POST /api/manual/experiments/{id}/attachments` and
   `GET /api/manual/experiments/{id}/attachments/{attachment_id}/file`, see
   [Attach a file](#attach-a-file).
+- The DR view: `GET /api/dr`. It holds:
+  - `targets`: each target of the register in
+    [When a DR test is overdue](#when-a-dr-test-is-overdue). Each has its
+    state (`ok`, `due` within 30 days, `overdue` or `never_tested`), its
+    last DR test, when the next one is due and where the interval comes
+    from (`plan`, `function` or `default`), and the plan that covers it.
+    It also has the RTO and RPO of its last test, or of the plan where the
+    last test sets none, and what the last test measured.
+  - `tests`: the DR tests of the period, newest first, with the columns of
+    the view [`dr_tests`](../guides/analytics-guide.md#dr-tests).
+  - `summary`: the targets per state, and the tests of the period per
+    origin and verdict.
+
+  `from` and `to` set the period in unix nanoseconds, both ends included.
+  By default it is the 365 days up to now. The period selects the tests;
+  the targets are as they are now. `target` keeps one target system, and
+  `environment` one of your environments. `limit` (100 by default, 1000 at
+  most) and `cursor` page the tests as `GET /api/entities` does. A query
+  field the API does not know is refused with 400.
 
 Charts follow the theme you pick (dark, light or auto), and tooltips escape
 every value that comes from the lake.

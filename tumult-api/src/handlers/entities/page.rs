@@ -1,4 +1,4 @@
-//! Paging for the entity reads.
+//! Paging for the entity reads and the DR tests.
 //!
 //! A page is bounded twice: in rows (`limit`) and in bytes, because one
 //! row can carry 64 KiB of description and relationships. A page that
@@ -33,13 +33,13 @@ const MAX_CURSOR_LEN: usize = 64 * 1024;
 
 const INVALID_CURSOR: &str = "invalid cursor";
 
-pub(super) fn row_limit(limit: Option<u32>) -> u32 {
+pub(crate) fn row_limit(limit: Option<u32>) -> u32 {
     limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT)
 }
 
 /// `position` as the text a client sends back: its JSON in hexadecimal,
 /// which needs no encoding in a URL.
-pub(super) fn encode_cursor<T: Serialize>(position: &T) -> Result<String, String> {
+pub(crate) fn encode_cursor<T: Serialize>(position: &T) -> Result<String, String> {
     use std::fmt::Write as _;
     let json = serde_json::to_vec(position).map_err(|e| e.to_string())?;
     let mut text = String::with_capacity(json.len() * 2);
@@ -62,7 +62,7 @@ fn hex_bytes(text: &str) -> Option<Vec<u8>> {
 
 /// The position a `cursor` parameter names; none when it is absent or
 /// empty.
-pub(super) fn decode_cursor<T: DeserializeOwned>(text: Option<&str>) -> Result<Option<T>, String> {
+pub(crate) fn decode_cursor<T: DeserializeOwned>(text: Option<&str>) -> Result<Option<T>, String> {
     let Some(text) = text.filter(|text| !text.is_empty()) else {
         return Ok(None);
     };
