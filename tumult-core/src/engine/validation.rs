@@ -24,7 +24,11 @@ use super::EngineError;
 /// This holds for every step: method, rollbacks, hypothesis probes, guards and controls.
 /// Returns [`EngineError::InvalidSeconds`] if a timeout or a pause of any of those steps,
 /// or the duration of a flat load, is not a number of seconds from 0 up to 2^64.
-/// Returns [`EngineError::NfrInvalid`] if an objective names a metric no run can measure.
+/// Returns [`EngineError::NfrInvalid`] if an objective names a metric no run can measure,
+/// or a metric that does not measure the kind of the objective.
+/// Returns [`EngineError::RecoveryInvalid`] if the `recovery` block asks for a window
+/// that is not above 0 or longer than an hour, or for an interval longer than the window.
+/// An RTO longer than the window is valid and logs `recovery.window.shorter_than_rto`.
 /// Returns [`EngineError::LoadProfileInvalid`] if the load names a tool with no adapter,
 /// an oha threshold the adapter does not check, or a profile that does not fit the run.
 ///
@@ -53,6 +57,7 @@ use super::EngineError;
 ///     nfr: vec![],
 ///     rto_target_s: None,
 ///     rpo_target_s: None,
+///     recovery: None,
 ///     method: vec![Activity {
 ///         name: "action-1".into(),
 ///         activity_type: ActivityType::Action,
@@ -94,6 +99,7 @@ use super::EngineError;
 ///     nfr: vec![],
 ///     rto_target_s: None,
 ///     rpo_target_s: None,
+///     recovery: None,
 ///     method: vec![],
 ///     rollbacks: vec![],
 ///     estimate: None,
@@ -123,6 +129,7 @@ pub fn validate_experiment(experiment: &Experiment) -> Result<(), EngineError> {
     }
 
     validate_objectives(experiment)?;
+    validate_recovery(experiment)?;
     validate_load(experiment)?;
     validate_target_version(experiment)?;
 
@@ -326,6 +333,12 @@ fn validate_objectives(experiment: &Experiment) -> Result<(), EngineError> {
                 reason,
             });
         }
+        if let Some(reason) = crate::runner::nfr::kind_fault(o.kind, &o.metric) {
+            return Err(EngineError::NfrInvalid {
+                id: o.id.clone(),
+                reason,
+            });
+        }
         if !o.threshold.is_finite() {
             return Err(EngineError::NfrInvalid {
                 id: o.id.clone(),
@@ -351,6 +364,27 @@ fn validate_objectives(experiment: &Experiment) -> Result<(), EngineError> {
     }
     if experiment.kind == TestKind::Dr && experiment.rto_target_s.is_none() {
         return Err(EngineError::DrRequiresRto);
+    }
+    Ok(())
+}
+
+/// The recovery window must be one the post phase can watch. An RTO longer
+/// than the window is valid, but a run that recovers after the window and
+/// within the RTO breaches it: validation logs a warning.
+fn validate_recovery(experiment: &Experiment) -> Result<(), EngineError> {
+    let recovery = experiment.recovery.unwrap_or_default();
+    if let Some(reason) = recovery.invalid_reason() {
+        return Err(EngineError::RecoveryInvalid { reason });
+    }
+    if let Some(rto_target_s) = experiment
+        .rto_target_s
+        .filter(|rto_target_s| *rto_target_s > recovery.window_s)
+    {
+        tracing::warn!(
+            rto_target_s,
+            window_s = recovery.window_s,
+            "recovery.window.shorter_than_rto"
+        );
     }
     Ok(())
 }

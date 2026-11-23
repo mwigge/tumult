@@ -169,6 +169,10 @@ pub(crate) enum Commands {
         /// observed from the target's telemetry when the run ends
         #[arg(long, value_name = "VERSION")]
         target_version: Option<String>,
+        /// Seconds the run watches for recovery after the method, at most
+        /// 3600; sets `recovery.window_s` of the file for this run
+        #[arg(long, value_name = "SECONDS")]
+        recovery_window: Option<f64>,
         /// Run a load test concurrently with the experiment method
         #[arg(long, value_enum)]
         load: Option<LoadToolArg>,
@@ -186,6 +190,9 @@ pub(crate) enum Commands {
     Validate {
         /// Path to experiment .toon file
         experiment: PathBuf,
+        /// The value the run gives a template variable: KEY=VALUE (may be repeated)
+        #[arg(long = "var", value_name = "KEY=VALUE", action = clap::ArgAction::Append)]
+        vars: Vec<String>,
     },
     /// List all discovered plugins, actions, and probes
     Discover {

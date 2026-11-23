@@ -5,8 +5,8 @@
 #![cfg(feature = "duckdb")]
 
 use tumult_lake::{
-    AttachmentKind, ExerciseType, ManualError, ManualOutcome, NewManualExperiment, Store, Writer,
-    CURRENT_SCHEMA_VERSION,
+    AttachmentKind, ExerciseDetail, ExerciseType, ManualError, ManualOutcome, NewManualExperiment,
+    Store, Writer, CURRENT_SCHEMA_VERSION,
 };
 
 const DAY: i64 = 86_400 * 1_000_000_000;
@@ -38,6 +38,7 @@ fn draft(by: &str) -> NewManualExperiment {
         attestation: "I attest this record reflects the exercise as executed.".into(),
         renewal_due_ns: Some(190 * DAY),
         framework_refs: vec!["DORA Art. 24(6)".into()],
+        exercise: ExerciseDetail::default(),
     }
 }
 

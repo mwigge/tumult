@@ -33,6 +33,8 @@ opentelemetry.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }
+# Builds a request body of many frames, to read the drain of a refused upload.
+http-body = "1"
 tempfile.workspace = true
 async-trait.workspace = true
 opentelemetry_sdk = { workspace = true, features = ["testing"] }

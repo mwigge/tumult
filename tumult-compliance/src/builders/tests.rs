@@ -380,6 +380,7 @@ fn findings_fixture() -> (tempfile::TempDir, tumult_lake::Store) {
             attestation: "I attest this record reflects the exercise.".into(),
             renewal_due_ns: None,
             framework_refs: vec!["DORA Art. 24(6)".into(), "ISO 27001 A.5.29".into()],
+            exercise: tumult_lake::ExerciseDetail::default(),
         })
         .unwrap();
     writer.submit_manual(&id, None, "alice").unwrap();
@@ -2986,6 +2987,7 @@ fn a_domain_with_nothing_scored_shows_no_score() {
             attestation: "I attest this record reflects the exercise.".into(),
             renewal_due_ns: None,
             framework_refs: vec![],
+            exercise: tumult_lake::ExerciseDetail::default(),
         })
         .unwrap();
 

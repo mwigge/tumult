@@ -56,15 +56,14 @@ impl Lab {
         }
     }
 
-    /// One fault that writes `after` to the state file, a steady state that
-    /// holds while the file says `ok`, one rollback and a declared blast
+    /// One fault that runs `fault` in the lab, a steady state that holds
+    /// while the state file says `ok`, one rollback and a declared blast
     /// radius.
-    fn experiment(&self, title: &str, after: &str) -> Experiment {
+    fn experiment(&self, title: &str, fault: &str) -> Experiment {
         let mut probe = self.step("steady", ActivityType::Probe, "cat state");
         probe.tolerance = Some(Tolerance::Regex {
             pattern: "^ok$".into(),
         });
-        let fault = format!("echo {after} > state");
         Experiment {
             title: title.into(),
             steady_state_hypothesis: Some(Hypothesis {
@@ -72,7 +71,7 @@ impl Lab {
                 probes: vec![probe],
             }),
             blast_radius: Some("one replica".into()),
-            method: vec![self.step("kill-replica", ActivityType::Action, &fault)],
+            method: vec![self.step("kill-replica", ActivityType::Action, fault)],
             rollbacks: vec![self.step("restart-replica", ActivityType::Action, "touch restarted")],
             ..Experiment::default()
         }
@@ -93,16 +92,23 @@ fn rows(spans: Vec<SpanData>) -> Vec<tumult_lake::SpanRow> {
 /// Run an experiment whose target says `after` once the fault is in, and
 /// build the report of that run from a store that holds only its spans.
 fn report_of_a_run(title: &str, after: &str) -> (Journal, ReportDoc) {
+    report_of(title, &format!("echo {after} > state"))
+}
+
+/// Run an experiment whose fault runs `fault` in the lab, and build the
+/// report of that run from a store that holds only its spans.
+fn report_of(title: &str, fault: &str) -> (Journal, ReportDoc) {
     let lab = Lab::new();
     let executor: Arc<dyn ActivityExecutor> = Arc::new(ProviderExecutor::new());
     let sampling = SamplingConfig {
         interval: Duration::from_millis(10),
         max_during_samples: 50,
         recovery_timeout: Duration::from_millis(500),
+        recovery_interval: Duration::from_millis(10),
     };
     let (journal, spans) = capture_spans(|| {
         run_experiment_with_sampling(
-            &lab.experiment(title, after),
+            &lab.experiment(title, fault),
             &executor,
             &Arc::new(ControlRegistry::new()),
             &RunConfig::default(),
@@ -220,7 +226,12 @@ fn spans_in_timeline(doc: &ReportDoc, name: &str, status: &str) -> usize {
 
 #[test]
 fn the_report_of_a_completed_run_shows_what_the_run_measured() {
-    let (journal, doc) = report_of_a_run("replica loss", "ok");
+    // The target is down for a tenth of a second, so the probes see an
+    // outage and its recovery.
+    let (journal, doc) = report_of(
+        "replica loss",
+        "echo down > state; sleep 0.1; echo ok > state",
+    );
     assert_eq!(journal.status, ExperimentStatus::Completed);
 
     assert_eq!(value(&doc, "Experiment"), "replica loss");

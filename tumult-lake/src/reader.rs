@@ -1,5 +1,7 @@
 //! The read side of the store (split out of the crate root).
 
+use std::path::PathBuf;
+
 use duckdb::Connection;
 
 use crate::error::StoreError;
@@ -9,6 +11,8 @@ use crate::store::{query_json_rows, query_json_rows_bound};
 /// The read side of the store (read-only `DuckDB` connection).
 pub struct Reader {
     pub(crate) conn: Connection,
+    /// The database file, next to which the lake keeps its files.
+    pub(crate) path: PathBuf,
 }
 
 impl Reader {

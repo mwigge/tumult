@@ -3,7 +3,7 @@
 use crate::controls::ControlRegistry;
 use crate::types::{
     Experiment, ExperimentStatus, GameDay, GameDayExperiment, GameDayJournal, Journal, LoadConfig,
-    LoadResult, ResilienceScore,
+    LoadResult, ResilienceScore, ScoringConfig,
 };
 
 use opentelemetry::trace::{Status, TraceContextExt, Tracer};
@@ -312,8 +312,8 @@ pub fn run_gameday_with_wiring(
         0.0
     };
 
-    // Recovery compliance: check MTTR against target
-    let recovery = compute_recovery_compliance(&journals, gameday.scoring.mttr_target_s);
+    // Recovery compliance: each run against its RTO, or the game day target
+    let recovery = compute_recovery_compliance(&journals, &gameday.scoring);
 
     let load_impact = load_impact_tolerance(gameday.load.as_ref(), load_result.as_ref());
 
@@ -356,17 +356,23 @@ fn load_impact_tolerance(declared: Option<&LoadConfig>, result: Option<&LoadResu
 }
 
 /// Computes recovery compliance score from MTTR data in journals: of the
-/// runs that watched for recovery, the share that measured one within the
-/// target. A run that measured none, because the target did not come back or
-/// its method failed, is not within the target. The rule is the one of
-/// [`ComplianceSignals`](crate::compliance::ComplianceSignals).
-fn compute_recovery_compliance(journals: &[Journal], mttr_target_s: f64) -> f64 {
+/// runs that measured a recovery, the share that came back within the RTO
+/// of the run, or within `scoring.mttr_target_s` for a run that declares
+/// none. A run that watched to the end and did not see its target come back
+/// is not within it. A run that watched and measured no recovery (no outage
+/// seen, method failed, watch cut short) is left out, or counts as a
+/// recovery that failed when `scoring.recovery_required` is set. `None`
+/// when no run is left to score: the recovery was not measured. The rule is
+/// the one of [`ComplianceSignals`](crate::compliance::ComplianceSignals).
+fn compute_recovery_compliance(journals: &[Journal], scoring: &ScoringConfig) -> Option<f64> {
     let mut signals = crate::compliance::ComplianceSignals::default();
     for journal in journals {
         signals.accumulate(journal);
     }
-    // No run watched for recovery: nothing speaks against the game day.
-    signals.recovery_compliance(mttr_target_s).unwrap_or(1.0)
+    if scoring.recovery_required {
+        return signals.required_recovery_compliance(scoring.mttr_target_s);
+    }
+    signals.recovery_compliance(scoring.mttr_target_s)
 }
 
 /// Computes compliance coverage from article mappings.

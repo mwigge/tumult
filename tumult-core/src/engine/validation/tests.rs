@@ -57,6 +57,7 @@ fn validate_rejects_empty_method() {
         nfr: vec![],
         rto_target_s: None,
         rpo_target_s: None,
+        recovery: None,
     };
     assert!(validate_experiment(&exp).is_err());
 }
@@ -102,6 +103,7 @@ fn validate_rejects_empty_hypothesis_probes() {
         nfr: vec![],
         rto_target_s: None,
         rpo_target_s: None,
+        recovery: None,
     };
     let err = validate_experiment(&exp).unwrap_err();
     assert!(err.to_string().contains("no probes"));
@@ -145,6 +147,7 @@ fn validate_accepts_experiment_with_method() {
         nfr: vec![],
         rto_target_s: None,
         rpo_target_s: None,
+        recovery: None,
     };
     assert!(validate_experiment(&exp).is_ok());
 }
@@ -479,6 +482,100 @@ fn validate_rejects_bad_recovery_targets_and_dr_without_rto() {
     ));
 }
 
+fn with_recovery(window_s: f64, interval_s: f64) -> Experiment {
+    with_method(Experiment {
+        recovery: Some(RecoveryConfig {
+            window_s,
+            interval_s,
+        }),
+        ..Default::default()
+    })
+}
+
+fn recovery_error(exp: &Experiment) -> String {
+    match validate_experiment(exp) {
+        Err(EngineError::RecoveryInvalid { reason }) => reason,
+        other => panic!("expected a recovery error, got {other:?}"),
+    }
+}
+
+#[test]
+fn a_recovery_window_of_up_to_an_hour_is_valid() {
+    for (window_s, interval_s) in [(30.0, 1.0), (3600.0, 1.0), (0.5, 0.5), (90.0, 5.0)] {
+        let outcome = validate_experiment(&with_recovery(window_s, interval_s));
+        assert!(outcome.is_ok(), "{window_s}/{interval_s}: {outcome:?}");
+    }
+}
+
+#[test]
+fn a_recovery_window_above_an_hour_is_refused() {
+    for window_s in [3600.5, 86_400.0, f64::INFINITY] {
+        let reason = recovery_error(&with_recovery(window_s, 1.0));
+        assert!(
+            reason.contains("window_s") && reason.contains("3600"),
+            "{reason}"
+        );
+    }
+}
+
+#[test]
+fn a_recovery_window_and_interval_must_be_above_zero() {
+    for window_s in [0.0, -1.0, f64::NAN] {
+        let reason = recovery_error(&with_recovery(window_s, 1.0));
+        assert_eq!(reason, "window_s must be above 0", "{window_s}");
+    }
+    for interval_s in [0.0, -0.5, f64::NAN] {
+        let reason = recovery_error(&with_recovery(30.0, interval_s));
+        assert_eq!(reason, "interval_s must be above 0", "{interval_s}");
+    }
+}
+
+#[test]
+fn a_recovery_interval_longer_than_the_window_is_refused() {
+    let reason = recovery_error(&with_recovery(5.0, 10.0));
+    assert_eq!(reason, "interval_s must not exceed window_s");
+}
+
+/// A run that recovers after its window but within its RTO is breached:
+/// validation says so once, and the experiment stays valid.
+#[test]
+fn an_rto_longer_than_the_recovery_window_is_valid_with_one_warning() {
+    let warnings_of = |exp: &Experiment| {
+        let captured = tumult_otel::logging::testing::capture_json(tracing::Level::TRACE, || {
+            let outcome = validate_experiment(exp);
+            assert!(outcome.is_ok(), "{outcome:?}");
+        });
+        captured
+            .events
+            .into_iter()
+            .filter(|event| event["message"] == "recovery.window.shorter_than_rto")
+            .collect::<Vec<_>>()
+    };
+    let dr = |rto_target_s: f64, recovery: Option<RecoveryConfig>| {
+        with_method(Experiment {
+            kind: TestKind::Dr,
+            rto_target_s: Some(rto_target_s),
+            recovery,
+            ..Default::default()
+        })
+    };
+
+    // Without a block the window is 30 seconds.
+    let warnings = warnings_of(&dr(60.0, None));
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    assert_eq!(warnings[0]["level"], "WARN");
+    assert_eq!(warnings[0]["rto_target_s"], 60.0);
+    assert_eq!(warnings[0]["window_s"], 30.0);
+
+    let watched = Some(RecoveryConfig {
+        window_s: 60.0,
+        interval_s: 1.0,
+    });
+    assert!(warnings_of(&dr(60.0, watched)).is_empty());
+    assert!(warnings_of(&dr(30.0, None)).is_empty());
+    assert!(warnings_of(&with_method(Experiment::default())).is_empty());
+}
+
 fn with_load(
     profile: Option<LoadProfile>,
     vus: Option<u32>,
@@ -734,7 +831,14 @@ fn hypothesis(probe: &str) -> Hypothesis {
 /// An experiment with one objective on `metric` and a hypothesis probe
 /// named `health`.
 fn with_metric(metric: &str) -> Experiment {
+    with_kind_and_metric(NfrKind::Latency, metric)
+}
+
+/// An experiment with one objective of `kind` on `metric` and a
+/// hypothesis probe named `health`.
+fn with_kind_and_metric(kind: NfrKind, metric: &str) -> Experiment {
     let mut measured = objective("a");
+    measured.kind = kind;
     measured.metric = metric.into();
     with_method(Experiment {
         nfr: vec![measured],
@@ -744,28 +848,93 @@ fn with_metric(metric: &str) -> Experiment {
 }
 
 #[test]
-fn every_metric_of_the_catalogue_is_accepted() {
+fn every_metric_of_the_catalogue_is_accepted_with_a_kind_it_measures() {
+    for (metric, kind) in [
+        ("load.throughput_rps", NfrKind::Throughput),
+        ("load.throughput_rps", NfrKind::Capacity),
+        ("load.latency_p50_ms", NfrKind::Latency),
+        ("load.latency_p95_ms", NfrKind::Latency),
+        ("load.latency_p99_ms", NfrKind::Latency),
+        ("load.error_rate", NfrKind::ErrorRate),
+        ("load.error_rate", NfrKind::Availability),
+        ("load.total_requests", NfrKind::Throughput),
+        ("recovery.mttr_s", NfrKind::Rto),
+        ("recovery.time_s", NfrKind::Recovery),
+        ("during.error_rate", NfrKind::ErrorRate),
+        ("during.availability", NfrKind::Availability),
+        ("post.error_rate", NfrKind::ErrorRate),
+        ("post.availability", NfrKind::Availability),
+        ("fault.duration_s", NfrKind::Recovery),
+        ("probe.health.mean_ms", NfrKind::Latency),
+        ("probe.health.max_ms", NfrKind::Latency),
+        ("probe.health.p95_ms", NfrKind::Latency),
+        ("probe.health.error_rate", NfrKind::ErrorRate),
+        ("probe.health.error_rate", NfrKind::DataIntegrity),
+    ] {
+        let outcome = validate_experiment(&with_kind_and_metric(kind, metric));
+        assert!(outcome.is_ok(), "{kind} on {metric}: {outcome:?}");
+    }
+}
+
+#[test]
+fn an_objective_whose_kind_its_metric_does_not_measure_is_refused_and_named() {
+    for (kind, metric) in [
+        (NfrKind::Latency, "during.availability"),
+        (NfrKind::Rto, "load.latency_p95_ms"),
+        (NfrKind::Availability, "recovery.mttr_s"),
+        (NfrKind::Throughput, "probe.health.p95_ms"),
+        (NfrKind::DataIntegrity, "load.error_rate"),
+        (NfrKind::Capacity, "fault.duration_s"),
+    ] {
+        let err = validate_experiment(&with_kind_and_metric(kind, metric)).unwrap_err();
+        assert!(
+            matches!(err, EngineError::NfrInvalid { .. }),
+            "{kind} on {metric}: {err}"
+        );
+        let named = format!("kind {kind} does not fit metric '{metric}'");
+        assert!(err.to_string().contains(&named), "{err}");
+    }
+}
+
+#[test]
+fn a_refused_kind_is_told_the_metrics_that_measure_it() {
+    let err = validate_experiment(&with_kind_and_metric(
+        NfrKind::Latency,
+        "during.availability",
+    ))
+    .unwrap_err();
+    assert_eq!(
+        err.to_string(),
+        "nfr objective 'a' is invalid: kind latency does not fit metric \
+         'during.availability', which measures error_rate or availability; the metrics of \
+         latency are load.latency_p50_ms, load.latency_p95_ms, load.latency_p99_ms, \
+         probe.<name>.mean_ms, probe.<name>.max_ms, probe.<name>.p95_ms"
+    );
+}
+
+/// No metric of the catalogue counts lost data, so an `rpo` objective has
+/// nothing to measure it. Before, any metric passed for one.
+#[test]
+fn an_rpo_objective_is_refused_on_every_metric_of_the_catalogue() {
     for metric in [
         "load.throughput_rps",
-        "load.latency_p50_ms",
         "load.latency_p95_ms",
-        "load.latency_p99_ms",
         "load.error_rate",
         "load.total_requests",
         "recovery.mttr_s",
         "recovery.time_s",
-        "during.error_rate",
         "during.availability",
         "post.error_rate",
-        "post.availability",
         "fault.duration_s",
         "probe.health.mean_ms",
-        "probe.health.max_ms",
-        "probe.health.p95_ms",
         "probe.health.error_rate",
     ] {
-        let outcome = validate_experiment(&with_metric(metric));
-        assert!(outcome.is_ok(), "{metric}: {outcome:?}");
+        let err = validate_experiment(&with_kind_and_metric(NfrKind::Rpo, metric)).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("no metric of the catalogue measures rpo"),
+            "{metric}: {err}"
+        );
     }
 }
 

@@ -70,6 +70,7 @@ fn run(probe: Activity) -> (ExperimentStatus, [f64; 3]) {
         interval: Duration::from_millis(10),
         max_during_samples: 50,
         recovery_timeout: Duration::from_millis(200),
+        recovery_interval: Duration::from_millis(10),
     };
     let journal = run_experiment_with_sampling(
         &experiment,

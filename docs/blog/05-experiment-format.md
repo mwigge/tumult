@@ -173,6 +173,10 @@ If **any** probe fails its tolerance, the hypothesis is not met. Failing the hyp
 The method is the ordered sequence of fault injection steps. Actions change system state. Probes observe it.
 
 ```toon
+configuration:
+  redis_host:
+    type: env
+    key: REDIS_HOST
 method[3]:
   - name: flush-redis-cache
     activity_type: action

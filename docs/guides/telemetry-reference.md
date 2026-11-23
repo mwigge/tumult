@@ -61,7 +61,7 @@ so the trace starts at the tool call.
 | | `resilience.test.kind` | Kind of test, such as `chaos` |
 | | `resilience.outcome.status` | `completed`, `deviated`, `failed`, `aborted`, `interrupted` or `halted` |
 | | `resilience.outcome.hypothesis_met` | Whether the steady state held, when the run judged it |
-| | `resilience.outcome.recovery_time_s` | Seconds to recover, when the run saw it |
+| | `resilience.outcome.recovery_time_s` | Seconds from the outage the probes saw to their recovery, when the run saw both |
 | `resilience.action`, `resilience.probe` | `resilience.action.name` | Name of the step, on probes too |
 | | `resilience.activity.type` | `action` or `probe` |
 | | `resilience.plugin.name` | The plugin that ran it |

@@ -165,6 +165,7 @@ fn sampling(rounds: u32) -> SamplingConfig {
         interval: Duration::from_millis(10),
         max_during_samples: rounds,
         recovery_timeout: Duration::from_secs(5),
+        recovery_interval: Duration::from_millis(10),
     }
 }
 

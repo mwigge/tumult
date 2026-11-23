@@ -366,6 +366,7 @@ fn main() {
         attestation: "I attest this record reflects the exercise as executed.".into(),
         renewal_due_ns: Some(now + 90 * DAY),
         framework_refs: vec!["DORA Art. 24(6)".into(), "ISO 27001 A.5.30".into()],
+        exercise: tumult_lake::ExerciseDetail::default(),
     };
     let verified = writer
         .create_manual_draft(&manual(

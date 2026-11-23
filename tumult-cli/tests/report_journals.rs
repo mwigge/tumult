@@ -409,6 +409,40 @@ fn the_rto_of_a_run_that_never_recovered_says_so_and_has_no_margin() {
 }
 
 #[test]
+fn the_rto_of_a_run_that_saw_no_outage_says_so() {
+    let html = report_for(&Journal {
+        objectives: Some(ObjectiveOutcome {
+            rto_target_s: Some(2.0),
+            verdicts: vec![NfrVerdict {
+                kind: NfrKind::Rto,
+                metric: "recovery.mttr_s".into(),
+                criticality: NfrCriticality::Blocking,
+                reason: Some(NfrVerdict::NO_OUTAGE_OBSERVED.into()),
+                ..verdict("rto", NfrOperator::Lte, 2.0, NfrState::Inconclusive)
+            }],
+            ..ObjectiveOutcome::default()
+        }),
+        ..journal()
+    });
+
+    let objectives = section(&html, "objectives");
+    assert_eq!(
+        rows(objectives)[3],
+        row(&[
+            "rto",
+            "rto",
+            "recovery.mttr_s",
+            "at most 2",
+            "no outage observed",
+            "",
+            "inconclusive",
+            "blocking"
+        ])
+    );
+    assert!(failed_rows(objectives).is_empty());
+}
+
+#[test]
 fn objectives_that_say_nothing_are_no_section() {
     let html = report_for(&Journal {
         objectives: Some(ObjectiveOutcome::default()),

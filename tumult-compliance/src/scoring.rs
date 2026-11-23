@@ -835,6 +835,7 @@ mod tests {
             attestation: "attested".into(),
             renewal_due_ns: None,
             framework_refs: vec![],
+            exercise: tumult_lake::ExerciseDetail::default(),
         };
         let verify = |name: &str, outcome: ManualOutcome| {
             let id = writer.create_manual_draft(&record(name, outcome)).unwrap();

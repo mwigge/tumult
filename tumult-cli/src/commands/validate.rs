@@ -1,10 +1,13 @@
 //! Experiment validation, plugin discovery, and path-safety helpers.
 
+use std::collections::HashMap;
 use std::path::Path;
 
 use anyhow::{bail, Context, Result};
 
-use tumult_core::engine::{parse_experiment, resolve_config, resolve_secrets, validate_experiment};
+use tumult_core::engine::{
+    parse_experiment, resolve_config, resolve_secrets, validate_experiment, validate_placeholders,
+};
 use tumult_core::types::{Experiment, Provider};
 use tumult_plugin::native::NativeExecutorRegistry;
 use tumult_plugin::registry::PluginRegistry;
@@ -12,11 +15,18 @@ use tumult_plugin::ScriptPluginManifest;
 
 // ── Validate command ──────────────────────────────────────────
 
+/// `vars` are the `--var` values the run will get: they fill `${...}`
+/// placeholders the way the run fills them.
+///
 /// # Errors
 ///
-/// Returns an error if the file cannot be read, parsed, or fails validation.
+/// Returns an error if the file cannot be read, parsed, or fails validation,
+/// or if it holds a `${...}` placeholder that nothing fills.
 #[must_use = "callers must handle validation errors"]
-pub fn cmd_validate(experiment_path: &Path) -> Result<()> {
+pub fn cmd_validate<S: ::std::hash::BuildHasher>(
+    experiment_path: &Path,
+    vars: &HashMap<String, String, S>,
+) -> Result<()> {
     // S-C3: File size limit before deserialization (10MB max) — same guard
     // as `cmd_run`, so a file too large to run is too large to validate.
     let file_size = std::fs::metadata(experiment_path).map_or(0, |m| m.len());
@@ -51,6 +61,7 @@ pub fn cmd_validate(experiment_path: &Path) -> Result<()> {
     };
 
     validate_experiment(&experiment)?;
+    validate_placeholders(&experiment, vars)?;
 
     refuse_unknown_plugin_refs(&experiment)?;
 
@@ -380,7 +391,7 @@ mod tests {
         let path = dir.path().join("q2.gameday.toon");
         std::fs::write(&path, GAMEDAY_TOON).unwrap();
 
-        let err = cmd_validate(&path).unwrap_err();
+        let err = cmd_validate(&path, &HashMap::new()).unwrap_err();
         let msg = err.to_string();
         assert!(msg.contains("looks like a GameDay file"), "{msg}");
         assert!(msg.contains("tumult gameday run"), "{msg}");
@@ -392,7 +403,7 @@ mod tests {
         let path = dir.path().join("campaign.toon");
         std::fs::write(&path, GAMEDAY_TOON).unwrap();
 
-        let err = cmd_validate(&path).unwrap_err();
+        let err = cmd_validate(&path, &HashMap::new()).unwrap_err();
         assert!(err.to_string().contains("tumult gameday run"), "{err}");
     }
 
@@ -402,7 +413,7 @@ mod tests {
         let path = dir.path().join("experiment.toon");
         std::fs::write(&path, "unknown_field: 1\n").unwrap();
 
-        let err = cmd_validate(&path).unwrap_err();
+        let err = cmd_validate(&path, &HashMap::new()).unwrap_err();
         let msg = err.to_string();
         assert!(msg.contains("failed to parse experiment"), "{msg}");
         assert!(!msg.contains("gameday"), "{msg}");

@@ -3,7 +3,7 @@
 
 use super::*;
 use crate::controls::ControlRegistry;
-use crate::runner::phases::{build_post_result, collect_post_samples};
+use crate::runner::phases::{build_post_result, collect_post_samples, samples_for_journal};
 use std::sync::atomic::AtomicI64;
 use std::sync::Mutex;
 use std::time::Duration;
@@ -80,6 +80,7 @@ fn during_samples_interleave_with_method_execution() {
         interval: Duration::from_millis(20),
         max_during_samples: 100,
         recovery_timeout: Duration::from_millis(200),
+        recovery_interval: Duration::from_millis(20),
     };
 
     let journal =
@@ -184,7 +185,13 @@ fn post_phase_samples_until_probe_recovers() {
         "two failing rounds plus the recovering round"
     );
 
-    let post = build_post_result(started_at_ns, ended_at_ns, &samples).unwrap();
+    let post = build_post_result(
+        started_at_ns,
+        ended_at_ns,
+        &samples,
+        &samples_for_journal(SamplePhase::Post, &samples),
+    )
+    .unwrap();
     assert!(post.full_recovery);
     assert!(post.probes[0].returned_to_baseline);
     assert!(
@@ -193,7 +200,10 @@ fn post_phase_samples_until_probe_recovers() {
         post.recovery_time_s
     );
     assert!(post.recovery_time_s <= post.duration_s);
-    assert_eq!(post.mttr_s, Some(post.recovery_time_s));
+    // The outage was seen at the first sample, just after the phase began.
+    assert_eq!(post.impact_observed, Some(true));
+    let mttr = post.mttr_s.expect("the recovery was seen");
+    assert!(mttr > 0.0 && mttr <= post.recovery_time_s, "{post:?}");
 }
 
 #[test]
@@ -226,7 +236,13 @@ fn post_phase_stops_at_timeout_when_probe_never_recovers() {
         probe_samples.len()
     );
 
-    let post = build_post_result(started_at_ns, ended_at_ns, &samples).unwrap();
+    let post = build_post_result(
+        started_at_ns,
+        ended_at_ns,
+        &samples,
+        &samples_for_journal(SamplePhase::Post, &samples),
+    )
+    .unwrap();
     assert!(!post.full_recovery);
     assert!(!post.probes[0].returned_to_baseline);
     assert_eq!(
@@ -314,4 +330,51 @@ fn empty_probe_list_skips_sampling_phases() {
         started.elapsed() < Duration::from_secs(5),
         "no-probe experiments must not wait on sampling loops"
     );
+}
+
+// -- Tests: the recovery window comes from the experiment
+
+#[test]
+fn an_experiment_without_a_recovery_block_watches_as_before() {
+    let sampling = SamplingConfig::for_experiment(&minimal_experiment()).unwrap();
+
+    assert_eq!(sampling.recovery_timeout, Duration::from_secs(30));
+    assert_eq!(sampling.recovery_interval, Duration::from_secs(1));
+    assert_eq!(sampling.interval, Duration::from_secs(1));
+    assert_eq!(sampling.max_during_samples, 300);
+}
+
+#[test]
+fn the_recovery_block_sets_the_window_and_interval_of_the_post_phase_only() {
+    let mut exp = minimal_experiment();
+    exp.recovery = Some(RecoveryConfig {
+        window_s: 90.0,
+        interval_s: 2.5,
+    });
+
+    let sampling = SamplingConfig::for_experiment(&exp).unwrap();
+
+    assert_eq!(sampling.recovery_timeout, Duration::from_secs(90));
+    assert_eq!(sampling.recovery_interval, Duration::from_millis(2500));
+    // The during phase and the guards keep their pace.
+    assert_eq!(sampling.interval, Duration::from_secs(1));
+    assert_eq!(sampling.max_during_samples, 300);
+}
+
+#[test]
+fn a_recovery_block_the_runner_cannot_watch_is_an_error() {
+    for (window_s, interval_s) in [(3601.0, 1.0), (0.0, 1.0), (f64::NAN, 1.0), (5.0, 10.0)] {
+        let mut exp = minimal_experiment();
+        exp.recovery = Some(RecoveryConfig {
+            window_s,
+            interval_s,
+        });
+
+        let refused = SamplingConfig::for_experiment(&exp);
+
+        assert!(
+            matches!(refused, Err(RunnerError::InvalidRecovery(_))),
+            "{window_s}/{interval_s}: {refused:?}"
+        );
+    }
 }

@@ -12,6 +12,8 @@
 //! - **Manual records**: verified, conclusive rows of
 //!   `manual_experiments`. A record with no target speaks for the whole
 //!   legal entity; its `framework_refs` are the requirement ids it cites.
+//!   Its recovery time is the measured RTO, and the RTO and RPO it planned
+//!   are its targets before those of its function.
 //! - **Services**: every `service.name` that emitted spans, with the
 //!   conformance level its telemetry reached inside the conformance
 //!   window. A service glob of the register that matches nothing becomes a
@@ -478,7 +480,8 @@ fn manual_sql(as_of_ns: i64, envs: &[String]) -> String {
         "SELECT m.id AS id, m.experiment_name AS name, m.exercise_type AS exercise_type, \
          m.executed_at_ns AS ts, m.outcome_status AS status, m.target_system AS system, \
          m.target_environment AS env, m.recovery_time_s AS rto_measured_s, \
-         m.framework_refs AS refs \
+         m.rto_target_s AS rto_target_s, m.rpo_target_s AS rpo_target_s, \
+         m.rpo_measured_s AS rpo_measured_s, m.framework_refs AS refs \
          FROM manual_experiments m \
          WHERE m.status = 'verified' AND m.outcome_status <> 'inconclusive' \
          AND m.executed_at_ns <= {as_of_ns}{scope} \
@@ -675,7 +678,10 @@ fn manual_of(row: &Value, functions: Vec<String>, params: &HouseParams) -> Optio
         kind: params.manual_kind(&exercise).map(str::to_owned),
         cited: cited(row),
         outcome,
+        rto_target_s: num(row, "rto_target_s"),
         rto_measured_s: num(row, "rto_measured_s"),
+        rpo_target_s: num(row, "rpo_target_s"),
+        rpo_measured_s: num(row, "rpo_measured_s"),
         ..Evidence::manual(&id, &[], &exercise, int(row, "ts")?)
     })
 }
@@ -2191,6 +2197,71 @@ functions:
         assert_eq!(
             accepted(&store, "simplified", "rts1774.art40"),
             [("j-step".to_string(), 1.0)]
+        );
+    }
+
+    /// A manual restore test is judged against the RTO and RPO it planned,
+    /// before the targets of its function.
+    #[test]
+    fn a_manual_restore_carries_its_own_recovery_targets_and_point() {
+        use tumult_lake::{ExerciseDetail, ExerciseType, ManualOutcome, NewManualExperiment};
+        let (_dir, store) = store_with(ORG);
+        let writer = store.writer().unwrap();
+        let restore = NewManualExperiment {
+            experiment_name: "ledger-restore".into(),
+            exercise_type: ExerciseType::Restore,
+            executed_at_ns: NOW - DAY_NS,
+            hypothesis: "The ledger restores within 40 minutes".into(),
+            method: "Restored last night's backup to the standby".into(),
+            outcome: ManualOutcome::Passed,
+            hypothesis_met: Some(true),
+            findings: None,
+            action_items: vec![],
+            target_system: Some("ledger".into()),
+            target_environment: Some("prod".into()),
+            blast_radius: None,
+            recovery_time_s: Some(1800.0),
+            duration_s: None,
+            entered_by: "ada".into(),
+            attestation: "a".into(),
+            renewal_due_ns: None,
+            framework_refs: vec![],
+            exercise: ExerciseDetail {
+                rto_target_s: Some(2400.0),
+                rpo_target_s: Some(60.0),
+                rpo_measured_s: Some(300.0),
+                data_verified: Some(true),
+                ..ExerciseDetail::default()
+            },
+        };
+        let id = writer.create_manual_draft(&restore).unwrap();
+        writer.submit_manual(&id, None, "ada").unwrap();
+        writer.verify_manual(&id, "bo", None).unwrap();
+        drop(writer);
+
+        let loaded = loaded(&store, request(&[]));
+        let evidence = loaded
+            .inputs
+            .evidence
+            .iter()
+            .find(|e| e.id == id)
+            .expect("the verified restore is evidence");
+        assert_eq!(evidence.kind.as_deref(), Some("dr"));
+        assert_eq!(evidence.functions, ["cif-0001"]);
+        assert_eq!(evidence.rto_target_s, Some(2400.0));
+        assert_eq!(evidence.rto_measured_s, Some(1800.0));
+        assert_eq!(evidence.rpo_target_s, Some(60.0));
+        assert_eq!(evidence.rpo_measured_s, Some(300.0));
+        // In time, but more data lost than the plan allowed.
+        let function = &loaded.inputs.functions[0];
+        assert_eq!(function.id, "cif-0001");
+        assert_eq!(
+            super::super::coverage::recovery_point_met(evidence, function),
+            Some(false)
+        );
+        assert_eq!(
+            super::super::coverage::recovery_met(evidence, function),
+            Some(false)
         );
     }
 }

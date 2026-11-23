@@ -255,6 +255,32 @@ async fn dispatch_run_dry_run_covers_every_rollback_strategy() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn dispatch_run_hands_the_recovery_window_flag_to_the_run() {
+    let dir = TempDir::new().unwrap();
+    let exp = write_experiment(dir.path());
+    let exp_arg = exp.to_str().unwrap();
+    let dry_run = |window: &'static str| {
+        [
+            "tumult",
+            "run",
+            exp_arg,
+            "--dry-run",
+            "--var",
+            "target=localhost",
+            "--recovery-window",
+            window,
+        ]
+    };
+
+    let outcome = run_argv(&dry_run("60")).await;
+    assert!(outcome.is_ok(), "{outcome:?}");
+
+    // The run checks the window of the flag: above an hour is refused.
+    let err = run_argv(&dry_run("4000")).await.unwrap_err();
+    assert!(format!("{err:#}").contains("3600"), "{err:#}");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn dispatch_run_executes_and_prints_json_journal() {
     let mut env = EnvGuard::lock();
     let dir = TempDir::new().unwrap();

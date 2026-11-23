@@ -66,6 +66,7 @@ and stores the run.
 | `--output-format <OUTPUT_FORMAT>` | none | `json`: print the journal as JSON on stdout when the run ends; the summary goes to stderr. Not with `--dry-run` |
 | `--var <KEY=VALUE>` | none | Fill `${KEY}` in every string of the file. Repeat for more |
 | `--target-version <VERSION>` | none | The version of the target this run measures, kept as `declared` |
+| `--recovery-window <SECONDS>` | none | How many seconds the run watches for recovery after the method. It sets `recovery.window_s` of the file, at most `3600` |
 | `--load <LOAD>` | none | `k6` or `oha` runs this load with the method; `none` drops the load of the file |
 | `--load-script <LOAD_SCRIPT>` | `load.js` | The k6 script, or the URL that oha calls |
 | `--load-vus <LOAD_VUS>` | `10` | Virtual users of the load |
@@ -100,10 +101,17 @@ format is in [Experiment format](experiment-format.md).
 
 ## tumult validate
 
-`tumult validate <EXPERIMENT>` checks an experiment file: its syntax, its
-structure and every plugin, action and objective metric it names. It has no
-flags. It does not read `.gameday.toon` files; `tumult gameday run` checks
-those.
+`tumult validate <EXPERIMENT> [--var <KEY=VALUE>]` checks an experiment
+file: its syntax, its structure, every plugin, action and objective metric it
+names, and that each metric measures the kind of its objective. It does not
+read `.gameday.toon` files; `tumult gameday run` checks those.
+
+| Flag | What it does |
+|---|---|
+| `--var <KEY=VALUE>` | The value the run gives `${KEY}`. Repeat for more |
+
+A `${...}` that nothing fills is refused, see
+[Variables and secrets](variables-and-secrets.md#check-the-placeholders).
 
 ## tumult discover
 
@@ -154,8 +162,15 @@ in journal files for one regulation. The mapping is in
 | `--sources` | List each mapped control with its source URL and the date it was checked. Needs no journals |
 
 The summary gives the pass rate (the share of runs that completed) and the
-share of the runs that watched for recovery whose target came back within
-30 seconds. It is evidence, not a compliance decision.
+recovery share: of the runs that measured a recovery, the share that came
+back within their own `rto_target_s`, or within 30 seconds when they
+declare none. A run that measured no recovery is left out. With no run
+left, the recovery is `not measured`, and the verdict rests on the pass
+rate only. How each run counts is in
+[Objectives](objectives.md#recovery-over-many-runs).
+
+The summary is evidence, not a compliance decision. `tumult compliance`
+exits `0` whatever the verdict, and `1` when it cannot read the journals.
 
 ## tumult report
 
@@ -301,6 +316,26 @@ experiments only. To run a GameDay on a timer, use cron or a systemd timer
 
 `tumult gameday run` writes its journal, then exits `0` when the GameDay is
 `COMPLIANT` and `1` when it is `PARTIAL`, `NON-COMPLIANT` or could not run.
+
+The GameDay score is a weighted mean of four parts. At `0.90` or more the
+GameDay is `COMPLIANT`, at `0.75` or more `PARTIAL`, and below that
+`NON-COMPLIANT`.
+
+| Part | Weight | What it is |
+|---|---|---|
+| Pass rate | 0.30 | The share of runs that completed |
+| Recovery | 0.25 | The recovery share, see below |
+| Load impact | 0.25 | The share of requests of the shared load without an error; 1 with no load |
+| Compliance | 0.20 | The share of the `compliance_maps` articles with a completed run; 1 with none |
+
+The recovery share judges each run against its own `rto_target_s`, and a
+run that declares none against `scoring.mttr_target_s` (default `30`). A
+run that measured no recovery (no outage seen, method failed, watch cut
+short) is left out. With `scoring.recovery_required: true` it counts as
+late. `tumult gameday create` writes `recovery_required: true`. When no
+run is left, the recovery is `not measured` and the other three parts share
+its weight: the score is their weighted mean over `0.75`. How each run
+counts is in [Objectives](objectives.md#recovery-over-many-runs).
 
 ## tumult mcp serve
 

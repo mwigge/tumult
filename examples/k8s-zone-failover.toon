@@ -8,6 +8,10 @@ target:
   technology: kubernetes
   environment: staging
 rto_target_s: 120
+configuration:
+  zone_a_node:
+    type: env
+    key: CHAOS_ZONE_A_NODE
 nfr[2]:
   - id: post-availability
     kind: availability
@@ -58,7 +62,7 @@ method[3]:
       plugin: tumult-kubernetes
       function: cordon_node
       arguments:
-        name: ${zone_a_node}
+        name: ${config.zone_a_node}
   - name: drain-zone-a-node
     activity_type: action
     provider:
@@ -66,7 +70,7 @@ method[3]:
       plugin: tumult-kubernetes
       function: drain_node
       arguments:
-        name: ${zone_a_node}
+        name: ${config.zone_a_node}
         grace_period_seconds: 30
     pause_after_s: 20.0
   - name: checkout-recovered-elsewhere
@@ -90,4 +94,4 @@ rollbacks[1]:
       plugin: tumult-kubernetes
       function: uncordon_node
       arguments:
-        name: ${zone_a_node}
+        name: ${config.zone_a_node}
