@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use crate::types::Experiment;
+use crate::types::{Experiment, Provider};
 
 use super::duplicate_keys::first_duplicate;
 use super::EngineError;
@@ -167,6 +167,88 @@ where
             .join(", ");
         Err(EngineError::UndefinedVars { names })
     }
+}
+
+/// Refuse a `${...}` placeholder that nothing fills, before a run takes it
+/// to a step as it stands. `vars` are the `--var` values of the run.
+///
+/// The sources are those of the run: `vars`, and the entries the file
+/// declares under `configuration` and `secrets`. Their values are not read:
+/// the run reads them when it starts, so a variable or a file that is
+/// missing now is no reason to refuse the file.
+///
+/// With a source, the run fills every placeholder and stops on one it
+/// cannot fill, so each one needs a value. With none, the run fills nothing
+/// and leaves the text as written. A placeholder in the arguments of a
+/// process step then goes to the program, where a shell can expand it, so
+/// only a placeholder anywhere else is refused.
+///
+/// # Errors
+///
+/// Returns [`EngineError::PlaceholderUndefined`] naming every placeholder
+/// that nothing fills (deduplicated, in order of first appearance).
+/// Returns [`EngineError::ParseError`] if the experiment cannot be encoded.
+pub fn validate_placeholders<S: ::std::hash::BuildHasher>(
+    experiment: &Experiment,
+    vars: &HashMap<String, String, S>,
+) -> Result<(), EngineError> {
+    let config: HashMap<String, String> = experiment
+        .configuration
+        .keys()
+        .map(|key| (key.clone(), String::new()))
+        .collect();
+    let secrets: HashMap<String, String> = experiment
+        .secrets
+        .iter()
+        .flat_map(|(group, entries)| {
+            entries
+                .keys()
+                .map(move |key| (format!("{group}.{key}"), String::new()))
+        })
+        .collect();
+    let fills = !(vars.is_empty() && config.is_empty() && secrets.is_empty());
+    let encoded = if fills {
+        toon_format::encode_default(experiment)
+    } else {
+        toon_format::encode_default(&without_process_arguments(experiment))
+    };
+    let toon = encoded.map_err(|e| EngineError::ParseError(e.to_string()))?;
+    substitute_vars(&toon, vars, &config, &secrets)
+        .map(drop)
+        .map_err(|e| match e {
+            EngineError::UndefinedVars { names } => EngineError::PlaceholderUndefined { names },
+            other => other,
+        })
+}
+
+/// `experiment` without the arguments of its process steps, which go to
+/// the program as written when the run fills nothing.
+fn without_process_arguments(experiment: &Experiment) -> Experiment {
+    let mut copy = experiment.clone();
+    let probes = copy
+        .steady_state_hypothesis
+        .iter_mut()
+        .flat_map(|hypothesis| hypothesis.probes.iter_mut());
+    let steps = copy
+        .method
+        .iter_mut()
+        .chain(copy.rollbacks.iter_mut())
+        .chain(probes)
+        .map(|step| &mut step.provider);
+    let guards = copy
+        .guards
+        .iter_mut()
+        .map(|guard| &mut guard.probe.provider);
+    let controls = copy
+        .controls
+        .iter_mut()
+        .map(|control| &mut control.provider);
+    for provider in steps.chain(guards).chain(controls) {
+        if let Provider::Process { arguments, .. } = provider {
+            arguments.clear();
+        }
+    }
+    copy
 }
 
 /// Resolve a placeholder name: bare names come from `vars` (`--var`);
@@ -362,6 +444,121 @@ mod tests {
         let secrets = HashMap::from([("db.password".into(), "s3cret".into())]);
         let result = apply_template_vars(&exp, &vars, &config, &secrets).unwrap();
         assert_eq!(result.title, "override s3cret value");
+    }
+
+    // ── placeholders at validation ────────────────────────────
+
+    /// An experiment whose one method step runs `provider`.
+    fn with_provider(provider: Provider) -> Experiment {
+        let mut exp = template_experiment("placeholders");
+        exp.method[0].provider = provider;
+        exp
+    }
+
+    /// A native step with the argument `name`, the way a node is named.
+    fn native_with_name(name: &str) -> Experiment {
+        with_provider(Provider::Native {
+            plugin: "tumult-kubernetes".into(),
+            function: "cordon_node".into(),
+            arguments: HashMap::from([("name".into(), serde_json::json!(name))]),
+        })
+    }
+
+    /// A process step that runs `command` in a shell.
+    fn shell(command: &str) -> Experiment {
+        with_provider(Provider::Process {
+            path: "sh".into(),
+            arguments: vec!["-c".into(), command.into()],
+            env: HashMap::new(),
+            timeout_s: None,
+        })
+    }
+
+    fn no_vars() -> HashMap<String, String> {
+        HashMap::new()
+    }
+
+    fn refused_names(exp: &Experiment, vars: &HashMap<String, String>) -> String {
+        match validate_placeholders(exp, vars) {
+            Err(EngineError::PlaceholderUndefined { names }) => names,
+            other => panic!("expected PlaceholderUndefined, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_placeholder_that_nothing_fills_is_refused_and_named() {
+        let exp = native_with_name("${zone_a_node}");
+        assert_eq!(refused_names(&exp, &no_vars()), "${zone_a_node}");
+        let err = validate_placeholders(&exp, &no_vars()).unwrap_err();
+        assert!(err.to_string().contains("--var name=value"), "{err}");
+    }
+
+    #[test]
+    fn a_placeholder_that_a_var_fills_passes() {
+        let exp = native_with_name("${zone_a_node}");
+        let vars = HashMap::from([("zone_a_node".into(), "node-1".into())]);
+        let outcome = validate_placeholders(&exp, &vars);
+        assert!(outcome.is_ok(), "{outcome:?}");
+    }
+
+    /// A declared entry fills its placeholder: the run reads its value when
+    /// it starts, so a variable or a file that is missing now is no reason
+    /// to refuse the file. A name that is not declared fills nothing.
+    #[test]
+    fn a_declared_entry_fills_its_placeholder_even_when_its_value_is_missing_now() {
+        let mut exp = native_with_name("${config.zone_a_node} ${secrets.kube.token}");
+        exp.configuration.insert(
+            "zone_a_node".into(),
+            ConfigValue::Env {
+                key: "TUMULT_TEST_ZONE_A_NODE_NEVER_SET".into(),
+            },
+        );
+        exp.secrets.insert(
+            "kube".into(),
+            indexmap::IndexMap::from([(
+                "token".into(),
+                SecretValue::File {
+                    path: "/nonexistent/kube-token".into(),
+                },
+            )]),
+        );
+        let outcome = validate_placeholders(&exp, &no_vars());
+        assert!(outcome.is_ok(), "{outcome:?}");
+
+        exp.method[0].name = "${config.zone_b_node} ${secrets.kube.ca}".into();
+        assert_eq!(
+            refused_names(&exp, &no_vars()),
+            "${config.zone_b_node}, ${secrets.kube.ca}"
+        );
+    }
+
+    /// With no `--var`, configuration or secrets the run fills nothing and
+    /// leaves the text as written, so a shell can expand a placeholder in
+    /// the arguments of a process step. With a source, the run fills every
+    /// placeholder, and one it cannot fill stops the run.
+    #[test]
+    fn without_a_source_a_placeholder_in_the_arguments_of_a_process_step_is_left_to_the_shell() {
+        let exp = shell("sleep \"${HOLD_S:-25}\"");
+        let outcome = validate_placeholders(&exp, &no_vars());
+        assert!(outcome.is_ok(), "{outcome:?}");
+
+        let vars = HashMap::from([("zone".into(), "a".into())]);
+        assert_eq!(refused_names(&exp, &vars), "${HOLD_S:-25}");
+
+        let mut configured = exp.clone();
+        configured
+            .configuration
+            .insert("zone".into(), ConfigValue::Inline { value: "a".into() });
+        assert_eq!(refused_names(&configured, &no_vars()), "${HOLD_S:-25}");
+    }
+
+    #[test]
+    fn an_escaped_placeholder_is_never_refused() {
+        let mut exp = native_with_name("$${zone_a_node}");
+        assert!(validate_placeholders(&exp, &no_vars()).is_ok());
+        exp.configuration
+            .insert("zone".into(), ConfigValue::Inline { value: "a".into() });
+        assert!(validate_placeholders(&exp, &no_vars()).is_ok());
     }
 
     #[test]

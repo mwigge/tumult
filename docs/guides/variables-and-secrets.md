@@ -67,6 +67,20 @@ lists each missing name.
 itself wins over them. A name that is not a valid shell name after upper casing
 is skipped, with a warning. `native` steps get none.
 
+## Check the placeholders
+
+`tumult validate` refuses a `${...}` that nothing fills, so no run sends one
+to a step as it stands. Give it the values of the run:
+`tumult validate --var name=value experiment.toon`.
+
+- With a `--var`, a `configuration` or a `secrets` section, every `${...}`
+  needs a value, as in the run. A declared entry fills its `${config.*}` or
+  `${secrets.*}` even when its variable or file is missing now: the run
+  reads it when it starts.
+- With none of them, the run leaves the text as written. A `${...}` in the
+  arguments of a `process` step goes to the program, where a shell can
+  expand it. One anywhere else is refused.
+
 ## Keep secrets out of the evidence
 
 The journal records the name, status, timing and output of each step. It never
