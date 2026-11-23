@@ -178,7 +178,8 @@ share of the runs that watched for recovery whose target came back within
 ![The HTML report of one run](../images/3.0/screenshots/report-html.png)
 
 The HTML report is one file with every table and up to five charts, and
-needs no network. `pdf` writes the HTML and prints how to turn it into a
+needs no network. Its header names the target system and the environment
+of the run, when the definition declares them. `pdf` writes the HTML and prints how to turn it into a
 PDF. `junit` has one test case per step and per steady-state check, so a
 deviated run fails in CI. `SOURCE_DATE_EPOCH` (seconds) fixes the date the
 report shows.

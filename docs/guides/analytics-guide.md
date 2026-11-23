@@ -66,12 +66,15 @@ FROM experiments;
 
 | Table | One row per |
 |---|---|
-| `experiments` | run: title, `status`, times, `duration_ms`, hypothesis before and after, `test_kind`, `target_version` |
+| `experiments` | run: title, `status`, times, `duration_ms`, hypothesis before and after, `test_kind`, `target_version`, the RTO and RPO targets and measures. What the probes saw: `impact_observed`, `outage_started_at_ns`, `recovered_at_ns`, and `mttr_s`, the time to recovery |
+| `nfr_verdicts` | objective of a run: its target, what was observed and `state`. `recovered` says whether the run recovered (the RTO only), `reason` why the verdict is what it is, such as `no outage observed` |
+| `run_roots` | run: its root span, or the same columns from the journal of a run that sent no trace. Then `recovery_time_s` is the time to recovery of the journal |
 | `activity_results` | step of a run: `name`, `activity_type`, `status`, `phase`, `duration_ms`, `output`, `error` |
 | `load_results` | load test: tool, throughput, p50, p95 and p99 latency, error rate |
 | `probe_samples` | sample of a probe or of a load window, with its phase. `value` is the probe duration, `reading` the number a `number` or `range` probe printed |
 | `spans`, `logs` | span and log record the daemon received |
 
+A column added in a later version is empty on the runs stored before it.
 `status` of a run is `completed`, `deviated`, `failed`, `aborted`,
 `interrupted` or `halted`. `phase` of a step is `hypothesis_before`,
 `method`, `hypothesis_after` or `rollback`. To see every column of a

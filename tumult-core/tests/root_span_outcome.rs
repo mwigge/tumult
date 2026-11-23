@@ -3,7 +3,9 @@
 //! Reports and the recovery numbers read the outcome of a run from its
 //! `resilience.experiment` span: the status in the spelling of the journal,
 //! whether the steady state held, the recovery time and the declared blast
-//! radius. Only a completed run has span status Ok.
+//! radius. Only a completed run has span status Ok. A run that declares an
+//! RTO or an RPO also says its targets, its verdicts, whether it saw an
+//! outage and whether it recovered, so a trace backend can tell them.
 
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -24,6 +26,24 @@ const STATUS: &str = "resilience.outcome.status";
 const HYPOTHESIS_MET: &str = "resilience.outcome.hypothesis_met";
 const RECOVERY_TIME_S: &str = "resilience.outcome.recovery_time_s";
 const BLAST_RADIUS: &str = "resilience.fault.blast_radius";
+const RTO_TARGET_S: &str = "resilience.outcome.rto_target_s";
+const RTO_STATE: &str = "resilience.outcome.rto_state";
+const RECOVERED: &str = "resilience.outcome.recovered";
+const IMPACT_OBSERVED: &str = "resilience.outcome.impact_observed";
+const RPO_TARGET_S: &str = "resilience.outcome.rpo_target_s";
+const RPO_MEASURED_S: &str = "resilience.outcome.rpo_measured_s";
+const RPO_STATE: &str = "resilience.outcome.rpo_state";
+
+/// The facts of a DR run on the root span.
+const DR_FACTS: [&str; 7] = [
+    RTO_TARGET_S,
+    RTO_STATE,
+    RECOVERED,
+    IMPACT_OBSERVED,
+    RPO_TARGET_S,
+    RPO_MEASURED_S,
+    RPO_STATE,
+];
 
 /// What the scripted target does: a probe prints `before` until an action
 /// has run and `after` from then on, except that the first `down_reads`
@@ -379,6 +399,122 @@ fn a_run_whose_method_failed_and_never_recovered_measures_no_recovery() {
     assert_eq!(objectives.verdicts[0].state, NfrState::Inconclusive);
     assert_eq!(objectives.verdicts[0].observed, None);
     assert_eq!(objectives.verdicts[0].recovered, None);
+}
+
+/// `with_hypothesis` with a recovery time objective of `rto_target_s`.
+fn with_rto(title: &str, rto_target_s: f64) -> Experiment {
+    Experiment {
+        rto_target_s: Some(rto_target_s),
+        ..with_hypothesis(title)
+    }
+}
+
+#[test]
+fn a_run_that_recovered_says_its_rto_its_verdict_and_that_it_recovered() {
+    let target = Target {
+        down_reads: AtomicUsize::new(2),
+        ..Target::answers("ok", "ok")
+    };
+
+    let (journal, root) = run(&with_rto("recovered", 30.0), target, &RunConfig::default());
+
+    assert!(journal.recovery_time_s().is_some(), "{journal:?}");
+    assert_eq!(seconds(&root, RTO_TARGET_S), Some(30.0));
+    assert_eq!(text(&root, RTO_STATE).as_deref(), Some("met"));
+    assert_eq!(flag(&root, RECOVERED), Some(true));
+    assert_eq!(flag(&root, IMPACT_OBSERVED), Some(true));
+    for key in [RPO_TARGET_S, RPO_MEASURED_S, RPO_STATE] {
+        assert_eq!(span_attribute(&root, key), None, "{key}");
+    }
+}
+
+#[test]
+fn a_run_that_never_recovered_says_its_rto_breached_and_that_it_did_not_recover() {
+    let (journal, root) = run(
+        &with_rto("never back", 30.0),
+        Target::answers("ok", "down"),
+        &RunConfig::default(),
+    );
+
+    assert_eq!(journal.status, ExperimentStatus::Deviated);
+    assert_eq!(seconds(&root, RTO_TARGET_S), Some(30.0));
+    assert_eq!(text(&root, RTO_STATE).as_deref(), Some("breached"));
+    assert_eq!(flag(&root, RECOVERED), Some(false));
+    assert_eq!(flag(&root, IMPACT_OBSERVED), Some(true));
+    assert_eq!(seconds(&root, RECOVERY_TIME_S), None);
+}
+
+#[test]
+fn a_run_that_saw_no_outage_says_so_and_nothing_of_a_recovery() {
+    let (journal, root) = run(
+        &with_rto("no outage", 30.0),
+        Target::answers("ok", "ok"),
+        &RunConfig::default(),
+    );
+
+    assert_eq!(journal.status, ExperimentStatus::Completed);
+    assert_eq!(flag(&root, IMPACT_OBSERVED), Some(false));
+    assert_eq!(seconds(&root, RTO_TARGET_S), Some(30.0));
+    assert_eq!(text(&root, RTO_STATE).as_deref(), Some("inconclusive"));
+    assert_eq!(flag(&root, RECOVERED), None);
+    assert_eq!(seconds(&root, RECOVERY_TIME_S), None);
+}
+
+/// A steady state that reads back the seconds of data lost, and an RPO of
+/// `rpo_target_s` measured on it.
+fn with_rpo(title: &str, rpo_target_s: f64) -> Experiment {
+    let mut probe = activity("data-lost", ActivityType::Probe);
+    probe.tolerance = Some(Tolerance::Number);
+    Experiment {
+        rpo_target_s: Some(rpo_target_s),
+        steady_state_hypothesis: Some(Hypothesis {
+            title: "the store answers".into(),
+            probes: vec![probe],
+        }),
+        nfr: vec![NfrObjective {
+            id: "data-kept".into(),
+            kind: NfrKind::Rpo,
+            metric: "probe.data-lost.lost_s".into(),
+            operator: NfrOperator::Lte,
+            threshold: rpo_target_s,
+            window_s: None,
+            criticality: NfrCriticality::Blocking,
+            description: None,
+        }],
+        ..one_action(title)
+    }
+}
+
+#[test]
+fn a_run_with_an_rpo_says_its_target_the_data_it_lost_and_its_verdict() {
+    // The probe reads 0 s lost before the fault and 2.5 s after it.
+    let (journal, root) = run(
+        &with_rpo("lost data", 1.0),
+        Target::answers("0", "2.5"),
+        &RunConfig::default(),
+    );
+
+    let objectives = journal.objectives.as_ref().expect("an rpo target");
+    assert_eq!(objectives.rpo_measured_s, Some(2.5));
+    assert_eq!(seconds(&root, RPO_TARGET_S), Some(1.0));
+    assert_eq!(seconds(&root, RPO_MEASURED_S), Some(2.5));
+    assert_eq!(text(&root, RPO_STATE).as_deref(), Some("breached"));
+    for key in [RTO_TARGET_S, RTO_STATE, RECOVERED] {
+        assert_eq!(span_attribute(&root, key), None, "{key}");
+    }
+}
+
+#[test]
+fn a_run_without_a_hypothesis_or_a_target_has_none_of_the_dr_facts() {
+    let (_, root) = run(
+        &one_action("plain"),
+        Target::answers("ok", "ok"),
+        &RunConfig::default(),
+    );
+
+    for key in DR_FACTS {
+        assert_eq!(span_attribute(&root, key), None, "{key}");
+    }
 }
 
 /// One action under an oha load whose binary is missing.

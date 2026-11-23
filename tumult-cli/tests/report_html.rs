@@ -174,6 +174,25 @@ fn the_report_sums_the_run_up_in_its_cards() {
 }
 
 #[test]
+fn the_header_of_the_report_names_the_target_and_its_environment() {
+    let (_, html) = report_of_every_block();
+
+    let header = words(between(&html, "<header>", "</header>"));
+
+    assert!(header.ends_with("Target lab-target in lab"), "{header}");
+}
+
+#[test]
+fn the_header_of_the_report_of_a_run_without_a_target_names_none() {
+    let lab = Lab::with_state("ok");
+    lab.run(&[inject(), heal()].concat());
+
+    let header = words(between(&report(&lab), "<header>", "</header>"));
+
+    assert!(!header.contains("Target"), "{header}");
+}
+
+#[test]
 fn the_report_shows_the_steady_state_and_the_steps_of_the_run() {
     let (journal, html) = report_of_every_block();
 

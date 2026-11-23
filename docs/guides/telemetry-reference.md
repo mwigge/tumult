@@ -62,6 +62,11 @@ so the trace starts at the tool call.
 | | `resilience.outcome.status` | `completed`, `deviated`, `failed`, `aborted`, `interrupted` or `halted` |
 | | `resilience.outcome.hypothesis_met` | Whether the steady state held, when the run judged it |
 | | `resilience.outcome.recovery_time_s` | Seconds from the outage the probes saw to their recovery, when the run saw both |
+| | `resilience.outcome.impact_observed` | Whether the probes saw an outage after the method started, when they watched |
+| | `resilience.outcome.rto_target_s`, `resilience.outcome.rto_state` | The RTO the run declares and the verdict on it: `met`, `breached` or `inconclusive` |
+| | `resilience.outcome.recovered` | Whether the target came back while the run watched. Only for a run with an RTO that saw an outage |
+| | `resilience.outcome.rpo_target_s`, `resilience.outcome.rpo_state` | The RPO the run declares and the verdict on it |
+| | `resilience.outcome.rpo_measured_s` | Seconds of data lost, when an `rpo` objective measured them |
 | `resilience.action`, `resilience.probe` | `resilience.action.name` | Name of the step, on probes too |
 | | `resilience.activity.type` | `action` or `probe` |
 | | `resilience.plugin.name` | The plugin that ran it |

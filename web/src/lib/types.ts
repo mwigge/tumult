@@ -116,6 +116,10 @@ export interface EvidenceObjective {
     state: string;
     margin: number | null;
     criticality: string;
+    /** The RTO only: whether the run recovered. `false`: `observed` is the time it watched. */
+    recovered: boolean | null;
+    /** Why the verdict is what it is when its numbers do not say, such as `no outage observed`. */
+    reason: string | null;
 }
 
 /** One window of a load. The load tool tells the counts of some windows only. */
@@ -175,6 +179,11 @@ export interface RunEvidence {
         rto_measured_s: number | null;
         rpo_target_s: number | null;
         rpo_measured_s: number | null;
+        /** Whether the probes saw an outage. `null` for a run stored before 3.0.4. */
+        impact_observed: boolean | null;
+        /** When the probes saw the outage start, and when they saw the target back. */
+        outage_started_at_ns: number | null;
+        recovered_at_ns: number | null;
     };
     steps: EvidenceStep[];
     objectives: EvidenceObjective[];

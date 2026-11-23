@@ -115,7 +115,7 @@ fn tables_present(store: &Store, names: &[&str]) -> Vec<String> {
 #[test]
 fn a_fresh_lake_is_current_with_the_forecast_and_the_register_tables() {
     let (_d, store) = fixture();
-    assert_eq!(CURRENT_SCHEMA_VERSION, 23);
+    assert_eq!(CURRENT_SCHEMA_VERSION, 24);
     assert_eq!(
         store.writer().unwrap().schema_version().unwrap(),
         CURRENT_SCHEMA_VERSION

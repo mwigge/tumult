@@ -3,8 +3,8 @@
 //! epoch-nanosecond clock, and interrupted-journal construction.
 
 use crate::types::{
-    Activity, ActivityType, Experiment, ExperimentStatus, Journal, Provider, SpanId, TargetVersion,
-    TraceId,
+    Activity, ActivityType, Experiment, ExperimentStatus, Journal, NfrKind, NfrVerdict,
+    ObjectiveOutcome, Provider, SpanId, TargetVersion, TraceId,
 };
 
 use opentelemetry::trace::{Status, TraceContextExt};
@@ -59,8 +59,9 @@ pub(crate) fn target_version_attributes(version: &TargetVersion) -> [KeyValue; 2
 }
 
 /// How a run ended, for its root span: the status in the spelling of the
-/// journal, the verdict on the hypothesis and the recovery time when the
-/// run has them, and the blast radius the definition declares.
+/// journal, the verdict on the hypothesis, the recovery time and the
+/// recovery facts when the run has them, and the blast radius the
+/// definition declares.
 pub(crate) fn outcome_attributes(journal: &Journal) -> Vec<KeyValue> {
     let mut attrs = vec![KeyValue::new(
         attributes::OUTCOME,
@@ -72,11 +73,56 @@ pub(crate) fn outcome_attributes(journal: &Journal) -> Vec<KeyValue> {
     if let Some(seconds) = journal.recovery_time_s() {
         attrs.push(KeyValue::new(attributes::RECOVERY_TIME_S, seconds));
     }
+    let impact = journal.post_result.as_ref().and_then(|p| p.impact_observed);
+    push_some(&mut attrs, attributes::IMPACT_OBSERVED, impact);
+    if let Some(outcome) = &journal.objectives {
+        attrs.extend(objective_attributes(outcome));
+    }
     let declared = journal.blast_radius.as_ref().and_then(|b| b.note.clone());
     if let Some(note) = declared {
         attrs.push(KeyValue::new(attributes::FAULT_BLAST_RADIUS, note));
     }
     attrs
+}
+
+/// The recovery targets of a run and the verdicts on them, for its root
+/// span, each one only when the run has it. The RTO facts come from the
+/// verdict on `rto_target_s`, which the runner adds with the id `rto`. The
+/// RPO verdict is the one that measured the data lost.
+fn objective_attributes(outcome: &ObjectiveOutcome) -> Vec<KeyValue> {
+    let rto = outcome
+        .verdicts
+        .iter()
+        .find(|v| v.kind == NfrKind::Rto && v.nfr_id == "rto");
+    let rpo = outcome.verdicts.iter().find(|v| v.kind == NfrKind::Rpo);
+    let state = |verdict: Option<&NfrVerdict>| verdict.map(|v| v.state.to_string());
+    let mut attrs = Vec::new();
+    push_some(&mut attrs, attributes::RTO_TARGET_S, outcome.rto_target_s);
+    push_some(&mut attrs, attributes::RTO_STATE, state(rto));
+    push_some(
+        &mut attrs,
+        attributes::RECOVERED,
+        rto.and_then(|v| v.recovered),
+    );
+    push_some(&mut attrs, attributes::RPO_TARGET_S, outcome.rpo_target_s);
+    push_some(
+        &mut attrs,
+        attributes::RPO_MEASURED_S,
+        outcome.rpo_measured_s,
+    );
+    push_some(&mut attrs, attributes::RPO_STATE, state(rpo));
+    attrs
+}
+
+/// Add `key` with `value` to `attrs`, when there is a value.
+fn push_some<T: Into<opentelemetry::Value>>(
+    attrs: &mut Vec<KeyValue>,
+    key: &'static str,
+    value: Option<T>,
+) {
+    if let Some(value) = value {
+        attrs.push(KeyValue::new(key, value));
+    }
 }
 
 /// The status of the root span: Ok for a completed run, and an error that

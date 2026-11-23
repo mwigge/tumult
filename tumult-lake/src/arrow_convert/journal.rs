@@ -37,6 +37,11 @@ pub fn experiments_schema() -> Schema {
         // What the telemetry said when it named more than one version:
         // a JSON array of `{version, requests}`, most served first.
         Field::new("version_shares", DataType::Utf8, true),
+        // v24: what the probes saw of the outage, from `post_result`.
+        Field::new("impact_observed", DataType::Boolean, true),
+        Field::new("outage_started_at_ns", DataType::Int64, true),
+        Field::new("recovered_at_ns", DataType::Int64, true),
+        Field::new("mttr_s", DataType::Float64, true),
     ])
 }
 
@@ -65,6 +70,7 @@ pub fn journal_to_experiment_batch(journal: &Journal) -> Result<RecordBatch, Ana
     let accuracy = journal.analysis.as_ref().and_then(|a| a.estimate_accuracy);
     let resilience = journal.analysis.as_ref().and_then(|a| a.resilience_score);
     let objectives = journal.objectives.as_ref();
+    let post = journal.post_result.as_ref();
     let recorded = journal.target_version.as_ref();
     let shares = recorded
         .filter(|v| !v.shares.is_empty())
@@ -113,6 +119,14 @@ pub fn journal_to_experiment_batch(journal: &Journal) -> Result<RecordBatch, Ana
                 recorded.map(|v| v.version_source.to_string())
             ])),
             Arc::new(StringArray::from(vec![shares])),
+            Arc::new(BooleanArray::from(vec![
+                post.and_then(|p| p.impact_observed)
+            ])),
+            Arc::new(Int64Array::from(vec![
+                post.and_then(|p| p.outage_started_at_ns)
+            ])),
+            Arc::new(Int64Array::from(vec![post.and_then(|p| p.recovered_at_ns)])),
+            Arc::new(Float64Array::from(vec![post.and_then(|p| p.mttr_s)])),
         ],
     )?)
 }
@@ -272,7 +286,7 @@ mod tests {
     fn experiment_batch_schema() {
         let batch = journal_to_experiment_batch(&sample_journal()).unwrap();
         assert_eq!(batch.num_rows(), 1);
-        assert_eq!(batch.num_columns(), 20);
+        assert_eq!(batch.num_columns(), 24);
     }
     #[test]
     fn experiment_batch_values() {

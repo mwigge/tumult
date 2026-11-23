@@ -66,7 +66,7 @@ SELECT
         e.hypothesis_after_met,
         CASE WHEN NOT e.hypothesis_before_met THEN FALSE END
     ) AS hypothesis_met,
-    e.rto_measured_s AS recovery_time_s,
+    coalesce(e.mttr_s, e.rto_measured_s) AS recovery_time_s,
     NULL AS span_attrs,
     NULL AS resource_attrs,
     NULL AS events,
