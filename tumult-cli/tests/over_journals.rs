@@ -172,7 +172,9 @@ fn compliance_counts_recovery_from_the_runs_that_watched_for_it() {
         "{report}"
     );
 
-    let method = [inject(), heal()].concat();
+    // The fault holds past one read of the probes, so the run sees the
+    // outage and measures its recovery.
+    let method = [inject(), step("hold", "action", "sleep 1.5"), heal()].concat();
     run(&lab, "watched", &experiment(&method, &leave_marker()));
 
     let report = printed(&lab, &["compliance", JOURNALS, "--framework", "dora"]);
