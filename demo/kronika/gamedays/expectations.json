@@ -1,0 +1,11 @@
+{
+  "experiments": {
+    "api-worker-freeze.toon": {"proof": "demo-check", "within": "platform-resilience.gameday.toon", "expect": {"status": "completed", "hypothesis_before": true, "hypothesis_after": true, "rollbacks": 0, "objectives": {}}},
+    "worker-process-kill.toon": {"proof": "demo-check", "within": "platform-resilience.gameday.toon", "expect": {"status": "completed", "hypothesis_before": true, "hypothesis_after": true, "rollbacks": 0, "objectives": {}}},
+    "queue-dependency-loss.toon": {"proof": "demo-check", "within": "platform-resilience.gameday.toon", "expect": {"status": "failed", "hypothesis_before": true, "hypothesis_after": false, "rollbacks": 1, "objectives": {"rto": "inconclusive"}}},
+    "service-partition.toon": {"proof": "demo-check", "within": "platform-resilience.gameday.toon", "expect": {"status": "completed", "hypothesis_before": true, "hypothesis_after": true, "rollbacks": 0, "objectives": {}}}
+  },
+  "gamedays": {
+    "platform-resilience.gameday.toon": {"proof": "demo-check", "expect": {"load_result": false, "score": {"status": "PARTIAL", "recovery_compliance": 0.75}}}
+  }
+}

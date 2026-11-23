@@ -1,5 +1,5 @@
 title: config corruption — invalid config rejected
-description: Corrupt an application config value and verify the validation probe rejects it — designed to DEVIATE so the rollback restores the known-good config
+description: Corrupt an application config value and verify the validation probe rejects it — designed to DEVIATE so the rollback restores the known-good config. The app-config control writes the known-good config and its backup before the run, so the steady-state probe only reads.
 
 tags[2]: configuration, resilience
 kind: robustness
@@ -7,6 +7,14 @@ target:
   system: config-service
   technology: file
   environment: demo
+
+controls[1]:
+  - name: app-config
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "d=/tmp/kd-demo/cfg; case \"$TUMULT_CONTROL_EVENT\" in before_experiment) mkdir -p $d; printf 'workers=4\\ntimeout=30\\n' > $d/app.conf; cp $d/app.conf $d/app.conf.bak; echo written;; esac"
+      timeout_s: 5.0
 
 steady_state_hypothesis:
   title: Application config has a sane timeout
@@ -16,7 +24,7 @@ steady_state_hypothesis:
       provider:
         type: process
         path: sh
-        arguments[2]: "-c", "mkdir -p /tmp/kd-demo/cfg; [ -f /tmp/kd-demo/cfg/app.conf ] || printf 'workers=4\ntimeout=30\n' > /tmp/kd-demo/cfg/app.conf; [ -f /tmp/kd-demo/cfg/app.conf.bak ] || cp /tmp/kd-demo/cfg/app.conf /tmp/kd-demo/cfg/app.conf.bak; grep -q '^timeout=[1-9]' /tmp/kd-demo/cfg/app.conf && echo valid || echo invalid"
+        arguments[2]: "-c", "grep -q '^timeout=[1-9]' /tmp/kd-demo/cfg/app.conf 2>/dev/null && echo valid || echo invalid"
         timeout_s: 5.0
       tolerance:
         type: regex
