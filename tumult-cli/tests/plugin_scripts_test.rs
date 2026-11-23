@@ -261,13 +261,22 @@ const CLOCK_OFFSET: &str = "tumult-timewarp/probes/clock-offset.sh";
 const REDIS_INFO: &str = "tumult-db-redis/probes/redis-info.sh";
 const MYSQL_KILL_CONNECTIONS: &str = "tumult-db-mysql/actions/kill-connections.sh";
 const POSTGRES_KILL_CONNECTIONS: &str = "tumult-db-postgres/actions/kill-connections.sh";
+const POSTGRES_BACKUP: &str = "tumult-db-postgres/actions/backup.sh";
+const POSTGRES_RESTORE: &str = "tumult-db-postgres/actions/restore.sh";
+const POSTGRES_STOP_PRIMARY: &str = "tumult-db-postgres/actions/stop-primary.sh";
+const POSTGRES_START_PRIMARY: &str = "tumult-db-postgres/actions/start-primary.sh";
+const POSTGRES_PROMOTE_REPLICA: &str = "tumult-db-postgres/actions/promote-replica.sh";
+const POSTGRES_WRITE_MARKERS: &str = "tumult-db-postgres/actions/write-markers.sh";
+const POSTGRES_MARKERS_LOST: &str = "tumult-db-postgres/probes/markers-lost.sh";
 
 /// The service tools the scripts look for on `PATH`, and the tools of the
 /// machine they read or change.
-const SERVICE_TOOLS: [&str; 14] = [
+const SERVICE_TOOLS: [&str; 16] = [
     "docker",
     "mysql",
     "psql",
+    "pg_dump",
+    "pg_restore",
     "redis-cli",
     "kafka-topics",
     "kafka-topics.sh",
@@ -930,6 +939,827 @@ exit 2"#,
         stderr.contains("port 5432 failed: Connection refused"),
         "{stderr}"
     );
+}
+
+// ── tumult-db-postgres: disaster recovery ─────────────────────
+
+/// The connection flags the DR scripts give every client tool. `-w`: a
+/// tool never waits for a password on a prompt.
+const PG_CONNECTION: &str = "-h localhost -p 5432 -U postgres -w";
+/// How the scripts ask `date` for the time, and the time the stand-in tells.
+const NOW_CALL: &str = "date +%s.%N";
+const NOW: &str = "1700000000.250";
+
+/// Stand-ins with a `date` that tells the time `NOW`, to the nanosecond.
+fn pg_stubs() -> Stubs {
+    let stubs = Stubs::new();
+    stubs.tool("bin/date", "echo 1700000000.250000000");
+    stubs
+}
+
+/// A call of `psql` that reads rows from `database`.
+fn query_call(database: &str, sql: &str) -> String {
+    format!("psql {PG_CONNECTION} -d {database} -t -A -c {sql}")
+}
+
+/// A call of `psql` that runs a command in `database`.
+fn command_call(database: &str, sql: &str) -> String {
+    format!("psql {PG_CONNECTION} -d {database} -c {sql}")
+}
+
+/// A path as the text of an environment variable.
+fn text(path: &std::path::Path) -> &str {
+    path.to_str().expect("a temp path is text")
+}
+
+/// A stand-in for `pg_dump` that writes a small archive to the file of `-f`.
+const PG_DUMP_WRITES: &str = r#"while [ "$#" -gt 1 ]; do
+    [ "$1" = -f ] && printf 'PGDMP' > "$2"
+    shift
+done"#;
+
+/// The call of `pg_dump` that backs up `app` to a file beside `backup`.
+fn dump_call(backup: &std::path::Path) -> String {
+    format!(
+        "pg_dump {PG_CONNECTION} -d app -Fc -f {}.partial",
+        backup.display()
+    )
+}
+
+#[test]
+fn postgres_backup_writes_the_dump_to_the_path_and_prints_its_size_and_time() {
+    let stubs = pg_stubs();
+    stubs.tool("bin/pg_dump", PG_DUMP_WRITES);
+    let backup = stubs.path("app.dump");
+
+    let (code, stdout, stderr) = stubs.run(
+        POSTGRES_BACKUP,
+        &[
+            ("TUMULT_PG_DATABASE", "app"),
+            ("TUMULT_BACKUP_PATH", text(&backup)),
+        ],
+    );
+
+    assert_eq!(code, 0, "{stderr}");
+    assert_eq!(stubs.calls(), [dump_call(&backup), NOW_CALL.to_string()]);
+    assert_eq!(std::fs::read_to_string(&backup).unwrap(), "PGDMP");
+    assert!(!stubs.path("app.dump.partial").exists());
+    assert_eq!(
+        stdout,
+        format!(
+            "{{\"database\":\"app\",\"path\":\"{}\",\"size_bytes\":5,\"finished_at\":{NOW}}}\n",
+            backup.display()
+        )
+    );
+}
+
+#[test]
+fn postgres_backup_that_fails_keeps_the_older_backup_and_prints_no_time() {
+    let stubs = pg_stubs();
+    stubs.tool(
+        "bin/pg_dump",
+        &format!(
+            "{PG_DUMP_WRITES}\necho 'pg_dump: error: connection to server at \"localhost\" (::1), port 5432 failed: Connection refused' >&2\nexit 1"
+        ),
+    );
+    let backup = stubs.path("app.dump");
+    std::fs::write(&backup, "OLDER").unwrap();
+
+    let (code, stdout, stderr) = stubs.run(
+        POSTGRES_BACKUP,
+        &[
+            ("TUMULT_PG_DATABASE", "app"),
+            ("TUMULT_BACKUP_PATH", text(&backup)),
+        ],
+    );
+
+    assert_eq!(stubs.calls(), [dump_call(&backup)]);
+    assert_eq!(code, 1, "the status of pg_dump: {stderr}");
+    assert_eq!(stdout, "");
+    assert!(stderr.contains("port 5432 failed"), "{stderr}");
+    assert_eq!(std::fs::read_to_string(&backup).unwrap(), "OLDER");
+    assert!(!stubs.path("app.dump.partial").exists());
+}
+
+#[test]
+fn postgres_backup_refuses_a_path_with_a_quote_and_runs_no_tool() {
+    let stubs = pg_stubs();
+
+    let (code, stdout, stderr) = stubs.run(
+        POSTGRES_BACKUP,
+        &[
+            ("TUMULT_PG_DATABASE", "app"),
+            ("TUMULT_BACKUP_PATH", "/backups/app\".dump"),
+        ],
+    );
+
+    assert!(stubs.calls().is_empty(), "{:?}", stubs.calls());
+    assert_ne!(code, 0, "{stdout}");
+    assert!(stderr.contains("TUMULT_BACKUP_PATH"), "{stderr}");
+}
+
+/// The calls of a restore of `backup` into `app`, before the time.
+fn restore_calls(backup: &std::path::Path) -> Vec<String> {
+    vec![
+        format!("pg_restore -l {}", backup.display()),
+        command_call("postgres", "DROP DATABASE IF EXISTS \"app\" WITH (FORCE);"),
+        command_call("postgres", "CREATE DATABASE \"app\" TEMPLATE template0;"),
+        format!(
+            "pg_restore {PG_CONNECTION} -d app --single-transaction {}",
+            backup.display()
+        ),
+    ]
+}
+
+#[test]
+fn postgres_restore_makes_the_database_again_from_the_backup_and_prints_its_time() {
+    let stubs = pg_stubs();
+    stubs.tool("bin/psql", "exit 0");
+    stubs.tool("bin/pg_restore", "exit 0");
+    let backup = stubs.path("app.dump");
+    std::fs::write(&backup, "PGDMP").unwrap();
+
+    let (code, stdout, stderr) = stubs.run(
+        POSTGRES_RESTORE,
+        &[
+            ("TUMULT_PG_DATABASE", "app"),
+            ("TUMULT_BACKUP_PATH", text(&backup)),
+        ],
+    );
+
+    assert_eq!(code, 0, "{stderr}");
+    let mut expected = restore_calls(&backup);
+    expected.push(NOW_CALL.to_string());
+    assert_eq!(stubs.calls(), expected);
+    assert_eq!(
+        stdout,
+        format!(
+            "{{\"database\":\"app\",\"path\":\"{}\",\"finished_at\":{NOW}}}\n",
+            backup.display()
+        )
+    );
+}
+
+#[test]
+fn postgres_restore_drops_nothing_when_there_is_no_backup() {
+    let stubs = pg_stubs();
+    let backup = stubs.path("app.dump");
+
+    let (code, stdout, stderr) = stubs.run(
+        POSTGRES_RESTORE,
+        &[
+            ("TUMULT_PG_DATABASE", "app"),
+            ("TUMULT_BACKUP_PATH", text(&backup)),
+        ],
+    );
+
+    assert!(stubs.calls().is_empty(), "{:?}", stubs.calls());
+    assert_ne!(code, 0, "{stdout}");
+    assert!(stderr.contains("no backup at"), "{stderr}");
+}
+
+#[test]
+fn postgres_restore_drops_nothing_when_the_file_is_no_archive() {
+    let stubs = pg_stubs();
+    stubs.tool(
+        "bin/pg_restore",
+        "echo 'pg_restore: error: input file appears to be a text format dump. Please use psql.' >&2\nexit 1",
+    );
+    let backup = stubs.path("app.sql");
+    std::fs::write(&backup, "CREATE TABLE orders ();").unwrap();
+
+    let (code, stdout, stderr) = stubs.run(
+        POSTGRES_RESTORE,
+        &[
+            ("TUMULT_PG_DATABASE", "app"),
+            ("TUMULT_BACKUP_PATH", text(&backup)),
+        ],
+    );
+
+    assert_eq!(
+        stubs.calls(),
+        [format!("pg_restore -l {}", backup.display())]
+    );
+    assert_ne!(code, 0, "{stdout}");
+    assert_eq!(stdout, "");
+    assert!(stderr.contains("text format dump"), "{stderr}");
+}
+
+#[test]
+fn postgres_restore_that_fails_prints_no_time() {
+    let stubs = pg_stubs();
+    stubs.tool("bin/psql", "exit 0");
+    stubs.tool(
+        "bin/pg_restore",
+        r#"[ "$1" = -l ] && exit 0
+echo 'pg_restore: error: could not execute query: ERROR:  role "shop" does not exist' >&2
+exit 1"#,
+    );
+    let backup = stubs.path("app.dump");
+    std::fs::write(&backup, "PGDMP").unwrap();
+
+    let (code, stdout, stderr) = stubs.run(
+        POSTGRES_RESTORE,
+        &[
+            ("TUMULT_PG_DATABASE", "app"),
+            ("TUMULT_BACKUP_PATH", text(&backup)),
+        ],
+    );
+
+    assert_eq!(stubs.calls(), restore_calls(&backup));
+    assert_eq!(code, 1, "the status of pg_restore: {stderr}");
+    assert_eq!(stdout, "");
+    assert!(stderr.contains("role \"shop\" does not exist"), "{stderr}");
+}
+
+const IN_RECOVERY: &str = "SELECT pg_is_in_recovery();";
+
+#[test]
+fn postgres_stop_primary_stops_the_container_of_a_primary_and_prints_the_time() {
+    let stubs = pg_stubs();
+    stubs.tool("bin/psql", "echo f");
+    stubs.tool("bin/docker", "echo pg-1");
+
+    let (code, stdout, stderr) =
+        stubs.run(POSTGRES_STOP_PRIMARY, &[("TUMULT_CONTAINER_ID", "pg-1")]);
+
+    assert_eq!(code, 0, "{stderr}");
+    assert_eq!(
+        stubs.calls(),
+        [
+            query_call("postgres", IN_RECOVERY),
+            "docker stop --time 10 pg-1".to_string(),
+            NOW_CALL.to_string()
+        ]
+    );
+    assert_eq!(
+        stdout,
+        format!("{{\"container\":\"pg-1\",\"mode\":\"fast\",\"stopped_at\":{NOW}}}\n")
+    );
+}
+
+#[test]
+fn postgres_stop_primary_kills_the_container_in_kill_mode() {
+    let stubs = pg_stubs();
+    stubs.tool("bin/psql", "echo f");
+    stubs.tool("bin/docker", "echo pg-1");
+
+    let (code, stdout, stderr) = stubs.run(
+        POSTGRES_STOP_PRIMARY,
+        &[
+            ("TUMULT_CONTAINER_ID", "pg-1"),
+            ("TUMULT_STOP_MODE", "kill"),
+        ],
+    );
+
+    assert_eq!(code, 0, "{stderr}");
+    assert_eq!(
+        stubs.calls(),
+        [
+            query_call("postgres", IN_RECOVERY),
+            "docker kill --signal KILL pg-1".to_string(),
+            NOW_CALL.to_string()
+        ]
+    );
+    assert_eq!(
+        stdout,
+        format!("{{\"container\":\"pg-1\",\"mode\":\"kill\",\"stopped_at\":{NOW}}}\n")
+    );
+}
+
+#[test]
+fn postgres_stop_primary_refuses_to_stop_a_standby() {
+    let stubs = pg_stubs();
+    stubs.tool("bin/psql", "echo t");
+
+    let (code, stdout, stderr) =
+        stubs.run(POSTGRES_STOP_PRIMARY, &[("TUMULT_CONTAINER_ID", "pg-1")]);
+
+    assert_eq!(stubs.calls(), [query_call("postgres", IN_RECOVERY)]);
+    assert_ne!(code, 0, "{stdout}");
+    assert_eq!(stdout, "");
+    assert!(stderr.contains("is a standby"), "{stderr}");
+}
+
+#[test]
+fn postgres_stop_primary_stops_nothing_when_the_primary_does_not_answer() {
+    let stubs = pg_stubs();
+    stubs.tool(
+        "bin/psql",
+        r#"echo 'psql: error: connection to server at "localhost" (::1), port 5432 failed: Connection refused' >&2
+exit 2"#,
+    );
+
+    let (code, stdout, stderr) =
+        stubs.run(POSTGRES_STOP_PRIMARY, &[("TUMULT_CONTAINER_ID", "pg-1")]);
+
+    assert_eq!(stubs.calls(), [query_call("postgres", IN_RECOVERY)]);
+    assert_eq!(code, 2, "the status of psql: {stderr}");
+    assert_eq!(stdout, "");
+    assert!(stderr.contains("Connection refused"), "{stderr}");
+}
+
+#[test]
+fn postgres_start_primary_starts_the_container_again_and_prints_the_time() {
+    let stubs = pg_stubs();
+    stubs.tool("bin/docker", "echo pg-1");
+
+    let (code, stdout, stderr) =
+        stubs.run(POSTGRES_START_PRIMARY, &[("TUMULT_CONTAINER_ID", "pg-1")]);
+
+    assert_eq!(code, 0, "{stderr}");
+    assert_eq!(
+        stubs.calls(),
+        ["docker start pg-1".to_string(), NOW_CALL.to_string()]
+    );
+    assert_eq!(
+        stdout,
+        format!("{{\"container\":\"pg-1\",\"started_at\":{NOW}}}\n")
+    );
+}
+
+#[test]
+fn postgres_dr_scripts_print_whole_seconds_where_date_prints_no_nanoseconds() {
+    // busybox date prints nothing for %N, BSD date prints the letter.
+    for nanoseconds in ["1700000000.", "1700000000.N"] {
+        let stubs = Stubs::new();
+        stubs.tool(
+            "bin/date",
+            &format!(r#"[ "$1" = +%s ] && echo 1700000000 || echo {nanoseconds}"#),
+        );
+        stubs.tool("bin/docker", "echo pg-1");
+
+        let (code, stdout, stderr) =
+            stubs.run(POSTGRES_START_PRIMARY, &[("TUMULT_CONTAINER_ID", "pg-1")]);
+
+        assert_eq!(code, 0, "{stderr}");
+        assert_eq!(
+            stdout, "{\"container\":\"pg-1\",\"started_at\":1700000000}\n",
+            "date said {nanoseconds}"
+        );
+    }
+}
+
+const PROMOTE: &str = "SELECT pg_promote(true, 60);";
+const FIRST_WRITE: &str = "SELECT txid_current(), extract(epoch FROM clock_timestamp());";
+
+#[test]
+fn postgres_promote_replica_prints_the_time_the_standby_took_its_first_write() {
+    let stubs = pg_stubs();
+    stubs.tool(
+        "bin/psql",
+        r#"case "$*" in
+    *pg_promote*) echo t ;;
+    *txid_current*) echo '748|1763869012.5' ;;
+esac"#,
+    );
+
+    let (code, stdout, stderr) = stubs.run(POSTGRES_PROMOTE_REPLICA, &[]);
+
+    assert_eq!(code, 0, "{stderr}");
+    assert_eq!(
+        stubs.calls(),
+        [
+            query_call("postgres", PROMOTE),
+            query_call("postgres", FIRST_WRITE)
+        ]
+    );
+    assert_eq!(stdout, "{\"writable_at\":1763869012.5}\n");
+}
+
+#[test]
+fn postgres_promote_replica_fails_when_the_promotion_does_not_end_in_time() {
+    let stubs = pg_stubs();
+    stubs.tool("bin/psql", "echo f");
+
+    let (code, stdout, stderr) = stubs.run(POSTGRES_PROMOTE_REPLICA, &[]);
+
+    assert_eq!(stubs.calls(), [query_call("postgres", PROMOTE)]);
+    assert_ne!(code, 0, "{stdout}");
+    assert_eq!(stdout, "");
+    assert!(stderr.contains("within 60s"), "{stderr}");
+}
+
+#[test]
+fn postgres_promote_replica_fails_with_the_message_of_psql_on_a_server_that_is_no_standby() {
+    let stubs = pg_stubs();
+    stubs.tool(
+        "bin/psql",
+        "echo 'ERROR:  recovery is not in progress' >&2\nexit 1",
+    );
+
+    let (code, stdout, stderr) = stubs.run(POSTGRES_PROMOTE_REPLICA, &[]);
+
+    assert_eq!(stubs.calls(), [query_call("postgres", PROMOTE)]);
+    assert_eq!(code, 1, "the status of psql: {stderr}");
+    assert_eq!(stdout, "");
+    assert!(stderr.contains("recovery is not in progress"), "{stderr}");
+}
+
+/// The writer makes its table once. The server says nothing when the table
+/// is there already: a notice on stderr would read as an error of the step.
+const CREATE_MARKERS: &str = "SET client_min_messages = warning; CREATE TABLE IF NOT EXISTS tumult_markers (written_at double precision NOT NULL);";
+const INSERT_MARKER: &str = "WITH marker AS (INSERT INTO tumult_markers (written_at) VALUES (extract(epoch FROM clock_timestamp())) RETURNING written_at) SELECT written_at FROM marker;";
+
+/// A stand-in for `psql` that makes the table and answers the n-th marker
+/// with the time `100.n`. The marker at `fail_at` fails, as a server that
+/// goes away does. At 0 no marker fails.
+fn marker_psql(stubs: &Stubs, fail_at: u32) -> String {
+    format!(
+        r#"case "$*" in
+    *CREATE*) echo 'CREATE TABLE' ;;
+    *INSERT*)
+        n=$(cat '{count}' 2>/dev/null || echo 0)
+        n=$((n + 1))
+        echo "$n" > '{count}'
+        if [ "$n" -eq {fail_at} ]; then
+            echo 'FATAL:  terminating connection due to administrator command' >&2
+            exit 2
+        fi
+        echo "100.$n" ;;
+esac"#,
+        count = stubs.path("inserts").display()
+    )
+}
+
+#[test]
+fn postgres_write_markers_adds_each_marker_the_store_confirmed_to_the_ledger() {
+    let stubs = pg_stubs();
+    stubs.tool("bin/psql", &marker_psql(&stubs, 0));
+    stubs.tool("bin/sleep", "exit 0");
+    let ledger = stubs.path("ledger");
+
+    let (code, stdout, stderr) = stubs.run(
+        POSTGRES_WRITE_MARKERS,
+        &[
+            ("TUMULT_PG_DATABASE", "app"),
+            ("TUMULT_LEDGER_PATH", text(&ledger)),
+            ("TUMULT_MARKER_COUNT", "3"),
+            ("TUMULT_INTERVAL_MS", "500"),
+        ],
+    );
+
+    assert_eq!(code, 0, "{stderr}");
+    let insert = query_call("app", INSERT_MARKER);
+    assert_eq!(
+        stubs.calls(),
+        [
+            command_call("app", CREATE_MARKERS),
+            NOW_CALL.to_string(),
+            insert.clone(),
+            NOW_CALL.to_string(),
+            "sleep 0.500".to_string(),
+            insert.clone(),
+            NOW_CALL.to_string(),
+            "sleep 0.500".to_string(),
+            insert,
+        ]
+    );
+    assert_eq!(
+        std::fs::read_to_string(&ledger).unwrap(),
+        "100.1\n100.2\n100.3\n"
+    );
+    assert_eq!(
+        stdout,
+        "{\"database\":\"app\",\"markers\":3,\"first_at\":100.1,\"last_at\":100.3}\n"
+    );
+}
+
+#[test]
+fn postgres_write_markers_stops_when_its_time_is_up() {
+    let stubs = Stubs::new();
+    // The clock reads 100.0 at the start, then 100.6, then 101.2.
+    stubs.tool(
+        "bin/date",
+        &format!(
+            r#"n=$(cat '{reads}' 2>/dev/null || echo 0)
+n=$((n + 1))
+echo "$n" > '{reads}'
+case "$n" in
+    1) echo 100.000000000 ;;
+    2) echo 100.600000000 ;;
+    *) echo 101.200000000 ;;
+esac"#,
+            reads = stubs.path("clock-reads").display()
+        ),
+    );
+    stubs.tool("bin/psql", &marker_psql(&stubs, 0));
+    stubs.tool("bin/sleep", "exit 0");
+    let ledger = stubs.path("ledger");
+
+    let (code, stdout, stderr) = stubs.run(
+        POSTGRES_WRITE_MARKERS,
+        &[
+            ("TUMULT_PG_DATABASE", "app"),
+            ("TUMULT_LEDGER_PATH", text(&ledger)),
+            ("TUMULT_DURATION", "1"),
+        ],
+    );
+
+    assert_eq!(code, 0, "{stderr}");
+    assert_eq!(
+        stubs
+            .calls()
+            .iter()
+            .filter(|c| c.starts_with("sleep"))
+            .count(),
+        1,
+        "{:?}",
+        stubs.calls()
+    );
+    assert_eq!(std::fs::read_to_string(&ledger).unwrap(), "100.1\n100.2\n");
+    assert_eq!(
+        stdout,
+        "{\"database\":\"app\",\"markers\":2,\"first_at\":100.1,\"last_at\":100.2}\n"
+    );
+}
+
+#[test]
+fn postgres_write_markers_that_fails_keeps_the_ledger_of_the_confirmed_markers() {
+    let stubs = pg_stubs();
+    stubs.tool("bin/psql", &marker_psql(&stubs, 3));
+    stubs.tool("bin/sleep", "exit 0");
+    let ledger = stubs.path("ledger");
+
+    let (code, stdout, stderr) = stubs.run(
+        POSTGRES_WRITE_MARKERS,
+        &[
+            ("TUMULT_PG_DATABASE", "app"),
+            ("TUMULT_LEDGER_PATH", text(&ledger)),
+            ("TUMULT_MARKER_COUNT", "5"),
+        ],
+    );
+
+    assert_eq!(code, 2, "the status of psql: {stderr}");
+    assert_eq!(stdout, "");
+    assert!(stderr.contains("terminating connection"), "{stderr}");
+    assert_eq!(std::fs::read_to_string(&ledger).unwrap(), "100.1\n100.2\n");
+}
+
+#[test]
+fn postgres_write_markers_writes_nothing_when_it_cannot_write_the_ledger() {
+    let stubs = pg_stubs();
+    let ledger = stubs.path("missing/ledger");
+
+    let (code, stdout, stderr) = stubs.run(
+        POSTGRES_WRITE_MARKERS,
+        &[
+            ("TUMULT_PG_DATABASE", "app"),
+            ("TUMULT_LEDGER_PATH", text(&ledger)),
+        ],
+    );
+
+    assert!(stubs.calls().is_empty(), "{:?}", stubs.calls());
+    assert_ne!(code, 0, "{stdout}");
+    assert!(stderr.contains("cannot write the ledger"), "{stderr}");
+}
+
+const MARKERS_TABLE: &str = "SELECT to_regclass('tumult_markers') IS NOT NULL;";
+const NEWEST_MARKER: &str = "SELECT max(written_at) FROM tumult_markers;";
+
+/// A stand-in for `psql` that says whether the table is there and answers
+/// `newest` as the newest marker.
+fn markers_psql(table: &str, newest: &str) -> String {
+    format!(
+        r#"case "$*" in
+    *to_regclass*) echo {table} ;;
+    *max*) echo '{newest}' ;;
+esac"#
+    )
+}
+
+/// Run the reader with a ledger that holds `ledger`, or no ledger.
+fn markers_lost(stubs: &Stubs, ledger: Option<&str>) -> (i32, String, String) {
+    let path = stubs.path("ledger");
+    if let Some(times) = ledger {
+        std::fs::write(&path, times).unwrap();
+    }
+    stubs.run(
+        POSTGRES_MARKERS_LOST,
+        &[
+            ("TUMULT_PG_DATABASE", "app"),
+            ("TUMULT_LEDGER_PATH", text(&path)),
+        ],
+    )
+}
+
+#[test]
+fn postgres_markers_lost_prints_zero_when_the_newest_marker_survived() {
+    // A marker newer than the ledger was committed, but its writer stopped
+    // before it could add it to the ledger.
+    for newest in ["105.5", "106"] {
+        let stubs = pg_stubs();
+        stubs.tool("bin/psql", &markers_psql("t", newest));
+
+        let (code, stdout, stderr) = markers_lost(&stubs, Some("100\n105.5\n"));
+
+        assert_eq!(code, 0, "{stderr}");
+        assert_eq!(
+            stubs.calls(),
+            [
+                query_call("app", MARKERS_TABLE),
+                query_call("app", NEWEST_MARKER)
+            ]
+        );
+        assert_eq!(stdout, "0\n", "newest marker {newest}");
+    }
+}
+
+#[test]
+fn postgres_markers_lost_prints_the_newest_ledger_time_minus_the_newest_marker() {
+    let stubs = pg_stubs();
+    stubs.tool("bin/psql", &markers_psql("t", "103.25"));
+
+    let (code, stdout, stderr) = markers_lost(&stubs, Some("100\n103.25\n104\n105.5\n"));
+
+    assert_eq!(code, 0, "{stderr}");
+    assert_eq!(stdout, "2.25\n");
+}
+
+#[test]
+fn postgres_markers_lost_prints_the_whole_ledger_when_no_marker_is_left() {
+    let stubs = pg_stubs();
+    stubs.tool("bin/psql", &markers_psql("t", ""));
+
+    let (code, stdout, stderr) = markers_lost(&stubs, Some("100\n103.25\n105.5\n"));
+
+    assert_eq!(code, 0, "{stderr}");
+    assert_eq!(stdout, "5.5\n");
+}
+
+#[test]
+fn postgres_markers_lost_prints_the_whole_ledger_when_the_table_is_gone() {
+    let stubs = pg_stubs();
+    stubs.tool("bin/psql", &markers_psql("f", "unused"));
+
+    let (code, stdout, stderr) = markers_lost(&stubs, Some("100\n103.25\n105.5\n"));
+
+    assert_eq!(code, 0, "{stderr}");
+    assert_eq!(stubs.calls(), [query_call("app", MARKERS_TABLE)]);
+    assert_eq!(stdout, "5.5\n");
+}
+
+#[test]
+fn postgres_markers_lost_prints_zero_before_a_marker_was_written_and_still_reads_the_store() {
+    let stubs = pg_stubs();
+    stubs.tool("bin/psql", &markers_psql("f", "unused"));
+
+    let (code, stdout, stderr) = markers_lost(&stubs, None);
+
+    assert_eq!(code, 0, "{stderr}");
+    assert_eq!(stubs.calls(), [query_call("app", MARKERS_TABLE)]);
+    assert_eq!(stdout, "0\n");
+}
+
+#[test]
+fn postgres_markers_lost_fails_with_the_message_of_psql_when_the_store_does_not_answer() {
+    let stubs = pg_stubs();
+    stubs.tool(
+        "bin/psql",
+        r#"echo 'psql: error: connection to server at "localhost" (::1), port 5432 failed: Connection refused' >&2
+exit 2"#,
+    );
+
+    let run = markers_lost(&stubs, Some("100\n105.5\n"));
+
+    assert_eq!(stubs.calls(), [query_call("app", MARKERS_TABLE)]);
+    assert_eq!(run.0, 2, "the status of psql: {}", run.2);
+    assert_failed_with(&run, "port 5432 failed: Connection refused");
+}
+
+#[test]
+fn postgres_markers_lost_fails_on_a_ledger_line_that_is_no_time() {
+    let stubs = pg_stubs();
+    stubs.tool("bin/psql", &markers_psql("t", "100"));
+
+    let run = markers_lost(&stubs, Some("100\nINSERT 0 1\n"));
+
+    assert_ne!(run.0, 0, "{}", run.1);
+    assert_failed_with(&run, "INSERT 0 1");
+}
+
+#[test]
+fn postgres_dr_scripts_give_the_password_in_a_file_that_goes_when_they_end() {
+    let stubs = pg_stubs();
+    let seen = stubs.path("pgpass-seen");
+    let file = stubs.path("pgpass-path");
+    let env = stubs.path("password-env");
+    stubs.tool(
+        "bin/pg_dump",
+        &format!(
+            r#"cp "$PGPASSFILE" '{seen}'
+printf '%s' "$PGPASSFILE" > '{file}'
+printf '%s' "${{TUMULT_PG_PASSWORD-unset}}" > '{env}'
+{PG_DUMP_WRITES}"#,
+            seen = seen.display(),
+            file = file.display(),
+            env = env.display()
+        ),
+    );
+    let backup = stubs.path("app.dump");
+
+    let (code, _, stderr) = stubs.run(
+        POSTGRES_BACKUP,
+        &[
+            ("TUMULT_PG_DATABASE", "app"),
+            ("TUMULT_BACKUP_PATH", text(&backup)),
+            ("TUMULT_PG_PASSWORD", r"pa:ss\word"),
+        ],
+    );
+
+    assert_eq!(code, 0, "{stderr}");
+    assert_eq!(
+        std::fs::read_to_string(&seen).unwrap(),
+        "*:*:*:*:pa\\:ss\\\\word\n",
+        "a ':' and a '\\' are escaped as the .pgpass format asks"
+    );
+    assert_eq!(std::fs::read_to_string(&env).unwrap(), "unset");
+    assert!(
+        stubs.calls().iter().all(|call| !call.contains("word")),
+        "{:?}",
+        stubs.calls()
+    );
+    let used = std::fs::read_to_string(&file).unwrap();
+    assert!(
+        !std::path::Path::new(&used).exists(),
+        "{used} is still there"
+    );
+}
+
+#[test]
+fn every_function_of_the_postgres_manifest_names_an_executable_script() {
+    let manifest = std::fs::read_to_string(plugin_path("tumult-db-postgres/plugin.toon")).unwrap();
+    let scripts: Vec<&str> = manifest
+        .lines()
+        .filter_map(|line| line.trim().strip_prefix("script: "))
+        .collect();
+    for name in [
+        "actions/backup.sh",
+        "actions/restore.sh",
+        "actions/stop-primary.sh",
+        "actions/start-primary.sh",
+        "actions/promote-replica.sh",
+        "actions/write-markers.sh",
+        "probes/markers-lost.sh",
+    ] {
+        assert!(scripts.contains(&name), "{name} is not in the manifest");
+    }
+    for script in scripts {
+        assert_script_executable(&format!("tumult-db-postgres/{script}"));
+    }
+}
+
+/// The reader of the RPO as a steady-state probe, as the docs show it, with
+/// its ledger in the lab.
+const MARKERS_LOST_CHECK: &str = "    - name: data-lost
+      activity_type: probe
+      provider:
+        type: script
+        plugin: tumult-db-postgres
+        function: markers-lost
+        arguments:
+          pg_database: app
+          ledger_path: ledger
+      tolerance:
+        type: range
+        from: 0
+        to: 3600
+";
+
+#[test]
+fn a_markers_lost_check_through_tumult_reads_the_seconds_a_restore_lost() {
+    let lab = Lab::with_state("ok");
+    std::fs::write(lab.path("ledger"), "100\n103.25\n105.5\n").unwrap();
+    let stubs = Stubs::new();
+    stubs.tool("bin/psql", &markers_psql("t", "103.25"));
+    let path = format!(
+        "{}:{}",
+        stubs.path("bin").display(),
+        std::env::var("PATH").unwrap_or_default()
+    );
+
+    let output = lab
+        .run_command(&guarded_by(&lab, MARKERS_LOST_CHECK))
+        .env("PATH", path)
+        .env("TMPDIR", lab.path(""))
+        .output()
+        .expect("run tumult");
+
+    assert!(
+        stubs.calls().contains(&query_call("app", NEWEST_MARKER)),
+        "{:?}",
+        stubs.calls()
+    );
+    let journal = lab.journal(&output);
+    assert_eq!(
+        journal.status,
+        ExperimentStatus::Completed,
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let before = journal.steady_state_before.expect("the check ran");
+    let lost = result(&before.probe_results, "data-lost");
+    assert_eq!(lost.output.as_deref(), Some("2.25"));
 }
 
 // ── tumult-network ────────────────────────────────────────────
