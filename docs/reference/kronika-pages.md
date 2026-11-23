@@ -302,6 +302,24 @@ the first 30 days past the due date, and high after that. The finding goes
 away when a verified record fulfils the plan, or when someone cancels it.
 An overdue plan does not change the compliance score.
 
+#### When a DR test is overdue
+
+The risk scan keeps a register of when each target needs its next DR
+test. A target is in it when it has a DR test, declares an RTO, or has a
+planned DR exercise. The next test is due one interval after the last
+one. A DR run whose probes saw no outage is no last test: it proved
+nothing about recovery. The interval comes from a planned DR exercise of
+the target, else
+from the DR test plan of its function in the register, else it is 365
+days.
+
+A target past that date is a finding on the Resilience page, with the
+rule `dr_test_overdue`. It is medium for the first 30 days, and high after
+that. On a target of criticality `critical` or `high` it is one step more:
+high, then critical. A target that a planned DR exercise covers gets no
+such finding: its plan is the one that is overdue, with
+`manual_exercise_overdue`. So one late test is one finding.
+
 #### Sign off a record
 
 Verifying a record is a sign-off. A record stays submitted until it has

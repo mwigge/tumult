@@ -120,6 +120,12 @@
 //! `reason`, NULL on rows stored before v24. A database at v21, v22 or v23
 //! migrates on open.
 //!
+//! v25 adds the view `dr_tests` (`dr.rs`): one row per DR test, a run of
+//! kind `dr` or a submitted or verified manual record of a DR type, with
+//! its targets, what it measured and its verdict. No table changes; the
+//! version moves so that an older build, which has no such view, refuses
+//! the lake.
+//!
 //! The DDL is split by feature area: [`telemetry`] (v1), [`manual`] (v2/v8
 //! shape), [`analytics`] (v3), [`runs`] (v4–v7), [`auth`] (v6/v9),
 //! [`table_stakes`] (v10–v13), [`migrations`] (the versioned rebuilds).
@@ -128,6 +134,7 @@ use tumult_core::types::ExperimentStatus;
 
 mod analytics;
 mod auth;
+mod dr;
 mod entities;
 mod forecast;
 mod ict;
@@ -140,10 +147,11 @@ mod runs;
 mod table_stakes;
 mod telemetry;
 
+pub(crate) use dr::{dr_register_sql, dr_tests_sql};
 pub(crate) use manual::V22_COLUMNS as MANUAL_V22_COLUMNS;
 pub use migrations::{MIGRATE_V5_RUN_TABLES_INDEX_FREE, MIGRATE_V8_MANUAL_EXPERIMENTS_INDEX_FREE};
 
-pub const CURRENT_SCHEMA_VERSION: i64 = 24;
+pub const CURRENT_SCHEMA_VERSION: i64 = 25;
 
 /// The full DDL, one batch per feature area, executed in order. All DDL is
 /// `IF NOT EXISTS`, so this doubles as the idempotent v0 → v1 migration on
@@ -166,16 +174,18 @@ pub const CREATE_TABLES: &[&str] = &[
 ];
 
 /// The views, in the order they are created: the root of every run, the
-/// completion log of every run, the rollup of every run and the current
-/// state of every entity. CREATE OR REPLACE so existing databases pick up
-/// view changes on startup.
+/// completion log of every run, the rollup of every run, the current
+/// state of every entity and the DR tests. CREATE OR REPLACE so existing
+/// databases pick up view changes on startup.
 #[must_use]
-pub fn create_views() -> [String; 4] {
+pub fn create_views() -> [String; 5] {
+    let dr_types = crate::dr::DEFAULT_DR_EXERCISE_TYPES.map(crate::ExerciseType::as_str);
     [
         run_roots_view(),
         run_completions_view(),
         experiment_runs_view(),
         entities::VIEW.to_string(),
+        dr::dr_tests_view(&dr_types),
     ]
 }
 

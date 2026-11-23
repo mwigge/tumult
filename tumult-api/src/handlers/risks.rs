@@ -3,8 +3,8 @@
 //! * `GET /api/risks?env=` — the ranked findings of [`tumult_risk::scan`]
 //!   over the lake (latest evidence per target and discipline, objective
 //!   verdicts, the span call graph, registered definitions, planned manual
-//!   exercises), the optional Kubernetes manifests directory and the
-//!   suppression table.
+//!   exercises, the DR test register), the optional Kubernetes manifests
+//!   directory and the suppression table.
 //! * `GET /api/posture?env=` — the continuous posture score next to the
 //!   risk summary, the coverage matrix and the top findings: the opening
 //!   view of the `/posture` page.
@@ -25,10 +25,10 @@ use serde_json::{json, Value};
 use tumult_compliance::dora::HouseParams;
 use tumult_compliance::scoring::{ExperimentScore, RunState};
 use tumult_core::types::discipline;
-use tumult_lake::{scope, PlanFilter, PlanStatus, Reader};
+use tumult_lake::{scope, DrScope, PlanFilter, PlanStatus, Reader};
 use tumult_risk::{
-    Definition, Dependency, ExperimentLatest, Inputs, KindEvidence, PlannedExercise, Report,
-    Suppression, TargetEvidence, Verdict,
+    Definition, Dependency, DrTestDue, ExperimentLatest, Inputs, KindEvidence, PlannedExercise,
+    Report, Suppression, TargetEvidence, Verdict,
 };
 
 use crate::auth::Principal;
@@ -339,6 +339,38 @@ fn planned_exercises(reader: &Reader, envs: &[String]) -> Result<Vec<PlannedExer
         .collect())
 }
 
+/// The DR test register in `envs` (every environment when empty) as of
+/// `as_of_ns`, with the manual types the house counts as DR.
+fn dr_register(
+    reader: &Reader,
+    as_of_ns: i64,
+    envs: &[String],
+    params: &HouseParams,
+) -> Result<Vec<DrTestDue>, String> {
+    let scope = DrScope {
+        dr_types: params.dr_exercise_types(),
+        envs: envs.to_vec(),
+    };
+    let rows = reader
+        .dr_due_register(&scope, as_of_ns)
+        .map_err(|e| e.to_string())?;
+    Ok(rows
+        .iter()
+        .filter_map(|row| {
+            Some(DrTestDue {
+                target: str_of(row, "target_system")?,
+                environment: str_of(row, "target_environment"),
+                last_test_at_ns: row.get("last_test_at_ns").and_then(Value::as_i64),
+                last_test_id: str_of(row, "last_test_id"),
+                interval_days: row.get("interval_days").and_then(Value::as_i64)?,
+                interval_source: str_of(row, "interval_source").unwrap_or_default(),
+                next_due_at_ns: row.get("next_due_at_ns").and_then(Value::as_i64),
+                plan_id: str_of(row, "plan_id"),
+            })
+        })
+        .collect())
+}
+
 /// Assemble the scanner inputs from the lake and the manifests directory.
 /// `params` are the house parameters in force: they give the discipline
 /// of a manual record.
@@ -372,6 +404,7 @@ pub(crate) fn gather(
         budgets,
         suppressions: suppressions(reader)?,
         plans: planned_exercises(reader, envs)?,
+        dr_register: dr_register(reader, as_of_ns, envs, params)?,
     })
 }
 

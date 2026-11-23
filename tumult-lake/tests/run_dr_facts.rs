@@ -166,11 +166,6 @@ fn columns_of(store: &Store, table: &str) -> Vec<String> {
 }
 
 #[test]
-fn the_schema_is_at_version_24() {
-    assert_eq!(CURRENT_SCHEMA_VERSION, 24);
-}
-
-#[test]
 fn a_run_keeps_the_outage_it_saw_and_its_verdict_whether_it_recovered_and_why() {
     let (_d, store) = temp_store();
 
