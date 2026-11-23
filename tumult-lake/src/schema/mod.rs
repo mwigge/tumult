@@ -104,7 +104,8 @@
 //! and the version of its seal as columns of `manual_experiments`, added
 //! after the v8 rebuild; the steps, actions and links of a record; and,
 //! for later changes of v22, the plans, their audit, the sign-offs, the
-//! file columns of `evidence_attachments` and `manual_experiment_audit.link_hash`.
+//! file columns of `evidence_attachments` and the `link_hash` of
+//! `manual_experiment_audit` and `manual_plan_audit`.
 //! Every statement is `IF NOT EXISTS`, so a database at v21 migrates on
 //! open and its records keep their version 1 seal.
 //!

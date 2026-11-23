@@ -48,6 +48,12 @@ pub const ROUTE_TABLE: &[(&str, &str, Role)] = &[
     ("GET", "/api/manual/experiments/{id}", Role::Viewer),
     ("GET", "/api/manual/plans", Role::Viewer),
     ("GET", "/api/manual/plans/{id}", Role::Viewer),
+    (
+        "GET",
+        "/api/manual/experiments/{id}/audit/verify",
+        Role::Viewer,
+    ),
+    ("GET", "/api/manual/plans/{id}/audit/verify", Role::Viewer),
     ("GET", "/api/authoring/catalog", Role::Viewer),
     ("GET", "/api/registry", Role::Viewer),
     ("GET", "/api/registry/{id}", Role::Viewer),
@@ -270,6 +276,15 @@ mod tests {
         assert_eq!(
             required_role("POST", "/api/manual/experiments/x/reject"),
             Role::Approver
+        );
+        // The audit verify of a record or a plan is a read, as for a run.
+        assert_eq!(
+            required_role("GET", "/api/manual/experiments/x/audit/verify"),
+            Role::Viewer
+        );
+        assert_eq!(
+            required_role("GET", "/api/manual/plans/x/audit/verify"),
+            Role::Viewer
         );
         // Plans are entered like records; reading them is a view.
         assert_eq!(required_role("GET", "/api/manual/plans"), Role::Viewer);

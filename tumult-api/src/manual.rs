@@ -12,6 +12,13 @@
 //!
 //! Every request body refuses a field it does not know (422, naming the
 //! field), so a client never takes a dropped value for a stored one.
+//!
+//! Verify and reject are sign-offs. A record stays submitted until it has
+//! as many approvals, each from another user, as the house parameter
+//! `manual_required_signoffs` asks for its exercise type (one by
+//! default). A signer who entered or changed the record, or signed it off
+//! before, is refused with 422. `GET .../audit/verify` checks the seal,
+//! the audit trail and the sign-offs again.
 
 use crate::error::ApiError;
 use std::sync::{Arc, Mutex};
@@ -25,8 +32,8 @@ use serde_json::{json, Value};
 use tumult_ingest::Batch;
 use tumult_lake::{
     ActionItem, AttachmentKind, ExerciseDetail, ExerciseLink, ExerciseStep, ExerciseType, LinkKind,
-    ManualError, ManualOutcome, NewManualExperiment, Participant, PlanError, Reader, StepResult,
-    Store, Writer,
+    ManualError, ManualOutcome, NewManualExperiment, Participant, PlanError, Reader, SignOff,
+    SignOffDecision, SignOffOutcome, StepResult, Store, Writer,
 };
 
 use crate::auth::Principal;
@@ -50,19 +57,21 @@ pub(crate) fn actor_or(
 }
 
 /// Map a lifecycle error to an HTTP response. A record that names a plan
-/// it cannot fulfil is 422.
+/// it cannot fulfil is 422, and so is a sign-off the rules refuse.
 pub(crate) fn manual_error(err: &ManualError) -> ApiError {
     let status = match err {
-        ManualError::Invalid(_)
-        | ManualError::SelfReview
-        | ManualError::Plan(PlanError::Invalid(_)) => StatusCode::BAD_REQUEST,
+        ManualError::Invalid(_) | ManualError::Plan(PlanError::Invalid(_)) => {
+            StatusCode::BAD_REQUEST
+        }
         ManualError::NotFound(_) | ManualError::Plan(PlanError::NotFound(_)) => {
             StatusCode::NOT_FOUND
         }
         ManualError::WrongStatus { .. } | ManualError::Plan(PlanError::WrongStatus { .. }) => {
             StatusCode::CONFLICT
         }
-        ManualError::Plan(PlanError::Unusable(_)) => StatusCode::UNPROCESSABLE_ENTITY,
+        ManualError::Plan(PlanError::Unusable(_))
+        | ManualError::SelfReview
+        | ManualError::AlreadySigned(_) => StatusCode::UNPROCESSABLE_ENTITY,
         ManualError::Store(_) => StatusCode::INTERNAL_SERVER_ERROR,
     };
     (status, Json(json!({"error": err.to_string()})))
@@ -82,7 +91,7 @@ pub(crate) enum Subject {
     NamedPlan(String),
 }
 
-fn in_scopes(env: Option<&str>, scopes: &[String]) -> bool {
+pub(crate) fn in_scopes(env: Option<&str>, scopes: &[String]) -> bool {
     env.is_some_and(|env| scopes.iter().any(|s| s == env))
 }
 
@@ -440,9 +449,35 @@ pub async fn list(
     Ok(Json(json!({"records": rows})))
 }
 
-/// `GET /api/manual/experiments/{id}` — one record with audit + attachments.
-/// Records in an environment outside the principal's scopes 404 (no
-/// existence leak across scopes).
+/// The approving sign-offs a record has, and how many its exercise type
+/// needs under the house parameters.
+fn signoff_counts(state: &ApiState, record: &Value, signoffs: &[Value]) -> (u32, u32) {
+    let exercise_type = record["exercise_type"].as_str().unwrap_or_default();
+    let required = state
+        .score_runtime()
+        .params()
+        .required_signoffs(exercise_type);
+    let approvals = signoffs
+        .iter()
+        .filter(|s| s["decision"] == SignOffDecision::Approved.as_str())
+        .count();
+    (u32::try_from(approvals).unwrap_or(u32::MAX), required)
+}
+
+/// The sign-offs still needed to verify a record: none once it is
+/// verified or rejected.
+fn still_needed(status: &str, approvals: u32, required: u32) -> u32 {
+    match status {
+        "draft" | "submitted" => required.saturating_sub(approvals),
+        _ => 0,
+    }
+}
+
+/// `GET /api/manual/experiments/{id}`: one record with its audit trail,
+/// attachments and sign-offs, the sign-offs its type needs
+/// (`signoffs_required`) and how many are still needed
+/// (`signoffs_needed`). Records in an environment outside the principal's
+/// scopes 404 (no existence leak across scopes).
 pub async fn detail(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
@@ -464,9 +499,66 @@ pub async fn detail(
             return Err(not_found());
         }
     }
-    Ok(Json(
-        serde_json::to_value(detail).map_err(|e| internal(e.to_string()))?,
-    ))
+    let (approvals, required) = signoff_counts(&state, &detail.experiment, &detail.signoffs);
+    let status = detail.experiment["status"].as_str().unwrap_or_default();
+    let needed = still_needed(status, approvals, required);
+    let mut body = serde_json::to_value(detail).map_err(|e| internal(e.to_string()))?;
+    body["signoffs_required"] = json!(required);
+    body["signoffs_needed"] = json!(needed);
+    Ok(Json(body))
+}
+
+/// `GET /api/manual/experiments/{id}/audit/verify`: check the record
+/// again: its seal in its `hash_version`, the chain of its audit rows, its
+/// reviewer and its sign-offs. `ok: false` lists each problem with the
+/// table and the row it is in. Viewer, and 404 for an unknown record or
+/// one outside the principal's scopes, as `GET /api/runs/{id}/audit/verify`.
+pub async fn audit_verify(
+    State(state): State<ApiState>,
+    Extension(principal): Extension<Principal>,
+    Path(id): Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    let scopes = principal.env_scopes.clone();
+    let lookup = id.clone();
+    let verdict = with_reader(&state.db_path, move |reader| {
+        if !scopes.is_empty() {
+            let row = reader
+                .manual_experiment_detail(&lookup)
+                .map_err(|e| e.to_string())?;
+            let env = row
+                .as_ref()
+                .and_then(|d| d.experiment["target_environment"].as_str());
+            if !in_scopes(env, &scopes) {
+                return Ok(None);
+            }
+        }
+        reader
+            .verify_manual_record(&lookup)
+            .map_err(|e| e.to_string())
+    })
+    .await?;
+    let Some(verdict) = verdict else {
+        return Err(crate::error::not_found("manual experiment not found"));
+    };
+    let mut body = json!({"experiment_id": id, "chain_valid": verdict.ok});
+    merge_verdict(&mut body, &verdict)?;
+    Ok(Json(body))
+}
+
+/// Add the fields of `verdict` to a verify response.
+pub(crate) fn merge_verdict(
+    body: &mut Value,
+    verdict: &tumult_lake::AuditVerdict,
+) -> Result<(), ApiError> {
+    let Value::Object(fields) =
+        serde_json::to_value(verdict).map_err(|e| internal(e.to_string()))?
+    else {
+        return Err(internal("a verdict is not an object".into()));
+    };
+    if let Some(map) = body.as_object_mut() {
+        map.extend(fields);
+    }
+    Ok(())
 }
 
 /// `PUT /api/manual/experiments/{id}` — replace a draft's content.
@@ -512,6 +604,40 @@ pub async fn submit(
     Ok(Json(json!({"ok": true})))
 }
 
+/// The answer to a sign-off: where the record stands now.
+fn signed(outcome: &SignOffOutcome) -> Json<Value> {
+    Json(json!({
+        "ok": true,
+        "status": outcome.status,
+        "signoffs_required": outcome.required,
+        "signoffs_needed": still_needed(&outcome.status, outcome.approvals, outcome.required),
+    }))
+}
+
+/// Sign record `id` off as `reviewer` on the single writer, with the
+/// approvals the house parameters ask for its type.
+async fn sign_off(
+    state: &ApiState,
+    principal: &Principal,
+    id: String,
+    reviewer: String,
+    note: Option<String>,
+    decision: SignOffDecision,
+) -> Result<Json<Value>, ApiError> {
+    let params = state.score_runtime().params();
+    let resource_id = id.clone();
+    let outcome = exec_manual(state, principal, Some(&resource_id), move |w| {
+        let sign_off = SignOff {
+            by: &reviewer,
+            note: note.as_deref(),
+            decision,
+        };
+        w.sign_off_manual(&id, &sign_off, |t| params.required_signoffs(t))
+    })
+    .await?;
+    Ok(signed(&outcome))
+}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct VerifyRequest {
@@ -519,7 +645,10 @@ pub struct VerifyRequest {
     note: Option<String>,
 }
 
-/// `POST /api/manual/experiments/{id}/verify` — reviewer ≠ enterer.
+/// `POST /api/manual/experiments/{id}/verify`: an approving sign-off. The
+/// last approval the type needs verifies the record; the answer says the
+/// status and how many sign-offs are still needed. The signer must not
+/// have entered or changed the record, nor signed it off before (422).
 pub async fn verify(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
@@ -527,12 +656,15 @@ pub async fn verify(
     Json(req): Json<VerifyRequest>,
 ) -> Result<Json<Value>, ApiError> {
     let reviewer = actor_or(&principal, req.reviewer.clone(), "reviewer").map_err(bad_request)?;
-    let resource_id = id.clone();
-    exec_manual(&state, &principal, Some(&resource_id), move |w| {
-        w.verify_manual(&id, &reviewer, req.note.as_deref())
-    })
-    .await?;
-    Ok(Json(json!({"ok": true})))
+    sign_off(
+        &state,
+        &principal,
+        id,
+        reviewer,
+        req.note,
+        SignOffDecision::Approved,
+    )
+    .await
 }
 
 #[derive(Deserialize)]
@@ -542,7 +674,8 @@ pub struct RejectRequest {
     note: String,
 }
 
-/// `POST /api/manual/experiments/{id}/reject` — note is mandatory.
+/// `POST /api/manual/experiments/{id}/reject`: a rejecting sign-off. It
+/// rejects the record whatever approvals it has. The note is mandatory.
 pub async fn reject(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
@@ -550,12 +683,15 @@ pub async fn reject(
     Json(req): Json<RejectRequest>,
 ) -> Result<Json<Value>, ApiError> {
     let reviewer = actor_or(&principal, req.reviewer.clone(), "reviewer").map_err(bad_request)?;
-    let resource_id = id.clone();
-    exec_manual(&state, &principal, Some(&resource_id), move |w| {
-        w.reject_manual(&id, &reviewer, &req.note)
-    })
-    .await?;
-    Ok(Json(json!({"ok": true})))
+    sign_off(
+        &state,
+        &principal,
+        id,
+        reviewer,
+        Some(req.note),
+        SignOffDecision::Rejected,
+    )
+    .await
 }
 
 #[derive(Deserialize)]

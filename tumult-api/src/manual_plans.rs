@@ -18,7 +18,9 @@ use tumult_lake::{ExerciseType, ManualError, NewExercisePlan, PlanEdit, PlanErro
 
 use crate::auth::Principal;
 use crate::error::ApiError;
-use crate::manual::{actor_or, check_environment, exec_scoped, manual_error, Subject};
+use crate::manual::{
+    actor_or, check_environment, exec_scoped, in_scopes, manual_error, merge_verdict, Subject,
+};
 use crate::sql_util::{internal, with_reader};
 use crate::ApiState;
 
@@ -219,6 +221,42 @@ pub async fn detail(
     Ok(Json(
         serde_json::to_value(detail).map_err(|e| internal(e.to_string()))?,
     ))
+}
+
+/// `GET /api/manual/plans/{id}/audit/verify`: check the plan again, its
+/// seal, the chain of its audit rows and its sign-offs. `ok: false` lists
+/// each problem with the table and the row it is in. A plan in an
+/// environment outside the principal's scopes is 404.
+pub async fn audit_verify(
+    State(state): State<ApiState>,
+    Extension(principal): Extension<Principal>,
+    Path(id): Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    let scopes = principal.env_scopes.clone();
+    let lookup = id.clone();
+    let verdict = with_reader(&state.db_path, move |reader| {
+        if !scopes.is_empty() {
+            let plan = reader
+                .manual_plan_detail(&lookup)
+                .map_err(|e| e.to_string())?;
+            let env = plan
+                .as_ref()
+                .and_then(|d| d.plan["target_environment"].as_str());
+            if !in_scopes(env, &scopes) {
+                return Ok(None);
+            }
+        }
+        reader
+            .verify_manual_plan(&lookup)
+            .map_err(|e| e.to_string())
+    })
+    .await?;
+    let Some(verdict) = verdict else {
+        return Err(crate::error::not_found("plan not found"));
+    };
+    let mut body = json!({"plan_id": id, "chain_valid": verdict.ok});
+    merge_verdict(&mut body, &verdict)?;
+    Ok(Json(body))
 }
 
 /// `PATCH /api/manual/plans/{id}`: change a planned plan.

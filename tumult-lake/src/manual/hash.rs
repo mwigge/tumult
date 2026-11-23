@@ -5,7 +5,8 @@
 //! [`CanonicalContent`] alone, the form of every row sealed before schema
 //! v22. Version 2 ([`SealV2`]) holds version 1 and adds the id, the entry
 //! time, the DR facts, the steps, the actions, the links and the reviewer.
-//! Every lifecycle write seals the row again in version 2.
+//! Every lifecycle write seals the row again in version 2; the audit verify
+//! recomputes a stored seal in the version it was made in.
 //!
 //! A plan is sealed the same way, in the one form of [`PlanSeal`]: every
 //! column of the plan but the seal itself.
@@ -275,6 +276,18 @@ fn json_list<T: DeserializeOwned>(
 /// reading the row and its child rows back.
 pub(crate) fn rehash(conn: &Connection, id: &str) -> Result<String, ManualError> {
     let row = fetch_row(conn, id)?.ok_or_else(|| ManualError::NotFound(id.to_string()))?;
+    Ok(seal_of(conn, id, &row, HASH_VERSION)?)
+}
+
+/// The seal of record `id`, stored as `row`, in the form of `version`: 1
+/// is [`CanonicalContent`] alone, 2 is [`SealV2`] with the child rows read
+/// back. The audit verify recomputes a stored seal with it.
+pub(crate) fn seal_of(
+    conn: &Connection,
+    id: &str,
+    row: &serde_json::Value,
+    version: i64,
+) -> Result<String, StoreError> {
     let s = |k: &str| row.get(k).and_then(serde_json::Value::as_str).unwrap_or("");
     let opt_s = |k: &str| row.get(k).and_then(serde_json::Value::as_str);
     let num = |k: &str| row.get(k).and_then(serde_json::Value::as_f64);
@@ -310,8 +323,11 @@ pub(crate) fn rehash(conn: &Connection, id: &str) -> Result<String, ManualError>
         framework_refs: &framework_refs,
         status: s("status"),
     };
+    if version == 1 {
+        return Ok(content_hash(&content));
+    }
     let seal = SealV2 {
-        hash_version: HASH_VERSION,
+        hash_version: version,
         id,
         content,
         entered_at_ns: int("entered_at_ns").unwrap_or(0),
@@ -322,7 +338,7 @@ pub(crate) fn rehash(conn: &Connection, id: &str) -> Result<String, ManualError>
             .get("data_verified")
             .and_then(serde_json::Value::as_bool),
         plan_id: opt_s("plan_id"),
-        participants: json_list(&row, "participants")?,
+        participants: json_list(row, "participants")?,
         steps: child_rows(conn, STEPS_SQL, id)?,
         actions: child_rows(conn, ACTIONS_SQL, id)?,
         links: child_rows(conn, LINKS_SQL, id)?,
@@ -347,6 +363,11 @@ pub(crate) fn reseal(conn: &Connection, id: &str) -> Result<String, ManualError>
 /// Recompute the seal of plan `id` from the stored row.
 pub(crate) fn rehash_plan(conn: &Connection, id: &str) -> Result<String, ManualError> {
     let row = fetch_plan_row(conn, id)?.ok_or_else(|| PlanError::NotFound(id.to_string()))?;
+    Ok(plan_seal_of(id, &row))
+}
+
+/// The seal of plan `id`, stored as `row`.
+pub(crate) fn plan_seal_of(id: &str, row: &serde_json::Value) -> String {
     let s = |k: &str| row.get(k).and_then(serde_json::Value::as_str).unwrap_or("");
     let opt_s = |k: &str| row.get(k).and_then(serde_json::Value::as_str);
     let num = |k: &str| row.get(k).and_then(serde_json::Value::as_f64);
@@ -371,7 +392,7 @@ pub(crate) fn rehash_plan(conn: &Connection, id: &str) -> Result<String, ManualE
         updated_by: opt_s("updated_by"),
         updated_at_ns: int("updated_at_ns"),
     };
-    Ok(content_hash(&seal))
+    content_hash(&seal)
 }
 
 /// Seal plan `id` again from what is stored, and return the seal.

@@ -4,7 +4,8 @@
 //! A plan is `planned` until a verified record fulfils it or someone
 //! cancels it, and only a planned plan can be edited. Every write seals the
 //! plan again and appends a row to `manual_plan_audit` whose `prev_hash` is
-//! the seal before the write and whose `new_hash` is the seal after it.
+//! the seal before the write and whose `new_hash` is the seal after it,
+//! and whose `link_hash` links the audit row before it.
 //! When a record that names a plan is verified, the plan is fulfilled. A
 //! plan with an interval then comes back: a new plan with the same
 //! content, due one interval after the day the exercise ran.
@@ -13,6 +14,7 @@ use duckdb::{params, Connection};
 use serde::Serialize;
 use serde_json::{json, Map, Value};
 
+use super::chain::{append_audit, Trail};
 use super::hash::{fetch_plan_row, now_ns, reseal_plan, status_of, ulid};
 use super::{ExerciseType, ManualError, PlanError};
 use crate::{with_tx, Reader, SqlParam, StoreError, Writer};
@@ -256,22 +258,16 @@ fn append_plan_audit(
     prev_hash: Option<&str>,
     new_hash: &str,
 ) -> Result<(), ManualError> {
-    conn.execute(
-        "INSERT INTO manual_plan_audit (
-            id, plan_id, changed_by, changed_at_ns, action, diff, prev_hash, new_hash
-         ) VALUES (?,?,?,?,?,CAST(? AS JSON),?,?)",
-        params![
-            ulid(),
-            plan_id,
-            by,
-            now_ns(),
-            action,
-            diff.to_string(),
-            prev_hash,
-            new_hash,
-        ],
-    )?;
-    Ok(())
+    append_audit(
+        conn,
+        Trail::Plan,
+        plan_id,
+        by,
+        action,
+        diff,
+        prev_hash,
+        new_hash,
+    )
 }
 
 /// Insert `plan` as `planned`, seal it and write its `create` audit row

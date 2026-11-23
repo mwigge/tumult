@@ -19,10 +19,19 @@
 //! A plan (schema v22, [`plans`]) says which exercise is due when. It can
 //! be edited while it is planned; the verified record that names it
 //! fulfils it, and the record stays as it was signed off.
+//!
+//! Verifying a record is a sign-off (schema v22): a record stays
+//! `submitted` until it has the approvals its exercise type needs, each
+//! from another user, and a reject by any reviewer rejects it. Each
+//! sign-off is a `manual_signoffs` row chained to the one before it, and
+//! every audit row links the row before it ([`chain`]), so the audit
+//! verify ([`verify`]) finds a direct edit or a deleted row.
 
+mod chain;
 mod hash;
 mod plans;
 mod reader;
+mod verify;
 mod writer;
 
 use std::fmt;
@@ -31,6 +40,7 @@ use crate::StoreError;
 
 pub use plans::{NewExercisePlan, PlanDetail, PlanEdit, PlanFilter, PlanStatus};
 pub use reader::ManualDetail;
+pub use verify::{AuditProblem, AuditVerdict};
 
 /// Exercise kinds for a manual test record.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -348,6 +358,42 @@ impl ExerciseDetail {
     }
 }
 
+/// How a reviewer decides on a submitted record.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SignOffDecision {
+    Approved,
+    Rejected,
+}
+
+impl SignOffDecision {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Approved => "approved",
+            Self::Rejected => "rejected",
+        }
+    }
+}
+
+/// One sign-off of a submitted record. A reject needs a note.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SignOff<'a> {
+    pub by: &'a str,
+    pub note: Option<&'a str>,
+    pub decision: SignOffDecision,
+}
+
+/// Where a record stands after a sign-off.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SignOffOutcome {
+    /// `submitted` while approvals are missing, else `verified` or
+    /// `rejected`.
+    pub status: String,
+    /// The approving sign-offs the record has now.
+    pub approvals: u32,
+    /// The approvals its exercise type needs.
+    pub required: u32,
+}
+
 /// Errors about a plan. The API layer maps: `Invalid` → 400, `NotFound` →
 /// 404, `WrongStatus` → 409, `Unusable` → 422.
 #[derive(Debug)]
@@ -376,8 +422,9 @@ impl fmt::Display for PlanError {
 }
 
 /// Errors from the manual-evidence lifecycle. The API layer maps:
-/// `Invalid`/`SelfReview` → 400, `NotFound` → 404, `WrongStatus` → 409,
-/// `Plan` as [`PlanError`] says, `Store` → 500.
+/// `Invalid` → 400, `NotFound` → 404, `WrongStatus` → 409,
+/// `SelfReview`/`AlreadySigned` → 422, `Plan` as [`PlanError`] says,
+/// `Store` → 500.
 #[derive(Debug)]
 pub enum ManualError {
     /// Bad input (unknown enum value, empty required field).
@@ -388,6 +435,8 @@ pub enum ManualError {
     WrongStatus { status: String, action: String },
     /// Reviewer must not have contributed to the record.
     SelfReview,
+    /// This user has signed the record off already: one user signs once.
+    AlreadySigned(String),
     /// A plan write that cannot be done, or a plan a record cannot fulfil.
     Plan(PlanError),
     /// Underlying store failure.
@@ -408,6 +457,7 @@ impl fmt::Display for ManualError {
                     "reviewer must not have created, edited, submitted, or attached evidence to the record"
                 )
             }
+            Self::AlreadySigned(by) => write!(f, "'{by}' has already signed off this record"),
             Self::Plan(e) => write!(f, "{e}"),
             Self::Store(e) => write!(f, "store error: {e}"),
         }

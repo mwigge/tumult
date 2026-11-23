@@ -4,10 +4,12 @@
 
 use duckdb::{params, Connection};
 
+use super::chain::{self, insert_signoff, NewSignoff, Trail};
 use super::hash::{fetch_row, now_ns, reseal, status_of, ulid};
 use super::plans::{check_tested, fulfil, usable_plan, Tested};
 use super::{
-    AttachmentKind, ExerciseDetail, LinkKind, ManualError, NewManualExperiment, StepResult,
+    AttachmentKind, ExerciseDetail, LinkKind, ManualError, NewManualExperiment, SignOff,
+    SignOffDecision, SignOffOutcome, StepResult,
 };
 use crate::{with_tx, Writer};
 
@@ -162,7 +164,8 @@ fn insert_draft(
     Ok((id, hash))
 }
 
-/// Append one audit row (no transaction; caller wraps).
+/// Append one audit row of record `experiment_id` (no transaction;
+/// caller wraps).
 fn append_audit(
     conn: &Connection,
     experiment_id: &str,
@@ -172,22 +175,16 @@ fn append_audit(
     prev_hash: Option<&str>,
     new_hash: &str,
 ) -> Result<(), ManualError> {
-    conn.execute(
-        "INSERT INTO manual_experiment_audit (
-            id, experiment_id, changed_by, changed_at_ns, action, diff, prev_hash, new_hash
-         ) VALUES (?,?,?,?,?,CAST(? AS JSON),?,?)",
-        params![
-            ulid(),
-            experiment_id,
-            changed_by,
-            now_ns(),
-            action,
-            diff.to_string(),
-            prev_hash,
-            new_hash,
-        ],
-    )?;
-    Ok(())
+    chain::append_audit(
+        conn,
+        Trail::Record,
+        experiment_id,
+        changed_by,
+        action,
+        diff,
+        prev_hash,
+        new_hash,
+    )
 }
 
 impl Writer {
@@ -376,44 +373,65 @@ impl Writer {
         })
     }
 
-    /// Verify a submitted record. The reviewer must differ from the person
-    /// who entered, edited, submitted or attached its evidence (segregation of duties).
+    /// Verify a submitted record that needs one approval. The reviewer must
+    /// differ from the person who entered, edited, submitted or attached
+    /// its evidence (segregation of duties).
     ///
     /// # Errors
-    /// Returns `NotFound`, `WrongStatus` (not submitted), or `SelfReview`.
+    /// As [`Self::sign_off_manual`].
     pub fn verify_manual(
         &self,
         id: &str,
         reviewer: &str,
         note: Option<&str>,
     ) -> Result<(), ManualError> {
-        self.review(id, reviewer, note, true)
+        let sign_off = SignOff {
+            by: reviewer,
+            note,
+            decision: SignOffDecision::Approved,
+        };
+        self.sign_off_manual(id, &sign_off, |_| 1).map(|_| ())
     }
 
     /// Reject a submitted record (a review note is mandatory). The reviewer
     /// must not have created, edited, submitted or attached its evidence.
     ///
     /// # Errors
-    /// Returns `NotFound`, `WrongStatus`, `SelfReview`, or `Invalid` when the
-    /// note is empty.
+    /// As [`Self::sign_off_manual`].
     pub fn reject_manual(&self, id: &str, reviewer: &str, note: &str) -> Result<(), ManualError> {
-        if note.trim().is_empty() {
+        let sign_off = SignOff {
+            by: reviewer,
+            note: Some(note),
+            decision: SignOffDecision::Rejected,
+        };
+        self.sign_off_manual(id, &sign_off, |_| 1).map(|_| ())
+    }
+
+    /// Sign off a submitted record. `required` gives the approvals an
+    /// exercise type needs (at least one). An approval that leaves approvals
+    /// missing keeps the record submitted; the last one verifies it and
+    /// fulfils its plan. A reject rejects it. Each sign-off is a
+    /// `manual_signoffs` row that signs the seal of the record and links the
+    /// sign-off before it, and an audit row.
+    ///
+    /// # Errors
+    /// Returns `NotFound`, `WrongStatus` (not submitted), `SelfReview`
+    /// (the signer entered, edited, submitted or attached to the record),
+    /// `AlreadySigned`, or `Invalid` for an empty signer or a reject
+    /// without a note.
+    pub fn sign_off_manual(
+        &self,
+        id: &str,
+        sign_off: &SignOff<'_>,
+        required: impl Fn(&str) -> u32,
+    ) -> Result<SignOffOutcome, ManualError> {
+        let approve = sign_off.decision == SignOffDecision::Approved;
+        if !approve && sign_off.note.is_none_or(|n| n.trim().is_empty()) {
             return Err(ManualError::Invalid(
                 "reject requires a non-empty review note".into(),
             ));
         }
-        self.review(id, reviewer, Some(note), false)
-    }
-
-    fn review(
-        &self,
-        id: &str,
-        reviewer: &str,
-        note: Option<&str>,
-        approve: bool,
-    ) -> Result<(), ManualError> {
         let action = if approve { "verify" } else { "reject" };
-        let to_status = if approve { "verified" } else { "rejected" };
         with_tx(&self.conn, || {
             let row =
                 fetch_row(&self.conn, id)?.ok_or_else(|| ManualError::NotFound(id.to_string()))?;
@@ -424,52 +442,115 @@ impl Writer {
                     action: action.into(),
                 });
             }
-            let entered_by = row
-                .get("entered_by")
-                .and_then(serde_json::Value::as_str)
-                .unwrap_or_default();
-            if reviewer.trim().is_empty() {
-                return Err(ManualError::Invalid("reviewer must not be empty".into()));
-            }
-            let contributed: i64 = self.conn.query_row(
-                "SELECT COUNT(*) FROM manual_experiment_audit WHERE experiment_id = ? AND changed_by = ? AND action IN ('create', 'edit', 'submit', 'attach')",
-                params![id, reviewer], |row| row.get(0),
+            self.may_sign(id, &row, sign_off.by)?;
+            let text = |k: &str| row.get(k).and_then(serde_json::Value::as_str);
+            let seal = text("content_hash").unwrap_or_default().to_string();
+            let required = required(text("exercise_type").unwrap_or_default()).max(1);
+            let approved_before: i64 = self.conn.query_row(
+                "SELECT COUNT(*) FROM manual_signoffs WHERE subject_kind = 'record' \
+                 AND subject_id = ? AND decision = 'approved'",
+                params![id],
+                |r| r.get(0),
             )?;
-            if reviewer == entered_by || contributed > 0 {
-                return Err(ManualError::SelfReview);
+            let approvals = u32::try_from(approved_before)
+                .unwrap_or(u32::MAX)
+                .saturating_add(u32::from(approve));
+            let signoff_id = insert_signoff(
+                &self.conn,
+                &NewSignoff {
+                    subject_id: id,
+                    subject_kind: "record",
+                    role: "reviewer",
+                    signed_by: sign_off.by,
+                    decision: sign_off.decision.as_str(),
+                    note: sign_off.note,
+                    signed_hash: &seal,
+                },
+            )?;
+            if approve && approvals < required {
+                append_audit(
+                    &self.conn,
+                    id,
+                    sign_off.by,
+                    "signoff",
+                    &serde_json::json!({
+                        "signoff_id": signoff_id,
+                        "decision": sign_off.decision.as_str(),
+                        "approvals": approvals,
+                        "required": required,
+                        "note": sign_off.note,
+                    }),
+                    Some(&seal),
+                    &seal,
+                )?;
+                return Ok(SignOffOutcome {
+                    status: status.clone(),
+                    approvals,
+                    required,
+                });
             }
-            let prev_hash = row
-                .get("content_hash")
-                .and_then(serde_json::Value::as_str)
-                .unwrap_or_default()
-                .to_string();
+            let to_status = if approve { "verified" } else { "rejected" };
             self.conn.execute(
                 "UPDATE manual_experiments SET status = ?, reviewed_by = ?, \
                  reviewed_at_ns = ?, review_note = ? WHERE id = ?",
-                params![to_status, reviewer, now_ns(), note, id],
+                params![to_status, sign_off.by, now_ns(), sign_off.note, id],
             )?;
             let hash = reseal(&self.conn, id)?;
             append_audit(
                 &self.conn,
                 id,
-                reviewer,
+                sign_off.by,
                 action,
                 &serde_json::json!({
                     "from_status": "submitted",
                     "to_status": to_status,
-                    "note": note,
+                    "note": sign_off.note,
+                    "signoff_id": signoff_id,
                 }),
-                Some(&prev_hash),
+                Some(&seal),
                 &hash,
             )?;
             // A verified record fulfils the plan it names; a rejected one
             // leaves the plan as it was.
-            let plan_id = row.get("plan_id").and_then(serde_json::Value::as_str);
-            if let Some(plan_id) = plan_id.filter(|_| approve) {
-                fulfil(&self.conn, plan_id, &row, reviewer)?;
+            if let Some(plan_id) = text("plan_id").filter(|_| approve) {
+                fulfil(&self.conn, plan_id, &row, sign_off.by)?;
             }
-            Ok(())
+            Ok(SignOffOutcome {
+                status: to_status.into(),
+                approvals,
+                required,
+            })
         })
+    }
+
+    /// Refuse `by` as a signer of record `id` (stored as `row`) when the
+    /// name is empty, when they entered, edited, submitted or attached to
+    /// the record, or when they signed it off before.
+    fn may_sign(&self, id: &str, row: &serde_json::Value, by: &str) -> Result<(), ManualError> {
+        if by.trim().is_empty() {
+            return Err(ManualError::Invalid("reviewer must not be empty".into()));
+        }
+        let entered_by = row
+            .get("entered_by")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default();
+        let contributed: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM manual_experiment_audit WHERE experiment_id = ? AND changed_by = ? AND action IN ('create', 'edit', 'submit', 'attach')",
+            params![id, by], |row| row.get(0),
+        )?;
+        if by == entered_by || contributed > 0 {
+            return Err(ManualError::SelfReview);
+        }
+        let signed: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM manual_signoffs WHERE subject_kind = 'record' \
+             AND subject_id = ? AND signed_by = ?",
+            params![id, by],
+            |row| row.get(0),
+        )?;
+        if signed > 0 {
+            return Err(ManualError::AlreadySigned(by.to_string()));
+        }
+        Ok(())
     }
 
     /// Attach an external evidence link to a draft or submitted record.

@@ -289,9 +289,10 @@ flowchart LR
   target environment and function (a `function` link) where the plan sets
   them. If not, the API answers 422 and names the field that differs. The
   same check runs again when the record is verified.
-- When a second person verifies the record, the plan is fulfilled. A plan
-  with an interval then comes back, due one interval after the day the
-  exercise ran. A rejected record leaves the plan as it was.
+- When the record is verified (see [Sign off a record](#sign-off-a-record)),
+  the plan is fulfilled. A plan with an interval then comes back, due one
+  interval after the day the exercise ran. A rejected record leaves the
+  plan as it was.
 
 #### When a plan is overdue
 
@@ -300,6 +301,82 @@ Resilience page, with the rule `manual_exercise_overdue`. It is medium for
 the first 30 days past the due date, and high after that. The finding goes
 away when a verified record fulfils the plan, or when someone cancels it.
 An overdue plan does not change the compliance score.
+
+#### Sign off a record
+
+Verifying a record is a sign-off. A record stays submitted until it has
+enough approving sign-offs, each from another user. The house sets how many
+each exercise type needs, in the `score:` section of the org file. A type it
+does not list needs one, so a house that sets nothing works as before.
+
+```yaml
+score:
+  manual_required_signoffs: {failover: 2, restore: 2}
+```
+
+```mermaid
+flowchart LR
+  accTitle: The sign-offs of a record that needs two
+  accDescr: A submitted record gets a first approval and stays submitted. A second approval by another user verifies it. A reject by any reviewer rejects it, also after an approval.
+  submitted["submitted"] -->|approval| one["submitted, 1 of 2"]
+  one -->|approval by another user| verified["verified"]
+  submitted -->|reject| rejected["rejected"]
+  one -->|reject| rejected
+```
+
+- Approve with `POST /api/manual/experiments/{id}/verify`. Reject with
+  `POST /api/manual/experiments/{id}/reject` and a note. The answer gives
+  the `status` and the sign-offs still needed (`signoffs_needed`).
+- The user who entered the record, edited it, submitted it or attached
+  evidence to it may not sign it off. One user signs a record once. The API
+  answers 422 with the reason.
+- The last approval verifies the record and fulfils its plan.
+- `GET /api/manual/experiments/{id}` lists the `signoffs`, with
+  `signoffs_required` and `signoffs_needed`.
+- A sign-off is a row of `manual_signoffs`. It keeps the seal of the record
+  it signed (`signed_hash`) and links the sign-off before it.
+
+#### Verify the audit trail
+
+`GET /api/manual/experiments/{id}/audit/verify` and
+`GET /api/manual/plans/{id}/audit/verify` check a record or a plan again,
+straight from the lake. They need the Viewer role, as the verify of a run
+does.
+
+```mermaid
+flowchart LR
+  accTitle: What the audit verify checks
+  accDescr: Each audit row links the row before it, and the last one leaves the seal the record holds. Each sign-off links the sign-off before it and signs a seal of the audit trail.
+  create["audit row: create"] --> submit["audit row: submit"] --> signoff["audit row: signoff"] --> verify["audit row: verify"]
+  verify -->|new_hash| seal["seal of the record"]
+  first["sign-off 1"] --> second["sign-off 2"]
+  first -.->|signed_hash| submit
+  second -.->|signed_hash| submit
+```
+
+- The seal is computed again, in the form the record was sealed in
+  (`hash_version`), and compared with the stored one. A record verified
+  before 3.0.4 keeps form 1, which does not cover the reviewer, the steps,
+  the actions or the links.
+- Each audit row must start from the seal the row before it left, and the
+  last row must leave the stored seal.
+- Each audit row has a `link_hash` over its own fields and the row before
+  it, so a changed, moved or deleted row shows. Rows written before 3.0.4
+  have none: they count as `legacy_rows`, and the chain starts after them.
+- The reviewer must be the one of the verify or reject row. Each sign-off
+  must link the one before it, sign a seal the audit trail holds, and have
+  the audit row that names it.
+
+The answer is `ok: true`, or `ok: false` with `problems`. Each problem names
+the `table` and the `row`, and the `field` when the check can tell.
+
+```json
+{"experiment_id": "01KAQ...", "ok": false, "chain_valid": false,
+ "hash_version": 2, "legacy_rows": 0,
+ "problems": [{"table": "manual_experiments", "row": "01KAQ...",
+   "field": "reviewed_by",
+   "problem": "reviewed_by is 'mallory', but the verify row of the audit trail is by 'carol'"}]}
+```
 
 ## Telemetry explorers
 
@@ -398,6 +475,10 @@ Route `/login`. Sign in, and change the password at the first sign in.
 - Forecast bands of semantic metrics: `GET /api/forecast`.
 - Plans of manual exercises: `GET /api/manual/plans`, see
   [Plan an exercise](#plan-an-exercise).
+- The audit verify of a manual record or plan:
+  `GET /api/manual/experiments/{id}/audit/verify` and
+  `GET /api/manual/plans/{id}/audit/verify`, see
+  [Verify the audit trail](#verify-the-audit-trail).
 
 Charts follow the theme you pick (dark, light or auto), and tooltips escape
 every value that comes from the lake.
