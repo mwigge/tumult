@@ -451,7 +451,7 @@ DR exercises, drills, tabletops and other manual tests, and the plans for
 them. Every subcommand is a request to the daemon API, which checks the
 roles and the rules. The CLI never opens the lake. Each subcommand takes
 `--daemon-url <DAEMON_URL>` (default `TUMULT_DAEMON_URL`) and sends
-`TUMULT_DAEMON_TOKEN`. A read takes `--output` (`text`, or `json`, default
+`TUMULT_DAEMON_TOKEN`. A read takes `--format` (`text`, or `json`, default
 `text`). See [Krönika pages](../reference/kronika-pages.md#from-the-command-line).
 
 ```bash
@@ -463,15 +463,15 @@ tumult manual verify 01KAQ...
 
 | Subcommand | Flags (default) | What it does |
 |---|---|---|
-| `list` | `--status`, `--type <TYPE>`, `--target`, `--from`, `--to`, `--output` | List the records, newest entry first. `--from` and `--to` take a date (`YYYY-MM-DD`, UTC) or an RFC 3339 time; a date as `--to` counts its whole day |
-| `show <ID>` | `--output` | Show a record with its steps, actions, links, attachments and sign-offs, and how many sign-offs are still needed |
+| `list` | `--status`, `--type <TYPE>`, `--target`, `--from`, `--to`, `--format` | List the records, newest entry first. `--from` and `--to` take a date (`YYYY-MM-DD`, UTC) or an RFC 3339 time; a date as `--to` counts its whole day |
+| `show <ID>` | `--format` | Show a record with its steps, actions, links, attachments and sign-offs, and how many sign-offs are still needed |
 | `create` | `--file <FILE>`, `--by` | Create a draft from a TOON or JSON file (JSON when the name ends in `.json`) with the record body the API takes. A field the API does not know is refused, with its name |
 | `submit <ID>` | `--attestation`, `--by` | Submit a draft for sign-off |
 | `sign-off <ID>` | `--approve` or `--reject`, `--note`, `--by` | Approve or reject a submitted record. A reject needs `--note` |
 | `attach <ID> [FILE]` | `--link <LINK>`, `--label`, `--by` | Attach a file (PDF, PNG, JPEG, text, CSV or JSON, at most 25 MB), or a link with `--link` |
-| `verify <ID>` | `--output` | Check the seal, the audit trail, the sign-offs and the files of a record. Prints each problem and exits `1` when it is not ok |
-| `plans list` | `--status`, `--target`, `--output` | List the plans, the soonest due first |
-| `plans show <ID>` | `--output` | Show a plan with its audit trail |
+| `verify <ID>` | `--format` | Check the seal, the audit trail, the sign-offs and the files of a record. Prints each problem and exits `1` when it is not ok |
+| `plans list` | `--status`, `--target`, `--format` | List the plans, the soonest due first |
+| `plans show <ID>` | `--format` | Show a plan with its audit trail |
 | `plans create` | `--file <FILE>`, `--by` | Create a plan from a TOON or JSON file with the plan body the API takes |
 | `plans cancel <ID>` | `--reason`, `--by` | Cancel a planned plan |
 

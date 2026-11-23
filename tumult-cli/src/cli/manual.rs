@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 /// How a read prints its answer.
 #[derive(clap::ValueEnum, Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum ManualOutput {
+pub(crate) enum ManualFormat {
     /// Readable text (default)
     #[default]
     Text,
@@ -12,7 +12,7 @@ pub(crate) enum ManualOutput {
     Json,
 }
 
-impl ManualOutput {
+impl ManualFormat {
     pub(crate) fn json(self) -> bool {
         self == Self::Json
     }
@@ -40,7 +40,7 @@ pub(crate) enum ManualAction {
         to: Option<String>,
         /// How to print the answer
         #[arg(long, value_enum, default_value_t)]
-        output: ManualOutput,
+        format: ManualFormat,
     },
     /// Show one record with its steps, actions, links, attachments and
     /// sign-offs, and how many sign-offs are still needed
@@ -48,7 +48,7 @@ pub(crate) enum ManualAction {
         id: String,
         /// How to print the answer
         #[arg(long, value_enum, default_value_t)]
-        output: ManualOutput,
+        format: ManualFormat,
     },
     /// Create a draft from a TOON or JSON file with the record body of the
     /// API; a field the API does not know is refused
@@ -108,7 +108,7 @@ pub(crate) enum ManualAction {
         id: String,
         /// How to print the answer
         #[arg(long, value_enum, default_value_t)]
-        output: ManualOutput,
+        format: ManualFormat,
     },
     /// Planned exercises: list, show, create and cancel
     Plans {
@@ -129,14 +129,14 @@ pub(crate) enum ManualPlansAction {
         target: Option<String>,
         /// How to print the answer
         #[arg(long, value_enum, default_value_t)]
-        output: ManualOutput,
+        format: ManualFormat,
     },
     /// Show one plan with its audit trail
     Show {
         id: String,
         /// How to print the answer
         #[arg(long, value_enum, default_value_t)]
-        output: ManualOutput,
+        format: ManualFormat,
     },
     /// Create a plan from a TOON or JSON file with the plan body of the API
     Create {

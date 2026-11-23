@@ -443,7 +443,7 @@ tumult manual submit 01KAQ...
 tumult manual sign-off 01KAQ... --approve     # as another user
 tumult manual attach 01KAQ... runbook-log.pdf
 tumult manual verify 01KAQ...                 # exits 1 when it is not ok
-tumult manual show 01KAQ... --output json
+tumult manual show 01KAQ... --format json
 ```
 
 ```mermaid
@@ -460,7 +460,7 @@ flowchart LR
 - `list` filters by `--status`, `--type`, `--target`, `--from` and `--to`.
   `show` prints the steps, actions, links, attachments and sign-offs, and how
   many sign-offs are still needed.
-- Every read takes `--output json` and prints what the API answered.
+- Every read takes `--format json` and prints what the API answered.
 - While the daemon has no user yet, `--by` names who acts. With auth on, the
   user of the token acts.
 - The MCP tools `tumult_manual_list`, `tumult_manual_get`,

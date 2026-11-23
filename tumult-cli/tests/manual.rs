@@ -271,7 +271,7 @@ fn id_in(text: &str) -> String {
 }
 
 fn show(daemon: &Daemon, id: &str) -> Value {
-    json_of(&daemon.tumult(&["manual", "show", id, "--output", "json"]))
+    json_of(&daemon.tumult(&["manual", "show", id, "--format", "json"]))
 }
 
 #[test]
@@ -315,7 +315,7 @@ fn a_record_from_a_json_file_is_listed_and_the_filters_narrow_the_list() {
     let restore = create(&daemon, "restore.json", RESTORE_JSON, "alice");
 
     let listed = |args: &[&str]| -> Vec<String> {
-        let mut argv = vec!["manual", "list", "--output", "json"];
+        let mut argv = vec!["manual", "list", "--format", "json"];
         argv.extend_from_slice(args);
         json_of(&daemon.tumult(&argv))["records"]
             .as_array()
@@ -382,7 +382,7 @@ fn a_field_the_api_does_not_know_is_refused_and_named() {
         stderr(&refused)
     );
     assert!(stderr(&refused).contains("422"), "{}", stderr(&refused));
-    let listed = json_of(&daemon.tumult(&["manual", "list", "--output", "json"]));
+    let listed = json_of(&daemon.tumult(&["manual", "list", "--format", "json"]));
     assert_eq!(listed["records"], serde_json::json!([]), "{listed}");
 }
 
@@ -424,7 +424,7 @@ fn a_record_is_signed_off_by_two_other_users_and_its_trail_verifies() {
 
     let verified = ok(&daemon.tumult(&["manual", "verify", &id]));
     assert!(verified.starts_with(&format!("{id}: ok")), "{verified}");
-    let verdict = json_of(&daemon.tumult(&["manual", "verify", &id, "--output", "json"]));
+    let verdict = json_of(&daemon.tumult(&["manual", "verify", &id, "--format", "json"]));
     assert_eq!(verdict["ok"], true, "{verdict}");
 }
 
@@ -484,7 +484,7 @@ fn verify_exits_1_and_prints_each_problem_when_the_lake_was_changed() {
             && line.contains("mallory")),
         "{out}"
     );
-    let json = daemon.tumult(&["manual", "verify", &id, "--output", "json"]);
+    let json = daemon.tumult(&["manual", "verify", &id, "--format", "json"]);
     assert_eq!(json.status.code(), Some(1), "{}", stderr(&json));
     let verdict: Value = serde_json::from_str(&stdout(&json)).expect("JSON");
     assert_eq!(verdict["ok"], false, "{verdict}");
@@ -599,7 +599,7 @@ fn plans_are_created_listed_shown_and_cancelled() {
         "list",
         "--target",
         "payments-db",
-        "--output",
+        "--format",
         "json",
     ]));
     assert_eq!(plans["plans"][0]["id"], id.as_str(), "{plans}");
@@ -624,11 +624,11 @@ fn plans_are_created_listed_shown_and_cancelled() {
         "alice",
     ]));
     assert_eq!(cancelled, format!("cancelled plan {id}\n"));
-    let detail = json_of(&daemon.tumult(&["manual", "plans", "show", &id, "--output", "json"]));
+    let detail = json_of(&daemon.tumult(&["manual", "plans", "show", &id, "--format", "json"]));
     assert_eq!(detail["plan"]["status"], "cancelled", "{detail}");
     assert_eq!(detail["audit"].as_array().map(Vec::len), Some(2));
     let left = json_of(&daemon.tumult(&[
-        "manual", "plans", "list", "--status", "planned", "--output", "json",
+        "manual", "plans", "list", "--status", "planned", "--format", "json",
     ]));
     assert_eq!(left["plans"], serde_json::json!([]), "{left}");
 }
@@ -669,7 +669,7 @@ fn with_auth_on_the_token_says_who_acts_and_by_is_not_used() {
 
     let detail = json_of(
         &daemon
-            .command(&["manual", "show", &id, "--output", "json"])
+            .command(&["manual", "show", &id, "--format", "json"])
             .env("TUMULT_DAEMON_TOKEN", &bob)
             .output()
             .expect("run tumult"),

@@ -605,7 +605,7 @@ async fn dispatch_manual(daemon_url: Option<&str>, action: ManualAction) -> anyh
             target,
             from,
             to,
-            output,
+            format,
         } => {
             let filter = commands::list_filter(
                 status,
@@ -614,10 +614,10 @@ async fn dispatch_manual(daemon_url: Option<&str>, action: ManualAction) -> anyh
                 from.as_deref(),
                 to.as_deref(),
             )?;
-            commands::cmd_manual_list(&daemon, &filter, output.json()).await
+            commands::cmd_manual_list(&daemon, &filter, format.json()).await
         }
-        ManualAction::Show { id, output } => {
-            commands::cmd_manual_show(&daemon, &id, output.json()).await
+        ManualAction::Show { id, format } => {
+            commands::cmd_manual_show(&daemon, &id, format.json()).await
         }
         ManualAction::Create { file, by } => {
             commands::cmd_manual_create(&daemon, &file, by.as_deref()).await
@@ -659,8 +659,8 @@ async fn dispatch_manual(daemon_url: Option<&str>, action: ManualAction) -> anyh
             }
             (None, None) => anyhow::bail!("attach needs a file or --link"),
         },
-        ManualAction::Verify { id, output } => {
-            commands::cmd_manual_verify(&daemon, &id, output.json()).await
+        ManualAction::Verify { id, format } => {
+            commands::cmd_manual_verify(&daemon, &id, format.json()).await
         }
         ManualAction::Plans { action } => dispatch_manual_plans(&daemon, action).await,
     }
@@ -675,18 +675,18 @@ async fn dispatch_manual_plans(
         ManualPlansAction::List {
             status,
             target,
-            output,
+            format,
         } => {
             commands::cmd_manual_plans_list(
                 daemon,
                 status.as_deref(),
                 target.as_deref(),
-                output.json(),
+                format.json(),
             )
             .await
         }
-        ManualPlansAction::Show { id, output } => {
-            commands::cmd_manual_plans_show(daemon, &id, output.json()).await
+        ManualPlansAction::Show { id, format } => {
+            commands::cmd_manual_plans_show(daemon, &id, format.json()).await
         }
         ManualPlansAction::Create { file, by } => {
             commands::cmd_manual_plans_create(daemon, &file, by.as_deref()).await
