@@ -751,6 +751,18 @@ mod tests {
     }
 
     #[test]
+    fn a_tester_kind_reads_and_writes_its_name() {
+        for (kind, name) in [
+            (TesterKind::Internal, "internal"),
+            (TesterKind::External, "external"),
+        ] {
+            assert_eq!(kind.as_str(), name);
+            assert_eq!(TesterKind::parse(name), Some(kind));
+        }
+        assert_eq!(TesterKind::parse("vendor"), None);
+    }
+
+    #[test]
     fn a_regulatory_block_without_a_tester_reads_as_before() {
         let text = "frameworks[1]: DORA\nrequirements[1]:\n  - id: Art. 25\n    \
                     description: d\n    evidence: e\n";

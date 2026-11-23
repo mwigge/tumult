@@ -259,8 +259,8 @@ fn distance(a: &str, b: &str) -> usize {
     row[b.len()]
 }
 
-/// The registry form a reference would have: `DORA Art. 24(7)` and a bare
-/// `Art. 24(7)` give `dora.art24.7`.
+/// The registry form a reference would have: `DORA Art. 24(2)` and a bare
+/// `Art. 24(2)` give `dora.art24.2`.
 fn as_registry_form(parsed: &Parsed) -> String {
     let dotted = |rest: &str| rest.replace('(', ".").replace(')', "");
     match parsed {
@@ -394,9 +394,20 @@ mod tests {
             ("DORA-Art24", "dora.art24"),
             ("dora art 12(1)", "dora.art12.1"),
             ("RTS 2024/1774 Art. 25", "rts1774.art25"),
+            ("RTS 2024/1774 Art. 40", "rts1774.art40"),
         ] {
             assert_eq!(requirement_id(old).as_deref(), Some(id), "{old}");
         }
+        assert_eq!(requirement_id("RTS 2024/1774 Art. 99"), None);
+    }
+
+    #[test]
+    fn the_edit_distance_counts_each_character_added_removed_or_changed() {
+        assert_eq!(distance("abc", ""), 3);
+        assert_eq!(distance("", "abc"), 3);
+        assert_eq!(distance("kitten", "sitting"), 3);
+        assert_eq!(distance("dora.art24.7", "dora.art24.1"), 1);
+        assert_eq!(distance("dora.art24", "dora.art24"), 0);
     }
 
     #[test]
@@ -495,6 +506,7 @@ mod tests {
         let err = check_run_requirement(&nis2, "dora.art24.7").unwrap_err();
         assert_eq!(err.suggestion.as_deref(), Some("dora.art24.1"));
         assert_eq!(check_run_requirement(&both, "Art. 21(2)(c)"), Ok(()));
+        assert_eq!(check_run_requirement(&dora, "NIS2 Art. 21(2)(c)"), Ok(()));
         assert_eq!(check_run_requirement(&nis2, "Art. 21(2)(c)"), Ok(()));
         assert!(check_run_requirement(&both, "DORA Art. 99").is_err());
     }

@@ -392,6 +392,11 @@ mod tests {
             signed("r1", "approved", &one),
             "approved r1: status submitted, 1 sign-off still needed\n"
         );
+        let none_left = json!({"status": "submitted", "signoffs_needed": 0});
+        assert_eq!(
+            signed("r1", "approved", &none_left),
+            "approved r1: status submitted\n"
+        );
         let done = json!({"status": "verified", "signoffs_needed": 0});
         assert_eq!(
             signed("r1", "approved", &done),
@@ -448,6 +453,28 @@ mod tests {
         ] {
             assert!(text.contains(line), "{line:?} not in:\n{text}");
         }
+    }
+
+    #[test]
+    fn a_tlpt_block_with_one_of_its_fields_is_shown() {
+        let only = |field: &str, value: Value| {
+            let mut out = String::new();
+            tlpt(&mut out, &json!({ field: value }));
+            out
+        };
+        assert_eq!(
+            only("tlpt_attestation_ref", json!("ATT-1")),
+            "  TLPT attestation ATT-1 of -, test summary report -\n"
+        );
+        assert_eq!(
+            only("tlpt_summary_ref", json!("TSR-1")),
+            "  TLPT attestation - of -, test summary report TSR-1\n"
+        );
+        assert_eq!(
+            only("tlpt_attested_at_ns", json!(1_795_000_000_000_000_000_i64)),
+            "  TLPT attestation - of 2026-11-18, test summary report -\n"
+        );
+        assert_eq!(only("tester", json!("x")), "");
     }
 
     #[test]
