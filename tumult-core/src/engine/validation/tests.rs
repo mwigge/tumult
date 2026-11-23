@@ -709,6 +709,16 @@ fn a_spike_sample_interval_is_held_to_the_bounds_of_a_soak_one() {
 }
 
 #[test]
+fn a_sample_interval_of_zero_or_infinity_is_not_a_window_and_one_as_long_as_the_run_fits() {
+    let soak = |sample_interval_s: f64| LoadProfile::Soak { sample_interval_s };
+    for bad in [0.0, f64::INFINITY] {
+        let error = load_error(&with_load(Some(soak(bad)), None, Some(60.0)));
+        assert!(error.contains("finite and positive"), "{bad}: {error}");
+    }
+    assert!(validate_experiment(&with_load(Some(soak(60.0)), None, Some(60.0))).is_ok());
+}
+
+#[test]
 fn validate_rejects_zero_users_anywhere() {
     assert!(load_error(&with_load(None, Some(0), None)).contains("vus"));
     let ramp = LoadProfile::Ramp {

@@ -430,6 +430,17 @@ mod tests {
             "{fault}"
         );
 
+        let soak = with_profile(Some(LoadProfile::Soak {
+            sample_interval_s: 10.0,
+        }));
+        assert_eq!(
+            profile_fault(SPIKE_RECOVERY_S, Some(&soak)).as_deref(),
+            Some(
+                "metric 'load.spike_recovery_s' needs a load with a spike profile, \
+                 and this load has a soak profile"
+            )
+        );
+
         let ramp = with_profile(Some(LoadProfile::Ramp {
             start_vus: 1,
             ramp_up_s: 10.0,
