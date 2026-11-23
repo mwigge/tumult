@@ -3,24 +3,169 @@
 use std::fmt::Write as _;
 
 use tumult_core::journal::JournalScope;
+use tumult_lake::{AnalyticsStore, RecoveryMetric};
 
 use crate::error::ToolError;
 use crate::tools::StructuredReport;
 
 use super::for_each_journal;
 
-/// Metrics supported by [`trend`], in the same set as `tumult trend`.
+/// Metrics supported by [`trend`], in the same set as `tumult trend`: a
+/// column of each run, then the recovery metrics (see [`RecoveryMetric`]).
 const TREND_METRICS: &[&str] = &[
     "resilience_score",
     "duration_ms",
     "estimate_accuracy",
     "method_step_count",
+    "rto_measured_s",
+    "rto_margin_s",
+    "rpo_measured_s",
+    "rpo_margin_s",
 ];
 
-/// A single trend data point.
+/// A single trend data point. A point of a recovery trend says whether its
+/// run recovered (the RTO only), and the bound of a run that did not.
 struct TrendPoint {
     ts: i64,
     value: f64,
+    recovered: Option<bool>,
+    bound: Option<&'static str>,
+}
+
+impl TrendPoint {
+    /// The point as the structured result gives it.
+    fn to_json(&self) -> serde_json::Value {
+        let mut point = serde_json::Map::new();
+        point.insert("ts".into(), self.ts.into());
+        point.insert("value".into(), self.value.into());
+        if let Some(recovered) = self.recovered {
+            point.insert("recovered".into(), recovered.into());
+        }
+        if let Some(bound) = self.bound {
+            point.insert("bound".into(), bound.into());
+        }
+        serde_json::Value::Object(point)
+    }
+}
+
+/// The points of a trend, oldest first, and the runs a recovery trend left
+/// out.
+struct Series {
+    points: Vec<TrendPoint>,
+    left_out: Option<LeftOut>,
+}
+
+/// The runs a recovery trend left out: those that saw no outage, and those
+/// that measured no `objective` (`RTO` or `RPO`).
+struct LeftOut {
+    no_outage: usize,
+    not_measured: usize,
+    objective: &'static str,
+}
+
+/// The series of a column of each run.
+fn column_series(store: &AnalyticsStore, metric: &str) -> Result<Series, ToolError> {
+    // Pre-built queries keyed by metric: no interpolation of user input.
+    // They read every run of the store: it holds the journals of the scope
+    // only.
+    let sql = match metric {
+        "resilience_score" => "SELECT started_at_ns, resilience_score FROM experiments WHERE resilience_score IS NOT NULL ORDER BY started_at_ns",
+        "duration_ms" => "SELECT started_at_ns, duration_ms FROM experiments WHERE duration_ms IS NOT NULL ORDER BY started_at_ns",
+        "estimate_accuracy" => "SELECT started_at_ns, estimate_accuracy FROM experiments WHERE estimate_accuracy IS NOT NULL ORDER BY started_at_ns",
+        "method_step_count" => "SELECT started_at_ns, method_step_count FROM experiments WHERE method_step_count IS NOT NULL ORDER BY started_at_ns",
+        _ => unreachable!("validated above"),
+    };
+    let rows = store
+        .query(sql)
+        .map_err(|e| ToolError::Store(e.to_string()))?;
+
+    let points = rows
+        .iter()
+        .filter_map(|row| {
+            let ts = row.first()?.parse::<i64>().ok()?;
+            let value = row.get(1)?.parse::<f64>().ok()?;
+            Some(TrendPoint {
+                ts,
+                value,
+                recovered: None,
+                bound: None,
+            })
+        })
+        .collect();
+    Ok(Series {
+        points,
+        left_out: None,
+    })
+}
+
+/// The series of the RTO or the RPO of each run, or of its margin.
+fn recovery_series(store: &AnalyticsStore, metric: RecoveryMetric) -> Result<Series, ToolError> {
+    let trend = store
+        .recovery_trend(metric)
+        .map_err(|e| ToolError::Store(e.to_string()))?;
+    let points = trend
+        .points
+        .into_iter()
+        .map(|p| TrendPoint {
+            ts: p.started_at_ns,
+            value: p.value,
+            recovered: p.recovered,
+            bound: p.bound,
+        })
+        .collect();
+    Ok(Series {
+        points,
+        left_out: Some(LeftOut {
+            no_outage: trend.no_outage,
+            not_measured: trend.not_measured,
+            objective: if metric.is_rto() { "RTO" } else { "RPO" },
+        }),
+    })
+}
+
+/// The lines of the text that sum the points up: the summary of the
+/// values they measured, the runs that did not recover, and the runs a
+/// recovery trend left out.
+fn summary_lines(series: &Series) -> Vec<String> {
+    let measured: Vec<f64> = series
+        .points
+        .iter()
+        .filter(|p| p.bound.is_none())
+        .map(|p| p.value)
+        .collect();
+    let mut lines = Vec::new();
+    if !measured.is_empty() {
+        let (min, max, sum) = measured.iter().fold(
+            (f64::INFINITY, f64::NEG_INFINITY, 0.0_f64),
+            |(min, max, sum), v| (min.min(*v), max.max(*v), sum + v),
+        );
+        #[allow(clippy::cast_precision_loss)]
+        let avg = sum / measured.len() as f64;
+        lines.push(format!(
+            "\nSummary: {} runs, min={min}, max={max}, avg={avg}",
+            measured.len()
+        ));
+    }
+    let unrecovered = series.points.len() - measured.len();
+    if unrecovered > 0 {
+        lines.push(format!(
+            "Not recovered: {unrecovered} run(s), each shown as a bound and left out of the \
+             summary"
+        ));
+    }
+    let Some(left_out) = &series.left_out else {
+        return lines;
+    };
+    if left_out.no_outage > 0 {
+        lines.push(format!("{} run(s) saw no outage", left_out.no_outage));
+    }
+    if left_out.not_measured > 0 {
+        lines.push(format!(
+            "{} run(s) measured no {}",
+            left_out.not_measured, left_out.objective
+        ));
+    }
+    lines
 }
 
 /// The start of the window `last` asks for ("30d" or "30"), in epoch
@@ -71,8 +216,7 @@ pub fn trend(
 
     let mut scope = JournalScope::new(window_start_ns(last)?, target);
 
-    let store =
-        tumult_lake::AnalyticsStore::in_memory().map_err(|e| ToolError::Store(e.to_string()))?;
+    let store = AnalyticsStore::in_memory().map_err(|e| ToolError::Store(e.to_string()))?;
     let (loaded, skipped) = for_each_journal(journals_path, |journal| {
         if !scope.admit(&journal) {
             return;
@@ -90,42 +234,24 @@ pub fn trend(
         }
     })?;
 
-    // Pre-built queries keyed by metric — no interpolation of user input.
-    // They read every run of the store: it holds the journals of the scope
-    // only.
-    let sql = match metric {
-        "resilience_score" => "SELECT started_at_ns, resilience_score FROM experiments WHERE resilience_score IS NOT NULL ORDER BY started_at_ns",
-        "duration_ms" => "SELECT started_at_ns, duration_ms FROM experiments WHERE duration_ms IS NOT NULL ORDER BY started_at_ns",
-        "estimate_accuracy" => "SELECT started_at_ns, estimate_accuracy FROM experiments WHERE estimate_accuracy IS NOT NULL ORDER BY started_at_ns",
-        "method_step_count" => "SELECT started_at_ns, method_step_count FROM experiments WHERE method_step_count IS NOT NULL ORDER BY started_at_ns",
-        _ => unreachable!("validated above"),
+    let series = match RecoveryMetric::from_name(metric) {
+        Some(recovery) => recovery_series(&store, recovery)?,
+        None => column_series(&store, metric)?,
     };
-    let rows = store
-        .query(sql)
-        .map_err(|e| ToolError::Store(e.to_string()))?;
+    let points = &series.points;
 
-    let points: Vec<TrendPoint> = rows
-        .iter()
-        .filter_map(|row| {
-            let ts = row.first()?.parse::<i64>().ok()?;
-            let value = row.get(1)?.parse::<f64>().ok()?;
-            Some(TrendPoint { ts, value })
-        })
-        .collect();
-
-    let verdict = trend_verdict(metric, &points);
+    let verdict = trend_verdict(metric, points);
 
     let mut structured = serde_json::Map::new();
     structured.insert("metric".into(), serde_json::json!(metric));
     structured.insert(
         "points".into(),
-        serde_json::Value::Array(
-            points
-                .iter()
-                .map(|p| serde_json::json!({ "ts": p.ts, "value": p.value }))
-                .collect(),
-        ),
+        points.iter().map(TrendPoint::to_json).collect(),
     );
+    if let Some(left_out) = &series.left_out {
+        structured.insert("runs_without_outage".into(), left_out.no_outage.into());
+        structured.insert("runs_not_measured".into(), left_out.not_measured.into());
+    }
     structured.insert("target".into(), serde_json::json!(target));
     structured.insert(
         "journals_without_target".into(),
@@ -146,21 +272,20 @@ pub fn trend(
         writeln!(text, "No data points for metric: {metric}").ok();
     } else {
         writeln!(text, "Trend: {} ({} data points)", metric, points.len()).ok();
-        for point in &points {
-            writeln!(text, "  {}  {}", point.ts, point.value).ok();
+    }
+    for point in points {
+        match point.bound {
+            Some(bound) => writeln!(
+                text,
+                "  {}  {bound} {} (not recovered)",
+                point.ts, point.value
+            ),
+            None => writeln!(text, "  {}  {}", point.ts, point.value),
         }
-        let (min, max, sum) = points.iter().fold(
-            (f64::INFINITY, f64::NEG_INFINITY, 0.0_f64),
-            |(min, max, sum), p| (min.min(p.value), max.max(p.value), sum + p.value),
-        );
-        #[allow(clippy::cast_precision_loss)]
-        let avg = sum / points.len() as f64;
-        writeln!(
-            text,
-            "\nSummary: {} runs, min={min}, max={max}, avg={avg}",
-            points.len()
-        )
         .ok();
+    }
+    for line in summary_lines(&series) {
+        writeln!(text, "{line}").ok();
     }
     writeln!(text, "Verdict: {verdict}").ok();
 
@@ -173,11 +298,13 @@ pub fn trend(
 /// Direction verdict comparing the mean of the later half of the series to
 /// the earlier half (5% threshold).
 ///
-/// `resilience_score` / `estimate_accuracy` are higher-is-better and
-/// `duration_ms` is lower-is-better, mapping to `improving` / `declining` /
-/// `stable`; `method_step_count` has no quality direction and maps to
-/// `increasing` / `decreasing` / `stable`. Fewer than two points yields
-/// `insufficient-data`.
+/// `resilience_score` / `estimate_accuracy` and the margins
+/// `rto_margin_s` / `rpo_margin_s` are higher-is-better, and the times
+/// `duration_ms` / `rto_measured_s` / `rpo_measured_s` are
+/// lower-is-better, mapping to `improving` / `declining` / `stable`;
+/// `method_step_count` has no quality direction and maps to `increasing` /
+/// `decreasing` / `stable`. A run that did not recover counts with its
+/// bound. Fewer than two points yields `insufficient-data`.
 fn trend_verdict(metric: &str, points: &[TrendPoint]) -> &'static str {
     /// Relative change below which the series counts as stable.
     const THRESHOLD: f64 = 0.05;
@@ -191,11 +318,13 @@ fn trend_verdict(metric: &str, points: &[TrendPoint]) -> &'static str {
         |slice: &[TrendPoint]| slice.iter().map(|p| p.value).sum::<f64>() / slice.len() as f64;
     let early = mean(&points[..mid]);
     let late = mean(&points[mid..]);
+    // From zero, the series moves the way of its later half: a margin can
+    // fall below zero.
     let change = if early.abs() < f64::EPSILON {
         if late.abs() < f64::EPSILON {
             0.0
         } else {
-            1.0
+            late.signum()
         }
     } else {
         (late - early) / early.abs()
@@ -214,8 +343,8 @@ fn trend_verdict(metric: &str, points: &[TrendPoint]) -> &'static str {
                 "decreasing"
             }
         }
-        // duration_ms: lower is better; everything else: higher is better.
-        "duration_ms" => {
+        // A time: lower is better; everything else: higher is better.
+        "duration_ms" | "rto_measured_s" | "rpo_measured_s" => {
             if rising {
                 "declining"
             } else {
@@ -485,6 +614,8 @@ mod tests {
             .map(|(i, v)| TrendPoint {
                 ts: i64::try_from(i).unwrap(),
                 value: *v,
+                recovered: None,
+                bound: None,
             })
             .collect()
     }
@@ -617,5 +748,273 @@ mod tests {
             "{}",
             result.text
         );
+    }
+
+    // ── Recovery trends ──────────────────────────────────────
+
+    use tumult_core::types::{
+        ExperimentTarget, NfrCriticality, NfrKind, NfrOperator, NfrState, NfrVerdict,
+        ObjectiveOutcome, PostResult,
+    };
+
+    /// A verdict of `kind` named `id` on a target of `threshold`.
+    fn verdict(id: &str, kind: NfrKind, threshold: f64, observed: Option<f64>) -> NfrVerdict {
+        NfrVerdict {
+            nfr_id: id.into(),
+            kind,
+            metric: "recovery.mttr_s".into(),
+            operator: NfrOperator::Lte,
+            threshold,
+            observed,
+            state: NfrState::Inconclusive,
+            margin: None,
+            criticality: NfrCriticality::Blocking,
+            recovered: None,
+            reason: None,
+        }
+    }
+
+    /// The post phase of a run: an outage seen when `outage`, and the
+    /// target back `mttr_s` after it when that is set.
+    fn post(outage: bool, mttr_s: Option<f64>) -> PostResult {
+        PostResult {
+            started_at_ns: 0,
+            ended_at_ns: 30_000_000_000,
+            duration_s: 30.0,
+            samples: 30,
+            probes: vec![],
+            recovery_time_s: 29.1,
+            full_recovery: mttr_s.is_some() || !outage,
+            mttr_s,
+            impact_observed: Some(outage),
+            outage_started_at_ns: outage.then_some(0),
+            recovered_at_ns: None,
+        }
+    }
+
+    /// The journal of a real run, as the run `id` of a DR test on `system`
+    /// that started at `ts`, with `objectives` and `post`, in
+    /// `journals/<id>.toon`.
+    fn dr_journal(
+        journals: &std::path::Path,
+        (id, ts, system): (&str, i64, &str),
+        objectives: ObjectiveOutcome,
+        post: PostResult,
+    ) {
+        let run = TempDir::new().unwrap();
+        let mut journal =
+            tumult_core::journal::read_journal(&write_run_journal(run.path())).unwrap();
+        journal.experiment_id = id.into();
+        journal.started_at_ns = ts;
+        journal.target = Some(ExperimentTarget {
+            system: system.into(),
+            technology: Some("postgres".into()),
+            environment: None,
+            criticality: None,
+            namespace: None,
+            version: None,
+        });
+        journal.objectives = Some(objectives);
+        journal.post_result = Some(post);
+        tumult_core::journal::write_journal(&journal, &journals.join(format!("{id}.toon")))
+            .unwrap();
+    }
+
+    /// A run with an RTO of 10 s that recovered in `mttr_s`.
+    fn recovered(journals: &std::path::Path, run: (&str, i64, &str), mttr_s: f64) {
+        let rto = NfrVerdict {
+            state: NfrState::Met,
+            margin: Some(10.0 - mttr_s),
+            recovered: Some(true),
+            ..verdict("rto", NfrKind::Rto, 10.0, Some(mttr_s))
+        };
+        let objectives = ObjectiveOutcome {
+            rto_target_s: Some(10.0),
+            rto_measured_s: Some(mttr_s),
+            verdicts: vec![rto],
+            ..ObjectiveOutcome::default()
+        };
+        dr_journal(journals, run, objectives, post(true, Some(mttr_s)));
+    }
+
+    /// A run with an RTO of 10 s: not back in the 30.1 s it watched when
+    /// `outage`, and with no outage seen when not.
+    fn not_measured(journals: &std::path::Path, run: (&str, i64, &str), outage: bool) {
+        let rto = if outage {
+            NfrVerdict {
+                state: NfrState::Breached,
+                recovered: Some(false),
+                ..verdict("rto", NfrKind::Rto, 10.0, Some(30.1))
+            }
+        } else {
+            NfrVerdict {
+                reason: Some(NfrVerdict::NO_OUTAGE_OBSERVED.into()),
+                ..verdict("rto", NfrKind::Rto, 10.0, None)
+            }
+        };
+        let objectives = ObjectiveOutcome {
+            rto_target_s: Some(10.0),
+            verdicts: vec![rto],
+            ..ObjectiveOutcome::default()
+        };
+        dr_journal(journals, run, objectives, post(outage, None));
+    }
+
+    /// A run with an RPO of 5 s that lost `lost_s`, or read none back.
+    fn with_rpo(journals: &std::path::Path, run: (&str, i64, &str), lost_s: Option<f64>) {
+        let objectives = ObjectiveOutcome {
+            rpo_target_s: Some(5.0),
+            rpo_measured_s: lost_s,
+            verdicts: vec![verdict("data-kept", NfrKind::Rpo, 5.0, lost_s)],
+            ..ObjectiveOutcome::default()
+        };
+        dr_journal(journals, run, objectives, post(true, Some(1.0)));
+    }
+
+    /// DR runs on two targets.
+    fn dr_runs() -> TempDir {
+        let journals = TempDir::new().unwrap();
+        let dir = journals.path();
+        recovered(dir, ("fast", 1_000, "orders"), 4.0);
+        recovered(dir, ("other", 1_500, "sessions"), 2.0);
+        not_measured(dir, ("never-back", 2_000, "orders"), true);
+        not_measured(dir, ("no-outage", 3_000, "orders"), false);
+        recovered(dir, ("slow", 4_000, "orders"), 7.5);
+        with_rpo(dir, ("lost-little", 5_000, "orders"), Some(2.0));
+        with_rpo(dir, ("none-read", 6_000, "orders"), None);
+        journals
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn an_rto_trend_marks_the_run_that_did_not_recover_and_counts_the_one_that_saw_no_outage()
+    {
+        let journals = dr_runs();
+
+        let result = trend(
+            journals.path().to_str().unwrap(),
+            "rto_measured_s",
+            None,
+            Some("orders"),
+        )
+        .unwrap();
+
+        assert_eq!(
+            result.structured["points"],
+            serde_json::json!([
+                { "ts": 1_000, "value": 4.0, "recovered": true },
+                { "ts": 2_000, "value": 30.1, "recovered": false, "bound": "at least" },
+                { "ts": 4_000, "value": 7.5, "recovered": true },
+            ])
+        );
+        assert_eq!(result.structured["runs_without_outage"], 1);
+        assert_eq!(result.structured["runs_not_measured"], 0);
+        // The run that did not recover counts with its bound: it is later
+        // and longer than the first one.
+        assert_eq!(result.structured["verdict"], "declining");
+        assert_eq!(
+            result.text,
+            "Loaded 7 journal(s)\n\n\
+             Trend: rto_measured_s (3 data points)\n  \
+             1000  4\n  \
+             2000  at least 30.1 (not recovered)\n  \
+             4000  7.5\n\
+             \nSummary: 2 runs, min=4, max=7.5, avg=5.75\n\
+             Not recovered: 1 run(s), each shown as a bound and left out of the summary\n\
+             1 run(s) saw no outage\n\
+             Verdict: declining\n"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn an_rto_margin_trend_is_the_target_minus_the_rto_and_larger_is_better() {
+        let journals = dr_runs();
+
+        let result = trend(
+            journals.path().to_str().unwrap(),
+            "rto_margin_s",
+            None,
+            Some("orders"),
+        )
+        .unwrap();
+
+        let points = result.structured["points"].as_array().unwrap();
+        let values: Vec<f64> = points
+            .iter()
+            .map(|p| (p["value"].as_f64().unwrap() * 10.0).round() / 10.0)
+            .collect();
+        assert_eq!(values, [6.0, -20.1, 2.5]);
+        assert_eq!(points[1]["bound"], "at most");
+        assert_eq!(points[1]["recovered"], false);
+        assert_eq!(result.structured["verdict"], "declining");
+        assert!(
+            result.text.contains("  2000  at most -20."),
+            "{}",
+            result.text
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn an_rpo_trend_counts_the_run_that_measured_none() {
+        let journals = dr_runs();
+
+        for (metric, value) in [("rpo_measured_s", 2.0), ("rpo_margin_s", 3.0)] {
+            let result = trend(
+                journals.path().to_str().unwrap(),
+                metric,
+                None,
+                Some("orders"),
+            )
+            .unwrap();
+
+            assert_eq!(
+                result.structured["points"],
+                serde_json::json!([{ "ts": 5_000, "value": value }]),
+                "{metric}"
+            );
+            assert_eq!(result.structured["runs_not_measured"], 1, "{metric}");
+            assert_eq!(result.structured["runs_without_outage"], 0, "{metric}");
+            assert!(
+                result.text.contains("\n1 run(s) measured no RPO\n"),
+                "{metric}: {}",
+                result.text
+            );
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_recovery_trend_is_of_the_runs_on_the_target_only() {
+        let journals = dr_runs();
+
+        let result = trend(
+            journals.path().to_str().unwrap(),
+            "rto_measured_s",
+            None,
+            Some("sessions"),
+        )
+        .unwrap();
+
+        assert_eq!(
+            result.structured["points"],
+            serde_json::json!([{ "ts": 1_500, "value": 2.0, "recovered": true }])
+        );
+        assert_eq!(result.structured["runs_without_outage"], 0);
+        assert!(!result.text.contains("Not recovered"), "{}", result.text);
+    }
+
+    #[test]
+    fn a_time_is_better_smaller_and_a_margin_larger() {
+        for metric in ["rto_measured_s", "rpo_measured_s"] {
+            assert_eq!(trend_verdict(metric, &pts(&[10.0, 5.0])), "improving");
+            assert_eq!(trend_verdict(metric, &pts(&[5.0, 10.0])), "declining");
+        }
+        for metric in ["rto_margin_s", "rpo_margin_s"] {
+            assert_eq!(trend_verdict(metric, &pts(&[2.0, 5.0])), "improving");
+            assert_eq!(trend_verdict(metric, &pts(&[5.0, 2.0])), "declining");
+            // A margin crosses zero.
+            assert_eq!(trend_verdict(metric, &pts(&[-4.0, 2.0])), "improving");
+            assert_eq!(trend_verdict(metric, &pts(&[2.0, -4.0])), "declining");
+            assert_eq!(trend_verdict(metric, &pts(&[0.0, -5.0])), "declining");
+            assert_eq!(trend_verdict(metric, &pts(&[0.0, 5.0])), "improving");
+        }
     }
 }

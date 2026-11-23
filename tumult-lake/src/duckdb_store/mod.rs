@@ -97,9 +97,11 @@ mod ingest;
 mod legacy;
 mod maintenance;
 mod query;
+mod recovery_trend;
 mod topology;
 mod types;
 
+pub use recovery_trend::{RecoveryMetric, RecoveryPoint, RecoveryTrend};
 pub use types::{AgenticContractAnalytics, AgenticFaultAnalytics, AgenticRunAnalytics, StoreStats};
 
 pub(crate) use ingest::ingest_journal_with_experiment;

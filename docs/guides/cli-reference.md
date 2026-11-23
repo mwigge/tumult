@@ -191,9 +191,20 @@ journal files. It reads the files, not the store.
 
 | Flag | Default | What it does |
 |---|---|---|
-| `--metric <METRIC>` | `resilience_score` | `resilience_score`, `duration_ms`, `estimate_accuracy` or `method_step_count` |
+| `--metric <METRIC>` | `resilience_score` | `resilience_score`, `duration_ms`, `estimate_accuracy`, `method_step_count`, `rto_measured_s`, `rto_margin_s`, `rpo_measured_s` or `rpo_margin_s` |
 | `--last <LAST>` | all runs | Only runs that started in this window, such as `30d` |
 | `--target <TARGET>` | all runs | Only runs on this target: the system or technology the journal names, whole name, any case |
+| `--format <FORMAT>` | `text` | `text`, or `json`: the points with their flags, and the counts |
+
+The RTO and RPO metrics come from the objectives of each run. A margin is
+the target minus what the run measured, so a margin below zero is a
+breach.
+
+- A run that did not recover has no RTO. Its point says `not recovered`
+  and shows a bound: `at least` the time it watched, or `at most` the
+  margin. The summary leaves it out.
+- A run that saw no outage, or measured no RTO or RPO, is no point. The
+  last lines count it.
 
 ## tumult init
 

@@ -11,7 +11,7 @@ use tumult_otel::logging::{self, LogOptions};
 use cli::{
     AgenticAction, AutopilotAction, ChaosGraphAction, Cli, Commands, GameDayAction, GateFailOn,
     GraphFormat, McpAction, McpTransport, OutputFormat, PerfFailOnArg, RollbackStrategy,
-    StoreAction, TopologyAction,
+    StoreAction, TopologyAction, TrendFormat,
 };
 
 mod cli;
@@ -182,8 +182,15 @@ async fn dispatch(command: Commands) -> anyhow::Result<()> {
             metric,
             last,
             target,
+            format,
         } => {
-            commands::cmd_trend(&journals, &metric, last.as_deref(), target.as_deref())?;
+            commands::cmd_trend(
+                &journals,
+                &metric,
+                last.as_deref(),
+                target.as_deref(),
+                matches!(format, TrendFormat::Json),
+            )?;
         }
         Commands::Report {
             journal,

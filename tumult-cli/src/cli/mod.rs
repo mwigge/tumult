@@ -108,6 +108,15 @@ pub(crate) enum OutputFormat {
     Json,
 }
 
+/// How `tumult trend` prints its points.
+#[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum TrendFormat {
+    /// A table and a summary
+    Text,
+    /// The points, with their flags, and the counts as JSON
+    Json,
+}
+
 #[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum RecommendFormat {
     Text,
@@ -268,6 +277,9 @@ pub(crate) enum Commands {
         /// journal names
         #[arg(long)]
         target: Option<String>,
+        /// How to print the trend
+        #[arg(long, value_enum, default_value_t = TrendFormat::Text)]
+        format: TrendFormat,
     },
     /// Scaffold a new experiment.toon from a bundled template
     Init {

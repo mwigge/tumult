@@ -161,6 +161,7 @@ pub use duckdb_store::autopilot::{
 #[cfg(feature = "duckdb")]
 pub use duckdb_store::{
     AgenticContractAnalytics, AgenticFaultAnalytics, AgenticRunAnalytics, AnalyticsStore,
+    RecoveryMetric, RecoveryPoint, RecoveryTrend,
 };
 #[cfg(feature = "duckdb")]
 pub use export::{export_arrow_ipc, export_csv, export_parquet, import_parquet};
