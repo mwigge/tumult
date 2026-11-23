@@ -247,12 +247,118 @@ pub(crate) fn build_during_result(
     })
 }
 
+/// What the steady-state probes saw of an outage after the method started.
+struct OutageSeen {
+    /// The start of the first failing sample.
+    started_at_ns: i64,
+    /// For each probe that failed, the start of its first passing sample
+    /// after its last failure, or of that failure when none passed after
+    /// it: the latest over the probes.
+    back_at_ns: i64,
+}
+
+/// The outage that `samples` saw, or `None` when no sample failed. Two
+/// passes over the samples, the failures first. Pure.
+fn outage_seen(samples: &[ProbeSample]) -> Option<OutageSeen> {
+    let mut probes: Vec<ProbeOutage<'_>> = Vec::new();
+    for sample in samples.iter().filter(|sample| !sample.ok) {
+        match probes.iter_mut().find(|seen| seen.probe == sample.probe) {
+            Some(seen) => seen.failed(sample.ts_ns),
+            None => probes.push(ProbeOutage::new(&sample.probe, sample.ts_ns)),
+        }
+    }
+    for sample in samples.iter().filter(|sample| sample.ok) {
+        if let Some(seen) = probes.iter_mut().find(|seen| seen.probe == sample.probe) {
+            seen.passed(sample.ts_ns);
+        }
+    }
+    Some(OutageSeen {
+        started_at_ns: probes.iter().map(|seen| seen.first_failed_at_ns).min()?,
+        back_at_ns: probes.iter().map(ProbeOutage::back_at_ns).max()?,
+    })
+}
+
+/// What one probe saw of an outage.
+struct ProbeOutage<'a> {
+    probe: &'a str,
+    first_failed_at_ns: i64,
+    last_failed_at_ns: i64,
+    /// The first passing sample after the last failure, once one is seen.
+    passed_at_ns: Option<i64>,
+}
+
+impl<'a> ProbeOutage<'a> {
+    fn new(probe: &'a str, failed_at_ns: i64) -> Self {
+        Self {
+            probe,
+            first_failed_at_ns: failed_at_ns,
+            last_failed_at_ns: failed_at_ns,
+            passed_at_ns: None,
+        }
+    }
+
+    fn failed(&mut self, at_ns: i64) {
+        self.first_failed_at_ns = self.first_failed_at_ns.min(at_ns);
+        self.last_failed_at_ns = self.last_failed_at_ns.max(at_ns);
+    }
+
+    /// Count a passing sample. Call it once every failure is counted. The
+    /// samples may come in any order, so the earliest pass is kept.
+    fn passed(&mut self, at_ns: i64) {
+        if at_ns > self.last_failed_at_ns {
+            self.passed_at_ns = Some(self.passed_at_ns.map_or(at_ns, |first| first.min(at_ns)));
+        }
+    }
+
+    /// The first passing sample after the last failure, or that failure
+    /// when none passed after it.
+    fn back_at_ns(&self) -> i64 {
+        self.passed_at_ns.unwrap_or(self.last_failed_at_ns)
+    }
+}
+
+/// `post` timed from the outage that `run_samples` saw: the samples of the
+/// steady-state probes from the start of the method, those of the during
+/// phase and those of `post`. The time to recovery runs from the first
+/// failing sample to the first passing sample after the last failure,
+/// when the post phase ended recovered. A run whose samples never failed
+/// saw no outage, so it has no time to recovery: it is no evidence of
+/// recovery, and any clock `post` held (as a stored journal read again
+/// may) is cleared. Pure.
+pub(crate) fn timed_from_outage(post: PostResult, run_samples: &[ProbeSample]) -> PostResult {
+    let Some(outage) = outage_seen(run_samples) else {
+        return PostResult {
+            mttr_s: None,
+            impact_observed: Some(false),
+            outage_started_at_ns: None,
+            recovered_at_ns: None,
+            ..post
+        };
+    };
+    let recovered_at_ns = post.full_recovery.then_some(outage.back_at_ns);
+    // Nanosecond delta to seconds; i64 → f64 precision loss acceptable
+    // for human-readable recovery time display.
+    #[allow(clippy::cast_precision_loss)]
+    let mttr_s = recovered_at_ns.map(|at| (at - outage.started_at_ns) as f64 / 1_000_000_000.0);
+    PostResult {
+        mttr_s,
+        impact_observed: Some(true),
+        outage_started_at_ns: Some(outage.started_at_ns),
+        recovered_at_ns,
+        ..post
+    }
+}
+
 /// Build a `PostResult` from probe samples collected after method completion
-/// to measure system recovery. Returns `None` if no samples were collected.
+/// to measure system recovery. Its time to recovery is timed from the
+/// outage `run_samples` saw ([`timed_from_outage`]): the samples of the run
+/// from the start of the method, those in `probe_samples` among them.
+/// Returns `None` if no samples were collected.
 pub(crate) fn build_post_result(
     started_at_ns: i64,
     ended_at_ns: i64,
     probe_samples: &[(String, Vec<ActivityResult>)],
+    run_samples: &[ProbeSample],
 ) -> Option<PostResult> {
     if probe_samples.is_empty() {
         return None;
@@ -348,15 +454,7 @@ pub(crate) fn build_post_result(
         .map(|p| p.recovery_time_s)
         .fold(0.0_f64, f64::max);
 
-    // MTTR: when full recovery is observed, set to the maximum recovery time
-    // across all probes; when recovery was never achieved, leave as None.
-    let mttr_s = if full_recovery {
-        Some(recovery_time_s)
-    } else {
-        None
-    };
-
-    Some(PostResult {
+    let post = PostResult {
         started_at_ns,
         ended_at_ns,
         duration_s,
@@ -364,6 +462,10 @@ pub(crate) fn build_post_result(
         probes,
         recovery_time_s,
         full_recovery,
-        mttr_s,
-    })
+        mttr_s: None,
+        impact_observed: None,
+        outage_started_at_ns: None,
+        recovered_at_ns: None,
+    };
+    Some(timed_from_outage(post, run_samples))
 }

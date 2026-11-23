@@ -138,7 +138,9 @@ regulatory:
 fn report_of_every_block() -> (Journal, String) {
     let lab = Lab::with_state("ok");
     let method = [
-        step("inject", "action", "echo down > state; sleep 1"),
+        // The probes read once a second: the read one second in sees the
+        // target down.
+        step("inject", "action", "echo down > state; sleep 1.5"),
         heal(),
     ]
     .concat();
@@ -233,16 +235,32 @@ fn probe_time(check: Option<&HypothesisResult>) -> String {
     )
 }
 
+/// A time in seconds as the report writes one below a second.
+fn below_a_second(value: f64) -> String {
+    assert!(value < 1.0, "{value}");
+    format!("{:.0} ms", (value * 1000.0).round())
+}
+
 #[test]
 fn the_report_shows_the_objectives_and_the_load_of_the_run() {
-    let (_, html) = report_of_every_block();
+    let (journal, html) = report_of_every_block();
 
+    // The RTO runs from the read that saw the outage to the read after
+    // the heal: half a second or one and a half.
+    let objectives_of_run = journal.objectives.expect("a recovery target");
+    let rto_s = objectives_of_run.rto_measured_s.expect("a measured rto");
+    let measured = if rto_s < 1.0 {
+        below_a_second(rto_s)
+    } else {
+        format!("{rto_s:.1} s")
+    };
+    assert!((0.3..1.8).contains(&rto_s), "{rto_s}");
     let objectives = section(&html, "objectives");
     assert_eq!(
         columns(objectives, &[0, 1, 2, 3, 6, 7]),
         [
             row(&["Recovery", "Target", "Measured"]),
-            row(&["RTO", "30.0 s", "0 ms"]),
+            row(&["RTO", "30.0 s", &measured]),
             row(&["RPO", "5.0 s", "not measured"]),
             row(&[
                 "Objective",

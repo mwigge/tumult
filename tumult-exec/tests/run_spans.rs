@@ -96,6 +96,7 @@ fn run(experiment: &Experiment) -> (Journal, Vec<SpanData>) {
         interval: Duration::from_millis(10),
         max_during_samples: 50,
         recovery_timeout: Duration::from_millis(200),
+        recovery_interval: Duration::from_millis(10),
     };
     capture_spans(|| {
         run_experiment_with_sampling(
@@ -164,7 +165,13 @@ fn a_target_that_comes_back_says_completed_and_met_with_status_ok() {
 #[test]
 fn the_recovery_time_on_the_root_span_is_the_one_the_journal_measured() {
     let lab = Lab::with_state("ok");
-    let experiment = lab.experiment(vec![lab.action("inject", INJECT), lab.action("heal", HEAL)]);
+    // The fault holds past one read of the probes, so the run sees the
+    // outage and measures its recovery.
+    let experiment = lab.experiment(vec![
+        lab.action("inject", INJECT),
+        lab.action("hold", "sleep 1.5"),
+        lab.action("heal", HEAL),
+    ]);
 
     let (journal, spans) = run(&experiment);
 

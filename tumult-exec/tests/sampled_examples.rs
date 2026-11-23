@@ -273,6 +273,7 @@ fn run(experiment: &Experiment, scheduled: &Arc<Scheduled>) -> Journal {
     }
     let sampling = SamplingConfig {
         interval: Duration::from_millis(100),
+        recovery_interval: Duration::from_millis(100),
         ..SamplingConfig::default()
     };
     run_experiment_with_sampling(

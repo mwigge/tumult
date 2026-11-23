@@ -244,6 +244,9 @@ fn compliance_runs_over_journal_with_mttr() {
         recovery_time_s: 5.0,
         full_recovery: true,
         mttr_s: Some(5.0),
+        impact_observed: None,
+        outage_started_at_ns: None,
+        recovered_at_ns: None,
     });
     write_journal(&journal, &journal_path).unwrap();
 
@@ -258,7 +261,8 @@ fn compliance_runs_over_journal_with_mttr() {
     assert!(
         out.contains(
             "  Pass rate: 100.0%\n  \
-             Recovery within 30s: 100.0% of the runs that watched for recovery (1 of 1)\n  \
+             Recovery within target: 100.0% of the runs that measured a recovery \
+             (1 of 1; 0 against their own RTO, 1 against 30s)\n  \
              Evidence verdict: COMPLIANT\n"
         ),
         "{out}"
