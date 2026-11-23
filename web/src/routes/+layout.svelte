@@ -47,6 +47,7 @@
         { href: '/performance', label: 'Performance', icon: '◭' },
         { href: '/scores', label: 'Scores', icon: '▦' },
         { href: '/scores?view=dora', label: 'DORA', icon: '⚖' },
+        { href: '/dr', label: 'Disaster recovery', icon: '⟲' },
         { href: '/experiments', label: 'Experiments', icon: '⚗' },
         { href: '/runs', label: 'Runs', icon: '▶' },
         { href: '/author', label: 'Author', icon: '✚' },

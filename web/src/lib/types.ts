@@ -1730,3 +1730,101 @@ export interface RunImpact {
     provenance: ForecastProvenance | null;
     probes: ProbeImpact[];
 }
+
+// --- The DR view: `GET /api/dr` -------------------------------------------
+
+/** Where a target stands in the DR test register. */
+export type DrState = 'ok' | 'due' | 'overdue' | 'never_tested';
+
+/** What a DR test shows about its RTO and RPO. */
+export type DrVerdict = 'met' | 'breached' | 'not_recovered' | 'not_measured';
+
+/** A DR test is a run of kind `dr` or a manual record of a DR type. */
+export type DrOrigin = 'automated' | 'manual';
+
+/** The query of `GET /api/dr`. Times are unix nanoseconds. */
+export interface DrQuery {
+    target?: string;
+    environment?: string;
+    from_ns?: number;
+    to_ns?: number;
+    limit?: number;
+    cursor?: string;
+}
+
+/** The last DR test of a target that proves something. */
+export interface DrLastTest {
+    id: string;
+    origin: DrOrigin;
+    executed_at_ns: number;
+    verdict: DrVerdict;
+}
+
+/** One target of the DR test register, read as of now. */
+export interface DrTarget {
+    system: string;
+    environment: string | null;
+    state: DrState;
+    last_test: DrLastTest | null;
+    /** None for a target never tested. */
+    next_due_at_ns: number | null;
+    interval_days: number;
+    interval_source: 'plan' | 'function' | 'default';
+    /** The planned DR exercise that covers the target. */
+    plan: { id: string; due_at_ns: number } | null;
+    rto_target_s: number | null;
+    rpo_target_s: number | null;
+    rto_measured_s: number | null;
+    rpo_measured_s: number | null;
+    recovered: boolean | null;
+    /** The least the RTO was, when the last test did not recover. */
+    rto_at_least_s: number | null;
+}
+
+/** One DR test: a row of the lake view `dr_tests`. */
+export interface DrTest {
+    test_id: string;
+    origin: DrOrigin;
+    experiment_name: string | null;
+    exercise_type: string | null;
+    target_system: string | null;
+    target_environment: string | null;
+    executed_at_ns: number;
+    outcome: string | null;
+    rto_target_s: number | null;
+    rto_measured_s: number | null;
+    /** The least the RTO was, for a run that did not recover. */
+    rto_at_least_s: number | null;
+    recovered: boolean | null;
+    /** The probes of the run saw no outage, so it measured no recovery. */
+    no_outage: boolean | null;
+    rpo_target_s: number | null;
+    rpo_measured_s: number | null;
+    data_verified: boolean | null;
+    verdict: DrVerdict;
+    /** The run id, or the id of the manual record. */
+    evidence_id: string;
+    reviewer: string | null;
+    plan_id: string | null;
+}
+
+type DrVerdictCounts = Record<DrVerdict, number>;
+
+/** The DR view of the environments of the caller. */
+export interface DrView {
+    as_of_ns: number;
+    from_ns: number;
+    to_ns: number;
+    targets: DrTarget[];
+    /** The tests of the period on this page, newest first. */
+    tests: DrTest[];
+    count: number;
+    /** The tests of the period. */
+    total: number;
+    truncated: boolean;
+    next_cursor: string | null;
+    summary: {
+        states: Record<DrState, number>;
+        tests: { total: number; automated: DrVerdictCounts; manual: DrVerdictCounts };
+    };
+}

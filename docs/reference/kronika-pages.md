@@ -130,6 +130,52 @@ what evidence exists; it does not say that an entity complies. Read the
   the daily snapshots, and the function register in `org.yaml`.
 - **API:** `GET /api/dora`, `GET /api/dora/{article}`, `GET /api/maturity`.
 
+### Disaster recovery
+
+Route `/dr`. The DR tests of each target, automated and manual together,
+and when the next one is due. A DR test is a run of kind `dr`, or a
+submitted or verified manual record of a type the house counts as DR: by
+default `failover`, `drill`, `restore` and `backup`.
+
+![Disaster recovery: the due register of each target, and its RTO and RPO over time](../images/3.0/screenshots/dr.png)
+
+- **Due register.** One row per target: its state (`ok`, `due` within 30
+  days, `overdue` or `never tested`), its last DR test with its date,
+  origin and verdict, when the next one is due, the interval and where it
+  comes from, the plan that covers it, and the RTO and RPO it is held to
+  against what its last test measured. Read
+  [When a DR test is overdue](#when-a-dr-test-is-overdue) for how the
+  register works.
+- **RTO and RPO over time.** Per target, a chart of the RTO and one of the
+  RPO that each test measured, with the target as a dashed line. A diamond
+  marks a manual test. A triangle marks a run that did not recover. It is
+  drawn at the least its RTO was: the time from the outage seen to the end
+  of the watch.
+- **DR tests in the period.** Newest first, 20 to a page. A run links to
+  its page, and a manual record to the records of the Manual page.
+- **Filters.** A target, an environment and a period of 90 days, 1 year or
+  3 years. The URL keeps them, so a link opens the same view. The period
+  selects the tests. The register shows the targets as they are now.
+
+A lake with no DR test says so, and links to the guide and to the Manual
+page.
+
+`GET /api/dr` answers with `targets` (the register), `tests` (one page of
+the DR tests of the period, with the columns of `dr_tests`) and `summary`
+(the targets per state, and the tests per origin and verdict). A run that
+did not recover measured no RTO. Its test, and a target whose last test it
+is, have `rto_at_least_s`: the least its RTO was. `from` and `to` set the
+period in unix nanoseconds, both ends included. By default it is the 365
+days up to now. `target` keeps one target system, and `environment` one of
+your environments. `limit` (100 by default, 1000 at most) and `cursor` page
+the tests as `GET /api/entities` does. A query field the API does not know
+is refused with 400.
+
+- **Evidence:** the lake view
+  [`dr_tests`](../guides/analytics-guide.md#dr-tests), the planned manual
+  exercises, and the DR test plans of the functions in `org.yaml`.
+- **API:** `GET /api/dr`.
+
 ### Star Map
 
 Route `/starmap`; old `/topology` links point to it. One graph of org units,
@@ -553,25 +599,6 @@ Route `/login`. Sign in, and change the password at the first sign in.
   `POST /api/manual/experiments/{id}/attachments` and
   `GET /api/manual/experiments/{id}/attachments/{attachment_id}/file`, see
   [Attach a file](#attach-a-file).
-- The DR view: `GET /api/dr`. It holds:
-  - `targets`: each target of the register in
-    [When a DR test is overdue](#when-a-dr-test-is-overdue). Each has its
-    state (`ok`, `due` within 30 days, `overdue` or `never_tested`), its
-    last DR test, when the next one is due and where the interval comes
-    from (`plan`, `function` or `default`), and the plan that covers it.
-    It also has the RTO and RPO of its last test, or of the plan where the
-    last test sets none, and what the last test measured.
-  - `tests`: the DR tests of the period, newest first, with the columns of
-    the view [`dr_tests`](../guides/analytics-guide.md#dr-tests).
-  - `summary`: the targets per state, and the tests of the period per
-    origin and verdict.
-
-  `from` and `to` set the period in unix nanoseconds, both ends included.
-  By default it is the 365 days up to now. The period selects the tests;
-  the targets are as they are now. `target` keeps one target system, and
-  `environment` one of your environments. `limit` (100 by default, 1000 at
-  most) and `cursor` page the tests as `GET /api/entities` does. A query
-  field the API does not know is refused with 400.
 
 Charts follow the theme you pick (dark, light or auto), and tooltips escape
 every value that comes from the lake.

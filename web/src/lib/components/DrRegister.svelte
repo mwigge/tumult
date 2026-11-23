@@ -1,0 +1,137 @@
+<script lang="ts">
+    // The DR test register: per target, where it stands, its last DR test,
+    // when the next one is due and why, the plan that covers it, and the RTO
+    // and RPO it is held to against what its last test measured.
+    import {
+        PLANS_HREF,
+        lastTestHref,
+        localDay,
+        rpoAlarm,
+        rpoText,
+        rtoAlarm,
+        rtoText,
+        stateLabel,
+        stateTone,
+        verdictLabel,
+        verdictTone,
+    } from '#lib/dr.js';
+    import type { DrTarget } from '#lib/types.js';
+    import DrObjectiveCell from './DrObjectiveCell.svelte';
+
+    let { targets }: { targets: DrTarget[] } = $props();
+
+    const SOURCE: Record<DrTarget['interval_source'], string> = {
+        plan: 'from its plan',
+        function: 'from its function',
+        default: 'by default',
+    };
+    const key = (target: DrTarget) => `${target.system}/${target.environment ?? '-'}`;
+</script>
+
+<table class="data">
+    <caption class="sr-only">
+        Due register: the last DR test of each target and when the next one is due
+    </caption>
+    <thead>
+        <tr>
+            <th scope="col">Target</th>
+            <th scope="col">State</th>
+            <th scope="col">Last test</th>
+            <th scope="col">Next due</th>
+            <th scope="col">Interval</th>
+            <th scope="col">Plan</th>
+            <th scope="col">RTO</th>
+            <th scope="col">RPO</th>
+        </tr>
+    </thead>
+    <tbody>
+        {#each targets as target (key(target))}
+            {@const last = target.last_test}
+            <tr data-target={key(target)}>
+                <th scope="row">
+                    {target.system}
+                    {#if target.environment}<span class="dim">· {target.environment}</span>{/if}
+                </th>
+                <td class="nowrap">
+                    <span class="badge {stateTone(target.state)}">{stateLabel(target.state)}</span>
+                </td>
+                <td class="last">
+                    {#if last}
+                        <a class="mono" href={lastTestHref(last)}>{localDay(last.executed_at_ns)}</a
+                        >
+                        <span class="badge neutral">{last.origin}</span>
+                        <span class="badge {verdictTone(last.verdict)}"
+                            >{verdictLabel(last.verdict)}</span
+                        >
+                    {:else}
+                        <span class="dim">no DR test yet</span>
+                    {/if}
+                </td>
+                <td class="mono nowrap">
+                    {target.next_due_at_ns === null ? 'test now' : localDay(target.next_due_at_ns)}
+                </td>
+                <td class="nowrap">
+                    <span class="line">every {target.interval_days} days</span>
+                    <span class="line dim">{SOURCE[target.interval_source]}</span>
+                </td>
+                <td class="nowrap">
+                    {#if target.plan}
+                        <a href={PLANS_HREF}>due {localDay(target.plan.due_at_ns)}</a>
+                    {:else}
+                        <span class="dim">no plan</span>
+                    {/if}
+                </td>
+                <td>
+                    <DrObjectiveCell
+                        measured={rtoText(target)}
+                        target={target.rto_target_s}
+                        alarm={rtoAlarm(target, target.rto_target_s)}
+                    />
+                </td>
+                <td>
+                    <DrObjectiveCell
+                        measured={rpoText(target)}
+                        target={target.rpo_target_s}
+                        alarm={rpoAlarm(target, target.rpo_target_s)}
+                    />
+                </td>
+            </tr>
+        {/each}
+    </tbody>
+</table>
+
+<style>
+    .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
+    }
+    /* A row header reads as a cell, not as a column header. */
+    th[scope='row'] {
+        color: var(--text);
+        font-size: 13px;
+        font-weight: 600;
+        text-transform: none;
+        letter-spacing: normal;
+        border-bottom: 1px solid var(--border);
+        padding: 7px 10px;
+    }
+    tr:last-child th[scope='row'] {
+        border-bottom: none;
+    }
+    .dim {
+        color: var(--text-faint);
+        font-weight: 400;
+    }
+    .line {
+        display: block;
+    }
+    .last,
+    .nowrap,
+    th[scope='row'] {
+        white-space: nowrap;
+    }
+</style>

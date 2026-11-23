@@ -33,6 +33,8 @@ import type {
     ConformanceReport,
     DoraArticleReport,
     DoraReport,
+    DrQuery,
+    DrView,
     MaturityReport,
     PostureResponse,
     RiskReport,
@@ -192,6 +194,26 @@ export const api = {
         get<MaturityReport>(
             `/api/maturity?by=${by}${lei ? `&lei=${encodeURIComponent(lei)}` : ''}`,
         ),
+
+    // --- The DR view: due register and DR tests -----------------------------
+
+    /** The DR view of a period; times are unix nanoseconds. An empty filter is left out. */
+    dr: (query: DrQuery = {}) => {
+        const q = new URLSearchParams();
+        const fields: [string, string | number | undefined][] = [
+            ['target', query.target],
+            ['environment', query.environment],
+            ['from', query.from_ns],
+            ['to', query.to_ns],
+            ['limit', query.limit],
+            ['cursor', query.cursor],
+        ];
+        for (const [name, value] of fields) {
+            if (value !== undefined && value !== '') q.set(name, String(value));
+        }
+        const qs = q.toString();
+        return get<DrView>(`/api/dr${qs ? `?${qs}` : ''}`);
+    },
 
     suppressRisk: (id: string, reason: string, expiresInDays?: number, actor?: string) =>
         send<SuppressionRow>('POST', `/api/risks/${encodeURIComponent(id)}/suppress`, {
