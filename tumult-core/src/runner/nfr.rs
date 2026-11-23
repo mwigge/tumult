@@ -14,48 +14,136 @@
 //! A metric that the run did not produce yields an `inconclusive` verdict:
 //! an objective is never silently met. A metric outside this catalogue can
 //! never be produced, so validation refuses it ([`metric_fault`]).
+//!
+//! Each metric measures some kinds of objective, as the catalogue below
+//! lists them. Validation refuses an objective whose kind its metric does
+//! not measure ([`kind_fault`]): a latency is no availability, and no
+//! metric counts lost data, so an `rpo` objective has none yet.
 
 use crate::types::{
     DuringResult, Experiment, LoadResult, NfrCriticality, NfrKind, NfrObjective, NfrOperator,
     NfrState, NfrVerdict, ObjectiveOutcome, PostResult, ProbeSample, SamplePhase,
 };
 
-/// The metrics with one fixed spelling. [`resolve`] answers each of them.
-pub(crate) const FIXED_METRICS: &[&str] = &[
-    "load.throughput_rps",
-    "load.latency_p50_ms",
-    "load.latency_p95_ms",
-    "load.latency_p99_ms",
-    "load.error_rate",
-    "load.total_requests",
-    "recovery.mttr_s",
-    "recovery.time_s",
-    "during.error_rate",
-    "during.availability",
-    "post.error_rate",
-    "post.availability",
-    "fault.duration_s",
+/// A response time.
+const LATENCY: &[NfrKind] = &[NfrKind::Latency];
+/// The share of samples or requests that failed, or that passed: each is
+/// the rest of the other.
+const SHARE: &[NfrKind] = &[NfrKind::ErrorRate, NfrKind::Availability];
+/// That share after the method, where the target recovers.
+const SHARE_AFTER: &[NfrKind] = &[NfrKind::ErrorRate, NfrKind::Availability, NfrKind::Recovery];
+/// The share of failed samples of one probe. A probe that checks the data
+/// measures its integrity this way.
+const PROBE_SHARE: &[NfrKind] = &[
+    NfrKind::ErrorRate,
+    NfrKind::Availability,
+    NfrKind::DataIntegrity,
+];
+/// Requests served, in all or per second.
+const REQUESTS: &[NfrKind] = &[NfrKind::Throughput, NfrKind::Capacity];
+/// The time the target took to recover.
+const RECOVERY_TIME: &[NfrKind] = &[NfrKind::Rto, NfrKind::Recovery];
+/// The time the fault was active.
+const FAULT_TIME: &[NfrKind] = &[NfrKind::Recovery];
+
+/// The metrics with one fixed spelling, each with the kinds of objective
+/// it measures. [`resolve`] answers each of them.
+pub(crate) const FIXED_METRICS: &[(&str, &[NfrKind])] = &[
+    ("load.throughput_rps", REQUESTS),
+    ("load.latency_p50_ms", LATENCY),
+    ("load.latency_p95_ms", LATENCY),
+    ("load.latency_p99_ms", LATENCY),
+    ("load.error_rate", SHARE),
+    ("load.total_requests", REQUESTS),
+    ("recovery.mttr_s", RECOVERY_TIME),
+    ("recovery.time_s", RECOVERY_TIME),
+    ("during.error_rate", SHARE),
+    ("during.availability", SHARE),
+    ("post.error_rate", SHARE_AFTER),
+    ("post.availability", SHARE_AFTER),
+    ("fault.duration_s", FAULT_TIME),
 ];
 
-/// The statistics of a `probe.<name>.<stat>` metric.
-pub(crate) const PROBE_STATS: &[&str] = &["mean_ms", "max_ms", "p95_ms", "error_rate"];
+/// The statistics of a `probe.<name>.<stat>` metric, each with the kinds
+/// of objective it measures.
+pub(crate) const PROBE_STATS: &[(&str, &[NfrKind])] = &[
+    ("mean_ms", LATENCY),
+    ("max_ms", LATENCY),
+    ("p95_ms", LATENCY),
+    ("error_rate", PROBE_SHARE),
+];
+
+/// The names of a table of the catalogue.
+fn names(table: &[(&'static str, &[NfrKind])]) -> Vec<&'static str> {
+    table.iter().map(|(name, _)| *name).collect()
+}
+
+/// The statistic of a `probe.<name>.<stat>` metric, with its kinds, when
+/// the catalogue holds that statistic.
+fn probe_stat(metric: &str) -> Option<(&str, &'static [NfrKind])> {
+    let (name, stat) = metric.strip_prefix("probe.")?.rsplit_once('.')?;
+    let (_, kinds) = PROBE_STATS.iter().find(|(known, _)| *known == stat)?;
+    Some((name, *kinds))
+}
+
+/// The kinds of objective `metric` measures: none when the catalogue does
+/// not hold it.
+fn kinds_of(metric: &str) -> &'static [NfrKind] {
+    if let Some((_, kinds)) = FIXED_METRICS.iter().find(|(known, _)| *known == metric) {
+        return kinds;
+    }
+    match probe_stat(metric) {
+        Some((_, kinds)) => kinds,
+        None => &[],
+    }
+}
+
+/// The metrics that measure `kind`, a probe metric as `probe.<name>.<stat>`.
+fn metrics_of(kind: NfrKind) -> Vec<String> {
+    let fixed = FIXED_METRICS
+        .iter()
+        .filter(|(_, kinds)| kinds.contains(&kind))
+        .map(|(name, _)| (*name).to_string());
+    let probe = PROBE_STATS
+        .iter()
+        .filter(|(_, kinds)| kinds.contains(&kind))
+        .map(|(stat, _)| format!("probe.<name>.{stat}"));
+    fixed.chain(probe).collect()
+}
+
+/// Why an objective of `kind` cannot be measured by `metric`, or `None`
+/// when the metric measures that kind. Asked after [`metric_fault`], of a
+/// metric the catalogue holds. Pure.
+pub(crate) fn kind_fault(kind: NfrKind, metric: &str) -> Option<String> {
+    let fits = kinds_of(metric);
+    if fits.contains(&kind) {
+        return None;
+    }
+    let measures: Vec<String> = fits.iter().map(ToString::to_string).collect();
+    let others = metrics_of(kind);
+    let instead = if others.is_empty() {
+        format!("no metric of the catalogue measures {kind}")
+    } else {
+        format!("the metrics of {kind} are {}", others.join(", "))
+    };
+    Some(format!(
+        "kind {kind} does not fit metric '{metric}', which measures {}; {instead}",
+        measures.join(" or ")
+    ))
+}
 
 /// Why no run can measure `metric`, or `None` when the catalogue holds it.
 /// `probes` are the probes of the steady-state hypothesis: the only ones a
 /// run samples. Pure.
 pub(crate) fn metric_fault(metric: &str, probes: &[&str]) -> Option<String> {
-    if FIXED_METRICS.contains(&metric) {
+    if FIXED_METRICS.iter().any(|(known, _)| *known == metric) {
         return None;
     }
-    let probe_stat = metric
-        .strip_prefix("probe.")
-        .and_then(|rest| rest.rsplit_once('.'))
-        .filter(|(_, stat)| PROBE_STATS.contains(stat));
-    let Some((name, _)) = probe_stat else {
+    let Some((name, _)) = probe_stat(metric) else {
         return Some(format!(
             "metric '{metric}' is not in the catalogue (known: {}, probe.<name>.<{}>)",
-            FIXED_METRICS.join(", "),
-            PROBE_STATS.join("|")
+            names(FIXED_METRICS).join(", "),
+            names(PROBE_STATS).join("|")
         ));
     };
     if probes.contains(&name) {
@@ -391,8 +479,8 @@ mod tests {
         };
         let probe_metrics = PROBE_STATS
             .iter()
-            .map(|stat| format!("probe.health.{stat}"));
-        let fixed = FIXED_METRICS.iter().map(ToString::to_string);
+            .map(|(stat, _)| format!("probe.health.{stat}"));
+        let fixed = FIXED_METRICS.iter().map(|(name, _)| (*name).to_string());
         for metric in fixed.chain(probe_metrics) {
             assert_eq!(metric_fault(&metric, &["health"]), None, "{metric}");
             assert!(resolve(&metric, &m).is_some(), "{metric} is not resolved");

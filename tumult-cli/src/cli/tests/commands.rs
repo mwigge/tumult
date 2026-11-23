@@ -10,10 +10,11 @@ use std::path::PathBuf;
 #[test]
 fn parse_validate() {
     let cli = Cli::try_parse_from(["tumult", "validate", "test.toon"]).unwrap();
-    let Commands::Validate { experiment } = cli.command else {
+    let Commands::Validate { experiment, vars } = cli.command else {
         panic!("expected Validate command");
     };
     assert_eq!(experiment, PathBuf::from("test.toon"));
+    assert!(vars.is_empty());
 }
 
 #[test]

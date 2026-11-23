@@ -734,7 +734,14 @@ fn hypothesis(probe: &str) -> Hypothesis {
 /// An experiment with one objective on `metric` and a hypothesis probe
 /// named `health`.
 fn with_metric(metric: &str) -> Experiment {
+    with_kind_and_metric(NfrKind::Latency, metric)
+}
+
+/// An experiment with one objective of `kind` on `metric` and a
+/// hypothesis probe named `health`.
+fn with_kind_and_metric(kind: NfrKind, metric: &str) -> Experiment {
     let mut measured = objective("a");
+    measured.kind = kind;
     measured.metric = metric.into();
     with_method(Experiment {
         nfr: vec![measured],
@@ -744,28 +751,93 @@ fn with_metric(metric: &str) -> Experiment {
 }
 
 #[test]
-fn every_metric_of_the_catalogue_is_accepted() {
+fn every_metric_of_the_catalogue_is_accepted_with_a_kind_it_measures() {
+    for (metric, kind) in [
+        ("load.throughput_rps", NfrKind::Throughput),
+        ("load.throughput_rps", NfrKind::Capacity),
+        ("load.latency_p50_ms", NfrKind::Latency),
+        ("load.latency_p95_ms", NfrKind::Latency),
+        ("load.latency_p99_ms", NfrKind::Latency),
+        ("load.error_rate", NfrKind::ErrorRate),
+        ("load.error_rate", NfrKind::Availability),
+        ("load.total_requests", NfrKind::Throughput),
+        ("recovery.mttr_s", NfrKind::Rto),
+        ("recovery.time_s", NfrKind::Recovery),
+        ("during.error_rate", NfrKind::ErrorRate),
+        ("during.availability", NfrKind::Availability),
+        ("post.error_rate", NfrKind::ErrorRate),
+        ("post.availability", NfrKind::Availability),
+        ("fault.duration_s", NfrKind::Recovery),
+        ("probe.health.mean_ms", NfrKind::Latency),
+        ("probe.health.max_ms", NfrKind::Latency),
+        ("probe.health.p95_ms", NfrKind::Latency),
+        ("probe.health.error_rate", NfrKind::ErrorRate),
+        ("probe.health.error_rate", NfrKind::DataIntegrity),
+    ] {
+        let outcome = validate_experiment(&with_kind_and_metric(kind, metric));
+        assert!(outcome.is_ok(), "{kind} on {metric}: {outcome:?}");
+    }
+}
+
+#[test]
+fn an_objective_whose_kind_its_metric_does_not_measure_is_refused_and_named() {
+    for (kind, metric) in [
+        (NfrKind::Latency, "during.availability"),
+        (NfrKind::Rto, "load.latency_p95_ms"),
+        (NfrKind::Availability, "recovery.mttr_s"),
+        (NfrKind::Throughput, "probe.health.p95_ms"),
+        (NfrKind::DataIntegrity, "load.error_rate"),
+        (NfrKind::Capacity, "fault.duration_s"),
+    ] {
+        let err = validate_experiment(&with_kind_and_metric(kind, metric)).unwrap_err();
+        assert!(
+            matches!(err, EngineError::NfrInvalid { .. }),
+            "{kind} on {metric}: {err}"
+        );
+        let named = format!("kind {kind} does not fit metric '{metric}'");
+        assert!(err.to_string().contains(&named), "{err}");
+    }
+}
+
+#[test]
+fn a_refused_kind_is_told_the_metrics_that_measure_it() {
+    let err = validate_experiment(&with_kind_and_metric(
+        NfrKind::Latency,
+        "during.availability",
+    ))
+    .unwrap_err();
+    assert_eq!(
+        err.to_string(),
+        "nfr objective 'a' is invalid: kind latency does not fit metric \
+         'during.availability', which measures error_rate or availability; the metrics of \
+         latency are load.latency_p50_ms, load.latency_p95_ms, load.latency_p99_ms, \
+         probe.<name>.mean_ms, probe.<name>.max_ms, probe.<name>.p95_ms"
+    );
+}
+
+/// No metric of the catalogue counts lost data, so an `rpo` objective has
+/// nothing to measure it. Before, any metric passed for one.
+#[test]
+fn an_rpo_objective_is_refused_on_every_metric_of_the_catalogue() {
     for metric in [
         "load.throughput_rps",
-        "load.latency_p50_ms",
         "load.latency_p95_ms",
-        "load.latency_p99_ms",
         "load.error_rate",
         "load.total_requests",
         "recovery.mttr_s",
         "recovery.time_s",
-        "during.error_rate",
         "during.availability",
         "post.error_rate",
-        "post.availability",
         "fault.duration_s",
         "probe.health.mean_ms",
-        "probe.health.max_ms",
-        "probe.health.p95_ms",
         "probe.health.error_rate",
     ] {
-        let outcome = validate_experiment(&with_metric(metric));
-        assert!(outcome.is_ok(), "{metric}: {outcome:?}");
+        let err = validate_experiment(&with_kind_and_metric(NfrKind::Rpo, metric)).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("no metric of the catalogue measures rpo"),
+            "{metric}: {err}"
+        );
     }
 }
 

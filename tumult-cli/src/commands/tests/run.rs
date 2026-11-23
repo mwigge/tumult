@@ -352,13 +352,16 @@ fn validate_valid_experiment_succeeds() {
     let dir = TempDir::new().unwrap();
     let exp_path = write_valid_experiment(dir.path());
 
-    let result = cmd_validate(&exp_path);
+    let result = cmd_validate(&exp_path, &std::collections::HashMap::new());
     assert!(result.is_ok());
 }
 
 #[test]
 fn validate_nonexistent_file_returns_error() {
-    let result = cmd_validate(Path::new("/nonexistent/experiment.toon"));
+    let result = cmd_validate(
+        Path::new("/nonexistent/experiment.toon"),
+        &std::collections::HashMap::new(),
+    );
     assert!(result.is_err());
 }
 
@@ -367,7 +370,7 @@ fn validate_invalid_toon_returns_error() {
     let dir = TempDir::new().unwrap();
     let exp_path = write_invalid_experiment(dir.path());
 
-    let result = cmd_validate(&exp_path);
+    let result = cmd_validate(&exp_path, &std::collections::HashMap::new());
     assert!(result.is_err());
 }
 
@@ -379,7 +382,7 @@ fn validate_http_provider_returns_unknown_variant_error() {
     let dir = TempDir::new().unwrap();
     let exp_path = write_http_provider_experiment(dir.path());
 
-    let err = cmd_validate(&exp_path).unwrap_err();
+    let err = cmd_validate(&exp_path, &std::collections::HashMap::new()).unwrap_err();
     let msg = format!("{err:#}");
     assert!(
         msg.contains("unknown variant `http`"),
@@ -396,7 +399,7 @@ fn validate_empty_method_returns_error() {
     let dir = TempDir::new().unwrap();
     let exp_path = write_empty_method_experiment(dir.path());
 
-    let result = cmd_validate(&exp_path);
+    let result = cmd_validate(&exp_path, &std::collections::HashMap::new());
     assert!(result.is_err());
 }
 
