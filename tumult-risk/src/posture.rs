@@ -8,17 +8,21 @@
 //! posture = 0.35 · objective margin   (met objectives, weighted by criticality)
 //!         + 0.30 · discipline coverage (chaos, performance, robustness weigh most; stale counts half)
 //!         + 0.20 · evidence freshness  (half-life 30 days, no cliff)
-//!         + 0.15 · recovery            (measured RTO against its target)
+//!         + 0.15 · recovery            (measured RTO against its target; no recovery scores 0)
 //! ```
 //!
 //! A component with nothing to measure drops out and the remaining weights
 //! renormalise, so a target with no objectives is scored on the other
-//! three rather than penalised for silence. The portfolio is the
-//! criticality-weighted mean over targets.
+//! three rather than penalised for silence. A run that did not recover
+//! scores 0 for recovery; a run that measured no recovery (no outage
+//! seen, a failed method, a watch cut short) stays out of it. The
+//! portfolio is the criticality-weighted mean over targets.
 
 use serde::{Deserialize, Serialize};
 
-use crate::model::{criticality_weight, CoverageStatus, Inputs, TargetEvidence, KINDS};
+use crate::model::{
+    criticality_weight, CoverageStatus, ExperimentLatest, Inputs, TargetEvidence, KINDS,
+};
 
 const W_NFR: f64 = 0.35;
 const W_COVERAGE: f64 = 0.30;
@@ -124,20 +128,22 @@ fn freshness_component(t: &TargetEvidence, as_of_ns: i64) -> Option<f64> {
     Some(100.0 * (-(std::f64::consts::LN_2) * age / HALF_LIFE_NS).exp())
 }
 
+/// The recovery score of one run: 100 within its RTO, falling to 0 at
+/// twice the RTO, and 0 when it did not recover. `None` when it declares
+/// no RTO or measured no recovery.
+fn recovery_score(e: &ExperimentLatest) -> Option<f64> {
+    let target = e.rto_target_s.filter(|target| *target > 0.0)?;
+    let Some(measured) = e.rto_measured_s else {
+        return e.unrecovered().map(|_| 0.0);
+    };
+    if measured <= target {
+        return Some(100.0);
+    }
+    Some((100.0 * (1.0 - (measured - target) / target)).max(0.0))
+}
+
 fn recovery_component(t: &TargetEvidence) -> Option<f64> {
-    let scores: Vec<f64> = t
-        .experiments
-        .iter()
-        .filter_map(|e| Some((e.rto_target_s?, e.rto_measured_s?)))
-        .filter(|(target, _)| *target > 0.0)
-        .map(|(target, measured)| {
-            if measured <= target {
-                100.0
-            } else {
-                (100.0 * (1.0 - (measured - target) / target)).max(0.0)
-            }
-        })
-        .collect();
+    let scores: Vec<f64> = t.experiments.iter().filter_map(recovery_score).collect();
     if scores.is_empty() {
         return None;
     }
@@ -229,6 +235,7 @@ mod tests {
             threshold: 1.0,
             observed: None,
             margin: None,
+            recovered: None,
         }
     }
 
@@ -243,6 +250,9 @@ mod tests {
             verdicts,
             rto_target_s: rto.map(|r| r.0),
             rto_measured_s: rto.map(|r| r.1),
+            rpo_target_s: None,
+            rpo_measured_s: None,
+            manual: false,
         }
     }
 
@@ -338,6 +348,76 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(recovery_component(&far), Some(0.0));
+    }
+
+    /// A run that declares an RTO of `target_s` and whose `rto` verdict
+    /// is in `state`, with `recovered` as the runner wrote it.
+    fn watched(target_s: f64, state: &str, recovered: Option<bool>) -> ExperimentLatest {
+        let rto = Verdict {
+            nfr_id: "rto".into(),
+            kind: "rto".into(),
+            threshold: target_s,
+            observed: recovered.map(|_| target_s + 1.0),
+            recovered,
+            ..verdict(state, "blocking")
+        };
+        ExperimentLatest {
+            rto_target_s: Some(target_s),
+            ..experiment(vec![rto], None)
+        }
+    }
+
+    #[test]
+    fn a_run_that_did_not_recover_scores_zero_for_recovery() {
+        let alone = TargetEvidence {
+            target: "a".into(),
+            experiments: vec![watched(2.0, "breached", Some(false))],
+            ..Default::default()
+        };
+        assert_eq!(recovery_component(&alone), Some(0.0));
+        let with_a_met_one = TargetEvidence {
+            target: "b".into(),
+            experiments: vec![
+                watched(2.0, "breached", Some(false)),
+                experiment(vec![], Some((30.0, 12.0))),
+            ],
+            ..Default::default()
+        };
+        assert_eq!(recovery_component(&with_a_met_one), Some(50.0));
+    }
+
+    /// An RTO of zero is no target: such a run stays out of recovery,
+    /// whatever it measured.
+    #[test]
+    fn a_run_with_an_rto_of_zero_stays_out_of_recovery() {
+        let zero = TargetEvidence {
+            target: "a".into(),
+            experiments: vec![
+                experiment(vec![], Some((0.0, 5.0))),
+                watched(0.0, "breached", Some(false)),
+            ],
+            ..Default::default()
+        };
+        assert_eq!(recovery_component(&zero), None);
+    }
+
+    #[test]
+    fn a_run_that_measured_no_recovery_stays_out_of_recovery() {
+        let unmeasured = TargetEvidence {
+            target: "a".into(),
+            experiments: vec![watched(30.0, "inconclusive", None)],
+            ..Default::default()
+        };
+        assert_eq!(recovery_component(&unmeasured), None);
+        let with_a_met_one = TargetEvidence {
+            target: "b".into(),
+            experiments: vec![
+                watched(30.0, "inconclusive", None),
+                experiment(vec![], Some((30.0, 12.0))),
+            ],
+            ..Default::default()
+        };
+        assert_eq!(recovery_component(&with_a_met_one), Some(100.0));
     }
 
     #[test]

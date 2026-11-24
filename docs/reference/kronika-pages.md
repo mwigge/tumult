@@ -92,6 +92,40 @@ over 14 days, the telemetry contract and the resilience score per target.
 - **API:** `GET /api/risks`, `GET /api/posture`, `GET /api/scores/tree`,
   `GET /api/otel/conformance`, `POST /api/risks/{id}/suppress`.
 
+#### Findings about recovery
+
+The risk scan reads the RTO and the RPO of each DR run and of each verified
+manual record, and the register of when each target needs its next DR
+test. A record is judged against its own targets. Five rules look at
+recovery. A critical target here is one of criticality `critical` or
+`high`.
+
+| Rule | It fires when | Severity |
+|---|---|---|
+| `recovery_target_missed` | The latest run took longer than its RTO, or did not recover at all. A manual record over its RTO fires it too, and the finding says it is a manual record. | High, critical on a critical target |
+| `rpo_missed` | The latest run or a manual record lost more data than its RPO allows. The finding gives the RPO measured and the target. | High, critical on a critical target |
+| `recovery_not_measured` | The target declares an RTO, and none of its DR runs of the last 30 days measured a recovery: no outage was seen, the method failed or the watch was cut short. A manual record of that time that recovered within its targets proves the RTO. | Low, medium on a critical target |
+| `dr_test_overdue` | The next DR test of the target is past due, and no planned DR exercise covers it. See [When a DR test is overdue](#when-a-dr-test-is-overdue). | Medium, high after 30 days past due; one step more on a critical target |
+| `objective_breached` | The latest run breached an objective. For a run that did not recover, the text says "not recovered" and gives the time it watched. | By the objective: blocking is high |
+
+A run did not recover when the runner marked the verdict on its RTO so.
+The lake keeps that mark, and the risk scan, the DORA score and the DR page
+read it.
+
+A late DR test is one finding. When the target also has DR runs of the
+last 30 days that measured no recovery, the finding of the late test names
+them, and the target gets no `recovery_not_measured`. When a planned DR
+exercise covers the target, that finding is the `manual_exercise_overdue`
+of the plan.
+
+The recovery part of the resilience score reads the same facts:
+
+- A run within its RTO scores 100. A slower run scores less, and 0 at
+  twice its RTO.
+- A run that did not recover scores 0.
+- A run that measured no recovery is left out.
+- A manual record with a recovery time and an RTO counts as a run does.
+
 ### Performance
 
 Route `/performance`. Pick a target. The page shows the verdict for two
@@ -486,7 +520,8 @@ from the DR test plan of its function in the register, else it is 365
 days.
 
 A target past that date is a finding on the Resilience page, with the
-rule `dr_test_overdue`. It is medium for the first 30 days, and high after
+rule `dr_test_overdue` (see [Findings about recovery](#findings-about-recovery)).
+It is medium for the first 30 days, and high after
 that. On a target of criticality `critical` or `high` it is one step more:
 high, then critical. A target that a planned DR exercise covers gets no
 such finding: its plan is the one that is overdue, with
