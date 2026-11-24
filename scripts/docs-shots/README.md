@@ -44,8 +44,8 @@ arguments to compare first.
      (`experiments/dr-lab/lab.sh`): one restores a backup and measures its
      RTO and RPO, one does not recover, and one sees no outage;
    - DR exercises run by hand, tagged with the plan scenarios they tested,
-     a failover drill that fulfils its plan with steps, actions, a file and
-     a sign-off, and a planned backup;
+     a failover drill of `config-db` that fulfils its plan with steps,
+     actions, a file and a sign-off, and a planned backup;
    - an executive digest, a DORA evidence pack and the two DR reports, with
      the HTML of the last three for the report pictures.
 
