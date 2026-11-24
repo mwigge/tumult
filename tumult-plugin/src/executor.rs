@@ -575,16 +575,47 @@ fn log_non_zero_exit(
     );
 }
 
+/// The most times the group of a killed script gets `SIGKILL` again after
+/// its shell is reaped, and the pause between two of them: 100 ms at most.
+#[cfg(unix)]
+const REKILL_ROUNDS: u32 = 20;
+#[cfg(unix)]
+const REKILL_PAUSE: Duration = Duration::from_millis(5);
+
 /// Kill the whole process group of a child that timed out or was stopped, so
 /// children the script spawned don't survive the shell; fall back to killing
 /// only the direct child where there are no process groups. Always reaps the
 /// child.
 #[cfg(unix)]
 async fn end_child(child: &mut tokio::process::Child) {
-    if let Some(pid) = child.id() {
-        kill_process_group(pid);
+    let group = child.id();
+    if let Some(pid) = group {
+        // An error is a group with no process left in it.
+        let _ = kill_process_group(pid);
     }
+    reap_group(child, group).await;
+}
+
+/// Reap the shell of a script whose process group `group` was sent
+/// `SIGKILL`, then send the group `SIGKILL` again until no process is left
+/// in it. A child that the shell forked while the first `SIGKILL` went out
+/// can miss it on macOS, where a signal to a group does not undo a fork in
+/// flight as it does on Linux. The child is in the group, and the group
+/// lasts while it has a process, so a `SIGKILL` sent after the shell died
+/// reaches it. The rounds are bounded: a killed process stays in the group
+/// until its new parent reaps it.
+#[cfg(unix)]
+async fn reap_group(child: &mut tokio::process::Child, group: Option<u32>) {
     let _ = child.wait().await;
+    let Some(pid) = group else {
+        return;
+    };
+    for _ in 0..REKILL_ROUNDS {
+        if kill_process_group(pid).is_err() {
+            return;
+        }
+        tokio::time::sleep(REKILL_PAUSE).await;
+    }
 }
 
 /// Non-Unix counterpart of [`end_child`].
@@ -595,16 +626,19 @@ async fn end_child(child: &mut tokio::process::Child) {
 
 /// Send `SIGKILL` to the process group whose id is `pid` (the shell is
 /// spawned with `process_group(0)`, so the group id equals the child pid).
+///
+/// # Errors
+///
+/// `ESRCH` when no process is left in the group.
 #[cfg(unix)]
-fn kill_process_group(pid: u32) {
-    let Ok(group_id) = i32::try_from(pid) else {
-        return;
-    };
-    // Safety: `kill` with a negative pid targets the process group; errors
-    // (e.g. ESRCH when the group already exited) are safely ignorable.
-    unsafe {
-        libc::kill(-group_id, libc::SIGKILL);
+fn kill_process_group(pid: u32) -> std::io::Result<()> {
+    let group_id =
+        i32::try_from(pid).map_err(|_| std::io::Error::from(std::io::ErrorKind::InvalidInput))?;
+    // Safety: `kill` with a negative pid targets the process group.
+    if unsafe { libc::kill(-group_id, libc::SIGKILL) } == 0 {
+        return Ok(());
     }
+    Err(std::io::Error::last_os_error())
 }
 
 #[cfg(test)]
@@ -797,6 +831,66 @@ mod tests {
             !marker.exists(),
             "grandchild survived the timeout — process group was not killed"
         );
+    }
+
+    /// A shell in a process group of its own that sleeps, and a second
+    /// process in its group; both sleep for `seconds`.
+    #[cfg(unix)]
+    fn a_group_of_two(seconds: u32) -> (tokio::process::Child, tokio::process::Child) {
+        let sleeper = |group: i32| {
+            tokio::process::Command::new("/bin/sh")
+                .args(["-c", &format!("sleep {seconds}")])
+                .process_group(group)
+                .kill_on_drop(true)
+                .spawn()
+                .unwrap()
+        };
+        let shell = sleeper(0);
+        let group = i32::try_from(shell.id().unwrap()).unwrap();
+        (shell, sleeper(group))
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_process_the_kill_of_its_group_missed_dies_when_the_shell_is_reaped() {
+        use std::os::unix::process::ExitStatusExt as _;
+        // On macOS a child forked while the SIGKILL of its group goes out
+        // can miss it, and lives on in the group. The test makes that state
+        // on any Unix: the shell is killed, the other member of its group
+        // is not.
+        let (mut shell, mut missed) = a_group_of_two(5);
+        let group = shell.id();
+        // Safety: a SIGKILL to the shell the test spawned.
+        unsafe {
+            libc::kill(i32::try_from(group.unwrap()).unwrap(), libc::SIGKILL);
+        }
+
+        reap_group(&mut shell, group).await;
+
+        let status = missed.wait().await.unwrap();
+        assert_eq!(
+            status.signal(),
+            Some(libc::SIGKILL),
+            "a member of the group outlived the reap of its shell: {status}"
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test(start_paused = true)]
+    async fn the_reap_of_a_group_that_is_gone_ends_at_once() {
+        // A group with no process left gets no more signals: its id may
+        // name another group later.
+        let mut shell = tokio::process::Command::new("/bin/sh")
+            .args(["-c", "exit 0"])
+            .process_group(0)
+            .spawn()
+            .unwrap();
+        let group = shell.id();
+        let started = tokio::time::Instant::now();
+
+        reap_group(&mut shell, group).await;
+
+        assert_eq!(started.elapsed(), Duration::ZERO);
     }
 
     #[test]

@@ -195,7 +195,8 @@ fn new_record(args: ManualCreateDraftTool) -> Result<NewManualExperiment, Manual
         outcome: ManualOutcome::parse(&args.outcome_status)?,
         hypothesis_met: args.hypothesis_met,
         findings: args.findings,
-        action_items: args.action_items.unwrap_or_default(),
+        // The actions are `exercise.actions`; the older list stays empty.
+        action_items: Vec::new(),
         target_system: args.target_system,
         target_environment: args.target_environment,
         blast_radius: args.blast_radius,

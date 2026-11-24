@@ -804,6 +804,62 @@ fn redis_info_probe_fails_on_an_error_reply_that_exits_zero() {
     assert_failed_with(&run, "NOAUTH Authentication required.");
 }
 
+const REDIS_SIMULATE_HANG: &str = "tumult-db-redis/actions/simulate-hang.sh";
+const REDIS_SIMULATE_FAILOVER: &str = "tumult-db-redis/actions/simulate-failover.sh";
+const SLEEP_CALL: &str = "redis-cli -h localhost -p 6379 DEBUG SLEEP 5";
+const HANG_STARTED: &str =
+    "simulating Redis hang for 5s via DEBUG SLEEP\nRedis hang initiated for 5s\n";
+
+/// The script starts redis-cli in the background and returns at once. The
+/// pipes stay open until the stand-in ends, so its call is in `calls`
+/// when the run returns.
+#[test]
+fn redis_simulate_hang_makes_redis_sleep_and_returns_at_once() {
+    let stubs = Stubs::new();
+    stubs.tool("bin/redis-cli", ":");
+
+    let (code, stdout, stderr) = stubs.run(REDIS_SIMULATE_HANG, &[]);
+
+    assert_eq!(code, 0, "{stderr}");
+    assert_eq!(stubs.calls(), [SLEEP_CALL]);
+    assert_eq!(stdout, HANG_STARTED);
+    assert_eq!(stderr, "");
+}
+
+#[test]
+fn redis_simulate_failover_is_the_old_name_of_simulate_hang_and_warns() {
+    let stubs = Stubs::new();
+    stubs.tool("bin/redis-cli", ":");
+
+    let (code, stdout, stderr) = stubs.run(REDIS_SIMULATE_FAILOVER, &[]);
+
+    assert_eq!(code, 0, "{stderr}");
+    assert_eq!(stubs.calls(), [SLEEP_CALL]);
+    assert_eq!(stdout, HANG_STARTED);
+    assert_eq!(
+        stderr,
+        "warning: simulate-failover is deprecated, use simulate-hang: it makes Redis hang, it fails nothing over\n"
+    );
+}
+
+#[test]
+fn redis_manifest_names_the_hang_and_keeps_the_old_name() {
+    let manifest =
+        std::fs::read_to_string(plugin_path("tumult-db-redis/plugin.toon")).expect("the manifest");
+
+    assert!(
+        manifest.contains("  - name: simulate-hang\n    script: actions/simulate-hang.sh\n"),
+        "{manifest}"
+    );
+    assert!(
+        manifest.contains(
+            "  - name: simulate-failover\n    script: actions/simulate-failover.sh\n    description: Deprecated name of simulate-hang"
+        ),
+        "{manifest}"
+    );
+    assert_script_executable(REDIS_SIMULATE_HANG);
+}
+
 #[test]
 fn redis_info_probe_reads_the_stats_of_a_healthy_server() {
     let stubs = Stubs::new();

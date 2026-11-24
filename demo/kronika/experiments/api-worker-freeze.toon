@@ -1,5 +1,5 @@
 title: api-worker freeze — heartbeat recovers after SIGSTOP injection
-description: A heartbeat worker simulates an API service; SIGSTOP freezes it (latency injection), SIGCONT restores it, and the heartbeat freshness probe confirms recovery
+description: A heartbeat worker simulates an API service; SIGSTOP freezes it for 4 s (latency injection, long enough for the steady-state probe to see the stale heartbeat), SIGCONT restores it, and the heartbeat freshness probe confirms recovery. The api-worker control starts the worker before the run and stops it after, so the probe only reads.
 
 tags[2]: latency, resilience
 kind: chaos
@@ -7,6 +7,14 @@ target:
   system: api-worker
   technology: process
   environment: demo
+
+controls[1]:
+  - name: api-worker
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "d=/tmp/kd-demo/api; stop() { [ -f $d/worker.pid ] && kill $(cat $d/worker.pid) 2>/dev/null; rm -f $d/worker.pid; }; case \"$TUMULT_CONTROL_EVENT\" in before_experiment) mkdir -p $d; stop; : > $d/heartbeat; (while :; do date +%s >> $d/heartbeat; sleep 0.3; done) >/dev/null 2>&1 < /dev/null & echo $! > $d/worker.pid.new; mv $d/worker.pid.new $d/worker.pid; sleep 0.5; echo started;; after_experiment) stop; echo stopped;; esac"
+      timeout_s: 10.0
 
 steady_state_hypothesis:
   title: The API worker heartbeat is fresh (less than 1s old)
@@ -16,7 +24,7 @@ steady_state_hypothesis:
       provider:
         type: process
         path: sh
-        arguments[2]: "-c", "mkdir -p /tmp/kd-demo/api; if [ ! -f /tmp/kd-demo/api/worker.pid ] || ! kill -0 $(cat /tmp/kd-demo/api/worker.pid) 2>/dev/null; then : > /tmp/kd-demo/api/heartbeat; (while :; do date +%s >> /tmp/kd-demo/api/heartbeat; sleep 0.3; done) >/dev/null 2>&1 < /dev/null & echo $! > /tmp/kd-demo/api/worker.pid; sleep 0.5; fi; now=$(date +%s); last=$(tail -1 /tmp/kd-demo/api/heartbeat 2>/dev/null || echo $now); echo $((now - last))"
+        arguments[2]: "-c", "now=$(date +%s); last=$(tail -1 /tmp/kd-demo/api/heartbeat 2>/dev/null || echo 0); echo $((now - last))"
         timeout_s: 10.0
       tolerance:
         type: range
@@ -29,14 +37,14 @@ method[2]:
     provider:
       type: process
       path: sh
-      arguments[2]: "-c", "kill -STOP $(cat /tmp/kd-demo/api/worker.pid); sleep 2; kill -CONT $(cat /tmp/kd-demo/api/worker.pid); echo froze-for-2s"
+      arguments[2]: "-c", "kill -STOP $(cat /tmp/kd-demo/api/worker.pid); sleep 4; kill -CONT $(cat /tmp/kd-demo/api/worker.pid); echo froze-for-4s"
       timeout_s: 10.0
   - name: verify-heartbeat-recovered
     activity_type: probe
     provider:
       type: process
       path: sh
-      arguments[2]: "-c", "now=$(date +%s); last=$(tail -1 /tmp/kd-demo/api/heartbeat 2>/dev/null || echo $now); echo $((now - last))"
+      arguments[2]: "-c", "i=0; while :; do now=$(date +%s); last=$(tail -1 /tmp/kd-demo/api/heartbeat 2>/dev/null || echo 0); [ $((now - last)) -le 1 ] || [ $i -ge 20 ] && break; i=$((i+1)); sleep 0.1; done; echo $((now - last))"
       timeout_s: 5.0
     tolerance:
       type: range

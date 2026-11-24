@@ -16,7 +16,7 @@ steady_state_hypothesis:
       provider:
         type: process
         path: sh
-        arguments[2]: "-c", "mkdir -p /tmp/kd-demo/disk; df -P /tmp | awk 'NR==2{print $5}' | tr -d '%'"
+        arguments[2]: "-c", "df -P /tmp | awk 'NR==2{print $5}' | tr -d '%'"
         timeout_s: 5.0
       tolerance:
         type: range
@@ -29,7 +29,7 @@ method[3]:
     provider:
       type: process
       path: sh
-      arguments[2]: "-c", "dd if=/dev/zero of=/tmp/kd-demo/disk/fill.bin bs=1M count=40 2>/dev/null; echo filled"
+      arguments[2]: "-c", "mkdir -p /tmp/kd-demo/disk && dd if=/dev/zero of=/tmp/kd-demo/disk/fill.bin bs=1M count=40 2>/dev/null; echo filled"
       timeout_s: 20.0
   - name: verify-usage-observed
     activity_type: probe

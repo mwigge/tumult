@@ -124,9 +124,9 @@ pub(crate) async fn experiments(
             )));
         }
     }
-    // Manual records join the view unless explicitly excluded; they have no
-    // tumult outcome/fault taxonomy, so those two filters drop the manual
-    // branch entirely (documented behaviour).
+    // Manual records that are not drafts join the view unless explicitly
+    // excluded; they have no tumult outcome/fault taxonomy, so those two
+    // filters drop the manual branch entirely (documented behaviour).
     let include_manual =
         origin != Some("automated") && params.outcome.is_none() && params.fault.is_none();
     let include_spans = origin != Some("manual");
@@ -145,8 +145,9 @@ pub(crate) async fn experiments(
         format!("{spans_sql} ORDER BY s.ts_ns DESC LIMIT 500")
     } else {
         // The manual branch mirrors the span columns; range/target/q filters
-        // map onto the manual columns.
-        let mut mwheres = vec!["1=1".to_string()];
+        // map onto the manual columns. A draft is still being written: it
+        // is no test yet, so it is not on the list.
+        let mut mwheres = vec!["m.status <> 'draft'".to_string()];
         if let Some(env) = scope::in_list("m.target_environment", &principal.env_scopes) {
             mwheres.push(env);
         }

@@ -76,6 +76,34 @@ class DistributionTests(unittest.TestCase):
         command = json.loads(re.search(r"^CMD (.+)$", image, re.M)[1])
         self.assertEqual(command, ["--help"])
 
+    def test_cli_image_has_the_postgres_client_of_the_postgres_plugin(self):
+        # The demo runs examples/postgres-failover.toon in the MCP image,
+        # which is built on this one: the DR actions of tumult-db-postgres
+        # call psql.
+        image = (ROOT / "docker/Dockerfile.tumult").read_text()
+        self.assertRegex(
+            image, r"apt-get install[^\n]*(\\\n[^\n]*)*\bpostgresql-client\b"
+        )
+
+    def test_demo_app_follows_the_server_of_the_demo_pair_that_takes_writes(self):
+        # The failover example promotes the standby: the app names both
+        # servers and asks for the one that takes writes, so it follows.
+        # The standby comes first: after the promote the app finds it
+        # without a lookup of the name of the stopped primary, which can
+        # take seconds. So the standby must run whenever the app runs.
+        compose = (ROOT / "docker/docker-compose.demo.yml").read_text()
+        app = compose.split("    container_name: demo-app", 1)[1]
+        url = re.search(r"^\s+DATABASE_URL: (.+)$", app, re.M)[1]
+        self.assertEqual(
+            url,
+            "postgres://demo:demo@demo-postgres-standby:5432,demo-postgres:5432"
+            "/orders?target_session_attrs=read-write",
+        )
+        depends = app.split("    depends_on:", 1)[1].split("    healthcheck:", 1)[0]
+        self.assertIn("      demo-postgres-standby:\n", depends)
+        standby = compose.split("    container_name: demo-postgres-standby", 1)[1]
+        self.assertIn("pg_basebackup -h demo-postgres", standby.split("\n\n", 1)[0])
+
     def test_mcp_image_runs_the_server_under_the_init_of_its_base(self):
         # The MCP image is built on the CLI image, which installs tini.
         image = (ROOT / "docker/Dockerfile.tumult-mcp").read_text()

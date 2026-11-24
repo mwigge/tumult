@@ -4,7 +4,7 @@
     // the record: its DR detail, sign-offs, audit trail and verify, and its
     // evidence. The API enforces who may sign off; the page shows its reason.
     import { api, fmtTs } from '#lib/api.js';
-    import { errorText } from '#lib/manual.js';
+    import { errorText, ofTarget, type TargetFilter } from '#lib/manual.js';
     import type { ManualDetail, ManualExperiment, ManualPlan } from '#lib/types.js';
     import ManualRecordDetail from './ManualRecordDetail.svelte';
 
@@ -13,12 +13,15 @@
         actor,
         canReview,
         canEdit,
+        filter = { target: '', environment: '' },
         onedit,
     }: {
         tab: string;
         actor: string;
         canReview: boolean;
         canEdit: boolean;
+        /** The target whose records the lists show; empty fields show all. */
+        filter?: TargetFilter;
         onedit: (id: string) => Promise<void>;
     } = $props();
 
@@ -30,6 +33,8 @@
     let plans: ManualPlan[] = $state([]);
 
     const queue = $derived(tab === 'queue');
+    const shown = $derived(records ? ofTarget<ManualExperiment>(records, filter) : null);
+    const ofOne = $derived(filter.target !== '' || filter.environment !== '');
 
     function loadRecords() {
         records = null;
@@ -108,10 +113,14 @@
     {#if recordsError}
         <div class="state error">{recordsError}</div>
     {/if}
-    {#if !records}
+    {#if !shown}
         {#if !recordsError}<div class="skeleton" style="height: 160px"></div>{/if}
-    {:else if records.length === 0}
-        <div class="state">{queue ? 'Nothing awaiting sign-off.' : 'No manual records.'}</div>
+    {:else if shown.length === 0}
+        <div class="state">
+            {queue ? 'Nothing awaiting sign-off' : 'No manual records'}{ofOne
+                ? ' of this target'
+                : ''}.
+        </div>
     {:else}
         <table class="data">
             <thead>
@@ -121,7 +130,7 @@
                 >
             </thead>
             <tbody>
-                {#each records as rec (rec.id)}
+                {#each shown as rec (rec.id)}
                     <tr class="clickable" data-record={rec.id} onclick={() => toggle(rec.id)}>
                         <td><span class="badge {lifecycleClass(rec.status)}">{rec.status}</span></td
                         >

@@ -8,13 +8,15 @@
 
 mod lab;
 
+use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader, Read};
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
 use lab::{count, fatal_error, indented, step, step_within, wait_for, with_block, Lab};
 use serde_json::Value;
-use tumult_core::types::{ExperimentStatus, GameDayJournal};
+use tumult_core::types::{ExperimentStatus, GameDay, GameDayJournal, Journal};
 
 /// The target `$1` says `ok` until a fault writes `down` to its state file.
 /// Once it is down it heals itself on read number `$2`.
@@ -677,4 +679,120 @@ fn a_game_day_that_gets_sigint_while_it_waits_for_its_load_cuts_the_load() {
         "{printed}"
     );
     assert!(printed.contains(CUT), "{printed}");
+}
+
+// ── The demo GameDay ──────────────────────────────────────────
+
+/// The `GameDay` that `make demo-check` runs in the demo, the directory of
+/// its experiments, and the expectations that name its score.
+const DEMO_GAMEDAY: &str = "demo/kronika/gamedays/platform-resilience.gameday.toon";
+const DEMO_STEPS: &str = "demo/kronika/experiments";
+const DEMO_EXPECTATIONS: &str = "demo/kronika/gamedays/expectations.json";
+/// The scratch area of the Krönika experiments.
+const KRONIKA_SCRATCH: &str = "/tmp/kd-demo";
+/// The files of the scratch area that hold the process id of a worker the
+/// demo `GameDay` starts.
+const WORKER_PIDS: [&str; 2] = ["api/worker.pid", "proc/worker.pid"];
+
+fn workspace_file(path: &str) -> String {
+    let file = Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join(path);
+    std::fs::read_to_string(&file).unwrap_or_else(|e| panic!("read {path}: {e}"))
+}
+
+/// Ends the workers of the demo `GameDay` when it drops, so a test that fails
+/// leaves no process behind. A frozen worker is woken first.
+struct StopWorkers(PathBuf);
+
+impl Drop for StopWorkers {
+    fn drop(&mut self) {
+        for file in WORKER_PIDS {
+            let Ok(pid) = std::fs::read_to_string(self.0.join(file)) else {
+                continue;
+            };
+            for signal in ["-CONT", "-TERM"] {
+                let _ = Command::new("kill").args([signal, pid.trim()]).status();
+            }
+        }
+    }
+}
+
+/// Copy the demo `GameDay` and its experiments into the lab as
+/// `lab.gameday.toon`, with the scratch area moved into the lab. The
+/// scratch area of the lab.
+fn copy_demo_gameday(lab: &Lab) -> PathBuf {
+    let scratch = lab.path("kd-demo");
+    let moved = scratch.display().to_string();
+    let text = workspace_file(DEMO_GAMEDAY);
+    let gameday: GameDay = toon_format::decode_default(&text).expect("the GameDay is read");
+    for step in &gameday.experiments {
+        let name = step.path.display().to_string();
+        let experiment = workspace_file(&format!("{DEMO_STEPS}/{name}"));
+        assert!(
+            experiment.contains(KRONIKA_SCRATCH),
+            "{name} has no scratch area"
+        );
+        std::fs::write(lab.path(&name), experiment.replace(KRONIKA_SCRATCH, &moved))
+            .expect("experiment");
+    }
+    std::fs::write(lab.path("lab.gameday.toon"), text).expect("game day");
+    scratch
+}
+
+/// What the demo check compares of a run of the `GameDay`: the facts of each
+/// run as its entry names them.
+fn run_facts(run: &Journal) -> Value {
+    let met = |phase: &Option<tumult_core::types::HypothesisResult>| phase.as_ref().map(|h| h.met);
+    let objectives: BTreeMap<String, Value> = run
+        .objectives
+        .iter()
+        .flat_map(|outcome| &outcome.verdicts)
+        .map(|verdict| (verdict.nfr_id.clone(), serde_json::json!(verdict.state)))
+        .collect();
+    serde_json::json!({
+        "status": run.status,
+        "hypothesis_before": met(&run.steady_state_before),
+        "hypothesis_after": met(&run.steady_state_after),
+        "rollbacks": run.rollback_results.len(),
+        "objectives": objectives,
+    })
+}
+
+#[test]
+fn the_demo_gameday_scores_what_its_expectations_say() {
+    let lab = Lab::with_state("ok");
+    let _workers = StopWorkers(copy_demo_gameday(&lab));
+    let expectations: Value =
+        serde_json::from_str(&workspace_file(DEMO_EXPECTATIONS)).expect("the expectations");
+
+    let output = lab
+        .command(&["gameday", "run", "lab.gameday.toon"])
+        .output()
+        .expect("run tumult");
+
+    let printed = String::from_utf8_lossy(&output.stdout);
+    let gameday = journal(&lab);
+    let runs: Vec<(String, Value)> = gameday
+        .experiment_journals
+        .iter()
+        .map(|run| (run.experiment_title.clone(), run_facts(run)))
+        .collect();
+    let score = &gameday.resilience_score;
+    assert_eq!(
+        serde_json::json!({
+            "status": gameday.compliance_status,
+            "recovery_compliance": score.recovery_compliance.map(|share| (share * 100.0).round() / 100.0),
+        }),
+        expectations["gamedays"]["platform-resilience.gameday.toon"]["expect"]["score"],
+        "{printed}\n{runs:#?}"
+    );
+    let definition: GameDay =
+        toon_format::decode_default(&workspace_file(DEMO_GAMEDAY)).expect("the GameDay");
+    assert_eq!(runs.len(), definition.experiments.len(), "{printed}");
+    for ((title, facts), step) in runs.iter().zip(&definition.experiments) {
+        let name = step.path.display().to_string();
+        assert_eq!(
+            facts, &expectations["experiments"][&name]["expect"],
+            "{name} ({title}):\n{printed}"
+        );
+    }
 }

@@ -642,6 +642,76 @@ class GameDayLoadTests(ProofSetCase):
         )
 
 
+class GameDayScoreTests(ProofSetCase):
+    SCORE = (
+        "resilience_score:\n  pass_rate: 0.5\n  recovery_compliance: 0.5\n"
+        "  load_impact_tolerance: 1\n  compliance_coverage: 1\n  overall: 0.775\n"
+        "compliance_status: PARTIAL\n"
+    )
+
+    def body(self, score):
+        body = json.loads(json.dumps(GameDayLoadTests.BODY))
+        body["gamedays"]["q2.gameday.toon"]["expect"]["score"] = score
+        return body
+
+    def gameday_line(self, score, journal):
+        (self.root / "q2.gameday.toon").write_text(GAMEDAY)
+        self.journal("q2.gameday.journal.toon", journal)
+        return self.check(self.body(score))[0]
+
+    def scored(self, score_block):
+        return GAMEDAY_JOURNAL.replace("compliance_status: COMPLIANT\n", score_block)
+
+    def test_a_gameday_with_the_expected_score_is_ok(self):
+        score = {"status": "PARTIAL", "recovery_compliance": 0.5}
+        self.assertEqual(
+            self.gameday_line(score, self.scored(self.SCORE)),
+            ("ok", "q2.gameday.toon", []),
+        )
+
+    def test_a_gameday_with_another_status_and_recovery_fails_with_both(self):
+        score = {"status": "COMPLIANT", "recovery_compliance": 1.0}
+        self.assertEqual(
+            self.gameday_line(score, self.scored(self.SCORE)),
+            (
+                "FAIL",
+                "q2.gameday.toon",
+                [
+                    "score status: expected COMPLIANT, journal has PARTIAL",
+                    "score recovery_compliance: expected 1.0, journal has 0.5",
+                ],
+            ),
+        )
+
+    def test_a_recovery_that_was_not_measured_is_null(self):
+        unmeasured = self.SCORE.replace("  recovery_compliance: 0.5\n", "")
+        score = {"status": "PARTIAL", "recovery_compliance": None}
+        self.assertEqual(
+            self.gameday_line(score, self.scored(unmeasured)),
+            ("ok", "q2.gameday.toon", []),
+        )
+
+    def test_the_recovery_is_compared_to_two_decimals(self):
+        thirds = self.SCORE.replace(
+            "recovery_compliance: 0.5", "recovery_compliance: 0.6666666666666666"
+        )
+        score = {"status": "PARTIAL", "recovery_compliance": 0.67}
+        self.assertEqual(
+            self.gameday_line(score, self.scored(thirds)),
+            ("ok", "q2.gameday.toon", []),
+        )
+
+    def test_a_score_expectation_must_name_the_status_and_the_recovery(self):
+        self.assertEqual(
+            self.gameday_line({"status": "PARTIAL"}, self.scored(self.SCORE)),
+            (
+                "FAIL",
+                "q2.gameday.toon",
+                ["score expectation has no recovery_compliance"],
+            ),
+        )
+
+
 class CommandLineTests(unittest.TestCase):
     def run_script(self, *args):
         return subprocess.run(

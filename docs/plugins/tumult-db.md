@@ -74,6 +74,47 @@ cannot go back. Make the old primary a standby of the new one, with
 `pg_rewind` or a new base backup. `backup` changes nothing, a newer backup
 undoes `restore`, and `markers-lost` reads the markers of `write-markers`.
 
+### The failover example of the demo
+
+`examples/postgres-failover.toon` fails the demo database over for real.
+`make demo-check` runs it in the demo, where `demo-postgres` streams to
+the standby `demo-postgres-standby`.
+
+```mermaid
+sequenceDiagram
+    accTitle: The RTO of the failover example
+    accDescr: The probe reads the health of the demo app, which asks for the server that takes writes. stop-primary stops the primary and the reads fail, so the RTO clock starts. promote-replica promotes the standby, the app connects to it and the reads pass again, so the clock stops. write-markers writes to the new primary and markers-lost reads the writes back.
+    participant probe as Probe of app health
+    participant app as demo-app
+    participant primary as demo-postgres
+    participant standby as demo-postgres-standby
+    probe->>app: 200, the primary takes writes
+    Note over primary: stop-primary
+    probe->>app: 503, the outage is seen: the RTO clock starts
+    Note over standby: promote-replica
+    app->>standby: connects to the server that takes writes
+    probe->>app: 200, the clock stops
+    Note over standby: write-markers, then markers-lost
+```
+
+What a run proves:
+
+- **The fault lands.** A step reads the app until it answers 503.
+- **The standby takes over.** `promote-replica` gives it its first write,
+  and `markers-lost` reads back the markers written to it.
+- **The clients follow.** The database address of the app names both
+  servers and asks for the one that takes writes
+  (`target_session_attrs=read-write`). The app reaches the standby without
+  a restart. The standby comes first in the address: a lookup of the name
+  of a stopped server can take seconds.
+- **The RTO is measured.** It runs from the first read that failed to the
+  read where the app was back. The run expects it within 30 s.
+
+The run ends with a promoted standby and a stopped primary.
+`make demo-check` makes the pair again before and after it. The
+[demo README](https://github.com/mwigge/tumult/blob/main/demo/README.md#the-dr-example-and-the-demo-gameday)
+says how to do that by hand.
+
 ### Example: restore an older backup
 
 The run writes markers, backs up, writes markers for 5 more seconds and
@@ -215,9 +256,13 @@ Arguments of every function: `redis_host` (`localhost`), `redis_port`
 |---|---|---|---|
 | `flush-all` | action | Deletes every key in every database (`FLUSHALL`). It cannot be undone. | |
 | `block-clients` | action | Pauses all clients (`CLIENT PAUSE`) | `duration` in milliseconds (5000) |
-| `simulate-failover` | action | Makes Redis hang (`DEBUG SLEEP`) and returns at once | `duration` in seconds (5) |
+| `simulate-hang` | action | Makes Redis hang (`DEBUG SLEEP`) and returns at once | `duration` in seconds (5) |
 | `redis-ping` | probe | `PONG` when Redis answers | |
 | `redis-info` | probe | JSON: `connected_clients`, `used_memory_bytes`, `ops_per_sec` and more. A reply without these fields fails the probe. | |
+
+`simulate-failover` is the old name of `simulate-hang`. It still runs, and
+it writes a warning to the step: Redis hangs, nothing fails over. Use
+`simulate-hang`.
 
 ## Example
 

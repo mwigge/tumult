@@ -20,9 +20,15 @@ const SETS: &[&str] = &[
     "demo/experiments",
     "demo/kronika/experiments",
     "gamedays",
+    "demo/kronika/gamedays",
     "scripts/proof/rip-phase2",
     "scripts/proof/rip-phase4",
 ];
+
+/// Sets whose `GameDay` runs the experiments of another set, each with the
+/// directory of those experiments: the demo `GameDay` runs the experiments
+/// of the Krönika seed. Such a set lists the experiments its `GameDays` run.
+const STEPS_FROM: &[(&str, &str)] = &[("demo/kronika/gamedays", "demo/kronika/experiments")];
 
 /// Proofs that keep the journal of each run and compare it with `expect`.
 const JOURNAL_PROOFS: &[&str] = &["demo-check", "examples-proof", "kronika-seed"];
@@ -89,6 +95,28 @@ struct GamedayEntry {
 #[allow(dead_code)] // decoded for its shape
 struct GamedayExpect {
     load_result: bool,
+    score: Option<GamedayScore>,
+}
+
+/// The score a `GameDay` journal must hold: its status and its recovery
+/// part, `null` when no run measured a recovery.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+#[allow(dead_code)] // decoded for its shape
+struct GamedayScore {
+    status: ScoreStatus,
+    recovery_compliance: Option<f64>,
+}
+
+#[derive(Deserialize)]
+#[allow(dead_code)] // decoded for its shape
+enum ScoreStatus {
+    #[serde(rename = "COMPLIANT")]
+    Compliant,
+    #[serde(rename = "PARTIAL")]
+    Partial,
+    #[serde(rename = "NON-COMPLIANT")]
+    NonCompliant,
 }
 
 fn workspace_root() -> PathBuf {
@@ -110,6 +138,14 @@ fn manifest(set: &str) -> Manifest {
 
 fn manifests() -> Vec<(&'static str, Manifest)> {
     SETS.iter().map(|set| (*set, manifest(set))).collect()
+}
+
+/// The directory that holds the experiments of a set.
+fn experiments_dir(set: &str) -> &str {
+    STEPS_FROM
+        .iter()
+        .find(|(listed, _)| *listed == set)
+        .map_or(set, |(_, dir)| dir)
 }
 
 /// The names of the `.toon` files of a set that are, or are not, `GameDay`
@@ -172,7 +208,7 @@ fn entry_fault(entry: &Entry) -> Option<String> {
 }
 
 fn experiment(set: &str, name: &str) -> Experiment {
-    let path = format!("{set}/{name}");
+    let path = format!("{}/{name}", experiments_dir(set));
     parse_experiment(&read(&path)).unwrap_or_else(|e| panic!("{path}: {e}"))
 }
 
@@ -226,16 +262,44 @@ fn assert_none(faults: &[String]) {
     assert!(faults.is_empty(), "\n  {}\n", faults.join("\n  "));
 }
 
+/// The experiments a set must list: its files, or the experiments its
+/// `GameDays` run when they come from another set.
+fn listed_experiments(set: &str, manifest: &Manifest) -> BTreeSet<String> {
+    if experiments_dir(set) == set {
+        return files(set, false);
+    }
+    manifest
+        .gamedays
+        .keys()
+        .flat_map(|name| gameday_paths(set, name))
+        .collect()
+}
+
 #[test]
 fn every_experiment_is_listed_and_every_entry_is_a_file() {
     let faults: Vec<String> = manifests()
         .iter()
         .flat_map(|(set, manifest)| {
-            listing_faults(set, &files(set, false), &keys(&manifest.experiments))
+            let wanted = listed_experiments(set, manifest);
+            listing_faults(set, &wanted, &keys(&manifest.experiments))
         })
         .collect();
 
     assert_none(&faults);
+}
+
+#[test]
+fn a_set_of_steps_from_another_set_lists_what_its_gamedays_run() {
+    let (set, dir) = STEPS_FROM[0];
+    let listed = listed_experiments(set, &manifest(set));
+
+    assert!(!listed.is_empty(), "{set} runs no experiment");
+    for name in &listed {
+        assert!(
+            workspace_root().join(dir).join(name).is_file(),
+            "{set}: {name} is not in {dir}"
+        );
+    }
 }
 
 #[test]

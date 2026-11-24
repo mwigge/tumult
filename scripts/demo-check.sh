@@ -9,7 +9,10 @@
 #                         spans reached the collector, then assert the Star
 #                         Map of the Krönika demo. Exits non-zero on any
 #                         failure. This is the dev smoke test
-#                         (`make demo-check`).
+#                         (`make demo-check`). It also runs the examples that
+#                         examples/expectations.json gives to the proof
+#                         `demo-check` (the PostgreSQL failover) and the demo
+#                         GameDay, and compares their journals too.
 #   populate            — run the ten domains once, best-effort, to warm the
 #                         SigNoz dashboards. Never fails the caller
 #                         (`make demo`).
@@ -43,6 +46,14 @@
 # Journals and run logs go to a directory of this run. It is removed at the
 # end, unless a journal was not as expected: then it is kept and its path is
 # printed.
+#
+# The failover example stops demo-postgres and promotes
+# demo-postgres-standby. The check makes the pair again before and after it:
+# it removes the standby with its data, starts the primary, and starts a new
+# standby, which copies the primary. Do the same by hand to set the demo
+# back after a failover:
+#   docker compose -f docker/docker-compose.demo.yml rm -sfv demo-postgres-standby
+#   docker compose -f docker/docker-compose.demo.yml up -d --wait demo-postgres demo-postgres-standby
 
 set -euo pipefail
 
@@ -61,6 +72,14 @@ JOURNAL_CHECK="${REPO_ROOT}/scripts/check-proof-journals.py"
 # Not in the warm-up of `make demo`, which runs the ten domains only.
 FULL_ONLY=" demo-guard-halt demo-topo-recommended demo-topo-blind "
 SWEEP=()
+# The examples the full check runs in the demo, and what their journals
+# must hold.
+EXAMPLES="${REPO_ROOT}/examples/expectations.json"
+EXAMPLE_SWEEP=()
+# The demo GameDay: the Krönika GameDay of four steps, run with the CLI in
+# the demo, so that it gets a GameDay score. Its expectations name the score.
+GAMEDAY_EXPECTATIONS="${REPO_ROOT}/demo/kronika/gamedays/expectations.json"
+GAMEDAY_NAME="platform-resilience"
 
 # Journals and run logs of this check. See the header.
 WORK=""
@@ -70,7 +89,7 @@ JOURNAL_FAILS=0
 # Containers that carry a healthcheck we wait on. demo-collector is excluded:
 # its image is distroless (no in-container probe possible), so its readiness is
 # instead proven by the span-throughput assertion at the end of the sweep.
-HEALTH_CONTAINERS=(demo-postgres demo-app demo-sshd demo-signoz demo-mcp)
+HEALTH_CONTAINERS=(demo-postgres demo-postgres-standby demo-app demo-sshd demo-signoz demo-mcp)
 
 HEALTH_TIMEOUT="${HEALTH_TIMEOUT:-240}"
 COLLECTOR_METRICS_URL="${COLLECTOR_METRICS_URL:-http://localhost:18888/metrics}"
@@ -223,14 +242,16 @@ wait_for_health() {
 # ── Sweep ─────────────────────────────────────────────────────────
 # Run one experiment in the demo and bring its journal out. The journal of
 # an earlier run is removed first, so a run that writes none leaves none.
+# $2 is the directory of the experiment in the container, $3 the directory
+# of this check that takes its journal.
 # -T: no TTY (safe under make / CI); stdin is not the caller's.
 run_experiment() {
-  local name="$1" rc=0 status
+  local name="$1" from="${2:-/demo/experiments}" into="${3:-sweep}" rc=0 status
   local journal="/journals/${name}.journal.toon"
-  local out="${WORK}/sweep/${name}"
+  local out="${WORK}/${into}/${name}"
   $COMPOSE exec -T tumult-mcp rm -f "$journal" </dev/null >/dev/null 2>&1 || true
   $COMPOSE exec -T tumult-mcp \
-    tumult run "/demo/experiments/${name}.toon" --journal-path "$journal" --force \
+    tumult run "${from}/${name}.toon" --journal-path "$journal" --force \
     </dev/null >"${out}.log" 2>&1 || rc=$?
   if ! $COMPOSE exec -T tumult-mcp cat "$journal" </dev/null >"${out}.journal.toon" 2>/dev/null; then
     rm -f "${out}.journal.toon"
@@ -270,6 +291,76 @@ sweep() {
   if [[ "$MODE" == "full" && ${#SWEEP[@]} -gt 0 ]]; then
     run_experiment "${SWEEP[0]}"
   fi
+}
+
+# Make the PostgreSQL pair of the demo again: a primary and a standby that
+# copied it. The standby goes with its data; the primary keeps its data and
+# starts if it was stopped.
+reset_postgres_pair() {
+  local log="${WORK}/examples/reset.log"
+  if ! $COMPOSE rm -sfv demo-postgres-standby </dev/null >>"$log" 2>&1 \
+    || ! $COMPOSE up -d --wait demo-postgres demo-postgres-standby </dev/null >>"$log" 2>&1; then
+    fail "examples: the PostgreSQL pair of the demo did not come back"
+    tail -12 "$log" | sed 's/^/        /'
+    return 1
+  fi
+}
+
+# The RTO a DR run measured, against its target, for the log of the check.
+rto_line() {
+  local journal="$1" measured target
+  [[ -s "$journal" ]] || return 0
+  measured="$(sed -n 's/^  rto_measured_s: //p' "$journal" | head -1)"
+  target="$(sed -n 's/^  rto_target_s: //p' "$journal" | head -1)"
+  [[ -n "$target" ]] || return 0
+  info "$(basename "$journal" .journal.toon): RTO measured ${measured:-none} s, target ${target} s"
+}
+
+# Run the examples of the full check, each on a fresh PostgreSQL pair, and
+# make the pair again after the last one.
+sweep_examples() {
+  local listed name
+  if ! listed="$(python3 "$JOURNAL_CHECK" --proof demo-check --list "$EXAMPLES" 2>&1)"; then
+    fail "examples: nothing to run: ${listed##*$'\n'}"
+    return 1
+  fi
+  EXAMPLE_SWEEP=()
+  while IFS= read -r name; do EXAMPLE_SWEEP+=("${name%.toon}"); done <<<"$listed"
+  if ! work_dir || ! mkdir -p "${WORK}/examples"; then
+    fail "examples: cannot make a directory for the journals"
+    return 1
+  fi
+  echo "Running the examples in the demo (${#EXAMPLE_SWEEP[@]})..."
+  for name in "${EXAMPLE_SWEEP[@]}"; do
+    reset_postgres_pair || return 1
+    run_experiment "$name" /demo/examples examples
+    rto_line "${WORK}/examples/${name}.journal.toon"
+  done
+  reset_postgres_pair
+}
+
+# Run the demo GameDay with the CLI in the demo and bring its journal out.
+# The CLI reads the experiments of a GameDay next to its file and writes
+# its journal there, so both are copied to a directory of the container.
+run_demo_gameday() {
+  local out rc=0 score
+  local dir="/tmp/demo-check-gameday"
+  if ! work_dir || ! mkdir -p "${WORK}/gameday"; then
+    fail "gameday: cannot make a directory for the journal"
+    return 1
+  fi
+  out="${WORK}/gameday"
+  echo "Running the demo GameDay in the demo..."
+  $COMPOSE exec -T tumult-mcp sh -c "rm -rf ${dir} && mkdir ${dir} \
+    && cp /demo/kronika/experiments/*.toon /demo/kronika/gamedays/${GAMEDAY_NAME}.gameday.toon ${dir}/ \
+    && tumult gameday run ${dir}/${GAMEDAY_NAME}.gameday.toon --force" \
+    </dev/null >"${out}/${GAMEDAY_NAME}.log" 2>&1 || rc=$?
+  if ! $COMPOSE exec -T tumult-mcp cat "${dir}/${GAMEDAY_NAME}.gameday.journal.toon" \
+    </dev/null >"${out}/${GAMEDAY_NAME}.gameday.journal.toon" 2>/dev/null; then
+    rm -f "${out}/${GAMEDAY_NAME}.gameday.journal.toon"
+  fi
+  score="$(sed -n 's/^GameDay score: //p' "${out}/${GAMEDAY_NAME}.log" | head -1)"
+  info "${GAMEDAY_NAME}  (GameDay score ${score:-none}, $(sed -n 's/^  Recovery: *//p' "${out}/${GAMEDAY_NAME}.log" | head -1) recovery, exit ${rc})"
 }
 
 # ── Telemetry assertion ───────────────────────────────────────────
@@ -521,6 +612,24 @@ if sweep; then
   echo ""
   echo "Checking the journal of each run against demo/experiments/expectations.json..."
   check_journals demo-check "$EXPECTATIONS" "${WORK}/sweep" "" \
+    || FAILURES=$((FAILURES + JOURNAL_FAILS))
+else
+  record_fail
+fi
+
+echo ""
+if sweep_examples; then
+  echo "Checking the journal of each example against examples/expectations.json..."
+  check_journals demo-check "$EXAMPLES" "${WORK}/examples" "example: " \
+    || FAILURES=$((FAILURES + JOURNAL_FAILS))
+else
+  record_fail
+fi
+
+echo ""
+if run_demo_gameday; then
+  echo "Checking the GameDay journal against demo/kronika/gamedays/expectations.json..."
+  check_journals demo-check "$GAMEDAY_EXPECTATIONS" "${WORK}/gameday" "gameday: " \
     || FAILURES=$((FAILURES + JOURNAL_FAILS))
 else
   record_fail

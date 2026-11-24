@@ -310,12 +310,20 @@ async fn break_glass_dispatches_and_opens_retrospective_debt() {
         .unwrap_or_else(|| panic!("no retrospective draft in {drafts:?}"));
     assert_eq!(retro["entered_by"], "root");
     assert_eq!(retro["status"], "draft");
-    assert_eq!(
-        retro["action_items"],
-        json!([format!(
-            "Retrospective review of break-glass dispatch for run {run_id}"
-        )])
-    );
+    // The review is an action the admin who broke the glass owns, not a
+    // line of the older list of plain texts.
+    assert_eq!(retro["action_items"], json!([]));
+    let detail = reader
+        .manual_experiment_detail(retro["id"].as_str().unwrap())
+        .unwrap()
+        .unwrap();
+    let actions: Vec<(&str, &str)> = detail
+        .actions
+        .iter()
+        .map(|a| (a["title"].as_str().unwrap(), a["owner"].as_str().unwrap()))
+        .collect();
+    let review = format!("Retrospective review of break-glass dispatch for run {run_id}");
+    assert_eq!(actions, [(review.as_str(), "root")]);
 }
 
 /// T3 without a configured autopilot policy fails closed: the approval is

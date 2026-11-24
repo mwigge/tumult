@@ -8,7 +8,7 @@
     import { goto } from '$app/navigation';
     import { onMount } from 'svelte';
     import { api } from '#lib/api.js';
-    import { detailToForm, emptyForm, errorText } from '#lib/manual.js';
+    import { detailToForm, emptyForm, errorText, targetFilterOf } from '#lib/manual.js';
     import type { MeResponse } from '#lib/types.js';
     import ManualEntryTab from '#lib/components/ManualEntryTab.svelte';
     import ManualImport from '#lib/components/ManualImport.svelte';
@@ -24,6 +24,16 @@
     };
 
     const tab = $derived(page.url.searchParams.get('tab') ?? 'entry');
+    // The target of the URL filters the records and the plans; the Star Map
+    // drawer links here with the target of its system.
+    const filter = $derived(targetFilterOf(page.url.searchParams));
+    const filtered = $derived(filter.target !== '' || filter.environment !== '');
+    const listsTab = $derived(tab === 'plans' || tab === 'queue' || tab === 'records');
+    const targetLine = $derived(
+        filter.environment
+            ? `${filter.target || 'every target'} in ${filter.environment}`
+            : filter.target,
+    );
 
     let actor = $state('');
     let me = $state<MeResponse | null>(null);
@@ -107,6 +117,13 @@
         </div>
     </div>
 
+    {#if filtered && listsTab}
+        <p class="target" data-testid="manual-target">
+            Records and plans of {targetLine}.
+            <a href="?tab={tab}">Show every target</a>
+        </p>
+    {/if}
+
     {#if entryMsg && !entryMsg.ok && (tab !== 'entry' || !canWrite)}<div class="state error">
             {entryMsg.text}
         </div>{/if}
@@ -135,11 +152,11 @@
             />
         {:else}<p>Your role can read manual evidence. An operator can create or edit it.</p>{/if}
     {:else if tab === 'plans'}
-        <ManualPlansTab {actor} {canWrite} />
+        <ManualPlansTab {actor} {canWrite} {filter} />
     {:else if tab === 'import'}
         <ManualImport {actor} {canWrite} />
     {:else}
-        <ManualReviewTab {tab} {actor} {canReview} canEdit={canWrite} onedit={editDraft} />
+        <ManualReviewTab {tab} {actor} {canReview} canEdit={canWrite} {filter} onedit={editDraft} />
     {/if}
 </div>
 
@@ -149,6 +166,11 @@
         display: flex;
         gap: 12px;
         align-items: center;
+    }
+    .target {
+        color: var(--text-dim);
+        font-size: 12.5px;
+        margin: 0 0 10px;
     }
     .actor {
         display: flex;
