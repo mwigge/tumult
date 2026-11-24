@@ -132,6 +132,52 @@ what evidence exists; it does not say that an entity complies. Read the
   the daily snapshots, and the function register in `org.yaml`.
 - **API:** `GET /api/dora`, `GET /api/dora/{article}`, `GET /api/maturity`.
 
+### Disaster recovery
+
+Route `/dr`. The DR tests of each target, automated and manual together,
+and when the next one is due. A DR test is a run of kind `dr`, or a
+submitted or verified manual record of a type the house counts as DR: by
+default `failover`, `drill`, `restore` and `backup`.
+
+![Disaster recovery: the due register of each target, and its RTO and RPO over time](../images/3.0/screenshots/dr.png)
+
+- **Due register.** One row per target: its state (`ok`, `due` within 30
+  days, `overdue` or `never tested`), its last DR test with its date,
+  origin and verdict, when the next one is due, the interval and where it
+  comes from, the plan that covers it, and the RTO and RPO it is held to
+  against what its last test measured. Read
+  [When a DR test is overdue](#when-a-dr-test-is-overdue) for how the
+  register works.
+- **RTO and RPO over time.** Per target, a chart of the RTO and one of the
+  RPO that each test measured, with the target as a dashed line. A diamond
+  marks a manual test. A triangle marks a run that did not recover. It is
+  drawn at the least its RTO was: the time from the outage seen to the end
+  of the watch.
+- **DR tests in the period.** Newest first, 20 to a page. A run links to
+  its page, and a manual record to the records of the Manual page.
+- **Filters.** A target, an environment and a period of 90 days, 1 year or
+  3 years. The URL keeps them, so a link opens the same view. The period
+  selects the tests. The register shows the targets as they are now.
+
+A lake with no DR test says so, and links to the guide and to the Manual
+page.
+
+`GET /api/dr` answers with `targets` (the register), `tests` (one page of
+the DR tests of the period, with the columns of `dr_tests`) and `summary`
+(the targets per state, and the tests per origin and verdict). A run that
+did not recover measured no RTO. Its test, and a target whose last test it
+is, have `rto_at_least_s`: the least its RTO was. `from` and `to` set the
+period in unix nanoseconds, both ends included. By default it is the 365
+days up to now. `target` keeps one target system, and `environment` one of
+your environments. `limit` (100 by default, 1000 at most) and `cursor` page
+the tests as `GET /api/entities` does. A query field the API does not know
+is refused with 400.
+
+- **Evidence:** the lake view
+  [`dr_tests`](../guides/analytics-guide.md#dr-tests), the planned manual
+  exercises, and the DR test plans of the functions in `org.yaml`.
+- **API:** `GET /api/dr`.
+
 ### Star Map
 
 Route `/starmap`; old `/topology` links point to it. One graph of org units,
@@ -419,6 +465,24 @@ A plan that is still planned after its due date is marked overdue on the
 the first 30 days past the due date, and high after that. The finding goes
 away when a verified record fulfils the plan, or when someone cancels it.
 An overdue plan does not change the compliance score.
+
+#### When a DR test is overdue
+
+The risk scan keeps a register of when each target needs its next DR
+test. A target is in it when it has a DR test, declares an RTO, or has a
+planned DR exercise. The next test is due one interval after the last
+one. A DR run whose probes saw no outage is no last test: it proved
+nothing about recovery. The interval comes from a planned DR exercise of
+the target, else
+from the DR test plan of its function in the register, else it is 365
+days.
+
+A target past that date is a finding on the Resilience page, with the
+rule `dr_test_overdue`. It is medium for the first 30 days, and high after
+that. On a target of criticality `critical` or `high` it is one step more:
+high, then critical. A target that a planned DR exercise covers gets no
+such finding: its plan is the one that is overdue, with
+`manual_exercise_overdue`. So one late test is one finding.
 
 #### Sign off a record
 

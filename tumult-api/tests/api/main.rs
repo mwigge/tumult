@@ -10,6 +10,7 @@ mod auth_approvals;
 mod authoring;
 mod common;
 mod dora;
+mod dr;
 mod endpoints;
 mod entities;
 mod events;

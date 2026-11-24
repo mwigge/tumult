@@ -260,7 +260,7 @@ fn a_run_counts_its_objectives_and_names_each_one_that_was_not_met() {
              Objectives: 3 met, 2 breached, 1 inconclusive\n\
              \x20 breached: many-requests: load.total_requests must be at least 100, observed 40\n\
              \x20 breached: short-tail: load.latency_p99_ms must be at most 50, observed 100\n\
-             \x20 inconclusive: rpo: rpo must be at most 5, not measured\n\
+             \x20 inconclusive: rpo: rpo must be at most 5, no objective measures lost data\n\
              Load (oha): 40 requests, 13.3 requests/s, p50 20.0 ms, p95 80.0 ms, \
              p99 100.0 ms, error rate 0.00 %, thresholds met\n",
         )

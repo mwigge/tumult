@@ -162,7 +162,10 @@ pub(crate) fn output_schema_for(tool_name: &str) -> Option<ToolOutputSchema> {
             json!({
                 "metric": {
                     "type": "string",
-                    "enum": ["resilience_score", "duration_ms", "estimate_accuracy", "method_step_count"],
+                    "enum": [
+                        "resilience_score", "duration_ms", "estimate_accuracy", "method_step_count",
+                        "rto_measured_s", "rto_margin_s", "rpo_measured_s", "rpo_margin_s",
+                    ],
                 },
                 "points": {
                     "type": "array",
@@ -172,9 +175,23 @@ pub(crate) fn output_schema_for(tool_name: &str) -> Option<ToolOutputSchema> {
                         "required": ["ts", "value"],
                         "properties": {
                             "ts": { "type": "integer", "description": "started_at_ns of the run." },
-                            "value": { "type": "number" },
+                            "value": { "type": "number", "description": "What the run measured, or the bound of a run that did not recover." },
+                            "recovered": { "type": "boolean", "description": "RTO metrics only: whether the run recovered." },
+                            "bound": {
+                                "type": "string",
+                                "enum": ["at least", "at most"],
+                                "description": "A run that did not recover: value is no measure but a bound, at least for the RTO and at most for its margin.",
+                            },
                         },
                     },
+                },
+                "runs_without_outage": {
+                    "type": "integer",
+                    "description": "Recovery metrics only: runs left out because their probes saw no outage.",
+                },
+                "runs_not_measured": {
+                    "type": "integer",
+                    "description": "Recovery metrics only: runs left out because they declare the target and measured nothing.",
                 },
                 "target": { "type": ["string", "null"], "description": "Target asked for, if any: the system or the technology the journal names." },
                 "journals_without_target": {
@@ -820,14 +837,14 @@ mod tests {
         let schema = output_schema_for("tumult_trend").unwrap();
         let declared = schema.properties.as_ref().unwrap();
 
-        for target in [None, Some("orders")] {
-            let result = crate::tools::trend(
-                journals.path().to_str().unwrap(),
-                "duration_ms",
-                None,
-                target,
-            )
-            .unwrap();
+        for (metric, target) in [
+            ("duration_ms", None),
+            ("duration_ms", Some("orders")),
+            ("rto_measured_s", None),
+        ] {
+            let result =
+                crate::tools::trend(journals.path().to_str().unwrap(), metric, None, target)
+                    .unwrap();
 
             for name in &schema.required {
                 assert!(result.structured.contains_key(name), "{name}");
@@ -838,6 +855,60 @@ mod tests {
                     .unwrap_or_else(|| panic!("{name} is not in the schema"));
                 assert!(is_of(value, &property["type"]), "{name}: {value}");
             }
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_point_of_a_run_that_did_not_recover_is_of_the_types_its_schema_declares() {
+        use tumult_core::types::{
+            NfrCriticality, NfrKind, NfrOperator, NfrState, NfrVerdict, ObjectiveOutcome,
+        };
+
+        let journals = tempfile::TempDir::new().unwrap();
+        let path = crate::tools::test_support::write_run_journal_on(
+            journals.path(),
+            "first",
+            "orders",
+            "mysql",
+        );
+        let mut journal = tumult_core::journal::read_journal(&path).unwrap();
+        journal.objectives = Some(ObjectiveOutcome {
+            rto_target_s: Some(10.0),
+            verdicts: vec![NfrVerdict {
+                nfr_id: "rto".into(),
+                kind: NfrKind::Rto,
+                metric: "recovery.mttr_s".into(),
+                operator: NfrOperator::Lte,
+                threshold: 10.0,
+                observed: Some(30.1),
+                state: NfrState::Breached,
+                margin: None,
+                criticality: NfrCriticality::Blocking,
+                recovered: Some(false),
+                reason: None,
+            }],
+            ..ObjectiveOutcome::default()
+        });
+        tumult_core::journal::write_journal(&journal, &path).unwrap();
+        let schema = output_schema_for("tumult_trend").unwrap();
+        let point_schema = &schema.properties.as_ref().unwrap()["points"]["items"];
+
+        let result = crate::tools::trend(
+            journals.path().to_str().unwrap(),
+            "rto_measured_s",
+            None,
+            None,
+        )
+        .unwrap();
+
+        let point = &result.structured["points"][0];
+        assert_eq!(point["bound"], "at least", "{point}");
+        for name in point_schema["required"].as_array().unwrap() {
+            assert!(point.get(name.as_str().unwrap()).is_some(), "{name}");
+        }
+        for (name, value) in point.as_object().unwrap() {
+            let property = &point_schema["properties"][name];
+            assert!(is_of(value, &property["type"]), "{name}: {value}");
         }
     }
 

@@ -206,11 +206,12 @@ async fn e2e_script_plugin_produces_complete_journal() {
         ExpectedOutcome::Recovered
     );
 
-    // Analysis computed (estimate present → analysis present)
+    // Analysis computed (estimate present → analysis present). The probe
+    // never failed, so the run was unaffected, not recovered as estimated.
     assert!(journal.analysis.is_some());
     assert_eq!(
         journal.analysis.as_ref().unwrap().estimate_accuracy,
-        Some(1.0)
+        Some(0.0)
     );
 
     // ── Verify journal file round-trips ───────────────────────

@@ -9,8 +9,9 @@ use indexmap::IndexMap;
 use tokio_util::sync::CancellationToken;
 
 use crate::types::{
-    ActivityResult, ActivityStatus, AnalysisResult, DuringResult, ExpectedOutcome, Experiment,
-    ExperimentStatus, Hypothesis, PostResult, ProbeDuring, ProbePost, ProbeSample, SamplePhase,
+    ActivityResult, ActivityStatus, AnalysisResult, DuringResult, Estimate, ExpectedOutcome,
+    Experiment, ExperimentStatus, Hypothesis, ObjectiveOutcome, PostResult, ProbeDuring, ProbePost,
+    ProbeSample, SamplePhase, Tolerance,
 };
 
 use super::activity::sample_probe;
@@ -25,46 +26,84 @@ pub(crate) type ProbeSamples = Vec<(String, Vec<ActivityResult>)>;
 /// order of the hypothesis: a round samples its probes in that order.
 pub(crate) type ProbeSampleMap = IndexMap<String, Vec<ActivityResult>>;
 
-/// Compute Phase 4 analysis from estimate and actual results.
+/// Compute Phase 4 analysis: the estimate of the run against what the run
+/// measured. `None` without an estimate.
 ///
-/// Reserved/unpopulated fields in this version (kept as `None` rather than
-/// filled with fabricated values):
-/// - `estimate_recovery_delta_s` — requires comparing the estimated recovery
-///   time against the measured post-phase recovery; not computed yet.
-/// - `trend` — requires historical journals from the analytics store; not
-///   computed yet.
-///
-/// `estimate_accuracy` and `resilience_score` are populated but deliberately
-/// coarse binary indicators (1.0 when the actual recovery outcome matches
-/// the estimate / the run completed, 0.0 otherwise); richer scoring is left
-/// to the analytics layer.
+/// - `estimate_accuracy` is 1.0 when the expected outcome is the outcome
+///   the run measured ([`measured_outcome`]), else 0.0. `None` when the
+///   run has no such outcome.
+/// - `estimate_recovery_delta_s` is the measured recovery time
+///   (`post.mttr_s`, which `objectives.rto_measured_s` holds) minus
+///   `expected_recovery_s`: positive means slower than expected.
+/// - `estimate_data_loss_correct` says whether `expected_data_loss` is
+///   what the run measured: data was lost when the measured RPO is above 0.
+/// - `trend` is reserved: it needs the journals of earlier runs, so it is
+///   `None`.
+/// - `resilience_score` is 1.0 when the run completed, else 0.0.
 pub(crate) fn compute_analysis(
     experiment: &Experiment,
     status: &ExperimentStatus,
+    post: Option<&PostResult>,
+    objectives: Option<&ObjectiveOutcome>,
 ) -> Option<AnalysisResult> {
     let estimate = experiment.estimate.as_ref()?;
-
-    // Compare estimate vs actual outcome
-    let actual_recovered = *status == ExperimentStatus::Completed;
-    let estimated_recovered = estimate.expected_outcome == ExpectedOutcome::Recovered;
-    let estimate_accuracy = if actual_recovered == estimated_recovered {
-        Some(1.0)
-    } else {
-        Some(0.0)
-    };
+    let estimate_accuracy = measured_outcome(status, post).map(|actual| {
+        if actual == estimate.expected_outcome {
+            1.0
+        } else {
+            0.0
+        }
+    });
+    let completed = *status == ExperimentStatus::Completed;
 
     Some(AnalysisResult {
         estimate_accuracy,
-        // Reserved: not populated in this version (see fn docs).
-        estimate_recovery_delta_s: None,
+        estimate_recovery_delta_s: recovery_delta_s(estimate, post),
+        estimate_data_loss_correct: data_loss_correct(estimate, objectives),
         // Reserved: not populated in this version (see fn docs).
         trend: None,
-        resilience_score: if actual_recovered {
-            Some(1.0)
-        } else {
-            Some(0.0)
-        },
+        resilience_score: if completed { Some(1.0) } else { Some(0.0) },
     })
+}
+
+/// The outcome a run measured, in the terms of an estimate. A run that
+/// deviated deviated. A completed run whose probes saw no outage was
+/// unaffected; one that saw an outage recovered when its post phase ended
+/// recovered, and deviated when it did not. `None` for a run whose method
+/// failed or that was stopped, and for a completed run with no post phase
+/// that says whether it saw an outage. Pure.
+fn measured_outcome(
+    status: &ExperimentStatus,
+    post: Option<&PostResult>,
+) -> Option<ExpectedOutcome> {
+    match status {
+        ExperimentStatus::Deviated => return Some(ExpectedOutcome::Deviated),
+        ExperimentStatus::Completed => {}
+        _ => return None,
+    }
+    let post = post?;
+    if !post.impact_observed? {
+        return Some(ExpectedOutcome::Unaffected);
+    }
+    if post.full_recovery {
+        return Some(ExpectedOutcome::Recovered);
+    }
+    Some(ExpectedOutcome::Deviated)
+}
+
+/// The measured recovery time minus the expected one, in seconds. `None`
+/// unless the run measured a recovery time and the estimate has one. Pure.
+fn recovery_delta_s(estimate: &Estimate, post: Option<&PostResult>) -> Option<f64> {
+    let measured_s = post?.mttr_s?;
+    Some(measured_s - estimate.expected_recovery_s?)
+}
+
+/// Whether the estimate said whether data is lost as the run measured it:
+/// lost when the measured RPO is above 0. `None` unless the estimate says
+/// and the run measured an RPO. Pure.
+fn data_loss_correct(estimate: &Estimate, objectives: Option<&ObjectiveOutcome>) -> Option<bool> {
+    let lost_s = objectives?.rpo_measured_s?;
+    Some(estimate.expected_data_loss? == (lost_s > 0.0))
 }
 
 /// Run every hypothesis probe once, returning the sample results and
@@ -85,20 +124,51 @@ fn sample_probe_round(
 }
 
 /// Flatten per-probe samples into journal [`ProbeSample`]s tagged with
-/// `phase`, in collection order per probe.
-pub(crate) fn samples_for_journal(phase: SamplePhase, samples: &ProbeSamples) -> Vec<ProbeSample> {
-    samples
+/// `phase`, in collection order per probe. A sample of a probe of
+/// `hypothesis` whose tolerance reads a number keeps the number it read.
+pub(crate) fn samples_for_journal(
+    phase: SamplePhase,
+    samples: &ProbeSamples,
+    hypothesis: &Hypothesis,
+) -> Vec<ProbeSample> {
+    // Sized up front: a long run has thousands of samples, and growing the
+    // vector would copy them over and over.
+    let mut journal = Vec::with_capacity(samples.iter().map(|(_, results)| results.len()).sum());
+    for (name, results) in samples {
+        let reads_number = reads_number(hypothesis, name);
+        journal.extend(results.iter().map(|r| ProbeSample {
+            probe: name.clone(),
+            phase,
+            ts_ns: r.started_at_ns,
+            duration_ms: r.duration_ms,
+            ok: r.status == ActivityStatus::Succeeded,
+            reading: reading_of(r, reads_number),
+        }));
+    }
+    journal
+}
+
+/// The number a sample read, when its probe reads one.
+fn reading_of(sample: &ActivityResult, reads_number: bool) -> Option<f64> {
+    if !reads_number {
+        return None;
+    }
+    sample.output.as_deref().and_then(crate::engine::reading)
+}
+
+/// Whether the probe `name` of `hypothesis` has a tolerance that reads a
+/// number.
+fn reads_number(hypothesis: &Hypothesis, name: &str) -> bool {
+    hypothesis
+        .probes
         .iter()
-        .flat_map(|(name, results)| {
-            results.iter().map(move |r| ProbeSample {
-                probe: name.clone(),
-                phase,
-                ts_ns: r.started_at_ns,
-                duration_ms: r.duration_ms,
-                ok: r.status == ActivityStatus::Succeeded,
-            })
+        .filter(|probe| probe.name == name)
+        .any(|probe| {
+            probe
+                .tolerance
+                .as_ref()
+                .is_some_and(Tolerance::reads_number)
         })
-        .collect()
 }
 
 /// Append one round of samples to the per-probe map.

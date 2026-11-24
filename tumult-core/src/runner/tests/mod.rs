@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
+mod analysis_tests;
 mod background_tests;
 mod controls_tests;
 mod exec_tests;
@@ -16,6 +17,7 @@ mod halt_tests;
 mod load_tests;
 pub(crate) mod log_capture;
 mod outcome_log_tests;
+mod reading_tests;
 mod recovery_clock_tests;
 mod rollback_tests;
 mod sampling_tests;

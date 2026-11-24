@@ -97,9 +97,11 @@ mod ingest;
 mod legacy;
 mod maintenance;
 mod query;
+mod recovery_trend;
 mod topology;
 mod types;
 
+pub use recovery_trend::{RecoveryMetric, RecoveryPoint, RecoveryTrend};
 pub use types::{AgenticContractAnalytics, AgenticFaultAnalytics, AgenticRunAnalytics, StoreStats};
 
 pub(crate) use ingest::ingest_journal_with_experiment;
@@ -348,6 +350,7 @@ pub fn sample_journal(
         analysis: Some(AnalysisResult {
             estimate_accuracy: Some(1.0),
             estimate_recovery_delta_s: None,
+            estimate_data_loss_correct: None,
             trend: None,
             resilience_score: Some(0.95),
         }),

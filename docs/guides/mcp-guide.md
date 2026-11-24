@@ -63,6 +63,12 @@ Thirty-four tools return `structuredContent` and advertise its `outputSchema`. A
 `tools/list` when you connect, so the client follows the server you run and
 not this page.
 
+`tumult_trend` takes the metrics of [`tumult trend`](cli-reference.md#tumult-trend),
+the RTO and RPO ones too. The point of a run that did not recover has
+`recovered: false` and a `bound`. `runs_without_outage` and
+`runs_not_measured` count the runs that are no point. The verdict reads a
+smaller time and a larger margin as `improving`.
+
 `tumult_run_experiment` stores its journal in the lake by default and says if
 that worked. `no_ingest` turns it off, and `store_path` picks another store.
 It and `tumult_gameday_run` refuse to overwrite an earlier journal unless

@@ -845,6 +845,7 @@ fn what_a_run_was_planned_with_is_shown_as_far_as_it_was_said() {
         analysis: Some(AnalysisResult {
             estimate_accuracy: None,
             estimate_recovery_delta_s: Some(-1.5),
+            estimate_data_loss_correct: None,
             trend: Some(Trend::Improving),
             resilience_score: None,
         }),
@@ -892,6 +893,7 @@ fn an_estimate_and_an_analysis_say_all_that_they_hold() {
         analysis: Some(AnalysisResult {
             estimate_accuracy: Some(0.625),
             estimate_recovery_delta_s: Some(12.25),
+            estimate_data_loss_correct: Some(false),
             trend: Some(Trend::Degrading),
             resilience_score: Some(0.75),
         }),
@@ -917,6 +919,7 @@ fn an_estimate_and_an_analysis_say_all_that_they_hold() {
         [
             row(&["Estimate accuracy", "62.50 %"]),
             row(&["Recovery against the estimate", "12.25 s"]),
+            row(&["Data loss as expected", "no"]),
             row(&["Trend", "degrading"]),
         ]
     );
@@ -928,6 +931,7 @@ fn an_analysis_and_a_mapping_that_say_nothing_are_no_sections() {
         analysis: Some(AnalysisResult {
             estimate_accuracy: None,
             estimate_recovery_delta_s: None,
+            estimate_data_loss_correct: None,
             trend: None,
             resilience_score: None,
         }),

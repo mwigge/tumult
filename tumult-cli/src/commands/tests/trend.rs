@@ -6,7 +6,8 @@ use crate::output::testing::capture;
 use tempfile::TempDir;
 use tumult_core::types::{
     ActivityResult, ActivityStatus, ActivityType, AnalysisResult, ExperimentStatus,
-    ExperimentTarget, Journal, SpanId, TraceId,
+    ExperimentTarget, Journal, NfrCriticality, NfrKind, NfrOperator, NfrState, NfrVerdict,
+    ObjectiveOutcome, PostResult, SpanId, TraceId,
 };
 
 fn journal(id: &str, title: &str, started_at_ns: i64) -> Journal {
@@ -45,6 +46,7 @@ fn journal(id: &str, title: &str, started_at_ns: i64) -> Journal {
         analysis: Some(AnalysisResult {
             estimate_accuracy: Some(0.9),
             estimate_recovery_delta_s: None,
+            estimate_data_loss_correct: None,
             trend: None,
             resilience_score: Some(0.95),
         }),
@@ -71,7 +73,8 @@ fn on(mut journal: Journal, system: &str, technology: &str) -> Journal {
 /// What `tumult trend --metric duration_ms --target <target>` prints over
 /// the journals in `dir`.
 fn duration_trend_on(dir: &TempDir, last: Option<&str>, target: &str) -> String {
-    let (result, printed) = capture(|| cmd_trend(dir.path(), "duration_ms", last, Some(target)));
+    let (result, printed) =
+        capture(|| cmd_trend(dir.path(), "duration_ms", last, Some(target), false));
     result.unwrap();
     printed.stdout
 }
@@ -99,7 +102,7 @@ fn trend_reports_metric_over_journal_dir() {
         journal("t-2", "latency experiment rerun", now_ns - 1_000_000_000),
     ]);
 
-    let (result, printed) = capture(|| cmd_trend(dir.path(), "duration_ms", None, None));
+    let (result, printed) = capture(|| cmd_trend(dir.path(), "duration_ms", None, None, false));
 
     result.unwrap();
     let out = printed.stdout;
@@ -127,7 +130,7 @@ fn trend_supports_every_documented_metric() {
         ("estimate_accuracy", "0.9000"),
         ("method_step_count", "1"),
     ] {
-        let (result, printed) = capture(|| cmd_trend(dir.path(), metric, None, None));
+        let (result, printed) = capture(|| cmd_trend(dir.path(), metric, None, None, false));
 
         result.unwrap();
         let out = printed.stdout;
@@ -147,11 +150,11 @@ fn trend_rejects_unknown_metric() {
     let now_ns = chrono::Utc::now().timestamp_nanos_opt().unwrap();
     let dir = journal_dir(&[journal("t-1", "experiment", now_ns)]);
 
-    let err = cmd_trend(dir.path(), "nonsense", None, None).unwrap_err();
+    let err = cmd_trend(dir.path(), "nonsense", None, None, false).unwrap_err();
     assert_eq!(
         err.to_string(),
         "unknown metric: nonsense. Valid: resilience_score, duration_ms, estimate_accuracy, \
-         method_step_count"
+         method_step_count, rto_measured_s, rto_margin_s, rpo_measured_s, rpo_margin_s"
     );
 }
 
@@ -160,7 +163,7 @@ fn trend_rejects_malformed_last_window() {
     let now_ns = chrono::Utc::now().timestamp_nanos_opt().unwrap();
     let dir = journal_dir(&[journal("t-1", "experiment", now_ns)]);
 
-    let err = cmd_trend(dir.path(), "duration_ms", Some("soon"), None).unwrap_err();
+    let err = cmd_trend(dir.path(), "duration_ms", Some("soon"), None, false).unwrap_err();
     assert!(
         err.to_string().contains("--last must be a number of days"),
         "{err}"
@@ -172,7 +175,8 @@ fn trend_last_window_excludes_old_journals() {
     let dir = journal_dir(&[journal("old-1", "ancient experiment", OLD_NS)]);
 
     // A 30d window filters out the 2020 journal: valid run, no data points.
-    let (result, printed) = capture(|| cmd_trend(dir.path(), "duration_ms", Some("30d"), None));
+    let (result, printed) =
+        capture(|| cmd_trend(dir.path(), "duration_ms", Some("30d"), None, false));
 
     result.unwrap();
     assert_eq!(
@@ -181,7 +185,7 @@ fn trend_last_window_excludes_old_journals() {
     );
 
     // Without the window the same journal is a data point.
-    let (result, printed) = capture(|| cmd_trend(dir.path(), "duration_ms", None, None));
+    let (result, printed) = capture(|| cmd_trend(dir.path(), "duration_ms", None, None, false));
     result.unwrap();
     assert!(
         printed
@@ -200,7 +204,8 @@ fn the_summary_is_over_the_runs_of_the_window() {
     // The old run took 60000 ms.
     let dir = journal_dir(&[journal("old-1", "experiment", OLD_NS), recent]);
 
-    let (result, printed) = capture(|| cmd_trend(dir.path(), "duration_ms", Some("30d"), None));
+    let (result, printed) =
+        capture(|| cmd_trend(dir.path(), "duration_ms", Some("30d"), None, false));
 
     result.unwrap();
     let out = printed.stdout;
@@ -220,7 +225,8 @@ fn a_window_is_counted_in_days() {
     let now_ns = chrono::Utc::now().timestamp_nanos_opt().unwrap();
     let dir = journal_dir(&[journal("t-1", "experiment", now_ns - 10 * DAY_NS)]);
 
-    let (result, printed) = capture(|| cmd_trend(dir.path(), "duration_ms", Some("30d"), None));
+    let (result, printed) =
+        capture(|| cmd_trend(dir.path(), "duration_ms", Some("30d"), None, false));
     result.unwrap();
     assert!(
         printed
@@ -230,7 +236,8 @@ fn a_window_is_counted_in_days() {
         printed.stdout
     );
 
-    let (result, printed) = capture(|| cmd_trend(dir.path(), "duration_ms", Some("5d"), None));
+    let (result, printed) =
+        capture(|| cmd_trend(dir.path(), "duration_ms", Some("5d"), None, false));
     result.unwrap();
     assert_eq!(
         printed.stdout,
@@ -329,7 +336,7 @@ fn a_trend_of_one_journal_file_is_in_the_same_scope() {
     let dir = journal_dir(&[on(journal("old-1", "first", OLD_NS), "orders", "mysql")]);
     let file = dir.path().join("old-1.toon");
     let trend = |last: Option<&str>, target: Option<&str>| {
-        let (result, printed) = capture(|| cmd_trend(&file, "duration_ms", last, target));
+        let (result, printed) = capture(|| cmd_trend(&file, "duration_ms", last, target, false));
         result.unwrap();
         printed.stdout
     };
@@ -351,8 +358,15 @@ fn a_trend_of_one_journal_file_is_in_the_same_scope() {
 fn a_window_longer_than_time_takes_every_journal() {
     let dir = journal_dir(&[journal("old-1", "first", OLD_NS)]);
 
-    let (result, printed) =
-        capture(|| cmd_trend(dir.path(), "duration_ms", Some("999999999999999d"), None));
+    let (result, printed) = capture(|| {
+        cmd_trend(
+            dir.path(),
+            "duration_ms",
+            Some("999999999999999d"),
+            None,
+            false,
+        )
+    });
 
     result.unwrap();
     assert!(
@@ -377,6 +391,7 @@ fn measured(id: &str, second: i64, duration_ms: u64, steps: usize, score: f64) -
     run.analysis = Some(AnalysisResult {
         estimate_accuracy: Some(score / 2.0),
         estimate_recovery_delta_s: None,
+        estimate_data_loss_correct: None,
         trend: None,
         resilience_score: Some(score),
     });
@@ -394,7 +409,7 @@ fn a_trend_lists_the_runs_oldest_first_and_sums_them_up() {
     ]);
 
     // The whole of one trend: the columns are 20 wide.
-    let (result, printed) = capture(|| cmd_trend(dir.path(), "duration_ms", None, None));
+    let (result, printed) = capture(|| cmd_trend(dir.path(), "duration_ms", None, None, false));
     result.unwrap();
     assert_eq!(
         printed.stdout,
@@ -435,7 +450,7 @@ fn a_trend_lists_the_runs_oldest_first_and_sums_them_up() {
             "Summary: 3 runs, min=0.2500, max=0.5000, avg=0.3750",
         ),
     ] {
-        let (result, printed) = capture(|| cmd_trend(dir.path(), metric, None, None));
+        let (result, printed) = capture(|| cmd_trend(dir.path(), metric, None, None, false));
 
         result.unwrap();
         let out = printed.stdout;
@@ -465,7 +480,7 @@ fn trend_accepts_a_single_journal_file() {
     let path = dir.path().join("single.toon");
     tumult_core::journal::write_journal(&journal("t-1", "experiment", now_ns), &path).unwrap();
 
-    let (result, printed) = capture(|| cmd_trend(&path, "duration_ms", None, None));
+    let (result, printed) = capture(|| cmd_trend(&path, "duration_ms", None, None, false));
 
     result.unwrap();
     let out = printed.stdout;
@@ -476,7 +491,7 @@ fn trend_accepts_a_single_journal_file() {
 #[test]
 fn trend_missing_path_errors() {
     let dir = TempDir::new().unwrap();
-    let err = cmd_trend(&dir.path().join("nope"), "duration_ms", None, None).unwrap_err();
+    let err = cmd_trend(&dir.path().join("nope"), "duration_ms", None, None, false).unwrap_err();
     assert!(err.to_string().contains("path does not exist"), "{err}");
 }
 
@@ -487,7 +502,7 @@ fn trend_skips_malformed_journals_with_warning() {
     std::fs::write(dir.path().join("broken.toon"), "not a journal {{{").unwrap();
 
     // The good journal still loads; the broken one is skipped, not fatal.
-    let (result, printed) = capture(|| cmd_trend(dir.path(), "duration_ms", None, None));
+    let (result, printed) = capture(|| cmd_trend(dir.path(), "duration_ms", None, None, false));
 
     result.unwrap();
     let out = printed.stdout;
@@ -503,7 +518,8 @@ fn trend_without_data_points_reports_absence() {
     j.analysis = None;
     let dir = journal_dir(&[j]);
 
-    let (result, printed) = capture(|| cmd_trend(dir.path(), "resilience_score", None, None));
+    let (result, printed) =
+        capture(|| cmd_trend(dir.path(), "resilience_score", None, None, false));
 
     result.unwrap();
     assert_eq!(
@@ -520,7 +536,7 @@ fn trend_reports_a_journal_it_could_not_read_as_a_log_event() {
     std::fs::write(&corrupt, "{{{{ not a journal").unwrap();
 
     let capture = tumult_otel::logging::testing::LogCapture::start(tracing::Level::WARN);
-    cmd_trend(dir.path(), "duration_ms", None, None).unwrap();
+    cmd_trend(dir.path(), "duration_ms", None, None, false).unwrap();
     let logs = capture.snapshot();
 
     let skipped = logs.named("cli.journal.skipped");
@@ -528,4 +544,399 @@ fn trend_reports_a_journal_it_could_not_read_as_a_log_event() {
     assert_eq!(skipped[0]["level"], "WARN");
     assert_eq!(skipped[0]["file.path"], corrupt.to_str().unwrap());
     assert!(skipped[0]["error.message"].is_string(), "{}", logs.raw);
+}
+
+// ── Recovery trends ──────────────────────────────────────────
+
+/// The start of the fixed day of the DR runs.
+const DAY_NS: i64 = 1_700_000_000_000_000_000;
+
+/// A DR run of a failover on `system` that started `second` seconds into
+/// the day, with `objectives`. Its probes saw an outage when `outage`, and
+/// the target back `mttr_s` after it when that is set.
+fn dr_run(
+    id: &str,
+    second: i64,
+    system: &str,
+    objectives: ObjectiveOutcome,
+    outage: bool,
+    mttr_s: Option<f64>,
+) -> Journal {
+    let started_at_ns = DAY_NS + second * 1_000_000_000;
+    let mut run = on(journal(id, "failover", started_at_ns), system, "postgres");
+    run.objectives = Some(objectives);
+    run.post_result = Some(PostResult {
+        started_at_ns,
+        ended_at_ns: started_at_ns + 30_000_000_000,
+        duration_s: 30.0,
+        samples: 30,
+        probes: vec![],
+        recovery_time_s: 29.1,
+        full_recovery: mttr_s.is_some() || !outage,
+        mttr_s,
+        impact_observed: Some(outage),
+        outage_started_at_ns: outage.then_some(started_at_ns),
+        recovered_at_ns: None,
+    });
+    run
+}
+
+/// A verdict of `kind` named `id` on a target of `threshold`.
+fn verdict(id: &str, kind: NfrKind, threshold: f64, observed: Option<f64>) -> NfrVerdict {
+    NfrVerdict {
+        nfr_id: id.into(),
+        kind,
+        metric: "recovery.mttr_s".into(),
+        operator: NfrOperator::Lte,
+        threshold,
+        observed,
+        state: NfrState::Inconclusive,
+        margin: None,
+        criticality: NfrCriticality::Blocking,
+        recovered: None,
+        reason: None,
+    }
+}
+
+/// A run with an RTO of 10 s and the verdict `rto` on it.
+fn with_rto(rto: NfrVerdict, measured_s: Option<f64>) -> ObjectiveOutcome {
+    ObjectiveOutcome {
+        rto_target_s: Some(10.0),
+        rto_measured_s: measured_s,
+        verdicts: vec![rto],
+        ..ObjectiveOutcome::default()
+    }
+}
+
+/// A run with an RTO of 10 s that recovered in `mttr_s`.
+fn recovered(id: &str, second: i64, system: &str, mttr_s: f64) -> Journal {
+    let rto = NfrVerdict {
+        state: NfrState::Met,
+        margin: Some(10.0 - mttr_s),
+        recovered: Some(true),
+        ..verdict("rto", NfrKind::Rto, 10.0, Some(mttr_s))
+    };
+    let objectives = with_rto(rto, Some(mttr_s));
+    dr_run(id, second, system, objectives, true, Some(mttr_s))
+}
+
+/// A run with an RTO of 10 s that was not back in the 30.1 s it watched.
+fn never_back(id: &str, second: i64, system: &str) -> Journal {
+    let rto = NfrVerdict {
+        state: NfrState::Breached,
+        recovered: Some(false),
+        ..verdict("rto", NfrKind::Rto, 10.0, Some(30.1))
+    };
+    let mut run = dr_run(id, second, system, with_rto(rto, None), true, None);
+    run.status = ExperimentStatus::Deviated;
+    run
+}
+
+/// A run with an RTO of 10 s whose probes saw no outage.
+fn no_outage(id: &str, second: i64, system: &str) -> Journal {
+    let rto = NfrVerdict {
+        reason: Some(NfrVerdict::NO_OUTAGE_OBSERVED.into()),
+        ..verdict("rto", NfrKind::Rto, 10.0, None)
+    };
+    dr_run(id, second, system, with_rto(rto, None), false, None)
+}
+
+/// A run with an RPO of 5 s that lost `lost_s`, or read none back.
+fn with_rpo(id: &str, second: i64, system: &str, lost_s: Option<f64>) -> Journal {
+    let objectives = ObjectiveOutcome {
+        rpo_target_s: Some(5.0),
+        rpo_measured_s: lost_s,
+        verdicts: vec![verdict("data-kept", NfrKind::Rpo, 5.0, lost_s)],
+        ..ObjectiveOutcome::default()
+    };
+    dr_run(id, second, system, objectives, true, Some(1.0))
+}
+
+/// DR runs on two targets, not in the order they ran in.
+fn dr_runs() -> TempDir {
+    journal_dir(&[
+        never_back("never-back", 3, "orders"),
+        recovered("fast", 1, "orders", 4.0),
+        no_outage("no-outage", 2, "orders"),
+        recovered("slow", 5, "orders", 7.5),
+        recovered("other", 4, "sessions", 2.0),
+        with_rpo("lost-little", 6, "orders", Some(2.0)),
+        with_rpo("lost-more", 7, "orders", Some(4.5)),
+        with_rpo("none-read", 8, "orders", None),
+        with_rpo("elsewhere", 9, "sessions", Some(1.0)),
+    ])
+}
+
+/// What `tumult trend --metric <metric> --target <target>` prints over
+/// the DR runs.
+fn recovery_trend_on(metric: &str, target: &str) -> String {
+    let dir = dr_runs();
+    let (result, printed) = capture(|| cmd_trend(dir.path(), metric, None, Some(target), false));
+    result.unwrap();
+    printed.stdout
+}
+
+/// The header and the rule of the table of a recovery trend of `metric`.
+fn recovery_table(metric: &str) -> String {
+    format!(
+        "experiment_id       title               status              {metric:<20}started_at_ns       note                \n{}\n",
+        "-".repeat(120)
+    )
+}
+
+#[test]
+fn an_rto_trend_on_a_target_marks_the_run_that_did_not_recover_and_counts_the_one_that_saw_no_outage(
+) {
+    let out = recovery_trend_on("rto_measured_s", "orders");
+
+    assert_eq!(
+        out,
+        format!(
+            "Loaded 9 journal(s)\n\nTrend: rto_measured_s (3 data points)\n\n{}\
+             fast                failover            completed           4.0000              1700000001000000000                     \n\
+             never-back          failover            deviated            at least 30.1000    1700000003000000000 not recovered       \n\
+             slow                failover            completed           7.5000              1700000005000000000                     \n\
+             \n\
+             Summary: 2 runs, min=4.0000, max=7.5000, avg=5.7500\n\
+             Not recovered: 1 run(s), each shown as a bound and left out of the summary\n\
+             1 run(s) saw no outage\n",
+            recovery_table("rto_measured_s")
+        )
+    );
+}
+
+#[test]
+fn an_rto_margin_is_the_target_minus_the_rto_and_at_most_that_for_a_run_that_did_not_recover() {
+    let out = recovery_trend_on("rto_margin_s", "orders");
+
+    assert_eq!(
+        out,
+        format!(
+            "Loaded 9 journal(s)\n\nTrend: rto_margin_s (3 data points)\n\n{}\
+             fast                failover            completed           6.0000              1700000001000000000                     \n\
+             never-back          failover            deviated            at most -20.1000    1700000003000000000 not recovered       \n\
+             slow                failover            completed           2.5000              1700000005000000000                     \n\
+             \n\
+             Summary: 2 runs, min=2.5000, max=6.0000, avg=4.2500\n\
+             Not recovered: 1 run(s), each shown as a bound and left out of the summary\n\
+             1 run(s) saw no outage\n",
+            recovery_table("rto_margin_s")
+        )
+    );
+}
+
+#[test]
+fn an_rpo_trend_on_a_target_counts_the_run_that_measured_none() {
+    for (metric, little, more, summary) in [
+        (
+            "rpo_measured_s",
+            "2.0000",
+            "4.5000",
+            "Summary: 2 runs, min=2.0000, max=4.5000, avg=3.2500",
+        ),
+        (
+            "rpo_margin_s",
+            "3.0000",
+            "0.5000",
+            "Summary: 2 runs, min=0.5000, max=3.0000, avg=1.7500",
+        ),
+    ] {
+        let out = recovery_trend_on(metric, "orders");
+
+        assert_eq!(
+            out,
+            format!(
+                "Loaded 9 journal(s)\n\nTrend: {metric} (2 data points)\n\n{}\
+                 lost-little         failover            completed           {little:<20}1700000006000000000                     \n\
+                 lost-more           failover            completed           {more:<20}1700000007000000000                     \n\
+                 \n\
+                 {summary}\n\
+                 1 run(s) measured no RPO\n",
+                recovery_table(metric)
+            ),
+            "{metric}"
+        );
+    }
+}
+
+#[test]
+fn a_recovery_trend_is_of_the_runs_on_the_target_only() {
+    let out = recovery_trend_on("rto_measured_s", "sessions");
+
+    assert!(
+        out.starts_with("Loaded 9 journal(s)\n\nTrend: rto_measured_s (1 data points)\n"),
+        "{out}"
+    );
+    assert!(out.contains("\nother  "), "{out}");
+    assert!(
+        out.ends_with("\nSummary: 1 runs, min=2.0000, max=2.0000, avg=2.0000\n"),
+        "{out}"
+    );
+}
+
+#[test]
+fn a_recovery_trend_without_points_still_counts_the_runs_it_left_out() {
+    let dir = journal_dir(&[no_outage("no-outage", 2, "orders")]);
+
+    let (result, printed) = capture(|| cmd_trend(dir.path(), "rto_measured_s", None, None, false));
+
+    result.unwrap();
+    assert_eq!(
+        printed.stdout,
+        "Loaded 1 journal(s)\n\nNo data points for metric: rto_measured_s\n1 run(s) saw no outage\n"
+    );
+}
+
+#[test]
+fn a_recovery_trend_of_runs_that_all_did_not_recover_has_no_summary() {
+    let dir = journal_dir(&[never_back("never-back", 3, "orders")]);
+
+    let (result, printed) = capture(|| cmd_trend(dir.path(), "rto_measured_s", None, None, false));
+
+    result.unwrap();
+    let out = printed.stdout;
+    assert!(!out.contains("Summary:"), "{out}");
+    assert!(
+        out.ends_with(
+            "\n\nNot recovered: 1 run(s), each shown as a bound and left out of the summary\n"
+        ),
+        "{out}"
+    );
+}
+
+/// What `tumult trend --format json` prints, as JSON.
+fn json_trend(dir: &std::path::Path, metric: &str, target: Option<&str>) -> serde_json::Value {
+    let (result, printed) = capture(|| cmd_trend(dir, metric, None, target, true));
+    result.unwrap();
+    serde_json::from_str(&printed.stdout)
+        .unwrap_or_else(|e| panic!("not JSON ({e}): {}", printed.stdout))
+}
+
+#[test]
+fn a_recovery_trend_as_json_has_the_points_with_their_flags_and_the_counts() {
+    let dir = dr_runs();
+
+    let trend = json_trend(dir.path(), "rto_measured_s", Some("orders"));
+
+    let point = |id: &str, second: i64, status: &str, value: f64| {
+        serde_json::json!({
+            "experiment_id": id,
+            "title": "failover",
+            "status": status,
+            "started_at_ns": DAY_NS + second * 1_000_000_000,
+            "value": value,
+            "recovered": true,
+        })
+    };
+    let mut never_back = point("never-back", 3, "deviated", 30.1);
+    never_back["recovered"] = false.into();
+    never_back["bound"] = "at least".into();
+    assert_eq!(
+        trend,
+        serde_json::json!({
+            "metric": "rto_measured_s",
+            "target": "orders",
+            "journals": 9,
+            "journals_without_target": 0,
+            "points": [
+                point("fast", 1, "completed", 4.0),
+                never_back,
+                point("slow", 5, "completed", 7.5),
+            ],
+            "summary": { "runs": 2, "min": 4.0, "max": 7.5, "avg": 5.75 },
+            "runs_without_outage": 1,
+            "runs_not_measured": 0,
+        })
+    );
+}
+
+#[test]
+fn an_rpo_trend_as_json_has_no_recovery_flags_and_counts_the_run_that_measured_none() {
+    let dir = dr_runs();
+
+    let trend = json_trend(dir.path(), "rpo_margin_s", Some("orders"));
+
+    assert_eq!(
+        trend["points"],
+        serde_json::json!([
+            {
+                "experiment_id": "lost-little",
+                "title": "failover",
+                "status": "completed",
+                "started_at_ns": DAY_NS + 6_000_000_000,
+                "value": 3.0,
+            },
+            {
+                "experiment_id": "lost-more",
+                "title": "failover",
+                "status": "completed",
+                "started_at_ns": DAY_NS + 7_000_000_000,
+                "value": 0.5,
+            },
+        ])
+    );
+    assert_eq!(trend["runs_not_measured"], 1, "{trend}");
+    assert_eq!(trend["runs_without_outage"], 0, "{trend}");
+}
+
+#[test]
+fn a_trend_of_another_metric_as_json_has_the_points_of_its_table() {
+    let dir = journal_dir(&[
+        measured("run-a", 3, 3_000, 3, 0.5),
+        on(measured("run-b", 1, 1_000, 1, 0.75), "orders", "mysql"),
+    ]);
+
+    let trend = json_trend(dir.path(), "duration_ms", None);
+
+    assert_eq!(
+        trend,
+        serde_json::json!({
+            "metric": "duration_ms",
+            "target": null,
+            "journals": 2,
+            "journals_without_target": 0,
+            "points": [
+                {
+                    "experiment_id": "run-b",
+                    "title": "experiment",
+                    "status": "completed",
+                    "started_at_ns": 1_700_000_001_000_000_000_i64,
+                    "value": 1000.0,
+                },
+                {
+                    "experiment_id": "run-a",
+                    "title": "experiment",
+                    "status": "completed",
+                    "started_at_ns": 1_700_000_003_000_000_000_i64,
+                    "value": 3000.0,
+                },
+            ],
+            "summary": { "runs": 2, "min": 1000.0, "max": 3000.0, "avg": 2000.0 },
+        })
+    );
+}
+
+#[test]
+fn a_trend_as_json_by_target_counts_the_journals_that_name_no_target() {
+    let dir = journal_dir(&[
+        measured("run-a", 3, 3_000, 3, 0.5),
+        on(measured("run-b", 1, 1_000, 1, 0.75), "orders", "mysql"),
+    ]);
+
+    let trend = json_trend(dir.path(), "duration_ms", Some("orders"));
+
+    assert_eq!(trend["journals_without_target"], 1, "{trend}");
+    assert_eq!(trend["target"], "orders", "{trend}");
+    assert_eq!(trend["points"].as_array().unwrap().len(), 1, "{trend}");
+}
+
+#[test]
+fn a_trend_as_json_without_points_has_no_summary() {
+    let dir = journal_dir(&[no_outage("no-outage", 2, "orders")]);
+
+    let trend = json_trend(dir.path(), "rto_margin_s", None);
+
+    assert_eq!(trend["points"], serde_json::json!([]), "{trend}");
+    assert_eq!(trend["summary"], serde_json::Value::Null, "{trend}");
+    assert_eq!(trend["runs_without_outage"], 1, "{trend}");
 }

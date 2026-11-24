@@ -174,6 +174,25 @@ fn the_report_sums_the_run_up_in_its_cards() {
 }
 
 #[test]
+fn the_header_of_the_report_names_the_target_and_its_environment() {
+    let (_, html) = report_of_every_block();
+
+    let header = words(between(&html, "<header>", "</header>"));
+
+    assert!(header.ends_with("Target lab-target in lab"), "{header}");
+}
+
+#[test]
+fn the_header_of_the_report_of_a_run_without_a_target_names_none() {
+    let lab = Lab::with_state("ok");
+    lab.run(&[inject(), heal()].concat());
+
+    let header = words(between(&report(&lab), "<header>", "</header>"));
+
+    assert!(!header.contains("Target"), "{header}");
+}
+
+#[test]
 fn the_report_shows_the_steady_state_and_the_steps_of_the_run() {
     let (journal, html) = report_of_every_block();
 
@@ -295,7 +314,7 @@ fn the_report_shows_the_objectives_and_the_load_of_the_run() {
             "rpo",
             "rpo",
             "at most 5",
-            "not measured",
+            "no objective measures lost data",
             "",
             "inconclusive",
             "blocking"
@@ -352,7 +371,7 @@ fn the_report_shows_the_objectives_and_the_load_of_the_run() {
 
 #[test]
 fn the_report_shows_what_the_run_measured_and_what_it_was_planned_with() {
-    let (_, html) = report_of_every_block();
+    let (journal, html) = report_of_every_block();
 
     let measured = rows(section(&html, "measurements"));
     for fact in [
@@ -382,9 +401,26 @@ fn the_report_shows_what_the_run_measured_and_what_it_was_planned_with() {
             row(&["Prior runs", "3"]),
         ]
     );
-    assert_eq!(
-        rows(section(&html, "analysis")),
-        [row(&["Estimate accuracy", "100.00 %"])]
+    // The run saw the outage and recovered, as estimated, and it was back
+    // sooner than the two seconds of the estimate.
+    let mttr_s = journal.recovery_time_s().expect("a measured recovery time");
+    let delta = journal
+        .analysis
+        .as_ref()
+        .and_then(|analysis| analysis.estimate_recovery_delta_s)
+        .expect("the recovery against the estimate");
+    assert!(
+        (delta - (mttr_s - 2.0)).abs() < 1e-9,
+        "{delta} and {mttr_s}"
+    );
+    assert!(delta < 0.0, "{delta}");
+    let analysis = rows(section(&html, "analysis"));
+    assert_eq!(analysis.len(), 2, "{analysis:?}");
+    assert_eq!(analysis[0], row(&["Estimate accuracy", "100.00 %"]));
+    assert_eq!(analysis[1][0], "Recovery against the estimate");
+    assert!(
+        analysis[1][1].starts_with('-') && analysis[1][1].ends_with(" s"),
+        "{analysis:?}"
     );
     let regulatory = section(&html, "regulatory");
     assert!(
@@ -435,12 +471,19 @@ fn the_report_says_once_whether_the_hypothesis_held_and_gives_the_run_no_score()
         assert_eq!(value, Some(0.0), "{status}");
         // The card says whether the hypothesis held; nothing says it again.
         assert_eq!(card(&html, "Steady state after"), after, "{status}");
+        assert!(!html.contains("Resilience score"), "{html}");
+        // The deviated run did not recover, as was estimated. The failed
+        // run has no outcome to judge the estimate against, so its report
+        // has no analysis.
+        if status == ExperimentStatus::Failed {
+            assert!(!has_section(&html, "analysis"), "{html}");
+            continue;
+        }
         assert_eq!(
             rows(section(&html, "analysis")),
             [row(&["Estimate accuracy", "0.00 %"])],
             "{status}"
         );
-        assert!(!html.contains("Resilience score"), "{html}");
     }
 }
 

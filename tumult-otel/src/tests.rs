@@ -71,6 +71,13 @@ fn all_attributes_are_dot_separated() {
         attributes::OUTCOME,
         attributes::HYPOTHESIS_MET,
         attributes::RECOVERY_TIME_S,
+        attributes::IMPACT_OBSERVED,
+        attributes::RECOVERED,
+        attributes::RTO_TARGET_S,
+        attributes::RTO_STATE,
+        attributes::RPO_TARGET_S,
+        attributes::RPO_MEASURED_S,
+        attributes::RPO_STATE,
         attributes::EXECUTION_TARGET,
         attributes::DURATION_MS,
     ];

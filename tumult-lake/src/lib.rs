@@ -46,6 +46,8 @@ pub mod arrow_convert;
 pub mod auth;
 pub mod backend;
 #[cfg(feature = "duckdb")]
+mod dr;
+#[cfg(feature = "duckdb")]
 pub mod duckdb_store;
 #[cfg(feature = "duckdb")]
 mod entities;
@@ -95,6 +97,8 @@ pub use approvals::{approval_pin, ApprovalDecision, ApprovalRequest, CanonicalPi
 #[cfg(feature = "duckdb")]
 pub use auth::{SessionRow, TokenRow, UserRow};
 pub use backend::{AnalyticsBackend, StoreStats};
+#[cfg(feature = "duckdb")]
+pub use dr::{DrScope, DrTestFilter, DrTestPosition, DEFAULT_DR_EXERCISE_TYPES};
 #[cfg(feature = "duckdb")]
 pub use entities::{
     entity_key, EntityApplied, EntityEventKind, EntityEventRow, EntityEvictions, EntityLimits,
@@ -165,6 +169,7 @@ pub use duckdb_store::autopilot::{
 #[cfg(feature = "duckdb")]
 pub use duckdb_store::{
     AgenticContractAnalytics, AgenticFaultAnalytics, AgenticRunAnalytics, AnalyticsStore,
+    RecoveryMetric, RecoveryPoint, RecoveryTrend,
 };
 #[cfg(feature = "duckdb")]
 pub use export::{export_arrow_ipc, export_csv, export_parquet, import_parquet};

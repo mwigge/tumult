@@ -171,6 +171,51 @@ const NOTHING = {
     probe_samples_total: 0,
 };
 
+// The verdict on an RTO the run declares.
+function rto(threshold: number, more: Record<string, unknown>) {
+    return {
+        nfr_id: 'rto',
+        kind: 'rto',
+        metric: 'recovery.mttr_s',
+        operator: 'lte',
+        threshold,
+        observed: null,
+        state: 'inconclusive',
+        margin: null,
+        criticality: 'blocking',
+        recovered: null,
+        reason: null,
+        ...more,
+    };
+}
+
+// A run whose target went down 9 s in and did not come back while it watched.
+const NEVER_BACK = {
+    ...FULL,
+    recovery: {
+        rto_target_s: 2,
+        rto_measured_s: null,
+        rpo_target_s: null,
+        rpo_measured_s: null,
+        impact_observed: true,
+        outage_started_at_ns: T0 + 9 * S,
+        recovered_at_ns: null,
+    },
+    objectives: [rto(2, { observed: 29.1, state: 'breached', recovered: false })],
+};
+
+// A run whose probes never saw the fault.
+const NO_OUTAGE = {
+    ...NEVER_BACK,
+    recovery: {
+        ...NEVER_BACK.recovery,
+        rto_target_s: 30,
+        impact_observed: false,
+        outage_started_at_ns: null,
+    },
+    objectives: [rto(30, { reason: 'no outage observed' })],
+};
+
 async function open(page: Page, evidence: unknown) {
     await installChartHooks(page);
     await page.route('**/api/**', async (route) => {
@@ -236,6 +281,24 @@ test('the page says what the steady state and the recovery of the run were', asy
         ['RPO', '5 s', 'not measured'],
     ]);
     await expect(page.getByTestId('no-evidence')).toHaveCount(0);
+});
+
+test('the page says that a run did not recover where it shows the RTO', async ({ page }) => {
+    await open(page, NEVER_BACK);
+
+    const steady = page.getByTestId('evidence-steady');
+    expect(await cells(steady.getByRole('table', { name: 'Recovery' }), 1)).toEqual([
+        ['RTO', '2 s', 'at least 29.1 s, not recovered'],
+    ]);
+});
+
+test('the page says why a run measured no recovery where it shows the RTO', async ({ page }) => {
+    await open(page, NO_OUTAGE);
+
+    const steady = page.getByTestId('evidence-steady');
+    expect(await cells(steady.getByRole('table', { name: 'Recovery' }), 1)).toEqual([
+        ['RTO', '30 s', 'no outage observed'],
+    ]);
 });
 
 test('the page lists the steps of the run in the order it took them', async ({ page }) => {
