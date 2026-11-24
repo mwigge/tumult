@@ -11,8 +11,8 @@ import type { DrLastTest, DrQuery, DrState, DrTarget, DrTest, DrVerdict, DrView 
 
 const DAY_MS = 86_400_000;
 
-/** How to write a DR test: the recovery targets of the objectives guide. */
-export const DR_GUIDE_URL = 'https://tumult.rs/guides/objectives.html#recovery-targets';
+/** How to test DR with Tumult: the disaster recovery guide. */
+export const DR_GUIDE_URL = 'https://tumult.rs/guides/disaster-recovery.html';
 
 /** The plans of manual exercises on the Manual page. */
 export const PLANS_HREF = '/manual?tab=plans';
