@@ -88,6 +88,7 @@ pub fn plan(config: &LoadConfig) -> LoadPlan {
             peak_vus,
             after_s,
             hold_s,
+            sample_interval_s,
         }) => (
             vus,
             vec![
@@ -95,7 +96,7 @@ pub fn plan(config: &LoadConfig) -> LoadPlan {
                 step(*hold_s, *peak_vus),
                 step(duration_s - after_s - hold_s, vus),
             ],
-            None,
+            *sample_interval_s,
         ),
         Some(LoadProfile::Soak { sample_interval_s }) => {
             (vus, vec![step(duration_s, vus)], Some(*sample_interval_s))
@@ -297,6 +298,7 @@ mod tests {
             peak_vus: 200,
             after_s: 20.0,
             hold_s: 10.0,
+            sample_interval_s: None,
         };
         let p = plan(&config(Some(spike), Some(10), Some(60.0)));
         assert_eq!(p.start_vus, 10);
@@ -310,6 +312,24 @@ mod tests {
             k6_stages(&p),
             vec!["20s:10", "1s:200", "9s:200", "1s:10", "29s:10"]
         );
+    }
+
+    #[test]
+    fn a_spike_with_a_sample_interval_is_cut_into_windows_of_that_length() {
+        let spike = LoadProfile::Spike {
+            peak_vus: 40,
+            after_s: 4.0,
+            hold_s: 2.0,
+            sample_interval_s: Some(2.0),
+        };
+        let p = plan(&config(Some(spike), Some(4), Some(10.0)));
+        assert_eq!(p.sample_interval_s, Some(2.0));
+        let w = windows(&p);
+        let vus: Vec<u32> = w.iter().map(|x| x.vus).collect();
+        assert_eq!(vus, vec![4, 4, 40, 4, 4]);
+        let offsets: Vec<f64> = w.iter().map(|x| x.offset_s).collect();
+        assert_eq!(offsets, vec![0.0, 2.0, 4.0, 6.0, 8.0]);
+        assert!(w.iter().all(|x| approx(x.duration_s, 2.0)), "{w:?}");
     }
 
     #[test]

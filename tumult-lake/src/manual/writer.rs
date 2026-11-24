@@ -9,8 +9,8 @@ use super::files::StagedFile;
 use super::hash::{fetch_row, now_ns, reseal, status_of, ulid};
 use super::plans::{check_tested, fulfil, usable_plan, Tested};
 use super::{
-    AttachmentKind, ExerciseDetail, LinkKind, ManualError, NewManualExperiment, SignOff,
-    SignOffDecision, SignOffOutcome, StepResult,
+    AttachmentKind, ExerciseDetail, LinkKind, ManualError, NewManualExperiment, Severity, SignOff,
+    SignOffDecision, SignOffOutcome, StepResult, TlptDetail,
 };
 use crate::{with_tx, StoreError, Writer};
 
@@ -29,6 +29,11 @@ fn participants_json(detail: &ExerciseDetail) -> String {
         .map(|p| serde_json::json!({"name": p.name, "role": p.role}))
         .collect();
     serde_json::Value::from(list).to_string()
+}
+
+/// The TLPT block of a record, when it has one.
+fn tlpt(detail: &ExerciseDetail) -> Option<&TlptDetail> {
+    detail.tlpt.as_ref()
 }
 
 /// Write the steps, actions and links of record `id`, numbered from 1 in
@@ -58,8 +63,9 @@ fn insert_children(
     for (ordinal, action) in (1_i64..).zip(&detail.actions) {
         conn.execute(
             "INSERT INTO manual_action_items (
-                id, experiment_id, ordinal, title, owner, due_at_ns, ticket
-             ) VALUES (?,?,?,?,?,?,?)",
+                id, experiment_id, ordinal, title, owner, due_at_ns, ticket,
+                severity, retest_kind, retest_id
+             ) VALUES (?,?,?,?,?,?,?,?,?,?)",
             params![
                 ulid(),
                 id,
@@ -68,6 +74,9 @@ fn insert_children(
                 action.owner,
                 action.due_at_ns,
                 action.ticket,
+                action.severity.map(Severity::as_str),
+                action.retest.as_ref().map(|r| r.kind.as_str()),
+                action.retest.as_ref().map(|r| r.id.as_str()),
             ],
         )?;
     }
@@ -123,9 +132,11 @@ fn insert_draft(
             entered_by, entered_at_ns, attestation, status,
             renewal_due_ns, framework_refs, batch_id, content_hash,
             rto_target_s, rpo_target_s, rpo_measured_s, data_verified, participants,
-            plan_id
+            plan_id, findings_severity, tester, tester_kind,
+            tlpt_attestation_ref, tlpt_attested_at_ns, tlpt_summary_ref
          ) VALUES (?,?,?,?,?,?,?,?,?,CAST(? AS JSON),?,?,?,?,?,?,
-                   ?,?,?,?,?, CAST(? AS VARCHAR[]),?,?,?,?,?,?,CAST(? AS JSON),?)",
+                   ?,?,?,?,?, CAST(? AS VARCHAR[]),?,?,?,?,?,?,CAST(? AS JSON),?,
+                   ?,?,?,?,?,?)",
         params![
             id,
             new.experiment_name,
@@ -158,6 +169,12 @@ fn insert_draft(
             detail.data_verified,
             participants_json(detail),
             detail.plan_id,
+            detail.findings_severity.map(Severity::as_str),
+            detail.tester.as_ref().map(|t| t.name.as_str()),
+            detail.tester.as_ref().map(|t| t.kind.as_str()),
+            tlpt(detail).and_then(|t| t.attestation_ref.as_deref()),
+            tlpt(detail).and_then(|t| t.attested_at_ns),
+            tlpt(detail).and_then(|t| t.summary_report_ref.as_deref()),
         ],
     )?;
     insert_children(conn, &id, detail)?;
@@ -257,7 +274,9 @@ impl Writer {
                     recovery_time_s = ?, duration_s = ?, attestation = ?,
                     renewal_due_ns = ?, framework_refs = CAST(? AS VARCHAR[]),
                     rto_target_s = ?, rpo_target_s = ?, rpo_measured_s = ?,
-                    data_verified = ?, participants = CAST(? AS JSON), plan_id = ?
+                    data_verified = ?, participants = CAST(? AS JSON), plan_id = ?,
+                    findings_severity = ?, tester = ?, tester_kind = ?,
+                    tlpt_attestation_ref = ?, tlpt_attested_at_ns = ?, tlpt_summary_ref = ?
                  WHERE id = ?",
                 params![
                     new.experiment_name,
@@ -283,6 +302,12 @@ impl Writer {
                     new.exercise.data_verified,
                     participants_json(&new.exercise),
                     new.exercise.plan_id,
+                    new.exercise.findings_severity.map(Severity::as_str),
+                    new.exercise.tester.as_ref().map(|t| t.name.as_str()),
+                    new.exercise.tester.as_ref().map(|t| t.kind.as_str()),
+                    tlpt(&new.exercise).and_then(|t| t.attestation_ref.as_deref()),
+                    tlpt(&new.exercise).and_then(|t| t.attested_at_ns),
+                    tlpt(&new.exercise).and_then(|t| t.summary_report_ref.as_deref()),
                     id,
                 ],
             )?;
@@ -305,7 +330,8 @@ impl Writer {
                         "recovery_time_s","duration_s","attestation","renewal_due_ns",
                         "framework_refs","rto_target_s","rpo_target_s","rpo_measured_s",
                         "data_verified","participants","steps","actions","links",
-                        "plan_id"
+                        "plan_id","findings_severity","tester","tester_kind",
+                        "tlpt_attestation_ref","tlpt_attested_at_ns","tlpt_summary_ref"
                     ],
                 }),
                 Some(&prev_hash),

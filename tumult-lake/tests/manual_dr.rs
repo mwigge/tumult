@@ -60,6 +60,8 @@ fn dr_detail() -> ExerciseDetail {
             owner: "carol".into(),
             due_at_ns: Some(130 * DAY),
             ticket: Some("OPS-12".into()),
+            severity: None,
+            retest: None,
         }],
         links: vec![
             ExerciseLink {
@@ -74,6 +76,9 @@ fn dr_detail() -> ExerciseDetail {
             },
         ],
         plan_id: None,
+        findings_severity: None,
+        tester: None,
+        tlpt: None,
     }
 }
 
@@ -494,7 +499,7 @@ fn a_v21_lake_gains_the_dr_columns_and_keeps_its_records() {
 
     let columns = columns_of(&store, "manual_experiments");
     assert_eq!(
-        columns[columns.len() - 7..],
+        columns[columns.len() - 13..],
         [
             "rto_target_s",
             "rpo_target_s",
@@ -502,9 +507,20 @@ fn a_v21_lake_gains_the_dr_columns_and_keeps_its_records() {
             "data_verified",
             "participants",
             "plan_id",
-            "hash_version"
+            "hash_version",
+            "findings_severity",
+            "tester",
+            "tester_kind",
+            "tlpt_attestation_ref",
+            "tlpt_attested_at_ns",
+            "tlpt_summary_ref"
         ]
     );
+    assert!(columns_of(&store, "manual_action_items").ends_with(&[
+        "severity".to_string(),
+        "retest_kind".to_string(),
+        "retest_id".to_string()
+    ]));
     assert!(columns_of(&store, "evidence_attachments")
         .ends_with(&["media_type".to_string(), "size_bytes".to_string()]));
     assert!(columns_of(&store, "manual_experiment_audit").ends_with(&["link_hash".to_string()]));

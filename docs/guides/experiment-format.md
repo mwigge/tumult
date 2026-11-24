@@ -88,7 +88,7 @@ Only `method` is required.
 | `load` | Traffic during the method, see [Load testing](load-testing-guide.md) |
 | `estimate` | Your guess before the run: `expected_outcome` (`recovered`, `deviated`, `unaffected`), `expected_recovery_s`, `confidence` and more. See [The estimate](#the-estimate) |
 | `blast_radius`, `max_concurrent_faults` | A note for the audit, and a cap on background faults at once |
-| `regulatory` | The frameworks and requirements the run gives evidence for |
+| `regulatory` | The frameworks and requirements the run gives evidence for, and the `tester` (`name`, and `kind` `internal` or `external`). See [Regulatory mapping](../regulatory-mapping.md#tag-an-experiment) |
 | `version` | `v1`, the default |
 | `baseline` | Kept so old files stay valid. A run does not use it |
 

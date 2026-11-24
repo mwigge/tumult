@@ -506,6 +506,10 @@ fn required_roles_match_annotations() {
         AutopilotRespondTool::tool(),
         AutopilotExportTool::tool(),
         AutopilotNotifyTool::tool(),
+        ManualListTool::tool(),
+        ManualGetTool::tool(),
+        ManualCreateDraftTool::tool(),
+        ManualPlansListTool::tool(),
         WhoamiTool::tool(),
     ];
     for tool in &tools {
@@ -978,7 +982,7 @@ async fn list_tools_requires_auth_when_configured() {
         .handle_list_tools_request(Some(params), stub_runtime())
         .await
         .expect("a valid viewer token must list tools");
-    assert_eq!(result.tools.len(), 40);
+    assert_eq!(result.tools.len(), 44);
 }
 
 /// With no auth configured (loopback-only mode) `tools/list` stays open —
@@ -991,7 +995,7 @@ async fn list_tools_open_when_auth_not_configured() {
         .handle_list_tools_request(None, stub_runtime())
         .await
         .expect("tools/list must stay open in open mode");
-    assert_eq!(result.tools.len(), 40);
+    assert_eq!(result.tools.len(), 44);
 }
 
 // ── HTTP Authorization header channel ──────────────────────────

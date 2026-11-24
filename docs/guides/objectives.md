@@ -48,7 +48,7 @@ nfr[2]:
 |---|---|
 | `met` | The measured value meets the threshold |
 | `breached` | It does not |
-| `inconclusive` | The run did not measure the metric. It is never counted as met |
+| `inconclusive` | The run did not measure the metric. It is never counted as met. A `reason` says why when the numbers do not, such as `too few load windows to judge` |
 
 A breached `blocking` objective turns a completed run into `deviated`. A
 `major` or `minor` breach is recorded and leaves the status alone. The
@@ -64,6 +64,8 @@ case. A breached `blocking` objective fails it, as it fails the run. An
 | Metric | Comes from |
 |---|---|
 | `load.throughput_rps`, `load.latency_p50_ms`, `load.latency_p95_ms`, `load.latency_p99_ms`, `load.error_rate`, `load.total_requests` | The [load](load-testing-guide.md) of the run |
+| `load.p95_drift_pct`, `load.error_rate_drift` | The windows of a soak: how much the p95 and the error rate grew from the first quarter to the last, see [Judge a soak or a spike](load-testing-guide.md#judge-a-soak-or-a-spike) |
+| `load.spike_recovery_s` | The windows of a spike: the seconds from the end of the spike until the p95 is back in the band before it |
 | `recovery.mttr_s` | The hypothesis probes, from the first read that failed after the method started to the read where they were all back |
 | `recovery.time_s` | The recovery check right after the method, from the end of the method |
 | `during.error_rate`, `during.availability` | The hypothesis probes, sampled during the method |
@@ -73,7 +75,9 @@ case. A breached `blocking` objective fails it, as it fails the run. An
 | `fault.duration_s` | The length of the method |
 
 Validation refuses any other metric, and a `probe.<name>` that is not a probe
-of the steady-state hypothesis: no run could measure it.
+of the steady-state hypothesis: no run could measure it. It refuses a drift on
+a load that is not a soak, and `load.spike_recovery_s` on a load that is not a
+spike with `sample_interval_s`, and says which profile the metric needs.
 
 ## Kinds
 
@@ -81,11 +85,12 @@ The `kind` of an objective must be one that its metric measures.
 
 | Kind | Metrics |
 |---|---|
-| `latency` | `load.latency_p50_ms`, `load.latency_p95_ms`, `load.latency_p99_ms`, `probe.<name>.mean_ms`, `.max_ms`, `.p95_ms` |
+| `latency` | `load.latency_p50_ms`, `load.latency_p95_ms`, `load.latency_p99_ms`, `load.p95_drift_pct`, `load.spike_recovery_s`, `probe.<name>.mean_ms`, `.max_ms`, `.p95_ms` |
 | `error_rate`, `availability` | `load.error_rate`, `during.error_rate`, `during.availability`, `post.error_rate`, `post.availability`, `probe.<name>.error_rate` |
+| `error_rate` | `load.error_rate_drift` |
 | `throughput`, `capacity` | `load.throughput_rps`, `load.total_requests` |
 | `rto` | `recovery.mttr_s`, `recovery.time_s` |
-| `recovery` | `recovery.mttr_s`, `recovery.time_s`, `post.error_rate`, `post.availability`, `fault.duration_s` |
+| `recovery` | `recovery.mttr_s`, `recovery.time_s`, `post.error_rate`, `post.availability`, `fault.duration_s`, `load.spike_recovery_s` |
 | `data_integrity` | `probe.<name>.error_rate`, for a probe that checks the data |
 | `rpo` | `probe.<name>.lost_s`, for a probe that reads the data back |
 

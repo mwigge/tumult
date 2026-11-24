@@ -211,8 +211,8 @@ def check_mcp_inventory(errors: list[str]) -> None:
         path.read_text(encoding="utf-8") for path in schema_dir.glob("*.rs")
     )
     tools = set(re.findall(r'name\s*=\s*"(tumult_[a-z0-9_]+)"', source))
-    if len(tools) != 40:
-        errors.append(f"MCP schemas: expected 40 named tools, found {len(tools)}")
+    if len(tools) != 44:
+        errors.append(f"MCP schemas: expected 44 named tools, found {len(tools)}")
 
     output = (ROOT / "tumult-mcp/src/handler/output_schema.rs").read_text(
         encoding="utf-8"
@@ -221,9 +221,9 @@ def check_mcp_inventory(errors: list[str]) -> None:
     structured = (
         set(re.findall(r'"(tumult_[a-z0-9_]+)"', match.group(1))) if match else set()
     )
-    if len(structured) != 30:
+    if len(structured) != 34:
         errors.append(
-            f"structured MCP schemas: expected 30 tools, found {len(structured)}"
+            f"structured MCP schemas: expected 34 tools, found {len(structured)}"
         )
 
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
@@ -237,8 +237,8 @@ def check_mcp_inventory(errors: list[str]) -> None:
             f"README MCP inventory contains unknown tools: {', '.join(extra)}"
         )
     if (
-        "exposes 40 tools" not in readme
-        or "Thirty tools return structured content" not in readme
+        "exposes 44 tools" not in readme
+        or "Thirty-four tools return structured content" not in readme
     ):
         errors.append("README MCP totals do not match the checked wording")
 
@@ -261,8 +261,8 @@ def check_stale_claims(errors: list[str]) -> None:
 def check_homepage_claims(errors: list[str]) -> None:
     path = ROOT / "docs/index.html"
     text = path.read_text(encoding="utf-8")
-    if "40 MCP" not in text:
-        fail(errors, path, "homepage must state the current 40-tool MCP surface")
+    if "44 MCP" not in text:
+        fail(errors, path, "homepage must state the current 44-tool MCP surface")
     banned = (
         "24 MCP",
         "13 plugin",

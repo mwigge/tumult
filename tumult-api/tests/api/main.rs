@@ -21,6 +21,7 @@ mod gamedays;
 mod gate;
 mod journal_only;
 mod manual;
+mod manual_dora;
 mod manual_files;
 mod manual_plans;
 mod manual_signoffs;

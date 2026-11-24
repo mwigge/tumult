@@ -3,6 +3,7 @@ use crate::handler::{McpAuth, Role, TumultHandler, MAX_CONCURRENT_TOOL_CALLS};
 
 mod dispatch_roundtrip;
 mod gameday_autopilot;
+mod manual;
 mod meta;
 mod resource_links;
 

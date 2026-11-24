@@ -86,6 +86,81 @@ The daemon stores each day's status (`KRONIKA_SCORE_SNAPSHOT_INTERVAL`,
 default `24h`). Only stored days count, and a missed day starts the
 streak again.
 
+## Requirement ids
+
+Each row of the score has one id, the registry id: `dora.art24.6` for
+Art. 24(6), `dora.art11.6a` for Art. 11(6)(a), `rts1774.art25` for
+Art. 25 of the RTS 2024/1774. An article the registry has rows of is
+`dora.art24`. `GET /api/dora` lists every row with its `id` and `cite`.
+
+Use this id where you name a requirement:
+
+| Where | Field | Example |
+|---|---|---|
+| A manual record | `framework_refs` | `["dora.art12.1", "ISO 27001 A.5.30"]` |
+| A run | `regulatory.requirements[].id` | `dora.art12.1` |
+
+```mermaid
+flowchart LR
+  accTitle: One id for one requirement
+  accDescr: The registry id and the older forms of the same requirement read as one registry id. The score, the Star Map and the run report all show that id. A DORA id the registry does not know is refused with the nearest one.
+  new["dora.art12.1"] --> id["registry id<br/>dora.art12.1"]
+  old["DORA Art. 12(1)<br/>Art. 12(1) under DORA"] --> id
+  id --> score["DORA score<br/>row dora.art12.1"]
+  id --> star["Star Map<br/>DORA Art. 12"]
+  id --> report["run report<br/>Art. 12(1) (dora.art12.1)"]
+  typo["dora.art12.9"] -->|refused| near["did you mean dora.art12.1?"]
+```
+
+- A DORA id the registry does not know is refused when you write it, with
+  the nearest registry id: 422 from the manual API, an error from
+  `tumult validate`. An experiment file that holds one still runs.
+- The older forms are still read: `DORA Art. 24(6)`, `DORA-Art24`,
+  `RTS 2024/1774 Art. 25`, and a bare `Art. 24(6)` in a run whose
+  `frameworks` lists DORA. The score, the Star Map and the run report read
+  each one as its registry id, so they show the same requirement. A record
+  stored with an older form now counts for its row.
+- An id of another framework, such as `ISO 27001 A.5.30`, is kept as
+  written. The registry holds DORA only.
+
+## What counts as a restore test
+
+Four rows ask that a backup, a restore or a switchover is tested. A run
+counts for them only when it ran a step that backs up or restores data,
+or promotes a standby. The kind of the run does not decide: a `dr` run
+that only kills connections is no test of a restore.
+
+| Row | Profile | Asks for |
+|---|---|---|
+| Art. 12(2) | full | Backup and restoration tested |
+| Art. 11(6), switchover | full | Switchover to redundant capacity tested yearly |
+| Art. 16(1)(f) | simplified | Continuity through backup and restoration |
+| RTS 2024/1774 Art. 40 | simplified | Backup and restore tested every year |
+
+Under `simplified`, the test coverage pillar (T) of the maturity level
+reads the RTS row.
+
+```mermaid
+flowchart LR
+  accTitle: Which runs count as a restore test
+  accDescr: A run counts only when it ran a backup or restore step. A run whose step failed is a failed test. A run whose step succeeded counts with the outcome of the run.
+  run["A run"] --> step{"Ran a backup or<br/>restore step?"}
+  step -->|no| none["No evidence for these rows"]
+  step -->|"yes, it failed"| failed["A failed test"]
+  step -->|"yes, it succeeded"| outcome["The outcome of the run"]
+```
+
+| Plugin | Steps that count |
+|---|---|
+| `tumult-db-postgres` | `backup`, `restore`, `promote-replica` |
+
+- Tumult reads the steps from the trace of the run, in the method and in
+  the rollbacks. For a run that sent no trace, it reads the actions of the
+  method from the definition the run was stored with.
+- A `process` step names no plugin function, so it does not count.
+- A verified manual record counts as before: an exercise whose type
+  `manual_kinds` maps to `dr` (`failover` and `drill` by default).
+
 ## Maturity
 
 ![The maturity level with its pillars and gates](../images/3.0/screenshots/scores-maturity.png)

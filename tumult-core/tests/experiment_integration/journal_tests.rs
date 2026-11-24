@@ -34,6 +34,7 @@ fn full_experiment_run_produces_complete_journal() {
             description: "ICT resilience testing".into(),
             evidence: "Recovery within RTO".into(),
         }],
+        tester: None,
     });
 
     let mock_plugin = MockPlugin::new().default_output("200");
