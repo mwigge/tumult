@@ -1,0 +1,269 @@
+experiment_title: PostgreSQL restore from the last backup
+experiment_id: "8196e02c-07b2-44de-b0d6-1ba4ff2fa224"
+status: completed
+started_at_ns: 1795557010954376841
+ended_at_ns: 1795557022474648833
+duration_ms: 11520
+steady_state_before:
+  title: The demo app reads its orders and the markers of the orders database can be read
+  met: true
+  probe_results[2]{name,activity_type,status,started_at_ns,duration_ms,output,trace_id,span_id}:
+    "app-orders",probe,succeeded,1795557010954399842,6,"200",3f1b21dcedc932c44d5c4434db0ee172,a83dff9cd29fd215
+    "orders-lost",probe,succeeded,1795557010961365490,68,"0",3f1b21dcedc932c44d5c4434db0ee172,6c754382830f749a
+steady_state_after:
+  title: The demo app reads its orders and the markers of the orders database can be read
+  met: true
+  probe_results[2]{name,activity_type,status,started_at_ns,duration_ms,output,trace_id,span_id}:
+    "app-orders",probe,succeeded,1795557022401937535,6,"200",3f1b21dcedc932c44d5c4434db0ee172,dd9b28607fa6fe78
+    "orders-lost",probe,succeeded,1795557022408266240,66,"6.427896",3f1b21dcedc932c44d5c4434db0ee172,e036fbd74d80e172
+method_results[7]:
+  - name: "start-a-new-ledger"
+    activity_type: action
+    status: succeeded
+    started_at_ns: 1795557011029596214
+    duration_ms: 0
+    trace_id: 3f1b21dcedc932c44d5c4434db0ee172
+    span_id: 3a4355c8fb3d3b94
+  - name: "write-before-the-backup"
+    activity_type: action
+    status: succeeded
+    started_at_ns: 1795557011030049597
+    duration_ms: 547
+    output: "{\"database\":\"orders\",\"markers\":3,\"first_at\":1795557011.100267,\"last_at\":1795557011.574879}"
+    trace_id: 3f1b21dcedc932c44d5c4434db0ee172
+    span_id: 4b0df84f8f676889
+  - name: "back-up-the-database"
+    activity_type: action
+    status: succeeded
+    started_at_ns: 1795557011577986429
+    duration_ms: 2058
+    output: "{\"database\":\"orders\",\"path\":\"/tmp/postgres-restore-rpo.dump\",\"size_bytes\":21220317,\"finished_at\":1795557013.635}"
+    trace_id: 3f1b21dcedc932c44d5c4434db0ee172
+    span_id: 914a8620061b5a51
+  - name: "write-after-the-backup"
+    activity_type: action
+    status: succeeded
+    started_at_ns: 1795557013636999119
+    duration_ms: 4371
+    output: "{\"database\":\"orders\",\"markers\":9,\"first_at\":1795557013.706565,\"last_at\":1795557018.002775}"
+    trace_id: 3f1b21dcedc932c44d5c4434db0ee172
+    span_id: 0c05f473fab2af75
+  - name: "lose-the-database"
+    activity_type: action
+    status: succeeded
+    started_at_ns: 1795557018008290572
+    duration_ms: 163
+    output: DROP DATABASE
+    trace_id: 3f1b21dcedc932c44d5c4434db0ee172
+    span_id: 14504808e69a2a6a
+  - name: "clients-lost-the-database"
+    activity_type: probe
+    status: succeeded
+    started_at_ns: 1795557018171585730
+    duration_ms: 21
+    output: lost
+    trace_id: 3f1b21dcedc932c44d5c4434db0ee172
+    span_id: e915e046c74f7fb2
+  - name: "restore-the-backup"
+    activity_type: action
+    status: succeeded
+    started_at_ns: 1795557020193644139
+    duration_ms: 2129
+    output: "{\"database\":\"orders\",\"path\":\"/tmp/postgres-restore-rpo.dump\",\"finished_at\":1795557022.321}"
+    error: "NOTICE:  database \"orders\" does not exist, skipping"
+    trace_id: 3f1b21dcedc932c44d5c4434db0ee172
+    span_id: 9eab3f98252fdeee
+rollback_results[0]:
+rollback_failures: 0
+estimate: null
+baseline_result: null
+during_result:
+  started_at_ns: 1795557011029555014
+  ended_at_ns: 1795557022323215282
+  fault_active_s: 11.293660268
+  sample_interval_s: 1
+  probes[2]{name,samples,mean,max,min,error_rate,breached_at_ns,breach_count}:
+    "app-orders",11,7.181818181818182,11,6,0.36363636363636365,1795557018564833471,4
+    "orders-lost",11,56.81818181818182,73,33,0.18181818181818182,1795557018576381306,2
+post_result:
+  started_at_ns: 1795557022323302433
+  ended_at_ns: 1795557022401917125
+  duration_s: 0.078614692
+  samples: 2
+  probes[2]{name,mean,p95,error_rate,returned_to_baseline,recovery_time_s}:
+    "app-orders",7,7,0,true,0
+    "orders-lost",70,70,0,true,0
+  recovery_time_s: 0
+  full_recovery: true
+  mttr_s: 3.758477512
+  impact_observed: true
+  outage_started_at_ns: 1795557018564833471
+  recovered_at_ns: 1795557022323310983
+load_result: null
+analysis: null
+regulatory:
+  frameworks[1]: DORA
+  requirements[1]{id,description,evidence}:
+    rts1774.art39,Continuity plan tested against a restore from backups,"The journal of the run, with the RPO it measured"
+  scenarios[1]: backup_restore
+kind: dr
+objectives:
+  rto_target_s: 30
+  rpo_target_s: 10
+  rto_measured_s: 3.758477512
+  rpo_measured_s: 6.427896
+  verdicts[2]:
+    - nfr_id: rpo
+      kind: rpo
+      metric: "probe.orders-lost.lost_s"
+      operator: lte
+      threshold: 10
+      observed: 6.427896
+      state: met
+      margin: 3.5721040000000004
+      criticality: blocking
+    - nfr_id: rto
+      kind: rto
+      metric: recovery.mttr_s
+      operator: lte
+      threshold: 30
+      observed: 3.758477512
+      state: met
+      margin: 26.241522488
+      criticality: blocking
+      recovered: true
+probe_samples[24]:
+  - probe: "app-orders"
+    phase: during
+    ts_ns: 1795557011029644564
+    duration_ms: 6
+    ok: true
+  - probe: "app-orders"
+    phase: during
+    ts_ns: 1795557012105046033
+    duration_ms: 6
+    ok: true
+  - probe: "app-orders"
+    phase: during
+    ts_ns: 1795557013178679562
+    duration_ms: 8
+    ok: true
+  - probe: "app-orders"
+    phase: during
+    ts_ns: 1795557014260550296
+    duration_ms: 7
+    ok: true
+  - probe: "app-orders"
+    phase: during
+    ts_ns: 1795557015338546478
+    duration_ms: 6
+    ok: true
+  - probe: "app-orders"
+    phase: during
+    ts_ns: 1795557016413387823
+    duration_ms: 6
+    ok: true
+  - probe: "app-orders"
+    phase: during
+    ts_ns: 1795557017488423458
+    duration_ms: 6
+    ok: true
+  - probe: "app-orders"
+    phase: during
+    ts_ns: 1795557018564833471
+    duration_ms: 11
+    ok: false
+  - probe: "app-orders"
+    phase: during
+    ts_ns: 1795557019609724696
+    duration_ms: 11
+    ok: false
+  - probe: "app-orders"
+    phase: during
+    ts_ns: 1795557020657492237
+    duration_ms: 6
+    ok: false
+  - probe: "app-orders"
+    phase: during
+    ts_ns: 1795557021702370272
+    duration_ms: 6
+    ok: false
+  - probe: "orders-lost"
+    phase: during
+    ts_ns: 1795557011036380032
+    duration_ms: 68
+    ok: true
+    reading: 0
+  - probe: "orders-lost"
+    phase: during
+    ts_ns: 1795557012111486570
+    duration_ms: 67
+    ok: true
+    reading: 0
+  - probe: "orders-lost"
+    phase: during
+    ts_ns: 1795557013186749537
+    duration_ms: 73
+    ok: true
+    reading: 0
+  - probe: "orders-lost"
+    phase: during
+    ts_ns: 1795557014268027218
+    duration_ms: 70
+    ok: true
+    reading: 0
+  - probe: "orders-lost"
+    phase: during
+    ts_ns: 1795557015345204126
+    duration_ms: 68
+    ok: true
+    reading: 0
+  - probe: "orders-lost"
+    phase: during
+    ts_ns: 1795557016420168531
+    duration_ms: 68
+    ok: true
+    reading: 0
+  - probe: "orders-lost"
+    phase: during
+    ts_ns: 1795557017494950345
+    duration_ms: 69
+    ok: true
+    reading: 0
+  - probe: "orders-lost"
+    phase: during
+    ts_ns: 1795557018576381306
+    duration_ms: 33
+    ok: false
+  - probe: "orders-lost"
+    phase: during
+    ts_ns: 1795557019621611022
+    duration_ms: 35
+    ok: false
+  - probe: "orders-lost"
+    phase: during
+    ts_ns: 1795557020664040384
+    duration_ms: 38
+    ok: true
+    reading: 6.902508
+  - probe: "orders-lost"
+    phase: during
+    ts_ns: 1795557021709017149
+    duration_ms: 36
+    ok: true
+    reading: 6.902508
+  - probe: "app-orders"
+    phase: post
+    ts_ns: 1795557022323310983
+    duration_ms: 7
+    ok: true
+  - probe: "orders-lost"
+    phase: post
+    ts_ns: 1795557022331070616
+    duration_ms: 70
+    ok: true
+    reading: 6.427896
+target:
+  system: "demo-postgres"
+  technology: postgresql
+  environment: demo

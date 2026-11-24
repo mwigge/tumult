@@ -1,0 +1,116 @@
+{
+ "scenarios": {
+  "source": "Commission Delegated Regulation (EU) 2024/1774, Arts. 25, 26, 39 and 40",
+  "source_url": "https://eur-lex.europa.eu/eli/reg_del/2024/1774/oj",
+  "rows": [
+   "rts1774.art39"
+  ],
+  "window_days": 365,
+  "note": "A scenario with no test is a gap, not a pass. A test counts for the scenarios its run or record names. Reading RTS 2024/1774 Arts. 25 and 26 as one test per scenario is the house's reading. This shows which scenarios each function has tested; it is no compliance verdict.",
+  "catalogue": [
+   {
+    "id": "cyber_attack",
+    "title": "A cyber attack",
+    "cite": "RTS 2024/1774 Art. 26(2)(a); Art. 39(1)"
+   },
+   {
+    "id": "backup_restore",
+    "title": "Restore from backups",
+    "cite": "RTS 2024/1774 Art. 25(2)(c); Art. 26(2)(a); Art. 39(2)(g); Art. 40(1)"
+   }
+  ],
+  "functions": [
+   {
+    "entity_id": "cif-0001",
+    "name": "Order processing",
+    "tier": "critical",
+    "row": "rts1774.art39",
+    "coverage": 0.5,
+    "counts": {
+     "passed": 1,
+     "failed": 0,
+     "overdue": 0,
+     "missing": 1
+    },
+    "scenarios": [
+     {
+      "id": "cyber_attack",
+      "state": "missing",
+      "last_tested_at": null,
+      "last_test": null,
+      "last_passed_at": null
+     },
+     {
+      "id": "backup_restore",
+      "state": "passed",
+      "last_tested_at": "2026-11-24",
+      "last_test": {
+       "id": "8196e02c-07b2-44de-b0d6-1ba4ff2fa224",
+       "source": "run",
+       "outcome": "passed"
+      },
+      "last_passed_at": "2026-11-24"
+     }
+    ]
+   },
+   {
+    "entity_id": "cif-0002",
+    "name": "Messaging",
+    "tier": "important",
+    "row": "rts1774.art39",
+    "coverage": 0.0,
+    "counts": {
+     "passed": 0,
+     "failed": 0,
+     "overdue": 0,
+     "missing": 2
+    },
+    "scenarios": [
+     {
+      "id": "cyber_attack",
+      "state": "missing",
+      "last_tested_at": null,
+      "last_test": null,
+      "last_passed_at": null
+     },
+     {
+      "id": "backup_restore",
+      "state": "missing",
+      "last_tested_at": null,
+      "last_test": null,
+      "last_passed_at": null
+     }
+    ]
+   },
+   {
+    "entity_id": "cif-0003",
+    "name": "Batch settlement",
+    "tier": "important",
+    "row": "rts1774.art39",
+    "coverage": 0.0,
+    "counts": {
+     "passed": 0,
+     "failed": 0,
+     "overdue": 0,
+     "missing": 2
+    },
+    "scenarios": [
+     {
+      "id": "cyber_attack",
+      "state": "missing",
+      "last_tested_at": null,
+      "last_test": null,
+      "last_passed_at": null
+     },
+     {
+      "id": "backup_restore",
+      "state": "missing",
+      "last_tested_at": null,
+      "last_test": null,
+      "last_passed_at": null
+     }
+    ]
+   }
+  ]
+ }
+}

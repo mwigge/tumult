@@ -1,0 +1,2 @@
+import{$ as e,B as t,D as n,F as r,H as i,I as a,K as o,M as s,O as c,P as l,Q as u,S as d,X as f,Y as p,Z as m,at as h,b as g,ct as _,et as v,g as y,it as b,l as x,nt as S,q as C,st as w,t as T,tt as E,w as D,y as O,z as k}from"../chunks/BU_Ndtg2.js";
+const heading = `<div class="page-head"><h1>Disaster recovery</h1> <span class="sub">The DR tests of each target, automated and manual, and when the next is due</span> <div class="controls svelte-2rd8bj"><!></div></div> <!>`;

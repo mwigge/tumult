@@ -1,0 +1,82 @@
+experiment_title: PostgreSQL failover to its streaming standby
+experiment_id: "53fe0625-dba5-4e5f-a88d-b90ecfe38d04"
+status: completed
+started_at_ns: 1795556991566828566
+ended_at_ns: 1795556995819988607
+duration_ms: 4253
+steady_state_before:
+  title: The demo app reaches a database that takes writes
+  met: true
+  probe_results[1]{name,activity_type,status,started_at_ns,duration_ms,output,trace_id,span_id}:
+    "app-database",probe,succeeded,1795556991566849436,6,"200",830b426fc50c6358714fe032e4c8081b,bd2fdfdbbce43c51
+steady_state_after:
+  title: The demo app reaches a database that takes writes
+  met: true
+  probe_results[1]{name,activity_type,status,started_at_ns,duration_ms,output,trace_id,span_id}:
+    "app-database",probe,succeeded,1795556995813882832,6,"200",830b426fc50c6358714fe032e4c8081b,f893e57e8566c6a0
+method_results[5]{name,activity_type,status,started_at_ns,duration_ms,output,trace_id,span_id}:
+  "stop-the-primary",action,succeeded,1795556991573490243,521,"{\"container\":\"demo-postgres\",\"mode\":\"fast\",\"stopped_at\":1795556992.093}",830b426fc50c6358714fe032e4c8081b,8f65547ddc032f19
+  "clients-lost-the-database",probe,succeeded,1795556992095006520,908,lost,830b426fc50c6358714fe032e4c8081b,9af82ba3150fdbf8
+  "promote-the-standby",action,succeeded,1795556995003538851,174,"{\"writable_at\":1795556995.175974}",830b426fc50c6358714fe032e4c8081b,dccce98329fe8bd1
+  "write-to-the-new-primary",action,succeeded,1795556995177786282,559,"{\"database\":\"orders\",\"markers\":3,\"first_at\":1795556995.25153,\"last_at\":1795556995.729141}",830b426fc50c6358714fe032e4c8081b,7859f0c25ee554d7
+  "the-new-primary-kept-the-writes",probe,succeeded,1795556995736993000,67,"0",830b426fc50c6358714fe032e4c8081b,c7366f555d8af667
+rollback_results[0]:
+rollback_failures: 0
+estimate: null
+baseline_result: null
+during_result:
+  started_at_ns: 1795556991573451463
+  ended_at_ns: 1795556995804406519
+  fault_active_s: 4.230955056
+  sample_interval_s: 1
+  probes[1]{name,samples,mean,max,min,error_rate,breached_at_ns,breach_count}:
+    "app-database",3,607,908,6,0.6666666666666666,1795556992579959619,2
+post_result:
+  started_at_ns: 1795556995804451500
+  ended_at_ns: 1795556995813876742
+  duration_s: 0.009425242
+  samples: 1
+  probes[1]{name,mean,p95,error_rate,returned_to_baseline,recovery_time_s}:
+    "app-database",9,9,0,true,0
+  recovery_time_s: 0
+  full_recovery: true
+  mttr_s: 3.224497311
+  impact_observed: true
+  outage_started_at_ns: 1795556992579959619
+  recovered_at_ns: 1795556995804456930
+load_result: null
+analysis: null
+regulatory: null
+kind: dr
+objectives:
+  rto_target_s: 30
+  rto_measured_s: 3.224497311
+  verdicts[2]:
+    - nfr_id: "post-availability"
+      kind: availability
+      metric: post.availability
+      operator: gte
+      threshold: 0.9
+      observed: 1
+      state: met
+      margin: 0.09999999999999998
+      criticality: blocking
+    - nfr_id: rto
+      kind: rto
+      metric: recovery.mttr_s
+      operator: lte
+      threshold: 30
+      observed: 3.224497311
+      state: met
+      margin: 26.775502689
+      criticality: blocking
+      recovered: true
+probe_samples[4]{probe,phase,ts_ns,duration_ms,ok}:
+  "app-database",during,1795556991573540113,6,true
+  "app-database",during,1795556992579959619,908,false
+  "app-database",during,1795556994488764324,907,false
+  "app-database",post,1795556995804456930,9,true
+target:
+  system: "demo-postgres"
+  technology: postgresql
+  environment: demo

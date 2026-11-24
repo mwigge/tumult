@@ -1,0 +1,20 @@
+{
+ "doc_id": "KRK-R4-20261124-cd7d8b",
+ "type": "dr-test",
+ "title": "DR test report: demo-postgres",
+ "created_ns": 1795557026996314132,
+ "data_as_of_ns": 1795557026996314132,
+ "bytes": 67398,
+ "sha256": "6d4e8c00d6b09d433b413f610ff4d22da47b9efc98e4bc3b374a7b27c505fd9d",
+ "env_scopes": null,
+ "params": {
+  "period": null,
+  "experiment_id": null,
+  "framework": null,
+  "target": "demo-postgres",
+  "environment": "demo",
+  "from": null,
+  "to": null,
+  "record_id": null
+ }
+}

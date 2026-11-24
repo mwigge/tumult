@@ -16,6 +16,13 @@ nfr[1]:
     operator: lte
     threshold: 10
     criticality: blocking
+regulatory:
+  frameworks[1]: DORA
+  requirements[1]:
+    - id: rts1774.art39
+      description: Continuity plan tested against a restore from backups
+      evidence: The journal of the run, with the RPO it measured
+  scenarios[1]: backup_restore
 
 steady_state_hypothesis:
   title: The demo app reads its orders and the markers of the orders database can be read

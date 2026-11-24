@@ -40,7 +40,12 @@ defaults: {weight: 1.0, stale_days: 30}
 # the demo systems by service name. "order-archive" is declared on the
 # critical function but nothing in the demo reports under that name: it is
 # deliberately uninstrumented, so the score page shows the level capped by
-# svc:order-archive until telemetry or a test for it arrives. No feed is
+# svc:order-archive until telemetry or a test for it arrives. The critical
+# function also binds demo-postgres, the orders database of the demo app.
+# The DR examples of `make demo-check` test it and report to a daemon that
+# reads this file, so their restore counts for the plan scenario
+# backup_restore of the function. Without them demo-postgres sends nothing
+# here, as order-archive does. No feed is
 # ingested, so incident rows (Art. 19) read "unknown". Listing a feed
 # under `feeds` records the declaration and changes no score.
 legal_entities:
@@ -55,7 +60,7 @@ functions:
     licensed_activities: [payment-services]
     org_unit: platform/compute
     rto_s: 3600
-    services: ["api-worker*", order-archive]
+    services: ["api-worker*", order-archive, demo-postgres]
   - id: cif-0002
     name: Messaging
     tier: important

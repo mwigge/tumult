@@ -1,0 +1,20 @@
+{
+ "doc_id": "KRK-R2-20261124-7076b6",
+ "type": "evidence-pack",
+ "title": "Evidence pack \u2014 DORA",
+ "created_ns": 1795557027380703523,
+ "data_as_of_ns": 1795557027380703523,
+ "bytes": 159645,
+ "sha256": "295b725f8d7240fa3887d080f52cb369a7811c1367419320377bd9c1925837e4",
+ "env_scopes": null,
+ "params": {
+  "period": null,
+  "experiment_id": null,
+  "framework": "dora",
+  "target": null,
+  "environment": null,
+  "from": null,
+  "to": null,
+  "record_id": null
+ }
+}

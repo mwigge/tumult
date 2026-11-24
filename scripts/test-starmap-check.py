@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Hermetic checks of scripts/starmap-check.py against a fake daemon, and of
-scripts/demo-check.sh (the sweep, the examples, the demo GameDay, the seed
-and the Star Map part) against a fake `docker`."""
+scripts/demo-check.sh (the sweep, the examples, the DR check, the demo
+GameDay, the seed and the Star Map part) against a fake `docker`."""
 
 import fcntl
 import json
@@ -21,6 +21,7 @@ from pathlib import Path
 SCRIPT = Path(__file__).with_name("starmap-check.py")
 DEMO_CHECK = Path(__file__).with_name("demo-check.sh")
 JOURNAL_CHECK = Path(__file__).with_name("check-proof-journals.py")
+DR_CHECK = Path(__file__).with_name("dr-check.py")
 COMPOSE_FILE = Path(__file__).parent.parent / "docker" / "docker-compose.kronika.yml"
 PROJECT = "tumult-demo-check-kronika"
 # Records each call (arguments and the Kronika variables) and plays the
@@ -31,17 +32,24 @@ PROJECT = "tumult-demo-check-kronika"
 # the sweep and the examples write, and gameday for the directory the demo
 # GameDay runs in. From its second time on it prints the one with `.again`
 # after its name, if there is one. A run in the demo exits FAKE_RUN_EXIT.
+# The Krönika stack comes up with the exit status FAKE_KRONIKA_UP_EXIT, and
+# a network connect exits FAKE_CONNECT_EXIT.
 FAKE_DOCKER = r"""
 import json, os, shutil, sys, time
 from pathlib import Path
 args = sys.argv[1:]
 in_container = {"/journals": "sweep", "/tmp/demo-check-gameday": "gameday"}
-env = {k: v for k, v in os.environ.items() if k.startswith("KRONIKA_")}
+kept = ("KRONIKA_", "TUMULT_DAEMON_")
+env = {k: v for k, v in os.environ.items() if k.startswith(kept)}
 with open(os.environ["FAKE_DOCKER_RECORD"], "a") as out:
     out.write(json.dumps({"args": args, "env": env}) + "\n")
 journals = Path(os.environ["FAKE_JOURNALS"])
+if args[:2] == ["network", "connect"]:
+    sys.exit(int(os.environ.get("FAKE_CONNECT_EXIT", "0")))
 if "up" in args:
     time.sleep(float(os.environ.get("FAKE_UP_SECONDS", "0")))
+    if "tumult-demo-check-kronika" in args:
+        sys.exit(int(os.environ.get("FAKE_KRONIKA_UP_EXIT", "0")))
 if "run" in args and "exec" not in args:
     mount = next(a for a in args if a.endswith(":/tmp/journals"))
     for journal in (journals / "seed").iterdir():
@@ -67,6 +75,18 @@ if "exec" in args and "tumult gameday run" in args[-1]:
     sys.exit(int(os.environ.get("FAKE_RUN_EXIT", "0")))
 if "logs" in args:
     print("ResourceSpans")
+"""
+
+# Stands in for scripts/dr-check.py: keeps its arguments and the token it
+# was given in FAKE_DR_RECORD, and prints FAKE_DR_LINE.
+FAKE_DR_CHECK = r"""
+import json, os, sys
+asked = {"args": sys.argv[1:], "token": os.environ.get("TUMULT_DAEMON_TOKEN")}
+with open(os.environ["FAKE_DR_RECORD"], "a") as out:
+    out.write(json.dumps(asked) + "\n")
+line = os.environ.get("FAKE_DR_LINE", "ok   dr: the stand-in holds")
+print(line)
+sys.exit(0 if line.startswith("ok") else 1)
 """
 
 COMPLETED = {
@@ -384,6 +404,10 @@ class Checkout:
         )
         for script in (DEMO_CHECK, SCRIPT, JOURNAL_CHECK):
             shutil.copy(script, self.root / "scripts" / script.name)
+        # scripts/test-dr-check.py checks the DR check itself.
+        (self.root / "scripts" / DR_CHECK.name).write_text(FAKE_DR_CHECK)
+        self.dr_record = Path(directory) / "dr-calls"
+        self.dr_record.write_text("")
         # What the fake docker hands out: journals that are as expected.
         self.journals = Path(directory) / "journals"
         self.expect("demo/kronika/experiments", "seed", SEED_EXPECTATIONS)
@@ -446,6 +470,7 @@ class Checkout:
         env.pop("COMPOSE_KRONIKA", None)
         env["PATH"] = f"{self.bin}{os.pathsep}{env['PATH']}"
         env["FAKE_DOCKER_RECORD"] = str(self.record)
+        env["FAKE_DR_RECORD"] = str(self.dr_record)
         env["FAKE_JOURNALS"] = str(self.journals)
         env["STARMAP_WAIT"] = "0"
         env["TMPDIR"] = str(self.tmp)
@@ -464,6 +489,11 @@ class Checkout:
     def calls(self):
         return [json.loads(line) for line in self.record.read_text().splitlines()]
 
+    def dr_calls(self):
+        """Each call of the DR check: its arguments and its token."""
+        lines = self.dr_record.read_text().splitlines()
+        return [json.loads(line) for line in lines]
+
     def left_behind(self):
         """The directories demo-check.sh made for itself and did not remove."""
         return [path for path in self.tmp.iterdir() if path.is_dir()]
@@ -477,6 +507,22 @@ class Checkout:
             COMPOSE_DEMO="docker compose -f demo.yml",
             COLLECTOR_METRICS_URL=f"{daemon.url}/metrics",
             STARMAP_URL=daemon.url,
+            **over,
+        )
+        output, _ = process.communicate(timeout=120)
+        return process.returncode, output
+
+    def full(self, daemon, **over):
+        """Run the full check on its own Krönika stack, whose daemon is the
+        fake one."""
+        port = daemon.url.rsplit(":", 1)[1]
+        process = self.start(
+            "--mode",
+            "full",
+            "--no-wait",
+            COMPOSE_DEMO="docker compose -f demo.yml",
+            COLLECTOR_METRICS_URL=f"{daemon.url}/metrics",
+            KRONIKA_HOST_HTTP_PORT=port,
             **over,
         )
         output, _ = process.communicate(timeout=120)
@@ -919,6 +965,132 @@ class DemoCheckExamplesTests(unittest.TestCase):
         self.assertRegex(output, r"FAIL.*example: pg-failover\.toon")
         self.assertIn("no journal pg-failover.journal.toon", output)
         self.assertIn("1 check(s) failed", output)
+
+
+DAEMON = f"{PROJECT}-tumultd"
+REPORT_TO_IT = ["-e", "TUMULT_DAEMON_URL", "-e", "TUMULT_DAEMON_TOKEN"]
+
+
+def example_runs(calls):
+    """The calls that ran an example in the demo."""
+    return [c for c in calls if "/demo/examples/pg-failover.toon" in c["args"]]
+
+
+def exec_options(call):
+    """What a call gives `exec` before the service it runs in."""
+    args = call["args"]
+    return args[args.index("-T") + 1 : args.index("tumult-mcp")]
+
+
+def flags(arguments):
+    """The `--name value` pairs of a command line, by name."""
+    return dict(zip(arguments[1::2], arguments[2::2]))
+
+
+class DemoCheckDrTests(unittest.TestCase):
+    def test_the_examples_report_to_the_daemon_of_its_stack_and_the_dr_check_asks_it(
+        self,
+    ):
+        with tempfile.TemporaryDirectory() as directory, FakeDaemon() as daemon:
+            checkout = Checkout(directory)
+            status, output = checkout.full(daemon)
+            calls = checkout.calls()
+            asked = checkout.dr_calls()
+        self.assertEqual(status, 0, output)
+        args = [c["args"] for c in calls]
+        up = next(i for i, a in enumerate(args) if PROJECT in a and "up" in a)
+        joined = args.index(["network", "connect", "tumult-demo", DAEMON])
+        runs = example_runs(calls)
+        self.assertEqual(len(runs), 1, output)
+        self.assertLess(up, joined)
+        self.assertLess(joined, calls.index(runs[0]))
+        token = calls[up]["env"]["KRONIKA_BOOTSTRAP_TOKEN"]
+        self.assertEqual(exec_options(runs[0]), REPORT_TO_IT)
+        self.assertEqual(runs[0]["env"]["TUMULT_DAEMON_URL"], f"http://{DAEMON}:4318")
+        self.assertEqual(runs[0]["env"]["TUMULT_DAEMON_TOKEN"], token)
+        # The demo experiments of the sweep report to no daemon.
+        swept = [c for c in calls if "/demo/experiments/demo-net.toon" in c["args"]]
+        self.assertTrue(swept, output)
+        self.assertEqual({tuple(exec_options(c)) for c in swept}, {()})
+        self.assertEqual(len(asked), 1, output)
+        port = daemon.url.rsplit(":", 1)[1]
+        self.assertEqual(asked[0]["args"][0], f"http://127.0.0.1:{port}")
+        given = flags(asked[0]["args"])
+        self.assertEqual(
+            given["--expectations"],
+            str(checkout.root / "examples" / "expectations.json"),
+        )
+        self.assertTrue(given["--journals"].startswith(f"{checkout.tmp}/"), given)
+        self.assertTrue(given["--journals"].endswith("/examples"), given)
+        self.assertEqual(given["--function"], "cif-0001")
+        self.assertEqual(asked[0]["token"], token)
+        self.assertRegex(output, r"PASS.*dr: the stand-in holds")
+        self.assertIn("its daemon joined the network tumult-demo", output)
+        # One stack serves the examples, the DR check and the Star Map.
+        stack = [verb(c) for c in calls if PROJECT in c["args"]]
+        self.assertEqual(stack, ["down", "up", "run", "down"], output)
+        self.assertIn("1 suppressed risks on 1 nodes", output)
+        self.assertNotIn("FAIL", output)
+
+    def test_a_failed_dr_line_fails_the_check_and_keeps_the_journals(self):
+        with tempfile.TemporaryDirectory() as directory, FakeDaemon() as daemon:
+            checkout = Checkout(directory)
+            line = "FAIL dr: the stand-in does not hold"
+            status, output = checkout.full(daemon, FAKE_DR_LINE=line)
+            left = checkout.left_behind()
+            kept = kept_files(left, "examples")
+        self.assertEqual(status, 1, output)
+        self.assertRegex(output, r"FAIL.*dr: the stand-in does not hold")
+        self.assertIn("1 check(s) failed", output)
+        self.assertEqual(len(left), 1, output)
+        self.assertIn("pg-failover.journal.toon", kept)
+
+    def test_a_daemon_that_is_not_its_own_gets_no_run_and_is_not_asked(self):
+        with tempfile.TemporaryDirectory() as directory, FakeDaemon() as daemon:
+            checkout = Checkout(directory)
+            status, output = checkout.sweep(daemon)
+            calls = checkout.calls()
+            asked = checkout.dr_calls()
+        self.assertEqual(status, 0, output)
+        self.assertFalse([c for c in calls if c["args"][0] == "network"])
+        self.assertEqual(exec_options(example_runs(calls)[0]), [])
+        self.assertEqual(asked, [])
+        self.assertRegex(output, r"WARN.*dr: not checked: .*STARMAP_URL")
+
+    def test_a_daemon_that_cannot_join_the_demo_network_gets_no_run(self):
+        with tempfile.TemporaryDirectory() as directory, FakeDaemon() as daemon:
+            checkout = Checkout(directory)
+            status, output = checkout.full(daemon, FAKE_CONNECT_EXIT="1")
+            calls = checkout.calls()
+            asked = checkout.dr_calls()
+        self.assertEqual(status, 1, output)
+        self.assertIn("its daemon did not join the network tumult-demo", output)
+        self.assertEqual(exec_options(example_runs(calls)[0]), [])
+        self.assertEqual(asked, [])
+        self.assertRegex(
+            output, r"FAIL.*dr: not checked: the DR examples reported to no daemon"
+        )
+        self.assertIn("2 check(s) failed", output)
+        # The Star Map is still checked on the stack.
+        self.assertIn("1 suppressed risks on 1 nodes", output)
+
+    def test_a_stack_that_does_not_come_up_is_tried_once(self):
+        with tempfile.TemporaryDirectory() as directory, FakeDaemon() as daemon:
+            checkout = Checkout(directory)
+            status, output = checkout.full(daemon, FAKE_KRONIKA_UP_EXIT="1")
+            calls = checkout.calls()
+            asked = checkout.dr_calls()
+            left = checkout.left_behind()
+        self.assertEqual(status, 1, output)
+        stack = [verb(c) for c in calls if PROJECT in c["args"]]
+        self.assertEqual(stack, ["down", "up", "down"], output)
+        self.assertEqual(exec_options(example_runs(calls)[0]), [])
+        self.assertEqual(asked, [])
+        self.assertIn("the Krönika daemon did not come up", output)
+        self.assertRegex(output, r"FAIL.*dr: not checked")
+        self.assertRegex(output, r"FAIL.*star map: not checked")
+        self.assertIn("3 check(s) failed", output)
+        self.assertEqual(left, [], "nothing is left behind")
 
 
 class DemoCheckGameDayTests(unittest.TestCase):

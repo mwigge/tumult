@@ -11,12 +11,16 @@ value here without updating every component that references it.
 - `make demo-down` — tear down, remove volumes.
 - `make demo-check` — headless smoke test: bring up, wait for health, run the
   sweep, assert spans reached the collector, check the Star Map of a Krönika
-  demo, exit non-zero on any failure. Used as a functional smoke test in
-  development.
+  demo, exit non-zero on any failure. The DR examples report to the daemon
+  of that Krönika demo, and the check asks it for the DR view, the DR page,
+  the DR reports and the plan scenario of the restore. Used as a functional
+  smoke test in development.
 
 ## Docker
 - Compose file: `docker/docker-compose.demo.yml`
-- Network name: `tumult-demo` (external: false, single network for all services)
+- Network name: `tumult-demo` (external: false, single network for all services).
+  `make demo-check` connects the daemon of its Krönika demo,
+  `tumult-demo-check-kronika-tumultd`, to it while the check runs
 - Project name: `tumult-demo` (COMPOSE_PROJECT_NAME)
 
 ## Services (name → purpose → host port)
