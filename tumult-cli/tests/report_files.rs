@@ -8,7 +8,7 @@ mod lab;
 
 use std::path::Path;
 
-use lab::{experiment, heal, inject, leave_marker, Lab};
+use lab::{count, experiment, heal, indented, inject, leave_marker, step, Lab};
 use sha2::{Digest, Sha256};
 use tumult_test_utils::assert_kept;
 
@@ -87,11 +87,76 @@ fn the_junit_report_has_a_case_for_each_check_of_the_steady_state() {
             case("heal", "method", None),
             case(STEADY, "hypothesis_after", None),
             case("steady", "hypothesis_after", None),
+            case("rto", "objective.rto.recovery.mttr_s", None),
         ]
     );
     let suite = xml.split("<testsuite ").nth(1).expect("a suite");
-    assert_eq!(attribute(suite, "tests"), "6");
+    assert_eq!(attribute(suite, "tests"), "7");
     assert_eq!(attribute(suite, "failures"), "0");
+}
+
+/// A DR test of a restore that takes longer than its RTO of half a
+/// second: the fault keeps the target down one to two seconds after the
+/// method.
+fn slow_restore() -> String {
+    let up = format!(
+        r#"{}    tolerance:
+      type: regex
+      pattern: "^ok$"
+"#,
+        step(
+            "up",
+            "probe",
+            "if [ -f until ] && [ $(date +%s) -lt $(cat until) ]; then echo down; else echo ok; fi"
+        )
+    );
+    let method = step(
+        "lose-primary",
+        "action",
+        "echo $(($(date +%s) + 2)) > until",
+    );
+    format!(
+        r"title: Slow restore
+description: The restore takes longer than the RTO
+kind: dr
+rto_target_s: 0.5
+
+steady_state_hypothesis:
+  title: {STEADY}
+  probes[1]:
+{probes}
+method[{steps}]:
+{method}
+rollbacks[0]:
+",
+        probes = indented(&up),
+        steps = count(&method),
+    )
+}
+
+#[test]
+fn a_run_that_breaches_its_rto_fails_its_junit_report() {
+    let lab = Lab::with_state("ok");
+    let output = lab
+        .run_command(&slow_restore())
+        .output()
+        .expect("run tumult");
+    assert_eq!(lab.journal(&output).status.to_string(), "deviated");
+
+    let xml = report(&lab, "junit");
+
+    let all = cases(&xml);
+    let (_, _, rto) = all
+        .iter()
+        .find(|(name, class, _)| name == "rto" && class == "objective.rto.recovery.mttr_s")
+        .unwrap_or_else(|| panic!("no case for the RTO: {xml}"));
+    let failure = rto.as_deref().unwrap_or_default();
+    assert!(
+        failure.starts_with("recovery.mttr_s must be at most 0.5, observed "),
+        "{xml}"
+    );
+    let suite = xml.split("<testsuite ").nth(1).expect("a suite");
+    assert_eq!(attribute(suite, "failures"), "1", "{xml}");
 }
 
 #[test]

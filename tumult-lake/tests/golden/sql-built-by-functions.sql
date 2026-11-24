@@ -66,7 +66,7 @@ SELECT
         e.hypothesis_after_met,
         CASE WHEN NOT e.hypothesis_before_met THEN FALSE END
     ) AS hypothesis_met,
-    e.rto_measured_s AS recovery_time_s,
+    coalesce(e.mttr_s, e.rto_measured_s) AS recovery_time_s,
     NULL AS span_attrs,
     NULL AS resource_attrs,
     NULL AS events,
@@ -139,6 +139,127 @@ QUALIFY
         ORDER BY valid_from_ns DESC
     ) = 1;
 
+CREATE OR REPLACE VIEW dr_tests AS
+WITH
+rto AS (
+    SELECT
+        experiment_id,
+        bool_and(recovered) AS recovered
+    FROM nfr_verdicts
+    WHERE kind = 'rto' AND nfr_id = 'rto'
+    GROUP BY experiment_id
+),
+
+roots AS (
+    SELECT
+        experiment_id,
+        any_value(target_system) AS target_system,
+        any_value(target_environment) AS target_environment
+    FROM run_roots
+    GROUP BY experiment_id
+),
+
+automated AS (
+    SELECT
+        'automated' AS origin,
+        e.experiment_id AS evidence_id,
+        e.title AS experiment_name,
+        NULL AS exercise_type,
+        r.target_system,
+        r.target_environment,
+        e.started_at_ns AS executed_at_ns,
+        lower(e.status) AS outcome,
+        e.rto_target_s,
+        coalesce(e.rto_measured_s, e.mttr_s) AS rto_measured_s,
+        coalesce(
+            v.recovered,
+            CASE WHEN e.mttr_s IS NOT NULL THEN TRUE END
+        ) AS recovered,
+        NOT e.impact_observed AS no_outage,
+        e.rpo_target_s,
+        e.rpo_measured_s,
+        NULL AS data_verified,
+        NULL AS reviewer,
+        NULL AS plan_id
+    FROM experiments AS e
+    LEFT JOIN roots AS r ON e.experiment_id = r.experiment_id
+    LEFT JOIN rto AS v ON e.experiment_id = v.experiment_id
+    WHERE e.test_kind = 'dr'
+),
+
+manual AS (
+    SELECT
+        'manual' AS origin,
+        m.id AS evidence_id,
+        m.experiment_name,
+        m.exercise_type,
+        m.target_system,
+        m.target_environment,
+        m.executed_at_ns,
+        m.outcome_status AS outcome,
+        m.rto_target_s,
+        m.recovery_time_s AS rto_measured_s,
+        CASE WHEN m.recovery_time_s IS NOT NULL THEN TRUE END AS recovered,
+        NULL AS no_outage,
+        m.rpo_target_s,
+        m.rpo_measured_s,
+        m.data_verified,
+        m.reviewed_by AS reviewer,
+        m.plan_id
+    FROM manual_experiments AS m
+    WHERE
+        m.status IN ('submitted', 'verified')
+        AND list_contains(list_value('backup', 'drill', 'failover', 'restore'), m.exercise_type)
+),
+
+tests AS (
+    SELECT * FROM automated
+    UNION ALL
+    SELECT * FROM manual
+),
+
+judged AS (
+    SELECT
+        *,
+        origin || ':' || evidence_id AS test_id,
+        CASE
+            WHEN NOT recovered THEN 'not_recovered'
+            WHEN
+                rto_measured_s > rto_target_s
+                OR rpo_measured_s > rpo_target_s
+                THEN 'breached'
+            WHEN
+                coalesce(rto_target_s, rpo_target_s) IS NOT NULL
+                AND (rto_target_s IS NULL OR rto_measured_s IS NOT NULL)
+                AND (rpo_target_s IS NULL OR rpo_measured_s IS NOT NULL)
+                THEN 'met'
+            ELSE 'not_measured'
+        END AS verdict
+    FROM tests
+)
+
+SELECT
+    test_id,
+    origin,
+    experiment_name,
+    exercise_type,
+    target_system,
+    target_environment,
+    executed_at_ns,
+    outcome,
+    rto_target_s,
+    rto_measured_s,
+    recovered,
+    no_outage,
+    rpo_target_s,
+    rpo_measured_s,
+    data_verified,
+    verdict,
+    evidence_id,
+    reviewer,
+    plan_id
+FROM judged;
+
 -- run_completions_sql with a window, as a reader joins it.
 SELECT
     ts_ns,
@@ -171,3 +292,354 @@ LEFT JOIN run_completions AS l ON s.experiment_id = l.experiment_id;
 -- mean_recovery_time_sql over the roots of the runs.
 SELECT avg(s.recovery_time_s) AS mean_recovery_time_s
 FROM run_roots AS s;
+
+-- dr_register_sql with the default DR types, as of a time.
+WITH
+dr_tests AS (
+    WITH
+    rto AS (
+        SELECT
+            experiment_id,
+            bool_and(recovered) AS recovered
+        FROM nfr_verdicts
+        WHERE kind = 'rto' AND nfr_id = 'rto'
+        GROUP BY experiment_id
+    ),
+
+    roots AS (
+        SELECT
+            experiment_id,
+            any_value(target_system) AS target_system,
+            any_value(target_environment) AS target_environment
+        FROM run_roots
+        GROUP BY experiment_id
+    ),
+
+    automated AS (
+        SELECT
+            'automated' AS origin,
+            e.experiment_id AS evidence_id,
+            e.title AS experiment_name,
+            NULL AS exercise_type,
+            r.target_system,
+            r.target_environment,
+            e.started_at_ns AS executed_at_ns,
+            lower(e.status) AS outcome,
+            e.rto_target_s,
+            coalesce(e.rto_measured_s, e.mttr_s) AS rto_measured_s,
+            coalesce(
+                v.recovered,
+                CASE WHEN e.mttr_s IS NOT NULL THEN TRUE END
+            ) AS recovered,
+            NOT e.impact_observed AS no_outage,
+            e.rpo_target_s,
+            e.rpo_measured_s,
+            NULL AS data_verified,
+            NULL AS reviewer,
+            NULL AS plan_id
+        FROM experiments AS e
+        LEFT JOIN roots AS r ON e.experiment_id = r.experiment_id
+        LEFT JOIN rto AS v ON e.experiment_id = v.experiment_id
+        WHERE e.test_kind = 'dr'
+    ),
+
+    manual AS (
+        SELECT
+            'manual' AS origin,
+            m.id AS evidence_id,
+            m.experiment_name,
+            m.exercise_type,
+            m.target_system,
+            m.target_environment,
+            m.executed_at_ns,
+            m.outcome_status AS outcome,
+            m.rto_target_s,
+            m.recovery_time_s AS rto_measured_s,
+            CASE WHEN m.recovery_time_s IS NOT NULL THEN TRUE END AS recovered,
+            NULL AS no_outage,
+            m.rpo_target_s,
+            m.rpo_measured_s,
+            m.data_verified,
+            m.reviewed_by AS reviewer,
+            m.plan_id
+        FROM manual_experiments AS m
+        WHERE
+            m.status IN ('submitted', 'verified')
+            AND list_contains(list_value('backup', 'drill', 'failover', 'restore'), m.exercise_type)
+    ),
+
+    tests AS (
+        SELECT * FROM automated
+        UNION ALL
+        SELECT * FROM manual
+    ),
+
+    judged AS (
+        SELECT
+            *,
+            origin || ':' || evidence_id AS test_id,
+            CASE
+                WHEN NOT recovered THEN 'not_recovered'
+                WHEN
+                    rto_measured_s > rto_target_s
+                    OR rpo_measured_s > rpo_target_s
+                    THEN 'breached'
+                WHEN
+                    coalesce(rto_target_s, rpo_target_s) IS NOT NULL
+                    AND (rto_target_s IS NULL OR rto_measured_s IS NOT NULL)
+                    AND (rpo_target_s IS NULL OR rpo_measured_s IS NOT NULL)
+                    THEN 'met'
+                ELSE 'not_measured'
+            END AS verdict
+        FROM tests
+    )
+
+    SELECT
+        test_id,
+        origin,
+        experiment_name,
+        exercise_type,
+        target_system,
+        target_environment,
+        executed_at_ns,
+        outcome,
+        rto_target_s,
+        rto_measured_s,
+        recovered,
+        no_outage,
+        rpo_target_s,
+        rpo_measured_s,
+        data_verified,
+        verdict,
+        evidence_id,
+        reviewer,
+        plan_id
+    FROM judged
+),
+
+counted AS (
+    SELECT
+        target_system,
+        target_environment,
+        test_id,
+        executed_at_ns
+    FROM dr_tests
+    WHERE
+        target_system IS NOT NULL
+        AND executed_at_ns <= 1774980000000000000
+        AND outcome NOT IN ('aborted', 'interrupted', 'inconclusive')
+        AND NOT coalesce(no_outage, FALSE)
+),
+
+last_tests AS (
+    SELECT
+        target_system,
+        target_environment,
+        max(executed_at_ns) AS last_test_at_ns,
+        arg_max(test_id, executed_at_ns) AS last_test_id
+    FROM counted
+    GROUP BY target_system, target_environment
+),
+
+dr_plans AS (
+    SELECT
+        id,
+        target_system,
+        target_environment,
+        interval_days,
+        due_at_ns
+    FROM manual_exercise_plans
+    WHERE
+        status = 'planned'
+        AND target_system IS NOT NULL
+        AND list_contains(list_value('backup', 'drill', 'failover', 'restore'), exercise_type)
+),
+
+declared AS (
+    SELECT
+        r.target_system,
+        r.target_environment
+    FROM experiments AS e
+    INNER JOIN run_roots AS r ON e.experiment_id = r.experiment_id
+    WHERE e.rto_target_s IS NOT NULL
+    UNION
+    SELECT
+        target_system,
+        target_environment
+    FROM manual_experiments
+    WHERE rto_target_s IS NOT NULL AND status IN ('submitted', 'verified')
+    UNION
+    SELECT
+        target_system,
+        target_environment
+    FROM manual_exercise_plans
+    WHERE rto_target_s IS NOT NULL AND status = 'planned'
+),
+
+seen AS (
+    SELECT
+        target_system,
+        target_environment
+    FROM dr_tests
+    UNION
+    SELECT
+        target_system,
+        target_environment
+    FROM declared
+),
+
+targets AS (
+    SELECT
+        target_system,
+        target_environment
+    FROM seen
+    WHERE target_system IS NOT NULL
+    UNION
+    SELECT
+        p.target_system,
+        p.target_environment
+    FROM dr_plans AS p
+    WHERE NOT EXISTS (
+        SELECT 1 FROM seen AS s
+        WHERE
+            s.target_system = p.target_system
+            AND (
+                p.target_environment IS NULL
+                OR s.target_environment = p.target_environment
+            )
+    )
+),
+
+covering_plans AS (
+    SELECT
+        t.target_system,
+        t.target_environment,
+        arg_min(p.id, p.due_at_ns) AS plan_id,
+        min(p.due_at_ns) AS plan_due_at_ns,
+        min(p.interval_days) AS interval_days
+    FROM targets AS t
+    INNER JOIN dr_plans AS p
+        ON
+            t.target_system = p.target_system
+            AND (
+                p.target_environment IS NULL
+                OR t.target_environment = p.target_environment
+            )
+    GROUP BY t.target_system, t.target_environment
+),
+
+planned_tests AS (
+    SELECT
+        function_id,
+        unnest(
+            from_json(test_plan, '[{"kind": "VARCHAR", "interval_days": "BIGINT"}]')
+        ) AS planned
+    FROM ict_functions
+    WHERE active
+),
+
+function_intervals AS (
+    SELECT
+        function_id,
+        min(
+            least(struct_extract(planned, 'interval_days'), 3650)
+        ) AS interval_days
+    FROM planned_tests
+    WHERE
+        struct_extract(planned, 'kind') = 'dr'
+        AND struct_extract(planned, 'interval_days') > 0
+    GROUP BY function_id
+),
+
+target_names AS (
+    SELECT DISTINCT target_system FROM targets
+),
+
+service_patterns AS (
+    SELECT
+        function_id,
+        kind,
+        pattern,
+        replace(
+            replace(replace(replace(pattern, '!', '!!'), '%', '!%'), '_', '!_'),
+            '*',
+            '%'
+        ) AS like_pattern
+    FROM ict_function_services
+),
+
+bound_functions AS (
+    SELECT
+        t.target_system,
+        f.function_id
+    FROM target_names AS t
+    INNER JOIN function_intervals AS f ON t.target_system = f.function_id
+    UNION
+    SELECT
+        t.target_system,
+        s.function_id
+    FROM target_names AS t
+    INNER JOIN service_patterns AS s
+        ON
+            (s.kind = 'entity' AND t.target_system = s.pattern)
+            OR (
+                s.kind = 'service'
+                AND t.target_system LIKE s.like_pattern ESCAPE '!'
+            )
+),
+
+target_intervals AS (
+    SELECT
+        b.target_system,
+        min(f.interval_days) AS interval_days
+    FROM bound_functions AS b
+    INNER JOIN function_intervals AS f ON b.function_id = f.function_id
+    GROUP BY b.target_system
+),
+
+due_rows AS (
+    SELECT
+        t.target_system,
+        t.target_environment,
+        l.last_test_at_ns,
+        l.last_test_id,
+        c.plan_id,
+        c.plan_due_at_ns,
+        coalesce(c.interval_days, i.interval_days, 365) AS interval_days,
+        CASE
+            WHEN c.interval_days IS NOT NULL THEN 'plan'
+            WHEN i.interval_days IS NOT NULL THEN 'function'
+            ELSE 'default'
+        END AS interval_source
+    FROM targets AS t
+    LEFT JOIN last_tests AS l
+        ON
+            t.target_system = l.target_system
+            AND t.target_environment IS NOT DISTINCT FROM l.target_environment
+    LEFT JOIN covering_plans AS c
+        ON
+            t.target_system = c.target_system
+            AND t.target_environment IS NOT DISTINCT FROM c.target_environment
+    LEFT JOIN target_intervals AS i ON t.target_system = i.target_system
+)
+
+SELECT
+    target_system,
+    target_environment,
+    last_test_at_ns,
+    last_test_id,
+    interval_days,
+    interval_source,
+    plan_id,
+    plan_due_at_ns,
+    last_test_at_ns + interval_days * 86400000000000 AS next_due_at_ns,
+    CASE
+        WHEN last_test_at_ns IS NULL THEN 'never_tested'
+        WHEN last_test_at_ns + interval_days * 86400000000000 < 1774980000000000000 THEN 'overdue'
+        WHEN
+            last_test_at_ns + interval_days * 86400000000000 - 1774980000000000000
+            <= 2592000000000000
+            THEN 'due'
+        ELSE 'ok'
+    END AS state
+FROM due_rows;

@@ -23,8 +23,8 @@ use tumult_core::types::{
     DegradationLevel, DuringResult, Estimate, ExpectedOutcome, ExperimentStatus, HaltRecord,
     HypothesisResult, Journal, LoadExecution, LoadResult, LoadSample, NfrCriticality, NfrKind,
     NfrOperator, NfrState, NfrVerdict, ObjectiveOutcome, PostResult, ProbeDuring, ProbePost,
-    RegulatoryMapping, RegulatoryRequirement, RequestCounts, TargetVersion, TraceId, Trend,
-    VersionShare, VersionSource,
+    RegulatoryMapping, RegulatoryRequirement, RequestCounts, TargetVersion, Tester, TesterKind,
+    TraceId, Trend, VersionShare, VersionSource,
 };
 
 /// Every section a report can have but its summary.
@@ -845,12 +845,14 @@ fn what_a_run_was_planned_with_is_shown_as_far_as_it_was_said() {
         analysis: Some(AnalysisResult {
             estimate_accuracy: None,
             estimate_recovery_delta_s: Some(-1.5),
+            estimate_data_loss_correct: None,
             trend: Some(Trend::Improving),
             resilience_score: None,
         }),
         regulatory: Some(RegulatoryMapping {
             frameworks: vec!["dora".into()],
             requirements: vec![],
+            tester: None,
         }),
         ..journal()
     });
@@ -891,6 +893,7 @@ fn an_estimate_and_an_analysis_say_all_that_they_hold() {
         analysis: Some(AnalysisResult {
             estimate_accuracy: Some(0.625),
             estimate_recovery_delta_s: Some(12.25),
+            estimate_data_loss_correct: Some(false),
             trend: Some(Trend::Degrading),
             resilience_score: Some(0.75),
         }),
@@ -916,6 +919,7 @@ fn an_estimate_and_an_analysis_say_all_that_they_hold() {
         [
             row(&["Estimate accuracy", "62.50 %"]),
             row(&["Recovery against the estimate", "12.25 s"]),
+            row(&["Data loss as expected", "no"]),
             row(&["Trend", "degrading"]),
         ]
     );
@@ -927,12 +931,14 @@ fn an_analysis_and_a_mapping_that_say_nothing_are_no_sections() {
         analysis: Some(AnalysisResult {
             estimate_accuracy: None,
             estimate_recovery_delta_s: None,
+            estimate_data_loss_correct: None,
             trend: None,
             resilience_score: None,
         }),
         regulatory: Some(RegulatoryMapping {
             frameworks: vec![],
             requirements: vec![],
+            tester: None,
         }),
         ..journal()
     });
@@ -951,6 +957,7 @@ fn requirements_without_a_framework_are_a_table_alone() {
                 description: "Continuity is tested".into(),
                 evidence: "This run".into(),
             }],
+            tester: None,
         }),
         ..journal()
     });
@@ -962,6 +969,45 @@ fn requirements_without_a_framework_are_a_table_alone() {
         [
             row(&["Requirement", "Description", "Evidence"]),
             row(&["A.17.1", "Continuity is tested", "This run"]),
+        ]
+    );
+}
+
+#[test]
+fn a_dora_requirement_shows_the_registry_id_it_names_and_the_tester_is_named() {
+    let requirement = |id: &str| RegulatoryRequirement {
+        id: id.into(),
+        description: "d".into(),
+        evidence: "e".into(),
+    };
+    let html = report_for(&Journal {
+        regulatory: Some(RegulatoryMapping {
+            frameworks: vec!["DORA".into()],
+            requirements: vec![
+                requirement("Art. 12(1)"),
+                requirement("dora.art25.1"),
+                requirement("DORA-Art24"),
+            ],
+            tester: Some(Tester {
+                name: "Red Team Ltd".into(),
+                kind: TesterKind::External,
+            }),
+        }),
+        ..journal()
+    });
+
+    let regulatory = section(&html, "regulatory");
+    assert!(
+        words(regulatory).contains("Tester: Red Team Ltd (external)"),
+        "{regulatory}"
+    );
+    assert_eq!(
+        rows(regulatory),
+        [
+            row(&["Requirement", "Description", "Evidence"]),
+            row(&["Art. 12(1) (dora.art12.1)", "d", "e"]),
+            row(&["dora.art25.1", "d", "e"]),
+            row(&["DORA-Art24 (dora.art24)", "d", "e"]),
         ]
     );
 }
@@ -1076,6 +1122,7 @@ fn journal_of_markup() -> (Journal, u32) {
                 description: markup(&mut n),
                 evidence: markup(&mut n),
             }],
+            tester: None,
         }),
         ..journal()
     };

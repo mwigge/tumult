@@ -116,6 +116,10 @@ export interface EvidenceObjective {
     state: string;
     margin: number | null;
     criticality: string;
+    /** The RTO only: whether the run recovered. `false`: `observed` is the time it watched. */
+    recovered: boolean | null;
+    /** Why the verdict is what it is when its numbers do not say, such as `no outage observed`. */
+    reason: string | null;
 }
 
 /** One window of a load. The load tool tells the counts of some windows only. */
@@ -175,6 +179,11 @@ export interface RunEvidence {
         rto_measured_s: number | null;
         rpo_target_s: number | null;
         rpo_measured_s: number | null;
+        /** Whether the probes saw an outage. `null` for a run stored before 3.0.4. */
+        impact_observed: boolean | null;
+        /** When the probes saw the outage start, and when they saw the target back. */
+        outage_started_at_ns: number | null;
+        recovered_at_ns: number | null;
     };
     steps: EvidenceStep[];
     objectives: EvidenceObjective[];
@@ -702,6 +711,185 @@ export interface ManualExperiment {
     framework_refs: string[] | null;
     batch_id: string | null;
     content_hash: string;
+    /** The planned RTO and RPO, and the actual RPO, in seconds. */
+    rto_target_s?: number | null;
+    rpo_target_s?: number | null;
+    rpo_measured_s?: number | null;
+    /** True complete, false loss or corruption found, null not checked. */
+    data_verified?: boolean | null;
+    participants?: ManualParticipant[] | null;
+    /** The plan the record fulfils once it is verified. */
+    plan_id?: string | null;
+    hash_version?: number | null;
+    /** `low`, `medium`, `high` or `critical`. */
+    findings_severity?: string | null;
+    /** Who ran the test, and whether `internal` or `external`. */
+    tester?: string | null;
+    tester_kind?: string | null;
+    /** The TLPT block of a record of type `tlpt`. */
+    tlpt_attestation_ref?: string | null;
+    tlpt_attested_at_ns?: number | null;
+    tlpt_summary_ref?: string | null;
+}
+
+/** Who ran a test: `internal` or `external`. */
+export interface ManualTester {
+    name: string;
+    kind: string;
+}
+
+/** The TLPT facts of a record: the attestation and the test summary report. */
+export interface ManualTlpt {
+    attestation_ref: string | null;
+    attested_at_ns: number | null;
+    summary_report_ref: string | null;
+}
+
+/** What retested an action: a `run` by its id, or a `record` by its id. */
+export interface ManualRetest {
+    kind: string;
+    id: string;
+}
+
+export interface ManualParticipant {
+    name: string;
+    role?: string | null;
+}
+
+/** One step of the timeline of an exercise. */
+export interface ManualStep {
+    ordinal?: number;
+    title: string;
+    actor?: string | null;
+    started_at_ns?: number | null;
+    ended_at_ns?: number | null;
+    /** `done`, `failed` or `skipped`. */
+    result?: string | null;
+    note?: string | null;
+}
+
+/** One action of an exercise, with the person who owns it. */
+export interface ManualAction {
+    id?: string;
+    ordinal?: number;
+    title: string;
+    owner: string;
+    due_at_ns?: number | null;
+    ticket?: string | null;
+    /** `open`, `done` or `dropped`; set by the store. */
+    status?: string;
+    /** `low`, `medium`, `high` or `critical`. */
+    severity?: string | null;
+    /** What retested it, as the page sends it. */
+    retest?: ManualRetest | null;
+    /** What retested it, as the store keeps it. */
+    retest_kind?: string | null;
+    retest_id?: string | null;
+}
+
+/** What an exercise tested: `function`, `entity`, `registry`, `run` or `gameday`. */
+export interface ManualLink {
+    ordinal?: number;
+    kind: string;
+    linked_id: string;
+    label?: string | null;
+}
+
+export interface ManualSignOffRow {
+    id: string;
+    role: string;
+    signed_by: string;
+    signed_at_ns: number;
+    decision: 'approved' | 'rejected';
+    note: string | null;
+    signed_hash: string;
+}
+
+/** The answer to a sign-off: where the record stands now. */
+export interface ManualSignOffResult {
+    ok: boolean;
+    status: ManualExperiment['status'];
+    signoffs_required: number;
+    signoffs_needed: number;
+}
+
+export interface ManualAuditProblem {
+    table: string;
+    row: string;
+    field: string | null;
+    problem: string;
+}
+
+/** `GET /api/manual/experiments/{id}/audit/verify`, and the verify of a plan. */
+export interface ManualVerdict {
+    experiment_id?: string;
+    plan_id?: string;
+    ok: boolean;
+    chain_valid: boolean;
+    hash_version?: number;
+    legacy_rows: number;
+    problems: ManualAuditProblem[];
+}
+
+/** A planned manual exercise, as `GET /api/manual/plans` lists it. */
+export interface ManualPlan {
+    id: string;
+    name: string;
+    exercise_type: string;
+    target_system: string | null;
+    target_environment: string | null;
+    function_id: string | null;
+    scope: string | null;
+    owner: string;
+    planned_at_ns: number | null;
+    due_at_ns: number;
+    interval_days: number | null;
+    rto_target_s: number | null;
+    rpo_target_s: number | null;
+    status: 'planned' | 'fulfilled' | 'cancelled';
+    created_by: string;
+    created_at_ns: number;
+    updated_by: string | null;
+    updated_at_ns: number | null;
+}
+
+/** One row of the audit trail of a record or a plan. */
+export interface ManualAuditEntry {
+    id: string;
+    action: string;
+    changed_by: string;
+    changed_at_ns: number;
+}
+
+/** `GET /api/manual/plans/{id}`: the plan and its audit trail. */
+export interface ManualPlanDetail {
+    plan: ManualPlan;
+    audit: ManualAuditEntry[];
+}
+
+/** The body of `POST /api/manual/plans`, and of `PATCH /api/manual/plans/{id}`
+    with `updated_by` for `created_by`: a field sent as `null` is cleared. */
+export interface ManualPlanInput {
+    name: string;
+    exercise_type: string;
+    target_system: string | null;
+    target_environment: string | null;
+    function_id: string | null;
+    scope: string | null;
+    owner: string;
+    planned_at_ns: number | null;
+    due_at_ns?: number;
+    interval_days: number | null;
+    rto_target_s: number | null;
+    rpo_target_s: number | null;
+    created_by?: string;
+    updated_by?: string;
+}
+
+/** The body of `POST /api/manual/import`. */
+export interface ManualImportInput {
+    label?: string | null;
+    records: unknown[];
 }
 
 export interface ManualAuditRow {
@@ -722,6 +910,9 @@ export interface EvidenceAttachment {
     uri: string;
     label: string | null;
     file_hash: string | null;
+    /** The type read from the bytes of a file, and its size; null for a link. */
+    media_type?: string | null;
+    size_bytes?: number | null;
     added_by: string;
     added_at_ns: number;
 }
@@ -730,6 +921,13 @@ export interface ManualDetail {
     experiment: ManualExperiment;
     audit: ManualAuditRow[];
     attachments: EvidenceAttachment[];
+    steps?: ManualStep[];
+    actions?: ManualAction[];
+    links?: ManualLink[];
+    signoffs?: ManualSignOffRow[];
+    /** The approvals the exercise type needs, and how many are still needed. */
+    signoffs_required?: number;
+    signoffs_needed?: number;
 }
 
 export interface ManualRecordInput {
@@ -741,7 +939,6 @@ export interface ManualRecordInput {
     outcome_status: string;
     hypothesis_met?: boolean | null;
     findings?: string | null;
-    action_items?: string[];
     target_system?: string | null;
     target_environment?: string | null;
     blast_radius?: string | null;
@@ -751,6 +948,19 @@ export interface ManualRecordInput {
     attestation: string;
     renewal_due_ns?: number | null;
     framework_refs?: string[];
+    rto_target_s?: number | null;
+    rpo_target_s?: number | null;
+    rpo_measured_s?: number | null;
+    data_verified?: boolean | null;
+    participants?: ManualParticipant[];
+    steps?: ManualStep[];
+    /** The actions with owners: from schema v22 on, the actions of a record. */
+    actions?: ManualAction[];
+    links?: ManualLink[];
+    plan_id?: string | null;
+    findings_severity?: string | null;
+    tester?: ManualTester | null;
+    tlpt?: ManualTlpt | null;
 }
 
 // --- auth (tumultd session API) ---------------------------------------------
@@ -1720,4 +1930,102 @@ export interface RunImpact {
     degenerate_band: boolean;
     provenance: ForecastProvenance | null;
     probes: ProbeImpact[];
+}
+
+// --- The DR view: `GET /api/dr` -------------------------------------------
+
+/** Where a target stands in the DR test register. */
+export type DrState = 'ok' | 'due' | 'overdue' | 'never_tested';
+
+/** What a DR test shows about its RTO and RPO. */
+export type DrVerdict = 'met' | 'breached' | 'not_recovered' | 'not_measured';
+
+/** A DR test is a run of kind `dr` or a manual record of a DR type. */
+export type DrOrigin = 'automated' | 'manual';
+
+/** The query of `GET /api/dr`. Times are unix nanoseconds. */
+export interface DrQuery {
+    target?: string;
+    environment?: string;
+    from_ns?: number;
+    to_ns?: number;
+    limit?: number;
+    cursor?: string;
+}
+
+/** The last DR test of a target that proves something. */
+export interface DrLastTest {
+    id: string;
+    origin: DrOrigin;
+    executed_at_ns: number;
+    verdict: DrVerdict;
+}
+
+/** One target of the DR test register, read as of now. */
+export interface DrTarget {
+    system: string;
+    environment: string | null;
+    state: DrState;
+    last_test: DrLastTest | null;
+    /** None for a target never tested. */
+    next_due_at_ns: number | null;
+    interval_days: number;
+    interval_source: 'plan' | 'function' | 'default';
+    /** The planned DR exercise that covers the target. */
+    plan: { id: string; due_at_ns: number } | null;
+    rto_target_s: number | null;
+    rpo_target_s: number | null;
+    rto_measured_s: number | null;
+    rpo_measured_s: number | null;
+    recovered: boolean | null;
+    /** The least the RTO was, when the last test did not recover. */
+    rto_at_least_s: number | null;
+}
+
+/** One DR test: a row of the lake view `dr_tests`. */
+export interface DrTest {
+    test_id: string;
+    origin: DrOrigin;
+    experiment_name: string | null;
+    exercise_type: string | null;
+    target_system: string | null;
+    target_environment: string | null;
+    executed_at_ns: number;
+    outcome: string | null;
+    rto_target_s: number | null;
+    rto_measured_s: number | null;
+    /** The least the RTO was, for a run that did not recover. */
+    rto_at_least_s: number | null;
+    recovered: boolean | null;
+    /** The probes of the run saw no outage, so it measured no recovery. */
+    no_outage: boolean | null;
+    rpo_target_s: number | null;
+    rpo_measured_s: number | null;
+    data_verified: boolean | null;
+    verdict: DrVerdict;
+    /** The run id, or the id of the manual record. */
+    evidence_id: string;
+    reviewer: string | null;
+    plan_id: string | null;
+}
+
+type DrVerdictCounts = Record<DrVerdict, number>;
+
+/** The DR view of the environments of the caller. */
+export interface DrView {
+    as_of_ns: number;
+    from_ns: number;
+    to_ns: number;
+    targets: DrTarget[];
+    /** The tests of the period on this page, newest first. */
+    tests: DrTest[];
+    count: number;
+    /** The tests of the period. */
+    total: number;
+    truncated: boolean;
+    next_cursor: string | null;
+    summary: {
+        states: Record<DrState, number>;
+        tests: { total: number; automated: DrVerdictCounts; manual: DrVerdictCounts };
+    };
 }

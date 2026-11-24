@@ -11,8 +11,15 @@ use crate::common::*;
 #[test]
 fn estimate_accuracy_correct_when_prediction_matches() {
     let mut exp = experiment_builder();
+    exp.steady_state_hypothesis = Some(hypothesis(
+        "System responds",
+        vec![probe_with_tolerance(
+            "health-check",
+            serde_json::Value::Number(200.into()),
+        )],
+    ));
     exp.estimate = Some(Estimate {
-        expected_outcome: ExpectedOutcome::Recovered,
+        expected_outcome: ExpectedOutcome::Unaffected,
         expected_recovery_s: Some(10.0),
         expected_degradation: Some(DegradationLevel::Minor),
         expected_data_loss: Some(false),
@@ -26,7 +33,8 @@ fn estimate_accuracy_correct_when_prediction_matches() {
 
     let journal = run_experiment(&exp, &plugin, &controls, &RunConfig::default()).unwrap();
 
-    // Estimated: Recovered, Actual: Completed (recovered) → accuracy 1.0
+    // Estimated: unaffected. The probe never failed, so the run saw no
+    // outage: it was unaffected → accuracy 1.0
     assert_eq!(journal.status, ExperimentStatus::Completed);
     assert!(journal.analysis.is_some());
     let analysis = journal.analysis.unwrap();
@@ -35,7 +43,7 @@ fn estimate_accuracy_correct_when_prediction_matches() {
 }
 
 #[test]
-fn estimate_accuracy_zero_when_prediction_wrong() {
+fn estimate_accuracy_empty_when_the_run_failed() {
     let mut exp = experiment_builder();
     exp.estimate = Some(Estimate {
         expected_outcome: ExpectedOutcome::Recovered,
@@ -53,11 +61,12 @@ fn estimate_accuracy_zero_when_prediction_wrong() {
 
     let journal = run_experiment(&exp, &plugin, &controls, &RunConfig::default()).unwrap();
 
-    // Estimated: Recovered, Actual: Failed → accuracy 0.0
+    // Estimated: Recovered, Actual: Failed. The fault was not applied as
+    // written, so the run has no outcome to judge → no accuracy, not 0.0
     assert_eq!(journal.status, ExperimentStatus::Failed);
     assert!(journal.analysis.is_some());
     let analysis = journal.analysis.unwrap();
-    assert_eq!(analysis.estimate_accuracy, Some(0.0));
+    assert_eq!(analysis.estimate_accuracy, None);
     assert_eq!(analysis.resilience_score, Some(0.0));
 }
 

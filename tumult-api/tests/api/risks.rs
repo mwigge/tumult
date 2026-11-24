@@ -902,3 +902,70 @@ async fn recovery_findings_and_scores_read_what_the_runs_and_records_measured() 
         "{over}"
     );
 }
+
+/// The `rule:subject` of each finding about `target` whose rule is one of
+/// `rules`.
+fn findings_by(report: &Value, target: &str, rules: &[&str]) -> Vec<String> {
+    findings_of(report, target)
+        .into_iter()
+        .filter(|f| rules.iter().any(|rule| f.starts_with(&format!("{rule}:"))))
+        .collect()
+}
+
+/// A target whose last DR test ran longer ago than its interval is one
+/// finding. With no plan that covers it, the DR register gives it as
+/// `dr_test_overdue`. A planned DR exercise of the target that is past
+/// its due date is the finding of the plan, and the register gives none.
+#[tokio::test]
+async fn an_overdue_dr_test_is_one_finding_with_or_without_a_plan() {
+    let srv = spawn_server().await;
+    let mut failover = manual_record(
+        "ledger-failover",
+        ExerciseType::Failover,
+        "ledger",
+        ManualOutcome::Passed,
+    );
+    failover.executed_at_ns = now_ns() - 400 * 86_400 * NS;
+    add_verified(&srv, failover).await;
+    let overdue = ["dr_test_overdue", "manual_exercise_overdue"];
+
+    let (status, risks) = get(&srv.base, "/api/risks").await;
+
+    assert_eq!(status, 200, "{risks}");
+    assert_eq!(
+        findings_by(&risks, "ledger", &overdue),
+        ["dr_test_overdue:dr_test"]
+    );
+    let finding = risks["risks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["rule"] == "dr_test_overdue")
+        .unwrap();
+    assert_eq!(finding["environment"], "demo", "{finding}");
+    assert_eq!(finding["severity"], "high", "{finding}");
+    assert_eq!(finding["recommended_kind"], "dr", "{finding}");
+
+    let plan = json!({
+        "name": "ledger failover",
+        "exercise_type": "failover",
+        "target_system": "ledger",
+        "target_environment": "demo",
+        "owner": "alice",
+        "due_at_ns": now_ns() - 86_400 * NS,
+        "interval_days": 365,
+        "created_by": "alice",
+    });
+    let (status, made) = post(&srv.base, "/api/manual/plans", plan).await;
+    assert_eq!(status, 201, "{made}");
+    let plan_id = made["id"].as_str().unwrap();
+
+    let (status, risks) = get(&srv.base, "/api/risks").await;
+
+    assert_eq!(status, 200, "{risks}");
+    assert_eq!(
+        findings_by(&risks, "ledger", &overdue),
+        [format!("manual_exercise_overdue:{plan_id}")]
+    );
+}
+

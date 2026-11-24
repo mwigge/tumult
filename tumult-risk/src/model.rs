@@ -212,6 +212,25 @@ pub struct PlannedExercise {
     pub due_at_ns: i64,
 }
 
+/// A target in the DR test register: its last DR test and when the next
+/// one is due.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DrTestDue {
+    pub target: String,
+    pub environment: Option<String>,
+    /// When the last DR test that proves something ran. `None`: never.
+    pub last_test_at_ns: Option<i64>,
+    pub last_test_id: Option<String>,
+    /// Days from one DR test to the next.
+    pub interval_days: i64,
+    /// Where the interval comes from: `plan`, `function` or `default`.
+    pub interval_source: String,
+    /// When the next DR test is due. `None` for a target never tested.
+    pub next_due_at_ns: Option<i64>,
+    /// The planned DR exercise that covers the target, if any.
+    pub plan_id: Option<String>,
+}
+
 /// Everything the scanner looks at.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct Inputs {
@@ -231,6 +250,9 @@ pub struct Inputs {
     /// The planned manual exercises.
     #[serde(default)]
     pub plans: Vec<PlannedExercise>,
+    /// The DR test register, one row per target.
+    #[serde(default)]
+    pub dr_register: Vec<DrTestDue>,
 }
 
 /// How much a finding matters. Ordered so `Critical > High > Medium > Low`.

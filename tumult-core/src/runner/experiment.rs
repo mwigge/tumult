@@ -297,7 +297,7 @@ pub fn run_experiment_with_sampling(
         halt.rollback_ms = elapsed_ms(&rollback_started);
 
         let status = ExperimentStatus::Halted;
-        let analysis = compute_analysis(experiment, &status);
+        let analysis = compute_analysis(experiment, &status, None, None);
         let ended = run.ended(status);
         run.tell_controls_it_ended();
 
@@ -343,7 +343,7 @@ pub fn run_experiment_with_sampling(
         );
 
         let status = ExperimentStatus::Interrupted;
-        let analysis = compute_analysis(experiment, &status);
+        let analysis = compute_analysis(experiment, &status, None, None);
         let ended = run.ended(status);
         run.tell_controls_it_ended();
 
@@ -469,7 +469,12 @@ pub fn run_experiment_with_sampling(
     };
 
     // -- Phase 4: Analysis
-    let analysis = compute_analysis(experiment, &status);
+    let analysis = compute_analysis(
+        experiment,
+        &status,
+        post_result.as_ref(),
+        objectives.as_ref(),
+    );
 
     Ok(run.finish(Journal {
         steady_state_before: hypothesis_before,

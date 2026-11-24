@@ -23,7 +23,7 @@ pub mod posture;
 pub mod rules;
 
 pub use model::{
-    Coverage, CoverageCell, CoverageStatus, Definition, Dependency, DisruptionBudget,
+    Coverage, CoverageCell, CoverageStatus, Definition, Dependency, DisruptionBudget, DrTestDue,
     ExperimentLatest, Inputs, KindCoverage, KindEvidence, PlannedExercise, Report, Risk, Severity,
     Summary, Suppression, TargetCoverage, TargetEvidence, Verdict, Workload, KINDS,
 };

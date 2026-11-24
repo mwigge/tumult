@@ -321,6 +321,63 @@ fn an_rpo_objective_that_does_not_fit_its_probe_or_its_target_is_refused() {
     }
 }
 
+/// An oha load of a minute shaped by `profile`, and an objective of
+/// `kind` on `metric`, which reads the windows of that load.
+fn load_objective(kind: &str, metric: &str, profile: &str) -> String {
+    format!(
+        "nfr[1]{{id,kind,metric,operator,threshold}}:\n  robust,{kind},{metric},lte,20\n\
+         load:\n  tool: oha\n  script: http://127.0.0.1:8080/\n  vus: 2\n  duration_s: 60\n\
+         {profile}"
+    )
+}
+
+const SOAK: &str = "  profile:\n    type: soak\n    sample_interval_s: 10\n";
+const SPIKE: &str = "  profile:\n    type: spike\n    peak_vus: 20\n    after_s: 20\n    hold_s: 10\n    sample_interval_s: 2\n";
+
+#[test]
+fn a_drift_objective_on_a_load_that_is_not_a_soak_is_refused_with_the_profile_it_needs() {
+    let definition = experiment_with(&load_objective("latency", "load.p95_drift_pct", SPIKE));
+
+    let (passed, stdout, error) = validate(&Lab::with_state("ok"), &definition);
+
+    assert!(!passed, "{stdout}");
+    assert_eq!(
+        error,
+        "nfr objective 'robust' is invalid: metric 'load.p95_drift_pct' needs a load with a \
+         soak profile, and this load has a spike profile"
+    );
+}
+
+#[test]
+fn a_spike_objective_on_a_load_that_is_not_a_spike_is_refused_with_the_profile_it_needs() {
+    let definition = experiment_with(&load_objective("recovery", "load.spike_recovery_s", SOAK));
+
+    let (passed, stdout, error) = validate(&Lab::with_state("ok"), &definition);
+
+    assert!(!passed, "{stdout}");
+    assert_eq!(
+        error,
+        "nfr objective 'robust' is invalid: metric 'load.spike_recovery_s' needs a load with a \
+         spike profile, and this load has a soak profile"
+    );
+}
+
+#[test]
+fn drift_and_spike_objectives_on_the_profiles_they_need_pass() {
+    for (kind, metric, profile) in [
+        ("latency", "load.p95_drift_pct", SOAK),
+        ("error_rate", "load.error_rate_drift", SOAK),
+        ("latency", "load.spike_recovery_s", SPIKE),
+        ("recovery", "load.spike_recovery_s", SPIKE),
+    ] {
+        let definition = experiment_with(&load_objective(kind, metric, profile));
+
+        let (passed, stdout, error) = validate(&Lab::with_state("ok"), &definition);
+
+        assert!(passed, "{kind} on {metric}: {stdout}{error}");
+    }
+}
+
 /// A step of the script plugin `lab-target` that takes down the node `node`.
 fn take_down(node: &str) -> String {
     format!(
@@ -478,4 +535,66 @@ fn init_refuses_a_plugin_that_is_not_installed_and_writes_nothing() {
     assert!(error.contains("lab-cache"), "{error}");
     assert!(error.contains("lab-queue, lab-target"), "{error}");
     assert!(!lab.path("experiment.toon").exists());
+}
+
+/// A regulatory block of DORA that names the requirement `id`.
+fn dora_block(id: &str) -> String {
+    format!(
+        "regulatory:
+  frameworks[1]: DORA
+  requirements[1]:
+    - id: {id}
+      description: Backup and restore tested
+      evidence: The restore of this run
+"
+    )
+}
+
+#[test]
+fn a_dora_requirement_the_registry_does_not_know_is_refused_with_the_nearest_id() {
+    let definition = experiment_with(&dora_block("dora.art12.9"));
+
+    let (passed, stdout, error) = validate(&Lab::with_state("ok"), &definition);
+
+    assert!(!passed, "{stdout}");
+    assert_eq!(
+        error,
+        "regulatory requirement: 'dora.art12.9' is not a requirement id of the DORA \
+         registry; did you mean 'dora.art12.1'?"
+    );
+}
+
+#[test]
+fn an_experiment_with_a_dora_requirement_the_registry_does_not_know_still_runs() {
+    let lab = Lab::with_state("ok");
+    std::fs::write(
+        lab.path("experiment.toon"),
+        experiment_with(&dora_block("dora.art12.9")),
+    )
+    .expect("experiment");
+
+    let output = lab
+        .command(&["run", "experiment.toon", "--no-ingest"])
+        .output()
+        .expect("run tumult");
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(lab.path("journal.toon").exists());
+}
+
+#[test]
+fn a_dora_requirement_in_an_old_form_passes_and_is_named_by_its_registry_id() {
+    let definition = experiment_with(&dora_block("Art. 12(1)"));
+
+    let (passed, stdout, error) = validate(&Lab::with_state("ok"), &definition);
+
+    assert!(passed, "{stdout}{error}");
+    assert!(
+        stdout.contains("Regulatory: mapped\n  Art. 12(1) is the DORA requirement dora.art12.1\n"),
+        "{stdout}"
+    );
 }

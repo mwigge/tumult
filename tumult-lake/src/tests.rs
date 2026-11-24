@@ -865,10 +865,14 @@ fn the_run_roots_have_every_column_of_a_span() {
 
 /// A statement for each SQL function of the schema that no view uses, as
 /// a reader would write it.
-fn reader_statements() -> [String; 3] {
+fn reader_statements() -> [String; 4] {
     let since = run_completions_sql(Some(1_774_980_000_000_000_000));
     let verdict = run_verdict_sql(&run_outcome_sql("s", "l"));
     let mean = mean_recovery_time_sql("s");
+    let register = crate::schema::dr_register_sql(
+        "list_value('backup', 'drill', 'failover', 'restore')",
+        "1774980000000000000",
+    );
     [
         format!("-- run_completions_sql with a window, as a reader joins it.\n{since};"),
         format!(
@@ -884,6 +888,7 @@ LEFT JOIN run_completions AS l ON s.experiment_id = l.experiment_id;"
 SELECT {mean} AS mean_recovery_time_s
 FROM run_roots AS s;"
         ),
+        format!("-- dr_register_sql with the default DR types, as of a time.\n{register};"),
     ]
 }
 
@@ -934,7 +939,7 @@ fn the_statements_kept_for_the_linter_run_on_a_lake() {
 
     // A reader runs a statement as a subquery, so without the semicolon
     // that ends it in the file.
-    let [since, verdict, mean] =
+    let [since, verdict, mean, register] =
         reader_statements().map(|sql| reader.query_json_rows(sql.trim_end_matches(';')).unwrap());
 
     assert_eq!(since.len(), 1, "{since:?}");
@@ -944,4 +949,9 @@ fn the_statements_kept_for_the_linter_run_on_a_lake() {
         [serde_json::json!({"experiment_id": "run-1", "verdict": "pass"})]
     );
     assert_eq!(mean, [serde_json::json!({"mean_recovery_time_s": 12.5})]);
+    assert_eq!(
+        register,
+        Vec::<serde_json::Value>::new(),
+        "no DR test, no target"
+    );
 }

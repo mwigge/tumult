@@ -10,8 +10,8 @@ use tumult_otel::logging::{self, LogOptions};
 
 use cli::{
     AgenticAction, AutopilotAction, ChaosGraphAction, Cli, Commands, GameDayAction, GateFailOn,
-    GraphFormat, McpAction, McpTransport, OutputFormat, PerfFailOnArg, RollbackStrategy,
-    StoreAction, TopologyAction,
+    GraphFormat, ManualAction, ManualPlansAction, McpAction, McpTransport, OutputFormat,
+    PerfFailOnArg, RollbackStrategy, StoreAction, TopologyAction, TrendFormat,
 };
 
 mod cli;
@@ -182,8 +182,15 @@ async fn dispatch(command: Commands) -> anyhow::Result<()> {
             metric,
             last,
             target,
+            format,
         } => {
-            commands::cmd_trend(&journals, &metric, last.as_deref(), target.as_deref())?;
+            commands::cmd_trend(
+                &journals,
+                &metric,
+                last.as_deref(),
+                target.as_deref(),
+                matches!(format, TrendFormat::Json),
+            )?;
         }
         Commands::Report {
             journal,
@@ -581,6 +588,9 @@ async fn dispatch(command: Commands) -> anyhow::Result<()> {
             })
             .await?;
         }
+        Commands::Manual { daemon_url, action } => {
+            dispatch_manual(daemon_url.as_deref(), action).await?;
+        }
         Commands::Tui {
             store,
             refresh_secs,
@@ -592,6 +602,108 @@ async fn dispatch(command: Commands) -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+/// Dispatch `tumult manual`: each subcommand is one request to the daemon.
+async fn dispatch_manual(daemon_url: Option<&str>, action: ManualAction) -> anyhow::Result<()> {
+    let daemon = commands::Daemon::connect(daemon_url)?;
+    match action {
+        ManualAction::List {
+            status,
+            exercise_type,
+            target,
+            from,
+            to,
+            format,
+        } => {
+            let filter = commands::list_filter(
+                status,
+                exercise_type,
+                target,
+                from.as_deref(),
+                to.as_deref(),
+            )?;
+            commands::cmd_manual_list(&daemon, &filter, format.json()).await
+        }
+        ManualAction::Show { id, format } => {
+            commands::cmd_manual_show(&daemon, &id, format.json()).await
+        }
+        ManualAction::Create { file, by } => {
+            commands::cmd_manual_create(&daemon, &file, by.as_deref()).await
+        }
+        ManualAction::Submit {
+            id,
+            attestation,
+            by,
+        } => commands::cmd_manual_submit(&daemon, &id, attestation.as_deref(), by.as_deref()).await,
+        ManualAction::SignOff {
+            id,
+            approve,
+            reject: _,
+            note,
+            by,
+        } => {
+            commands::cmd_manual_sign_off(&daemon, &id, approve, note.as_deref(), by.as_deref())
+                .await
+        }
+        ManualAction::Attach {
+            id,
+            file,
+            link,
+            label,
+            by,
+        } => match (file, link) {
+            (_, Some(link)) => {
+                commands::cmd_manual_attach_link(
+                    &daemon,
+                    &id,
+                    &link,
+                    label.as_deref(),
+                    by.as_deref(),
+                )
+                .await
+            }
+            (Some(file), None) => {
+                commands::cmd_manual_attach_file(&daemon, &id, &file, by.as_deref()).await
+            }
+            (None, None) => anyhow::bail!("attach needs a file or --link"),
+        },
+        ManualAction::Verify { id, format } => {
+            commands::cmd_manual_verify(&daemon, &id, format.json()).await
+        }
+        ManualAction::Plans { action } => dispatch_manual_plans(&daemon, action).await,
+    }
+}
+
+/// Dispatch `tumult manual plans`.
+async fn dispatch_manual_plans(
+    daemon: &commands::Daemon,
+    action: ManualPlansAction,
+) -> anyhow::Result<()> {
+    match action {
+        ManualPlansAction::List {
+            status,
+            target,
+            format,
+        } => {
+            commands::cmd_manual_plans_list(
+                daemon,
+                status.as_deref(),
+                target.as_deref(),
+                format.json(),
+            )
+            .await
+        }
+        ManualPlansAction::Show { id, format } => {
+            commands::cmd_manual_plans_show(daemon, &id, format.json()).await
+        }
+        ManualPlansAction::Create { file, by } => {
+            commands::cmd_manual_plans_create(daemon, &file, by.as_deref()).await
+        }
+        ManualPlansAction::Cancel { id, reason, by } => {
+            commands::cmd_manual_plans_cancel(daemon, &id, reason.as_deref(), by.as_deref()).await
+        }
+    }
 }
 
 #[cfg(test)]

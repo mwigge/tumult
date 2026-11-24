@@ -30,6 +30,7 @@ pub mod load_profile;
 pub(crate) mod nfr;
 pub mod oha;
 mod phases;
+pub(crate) mod robustness;
 mod sampler;
 mod telemetry;
 

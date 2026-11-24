@@ -23,9 +23,10 @@ use super::schema::{
     ChaosGraphNeighborsTool, ChaosGraphQueryTool, ComplianceLineageTool, ComplianceTool,
     CoverageTool, CreateExperimentTool, DiscoverTool, FaultCatalogTool, GameDayAnalyzeTool,
     GameDayCreateTool, GameDayListTool, GameDayRunTool, ListExperimentsTool, ListJournalsTool,
-    QueryTracesTool, ReadJournalTool, RecommendInjectionTool, RecommendTool, ReportTool,
-    RunExperimentTool, ScaffoldExperimentTool, StoreStatsTool, TopologyImportTool, TopologyMapTool,
-    TrendTool, ValidateTool, WhoamiTool,
+    ManualCreateDraftTool, ManualGetTool, ManualListTool, ManualPlansListTool, QueryTracesTool,
+    ReadJournalTool, RecommendInjectionTool, RecommendTool, ReportTool, RunExperimentTool,
+    ScaffoldExperimentTool, StoreStatsTool, TopologyImportTool, TopologyMapTool, TrendTool,
+    ValidateTool, WhoamiTool,
 };
 use super::{Role, TumultHandler};
 
@@ -38,6 +39,7 @@ mod experiment;
 mod gameday;
 mod graph;
 mod journal;
+mod manual;
 mod meta;
 mod topology;
 
@@ -80,12 +82,16 @@ pub(crate) fn required_role_for_tool(name: &str) -> Role {
         | "tumult_compliance_lineage"
         | "tumult_recommend_injection"
         | "tumult_autopilot_status"
+        | "tumult_manual_list"
+        | "tumult_manual_get"
+        | "tumult_manual_plans_list"
         | "tumult_whoami" => Role::Viewer,
         // Operator-only (read_only_hint == false), plus any unknown tool:
         // tumult_run_experiment, tumult_create_experiment, tumult_report,
         // tumult_gameday_run, tumult_gameday_create, tumult_recommend,
         // tumult_topology_import, tumult_autopilot_run,
-        // tumult_autopilot_respond, tumult_autopilot_export.
+        // tumult_autopilot_respond, tumult_autopilot_export,
+        // tumult_manual_create_draft.
         _ => Role::Operator,
     }
 }
@@ -283,6 +289,10 @@ impl ServerHandler for TumultHandler {
             AutopilotRespondTool::tool(),
             AutopilotExportTool::tool(),
             AutopilotNotifyTool::tool(),
+            ManualListTool::tool(),
+            ManualGetTool::tool(),
+            ManualCreateDraftTool::tool(),
+            ManualPlansListTool::tool(),
             WhoamiTool::tool(),
         ];
         // The mcp_tool macro hardcodes output_schema to None; patch in the
@@ -390,6 +400,10 @@ impl ServerHandler for TumultHandler {
             "tumult_autopilot_respond" => autopilot::autopilot_respond(self, &params)?,
             "tumult_autopilot_export" => autopilot::autopilot_export(&params)?,
             "tumult_autopilot_notify" => autopilot::autopilot_notify(&params)?,
+            "tumult_manual_list" => manual::manual_list(&params, principal_role)?,
+            "tumult_manual_get" => manual::manual_get(&params, principal_role)?,
+            "tumult_manual_create_draft" => manual::manual_create_draft(&params)?,
+            "tumult_manual_plans_list" => manual::manual_plans_list(&params, principal_role)?,
             "tumult_whoami" => meta::whoami(&params, principal_role)?,
             _ => return Err(CallToolError::unknown_tool(params.name)),
         };

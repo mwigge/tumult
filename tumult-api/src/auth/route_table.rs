@@ -34,6 +34,7 @@ pub const ROUTE_TABLE: &[(&str, &str, Role)] = &[
     ("POST", "/api/risks/{id}/suppress", Role::Operator),
     ("POST", "/api/risks/{id}/recommend", Role::Operator),
     ("GET", "/api/posture", Role::Viewer),
+    ("GET", "/api/dr", Role::Viewer),
     ("GET", "/api/otel/conformance", Role::Viewer),
     ("GET", "/api/perf", Role::Viewer),
     ("GET", "/api/dora", Role::Viewer),
@@ -54,6 +55,11 @@ pub const ROUTE_TABLE: &[(&str, &str, Role)] = &[
         Role::Viewer,
     ),
     ("GET", "/api/manual/plans/{id}/audit/verify", Role::Viewer),
+    (
+        "GET",
+        "/api/manual/experiments/{id}/attachments/{attachment_id}/file",
+        Role::Viewer,
+    ),
     ("GET", "/api/authoring/catalog", Role::Viewer),
     ("GET", "/api/registry", Role::Viewer),
     ("GET", "/api/registry/{id}", Role::Viewer),
@@ -256,6 +262,8 @@ mod tests {
     #[test]
     fn table_roles_match_the_design() {
         assert_eq!(required_role("GET", "/api/experiments"), Role::Viewer);
+        // The DR view is a read, as the risk view is.
+        assert_eq!(required_role("GET", "/api/dr"), Role::Viewer);
         assert_eq!(required_role("GET", "/api/gate/payments-api"), Role::Viewer);
         assert_eq!(required_role("GET", "/api/perf"), Role::Viewer);
         assert_eq!(required_role("GET", "/api/perf/payments-api"), Role::Viewer);
@@ -284,6 +292,15 @@ mod tests {
         );
         assert_eq!(
             required_role("GET", "/api/manual/plans/x/audit/verify"),
+            Role::Viewer
+        );
+        // A file is sent as evidence is entered, and read as a record is.
+        assert_eq!(
+            required_role("POST", "/api/manual/experiments/x/attachments"),
+            Role::Operator
+        );
+        assert_eq!(
+            required_role("GET", "/api/manual/experiments/x/attachments/y/file"),
             Role::Viewer
         );
         // Plans are entered like records; reading them is a view.

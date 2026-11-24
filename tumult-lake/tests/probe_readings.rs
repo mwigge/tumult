@@ -91,11 +91,6 @@ fn columns_of_probe_samples(store: &Store) -> Vec<String> {
 }
 
 #[test]
-fn the_schema_is_at_version_23() {
-    assert_eq!(CURRENT_SCHEMA_VERSION, 23);
-}
-
-#[test]
 fn a_sample_keeps_the_number_its_probe_read_and_the_run_its_rpo() {
     let d = tempfile::TempDir::new().unwrap();
     let store = Store::open(&d.path().join("kronika.duckdb")).unwrap();

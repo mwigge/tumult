@@ -13,8 +13,8 @@
 
 /// Hand-entered test records (game days, tabletops, failovers, …) with
 /// attestation, a draft → submitted → verified/rejected review lifecycle,
-/// an append-only hash-chained audit trail, and external evidence links
-/// (no file storage — URIs only).
+/// an append-only hash-chained audit trail, and evidence: links, and files
+/// kept in the lake folder by their SHA-256 (`file_hash`).
 ///
 /// `manual_exercise_steps`, `manual_action_items` and
 /// `manual_experiment_links` hold the timeline, the actions with owners
@@ -179,6 +179,15 @@ CREATE TABLE IF NOT EXISTS manual_signoffs (
 /// `manual_plan_audit.link_hash` came after the table: a v22 lake written
 /// before it has the table without the column, which `CREATE TABLE IF NOT
 /// EXISTS` does not add, so it is added here like the others.
+///
+/// The columns from `findings_severity` on came with the gaps of the DORA
+/// report, after the tables: `findings_severity` and the `severity` of an
+/// action are `low`, `medium`, `high` or `critical` (DORA Art. 24(5));
+/// `tester` and `tester_kind` (`internal` or `external`) name who ran the
+/// test (Art. 24(4)); the `tlpt_` columns hold the attestation reference
+/// and date and the test summary report reference of a record of type
+/// `tlpt` (RTS 2025/1190 Arts. 14 and 12); `retest_kind` (`run` or
+/// `record`) and `retest_id` name what retested an action.
 pub(crate) const V22_COLUMNS: &str = "
 ALTER TABLE manual_experiments ADD COLUMN IF NOT EXISTS rto_target_s DOUBLE;
 ALTER TABLE manual_experiments ADD COLUMN IF NOT EXISTS rpo_target_s DOUBLE;
@@ -191,4 +200,13 @@ ALTER TABLE evidence_attachments ADD COLUMN IF NOT EXISTS media_type VARCHAR;
 ALTER TABLE evidence_attachments ADD COLUMN IF NOT EXISTS size_bytes BIGINT;
 ALTER TABLE manual_experiment_audit ADD COLUMN IF NOT EXISTS link_hash VARCHAR;
 ALTER TABLE manual_plan_audit ADD COLUMN IF NOT EXISTS link_hash VARCHAR;
+ALTER TABLE manual_experiments ADD COLUMN IF NOT EXISTS findings_severity VARCHAR;
+ALTER TABLE manual_experiments ADD COLUMN IF NOT EXISTS tester VARCHAR;
+ALTER TABLE manual_experiments ADD COLUMN IF NOT EXISTS tester_kind VARCHAR;
+ALTER TABLE manual_experiments ADD COLUMN IF NOT EXISTS tlpt_attestation_ref VARCHAR;
+ALTER TABLE manual_experiments ADD COLUMN IF NOT EXISTS tlpt_attested_at_ns BIGINT;
+ALTER TABLE manual_experiments ADD COLUMN IF NOT EXISTS tlpt_summary_ref VARCHAR;
+ALTER TABLE manual_action_items ADD COLUMN IF NOT EXISTS severity VARCHAR;
+ALTER TABLE manual_action_items ADD COLUMN IF NOT EXISTS retest_kind VARCHAR;
+ALTER TABLE manual_action_items ADD COLUMN IF NOT EXISTS retest_id VARCHAR;
 ";

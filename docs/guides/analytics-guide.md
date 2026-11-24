@@ -66,12 +66,16 @@ FROM experiments;
 
 | Table | One row per |
 |---|---|
-| `experiments` | run: title, `status`, times, `duration_ms`, hypothesis before and after, `test_kind`, `target_version` |
+| `experiments` | run: title, `status`, times, `duration_ms`, hypothesis before and after, `test_kind`, `target_version`, the RTO and RPO targets and measures. What the probes saw: `impact_observed`, `outage_started_at_ns`, `recovered_at_ns`, and `mttr_s`, the time to recovery |
+| `nfr_verdicts` | objective of a run: its target, what was observed and `state`. `recovered` says whether the run recovered (the RTO only), `reason` why the verdict is what it is, such as `no outage observed` |
+| `run_roots` | run: its root span, or the same columns from the journal of a run that sent no trace. Then `recovery_time_s` is the time to recovery of the journal |
+| `dr_tests` | DR test: a run of kind `dr`, or a manual DR record. See [DR tests](#dr-tests) |
 | `activity_results` | step of a run: `name`, `activity_type`, `status`, `phase`, `duration_ms`, `output`, `error` |
 | `load_results` | load test: tool, throughput, p50, p95 and p99 latency, error rate |
 | `probe_samples` | sample of a probe or of a load window, with its phase. `value` is the probe duration, `reading` the number a `number` or `range` probe printed |
 | `spans`, `logs` | span and log record the daemon received |
 
+A column added in a later version is empty on the runs stored before it.
 `status` of a run is `completed`, `deviated`, `failed`, `aborted`,
 `interrupted` or `halted`. `phase` of a step is `hypothesis_before`,
 `method`, `hypothesis_after` or `rollback`. To see every column of a
@@ -79,6 +83,39 @@ table:
 
 ```bash
 tumult analyze --query "DESCRIBE experiments"
+```
+
+## DR tests
+
+The view `dr_tests` lists every DR test of a target in one place. A test
+is a run of kind `dr`, or a manual record of a DR exercise once it is
+submitted or verified. By default `failover`, `drill`, `restore` and
+`backup` are DR exercises. Drafts and rejected records are left out.
+
+| Column | What it holds |
+|---|---|
+| `test_id` | `automated:` or `manual:` and the `evidence_id` |
+| `origin` | `automated` or `manual` |
+| `experiment_name`, `exercise_type` | the name of the test, and the exercise type of a manual record |
+| `target_system`, `target_environment` | the target the test was on |
+| `executed_at_ns` | when the run started or the exercise ran |
+| `outcome` | the status of the run, or the outcome of the record |
+| `rto_target_s`, `rto_measured_s` | the RTO planned and measured. A run that did not recover has no measured RTO |
+| `recovered` | whether the target recovered. Empty when nothing says |
+| `no_outage` | a run whose probes saw no outage, so it measured no recovery. Empty for a manual record |
+| `rpo_target_s`, `rpo_measured_s` | the RPO planned and measured |
+| `data_verified` | a manual record: the data was checked after the recovery |
+| `verdict` | `met`, `breached`, `not_recovered` or `not_measured` |
+| `evidence_id` | the run id, or the id of the manual record |
+| `reviewer`, `plan_id` | a manual record: who verified it, and the plan it fulfils |
+
+The verdict reads the numbers. `not_recovered`: the run did not recover
+while it was watched. `breached`: a measured RTO or RPO is over its
+target. `met`: every target was measured and met. `not_measured`: there
+is no target, or nothing measured one.
+
+```bash
+tumult analyze --query "SELECT target_system, executed_at_ns, origin, verdict FROM dr_tests ORDER BY executed_at_ns DESC"
 ```
 
 ## Export and trends

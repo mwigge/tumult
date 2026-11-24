@@ -38,6 +38,9 @@ pub fn nfr_verdicts_schema() -> Schema {
         Field::new("state", DataType::Utf8, false),
         Field::new("margin", DataType::Float64, true),
         Field::new("criticality", DataType::Utf8, false),
+        // v24: whether the run recovered, and why the verdict is what it is.
+        Field::new("recovered", DataType::Boolean, true),
+        Field::new("reason", DataType::Utf8, true),
     ])
 }
 
@@ -104,6 +107,8 @@ pub fn journal_to_nfr_verdicts_batch(journal: &Journal) -> Result<RecordBatch, A
     let mut states = Vec::with_capacity(n);
     let mut margins = Vec::with_capacity(n);
     let mut crits = Vec::with_capacity(n);
+    let mut recovered = Vec::with_capacity(n);
+    let mut reasons = Vec::with_capacity(n);
     for v in verdicts {
         ids.push(journal.experiment_id.as_str());
         nfr_ids.push(v.nfr_id.as_str());
@@ -115,6 +120,8 @@ pub fn journal_to_nfr_verdicts_batch(journal: &Journal) -> Result<RecordBatch, A
         states.push(v.state.to_string());
         margins.push(v.margin);
         crits.push(v.criticality.to_string());
+        recovered.push(v.recovered);
+        reasons.push(v.reason.as_deref());
     }
     Ok(RecordBatch::try_new(
         Arc::new(nfr_verdicts_schema()),
@@ -129,6 +136,8 @@ pub fn journal_to_nfr_verdicts_batch(journal: &Journal) -> Result<RecordBatch, A
             Arc::new(StringArray::from(states)),
             Arc::new(Float64Array::from(margins)),
             Arc::new(StringArray::from(crits)),
+            Arc::new(BooleanArray::from(recovered)),
+            Arc::new(StringArray::from(reasons)),
         ],
     )?)
 }

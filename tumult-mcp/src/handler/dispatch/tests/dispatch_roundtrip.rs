@@ -226,6 +226,31 @@ async fn call_tool_read_journal_structured_round_trip() {
     assert!(!structured.contains_key("journal"));
 }
 
+/// A draft restore test, for the manual read tools.
+fn conformance_record() -> tumult_lake::NewManualExperiment {
+    tumult_lake::NewManualExperiment {
+        experiment_name: "Conformance restore".into(),
+        exercise_type: tumult_lake::ExerciseType::Restore,
+        executed_at_ns: 1_000,
+        hypothesis: "The backup restores".into(),
+        method: "Restore it".into(),
+        outcome: tumult_lake::ManualOutcome::Passed,
+        hypothesis_met: None,
+        findings: None,
+        action_items: vec![],
+        target_system: None,
+        target_environment: None,
+        blast_radius: None,
+        recovery_time_s: None,
+        duration_s: None,
+        entered_by: "alice".into(),
+        attestation: "As run.".into(),
+        renewal_due_ns: None,
+        framework_refs: vec![],
+        exercise: tumult_lake::ExerciseDetail::default(),
+    }
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[allow(clippy::too_many_lines)]
 async fn structured_content_conforms_to_advertised_schema_for_all_structured_tools() {
@@ -273,6 +298,13 @@ async fn structured_content_conforms_to_advertised_schema_for_all_structured_too
             })
             .unwrap();
     }
+
+    // A manual record for `tumult_manual_get`.
+    let manual_id = tumult_lake::Store::at(&store_path)
+        .writer()
+        .unwrap()
+        .create_manual_draft(&conformance_record())
+        .unwrap();
 
     // Ordered so the run writes journal.toon before read_journal uses it.
     let calls: Vec<(&str, serde_json::Value)> = vec![
@@ -407,6 +439,32 @@ async fn structured_content_conforms_to_advertised_schema_for_all_structured_too
                 "dir": export_dir.to_str().unwrap(),
                 "store_path": store_path.to_str().unwrap(),
             }),
+        ),
+        (
+            "tumult_manual_list",
+            serde_json::json!({ "store_path": store_path.to_str().unwrap() }),
+        ),
+        (
+            "tumult_manual_get",
+            serde_json::json!({ "id": manual_id, "store_path": store_path.to_str().unwrap() }),
+        ),
+        (
+            "tumult_manual_create_draft",
+            serde_json::json!({
+                "experiment_name": "Conformance restore",
+                "exercise_type": "restore",
+                "executed_at_ns": 1_000,
+                "hypothesis": "The backup restores",
+                "method": "Restore it",
+                "outcome_status": "passed",
+                "entered_by": "alice",
+                "attestation": "As run.",
+                "store_path": store_path.to_str().unwrap(),
+            }),
+        ),
+        (
+            "tumult_manual_plans_list",
+            serde_json::json!({ "store_path": store_path.to_str().unwrap() }),
         ),
     ];
 

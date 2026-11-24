@@ -209,6 +209,11 @@
   "route": "/runs"
  },
  {
+  "name": "dr",
+  "route": "/dr",
+  "height": 1000
+ },
+ {
   "name": "manual",
   "route": "/manual",
   "steps": [

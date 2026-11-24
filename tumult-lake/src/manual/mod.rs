@@ -26,8 +26,19 @@
 //! sign-off is a `manual_signoffs` row chained to the one before it, and
 //! every audit row links the row before it ([`chain`]), so the audit
 //! verify ([`verify`]) finds a direct edit or a deleted row.
+//!
+//! A file may be attached as evidence in any status ([`files`]): it is
+//! stored once in the lake folder by its SHA-256, and its attach audit
+//! row names it without changing the seal.
+//!
+//! A record cites only DORA requirements the registry knows (its
+//! `framework_refs` are checked on every write). Its findings and actions
+//! have a [`Severity`], an action may name its [`Retest`], a record names
+//! its [`Tester`], and a record of type `tlpt` holds its [`TlptDetail`].
+//! All of them are sealed.
 
 mod chain;
+pub(crate) mod files;
 mod hash;
 mod plans;
 mod reader;
@@ -36,8 +47,14 @@ mod writer;
 
 use std::fmt;
 
+use tumult_core::compliance::{check_reference, UnknownRequirement};
+pub use tumult_core::types::{Tester, TesterKind};
+
 use crate::StoreError;
 
+pub use files::{
+    attachments_dir, stored_file, FileError, FileUpload, StagedFile, MAX_FILE_BYTES, MEDIA_TYPES,
+};
 pub use plans::{NewExercisePlan, PlanDetail, PlanEdit, PlanFilter, PlanStatus};
 pub use reader::ManualDetail;
 pub use verify::{AuditProblem, AuditVerdict};
@@ -130,8 +147,8 @@ impl ManualOutcome {
     }
 }
 
-/// Evidence attachment kinds. The API currently accepts `url` and `ticket`
-/// only (no file storage); `file` and `log_excerpt` are reserved.
+/// Evidence attachment kinds. A `url` or a `ticket` is a link; a `file` is
+/// stored in the lake folder (the `files` module). `log_excerpt` is reserved.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AttachmentKind {
     File,
@@ -239,6 +256,93 @@ impl LinkKind {
     }
 }
 
+/// How much a finding or an action matters. DORA Art. 24(5) asks that the
+/// issues a test reveals are prioritised and classified.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Severity {
+    Low,
+    Medium,
+    High,
+    Critical,
+}
+
+impl Severity {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Low => "low",
+            Self::Medium => "medium",
+            Self::High => "high",
+            Self::Critical => "critical",
+        }
+    }
+
+    pub fn parse(s: &str) -> Result<Self, ManualError> {
+        Ok(match s {
+            "low" => Self::Low,
+            "medium" => Self::Medium,
+            "high" => Self::High,
+            "critical" => Self::Critical,
+            other => {
+                return Err(ManualError::Invalid(format!(
+                    "unknown severity '{other}' (low|medium|high|critical)"
+                )))
+            }
+        })
+    }
+}
+
+/// What retested an action once it was done: an automated run, by its
+/// experiment id, or another manual record, by its id.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RetestKind {
+    Run,
+    Record,
+}
+
+impl RetestKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Run => "run",
+            Self::Record => "record",
+        }
+    }
+
+    pub fn parse(s: &str) -> Result<Self, ManualError> {
+        Ok(match s {
+            "run" => Self::Run,
+            "record" => Self::Record,
+            other => {
+                return Err(ManualError::Invalid(format!(
+                    "unknown retest kind '{other}' (run|record)"
+                )))
+            }
+        })
+    }
+}
+
+/// The run or the record that retested an action. Only the kind is
+/// checked, as for a link: the retest may be stored later or elsewhere.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Retest {
+    pub kind: RetestKind,
+    pub id: String,
+}
+
+/// The TLPT facts of a record of type `tlpt`, under the TLPT RTS
+/// (Delegated Regulation (EU) 2025/1190): the attestation the TLPT
+/// authority issued and its date (Art. 14), and the test summary report
+/// (Art. 12). The remediation plan (Art. 13) is the actions of the record,
+/// each with its owner, due date, severity and retest.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct TlptDetail {
+    /// The reference of the attestation, as the TLPT authority gave it.
+    pub attestation_ref: Option<String>,
+    /// When the attestation was issued, in unix nanoseconds.
+    pub attested_at_ns: Option<i64>,
+    /// The reference of the test summary report.
+    pub summary_report_ref: Option<String>,
+}
+
 /// One person who took part in an exercise, and the role they had.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Participant {
@@ -266,6 +370,9 @@ pub struct ActionItem {
     pub due_at_ns: Option<i64>,
     /// A ticket key or URL that tracks the action.
     pub ticket: Option<String>,
+    pub severity: Option<Severity>,
+    /// The run or the record that retested the action.
+    pub retest: Option<Retest>,
 }
 
 /// A link from a record to what the exercise tested.
@@ -302,6 +409,12 @@ pub struct ExerciseDetail {
     /// The plan this exercise fulfils once the record is verified. It must
     /// name a planned plan of the same exercise type.
     pub plan_id: Option<String>,
+    /// How much the findings matter.
+    pub findings_severity: Option<Severity>,
+    /// Who ran the test, internal or external (DORA Art. 24(4)).
+    pub tester: Option<Tester>,
+    /// The TLPT facts. Only a record of type `tlpt` takes them.
+    pub tlpt: Option<TlptDetail>,
 }
 
 /// `Invalid` naming `field` of the `n`th (1-based) `what` when `value` is blank.
@@ -343,6 +456,21 @@ impl ExerciseDetail {
         for (n, action) in (1..).zip(&self.actions) {
             require("action", n, "title", &action.title)?;
             require("action", n, "owner", &action.owner)?;
+            if let Some(retest) = &action.retest {
+                require("action", n, "retest id", &retest.id)?;
+            }
+        }
+        if self
+            .tester
+            .as_ref()
+            .is_some_and(|tester| tester.name.trim().is_empty())
+        {
+            return Err(ManualError::Invalid(
+                "'tester.name' must not be empty".into(),
+            ));
+        }
+        if let Some(tlpt) = &self.tlpt {
+            tlpt.validate()?;
         }
         for (n, link) in (1..).zip(&self.links) {
             require("link", n, "linked_id", &link.linked_id)?;
@@ -353,6 +481,27 @@ impl ExerciseDetail {
             .is_some_and(|id| id.trim().is_empty())
         {
             return Err(ManualError::Invalid("'plan_id' must not be empty".into()));
+        }
+        Ok(())
+    }
+}
+
+impl TlptDetail {
+    fn validate(&self) -> Result<(), ManualError> {
+        for (field, value) in [
+            ("attestation_ref", &self.attestation_ref),
+            ("summary_report_ref", &self.summary_report_ref),
+        ] {
+            if value.as_deref().is_some_and(|v| v.trim().is_empty()) {
+                return Err(ManualError::Invalid(format!(
+                    "tlpt '{field}' must not be empty"
+                )));
+            }
+        }
+        if self.attested_at_ns.is_some_and(|at| at <= 0) {
+            return Err(ManualError::Invalid(
+                "tlpt 'attested_at_ns' must be a positive unix-nanos timestamp".into(),
+            ));
         }
         Ok(())
     }
@@ -423,8 +572,8 @@ impl fmt::Display for PlanError {
 
 /// Errors from the manual-evidence lifecycle. The API layer maps:
 /// `Invalid` → 400, `NotFound` → 404, `WrongStatus` → 409,
-/// `SelfReview`/`AlreadySigned` → 422, `Plan` as [`PlanError`] says,
-/// `Store` → 500.
+/// `SelfReview`/`AlreadySigned`/`UnknownRequirement` → 422, `Plan` as
+/// [`PlanError`] says, `Store` → 500.
 #[derive(Debug)]
 pub enum ManualError {
     /// Bad input (unknown enum value, empty required field).
@@ -437,6 +586,9 @@ pub enum ManualError {
     SelfReview,
     /// This user has signed the record off already: one user signs once.
     AlreadySigned(String),
+    /// A framework reference names a DORA requirement the registry does
+    /// not know.
+    UnknownRequirement(UnknownRequirement),
     /// A plan write that cannot be done, or a plan a record cannot fulfil.
     Plan(PlanError),
     /// Underlying store failure.
@@ -458,6 +610,7 @@ impl fmt::Display for ManualError {
                 )
             }
             Self::AlreadySigned(by) => write!(f, "'{by}' has already signed off this record"),
+            Self::UnknownRequirement(e) => write!(f, "framework_refs: {e}"),
             Self::Plan(e) => write!(f, "{e}"),
             Self::Store(e) => write!(f, "store error: {e}"),
         }
@@ -505,6 +658,10 @@ pub struct NewManualExperiment {
     pub entered_by: String,
     pub attestation: String,
     pub renewal_due_ns: Option<i64>,
+    /// The requirements the record cites. A DORA requirement must be one
+    /// the registry knows: its registry id (`dora.art24.6`) or an older
+    /// form of it (`DORA Art. 24(6)`), kept as written. A reference to
+    /// another framework (`ISO 27001 A.5.30`) is kept unchecked.
     pub framework_refs: Vec<String>,
     /// The DR facts, participants, steps, actions, links and the plan the
     /// record fulfils (schema v22).
@@ -527,6 +684,14 @@ impl NewManualExperiment {
         if self.executed_at_ns <= 0 {
             return Err(ManualError::Invalid(
                 "'executed_at_ns' must be a positive unix-nanos timestamp".into(),
+            ));
+        }
+        for reference in &self.framework_refs {
+            check_reference(reference).map_err(ManualError::UnknownRequirement)?;
+        }
+        if self.exercise.tlpt.is_some() && self.exercise_type != ExerciseType::Tlpt {
+            return Err(ManualError::Invalid(
+                "the tlpt block is for a record of exercise_type 'tlpt' only".into(),
             ));
         }
         self.exercise.validate()
@@ -707,5 +872,49 @@ mod tests {
             matches!(&err, ManualError::Invalid(msg) if msg.contains("positive unix-nanos")),
             "{err:?}"
         );
+    }
+
+    fn step(started_at_ns: i64, ended_at_ns: i64) -> ExerciseStep {
+        ExerciseStep {
+            title: "Promote the standby".into(),
+            actor: None,
+            started_at_ns: Some(started_at_ns),
+            ended_at_ns: Some(ended_at_ns),
+            result: None,
+            note: None,
+        }
+    }
+
+    #[test]
+    fn a_step_may_end_when_it_starts_and_a_dr_number_may_be_zero() {
+        // A step that took no time, and an RTO and RPO of 0 s (no outage,
+        // no data lost), are what was seen: they are kept.
+        let mut at_the_bounds = valid();
+        at_the_bounds.exercise.steps = vec![step(5, 5)];
+        at_the_bounds.exercise.rto_target_s = Some(0.0);
+        at_the_bounds.exercise.rpo_target_s = Some(0.0);
+        at_the_bounds.exercise.rpo_measured_s = Some(0.0);
+        assert!(
+            at_the_bounds.validate().is_ok(),
+            "{:?}",
+            at_the_bounds.validate()
+        );
+
+        let mut backwards = valid();
+        backwards.exercise.steps = vec![step(5, 4)];
+        let err = backwards.validate().unwrap_err();
+        assert!(
+            matches!(&err, ManualError::Invalid(msg) if msg == "step 1 ends before it starts"),
+            "{err:?}"
+        );
+        for bad in [-0.001, f64::NAN, f64::INFINITY] {
+            let mut below = valid();
+            below.exercise.rpo_measured_s = Some(bad);
+            let err = below.validate().unwrap_err();
+            assert!(
+                matches!(&err, ManualError::Invalid(msg) if msg.contains("'rpo_measured_s'")),
+                "{bad}: {err:?}"
+            );
+        }
     }
 }

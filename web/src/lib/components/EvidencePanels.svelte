@@ -51,7 +51,7 @@
 {:else}
     {@const before = evidence.hypothesis.before_met}
     {@const after = evidence.hypothesis.after_met}
-    {@const recovery = recoveryRows(evidence.recovery)}
+    {@const recovery = recoveryRows(evidence.recovery, evidence.objectives)}
     {@const note = samplesNote(evidence)}
     <div class="grid cols-2 block">
         <div class="panel" data-testid="evidence-steady">

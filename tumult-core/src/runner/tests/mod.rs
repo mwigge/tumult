@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
+mod analysis_tests;
 mod background_tests;
 mod controls_tests;
 mod exec_tests;

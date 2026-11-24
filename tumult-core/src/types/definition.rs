@@ -255,6 +255,11 @@ pub enum LoadProfile {
         after_s: f64,
         /// Seconds the spike is held.
         hold_s: f64,
+        /// Seconds between streamed samples. Each stage is cut into
+        /// windows this long, so the windows after the spike show when
+        /// the target is back. Unset, each stage is one window.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        sample_interval_s: Option<f64>,
     },
     /// Constant `vus` for the whole (long) duration, with the tool's
     /// summary sampled every `sample_interval_s` so the run streams a time
@@ -292,11 +297,52 @@ pub struct LoadConfig {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RegulatoryRequirement {
-    /// Canonical requirement identifier (e.g. `DORA-Art24`).
+    /// Requirement identifier. A DORA requirement is best named by its
+    /// registry id (e.g. `dora.art24.6`); the older forms `DORA-Art24`,
+    /// `DORA Art. 24(6)` and a bare `Art. 24` under a DORA mapping read as
+    /// the same id (see [`crate::compliance::run_requirement_id`]).
     pub id: String,
     pub description: String,
     /// Short statement of the evidence the experiment provides.
     pub evidence: String,
+}
+
+/// Whether a tester is part of the entity or comes from outside it. DORA
+/// Art. 24(4) asks that tests are run by independent parties, internal or
+/// external.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum TesterKind {
+    Internal,
+    External,
+}
+
+impl TesterKind {
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Internal => "internal",
+            Self::External => "external",
+        }
+    }
+
+    /// The kind named `name`; `None` for any other text.
+    #[must_use]
+    pub fn parse(name: &str) -> Option<Self> {
+        match name {
+            "internal" => Some(Self::Internal),
+            "external" => Some(Self::External),
+            _ => None,
+        }
+    }
+}
+
+/// Who ran a test: a person, a team or a firm, and its kind.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Tester {
+    pub name: String,
+    pub kind: TesterKind,
 }
 
 /// Regulatory mapping attached to an experiment or `GameDay`.
@@ -307,6 +353,10 @@ pub struct RegulatoryMapping {
     pub frameworks: Vec<String>,
     /// Individual requirements the experiment provides evidence for.
     pub requirements: Vec<RegulatoryRequirement>,
+    /// Who runs the test, internal or external (DORA Art. 24(4)). A run
+    /// copies it into its journal with the rest of the block.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tester: Option<Tester>,
 }
 
 // ── Non-functional objectives ──────────────────────────────────
@@ -696,9 +746,38 @@ mod tests {
                 description: "ICT resilience testing programme".into(),
                 evidence: "Recovery within RTO".into(),
             }],
+            tester: Some(Tester {
+                name: "Red Team Ltd".into(),
+                kind: TesterKind::External,
+            }),
         };
         let decoded: RegulatoryMapping = toon_round_trip(&mapping);
         assert_eq!(decoded, mapping);
+    }
+
+    #[test]
+    fn a_tester_kind_reads_and_writes_its_name() {
+        for (kind, name) in [
+            (TesterKind::Internal, "internal"),
+            (TesterKind::External, "external"),
+        ] {
+            assert_eq!(kind.as_str(), name);
+            assert_eq!(TesterKind::parse(name), Some(kind));
+        }
+        assert_eq!(TesterKind::parse("vendor"), None);
+    }
+
+    #[test]
+    fn a_regulatory_block_without_a_tester_reads_as_before() {
+        let text = "frameworks[1]: DORA\nrequirements[1]:\n  - id: Art. 25\n    \
+                    description: d\n    evidence: e\n";
+        let decoded: RegulatoryMapping = toon_format::decode_default(text).unwrap();
+        assert_eq!(decoded.tester, None);
+        let named = format!("{text}tester:\n  name: Red Team Ltd\n  kind: external\n");
+        let decoded: RegulatoryMapping = toon_format::decode_default(&named).unwrap();
+        assert_eq!(decoded.tester.map(|t| t.kind), Some(TesterKind::External));
+        let bad = named.replace("external", "vendor");
+        assert!(toon_format::decode_default::<RegulatoryMapping>(&bad).is_err());
     }
 
     #[test]
@@ -922,6 +1001,27 @@ mod tests {
             exp.load.as_ref().and_then(|l| l.profile.as_ref()),
             Some(LoadProfile::Soak { .. })
         ));
+    }
+
+    #[test]
+    fn a_spike_with_a_sample_interval_parses_and_one_without_writes_none() {
+        let spike = "title: t\nload:\n  tool: oha\n  script: http://localhost:8080/\n  vus: 10\n  duration_s: 60\n  profile:\n    type: spike\n    peak_vus: 200\n    after_s: 20\n    hold_s: 10\n    sample_interval_s: 2\n";
+        let exp: Experiment = toon_format::decode_default(spike).expect("parse spike");
+        assert_eq!(
+            exp.load.as_ref().and_then(|l| l.profile.clone()),
+            Some(LoadProfile::Spike {
+                peak_vus: 200,
+                after_s: 20.0,
+                hold_s: 10.0,
+                sample_interval_s: Some(2.0),
+            })
+        );
+        assert_eq!(toon_round_trip(&exp), exp);
+
+        let without = spike.replace("    sample_interval_s: 2\n", "");
+        let exp: Experiment = toon_format::decode_default(&without).expect("parse spike");
+        let written = toon_format::encode_default(&exp).expect("encode");
+        assert!(!written.contains("sample_interval_s"), "{written}");
     }
 
     #[test]

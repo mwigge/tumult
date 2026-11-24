@@ -4,7 +4,9 @@
 //! A record is sealed in the form of its `hash_version`. Version 1 is
 //! [`CanonicalContent`] alone, the form of every row sealed before schema
 //! v22. Version 2 ([`SealV2`]) holds version 1 and adds the id, the entry
-//! time, the DR facts, the steps, the actions, the links and the reviewer.
+//! time, the DR facts, the steps, the actions, the links and the reviewer,
+//! and, when they are set, the severities, the tester, the TLPT block and
+//! the retests.
 //! Every lifecycle write seals the row again in version 2; the audit verify
 //! recomputes a stored seal in the version it was made in.
 //!
@@ -73,7 +75,9 @@ struct StepSeal {
 }
 
 /// An action as entered. Its tracking columns (`status`, `closed_at_ns`,
-/// `closed_by`) change after sign-off and are left out.
+/// `closed_by`) change after sign-off and are left out. The fields from
+/// `severity` on came later: they are left out when empty, so an action
+/// sealed before them keeps its seal.
 #[derive(Serialize, Deserialize)]
 struct ActionSeal {
     ordinal: i64,
@@ -81,6 +85,12 @@ struct ActionSeal {
     owner: String,
     due_at_ns: Option<i64>,
     ticket: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    severity: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    retest_kind: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    retest_id: Option<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -91,7 +101,9 @@ struct LinkSeal {
     label: Option<String>,
 }
 
-/// The version 2 form, in this fixed order.
+/// The version 2 form, in this fixed order. The fields from
+/// `findings_severity` on came with the gaps of the DORA report: they are
+/// left out when empty, so a record sealed before them keeps its seal.
 #[derive(Serialize)]
 struct SealV2<'a> {
     hash_version: i64,
@@ -111,6 +123,18 @@ struct SealV2<'a> {
     reviewed_by: Option<&'a str>,
     reviewed_at_ns: Option<i64>,
     review_note: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    findings_severity: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tester: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tester_kind: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tlpt_attestation_ref: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tlpt_attested_at_ns: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tlpt_summary_ref: Option<&'a str>,
 }
 
 /// The seal of a plan, in this fixed order: never reorder a field.
@@ -345,6 +369,12 @@ pub(crate) fn seal_of(
         reviewed_by: opt_s("reviewed_by"),
         reviewed_at_ns: int("reviewed_at_ns"),
         review_note: opt_s("review_note"),
+        findings_severity: opt_s("findings_severity"),
+        tester: opt_s("tester"),
+        tester_kind: opt_s("tester_kind"),
+        tlpt_attestation_ref: opt_s("tlpt_attestation_ref"),
+        tlpt_attested_at_ns: int("tlpt_attested_at_ns"),
+        tlpt_summary_ref: opt_s("tlpt_summary_ref"),
     };
     Ok(content_hash(&seal))
 }
@@ -410,7 +440,8 @@ mod tests {
     use super::*;
     use crate::manual::{
         ActionItem, ExerciseDetail, ExerciseLink, ExerciseStep, ExerciseType, LinkKind,
-        ManualOutcome, NewExercisePlan, NewManualExperiment, Participant, PlanEdit, StepResult,
+        ManualOutcome, NewExercisePlan, NewManualExperiment, Participant, PlanEdit, Retest,
+        RetestKind, Severity, StepResult, Tester, TesterKind,
     };
     use crate::Store;
 
@@ -456,6 +487,11 @@ mod tests {
                     owner: "carol".into(),
                     due_at_ns: Some(9_000),
                     ticket: None,
+                    severity: Some(Severity::High),
+                    retest: Some(Retest {
+                        kind: RetestKind::Run,
+                        id: "exp-retest".into(),
+                    }),
                 }],
                 links: vec![ExerciseLink {
                     kind: LinkKind::Function,
@@ -463,6 +499,12 @@ mod tests {
                     label: None,
                 }],
                 plan_id: None,
+                findings_severity: Some(Severity::Medium),
+                tester: Some(Tester {
+                    name: "Red Team Ltd".into(),
+                    kind: TesterKind::External,
+                }),
+                tlpt: None,
             },
         }
     }
@@ -511,6 +553,15 @@ mod tests {
             "UPDATE manual_experiment_links SET linked_id = 'cif-0002' WHERE experiment_id = ?",
             "UPDATE manual_experiment_links SET kind = 'entity' WHERE experiment_id = ?",
             "DELETE FROM manual_exercise_steps WHERE experiment_id = ?",
+            "UPDATE manual_experiments SET findings_severity = 'low' WHERE id = ?",
+            "UPDATE manual_experiments SET tester = 'mallory' WHERE id = ?",
+            "UPDATE manual_experiments SET tester_kind = 'internal' WHERE id = ?",
+            "UPDATE manual_experiments SET tlpt_attestation_ref = 'ATT-9' WHERE id = ?",
+            "UPDATE manual_experiments SET tlpt_attested_at_ns = 5 WHERE id = ?",
+            "UPDATE manual_experiments SET tlpt_summary_ref = 'TSR-9' WHERE id = ?",
+            "UPDATE manual_action_items SET severity = 'low' WHERE experiment_id = ?",
+            "UPDATE manual_action_items SET retest_kind = 'record' WHERE experiment_id = ?",
+            "UPDATE manual_action_items SET retest_id = 'other' WHERE experiment_id = ?",
         ];
         for sql in covered {
             assert_ne!(hash_after(conn, &id, sql), stored, "not sealed: {sql}");
@@ -523,6 +574,32 @@ mod tests {
         for sql in left_out {
             assert_eq!(hash_after(conn, &id, sql), stored, "sealed: {sql}");
         }
+    }
+
+    /// A record of fixed content with an action, and none of the fields the
+    /// DORA gap report added (severity, tester, TLPT block, retest): its
+    /// version 2 seal is the one it had before those fields existed.
+    #[test]
+    fn a_record_without_the_dora_gap_fields_keeps_the_seal_it_had() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let store = Store::open(&dir.path().join("kronika.duckdb")).unwrap();
+        let writer = store.writer().unwrap();
+        let conn = &writer.conn;
+        conn.execute_batch(
+            "INSERT INTO manual_experiments (id, experiment_name, exercise_type, \
+             executed_at_ns, hypothesis, method, outcome_status, entered_by, entered_at_ns, \
+             attestation, status, framework_refs, content_hash, hash_version) VALUES \
+             ('m-fixed', 'drill', 'drill', 1000, 'h', 'm', 'passed', 'alice', 2000, 'a', \
+             'draft', ['dora.art24.6'], '', 2); \
+             INSERT INTO manual_action_items (id, experiment_id, ordinal, title, owner) \
+             VALUES ('a-1', 'm-fixed', 1, 'tune', 'carol');",
+        )
+        .unwrap();
+        let row = fetch_row(conn, "m-fixed").unwrap().unwrap();
+        assert_eq!(
+            seal_of(conn, "m-fixed", &row, 2).unwrap(),
+            "f32b563b19ca02554b77d8dcb277d3b9f6603729a879285640f6dda6b0a1f5bf"
+        );
     }
 
     /// Run `sql` on the plan and give the hash it would have then, leaving

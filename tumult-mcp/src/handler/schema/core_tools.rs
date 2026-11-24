@@ -219,7 +219,7 @@ pub struct ListExperimentsTool {
 /// Inline output is capped at 512 KiB; HTML/PDF reports are CLI-only.
 #[macros::mcp_tool(
     name = "tumult_report",
-    description = "Render an experiment journal as a report: format=json (raw journal JSON, default) or format=junit (JUnit XML, one testcase per step and one per check of the steady state). With output_path the report is written inside the workspace and the path is returned; otherwise the content is returned inline (capped at 512 KiB). HTML/PDF reports are CLI-only.",
+    description = "Render an experiment journal as a report: format=json (raw journal JSON, default) or format=junit (JUnit XML, one testcase per step, one per check of the steady state and one per objective). With output_path the report is written inside the workspace and the path is returned; otherwise the content is returned inline (capped at 512 KiB). HTML/PDF reports are CLI-only.",
     destructive_hint = false,
     read_only_hint = false,
     idempotent_hint = true,
@@ -257,7 +257,7 @@ pub struct ComplianceTool {
 /// Arguments for the `tumult_trend` tool.
 #[macros::mcp_tool(
     name = "tumult_trend",
-    description = "Cross-run metric trend over journals (a .toon journal file or a directory of them): metric one of resilience_score (default), duration_ms, estimate_accuracy, method_step_count; optional last window (e.g. 30d) and target (the system or the technology the journal names). Returns time-ordered points and a direction verdict.",
+    description = "Cross-run metric trend over journals (a .toon journal file or a directory of them): metric one of resilience_score (default), duration_ms, estimate_accuracy, method_step_count, rto_measured_s, rto_margin_s, rpo_measured_s, rpo_margin_s; optional last window (e.g. 30d) and target (the system or the technology the journal names). Returns time-ordered points and a direction verdict. A run that did not recover is a point with recovered false and a bound; runs that saw no outage or measured nothing are counted, not points.",
     read_only_hint = true,
     idempotent_hint = true,
     open_world_hint = false
@@ -267,7 +267,8 @@ pub struct TrendTool {
     /// Journal `.toon` file or directory containing journal files.
     pub journals_path: String,
     /// Metric to track: `resilience_score` (default), `duration_ms`,
-    /// `estimate_accuracy`, or `method_step_count`.
+    /// `estimate_accuracy`, `method_step_count`, `rto_measured_s`,
+    /// `rto_margin_s`, `rpo_measured_s` or `rpo_margin_s`.
     #[serde(default = "default_trend_metric")]
     pub metric: String,
     /// Time window in days (e.g. `30d`).

@@ -60,6 +60,8 @@ fn dr_detail() -> ExerciseDetail {
             owner: "carol".into(),
             due_at_ns: Some(130 * DAY),
             ticket: Some("OPS-12".into()),
+            severity: None,
+            retest: None,
         }],
         links: vec![
             ExerciseLink {
@@ -74,6 +76,9 @@ fn dr_detail() -> ExerciseDetail {
             },
         ],
         plan_id: None,
+        findings_severity: None,
+        tester: None,
+        tlpt: None,
     }
 }
 
@@ -446,7 +451,10 @@ const V21_MANUAL: &[&str] = &[
         CAST('[\"tune the restore\"]' AS JSON), 'payments-db', 'production', 4100.0,
         'alice', 1000, 'att', 'draft', ['DORA Art. 12(2)'], 'hash-v21')",
     "INSERT INTO manual_experiment_audit VALUES
-        ('a-v21', 'm-v21', 'alice', 1000, 'create', '{}', NULL, 'hash-v21')",
+        ('a-v21', 'm-v21', 'alice', 1000, 'create', '{}', NULL, 'hash-v21'),
+        ('a-v21-attach', 'm-v21', 'alice', 1000, 'attach',
+         '{\"attachment_id\":\"e-v21\",\"kind\":\"url\",\"uri\":\"https://wiki.example/drill\",\"label\":\"log\"}',
+         'hash-v21', 'hash-v21')",
     "INSERT INTO evidence_attachments VALUES
         ('e-v21', 'm-v21', 'url', 'https://wiki.example/drill', 'log', NULL, 'alice', 1000)",
     "UPDATE schema_meta SET value = 21 WHERE key = 'version'",
@@ -491,7 +499,7 @@ fn a_v21_lake_gains_the_dr_columns_and_keeps_its_records() {
 
     let columns = columns_of(&store, "manual_experiments");
     assert_eq!(
-        columns[columns.len() - 7..],
+        columns[columns.len() - 13..],
         [
             "rto_target_s",
             "rpo_target_s",
@@ -499,9 +507,20 @@ fn a_v21_lake_gains_the_dr_columns_and_keeps_its_records() {
             "data_verified",
             "participants",
             "plan_id",
-            "hash_version"
+            "hash_version",
+            "findings_severity",
+            "tester",
+            "tester_kind",
+            "tlpt_attestation_ref",
+            "tlpt_attested_at_ns",
+            "tlpt_summary_ref"
         ]
     );
+    assert!(columns_of(&store, "manual_action_items").ends_with(&[
+        "severity".to_string(),
+        "retest_kind".to_string(),
+        "retest_id".to_string()
+    ]));
     assert!(columns_of(&store, "evidence_attachments")
         .ends_with(&["media_type".to_string(), "size_bytes".to_string()]));
     assert!(columns_of(&store, "manual_experiment_audit").ends_with(&["link_hash".to_string()]));
@@ -636,20 +655,21 @@ fn a_v1_record_of_a_v21_lake_verifies_and_its_audit_rows_are_a_legacy_prefix() {
     assert!(verdict.problems.is_empty(), "{verdict:?}");
 
     // The v21 draft is submitted now: the chain starts after its legacy
-    // create row, and the new row links.
+    // create and attach rows, and the new row links.
     let writer = store.writer().unwrap();
     writer.submit_manual("m-v21", None, "alice").unwrap();
     let reader = store.read_only().unwrap();
     let verdict = reader.verify_manual_record("m-v21").unwrap().unwrap();
     assert!(verdict.ok, "{verdict:?}");
-    assert_eq!((verdict.hash_version, verdict.legacy_rows), (Some(2), 1));
+    assert_eq!((verdict.hash_version, verdict.legacy_rows), (Some(2), 2));
     let audit = reader
         .manual_experiment_detail("m-v21")
         .unwrap()
         .unwrap()
         .audit;
     assert_eq!(audit[0]["link_hash"], Value::Null);
-    assert_eq!(audit[1]["link_hash"].as_str().map(str::len), Some(64));
+    assert_eq!(audit[1]["link_hash"], Value::Null);
+    assert_eq!(audit[2]["link_hash"].as_str().map(str::len), Some(64));
 
     // The version 1 seal still covers the content, and the audit trail
     // names the reviewer the seal leaves out. A reader opened after each
@@ -703,5 +723,52 @@ fn a_v1_record_of_a_v21_lake_verifies_and_its_audit_rows_are_a_legacy_prefix() {
                 && p.row == "a-v1-3"
                 && p.field.as_deref() == Some("prev_hash")),
         "{verdict:?}"
+    );
+}
+
+#[test]
+fn the_seal_problem_says_what_the_seal_of_its_version_covers() {
+    let d = tempfile::TempDir::new().unwrap();
+    let path = d.path().join("kronika.duckdb");
+    {
+        let store = Store::open(&path).unwrap();
+        let writer = store.writer().unwrap();
+        for sql in V21_MANUAL {
+            writer.execute(sql, []).unwrap();
+        }
+        for sql in verified_v1_record() {
+            writer.execute(&sql, []).unwrap();
+        }
+    }
+    let store = Store::open(&path).unwrap();
+    let writer = store.writer().unwrap();
+    let v2 = writer.create_manual_draft(&restore_test("alice")).unwrap();
+    writer
+        .execute(
+            "UPDATE manual_experiments SET findings = 'changed later'",
+            [],
+        )
+        .unwrap();
+
+    let reader = store.read_only().unwrap();
+    let says = |id: &str| {
+        let verdict = reader.verify_manual_record(id).unwrap().unwrap();
+        verdict
+            .problems
+            .into_iter()
+            .find(|p| p.table == "manual_experiments" && p.field.is_none())
+            .unwrap_or_else(|| panic!("no seal problem for {id}"))
+            .problem
+    };
+    assert_eq!(
+        says("m-v1"),
+        "the stored seal is not the seal of the record: a column of the record was \
+         changed after it was sealed (a version 1 seal does not cover the reviewer, the \
+         steps, the actions or the links)"
+    );
+    assert_eq!(
+        says(&v2),
+        "the stored seal is not the seal of the record: a column of the record, a step, an \
+         action or a link was changed after it was sealed"
     );
 }

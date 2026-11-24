@@ -40,9 +40,9 @@ pub fn cmd_compliance(
     // The signals are counted from the journals themselves, by
     // tumult_core::compliance::ComplianceSignals (the single source of truth
     // shared with the MCP server): the analytics `experiments` table has no
-    // MTTR column. Recovery is counted from the runs that watched for it,
-    // the ones with a post phase. A run that only completed is in the pass
-    // rate and is no sign of recovery.
+    // MTTR column. Recovery is counted from the runs that measured one, each
+    // against its own RTO or the default target. A run that only completed
+    // is in the pass rate and is no sign of recovery.
     let mut signals = ComplianceSignals::default();
 
     if journals_path.is_dir() {
@@ -87,8 +87,8 @@ pub fn cmd_compliance(
     }
 
     // Compliance verdict derived from the journal-level pass rate and the
-    // share of the watched runs that recovered within the target (pass rate
-    // only when no run watched). The verdict token is an EVIDENCE-strength
+    // share of the runs that recovered within their target (pass rate only
+    // when no run measured a recovery). The verdict token is an EVIDENCE-strength
     // signal, not a compliance attestation — see EVIDENCE_DISCLAIMER above.
     let pass_rate = signals.pass_rate();
     let recovery_compliance: Option<f64> = signals.recovery_compliance(MTTR_TARGET_S);

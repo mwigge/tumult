@@ -46,6 +46,23 @@ pub const OUTCOME: &str = "resilience.outcome.status";
 pub const HYPOTHESIS_MET: &str = "resilience.outcome.hypothesis_met";
 /// Span attribute key for the recovery time, in seconds.
 pub const RECOVERY_TIME_S: &str = "resilience.outcome.recovery_time_s";
+/// Span attribute key recording whether the probes saw an outage after the
+/// fault started.
+pub const IMPACT_OBSERVED: &str = "resilience.outcome.impact_observed";
+/// Span attribute key recording whether the target came back from the
+/// outage while the run watched, as the verdict on the RTO says.
+pub const RECOVERED: &str = "resilience.outcome.recovered";
+/// Span attribute key for the recovery time objective, in seconds.
+pub const RTO_TARGET_S: &str = "resilience.outcome.rto_target_s";
+/// Span attribute key for the verdict on the recovery time objective.
+pub const RTO_STATE: &str = "resilience.outcome.rto_state";
+/// Span attribute key for the recovery point objective, in seconds.
+pub const RPO_TARGET_S: &str = "resilience.outcome.rpo_target_s";
+/// Span attribute key for the seconds of data lost, as the run measured
+/// them.
+pub const RPO_MEASURED_S: &str = "resilience.outcome.rpo_measured_s";
+/// Span attribute key for the verdict on the recovery point objective.
+pub const RPO_STATE: &str = "resilience.outcome.rpo_state";
 
 // Execution
 /// Span attribute key for the execution target.

@@ -254,6 +254,10 @@ pub struct Evidence {
     /// The run watched for recovery and its target did not come back: a
     /// failed recovery with no recovery time.
     pub unrecovered: bool,
+    /// Whether the run ran a step that backs up or restores data, and
+    /// whether every such step succeeded: `None` when it ran none,
+    /// `Some(false)` when one failed. `None` for a manual record.
+    pub restore_step: Option<bool>,
 }
 
 impl Evidence {
@@ -280,6 +284,17 @@ impl Evidence {
             rpo_target_s: None,
             rpo_measured_s: None,
             unrecovered: false,
+            restore_step: None,
+        }
+    }
+
+    /// A passed `dr` run against one function whose backup or restore
+    /// step succeeded.
+    #[must_use]
+    pub fn restore(id: &str, function: &str, at_ns: i64) -> Self {
+        Self {
+            restore_step: Some(true),
+            ..Self::run(id, function, "dr", at_ns)
         }
     }
 

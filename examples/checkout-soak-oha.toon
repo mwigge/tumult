@@ -1,5 +1,5 @@
 title: Checkout API soaks for two hours at 20 users (oha)
-description: A soak profile on the oha adapter. 20 concurrent users for 7200 s, sampled every 30 s, so the lake holds a 240-point series per load metric (load.latency_p95_ms, load.throughput_rps, load.error_rate, …) instead of one end-of-run number. A memory leak, a growing queue or a connection pool that never recovers shows up as drift in that series.
+description: A soak profile on the oha adapter. 20 concurrent users for 7200 s, sampled every 30 s, so the lake holds a 240-point series per load metric (load.latency_p95_ms, load.throughput_rps, load.error_rate, …) instead of one end-of-run number. A memory leak, a growing queue or a connection pool that never recovers shows up as drift in that series, and p95-drift judges it: the p95 of the last quarter of the windows may be at most 20 % above that of the first quarter.
 
 tags[3]: robustness, soak, checkout
 kind: robustness
@@ -7,7 +7,7 @@ target:
   system: checkout
   technology: http
   environment: staging
-nfr[2]:
+nfr[3]:
   - id: p95-steady
     kind: latency
     metric: load.latency_p95_ms
@@ -19,6 +19,12 @@ nfr[2]:
     metric: load.error_rate
     operator: lte
     threshold: 0.001
+    criticality: major
+  - id: p95-drift
+    kind: latency
+    metric: load.p95_drift_pct
+    operator: lte
+    threshold: 20
     criticality: major
 
 load:

@@ -709,3 +709,21 @@ fn the_lake_export_carries_the_plans_and_their_audit() {
     }
     assert_eq!(rows(&restored, "manual_plan_audit").len(), 3);
 }
+
+#[test]
+fn a_plan_may_be_planned_for_its_due_date() {
+    let (_d, store, writer) = temp_writer();
+    let plan = NewExercisePlan {
+        planned_at_ns: Some(100 * DAY),
+        due_at_ns: 100 * DAY,
+        ..failover_plan()
+    };
+    let id = writer.create_manual_plan(&plan, "alice").unwrap();
+    let detail = store
+        .read_only()
+        .unwrap()
+        .manual_plan_detail(&id)
+        .unwrap()
+        .unwrap();
+    assert_eq!(detail.plan["planned_at_ns"], 100 * DAY);
+}

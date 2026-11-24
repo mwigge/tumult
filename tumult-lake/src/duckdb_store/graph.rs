@@ -172,6 +172,7 @@ mod tests {
                 description: "d".into(),
                 evidence: "e".into(),
             }],
+            tester: None,
         });
         s.ingest_journal_with_experiment(
             &sample_journal("e1", ExperimentStatus::Completed),

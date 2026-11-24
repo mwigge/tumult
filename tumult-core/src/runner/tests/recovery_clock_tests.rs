@@ -148,6 +148,56 @@ fn the_clock_stops_when_the_last_probe_that_failed_is_back() {
 }
 
 #[test]
+fn a_pass_at_the_instant_of_the_last_failure_does_not_end_the_outage() {
+    let samples = [
+        during("api", 1.0, false),
+        post("api", 3.0, false),
+        post("api", 3.0, true),
+        post("api", 4.0, true),
+    ];
+
+    let result = post_result(3.0, &samples);
+
+    assert_eq!(result.recovered_at_ns, Some(at(4.0)), "{result:?}");
+    assert!(close(result.mttr_s, 3.0), "{result:?}");
+}
+
+#[test]
+fn a_post_result_read_again_with_no_outage_seen_loses_the_clock_it_held() {
+    let samples = [during("api", 1.0, true), post("api", 3.0, true)];
+    let held = PostResult {
+        mttr_s: Some(2.0),
+        impact_observed: Some(true),
+        outage_started_at_ns: Some(at(1.0)),
+        recovered_at_ns: Some(at(3.0)),
+        ..post_result(3.0, &samples)
+    };
+
+    let result = crate::runner::phases::timed_from_outage(held, &samples);
+
+    assert_eq!(result.impact_observed, Some(false));
+    assert_eq!(result.mttr_s, None);
+    assert_eq!(result.outage_started_at_ns, None);
+    assert_eq!(result.recovered_at_ns, None);
+}
+
+#[test]
+fn the_clock_stops_at_the_earliest_pass_whatever_the_order_of_the_samples() {
+    let samples = [
+        during("api", 1.0, false),
+        post("api", 5.0, true),
+        post("api", 3.0, false),
+        post("api", 6.0, true),
+        post("api", 4.0, true),
+    ];
+
+    let result = post_result(3.0, &samples);
+
+    assert_eq!(result.recovered_at_ns, Some(at(4.0)), "{result:?}");
+    assert!(close(result.mttr_s, 3.0), "{result:?}");
+}
+
+#[test]
 fn a_probe_that_fails_again_after_a_pass_keeps_the_clock_running() {
     let samples = [
         during("up", 1.0, false),

@@ -3,7 +3,7 @@ version: 0.1.0
 description: PostgreSQL chaos actions and probes
 author: tumult
 
-actions[4]:
+actions[10]:
   - name: kill-connections
     script: actions/kill-connections.sh
     description: Terminate active database connections
@@ -16,8 +16,26 @@ actions[4]:
   - name: exhaust-connections
     script: actions/exhaust-connections.sh
     description: Exhaust connection pool by opening idle connections
+  - name: backup
+    script: actions/backup.sh
+    description: Back up one database to a file with pg_dump
+  - name: restore
+    script: actions/restore.sh
+    description: Drop one database and restore it from a backup file
+  - name: stop-primary
+    script: actions/stop-primary.sh
+    description: Stop the container of the primary (a fast shutdown or a kill)
+  - name: start-primary
+    script: actions/start-primary.sh
+    description: Start the container of the primary again (the rollback of stop-primary)
+  - name: promote-replica
+    script: actions/promote-replica.sh
+    description: Promote a streaming standby to primary with pg_promote
+  - name: write-markers
+    script: actions/write-markers.sh
+    description: Write RPO markers and add each confirmed one to a ledger file
 
-probes[3]:
+probes[4]:
   - name: connection-count
     script: probes/connection-count.sh
     description: Count active database connections
@@ -27,3 +45,6 @@ probes[3]:
   - name: pool-utilization
     script: probes/pool-utilization.sh
     description: Check connection pool utilization percentage
+  - name: markers-lost
+    script: probes/markers-lost.sh
+    description: Seconds of confirmed writes lost (the RPO) from the markers and the ledger

@@ -59,6 +59,7 @@ fn seed_broken_store(dir: &std::path::Path) -> std::path::PathBuf {
                 description: "Testing of ICT tools and systems".into(),
                 evidence: "scenario-based fault injection".into(),
             }],
+            tester: None,
         }),
         ..Default::default()
     };
@@ -1345,6 +1346,7 @@ fn playbook_article_resolves_the_first_regulatory_citation() {
                 description: "Testing of ICT tools and systems".into(),
                 evidence: "scenario-based fault injection".into(),
             }],
+            tester: None,
         }),
         ..Default::default()
     };
@@ -1579,6 +1581,7 @@ fn change_event_yields_a_revalidation_candidate_for_the_changed_service() {
                 description: "Testing of ICT tools and systems".into(),
                 evidence: "scenario-based fault injection".into(),
             }],
+            tester: None,
         }),
         ..Default::default()
     };
