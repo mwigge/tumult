@@ -10,7 +10,6 @@
 #                     in seconds; fails while the store does not answer
 #   write <seconds>   write a marker every half second, for that long
 #   backup            copy the store to the backup
-#   wipe              lose the store and its markers
 #   restore           make the store again from the backup
 #   replica           stop one replica of three: the store keeps answering
 set -eu
@@ -43,10 +42,6 @@ write)
 backup)
   cp "$lab/store" "$lab/backup"
   echo "backed up $(wc -l <"$lab/backup") markers"
-  ;;
-wipe)
-  rm -f "$lab/up" "$lab/store"
-  echo "the store is gone"
   ;;
 restore)
   cp "$lab/backup" "$lab/store"

@@ -32,7 +32,7 @@ method[1]:
     provider:
       type: process
       path: sh
-      arguments[3]: "${lab}/lab.sh", "${lab}", wipe
+      arguments[2]: "-c", "rm -f '${lab}/up' '${lab}/store' && echo the store is gone"
       timeout_s: 5.0
 
 rollbacks[1]:
