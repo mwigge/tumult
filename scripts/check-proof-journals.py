@@ -7,7 +7,9 @@ before and after, the number of rollbacks and the state of each objective.
 A load result that is expected must hold requests and a p99 above zero, and
 the load must have run the seconds the definition next to the file plans.
 A GameDay entry can also name the score its journal must hold: the status
-and the recovery part, to two decimals.
+and the recovery part, to two decimals. An entry can name the seconds of
+data its run must have lost, `rpo_measured_s` as `{"from": a, "to": b}`:
+the RPO the run measured must lie in that range, both ends in it.
 
     check-proof-journals.py --proof NAME EXPECTATIONS JOURNAL_DIR
     check-proof-journals.py --proof NAME --list EXPECTATIONS
@@ -166,7 +168,8 @@ def facts(journal):
     def met(block):
         return block.get("met") if isinstance(block, dict) else None
 
-    verdicts = (journal.get("objectives") or {}).get("verdicts") or []
+    objectives = journal.get("objectives") or {}
+    verdicts = objectives.get("verdicts") or []
     return {
         "status": journal.get("status"),
         "hypothesis_before": met(journal.get("steady_state_before")),
@@ -175,11 +178,22 @@ def facts(journal):
         "rollback_failures": journal.get("rollback_failures"),
         "load_result": journal.get("load_result") is not None,
         "objectives": {row["nfr_id"]: row["state"] for row in verdicts},
+        "rpo_measured_s": objectives.get("rpo_measured_s"),
     }
 
 
 def shown(value):
     return value if isinstance(value, str) else json.dumps(value)
+
+
+def rpo_difference(wanted, measured_s):
+    """The line for an RPO that is not in the range the entry names."""
+    low, high = wanted["from"], wanted["to"]
+    number = isinstance(measured_s, (int, float)) and not isinstance(measured_s, bool)
+    if number and low <= measured_s <= high:
+        return []
+    seen = "none" if measured_s is None else shown(measured_s)
+    return [f"rpo_measured_s: expected {low} to {high}, journal has {seen}"]
 
 
 def load_difference(wanted, has):
@@ -238,6 +252,8 @@ def differences(expect, seen):
     ]
     if "load_result" in expect:
         found += load_difference(expect["load_result"], seen["load_result"])
+    if "rpo_measured_s" in expect:
+        found += rpo_difference(expect["rpo_measured_s"], seen["rpo_measured_s"])
     wanted, got = expect["objectives"], seen["objectives"]
     for name in sorted(set(wanted) | set(got)):
         if wanted.get(name) != got.get(name):
