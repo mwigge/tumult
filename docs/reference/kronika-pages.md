@@ -156,7 +156,9 @@ drills down to members, and a member table.
 
 Route `/scores?view=dora`. A heatmap of DORA articles against functions or
 org units, expected against actual evidence with an evidence drawer per row,
-and the maturity level with the component that caps it. The page reports
+and the maturity level with the component that caps it. A table of plan
+scenarios shows, for each critical or important function, which scenarios of
+RTS 2024/1774 passed, failed, are overdue or were never tested. The page reports
 what evidence exists; it does not say that an entity complies. Read the
 [DORA score guide](../guides/dora-score.md).
 
@@ -384,6 +386,10 @@ failover drill or a tabletop:
   Art. 24(4)).
 - the requirements the record is evidence for, in **Framework refs**. See
   [Cite a requirement](#cite-a-requirement).
+- the plan scenarios of RTS 2024/1774 the exercise tested, in **Plan
+  scenarios**, such as `premises_loss, power_outage`. An id that is not one
+  is refused with 422 and the nearest id. See
+  [Plan scenarios](../guides/dora-score.md#plan-scenarios).
 
 The form sends the actions as `actions`. It no longer sends the older
 `action_items` list. Nor do the MCP tool `tumult_manual_create_draft`, the
