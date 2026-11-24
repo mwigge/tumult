@@ -415,6 +415,14 @@ fn outcome_of(status: Option<&str>) -> Option<Outcome> {
     }
 }
 
+/// SQL predicate: the run `s` did not recover. The runner marks the
+/// verdict on the RTO of such a run (`rto` of kind `rto`) not recovered,
+/// and the lake keeps the mark in `nfr_verdicts.recovered`, the verdict
+/// the DR view reads.
+const UNRECOVERED_SQL: &str = "EXISTS (SELECT 1 FROM nfr_verdicts v \
+     WHERE v.experiment_id = s.experiment_id AND v.kind = 'rto' \
+     AND v.nfr_id = 'rto' AND v.recovered = false)";
+
 /// The runs up to `as_of_ns`, with or without a trace: the rows of
 /// `run_roots`, as the scorecard reads them.
 fn runs_sql(as_of_ns: i64, envs: &[String]) -> String {
@@ -431,7 +439,7 @@ fn runs_sql(as_of_ns: i64, envs: &[String]) -> String {
          {status} AS status, \
          e.rto_target_s AS rto_target_s, e.rpo_target_s AS rpo_target_s, \
          COALESCE(e.rto_measured_s, s.recovery_time_s) AS rto_measured_s, \
-         e.rpo_measured_s AS rpo_measured_s \
+         e.rpo_measured_s AS rpo_measured_s, {UNRECOVERED_SQL} AS unrecovered \
          FROM run_roots s \
          LEFT JOIN run_completions l ON s.experiment_id = l.experiment_id \
          LEFT JOIN experiments e ON e.experiment_id = s.experiment_id \
@@ -651,6 +659,10 @@ fn run_of(row: &Value, functions: Vec<String>) -> Option<Evidence> {
         rto_measured_s: num(row, "rto_measured_s"),
         rpo_target_s: num(row, "rpo_target_s"),
         rpo_measured_s: num(row, "rpo_measured_s"),
+        unrecovered: row
+            .get("unrecovered")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
         ..Evidence::run(&id, "", "", int(row, "ts")?)
     })
 }
@@ -1949,6 +1961,257 @@ functions:
             .evidence
             .iter()
             .all(|e| e.source == Source::Manual));
+    }
+
+    /// The journal of a dr run of `system` that ended `status` a day ago,
+    /// with the objectives the runner wrote.
+    fn dr_run(
+        id: &str,
+        system: &str,
+        status: tumult_core::types::ExperimentStatus,
+        objectives: tumult_core::types::ObjectiveOutcome,
+    ) -> (tumult_core::types::Journal, tumult_core::types::Experiment) {
+        use tumult_core::types::{Experiment, ExperimentTarget, Journal, TestKind};
+        let journal = Journal {
+            kind: TestKind::Dr,
+            started_at_ns: NOW - DAY_NS,
+            ended_at_ns: NOW - DAY_NS + 60_000_000_000,
+            objectives: Some(objectives),
+            ..tumult_lake::duckdb_store::sample_journal(id, status)
+        };
+        let definition = Experiment {
+            title: journal.experiment_title.clone(),
+            target: Some(ExperimentTarget {
+                system: system.into(),
+                technology: None,
+                environment: Some("prod".into()),
+                criticality: None,
+                namespace: None,
+                version: None,
+            }),
+            ..Experiment::default()
+        };
+        (journal, definition)
+    }
+
+    /// A verdict of the kind `kind` against `threshold`, as the runner
+    /// writes it.
+    fn verdict(
+        kind: tumult_core::types::NfrKind,
+        threshold: f64,
+        observed: Option<f64>,
+        state: tumult_core::types::NfrState,
+        recovered: Option<bool>,
+    ) -> tumult_core::types::NfrVerdict {
+        use tumult_core::types::{NfrCriticality, NfrOperator, NfrVerdict};
+        NfrVerdict {
+            nfr_id: kind.to_string(),
+            kind,
+            metric: "recovery.mttr_s".into(),
+            operator: NfrOperator::Lte,
+            threshold,
+            observed,
+            state,
+            margin: observed
+                .filter(|_| recovered != Some(false))
+                .map(|o| threshold - o),
+            criticality: NfrCriticality::Blocking,
+            recovered,
+            reason: None,
+        }
+    }
+
+    /// A run that did not recover fails Art. 12(6), as a run that took too
+    /// long does. A run that saw no outage measured no recovery and is no
+    /// row of it. A run that lost more data than its RPO allows fails
+    /// Art. 12(7) and so 12(6). The journals go through the lake and the
+    /// loader, as a stored run does.
+    #[test]
+    fn a_run_that_did_not_recover_fails_its_recovery_and_one_that_saw_no_outage_is_no_row() {
+        use super::super::coverage::{recovery_met, recovery_point_met, Ctx};
+        use tumult_core::compliance::requirement;
+        use tumult_core::types::{ExperimentStatus, NfrKind, NfrState, ObjectiveOutcome};
+        let (_dir, store) = store_with(ORG);
+        let unrecovered = dr_run(
+            "r-unrecovered",
+            "payments-db",
+            ExperimentStatus::Deviated,
+            ObjectiveOutcome {
+                rto_target_s: Some(2.0),
+                verdicts: vec![verdict(
+                    NfrKind::Rto,
+                    2.0,
+                    Some(29.1),
+                    NfrState::Breached,
+                    Some(false),
+                )],
+                ..ObjectiveOutcome::default()
+            },
+        );
+        let no_outage = dr_run(
+            "r-no-outage",
+            "payments-api",
+            ExperimentStatus::Completed,
+            ObjectiveOutcome {
+                rto_target_s: Some(30.0),
+                verdicts: vec![verdict(
+                    NfrKind::Rto,
+                    30.0,
+                    None,
+                    NfrState::Inconclusive,
+                    None,
+                )],
+                ..ObjectiveOutcome::default()
+            },
+        );
+        let lossy = dr_run(
+            "r-lossy",
+            "ledger",
+            ExperimentStatus::Deviated,
+            ObjectiveOutcome {
+                rto_target_s: Some(30.0),
+                rto_measured_s: Some(3.0),
+                rpo_target_s: Some(1.0),
+                rpo_measured_s: Some(2.035),
+                verdicts: vec![
+                    verdict(NfrKind::Rto, 30.0, Some(3.0), NfrState::Met, Some(true)),
+                    verdict(NfrKind::Rpo, 1.0, Some(2.035), NfrState::Breached, None),
+                ],
+            },
+        );
+        let writer = store.writer().unwrap();
+        for (journal, definition) in [&unrecovered, &no_outage, &lossy] {
+            assert!(writer.ingest_journal(journal, Some(definition)).unwrap());
+        }
+        drop(writer);
+
+        let loaded = loaded(&store, request(&[]));
+
+        let evidence = |id: &str| {
+            loaded
+                .inputs
+                .evidence
+                .iter()
+                .find(|e| e.id == id)
+                .unwrap_or_else(|| panic!("no evidence {id}"))
+        };
+        let function = &loaded.inputs.functions[0];
+        assert_eq!(function.id, "cif-0001");
+        assert!(evidence("r-unrecovered").unrecovered);
+        assert!(!evidence("r-no-outage").unrecovered);
+        assert!(!evidence("r-lossy").unrecovered);
+        assert_eq!(evidence("r-unrecovered").rto_measured_s, None);
+        assert_eq!(
+            recovery_met(evidence("r-unrecovered"), function),
+            Some(false)
+        );
+        assert_eq!(recovery_met(evidence("r-no-outage"), function), None);
+        assert_eq!(
+            recovery_point_met(evidence("r-lossy"), function),
+            Some(false)
+        );
+        assert_eq!(recovery_met(evidence("r-lossy"), function), Some(false));
+
+        let params = HouseParams::default();
+        let ctx = Ctx::new(&loaded.inputs, &params);
+        let rows = |id: &str| -> Vec<(String, f64)> {
+            let req = requirement(id).unwrap();
+            let mut rows: Vec<(String, f64)> = ctx
+                .evidence_rows(req, function, NOW)
+                .iter()
+                .map(|row| (row.evidence.id.clone(), row.o))
+                .collect();
+            rows.sort_by(|a, b| a.0.cmp(&b.0));
+            rows
+        };
+        let failed = params.outcome.failed;
+        assert_eq!(
+            rows("dora.art12.6"),
+            [
+                ("r-lossy".to_string(), failed),
+                ("r-unrecovered".to_string(), failed)
+            ]
+        );
+        assert_eq!(rows("dora.art12.7"), [("r-lossy".to_string(), failed)]);
+    }
+
+    /// Whether a run did not recover is the mark the lake keeps on its
+    /// RTO verdict (`nfr_verdicts.recovered`), and nothing else: a margin
+    /// an older writer kept does not hide it, a breach with no margin and
+    /// no mark is not one, and neither is an objective of kind `rto` of
+    /// its own. The journals go through the lake and the loader.
+    #[test]
+    fn a_run_did_not_recover_when_the_lake_marks_its_rto_verdict_so() {
+        use tumult_core::types::{
+            ExperimentStatus, NfrCriticality, NfrKind, NfrOperator, NfrState, NfrVerdict,
+            ObjectiveOutcome,
+        };
+        let rto = |nfr_id: &str, state, margin, recovered| NfrVerdict {
+            nfr_id: nfr_id.to_string(),
+            kind: NfrKind::Rto,
+            metric: "recovery.mttr_s".into(),
+            operator: NfrOperator::Lte,
+            threshold: 30.0,
+            observed: Some(45.0),
+            state,
+            margin,
+            criticality: NfrCriticality::Blocking,
+            recovered,
+            reason: None,
+        };
+        let run = |id: &str, verdicts: Vec<NfrVerdict>| {
+            dr_run(
+                id,
+                "payments-db",
+                ExperimentStatus::Deviated,
+                ObjectiveOutcome {
+                    rto_target_s: Some(30.0),
+                    verdicts,
+                    ..ObjectiveOutcome::default()
+                },
+            )
+        };
+        let runs = [
+            run(
+                "r-marked",
+                vec![rto("rto", NfrState::Breached, Some(-15.0), Some(false))],
+            ),
+            run(
+                "r-unmarked",
+                vec![rto("rto", NfrState::Breached, None, None)],
+            ),
+            run(
+                "r-own-kind",
+                vec![
+                    rto("rto", NfrState::Met, Some(27.0), Some(true)),
+                    rto("rto-spike", NfrState::Breached, None, Some(false)),
+                ],
+            ),
+        ];
+        let (_dir, store) = store_with(ORG);
+        let writer = store.writer().unwrap();
+        for (journal, definition) in &runs {
+            assert!(writer.ingest_journal(journal, Some(definition)).unwrap());
+        }
+        drop(writer);
+
+        let loaded = loaded(&store, request(&[]));
+
+        let mut unrecovered: Vec<(String, bool)> = loaded
+            .inputs
+            .evidence
+            .iter()
+            .map(|e| (e.id.clone(), e.unrecovered))
+            .collect();
+        unrecovered.sort();
+        assert_eq!(
+            unrecovered,
+            [
+                ("r-marked".to_string(), true),
+                ("r-own-kind".to_string(), false),
+                ("r-unmarked".to_string(), false),
+            ]
+        );
     }
 
     /// A record stored with an older form of a requirement id cites the

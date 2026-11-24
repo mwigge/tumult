@@ -75,6 +75,10 @@ fn str_of(row: &Value, key: &str) -> Option<String> {
     row.get(key).and_then(Value::as_str).map(str::to_owned)
 }
 
+fn num_of(row: &Value, key: &str) -> Option<f64> {
+    row.get(key).and_then(Value::as_f64)
+}
+
 fn in_list(ids: &[String]) -> String {
     ids.iter()
         .map(|id| sql_string(id))
@@ -93,11 +97,14 @@ struct KindRow {
     kind: Option<String>,
     rto_target_s: Option<f64>,
     rto_measured_s: Option<f64>,
+    rpo_target_s: Option<f64>,
+    rpo_measured_s: Option<f64>,
 }
 
 /// `experiment_id` → discipline and recovery targets, from the journal's
 /// `experiments` rows (automated runs) and `manual_experiments` (manual,
-/// by the house parameters, as the DORA score reads them).
+/// by the house parameters, as the DORA score reads them). A manual record
+/// gives its own targets, and its recovery time as the measured RTO.
 fn kinds_by_evidence(
     reader: &Reader,
     experiments: &[ExperimentScore],
@@ -111,8 +118,8 @@ fn kinds_by_evidence(
         .collect();
     if !automated.is_empty() {
         let sql = format!(
-            "SELECT experiment_id, test_kind, rto_target_s, rto_measured_s \
-             FROM experiments WHERE experiment_id IN ({})",
+            "SELECT experiment_id, test_kind, rto_target_s, rto_measured_s, rpo_target_s, \
+             rpo_measured_s FROM experiments WHERE experiment_id IN ({})",
             in_list(&automated)
         );
         for row in reader.query_json_rows(&sql).map_err(|e| e.to_string())? {
@@ -123,8 +130,10 @@ fn kinds_by_evidence(
                 id,
                 KindRow {
                     kind: Some(run_kind(str_of(&row, "test_kind"))),
-                    rto_target_s: row.get("rto_target_s").and_then(Value::as_f64),
-                    rto_measured_s: row.get("rto_measured_s").and_then(Value::as_f64),
+                    rto_target_s: num_of(&row, "rto_target_s"),
+                    rto_measured_s: num_of(&row, "rto_measured_s"),
+                    rpo_target_s: num_of(&row, "rpo_target_s"),
+                    rpo_measured_s: num_of(&row, "rpo_measured_s"),
                 },
             );
         }
@@ -136,7 +145,8 @@ fn kinds_by_evidence(
         .collect();
     if !manual.is_empty() {
         let sql = format!(
-            "SELECT id, exercise_type FROM manual_experiments WHERE id IN ({})",
+            "SELECT id, exercise_type, recovery_time_s, rto_target_s, rpo_target_s, \
+             rpo_measured_s FROM manual_experiments WHERE id IN ({})",
             in_list(&manual)
         );
         for row in reader.query_json_rows(&sql).map_err(|e| e.to_string())? {
@@ -149,8 +159,10 @@ fn kinds_by_evidence(
                 id,
                 KindRow {
                     kind,
-                    rto_target_s: None,
-                    rto_measured_s: None,
+                    rto_target_s: num_of(&row, "rto_target_s"),
+                    rto_measured_s: num_of(&row, "recovery_time_s"),
+                    rpo_target_s: num_of(&row, "rpo_target_s"),
+                    rpo_measured_s: num_of(&row, "rpo_measured_s"),
                 },
             );
         }
@@ -158,7 +170,8 @@ fn kinds_by_evidence(
     Ok(out)
 }
 
-/// `experiment_id` → objective verdicts of that run.
+/// `experiment_id` → objective verdicts of that run, with whether the run
+/// recovered as the lake keeps it (`nfr_verdicts.recovered`).
 fn verdicts_by_evidence(
     reader: &Reader,
     experiments: &[ExperimentScore],
@@ -172,8 +185,8 @@ fn verdicts_by_evidence(
         return Ok(out);
     }
     let sql = format!(
-        "SELECT experiment_id, nfr_id, kind, state, criticality, threshold, observed, margin \
-         FROM nfr_verdicts WHERE experiment_id IN ({}) ORDER BY nfr_id",
+        "SELECT experiment_id, nfr_id, kind, state, criticality, threshold, observed, margin, \
+         recovered FROM nfr_verdicts WHERE experiment_id IN ({}) ORDER BY nfr_id",
         in_list(&ids)
     );
     for row in reader.query_json_rows(&sql).map_err(|e| e.to_string())? {
@@ -185,9 +198,10 @@ fn verdicts_by_evidence(
             kind: str_of(&row, "kind").unwrap_or_default(),
             state: str_of(&row, "state").unwrap_or_default(),
             criticality: str_of(&row, "criticality").unwrap_or_default(),
-            threshold: row.get("threshold").and_then(Value::as_f64).unwrap_or(0.0),
-            observed: row.get("observed").and_then(Value::as_f64),
-            margin: row.get("margin").and_then(Value::as_f64),
+            threshold: num_of(&row, "threshold").unwrap_or(0.0),
+            observed: num_of(&row, "observed"),
+            margin: num_of(&row, "margin"),
+            recovered: row.get("recovered").and_then(Value::as_bool),
         });
     }
     Ok(out)
@@ -236,6 +250,9 @@ fn targets_from(
                 .unwrap_or_default(),
             rto_target_s: row.and_then(|r| r.rto_target_s),
             rto_measured_s: row.and_then(|r| r.rto_measured_s),
+            rpo_target_s: row.and_then(|r| r.rpo_target_s),
+            rpo_measured_s: row.and_then(|r| r.rpo_measured_s),
+            manual: e.origin == "manual",
         });
         let Some(kind) = kind else {
             continue;
@@ -632,6 +649,8 @@ mod tests {
                 kind: Some("robustness".into()),
                 rto_target_s: Some(60.0),
                 rto_measured_s: Some(90.0),
+                rpo_target_s: None,
+                rpo_measured_s: None,
             },
         );
         let targets = targets_from(&experiments, &kinds, &BTreeMap::new());
@@ -661,6 +680,8 @@ mod tests {
                 kind: Some("robustness".into()),
                 rto_target_s: None,
                 rto_measured_s: None,
+                rpo_target_s: None,
+                rpo_measured_s: None,
             },
         );
         let demo = score("cache", "e1", RunState::Passed, 100, 1);
@@ -703,6 +724,7 @@ mod tests {
             threshold: 100.0,
             observed: Some(100.0 - margin),
             margin: Some(margin),
+            recovered: None,
         };
         let inputs = Inputs {
             targets: vec![TargetEvidence {
@@ -718,6 +740,9 @@ mod tests {
                     verdicts: vec![verdict("p99", 10.0), verdict("avail", -2.0)],
                     rto_target_s: None,
                     rto_measured_s: None,
+                    rpo_target_s: None,
+                    rpo_measured_s: None,
+                    manual: false,
                 }],
                 ..Default::default()
             }],
