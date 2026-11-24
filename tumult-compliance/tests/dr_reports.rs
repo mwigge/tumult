@@ -28,8 +28,8 @@ use tumult_core::types::{
 use tumult_lake::{
     attachments_dir, ActionItem, ExerciseDetail, ExerciseStep, ExerciseType, FileUpload,
     IctFunction, IctFunctionService, IctLegalEntity, IctRegister, ManualOutcome, NewExercisePlan,
-    NewManualExperiment, Participant, PlannedTest, SignOff, SignOffDecision, SpanRow, StepResult,
-    Store, Writer,
+    NewManualExperiment, Participant, PlannedTest, Severity, SignOff, SignOffDecision, SpanRow,
+    StepResult, Store, Tester, TesterKind, Writer,
 };
 
 const S: i64 = 1_000_000_000;
@@ -244,7 +244,8 @@ fn house_params() -> HouseParams {
 }
 
 /// The failover drill of `ledger`, 15 days before [`AS_OF`], fulfilling
-/// the plan `plan_id`. The RPO was planned and not measured.
+/// the plan `plan_id`. The RPO was planned and not measured. An external
+/// firm ran it; it cites DORA in the older form of a citation.
 fn drill(plan_id: &str) -> NewManualExperiment {
     let start = AS_OF - 15 * DAY;
     NewManualExperiment {
@@ -265,7 +266,7 @@ fn drill(plan_id: &str) -> NewManualExperiment {
         entered_by: "alice".into(),
         attestation: "I attest this record reflects the exercise as executed.".into(),
         renewal_due_ns: None,
-        framework_refs: vec![],
+        framework_refs: vec!["DORA Art. 24(6)".into(), "ISO 27001 A.5.30".into()],
         exercise: ExerciseDetail {
             rto_target_s: Some(900.0),
             rpo_target_s: Some(60.0),
@@ -304,13 +305,16 @@ fn drill(plan_id: &str) -> NewManualExperiment {
                 owner: "dave".into(),
                 due_at_ns: Some(AS_OF + 30 * DAY),
                 ticket: Some("OPS-1234".into()),
-                severity: None,
+                severity: Some(Severity::High),
                 retest: None,
             }],
             links: vec![],
             plan_id: Some(plan_id.into()),
-            findings_severity: None,
-            tester: None,
+            findings_severity: Some(Severity::Medium),
+            tester: Some(Tester {
+                name: "Ridge Recovery Partners".into(),
+                kind: TesterKind::External,
+            }),
             tlpt: None,
         },
     }
@@ -991,12 +995,70 @@ fn the_dr_exercise_report_holds_the_whole_record() {
         [[
             "1".to_string(),
             "Clear the stale lock before a promote".into(),
+            "high".into(),
             "dave".into(),
             fmt_date(AS_OF + 30 * DAY),
             "OPS-1234".into(),
             "open".into(),
         ]]
     );
+}
+
+#[test]
+fn the_dr_exercise_report_gives_the_severity_of_the_findings_and_of_each_action() {
+    let lake = Lake::new();
+
+    let doc = lake.exercise_report(&lake.drill, &[]).expect("the drill");
+
+    let findings = section(&doc, "Findings");
+    assert_eq!(value(&pairs(findings), "Severity"), "medium");
+    assert!(findings.iter().any(|b| matches!(
+        b,
+        Block::KeyValues(kvs) if kvs.iter().any(|(k, v)| k == "Severity" && *v == Cell::status("medium"))
+    )), "the severity is a status, a glyph and a word: {findings:#?}");
+    let (headers, actions) = table(&doc, "Actions");
+    let column = headers
+        .iter()
+        .position(|h| h == "Severity")
+        .unwrap_or_else(|| panic!("no Severity column in {headers:?}"));
+    assert_eq!(actions[0][column], "high");
+}
+
+#[test]
+fn a_finding_or_an_action_with_no_severity_says_so() {
+    let lake = Lake::new();
+    let id = {
+        let writer = lake.store.writer().unwrap();
+        let id = writer
+            .create_manual_draft(&NewManualExperiment {
+                experiment_name: "ledger second drill".into(),
+                exercise: ExerciseDetail {
+                    actions: vec![ActionItem {
+                        title: "Write the promote runbook down".into(),
+                        owner: "dave".into(),
+                        due_at_ns: None,
+                        ticket: None,
+                        severity: None,
+                        retest: None,
+                    }],
+                    ..ExerciseDetail::default()
+                },
+                ..drill("unused")
+            })
+            .unwrap();
+        writer.submit_manual(&id, None, "alice").unwrap();
+        id
+    };
+
+    let doc = lake.exercise_report(&id, &[]).expect("the second drill");
+
+    assert_eq!(
+        value(&pairs(section(&doc, "Findings")), "Severity"),
+        "not set"
+    );
+    let (headers, actions) = table(&doc, "Actions");
+    let column = headers.iter().position(|h| h == "Severity").unwrap();
+    assert_eq!(actions[0][column], "not set");
 }
 
 #[test]
@@ -1260,6 +1322,99 @@ fn the_attestation_appendix_of_the_evidence_pack_gives_the_dr_detail_of_a_record
 }
 
 #[test]
+fn the_attestation_appendix_names_each_dora_citation_by_its_registry_id() {
+    let lake = Lake::new();
+
+    let doc = lake.dora_pack();
+
+    // The drill was stored citing `DORA Art. 24(6)`: the appendix names
+    // the registry row, as the DORA score and the Star Map do. A citation
+    // of another framework stays as written.
+    let drill = pairs_under_h3(&doc, "ledger failover drill");
+    assert_eq!(
+        value(&drill, "Frameworks"),
+        "dora.art24.6, ISO 27001 A.5.30"
+    );
+}
+
+/// The paragraphs of `blocks`.
+fn paragraphs(blocks: &[Block]) -> Vec<&str> {
+    blocks
+        .iter()
+        .filter_map(|b| match b {
+            Block::Paragraph(p) => Some(p.as_str()),
+            _ => None,
+        })
+        .collect()
+}
+
+/// What the evidence pack says under Independence, and how many tests
+/// its register holds.
+fn independence(doc: &ReportDoc) -> (Vec<String>, usize) {
+    let (_, register) = table(doc, "Test register");
+    assert!(
+        register.iter().any(|row| row[1] != "manual"),
+        "the register holds runs: {register:?}"
+    );
+    let said = paragraphs(lead(doc, "Independence"))
+        .into_iter()
+        .map(str::to_owned)
+        .collect();
+    (said, register.len())
+}
+
+#[test]
+fn the_evidence_pack_counts_the_tests_that_name_an_external_tester() {
+    let lake = Lake::new();
+
+    // The drill names an external tester; the game day names none.
+    let (said, tests) = independence(&lake.dora_pack());
+    assert_eq!(
+        said[0],
+        format!("Independence verified: 1 of {tests} tests name an external tester."),
+        "{said:#?}"
+    );
+    assert_eq!(
+        said[1],
+        "The count reads the tester each manual record names. A run names its tester only \
+         in its journal, which the lake does not keep, so no run counts as naming one."
+    );
+    assert!(
+        !said.iter().any(|p| p.contains("has not been verified")),
+        "{said:#?}"
+    );
+
+    // A tabletop the ledger team ran itself is one more test, and no
+    // external one.
+    {
+        let writer = lake.store.writer().unwrap();
+        let id = writer
+            .create_manual_draft(&NewManualExperiment {
+                experiment_name: "ledger tabletop".into(),
+                exercise_type: ExerciseType::Tabletop,
+                exercise: ExerciseDetail {
+                    tester: Some(Tester {
+                        name: "the ledger team".into(),
+                        kind: TesterKind::Internal,
+                    }),
+                    ..ExerciseDetail::default()
+                },
+                ..drill("unused")
+            })
+            .unwrap();
+        writer.submit_manual(&id, None, "alice").unwrap();
+        writer.verify_manual(&id, "bob", None).unwrap();
+    }
+    let (said, more) = independence(&lake.dora_pack());
+    assert_eq!(more, tests + 1);
+    assert_eq!(
+        said[0],
+        format!("Independence verified: 1 of {more} tests name an external tester."),
+        "{said:#?}"
+    );
+}
+
+#[test]
 fn a_report_of_an_empty_lake_says_there_is_nothing_and_still_renders() {
     let dir = tempfile::tempdir().unwrap();
     let store = Store::open(&dir.path().join("lake.duckdb")).unwrap();
@@ -1281,5 +1436,9 @@ fn a_report_of_an_empty_lake_says_there_is_nothing_and_still_renders() {
     let pack = build_evidence_pack(&reader, "dora", None, AS_OF, &[], &House::of(&params)).unwrap();
     let (_, rows) = table(&pack, "Traceability matrix");
     assert_eq!(rows.len(), REQUIREMENTS.len());
+    assert_eq!(
+        paragraphs(lead(&pack, "Independence"))[0],
+        "Independence verified: 0 of 0 tests name an external tester."
+    );
     assert!(render_pdf(&pack).unwrap().starts_with(b"%PDF"));
 }

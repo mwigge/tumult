@@ -745,8 +745,9 @@ planned RPO that nothing measured is "not measured", never "met".
 
 One manual DR exercise: its plan, the people who took part, the steps with
 their times, the RTO and the RPO planned and actual with met or not, the
-data check, the findings, the actions with their owners, the files with
-their SHA-256 and the sign-offs. It also says what the audit verify of the
+data check, the findings with their severity, the actions with their
+owners and the severity of each, the files with their SHA-256 and the
+sign-offs. It also says what the audit verify of the
 record finds when the report is made, and it ends with a block for the DR
 owner and the reviewer to sign.
 
@@ -765,7 +766,13 @@ paragraph, with its evidence status and the ids of the runs and records
 behind it. A status says what evidence is held. It is not a compliance
 verdict. Every pack also gives the kind, the RTO and the RPO of each test
 of its register, and the DR detail of each manual DR record in its
-attestation appendix.
+attestation appendix. The appendix names a DORA citation of a record by
+its registry id, such as `dora.art24.6`.
+
+Under Independence, a pack counts the tests of its register that name an
+external tester. It reads the tester of each manual record. A run names
+its tester only in its journal, and the lake does not keep it, so no run
+is counted.
 
 ![The DORA matrix of an evidence pack](../images/3.0/screenshots/report-evidence-pack.png)
 

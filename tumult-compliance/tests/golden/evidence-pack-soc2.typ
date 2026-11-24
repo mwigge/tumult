@@ -58,7 +58,13 @@ This pack summarises the resilience testing evidence Tumult recorded for the SOC
 == Independence
 
 
-Independence has not been verified by this report. Organizational separation of test design\/execution from service operation requires a reviewed attestation. Manual evidence review records identify the enterer and verifier; those identities alone do not prove organizational independence.
+Independence verified: 0 of 5 tests name an external tester.
+
+
+The count reads the tester each manual record names. A run names its tester only in its journal, which the lake does not keep, so no run counts as naming one.
+
+
+Organizational separation of test design\/execution from service operation requires a reviewed attestation. Manual evidence review records identify the enterer and verifier; those identities alone do not prove organizational independence.
 
 
 == Traceability matrix
@@ -251,7 +257,7 @@ Each manually executed test below was entered under the quoted attestation and v
   [#text(size: 9pt, fill: luma(100))[#smallcaps[Executed]]], [2026\-11\-19],
   [#text(size: 9pt, fill: luma(100))[#smallcaps[Entered by]]], [alice on \{entered\}],
   [#text(size: 9pt, fill: luma(100))[#smallcaps[Verified by]]], [bob on \{verified\}],
-  [#text(size: 9pt, fill: luma(100))[#smallcaps[Frameworks]]], [DORA Art. 24(6), ISO 27001 A.5.29],
+  [#text(size: 9pt, fill: luma(100))[#smallcaps[Frameworks]]], [dora.art24.6, ISO 27001 A.5.29],
   [#text(size: 9pt, fill: luma(100))[#smallcaps[Attestation]]], [I attest that this record reflects the exercise.],
   [#text(size: 9pt, fill: luma(100))[#smallcaps[RTO planned \/ actual]]], [not set \/ 540.0 s],
   [#text(size: 9pt, fill: luma(100))[#smallcaps[RPO planned \/ actual]]], [not set \/ not measured],

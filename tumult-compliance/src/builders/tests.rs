@@ -1438,7 +1438,9 @@ fn evidence_pack_does_not_assert_unverified_independence_or_clause_coverage() {
     .unwrap();
     let text = format!("{doc:?}");
     assert!(!text.contains("Testing performed in line with"));
-    assert!(text.contains("Independence has not been verified"));
+    // No record of this lake names a tester: none counts as external.
+    assert!(text.contains("Independence verified: 0 of "), "{text}");
+    assert!(text.contains("do not prove organizational independence"));
     // No function binds the runs of this lake: no row of the DORA matrix
     // claims evidence.
     let matrix = doc

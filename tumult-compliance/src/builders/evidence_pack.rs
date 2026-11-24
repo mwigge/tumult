@@ -6,8 +6,9 @@ use std::collections::BTreeMap;
 
 use serde_json::Value;
 use tumult_core::compliance::{
-    Requirement, EVIDENCE_DISCLAIMER, REQUIREMENTS, REQUIREMENTS_VERSION,
+    requirement_id, Requirement, EVIDENCE_DISCLAIMER, REQUIREMENTS, REQUIREMENTS_VERSION,
 };
+use tumult_core::types::TesterKind;
 use tumult_lake::{scope, Reader, SqlParam};
 
 use super::dr::{self, Objectives};
@@ -237,13 +238,7 @@ fn objectives_table(
         .experiments
         .iter()
         .map(|e| {
-            let manual = (e.origin == "manual")
-                .then(|| {
-                    e.evidence_id
-                        .as_ref()
-                        .and_then(|id| manual_by_id.get(id).copied())
-                })
-                .flatten();
+            let manual = record_of(e, manual_by_id);
             let run = (e.origin != "manual")
                 .then(|| e.evidence_id.as_ref().and_then(|id| runs_by_id.get(id)))
                 .flatten();
@@ -310,6 +305,62 @@ fn dr_detail(reader: &Reader, row: &Value) -> Result<Vec<(String, Cell)>, String
     Ok(detail)
 }
 
+/// The manual record a test of the register is, when it is one.
+fn record_of<'a>(
+    test: &scoring::ExperimentScore,
+    manual_by_id: &BTreeMap<String, &'a Value>,
+) -> Option<&'a Value> {
+    if test.origin != "manual" {
+        return None;
+    }
+    manual_by_id.get(test.evidence_id.as_ref()?).copied()
+}
+
+/// What the pack says of the independence of the tests of the register:
+/// how many name an external tester. Only a manual record keeps its tester
+/// in the lake; a run keeps it in its journal.
+fn independence(card: &scoring::Scorecard, manual_by_id: &BTreeMap<String, &Value>) -> Vec<Block> {
+    let external = card
+        .experiments
+        .iter()
+        .filter_map(|test| record_of(test, manual_by_id))
+        .filter(|record| cell(record, "tester_kind") == Some(TesterKind::External.as_str()))
+        .count();
+    vec![
+        Block::Paragraph(format!(
+            "Independence verified: {external} of {} name an external tester.",
+            counted(card.experiments.len(), "test", "tests"),
+        )),
+        Block::Paragraph(
+            "The count reads the tester each manual record names. A run names its tester only \
+             in its journal, which the lake does not keep, so no run counts as naming one."
+                .into(),
+        ),
+        Block::Paragraph(
+            "Organizational separation of test design/execution from service operation \
+             requires a reviewed attestation. Manual evidence review records identify the \
+             enterer and verifier; those identities alone do not prove organizational \
+             independence."
+                .into(),
+        ),
+    ]
+}
+
+/// The framework references of a record, each DORA one by the registry id
+/// it names ([`requirement_id`]), as the DORA score and the Star Map name
+/// it. A reference to another framework stays as written.
+fn references(row: &Value) -> String {
+    row.get("framework_refs")
+        .and_then(|v| serde_json::from_value::<Vec<String>>(v.clone()).ok())
+        .filter(|refs| !refs.is_empty())
+        .map_or("—".into(), |refs| {
+            refs.iter()
+                .map(|r| requirement_id(r).unwrap_or_else(|| r.clone()))
+                .collect::<Vec<_>>()
+                .join(", ")
+        })
+}
+
 /// Build the R2 evidence pack for `framework` ("dora" | "nis2" |
 /// "iso27001" | "soc2"). `envs` confines the scorecard, test register,
 /// approval chain and attestation appendix to the given environments
@@ -346,6 +397,22 @@ pub fn build_evidence_pack(
         "R2|{}|{key}|{period_ns:?}|{generated_at_ns}",
         envs.join(",")
     );
+    // Provenance joins the exact scored manual record, never a display name.
+    let manual_rows = reader
+        .query_json_rows(&format!(
+            "SELECT id, experiment_name AS name, executed_at_ns, entered_by, entered_at_ns, \
+             reviewed_by, reviewed_at_ns, exercise_type, rto_target_s, \
+             recovery_time_s AS rto_measured_s, rpo_target_s, rpo_measured_s, tester_kind \
+             FROM manual_experiments \
+             WHERE status = 'verified'{} ORDER BY executed_at_ns DESC",
+            scope::and(scope::in_list("target_environment", envs)),
+        ))
+        .map_err(|e| e.to_string())?;
+    let manual_by_id: BTreeMap<String, &Value> = manual_rows
+        .iter()
+        .filter_map(|row| Some((cell(row, "id")?.to_string(), row)))
+        .collect();
+
     let mut meta = base_meta(
         TemplateKind::EvidencePack,
         format!("Evidence pack — {}", key.to_uppercase()),
@@ -375,19 +442,17 @@ pub fn build_evidence_pack(
                 let on_record = card.experiments.len();
                 format!(
                     "; {}",
-                    counted(on_record, "experiment is on record", "experiments are on record")
+                    counted(
+                        on_record,
+                        "experiment is on record",
+                        "experiments are on record"
+                    )
                 )
             },
         )),
         Block::H2("Independence".into()),
-        Block::Paragraph(
-            "Independence has not been verified by this report. Organizational \
-             separation of test design/execution from service operation requires \
-             a reviewed attestation. Manual evidence review records identify the \
-             enterer and verifier; those identities alone do not prove organizational independence."
-                .into(),
-        ),
     ];
+    blocks.extend(independence(&card, &manual_by_id));
 
     blocks.push(Block::H2("Traceability matrix".into()));
     if key == "dora" {
@@ -401,24 +466,6 @@ pub fn build_evidence_pack(
     if card.experiments.is_empty() {
         blocks.push(Block::Paragraph("No experiments on record.".into()));
     } else {
-        // Provenance joins the exact scored manual record, never a display name.
-        let manual_rows = reader
-            .query_json_rows(&format!(
-                "SELECT id, experiment_name AS name, executed_at_ns, entered_by, entered_at_ns, \
-                 reviewed_by, reviewed_at_ns, exercise_type, rto_target_s, \
-                 recovery_time_s AS rto_measured_s, rpo_target_s, rpo_measured_s \
-                 FROM manual_experiments \
-                 WHERE status = 'verified'{} ORDER BY executed_at_ns DESC",
-                scope::and(scope::in_list("target_environment", envs)),
-            ))
-            .map_err(|e| e.to_string())?;
-        let mut manual_by_id: std::collections::BTreeMap<String, &serde_json::Value> =
-            std::collections::BTreeMap::new();
-        for row in &manual_rows {
-            if let Some(id) = cell(row, "id") {
-                manual_by_id.insert(id.to_string(), row);
-            }
-        }
         blocks.push(Block::Table {
             headers: vec![
                 "Experiment".into(),
@@ -434,9 +481,7 @@ pub fn build_evidence_pack(
                 .experiments
                 .iter()
                 .map(|e| {
-                    let manual = (e.origin == "manual")
-                        .then(|| e.evidence_id.as_ref().and_then(|id| manual_by_id.get(id)))
-                        .flatten();
+                    let manual = record_of(e, &manual_by_id);
                     let entered = manual
                         .and_then(|m| m.get("entered_at_ns"))
                         .and_then(serde_json::Value::as_i64);
@@ -605,11 +650,7 @@ pub fn build_evidence_pack(
                     .and_then(serde_json::Value::as_i64)
                     .map_or("undated".into(), fmt_date)
             )));
-            let frameworks = row
-                .get("framework_refs")
-                .and_then(|v| serde_json::from_value::<Vec<String>>(v.clone()).ok())
-                .filter(|v| !v.is_empty())
-                .map_or("—".into(), |v| v.join(", "));
+            let frameworks = references(row);
             let mut entries = vec![
                 (
                     "Exercise type".into(),

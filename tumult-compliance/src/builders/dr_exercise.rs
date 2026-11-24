@@ -1,9 +1,9 @@
 //! The R5 DR exercise report: one manual DR record as an auditor reads it.
 //! Its plan, the people who took part, the steps with their times, the
-//! RTO and the RPO planned and actual, the data check, the findings, the
-//! actions with their owners, the files with their SHA-256, the sign-offs,
-//! and what the audit verify of the record finds at the time of the
-//! report.
+//! RTO and the RPO planned and actual, the data check, the findings and
+//! the actions with their owners, each with how much it matters, the files
+//! with their SHA-256, the sign-offs, and what the audit verify of the
+//! record finds at the time of the report.
 
 use serde_json::Value;
 use tumult_core::compliance::EVIDENCE_DISCLAIMER;
@@ -239,8 +239,24 @@ fn objectives(record: &Value) -> Vec<Block> {
     ]
 }
 
-/// The actions with their owners and where they stand. A record of before
-/// v22 has its actions as plain texts.
+/// How much a finding or an action matters, as a status, or `not set`.
+fn severity(row: &Value, key: &str) -> Cell {
+    Cell::status(text_or(row, key, "not set"))
+}
+
+/// The findings of the record and how much they matter.
+fn findings(record: &Value) -> Vec<Block> {
+    vec![
+        Block::Paragraph(text_or(record, "findings", "No findings on record.").to_string()),
+        Block::KeyValues(vec![(
+            "Severity".into(),
+            severity(record, "findings_severity"),
+        )]),
+    ]
+}
+
+/// The actions with their owners, how much each matters and where they
+/// stand. A record of before v22 has its actions as plain texts.
 fn actions(detail: &ManualDetail) -> Block {
     if detail.actions.is_empty() {
         let older: Vec<String> = detail
@@ -257,6 +273,7 @@ fn actions(detail: &ManualDetail) -> Block {
         vec![
             Cell::text(dr::time(action, "ordinal").map_or_else(String::new, |n| n.to_string())),
             Cell::text(text_or(action, "title", "untitled")),
+            severity(action, "severity"),
             Cell::text(text_or(action, "owner", "no owner")),
             Cell::text(dr::time(action, "due_at_ns").map_or_else(|| "no date".into(), fmt_date)),
             Cell::text(text_or(action, "ticket", "none")),
@@ -267,6 +284,7 @@ fn actions(detail: &ManualDetail) -> Block {
         headers: vec![
             "#".into(),
             "Action".into(),
+            "Severity".into(),
             "Owner".into(),
             "Due".into(),
             "Ticket".into(),
@@ -274,7 +292,7 @@ fn actions(detail: &ManualDetail) -> Block {
         ],
         rows: detail.actions.iter().map(row).collect(),
         numeric_cols: vec![0],
-        widths: Some(vec![0.3, 2.4, 0.8, 0.9, 0.9, 0.7]),
+        widths: Some(vec![0.3, 2.1, 0.8, 0.8, 0.9, 0.9, 0.7]),
     }
 }
 
@@ -470,9 +488,7 @@ pub fn build_dr_exercise(
     ];
     blocks.extend(objectives(record));
     blocks.push(Block::H2("Findings".into()));
-    blocks.push(Block::Paragraph(
-        text_or(record, "findings", "No findings on record.").to_string(),
-    ));
+    blocks.extend(findings(record));
     blocks.push(Block::H2("Actions".into()));
     blocks.push(actions(&detail));
     blocks.push(Block::H2("Attachments".into()));
