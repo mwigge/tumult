@@ -51,3 +51,11 @@ ALTER TABLE experiments ADD COLUMN IF NOT EXISTS mttr_s DOUBLE;
 ALTER TABLE nfr_verdicts ADD COLUMN IF NOT EXISTS recovered BOOLEAN;
 ALTER TABLE nfr_verdicts ADD COLUMN IF NOT EXISTS reason VARCHAR;
 ";
+
+/// v26: the plan scenarios of RTS 2024/1774 a run names, from the
+/// `scenarios` of its regulatory block. Added last, as the appender writes
+/// by position, and NULL on the rows stored before and on a run that names
+/// none.
+pub(super) const SCENARIOS_COLUMN: &str = "
+ALTER TABLE experiments ADD COLUMN IF NOT EXISTS dora_scenarios VARCHAR[];
+";

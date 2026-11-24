@@ -210,3 +210,11 @@ ALTER TABLE manual_action_items ADD COLUMN IF NOT EXISTS severity VARCHAR;
 ALTER TABLE manual_action_items ADD COLUMN IF NOT EXISTS retest_kind VARCHAR;
 ALTER TABLE manual_action_items ADD COLUMN IF NOT EXISTS retest_id VARCHAR;
 ";
+
+/// The v26 column of `manual_experiments`: the plan scenarios of RTS
+/// 2024/1774 a record names, each one of the closed set, checked on write.
+/// NULL on the rows stored before. Like [`V22_COLUMNS`] it runs after the v8
+/// rebuild, which copies the v8 columns by position.
+pub(crate) const V26_COLUMNS: &str = "
+ALTER TABLE manual_experiments ADD COLUMN IF NOT EXISTS scenarios VARCHAR[];
+";

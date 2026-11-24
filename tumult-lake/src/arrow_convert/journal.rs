@@ -2,7 +2,10 @@
 
 use std::sync::Arc;
 
-use arrow::array::{ArrayRef, BooleanArray, Float64Array, Int64Array, StringArray, UInt64Array};
+use arrow::array::{
+    ArrayRef, BooleanArray, Float64Array, Int64Array, ListArray, ListBuilder, StringArray,
+    StringBuilder, UInt64Array,
+};
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
 
@@ -42,6 +45,12 @@ pub fn experiments_schema() -> Schema {
         Field::new("outage_started_at_ns", DataType::Int64, true),
         Field::new("recovered_at_ns", DataType::Int64, true),
         Field::new("mttr_s", DataType::Float64, true),
+        // v26: the plan scenarios the regulatory block names.
+        Field::new(
+            "dora_scenarios",
+            DataType::List(Arc::new(Field::new("item", DataType::Utf8, true))),
+            true,
+        ),
     ])
 }
 
@@ -127,8 +136,30 @@ pub fn journal_to_experiment_batch(journal: &Journal) -> Result<RecordBatch, Ana
             ])),
             Arc::new(Int64Array::from(vec![post.and_then(|p| p.recovered_at_ns)])),
             Arc::new(Float64Array::from(vec![post.and_then(|p| p.mttr_s)])),
+            Arc::new(scenarios_array(journal)),
         ],
     )?)
+}
+
+/// The plan scenarios the regulatory block of `journal` names, as one list
+/// cell: NULL when it names none.
+fn scenarios_array(journal: &Journal) -> ListArray {
+    let named = journal
+        .regulatory
+        .as_ref()
+        .map(|mapping| mapping.scenarios.as_slice())
+        .filter(|scenarios| !scenarios.is_empty());
+    let mut builder = ListBuilder::new(StringBuilder::new());
+    match named {
+        Some(scenarios) => {
+            for scenario in scenarios {
+                builder.values().append_value(scenario);
+            }
+            builder.append(true);
+        }
+        None => builder.append_null(),
+    }
+    builder.finish()
 }
 
 /// # Errors
@@ -286,7 +317,7 @@ mod tests {
     fn experiment_batch_schema() {
         let batch = journal_to_experiment_batch(&sample_journal()).unwrap();
         assert_eq!(batch.num_rows(), 1);
-        assert_eq!(batch.num_columns(), 24);
+        assert_eq!(batch.num_columns(), 25);
     }
     #[test]
     fn experiment_batch_values() {

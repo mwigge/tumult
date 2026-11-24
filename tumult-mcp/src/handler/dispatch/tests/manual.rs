@@ -263,6 +263,42 @@ async fn a_draft_takes_the_tlpt_block_the_severities_and_the_tester_as_the_api_d
     );
 }
 
+/// A draft names the plan scenarios of RTS 2024/1774 it tested, as the
+/// API takes them, and an id that is not one is a tool error naming the
+/// nearest id.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_draft_names_the_plan_scenarios_it_tested_as_the_api_does() {
+    let tmp = tempfile::tempdir().unwrap();
+    let store = lake(tmp.path());
+    let handler = open_handler(tmp.path());
+    let mut body = draft(&store);
+    body["scenarios"] = serde_json::json!(["premises_loss", "redundant_facility"]);
+    let created = structured(&handler, "tumult_manual_create_draft", body).await;
+    let detail = structured(
+        &handler,
+        "tumult_manual_get",
+        serde_json::json!({"store_path": store, "id": created["id"]}),
+    )
+    .await;
+    assert_eq!(
+        detail["experiment"]["scenarios"],
+        serde_json::json!(["premises_loss", "redundant_facility"])
+    );
+
+    let mut typo = draft(&store);
+    typo["scenarios"] = serde_json::json!(["site_loss"]);
+    let result = call(&handler, "tumult_manual_create_draft", typo, None)
+        .await
+        .unwrap();
+    assert_eq!(result.is_error, Some(true));
+    assert!(
+        result_text(&result)
+            .contains("'site_loss' is not a scenario id of RTS 2024/1774 Arts. 25, 26 and 39"),
+        "{}",
+        result_text(&result)
+    );
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn no_tool_submits_signs_off_verifies_or_attaches() {
     let tmp = tempfile::tempdir().unwrap();

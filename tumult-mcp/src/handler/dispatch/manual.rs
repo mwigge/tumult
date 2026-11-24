@@ -185,6 +185,7 @@ fn new_record(args: ManualCreateDraftTool) -> Result<NewManualExperiment, Manual
             attested_at_ns: t.attested_at_ns,
             summary_report_ref: t.summary_report_ref,
         }),
+        scenarios: args.scenarios.unwrap_or_default(),
     };
     Ok(NewManualExperiment {
         experiment_name: args.experiment_name,

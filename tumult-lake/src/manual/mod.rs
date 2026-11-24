@@ -32,7 +32,8 @@
 //! row names it without changing the seal.
 //!
 //! A record cites only DORA requirements the registry knows (its
-//! `framework_refs` are checked on every write). Its findings and actions
+//! `framework_refs` are checked on every write), and names only plan
+//! scenarios of RTS 2024/1774 (its `scenarios`, schema v26). Its findings and actions
 //! have a [`Severity`], an action may name its [`Retest`], a record names
 //! its [`Tester`], and a record of type `tlpt` holds its [`TlptDetail`].
 //! All of them are sealed.
@@ -47,7 +48,9 @@ mod writer;
 
 use std::fmt;
 
-use tumult_core::compliance::{check_reference, UnknownRequirement};
+use tumult_core::compliance::{
+    check_reference, check_scenario, UnknownRequirement, UnknownScenario,
+};
 pub use tumult_core::types::{Tester, TesterKind};
 
 use crate::StoreError;
@@ -415,6 +418,10 @@ pub struct ExerciseDetail {
     pub tester: Option<Tester>,
     /// The TLPT facts. Only a record of type `tlpt` takes them.
     pub tlpt: Option<TlptDetail>,
+    /// The plan scenarios of RTS 2024/1774 the exercise tested, by id
+    /// (`premises_loss`, `power_outage`, …), each one of the closed set
+    /// (schema v26).
+    pub scenarios: Vec<String>,
 }
 
 /// `Invalid` naming `field` of the `n`th (1-based) `what` when `value` is blank.
@@ -471,6 +478,9 @@ impl ExerciseDetail {
         }
         if let Some(tlpt) = &self.tlpt {
             tlpt.validate()?;
+        }
+        for scenario in &self.scenarios {
+            check_scenario(scenario).map_err(ManualError::UnknownScenario)?;
         }
         for (n, link) in (1..).zip(&self.links) {
             require("link", n, "linked_id", &link.linked_id)?;
@@ -572,8 +582,8 @@ impl fmt::Display for PlanError {
 
 /// Errors from the manual-evidence lifecycle. The API layer maps:
 /// `Invalid` → 400, `NotFound` → 404, `WrongStatus` → 409,
-/// `SelfReview`/`AlreadySigned`/`UnknownRequirement` → 422, `Plan` as
-/// [`PlanError`] says, `Store` → 500.
+/// `SelfReview`/`AlreadySigned`/`UnknownRequirement`/`UnknownScenario` →
+/// 422, `Plan` as [`PlanError`] says, `Store` → 500.
 #[derive(Debug)]
 pub enum ManualError {
     /// Bad input (unknown enum value, empty required field).
@@ -589,6 +599,8 @@ pub enum ManualError {
     /// A framework reference names a DORA requirement the registry does
     /// not know.
     UnknownRequirement(UnknownRequirement),
+    /// A scenario is not a plan scenario of RTS 2024/1774.
+    UnknownScenario(UnknownScenario),
     /// A plan write that cannot be done, or a plan a record cannot fulfil.
     Plan(PlanError),
     /// Underlying store failure.
@@ -611,6 +623,7 @@ impl fmt::Display for ManualError {
             }
             Self::AlreadySigned(by) => write!(f, "'{by}' has already signed off this record"),
             Self::UnknownRequirement(e) => write!(f, "framework_refs: {e}"),
+            Self::UnknownScenario(e) => write!(f, "scenarios: {e}"),
             Self::Plan(e) => write!(f, "{e}"),
             Self::Store(e) => write!(f, "store error: {e}"),
         }

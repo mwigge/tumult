@@ -102,6 +102,9 @@ pub fn cmd_validate<S: ::std::hash::BuildHasher>(
                 crate::outln!("  {} is the DORA requirement {id}", requirement.id);
             }
         }
+        if !mapping.scenarios.is_empty() {
+            crate::outln!("  plan scenarios: {}", mapping.scenarios.join(", "));
+        }
     }
 
     // Report config/secret resolution

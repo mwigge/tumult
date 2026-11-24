@@ -598,3 +598,34 @@ fn a_dora_requirement_in_an_old_form_passes_and_is_named_by_its_registry_id() {
         "{stdout}"
     );
 }
+
+#[test]
+fn a_plan_scenario_the_rts_does_not_name_is_refused_with_the_nearest_id() {
+    let lab = Lab::with_state("ok");
+    let block = format!(
+        "{}  scenarios[2]: premises_loss,power_outages\n",
+        dora_block("rts1774.art26")
+    );
+
+    let (passed, stdout, error) = validate(&lab, &experiment_with(&block));
+
+    assert!(!passed, "{stdout}");
+    assert_eq!(
+        error,
+        "regulatory scenario: 'power_outages' is not a scenario id of RTS 2024/1774 \
+         Arts. 25, 26 and 39; did you mean 'power_outage'?"
+    );
+    let known = format!(
+        "{}  scenarios[2]: premises_loss,power_outage\n",
+        dora_block("rts1774.art26")
+    );
+    let (passed, stdout, error) = validate(&lab, &experiment_with(&known));
+    assert!(passed, "{stdout}{error}");
+    assert!(
+        stdout.contains(
+            "  rts1774.art26 is the DORA requirement rts1774.art26\n  \
+             plan scenarios: premises_loss, power_outage\n"
+        ),
+        "{stdout}"
+    );
+}

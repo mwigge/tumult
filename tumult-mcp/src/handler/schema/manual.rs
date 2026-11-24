@@ -195,6 +195,10 @@ pub struct ManualCreateDraftTool {
     pub tester: Option<ManualTesterArg>,
     /// The TLPT facts of a record of type `tlpt`.
     pub tlpt: Option<ManualTlptArg>,
+    /// The plan scenarios of RTS 2024/1774 the exercise tested, such as
+    /// `premises_loss` or `power_outage`. An id that is not one is refused
+    /// with the nearest one.
+    pub scenarios: Option<Vec<String>>,
     #[serde(default = "default_store_path")]
     pub store_path: String,
 }
