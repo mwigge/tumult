@@ -12,6 +12,7 @@ Short notes for each release: what is new and what to do before you upgrade.
 
 | Version | Date | In one line |
 |---|---|---|
+| [3.0.4](3.0.4.md) | 2026-11-25 | Disaster recovery tested for real, with measured RTO and RPO, manual exercises as full records, and reports for an auditor |
 | [3.0.3](3.0.3.md) | 2026-11-22 | Short docs with a picture for each idea, checked against the code |
 | [3.0.2](3.0.2.md) | 2026-11-20 | Experiments checked from end to end, with stricter runs and numbers counted from runs |
 | [3.0.1](3.0.1.md) | 2026-11-16 | The same product name everywhere, and up-to-date dependencies |

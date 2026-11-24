@@ -74,7 +74,9 @@ and stores the run.
 | `--load-duration <LOAD_DURATION>` | `30s` | How long the load runs, such as `30s` or `5m` |
 
 The load defaults apply only with `--load k6` or `--load oha`. A
-`${KEY}` that no `--var` sets stops the run before it starts. Without
+`${KEY}` that no `--var`, `configuration` or `secrets` entry fills
+stops the run before it starts. A file with none of them leaves a
+placeholder in the arguments of a process step to the shell. Without
 `--target-version` and `target.version`, a stored run asks the daemon or
 the store which `service.version` the target's spans carried, and keeps it
 as `observed`. When a run ends, it prints a summary:
