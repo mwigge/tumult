@@ -50,6 +50,9 @@
 //! Subcommands:
 //! * `tumultd import <file>` — manual CSV / tumult journal JSON import.
 //! * `tumultd report --metric <name>` — print an HTML report to stdout.
+//! * `tumultd report --template dr-test --target <system> --out <file>` and
+//!   `tumultd report --template dr-exercise --record <id> --out <file>`:
+//!   write a DR report of the lake as PDF (or HTML with `--format html`).
 //! * `tumultd create-admin` — create the first admin user (daemon stopped).
 
 mod admin;
@@ -90,13 +93,24 @@ enum Command {
         #[arg(long)]
         label: Option<String>,
     },
-    /// Print an HTML report for a semantic metric to stdout (or --out).
+    /// Print an HTML report for a semantic metric to stdout (or --out), or
+    /// write a DR report of the lake (--template) to --out.
     Report {
         /// Metric name from the metrics directory (e.g. hypothesis_pass_rate).
-        #[arg(long)]
-        metric: String,
-        /// Write the report to this file instead of stdout.
-        #[arg(long)]
+        #[arg(
+            long,
+            required_unless_present = "template",
+            conflicts_with = "template"
+        )]
+        metric: Option<String>,
+        #[command(flatten)]
+        dr: reports::DrReport,
+        /// Write the report to this file instead of stdout. A DR report
+        /// needs it.
+        #[arg(
+            long,
+            required_if_eq_any = [("template", "dr-test"), ("template", "dr-exercise")]
+        )]
         out: Option<PathBuf>,
     },
     /// Create the first admin user with a generated one-time password.
@@ -159,7 +173,11 @@ async fn run(cli: Cli) -> Result<()> {
     match cli.command.unwrap_or(Command::Serve) {
         Command::Serve => serve::serve().await,
         Command::Import { file, label } => admin::import(file, label),
-        Command::Report { metric, out } => reports::report(metric, out),
+        Command::Report { metric, dr, out } => match (metric, out) {
+            (Some(metric), out) => reports::report(metric, out),
+            (None, Some(out)) => reports::dr_report(&dr, &out),
+            (None, None) => anyhow::bail!("a DR report needs --out"),
+        },
         Command::CreateAdmin { username, db } => admin::create_admin(&username, db),
     }
 }

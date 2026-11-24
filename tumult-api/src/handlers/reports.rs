@@ -350,10 +350,65 @@ pub(crate) struct GenerateV2Request {
     period: Option<String>,
     experiment_id: Option<String>,
     framework: Option<String>,
+    /// `dr-test`: the target system.
+    target: Option<String>,
+    /// `dr-test` and `dr-exercise`: one environment of the caller.
+    environment: Option<String>,
+    /// `dr-test`: the start of the period, in unix nanoseconds.
+    from: Option<i64>,
+    /// `dr-test`: the end of the period, in unix nanoseconds.
+    to: Option<i64>,
+    /// `dr-exercise`: the id of the manual record.
+    record_id: Option<String>,
+}
+
+/// What a DR report reads besides the kind: the target and the period of
+/// a DR test report, or the record of a DR exercise report.
+struct DrParams {
+    target: String,
+    from_ns: i64,
+    to_ns: i64,
+    record_id: String,
+}
+
+/// The parameters of a DR report, checked: a `dr-test` names a target and
+/// a period that does not end before it starts (by default the 365 days up
+/// to now, as `GET /api/dr`); a `dr-exercise` names a record.
+fn dr_params(
+    kind: tumult_compliance::TemplateKind,
+    req: &GenerateV2Request,
+    now: i64,
+) -> Result<DrParams, String> {
+    use tumult_compliance::TemplateKind;
+    let named = |value: &Option<String>| value.clone().filter(|v| !v.is_empty());
+    let target = named(&req.target);
+    let record_id = named(&req.record_id);
+    if kind == TemplateKind::DrTest && target.is_none() {
+        return Err("dr-test requires target".into());
+    }
+    if kind == TemplateKind::DrExercise && record_id.is_none() {
+        return Err("dr-exercise requires record_id".into());
+    }
+    let (from_ns, to_ns) = match kind {
+        TemplateKind::DrTest => crate::handlers::dr::period(req.from, req.to, now)?,
+        _ => (now, now),
+    };
+    Ok(DrParams {
+        target: target.unwrap_or_default(),
+        from_ns,
+        to_ns,
+        record_id: record_id.unwrap_or_default(),
+    })
 }
 
 /// `POST /api/reports/v2/generate` — build one compliance-grade report and
 /// persist `{id}.pdf`, `{id}.html` and `{id}.json` under `reports/v2/`.
+///
+/// `dr-test` is the DR test report of `target` over `from` to `to`, and
+/// `dr-exercise` the DR exercise report of the manual record `record_id`.
+/// Both read the environments of the caller, or the one `environment`
+/// names, and the DR types of the house. The evidence pack scores its
+/// DORA matrix with the parameters and workloads `GET /api/dora` uses.
 pub(crate) async fn generate_report_v2(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
@@ -367,7 +422,7 @@ pub(crate) async fn generate_report_v2(
     let Ok(kind) = serde_json::from_value::<tumult_compliance::TemplateKind>(json!(req.kind))
     else {
         return Err(bad(format!(
-            "unknown type {:?}; expected executive-digest|game-day|evidence-pack",
+            "unknown type {:?}; expected executive-digest|game-day|evidence-pack|dr-test|dr-exercise",
             req.kind
         )));
     };
@@ -400,50 +455,103 @@ pub(crate) async fn generate_report_v2(
     }
 
     let generated_at = now_ns();
+    let dr = dr_params(kind, &req, generated_at).map_err(bad)?;
     let exp_id = req.experiment_id.clone();
     let framework = req.framework.clone();
     let org = state.org.clone();
-    let scopes = principal.env_scopes.clone();
-    let built = with_reader(&state.db_path, move |reader| match kind {
-        tumult_compliance::TemplateKind::ExecutiveDigest => {
-            tumult_compliance::builders::build_executive(
-                reader,
-                &org,
-                generated_at,
-                period_ns,
-                generated_at,
-                &scopes,
-            )
-            .map(Some)
+    let scopes = match kind {
+        tumult_compliance::TemplateKind::DrTest | tumult_compliance::TemplateKind::DrExercise => {
+            crate::handlers::risks::envs_for(
+                &principal,
+                req.environment.clone().filter(|e| !e.is_empty()),
+            )?
         }
-        tumult_compliance::TemplateKind::GameDay => {
-            // The builder confines the run's root span to the principal's
-            // environments; an out-of-scope id comes back as `None` (404 —
-            // no existence leak across scopes).
-            tumult_compliance::builders::build_game_day(
-                reader,
-                exp_id.as_deref().unwrap_or_default(),
-                generated_at,
-                &scopes,
-            )
+        _ => principal.env_scopes.clone(),
+    };
+    let runtime = state.score_runtime();
+    let params = runtime.params();
+    let workloads = match kind {
+        tumult_compliance::TemplateKind::EvidencePack => runtime.workloads().map_err(internal)?,
+        _ => std::sync::Arc::default(),
+    };
+    let proof_days = runtime.proof_days();
+    let missing = match kind {
+        tumult_compliance::TemplateKind::DrExercise => {
+            "record_id names no submitted or verified DR exercise in your environments"
         }
-        tumult_compliance::TemplateKind::EvidencePack => {
-            tumult_compliance::builders::build_evidence_pack(
-                reader,
-                framework.as_deref().unwrap_or_default(),
-                Some(period_ns),
-                generated_at,
-                &scopes,
-            )
-            .map(Some)
+        _ => "experiment_id not found",
+    };
+    let built = with_reader(&state.db_path, move |reader| {
+        let house = tumult_compliance::builders::House {
+            params: &params,
+            workloads: &workloads,
+            proof_days,
+        };
+        match kind {
+            tumult_compliance::TemplateKind::ExecutiveDigest => {
+                tumult_compliance::builders::build_executive(
+                    reader,
+                    &org,
+                    generated_at,
+                    period_ns,
+                    generated_at,
+                    &scopes,
+                )
+                .map(Some)
+            }
+            tumult_compliance::TemplateKind::GameDay => {
+                // The builder confines the run's root span to the principal's
+                // environments; an out-of-scope id comes back as `None` (404 —
+                // no existence leak across scopes).
+                tumult_compliance::builders::build_game_day(
+                    reader,
+                    exp_id.as_deref().unwrap_or_default(),
+                    generated_at,
+                    &scopes,
+                )
+            }
+            tumult_compliance::TemplateKind::EvidencePack => {
+                tumult_compliance::builders::build_evidence_pack(
+                    reader,
+                    framework.as_deref().unwrap_or_default(),
+                    Some(period_ns),
+                    generated_at,
+                    &scopes,
+                    &house,
+                )
+                .map(Some)
+            }
+            tumult_compliance::TemplateKind::DrTest => {
+                let request = tumult_compliance::builders::DrTestRequest {
+                    target: &dr.target,
+                    from_ns: dr.from_ns,
+                    to_ns: dr.to_ns,
+                };
+                tumult_compliance::builders::build_dr_test(
+                    reader,
+                    &house,
+                    &request,
+                    generated_at,
+                    &scopes,
+                )
+                .map(Some)
+            }
+            // A record outside the environments of the caller comes back
+            // as `None`, as a record that is not there.
+            tumult_compliance::TemplateKind::DrExercise => {
+                tumult_compliance::builders::build_dr_exercise(
+                    reader,
+                    &house,
+                    &dr.record_id,
+                    generated_at,
+                    &scopes,
+                )
+            }
         }
     })
     .await?;
     let Some(doc) = built else {
-        return Err((
-            StatusCode::NOT_FOUND,
-            Json(json!({"error": "experiment_id not found"})),
-        )
+        return Err((StatusCode::NOT_FOUND, Json(json!({"error": missing})))
             .into_response()
             .into());
     };
@@ -477,6 +585,11 @@ pub(crate) async fn generate_report_v2(
             "period": req.period,
             "experiment_id": req.experiment_id,
             "framework": req.framework,
+            "target": req.target,
+            "environment": req.environment,
+            "from": req.from,
+            "to": req.to,
+            "record_id": req.record_id,
         },
     });
     std::fs::write(v2_dir.join(format!("{id}.pdf")), &pdf).map_err(|e| internal(e.to_string()))?;

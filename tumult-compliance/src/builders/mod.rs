@@ -3,6 +3,9 @@
 //! All SQL values that flow from parameters go through `q` (single-quote
 //! doubling). Numbers (`i64` timestamps) are formatted directly.
 
+mod dr;
+mod dr_exercise;
+mod dr_test;
 mod evidence_pack;
 mod executive;
 mod game_day;
@@ -13,13 +16,41 @@ mod tests;
 use sha2::{Digest, Sha256};
 use tumult_lake::{scope, Reader, RunVerdict};
 
+use crate::dora::model::Workload;
+use crate::dora::params::HouseParams;
 use crate::html::fmt_date;
 use crate::model::{Cell, DocMeta, TemplateKind};
 use crate::scoring::{self, RunState, Scorecard};
 
+pub use dr_exercise::build_dr_exercise;
+pub use dr_test::{build_dr_test, DrTestRequest};
 pub use evidence_pack::{build_evidence_pack, CLAUSE_VERIFY_FOOTNOTE, FRAMEWORK_CLAUSES};
 pub use executive::build_executive;
 pub use game_day::build_game_day;
+
+/// What a report reads of the house besides the lake: the house
+/// parameters, the workloads of the deployment manifests and the proof
+/// opt-in, as the score runtime of the daemon holds them for
+/// `GET /api/dora`. The DR reports read the DR types and the sign-offs of
+/// the house from it, the evidence pack the DORA score.
+#[derive(Debug, Clone, Copy)]
+pub struct House<'a> {
+    pub params: &'a HouseParams,
+    pub workloads: &'a [Workload],
+    pub proof_days: bool,
+}
+
+impl<'a> House<'a> {
+    /// The house of `params`, with no workloads and no proof days.
+    #[must_use]
+    pub fn of(params: &'a HouseParams) -> Self {
+        Self {
+            params,
+            workloads: &[],
+            proof_days: false,
+        }
+    }
+}
 
 const DAY_NS: i64 = 86_400 * 1_000_000_000;
 
@@ -55,6 +86,7 @@ fn base_meta(
         period: None,
         framework: None,
         experiment_id: None,
+        subject: Vec::new(),
     }
 }
 

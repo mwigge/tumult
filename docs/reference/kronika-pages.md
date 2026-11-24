@@ -754,6 +754,71 @@ HTML preview and a PDF download, and quick metric digests.
   `GET /api/reports`, `POST /api/reports/generate`, `GET /api/experiments`,
   `GET /api/metrics`.
 
+The page makes R1, R2 and R3. The two DR reports, R4 and R5, are made
+through the API or with `tumultd report`. Each report states the SHA-256
+of its PDF and the time it was built.
+
+#### DR test report (R4)
+
+The DR tests of one target over a period, for an auditor. Each DR test, a
+run of kind `dr` or a manual DR exercise, stands against the RTO and the
+RPO it planned, with its verdict. A test that did not recover says "not
+recovered". A run whose probes saw no outage says "no outage observed". A
+planned RPO that nothing measured is "not measured", never "met".
+
+![A DR test report](../images/3.0/screenshots/report-dr-test.png)
+
+- The due state of the target: its last DR test, when the next one is due
+  and the planned exercise that covers it.
+- The evidence of each test. For a run: its id and its trace id. For a
+  manual record: its id, the reviewer, the sign-offs and each file with
+  its SHA-256. The lake does not keep the SHA-256 of a journal: `tumult
+  run` prints it when it writes the journal.
+- A block for the DR owner and the reviewer to sign.
+- Request: `{"type": "dr-test", "target": "ledger"}`. `from` and `to` set
+  the period in unix nanoseconds, by default the 365 days up to now.
+  `environment` reads one of your environments.
+- Command line, with the daemon stopped:
+  `tumultd report --template dr-test --target ledger --out ledger.pdf`.
+  `--from` and `--to` take a day as `YYYY-MM-DD`, and `--format html`
+  writes the HTML. It prints the document id, the SHA-256 of the file and
+  the time it was built.
+
+#### DR exercise report (R5)
+
+One manual DR exercise: its plan, the people who took part, the steps with
+their times, the RTO and the RPO planned and actual with met or not, the
+data check, the findings with their severity, the actions with their
+owners and the severity of each, the files with their SHA-256 and the
+sign-offs. It also says what the audit verify of the
+record finds when the report is made, and it ends with a block for the DR
+owner and the reviewer to sign.
+
+![A DR exercise report](../images/3.0/screenshots/report-dr-exercise.png)
+
+- Request: `{"type": "dr-exercise", "record_id": "<id>"}`. The record must
+  be a submitted or verified DR exercise in your environments.
+- Command line, with the daemon stopped:
+  `tumultd report --template dr-exercise --record <id> --out drill.pdf`.
+
+#### Evidence pack (R2)
+
+The DORA pack builds its traceability matrix from the DORA requirement
+registry, as the DORA score of `/api/dora` reads it. Each row is one
+paragraph, with its evidence status and the ids of the runs and records
+behind it. A status says what evidence is held. It is not a compliance
+verdict. Every pack also gives the kind, the RTO and the RPO of each test
+of its register, and the DR detail of each manual DR record in its
+attestation appendix. The appendix names a DORA citation of a record by
+its registry id, such as `dora.art24.6`.
+
+Under Independence, a pack counts the tests of its register that name an
+external tester. It reads the tester of each manual record. A run names
+its tester only in its journal, and the lake does not keep it, so no run
+is counted.
+
+![The DORA matrix of an evidence pack](../images/3.0/screenshots/report-evidence-pack.png)
+
 ### Events
 
 Route `/events`. Run lifecycle events with their actor, newest first.
