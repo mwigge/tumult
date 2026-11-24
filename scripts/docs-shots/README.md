@@ -23,7 +23,9 @@ arguments to compare first.
 ## What it does
 
 1. Builds the daemon image from this checkout with
-   `docker/docker-compose.kronika.yml`, under a compose project of its own
+   `docker/Dockerfile.tumultd`, with at most 12 GB of memory and CPUs 0 to 7
+   (`DOCS_SHOTS_BUILD_MEMORY`, `DOCS_SHOTS_BUILD_CPUS`), and starts it with
+   `docker/docker-compose.kronika.yml` under a compose project of its own
    (`tumult-docs-shots`). The ports are 34317 and 34318 on 127.0.0.1, so the
    demo on 14317 and 14318 can stay up.
 2. Makes a new admin password and new tokens for this run. They live in a
@@ -36,8 +38,16 @@ arguments to compare first.
    - two message-queue experiments, one accepted risk;
    - a definition bound to env `dev`, one run that waits for approval, and
      one run that `bob` approved and that is still running;
-   - two schedules, two webhooks, a third user and two reports;
-   - the HTML report of the last soak run.
+   - two schedules, two webhooks and a third user;
+   - the HTML report of the last soak run;
+   - three DR runs of `config-service` against a lab of files
+     (`experiments/dr-lab/lab.sh`): one restores a backup and measures its
+     RTO and RPO, one does not recover, and one sees no outage;
+   - DR exercises run by hand, tagged with the plan scenarios they tested,
+     a failover drill that fulfils its plan with steps, actions, a file and
+     a sign-off, and a planned backup;
+   - an executive digest, a DORA evidence pack and the two DR reports, with
+     the HTML of the last three for the report pictures.
 
    The tumult CLI comes out of the image and runs with a HOME and a lake
    in the work dir. It never reads or writes your own lake.
@@ -55,7 +65,8 @@ arguments to compare first.
 Add an entry to `shots.json`: the file name, the route, the height, and
 the steps before the picture (`click`, `fill`, `scrollTo`, `waitFor`,
 `wait`, `blur`). `{key}` in a route takes an id from the `ids.json` that
-`data.py` writes. Then show the picture on a page:
+`data.py` writes. An entry with `file` instead of `route` opens a file of the
+work dir, such as a report that `data.py` saved. Then show the picture on a page:
 `scripts/check-images.py` fails on a picture that no page names.
 
 ## Take one picture again
