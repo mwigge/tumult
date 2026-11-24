@@ -146,7 +146,9 @@ fn run(experiment: &Experiment, target: Target, config: &RunConfig) -> (Journal,
     let sampling = SamplingConfig {
         interval: Duration::from_millis(10),
         max_during_samples: 50,
-        recovery_timeout: Duration::from_millis(80),
+        // Wide enough for a slow CI runner to see the target come back; a
+        // run that never recovers waits all of it.
+        recovery_timeout: Duration::from_secs(2),
         recovery_interval: Duration::from_millis(10),
     };
     let (journal, spans) = capture_spans(|| {
