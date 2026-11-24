@@ -88,14 +88,15 @@ Outside the sweep: `demo-guard-halt.toon` (the guardrail card), and
 [`scripts/demo-topology.sh`](../scripts/demo-topology.sh).
 `make demo-check` runs all of them.
 
-## The DR example and the demo GameDay
+## The DR examples and the demo GameDay
 
-`make demo-check` also runs a disaster recovery example and a GameDay.
+`make demo-check` also runs two disaster recovery examples and a GameDay.
 Each one says what it proves:
 
 | Run | What it proves |
 |---|---|
 | [`examples/postgres-failover.toon`](../examples/postgres-failover.toon) | The primary stops, the standby is promoted and takes writes, and the app follows it. The RTO runs from the first read that saw the outage to the read where the app was back, within 30 s. |
+| [`examples/postgres-restore-rpo.toon`](../examples/postgres-restore-rpo.toon) | The orders database is lost and restored from a backup taken before the last 4 seconds of writes, so those writes are lost. The RPO is the seconds lost, 4 to 7 in the demo, within 10 s. The RTO runs until the app reads its orders again, within 30 s. |
 | [`kronika/gamedays/platform-resilience.gameday.toon`](./kronika/gamedays/platform-resilience.gameday.toon) | Four steps, each with a fault its steady-state probe sees. Three recover. The queue loss step fails by design, and the GameDay requires a recovery of each step, so its score is `PARTIAL` with a recovery of 0.75. |
 
 The steady-state probes of these runs only read. A probe that wrote, such
@@ -103,8 +104,10 @@ as one that made the directory it checks, would heal the fault it is
 there to see: the runner reads it again while the fault is on. A control
 or a step of the method sets the stage instead.
 
-The failover leaves a promoted standby and a stopped primary. The check
-makes the pair again before and after it. To do it by hand:
+The failover leaves a promoted standby and a stopped primary, and the
+restore leaves a database without the orders placed after its backup. The
+check makes the pair again before and after each example. To do it by
+hand:
 
 ```bash
 docker compose -f docker/docker-compose.demo.yml rm -sfv demo-postgres-standby
@@ -116,15 +119,16 @@ The new standby copies the primary when it starts.
 ## make demo-check
 
 The smoke test of the demo. It starts the stack, waits for health, runs
-the sweep, the failover example and the demo GameDay, and checks three
+the sweep, the DR examples and the demo GameDay, and checks three
 things. It exits with a code other than 0 on any failure.
 
 1. **Each journal is as expected**: `scripts/check-proof-journals.py`
    compares each journal with `demo/experiments/expectations.json`
    (status, steady state before and after, rollbacks, objective verdicts),
-   the failover with `examples/expectations.json`, and the GameDay with
+   the DR examples with `examples/expectations.json`, which also names
+   the RPO the restore must measure, and the GameDay with
    `demo/kronika/gamedays/expectations.json`, which also names its score.
-   The check prints the RTO the failover measured.
+   The check prints the RTO and the RPO each DR example measured.
 2. **Telemetry arrived**: the collector counts accepted spans on `:18888`.
 3. **The Star Map holds**: it starts a Krönika demo from
    `docker/docker-compose.kronika.yml`, seeds it, checks the seed journals
@@ -155,8 +159,9 @@ socket.
 - **net**: the proxy sits in front of demo-app, not between demo-app and
   Postgres, because the database URL of the app is fixed at start.
 - **postgres**: `demo-postgres.toon` runs the `psql` of the Postgres
-  container. Same SQL as `tumult-db-postgres`. The failover example runs
-  the actions of `tumult-db-postgres` with the `psql` of the runner image.
+  container. Same SQL as `tumult-db-postgres`. The DR examples run the
+  actions of `tumult-db-postgres` with the `psql`, `pg_dump` and
+  `pg_restore` of the runner image, of PostgreSQL 16 as the server.
 - **stress**: `tumult-stress` loads its own machine, so the demo uses Pumba
   to load demo-app.
 - **ssh**: the host key of demo-sshd changes with each build, so the step

@@ -207,6 +207,10 @@ nfr[1]:
     criticality: blocking
 ```
 
+The demo measures one for real: `examples/postgres-restore-rpo.toon`
+restores a backup that misses the last 4 seconds of writes, see
+[tumult-db](../plugins/tumult-db.md#the-rpo-example-of-the-demo).
+
 The writer stamps the store and the ledger with one clock reading, so the RPO
 never compares two clocks. It is as fine as the writer interval. Validation
 refuses an `rpo` objective that is not `lte`, a threshold that is not
