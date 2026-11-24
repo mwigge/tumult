@@ -386,6 +386,21 @@ mod tests {
         assert_eq!(recovery_component(&with_a_met_one), Some(50.0));
     }
 
+    /// An RTO of zero is no target: such a run stays out of recovery,
+    /// whatever it measured.
+    #[test]
+    fn a_run_with_an_rto_of_zero_stays_out_of_recovery() {
+        let zero = TargetEvidence {
+            target: "a".into(),
+            experiments: vec![
+                experiment(vec![], Some((0.0, 5.0))),
+                watched(0.0, "breached", Some(false)),
+            ],
+            ..Default::default()
+        };
+        assert_eq!(recovery_component(&zero), None);
+    }
+
     #[test]
     fn a_run_that_measured_no_recovery_stays_out_of_recovery() {
         let unmeasured = TargetEvidence {

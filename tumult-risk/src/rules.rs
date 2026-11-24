@@ -1318,6 +1318,48 @@ mod tests {
         }
     }
 
+    /// A recovery that took as long as its RTO met it.
+    #[test]
+    fn a_recovery_as_long_as_its_rto_missed_nothing() {
+        let mut t = target("db", None, vec![evidence("robustness", 1)]);
+        t.experiments.push(ExperimentLatest {
+            rto_measured_s: Some(30.0),
+            ..dr_run("failover", 30.0, 1, vec![])
+        });
+
+        let risks = scan_one(t);
+
+        assert!(
+            !rules_of(&risks).contains(&"recovery_target_missed"),
+            "{risks:?}"
+        );
+    }
+
+    /// A verified manual record proves the RTO of its target only when it
+    /// met both its targets: one in time that lost more data than its RPO
+    /// allows proves nothing.
+    #[test]
+    fn a_manual_record_over_its_rpo_proves_no_rto() {
+        let unmeasured = dr_run("failover", 30.0, 1, vec![no_recovery_measured(30.0)]);
+        let record = |rpo_measured_s: f64| ExperimentLatest {
+            rto_measured_s: Some(1200.0),
+            rpo_target_s: Some(300.0),
+            rpo_measured_s: Some(rpo_measured_s),
+            manual: true,
+            ..dr_run("restore-drill", 3600.0, 5, vec![])
+        };
+        for (rpo_measured_s, proves) in [(420.0, false), (300.0, true)] {
+            let mut t = target("db", None, vec![evidence("robustness", 1)]);
+            t.experiments = vec![unmeasured.clone(), record(rpo_measured_s)];
+            let risks = scan_one(t);
+            assert_eq!(
+                rules_of(&risks).contains(&"recovery_not_measured"),
+                !proves,
+                "an RPO of {rpo_measured_s}s against 300s: {risks:?}"
+            );
+        }
+    }
+
     #[test]
     fn a_run_that_lost_more_data_than_its_rpo_allows_missed_it() {
         let lossy = |name: &str, measured_s: f64| ExperimentLatest {
