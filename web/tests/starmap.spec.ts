@@ -882,6 +882,105 @@ test('the drawer marks a run that is a journal only', async ({ page }) => {
     await expect(ofTheRun('message-queue-kill')).not.toContainText('journal only');
 });
 
+/** A verified manual restore of `target` in `environment`. */
+const restoreOf = (id: string, target: string, environment: string) => ({
+    id,
+    experiment_name: `${target} restore`,
+    exercise_type: 'restore',
+    executed_at_ns: NOW_NS - DAY_NS,
+    outcome_status: 'passed',
+    target_system: target,
+    target_environment: environment,
+    status: 'verified',
+    entered_by: 'alice',
+    reviewed_by: 'bob',
+});
+
+/** A planned restore of `target` in `environment`, due in a week. */
+const planOf = (id: string, target: string, environment: string) => ({
+    id,
+    name: `${target} yearly restore`,
+    exercise_type: 'restore',
+    target_system: target,
+    target_environment: environment,
+    function_id: null,
+    scope: null,
+    owner: 'alice',
+    planned_at_ns: null,
+    due_at_ns: NOW_NS + 7 * DAY_NS,
+    interval_days: 365,
+    rto_target_s: 900,
+    rpo_target_s: 60,
+    status: 'planned',
+    created_by: 'alice',
+    created_at_ns: NOW_NS - DAY_NS,
+    updated_by: null,
+    updated_at_ns: null,
+});
+
+test('the drawer opens the Manual page and the DR page on its system', async ({ page }) => {
+    await mock(page, []);
+    // A route added later answers first: these records for the Manual page and the drawer.
+    await page.route('**/api/manual/experiments', (route) =>
+        route.fulfill({
+            json: {
+                records: [
+                    restoreOf('m-1', 'message-queue', 'demo'),
+                    restoreOf('m-2', 'message-queue', 'staging'),
+                    restoreOf('m-3', 'session-cache', 'demo'),
+                ],
+            },
+        }),
+    );
+    await page.route('**/api/manual/plans', (route) =>
+        route.fulfill({
+            json: {
+                plans: [
+                    planOf('p-1', 'message-queue', 'demo'),
+                    planOf('p-2', 'session-cache', 'demo'),
+                ],
+            },
+        }),
+    );
+    await page.goto('/starmap?sel=sys%3Ademo%2Fmessage-queue');
+    const drawer = page.getByTestId('starmap-drawer');
+    const query = 'target=message-queue&environment=demo';
+    await expect(
+        drawer.getByRole('link', { name: 'Disaster recovery', exact: true }),
+    ).toHaveAttribute('href', `/dr?${query}`);
+    await expect(drawer.getByRole('link', { name: 'Manual records', exact: true })).toHaveAttribute(
+        'href',
+        `/manual?tab=records&${query}`,
+    );
+    const record = drawer.getByRole('link', { name: 'message-queue restore', exact: true });
+    await expect(record).toHaveCount(1);
+    await expect(record).toHaveAttribute('href', `/manual?tab=records&${query}`);
+
+    // The Manual page reads the target of its URL as its filter.
+    await record.click();
+    await expect(page).toHaveURL(/\/manual\?tab=records&target=message-queue&environment=demo$/);
+    const rows = page.locator('tr[data-record]');
+    await expect(rows).toHaveCount(1);
+    await expect(rows).toHaveAttribute('data-record', 'm-1');
+    await expect(page.getByTestId('manual-target')).toHaveText(
+        'Records and plans of message-queue in demo. Show every target',
+    );
+
+    // The plans keep to the same target, as the filter stays in the URL.
+    await page.getByRole('button', { name: 'Plans', exact: true }).click();
+    await expect(page).toHaveURL(/\/manual\?tab=plans&target=message-queue&environment=demo$/);
+    const plans = page.locator('tr[data-plan]');
+    await expect(plans).toHaveCount(1);
+    await expect(plans).toHaveAttribute('data-plan', 'p-1');
+
+    // Without the filter every record is listed.
+    await page.getByRole('button', { name: 'All records', exact: true }).click();
+    await page.getByRole('link', { name: 'Show every target', exact: true }).click();
+    await expect(page).toHaveURL(/\/manual\?tab=records$/);
+    await expect(rows).toHaveCount(3);
+    await expect(page.getByTestId('manual-target')).toHaveCount(0);
+});
+
 test('the drawer explains flags and what an entity hides', async ({ page }) => {
     await mock(page, []);
     await page.goto('/starmap?sel=ent%3ACIF-9');

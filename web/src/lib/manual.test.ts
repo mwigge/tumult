@@ -13,11 +13,14 @@ import {
     isOverdue,
     localInput,
     matchingPlans,
+    ofTarget,
     planPatch,
     planRequest,
     planToForm,
     recoveryVerdict,
     signoffSummary,
+    targetFilterOf,
+    targetQuery,
 } from './manual';
 import type { ManualDetail, ManualExperiment, ManualPlan } from './types';
 
@@ -516,5 +519,45 @@ describe('the words of the page', () => {
     it('write a time for a datetime field to the second', () => {
         expect(localInput(local(2026, 10, 20, 10, 0, 5), true)).toBe('2026-11-20T10:00:05');
         expect(localInput(null)).toBe('');
+    });
+});
+
+describe('the target of the page', () => {
+    const rows = [
+        { id: 'a', target_system: 'payments-db', target_environment: 'production' },
+        { id: 'b', target_system: 'payments-db', target_environment: 'staging' },
+        { id: 'c', target_system: 'ledger', target_environment: 'production' },
+        { id: 'd', target_system: null, target_environment: null },
+    ];
+    const ids = (filter: { target: string; environment: string }) =>
+        ofTarget(rows, filter).map((r) => r.id);
+
+    it('is read from the target and the environment of the URL, as the DR page reads them', () => {
+        const query = new URLSearchParams('tab=records&target=payments-db&environment=production');
+        expect(targetFilterOf(query)).toEqual({
+            target: 'payments-db',
+            environment: 'production',
+        });
+        expect(targetFilterOf(new URLSearchParams('tab=plans'))).toEqual({
+            target: '',
+            environment: '',
+        });
+    });
+
+    it('keeps the rows of the target in the environment, and every row when it names none', () => {
+        expect(ids({ target: 'payments-db', environment: 'production' })).toEqual(['a']);
+        expect(ids({ target: 'payments-db', environment: '' })).toEqual(['a', 'b']);
+        expect(ids({ target: '', environment: 'production' })).toEqual(['a', 'c']);
+        expect(ids({ target: '', environment: '' })).toEqual(['a', 'b', 'c', 'd']);
+        expect(ids({ target: 'search', environment: '' })).toEqual([]);
+    });
+
+    it('is the query a link to the Manual page or the DR page sends', () => {
+        expect(targetQuery('payments db', 'production')).toBe(
+            'target=payments+db&environment=production',
+        );
+        expect(targetQuery('payments-db', null)).toBe('target=payments-db');
+        const back = targetFilterOf(new URLSearchParams(targetQuery('a&b=c', 'x y')));
+        expect(back).toEqual({ target: 'a&b=c', environment: 'x y' });
     });
 });

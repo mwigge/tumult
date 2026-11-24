@@ -189,6 +189,8 @@ Read the [Star Map guide](../guides/star-map.md).
 
 - **Evidence:** spans, runs, verified manual records, accepted risks,
   `org.yaml` and the manifests under `KRONIKA_MANIFESTS_DIR`.
+- **Drawer of a system:** links to its manual records and to its DR page,
+  with the target and environment of the system in the URL.
 - **API:** `GET /api/starmap`, and in the drawer `GET /api/gate/{target}`
   and `GET /api/experiments`.
 
@@ -202,7 +204,8 @@ duration, faults and target.
 ![Experiments](../images/3.0/screenshots/experiments.png)
 
 - **Evidence:** the newest 500 runs in the lake, from the CLI, MCP, the
-  daemon or a manual record.
+  daemon or a manual record. A draft is not on the list. A submitted record
+  is, as waiting for review.
 - **API:** `GET /api/experiments`, `GET /api/dimensions`.
 
 ### Experiment detail
@@ -308,6 +311,10 @@ The page has five tabs:
   evidence, sign-offs and audit trail, and to verify it.
 - **Import** takes records as JSON, as drafts in one batch.
 
+**Plans**, **Verification queue** and **All records** keep to the target in
+the URL: `/manual?tab=records&target=payments-db&environment=production`.
+The Star Map drawer opens the page this way. **Show every target** clears it.
+
 When the API refuses a change, the page shows the reason the API gives.
 
 - **API:** `GET /api/manual/experiments`, `GET /api/manual/experiments/{id}`,
@@ -345,8 +352,9 @@ failover drill or a tabletop:
   [Cite a requirement](#cite-a-requirement).
 
 The form sends the actions as `actions`. It no longer sends the older
-`action_items` list. When you edit an older draft, each of its plain action
-items becomes an action that still needs an owner.
+`action_items` list. Nor do the MCP tool `tumult_manual_create_draft`, the
+draft of a break-glass run and the demo seed. When you edit an older draft,
+each of its plain action items becomes an action that still needs an owner.
 
 Save the draft first. Then attach files and links to it in **Evidence**, and
 submit it with **Save & submit**.

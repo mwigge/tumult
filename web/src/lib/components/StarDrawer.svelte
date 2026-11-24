@@ -17,6 +17,7 @@
     import { experimentDurationNs } from '#lib/duration.js';
     import { COMPLIANCE_SCORE, COMPLIANCE_SCORE_LINE } from '#lib/score-names.js';
     import { flagText, rollupLines } from '#lib/starmap/style.js';
+    import { targetQuery } from '#lib/manual.js';
 
     let {
         node,
@@ -64,6 +65,9 @@
         onclose();
     }
     const isSystem = $derived(node.kind === 'system');
+    // The Manual page and the DR page read the target of their URL as their filter.
+    const query = $derived(targetQuery(node.label, node.env));
+    const manualHref = $derived(`/manual?tab=records&${query}`);
     const hasRuns = $derived(node.kind === 'system' || node.kind === 'def');
     const disciplines = $derived(Object.entries(node.evidence.by_discipline));
 
@@ -231,6 +235,8 @@
                 <a href="/resilience{node.env ? `?env=${encodeURIComponent(node.env)}` : ''}">
                     Resilience
                 </a>
+                <a href={manualHref}>Manual records</a>
+                <a href="/dr?{query}">Disaster recovery</a>
             {/if}
         </div>
     </section>
@@ -337,7 +343,7 @@
                     {#each manual.rows as m (m.id)}
                         <li>
                             <span class="badge {reviewClass(m.status)}">{m.status}</span>
-                            <a href="/manual">{m.experiment_name}</a>
+                            <a href={manualHref}>{m.experiment_name}</a>
                             <span class="meta">
                                 {m.outcome_status} · {fmtAgo(m.executed_at_ns)}
                             </span>
@@ -455,7 +461,8 @@
     }
     .actions {
         display: flex;
-        gap: 12px;
+        flex-wrap: wrap;
+        gap: 8px 12px;
         align-items: center;
         margin-top: 10px;
         font-size: 12.5px;

@@ -184,6 +184,28 @@ async fn a_draft_cannot_carry_a_status_a_reviewer_or_a_field_the_api_does_not_kn
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_draft_names_its_actions_with_owners_and_not_the_older_list() {
+    let tmp = tempfile::tempdir().unwrap();
+    let store = lake(tmp.path());
+    let handler = open_handler(tmp.path());
+    let mut body = draft(&store);
+    body["action_items"] = serde_json::json!(["Write the runbook down"]);
+
+    let refused = call(&handler, "tumult_manual_create_draft", body, None)
+        .await
+        .expect_err("the older list of plain texts is refused");
+
+    assert!(refused.to_string().contains("action_items"), "{refused}");
+    let listed = structured(
+        &handler,
+        "tumult_manual_list",
+        serde_json::json!({"store_path": store}),
+    )
+    .await;
+    assert_eq!(listed["total"], 0, "nothing was written: {listed:?}");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_draft_the_lake_refuses_is_a_tool_error_that_says_why() {
     let tmp = tempfile::tempdir().unwrap();
     let store = lake(tmp.path());
@@ -515,6 +537,8 @@ async fn plans_are_listed_soonest_due_first() {
     assert_eq!(one["items"][0]["id"], later.as_str());
 }
 
+/// The record body of the API, less the older `action_items` list it still
+/// reads from older clients: a draft names its actions with owners.
 #[test]
 fn the_draft_schema_is_the_record_body_of_the_api_and_nothing_more() {
     let schema = ManualCreateDraftTool::json_schema();
@@ -535,7 +559,6 @@ fn the_draft_schema_is_the_record_body_of_the_api_and_nothing_more() {
         "outcome_status",
         "hypothesis_met",
         "findings",
-        "action_items",
         "target_system",
         "target_environment",
         "blast_radius",

@@ -58,6 +58,12 @@ pub(crate) fn conflict(msg: impl Into<String>) -> ApiError {
     error(StatusCode::CONFLICT, msg)
 }
 
+/// 422 JSON error response (a field the request names is not one the
+/// route knows).
+pub(crate) fn unprocessable(msg: impl Into<String>) -> ApiError {
+    error(StatusCode::UNPROCESSABLE_ENTITY, msg)
+}
+
 /// 503 JSON error response (the endpoint is not wired to the daemon's
 /// writer/queue).
 pub(crate) fn unavailable(msg: impl Into<String>) -> ApiError {

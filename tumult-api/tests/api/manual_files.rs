@@ -308,6 +308,26 @@ async fn a_body_a_page_on_another_site_can_send_without_asking_is_refused() {
     assert_eq!(resp.status().as_u16(), 400);
 }
 
+/// The query of an upload is its fields: one it does not know is refused
+/// with 422 naming it, as in a JSON body, and nothing is kept.
+#[tokio::test]
+async fn an_upload_refuses_a_query_field_it_does_not_know() {
+    let srv = spawn_server().await;
+    let base = srv.base.as_str();
+    let id = draft(base).await;
+    let resp = file_request(base, &id, "runbook.pdf", PDF, "alice")
+        .query(&[("label", "the runbook")])
+        .send()
+        .await
+        .unwrap();
+    let status = resp.status().as_u16();
+    let text = resp.text().await.unwrap();
+    assert_eq!(status, 422, "{text}");
+    assert!(text.contains("unknown field `label`"), "{text}");
+    assert_eq!(files_under(&attachments(&srv)), Vec::<PathBuf>::new());
+    assert_eq!(detail(base, &id).await["attachments"], json!([]));
+}
+
 #[tokio::test]
 async fn the_same_file_sent_twice_is_stored_once() {
     let srv = spawn_server().await;

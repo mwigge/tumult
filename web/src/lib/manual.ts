@@ -385,6 +385,41 @@ export function applyPlan(form: ManualForm, plan: ManualPlan): ManualForm {
     };
 }
 
+// --- the target of the page -----------------------------------------------------
+
+/** The target the page lists the records and the plans of: the `target`
+    and the `environment` of its URL, the names the DR page reads. An empty
+    field is no filter. */
+export interface TargetFilter {
+    target: string;
+    environment: string;
+}
+
+/** The target filter of a URL query. */
+export function targetFilterOf(params: { get(name: string): string | null }): TargetFilter {
+    return { target: params.get('target') ?? '', environment: params.get('environment') ?? '' };
+}
+
+/** The rows of the target and environment of `filter`. */
+export function ofTarget<
+    T extends { target_system?: string | null; target_environment?: string | null },
+>(rows: T[], filter: TargetFilter): T[] {
+    const fits = (wanted: string, value: string | null | undefined) =>
+        wanted === '' || value === wanted;
+    return rows.filter(
+        (r) =>
+            fits(filter.target, r.target_system) && fits(filter.environment, r.target_environment),
+    );
+}
+
+/** The query of a link to the Manual page or the DR page on `target` in
+    `environment`. */
+export function targetQuery(target: string, environment: string | null): string {
+    const query = new URLSearchParams({ target });
+    if (environment) query.set('environment', environment);
+    return query.toString();
+}
+
 /** A plan that is still planned after its due date. */
 export function isOverdue(plan: ManualPlan, nowNs: number): boolean {
     return plan.status === 'planned' && plan.due_at_ns < nowNs;

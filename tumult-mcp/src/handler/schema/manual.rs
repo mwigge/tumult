@@ -133,7 +133,7 @@ pub struct ManualLinkArg {
 /// `POST /api/manual/experiments`.
 #[macros::mcp_tool(
     name = "tumult_manual_create_draft",
-    description = "Draft a record of the manual registry: the record body the daemon API takes (POST /api/manual/experiments), written to the lake as a draft. A field the body does not have is refused with its name, so a draft cannot carry a status or a reviewer. entered_by names the person the draft is entered for; that person may not sign it off. Structured content is {id, status}. Writes the lake, so the daemon must not hold it. Segregation of duties: an agent may draft, a person signs. No MCP tool submits, signs off, verifies or attaches evidence; a person submits the draft and other people sign it off in the daemon.",
+    description = "Draft a record of the manual registry: the record body the daemon API takes (POST /api/manual/experiments), written to the lake as a draft. A field the body does not have is refused with its name, so a draft cannot carry a status or a reviewer; actions go in actions, each with an owner, and the older action_items list is refused. entered_by names the person the draft is entered for; that person may not sign it off. Structured content is {id, status}. Writes the lake, so the daemon must not hold it. Segregation of duties: an agent may draft, a person signs. No MCP tool submits, signs off, verifies or attaches evidence; a person submits the draft and other people sign it off in the daemon.",
     destructive_hint = false,
     read_only_hint = false,
     idempotent_hint = false,
@@ -154,8 +154,6 @@ pub struct ManualCreateDraftTool {
     pub outcome_status: String,
     pub hypothesis_met: Option<bool>,
     pub findings: Option<String>,
-    /// Actions as plain texts, as older clients send them; use `actions`.
-    pub action_items: Option<Vec<String>>,
     pub target_system: Option<String>,
     pub target_environment: Option<String>,
     pub blast_radius: Option<String>,
@@ -184,6 +182,8 @@ pub struct ManualCreateDraftTool {
     pub participants: Option<Vec<ManualParticipantArg>>,
     /// The timeline, in the order the steps were taken.
     pub steps: Option<Vec<ManualStepArg>>,
+    /// The actions, each with the person who owns it. The older
+    /// `action_items` list of plain texts is not taken.
     pub actions: Option<Vec<ManualActionArg>>,
     /// What the exercise tested.
     pub links: Option<Vec<ManualLinkArg>>,
