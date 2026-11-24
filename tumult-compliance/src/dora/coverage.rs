@@ -2034,10 +2034,7 @@ mod tests {
         let req = requirement("rts1774.art26").unwrap();
 
         let rows = ctx.evidence_rows(req, &inputs.functions[0], inputs.as_of_ns);
-        let seen: Vec<(&str, f64)> = rows
-            .iter()
-            .map(|r| (r.evidence.id.as_str(), r.o))
-            .collect();
+        let seen: Vec<(&str, f64)> = rows.iter().map(|r| (r.evidence.id.as_str(), r.o)).collect();
         let passed = params.outcome.passed;
         assert_eq!(
             seen,
