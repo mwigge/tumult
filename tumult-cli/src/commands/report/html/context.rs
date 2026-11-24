@@ -200,6 +200,10 @@ pub(super) fn analysis(journal: &Journal) -> String {
     let rows = [
         optional("Estimate accuracy", analysis.estimate_accuracy.map(percent)),
         optional("Recovery against the estimate", delta),
+        optional(
+            "Data loss as expected",
+            analysis.estimate_data_loss_correct.map(yes_no),
+        ),
         optional("Trend", analysis.trend.as_ref().map(ToString::to_string)),
     ]
     .concat();

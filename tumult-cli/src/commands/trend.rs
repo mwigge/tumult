@@ -4,6 +4,7 @@ use std::fmt::Write as _;
 use std::path::Path;
 
 use anyhow::{bail, Context, Result};
+use tumult_lake::{RecoveryMetric, RecoveryTrend};
 
 use super::ExportFormat;
 
@@ -79,12 +80,17 @@ pub fn cmd_export(journal_path: &Path, format: ExportFormat) -> Result<()> {
 
 // ── Trend command ─────────────────────────────────────────────
 
-/// The metrics a trend can be of.
-const TREND_METRICS: [&str; 4] = [
+/// The metrics a trend can be of: a column of each run, then the
+/// recovery metrics (see [`RecoveryMetric`]).
+const TREND_METRICS: [&str; 8] = [
     "resilience_score",
     "duration_ms",
     "estimate_accuracy",
     "method_step_count",
+    "rto_measured_s",
+    "rto_margin_s",
+    "rpo_measured_s",
+    "rpo_margin_s",
 ];
 
 /// The queries of a trend of `metric`: its points, oldest first, and their
@@ -114,6 +120,29 @@ fn trend_queries(metric: &str) -> Option<(&'static str, &'static str)> {
         ),
         _ => return None,
     })
+}
+
+/// What a trend is of.
+enum Series {
+    /// A column of each run: the queries of [`trend_queries`].
+    Column(&'static str, &'static str),
+    /// The RTO or the RPO each run measured, or its margin.
+    Recovery(RecoveryMetric),
+}
+
+/// The series of `metric`.
+fn series(metric: &str) -> Result<Series> {
+    if let Some(recovery) = RecoveryMetric::from_name(metric) {
+        return Ok(Series::Recovery(recovery));
+    }
+    let Some((points_sql, summary_sql)) = trend_queries(metric) else {
+        bail!(
+            "unknown metric: {}. Valid: {}",
+            metric,
+            TREND_METRICS.join(", ")
+        );
+    };
+    Ok(Series::Column(points_sql, summary_sql))
 }
 
 /// The start of the window `--last` asks for, in epoch nanoseconds. `None`
@@ -179,36 +208,56 @@ fn table_line(cells: &[String]) -> String {
     })
 }
 
-/// # Errors
-///
-/// Returns an error if journals cannot be read or the analytics query fails.
-#[must_use = "callers must handle trend analysis errors"]
-pub fn cmd_trend(
-    journals_path: &Path,
-    metric: &str,
-    last: Option<&str>,
-    target: Option<&str>,
-) -> Result<()> {
-    use tumult_core::journal::JournalScope;
-    use tumult_lake::AnalyticsStore;
-
-    let mut scope = JournalScope::new(window_start_ns(last)?, target);
-    let store = AnalyticsStore::in_memory()?;
-    let count = load_in_scope(journals_path, &mut scope, &store)?;
-
-    crate::outln!("Loaded {count} journal(s)");
-    if let Some(note) = scope.left_out_note() {
-        crate::outln!("{note}");
+/// The number of runs, the smallest, the largest and the mean of `values`.
+/// `None` when there is no value.
+fn summary(values: &[f64]) -> Option<(usize, f64, f64, f64)> {
+    if values.is_empty() {
+        return None;
     }
-    crate::outln!();
+    let (min, max, sum) = values.iter().fold(
+        (f64::INFINITY, f64::NEG_INFINITY, 0.0_f64),
+        |(min, max, sum), v| (min.min(*v), max.max(*v), sum + v),
+    );
+    // A count of runs is far below 2^53.
+    #[allow(clippy::cast_precision_loss)]
+    let avg = sum / values.len() as f64;
+    Some((values.len(), min, max, avg))
+}
 
-    let Some((points_sql, summary_sql)) = trend_queries(metric) else {
-        bail!(
-            "unknown metric: {}. Valid: {}",
-            metric,
-            TREND_METRICS.join(", ")
-        );
-    };
+/// The values a recovery trend measured: its points without a bound.
+fn measured_values(trend: &RecoveryTrend) -> Vec<f64> {
+    trend
+        .points
+        .iter()
+        .filter(|point| point.bound.is_none())
+        .map(|point| point.value)
+        .collect()
+}
+
+/// The lines that count the runs a recovery trend of `metric` left out.
+fn left_out_lines(metric: RecoveryMetric, trend: &RecoveryTrend) -> Vec<String> {
+    let objective = if metric.is_rto() { "RTO" } else { "RPO" };
+    let mut lines = Vec::new();
+    if trend.no_outage > 0 {
+        lines.push(format!("{} run(s) saw no outage", trend.no_outage));
+    }
+    if trend.not_measured > 0 {
+        lines.push(format!(
+            "{} run(s) measured no {objective}",
+            trend.not_measured
+        ));
+    }
+    lines
+}
+
+/// Print the trend of a column of each run: a table of its points, oldest
+/// first, and their summary.
+fn print_column_trend(
+    store: &tumult_lake::AnalyticsStore,
+    metric: &str,
+    points_sql: &str,
+    summary_sql: &str,
+) -> Result<()> {
     let columns = store.query_columns(points_sql)?;
     let rows = store.query(points_sql)?;
 
@@ -234,6 +283,212 @@ pub fn cmd_trend(
             row[3]
         );
     }
-
     Ok(())
+}
+
+/// Print a recovery trend: a table of its points, oldest first, the
+/// summary of the values they measured, and the runs it left out.
+fn print_recovery_trend(metric: RecoveryMetric, trend: &RecoveryTrend) {
+    print_recovery_points(metric, trend);
+    for line in left_out_lines(metric, trend) {
+        crate::outln!("{line}");
+    }
+}
+
+/// Print the points of a recovery trend and the summary of the values they
+/// measured. A run that did not recover shows its bound, says so, and is
+/// left out of the summary.
+fn print_recovery_points(metric: RecoveryMetric, trend: &RecoveryTrend) {
+    let name = metric.name();
+    if trend.points.is_empty() {
+        crate::outln!("No data points for metric: {name}");
+        return;
+    }
+    crate::outln!("Trend: {name} ({} data points)\n", trend.points.len());
+    let columns = [
+        "experiment_id",
+        "title",
+        "status",
+        name,
+        "started_at_ns",
+        "note",
+    ];
+    crate::outln!("{}", table_line(&columns.map(String::from)));
+    crate::outln!("{}", "-".repeat(columns.len() * 20));
+    for point in &trend.points {
+        let (value, note) = match point.bound {
+            Some(bound) => (format!("{bound} {:.4}", point.value), "not recovered"),
+            None => (format!("{:.4}", point.value), ""),
+        };
+        let cells = [
+            point.experiment_id.clone(),
+            point.title.clone(),
+            point.status.clone(),
+            value,
+            point.started_at_ns.to_string(),
+            note.to_string(),
+        ];
+        crate::outln!("{}", table_line(&cells));
+    }
+    crate::outln!();
+    let measured = measured_values(trend);
+    if let Some((runs, min, max, avg)) = summary(&measured) {
+        crate::outln!("Summary: {runs} runs, min={min:.4}, max={max:.4}, avg={avg:.4}");
+    }
+    let unrecovered = trend.points.len() - measured.len();
+    if unrecovered > 0 {
+        crate::outln!(
+            "Not recovered: {unrecovered} run(s), each shown as a bound and left out of the \
+             summary"
+        );
+    }
+}
+
+/// A point of a trend as JSON: its run and its value.
+fn json_point(
+    experiment_id: &str,
+    title: &str,
+    status: &str,
+    started_at_ns: i64,
+    value: f64,
+) -> serde_json::Map<String, serde_json::Value> {
+    let mut point = serde_json::Map::new();
+    point.insert("experiment_id".into(), experiment_id.into());
+    point.insert("title".into(), title.into());
+    point.insert("status".into(), status.into());
+    point.insert("started_at_ns".into(), started_at_ns.into());
+    point.insert("value".into(), value.into());
+    point
+}
+
+/// The summary of `values` as JSON: `null` when there is no value.
+fn json_summary(values: &[f64]) -> serde_json::Value {
+    summary(values).map_or(serde_json::Value::Null, |(runs, min, max, avg)| {
+        serde_json::json!({ "runs": runs, "min": min, "max": max, "avg": avg })
+    })
+}
+
+/// The points and the summary of a trend of a column of each run, as
+/// JSON: the rows of its table.
+fn json_column_trend(
+    store: &tumult_lake::AnalyticsStore,
+    metric: &str,
+    points_sql: &str,
+    trend: &mut serde_json::Map<String, serde_json::Value>,
+) -> Result<()> {
+    let mut points = Vec::new();
+    let mut values = Vec::new();
+    for row in store.query(points_sql)? {
+        let value: f64 = row[3]
+            .parse()
+            .with_context(|| format!("the {metric} of {} is no number: {}", row[0], row[3]))?;
+        let started_at_ns: i64 = row[4]
+            .parse()
+            .with_context(|| format!("the start of {} is no number: {}", row[0], row[4]))?;
+        points.push(json_point(&row[0], &row[1], &row[2], started_at_ns, value).into());
+        values.push(value);
+    }
+    trend.insert("points".into(), serde_json::Value::Array(points));
+    trend.insert("summary".into(), json_summary(&values));
+    Ok(())
+}
+
+/// The points, the summary and the runs left out of a recovery trend, as
+/// JSON. A point says whether its run recovered (the RTO only), and the
+/// bound of a run that did not.
+fn json_recovery_trend(
+    recovery: &RecoveryTrend,
+    trend: &mut serde_json::Map<String, serde_json::Value>,
+) {
+    let points = recovery.points.iter().map(|p| {
+        let mut point = json_point(
+            &p.experiment_id,
+            &p.title,
+            &p.status,
+            p.started_at_ns,
+            p.value,
+        );
+        if let Some(recovered) = p.recovered {
+            point.insert("recovered".into(), recovered.into());
+        }
+        if let Some(bound) = p.bound {
+            point.insert("bound".into(), bound.into());
+        }
+        serde_json::Value::Object(point)
+    });
+    trend.insert("points".into(), points.collect());
+    trend.insert("summary".into(), json_summary(&measured_values(recovery)));
+    trend.insert("runs_without_outage".into(), recovery.no_outage.into());
+    trend.insert("runs_not_measured".into(), recovery.not_measured.into());
+}
+
+/// Print the trend of `series` over the runs in `scope` as JSON: what it
+/// is of, how many journals it read, its points with their flags, their
+/// summary and, for a recovery trend, the runs it left out.
+fn print_json_trend(
+    store: &tumult_lake::AnalyticsStore,
+    series: &Series,
+    metric: &str,
+    journals: usize,
+    scope: &tumult_core::journal::JournalScope,
+    target: Option<&str>,
+) -> Result<()> {
+    let mut trend = serde_json::Map::new();
+    trend.insert("metric".into(), metric.into());
+    trend.insert("target".into(), target.into());
+    trend.insert("journals".into(), journals.into());
+    trend.insert(
+        "journals_without_target".into(),
+        scope.without_target().into(),
+    );
+    match series {
+        Series::Column(points_sql, _) => {
+            json_column_trend(store, metric, points_sql, &mut trend)?;
+        }
+        Series::Recovery(recovery) => {
+            json_recovery_trend(&store.recovery_trend(*recovery)?, &mut trend);
+        }
+    }
+    crate::outln!("{}", serde_json::to_string_pretty(&trend)?);
+    Ok(())
+}
+
+/// # Errors
+///
+/// Returns an error if journals cannot be read or the analytics query fails.
+#[must_use = "callers must handle trend analysis errors"]
+pub fn cmd_trend(
+    journals_path: &Path,
+    metric: &str,
+    last: Option<&str>,
+    target: Option<&str>,
+    json: bool,
+) -> Result<()> {
+    use tumult_core::journal::JournalScope;
+    use tumult_lake::AnalyticsStore;
+
+    let series = series(metric)?;
+    let mut scope = JournalScope::new(window_start_ns(last)?, target);
+    let store = AnalyticsStore::in_memory()?;
+    let count = load_in_scope(journals_path, &mut scope, &store)?;
+
+    if json {
+        return print_json_trend(&store, &series, metric, count, &scope, target);
+    }
+
+    crate::outln!("Loaded {count} journal(s)");
+    if let Some(note) = scope.left_out_note() {
+        crate::outln!("{note}");
+    }
+    crate::outln!();
+
+    match series {
+        Series::Column(points_sql, summary_sql) => {
+            print_column_trend(&store, metric, points_sql, summary_sql)
+        }
+        Series::Recovery(recovery) => {
+            print_recovery_trend(recovery, &store.recovery_trend(recovery)?);
+            Ok(())
+        }
+    }
 }

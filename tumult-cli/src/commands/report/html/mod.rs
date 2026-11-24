@@ -91,10 +91,28 @@ fn header(journal: &Journal, title: &str) -> String {
 <p class="eyebrow">Tumult run report</p>
 <h1>{title}</h1>
 <p class="lede">{status} Run <code>{id}</code></p>
-</header>
+{target}</header>
 "#,
         status = badge(class, &journal.status.to_string()),
         id = text(&journal.experiment_id),
+        target = target(journal),
+    )
+}
+
+/// The target of the run as its definition declares it: the system, and
+/// the environment when the definition names one. Nothing for a run
+/// without a target.
+fn target(journal: &Journal) -> String {
+    let Some(target) = &journal.target else {
+        return String::new();
+    };
+    let environment = target
+        .environment
+        .as_deref()
+        .map_or_else(String::new, |e| format!(" in <code>{}</code>", text(e)));
+    format!(
+        "<p class=\"lede\">Target <code>{}</code>{environment}</p>\n",
+        text(&target.system)
     )
 }
 

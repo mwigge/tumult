@@ -189,7 +189,7 @@ fn post_phase_samples_until_probe_recovers() {
         started_at_ns,
         ended_at_ns,
         &samples,
-        &samples_for_journal(SamplePhase::Post, &samples),
+        &samples_for_journal(SamplePhase::Post, &samples, &hypothesis),
     )
     .unwrap();
     assert!(post.full_recovery);
@@ -240,7 +240,7 @@ fn post_phase_stops_at_timeout_when_probe_never_recovers() {
         started_at_ns,
         ended_at_ns,
         &samples,
-        &samples_for_journal(SamplePhase::Post, &samples),
+        &samples_for_journal(SamplePhase::Post, &samples, &hypothesis),
     )
     .unwrap();
     assert!(!post.full_recovery);

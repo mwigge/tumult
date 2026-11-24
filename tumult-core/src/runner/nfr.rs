@@ -10,6 +10,7 @@
 //! | `recovery.mttr_s`, `recovery.time_s` | the post-phase result |
 //! | `during.error_rate`, `during.availability`, `post.error_rate`, `post.availability` | raw probe samples of that phase |
 //! | `probe.<name>.mean_ms`, `probe.<name>.max_ms`, `probe.<name>.p95_ms`, `probe.<name>.error_rate` | raw during-phase samples of one probe |
+//! | `probe.<name>.lost_s` | the number one probe read at its last sample after the method, of a run that recovered |
 //! | `fault.duration_s` | the during-phase result |
 //!
 //! A metric that the run did not produce yields an `inconclusive` verdict:
@@ -18,13 +19,14 @@
 //!
 //! Each metric measures some kinds of objective, as the catalogue below
 //! lists them. Validation refuses an objective whose kind its metric does
-//! not measure ([`kind_fault`]): a latency is no availability, and no
-//! metric counts lost data, so an `rpo` objective has none yet.
+//! not measure ([`kind_fault`]): a latency is no availability, and only
+//! the data a probe reads back lost measures an `rpo` objective.
 
 use super::robustness::{self, Judged};
 use crate::types::{
-    DuringResult, Experiment, LoadProfile, LoadResult, NfrCriticality, NfrKind, NfrObjective,
-    NfrOperator, NfrState, NfrVerdict, ObjectiveOutcome, PostResult, ProbeSample, SamplePhase,
+    Activity, DuringResult, Experiment, LoadProfile, LoadResult, NfrCriticality, NfrKind,
+    NfrObjective, NfrOperator, NfrState, NfrVerdict, ObjectiveOutcome, PostResult, ProbeSample,
+    SamplePhase, Tolerance,
 };
 
 /// A response time.
@@ -47,10 +49,17 @@ const REQUESTS: &[NfrKind] = &[NfrKind::Throughput, NfrKind::Capacity];
 const RECOVERY_TIME: &[NfrKind] = &[NfrKind::Rto, NfrKind::Recovery];
 /// The time the fault was active.
 const FAULT_TIME: &[NfrKind] = &[NfrKind::Recovery];
+/// The seconds of committed writes the run lost, as a probe read them back
+/// after the recovery.
+const LOST_DATA: &[NfrKind] = &[NfrKind::Rpo];
+
 /// How much the error rate rose over a soak.
 const ERROR_DRIFT: &[NfrKind] = &[NfrKind::ErrorRate];
 /// The time the latency took to come back after a spike.
 const BACK_AFTER_SPIKE: &[NfrKind] = &[NfrKind::Latency, NfrKind::Recovery];
+
+/// The statistic of the data a probe reads back lost.
+const LOST_S: &str = "lost_s";
 
 /// The metrics with one fixed spelling, each with the kinds of objective
 /// it measures. [`robustness::judge`] answers the robustness metrics, and
@@ -81,6 +90,7 @@ pub(crate) const PROBE_STATS: &[(&str, &[NfrKind])] = &[
     ("max_ms", LATENCY),
     ("p95_ms", LATENCY),
     ("error_rate", PROBE_SHARE),
+    (LOST_S, LOST_DATA),
 ];
 
 /// The names of a table of the catalogue.
@@ -169,6 +179,53 @@ pub(crate) fn metric_fault(metric: &str, probes: &[&str]) -> Option<String> {
     ))
 }
 
+/// Why the probe that `metric` reads cannot give the data it lost, or
+/// `None` when it can or the metric is no `probe.<name>.lost_s`. The probe
+/// must print a number, so its tolerance must read one; a range would hold
+/// up the recovery the number is read after. `probes` are the probes of the
+/// steady-state hypothesis. Asked after [`metric_fault`]. Pure.
+pub(crate) fn reading_fault(metric: &str, probes: &[&Activity]) -> Option<String> {
+    let (name, stat) = metric.strip_prefix("probe.")?.rsplit_once('.')?;
+    if stat != LOST_S {
+        return None;
+    }
+    let probe = probes.iter().find(|probe| probe.name == name)?;
+    match probe.tolerance {
+        Some(Tolerance::Number) => None,
+        Some(Tolerance::Range { .. }) => Some(format!(
+            "the probe '{name}' has a range tolerance: data lost beyond it holds up the \
+             recovery and the RPO is not measured; give it the tolerance type number"
+        )),
+        _ => Some(format!(
+            "metric '{metric}' reads the number the probe '{name}' prints, and its tolerance \
+             reads none: give the probe the tolerance type number"
+        )),
+    }
+}
+
+/// Why an `rpo` objective does not say what `rpo_target_s` says, or `None`
+/// when it does or is of another kind: at most so many seconds lost, the
+/// same number. Pure.
+pub(crate) fn rpo_fault(objective: &NfrObjective, rpo_target_s: Option<f64>) -> Option<String> {
+    if objective.kind != NfrKind::Rpo {
+        return None;
+    }
+    if objective.operator != NfrOperator::Lte {
+        return Some(
+            "an rpo objective is met when at most threshold seconds are lost: use operator lte"
+                .into(),
+        );
+    }
+    let target = rpo_target_s?;
+    if (objective.threshold - target).abs() <= f64::EPSILON {
+        return None;
+    }
+    Some(format!(
+        "rpo_target_s is {target} and the threshold is {}: give both the same number",
+        objective.threshold
+    ))
+}
+
 /// Measurements an objective can be evaluated against.
 pub(crate) struct Measurements<'a> {
     pub during: Option<&'a DuringResult>,
@@ -218,7 +275,7 @@ pub(crate) fn evaluate(experiment: &Experiment, m: &Measurements<'_>) -> Option<
         .and_then(|v| v.observed);
     if let Some(target) = experiment.rpo_target_s {
         if !experiment.nfr.iter().any(|o| o.kind == NfrKind::Rpo) {
-            // No probe measures data loss: record the target and say so.
+            // No objective reads the data back: record the target and say so.
             verdicts.push(NfrVerdict {
                 nfr_id: "rpo".into(),
                 kind: NfrKind::Rpo,
@@ -230,7 +287,7 @@ pub(crate) fn evaluate(experiment: &Experiment, m: &Measurements<'_>) -> Option<
                 margin: None,
                 criticality: NfrCriticality::Blocking,
                 recovered: None,
-                reason: None,
+                reason: Some(NfrVerdict::NO_RPO_OBJECTIVE.into()),
             });
         }
     }
@@ -410,6 +467,9 @@ pub(crate) fn resolve(metric: &str, m: &Measurements<'_>) -> Option<f64> {
     }
     if let Some(rest) = metric.strip_prefix("probe.") {
         let (name, stat) = rest.rsplit_once('.')?;
+        if stat == LOST_S {
+            return read_back(name, m);
+        }
         let samples: Vec<&ProbeSample> = m
             .samples
             .iter()
@@ -442,6 +502,22 @@ pub(crate) fn resolve(metric: &str, m: &Measurements<'_>) -> Option<f64> {
         };
     }
     None
+}
+
+/// The number the probe `name` read back after the recovery: the reading
+/// of its last sample after the method. `None` unless the method ran as
+/// written and the post phase ended recovered: data read before the target
+/// is back is no recovery point. Pure.
+fn read_back(name: &str, m: &Measurements<'_>) -> Option<f64> {
+    let recovered = m.post.is_some_and(|post| post.full_recovery);
+    if !(m.watched_in_full && recovered) {
+        return None;
+    }
+    m.samples
+        .iter()
+        .rev()
+        .find(|sample| sample.phase == SamplePhase::Post && sample.probe == name)?
+        .reading
 }
 
 /// Fraction of samples outside tolerance; `None` without samples.
@@ -480,6 +556,15 @@ mod tests {
             ts_ns: ts,
             duration_ms: ms,
             ok,
+            reading: None,
+        }
+    }
+
+    /// A sample of `probe` that read `reading`.
+    fn read(probe: &str, phase: SamplePhase, ts: i64, reading: Option<f64>) -> ProbeSample {
+        ProbeSample {
+            reading,
+            ..sample(probe, phase, ts, 10, true)
         }
     }
 
@@ -563,7 +648,7 @@ mod tests {
         let ((l, spike), post, during) = (windowed(), full_post(), full_during());
         let samples = vec![
             sample("health", SamplePhase::During, 1, 100, true),
-            sample("health", SamplePhase::Post, 2, 50, true),
+            read("health", SamplePhase::Post, 2, Some(0.5)),
         ];
         let m = Measurements {
             during: Some(&during),
@@ -794,6 +879,138 @@ mod tests {
         assert!(out.has_blocking_breach());
         let p95 = out.verdicts.iter().find(|v| v.nfr_id == "p95").unwrap();
         assert_eq!(p95.state, NfrState::Met);
+    }
+
+    /// The samples of a run whose probe `lost` read 9 s lost while the
+    /// fault was on, 5 s when the post phase began and `back` at its last
+    /// read; another probe read 1 at the end.
+    fn samples_read_back(back: Option<f64>) -> Vec<ProbeSample> {
+        vec![
+            read("lost", SamplePhase::During, 1, Some(9.0)),
+            read("lost", SamplePhase::Post, 2, Some(5.0)),
+            read("lost", SamplePhase::Post, 3, back),
+            read("other", SamplePhase::Post, 3, Some(1.0)),
+        ]
+    }
+
+    fn after(post: Option<&PostResult>, samples: &[ProbeSample], watched: bool) -> Option<f64> {
+        let m = Measurements {
+            during: None,
+            post,
+            load: None,
+            samples,
+            watched_in_full: watched,
+        };
+        resolve("probe.lost.lost_s", &m)
+    }
+
+    #[test]
+    fn lost_data_is_the_number_the_probe_read_back_after_the_recovery() {
+        let post = full_post();
+
+        assert_eq!(
+            after(Some(&post), &samples_read_back(Some(2.0)), true),
+            Some(2.0)
+        );
+    }
+
+    #[test]
+    fn a_run_that_did_not_recover_or_ran_its_method_otherwise_measures_no_lost_data() {
+        let recovered = full_post();
+        let not_recovered = PostResult {
+            full_recovery: false,
+            ..full_post()
+        };
+        let samples = samples_read_back(Some(2.0));
+
+        assert_eq!(after(Some(&not_recovered), &samples, true), None);
+        assert_eq!(after(Some(&recovered), &samples, false), None);
+        assert_eq!(after(None, &samples, true), None);
+        // The read back is the last read: an earlier number does not stand in.
+        assert_eq!(
+            after(Some(&recovered), &samples_read_back(None), true),
+            None
+        );
+        // A number read while the fault was on is no read back.
+        let during_only = [read("lost", SamplePhase::During, 1, Some(2.0))];
+        assert_eq!(after(Some(&recovered), &during_only, true), None);
+    }
+
+    #[test]
+    fn lost_data_measures_the_rpo_and_nothing_else() {
+        assert_eq!(kind_fault(NfrKind::Rpo, "probe.lost.lost_s"), None);
+        assert_eq!(metrics_of(NfrKind::Rpo), ["probe.<name>.lost_s"]);
+        for kind in [
+            NfrKind::Latency,
+            NfrKind::Rto,
+            NfrKind::Recovery,
+            NfrKind::DataIntegrity,
+        ] {
+            assert!(kind_fault(kind, "probe.lost.lost_s").is_some(), "{kind}");
+        }
+    }
+
+    fn with_rpo_objective(target_s: Option<f64>, threshold: f64) -> Experiment {
+        Experiment {
+            rpo_target_s: target_s,
+            nfr: vec![NfrObjective {
+                kind: NfrKind::Rpo,
+                criticality: NfrCriticality::Blocking,
+                ..objective("rpo", "probe.lost.lost_s", NfrOperator::Lte, threshold)
+            }],
+            ..Experiment::default()
+        }
+    }
+
+    #[test]
+    fn an_rpo_objective_on_lost_data_is_the_measured_rpo() {
+        let post = full_post();
+        let samples = samples_read_back(Some(2.0));
+        let m = watching_with(&post, &samples);
+
+        let out = evaluate(&with_rpo_objective(Some(1.0), 1.0), &m).expect("an rpo target");
+
+        assert_eq!(out.rpo_target_s, Some(1.0));
+        assert_eq!(out.rpo_measured_s, Some(2.0));
+        assert_eq!(out.verdicts.len(), 1, "{:?}", out.verdicts);
+        let rpo = &out.verdicts[0];
+        assert_eq!(rpo.state, NfrState::Breached);
+        assert_eq!(rpo.margin, Some(-1.0));
+        assert_eq!(rpo.reason, None);
+        assert!(out.has_blocking_breach());
+    }
+
+    #[test]
+    fn an_rpo_target_without_an_rpo_objective_is_inconclusive_and_says_why() {
+        let post = full_post();
+        let samples = samples_read_back(Some(2.0));
+        let m = watching_with(&post, &samples);
+        let exp = Experiment {
+            rpo_target_s: Some(60.0),
+            ..Experiment::default()
+        };
+
+        let out = evaluate(&exp, &m).expect("an rpo target");
+
+        assert_eq!(out.rpo_measured_s, None);
+        let rpo = &out.verdicts[0];
+        assert_eq!(rpo.nfr_id, "rpo");
+        assert_eq!(rpo.state, NfrState::Inconclusive);
+        assert_eq!(rpo.reason.as_deref(), Some(NfrVerdict::NO_RPO_OBJECTIVE));
+        assert_eq!(
+            NfrVerdict::NO_RPO_OBJECTIVE,
+            "no objective measures lost data"
+        );
+    }
+
+    fn watching_with<'a>(post: &'a PostResult, samples: &'a [ProbeSample]) -> Measurements<'a> {
+        Measurements {
+            during: None,
+            post: Some(post),
+            load: None,
+            samples,
+            watched_in_full: true,
+        }
     }
 
     /// The post phase of a restore that never came back: the probe still

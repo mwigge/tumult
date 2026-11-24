@@ -28,7 +28,7 @@ use crate::error::{forbidden, unavailable, ApiError};
 use crate::sql_util::{in_scopes, internal, invalid_range, scopes_param, windows, with_reader};
 use crate::ApiState;
 
-mod page;
+pub(crate) mod page;
 
 use page::{decode_cursor, encode_cursor, page_sql, paged, row_limit, Page, MAX_PAGE_BYTES};
 

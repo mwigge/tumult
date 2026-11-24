@@ -34,6 +34,7 @@ pub const ROUTE_TABLE: &[(&str, &str, Role)] = &[
     ("POST", "/api/risks/{id}/suppress", Role::Operator),
     ("POST", "/api/risks/{id}/recommend", Role::Operator),
     ("GET", "/api/posture", Role::Viewer),
+    ("GET", "/api/dr", Role::Viewer),
     ("GET", "/api/otel/conformance", Role::Viewer),
     ("GET", "/api/perf", Role::Viewer),
     ("GET", "/api/dora", Role::Viewer),
@@ -261,6 +262,8 @@ mod tests {
     #[test]
     fn table_roles_match_the_design() {
         assert_eq!(required_role("GET", "/api/experiments"), Role::Viewer);
+        // The DR view is a read, as the risk view is.
+        assert_eq!(required_role("GET", "/api/dr"), Role::Viewer);
         assert_eq!(required_role("GET", "/api/gate/payments-api"), Role::Viewer);
         assert_eq!(required_role("GET", "/api/perf"), Role::Viewer);
         assert_eq!(required_role("GET", "/api/perf/payments-api"), Role::Viewer);

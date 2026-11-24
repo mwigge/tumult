@@ -499,6 +499,18 @@ impl HouseParams {
         self.manual_kinds.get(exercise_type).map(String::as_str)
     }
 
+    /// The manual exercise types the house counts as DR, those whose
+    /// kind in `manual_kinds` is `dr`, in name order. The DR history of
+    /// the lake reads them.
+    #[must_use]
+    pub fn dr_exercise_types(&self) -> Vec<String> {
+        self.manual_kinds
+            .iter()
+            .filter(|(_, kind)| kind.as_str() == "dr")
+            .map(|(exercise, _)| exercise.clone())
+            .collect()
+    }
+
     /// The discipline a manual exercise of `exercise_type` counts
     /// towards (a `dr` kind is robustness); `None` for a type the house
     /// does not list. The DORA score and the risk view both read it.
@@ -1024,6 +1036,22 @@ mod tests {
         let house: HouseParams = serde_yaml::from_str("manual_kinds: {tabletop: load}\n").unwrap();
         assert_eq!(house.manual_discipline("tabletop"), Some("performance"));
         assert_eq!(house.manual_discipline("pentest"), None);
+    }
+
+    #[test]
+    fn the_dr_types_of_the_house_are_the_ones_it_maps_to_dr() {
+        let default: Vec<String> = tumult_lake::DEFAULT_DR_EXERCISE_TYPES
+            .iter()
+            .map(|t| t.as_str().to_string())
+            .collect();
+        assert_eq!(
+            HouseParams::default().dr_exercise_types(),
+            default,
+            "the lake view counts the types the default house maps to dr"
+        );
+        let house: HouseParams =
+            serde_yaml::from_str("manual_kinds: {tabletop: dr, drill: chaos}\n").unwrap();
+        assert_eq!(house.dr_exercise_types(), ["tabletop"]);
     }
 
     #[test]

@@ -461,6 +461,7 @@ fn sample(probe: &str, phase: SamplePhase, after_ms: i64, took_ms: u64, ok: bool
         ts_ns: STARTED + after_ms * MILLISECOND,
         duration_ms: took_ms,
         ok,
+        reading: None,
     }
 }
 

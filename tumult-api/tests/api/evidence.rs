@@ -8,7 +8,8 @@ use std::path::PathBuf;
 
 use serde_json::{json, Value};
 use tumult_core::types::{
-    ActivityResult, ExperimentStatus, Journal, LoadResult, LoadSample, ProbeSample, SamplePhase,
+    ActivityResult, ExperimentStatus, Journal, LoadResult, LoadSample, NfrState, NfrVerdict,
+    PostResult, ProbeSample, SamplePhase,
 };
 use tumult_lake::{MetricGaugeRow, MetricSumRow};
 
@@ -123,7 +124,8 @@ fn sample(sample: &ProbeSample) -> Value {
 }
 
 /// The objectives of a run as the page lists them: a verdict without an
-/// observed value says so with a `null`.
+/// observed value says so with a `null`, and so does one that has no word
+/// on whether the run recovered or no reason.
 fn objectives(journal: &Journal) -> Vec<Value> {
     let verdicts = journal.objectives.iter().flat_map(|o| &o.verdicts);
     verdicts
@@ -138,6 +140,8 @@ fn objectives(journal: &Journal) -> Vec<Value> {
                 "state": verdict.state,
                 "margin": verdict.margin,
                 "criticality": verdict.criticality,
+                "recovered": verdict.recovered,
+                "reason": verdict.reason,
             })
         })
         .collect()
@@ -146,6 +150,7 @@ fn objectives(journal: &Journal) -> Vec<Value> {
 /// What the page of a run has to say about it, read from its journal.
 fn evidence(journal: &Journal) -> Value {
     let outcome = journal.objectives.as_ref();
+    let post = journal.post_result.as_ref();
     let mut samples: Vec<&ProbeSample> = journal.probe_samples.iter().collect();
     samples.sort_by_key(|sample| sample.ts_ns);
     json!({
@@ -161,6 +166,9 @@ fn evidence(journal: &Journal) -> Value {
             "rto_measured_s": outcome.and_then(|o| o.rto_measured_s),
             "rpo_target_s": outcome.and_then(|o| o.rpo_target_s),
             "rpo_measured_s": outcome.and_then(|o| o.rpo_measured_s),
+            "impact_observed": post.and_then(|p| p.impact_observed),
+            "outage_started_at_ns": post.and_then(|p| p.outage_started_at_ns),
+            "recovered_at_ns": post.and_then(|p| p.recovered_at_ns),
         },
         "steps": steps(journal),
         "objectives": objectives(journal),
@@ -238,6 +246,7 @@ fn sample_at(journal: &Journal, probe: &str, phase: SamplePhase, at_s: i64) -> P
         ts_ns: journal.started_at_ns + at_s * NS,
         duration_ms: 7,
         ok: at_s % 2 == 0,
+        reading: None,
     }
 }
 
@@ -306,8 +315,115 @@ async fn the_recovery_of_a_run_is_each_measure_next_to_its_own_target() {
             "rto_measured_s": 12.5,
             "rpo_target_s": 60.0,
             "rpo_measured_s": 4.25,
+            "impact_observed": null,
+            "outage_started_at_ns": null,
+            "recovered_at_ns": null,
         })
     );
+}
+
+/// The recorded run with an RTO of 30 s, whose probes saw the outage start
+/// at `outage_at_s` and the target back at `back_at_s`, in seconds from its
+/// start, and whose verdict on the RTO is `rto`.
+fn with_outage(
+    id: &str,
+    outage_at_s: Option<i64>,
+    back_at_s: Option<i64>,
+    rto: NfrVerdict,
+) -> Journal {
+    let mut journal = recorded_run();
+    journal.experiment_id = id.into();
+    let start = journal.started_at_ns;
+    let post: &mut PostResult = journal.post_result.as_mut().expect("a post phase");
+    post.impact_observed = Some(outage_at_s.is_some());
+    post.outage_started_at_ns = outage_at_s.map(|s| start + s * NS);
+    post.recovered_at_ns = back_at_s.map(|s| start + s * NS);
+    let outcome = journal.objectives.as_mut().expect("objectives");
+    outcome.rto_target_s = Some(30.0);
+    outcome.rto_measured_s = rto.recovered.filter(|back| *back).and(rto.observed);
+    outcome.verdicts.push(rto);
+    journal
+}
+
+/// The verdict on an RTO of 30 s.
+fn rto_verdict(observed: Option<f64>, state: NfrState, recovered: Option<bool>) -> NfrVerdict {
+    NfrVerdict {
+        nfr_id: "rto".into(),
+        kind: tumult_core::types::NfrKind::Rto,
+        metric: "recovery.mttr_s".into(),
+        operator: tumult_core::types::NfrOperator::Lte,
+        threshold: 30.0,
+        observed,
+        state,
+        margin: None,
+        criticality: tumult_core::types::NfrCriticality::Blocking,
+        recovered,
+        reason: None,
+    }
+}
+
+#[tokio::test]
+async fn the_evidence_of_a_run_says_whether_it_recovered_and_why() {
+    let back = with_outage(
+        "back",
+        Some(10),
+        Some(14),
+        rto_verdict(Some(4.0), NfrState::Met, Some(true)),
+    );
+    let never = with_outage(
+        "never",
+        Some(10),
+        None,
+        rto_verdict(Some(41.5), NfrState::Breached, Some(false)),
+    );
+    let unaffected = with_outage(
+        "unaffected",
+        None,
+        None,
+        NfrVerdict {
+            reason: Some(NfrVerdict::NO_OUTAGE_OBSERVED.into()),
+            ..rto_verdict(None, NfrState::Inconclusive, None)
+        },
+    );
+    let srv = spawn_server().await;
+    for journal in [&back, &never, &unaffected] {
+        store(&srv, journal).await;
+    }
+
+    let rto_of = |page: &Value| {
+        page["evidence"]["objectives"]
+            .as_array()
+            .expect("objectives")
+            .iter()
+            .find(|objective| objective["nfr_id"] == "rto")
+            .cloned()
+            .expect("the verdict on the rto")
+    };
+    let start = back.started_at_ns;
+    let page = page_of(&srv, "back").await;
+    assert_evidence(&page, &back);
+    assert_eq!(page["evidence"]["recovery"]["impact_observed"], true);
+    assert_eq!(
+        page["evidence"]["recovery"]["outage_started_at_ns"],
+        json!(start + 10 * NS)
+    );
+    assert_eq!(
+        page["evidence"]["recovery"]["recovered_at_ns"],
+        json!(start + 14 * NS)
+    );
+    assert_eq!(rto_of(&page)["recovered"], true);
+
+    let page = page_of(&srv, "never").await;
+    assert_evidence(&page, &never);
+    assert_eq!(page["evidence"]["recovery"]["recovered_at_ns"], Value::Null);
+    assert_eq!(rto_of(&page)["recovered"], false);
+    assert_eq!(rto_of(&page)["observed"], 41.5);
+
+    let page = page_of(&srv, "unaffected").await;
+    assert_evidence(&page, &unaffected);
+    assert_eq!(page["evidence"]["recovery"]["impact_observed"], false);
+    assert_eq!(rto_of(&page)["reason"], "no outage observed");
+    assert_eq!(rto_of(&page)["recovered"], Value::Null);
 }
 
 #[tokio::test]

@@ -16,6 +16,9 @@ The steps, in order:
                   that runs until the pictures stop it
   5. schedules, webhooks, a third user and two generated reports
   6. the HTML report of the last soak run, for the report picture
+  7. dr           DR exercises run by hand at earlier dates, signed off by
+                  a second person, and a planned backup, for the Disaster
+                  recovery page
 
 The CLI runs with a HOME and a lake of its own inside the work dir, so it
 never reads or writes the lake of the person who runs it.
@@ -52,6 +55,15 @@ SOAKS_PER_BUILD = 3
 # How long the stopped run holds its fault before it would end by itself.
 # The pictures stop it long before.
 STOP_HOLD_S = "900"
+DAY_NS = 86_400 * 10**9
+# The DR exercises of the demo targets that people ran by hand: name, type,
+# target, days ago, recovery time, RTO, RPO and the data lost, in seconds.
+DR_EXERCISES = (
+    ("storage restore from backup", "restore", "storage", 350, 1800, 3600, 900, 300),
+    ("config-service failover", "failover", "config-service", 300, 540, 900, 60, 20),
+    ("config-service failover", "failover", "config-service", 120, 420, 900, 60, 10),
+    ("batch-worker drill", "drill", "batch-worker", 400, 1200, 900, None, None),
+)
 
 
 def log(message: str) -> None:
@@ -400,6 +412,53 @@ def html_report(stack: Stack, journal: Path) -> None:
     log(f"wrote the HTML report of {journal.name}")
 
 
+def dr(stack: Stack) -> None:
+    """DR exercises that admin enters and bob signs off, at earlier dates,
+    and a planned backup that no test has covered yet."""
+    bob = approver(stack)
+    now = time.time_ns()
+    for name, kind, target, days, recovery, rto, rpo, lost in DR_EXERCISES:
+        made = stack.admin.post(
+            "/api/manual/experiments",
+            {
+                "experiment_name": name,
+                "exercise_type": kind,
+                "executed_at_ns": now - days * DAY_NS,
+                "hypothesis": f"{target} is back within its RTO",
+                "method": "Follow the DR runbook against the demo stack",
+                "outcome_status": "passed" if recovery <= rto else "failed",
+                "hypothesis_met": recovery <= rto,
+                "target_system": target,
+                "target_environment": "demo",
+                "recovery_time_s": recovery,
+                "rto_target_s": rto,
+                "rpo_target_s": rpo,
+                "rpo_measured_s": lost,
+                "data_verified": True if lost is not None else None,
+                "attestation": "I attest this record reflects the exercise as run.",
+            },
+        )
+        stack.admin.post(f"/api/manual/experiments/{made['id']}/submit")
+        bob.post(
+            f"/api/manual/experiments/{made['id']}/verify",
+            {"note": "checked the runbook log"},
+        )
+    stack.admin.post(
+        "/api/manual/plans",
+        {
+            "name": "checkout database backup",
+            "exercise_type": "backup",
+            "target_system": "checkout",
+            "target_environment": "demo",
+            "owner": "admin",
+            "due_at_ns": now + 20 * DAY_NS,
+            "rto_target_s": 600,
+            "rpo_target_s": 300,
+        },
+    )
+    log(f"entered {len(DR_EXERCISES)} DR exercises and planned a backup")
+
+
 def newest_experiment(stack: Stack, prefix: str) -> str:
     rows = stack.admin.get("/api/experiments?range=24h&limit=500")["experiments"]
     found = [row for row in rows if (row.get("name") or "").startswith(prefix)]
@@ -431,6 +490,7 @@ def main() -> int:
     third_user(stack)
     reports(stack)
     html_report(stack, journal)
+    dr(stack)
     found.update(ids(stack))
     found["run.stop"] = running(stack, found["registry.governed"])
     (stack.work / "ids.json").write_text(json.dumps(found, indent=1), encoding="utf-8")

@@ -536,18 +536,25 @@ fn env_root(id: &str, name: &str, env: &str, ts: i64) -> SpanRow {
     }
 }
 
-/// Every non-GET route in the table (plus the admin user list) rejects a
-/// request without credentials — the table is fail-closed, so a mutating
-/// route missing from the table still 401s (at Admin).
+/// The reads the sweep below covers: the admin user list and the DR view.
+const SWEPT_READS: [&str; 2] = ["/api/users", "/api/dr"];
+
+/// Every non-GET route in the table (plus the reads of [`SWEPT_READS`])
+/// rejects a request without credentials. The table is fail-closed, so a
+/// mutating route missing from the table still 401s (at Admin).
 #[tokio::test]
 async fn route_table_sweep_rejects_unauthenticated() {
     let srv = spawn_server().await;
     add_user(&srv, "admin", "admin-password-1", "admin", false).await;
     let client = reqwest::Client::new();
     let mut swept = 0;
+    let mut reads = Vec::new();
     for (method, template, _role) in tumult_api::auth::ROUTE_TABLE {
-        if *method == "GET" && *template != "/api/users" {
+        if *method == "GET" && !SWEPT_READS.contains(template) {
             continue;
+        }
+        if *method == "GET" {
+            reads.push(*template);
         }
         if *template == "/api/auth/login" || *template == "/api/me" {
             continue;
@@ -576,6 +583,12 @@ async fn route_table_sweep_rejects_unauthenticated() {
         swept += 1;
     }
     assert!(swept >= 25, "sweep covered {swept} routes");
+    reads.sort_unstable();
+    assert_eq!(
+        reads,
+        ["/api/dr", "/api/users"],
+        "the table holds every read swept"
+    );
 }
 
 /// The role ladder: each role can do its own level and is 403'd above it.

@@ -385,10 +385,16 @@ pub struct ProbeSample {
     pub phase: SamplePhase,
     /// Epoch-nanosecond timestamp at which the sample started.
     pub ts_ns: i64,
-    /// Probe execution time in milliseconds (the measured value).
+    /// Probe execution time in milliseconds.
     pub duration_ms: u64,
     /// Whether the sample was within tolerance.
     pub ok: bool,
+    /// The number the probe printed, for a probe whose tolerance reads one
+    /// (`number` or `range`), also when it was outside a range. `None` for
+    /// any other probe, for an output that is no number, and in an older
+    /// journal.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reading: Option<f64>,
 }
 
 /// Evaluation of one [`NfrObjective`](crate::types::NfrObjective) against
@@ -423,9 +429,10 @@ pub struct NfrVerdict {
     /// Why the verdict is what it is when its numbers do not say. The
     /// recovery time objective of a run that saw no outage is
     /// inconclusive with the reason [`NfrVerdict::NO_OUTAGE_OBSERVED`],
-    /// and a drift or spike objective of a load that kept too few windows
-    /// with [`NfrVerdict::TOO_FEW_WINDOWS`]. `None` for any other verdict
-    /// and in an older journal.
+    /// an `rpo_target_s` that no objective measures with the reason
+    /// [`NfrVerdict::NO_RPO_OBJECTIVE`], and a drift or spike objective of a
+    /// load that kept too few windows with [`NfrVerdict::TOO_FEW_WINDOWS`].
+    /// `None` for any other verdict and in an older journal.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
 }
@@ -434,6 +441,10 @@ impl NfrVerdict {
     /// The reason of the recovery time objective of a run whose samples
     /// saw no outage: the run is no evidence of recovery.
     pub const NO_OUTAGE_OBSERVED: &'static str = "no outage observed";
+
+    /// The reason of the verdict on `rpo_target_s` of a run whose
+    /// objectives have no `rpo` objective: nothing read the data back.
+    pub const NO_RPO_OBJECTIVE: &'static str = "no objective measures lost data";
 
     /// The reason of a drift or spike objective whose load kept too few
     /// windows to judge: fewer than four for a drift, none before or none
@@ -454,7 +465,10 @@ pub struct ObjectiveOutcome {
     /// verdict holds the lower bound) and for one that saw no outage.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rto_measured_s: Option<f64>,
-    /// Measured data-loss window, when an `rpo` objective resolved.
+    /// Measured recovery point: the seconds of committed writes from
+    /// before the outage that the run lost, as the probe of the `rpo`
+    /// objective read them back after the recovery. `None` when no such
+    /// objective resolved.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rpo_measured_s: Option<f64>,
     #[serde(default)]
@@ -476,13 +490,24 @@ impl ObjectiveOutcome {
 /// Phase 4 output: estimate-vs-actual comparison and resilience scoring.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AnalysisResult {
-    /// How close the Phase 0 estimate was to the observed outcome (0.0-1.0).
+    /// 1.0 when the expected outcome of the estimate is the outcome the run
+    /// measured (unaffected, recovered or deviated), else 0.0. `None` when
+    /// the run has no such outcome: its method failed, it was stopped, or
+    /// it completed with no probe that watched for an outage.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub estimate_accuracy: Option<f64>,
-    /// Estimated vs. measured recovery time delta in seconds. Reserved:
-    /// not populated in this version (always `None`).
+    /// The measured recovery time (`post_result.mttr_s`, the number
+    /// `objectives.rto_measured_s` holds) minus `expected_recovery_s`, in
+    /// seconds: positive means slower than expected. `None` unless both
+    /// are there.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub estimate_recovery_delta_s: Option<f64>,
+    /// Whether `expected_data_loss` says what the run measured: data was
+    /// lost when `objectives.rpo_measured_s` is above 0. `None` when the
+    /// estimate says nothing of data loss, when the run measured no RPO,
+    /// and in a journal written before 3.0.4.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub estimate_data_loss_correct: Option<bool>,
     /// Direction of change versus previous runs. Reserved: requires
     /// historical journals; not populated in this version (always `None`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -770,11 +795,38 @@ mod tests {
         let result = AnalysisResult {
             estimate_accuracy: Some(0.83),
             estimate_recovery_delta_s: Some(-2.6),
+            estimate_data_loss_correct: None,
             trend: Some(Trend::Improving),
             resilience_score: Some(0.92),
         };
         let decoded: AnalysisResult = toon_round_trip(&result);
         assert_eq!(decoded, result);
+    }
+
+    #[test]
+    fn an_analysis_keeps_whether_the_data_loss_estimate_was_right_and_an_older_one_still_reads() {
+        let older = AnalysisResult {
+            estimate_accuracy: Some(1.0),
+            estimate_recovery_delta_s: Some(1.0),
+            estimate_data_loss_correct: None,
+            trend: None,
+            resilience_score: Some(1.0),
+        };
+        let written = toon_format::encode_default(&older).expect("encode");
+        assert!(!written.contains("estimate_data_loss_correct"), "{written}");
+        let read: AnalysisResult = toon_format::decode_default(&written).expect("decode");
+        assert_eq!(read, older);
+
+        let judged = AnalysisResult {
+            estimate_data_loss_correct: Some(false),
+            ..older
+        };
+        let written = toon_format::encode_default(&judged).expect("encode");
+        assert!(
+            written.contains("estimate_data_loss_correct: false"),
+            "{written}"
+        );
+        assert_eq!(toon_round_trip(&judged), judged);
     }
 
     #[test]
@@ -846,6 +898,30 @@ mod tests {
         let written = toon_format::encode_default(&unaffected).expect("encode");
         assert!(written.contains("impact_observed: false"), "{written}");
         assert_eq!(toon_round_trip(&unaffected), unaffected);
+    }
+
+    #[test]
+    fn a_probe_sample_keeps_the_number_it_read_and_an_older_one_still_reads() {
+        let older = ProbeSample {
+            probe: "data-lost".into(),
+            phase: SamplePhase::Post,
+            ts_ns: 1_774_980_165_000_000_000,
+            duration_ms: 12,
+            ok: true,
+            reading: None,
+        };
+        let written = toon_format::encode_default(&older).expect("encode");
+        assert!(!written.contains("reading"), "{written}");
+        let read: ProbeSample = toon_format::decode_default(&written).expect("decode");
+        assert_eq!(read, older);
+
+        let read_back = ProbeSample {
+            reading: Some(2.0),
+            ..older
+        };
+        let written = toon_format::encode_default(&read_back).expect("encode");
+        assert!(written.contains("reading: 2"), "{written}");
+        assert_eq!(toon_round_trip(&read_back), read_back);
     }
 
     #[test]

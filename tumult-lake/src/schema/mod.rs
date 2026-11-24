@@ -109,6 +109,23 @@
 //! Every statement is `IF NOT EXISTS`, so a database at v21 migrates on
 //! open and its records keep their version 1 seal.
 //!
+//! v23 adds `probe_samples.reading` (`objectives.rs`), an additive ALTER:
+//! the number a probe printed when its tolerance reads one, NULL on rows
+//! stored before v23. `value` keeps the probe duration. A database at v21
+//! or v22 migrates on open.
+//!
+//! v24 adds what a DR run measured (`objectives.rs`), additive ALTERs:
+//! `experiments.impact_observed`, `outage_started_at_ns`,
+//! `recovered_at_ns` and `mttr_s`, and `nfr_verdicts.recovered` and
+//! `reason`, NULL on rows stored before v24. A database at v21, v22 or v23
+//! migrates on open.
+//!
+//! v25 adds the view `dr_tests` (`dr.rs`): one row per DR test, a run of
+//! kind `dr` or a submitted or verified manual record of a DR type, with
+//! its targets, what it measured and its verdict. No table changes; the
+//! version moves so that an older build, which has no such view, refuses
+//! the lake.
+//!
 //! The DDL is split by feature area: [`telemetry`] (v1), [`manual`] (v2/v8
 //! shape), [`analytics`] (v3), [`runs`] (v4–v7), [`auth`] (v6/v9),
 //! [`table_stakes`] (v10–v13), [`migrations`] (the versioned rebuilds).
@@ -117,6 +134,7 @@ use tumult_core::types::ExperimentStatus;
 
 mod analytics;
 mod auth;
+mod dr;
 mod entities;
 mod forecast;
 mod ict;
@@ -129,10 +147,11 @@ mod runs;
 mod table_stakes;
 mod telemetry;
 
+pub(crate) use dr::{dr_register_sql, dr_tests_sql};
 pub(crate) use manual::V22_COLUMNS as MANUAL_V22_COLUMNS;
 pub use migrations::{MIGRATE_V5_RUN_TABLES_INDEX_FREE, MIGRATE_V8_MANUAL_EXPERIMENTS_INDEX_FREE};
 
-pub const CURRENT_SCHEMA_VERSION: i64 = 22;
+pub const CURRENT_SCHEMA_VERSION: i64 = 25;
 
 /// The full DDL, one batch per feature area, executed in order. All DDL is
 /// `IF NOT EXISTS`, so this doubles as the idempotent v0 → v1 migration on
@@ -145,24 +164,28 @@ pub const CREATE_TABLES: &[&str] = &[
     auth::DDL,
     table_stakes::DDL,
     objectives::DDL,
+    objectives::READING_COLUMN,
     risk::DDL,
     perf::DDL,
+    objectives::DR_FACTS_COLUMNS,
     forecast::DDL,
     ict::DDL,
     entities::DDL,
 ];
 
 /// The views, in the order they are created: the root of every run, the
-/// completion log of every run, the rollup of every run and the current
-/// state of every entity. CREATE OR REPLACE so existing databases pick up
-/// view changes on startup.
+/// completion log of every run, the rollup of every run, the current
+/// state of every entity and the DR tests. CREATE OR REPLACE so existing
+/// databases pick up view changes on startup.
 #[must_use]
-pub fn create_views() -> [String; 4] {
+pub fn create_views() -> [String; 5] {
+    let dr_types = crate::dr::DEFAULT_DR_EXERCISE_TYPES.map(crate::ExerciseType::as_str);
     [
         run_roots_view(),
         run_completions_view(),
         experiment_runs_view(),
         entities::VIEW.to_string(),
+        dr::dr_tests_view(&dr_types),
     ]
 }
 
@@ -191,9 +214,8 @@ pub fn run_outcome_sql(span: &str, log: &str) -> String {
 ///
 /// `root` is the alias of a row of `run_roots`, one row a run. A traced run
 /// reports the recovery time on its root span; a run stored only as a
-/// journal reports the recovery time its journal measured, which is there
-/// only when its definition declares an objective. A span that is no root
-/// of a run is not read.
+/// journal reports the time to recovery its journal measured. A span that
+/// is no root of a run is not read.
 #[must_use]
 pub fn mean_recovery_time_sql(root: &str) -> String {
     format!("avg({root}.recovery_time_s)")
@@ -285,8 +307,10 @@ pub fn run_verdict_sql(status: &str) -> String {
 /// import) left no span: its row is built from the journal, says
 /// `journal_only`, has no trace id, and takes its target from the run node
 /// of the graph, which holds what the definition declared. The hypothesis verdict follows
-/// `Journal::hypothesis_met`, by [`hypothesis_met_sql`]. Every column of
-/// `spans` is named, so a new one has to be added here.
+/// `Journal::hypothesis_met`, by [`hypothesis_met_sql`]. Its recovery time
+/// is the time to recovery of the journal (`mttr_s`), also for a run that
+/// declares no objective; a row stored before v24 has the measured RTO.
+/// Every column of `spans` is named, so a new one has to be added here.
 fn run_roots_view() -> String {
     format!(
         "
@@ -347,7 +371,7 @@ SELECT
     json_extract_string(g.attrs, '$.target_environment') AS target_environment,
     NULL AS plugin_name,
     {hypothesis_met} AS hypothesis_met,
-    e.rto_measured_s AS recovery_time_s,
+    coalesce(e.mttr_s, e.rto_measured_s) AS recovery_time_s,
     NULL AS span_attrs,
     NULL AS resource_attrs,
     NULL AS events,

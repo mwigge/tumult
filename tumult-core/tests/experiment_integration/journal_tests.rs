@@ -86,11 +86,12 @@ fn full_experiment_run_produces_complete_journal() {
         ExpectedOutcome::Recovered
     );
 
-    // Analysis computed
+    // Analysis computed. The probe never failed, so the run was
+    // unaffected, not recovered as estimated.
     assert!(journal.analysis.is_some());
     assert_eq!(
         journal.analysis.as_ref().unwrap().estimate_accuracy,
-        Some(1.0)
+        Some(0.0)
     );
 
     // Regulatory preserved

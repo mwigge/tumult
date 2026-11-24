@@ -157,6 +157,7 @@ fn describe_safe_condition(tolerance: Option<&Tolerance>) -> String {
         Some(Tolerance::Range { from, to }) => format!("range [{from}, {to}]"),
         Some(Tolerance::Exact { value }) => format!("exact {value}"),
         Some(Tolerance::Regex { pattern }) => format!("regex /{pattern}/"),
+        Some(Tolerance::Number) => "a number".to_string(),
         // Guards are validated to carry a tolerance; this is a defensive
         // fallback only.
         None => "probe success".to_string(),
