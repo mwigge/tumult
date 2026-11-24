@@ -245,7 +245,10 @@ describe('links', () => {
             lastTestHref({ ...last, id: 'manual:01ABC', origin: 'manual', verdict: 'met' }),
         ).toBe('/manual?tab=records');
         expect(PLANS_HREF).toBe('/manual?tab=plans');
-        expect(DR_GUIDE_URL).toMatch(/^https:\/\/tumult\.rs\/guides\/.+\.html#recovery-targets$/);
+    });
+
+    it('lead to the disaster recovery guide of the docs', () => {
+        expect(DR_GUIDE_URL).toBe('https://tumult.rs/guides/disaster-recovery.html');
     });
 
     it('write a day as the date it is where the browser is', () => {

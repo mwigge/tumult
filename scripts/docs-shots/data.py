@@ -14,11 +14,19 @@ The steps, in order:
   4. governed     a definition bound to env dev, a run that waits for
                   approval, and a run that a second person approved and
                   that runs until the pictures stop it
-  5. schedules, webhooks, a third user and two generated reports
+  5. schedules, webhooks and a third user
   6. the HTML report of the last soak run, for the report picture
-  7. dr           DR exercises run by hand at earlier dates, signed off by
-                  a second person, and a planned backup, for the Disaster
-                  recovery page
+  7. dr           three DR runs of config-service with the tumult CLI
+                  against a lab of files: one restores a backup and
+                  measures its RTO and RPO, one does not recover and one
+                  sees no outage. Then DR exercises run by hand at earlier
+                  dates, tagged with the plan scenarios they tested, signed
+                  off by a second person, a failover drill of config-db that
+                  fulfils its plan with steps, actions, a file and a
+                  sign-off, and a planned backup
+  8. reports      an executive digest, a DORA evidence pack and the two DR
+                  reports, with the HTML of the last three for the report
+                  pictures
 
 The CLI runs with a HOME and a lake of its own inside the work dir, so it
 never reads or writes the lake of the person who runs it.
@@ -30,6 +38,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -56,14 +65,27 @@ SOAKS_PER_BUILD = 3
 # The pictures stop it long before.
 STOP_HOLD_S = "900"
 DAY_NS = 86_400 * 10**9
+MINUTE_NS = 60 * 10**9
 # The DR exercises of the demo targets that people ran by hand: name, type,
 # target, days ago, recovery time, RTO, RPO and the data lost, in seconds.
 DR_EXERCISES = (
     ("storage restore from backup", "restore", "storage", 350, 1800, 3600, 900, 300),
-    ("config-service failover", "failover", "config-service", 300, 540, 900, 60, 20),
-    ("config-service failover", "failover", "config-service", 120, 420, 900, 60, 10),
-    ("batch-worker drill", "drill", "batch-worker", 400, 1200, 900, None, None),
+    ("config-db failover", "failover", "config-db", 300, 540, 900, 60, 20),
+    ("config-service restore drill", "restore", "config-service", 90, 25, 30, 5, 3),
+    ("api-worker queue restore", "restore", "api-worker", 60, 1500, 1800, 300, 120),
+    ("message-queue restore", "restore", "message-queue", 45, 2400, 1800, 300, 60),
+    ("batch-worker attack drill", "drill", "batch-worker", 400, 1200, 900, None, None),
 )
+# The plan scenarios of RTS 2024/1774 that some of them tested.
+SCENARIOS = {
+    "api-worker queue restore": ["backup_restore"],
+    "message-queue restore": ["backup_restore"],
+    "batch-worker attack drill": ["cyber_attack"],
+}
+# The DR runs of config-service, in this order: the last one is the newest
+# DR test of the register, and a run that sees no outage is none.
+DR_RUNS = ("dr-config-replica-kill", "dr-config-zone-loss", "dr-config-restore")
+DR_LAB = EXPERIMENTS / "dr-lab" / "lab.sh"
 
 
 def log(message: str) -> None:
@@ -78,25 +100,32 @@ class Api:
         self.url = url
         self.token = token
 
-    def call(self, method: str, path: str, body: dict | None = None) -> dict:
-        data = None if body is None else json.dumps(body).encode()
+    def send(
+        self,
+        method: str,
+        path: str,
+        data: bytes | None = None,
+        kind: str = "application/json",
+    ) -> str:
+        """The text of the answer; an answer that is not 2xx ends the run."""
         request = urllib.request.Request(
             self.url + path,
             data=data,
             method=method,
-            headers={
-                "Authorization": f"Bearer {self.token}",
-                "content-type": "application/json",
-            },
+            headers={"Authorization": f"Bearer {self.token}", "content-type": kind},
         )
         try:
             with urllib.request.urlopen(request, timeout=60) as response:
-                text = response.read().decode()
+                return response.read().decode()
         except urllib.error.HTTPError as error:
             detail = error.read().decode(errors="replace")[:400]
             raise SystemExit(
                 f"{method} {path} -> HTTP {error.code}: {detail}"
             ) from None
+
+    def call(self, method: str, path: str, body: dict | None = None) -> dict:
+        data = None if body is None else json.dumps(body).encode()
+        text = self.send(method, path, data)
         return json.loads(text) if text.strip() else {}
 
     def get(self, path: str) -> dict:
@@ -104,6 +133,10 @@ class Api:
 
     def post(self, path: str, body: dict | None = None) -> dict:
         return self.call("POST", path, body if body is not None else {})
+
+    def upload(self, path: str, data: bytes) -> dict:
+        """The bytes of one file as the body, as the attachment route takes it."""
+        return json.loads(self.send("POST", path, data, "application/octet-stream"))
 
 
 class Stack:
@@ -390,15 +423,25 @@ def third_user(stack: Stack) -> None:
     log("created erin, an operator")
 
 
-def reports(stack: Stack) -> None:
+def reports(stack: Stack, drill: str) -> None:
+    """The reports of the Reports page. The HTML of the evidence pack, the DR
+    test report of config-service and the DR exercise report of the failover
+    drill of config-db goes to the work dir, for the report pictures."""
     stack.admin.post(
         "/api/reports/v2/generate", {"type": "executive-digest", "period": "7d"}
     )
-    stack.admin.post(
-        "/api/reports/v2/generate",
-        {"type": "evidence-pack", "period": "30d", "framework": "dora"},
-    )
-    log("generated an executive digest and a DORA evidence pack")
+    for name, body in (
+        (
+            "report-evidence-pack",
+            {"type": "evidence-pack", "period": "30d", "framework": "dora"},
+        ),
+        ("report-dr-test", {"type": "dr-test", "target": "config-service"}),
+        ("report-dr-exercise", {"type": "dr-exercise", "record_id": drill}),
+    ):
+        made = stack.admin.post("/api/reports/v2/generate", body)
+        page = stack.admin.send("GET", f"/api/reports/v2/{made['doc_id']}/html")
+        (stack.work / f"{name}.html").write_text(page, encoding="utf-8")
+    log("generated an executive digest, a DORA evidence pack and two DR reports")
 
 
 def html_report(stack: Stack, journal: Path) -> None:
@@ -412,11 +455,53 @@ def html_report(stack: Stack, journal: Path) -> None:
     log(f"wrote the HTML report of {journal.name}")
 
 
-def dr(stack: Stack) -> None:
-    """DR exercises that admin enters and bob signs off, at earlier dates,
-    and a planned backup that no test has covered yet."""
-    bob = approver(stack)
-    now = time.time_ns()
+def fresh_lab(work: Path) -> Path:
+    """The lab of a DR run: a config store of files that answers, with one
+    marker kept, confirmed and backed up, and the script that works it."""
+    lab = work / "dr-lab"
+    shutil.rmtree(lab, ignore_errors=True)
+    lab.mkdir()
+    shutil.copy(DR_LAB, lab / "lab.sh")
+    marker = f"{time.time():.6f}\n"
+    for name in ("store", "ledger", "backup"):
+        (lab / name).write_text(marker, encoding="utf-8")
+    (lab / "up").touch()
+    return lab
+
+
+def dr_runs(stack: Stack) -> None:
+    """Three DR runs of config-service with the tumult CLI, each on a fresh
+    lab. The DR view must then hold the verdicts the pictures show."""
+    for name in DR_RUNS:
+        lab = fresh_lab(stack.work)
+        journal = stack.work / f"{name}.journal.toon"
+        stack.run(EXPERIMENTS / f"{name}.toon", journal, "--var", f"lab={lab}")
+    wanted = {"met", "not_recovered", "not_measured"}
+    found: set[str] = set()
+    for _ in range(30):
+        view = stack.admin.get("/api/dr?target=config-service&environment=demo")
+        runs = [t for t in view["tests"] if t.get("origin") == "automated"]
+        found = {t.get("verdict") for t in runs}
+        measured = [t for t in runs if t.get("rpo_measured_s") is not None]
+        if wanted <= found and measured:
+            log(f"DR runs of config-service: {', '.join(sorted(found))}")
+            return
+        time.sleep(1)
+    raise SystemExit(f"the DR view of config-service has {sorted(found)}, not {wanted}")
+
+
+def signed_off(stack: Stack, bob: Api, made: dict) -> str:
+    """Submit a record that admin entered, and sign it off as bob."""
+    stack.admin.post(f"/api/manual/experiments/{made['id']}/submit")
+    bob.post(
+        f"/api/manual/experiments/{made['id']}/verify",
+        {"note": "checked the runbook log"},
+    )
+    return made["id"]
+
+
+def exercises(stack: Stack, bob: Api, now: int) -> None:
+    """DR exercises that admin enters and bob signs off, at earlier dates."""
     for name, kind, target, days, recovery, rto, rpo, lost in DR_EXERCISES:
         made = stack.admin.post(
             "/api/manual/experiments",
@@ -435,14 +520,113 @@ def dr(stack: Stack) -> None:
                 "rpo_target_s": rpo,
                 "rpo_measured_s": lost,
                 "data_verified": True if lost is not None else None,
+                "scenarios": SCENARIOS.get(name, []),
                 "attestation": "I attest this record reflects the exercise as run.",
             },
         )
-        stack.admin.post(f"/api/manual/experiments/{made['id']}/submit")
-        bob.post(
-            f"/api/manual/experiments/{made['id']}/verify",
-            {"note": "checked the runbook log"},
-        )
+        signed_off(stack, bob, made)
+
+
+def drill(stack: Stack, bob: Api, now: int) -> str:
+    """The failover drill of config-db that fulfils its plan: the people,
+    the steps, the actions with their owners and severity, an external
+    tester, a runbook log as a file, and the sign-off of bob."""
+    ran = now - 20 * DAY_NS
+    plan = stack.admin.post(
+        "/api/manual/plans",
+        {
+            "name": "config-db yearly failover",
+            "exercise_type": "failover",
+            "target_system": "config-db",
+            "target_environment": "demo",
+            "scope": "Promote the standby config database by the runbook",
+            "owner": "admin",
+            "due_at_ns": now - 10 * DAY_NS,
+            "rto_target_s": 900,
+            "rpo_target_s": 60,
+        },
+    )
+    step = (
+        ("Stop the primary config database", "erin", 0, 1, None),
+        ("Promote the standby", "erin", 1, 7, "waited 4 minutes on a stale lock"),
+        ("Check the last changes", "admin", 7, 10, None),
+    )
+    made = stack.admin.post(
+        "/api/manual/experiments",
+        {
+            "experiment_name": "config-db failover drill",
+            "exercise_type": "failover",
+            "executed_at_ns": ran,
+            "hypothesis": "The standby takes over within 15 minutes and loses"
+            " at most a minute of changes",
+            "method": "Stop the primary config database, promote the standby by the"
+            " runbook and check the last changes",
+            "outcome_status": "passed",
+            "hypothesis_met": True,
+            "findings": "The promote waited 4 minutes on a stale lock."
+            " No change was lost.",
+            "findings_severity": "medium",
+            "target_system": "config-db",
+            "target_environment": "demo",
+            "recovery_time_s": 420,
+            "duration_s": 1800,
+            "rto_target_s": 900,
+            "rpo_target_s": 60,
+            "rpo_measured_s": 10,
+            "data_verified": True,
+            "plan_id": plan["id"],
+            "participants": [
+                {"name": "admin", "role": "DR owner"},
+                {"name": "erin", "role": "operator"},
+            ],
+            "steps": [
+                {
+                    "title": title,
+                    "actor": actor,
+                    "started_at_ns": ran + start * MINUTE_NS,
+                    "ended_at_ns": ran + end * MINUTE_NS,
+                    "result": "done",
+                    "note": note,
+                }
+                for title, actor, start, end, note in step
+            ],
+            "actions": [
+                {
+                    "title": "Clear the stale lock before a promote",
+                    "owner": "erin",
+                    "due_at_ns": now + 14 * DAY_NS,
+                    "ticket": "OPS-1042",
+                    "severity": "medium",
+                },
+                {
+                    "title": "Alert when the standby lags more than 30 s",
+                    "owner": "admin",
+                    "due_at_ns": now + 30 * DAY_NS,
+                    "severity": "low",
+                },
+            ],
+            "tester": {"name": "Recovery Partners Ltd", "kind": "external"},
+            "framework_refs": ["dora.art11.6.switchover"],
+            "attestation": "I attest this record reflects the exercise as run.",
+        },
+    )
+    log_file = (
+        b"10:02 primary stopped\n10:08 standby promoted\n10:12 last changes checked\n"
+    )
+    stack.admin.upload(
+        f"/api/manual/experiments/{made['id']}/attachments?name=failover-log.txt",
+        log_file,
+    )
+    return signed_off(stack, bob, made)
+
+
+def dr(stack: Stack) -> str:
+    """The DR data of the pictures. Returns the id of the failover drill."""
+    dr_runs(stack)
+    bob = approver(stack)
+    now = time.time_ns()
+    exercises(stack, bob, now)
+    drilled = drill(stack, bob, now)
     stack.admin.post(
         "/api/manual/plans",
         {
@@ -456,7 +640,11 @@ def dr(stack: Stack) -> None:
             "rpo_target_s": 300,
         },
     )
-    log(f"entered {len(DR_EXERCISES)} DR exercises and planned a backup")
+    log(
+        f"entered {len(DR_EXERCISES) + 1} DR exercises, one that fulfils its"
+        " plan, and planned a backup"
+    )
+    return drilled
 
 
 def newest_experiment(stack: Stack, prefix: str) -> str:
@@ -472,6 +660,7 @@ def ids(stack: Stack) -> dict:
     return {
         "experiment.cpu": newest_experiment(stack, "host cpu burn"),
         "experiment.soak": newest_experiment(stack, "checkout soak"),
+        "experiment.dr": newest_experiment(stack, "config-service restore from"),
         "gameday": gamedays[0]["id"],
     }
 
@@ -488,9 +677,8 @@ def main() -> int:
     schedules(stack, found["registry.governed"])
     webhooks(stack)
     third_user(stack)
-    reports(stack)
     html_report(stack, journal)
-    dr(stack)
+    reports(stack, dr(stack))
     found.update(ids(stack))
     found["run.stop"] = running(stack, found["registry.governed"])
     (stack.work / "ids.json").write_text(json.dumps(found, indent=1), encoding="utf-8")

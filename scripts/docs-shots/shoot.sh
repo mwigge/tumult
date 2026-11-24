@@ -19,6 +19,8 @@
 #   DOCS_SHOTS_HTTP_PORT    loopback API and web UI port (default 34318)
 #   DOCS_SHOTS_TARGET_PORT  loopback port of the checkout service (default 34380)
 #   DOCS_SHOTS_NO_BUILD=1   use the image as it is, without a build
+#   DOCS_SHOTS_BUILD_MEMORY memory cap of the image build (default 12G)
+#   DOCS_SHOTS_BUILD_CPUS   CPUs the image build may use (default 0-7)
 #   DOCS_SHOTS_KEEP=1       leave the stack and the work dir in place, to
 #                           take single pictures again with shoot.mjs
 set -euo pipefail
@@ -31,12 +33,26 @@ HTTP_PORT=${DOCS_SHOTS_HTTP_PORT:-34318}
 TARGET_PORT=${DOCS_SHOTS_TARGET_PORT:-34380}
 KEEP=${DOCS_SHOTS_KEEP:-0}
 NO_BUILD=${DOCS_SHOTS_NO_BUILD:-0}
+BUILD_MEMORY=${DOCS_SHOTS_BUILD_MEMORY:-12G}
+BUILD_CPUS=${DOCS_SHOTS_BUILD_CPUS:-0-7}
 
 dc() { docker compose -p "$PROJECT" -f "$ROOT/docker/docker-compose.kronika.yml" "$@"; }
 step() { printf '== docs-shots: %s\n' "$*"; }
 fail() {
   printf 'docs-shots: %s\n' "$*" >&2
   exit 1
+}
+# The image build with a cap on memory and CPUs, so a Rust build cannot take
+# the host down: the classic builder honours --memory, and a user scope of
+# systemd caps the docker client too where there is one.
+build() {
+  local scope=()
+  if systemd-run --user --scope -q true 2>/dev/null; then
+    scope=(systemd-run --user --scope -q -p "MemoryMax=$BUILD_MEMORY")
+  fi
+  DOCKER_BUILDKIT=0 "${scope[@]}" docker build --memory "$BUILD_MEMORY" \
+    --memory-swap "$BUILD_MEMORY" --cpuset-cpus "$BUILD_CPUS" \
+    -f "$ROOT/docker/Dockerfile.tumultd" -t "$KRONIKA_IMAGE" "$ROOT"
 }
 
 if [ "${1:-}" = --down ]; then
@@ -88,7 +104,7 @@ trap finish EXIT
 
 if [ "$NO_BUILD" != 1 ]; then
   step "build the image $KRONIKA_IMAGE from this checkout"
-  dc build tumultd
+  build
 fi
 step "start the daemon on 127.0.0.1:$HTTP_PORT"
 dc up -d --wait tumultd
