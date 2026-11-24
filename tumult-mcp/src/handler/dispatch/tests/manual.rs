@@ -616,6 +616,7 @@ fn the_draft_schema_is_the_record_body_of_the_api_and_nothing_more() {
         "findings_severity",
         "tester",
         "tlpt",
+        "scenarios",
     ];
     body.sort_unstable();
     assert_eq!(fields, body);

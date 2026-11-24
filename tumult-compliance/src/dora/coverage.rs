@@ -2006,6 +2006,49 @@ mod tests {
         assert_eq!(state_of(None, true), ScenarioState::Passed);
     }
 
+    /// A test that names two scenarios is one evidence row of the row, at
+    /// the better of the two; the cell names the best test of all its
+    /// scenarios, not the last one scored.
+    #[test]
+    fn a_test_of_two_scenarios_is_one_row_at_its_best() {
+        let mut inputs = scenario_inputs(EntityProfile::full());
+        // Runs whose restore step failed: failed tests of the restore, and
+        // passes of the other scenario each names.
+        let mut first = tagged(
+            "run-cyber-restore",
+            "cif-0042",
+            &["cyber_attack", "backup_restore"],
+            2,
+        );
+        first.restore_step = Some(false);
+        let mut second = tagged(
+            "run-restore-power",
+            "cif-0042",
+            &["backup_restore", "power_outage"],
+            3,
+        );
+        second.restore_step = Some(false);
+        inputs.evidence = vec![first, second];
+        let params = HouseParams::default();
+        let ctx = Ctx::new(&inputs, &params);
+        let req = requirement("rts1774.art26").unwrap();
+
+        let rows = ctx.evidence_rows(req, &inputs.functions[0], inputs.as_of_ns);
+        let seen: Vec<(&str, f64)> = rows
+            .iter()
+            .map(|r| (r.evidence.id.as_str(), r.o))
+            .collect();
+        let passed = params.outcome.passed;
+        assert_eq!(
+            seen,
+            [("run-cyber-restore", passed), ("run-restore-power", passed)]
+        );
+        let cell = ctx.evaluate(req, &inputs.functions[0], inputs.as_of_ns);
+        assert_eq!(cell.best.unwrap().evidence.id, "run-cyber-restore");
+        let want = (passed + params.outcome.failed + passed) / 13.0;
+        assert!((cell.v - want).abs() < 1e-12, "{}", cell.v);
+    }
+
     #[test]
     fn a_microenterprise_needs_ten_scenarios_and_the_simplified_plan_two() {
         let params = HouseParams::default();
