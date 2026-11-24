@@ -46,6 +46,8 @@ pub mod arrow_convert;
 pub mod auth;
 pub mod backend;
 #[cfg(feature = "duckdb")]
+mod dr;
+#[cfg(feature = "duckdb")]
 pub mod duckdb_store;
 #[cfg(feature = "duckdb")]
 mod entities;
@@ -96,6 +98,8 @@ pub use approvals::{approval_pin, ApprovalDecision, ApprovalRequest, CanonicalPi
 pub use auth::{SessionRow, TokenRow, UserRow};
 pub use backend::{AnalyticsBackend, StoreStats};
 #[cfg(feature = "duckdb")]
+pub use dr::{DrScope, DrTestFilter, DrTestPosition, DEFAULT_DR_EXERCISE_TYPES};
+#[cfg(feature = "duckdb")]
 pub use entities::{
     entity_key, EntityApplied, EntityEventKind, EntityEventRow, EntityEvictions, EntityLimits,
     EntityOutcome, EntityPurge, EvictionReason, WireForm, ENTITIES_PER_ENVIRONMENT,
@@ -116,7 +120,12 @@ pub use ict::{
 };
 #[cfg(feature = "duckdb")]
 pub use manual::{
-    AttachmentKind, ExerciseType, ManualDetail, ManualError, ManualOutcome, NewManualExperiment,
+    attachments_dir, stored_file, ActionItem, AttachmentKind, AuditProblem, AuditVerdict,
+    ExerciseDetail, ExerciseLink, ExerciseStep, ExerciseType, FileError, FileUpload, LinkKind,
+    ManualDetail, ManualError, ManualOutcome, NewExercisePlan, NewManualExperiment, Participant,
+    PlanDetail, PlanEdit, PlanError, PlanFilter, PlanStatus, Retest, RetestKind, Severity, SignOff,
+    SignOffDecision, SignOffOutcome, StagedFile, StepResult, Tester, TesterKind, TlptDetail,
+    MAX_FILE_BYTES, MEDIA_TYPES,
 };
 #[cfg(feature = "duckdb")]
 pub use perf::PerfVerdictRow;
@@ -160,6 +169,7 @@ pub use duckdb_store::autopilot::{
 #[cfg(feature = "duckdb")]
 pub use duckdb_store::{
     AgenticContractAnalytics, AgenticFaultAnalytics, AgenticRunAnalytics, AnalyticsStore,
+    RecoveryMetric, RecoveryPoint, RecoveryTrend,
 };
 #[cfg(feature = "duckdb")]
 pub use export::{export_arrow_ipc, export_csv, export_parquet, import_parquet};

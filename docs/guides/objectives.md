@@ -48,7 +48,7 @@ nfr[2]:
 |---|---|
 | `met` | The measured value meets the threshold |
 | `breached` | It does not |
-| `inconclusive` | The run did not measure the metric. It is never counted as met |
+| `inconclusive` | The run did not measure the metric. It is never counted as met. A `reason` says why when the numbers do not, such as `too few load windows to judge` |
 
 A breached `blocking` objective turns a completed run into `deviated`. A
 `major` or `minor` breach is recorded and leaves the status alone. The
@@ -64,15 +64,20 @@ case. A breached `blocking` objective fails it, as it fails the run. An
 | Metric | Comes from |
 |---|---|
 | `load.throughput_rps`, `load.latency_p50_ms`, `load.latency_p95_ms`, `load.latency_p99_ms`, `load.error_rate`, `load.total_requests` | The [load](load-testing-guide.md) of the run |
+| `load.p95_drift_pct`, `load.error_rate_drift` | The windows of a soak: how much the p95 and the error rate grew from the first quarter to the last, see [Judge a soak or a spike](load-testing-guide.md#judge-a-soak-or-a-spike) |
+| `load.spike_recovery_s` | The windows of a spike: the seconds from the end of the spike until the p95 is back in the band before it |
 | `recovery.mttr_s` | The hypothesis probes, from the first read that failed after the method started to the read where they were all back |
 | `recovery.time_s` | The recovery check right after the method, from the end of the method |
 | `during.error_rate`, `during.availability` | The hypothesis probes, sampled during the method |
 | `post.error_rate`, `post.availability` | The hypothesis probes, sampled after the method |
 | `probe.<name>.mean_ms`, `.max_ms`, `.p95_ms`, `.error_rate` | One hypothesis probe, sampled during the method |
+| `probe.<name>.lost_s` | The number one hypothesis probe printed at its last read after the method, when the run recovered. See [Measure the RPO](#measure-the-rpo) |
 | `fault.duration_s` | The length of the method |
 
 Validation refuses any other metric, and a `probe.<name>` that is not a probe
-of the steady-state hypothesis: no run could measure it.
+of the steady-state hypothesis: no run could measure it. It refuses a drift on
+a load that is not a soak, and `load.spike_recovery_s` on a load that is not a
+spike with `sample_interval_s`, and says which profile the metric needs.
 
 ## Kinds
 
@@ -80,13 +85,14 @@ The `kind` of an objective must be one that its metric measures.
 
 | Kind | Metrics |
 |---|---|
-| `latency` | `load.latency_p50_ms`, `load.latency_p95_ms`, `load.latency_p99_ms`, `probe.<name>.mean_ms`, `.max_ms`, `.p95_ms` |
+| `latency` | `load.latency_p50_ms`, `load.latency_p95_ms`, `load.latency_p99_ms`, `load.p95_drift_pct`, `load.spike_recovery_s`, `probe.<name>.mean_ms`, `.max_ms`, `.p95_ms` |
 | `error_rate`, `availability` | `load.error_rate`, `during.error_rate`, `during.availability`, `post.error_rate`, `post.availability`, `probe.<name>.error_rate` |
+| `error_rate` | `load.error_rate_drift` |
 | `throughput`, `capacity` | `load.throughput_rps`, `load.total_requests` |
 | `rto` | `recovery.mttr_s`, `recovery.time_s` |
-| `recovery` | `recovery.mttr_s`, `recovery.time_s`, `post.error_rate`, `post.availability`, `fault.duration_s` |
+| `recovery` | `recovery.mttr_s`, `recovery.time_s`, `post.error_rate`, `post.availability`, `fault.duration_s`, `load.spike_recovery_s` |
 | `data_integrity` | `probe.<name>.error_rate`, for a probe that checks the data |
-| `rpo` | None yet: no metric counts lost data |
+| `rpo` | `probe.<name>.lost_s`, for a probe that reads the data back |
 
 Validation refuses any other pair, such as an `rpo` objective on
 `fault.duration_s`.
@@ -115,8 +121,9 @@ outage seen to the end of the watch, and it has no margin. The true recovery
 time is longer. A run whose method failed, or that was stopped, measures no
 recovery: its RTO is `inconclusive`.
 
-`rpo_target_s` is recorded with the run. No metric counts lost data yet, so
-no objective can measure it, and its verdict is `inconclusive`.
+`rpo_target_s` is recorded with the run. An `rpo` objective measures it, see
+[Measure the RPO](#measure-the-rpo). Without one its verdict is `inconclusive`
+with the reason `no objective measures lost data`.
 
 ## Set the recovery window
 
@@ -144,6 +151,69 @@ Make the window at least as long as `rto_target_s`. A run that comes back
 after the window ends breaches its RTO, even when it comes back within
 `rto_target_s`. `tumult validate` warns when the RTO is longer than the
 window.
+
+## Measure the RPO
+
+The RPO of a run is the seconds of committed writes from before the outage
+that the run lost. The experiment writes markers before the fault and reads
+them back after the recovery.
+
+```mermaid
+flowchart LR
+    accTitle: How a run measures the RPO
+    accDescr: Before the fault a writer step writes markers to the store and, when the store has each one, to a ledger. The fault loses the newest markers. After the recovery a probe prints the newest ledger time minus the newest marker in the store.
+    writer[Writer step: a marker every interval] -->|write| store[(Store under test)]
+    writer -->|when the store has it| ledger[(Ledger)]
+    fault[Fault: the newest markers are lost] --> store
+    store --> reader[Reader probe, after the recovery]
+    ledger --> reader
+    reader --> rpo[Newest ledger time minus newest marker]
+```
+
+- A marker is a time in epoch seconds in the store under test: a row of a
+  table, or a line of a file.
+- A writer step in the method, before the fault, writes a marker every
+  interval. When the store confirms a write, the writer adds the same time to
+  a ledger outside the store. The writer stops before the method ends.
+- A reader probe of the steady-state hypothesis, with the tolerance `number`,
+  prints the newest ledger time minus the newest marker in the store. It
+  prints 0 when nothing is lost, and the newest minus the oldest ledger time
+  when no marker is left. When it cannot read the store it fails, so the run
+  is not back yet.
+- `probe.<reader>.lost_s` is the number the reader printed at its last read
+  after the method. It counts only when the method ran as written and the run
+  recovered.
+
+```toon
+kind: dr
+rto_target_s: 30
+rpo_target_s: 1
+steady_state_hypothesis:
+  title: The store answers
+  probes[1]:
+    - name: data-lost
+      activity_type: probe
+      provider:
+        type: process
+        path: ./read-markers.sh
+      tolerance:
+        type: number
+nfr[1]:
+  - id: rpo
+    kind: rpo
+    metric: probe.data-lost.lost_s
+    operator: lte
+    threshold: 1
+    criticality: blocking
+```
+
+The writer stamps the store and the ledger with one clock reading, so the RPO
+never compares two clocks. It is as fine as the writer interval. Validation
+refuses an `rpo` objective that is not `lte`, a threshold that is not
+`rpo_target_s`, and a reader without the tolerance `number`: a `range` would
+hold up the recovery when data is lost. The number is in the journal
+(`probe_samples` `reading`) and in the lake (`probe_samples.reading`,
+`experiments.rpo_measured_s`).
 
 ## Recovery over many runs
 

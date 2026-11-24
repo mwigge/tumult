@@ -607,7 +607,7 @@ async fn evidence_editor_cannot_review_their_own_changes() {
         )
         .await
         .0,
-        400
+        422
     );
     assert_eq!(
         post_auth(

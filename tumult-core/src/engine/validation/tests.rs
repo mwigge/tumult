@@ -612,6 +612,7 @@ fn validate_accepts_well_formed_load_profiles() {
         peak_vus: 200,
         after_s: 20.0,
         hold_s: 10.0,
+        sample_interval_s: None,
     };
     assert!(validate_experiment(&with_load(Some(spike), Some(10), Some(60.0))).is_ok());
     let soak = LoadProfile::Soak {
@@ -655,6 +656,7 @@ fn validate_rejects_spike_that_does_not_fit_or_does_not_rise() {
         peak_vus: 200,
         after_s: 55.0,
         hold_s: 10.0,
+        sample_interval_s: None,
     };
     assert!(
         load_error(&with_load(Some(overflow), Some(10), Some(60.0))).contains("after_s + hold_s")
@@ -663,6 +665,7 @@ fn validate_rejects_spike_that_does_not_fit_or_does_not_rise() {
         peak_vus: 10,
         after_s: 5.0,
         hold_s: 10.0,
+        sample_interval_s: None,
     };
     assert!(load_error(&with_load(Some(flat), Some(10), Some(60.0))).contains("peak_vus"));
 }
@@ -689,6 +692,33 @@ fn validate_rejects_a_soak_interval_below_one_second() {
 }
 
 #[test]
+fn a_spike_sample_interval_is_held_to_the_bounds_of_a_soak_one() {
+    let spike = |sample_interval_s: f64| LoadProfile::Spike {
+        peak_vus: 20,
+        after_s: 20.0,
+        hold_s: 10.0,
+        sample_interval_s: Some(sample_interval_s),
+    };
+    let short = load_error(&with_load(Some(spike(0.5)), Some(10), Some(60.0)));
+    assert!(short.contains("at least 1 second"), "{short}");
+    let long = load_error(&with_load(Some(spike(100.0)), Some(10), Some(60.0)));
+    assert!(long.contains("must not exceed duration_s"), "{long}");
+    let nan = load_error(&with_load(Some(spike(f64::NAN)), Some(10), Some(60.0)));
+    assert!(nan.contains("finite"), "{nan}");
+    assert!(validate_experiment(&with_load(Some(spike(1.0)), Some(10), Some(60.0))).is_ok());
+}
+
+#[test]
+fn a_sample_interval_of_zero_or_infinity_is_not_a_window_and_one_as_long_as_the_run_fits() {
+    let soak = |sample_interval_s: f64| LoadProfile::Soak { sample_interval_s };
+    for bad in [0.0, f64::INFINITY] {
+        let error = load_error(&with_load(Some(soak(bad)), None, Some(60.0)));
+        assert!(error.contains("finite and positive"), "{bad}: {error}");
+    }
+    assert!(validate_experiment(&with_load(Some(soak(60.0)), None, Some(60.0))).is_ok());
+}
+
+#[test]
 fn validate_rejects_zero_users_anywhere() {
     assert!(load_error(&with_load(None, Some(0), None)).contains("vus"));
     let ramp = LoadProfile::Ramp {
@@ -700,6 +730,7 @@ fn validate_rejects_zero_users_anywhere() {
         peak_vus: 0,
         after_s: 1.0,
         hold_s: 1.0,
+        sample_interval_s: None,
     };
     assert!(load_error(&with_load(Some(spike), None, Some(60.0))).contains("peak_vus"));
 }
@@ -908,14 +939,15 @@ fn a_refused_kind_is_told_the_metrics_that_measure_it() {
         "nfr objective 'a' is invalid: kind latency does not fit metric \
          'during.availability', which measures error_rate or availability; the metrics of \
          latency are load.latency_p50_ms, load.latency_p95_ms, load.latency_p99_ms, \
-         probe.<name>.mean_ms, probe.<name>.max_ms, probe.<name>.p95_ms"
+         load.p95_drift_pct, load.spike_recovery_s, probe.<name>.mean_ms, \
+         probe.<name>.max_ms, probe.<name>.p95_ms"
     );
 }
 
-/// No metric of the catalogue counts lost data, so an `rpo` objective has
-/// nothing to measure it. Before, any metric passed for one.
+/// Only lost data measures an `rpo` objective. Before, any metric passed
+/// for one.
 #[test]
-fn an_rpo_objective_is_refused_on_every_metric_of_the_catalogue() {
+fn an_rpo_objective_is_refused_on_every_metric_but_lost_data() {
     for metric in [
         "load.throughput_rps",
         "load.latency_p95_ms",
@@ -932,10 +964,116 @@ fn an_rpo_objective_is_refused_on_every_metric_of_the_catalogue() {
         let err = validate_experiment(&with_kind_and_metric(NfrKind::Rpo, metric)).unwrap_err();
         assert!(
             err.to_string()
-                .contains("no metric of the catalogue measures rpo"),
+                .ends_with("; the metrics of rpo are probe.<name>.lost_s"),
             "{metric}: {err}"
         );
     }
+}
+
+/// An experiment whose probe `lost` has `tolerance`, with an rpo objective
+/// `operator` `threshold` on the data it reads lost, and `rpo_target_s`.
+fn with_rpo(
+    tolerance: Option<Tolerance>,
+    operator: NfrOperator,
+    threshold: f64,
+    rpo_target_s: Option<f64>,
+) -> Experiment {
+    let mut exp = with_kind_and_metric(NfrKind::Rpo, "probe.lost.lost_s");
+    exp.nfr[0].id = "rpo".into();
+    exp.nfr[0].operator = operator;
+    exp.nfr[0].threshold = threshold;
+    exp.rpo_target_s = rpo_target_s;
+    exp.steady_state_hypothesis = Some(Hypothesis {
+        title: "the store answers".into(),
+        probes: vec![Activity {
+            name: "lost".into(),
+            activity_type: ActivityType::Probe,
+            tolerance,
+            ..Default::default()
+        }],
+    });
+    exp
+}
+
+fn refusal(exp: &Experiment) -> String {
+    let err = validate_experiment(exp).unwrap_err();
+    assert!(matches!(err, EngineError::NfrInvalid { .. }), "{err}");
+    err.to_string()
+}
+
+#[test]
+fn an_rpo_objective_on_the_data_a_number_probe_reads_lost_passes() {
+    for target in [Some(1.0), None] {
+        let exp = with_rpo(Some(Tolerance::Number), NfrOperator::Lte, 1.0, target);
+        assert!(validate_experiment(&exp).is_ok(), "{target:?}");
+    }
+}
+
+#[test]
+fn lost_data_of_a_probe_whose_tolerance_reads_no_number_is_refused() {
+    for tolerance in [
+        None,
+        Some(Tolerance::Regex {
+            pattern: "^ok$".into(),
+        }),
+        Some(Tolerance::Exact {
+            value: serde_json::json!(0),
+        }),
+    ] {
+        let exp = with_rpo(tolerance, NfrOperator::Lte, 1.0, None);
+        assert_eq!(
+            refusal(&exp),
+            "nfr objective 'rpo' is invalid: metric 'probe.lost.lost_s' reads the number the \
+             probe 'lost' prints, and its tolerance reads none: give the probe the tolerance \
+             type number"
+        );
+    }
+}
+
+#[test]
+fn lost_data_of_a_probe_with_a_range_is_refused() {
+    let range = Tolerance::Range { from: 0.0, to: 1.0 };
+    let exp = with_rpo(Some(range), NfrOperator::Lte, 1.0, None);
+    assert_eq!(
+        refusal(&exp),
+        "nfr objective 'rpo' is invalid: the probe 'lost' has a range tolerance: data lost \
+         beyond it holds up the recovery and the RPO is not measured; give it the tolerance \
+         type number"
+    );
+}
+
+#[test]
+fn an_rpo_objective_that_is_not_an_upper_bound_is_refused() {
+    for operator in [NfrOperator::Gte, NfrOperator::Eq] {
+        let exp = with_rpo(Some(Tolerance::Number), operator, 1.0, None);
+        assert_eq!(
+            refusal(&exp),
+            "nfr objective 'rpo' is invalid: an rpo objective is met when at most threshold \
+             seconds are lost: use operator lte"
+        );
+    }
+}
+
+#[test]
+fn an_rpo_objective_with_another_number_than_the_rpo_target_is_refused() {
+    let exp = with_rpo(Some(Tolerance::Number), NfrOperator::Lte, 1.0, Some(60.0));
+    assert_eq!(
+        refusal(&exp),
+        "nfr objective 'rpo' is invalid: rpo_target_s is 60 and the threshold is 1: give both \
+         the same number"
+    );
+}
+
+#[test]
+fn lost_data_does_not_measure_another_kind() {
+    let mut exp = with_rpo(Some(Tolerance::Number), NfrOperator::Lte, 1.0, None);
+    exp.nfr[0].kind = NfrKind::DataIntegrity;
+    assert_eq!(
+        refusal(&exp),
+        "nfr objective 'rpo' is invalid: kind data_integrity does not fit metric \
+         'probe.lost.lost_s', which measures rpo; the metrics of data_integrity are \
+         probe.<name>.error_rate"
+    );
 }
 
 #[test]
@@ -1198,4 +1336,86 @@ fn a_flat_load_with_a_duration_that_is_not_a_number_of_seconds_is_refused() {
     }
     assert!(validate_experiment(&with_load(None, None, Some(0.0))).is_ok());
     assert!(validate_experiment(&with_load(None, None, Some(30.0))).is_ok());
+}
+
+/// An experiment with one method step and a regulatory block of
+/// `frameworks` and requirement `ids`.
+fn mapped(frameworks: &[&str], ids: &[&str]) -> Experiment {
+    Experiment {
+        title: "mapped".into(),
+        method: vec![Activity {
+            name: "action".into(),
+            ..Default::default()
+        }],
+        regulatory: Some(RegulatoryMapping {
+            frameworks: frameworks.iter().map(|f| (*f).to_owned()).collect(),
+            requirements: ids
+                .iter()
+                .map(|id| RegulatoryRequirement {
+                    id: (*id).to_owned(),
+                    description: "d".into(),
+                    evidence: "e".into(),
+                })
+                .collect(),
+            tester: None,
+        }),
+        ..Default::default()
+    }
+}
+
+#[test]
+fn validate_refuses_a_dora_requirement_the_registry_does_not_know_and_names_the_nearest() {
+    let err = validate_regulatory(&mapped(&["DORA"], &["Art. 25", "dora.art24.7"])).unwrap_err();
+    assert!(
+        matches!(&err, EngineError::UnknownRequirement(e) if e.reference == "dora.art24.7"),
+        "{err:?}"
+    );
+    assert_eq!(
+        err.to_string(),
+        "regulatory requirement: 'dora.art24.7' is not a requirement id of the DORA \
+         registry; did you mean 'dora.art24.1'?"
+    );
+    let bare = validate_regulatory(&mapped(&["DORA"], &["Art. 99"])).unwrap_err();
+    assert!(
+        bare.to_string().contains("did you mean 'dora.art9'"),
+        "{bare}"
+    );
+}
+
+#[test]
+fn validate_accepts_the_registry_id_and_the_old_forms_of_a_run_block() {
+    for (frameworks, id) in [
+        (&["DORA"][..], "dora.art12.1"),
+        (&["DORA"][..], "Art. 11"),
+        (&["DORA"][..], "Art. 24(6)"),
+        (&["DORA", "NIS2"][..], "DORA-Art24"),
+        (&["DORA", "NIS2"][..], "Art. 21(2)(c)"),
+        (&["NIS2"][..], "Art. 21(2)(c)"),
+        (&["PCI-DSS"][..], "Req. 12.10.2"),
+    ] {
+        assert!(
+            validate_regulatory(&mapped(frameworks, &[id])).is_ok(),
+            "{frameworks:?} {id}"
+        );
+    }
+}
+
+#[test]
+fn validate_refuses_a_tester_with_no_name() {
+    let mut exp = mapped(&["DORA"], &["Art. 25"]);
+    if let Some(mapping) = exp.regulatory.as_mut() {
+        mapping.tester = Some(Tester {
+            name: "  ".into(),
+            kind: TesterKind::External,
+        });
+    }
+    let err = validate_regulatory(&exp).unwrap_err();
+    assert_eq!(err.to_string(), "regulatory.tester.name must not be empty");
+}
+
+#[test]
+fn an_experiment_with_a_requirement_the_registry_does_not_know_still_runs() {
+    let exp = mapped(&["DORA"], &["DORA-25"]);
+    assert!(validate_regulatory(&exp).is_err());
+    assert!(validate_experiment(&exp).is_ok());
 }

@@ -197,10 +197,9 @@ fn analysis_computed_when_estimate_present() {
     let journal = run_experiment(&exp, &executor, &controls, &default_config()).unwrap();
 
     assert!(journal.analysis.is_some());
-    assert_eq!(
-        journal.analysis.as_ref().unwrap().estimate_accuracy,
-        Some(1.0)
-    );
+    // No probe watched for an outage, so the run measured no outcome to
+    // judge the estimate against.
+    assert_eq!(journal.analysis.as_ref().unwrap().estimate_accuracy, None);
     assert_eq!(
         journal.analysis.as_ref().unwrap().resilience_score,
         Some(1.0)
@@ -265,6 +264,7 @@ fn regulatory_preserved_in_journal() {
             description: "ICT resilience testing".into(),
             evidence: "Recovery within RTO".into(),
         }],
+        tester: None,
     });
     let executor: Arc<dyn ActivityExecutor> = Arc::new(MockExecutor::always_succeed());
     let controls = Arc::new(ControlRegistry::new());

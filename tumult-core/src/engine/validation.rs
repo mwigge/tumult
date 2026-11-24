@@ -25,7 +25,9 @@ use super::EngineError;
 /// Returns [`EngineError::InvalidSeconds`] if a timeout or a pause of any of those steps,
 /// or the duration of a flat load, is not a number of seconds from 0 up to 2^64.
 /// Returns [`EngineError::NfrInvalid`] if an objective names a metric no run can measure,
-/// or a metric that does not measure the kind of the objective.
+/// or a metric that does not measure the kind of the objective. An objective on the data
+/// a probe reads back lost needs that probe to have the tolerance `number`, and an `rpo`
+/// objective must be `lte`, with the threshold `rpo_target_s` when that is set.
 /// Returns [`EngineError::RecoveryInvalid`] if the `recovery` block asks for a window
 /// that is not above 0 or longer than an hour, or for an interval longer than the window.
 /// An RTO longer than the window is valid and logs `recovery.window.shorter_than_rto`.
@@ -304,12 +306,12 @@ fn validate_script_name(activity: &str, field: &str, value: &str) -> Result<(), 
 /// Objectives and recovery targets: unique, well-formed objectives; finite
 /// positive RTO/RPO; a `dr` run must declare its RTO.
 fn validate_objectives(experiment: &Experiment) -> Result<(), EngineError> {
-    let probes: Vec<&str> = experiment
+    let sampled: Vec<&Activity> = experiment
         .steady_state_hypothesis
         .iter()
         .flat_map(|hypothesis| &hypothesis.probes)
-        .map(|probe| probe.name.as_str())
         .collect();
+    let probes: Vec<&str> = sampled.iter().map(|probe| probe.name.as_str()).collect();
     let mut seen = std::collections::HashSet::new();
     for o in &experiment.nfr {
         if o.id.trim().is_empty() {
@@ -339,10 +341,30 @@ fn validate_objectives(experiment: &Experiment) -> Result<(), EngineError> {
                 reason,
             });
         }
+        if let Some(reason) = crate::runner::nfr::reading_fault(&o.metric, &sampled) {
+            return Err(EngineError::NfrInvalid {
+                id: o.id.clone(),
+                reason,
+            });
+        }
+        if let Some(reason) =
+            crate::runner::robustness::profile_fault(&o.metric, experiment.load.as_ref())
+        {
+            return Err(EngineError::NfrInvalid {
+                id: o.id.clone(),
+                reason,
+            });
+        }
         if !o.threshold.is_finite() {
             return Err(EngineError::NfrInvalid {
                 id: o.id.clone(),
                 reason: "threshold must be finite".into(),
+            });
+        }
+        if let Some(reason) = crate::runner::nfr::rpo_fault(o, experiment.rpo_target_s) {
+            return Err(EngineError::NfrInvalid {
+                id: o.id.clone(),
+                reason,
             });
         }
         if o.window_s.is_some_and(|w| !(w.is_finite() && w > 0.0)) {
@@ -407,6 +429,37 @@ fn validate_target_version(experiment: &Experiment) -> Result<(), EngineError> {
     })
 }
 
+/// Check the regulatory block of an experiment as it is written: every
+/// DORA requirement names a row or an article of the requirement registry
+/// (in its registry id or an older form of it), and a tester has a name.
+/// `tumult validate` runs it. A run does not: an experiment that names an
+/// id the registry does not know still runs, as it did before the check.
+///
+/// # Errors
+///
+/// Returns [`EngineError::UnknownRequirement`] with the nearest registry id
+/// if a DORA requirement is not in the registry, and
+/// [`EngineError::RegulatoryInvalid`] if the tester has no name.
+pub fn validate_regulatory(experiment: &Experiment) -> Result<(), EngineError> {
+    let Some(mapping) = experiment.regulatory.as_ref() else {
+        return Ok(());
+    };
+    for requirement in &mapping.requirements {
+        crate::compliance::check_run_requirement(&mapping.frameworks, &requirement.id)
+            .map_err(EngineError::UnknownRequirement)?;
+    }
+    if mapping
+        .tester
+        .as_ref()
+        .is_some_and(|tester| tester.name.trim().is_empty())
+    {
+        return Err(EngineError::RegulatoryInvalid {
+            reason: "tester.name must not be empty".into(),
+        });
+    }
+    Ok(())
+}
+
 fn validate_load(experiment: &Experiment) -> Result<(), EngineError> {
     let Some(load) = experiment.load.as_ref() else {
         return Ok(());
@@ -459,6 +512,7 @@ fn validate_load(experiment: &Experiment) -> Result<(), EngineError> {
             peak_vus,
             after_s,
             hold_s,
+            sample_interval_s,
         } => {
             positive("hold_s", *hold_s)?;
             if *peak_vus == 0 {
@@ -473,18 +527,33 @@ fn validate_load(experiment: &Experiment) -> Result<(), EngineError> {
             if *peak_vus <= vus {
                 return Err(invalid("peak_vus must exceed vus"));
             }
+            if let Some(sample_interval_s) = sample_interval_s {
+                validate_sample_interval(*sample_interval_s, duration_s)?;
+            }
         }
         LoadProfile::Soak { sample_interval_s } => {
-            positive("sample_interval_s", *sample_interval_s)?;
-            if *sample_interval_s < crate::runner::load_profile::MIN_WINDOW_S {
-                return Err(invalid(
-                    "sample_interval_s must be at least 1 second: a shorter window measures too few requests",
-                ));
-            }
-            if *sample_interval_s > duration_s {
-                return Err(invalid("sample_interval_s must not exceed duration_s"));
-            }
+            validate_sample_interval(*sample_interval_s, duration_s)?;
         }
+    }
+    Ok(())
+}
+
+/// A sample interval must be a window that measures enough requests, and
+/// fit in the run.
+fn validate_sample_interval(sample_interval_s: f64, duration_s: f64) -> Result<(), EngineError> {
+    let invalid = |reason: &str| EngineError::LoadProfileInvalid {
+        reason: reason.to_string(),
+    };
+    if !(sample_interval_s.is_finite() && sample_interval_s > 0.0) {
+        return Err(invalid("sample_interval_s must be finite and positive"));
+    }
+    if sample_interval_s < crate::runner::load_profile::MIN_WINDOW_S {
+        return Err(invalid(
+            "sample_interval_s must be at least 1 second: a shorter window measures too few requests",
+        ));
+    }
+    if sample_interval_s > duration_s {
+        return Err(invalid("sample_interval_s must not exceed duration_s"));
     }
     Ok(())
 }

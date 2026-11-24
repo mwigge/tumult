@@ -365,6 +365,9 @@ pub struct HouseParams {
     /// Discipline of each manual exercise type; types not listed are
     /// records, not tests.
     pub manual_kinds: BTreeMap<String, String>,
+    /// Approving sign-offs, each by another user, that verify a manual
+    /// record of each exercise type; a type not listed needs one.
+    pub manual_required_signoffs: BTreeMap<String, u32>,
     pub test_window_days: u32,
     pub recovery_window_days: u32,
     pub loop_window_days: u32,
@@ -407,6 +410,8 @@ impl Default for HouseParams {
         let manual_kinds = [
             ("failover", "dr"),
             ("drill", "dr"),
+            ("restore", "dr"),
+            ("backup", "dr"),
             ("gameday", "chaos"),
             ("pentest", "security"),
             ("tlpt", "security"),
@@ -427,6 +432,7 @@ impl Default for HouseParams {
                 .into_iter()
                 .map(|(exercise, kind)| (exercise.to_string(), kind.to_string()))
                 .collect(),
+            manual_required_signoffs: BTreeMap::new(),
             test_window_days: 365,
             recovery_window_days: 365,
             loop_window_days: 365,
@@ -460,6 +466,9 @@ pub const VALUE_EPS: f64 = 1e-9;
 /// end of the floating-point range.
 pub const MAX_WEIGHT: f64 = 1000.0;
 
+/// The most sign-offs a manual exercise type may need.
+pub const MAX_SIGNOFFS: u32 = 10;
+
 /// The longest window or streak a parameter may ask for, in days: ten
 /// years. Past it a window is no window, and the arithmetic on
 /// nanoseconds has no room left.
@@ -490,12 +499,34 @@ impl HouseParams {
         self.manual_kinds.get(exercise_type).map(String::as_str)
     }
 
+    /// The manual exercise types the house counts as DR, those whose
+    /// kind in `manual_kinds` is `dr`, in name order. The DR history of
+    /// the lake reads them.
+    #[must_use]
+    pub fn dr_exercise_types(&self) -> Vec<String> {
+        self.manual_kinds
+            .iter()
+            .filter(|(_, kind)| kind.as_str() == "dr")
+            .map(|(exercise, _)| exercise.clone())
+            .collect()
+    }
+
     /// The discipline a manual exercise of `exercise_type` counts
     /// towards (a `dr` kind is robustness); `None` for a type the house
     /// does not list. The DORA score and the risk view both read it.
     #[must_use]
     pub fn manual_discipline(&self, exercise_type: &str) -> Option<&str> {
         self.manual_kind(exercise_type).map(discipline)
+    }
+
+    /// The approving sign-offs, each by another user, that verify a
+    /// manual record of `exercise_type`: one unless the house sets more.
+    #[must_use]
+    pub fn required_signoffs(&self, exercise_type: &str) -> u32 {
+        self.manual_required_signoffs
+            .get(exercise_type)
+            .copied()
+            .unwrap_or(1)
     }
 
     /// Check that the parameters describe a usable model: every share
@@ -811,6 +842,19 @@ impl HouseParams {
                 ));
             }
         }
+        for (exercise, count) in &self.manual_required_signoffs {
+            let name = format!("score.manual_required_signoffs.{exercise}");
+            if tumult_lake::ExerciseType::parse(exercise).is_err() {
+                return Err(format!(
+                    "{name}: '{exercise}' is not a manual exercise type"
+                ));
+            }
+            if !(1..=MAX_SIGNOFFS).contains(count) {
+                return Err(format!(
+                    "{name} must be within 1..={MAX_SIGNOFFS}, got {count}"
+                ));
+            }
+        }
         for (level, keys) in self.conformance.levels().iter().enumerate() {
             // A level with no key is reached by anything that was seen.
             if keys.is_empty() {
@@ -963,6 +1007,8 @@ mod tests {
             ExerciseType::Pentest,
             ExerciseType::Tlpt,
             ExerciseType::Drill,
+            ExerciseType::Restore,
+            ExerciseType::Backup,
             ExerciseType::Other,
         ]
         .into_iter()
@@ -980,6 +1026,8 @@ mod tests {
                 ("pentest", Some("security"), Some("security")),
                 ("tlpt", Some("security"), Some("security")),
                 ("drill", Some("dr"), Some("robustness")),
+                ("restore", Some("dr"), Some("robustness")),
+                ("backup", Some("dr"), Some("robustness")),
                 ("other", None, None),
             ]
         );
@@ -988,6 +1036,61 @@ mod tests {
         let house: HouseParams = serde_yaml::from_str("manual_kinds: {tabletop: load}\n").unwrap();
         assert_eq!(house.manual_discipline("tabletop"), Some("performance"));
         assert_eq!(house.manual_discipline("pentest"), None);
+    }
+
+    #[test]
+    fn the_dr_types_of_the_house_are_the_ones_it_maps_to_dr() {
+        let default: Vec<String> = tumult_lake::DEFAULT_DR_EXERCISE_TYPES
+            .iter()
+            .map(|t| t.as_str().to_string())
+            .collect();
+        assert_eq!(
+            HouseParams::default().dr_exercise_types(),
+            default,
+            "the lake view counts the types the default house maps to dr"
+        );
+        let house: HouseParams =
+            serde_yaml::from_str("manual_kinds: {tabletop: dr, drill: chaos}\n").unwrap();
+        assert_eq!(house.dr_exercise_types(), ["tabletop"]);
+    }
+
+    #[test]
+    fn one_sign_off_verifies_every_manual_type_unless_the_house_asks_for_more() {
+        let p = HouseParams::default();
+        for exercise in [
+            "gameday", "tabletop", "failover", "pentest", "tlpt", "drill", "restore", "backup",
+            "other",
+        ] {
+            assert_eq!(p.required_signoffs(exercise), 1, "{exercise}");
+        }
+        let house: HouseParams =
+            serde_yaml::from_str("manual_required_signoffs: {failover: 2, restore: 3}\n").unwrap();
+        assert_eq!(house.validate(), Ok(()));
+        assert_eq!(house.required_signoffs("failover"), 2);
+        assert_eq!(house.required_signoffs("restore"), 3);
+        assert_eq!(house.required_signoffs("drill"), 1);
+        let keys: Vec<String> = house.overrides().into_iter().map(|o| o.key).collect();
+        assert_eq!(
+            keys,
+            [
+                "manual_required_signoffs.failover",
+                "manual_required_signoffs.restore"
+            ]
+        );
+        assert_refused(&[
+            (
+                "manual_required_signoffs: {failover: 0}\n",
+                "score.manual_required_signoffs.failover",
+            ),
+            (
+                "manual_required_signoffs: {failover: 11}\n",
+                "score.manual_required_signoffs.failover",
+            ),
+            (
+                "manual_required_signoffs: {failovr: 2}\n",
+                "score.manual_required_signoffs.failovr",
+            ),
+        ]);
     }
 
     /// Validation refuses a zero threshold; should one get past it,

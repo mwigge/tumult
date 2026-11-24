@@ -7,7 +7,10 @@
 //! These nodes are populated at store-open / schema-migration time, not per
 //! journal, because they do not depend on any run.
 
-use tumult_core::compliance::{Citation, ComplianceFramework, CITATIONS};
+use tumult_core::compliance::{
+    citation_of, run_requirement_id, Citation, ComplianceFramework, CITATIONS,
+};
+use tumult_core::types::RegulatoryMapping;
 
 use crate::model::{Node, NodeKind};
 
@@ -76,6 +79,32 @@ pub fn resolve_citation(framework: &str, requirement_id: &str) -> Option<&'stati
     CITATIONS
         .iter()
         .find(|c| c.framework == fw && normalize_control(c.control_id) == want)
+}
+
+/// The citations a run's regulatory block names, each once, in the order
+/// of the block. A DORA requirement is read by its registry id
+/// ([`run_requirement_id`]) and falls under the article of it
+/// ([`citation_of`]), as a manual record does on the Star Map; a
+/// requirement of another listed framework is resolved by
+/// [`resolve_citation`]. A requirement that names nothing is left out.
+#[must_use]
+pub fn regulatory_citations(mapping: &RegulatoryMapping) -> Vec<&'static Citation> {
+    let mut found: Vec<&'static Citation> = Vec::new();
+    for requirement in &mapping.requirements {
+        let dora = run_requirement_id(&mapping.frameworks, &requirement.id)
+            .and_then(|id| citation_of(&id));
+        let others = mapping
+            .frameworks
+            .iter()
+            .filter(|f| parse_framework(f) != Some(ComplianceFramework::Dora))
+            .filter_map(|f| resolve_citation(f, &requirement.id));
+        for citation in dora.into_iter().chain(others) {
+            if !found.iter().any(|c| std::ptr::eq(*c, citation)) {
+                found.push(citation);
+            }
+        }
+    }
+    found
 }
 
 /// Parse a framework label in either its CLI-name or report-identifier form.

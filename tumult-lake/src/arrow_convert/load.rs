@@ -184,8 +184,8 @@ pub fn journal_to_load_batch(
 
 /// The load result's windowed samples as `probe_samples` rows: one row per
 /// window per `load.*` series, then one per window series the tool told,
-/// phase `during`, `ok` when the window saw no failed requests. Empty
-/// when the tool streamed nothing.
+/// phase `during`, `ok` when the window saw no failed requests, no
+/// `reading`. Empty when the tool streamed nothing.
 ///
 /// # Errors
 ///
@@ -222,6 +222,7 @@ pub fn load_samples_to_probe_samples_batch(
             oks.push(sample.error_rate <= 0.0);
         }
     }
+    let rows = ids.len();
     Ok(RecordBatch::try_new(
         Arc::new(journal_probe_samples_schema()),
         vec![
@@ -231,6 +232,7 @@ pub fn load_samples_to_probe_samples_batch(
             Arc::new(Int64Array::from(ts)),
             Arc::new(Float64Array::from(values)),
             Arc::new(BooleanArray::from(oks)),
+            Arc::new(Float64Array::from(vec![None::<f64>; rows])),
         ],
     )?)
 }
@@ -281,7 +283,7 @@ mod tests {
         let batch = load_samples_to_probe_samples_batch("exp-1", &result_with_samples()).unwrap();
         // Five measurements and the window's length, per window.
         assert_eq!(batch.num_rows(), 12);
-        assert_eq!(batch.schema().fields().len(), 6);
+        assert_eq!(batch.schema().fields().len(), 7);
         let names = batch
             .column(1)
             .as_any()

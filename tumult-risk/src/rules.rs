@@ -12,6 +12,8 @@
 //! | `latest_run_failed` | the latest run of an experiment did not pass (and no breached objective already explains it) |
 //! | `untested_dependency` | a service other services call has no experiments at all |
 //! | `never_run_definition` | a registered definition has never run |
+//! | `manual_exercise_overdue` | a planned manual exercise is past its due date (more than 30 days: high) |
+//! | `dr_test_overdue` | a target with no planned DR exercise is past the interval of its DR tests (more than 30 days: high; one step more on a critical target) |
 //! | `single_replica` | a `Deployment` or `StatefulSet` manifest runs one replica |
 //! | `no_resource_limits` | a container has no resource limits |
 //! | `no_pod_disruption_budget` | no `PodDisruptionBudget` selects the workload |
@@ -305,6 +307,118 @@ fn never_run(inputs: &Inputs, out: &mut Vec<Risk>) {
     }
 }
 
+fn overdue_exercises(inputs: &Inputs, out: &mut Vec<Risk>) {
+    for p in inputs
+        .plans
+        .iter()
+        .filter(|p| p.due_at_ns < inputs.as_of_ns)
+    {
+        let late = inputs.as_of_ns - p.due_at_ns;
+        let severity = if late > STALE_AFTER_NS {
+            Severity::High
+        } else {
+            Severity::Medium
+        };
+        let target = p.target.as_deref();
+        let mut risk = build(Draft {
+            rule: "manual_exercise_overdue",
+            severity,
+            title: format!("{} exercise {} is overdue", p.exercise_type, p.name),
+            detail: format!(
+                "The planned {} exercise {} against {} was due {} day(s) ago and no verified \
+                 record fulfils it. Its owner is {}.",
+                p.exercise_type,
+                p.name,
+                target.unwrap_or("no named target"),
+                days(late),
+                p.owner
+            ),
+            target,
+            environment: p.environment.as_deref(),
+            subject: p.id.clone(),
+            recommended_kind: None,
+            evidence: vec![
+                format!("plan_id={}", p.id),
+                format!("due_at_ns={}", p.due_at_ns),
+            ],
+        });
+        // Longer overdue ranks higher, up to five points, as stale evidence.
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let bump = (days(late) / 30).clamp(0, 5) as u32;
+        risk.rank += bump;
+        out.push(risk);
+    }
+}
+
+/// One step more severe, for a finding against a critical target.
+fn raised(severity: Severity) -> Severity {
+    match severity {
+        Severity::Low => Severity::Medium,
+        Severity::Medium => Severity::High,
+        Severity::High | Severity::Critical => Severity::Critical,
+    }
+}
+
+/// Targets of the DR register whose next DR test is past due. A target
+/// that a planned DR exercise covers is left to that plan: when the plan
+/// is overdue, `manual_exercise_overdue` says so, and one overdue test is
+/// one finding.
+fn overdue_dr_tests(inputs: &Inputs, out: &mut Vec<Risk>) {
+    for d in inputs.dr_register.iter().filter(|d| d.plan_id.is_none()) {
+        let (Some(last), Some(due)) = (d.last_test_at_ns, d.next_due_at_ns) else {
+            continue;
+        };
+        if due >= inputs.as_of_ns {
+            continue;
+        }
+        let late = inputs.as_of_ns - due;
+        let mut severity = if late > STALE_AFTER_NS {
+            Severity::High
+        } else {
+            Severity::Medium
+        };
+        let critical = inputs
+            .targets
+            .iter()
+            .any(|t| t.target == d.target && t.environment == d.environment && is_critical(t));
+        if critical {
+            severity = raised(severity);
+        }
+        let mut risk = build(Draft {
+            rule: "dr_test_overdue",
+            severity,
+            title: format!("{} DR test is overdue", d.target),
+            detail: format!(
+                "The last DR test of {} in {} ran {} day(s) ago. One is due every {} days ({}), \
+                 so the next was due {} day(s) ago. No planned DR exercise covers it.",
+                d.target,
+                d.environment.as_deref().unwrap_or("any environment"),
+                days(inputs.as_of_ns - last),
+                d.interval_days,
+                d.interval_source,
+                days(late)
+            ),
+            target: Some(&d.target),
+            environment: d.environment.as_deref(),
+            subject: "dr_test".to_string(),
+            recommended_kind: Some("dr"),
+            evidence: vec![
+                format!(
+                    "last_test={}",
+                    d.last_test_id.as_deref().unwrap_or_default()
+                ),
+                format!("next_due_at_ns={due}"),
+                format!("interval_days={} ({})", d.interval_days, d.interval_source),
+            ],
+        });
+        // Longer overdue ranks higher, up to five points, as an overdue plan.
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let bump = (days(late) / 30).clamp(0, 5) as u32;
+        risk.rank += bump;
+        out.push(risk);
+    }
+}
+
 /// The label a manifest uses to say which environment it deploys to.
 const ENVIRONMENT_LABEL: &str = "resilience.target.environment";
 
@@ -462,6 +576,8 @@ pub fn evaluate(inputs: &Inputs) -> Vec<Risk> {
     }
     untested_dependencies(inputs, &mut out);
     never_run(inputs, &mut out);
+    overdue_exercises(inputs, &mut out);
+    overdue_dr_tests(inputs, &mut out);
     workload_rules(inputs, &mut out);
     // Target criticality lifts every finding against that target.
     for r in &mut out {
@@ -477,8 +593,8 @@ mod tests {
 
     use super::*;
     use crate::model::{
-        Container, Definition, Dependency, DisruptionBudget, ExperimentLatest, KindEvidence,
-        Verdict,
+        Container, Definition, Dependency, DisruptionBudget, DrTestDue, ExperimentLatest,
+        KindEvidence, PlannedExercise, Verdict,
     };
 
     const NOW: i64 = 2000 * DAY_NS;
@@ -938,5 +1054,297 @@ mod tests {
             ..Default::default()
         };
         assert!(evaluate(&inputs).is_empty());
+    }
+
+    /// A plan of a failover of `db` in `prod`, due `days_ago` days before now.
+    fn plan(id: &str, days_ago: i64) -> PlannedExercise {
+        PlannedExercise {
+            id: id.into(),
+            name: "db failover".into(),
+            exercise_type: "failover".into(),
+            target: Some("db".into()),
+            environment: Some("prod".into()),
+            owner: "alice".into(),
+            due_at_ns: NOW - days_ago * DAY_NS,
+        }
+    }
+
+    #[test]
+    fn a_plan_past_its_due_date_is_overdue_and_weighs_more_the_longer_it_waits() {
+        let inputs = Inputs {
+            as_of_ns: NOW,
+            plans: vec![
+                plan("due-yesterday", 1),
+                plan("due-30-days-ago", 30),
+                plan("due-45-days-ago", 45),
+                plan("due-400-days-ago", 400),
+                plan("due-now", 0),
+                plan("due-tomorrow", -1),
+            ],
+            ..Default::default()
+        };
+        let risks = evaluate(&inputs);
+        let overdue: BTreeMap<&str, &Risk> = risks
+            .iter()
+            .filter(|r| r.rule == "manual_exercise_overdue")
+            .map(|r| (r.subject.as_str(), r))
+            .collect();
+        assert_eq!(
+            overdue.keys().copied().collect::<Vec<_>>(),
+            [
+                "due-30-days-ago",
+                "due-400-days-ago",
+                "due-45-days-ago",
+                "due-yesterday"
+            ],
+            "a plan is overdue only once its due date has passed"
+        );
+
+        let yesterday = overdue["due-yesterday"];
+        assert_eq!(yesterday.severity, Severity::Medium);
+        assert_eq!(yesterday.rank, Severity::Medium.base_rank());
+        assert_eq!(yesterday.target.as_deref(), Some("db"));
+        assert_eq!(yesterday.environment.as_deref(), Some("prod"));
+        assert_eq!(yesterday.recommended_kind, None);
+        assert!(yesterday.title.contains("overdue"), "{}", yesterday.title);
+        assert!(
+            yesterday.detail.contains("1 day(s) ago") && yesterday.detail.contains("alice"),
+            "{}",
+            yesterday.detail
+        );
+        assert_eq!(
+            yesterday.evidence,
+            [
+                "plan_id=due-yesterday".to_string(),
+                format!("due_at_ns={}", NOW - DAY_NS)
+            ]
+        );
+
+        // The first 30 days past due are medium.
+        let month = overdue["due-30-days-ago"];
+        assert_eq!(month.severity, Severity::Medium);
+        assert_eq!(month.rank, Severity::Medium.base_rank() + 1);
+
+        // More than 30 days past due is high, and older ranks higher, up
+        // to five points, as stale evidence does.
+        let late = overdue["due-45-days-ago"];
+        assert_eq!(late.severity, Severity::High);
+        assert_eq!(late.rank, Severity::High.base_rank() + 1);
+        let later = overdue["due-400-days-ago"];
+        assert_eq!(later.severity, Severity::High);
+        assert_eq!(later.rank, Severity::High.base_rank() + 5);
+        assert_ne!(late.id, later.id, "one finding per plan");
+    }
+
+    #[test]
+    fn an_overdue_plan_weighs_more_against_a_critical_target() {
+        let inputs = Inputs {
+            as_of_ns: NOW,
+            targets: vec![target(
+                "db",
+                Some("critical"),
+                vec![
+                    evidence("chaos", 1),
+                    evidence("performance", 1),
+                    evidence("robustness", 1),
+                ],
+            )],
+            plans: vec![plan("due-yesterday", 1)],
+            ..Default::default()
+        };
+        let risks = evaluate(&inputs);
+        assert_eq!(rules_of(&risks), ["manual_exercise_overdue"]);
+        assert_eq!(risks[0].rank, Severity::Medium.base_rank() + 8);
+    }
+
+    /// The register row of `target` in `prod`: its last DR test ran
+    /// `days_ago` days before now and one is due every 365 days. `plan`
+    /// is the planned DR exercise that covers it.
+    fn dr_due(target: &str, days_ago: i64, plan: Option<&str>) -> DrTestDue {
+        let last = NOW - days_ago * DAY_NS;
+        DrTestDue {
+            target: target.into(),
+            environment: Some("prod".into()),
+            last_test_at_ns: Some(last),
+            last_test_id: Some("manual:rec-1".into()),
+            interval_days: 365,
+            interval_source: "default".into(),
+            next_due_at_ns: Some(last + 365 * DAY_NS),
+            plan_id: plan.map(str::to_owned),
+        }
+    }
+
+    fn overdue_tests(risks: &[Risk]) -> BTreeMap<&str, &Risk> {
+        risks
+            .iter()
+            .filter(|r| r.rule == "dr_test_overdue")
+            .map(|r| (r.target.as_deref().unwrap_or_default(), r))
+            .collect()
+    }
+
+    #[test]
+    fn a_target_past_the_interval_of_its_dr_tests_with_no_plan_is_overdue() {
+        let never = DrTestDue {
+            last_test_at_ns: None,
+            last_test_id: None,
+            next_due_at_ns: None,
+            ..dr_due("never", 0, None)
+        };
+        let inputs = Inputs {
+            as_of_ns: NOW,
+            dr_register: vec![
+                dr_due("late-1", 366, None),
+                dr_due("late-45", 410, None),
+                dr_due("late-400", 765, None),
+                dr_due("due-now", 365, None),
+                dr_due("fresh", 10, None),
+                never,
+            ],
+            ..Default::default()
+        };
+
+        let risks = evaluate(&inputs);
+
+        let overdue = overdue_tests(&risks);
+        assert_eq!(
+            overdue.keys().copied().collect::<Vec<_>>(),
+            ["late-1", "late-400", "late-45"],
+            "a target is overdue once its next DR test is past due"
+        );
+        let first = overdue["late-1"];
+        assert_eq!(first.severity, Severity::Medium);
+        assert_eq!(first.rank, Severity::Medium.base_rank());
+        assert_eq!(first.environment.as_deref(), Some("prod"));
+        assert_eq!(first.subject, "dr_test");
+        assert_eq!(first.recommended_kind.as_deref(), Some("dr"));
+        assert!(first.title.contains("overdue"), "{}", first.title);
+        assert!(
+            first.detail.contains("366 day(s) ago")
+                && first.detail.contains("every 365 days")
+                && first.detail.contains("1 day(s) ago"),
+            "{}",
+            first.detail
+        );
+        assert_eq!(
+            first.evidence,
+            [
+                "last_test=manual:rec-1".to_string(),
+                format!("next_due_at_ns={}", NOW - DAY_NS),
+                "interval_days=365 (default)".to_string(),
+            ]
+        );
+
+        // More than 30 days past due is high, and older ranks higher, up
+        // to five points, as an overdue plan does.
+        let late = overdue["late-45"];
+        assert_eq!(late.severity, Severity::High);
+        assert_eq!(late.rank, Severity::High.base_rank() + 1);
+        let later = overdue["late-400"];
+        assert_eq!(later.severity, Severity::High);
+        assert_eq!(later.rank, Severity::High.base_rank() + 5);
+    }
+
+    #[test]
+    fn an_overdue_target_with_a_planned_dr_exercise_is_left_to_the_plan() {
+        let register = vec![dr_due("db", 400, Some("plan-1"))];
+        let overdue_plan = Inputs {
+            as_of_ns: NOW,
+            dr_register: register.clone(),
+            plans: vec![plan("plan-1", 1)],
+            ..Default::default()
+        };
+        assert_eq!(
+            rules_of(&evaluate(&overdue_plan)),
+            ["manual_exercise_overdue"],
+            "one finding for one overdue DR test"
+        );
+
+        let plan_not_yet_due = Inputs {
+            as_of_ns: NOW,
+            dr_register: register,
+            plans: vec![plan("plan-1", -10)],
+            ..Default::default()
+        };
+        assert!(evaluate(&plan_not_yet_due).is_empty());
+
+        let no_plan = Inputs {
+            as_of_ns: NOW,
+            dr_register: vec![dr_due("db", 400, None)],
+            ..Default::default()
+        };
+        assert_eq!(rules_of(&evaluate(&no_plan)), ["dr_test_overdue"]);
+    }
+
+    #[test]
+    fn a_dr_test_thirty_days_past_due_is_still_medium() {
+        // The last test ran 395 days ago: the next was due 30 days ago.
+        let inputs = Inputs {
+            as_of_ns: NOW,
+            dr_register: vec![dr_due("db", 395, None)],
+            ..Default::default()
+        };
+
+        let risks = evaluate(&inputs);
+
+        let overdue = overdue_tests(&risks);
+        assert_eq!(overdue["db"].severity, Severity::Medium, "{risks:?}");
+        assert_eq!(overdue["db"].rank, Severity::Medium.base_rank() + 1);
+    }
+
+    #[test]
+    fn an_overdue_dr_test_keeps_its_severity_when_only_another_target_is_critical() {
+        let covered = vec![
+            evidence("chaos", 1),
+            evidence("performance", 1),
+            evidence("robustness", 1),
+        ];
+        let inputs = Inputs {
+            as_of_ns: NOW,
+            targets: vec![
+                target("db", Some("low"), covered.clone()),
+                target("ledger", Some("critical"), covered),
+            ],
+            dr_register: vec![dr_due("db", 366, None)],
+            ..Default::default()
+        };
+
+        let risks = evaluate(&inputs);
+
+        let overdue = overdue_tests(&risks);
+        assert_eq!(
+            overdue["db"].severity,
+            Severity::Medium,
+            "the db is not critical, the ledger is: {risks:?}"
+        );
+    }
+
+    #[test]
+    fn an_overdue_dr_test_is_one_step_more_severe_on_a_critical_target() {
+        let covered = vec![
+            evidence("chaos", 1),
+            evidence("performance", 1),
+            evidence("robustness", 1),
+        ];
+        let inputs = Inputs {
+            as_of_ns: NOW,
+            targets: vec![
+                target("db", Some("critical"), covered.clone()),
+                target("cache", Some("high"), covered),
+            ],
+            dr_register: vec![dr_due("db", 366, None), dr_due("cache", 400, None)],
+            ..Default::default()
+        };
+
+        let risks = evaluate(&inputs);
+
+        let overdue = overdue_tests(&risks);
+        assert_eq!(rules_of(&risks).len(), 2, "{risks:?}");
+        assert_eq!(overdue["db"].severity, Severity::High);
+        assert_eq!(overdue["db"].rank, Severity::High.base_rank() + 8);
+        assert_eq!(overdue["cache"].severity, Severity::Critical);
+        assert_eq!(
+            overdue["cache"].rank,
+            Severity::Critical.base_rank() + 1 + 5
+        );
     }
 }

@@ -12,6 +12,7 @@ mod dora_refs;
 mod evidence;
 mod framework;
 mod ids;
+mod refs;
 mod requirements;
 mod signals;
 
@@ -25,6 +26,10 @@ pub use framework::ComplianceFramework;
 pub use ids::{
     check_entity_id, entity_id_is_valid, lei_is_valid, truncated, EntityIdError, ENTITY_ID_ATTR,
     ENTITY_ID_MALFORMED_ATTR, ENTITY_ID_MAX_LEN, ENTITY_ID_PATTERN, ENTITY_ID_TRUNCATION_MARK,
+};
+pub use refs::{
+    check_reference, check_run_requirement, citation_of, requirement_id, run_requirement_id,
+    UnknownRequirement,
 };
 pub use requirements::{
     applicable, article_title, requirement, EntityFlags, EntityProfile, EvidenceClass, Feed,
@@ -301,6 +306,7 @@ mod tests {
         journal.analysis = Some(crate::types::AnalysisResult {
             estimate_accuracy: None,
             estimate_recovery_delta_s: None,
+            estimate_data_loss_correct: None,
             trend: None,
             resilience_score: Some(1.0),
         });

@@ -29,3 +29,25 @@ CREATE TABLE IF NOT EXISTS nfr_verdicts (
 );
 CREATE INDEX IF NOT EXISTS idx_nfr_verdicts_experiment_id ON nfr_verdicts (experiment_id);
 ";
+
+/// v23: `probe_samples.reading`, the number a probe printed when its
+/// tolerance reads one. Added last, as the appender writes by position, and
+/// NULL on the rows stored before. `value` keeps its meaning.
+pub(super) const READING_COLUMN: &str =
+    "ALTER TABLE probe_samples ADD COLUMN IF NOT EXISTS reading DOUBLE;";
+
+/// v24: what a DR run measured, as its journal says it. `experiments`
+/// gains whether the probes saw an outage, when it started, when the
+/// target was back and the time to recovery (`post_result.mttr_s`).
+/// `nfr_verdicts` gains whether the run recovered and the reason of the
+/// verdict. Added last, as the appender writes by position, after the
+/// columns `perf.rs` adds to `experiments`, and NULL on the rows stored
+/// before.
+pub(super) const DR_FACTS_COLUMNS: &str = "
+ALTER TABLE experiments ADD COLUMN IF NOT EXISTS impact_observed BOOLEAN;
+ALTER TABLE experiments ADD COLUMN IF NOT EXISTS outage_started_at_ns BIGINT;
+ALTER TABLE experiments ADD COLUMN IF NOT EXISTS recovered_at_ns BIGINT;
+ALTER TABLE experiments ADD COLUMN IF NOT EXISTS mttr_s DOUBLE;
+ALTER TABLE nfr_verdicts ADD COLUMN IF NOT EXISTS recovered BOOLEAN;
+ALTER TABLE nfr_verdicts ADD COLUMN IF NOT EXISTS reason VARCHAR;
+";

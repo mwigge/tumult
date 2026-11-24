@@ -80,6 +80,7 @@ fn journal(id: &str, title: &str, status: ExperimentStatus, start_ns: i64, dur_m
         analysis: Some(AnalysisResult {
             estimate_accuracy: Some(1.0),
             estimate_recovery_delta_s: None,
+            estimate_data_loss_correct: None,
             trend: None,
             resilience_score: Some(if failed { 0.6 } else { 0.95 }),
         }),

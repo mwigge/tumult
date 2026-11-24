@@ -124,6 +124,14 @@
 //!   gated and recorded when a policy is loaded (Operator);
 //!   `GET /api/posture?env=` — the continuous posture score next to the
 //!   risk summary and the top findings.
+//! * `GET /api/dr?target=&environment=&from=&to=&limit=&cursor=`: the DR
+//!   view. Per target of the DR test register: its state (`ok`, `due`,
+//!   `overdue`, `never_tested`), last DR test, next due date and interval,
+//!   covering plan, and RTO and RPO. Then the DR tests of the period (by
+//!   default the last 365 days), newest first and paged as the entity list
+//!   is, and the counts per state, origin and verdict. A run that did not
+//!   recover says the least its RTO was. A query field it does not know is
+//!   refused.
 //! * `GET /api/dora?lei=&profile=&by=entity|org&env=` — DORA coverage per
 //!   article and function of one legal entity, each number with its
 //!   unknown share, the expectation table (expected against actual
@@ -204,6 +212,8 @@ pub mod handlers;
 pub mod import;
 pub mod lake;
 pub mod manual;
+pub mod manual_files;
+pub mod manual_plans;
 pub mod registry;
 pub mod runs;
 pub mod schedules;
@@ -558,6 +568,7 @@ pub fn router(state: ApiState) -> Router {
             post(handlers::recommend::recommend),
         )
         .route("/api/posture", get(handlers::risks::posture))
+        .route("/api/dr", get(handlers::dr::view))
         .route("/api/forecast", get(forecast::forecast))
         .route("/api/runs/{id}/impact", get(forecast::run_impact))
         .route(
@@ -583,10 +594,31 @@ pub fn router(state: ApiState) -> Router {
         .route("/api/manual/experiments/{id}/verify", post(manual::verify))
         .route("/api/manual/experiments/{id}/reject", post(manual::reject))
         .route(
+            "/api/manual/experiments/{id}/audit/verify",
+            get(manual::audit_verify),
+        )
+        .route(
             "/api/manual/experiments/{id}/attachments",
             post(manual::attach),
         )
+        .route(
+            "/api/manual/experiments/{id}/attachments/{attachment_id}/file",
+            get(manual_files::download),
+        )
         .route("/api/manual/import", post(manual::import))
+        .route(
+            "/api/manual/plans",
+            get(manual_plans::list).post(manual_plans::create),
+        )
+        .route(
+            "/api/manual/plans/{id}",
+            get(manual_plans::detail).patch(manual_plans::edit),
+        )
+        .route("/api/manual/plans/{id}/cancel", post(manual_plans::cancel))
+        .route(
+            "/api/manual/plans/{id}/audit/verify",
+            get(manual_plans::audit_verify),
+        )
         .route("/api/import/journal", post(import::import_journal))
         .route("/api/authoring/catalog", get(authoring::catalog))
         .route("/api/authoring/scaffold", post(authoring::scaffold))

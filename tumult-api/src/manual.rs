@@ -9,11 +9,24 @@
 //! [`crate::auth`]) the body fields are required, exactly as before auth
 //! existed. The store enforces the lifecycle rules (draft mutability,
 //! attestation on submit, reviewer ≠ enterer) regardless.
+//!
+//! Every request body refuses a field it does not know (422, naming the
+//! field), so a client never takes a dropped value for a stored one.
+//!
+//! Verify and reject are sign-offs. A record stays submitted until it has
+//! as many approvals, each from another user, as the house parameter
+//! `manual_required_signoffs` asks for its exercise type (one by
+//! default). A signer who entered or changed the record, or signed it off
+//! before, is refused with 422. `GET .../audit/verify` checks the seal,
+//! the audit trail, the sign-offs and the attachments again.
+//!
+//! Evidence is a link sent as JSON, or the bytes of a file sent as
+//! `application/octet-stream` ([`crate::manual_files`]).
 
 use crate::error::ApiError;
 use std::sync::{Arc, Mutex};
 
-use axum::extract::{Path, Query, State};
+use axum::extract::{FromRequest, Path, Query, Request, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::{Extension, Json};
@@ -21,7 +34,10 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use tumult_ingest::Batch;
 use tumult_lake::{
-    AttachmentKind, ExerciseType, ManualError, ManualOutcome, NewManualExperiment, Store, Writer,
+    ActionItem, AttachmentKind, ExerciseDetail, ExerciseLink, ExerciseStep, ExerciseType, LinkKind,
+    ManualError, ManualOutcome, NewManualExperiment, Participant, PlanError, Reader, Retest,
+    RetestKind, Severity, SignOff, SignOffDecision, SignOffOutcome, StepResult, Store, Tester,
+    TesterKind, TlptDetail, Writer,
 };
 
 use crate::auth::Principal;
@@ -31,7 +47,7 @@ use crate::ApiState;
 /// The acting identity for a mutation: the authenticated principal's
 /// username when auth is enabled, else the request-supplied field (required,
 /// as before auth existed).
-fn actor_or(
+pub(crate) fn actor_or(
     principal: &Principal,
     field: Option<String>,
     name: &str,
@@ -44,12 +60,25 @@ fn actor_or(
         .ok_or_else(|| ManualError::Invalid(format!("'{name}' must not be empty")))
 }
 
-/// Map a lifecycle error to an HTTP response.
-fn manual_error(err: &ManualError) -> ApiError {
+/// Map a lifecycle error to an HTTP response. A record that names a plan
+/// it cannot fulfil is 422, and so are a sign-off the rules refuse and a
+/// framework reference the requirement registry does not know (the error
+/// names the nearest registry id).
+pub(crate) fn manual_error(err: &ManualError) -> ApiError {
     let status = match err {
-        ManualError::Invalid(_) | ManualError::SelfReview => StatusCode::BAD_REQUEST,
-        ManualError::NotFound(_) => StatusCode::NOT_FOUND,
-        ManualError::WrongStatus { .. } => StatusCode::CONFLICT,
+        ManualError::Invalid(_) | ManualError::Plan(PlanError::Invalid(_)) => {
+            StatusCode::BAD_REQUEST
+        }
+        ManualError::NotFound(_) | ManualError::Plan(PlanError::NotFound(_)) => {
+            StatusCode::NOT_FOUND
+        }
+        ManualError::WrongStatus { .. } | ManualError::Plan(PlanError::WrongStatus { .. }) => {
+            StatusCode::CONFLICT
+        }
+        ManualError::Plan(PlanError::Unusable(_))
+        | ManualError::SelfReview
+        | ManualError::AlreadySigned(_)
+        | ManualError::UnknownRequirement(_) => StatusCode::UNPROCESSABLE_ENTITY,
         ManualError::Store(_) => StatusCode::INTERNAL_SERVER_ERROR,
     };
     (status, Json(json!({"error": err.to_string()})))
@@ -57,14 +86,91 @@ fn manual_error(err: &ManualError) -> ApiError {
         .into()
 }
 
+/// What a write touches, read before it runs to check the caller's
+/// environment scopes.
+pub(crate) enum Subject {
+    /// A record: 404 outside the scopes. The plan it names is checked too.
+    Record(String),
+    /// A plan: 404 outside the scopes.
+    Plan(String),
+    /// The plan a record names: 422 outside the scopes, as a plan that
+    /// does not exist.
+    NamedPlan(String),
+}
+
+pub(crate) fn in_scopes(env: Option<&str>, scopes: &[String]) -> bool {
+    env.is_some_and(|env| scopes.iter().any(|s| s == env))
+}
+
+/// Refuse `subject` unless its environment is one of `scopes`.
+fn check_scope(reader: &Reader, scopes: &[String], subject: &Subject) -> Result<(), ManualError> {
+    let plan_env = |id: &str| -> Result<Option<String>, ManualError> {
+        let detail = reader.manual_plan_detail(id)?;
+        Ok(detail.and_then(|d| d.plan["target_environment"].as_str().map(str::to_owned)))
+    };
+    match subject {
+        Subject::Record(id) => {
+            let detail = reader.manual_experiment_detail(id)?;
+            let row = detail.as_ref().map(|d| &d.experiment);
+            if !in_scopes(row.and_then(|r| r["target_environment"].as_str()), scopes) {
+                return Err(ManualError::NotFound(id.clone()));
+            }
+            match row.and_then(|r| r["plan_id"].as_str()) {
+                Some(plan) => check_scope(reader, scopes, &Subject::NamedPlan(plan.to_owned())),
+                None => Ok(()),
+            }
+        }
+        Subject::Plan(id) => {
+            if in_scopes(plan_env(id)?.as_deref(), scopes) {
+                return Ok(());
+            }
+            Err(PlanError::NotFound(id.clone()).into())
+        }
+        Subject::NamedPlan(id) => {
+            if in_scopes(plan_env(id)?.as_deref(), scopes) {
+                return Ok(());
+            }
+            Err(PlanError::Unusable(format!("plan '{id}' does not exist")).into())
+        }
+    }
+}
+
 /// Run a typed manual-evidence mutation on the single writer and surface
-/// the typed result (the `Batch::Exec` closure itself always "succeeds" so
-/// the channel ack stays clean; the real outcome travels in `slot`).
-/// Every mutation that succeeds clears the Star Map cache.
-async fn exec_manual<T>(
+/// the typed result. `resource_id` is the record it touches, if any.
+pub(crate) async fn exec_manual<T>(
     state: &ApiState,
     principal: &Principal,
     resource_id: Option<&str>,
+    f: impl FnOnce(&Writer) -> Result<T, ManualError> + Send + 'static,
+) -> Result<T, ApiError>
+where
+    T: Send + 'static,
+{
+    let subjects = resource_id
+        .map(|id| Subject::Record(id.to_owned()))
+        .into_iter()
+        .collect();
+    exec_scoped(state, principal, subjects, f).await
+}
+
+/// The plans the record bodies name, to check against the caller's scopes.
+fn named_plans<'a>(plan_ids: impl IntoIterator<Item = &'a Option<String>>) -> Vec<Subject> {
+    plan_ids
+        .into_iter()
+        .flatten()
+        .map(|id| Subject::NamedPlan(id.clone()))
+        .collect()
+}
+
+/// Run a typed manual-evidence mutation on the single writer and surface
+/// the typed result (the `Batch::Exec` closure itself always "succeeds" so
+/// the channel ack stays clean; the real outcome travels in `slot`). Each
+/// of `subjects` must lie in the caller's environment scopes. Every
+/// mutation that succeeds clears the Star Map cache.
+pub(crate) async fn exec_scoped<T>(
+    state: &ApiState,
+    principal: &Principal,
+    subjects: Vec<Subject>,
     f: impl FnOnce(&Writer) -> Result<T, ManualError> + Send + 'static,
 ) -> Result<T, ApiError>
 where
@@ -79,7 +185,6 @@ where
             .into());
     };
     let scopes = principal.env_scopes.clone();
-    let resource_id = resource_id.map(str::to_owned);
     let db = state.db_path.as_ref().clone();
     let slot = Arc::new(Mutex::new(None));
     let slot2 = Arc::clone(&slot);
@@ -88,14 +193,10 @@ where
             // Resolve scope inside the serialized writer operation: an edit cannot
             // move the record between authorization and mutation.
             let result = (|| {
-                if let Some(id) = resource_id.filter(|_| !scopes.is_empty()) {
-                    let detail = Store::at(&db).read_only()?.manual_experiment_detail(&id)?;
-                    let allowed = detail
-                        .as_ref()
-                        .and_then(|d| d.experiment["target_environment"].as_str())
-                        .is_some_and(|env| scopes.iter().any(|s| s == env));
-                    if !allowed {
-                        return Err(ManualError::NotFound(id));
+                if !scopes.is_empty() && !subjects.is_empty() {
+                    let reader = Store::at(&db).read_only()?;
+                    for subject in &subjects {
+                        check_scope(&reader, &scopes, subject)?;
                     }
                 }
                 f(writer)
@@ -121,8 +222,9 @@ where
 /// JSON body for create/update: content fields of a manual test record.
 /// Enum-typed fields arrive as their lowercase string forms. `entered_by` is
 /// ignored when auth is enabled (the principal's username wins); while auth
-/// is open it is required.
+/// is open it is required. `recovery_time_s` is the actual RTO.
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ManualRecordRequest {
     experiment_name: String,
     exercise_type: String,
@@ -142,12 +244,237 @@ pub struct ManualRecordRequest {
     entered_by: Option<String>,
     attestation: String,
     renewal_due_ns: Option<i64>,
+    /// The requirements the record cites: a DORA requirement by its
+    /// registry id (`dora.art24.6`) or an older form the registry reads
+    /// (`DORA Art. 24(6)`), or a reference to another framework. A DORA
+    /// reference the registry does not know is refused with 422.
     #[serde(default)]
     framework_refs: Vec<String>,
+    /// The planned RTO, in seconds.
+    rto_target_s: Option<f64>,
+    /// The planned RPO: the seconds of committed writes from before the
+    /// outage that may be lost, as the automated RPO metric means it.
+    rpo_target_s: Option<f64>,
+    /// The actual RPO: the seconds of committed writes from before the
+    /// outage that were lost.
+    rpo_measured_s: Option<f64>,
+    /// Whether the data was checked after the recovery: `true` complete,
+    /// `false` loss or corruption found, absent not checked.
+    data_verified: Option<bool>,
+    #[serde(default)]
+    participants: Vec<ParticipantRequest>,
+    /// The timeline, in the order the steps were taken.
+    #[serde(default)]
+    steps: Vec<StepRequest>,
+    /// The actions with owners. A new client sends these: they are the
+    /// actions of a record from schema v22 on. `action_items` is the older
+    /// list of plain texts, still stored for the clients that send it.
+    #[serde(default)]
+    actions: Vec<ActionRequest>,
+    /// What the exercise tested.
+    #[serde(default)]
+    links: Vec<LinkRequest>,
+    /// The plan the exercise fulfils once the record is verified: a
+    /// planned plan of the same exercise type.
+    plan_id: Option<String>,
+    /// How much the findings matter: `low`, `medium`, `high` or `critical`.
+    findings_severity: Option<String>,
+    /// Who ran the test, internal or external (DORA Art. 24(4)).
+    tester: Option<TesterRequest>,
+    /// The TLPT facts of a record of type `tlpt`.
+    tlpt: Option<TlptRequest>,
+}
+
+/// Who ran the test.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TesterRequest {
+    name: String,
+    /// `internal` or `external`.
+    kind: String,
+}
+
+/// The TLPT facts of a record (RTS 2025/1190): the attestation of the TLPT
+/// authority and its date, and the test summary report. The remediation
+/// plan is the actions of the record.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TlptRequest {
+    attestation_ref: Option<String>,
+    attested_at_ns: Option<i64>,
+    summary_report_ref: Option<String>,
+}
+
+/// The run or the record that retested an action.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RetestRequest {
+    /// `run` (an automated run, by its experiment id) or `record` (a manual
+    /// record, by its id).
+    kind: String,
+    id: String,
+}
+
+/// One person who took part, and their role.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ParticipantRequest {
+    name: String,
+    role: Option<String>,
+}
+
+/// One step of the timeline.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StepRequest {
+    title: String,
+    actor: Option<String>,
+    started_at_ns: Option<i64>,
+    ended_at_ns: Option<i64>,
+    /// `done`, `failed` or `skipped`.
+    result: Option<String>,
+    note: Option<String>,
+}
+
+/// One action with the person who owns it.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ActionRequest {
+    title: String,
+    owner: String,
+    due_at_ns: Option<i64>,
+    /// A ticket key or URL that tracks the action.
+    ticket: Option<String>,
+    /// `low`, `medium`, `high` or `critical`.
+    severity: Option<String>,
+    retest: Option<RetestRequest>,
+}
+
+/// One link to what the exercise tested.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LinkRequest {
+    /// `function`, `entity`, `registry`, `run` or `gameday`.
+    kind: String,
+    linked_id: String,
+    label: Option<String>,
+}
+
+impl StepRequest {
+    fn into_step(self) -> Result<ExerciseStep, ManualError> {
+        Ok(ExerciseStep {
+            title: self.title,
+            actor: self.actor,
+            started_at_ns: self.started_at_ns,
+            ended_at_ns: self.ended_at_ns,
+            result: self.result.as_deref().map(StepResult::parse).transpose()?,
+            note: self.note,
+        })
+    }
+}
+
+impl LinkRequest {
+    fn into_link(self) -> Result<ExerciseLink, ManualError> {
+        Ok(ExerciseLink {
+            kind: LinkKind::parse(&self.kind)?,
+            linked_id: self.linked_id,
+            label: self.label,
+        })
+    }
+}
+
+impl From<ParticipantRequest> for Participant {
+    fn from(p: ParticipantRequest) -> Self {
+        Self {
+            name: p.name,
+            role: p.role,
+        }
+    }
+}
+
+impl ActionRequest {
+    fn into_action(self) -> Result<ActionItem, ManualError> {
+        let retest = self
+            .retest
+            .map(|r| -> Result<Retest, ManualError> {
+                Ok(Retest {
+                    kind: RetestKind::parse(&r.kind)?,
+                    id: r.id,
+                })
+            })
+            .transpose()?;
+        Ok(ActionItem {
+            title: self.title,
+            owner: self.owner,
+            due_at_ns: self.due_at_ns,
+            ticket: self.ticket,
+            severity: self.severity.as_deref().map(Severity::parse).transpose()?,
+            retest,
+        })
+    }
+}
+
+impl TesterRequest {
+    fn into_tester(self) -> Result<Tester, ManualError> {
+        let kind = TesterKind::parse(&self.kind).ok_or_else(|| {
+            ManualError::Invalid(format!(
+                "unknown tester kind '{}' (internal|external)",
+                self.kind
+            ))
+        })?;
+        Ok(Tester {
+            name: self.name,
+            kind,
+        })
+    }
+}
+
+impl From<TlptRequest> for TlptDetail {
+    fn from(t: TlptRequest) -> Self {
+        Self {
+            attestation_ref: t.attestation_ref,
+            attested_at_ns: t.attested_at_ns,
+            summary_report_ref: t.summary_report_ref,
+        }
+    }
 }
 
 impl ManualRecordRequest {
     fn into_new(self, entered_by: String) -> Result<NewManualExperiment, ManualError> {
+        let exercise = ExerciseDetail {
+            rto_target_s: self.rto_target_s,
+            rpo_target_s: self.rpo_target_s,
+            rpo_measured_s: self.rpo_measured_s,
+            data_verified: self.data_verified,
+            participants: self
+                .participants
+                .into_iter()
+                .map(Participant::from)
+                .collect(),
+            steps: self
+                .steps
+                .into_iter()
+                .map(StepRequest::into_step)
+                .collect::<Result<_, _>>()?,
+            actions: self
+                .actions
+                .into_iter()
+                .map(ActionRequest::into_action)
+                .collect::<Result<_, _>>()?,
+            links: self
+                .links
+                .into_iter()
+                .map(LinkRequest::into_link)
+                .collect::<Result<_, _>>()?,
+            plan_id: self.plan_id,
+            findings_severity: self
+                .findings_severity
+                .as_deref()
+                .map(Severity::parse)
+                .transpose()?,
+            tester: self.tester.map(TesterRequest::into_tester).transpose()?,
+            tlpt: self.tlpt.map(TlptDetail::from),
+        };
         Ok(NewManualExperiment {
             experiment_name: self.experiment_name,
             exercise_type: ExerciseType::parse(&self.exercise_type)?,
@@ -167,6 +494,7 @@ impl ManualRecordRequest {
             attestation: self.attestation,
             renewal_due_ns: self.renewal_due_ns,
             framework_refs: self.framework_refs,
+            exercise,
         })
     }
 }
@@ -184,8 +512,9 @@ pub async fn create(
     let entered_by =
         actor_or(&principal, req.entered_by.clone(), "entered_by").map_err(bad_request)?;
     check_environment(&principal, req.target_environment.as_deref())?;
+    let subjects = named_plans([&req.plan_id]);
     let new = req.into_new(entered_by).map_err(bad_request)?;
-    let id = exec_manual(&state, &principal, None, move |w| {
+    let id = exec_scoped(&state, &principal, subjects, move |w| {
         w.create_manual_draft(&new)
     })
     .await?;
@@ -217,9 +546,35 @@ pub async fn list(
     Ok(Json(json!({"records": rows})))
 }
 
-/// `GET /api/manual/experiments/{id}` — one record with audit + attachments.
-/// Records in an environment outside the principal's scopes 404 (no
-/// existence leak across scopes).
+/// The approving sign-offs a record has, and how many its exercise type
+/// needs under the house parameters.
+fn signoff_counts(state: &ApiState, record: &Value, signoffs: &[Value]) -> (u32, u32) {
+    let exercise_type = record["exercise_type"].as_str().unwrap_or_default();
+    let required = state
+        .score_runtime()
+        .params()
+        .required_signoffs(exercise_type);
+    let approvals = signoffs
+        .iter()
+        .filter(|s| s["decision"] == SignOffDecision::Approved.as_str())
+        .count();
+    (u32::try_from(approvals).unwrap_or(u32::MAX), required)
+}
+
+/// The sign-offs still needed to verify a record: none once it is
+/// verified or rejected.
+fn still_needed(status: &str, approvals: u32, required: u32) -> u32 {
+    match status {
+        "draft" | "submitted" => required.saturating_sub(approvals),
+        _ => 0,
+    }
+}
+
+/// `GET /api/manual/experiments/{id}`: one record with its audit trail,
+/// attachments and sign-offs, the sign-offs its type needs
+/// (`signoffs_required`) and how many are still needed
+/// (`signoffs_needed`). Records in an environment outside the principal's
+/// scopes 404 (no existence leak across scopes).
 pub async fn detail(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
@@ -241,9 +596,66 @@ pub async fn detail(
             return Err(not_found());
         }
     }
-    Ok(Json(
-        serde_json::to_value(detail).map_err(|e| internal(e.to_string()))?,
-    ))
+    let (approvals, required) = signoff_counts(&state, &detail.experiment, &detail.signoffs);
+    let status = detail.experiment["status"].as_str().unwrap_or_default();
+    let needed = still_needed(status, approvals, required);
+    let mut body = serde_json::to_value(detail).map_err(|e| internal(e.to_string()))?;
+    body["signoffs_required"] = json!(required);
+    body["signoffs_needed"] = json!(needed);
+    Ok(Json(body))
+}
+
+/// `GET /api/manual/experiments/{id}/audit/verify`: check the record
+/// again: its seal in its `hash_version`, the chain of its audit rows, its
+/// reviewer and its sign-offs. `ok: false` lists each problem with the
+/// table and the row it is in. Viewer, and 404 for an unknown record or
+/// one outside the principal's scopes, as `GET /api/runs/{id}/audit/verify`.
+pub async fn audit_verify(
+    State(state): State<ApiState>,
+    Extension(principal): Extension<Principal>,
+    Path(id): Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    let scopes = principal.env_scopes.clone();
+    let lookup = id.clone();
+    let verdict = with_reader(&state.db_path, move |reader| {
+        if !scopes.is_empty() {
+            let row = reader
+                .manual_experiment_detail(&lookup)
+                .map_err(|e| e.to_string())?;
+            let env = row
+                .as_ref()
+                .and_then(|d| d.experiment["target_environment"].as_str());
+            if !in_scopes(env, &scopes) {
+                return Ok(None);
+            }
+        }
+        reader
+            .verify_manual_record(&lookup)
+            .map_err(|e| e.to_string())
+    })
+    .await?;
+    let Some(verdict) = verdict else {
+        return Err(crate::error::not_found("manual experiment not found"));
+    };
+    let mut body = json!({"experiment_id": id, "chain_valid": verdict.ok});
+    merge_verdict(&mut body, &verdict)?;
+    Ok(Json(body))
+}
+
+/// Add the fields of `verdict` to a verify response.
+pub(crate) fn merge_verdict(
+    body: &mut Value,
+    verdict: &tumult_lake::AuditVerdict,
+) -> Result<(), ApiError> {
+    let Value::Object(fields) =
+        serde_json::to_value(verdict).map_err(|e| internal(e.to_string()))?
+    else {
+        return Err(internal("a verdict is not an object".into()));
+    };
+    if let Some(map) = body.as_object_mut() {
+        map.extend(fields);
+    }
+    Ok(())
 }
 
 /// `PUT /api/manual/experiments/{id}` — replace a draft's content.
@@ -256,9 +668,10 @@ pub async fn update(
     let changed_by =
         actor_or(&principal, req.entered_by.clone(), "entered_by").map_err(bad_request)?;
     check_environment(&principal, req.target_environment.as_deref())?;
+    let mut subjects = named_plans([&req.plan_id]);
+    subjects.push(Subject::Record(id.clone()));
     let new = req.into_new(changed_by.clone()).map_err(bad_request)?;
-    let resource_id = id.clone();
-    exec_manual(&state, &principal, Some(&resource_id), move |w| {
+    exec_scoped(&state, &principal, subjects, move |w| {
         w.update_manual_draft(&id, &new, &changed_by)
     })
     .await?;
@@ -266,6 +679,7 @@ pub async fn update(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SubmitRequest {
     by: Option<String>,
     attestation: Option<String>,
@@ -287,13 +701,51 @@ pub async fn submit(
     Ok(Json(json!({"ok": true})))
 }
 
+/// The answer to a sign-off: where the record stands now.
+fn signed(outcome: &SignOffOutcome) -> Json<Value> {
+    Json(json!({
+        "ok": true,
+        "status": outcome.status,
+        "signoffs_required": outcome.required,
+        "signoffs_needed": still_needed(&outcome.status, outcome.approvals, outcome.required),
+    }))
+}
+
+/// Sign record `id` off as `reviewer` on the single writer, with the
+/// approvals the house parameters ask for its type.
+async fn sign_off(
+    state: &ApiState,
+    principal: &Principal,
+    id: String,
+    reviewer: String,
+    note: Option<String>,
+    decision: SignOffDecision,
+) -> Result<Json<Value>, ApiError> {
+    let params = state.score_runtime().params();
+    let resource_id = id.clone();
+    let outcome = exec_manual(state, principal, Some(&resource_id), move |w| {
+        let sign_off = SignOff {
+            by: &reviewer,
+            note: note.as_deref(),
+            decision,
+        };
+        w.sign_off_manual(&id, &sign_off, |t| params.required_signoffs(t))
+    })
+    .await?;
+    Ok(signed(&outcome))
+}
+
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct VerifyRequest {
     reviewer: Option<String>,
     note: Option<String>,
 }
 
-/// `POST /api/manual/experiments/{id}/verify` — reviewer ≠ enterer.
+/// `POST /api/manual/experiments/{id}/verify`: an approving sign-off. The
+/// last approval the type needs verifies the record; the answer says the
+/// status and how many sign-offs are still needed. The signer must not
+/// have entered or changed the record, nor signed it off before (422).
 pub async fn verify(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
@@ -301,21 +753,26 @@ pub async fn verify(
     Json(req): Json<VerifyRequest>,
 ) -> Result<Json<Value>, ApiError> {
     let reviewer = actor_or(&principal, req.reviewer.clone(), "reviewer").map_err(bad_request)?;
-    let resource_id = id.clone();
-    exec_manual(&state, &principal, Some(&resource_id), move |w| {
-        w.verify_manual(&id, &reviewer, req.note.as_deref())
-    })
-    .await?;
-    Ok(Json(json!({"ok": true})))
+    sign_off(
+        &state,
+        &principal,
+        id,
+        reviewer,
+        req.note,
+        SignOffDecision::Approved,
+    )
+    .await
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct RejectRequest {
     reviewer: Option<String>,
     note: String,
 }
 
-/// `POST /api/manual/experiments/{id}/reject` — note is mandatory.
+/// `POST /api/manual/experiments/{id}/reject`: a rejecting sign-off. It
+/// rejects the record whatever approvals it has. The note is mandatory.
 pub async fn reject(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
@@ -323,15 +780,19 @@ pub async fn reject(
     Json(req): Json<RejectRequest>,
 ) -> Result<Json<Value>, ApiError> {
     let reviewer = actor_or(&principal, req.reviewer.clone(), "reviewer").map_err(bad_request)?;
-    let resource_id = id.clone();
-    exec_manual(&state, &principal, Some(&resource_id), move |w| {
-        w.reject_manual(&id, &reviewer, &req.note)
-    })
-    .await?;
-    Ok(Json(json!({"ok": true})))
+    sign_off(
+        &state,
+        &principal,
+        id,
+        reviewer,
+        Some(req.note),
+        SignOffDecision::Rejected,
+    )
+    .await
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct AttachmentRequest {
     kind: String,
     uri: String,
@@ -339,14 +800,29 @@ pub struct AttachmentRequest {
     added_by: Option<String>,
 }
 
-/// `POST /api/manual/experiments/{id}/attachments` — external evidence
-/// links. Only `url` and `ticket` are accepted: there is no file storage.
+/// `POST /api/manual/experiments/{id}/attachments`: evidence for a record.
+/// A link (`url` or `ticket`) is a JSON body, while the record is a draft
+/// or submitted. A file is its bytes as an `application/octet-stream` body
+/// with `?name=`, in any status (see [`crate::manual_files`]). Any other
+/// content type is 415.
 pub async fn attach(
     State(state): State<ApiState>,
     Extension(principal): Extension<Principal>,
     Path(id): Path<String>,
-    Json(req): Json<AttachmentRequest>,
+    request: Request,
 ) -> Result<(StatusCode, Json<Value>), ApiError> {
+    match crate::manual_files::sent(request.headers()) {
+        crate::manual_files::Sent::File => {
+            return crate::manual_files::upload(state, principal, id, request).await;
+        }
+        crate::manual_files::Sent::Other => {
+            return Err(crate::manual_files::not_a_link_or_a_file(request).await);
+        }
+        crate::manual_files::Sent::Link => {}
+    }
+    let Json(req) = Json::<AttachmentRequest>::from_request(request, &state)
+        .await
+        .map_err(|rejection| ApiError::from(rejection.into_response()))?;
     let kind = match req.kind.as_str() {
         "url" => AttachmentKind::Url,
         "ticket" => AttachmentKind::Ticket,
@@ -354,7 +830,8 @@ pub async fn attach(
             return Err((
                 StatusCode::BAD_REQUEST,
                 Json(json!({"error": format!(
-                    "attachment kind '{other}' not accepted (url|ticket only; no file storage)"
+                    "attachment kind '{other}' not accepted as JSON (url|ticket); \
+                     send a file as application/octet-stream with ?name=<file name>"
                 )})),
             )
                 .into_response()
@@ -371,6 +848,7 @@ pub async fn attach(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ImportRequest {
     label: Option<String>,
     records: Vec<ManualRecordRequest>,
@@ -384,6 +862,7 @@ pub async fn import(
     Extension(principal): Extension<Principal>,
     Json(req): Json<ImportRequest>,
 ) -> Result<(StatusCode, Json<Value>), ApiError> {
+    let subjects = named_plans(req.records.iter().map(|r| &r.plan_id));
     let mut items = Vec::with_capacity(req.records.len());
     for record in req.records {
         check_environment(&principal, record.target_environment.as_deref())?;
@@ -392,7 +871,7 @@ pub async fn import(
         items.push(record.into_new(entered_by).map_err(bad_request)?);
     }
     let label = req.label.clone();
-    let (batch_id, ids) = exec_manual(&state, &principal, None, move |w| {
+    let (batch_id, ids) = exec_scoped(&state, &principal, subjects, move |w| {
         w.import_manual_drafts(&items, label)
     })
     .await?;
@@ -402,7 +881,7 @@ pub async fn import(
     ))
 }
 
-fn check_environment(principal: &Principal, env: Option<&str>) -> Result<(), ApiError> {
+pub(crate) fn check_environment(principal: &Principal, env: Option<&str>) -> Result<(), ApiError> {
     if !principal.env_allowed(env.unwrap_or_default()) {
         return Err(crate::error::forbidden(
             "environment is outside the principal's scopes",

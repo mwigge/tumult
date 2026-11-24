@@ -496,6 +496,7 @@ mod tests {
                 ts_ns: 1_000,
                 duration_ms: 120,
                 ok: true,
+                reading: None,
             },
             ProbeSample {
                 probe: "health".into(),
@@ -503,6 +504,7 @@ mod tests {
                 ts_ns: 2_000,
                 duration_ms: 900,
                 ok: false,
+                reading: None,
             },
         ];
         journal.objectives = Some(ObjectiveOutcome {

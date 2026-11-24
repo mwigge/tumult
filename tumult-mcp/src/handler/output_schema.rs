@@ -15,7 +15,8 @@ use serde_json::json;
 
 use schemas::{
     autopilot_decision_schema, graph_node_summary_schema, journal_schema, journal_summary_schema,
-    lineage_cell_schema, recommendation_schema, schema_object,
+    lineage_cell_schema, manual_row_schema, manual_rows_schema, recommendation_schema,
+    schema_object,
 };
 
 /// Names of every tool that sets `structured_content` on its results and
@@ -53,6 +54,10 @@ pub(crate) const STRUCTURED_TOOLS: &[&str] = &[
     "tumult_autopilot_status",
     "tumult_autopilot_respond",
     "tumult_autopilot_export",
+    "tumult_manual_list",
+    "tumult_manual_get",
+    "tumult_manual_create_draft",
+    "tumult_manual_plans_list",
 ];
 
 /// Returns the output schema for `tool_name`, or `None` for tools that only
@@ -157,7 +162,10 @@ pub(crate) fn output_schema_for(tool_name: &str) -> Option<ToolOutputSchema> {
             json!({
                 "metric": {
                     "type": "string",
-                    "enum": ["resilience_score", "duration_ms", "estimate_accuracy", "method_step_count"],
+                    "enum": [
+                        "resilience_score", "duration_ms", "estimate_accuracy", "method_step_count",
+                        "rto_measured_s", "rto_margin_s", "rpo_measured_s", "rpo_margin_s",
+                    ],
                 },
                 "points": {
                     "type": "array",
@@ -167,9 +175,23 @@ pub(crate) fn output_schema_for(tool_name: &str) -> Option<ToolOutputSchema> {
                         "required": ["ts", "value"],
                         "properties": {
                             "ts": { "type": "integer", "description": "started_at_ns of the run." },
-                            "value": { "type": "number" },
+                            "value": { "type": "number", "description": "What the run measured, or the bound of a run that did not recover." },
+                            "recovered": { "type": "boolean", "description": "RTO metrics only: whether the run recovered." },
+                            "bound": {
+                                "type": "string",
+                                "enum": ["at least", "at most"],
+                                "description": "A run that did not recover: value is no measure but a bound, at least for the RTO and at most for its margin.",
+                            },
                         },
                     },
+                },
+                "runs_without_outage": {
+                    "type": "integer",
+                    "description": "Recovery metrics only: runs left out because their probes saw no outage.",
+                },
+                "runs_not_measured": {
+                    "type": "integer",
+                    "description": "Recovery metrics only: runs left out because they declare the target and measured nothing.",
                 },
                 "target": { "type": ["string", "null"], "description": "Target asked for, if any: the system or the technology the journal names." },
                 "journals_without_target": {
@@ -724,6 +746,59 @@ pub(crate) fn output_schema_for(tool_name: &str) -> Option<ToolOutputSchema> {
                 "dir": { "type": "string", "description": "Directory the Parquet files were written to." },
             }),
         )),
+        "tumult_manual_list" => Some(schema_object(
+            &["items", "total", "offset", "limit"],
+            json!({
+                "items": {
+                    "type": "array",
+                    "description": "Records of the manual registry on this page, newest entry first, with every column of manual_experiments.",
+                    "items": manual_row_schema(&["id", "experiment_name", "exercise_type", "status", "executed_at_ns"]),
+                },
+                "total": { "type": "integer", "description": "Total matches before pagination." },
+                "offset": { "type": "integer" },
+                "limit": { "type": "integer" },
+            }),
+        )),
+        "tumult_manual_get" => Some(schema_object(
+            &[
+                "experiment",
+                "audit",
+                "attachments",
+                "steps",
+                "actions",
+                "links",
+                "signoffs",
+            ],
+            json!({
+                "experiment": manual_row_schema(&["id", "experiment_name", "exercise_type", "status", "content_hash"]),
+                "audit": manual_rows_schema("The audit trail, oldest row first."),
+                "attachments": manual_rows_schema("Files and links kept as evidence, oldest first."),
+                "steps": manual_rows_schema("The timeline, by ordinal."),
+                "actions": manual_rows_schema("The actions with owners, by ordinal."),
+                "links": manual_rows_schema("What the exercise tested, by ordinal."),
+                "signoffs": manual_rows_schema("The sign-offs, oldest first."),
+            }),
+        )),
+        "tumult_manual_create_draft" => Some(schema_object(
+            &["id", "status"],
+            json!({
+                "id": { "type": "string", "description": "The id of the new record." },
+                "status": { "type": "string", "enum": ["draft"], "description": "A new record is always a draft." },
+            }),
+        )),
+        "tumult_manual_plans_list" => Some(schema_object(
+            &["items", "total", "offset", "limit"],
+            json!({
+                "items": {
+                    "type": "array",
+                    "description": "Plans on this page, the soonest due first, with every column of manual_exercise_plans.",
+                    "items": manual_row_schema(&["id", "name", "exercise_type", "status", "due_at_ns"]),
+                },
+                "total": { "type": "integer", "description": "Total matches before pagination." },
+                "offset": { "type": "integer" },
+                "limit": { "type": "integer" },
+            }),
+        )),
         _ => None,
     }
 }
@@ -762,14 +837,14 @@ mod tests {
         let schema = output_schema_for("tumult_trend").unwrap();
         let declared = schema.properties.as_ref().unwrap();
 
-        for target in [None, Some("orders")] {
-            let result = crate::tools::trend(
-                journals.path().to_str().unwrap(),
-                "duration_ms",
-                None,
-                target,
-            )
-            .unwrap();
+        for (metric, target) in [
+            ("duration_ms", None),
+            ("duration_ms", Some("orders")),
+            ("rto_measured_s", None),
+        ] {
+            let result =
+                crate::tools::trend(journals.path().to_str().unwrap(), metric, None, target)
+                    .unwrap();
 
             for name in &schema.required {
                 assert!(result.structured.contains_key(name), "{name}");
@@ -780,6 +855,60 @@ mod tests {
                     .unwrap_or_else(|| panic!("{name} is not in the schema"));
                 assert!(is_of(value, &property["type"]), "{name}: {value}");
             }
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_point_of_a_run_that_did_not_recover_is_of_the_types_its_schema_declares() {
+        use tumult_core::types::{
+            NfrCriticality, NfrKind, NfrOperator, NfrState, NfrVerdict, ObjectiveOutcome,
+        };
+
+        let journals = tempfile::TempDir::new().unwrap();
+        let path = crate::tools::test_support::write_run_journal_on(
+            journals.path(),
+            "first",
+            "orders",
+            "mysql",
+        );
+        let mut journal = tumult_core::journal::read_journal(&path).unwrap();
+        journal.objectives = Some(ObjectiveOutcome {
+            rto_target_s: Some(10.0),
+            verdicts: vec![NfrVerdict {
+                nfr_id: "rto".into(),
+                kind: NfrKind::Rto,
+                metric: "recovery.mttr_s".into(),
+                operator: NfrOperator::Lte,
+                threshold: 10.0,
+                observed: Some(30.1),
+                state: NfrState::Breached,
+                margin: None,
+                criticality: NfrCriticality::Blocking,
+                recovered: Some(false),
+                reason: None,
+            }],
+            ..ObjectiveOutcome::default()
+        });
+        tumult_core::journal::write_journal(&journal, &path).unwrap();
+        let schema = output_schema_for("tumult_trend").unwrap();
+        let point_schema = &schema.properties.as_ref().unwrap()["points"]["items"];
+
+        let result = crate::tools::trend(
+            journals.path().to_str().unwrap(),
+            "rto_measured_s",
+            None,
+            None,
+        )
+        .unwrap();
+
+        let point = &result.structured["points"][0];
+        assert_eq!(point["bound"], "at least", "{point}");
+        for name in point_schema["required"].as_array().unwrap() {
+            assert!(point.get(name.as_str().unwrap()).is_some(), "{name}");
+        }
+        for (name, value) in point.as_object().unwrap() {
+            let property = &point_schema["properties"][name];
+            assert!(is_of(value, &property["type"]), "{name}: {value}");
         }
     }
 

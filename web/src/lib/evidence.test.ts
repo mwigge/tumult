@@ -20,7 +20,13 @@ import {
     stepClass,
     stepOffset,
 } from './evidence';
-import type { EvidenceLoad, EvidenceProbeSample, LoadWindow, RunEvidence } from './types';
+import type {
+    EvidenceLoad,
+    EvidenceObjective,
+    EvidenceProbeSample,
+    LoadWindow,
+    RunEvidence,
+} from './types';
 
 const S = 1e9;
 // A whole number of seconds this large is still an exact number.
@@ -78,6 +84,9 @@ function run(parts: Partial<RunEvidence> = {}): RunEvidence {
             rto_measured_s: null,
             rpo_target_s: null,
             rpo_measured_s: null,
+            impact_observed: null,
+            outage_started_at_ns: null,
+            recovered_at_ns: null,
         },
         steps: [],
         objectives: [],
@@ -216,6 +225,50 @@ describe('recoveryRows', () => {
         };
         expect(recoveryRows(recovery)).toEqual([
             { label: 'RPO', target: 'not set', measured: '2.5 s' },
+        ]);
+    });
+});
+
+/** The verdict on the RTO a run declares, of `threshold` seconds. */
+function rto(threshold: number, parts: Partial<EvidenceObjective> = {}): EvidenceObjective {
+    return {
+        nfr_id: 'rto',
+        kind: 'rto',
+        metric: 'recovery.mttr_s',
+        operator: 'lte',
+        threshold,
+        observed: null,
+        state: 'inconclusive',
+        margin: null,
+        criticality: 'blocking',
+        recovered: null,
+        reason: null,
+        ...parts,
+    };
+}
+
+describe('recoveryRows of a run that measured no recovery', () => {
+    it('says how long a run that did not recover watched, and that it did not recover', () => {
+        const recovery = { ...run().recovery, rto_target_s: 2 };
+        const never = rto(2, { observed: 29.1, state: 'breached', recovered: false });
+        expect(recoveryRows(recovery, [never])).toEqual([
+            { label: 'RTO', target: '2 s', measured: 'at least 29.1 s, not recovered' },
+        ]);
+    });
+
+    it('gives the reason of a verdict that measured nothing', () => {
+        const recovery = { ...run().recovery, rto_target_s: 30 };
+        const unaffected = rto(30, { reason: 'no outage observed' });
+        expect(recoveryRows(recovery, [unaffected])).toEqual([
+            { label: 'RTO', target: '30 s', measured: 'no outage observed' },
+        ]);
+    });
+
+    it('reads only the verdict on the RTO the run declares', () => {
+        const recovery = { ...run().recovery, rto_target_s: 30 };
+        const other = rto(60, { nfr_id: 'slow-back', recovered: false, observed: 90 });
+        expect(recoveryRows(recovery, [other])).toEqual([
+            { label: 'RTO', target: '30 s', measured: 'not measured' },
         ]);
     });
 });

@@ -3,14 +3,14 @@ title: MCP guide
 parent: Work with AI agents
 grand_parent: Guides
 nav_order: 1
-summary: "The 40 tools, how to connect, and how to keep agent context small"
+summary: "The 44 tools, how to connect, and how to keep agent context small"
 redirect_from:
   - /guides/token-efficiency.html
 ---
 
 # MCP guide
 
-Tumult has a Model Context Protocol server with 40 tools. An AI agent uses
+Tumult has a Model Context Protocol server with 44 tools. An AI agent uses
 them to find faults, write and run experiments, read journals and ask the
 lake. Roles and safety labels keep it from doing more than you allow.
 
@@ -56,11 +56,18 @@ leaves it is refused. `/health` answers on the next port (3101 by default,
 | ChaosGraph | `tumult_chaosgraph_query`, `tumult_chaosgraph_neighbors`, `tumult_chaosgraph_coverage_gaps`, `tumult_chaosgraph_cypher` |
 | Topology | `tumult_topology_import`, `tumult_topology_map`, `tumult_compliance_lineage`, `tumult_recommend_injection` |
 | Autopilot | `tumult_autopilot_run`, `tumult_autopilot_status`, `tumult_autopilot_respond`, `tumult_autopilot_export`, `tumult_autopilot_notify` |
+| Manual registry | `tumult_manual_list`, `tumult_manual_get`, `tumult_manual_create_draft`, `tumult_manual_plans_list` |
 | Access | `tumult_whoami` |
 
-Thirty tools return `structuredContent` and advertise its `outputSchema`. Ask
+Thirty-four tools return `structuredContent` and advertise its `outputSchema`. Ask
 `tools/list` when you connect, so the client follows the server you run and
 not this page.
+
+`tumult_trend` takes the metrics of [`tumult trend`](cli-reference.md#tumult-trend),
+the RTO and RPO ones too. The point of a run that did not recover has
+`recovered: false` and a `bound`. `runs_without_outage` and
+`runs_not_measured` count the runs that are no point. The verdict reads a
+smaller time and a larger margin as `improving`.
 
 `tumult_run_experiment` stores its journal in the lake by default and says if
 that worked. `no_ingest` turns it off, and `store_path` picks another store.
@@ -110,8 +117,13 @@ before each of them, by name.
 - `tumult_autopilot_run` with `execute=false` injects nothing, but it runs the
   guard probes once against the target.
 - A viewer cannot pick the store of `tumult_store_stats`,
-  `tumult_analyze_store`, `tumult_chaosgraph_cypher` or
-  `tumult_autopilot_status`: they read the default store.
+  `tumult_analyze_store`, `tumult_chaosgraph_cypher`,
+  `tumult_autopilot_status` or the manual read tools: they read the default
+  store.
+- The manual tools list and read the manual registry and draft a record.
+  None of them submits, signs off, verifies or attaches evidence: an agent
+  may draft, a person signs. The manual tools read and write the lake file,
+  so the daemon must not hold it.
 - `tumult_recommend` with an agent may call a model; any experiment it
   proposes is still parsed and validated before it is written.
 

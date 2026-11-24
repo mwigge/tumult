@@ -24,6 +24,7 @@ pub fn evaluate_tolerance(actual: &serde_json::Value, tolerance: &Tolerance) -> 
                 false
             }
         }
+        Tolerance::Number => actual.as_f64().is_some_and(f64::is_finite),
         Tolerance::Regex { pattern } => {
             // Match against the value's text form. A bare JSON string matches on
             // its contents (`"ok"` → `ok`); any other JSON value (object,
@@ -53,6 +54,20 @@ pub fn evaluate_tolerance(actual: &serde_json::Value, tolerance: &Tolerance) -> 
             }
         }
     }
+}
+
+/// The number a probe printed: its output read as a JSON number, as a
+/// `range` reads it, when that is one finite number. `None` for any other
+/// output. Every sample of a long run is read, so the reader is the JSON
+/// number parser alone, not one that builds a JSON value.
+#[must_use]
+pub(crate) fn reading(output: &str) -> Option<f64> {
+    output
+        .trim()
+        .parse::<serde_json::Number>()
+        .ok()?
+        .as_f64()
+        .filter(|number| number.is_finite())
 }
 
 /// Determine the experiment status from method results.
@@ -428,6 +443,95 @@ mod tests {
             to: 100.0,
         };
         assert!(!evaluate_tolerance(&actual, &tolerance));
+    }
+
+    #[test]
+    fn a_number_tolerance_passes_any_finite_number() {
+        for actual in [
+            serde_json::json!(2.5),
+            serde_json::json!(0),
+            serde_json::json!(-1),
+            serde_json::json!(1e3),
+        ] {
+            assert!(evaluate_tolerance(&actual, &Tolerance::Number), "{actual}");
+        }
+    }
+
+    #[test]
+    fn a_number_tolerance_fails_what_is_no_number() {
+        for actual in [
+            serde_json::json!("ok"),
+            serde_json::json!("2"),
+            serde_json::json!(""),
+            serde_json::json!(true),
+            serde_json::json!(null),
+            serde_json::json!([2]),
+            serde_json::json!({ "lost_s": 2 }),
+        ] {
+            assert!(!evaluate_tolerance(&actual, &Tolerance::Number), "{actual}");
+        }
+    }
+
+    #[test]
+    fn the_reading_of_an_output_is_the_one_number_it_holds() {
+        assert_eq!(reading("2.5"), Some(2.5));
+        assert_eq!(reading(" 12\n"), Some(12.0));
+        assert_eq!(reading("-0.5"), Some(-0.5));
+        assert_eq!(reading("0"), Some(0.0));
+        assert_eq!(reading("1e3"), Some(1000.0));
+        assert_eq!(reading("2.5E-1"), Some(0.25));
+        assert_eq!(reading("-1E+2"), Some(-100.0));
+        for output in [
+            "ok",
+            "\"2\"",
+            "",
+            "2 s",
+            "2.0\n3.0",
+            "1e400",
+            "{\"lost_s\": 2}",
+        ] {
+            assert_eq!(reading(output), None, "{output}");
+        }
+    }
+
+    /// A reading is a number exactly when JSON reads one.
+    #[test]
+    fn a_reading_is_what_json_reads_as_a_number() {
+        for output in [
+            "+1", ".5", "-.5", "5.", "1.e3", "01", "-01", "00", "1e", "1e+", "--1", "-", "inf",
+            "-inf", "NaN", "infinity", "1_000", "0x10", "1.5.2",
+        ] {
+            assert_eq!(reading(output), None, "{output}");
+            let json = serde_json::from_str::<serde_json::Value>(output).ok();
+            assert_eq!(json.and_then(|value| value.as_f64()), None, "{output}");
+        }
+        for output in [
+            "0",
+            "-0",
+            "0.5",
+            "10",
+            "1e5",
+            "1E05",
+            "-2.5e-3",
+            "123456789.125",
+        ] {
+            let json = serde_json::from_str::<serde_json::Value>(output).expect(output);
+            assert_eq!(reading(output), json.as_f64(), "{output}");
+        }
+    }
+
+    #[test]
+    fn only_a_number_or_a_range_tolerance_reads_a_number() {
+        assert!(Tolerance::Number.reads_number());
+        assert!(Tolerance::Range { from: 0.0, to: 1.0 }.reads_number());
+        assert!(!Tolerance::Regex {
+            pattern: "^2".into()
+        }
+        .reads_number());
+        assert!(!Tolerance::Exact {
+            value: serde_json::json!(0)
+        }
+        .reads_number());
     }
 
     #[test]

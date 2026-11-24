@@ -538,6 +538,7 @@ mod tests {
                     description: "Testing of ICT tools and systems".into(),
                     evidence: "scenario-based fault injection".into(),
                 }],
+                tester: None,
             }),
             ..Default::default()
         }
@@ -557,6 +558,7 @@ mod tests {
             ts_ns: started_at_ns,
             duration_ms: 120,
             ok: true,
+            reading: None,
         }];
         journal.objectives = Some(ObjectiveOutcome {
             rto_target_s: Some(900.0),
@@ -1132,6 +1134,109 @@ mod tests {
             )
             .unwrap();
         assert_eq!(rows[0].join("|"), "r1|400|true|true");
+    }
+
+    #[test]
+    fn probe_samples_exported_before_the_reading_still_import() {
+        use super::{export_parquet, journal_probe_samples_schema, load_results_schema};
+
+        let d = tempfile::TempDir::new().unwrap();
+        let (loads, samples) = (d.path().join("l.parquet"), d.path().join("s.parquet"));
+        let older = AnalyticsStore::in_memory().unwrap();
+        let mut journal = sample_journal("r1", ExperimentStatus::Completed);
+        journal.probe_samples = vec![ProbeSample {
+            probe: "data-lost".into(),
+            phase: SamplePhase::Post,
+            ts_ns: 2_000,
+            duration_ms: 12,
+            ok: true,
+            reading: Some(2.0),
+        }];
+        older.ingest_journal(&journal).unwrap();
+        let narrow = older
+            .query_to_batch(
+                "SELECT experiment_id, probe_name, phase, ts_ns, value, ok FROM probe_samples",
+            )
+            .unwrap();
+        export_parquet(&narrow, &samples).unwrap();
+        let none =
+            arrow::record_batch::RecordBatch::new_empty(std::sync::Arc::new(load_results_schema()));
+        export_parquet(&none, &loads).unwrap();
+
+        let s = AnalyticsStore::in_memory().unwrap();
+        s.import_load_tables(&loads, &samples).unwrap();
+        let rows = s
+            .query("SELECT probe_name, value, reading IS NULL FROM probe_samples")
+            .unwrap();
+        assert_eq!(rows[0].join("|"), "data-lost|12.0000|true");
+
+        // A file of this version keeps the reading.
+        let (loads, samples) = (d.path().join("l2.parquet"), d.path().join("s2.parquet"));
+        older.export_load_tables(&loads, &samples).unwrap();
+        let s = AnalyticsStore::in_memory().unwrap();
+        s.import_load_tables(&loads, &samples).unwrap();
+        let rows = s.query("SELECT reading FROM probe_samples").unwrap();
+        assert_eq!(rows[0].join("|"), "2.0000");
+        assert_eq!(journal_probe_samples_schema().fields().len(), 7);
+    }
+
+    #[test]
+    fn experiments_exported_before_the_dr_facts_still_import_and_new_ones_keep_them() {
+        use super::{activity_results_schema, experiments_schema, export_parquet};
+
+        let d = tempfile::TempDir::new().unwrap();
+        let older = AnalyticsStore::in_memory().unwrap();
+        let mut journal = sample_journal("r1", ExperimentStatus::Completed);
+        journal.post_result = Some(PostResult {
+            started_at_ns: 2_000,
+            ended_at_ns: 9_000,
+            duration_s: 7.0,
+            samples: 7,
+            probes: vec![],
+            recovery_time_s: 3.0,
+            full_recovery: true,
+            mttr_s: Some(4.0),
+            impact_observed: Some(true),
+            outage_started_at_ns: Some(1_000),
+            recovered_at_ns: Some(5_000),
+        });
+        older.ingest_journal(&journal).unwrap();
+        // An export written before v24 has the 20 columns before the facts.
+        let before: Vec<String> = experiments_schema()
+            .fields()
+            .iter()
+            .take(20)
+            .map(|field| field.name().clone())
+            .collect();
+        let narrow = older
+            .query_to_batch(&format!("SELECT {} FROM experiments", before.join(", ")))
+            .unwrap();
+        let (exps, acts) = (d.path().join("e.parquet"), d.path().join("a.parquet"));
+        export_parquet(&narrow, &exps).unwrap();
+        let none = arrow::record_batch::RecordBatch::new_empty(std::sync::Arc::new(
+            activity_results_schema(),
+        ));
+        export_parquet(&none, &acts).unwrap();
+
+        let s = AnalyticsStore::in_memory().unwrap();
+        s.import_tables(&exps, &acts).unwrap();
+        let rows = s
+            .query("SELECT experiment_id, impact_observed IS NULL, mttr_s IS NULL FROM experiments")
+            .unwrap();
+        assert_eq!(rows[0].join("|"), "r1|true|true");
+
+        // A file of this version keeps them.
+        let (exps, acts) = (d.path().join("e2.parquet"), d.path().join("a2.parquet"));
+        older.export_tables(&exps, &acts).unwrap();
+        let s = AnalyticsStore::in_memory().unwrap();
+        s.import_tables(&exps, &acts).unwrap();
+        let rows = s
+            .query(
+                "SELECT impact_observed, outage_started_at_ns, recovered_at_ns, mttr_s \
+                 FROM experiments",
+            )
+            .unwrap();
+        assert_eq!(rows[0].join("|"), "true|1000|5000|4.0000");
     }
 
     #[test]

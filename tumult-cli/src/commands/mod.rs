@@ -13,6 +13,7 @@ mod gameday;
 mod gate;
 mod init;
 mod load;
+mod manual;
 mod mcp;
 mod new;
 mod perf;
@@ -29,6 +30,12 @@ mod validate;
 
 pub use gameday::{cmd_gameday_analyze, cmd_gameday_create, cmd_gameday_run};
 pub use gate::{cmd_gate, FailOn, GateArgs};
+pub use manual::{
+    cmd_manual_attach_file, cmd_manual_attach_link, cmd_manual_create, cmd_manual_list,
+    cmd_manual_plans_cancel, cmd_manual_plans_create, cmd_manual_plans_list, cmd_manual_plans_show,
+    cmd_manual_show, cmd_manual_sign_off, cmd_manual_submit, cmd_manual_verify, list_filter,
+    Daemon, ManualFilter,
+};
 pub use perf::{cmd_perf, exit_code_of, PerfArgs, PerfFailOn};
 pub use recommend::{cmd_agents, cmd_recommend, AgentArgs};
 pub use report::cmd_report;

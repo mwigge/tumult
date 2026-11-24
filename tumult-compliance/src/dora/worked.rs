@@ -72,10 +72,12 @@ fn partial(mut evidence: Evidence) -> Evidence {
     evidence
 }
 
-/// A recovery run with a measured recovery time and recovery point.
+/// A recovery run that restored a backup, with a measured recovery time
+/// and recovery point.
 fn recovered(mut evidence: Evidence, rto_s: f64, rpo_s: f64) -> Evidence {
     evidence.rto_measured_s = Some(rto_s);
     evidence.rpo_measured_s = Some(rpo_s);
+    evidence.restore_step = Some(true);
     evidence
 }
 

@@ -17,6 +17,7 @@ mod gameday;
 mod graph;
 mod journals;
 mod listing;
+mod manual;
 mod recommend;
 mod reporting;
 /// Topology tools: declared-topology import, service map, compliance
@@ -43,6 +44,10 @@ pub use graph::{chaosgraph_coverage_gaps, chaosgraph_neighbors, chaosgraph_query
 pub use journals::{discover_plugins, list_journals, query_traces, read_journal};
 pub(crate) use listing::extract_title;
 pub use listing::list_experiments;
+pub use manual::{
+    manual_create_draft, manual_get, manual_list, manual_plans_list, window_end, window_start,
+    ManualFilter,
+};
 pub use recommend::{coverage, recommend, RecommendRequest};
 pub use reporting::{compliance, report, trend};
 pub use topology::{compliance_lineage, recommend_injection, topology_import, topology_map};

@@ -7,7 +7,7 @@
 
 mod lab;
 
-use lab::{experiment, fatal_error, heal, inject, leave_marker, with_block, Lab};
+use lab::{experiment, fatal_error, heal, indented, inject, leave_marker, step, with_block, Lab};
 
 /// The manifest of the plugin `name` with one action and one probe.
 fn manifest(name: &str, action: &str, probe: &str) -> String {
@@ -226,7 +226,7 @@ fn an_objective_on_a_metric_no_run_measures_is_refused_with_the_ones_a_run_does(
         .unwrap_or_else(|| panic!("{error}"));
     assert!(known.starts_with("load.throughput_rps, "), "{known}");
     assert!(
-        known.ends_with(", probe.<name>.<mean_ms|max_ms|p95_ms|error_rate>)"),
+        known.ends_with(", probe.<name>.<mean_ms|max_ms|p95_ms|error_rate|lost_s>)"),
         "{known}"
     );
 }
@@ -243,8 +243,139 @@ fn an_rpo_objective_on_a_metric_that_does_not_count_lost_data_is_refused() {
     assert_eq!(
         error,
         "nfr objective 'lost' is invalid: kind rpo does not fit metric 'fault.duration_s', \
-         which measures recovery; no metric of the catalogue measures rpo"
+         which measures recovery; the metrics of rpo are probe.<name>.lost_s"
     );
+}
+
+/// A DR experiment with an RPO of 1 s whose steady-state probe `lost`
+/// prints the seconds of data lost and has `tolerance`, and whose
+/// objectives are `nfr`.
+fn rpo_experiment(tolerance: &str, nfr: &str) -> String {
+    let probe = format!("{}{tolerance}", step("lost", "probe", "echo 0"));
+    format!(
+        "title: Lost data\nkind: dr\nrto_target_s: 30.0\nrpo_target_s: 1.0\n\n{nfr}\n\
+         steady_state_hypothesis:\n  title: The store answers\n  probes[1]:\n{probe}\
+         method[1]:\n{inject}",
+        probe = indented(&probe),
+        inject = inject(),
+    )
+}
+
+/// An rpo objective `operator` `threshold` on the data the probe `lost`
+/// reads lost.
+fn rpo_objective(operator: &str, threshold: &str) -> String {
+    format!(
+        "nfr[1]{{id,kind,metric,operator,threshold}}:\n  rpo,rpo,probe.lost.lost_s,{operator},{threshold}\n"
+    )
+}
+
+const NUMBER: &str = "    tolerance:\n      type: number\n";
+
+#[test]
+fn an_rpo_objective_on_the_data_a_number_probe_reads_lost_passes() {
+    let definition = rpo_experiment(NUMBER, &rpo_objective("lte", "1"));
+
+    let (passed, stdout, error) = validate(&Lab::with_state("ok"), &definition);
+
+    assert!(passed, "{stdout}{error}");
+    assert!(stdout.ends_with("\nValidation passed.\n"), "{stdout}");
+}
+
+#[test]
+fn an_rpo_objective_that_does_not_fit_its_probe_or_its_target_is_refused() {
+    let range = "    tolerance:\n      type: range\n      from: 0\n      to: 1\n";
+    for (tolerance, operator, threshold, reason) in [
+        (
+            "",
+            "lte",
+            "1",
+            "metric 'probe.lost.lost_s' reads the number the probe 'lost' prints, and its \
+             tolerance reads none: give the probe the tolerance type number",
+        ),
+        (
+            range,
+            "lte",
+            "1",
+            "the probe 'lost' has a range tolerance: data lost beyond it holds up the recovery \
+             and the RPO is not measured; give it the tolerance type number",
+        ),
+        (
+            NUMBER,
+            "gte",
+            "1",
+            "an rpo objective is met when at most threshold seconds are lost: use operator lte",
+        ),
+        (
+            NUMBER,
+            "lte",
+            "2.5",
+            "rpo_target_s is 1 and the threshold is 2.5: give both the same number",
+        ),
+    ] {
+        let definition = rpo_experiment(tolerance, &rpo_objective(operator, threshold));
+
+        let (passed, stdout, error) = validate(&Lab::with_state("ok"), &definition);
+
+        assert!(!passed, "{stdout}");
+        assert_eq!(error, format!("nfr objective 'rpo' is invalid: {reason}"));
+    }
+}
+
+/// An oha load of a minute shaped by `profile`, and an objective of
+/// `kind` on `metric`, which reads the windows of that load.
+fn load_objective(kind: &str, metric: &str, profile: &str) -> String {
+    format!(
+        "nfr[1]{{id,kind,metric,operator,threshold}}:\n  robust,{kind},{metric},lte,20\n\
+         load:\n  tool: oha\n  script: http://127.0.0.1:8080/\n  vus: 2\n  duration_s: 60\n\
+         {profile}"
+    )
+}
+
+const SOAK: &str = "  profile:\n    type: soak\n    sample_interval_s: 10\n";
+const SPIKE: &str = "  profile:\n    type: spike\n    peak_vus: 20\n    after_s: 20\n    hold_s: 10\n    sample_interval_s: 2\n";
+
+#[test]
+fn a_drift_objective_on_a_load_that_is_not_a_soak_is_refused_with_the_profile_it_needs() {
+    let definition = experiment_with(&load_objective("latency", "load.p95_drift_pct", SPIKE));
+
+    let (passed, stdout, error) = validate(&Lab::with_state("ok"), &definition);
+
+    assert!(!passed, "{stdout}");
+    assert_eq!(
+        error,
+        "nfr objective 'robust' is invalid: metric 'load.p95_drift_pct' needs a load with a \
+         soak profile, and this load has a spike profile"
+    );
+}
+
+#[test]
+fn a_spike_objective_on_a_load_that_is_not_a_spike_is_refused_with_the_profile_it_needs() {
+    let definition = experiment_with(&load_objective("recovery", "load.spike_recovery_s", SOAK));
+
+    let (passed, stdout, error) = validate(&Lab::with_state("ok"), &definition);
+
+    assert!(!passed, "{stdout}");
+    assert_eq!(
+        error,
+        "nfr objective 'robust' is invalid: metric 'load.spike_recovery_s' needs a load with a \
+         spike profile, and this load has a soak profile"
+    );
+}
+
+#[test]
+fn drift_and_spike_objectives_on_the_profiles_they_need_pass() {
+    for (kind, metric, profile) in [
+        ("latency", "load.p95_drift_pct", SOAK),
+        ("error_rate", "load.error_rate_drift", SOAK),
+        ("latency", "load.spike_recovery_s", SPIKE),
+        ("recovery", "load.spike_recovery_s", SPIKE),
+    ] {
+        let definition = experiment_with(&load_objective(kind, metric, profile));
+
+        let (passed, stdout, error) = validate(&Lab::with_state("ok"), &definition);
+
+        assert!(passed, "{kind} on {metric}: {stdout}{error}");
+    }
 }
 
 /// A step of the script plugin `lab-target` that takes down the node `node`.
@@ -404,4 +535,66 @@ fn init_refuses_a_plugin_that_is_not_installed_and_writes_nothing() {
     assert!(error.contains("lab-cache"), "{error}");
     assert!(error.contains("lab-queue, lab-target"), "{error}");
     assert!(!lab.path("experiment.toon").exists());
+}
+
+/// A regulatory block of DORA that names the requirement `id`.
+fn dora_block(id: &str) -> String {
+    format!(
+        "regulatory:
+  frameworks[1]: DORA
+  requirements[1]:
+    - id: {id}
+      description: Backup and restore tested
+      evidence: The restore of this run
+"
+    )
+}
+
+#[test]
+fn a_dora_requirement_the_registry_does_not_know_is_refused_with_the_nearest_id() {
+    let definition = experiment_with(&dora_block("dora.art12.9"));
+
+    let (passed, stdout, error) = validate(&Lab::with_state("ok"), &definition);
+
+    assert!(!passed, "{stdout}");
+    assert_eq!(
+        error,
+        "regulatory requirement: 'dora.art12.9' is not a requirement id of the DORA \
+         registry; did you mean 'dora.art12.1'?"
+    );
+}
+
+#[test]
+fn an_experiment_with_a_dora_requirement_the_registry_does_not_know_still_runs() {
+    let lab = Lab::with_state("ok");
+    std::fs::write(
+        lab.path("experiment.toon"),
+        experiment_with(&dora_block("dora.art12.9")),
+    )
+    .expect("experiment");
+
+    let output = lab
+        .command(&["run", "experiment.toon", "--no-ingest"])
+        .output()
+        .expect("run tumult");
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(lab.path("journal.toon").exists());
+}
+
+#[test]
+fn a_dora_requirement_in_an_old_form_passes_and_is_named_by_its_registry_id() {
+    let definition = experiment_with(&dora_block("Art. 12(1)"));
+
+    let (passed, stdout, error) = validate(&Lab::with_state("ok"), &definition);
+
+    assert!(passed, "{stdout}{error}");
+    assert!(
+        stdout.contains("Regulatory: mapped\n  Art. 12(1) is the DORA requirement dora.art12.1\n"),
+        "{stdout}"
+    );
 }

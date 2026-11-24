@@ -18,7 +18,9 @@ const MAX_WINDOW_VALUES: usize = 20_000;
 /// What every series of a load window is named after in `probe_samples`.
 const LOAD_SERIES_PREFIX: &str = "load.";
 
-/// The run itself. One row, or none for a run that left no journal.
+/// The run itself. One row, or none for a run that left no journal. Its
+/// recovery says whether the probes saw an outage, when it started and when
+/// the target was back: empty for a run stored before 3.0.4.
 const SUMMARY: &str = "\
 SELECT
     test_kind AS kind,
@@ -32,7 +34,10 @@ SELECT
         'rto_target_s': rto_target_s,
         'rto_measured_s': rto_measured_s,
         'rpo_target_s': rpo_target_s,
-        'rpo_measured_s': rpo_measured_s
+        'rpo_measured_s': rpo_measured_s,
+        'impact_observed': impact_observed,
+        'outage_started_at_ns': outage_started_at_ns,
+        'recovered_at_ns': recovered_at_ns
     } AS recovery
 FROM experiments
 WHERE experiment_id = $1";
@@ -61,7 +66,9 @@ ORDER BY
     started_at_ns,
     rowid";
 
-/// The objectives in the order the definition declared them.
+/// The objectives in the order the definition declared them. The verdict
+/// on the RTO says whether the run recovered, and a verdict whose numbers
+/// do not say why it is what it is gives its reason.
 const OBJECTIVES: &str = "\
 SELECT
     nfr_id,
@@ -72,7 +79,9 @@ SELECT
     observed,
     state,
     margin,
-    criticality
+    criticality,
+    recovered,
+    reason
 FROM nfr_verdicts
 WHERE experiment_id = $1
 ORDER BY rowid";

@@ -93,7 +93,7 @@ Set it with `tumult run --baseline-mode`.
 | `load_result` | What the load tool measured. |
 | `objectives` | A verdict per objective: met, breached or inconclusive. |
 | `halt` | The guard that stopped the run, and when. |
-| `analysis` | Only with an `estimate`: whether your guess was right, as 1 or 0. |
+| `analysis` | Only with an `estimate`: whether your guess was right. See [The estimate](experiment-format.md#the-estimate). |
 
 Read these with care:
 

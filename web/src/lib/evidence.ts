@@ -86,25 +86,52 @@ export interface RecoveryRow {
     measured: string;
 }
 
+const NOT_MEASURED = 'not measured';
+
 function recoveryRow(
     label: RecoveryRow['label'],
     target: number | null,
     measured: number | null,
+    unmeasured = NOT_MEASURED,
 ): RecoveryRow[] {
     if (target === null && measured === null) return [];
     return [
         {
             label,
             target: target === null ? 'not set' : `${fmtValue(target)} s`,
-            measured: measured === null ? 'not measured' : `${fmtValue(measured)} s`,
+            measured: measured === null ? unmeasured : `${fmtValue(measured)} s`,
         },
     ];
 }
 
-/** The recovery time and the recovery point of a run: each one that has a target or a measure. */
-export function recoveryRows(recovery: RunEvidence['recovery']): RecoveryRow[] {
+/**
+ * What the RTO row says when the run measured no recovery time: the time
+ * a run that did not recover watched, a lower bound, or the reason of the
+ * verdict on the RTO.
+ */
+function rtoUnmeasured(verdict: EvidenceObjective | undefined): string {
+    if (verdict === undefined) return NOT_MEASURED;
+    if (verdict.recovered === false && verdict.observed !== null) {
+        return `at least ${fmtValue(verdict.observed)} s, not recovered`;
+    }
+    return verdict.reason ?? NOT_MEASURED;
+}
+
+/**
+ * The recovery time and the recovery point of a run: each one that has a
+ * target or a measure. The RTO row reads the verdict on the RTO the run
+ * declares from `objectives`.
+ */
+export function recoveryRows(
+    recovery: Pick<
+        RunEvidence['recovery'],
+        'rto_target_s' | 'rto_measured_s' | 'rpo_target_s' | 'rpo_measured_s'
+    >,
+    objectives: EvidenceObjective[] = [],
+): RecoveryRow[] {
+    const rto = objectives.find((o) => o.nfr_id === 'rto' && o.kind === 'rto');
     return [
-        ...recoveryRow('RTO', recovery.rto_target_s, recovery.rto_measured_s),
+        ...recoveryRow('RTO', recovery.rto_target_s, recovery.rto_measured_s, rtoUnmeasured(rto)),
         ...recoveryRow('RPO', recovery.rpo_target_s, recovery.rpo_measured_s),
     ];
 }

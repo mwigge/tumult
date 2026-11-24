@@ -49,7 +49,7 @@ flowchart TD
 | `resilience.test.kind` | on the root span | |
 | target | `system`, `technology`, `environment`, `criticality`, `version` and `version_source` on the root span, from the `target` block; `type`, `name` and `component` on step spans | `type` is `process`, `native` or `script`. `version`, `version_source` and `name` are not in the standard. `tier` and `region` are not written |
 | fault | `type` and `name` on step spans; `blast_radius` on the root span | `type` is `injection` for an action and `observation` for a probe, not a value of the closed set. `blast_radius` is the free note of the definition. `subtype`, `severity`, `duration_s`, `reversible`, `plugin` and `action` are not written; the plugin is `resilience.plugin.name` |
-| outcome | `status`, `hypothesis_met` and `recovery_time_s` on the root span, the last two only when the run measured them | `recovery_time_s` runs from the outage the probes saw, not from the end of the fault. The other outcome attributes are not written |
+| outcome | `status`, `hypothesis_met`, `recovery_time_s`, `impact_observed`, `recovered`, `rto_target_s`, `rto_state`, `rpo_target_s`, `rpo_measured_s` and `rpo_state` on the root span. Each one but `status` only when the run has that fact | `recovery_time_s` runs from the outage the probes saw, not from the end of the fault. `rto_state` and `recovered` come from the verdict on `rto_target_s`. `rpo_state` comes from the verdict that measured the data lost. The other outcome attributes are not written |
 | load | on the `resilience.load` span | also `script`, `latency_p50_ms`, `latency_p99_ms`, `total_requests`, `aborted`, `truncated`, the window counts, `reason` and `error` |
 | estimate, during, after, analysis | no span attribute | the journal keeps them as `estimate`, `during_result`, `post_result` and `analysis` |
 | baseline, safety, environment, regulatory, taxonomy, scores | nothing | the journal keeps the `regulatory` block of the definition |
@@ -126,6 +126,13 @@ These four groups must be on every experiment.
 | `resilience.outcome.deviation_magnitude` | `float` | Conditional | Size of the deviation in sigma, when one was detected | |
 | `resilience.outcome.recovery_time_s` | `float` | Recommended | Seconds until the target recovered | |
 | `resilience.outcome.mttr_s` | `float` | Recommended | Mean time to recovery, the same as `resilience.post.recovery_time_s` | |
+| `resilience.outcome.impact_observed` | `boolean` | Recommended | Whether the probes saw an outage after the fault started | |
+| `resilience.outcome.recovered` | `boolean` | Conditional | Whether the target came back from the outage while the run watched, when the run has an RTO and saw an outage | |
+| `resilience.outcome.rto_target_s` | `float` | Conditional | The recovery time objective, when the run declares one | |
+| `resilience.outcome.rto_state` | `string` | Conditional | The verdict on the RTO, when the run declares one | `met`, `breached`, `inconclusive` |
+| `resilience.outcome.rpo_target_s` | `float` | Conditional | The recovery point objective, when the run declares one | |
+| `resilience.outcome.rpo_measured_s` | `float` | Conditional | Seconds of data lost, when the run measured them | |
+| `resilience.outcome.rpo_state` | `string` | Conditional | The verdict on the RPO, when the run has one | `met`, `breached`, `inconclusive` |
 | `resilience.outcome.data_loss` | `boolean` | Recommended | Whether data was lost | |
 | `resilience.outcome.rollback_executed` | `boolean` | Required | Whether a rollback ran | |
 | `resilience.outcome.rollback_success` | `boolean` | Conditional | Whether the rollback worked, when one ran | |
@@ -207,8 +214,9 @@ probe did not come back, the time of its last failing sample), Required;
 
 | Attribute | Type | Level | Meaning | Values |
 |---|---|---|---|---|
-| `resilience.analysis.estimate_accuracy` | `float` | Recommended | How well the estimate matched, `0.0` to `1.0` | |
-| `resilience.analysis.estimate_recovery_delta` | `float` | Recommended | Predicted minus actual recovery time; positive means faster than predicted | |
+| `resilience.analysis.estimate_accuracy` | `float` | Recommended | `1` when the predicted outcome is the outcome the run measured, else `0`. Empty for a run that failed or was stopped | |
+| `resilience.analysis.estimate_recovery_delta` | `float` | Recommended | Measured minus predicted recovery time; positive means slower than predicted | |
+| `resilience.analysis.estimate_data_loss_correct` | `boolean` | Optional | Whether the predicted data loss is what the measured RPO shows | |
 | `resilience.analysis.trend` | `string` | Recommended | Trend against earlier runs | `improving`, `stable`, `degrading` |
 | `resilience.analysis.resilience_score` | `float` | Recommended | `1` when the run completed, else `0` | |
 | `resilience.analysis.regulatory_evidence` | `string[]` | Recommended | Ids of the evidence the run produced, such as report ids | |

@@ -334,6 +334,7 @@ fn a_game_day_waits_for_its_load_and_no_longer() {
         peak_vus: 4,
         after_s: 1.0,
         hold_s: 1.0,
+        sample_interval_s: None,
     };
 
     let journal = run(

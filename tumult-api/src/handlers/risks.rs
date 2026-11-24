@@ -2,8 +2,9 @@
 //!
 //! * `GET /api/risks?env=` — the ranked findings of [`tumult_risk::scan`]
 //!   over the lake (latest evidence per target and discipline, objective
-//!   verdicts, the span call graph, registered definitions), the optional
-//!   Kubernetes manifests directory and the suppression table.
+//!   verdicts, the span call graph, registered definitions, planned manual
+//!   exercises, the DR test register), the optional Kubernetes manifests
+//!   directory and the suppression table.
 //! * `GET /api/posture?env=` — the continuous posture score next to the
 //!   risk summary, the coverage matrix and the top findings: the opening
 //!   view of the `/posture` page.
@@ -24,10 +25,10 @@ use serde_json::{json, Value};
 use tumult_compliance::dora::HouseParams;
 use tumult_compliance::scoring::{ExperimentScore, RunState};
 use tumult_core::types::discipline;
-use tumult_lake::{scope, Reader};
+use tumult_lake::{scope, DrScope, PlanFilter, PlanStatus, Reader};
 use tumult_risk::{
-    Definition, Dependency, ExperimentLatest, Inputs, KindEvidence, Report, Suppression,
-    TargetEvidence, Verdict,
+    Definition, Dependency, DrTestDue, ExperimentLatest, Inputs, KindEvidence, PlannedExercise,
+    Report, Suppression, TargetEvidence, Verdict,
 };
 
 use crate::auth::Principal;
@@ -53,7 +54,12 @@ pub(crate) struct SuppressRequest {
     actor: Option<String>,
 }
 
-fn envs_for(principal: &Principal, env: Option<String>) -> Result<Vec<String>, ApiError> {
+/// The environments a read of `principal` covers: its scopes, or `env`
+/// alone when it is one of them (`403` when it is not).
+pub(crate) fn envs_for(
+    principal: &Principal,
+    env: Option<String>,
+) -> Result<Vec<String>, ApiError> {
     let Some(env) = env else {
         return Ok(principal.env_scopes.clone());
     };
@@ -310,6 +316,66 @@ fn suppressions(reader: &Reader) -> Result<Vec<Suppression>, String> {
         .collect())
 }
 
+/// The planned manual exercises in `envs` (every environment when empty).
+/// A fulfilled or cancelled plan is never due.
+fn planned_exercises(reader: &Reader, envs: &[String]) -> Result<Vec<PlannedExercise>, String> {
+    let filter = PlanFilter {
+        status: Some(PlanStatus::Planned.as_str().into()),
+        ..PlanFilter::default()
+    };
+    let rows = reader.manual_plans(&filter).map_err(|e| e.to_string())?;
+    Ok(rows
+        .iter()
+        .filter(|row| {
+            envs.is_empty()
+                || str_of(row, "target_environment").is_some_and(|env| envs.contains(&env))
+        })
+        .filter_map(|row| {
+            Some(PlannedExercise {
+                id: str_of(row, "id")?,
+                name: str_of(row, "name").unwrap_or_default(),
+                exercise_type: str_of(row, "exercise_type").unwrap_or_default(),
+                target: str_of(row, "target_system"),
+                environment: str_of(row, "target_environment"),
+                owner: str_of(row, "owner").unwrap_or_default(),
+                due_at_ns: row.get("due_at_ns").and_then(Value::as_i64)?,
+            })
+        })
+        .collect())
+}
+
+/// The DR test register in `envs` (every environment when empty) as of
+/// `as_of_ns`, with the manual types the house counts as DR.
+fn dr_register(
+    reader: &Reader,
+    as_of_ns: i64,
+    envs: &[String],
+    params: &HouseParams,
+) -> Result<Vec<DrTestDue>, String> {
+    let scope = DrScope {
+        dr_types: params.dr_exercise_types(),
+        envs: envs.to_vec(),
+    };
+    let rows = reader
+        .dr_due_register(&scope, as_of_ns)
+        .map_err(|e| e.to_string())?;
+    Ok(rows
+        .iter()
+        .filter_map(|row| {
+            Some(DrTestDue {
+                target: str_of(row, "target_system")?,
+                environment: str_of(row, "target_environment"),
+                last_test_at_ns: row.get("last_test_at_ns").and_then(Value::as_i64),
+                last_test_id: str_of(row, "last_test_id"),
+                interval_days: row.get("interval_days").and_then(Value::as_i64)?,
+                interval_source: str_of(row, "interval_source").unwrap_or_default(),
+                next_due_at_ns: row.get("next_due_at_ns").and_then(Value::as_i64),
+                plan_id: str_of(row, "plan_id"),
+            })
+        })
+        .collect())
+}
+
 /// Assemble the scanner inputs from the lake and the manifests directory.
 /// `params` are the house parameters in force: they give the discipline
 /// of a manual record.
@@ -342,6 +408,8 @@ pub(crate) fn gather(
         workloads,
         budgets,
         suppressions: suppressions(reader)?,
+        plans: planned_exercises(reader, envs)?,
+        dr_register: dr_register(reader, as_of_ns, envs, params)?,
     })
 }
 
@@ -714,6 +782,7 @@ functions:
                 attestation: "attested".into(),
                 renewal_due_ns: None,
                 framework_refs: vec![],
+                exercise: tumult_lake::ExerciseDetail::default(),
             };
             let id = writer.create_manual_draft(&record).expect("draft");
             writer.submit_manual(&id, None, "alice").expect("submit");
