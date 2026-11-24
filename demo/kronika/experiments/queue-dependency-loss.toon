@@ -1,5 +1,5 @@
 title: message-queue dependency loss — restart fails
-description: Simulate losing a queue dependency's data dir and a failing restart script — designed to FAIL so the rollback restores the dependency
+description: Simulate losing a queue dependency's data dir and a failing restart script — designed to FAIL so the rollback restores the dependency. The queue-data control makes the data dir before the run, so the steady-state probe only reads and sees the loss.
 
 tags[2]: dependency, resilience
 kind: dr
@@ -9,6 +9,14 @@ target:
   environment: demo
 rto_target_s: 30
 
+controls[1]:
+  - name: queue-data
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "case \"$TUMULT_CONTROL_EVENT\" in before_experiment) mkdir -p /tmp/kd-demo/queue/data; echo ready;; esac"
+      timeout_s: 5.0
+
 steady_state_hypothesis:
   title: Queue dependency data dir is present
   probes[1]:
@@ -17,7 +25,7 @@ steady_state_hypothesis:
       provider:
         type: process
         path: sh
-        arguments[2]: "-c", "mkdir -p /tmp/kd-demo/queue/data && echo healthy"
+        arguments[2]: "-c", "[ -d /tmp/kd-demo/queue/data ] && echo healthy || echo missing"
         timeout_s: 5.0
       tolerance:
         type: regex

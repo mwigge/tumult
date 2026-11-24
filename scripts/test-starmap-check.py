@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Hermetic checks of scripts/starmap-check.py against a fake daemon, and of
-scripts/demo-check.sh (the sweep, the seed and the Star Map part) against a
-fake `docker`."""
+scripts/demo-check.sh (the sweep, the examples, the demo GameDay, the seed
+and the Star Map part) against a fake `docker`."""
 
 import fcntl
 import json
@@ -25,13 +25,17 @@ COMPOSE_FILE = Path(__file__).parent.parent / "docker" / "docker-compose.kronika
 PROJECT = "tumult-demo-check-kronika"
 # Records each call (arguments and the Kronika variables) and plays the
 # compose subcommands demo-check.sh uses. The seed leaves the journals of
-# FAKE_JOURNALS/seed in the directory mounted at /tmp/journals; `exec cat`
-# of a sweep journal prints the one of that name in FAKE_JOURNALS/sweep, and
-# from its second time on the one with `.again` after its name, if there is one.
+# FAKE_JOURNALS/seed in the directory mounted at /tmp/journals. `exec cat`
+# of a journal prints the one of that name in the directory of FAKE_JOURNALS
+# that stands for its directory in the container: sweep for /journals, where
+# the sweep and the examples write, and gameday for the directory the demo
+# GameDay runs in. From its second time on it prints the one with `.again`
+# after its name, if there is one. A run in the demo exits FAKE_RUN_EXIT.
 FAKE_DOCKER = r"""
 import json, os, shutil, sys, time
 from pathlib import Path
 args = sys.argv[1:]
+in_container = {"/journals": "sweep", "/tmp/demo-check-gameday": "gameday"}
 env = {k: v for k, v in os.environ.items() if k.startswith("KRONIKA_")}
 with open(os.environ["FAKE_DOCKER_RECORD"], "a") as out:
     out.write(json.dumps({"args": args, "env": env}) + "\n")
@@ -43,7 +47,10 @@ if "run" in args and "exec" not in args:
     for journal in (journals / "seed").iterdir():
         shutil.copy(journal, mount.rsplit(":", 1)[0])
 if "exec" in args and "cat" in args:
-    wanted = journals / "sweep" / Path(args[-1]).name
+    path = Path(args[-1])
+    if str(path.parent) not in in_container:
+        sys.exit(1)
+    wanted = journals / in_container[str(path.parent)] / path.name
     again = wanted.with_name(wanted.name + ".again")
     with open(os.environ["FAKE_DOCKER_RECORD"]) as record:
         cats = [line for line in record if json.loads(line)["args"][-2:] == args[-2:]]
@@ -54,6 +61,9 @@ if "exec" in args and "cat" in args:
     sys.stdout.write(wanted.read_text())
 if "exec" in args and "run" in args:
     print("Status: " + os.environ.get("FAKE_RUN_EXIT", "0"))
+    sys.exit(int(os.environ.get("FAKE_RUN_EXIT", "0")))
+if "exec" in args and "tumult gameday run" in args[-1]:
+    print("GameDay score: 0.81\n  Recovery:         0.75")
     sys.exit(int(os.environ.get("FAKE_RUN_EXIT", "0")))
 if "logs" in args:
     print("ResourceSpans")
@@ -77,6 +87,18 @@ SWEEP_EXPECTATIONS = {
     "demo-guard-halt.toon": {"proof": "demo-check", "expect": HALTED},
     "demo-elsewhere.toon": {"proof": "validate-only", "reason": "not in the demo"},
 }
+EXAMPLE_EXPECTATIONS = {
+    "pg-failover.toon": {"proof": "demo-check", "expect": COMPLETED},
+    "pg-load.toon": {"proof": "examples-proof", "expect": COMPLETED},
+    "k8s-zone.toon": {"proof": "validate-only", "reason": "needs a cluster"},
+}
+# demo-check.sh runs the demo GameDay by this name.
+GAMEDAY = "platform-resilience.gameday.toon"
+GAMEDAY_STEPS = {
+    "freeze.toon": {"proof": "demo-check", "within": GAMEDAY, "expect": COMPLETED},
+    "partition.toon": {"proof": "demo-check", "within": GAMEDAY, "expect": DEVIATED},
+}
+GAMEDAY_SCORE = {"status": "PARTIAL", "recovery_compliance": 0.75}
 
 
 def journal(expect):
@@ -91,6 +113,32 @@ def journal(expect):
         f"steady_state_after:{after_block}\n"
         f"rollback_results[{rollbacks}]:\n{undo}"
         "rollback_failures: 0\n"
+    )
+
+
+def record(expect):
+    """A journal as one record of a GameDay journal."""
+    first, *rest = journal(expect).splitlines()
+    return "".join([f"  - {first}\n", *(f"    {line}\n" for line in rest)])
+
+
+def gameday_definition(steps):
+    """A GameDay file that runs the steps in order."""
+    paths = "".join(f"  - path: {name}\n" for name in steps)
+    return f"title: Platform resilience\nexperiments[{len(steps)}]:\n{paths}"
+
+
+def gameday_journal(steps, score):
+    """The lines of a GameDay journal: a record of each step, and the score."""
+    records = "".join(record(step["expect"]) for step in steps.values())
+    return (
+        "title: Platform resilience\n"
+        f"experiment_journals[{len(steps)}]:\n{records}"
+        "load_result: null\n"
+        "resilience_score:\n  pass_rate: 0.5\n"
+        f"  recovery_compliance: {score['recovery_compliance']}\n"
+        "  overall: 0.8125\n"
+        f"compliance_status: {score['status']}\n"
     )
 
 
@@ -340,6 +388,9 @@ class Checkout:
         self.journals = Path(directory) / "journals"
         self.expect("demo/kronika/experiments", "seed", SEED_EXPECTATIONS)
         self.expect("demo/experiments", "sweep", SWEEP_EXPECTATIONS)
+        # The examples write their journals to /journals, as the sweep does.
+        self.expect("examples", "sweep", EXAMPLE_EXPECTATIONS)
+        self.expect_gameday(GAMEDAY_STEPS, GAMEDAY_SCORE)
         self.bin = Path(directory) / "bin"
         self.bin.mkdir()
         docker = self.bin / "docker"
@@ -358,10 +409,24 @@ class Checkout:
         (self.root / directory / "expectations.json").write_text(
             json.dumps({"experiments": experiments})
         )
-        (self.journals / kind).mkdir(parents=True)
+        (self.journals / kind).mkdir(parents=True, exist_ok=True)
         for name, entry in experiments.items():
             if "expect" in entry:
                 self.journal(kind, name).write_text(journal(entry["expect"]))
+
+    def expect_gameday(self, steps, score):
+        """Write the expectations and the file of the demo GameDay, and the
+        journal of its run."""
+        directory = self.root / "demo" / "kronika" / "gamedays"
+        directory.mkdir(parents=True)
+        expect = {"load_result": False, "score": score}
+        gamedays = {GAMEDAY: {"proof": "demo-check", "expect": expect}}
+        (directory / "expectations.json").write_text(
+            json.dumps({"experiments": steps, "gamedays": gamedays})
+        )
+        (directory / GAMEDAY).write_text(gameday_definition(steps))
+        (self.journals / "gameday").mkdir()
+        self.journal("gameday", GAMEDAY).write_text(gameday_journal(steps, score))
 
     def journal(self, kind, name):
         """Where the fake docker keeps the journal of one experiment."""
@@ -417,10 +482,12 @@ class Checkout:
         output, _ = process.communicate(timeout=120)
         return process.returncode, output
 
-    def runs(self):
-        """The experiment of each `tumult run` in the demo, in order."""
+    def runs(self, directory="/demo/experiments"):
+        """The experiment of each `tumult run` of `directory` in the demo, in
+        order."""
         ran = [c["args"] for c in self.calls() if "tumult" in c["args"]]
-        return [args[args.index("run") + 1] for args in ran]
+        paths = [args[args.index("run") + 1] for args in ran]
+        return [path for path in paths if path.startswith(f"{directory}/")]
 
 
 def verb(call):
@@ -761,6 +828,121 @@ class DemoCheckSweepTests(unittest.TestCase):
         self.assertEqual(runs, ["/demo/experiments/demo-net.toon"])
         self.assertNotIn("FAIL", output)
         self.assertEqual(left, [])
+
+
+STANDBY_OUT = ["rm", "-sfv", "demo-postgres-standby"]
+PAIR_UP = ["up", "-d", "--wait", "demo-postgres", "demo-postgres-standby"]
+
+
+def example_steps(calls):
+    """What the examples step did in the demo, in order: each reset of the
+    PostgreSQL pair, and each run of an example."""
+    steps = []
+    for args in (call["args"] for call in calls):
+        ran = args[args.index("run") + 1] if "tumult" in args else ""
+        if args[3:] in (STANDBY_OUT, PAIR_UP):
+            steps.append(" ".join(args[3:]))
+        elif ran.startswith("/demo/examples/"):
+            steps.append(ran)
+    return steps
+
+
+def kept_files(left, part):
+    """The names of the files of `part` in the one directory that was kept."""
+    return sorted(path.name for path in left[0].glob(f"{part}/*")) if left else []
+
+
+class DemoCheckExamplesTests(unittest.TestCase):
+    def test_the_examples_of_this_proof_run_each_on_a_fresh_pair(self):
+        with tempfile.TemporaryDirectory() as directory, FakeDaemon() as daemon:
+            checkout = Checkout(directory)
+            status, output = checkout.sweep(daemon)
+            steps = example_steps(checkout.calls())
+            left = checkout.left_behind()
+        self.assertEqual(status, 0, output)
+        reset = [" ".join(STANDBY_OUT), " ".join(PAIR_UP)]
+        self.assertEqual(
+            steps, [*reset, "/demo/examples/pg-failover.toon", *reset], output
+        )
+        self.assertRegex(output, r"PASS.*example: pg-failover\.toon")
+        self.assertNotIn("FAIL", output)
+        self.assertEqual(left, [])
+
+    def test_an_example_journal_that_is_not_as_expected_fails_and_is_kept(self):
+        with tempfile.TemporaryDirectory() as directory, FakeDaemon() as daemon:
+            checkout = Checkout(directory)
+            checkout.journal("sweep", "pg-failover.toon").write_text(journal(DEVIATED))
+            status, output = checkout.sweep(daemon)
+            left = checkout.left_behind()
+            kept = kept_files(left, "examples")
+        self.assertEqual(status, 1, output)
+        self.assertRegex(output, r"FAIL.*example: pg-failover\.toon")
+        self.assertIn("status: expected completed, journal has deviated", output)
+        self.assertIn("1 check(s) failed", output)
+        self.assertEqual(len(left), 1, output)
+        self.assertIn(f"kept in {left[0]}", output)
+        self.assertIn("pg-failover.journal.toon", kept)
+        self.assertIn("pg-failover.log", kept)
+
+    def test_an_example_that_leaves_no_journal_fails_the_check(self):
+        with tempfile.TemporaryDirectory() as directory, FakeDaemon() as daemon:
+            checkout = Checkout(directory)
+            checkout.journal("sweep", "pg-failover.toon").unlink()
+            status, output = checkout.sweep(daemon)
+        self.assertEqual(status, 1, output)
+        self.assertRegex(output, r"FAIL.*example: pg-failover\.toon")
+        self.assertIn("no journal pg-failover.journal.toon", output)
+        self.assertIn("1 check(s) failed", output)
+
+
+class DemoCheckGameDayTests(unittest.TestCase):
+    def test_the_demo_gameday_runs_in_the_demo_and_its_journal_is_judged(self):
+        with tempfile.TemporaryDirectory() as directory, FakeDaemon() as daemon:
+            checkout = Checkout(directory)
+            status, output = checkout.sweep(daemon)
+            shells = [c["args"][-1] for c in checkout.calls() if "sh" in c["args"]]
+            left = checkout.left_behind()
+        self.assertEqual(status, 0, output)
+        self.assertEqual(len(shells), 1, shells)
+        self.assertIn(
+            f"tumult gameday run /tmp/demo-check-gameday/{GAMEDAY}", shells[0]
+        )
+        self.assertIn("GameDay score 0.81, 0.75 recovery", output)
+        for line in ("", ": freeze.toon", ": partition.toon"):
+            self.assertRegex(
+                output, rf"(?m)PASS.*gameday: {re.escape(GAMEDAY + line)}$"
+            )
+        self.assertNotIn("FAIL", output)
+        self.assertEqual(left, [])
+
+    def test_a_gameday_journal_that_is_not_as_expected_fails_and_is_kept(self):
+        with tempfile.TemporaryDirectory() as directory, FakeDaemon() as daemon:
+            checkout = Checkout(directory)
+            compliant = {**GAMEDAY_SCORE, "status": "COMPLIANT"}
+            checkout.journal("gameday", GAMEDAY).write_text(
+                gameday_journal(GAMEDAY_STEPS, compliant)
+            )
+            status, output = checkout.sweep(daemon)
+            left = checkout.left_behind()
+            kept = kept_files(left, "gameday")
+        self.assertEqual(status, 1, output)
+        self.assertRegex(output, rf"(?m)FAIL.*gameday: {re.escape(GAMEDAY)}$")
+        self.assertIn("score status: expected PARTIAL, journal has COMPLIANT", output)
+        self.assertIn("1 check(s) failed", output)
+        self.assertEqual(len(left), 1, output)
+        self.assertIn(f"kept in {left[0]}", output)
+        self.assertIn("platform-resilience.gameday.journal.toon", kept)
+        self.assertIn("platform-resilience.log", kept)
+
+    def test_a_gameday_that_leaves_no_journal_fails_the_check(self):
+        with tempfile.TemporaryDirectory() as directory, FakeDaemon() as daemon:
+            checkout = Checkout(directory)
+            checkout.journal("gameday", GAMEDAY).unlink()
+            status, output = checkout.sweep(daemon)
+        self.assertEqual(status, 1, output)
+        self.assertRegex(output, rf"(?m)FAIL.*gameday: {re.escape(GAMEDAY)}$")
+        self.assertIn("no journal platform-resilience.gameday.journal.toon", output)
+        self.assertIn("1 check(s) failed", output)
 
 
 if __name__ == "__main__":

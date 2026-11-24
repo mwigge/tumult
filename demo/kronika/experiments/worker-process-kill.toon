@@ -1,5 +1,5 @@
 title: worker-process kill — disruption detected and recovered
-description: Kill a running background worker, verify the absence is detected, restart it and confirm it runs again (tumult process-kill pattern, procps-free). The worker-lifecycle control starts the worker before the experiment and stops it afterwards, so the steady-state probe only reads.
+description: Kill a running background worker, hold the outage for 2 s so the steady-state probe sees it, verify the absence is detected, restart it and confirm it runs again (tumult process-kill pattern, procps-free). The worker-lifecycle control starts the worker before the experiment and stops it afterwards, so the steady-state probe only reads.
 
 tags[2]: process, resilience
 kind: chaos
@@ -38,6 +38,7 @@ method[3]:
       path: sh
       arguments[2]: "-c", "p=$(cat /tmp/kd-demo/proc/worker.pid); kill $p || exit 1; i=0; while kill -0 $p 2>/dev/null && [ $i -lt 50 ]; do sleep 0.1; i=$((i+1)); done; echo killed"
       timeout_s: 10.0
+    pause_after_s: 2.0
   - name: verify-worker-gone
     activity_type: probe
     provider:

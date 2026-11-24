@@ -309,6 +309,13 @@ async fn a_name_filter_keeps_manual_records_inside_the_scope() {
         let record = named_evidence(name, env);
         let (status, made) = post_auth(&srv.base, "/api/manual/experiments", &admin, record).await;
         assert_eq!(status, 201, "{made}");
+        // A draft is not on the experiments list; a submitted record is.
+        let submit = format!(
+            "/api/manual/experiments/{}/submit",
+            made["id"].as_str().unwrap()
+        );
+        let (status, body) = post_auth(&srv.base, &submit, &admin, json!({})).await;
+        assert_eq!(status, 200, "{body}");
     }
     let path = "/api/experiments?name=it%27s%20a%20%22drill%22";
 

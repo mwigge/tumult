@@ -41,8 +41,9 @@ FROM rust:1.92.0-bookworm AS runtime
 
 # Install Docker CLI + tools needed by script plugins (docker exec, curl, ssh)
 # The bookworm repos are already cached in this image — no network fetch needed
+# psql is for the PostgreSQL plugin: the demo fails a database over with it.
 RUN apt-get update -qq && apt-get install -y --no-install-recommends \
-    docker.io openssh-client curl wget psmisc procps tini && \
+    docker.io openssh-client curl wget psmisc procps tini postgresql-client && \
     rm -rf /var/lib/apt/lists/* /usr/local/cargo /usr/local/rustup
 
 COPY --from=builder /build/target/release/tumult /usr/local/bin/

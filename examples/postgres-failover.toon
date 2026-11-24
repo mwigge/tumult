@@ -1,10 +1,10 @@
-title: PostgreSQL failover — kill connections and verify recovery
-description: Verify PG handles connection termination gracefully
+title: PostgreSQL failover to its streaming standby
+description: Disaster recovery test of the demo database. Stop the primary, promote its streaming standby with the Postgres plugin, and check that the standby takes writes. The steady state reads the demo app, whose database address names both servers and asks for the one that takes writes, so the app follows the standby after the promote. The RTO runs from the first read that saw the outage to the read where the app was back. It runs in the demo stack, and make demo-check sets the pair back after it.
 
-tags[2]: postgres, resilience
+tags[4]: postgres, dr, failover, demo
 kind: dr
 target:
-  system: postgres
+  system: demo-postgres
   technology: postgresql
   environment: demo
 rto_target_s: 30
@@ -17,33 +17,85 @@ nfr[1]:
     criticality: blocking
 
 steady_state_hypothesis:
-  title: PostgreSQL accepts queries
+  title: The demo app reaches a database that takes writes
   probes[1]:
-    - name: pg-query
+    - name: app-database
       activity_type: probe
       provider:
         type: process
         path: sh
-        arguments[2]: "-c", "docker exec docker-postgres-1 psql -U tumult -d tumult_test -t -c 'SELECT version()' | head -1"
-        timeout_s: 10.0
+        arguments[2]: "-c", "curl -s -o /dev/null -w '%{http_code}' --max-time 3 http://demo-app:8080/health"
+        timeout_s: 5.0
       tolerance:
         type: regex
-        pattern: "PostgreSQL"
+        pattern: "^200$"
 
-method[2]:
-  - name: pg-connection-count
+method[5]:
+  - name: stop-the-primary
+    activity_type: action
+    provider:
+      type: script
+      plugin: tumult-db-postgres
+      function: stop-primary
+      arguments:
+        pg_host: demo-postgres
+        pg_user: demo
+        pg_password: demo
+        container_id: demo-postgres
+      timeout_s: 30.0
+  - name: clients-lost-the-database
     activity_type: probe
     provider:
       type: process
       path: sh
-      arguments[2]: "-c", "docker exec docker-postgres-1 psql -U tumult -d tumult_test -t -c 'SELECT count(*) FROM pg_stat_activity' | tr -d ' \n'"
-      timeout_s: 10.0
-  - name: pg-kill-idle
+      arguments[2]: "-c", "i=0; until [ \"$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 http://demo-app:8080/health)\" = 503 ]; do i=$((i+1)); [ $i -ge 20 ] && echo still-up && exit 0; sleep 0.5; done; echo lost"
+      timeout_s: 30.0
+    tolerance:
+      type: regex
+      pattern: "^lost$"
+    pause_after_s: 2.0
+  - name: promote-the-standby
     activity_type: action
     provider:
-      type: process
-      path: sh
-      arguments[2]: "-c", "docker exec docker-postgres-1 psql -U tumult -d tumult_test -c \"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE state='idle' AND pid != pg_backend_pid() LIMIT 2\""
-      timeout_s: 10.0
+      type: script
+      plugin: tumult-db-postgres
+      function: promote-replica
+      arguments:
+        pg_host: demo-postgres-standby
+        pg_user: demo
+        pg_password: demo
+      timeout_s: 90.0
+  - name: write-to-the-new-primary
+    activity_type: action
+    provider:
+      type: script
+      plugin: tumult-db-postgres
+      function: write-markers
+      arguments:
+        pg_host: demo-postgres-standby
+        pg_user: demo
+        pg_password: demo
+        pg_database: orders
+        ledger_path: /tmp/postgres-failover.ledger
+        marker_count: 3
+        interval_ms: 200
+      timeout_s: 30.0
+  - name: the-new-primary-kept-the-writes
+    activity_type: probe
+    provider:
+      type: script
+      plugin: tumult-db-postgres
+      function: markers-lost
+      arguments:
+        pg_host: demo-postgres-standby
+        pg_user: demo
+        pg_password: demo
+        pg_database: orders
+        ledger_path: /tmp/postgres-failover.ledger
+      timeout_s: 30.0
+    tolerance:
+      type: range
+      from: 0
+      to: 0
 
 rollbacks[0]:

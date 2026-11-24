@@ -88,9 +88,13 @@ gives the same hash. Now try more:
 
 | Experiment | Command |
 |---|---|
-| Kill PostgreSQL connections | `tumult run examples/postgres-failover.toon --journal-path postgres.journal.toon` |
+| Kill PostgreSQL connections | `tumult run gamedays/pg-connection-kill.toon --journal-path postgres.journal.toon` |
 | Add 200 ms network delay | `tumult run examples/pumba-latency.toon --journal-path pumba.journal.toon` |
 | Stress a host over SSH | `make ssh-key`, then `tumult run examples/ssh-remote.toon --journal-path ssh.journal.toon` |
+
+A PostgreSQL failover to a standby needs the demo stack:
+`make demo-check` runs `examples/postgres-failover.toon` there. See
+[the demo](https://github.com/mwigge/tumult/blob/main/demo/README.md#the-dr-example-and-the-demo-gameday).
 
 ## 4. Look at the results
 

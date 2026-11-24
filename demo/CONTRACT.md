@@ -21,6 +21,7 @@ value here without updating every component that references it.
 
 ## Services (name → purpose → host port)
 - `demo-postgres` — Postgres 16 the app depends on → 5433:5432
+- `demo-postgres-standby`: a streaming standby of demo-postgres, the target of `examples/postgres-failover.toon`, with no host port
 - `demo-app` — purpose-built axum order service, OTel-instrumented → 8080:8080
 - `demo-sshd` — sshd container as the ssh fault target (reuse docker/Dockerfile.sshd) → 2222:22
 - `signoz` — observability UI (traces+metrics+dashboards) → 3301:8080
@@ -34,6 +35,7 @@ value here without updating every component that references it.
 - App → collector OTLP: `OTEL_EXPORTER_OTLP_ENDPOINT=http://tumult-collector:4318`
 - App service name: `demo-app`; control panel service name: `demo-control-panel`
 - Postgres: db `orders`, user `demo`, password `demo` (dev-only)
+- App → Postgres: `DATABASE_URL` names both servers of the pair with `target_session_attrs=read-write`, so the app follows the standby after a failover
 
 ## demo-app HTTP surface (axum)
 - `GET /health` → 200 `{status:"ok"}` when DB reachable, 503 otherwise
@@ -47,7 +49,13 @@ value here without updating every component that references it.
 `demo/experiments/` holds 13 experiments targeting the demo stack.
 `expectations.json` in that directory says what the journal of each must hold.
 `make demo-check` runs all 13, runs the first once more in the same stack, and
-compares each journal with it. `make demo`
+compares each journal with it. It then runs `examples/postgres-failover.toon`
+(its entry in `examples/expectations.json` names the proof `demo-check`) on a
+fresh Postgres pair, and the demo GameDay
+`demo/kronika/gamedays/platform-resilience.gameday.toon` with the CLI, and
+compares their journals with their expectations. `tumult-mcp` mounts
+`examples/` at `/demo/examples` and `demo/kronika/` at `/demo/kronika` for
+them. `make demo`
 warms the dashboards with one per domain, named `demo-<domain>.toon`:
 - `demo-net.toon` — tumult-net userspace proxy: latency in front of demo-app
 - `demo-postgres.toon` — `pg_terminate_backend` through `docker exec`: kill connections

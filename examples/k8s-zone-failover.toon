@@ -1,5 +1,5 @@
 title: Zone failover — drain one zone's node and verify the service stays up
-description: Disaster-recovery drill for a multi-zone deployment: cordon and drain the node that carries the zone-a replicas, verify the deployment recovers on the remaining zones inside the recovery objective, then uncordon.
+description: Disaster-recovery drill for a multi-zone deployment: cordon and drain the node that carries the zone-a replicas, then watch the deployment come back on the remaining zones inside the recovery objective. The RTO runs from the first read that saw the deployment short of ready replicas to the read where it was ready again. The recovery window of 180 s is longer than the RTO of 120 s, so a slow failover is measured and not cut short. The rollback uncordons the node.
 
 tags[3]: kubernetes, dr, failover
 kind: dr
@@ -8,17 +8,14 @@ target:
   technology: kubernetes
   environment: staging
 rto_target_s: 120
+recovery:
+  window_s: 180
+  interval_s: 2
 configuration:
   zone_a_node:
     type: env
     key: CHAOS_ZONE_A_NODE
-nfr[2]:
-  - id: post-availability
-    kind: availability
-    metric: post.availability
-    operator: gte
-    threshold: 0.95
-    criticality: blocking
+nfr[1]:
   - id: during-availability
     kind: availability
     metric: during.availability
@@ -54,7 +51,7 @@ steady_state_hypothesis:
         type: regex
         pattern: "true"
 
-method[3]:
+method[2]:
   - name: cordon-zone-a-node
     activity_type: action
     provider:
@@ -72,19 +69,6 @@ method[3]:
       arguments:
         name: ${config.zone_a_node}
         grace_period_seconds: 30
-    pause_after_s: 20.0
-  - name: checkout-recovered-elsewhere
-    activity_type: probe
-    provider:
-      type: native
-      plugin: tumult-kubernetes
-      function: deployment_is_ready
-      arguments:
-        namespace: shop
-        name: checkout
-    tolerance:
-      type: regex
-      pattern: "true"
 
 rollbacks[1]:
   - name: uncordon-zone-a-node

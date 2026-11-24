@@ -1,5 +1,5 @@
 title: service partition — endpoint loss detected and healed
-description: Partition a service by removing its endpoint descriptor, verify the loss is detectable, and heal the partition inside the fault window
+description: Partition a service by removing its endpoint descriptor, hold the partition for 2 s so the steady-state probe sees the loss, verify it, then heal the partition in a step of its own. The service-endpoint control writes the endpoint before the run, so the probe only reads.
 
 tags[2]: network, resilience
 kind: chaos
@@ -7,6 +7,14 @@ target:
   system: service
   technology: network
   environment: demo
+
+controls[1]:
+  - name: service-endpoint
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "d=/tmp/kd-demo/svc; case \"$TUMULT_CONTROL_EVENT\" in before_experiment) mkdir -p $d; rm -f $d/endpoint.partitioned; echo 'addr=:8080' > $d/endpoint; echo ready;; esac"
+      timeout_s: 5.0
 
 steady_state_hypothesis:
   title: Service endpoint descriptor is reachable
@@ -16,20 +24,38 @@ steady_state_hypothesis:
       provider:
         type: process
         path: sh
-        arguments[2]: "-c", "[ -f /tmp/kd-demo/svc/endpoint ] || (mkdir -p /tmp/kd-demo/svc; echo 'addr=:8080' > /tmp/kd-demo/svc/endpoint); cat /tmp/kd-demo/svc/endpoint"
+        arguments[2]: "-c", "cat /tmp/kd-demo/svc/endpoint 2>/dev/null || echo unreachable"
         timeout_s: 5.0
       tolerance:
         type: regex
         pattern: "^addr="
 
-method[2]:
+method[4]:
   - name: partition-service
     activity_type: action
     provider:
       type: process
       path: sh
-      arguments[2]: "-c", "mv /tmp/kd-demo/svc/endpoint /tmp/kd-demo/svc/endpoint.partitioned; sleep 1; mv /tmp/kd-demo/svc/endpoint.partitioned /tmp/kd-demo/svc/endpoint; echo partition-healed"
-      timeout_s: 10.0
+      arguments[2]: "-c", "mv /tmp/kd-demo/svc/endpoint /tmp/kd-demo/svc/endpoint.partitioned && echo partitioned"
+      timeout_s: 5.0
+    pause_after_s: 2.0
+  - name: verify-endpoint-lost
+    activity_type: probe
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "[ -f /tmp/kd-demo/svc/endpoint ] && echo reachable || echo unreachable"
+      timeout_s: 5.0
+    tolerance:
+      type: regex
+      pattern: "^unreachable$"
+  - name: heal-partition
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "mv /tmp/kd-demo/svc/endpoint.partitioned /tmp/kd-demo/svc/endpoint && echo healed"
+      timeout_s: 5.0
   - name: verify-endpoint-back
     activity_type: probe
     provider:
@@ -42,7 +68,7 @@ method[2]:
       pattern: "^addr="
 
 rollbacks[1]:
-  - name: heal-partition
+  - name: heal-partition-on-deviation
     activity_type: action
     provider:
       type: process
