@@ -672,3 +672,147 @@ async fn article_12_fails_a_run_that_did_not_recover_and_one_that_lost_data() {
         [("ledger-archive-restore".to_string(), failed)]
     );
 }
+
+/// The journal and definition of a passed run of `system` an hour ago
+/// whose regulatory block names `scenarios`.
+fn tagged_run(
+    name: &str,
+    system: &str,
+    scenarios: &[&str],
+) -> (tumult_core::types::Journal, tumult_core::types::Experiment) {
+    use tumult_core::types::{Experiment, ExperimentStatus, ExperimentTarget, RegulatoryMapping};
+    let started_at_ns = now_ns() - 3600 * NS;
+    let mut journal = tumult_lake::duckdb_store::sample_journal(name, ExperimentStatus::Completed);
+    journal.experiment_title = name.into();
+    journal.started_at_ns = started_at_ns;
+    journal.ended_at_ns = started_at_ns + 60 * NS;
+    journal.regulatory = Some(RegulatoryMapping {
+        frameworks: vec!["DORA".into()],
+        requirements: vec![],
+        tester: None,
+        scenarios: scenarios.iter().map(|s| (*s).to_owned()).collect(),
+    });
+    let definition = Experiment {
+        title: name.into(),
+        target: Some(ExperimentTarget {
+            system: system.into(),
+            technology: None,
+            environment: Some("demo".into()),
+            criticality: None,
+            namespace: None,
+            version: None,
+        }),
+        ..Experiment::default()
+    };
+    (journal, definition)
+}
+
+/// A verified tabletop of `target` an hour ago that names `scenarios`.
+async fn verified_record(srv: &TestServer, target: &str, scenarios: &[&str]) {
+    let record = tumult_lake::NewManualExperiment {
+        experiment_name: format!("{target} tabletop"),
+        exercise_type: tumult_lake::ExerciseType::Tabletop,
+        executed_at_ns: now_ns() - 3600 * NS,
+        hypothesis: "the plan holds".into(),
+        method: "walked through the plan".into(),
+        outcome: tumult_lake::ManualOutcome::Passed,
+        hypothesis_met: Some(true),
+        findings: None,
+        action_items: vec![],
+        target_system: Some(target.into()),
+        target_environment: Some("demo".into()),
+        blast_radius: None,
+        recovery_time_s: None,
+        duration_s: None,
+        entered_by: "alice".into(),
+        attestation: "attested".into(),
+        renewal_due_ns: None,
+        framework_refs: vec![],
+        exercise: tumult_lake::ExerciseDetail {
+            scenarios: scenarios.iter().map(|s| (*s).to_owned()).collect(),
+            ..tumult_lake::ExerciseDetail::default()
+        },
+    };
+    exec_write(srv, move |w| {
+        let id = w.create_manual_draft(&record).map_err(|e| e.to_string())?;
+        w.submit_manual(&id, None, "alice")
+            .map_err(|e| e.to_string())?;
+        w.verify_manual(&id, "bob", None)
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    })
+    .await;
+}
+
+fn scenario_states(function: &Value) -> Vec<(String, String)> {
+    list(&function["scenarios"])
+        .iter()
+        .map(|s| {
+            (
+                s["id"].as_str().unwrap().to_owned(),
+                s["state"].as_str().unwrap().to_owned(),
+            )
+        })
+        .collect()
+}
+
+/// `GET /api/dora` tracks the plan scenarios of each critical or important
+/// function from the runs and records that name them, and scores the RTS
+/// row of the profile from them. A scenario nothing tested is missing.
+#[tokio::test]
+async fn dora_tracks_the_plan_scenarios_of_each_critical_or_important_function() {
+    let srv = spawn_server().await;
+    register(&srv).await;
+    let runs = vec![tagged_run(
+        "payments-cyber",
+        "payments-api",
+        &["cyber_attack"],
+    )];
+    crate::risks::store_runs(&srv, runs).await;
+    verified_record(&srv, "ledger-archive", &["insider_attack"]).await;
+
+    let (status, body) = get(&srv.base, "/api/dora").await;
+    assert_eq!(status, 200, "{body}");
+    let block = &body["scenarios"];
+    assert_eq!(block["rows"], serde_json::json!(["rts1774.art39"]));
+    let functions = list(&block["functions"]);
+    let ids: Vec<&str> = functions
+        .iter()
+        .map(|f| f["entity_id"].as_str().unwrap())
+        .collect();
+    assert_eq!(ids, ["cif-0001", "cif-0002"]);
+    let pair = |id: &str, state: &str| (id.to_owned(), state.to_owned());
+    assert_eq!(
+        scenario_states(&functions[0]),
+        [
+            pair("cyber_attack", "passed"),
+            pair("backup_restore", "missing")
+        ]
+    );
+    assert_eq!(functions[0]["scenarios"][0]["last_test"]["source"], "run");
+    assert_eq!(
+        scenario_states(&functions[1]),
+        [
+            pair("cyber_attack", "missing"),
+            pair("backup_restore", "missing")
+        ]
+    );
+    let expectation = list(&body["expectations"])
+        .iter()
+        .find(|e| e["id"] == "rts1774.art39")
+        .unwrap_or_else(|| panic!("no rts1774.art39 in {body}"))
+        .clone();
+    assert_eq!(expectation["cite"], "RTS 2024/1774 Art. 39");
+
+    // Under the full framework the record of an insider attack counts too.
+    let (status, full) = get(&srv.base, "/api/dora?profile=full").await;
+    assert_eq!(status, 200, "{full}");
+    let block = &full["scenarios"];
+    assert_eq!(block["rows"], serde_json::json!(["rts1774.art26"]));
+    assert_eq!(list(&block["catalogue"]).len(), 13);
+    let payments = &list(&block["functions"])[0];
+    assert_eq!(
+        payments["counts"],
+        serde_json::json!({"passed": 2, "failed": 0, "overdue": 0, "missing": 11})
+    );
+}

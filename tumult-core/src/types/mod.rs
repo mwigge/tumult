@@ -135,6 +135,7 @@ mod tests {
                     evidence: "Recovery within RTO".into(),
                 }],
                 tester: None,
+                scenarios: Vec::new(),
             }),
             guards: vec![],
             blast_radius: None,

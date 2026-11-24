@@ -88,7 +88,7 @@ Only `method` is required.
 | `load` | Traffic during the method, see [Load testing](load-testing-guide.md) |
 | `estimate` | Your guess before the run: `expected_outcome` (`recovered`, `deviated`, `unaffected`), `expected_recovery_s`, `confidence` and more. See [The estimate](#the-estimate) |
 | `blast_radius`, `max_concurrent_faults` | A note for the audit, and a cap on background faults at once |
-| `regulatory` | The frameworks and requirements the run gives evidence for, and the `tester` (`name`, and `kind` `internal` or `external`). See [Regulatory mapping](../regulatory-mapping.md#tag-an-experiment) |
+| `regulatory` | The frameworks and requirements the run gives evidence for, the `tester` (`name`, and `kind` `internal` or `external`), and the plan `scenarios` the run tests, such as `power_outage`. See [Regulatory mapping](../regulatory-mapping.md#tag-an-experiment) and [Plan scenarios](dora-score.md#plan-scenarios) |
 | `version` | `v1`, the default |
 | `baseline` | Kept so old files stay valid. A run does not use it |
 
@@ -205,6 +205,26 @@ The measured RTO is `post_result.mttr_s`, see
 judged. The HTML report shows the result under **Analysis**. The lake keeps
 `estimate_accuracy` in `experiments`, and
 `tumult trend <journals> --metric estimate_accuracy` follows it over runs.
+
+## Plan scenarios
+
+A DR or continuity test can name the plan scenarios of the DORA ICT risk
+RTS (2024/1774) it tests. The DORA score tracks them for each critical or
+important function.
+
+```toon
+regulatory:
+  frameworks[1]: DORA
+  requirements[1]:
+    - id: rts1774.art26
+      description: Response and recovery plan tested
+      evidence: The journal of the run
+  scenarios[2]: premises_loss,power_outage
+```
+
+`tumult validate` refuses an id that is not a plan scenario and names the
+nearest one. The lake keeps the scenarios with the run. The ids, and the
+rows they count for, are in [Plan scenarios](dora-score.md#plan-scenarios).
 
 ## Write it in the web UI
 

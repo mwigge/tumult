@@ -78,7 +78,8 @@ pub(crate) fn manual_error(err: &ManualError) -> ApiError {
         ManualError::Plan(PlanError::Unusable(_))
         | ManualError::SelfReview
         | ManualError::AlreadySigned(_)
-        | ManualError::UnknownRequirement(_) => StatusCode::UNPROCESSABLE_ENTITY,
+        | ManualError::UnknownRequirement(_)
+        | ManualError::UnknownScenario(_) => StatusCode::UNPROCESSABLE_ENTITY,
         ManualError::Store(_) => StatusCode::INTERNAL_SERVER_ERROR,
     };
     (status, Json(json!({"error": err.to_string()})))
@@ -283,6 +284,10 @@ pub struct ManualRecordRequest {
     tester: Option<TesterRequest>,
     /// The TLPT facts of a record of type `tlpt`.
     tlpt: Option<TlptRequest>,
+    /// The plan scenarios of RTS 2024/1774 the exercise tested, such as
+    /// `premises_loss`. An id that is not one is refused with 422.
+    #[serde(default)]
+    scenarios: Vec<String>,
 }
 
 /// Who ran the test.
@@ -474,6 +479,7 @@ impl ManualRecordRequest {
                 .transpose()?,
             tester: self.tester.map(TesterRequest::into_tester).transpose()?,
             tlpt: self.tlpt.map(TlptDetail::from),
+            scenarios: self.scenarios,
         };
         Ok(NewManualExperiment {
             experiment_name: self.experiment_name,

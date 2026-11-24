@@ -5,8 +5,8 @@
 //! [`CanonicalContent`] alone, the form of every row sealed before schema
 //! v22. Version 2 ([`SealV2`]) holds version 1 and adds the id, the entry
 //! time, the DR facts, the steps, the actions, the links and the reviewer,
-//! and, when they are set, the severities, the tester, the TLPT block and
-//! the retests.
+//! and, when they are set, the severities, the tester, the TLPT block, the
+//! retests and the plan scenarios.
 //! Every lifecycle write seals the row again in version 2; the audit verify
 //! recomputes a stored seal in the version it was made in.
 //!
@@ -135,6 +135,10 @@ struct SealV2<'a> {
     tlpt_attested_at_ns: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     tlpt_summary_ref: Option<&'a str>,
+    /// The plan scenarios (schema v26), left out when there are none, so
+    /// a record sealed before them keeps its seal.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    scenarios: Vec<String>,
 }
 
 /// The seal of a plan, in this fixed order: never reorder a field.
@@ -375,6 +379,7 @@ pub(crate) fn seal_of(
         tlpt_attestation_ref: opt_s("tlpt_attestation_ref"),
         tlpt_attested_at_ns: int("tlpt_attested_at_ns"),
         tlpt_summary_ref: opt_s("tlpt_summary_ref"),
+        scenarios: json_list(row, "scenarios")?,
     };
     Ok(content_hash(&seal))
 }
@@ -505,6 +510,7 @@ mod tests {
                     kind: TesterKind::External,
                 }),
                 tlpt: None,
+                scenarios: Vec::new(),
             },
         }
     }
@@ -562,6 +568,7 @@ mod tests {
             "UPDATE manual_action_items SET severity = 'low' WHERE experiment_id = ?",
             "UPDATE manual_action_items SET retest_kind = 'record' WHERE experiment_id = ?",
             "UPDATE manual_action_items SET retest_id = 'other' WHERE experiment_id = ?",
+            "UPDATE manual_experiments SET scenarios = ['insider_attack'] WHERE id = ?",
         ];
         for sql in covered {
             assert_ne!(hash_after(conn, &id, sql), stored, "not sealed: {sql}");

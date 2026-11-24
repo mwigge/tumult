@@ -167,6 +167,77 @@ flowchart LR
 - A verified manual record counts as before: an exercise whose type
   `manual_kinds` maps to `dr` (`failover` and `drill` by default).
 
+## Plan scenarios
+
+Delegated Regulation (EU) 2024/1774 names the scenarios that continuity
+plans must be tested against
+([ELI](https://eur-lex.europa.eu/eli/reg_del/2024/1774/oj)). Tumult
+tracks them for each critical or important function. It shows which
+scenarios have a passing test, which failed, which are overdue and which
+were never tested.
+
+| Id | Scenario | RTS 2024/1774 |
+|---|---|---|
+| `cyber_attack` | A cyber attack | Art. 26(2)(a), Art. 39(1) |
+| `switchover` | Switchover to the redundant capacity | Art. 25(2)(c), Art. 26(2)(a) |
+| `backup_restore` | Restore from backups | Art. 25(2)(c), Art. 26(2)(a), Art. 39(2)(g), Art. 40(1) |
+| `redundant_facility` | Switchover to redundant facilities | Art. 25(2)(c), Art. 26(2)(a) |
+| `function_degraded` | A critical or important function degrades or fails | Art. 26(2)(b) |
+| `third_party_failure` | An ICT third-party provider fails or goes insolvent | Art. 25(2)(b), Art. 26(2)(b), Art. 26(4) |
+| `premises_loss` | Offices, business premises or data centres fail | Art. 26(2)(c) |
+| `ict_asset_failure` | ICT assets or the communication network fail | Art. 26(2)(d) |
+| `staff_unavailable` | Too few staff to keep operations going | Art. 26(2)(e) |
+| `physical_event` | Climate events, natural disasters, pandemics, physical attacks | Art. 26(2)(f) |
+| `insider_attack` | An insider attack | Art. 26(2)(g) |
+| `political_instability` | Political or social instability | Art. 26(2)(h), Art. 25(2)(b) |
+| `power_outage` | A widespread power outage | Art. 26(2)(i) |
+
+Name the scenarios a test covers:
+
+| Where | Field | Example |
+|---|---|---|
+| A run | `regulatory.scenarios` | `scenarios[2]: premises_loss,power_outage` |
+| A manual record | `scenarios` | `["premises_loss"]` |
+
+- An id that is not in the table is refused, with the nearest id: 422
+  from the manual API, an error from `tumult validate`. An experiment file
+  that holds one still runs.
+- A run counts for `backup_restore` only when it ran a backup or restore
+  step, as in [What counts as a restore test](#what-counts-as-a-restore-test).
+  A record counts as written.
+
+Each scenario of a function has one state:
+
+| State | Rule |
+|---|---|
+| passed | A test passed in the last 365 days |
+| failed | Tested in the last 365 days, and no test passed |
+| overdue | Every test is older than 365 days |
+| missing | Never tested. A gap, not a pass |
+
+```mermaid
+flowchart LR
+  accTitle: From a tagged test to the plan scenario rows
+  accDescr: A run or a manual record names the scenarios it tested. Tumult gives each scenario of each critical or important function a state, passed, failed, overdue or missing. The rows of RTS Art. 26 and Art. 39 are the mean of the best test of each scenario they need.
+  run["A run<br/>regulatory.scenarios"] --> state
+  record["A manual record<br/>scenarios"] --> state
+  state["Per function and scenario:<br/>passed, failed, overdue, missing"] --> art26["rts1774.art26<br/>full: 13 scenarios"]
+  state --> art39["rts1774.art39<br/>simplified: 2 scenarios"]
+```
+
+Two rows of the score read the states:
+
+| Row | Profile | Scenarios it needs |
+|---|---|---|
+| `rts1774.art26` | full | All 13. A microenterprise needs 10: Art. 25(2)(c) spares it `switchover`, `backup_restore` and `redundant_facility` |
+| `rts1774.art39` | simplified | `cyber_attack` and `backup_restore` |
+
+The value of a row for a function is the mean, over the scenarios it
+needs, of the best test of each scenario. A scenario never tested counts
+0. The rule "one test per scenario" is the house's reading of Arts. 25(2)
+and 26(2). The view shows what was tested. It does not say that a plan
+complies.
+
 ## Maturity
 
 ![The maturity level with its pillars and gates](../images/3.0/screenshots/scores-maturity.png)
@@ -200,7 +271,7 @@ yet, so a live lake reaches level 3 at most.
 
 | Request | Returns |
 |---|---|
-| `GET /api/dora?lei=&profile=&by=entity\|org&env=` | Coverage per article and function, the expectation table and register readiness |
+| `GET /api/dora?lei=&profile=&by=entity\|org&env=` | Coverage per article and function, the expectation table, the plan scenarios per function (`scenarios`) and register readiness |
 | `GET /api/dora/{article}?entity=&lei=&profile=&env=` | One article with every evidence row |
 | `GET /api/maturity?lei=&profile=&by=node\|entity\|org&env=` | Level, index, pillars, gates, the cap and four quarters of history |
 

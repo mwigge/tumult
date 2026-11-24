@@ -70,7 +70,7 @@ Organizational separation of test design\/execution from service operation requi
 == Traceability matrix
 
 
-Each row is a row of the DORA requirement registry, version 2026.11.1, scored for no registered legal entity under the full profile as of 2026\-11\-20, as GET \/api\/dora scores it. The status is the evidence status of the row: none, designed, existing or operating, or unknown, no events or not applicable when it cannot be scored. The evidence is the best run or manual record behind each function the row binds. A status says what evidence is held. It is not a compliance verdict.
+Each row is a row of the DORA requirement registry, version 2026.11.2, scored for no registered legal entity under the full profile as of 2026\-11\-20, as GET \/api\/dora scores it. The status is the evidence status of the row: none, designed, existing or operating, or unknown, no events or not applicable when it cannot be scored. The evidence is the best run or manual record behind each function the row binds. A status says what evidence is held. It is not a compliance verdict.
 
 
 #[
@@ -181,6 +181,10 @@ Each row is a row of the DORA requirement registry, version 2026.11.1, scored fo
   [Continuity plan tests cover the required scenarios and content],
   [not applicable],
   [binds no function in scope],
+  [RTS 2024\/1774 Art. 26],
+  [Response and recovery plans tested against each scenario of Art. 26(2)],
+  [not applicable],
+  [binds no function in scope],
   [Art. 16(1)(a)],
   [Sound and documented ICT risk management framework in place],
   [not applicable],
@@ -199,6 +203,10 @@ Each row is a row of the DORA requirement registry, version 2026.11.1, scored fo
   [the profile of the legal entity excludes this row],
   [Art. 16(2)],
   [Simplified framework reviewed and the review recorded],
+  [not applicable],
+  [the profile of the legal entity excludes this row],
+  [RTS 2024\/1774 Art. 39],
+  [Continuity plan tested against a cyber attack and a restore from backups],
   [not applicable],
   [the profile of the legal entity excludes this row],
   [RTS 2024\/1774 Art. 40],

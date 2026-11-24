@@ -128,6 +128,7 @@ regulatory:
   tester:
     name: Platform resilience team
     kind: internal
+  scenarios[1]: premises_loss
 ```
 
 - Name a DORA requirement by its registry id, as the
@@ -142,6 +143,10 @@ regulatory:
   written and not checked.
 - `tester` says who ran the test and whether the tester is `internal` or
   `external` (DORA Art. 24(4)). It is optional.
+- `scenarios` names the plan scenarios of RTS 2024/1774 the run tests,
+  such as `premises_loss`. `tumult validate` refuses an id that is not
+  one, and names the nearest. See
+  [Plan scenarios](guides/dora-score.md#plan-scenarios). It is optional.
 
 Then read a directory of journals for one framework:
 
@@ -149,8 +154,9 @@ Then read a directory of journals for one framework:
 tumult compliance journals/ --framework dora
 ```
 
-The lake does not keep the `regulatory` block or the tags of a
-definition. Keep the journal files.
+The lake keeps the `scenarios` of the block with the run. It does not
+keep the rest of the `regulatory` block or the tags of a definition. Keep
+the journal files.
 
 ## Journals as audit evidence
 

@@ -31,6 +31,11 @@ fn participants_json(detail: &ExerciseDetail) -> String {
     serde_json::Value::from(list).to_string()
 }
 
+/// The plan scenarios of a record, as the JSON list the column is cast from.
+fn scenarios_json(detail: &ExerciseDetail) -> String {
+    serde_json::to_string(&detail.scenarios).unwrap_or_else(|_| "[]".into())
+}
+
 /// The TLPT block of a record, when it has one.
 fn tlpt(detail: &ExerciseDetail) -> Option<&TlptDetail> {
     detail.tlpt.as_ref()
@@ -133,10 +138,10 @@ fn insert_draft(
             renewal_due_ns, framework_refs, batch_id, content_hash,
             rto_target_s, rpo_target_s, rpo_measured_s, data_verified, participants,
             plan_id, findings_severity, tester, tester_kind,
-            tlpt_attestation_ref, tlpt_attested_at_ns, tlpt_summary_ref
+            tlpt_attestation_ref, tlpt_attested_at_ns, tlpt_summary_ref, scenarios
          ) VALUES (?,?,?,?,?,?,?,?,?,CAST(? AS JSON),?,?,?,?,?,?,
                    ?,?,?,?,?, CAST(? AS VARCHAR[]),?,?,?,?,?,?,CAST(? AS JSON),?,
-                   ?,?,?,?,?,?)",
+                   ?,?,?,?,?,?, CAST(? AS VARCHAR[]))",
         params![
             id,
             new.experiment_name,
@@ -175,6 +180,7 @@ fn insert_draft(
             tlpt(detail).and_then(|t| t.attestation_ref.as_deref()),
             tlpt(detail).and_then(|t| t.attested_at_ns),
             tlpt(detail).and_then(|t| t.summary_report_ref.as_deref()),
+            scenarios_json(detail),
         ],
     )?;
     insert_children(conn, &id, detail)?;
@@ -276,7 +282,8 @@ impl Writer {
                     rto_target_s = ?, rpo_target_s = ?, rpo_measured_s = ?,
                     data_verified = ?, participants = CAST(? AS JSON), plan_id = ?,
                     findings_severity = ?, tester = ?, tester_kind = ?,
-                    tlpt_attestation_ref = ?, tlpt_attested_at_ns = ?, tlpt_summary_ref = ?
+                    tlpt_attestation_ref = ?, tlpt_attested_at_ns = ?, tlpt_summary_ref = ?,
+                    scenarios = CAST(? AS VARCHAR[])
                  WHERE id = ?",
                 params![
                     new.experiment_name,
@@ -308,6 +315,7 @@ impl Writer {
                     tlpt(&new.exercise).and_then(|t| t.attestation_ref.as_deref()),
                     tlpt(&new.exercise).and_then(|t| t.attested_at_ns),
                     tlpt(&new.exercise).and_then(|t| t.summary_report_ref.as_deref()),
+                    scenarios_json(&new.exercise),
                     id,
                 ],
             )?;
@@ -331,7 +339,8 @@ impl Writer {
                         "framework_refs","rto_target_s","rpo_target_s","rpo_measured_s",
                         "data_verified","participants","steps","actions","links",
                         "plan_id","findings_severity","tester","tester_kind",
-                        "tlpt_attestation_ref","tlpt_attested_at_ns","tlpt_summary_ref"
+                        "tlpt_attestation_ref","tlpt_attested_at_ns","tlpt_summary_ref",
+                        "scenarios"
                     ],
                 }),
                 Some(&prev_hash),

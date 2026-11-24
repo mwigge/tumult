@@ -208,3 +208,47 @@ async fn the_tester_tlpt_and_retest_bodies_refuse_a_field_they_do_not_know() {
         assert!(text.contains(&format!("unknown field `{field}`")), "{text}");
     }
 }
+
+/// A record names the plan scenarios of RTS 2024/1774 it tested: an id
+/// that is not one is refused with 422 and the nearest id, on create, on
+/// edit and in an import, and a known one is kept.
+#[tokio::test]
+async fn a_plan_scenario_is_checked_on_write_and_kept_with_the_record() {
+    let srv = spawn_server().await;
+    let base = srv.base.clone();
+    let mut typo = tlpt_body("alice");
+    typo["scenarios"] = json!(["premises_loss", "power_outages"]);
+    let (status, text) = post(&base, "experiments", &typo).await;
+    assert_eq!(status, 422, "{text}");
+    assert!(
+        text.contains(
+            "'power_outages' is not a scenario id of RTS 2024/1774 Arts. 25, 26 and 39; \
+             did you mean 'power_outage'?"
+        ),
+        "{text}"
+    );
+
+    let mut tagged = tlpt_body("alice");
+    tagged["scenarios"] = json!(["cyber_attack", "insider_attack"]);
+    let (status, text) = post(&base, "experiments", &tagged).await;
+    assert_eq!(status, 201, "{text}");
+    let id = serde_json::from_str::<Value>(&text).unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let (status, detail) = get(&base, &format!("/api/manual/experiments/{id}")).await;
+    assert_eq!(status, 200, "{detail}");
+    assert_eq!(
+        detail["experiment"]["scenarios"],
+        json!(["cyber_attack", "insider_attack"])
+    );
+
+    let path = format!("experiments/{id}");
+    let (status, text) = send(reqwest::Method::PUT, &base, &path, &typo).await;
+    assert_eq!(status, 422, "{text}");
+    let batch = json!({"records": [tlpt_body("carol"), typo]});
+    let (status, text) = post(&base, "import", &batch).await;
+    assert_eq!(status, 422, "{text}");
+    let (_, all) = get(&base, "/api/manual/experiments").await;
+    assert_eq!(all["records"].as_array().unwrap().len(), 1, "{all}");
+}

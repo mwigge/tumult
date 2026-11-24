@@ -316,6 +316,7 @@ fn drill(plan_id: &str) -> NewManualExperiment {
                 kind: TesterKind::External,
             }),
             tlpt: None,
+            scenarios: vec![],
         },
     }
 }

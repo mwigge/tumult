@@ -257,6 +257,8 @@ pub(crate) fn migrate(conn: &Connection) -> Result<(), duckdb::Error> {
     // v22: the DR columns of the manual tables. After the v8 rebuild, which
     // copies the v8 columns of `manual_experiments` by position.
     conn.execute_batch(schema::MANUAL_V22_COLUMNS)?;
+    // v26: the plan scenarios of a record, after the v8 rebuild likewise.
+    conn.execute_batch(schema::MANUAL_V26_COLUMNS)?;
     // < v6: seed the `legacy` backfill identity so pre-auth free-text
     // `entered_by` / `reviewed_by` values on manual-experiment rows
     // semantically belong to a real (but un-loginable: password_hash '!',

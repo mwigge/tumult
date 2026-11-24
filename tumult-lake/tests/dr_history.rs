@@ -312,8 +312,8 @@ fn evidence_ids(rows: &[Value]) -> Vec<&str> {
 }
 
 #[test]
-fn the_schema_is_at_version_25() {
-    assert_eq!(CURRENT_SCHEMA_VERSION, 25);
+fn the_schema_is_at_version_26() {
+    assert_eq!(CURRENT_SCHEMA_VERSION, 26);
 }
 
 #[test]

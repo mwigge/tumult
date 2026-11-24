@@ -258,6 +258,9 @@ pub struct Evidence {
     /// whether every such step succeeded: `None` when it ran none,
     /// `Some(false)` when one failed. `None` for a manual record.
     pub restore_step: Option<bool>,
+    /// The plan scenarios of RTS 2024/1774 the test names (the
+    /// `scenarios` of a run's regulatory block, or of a manual record).
+    pub scenarios: Vec<String>,
 }
 
 impl Evidence {
@@ -285,6 +288,7 @@ impl Evidence {
             rpo_measured_s: None,
             unrecovered: false,
             restore_step: None,
+            scenarios: Vec::new(),
         }
     }
 

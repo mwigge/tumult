@@ -195,6 +195,13 @@
                         placeholder="dora.art24.6, ISO 27001 A.5.30"
                     /></label
                 >
+                <label
+                    >Plan scenarios (comma-sep) <input
+                        type="text"
+                        bind:value={form.scenarios}
+                        placeholder="premises_loss, power_outage"
+                    /></label
+                >
             </div>
         </div>
         <div class="stack">

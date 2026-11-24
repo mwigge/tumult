@@ -18,7 +18,12 @@ use super::evidence::EvidenceStrength;
 
 /// Version of the requirement registry. Bump on any row change so a score
 /// can be traced to the rule set that produced it.
-pub const REQUIREMENTS_VERSION: &str = "2026.11.1";
+pub const REQUIREMENTS_VERSION: &str = "2026.11.2";
+
+/// The ELI of Regulation (EU) 2022/2554.
+const DORA_ELI: &str = "https://eur-lex.europa.eu/eli/reg/2022/2554/oj";
+/// The article key of the rows of Delegated Regulation (EU) 2024/1774.
+const RTS_1774: &str = "rts1774";
 
 /// Evidence status code: a declaration exists but no qualifying evidence.
 pub const EXPECTED_STATUS_DESIGNED: u8 = 1;
@@ -317,6 +322,11 @@ pub enum Selector {
     Topology,
     /// Observable only through the named feed.
     Feed(Feed),
+    /// Tests of the plan scenarios of RTS 2024/1774 the row needs
+    /// ([`super::scenarios::required_by`]): the mean, over those
+    /// scenarios, of the best test of each. A scenario with no test
+    /// counts 0.
+    Scenarios,
 }
 
 /// Who restricts a row to some functions.
@@ -419,6 +429,16 @@ impl Requirement {
             return None;
         }
         Some(self.window_days)
+    }
+
+    /// The ELI of the act the row comes from: Regulation (EU) 2022/2554,
+    /// or Delegated Regulation (EU) 2024/1774 for an `rts1774` row.
+    #[must_use]
+    pub fn source_url(&self) -> &'static str {
+        if self.article == RTS_1774 {
+            return super::scenarios::RTS_1774_ELI;
+        }
+        DORA_ELI
     }
 
     /// Whether the row binds a function of this tier.
@@ -837,6 +857,17 @@ pub const REQUIREMENTS: &[Requirement] = &[
         },
     )
     .full(),
+    row(
+        "rts1774.art26",
+        "rts1774",
+        "RTS 2024/1774 Art. 26",
+        "Response and recovery plans tested against each scenario of Art. 26(2)",
+        2,
+        Test,
+        Selector::Scenarios,
+    )
+    .full()
+    .critical_important(),
     // ── Art. 16(1) simplified framework and RTS 2024/1774 Title III ─────
     row(
         "dora.art16.1.a",
@@ -888,6 +919,17 @@ pub const REQUIREMENTS: &[Requirement] = &[
         Selector::Attestation,
     )
     .simplified(),
+    row(
+        "rts1774.art39",
+        "rts1774",
+        "RTS 2024/1774 Art. 39",
+        "Continuity plan tested against a cyber attack and a restore from backups",
+        2,
+        Test,
+        Selector::Scenarios,
+    )
+    .simplified()
+    .critical_important(),
     row(
         "rts1774.art40",
         "rts1774",
@@ -1407,6 +1449,57 @@ mod tests {
                 "{}",
                 r.id
             );
+        }
+    }
+
+    /// RTS 2024/1774 Art. 26 (response and recovery plans, full framework)
+    /// and Art. 39 (the business continuity plan of the simplified
+    /// framework) are scored from the plan scenarios tested for each
+    /// critical or important function.
+    #[test]
+    fn the_plan_scenario_rows_follow_their_articles() {
+        for (id, cite, profiles) in [
+            ("rts1774.art26", "RTS 2024/1774 Art. 26", ProfileSet::Full),
+            (
+                "rts1774.art39",
+                "RTS 2024/1774 Art. 39",
+                ProfileSet::Simplified,
+            ),
+        ] {
+            let row = requirement(id).unwrap_or_else(|| panic!("missing row {id}"));
+            assert_eq!(row.article, "rts1774", "{id}");
+            assert_eq!(row.cite, cite);
+            assert_eq!(row.selector, Selector::Scenarios, "{id}");
+            assert_eq!(row.evidence, EvidenceClass::Test, "{id}");
+            assert_eq!(row.profiles, profiles, "{id}");
+            assert_eq!(row.scope, FunctionScope::CriticalImportant, "{id}");
+            assert_eq!(row.scope_basis, ScopeBasis::Regulation, "{id}");
+            assert_eq!(row.micro, MicroRule::Any, "{id}");
+            assert_eq!(row.weight, 2, "{id}");
+            assert_eq!(row.window_days, 365, "{id}");
+            assert_eq!(row.strength, EvidenceStrength::Direct, "{id}");
+        }
+        let full = ids(&profile("full", &[]));
+        assert!(full.contains(&"rts1774.art26") && !full.contains(&"rts1774.art39"));
+        let micro = ids(&profile("full", &["microenterprise"]));
+        assert!(micro.contains(&"rts1774.art26"), "Art. 26 carves none out");
+        let simplified = ids(&profile("simplified", &["microenterprise"]));
+        assert!(simplified.contains(&"rts1774.art39"));
+        assert!(!simplified.contains(&"rts1774.art26"));
+        assert_eq!(REQUIREMENTS.len(), 48);
+        assert_eq!(REQUIREMENTS_VERSION, "2026.11.2");
+    }
+
+    /// Each row links the act it comes from by its ELI.
+    #[test]
+    fn every_row_links_the_eli_of_its_act() {
+        for r in REQUIREMENTS {
+            let want = if r.id.starts_with("rts1774.") {
+                "https://eur-lex.europa.eu/eli/reg_del/2024/1774/oj"
+            } else {
+                "https://eur-lex.europa.eu/eli/reg/2022/2554/oj"
+            };
+            assert_eq!(r.source_url(), want, "{}", r.id);
         }
     }
 }

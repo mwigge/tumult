@@ -14,6 +14,7 @@ mod framework;
 mod ids;
 mod refs;
 mod requirements;
+mod scenarios;
 mod signals;
 
 pub use citations::{
@@ -36,6 +37,9 @@ pub use requirements::{
     FlagRule, FunctionScope, MicroRule, Profile, ProfileSet, Requirement, ScopeBasis, Selector,
     ARTICLES, CORE_WEIGHT_MIN, EXPECTED_STATUS_DESIGNED, EXPECTED_STATUS_EXISTING,
     EXPECTED_STATUS_OPERATING, FLAG_NAMES, GATING_WEIGHT, REQUIREMENTS, REQUIREMENTS_VERSION,
+};
+pub use scenarios::{
+    check_scenario, required_by, scenario, Scenario, UnknownScenario, RTS_1774_ELI, SCENARIOS,
 };
 pub use signals::{compliance_verdict, ComplianceSignals, RecoveryMeasure, DEFAULT_MTTR_TARGET_S};
 

@@ -15,6 +15,9 @@
 //!   an older form read as the registry id it names.
 //!   Its recovery time is the measured RTO, and the RTO and RPO it planned
 //!   are its targets before those of its function.
+//! - **Plan scenarios**: a run carries the scenarios of RTS 2024/1774 its
+//!   regulatory block names (the JSON list `experiments.dora_scenarios`), a
+//!   record those it was written with (`manual_experiments.scenarios`).
 //! - **Services**: every `service.name` that emitted spans, with the
 //!   conformance level its telemetry reached inside the conformance
 //!   window. A service glob of the register that matches nothing becomes a
@@ -439,7 +442,8 @@ fn runs_sql(as_of_ns: i64, envs: &[String]) -> String {
          {status} AS status, \
          e.rto_target_s AS rto_target_s, e.rpo_target_s AS rpo_target_s, \
          COALESCE(e.rto_measured_s, s.recovery_time_s) AS rto_measured_s, \
-         e.rpo_measured_s AS rpo_measured_s, {UNRECOVERED_SQL} AS unrecovered \
+         e.rpo_measured_s AS rpo_measured_s, {UNRECOVERED_SQL} AS unrecovered, \
+         from_json(e.dora_scenarios, '[\"VARCHAR\"]') AS scenarios \
          FROM run_roots s \
          LEFT JOIN run_completions l ON s.experiment_id = l.experiment_id \
          LEFT JOIN experiments e ON e.experiment_id = s.experiment_id \
@@ -490,7 +494,8 @@ fn manual_sql(as_of_ns: i64, envs: &[String]) -> String {
          m.executed_at_ns AS ts, m.outcome_status AS status, m.target_system AS system, \
          m.target_environment AS env, m.recovery_time_s AS rto_measured_s, \
          m.rto_target_s AS rto_target_s, m.rpo_target_s AS rpo_target_s, \
-         m.rpo_measured_s AS rpo_measured_s, m.framework_refs AS refs \
+         m.rpo_measured_s AS rpo_measured_s, m.framework_refs AS refs, \
+         m.scenarios AS scenarios \
          FROM manual_experiments m \
          WHERE m.status = 'verified' AND m.outcome_status <> 'inconclusive' \
          AND m.executed_at_ns <= {as_of_ns}{scope} \
@@ -663,8 +668,21 @@ fn run_of(row: &Value, functions: Vec<String>) -> Option<Evidence> {
             .get("unrecovered")
             .and_then(Value::as_bool)
             .unwrap_or(false),
+        scenarios: scenarios(row),
         ..Evidence::run(&id, "", "", int(row, "ts")?)
     })
+}
+
+/// The plan scenarios a run or a record names, as stored: an id the set
+/// does not have matches no scenario, so it counts for nothing.
+fn scenarios(row: &Value) -> Vec<String> {
+    row.get("scenarios")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .map(str::to_owned)
+        .collect()
 }
 
 /// The framework references of a record, each DORA one read as the
@@ -699,6 +717,7 @@ fn manual_of(row: &Value, functions: Vec<String>, params: &HouseParams) -> Optio
         rto_measured_s: num(row, "rto_measured_s"),
         rpo_target_s: num(row, "rpo_target_s"),
         rpo_measured_s: num(row, "rpo_measured_s"),
+        scenarios: scenarios(row),
         ..Evidence::manual(&id, &[], &exercise, int(row, "ts")?)
     })
 }
@@ -2570,5 +2589,88 @@ functions:
             super::super::coverage::recovery_met(evidence, function),
             Some(false)
         );
+    }
+
+    /// A run carries the plan scenarios of its regulatory block, a record
+    /// those it was written with, and a test that names none carries none.
+    #[test]
+    fn runs_and_records_carry_the_plan_scenarios_they_name() {
+        use tumult_core::types::{
+            Experiment, ExperimentStatus, ExperimentTarget, Journal, RegulatoryMapping,
+        };
+        let (_dir, store) = store_with(ORG);
+        let writer = store.writer().unwrap();
+        let definition = Experiment {
+            title: "payments site loss".into(),
+            target: Some(ExperimentTarget {
+                system: "payments-api".into(),
+                technology: None,
+                environment: Some("prod".into()),
+                criticality: None,
+                namespace: None,
+                version: None,
+            }),
+            ..Experiment::default()
+        };
+        let journal = |id: &str, scenarios: &[&str]| Journal {
+            experiment_title: "payments site loss".into(),
+            started_at_ns: NOW - DAY_NS,
+            ended_at_ns: NOW - DAY_NS + 60_000_000_000,
+            regulatory: Some(RegulatoryMapping {
+                frameworks: vec!["DORA".into()],
+                requirements: vec![],
+                tester: None,
+                scenarios: scenarios.iter().map(|s| (*s).to_string()).collect(),
+            }),
+            ..tumult_lake::duckdb_store::sample_journal(id, ExperimentStatus::Completed)
+        };
+        for run in [
+            journal("run-tagged", &["premises_loss", "power_outage"]),
+            journal("run-plain", &[]),
+        ] {
+            assert!(writer.ingest_journal(&run, Some(&definition)).unwrap());
+        }
+        let record = |id: &str, scenarios: &str| {
+            format!(
+                "INSERT INTO manual_experiments (id, experiment_name, exercise_type, \
+                 executed_at_ns, hypothesis, method, outcome_status, target_system, \
+                 target_environment, entered_by, entered_at_ns, attestation, status, \
+                 framework_refs, scenarios, content_hash) VALUES ('{id}', 'name-{id}', \
+                 'tabletop', {at}, 'h', 'm', 'passed', 'ledger', 'prod', 'ada', {at}, 'a', \
+                 'verified', [], {scenarios}, 'hash')",
+                at = NOW - DAY_NS
+            )
+        };
+        for sql in [
+            record("m-tagged", "['insider_attack']"),
+            record("m-plain", "NULL"),
+        ] {
+            writer.execute(&sql, []).unwrap();
+        }
+
+        let loaded = loaded(&store, request(&[]));
+        let scenarios: Vec<(&str, Vec<String>)> = loaded
+            .inputs
+            .evidence
+            .iter()
+            .map(|e| (e.id.as_str(), e.scenarios.clone()))
+            .collect();
+        let named = |id: &str| -> Vec<String> {
+            scenarios
+                .iter()
+                .find(|(seen, _)| *seen == id)
+                .unwrap_or_else(|| panic!("no evidence {id}: {scenarios:?}"))
+                .1
+                .clone()
+        };
+        assert_eq!(named("run-tagged"), ["premises_loss", "power_outage"]);
+        assert!(named("run-plain").is_empty());
+        assert_eq!(named("m-tagged"), ["insider_attack"]);
+        assert!(named("m-plain").is_empty());
+        assert!(loaded
+            .inputs
+            .evidence
+            .iter()
+            .all(|e| e.functions == ["cif-0001"]));
     }
 }

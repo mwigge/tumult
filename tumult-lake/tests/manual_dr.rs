@@ -79,6 +79,7 @@ fn dr_detail() -> ExerciseDetail {
         findings_severity: None,
         tester: None,
         tlpt: None,
+        scenarios: Vec::new(),
     }
 }
 
@@ -499,7 +500,7 @@ fn a_v21_lake_gains_the_dr_columns_and_keeps_its_records() {
 
     let columns = columns_of(&store, "manual_experiments");
     assert_eq!(
-        columns[columns.len() - 13..],
+        columns[columns.len() - 14..],
         [
             "rto_target_s",
             "rpo_target_s",
@@ -513,7 +514,8 @@ fn a_v21_lake_gains_the_dr_columns_and_keeps_its_records() {
             "tester_kind",
             "tlpt_attestation_ref",
             "tlpt_attested_at_ns",
-            "tlpt_summary_ref"
+            "tlpt_summary_ref",
+            "scenarios"
         ]
     );
     assert!(columns_of(&store, "manual_action_items").ends_with(&[

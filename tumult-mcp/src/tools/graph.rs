@@ -717,6 +717,7 @@ mod tests {
                     evidence: "scenario-based fault injection".into(),
                 }],
                 tester: None,
+                scenarios: Vec::new(),
             }),
             ..Default::default()
         };

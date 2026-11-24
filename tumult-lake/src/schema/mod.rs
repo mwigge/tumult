@@ -126,6 +126,12 @@
 //! version moves so that an older build, which has no such view, refuses
 //! the lake.
 //!
+//! v26 adds the plan scenarios of RTS 2024/1774 a test names:
+//! `experiments.dora_scenarios` (`objectives.rs`), the JSON list of the
+//! regulatory block of a run, and `manual_experiments.scenarios`
+//! (`manual.rs`), a `VARCHAR[]` like `framework_refs`, both NULL on the rows
+//! stored before. Additive ALTERs; a database at v25 migrates on open.
+//!
 //! The DDL is split by feature area: [`telemetry`] (v1), [`manual`] (v2/v8
 //! shape), [`analytics`] (v3), [`runs`] (v4–v7), [`auth`] (v6/v9),
 //! [`table_stakes`] (v10–v13), [`migrations`] (the versioned rebuilds).
@@ -149,9 +155,10 @@ mod telemetry;
 
 pub(crate) use dr::{dr_register_sql, dr_tests_sql};
 pub(crate) use manual::V22_COLUMNS as MANUAL_V22_COLUMNS;
+pub(crate) use manual::V26_COLUMNS as MANUAL_V26_COLUMNS;
 pub use migrations::{MIGRATE_V5_RUN_TABLES_INDEX_FREE, MIGRATE_V8_MANUAL_EXPERIMENTS_INDEX_FREE};
 
-pub const CURRENT_SCHEMA_VERSION: i64 = 25;
+pub const CURRENT_SCHEMA_VERSION: i64 = 26;
 
 /// The full DDL, one batch per feature area, executed in order. All DDL is
 /// `IF NOT EXISTS`, so this doubles as the idempotent v0 → v1 migration on
@@ -168,6 +175,7 @@ pub const CREATE_TABLES: &[&str] = &[
     risk::DDL,
     perf::DDL,
     objectives::DR_FACTS_COLUMNS,
+    objectives::SCENARIOS_COLUMN,
     forecast::DDL,
     ict::DDL,
     entities::DDL,

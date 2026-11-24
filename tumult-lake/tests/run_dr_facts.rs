@@ -323,13 +323,14 @@ fn assert_an_upgrade_keeps_the_runs(version: i64) {
 
     let experiments = columns_of(&store, "experiments");
     assert_eq!(
-        experiments[experiments.len() - 5..],
+        experiments[experiments.len() - 6..],
         [
             "version_shares",
             "impact_observed",
             "outage_started_at_ns",
             "recovered_at_ns",
-            "mttr_s"
+            "mttr_s",
+            "dora_scenarios"
         ]
     );
     let verdicts = columns_of(&store, "nfr_verdicts");

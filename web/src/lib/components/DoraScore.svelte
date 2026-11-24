@@ -1,7 +1,8 @@
 <script lang="ts">
     // DORA coverage and the internal maturity level of one legal entity:
     // header, articles × functions heatmap, expectation table, maturity
-    // with its gates and the per-node roll-up, reporting readiness.
+    // with its gates and the per-node roll-up, the plan scenarios of each
+    // critical or important function, reporting readiness.
     // Every number is shown with its unknown share.
     import { onMount } from 'svelte';
     import { api } from '#lib/api.js';
@@ -32,6 +33,7 @@
     import ChartLegend from './ChartLegend.svelte';
     import DoraEvidence from './DoraEvidence.svelte';
     import DoraNotices from './DoraNotices.svelte';
+    import DoraScenarios from './DoraScenarios.svelte';
     import EChart from './EChart.svelte';
     import ScoreNumber from './ScoreNumber.svelte';
 
@@ -338,6 +340,10 @@
             {/if}
             {#if report.disclaimer}<div class="foot">{report.disclaimer}</div>{/if}
         </section>
+
+        {#if report.scenarios}
+            <DoraScenarios scenarios={report.scenarios} />
+        {/if}
 
         <section class="panel" data-testid="dora-maturity">
             <h2>Maturity — {maturity.headline}</h2>

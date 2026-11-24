@@ -1063,7 +1063,10 @@ mod tests {
 
         let portfolio = matrix.portfolio(None);
         assert_eq!(round2(portfolio.unknown), 0.05);
-        assert_eq!(round2(portfolio.coverage.unwrap()), 0.96);
+        // 0.96 before RTS 2024/1774 Art. 26: the bank tags no test with a
+        // plan scenario, so the row is a gap on each critical or important
+        // function.
+        assert_eq!(round2(portfolio.coverage.unwrap()), 0.94);
     }
 
     #[test]
@@ -1073,14 +1076,14 @@ mod tests {
         let matrix = Matrix::build(&inputs, &params);
         let report = status::report(&matrix, None);
 
-        assert_eq!(report.rows.len(), 34, "applicable rows");
+        assert_eq!(report.rows.len(), 35, "applicable rows");
         let gaps: Vec<&str> = report
             .rows
             .iter()
             .filter(|r| r.standing == Standing::Gap)
             .map(|r| r.req.id)
             .collect();
-        assert_eq!(gaps, ["dora.art11.6b", "dora.art28.8"]);
+        assert_eq!(gaps, ["dora.art11.6b", "rts1774.art26", "dora.art28.8"]);
         let unknown: Vec<&str> = report
             .rows
             .iter()
@@ -1112,7 +1115,7 @@ mod tests {
 
         let portfolio = matrix.portfolio(None);
         assert_eq!(round2(portfolio.unknown), 0.05);
-        assert_eq!(round2(portfolio.coverage.unwrap()), 0.96);
+        assert_eq!(round2(portfolio.coverage.unwrap()), 0.94);
     }
 
     /// A plan in the org file makes a row Designed. Lowering what the

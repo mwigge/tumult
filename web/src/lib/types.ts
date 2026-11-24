@@ -709,6 +709,8 @@ export interface ManualExperiment {
     review_note: string | null;
     renewal_due_ns: number | null;
     framework_refs: string[] | null;
+    /** The plan scenarios of RTS 2024/1774 the record names; absent before schema v26. */
+    scenarios?: string[] | null;
     batch_id: string | null;
     content_hash: string;
     /** The planned RTO and RPO, and the actual RPO, in seconds. */
@@ -948,6 +950,8 @@ export interface ManualRecordInput {
     attestation: string;
     renewal_due_ns?: number | null;
     framework_refs?: string[];
+    /** Plan scenario ids of RTS 2024/1774, such as `premises_loss`. */
+    scenarios?: string[];
     rto_target_s?: number | null;
     rpo_target_s?: number | null;
     rpo_measured_s?: number | null;
@@ -1739,6 +1743,45 @@ export interface DoraReadiness {
     unmapped_services: string[];
 }
 
+/** Where one plan scenario of RTS 2024/1774 stands for a function. */
+export type ScenarioState = 'passed' | 'failed' | 'overdue' | 'missing';
+
+/** One plan scenario of one function. */
+export interface DoraScenario {
+    id: string;
+    state: ScenarioState;
+    /** `YYYY-MM-DD` of the newest test of the scenario. */
+    last_tested_at: string | null;
+    last_test: { id: string; source: 'run' | 'manual'; outcome: string } | null;
+    /** `YYYY-MM-DD` of the newest test that passed, of any age. */
+    last_passed_at: string | null;
+}
+
+/** The plan scenarios of one critical or important function. */
+export interface DoraScenarioFunction {
+    entity_id: string;
+    name: string;
+    tier: string;
+    /** The registry row the function is scored on. */
+    row: string;
+    /** The value of the scenario row for the function, 0–1. */
+    coverage: number | null;
+    counts: Record<ScenarioState, number>;
+    scenarios: DoraScenario[];
+}
+
+/** The plan scenarios of RTS 2024/1774 Arts. 25, 26, 39 and 40. */
+export interface DoraScenarios {
+    source: string;
+    source_url: string;
+    /** The registry rows scored from the scenarios. */
+    rows: string[];
+    window_days: number;
+    note: string;
+    catalogue: { id: string; title: string; cite: string }[];
+    functions: DoraScenarioFunction[];
+}
+
 /** `GET /api/dora` */
 export interface DoraReport extends ScoreHeader {
     by: 'entity' | 'org';
@@ -1751,6 +1794,8 @@ export interface DoraReport extends ScoreHeader {
     expectations: DoraExpectation[];
     na: { count: number; rows: { id: string; article: string; cite: string }[] };
     readiness: DoraReadiness;
+    /** Absent from a daemon older than the plan scenarios. */
+    scenarios?: DoraScenarios;
 }
 
 export type MaturityComponent = 'conformance' | 'coverage' | 'slo' | 'recovery' | 'loop';

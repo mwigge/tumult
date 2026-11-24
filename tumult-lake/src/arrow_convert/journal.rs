@@ -42,6 +42,8 @@ pub fn experiments_schema() -> Schema {
         Field::new("outage_started_at_ns", DataType::Int64, true),
         Field::new("recovered_at_ns", DataType::Int64, true),
         Field::new("mttr_s", DataType::Float64, true),
+        // v26: the plan scenarios the regulatory block names, a JSON list.
+        Field::new("dora_scenarios", DataType::Utf8, true),
     ])
 }
 
@@ -127,8 +129,26 @@ pub fn journal_to_experiment_batch(journal: &Journal) -> Result<RecordBatch, Ana
             ])),
             Arc::new(Int64Array::from(vec![post.and_then(|p| p.recovered_at_ns)])),
             Arc::new(Float64Array::from(vec![post.and_then(|p| p.mttr_s)])),
+            Arc::new(StringArray::from(vec![scenarios_json(journal)?])),
         ],
     )?)
+}
+
+/// The plan scenarios the regulatory block of `journal` names, as a JSON
+/// list: `None` when it names none.
+///
+/// # Errors
+///
+/// Returns an error if the list cannot be written as JSON.
+fn scenarios_json(journal: &Journal) -> Result<Option<String>, AnalyticsError> {
+    journal
+        .regulatory
+        .as_ref()
+        .map(|mapping| mapping.scenarios.as_slice())
+        .filter(|scenarios| !scenarios.is_empty())
+        .map(serde_json::to_string)
+        .transpose()
+        .map_err(|e| AnalyticsError::Internal(format!("plan scenarios: {e}")))
 }
 
 /// # Errors
@@ -286,7 +306,7 @@ mod tests {
     fn experiment_batch_schema() {
         let batch = journal_to_experiment_batch(&sample_journal()).unwrap();
         assert_eq!(batch.num_rows(), 1);
-        assert_eq!(batch.num_columns(), 24);
+        assert_eq!(batch.num_columns(), 25);
     }
     #[test]
     fn experiment_batch_values() {
