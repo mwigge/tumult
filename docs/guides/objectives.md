@@ -256,5 +256,7 @@ is in time or late, the recovery is `not measured`. It is never full marks.
 ## Next
 
 - [Load testing](load-testing-guide.md): the source of the `load.*` metrics.
+- [Disaster recovery](disaster-recovery.md): test DR and robustness, and
+  read the results.
 - [Performance verdicts](performance-regression.md): compare runs between
   builds.
