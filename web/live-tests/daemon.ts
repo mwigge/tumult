@@ -1,7 +1,7 @@
 // A real daemon for the tests of Krönika: `tumultd` with a home and a lake
 // of its own, on ports of the loopback that are free.
 import { spawn } from 'node:child_process';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -36,9 +36,11 @@ function freePort(): Promise<number> {
     });
 }
 
-/** Start `tumultd` in a new home and wait until it answers. */
-export async function startDaemon(): Promise<Daemon> {
+/** Start `tumultd` in a new home and wait until it answers. `org` is the
+    org file of the house, next to the lake, when the test needs one. */
+export async function startDaemon(org?: string): Promise<Daemon> {
     const home = mkdtempSync(join(tmpdir(), 'tumult-live-'));
+    if (org) writeFileSync(join(home, 'org.yaml'), org);
     const env = (more: Record<string, string> = {}) => ({
         PATH: process.env.PATH ?? '',
         HOME: home,

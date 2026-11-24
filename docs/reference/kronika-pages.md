@@ -56,7 +56,9 @@ The compliance and resilience scores run from 0 to 100 and belong to a target.
 Two more scores run from 0 to 1 and belong to one run:
 
 - **GameDay score** (`tumult gameday run` and `analyze`). Pass rate 30 %,
-  recovery 25 %, load impact 25 % and compliance coverage 20 %.
+  recovery 25 %, load impact 25 % and compliance coverage 20 %. Each run is
+  judged against its own RTO. When no run measured a recovery, the recovery
+  is `not measured` and the other three share its weight.
 - **Agentic score** (agentic runs). The share of contracts that passed,
   weighted by their severity.
 
@@ -129,6 +131,52 @@ what evidence exists; it does not say that an entity complies. Read the
 - **Evidence:** runs and manual records matched to the DORA requirements,
   the daily snapshots, and the function register in `org.yaml`.
 - **API:** `GET /api/dora`, `GET /api/dora/{article}`, `GET /api/maturity`.
+
+### Disaster recovery
+
+Route `/dr`. The DR tests of each target, automated and manual together,
+and when the next one is due. A DR test is a run of kind `dr`, or a
+submitted or verified manual record of a type the house counts as DR: by
+default `failover`, `drill`, `restore` and `backup`.
+
+![Disaster recovery: the due register of each target, and its RTO and RPO over time](../images/3.0/screenshots/dr.png)
+
+- **Due register.** One row per target: its state (`ok`, `due` within 30
+  days, `overdue` or `never tested`), its last DR test with its date,
+  origin and verdict, when the next one is due, the interval and where it
+  comes from, the plan that covers it, and the RTO and RPO it is held to
+  against what its last test measured. Read
+  [When a DR test is overdue](#when-a-dr-test-is-overdue) for how the
+  register works.
+- **RTO and RPO over time.** Per target, a chart of the RTO and one of the
+  RPO that each test measured, with the target as a dashed line. A diamond
+  marks a manual test. A triangle marks a run that did not recover. It is
+  drawn at the least its RTO was: the time from the outage seen to the end
+  of the watch.
+- **DR tests in the period.** Newest first, 20 to a page. A run links to
+  its page, and a manual record to the records of the Manual page.
+- **Filters.** A target, an environment and a period of 90 days, 1 year or
+  3 years. The URL keeps them, so a link opens the same view. The period
+  selects the tests. The register shows the targets as they are now.
+
+A lake with no DR test says so, and links to the guide and to the Manual
+page.
+
+`GET /api/dr` answers with `targets` (the register), `tests` (one page of
+the DR tests of the period, with the columns of `dr_tests`) and `summary`
+(the targets per state, and the tests per origin and verdict). A run that
+did not recover measured no RTO. Its test, and a target whose last test it
+is, have `rto_at_least_s`: the least its RTO was. `from` and `to` set the
+period in unix nanoseconds, both ends included. By default it is the 365
+days up to now. `target` keeps one target system, and `environment` one of
+your environments. `limit` (100 by default, 1000 at most) and `cursor` page
+the tests as `GET /api/entities` does. A query field the API does not know
+is refused with 400.
+
+- **Evidence:** the lake view
+  [`dr_tests`](../guides/analytics-guide.md#dr-tests), the planned manual
+  exercises, and the DR test plans of the functions in `org.yaml`.
+- **API:** `GET /api/dr`.
 
 ### Star Map
 
@@ -245,25 +293,138 @@ Route `/schedules`, for operators. Recurring runs of registered definitions.
 
 ### Manual
 
-Route `/manual`. Entry and review of manual evidence: draft, submitted,
-verified or rejected.
+Route `/manual`. Manual evidence: DR exercises and other tests run by hand.
+You plan them, record them, attach evidence, sign them off and verify their
+audit trail. A record is a draft, submitted, verified or rejected.
 
 ![Manual evidence](../images/3.0/screenshots/manual.png)
+
+The page has five tabs:
+
+- **New entry** records an exercise. See [Record a DR exercise](#record-a-dr-exercise).
+- **Plans** lists the plans with their due dates, and plans an exercise.
+- **Verification queue** lists the submitted records. Open one to sign it off.
+- **All records** lists every record. Open one to see its steps, actions,
+  evidence, sign-offs and audit trail, and to verify it.
+- **Import** takes records as JSON, as drafts in one batch.
+
+When the API refuses a change, the page shows the reason the API gives.
 
 - **API:** `GET /api/manual/experiments`, `GET /api/manual/experiments/{id}`,
   `POST /api/manual/experiments`, `PUT /api/manual/experiments/{id}`,
   `POST /api/manual/experiments/{id}/submit`,
   `POST /api/manual/experiments/{id}/verify`,
-  `POST /api/manual/experiments/{id}/reject`.
+  `POST /api/manual/experiments/{id}/reject`,
+  `GET /api/manual/experiments/{id}/audit/verify`,
+  `POST /api/manual/experiments/{id}/attachments`,
+  `GET /api/manual/experiments/{id}/attachments/{attachment_id}/file`,
+  `POST /api/manual/import`, `GET /api/manual/plans`,
+  `POST /api/manual/plans`, `GET /api/manual/plans/{id}`,
+  `PATCH /api/manual/plans/{id}`, `POST /api/manual/plans/{id}/cancel`,
+  `GET /api/manual/plans/{id}/audit/verify`.
+
+#### Record a DR exercise
+
+The form of **New entry** takes what an auditor asks of a restore test, a
+failover drill or a tabletop:
+
+- the exercise type, `restore` and `backup` included, the target system and
+  environment, and the plan it fulfils. The list shows the planned plans of
+  the same type and target. A plan you pick fills the target and the planned
+  RTO and RPO where the form is blank.
+- the planned RTO and RPO, the actual recovery time and RPO, and whether the
+  data was verified after the recovery.
+- the participants with their roles, the steps in order with their start,
+  end and result, and the actions with an owner and a due date.
+- how much the findings matter and how much each action matters: `low`,
+  `medium`, `high` or `critical` (DORA Art. 24(5)). An action can also name
+  the run or the record that retested it.
+- the tester, and whether the tester is `internal` or `external` (DORA
+  Art. 24(4)).
+- the requirements the record is evidence for, in **Framework refs**. See
+  [Cite a requirement](#cite-a-requirement).
+
+The form sends the actions as `actions`. It no longer sends the older
+`action_items` list. When you edit an older draft, each of its plain action
+items becomes an action that still needs an owner.
+
+Save the draft first. Then attach files and links to it in **Evidence**, and
+submit it with **Save & submit**.
+
+#### Cite a requirement
+
+A record names the requirements it is evidence for in `framework_refs`.
+Name a DORA requirement by its registry id: `dora.art12.1` for Art. 12(1),
+`dora.art12` for the article. The
+[DORA score](../guides/dora-score.md#requirement-ids) explains the ids.
+
+- A DORA id the registry does not know is refused with 422, and nothing is
+  stored. The answer names the nearest registry id:
+  `'dora.art12.9' is not a requirement id of the DORA registry; did you mean 'dora.art12.1'?`.
+  A reference that names no framework, such as a bare `Art. 12(1)`, is
+  refused the same way. The same check runs on a draft edit, an import and
+  a draft over MCP.
+- An older form of a known id, such as `DORA Art. 12(1)`, is taken and kept
+  as written. The score, the Star Map and a run report read it as
+  `dora.art12.1`, so they show the same requirement.
+- A reference to another framework, such as `ISO 27001 A.5.30` or
+  `NIS2 Art. 21(2)(c)`, is kept as written and not checked: the registry
+  holds DORA only.
+
+#### Record a TLPT
+
+A record of type `tlpt` is a threat-led penetration test. Next to the
+fields of any record it takes the TLPT block, from the TLPT RTS
+(Delegated Regulation (EU) 2025/1190): the reference and the date of the
+attestation the TLPT authority issued (Art. 14), and the reference of the
+test summary report (Art. 12). Its actions are the remediation plan
+(Art. 13): each item has an owner, a due date, a severity, and the run or
+the record that retested it.
+
+```mermaid
+flowchart LR
+  accTitle: The parts of a TLPT record
+  accDescr: A TLPT record holds the attestation of the TLPT authority and the test summary report. Its actions are the remediation plan. Each item names the run or the record that retested it.
+  tlpt["record of type tlpt<br/>tester: external"] --> att["attestation<br/>reference and date"]
+  tlpt --> tsr["test summary report<br/>reference"]
+  tlpt --> plan["remediation plan<br/>the actions"]
+  plan --> item["item: owner, due date,<br/>severity"]
+  item -->|retested by| retest["a run or a record"]
+```
+
+On the page, choose the type `tlpt`: the **TLPT** panel opens and
+**Actions** becomes **Remediation plan**. With the API:
+
+```json
+{"exercise_type": "tlpt", "findings_severity": "high",
+ "tester": {"name": "Red Team Ltd", "kind": "external"},
+ "tlpt": {"attestation_ref": "TLPT-ATT-2026-07", "attested_at_ns": 1795000000000000000,
+          "summary_report_ref": "TSR-2026-07"},
+ "actions": [{"title": "Remove stale VPN accounts", "owner": "carol", "severity": "critical",
+              "retest": {"kind": "run", "id": "exp-vpn-retest"}}]}
+```
+
+- The `tlpt` block is refused with 400 on a record of another type.
+- A severity is `low`, `medium`, `high` or `critical`; a tester kind is
+  `internal` or `external`; a retest kind is `run` (an automated run, by its
+  id) or `record` (a manual record, by its id). Any other value is refused
+  with 400 and the values it may be.
+- The record reads them back as `findings_severity`, `tester`,
+  `tester_kind`, `tlpt_attestation_ref`, `tlpt_attested_at_ns` and
+  `tlpt_summary_ref`, and each action as `severity`, `retest_kind` and
+  `retest_id`.
+- All of them are part of the seal of the record, so the audit verify finds
+  a direct edit of any of them.
 
 #### Plan an exercise
 
-A plan says which manual exercise is due when, and who owns it. The page
-does not show plans yet: use the API. Send `POST /api/manual/plans` with a
-name, an exercise type, the target system and environment, an owner and a
-due date (`due_at_ns`). A plan can also name a function of the register
+A plan says which manual exercise is due when, and who owns it. Plan one on
+the **Plans** tab, or send `POST /api/manual/plans` with a name, an exercise
+type, the target system and environment, an owner and a due date
+(`due_at_ns`). A plan can also name a function of the register
 (`function_id`), what it will test (`scope`), a planned date, an interval
-in days and the planned RTO and RPO.
+in days and the planned RTO and RPO. On the page a due date holds the whole
+day: the plan is due at the end of it.
 
 ```mermaid
 flowchart LR
@@ -278,11 +439,13 @@ flowchart LR
 - A plan of a DR type that names no interval comes back every 365 days.
   The DR types are the ones the house counts as `dr`: by default
   `failover`, `drill`, `restore` and `backup`.
-- Change a planned plan with `PATCH /api/manual/plans/{id}`. A field you
-  send as `null` is cleared. Cancel it with
+- Change a planned plan with **Edit** on its row, or with
+  `PATCH /api/manual/plans/{id}`. A field you send as `null` is cleared.
+  Cancel it with **Cancel** and a reason, or with
   `POST /api/manual/plans/{id}/cancel`.
 - Every change seals the plan and adds a row to its audit trail.
-  `GET /api/manual/plans/{id}` shows both.
+  `GET /api/manual/plans/{id}` shows both. On the page, open the row of the
+  plan.
 - To fulfil the plan, send its id as `plan_id` with the record of the
   exercise. The plan must still be planned, and the record must test what
   the plan planned: the same exercise type, and the same target system,
@@ -296,8 +459,9 @@ flowchart LR
 
 #### When a plan is overdue
 
-A plan that is still planned after its due date is a finding on the
-Resilience page, with the rule `manual_exercise_overdue`. It is medium for
+A plan that is still planned after its due date is marked overdue on the
+**Plans** tab. It is also a finding on the Resilience page, with the rule
+`manual_exercise_overdue`. It is medium for
 the first 30 days past the due date, and high after that. The finding goes
 away when a verified record fulfils the plan, or when someone cancels it.
 An overdue plan does not change the compliance score.
@@ -342,6 +506,9 @@ flowchart LR
   one -->|reject| rejected
 ```
 
+- On the page, open the record in **Verification queue** and choose
+  **Approve** or **Reject** with a note. The page says how many sign-offs
+  are still needed.
 - Approve with `POST /api/manual/experiments/{id}/verify`. Reject with
   `POST /api/manual/experiments/{id}/reject` and a note. The answer gives
   the `status` and the sign-offs still needed (`signoffs_needed`).
@@ -357,8 +524,10 @@ flowchart LR
 #### Attach a file
 
 A record can keep files as evidence: a runbook log, a screenshot, an export
-of the data you restored. The page does not attach files yet: use the API.
-Send the bytes of one file as the body, and its name in the query:
+of the data you restored. On the page, choose the file in **Evidence** of the
+record and **Upload file**. The list shows the type, the size and the SHA-256
+of each file, and **Download** gives it back. With the API, send the bytes of
+one file as the body, and its name in the query:
 
 ```bash
 curl -H "Authorization: Bearer $TOKEN" --data-binary @runbook-log.pdf \
@@ -408,7 +577,8 @@ flowchart LR
 `GET /api/manual/experiments/{id}/audit/verify` and
 `GET /api/manual/plans/{id}/audit/verify` check a record or a plan again,
 straight from the lake. They need the Viewer role, as the verify of a run
-does.
+does. On the page, open the record or the plan and choose **Verify audit
+trail**: it says ok, or lists each problem.
 
 ```mermaid
 flowchart LR
@@ -447,6 +617,46 @@ the `table` and the `row`, and the `field` when the check can tell.
    "field": "reviewed_by",
    "problem": "reviewed_by is 'mallory', but the verify row of the audit trail is by 'carol'"}]}
 ```
+
+#### From the command line
+
+`tumult manual` does all of this from a terminal or a script. It sends each
+request to the daemon API, with the URL of `TUMULT_DAEMON_URL` and the token
+of `TUMULT_DAEMON_TOKEN`, so the same roles and rules apply. The
+[CLI reference](../guides/cli-reference.md#tumult-manual) lists every flag.
+
+```bash
+tumult manual create --file failover.toon     # the record body, as TOON or JSON
+tumult manual submit 01KAQ...
+tumult manual sign-off 01KAQ... --approve     # as another user
+tumult manual attach 01KAQ... runbook-log.pdf
+tumult manual verify 01KAQ...                 # exits 1 when it is not ok
+tumult manual show 01KAQ... --format json
+```
+
+```mermaid
+flowchart LR
+  accTitle: Who does what from the command line and over MCP
+  accDescr: An agent over MCP may list and read records and plans, and draft a record. A person with tumult manual submits the draft, other people sign it off, and anyone may verify it. Both reach the same records.
+  agent["agent over MCP<br/>list, read, draft"] --> lake["manual records"]
+  person["person with tumult manual<br/>submit, sign off, attach, verify"] --> api["daemon API"] --> lake
+```
+
+- The file of `create` is the body that `POST /api/manual/experiments`
+  takes, and the file of `plans create` the body of `POST /api/manual/plans`.
+  A field the API does not know is refused, and the error names it.
+- `list` filters by `--status`, `--type`, `--target`, `--from` and `--to`.
+  `show` prints the steps, actions, links, attachments and sign-offs, and how
+  many sign-offs are still needed. It also prints the severity of the
+  findings and of each action, the tester, the TLPT block and what retested
+  an action.
+- Every read takes `--format json` and prints what the API answered.
+- While the daemon has no user yet, `--by` names who acts. With auth on, the
+  user of the token acts.
+- The MCP tools `tumult_manual_list`, `tumult_manual_get`,
+  `tumult_manual_create_draft` and `tumult_manual_plans_list` let an agent
+  read and draft. No MCP tool submits, signs off, verifies or attaches: an
+  agent may draft, a person signs.
 
 ## Telemetry explorers
 
@@ -601,35 +811,6 @@ Route `/login`. Sign in, and change the password at the first sign in.
 - Entities from [entity events](../guides/entity-events.md): read them with
   `GET /api/entities`.
 - Forecast bands of semantic metrics: `GET /api/forecast`.
-- Plans of manual exercises: `GET /api/manual/plans`, see
-  [Plan an exercise](#plan-an-exercise).
-- The audit verify of a manual record or plan:
-  `GET /api/manual/experiments/{id}/audit/verify` and
-  `GET /api/manual/plans/{id}/audit/verify`, see
-  [Verify the audit trail](#verify-the-audit-trail).
-- Files attached to a manual record:
-  `POST /api/manual/experiments/{id}/attachments` and
-  `GET /api/manual/experiments/{id}/attachments/{attachment_id}/file`, see
-  [Attach a file](#attach-a-file).
-- The DR view: `GET /api/dr`. It holds:
-  - `targets`: each target of the register in
-    [When a DR test is overdue](#when-a-dr-test-is-overdue). Each has its
-    state (`ok`, `due` within 30 days, `overdue` or `never_tested`), its
-    last DR test, when the next one is due and where the interval comes
-    from (`plan`, `function` or `default`), and the plan that covers it.
-    It also has the RTO and RPO of its last test, or of the plan where the
-    last test sets none, and what the last test measured.
-  - `tests`: the DR tests of the period, newest first, with the columns of
-    the view [`dr_tests`](../guides/analytics-guide.md#dr-tests).
-  - `summary`: the targets per state, and the tests of the period per
-    origin and verdict.
-
-  `from` and `to` set the period in unix nanoseconds, both ends included.
-  By default it is the 365 days up to now. The period selects the tests;
-  the targets are as they are now. `target` keeps one target system, and
-  `environment` one of your environments. `limit` (100 by default, 1000 at
-  most) and `cursor` page the tests as `GET /api/entities` does. A query
-  field the API does not know is refused with 400.
 
 Charts follow the theme you pick (dark, light or auto), and tooltips escape
 every value that comes from the lake.

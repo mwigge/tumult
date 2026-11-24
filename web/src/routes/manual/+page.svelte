@@ -1,14 +1,27 @@
 <script lang="ts">
-    // Manual evidence: enter hand-executed test records under attestation,
-    // and verify/reject submitted records (reviewer ≠ enterer — enforced by
-    // the API). Authenticated attribution comes from the session.
+    // Manual evidence: record DR exercises and other hand-executed tests
+    // under attestation, plan them with due dates, attach evidence, sign
+    // them off (a reviewer is not the enterer, enforced by the API) and
+    // verify their audit trail. Authenticated attribution comes from the
+    // session.
     import { page } from '$app/state';
     import { goto } from '$app/navigation';
     import { onMount } from 'svelte';
     import { api } from '#lib/api.js';
+    import { detailToForm, emptyForm, errorText } from '#lib/manual.js';
     import type { MeResponse } from '#lib/types.js';
-    import ManualEntryTab, { emptyForm } from '#lib/components/ManualEntryTab.svelte';
+    import ManualEntryTab from '#lib/components/ManualEntryTab.svelte';
+    import ManualImport from '#lib/components/ManualImport.svelte';
+    import ManualPlansTab from '#lib/components/ManualPlansTab.svelte';
     import ManualReviewTab from '#lib/components/ManualReviewTab.svelte';
+
+    const TABS = ['entry', 'plans', 'queue', 'records', 'import'] as const;
+    const TAB_LABEL: Record<string, string> = {
+        plans: 'Plans',
+        queue: 'Verification queue',
+        records: 'All records',
+        import: 'Import',
+    };
 
     const tab = $derived(page.url.searchParams.get('tab') ?? 'entry');
 
@@ -53,113 +66,82 @@
     let entryMsg: { ok: boolean; text: string } | null = $state(null);
     let busy = $state(false);
 
-    // Review notes, keyed by record id; kept here for the same reason.
-    let notes: Record<string, string> = $state({});
-
     async function editDraft(id: string) {
         try {
-            const { experiment: rec } = await api.manualDetail(id);
-            if (rec.status !== 'draft') throw new Error('Only drafts can be edited.');
-            const localDate = (ns: number | null) => {
-                if (!ns) return '';
-                const date = new Date(ns / 1e6);
-                return new Date(date.getTime() - date.getTimezoneOffset() * 60000)
-                    .toISOString()
-                    .slice(0, 16);
-            };
-            form = {
-                ...emptyForm(),
-                experiment_name: rec.experiment_name,
-                exercise_type: rec.exercise_type,
-                executed: localDate(rec.executed_at_ns),
-                hypothesis: rec.hypothesis,
-                method: rec.method,
-                outcome_status: rec.outcome_status,
-                hypothesis_met:
-                    rec.hypothesis_met === null
-                        ? 'unknown'
-                        : rec.hypothesis_met
-                          ? 'met'
-                          : 'not-met',
-                findings: rec.findings ?? '',
-                action_items: (Array.isArray(rec.action_items) ? rec.action_items : []).join('\n'),
-                target_system: rec.target_system ?? '',
-                target_environment: rec.target_environment ?? '',
-                blast_radius: rec.blast_radius ?? '',
-                recovery_time_s: rec.recovery_time_s == null ? '' : String(rec.recovery_time_s),
-                duration_s: rec.duration_s == null ? '' : String(rec.duration_s),
-                framework_refs: (rec.framework_refs ?? []).join(', '),
-                renewal: localDate(rec.renewal_due_ns).slice(0, 10),
-                attestation: rec.attestation,
-            };
+            const detail = await api.manualDetail(id);
+            if (detail.experiment.status !== 'draft') throw new Error('Only drafts can be edited.');
+            form = detailToForm(detail);
             editingId = id;
             entryMsg = null;
             setTab('entry');
         } catch (e) {
-            entryMsg = { ok: false, text: String(e) };
+            entryMsg = { ok: false, text: errorText(e) };
         }
     }
 </script>
 
-<div class="page-head">
-    <h1>Manual evidence</h1>
-    <span class="sub">hand-executed tests, entered under attestation</span>
-    <div class="controls">
-        <label class="actor">
-            {me?.auth_required ? 'Signed in as' : 'Acting as'}
-            <input
-                type="text"
-                placeholder="your name"
-                value={actor}
-                readonly={me?.auth_required}
-                oninput={(e) => setActor(e.currentTarget.value)}
-            />
-        </label>
-        <div class="seg" role="group" aria-label="manual sections">
-            {#each ['entry', 'queue', 'records'] as t (t)}
-                <button class:active={tab === t} onclick={() => setTab(t)}>
-                    {t === 'entry'
-                        ? editingId
-                            ? 'Draft editor'
-                            : 'New entry'
-                        : t === 'queue'
-                          ? 'Verification queue'
-                          : 'All records'}
-                </button>
-            {/each}
+<div class="manual">
+    <div class="page-head">
+        <h1>Manual evidence</h1>
+        <span class="sub"
+            >DR exercises and other hand-executed tests, entered under attestation</span
+        >
+        <div class="controls">
+            <label class="actor">
+                {me?.auth_required ? 'Signed in as' : 'Acting as'}
+                <input
+                    type="text"
+                    placeholder="your name"
+                    value={actor}
+                    readonly={me?.auth_required}
+                    oninput={(e) => setActor(e.currentTarget.value)}
+                />
+            </label>
+            <div class="seg" role="group" aria-label="manual sections">
+                {#each TABS as t (t)}
+                    <button class:active={tab === t} onclick={() => setTab(t)}>
+                        {t === 'entry' ? (editingId ? 'Draft editor' : 'New entry') : TAB_LABEL[t]}
+                    </button>
+                {/each}
+            </div>
         </div>
     </div>
+
+    {#if entryMsg && !entryMsg.ok && (tab !== 'entry' || !canWrite)}<div class="state error">
+            {entryMsg.text}
+        </div>{/if}
+
+    {#if tab === 'entry'}
+        {#if canWrite}
+            {#if editingId}<p>
+                    Editing draft <code>{editingId}</code>.
+                    <button
+                        class="btn"
+                        disabled={busy}
+                        onclick={() => {
+                            editingId = null;
+                            form = emptyForm();
+                            entryMsg = null;
+                        }}>New entry</button
+                    >
+                </p>{/if}
+            <ManualEntryTab
+                {actor}
+                allowedEnvironments={me?.env_scopes ?? []}
+                bind:editingId
+                bind:form
+                bind:entryMsg
+                bind:busy
+            />
+        {:else}<p>Your role can read manual evidence. An operator can create or edit it.</p>{/if}
+    {:else if tab === 'plans'}
+        <ManualPlansTab {actor} {canWrite} />
+    {:else if tab === 'import'}
+        <ManualImport {actor} {canWrite} />
+    {:else}
+        <ManualReviewTab {tab} {actor} {canReview} canEdit={canWrite} onedit={editDraft} />
+    {/if}
 </div>
-
-{#if entryMsg && !entryMsg.ok && (tab !== 'entry' || !canWrite)}<div class="state error">
-        {entryMsg.text}
-    </div>{/if}
-
-{#if tab === 'entry'}
-    {#if canWrite}
-        {#if editingId}<p>
-                Editing draft <code>{editingId}</code>.
-                <button
-                    disabled={busy}
-                    onclick={() => {
-                        editingId = null;
-                        form = emptyForm();
-                        entryMsg = null;
-                    }}>New entry</button
-                >
-            </p>{/if}
-        <ManualEntryTab
-            {actor}
-            allowedEnvironments={me?.env_scopes ?? []}
-            bind:editingId
-            bind:form
-            bind:entryMsg
-            bind:busy
-        />
-    {:else}<p>Your role can read manual evidence. An operator can create or edit it.</p>{/if}
-{:else}
-    <ManualReviewTab {tab} {actor} {canReview} canEdit={canWrite} onedit={editDraft} bind:notes />
-{/if}
 
 <style>
     .controls {
@@ -174,5 +156,93 @@
         gap: 6px;
         color: var(--text-dim);
         font-size: 12px;
+    }
+    /* The parts of the manual components share one look: their forms, rows
+       of fields, list editors and buttons. */
+    .manual :global(.form) {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+    .manual :global(.form label) {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        font-size: 12px;
+        color: var(--text-dim);
+    }
+    .manual :global(.row2),
+    .manual :global(.row3) {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+    }
+    .manual :global(.row3) {
+        grid-template-columns: 1fr 1fr 1fr;
+    }
+    .manual :global(.grid-rows) {
+        display: grid;
+        gap: 6px;
+        align-items: center;
+        margin-bottom: 6px;
+        font-size: 11.5px;
+        color: var(--text-dim);
+    }
+    .manual :global(.grid-rows input),
+    .manual :global(.grid-rows select) {
+        min-width: 0;
+        width: 100%;
+    }
+    .manual :global(.grid-rows .n) {
+        color: var(--text-faint);
+        text-align: right;
+    }
+    .manual :global(.note),
+    .manual :global(.dim) {
+        color: var(--text-faint);
+        font-size: 12px;
+        line-height: 1.5;
+    }
+    .manual :global(.actions) {
+        display: flex;
+        gap: 8px;
+    }
+    .manual :global(input[type='date']),
+    .manual :global(input[type='datetime-local']),
+    .manual :global(input[type='file']) {
+        background: var(--bg-raised);
+        border: 1px solid var(--border-strong);
+        color: var(--text);
+        border-radius: 5px;
+        padding: 5px 8px;
+        font-size: 13px;
+        font-family: inherit;
+    }
+    .manual :global(.btn) {
+        background: var(--bg-hover);
+        border: 1px solid var(--border-strong);
+        color: var(--text);
+        border-radius: 6px;
+        padding: 6px 14px;
+        cursor: pointer;
+        font-size: 13px;
+    }
+    .manual :global(.btn:hover) {
+        border-color: var(--accent-dim);
+    }
+    .manual :global(.btn.primary) {
+        background: var(--accent-dim);
+        border-color: var(--accent-dim);
+    }
+    .manual :global(.btn.danger) {
+        border-color: var(--fail);
+        color: var(--fail);
+    }
+    .manual :global(.btn.add) {
+        margin-top: 4px;
+    }
+    .manual :global(.btn:disabled) {
+        opacity: 0.5;
+        cursor: default;
     }
 </style>

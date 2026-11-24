@@ -11,6 +11,7 @@ export interface LegendItem {
     color?: string;
     /** How its swatch is drawn; a box when not given. */
     mark?: LegendMark;
-    /** A sign shown in place of a swatch, as the chart writes it in a cell. */
+    /** A sign shown in place of a swatch, as the chart writes it in a cell or
+        draws it as a mark; in `color` when it has one. */
     glyph?: string;
 }

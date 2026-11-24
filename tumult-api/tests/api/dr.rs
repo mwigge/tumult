@@ -425,6 +425,7 @@ async fn each_target_has_its_state_its_last_test_and_when_the_next_one_is_due() 
             "rto_measured_s": 4.0,
             "rpo_measured_s": null,
             "recovered": true,
+            "rto_at_least_s": null,
         })
     );
     assert_eq!(
@@ -448,6 +449,7 @@ async fn each_target_has_its_state_its_last_test_and_when_the_next_one_is_due() 
             "rto_measured_s": 300.0,
             "rpo_measured_s": 10.0,
             "recovered": true,
+            "rto_at_least_s": null,
         })
     );
     let billing = target_of(&view, "billing");
@@ -486,8 +488,9 @@ async fn each_target_has_its_state_its_last_test_and_when_the_next_one_is_due() 
             "rto_measured_s": null,
             "rpo_measured_s": null,
             "recovered": false,
+            "rto_at_least_s": 30.1,
         }),
-        "a run that did not recover keeps no measured RTO"
+        "a run that did not recover keeps no measured RTO, and says the least it was"
     );
     assert_eq!(
         target_of(&view, "archive"),
@@ -505,6 +508,7 @@ async fn each_target_has_its_state_its_last_test_and_when_the_next_one_is_due() 
             "rto_measured_s": null,
             "rpo_measured_s": null,
             "recovered": null,
+            "rto_at_least_s": null,
         }),
         "with no last test the targets are those of the plan"
     );
@@ -561,6 +565,7 @@ async fn the_tests_of_the_last_365_days_come_newest_first_with_every_column_of_t
             "outcome": "passed",
             "rto_target_s": 900.0,
             "rto_measured_s": 300.0,
+            "rto_at_least_s": null,
             "recovered": true,
             "no_outage": null,
             "rpo_target_s": 60.0,
@@ -595,15 +600,104 @@ async fn the_tests_of_the_last_365_days_come_newest_first_with_every_column_of_t
         .collect();
     for test in view["tests"].as_array().unwrap() {
         let keys: Vec<&String> = test.as_object().unwrap().keys().collect();
-        let mut want: Vec<&String> = columns.iter().collect();
+        let at_least = "rto_at_least_s".to_string();
+        let mut want: Vec<&String> = columns.iter().chain([&at_least]).collect();
         let mut keys_sorted = keys.clone();
         keys_sorted.sort();
         want.sort();
-        assert_eq!(keys_sorted, want, "every column of the view: {test}");
+        assert_eq!(
+            keys_sorted, want,
+            "every column of the view, and the least RTO: {test}"
+        );
     }
     assert_eq!(
         view["summary"],
         summary([1, 1, 3, 2], [1, 1, 1, 1], [1, 0, 0, 0])
+    );
+}
+
+#[tokio::test]
+async fn a_run_that_did_not_recover_says_the_least_its_rto_was() {
+    let srv = spawn_server().await;
+    let seeded = seed_dr(&srv).await;
+
+    let (status, view) = get(&srv.base, "/api/dr").await;
+
+    assert_eq!(status, 200, "{view}");
+    let at_least = |id: &str| {
+        view["tests"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|t| t["test_id"] == id)
+            .unwrap_or_else(|| panic!("no test {id}: {view}"))["rto_at_least_s"]
+            .clone()
+    };
+    assert_eq!(
+        at_least("automated:payments-dr"),
+        json!(30.1),
+        "the time from the outage seen to the end of the watch, from its RTO verdict"
+    );
+    for recovered in [
+        "automated:orders-dr",
+        "automated:billing-dr",
+        "automated:search-dr",
+    ] {
+        assert_eq!(at_least(recovered), Value::Null, "{recovered}");
+    }
+    assert_eq!(
+        at_least(&format!("manual:{}", seeded.catalog)),
+        Value::Null,
+        "a manual record says what it measured"
+    );
+    assert_eq!(target_of(&view, "payments-db")["rto_at_least_s"], 30.1);
+    assert_eq!(target_of(&view, "billing")["rto_at_least_s"], Value::Null);
+
+    let (_, page) = get(&srv.base, "/api/dr?target=payments-db&limit=1").await;
+    assert_eq!(
+        page["tests"][0]["rto_at_least_s"], 30.1,
+        "the least RTO is on the page that holds the test: {page}"
+    );
+}
+
+#[tokio::test]
+async fn a_run_that_did_not_recover_says_the_least_its_rto_was_when_a_later_test_is_the_last() {
+    let srv = spawn_server().await;
+    let now = now_ns();
+    let runs = vec![
+        dr_run(
+            "ledger-lost",
+            "ledger",
+            "prod",
+            now - 200 * DAY,
+            Seen::NeverBack,
+        ),
+        dr_run("ledger-back", "ledger", "prod", now - 10 * DAY, Seen::Met),
+    ];
+    exec_write(&srv, move |w| {
+        for (journal, definition) in &runs {
+            w.ingest_journal(journal, Some(definition))
+                .map_err(|e| e.to_string())?;
+        }
+        Ok(())
+    })
+    .await;
+
+    let (status, view) = get(&srv.base, "/api/dr").await;
+
+    assert_eq!(status, 200, "{view}");
+    let ledger = target_of(&view, "ledger");
+    assert_eq!(ledger["last_test"]["id"], "automated:ledger-back");
+    assert_eq!(ledger["rto_at_least_s"], Value::Null, "{ledger}");
+    let lost = view["tests"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|t| t["test_id"] == "automated:ledger-lost")
+        .unwrap_or_else(|| panic!("no lost run: {view}"));
+    assert_eq!(
+        lost["rto_at_least_s"], 30.1,
+        "the run is on the page, though no target has it as its last test"
     );
 }
 

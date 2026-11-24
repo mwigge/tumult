@@ -11,8 +11,8 @@ pub(super) const STEPS_SQL: &str = "SELECT ordinal, title, actor, started_at_ns,
 
 /// The actions of one record, in order, with their tracking columns.
 pub(super) const ACTIONS_SQL: &str = "SELECT id, ordinal, title, owner, due_at_ns, ticket, \
-     status, closed_at_ns, closed_by FROM manual_action_items WHERE experiment_id = ? \
-     ORDER BY ordinal";
+     status, closed_at_ns, closed_by, severity, retest_kind, retest_id \
+     FROM manual_action_items WHERE experiment_id = ? ORDER BY ordinal";
 
 /// The links of one record, in order.
 pub(super) const LINKS_SQL: &str = "SELECT ordinal, kind, linked_id, label \

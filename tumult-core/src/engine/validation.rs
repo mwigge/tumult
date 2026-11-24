@@ -347,6 +347,14 @@ fn validate_objectives(experiment: &Experiment) -> Result<(), EngineError> {
                 reason,
             });
         }
+        if let Some(reason) =
+            crate::runner::robustness::profile_fault(&o.metric, experiment.load.as_ref())
+        {
+            return Err(EngineError::NfrInvalid {
+                id: o.id.clone(),
+                reason,
+            });
+        }
         if !o.threshold.is_finite() {
             return Err(EngineError::NfrInvalid {
                 id: o.id.clone(),
@@ -421,6 +429,37 @@ fn validate_target_version(experiment: &Experiment) -> Result<(), EngineError> {
     })
 }
 
+/// Check the regulatory block of an experiment as it is written: every
+/// DORA requirement names a row or an article of the requirement registry
+/// (in its registry id or an older form of it), and a tester has a name.
+/// `tumult validate` runs it. A run does not: an experiment that names an
+/// id the registry does not know still runs, as it did before the check.
+///
+/// # Errors
+///
+/// Returns [`EngineError::UnknownRequirement`] with the nearest registry id
+/// if a DORA requirement is not in the registry, and
+/// [`EngineError::RegulatoryInvalid`] if the tester has no name.
+pub fn validate_regulatory(experiment: &Experiment) -> Result<(), EngineError> {
+    let Some(mapping) = experiment.regulatory.as_ref() else {
+        return Ok(());
+    };
+    for requirement in &mapping.requirements {
+        crate::compliance::check_run_requirement(&mapping.frameworks, &requirement.id)
+            .map_err(EngineError::UnknownRequirement)?;
+    }
+    if mapping
+        .tester
+        .as_ref()
+        .is_some_and(|tester| tester.name.trim().is_empty())
+    {
+        return Err(EngineError::RegulatoryInvalid {
+            reason: "tester.name must not be empty".into(),
+        });
+    }
+    Ok(())
+}
+
 fn validate_load(experiment: &Experiment) -> Result<(), EngineError> {
     let Some(load) = experiment.load.as_ref() else {
         return Ok(());
@@ -473,6 +512,7 @@ fn validate_load(experiment: &Experiment) -> Result<(), EngineError> {
             peak_vus,
             after_s,
             hold_s,
+            sample_interval_s,
         } => {
             positive("hold_s", *hold_s)?;
             if *peak_vus == 0 {
@@ -487,18 +527,33 @@ fn validate_load(experiment: &Experiment) -> Result<(), EngineError> {
             if *peak_vus <= vus {
                 return Err(invalid("peak_vus must exceed vus"));
             }
+            if let Some(sample_interval_s) = sample_interval_s {
+                validate_sample_interval(*sample_interval_s, duration_s)?;
+            }
         }
         LoadProfile::Soak { sample_interval_s } => {
-            positive("sample_interval_s", *sample_interval_s)?;
-            if *sample_interval_s < crate::runner::load_profile::MIN_WINDOW_S {
-                return Err(invalid(
-                    "sample_interval_s must be at least 1 second: a shorter window measures too few requests",
-                ));
-            }
-            if *sample_interval_s > duration_s {
-                return Err(invalid("sample_interval_s must not exceed duration_s"));
-            }
+            validate_sample_interval(*sample_interval_s, duration_s)?;
         }
+    }
+    Ok(())
+}
+
+/// A sample interval must be a window that measures enough requests, and
+/// fit in the run.
+fn validate_sample_interval(sample_interval_s: f64, duration_s: f64) -> Result<(), EngineError> {
+    let invalid = |reason: &str| EngineError::LoadProfileInvalid {
+        reason: reason.to_string(),
+    };
+    if !(sample_interval_s.is_finite() && sample_interval_s > 0.0) {
+        return Err(invalid("sample_interval_s must be finite and positive"));
+    }
+    if sample_interval_s < crate::runner::load_profile::MIN_WINDOW_S {
+        return Err(invalid(
+            "sample_interval_s must be at least 1 second: a shorter window measures too few requests",
+        ));
+    }
+    if sample_interval_s > duration_s {
+        return Err(invalid("sample_interval_s must not exceed duration_s"));
     }
     Ok(())
 }

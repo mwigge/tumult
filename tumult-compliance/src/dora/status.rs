@@ -427,10 +427,9 @@ mod tests {
     fn restore_tested(today: i64, age: i64) -> Inputs {
         let mut inputs = Inputs::empty(noon(today), EntityProfile::full());
         inputs.functions = vec![Function::new("cif-0042", Tier::Critical)];
-        inputs.evidence = vec![Evidence::run(
+        inputs.evidence = vec![Evidence::restore(
             "run-restore",
             "cif-0042",
-            "dr",
             noon(today - age),
         )];
         inputs
@@ -544,9 +543,9 @@ mod tests {
         // Chaos evidence is not restore evidence: 12(2) has only the old
         // failed-then-fresh pair below.
         inputs.evidence.clear();
-        let mut old = Evidence::run("run-old", "cif-0042", "dr", noon(today - 900));
+        let mut old = Evidence::restore("run-old", "cif-0042", noon(today - 900));
         old.experiment = "restore".into();
-        let mut new = Evidence::run("run-new", "cif-0042", "dr", noon(today - 20));
+        let mut new = Evidence::restore("run-new", "cif-0042", noon(today - 20));
         new.experiment = "restore".into();
         inputs.evidence = vec![old, new];
         let status = restore_status(&with_stored_days(inputs, 200));
@@ -618,10 +617,9 @@ mod tests {
             ("cif-0018", Tier::Important, 100),
         ] {
             inputs.functions.push(Function::new(id, tier));
-            inputs.evidence.push(Evidence::run(
+            inputs.evidence.push(Evidence::restore(
                 &format!("run-{id}"),
                 id,
-                "dr",
                 noon(today - age),
             ));
         }
@@ -655,10 +653,9 @@ mod tests {
             ("cif-0018", Tier::Important),
         ] {
             inputs.functions.push(Function::new(id, tier));
-            inputs.evidence.push(Evidence::run(
+            inputs.evidence.push(Evidence::restore(
                 &format!("run-{id}"),
                 id,
-                "dr",
                 noon(today - 100),
             ));
         }

@@ -417,18 +417,22 @@ pub struct NfrVerdict {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub margin: Option<f64>,
     pub criticality: NfrCriticality,
-    /// The recovery time objective only: whether the run recovered while
-    /// the post phase watched. `Some(false)`: it did not, so `observed` is
-    /// the time it watched, a lower bound. `None` for any other objective,
-    /// for a watch that does not count, and in an older journal.
+    /// The recovery time objective: whether the run recovered while the
+    /// post phase watched. `Some(false)`: it did not, so `observed` is the
+    /// time it watched, a lower bound. An objective on
+    /// `load.spike_recovery_s` says `Some(false)` too when the target was
+    /// not back after the spike by the end of the load. `None` for any
+    /// other objective, for a watch that does not count, and in an older
+    /// journal.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub recovered: Option<bool>,
     /// Why the verdict is what it is when its numbers do not say. The
     /// recovery time objective of a run that saw no outage is
     /// inconclusive with the reason [`NfrVerdict::NO_OUTAGE_OBSERVED`],
-    /// and an `rpo_target_s` that no objective measures with the reason
-    /// [`NfrVerdict::NO_RPO_OBJECTIVE`]. `None` for any other verdict and
-    /// in an older journal.
+    /// an `rpo_target_s` that no objective measures with the reason
+    /// [`NfrVerdict::NO_RPO_OBJECTIVE`], and a drift or spike objective of a
+    /// load that kept too few windows with [`NfrVerdict::TOO_FEW_WINDOWS`].
+    /// `None` for any other verdict and in an older journal.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
 }
@@ -441,6 +445,11 @@ impl NfrVerdict {
     /// The reason of the verdict on `rpo_target_s` of a run whose
     /// objectives have no `rpo` objective: nothing read the data back.
     pub const NO_RPO_OBJECTIVE: &'static str = "no objective measures lost data";
+
+    /// The reason of a drift or spike objective whose load kept too few
+    /// windows to judge: fewer than four for a drift, none before or none
+    /// after the spike for a recovery.
+    pub const TOO_FEW_WINDOWS: &'static str = "too few load windows to judge";
 }
 
 /// Objective outcome of a run: the declared recovery targets, what was

@@ -210,7 +210,17 @@ pub(super) fn analysis(journal: &Journal) -> String {
     section("analysis", "Analysis", &facts(&rows))
 }
 
-/// The frameworks the run is evidence for, and the requirements it names.
+/// A requirement as the journal names it, with the registry id it names
+/// when that is another text (`Art. 12(1) (dora.art12.1)`).
+fn requirement_name(frameworks: &[String], id: &str) -> String {
+    match tumult_core::compliance::run_requirement_id(frameworks, id) {
+        Some(registry) if registry != id => format!("{id} ({registry})"),
+        _ => id.to_owned(),
+    }
+}
+
+/// The frameworks the run is evidence for, who ran it, and the
+/// requirements it names, each DORA one with its registry id.
 pub(super) fn regulatory(journal: &Journal) -> String {
     let Some(mapping) = &journal.regulatory else {
         return String::new();
@@ -221,6 +231,13 @@ pub(super) fn regulatory(journal: &Journal) -> String {
     } else {
         format!("<p>Frameworks: {}</p>\n", frameworks.join(", "))
     };
+    let tester = mapping.tester.as_ref().map_or_else(String::new, |tester| {
+        format!(
+            "<p>Tester: {} ({})</p>\n",
+            text(&tester.name),
+            tester.kind.as_str()
+        )
+    });
     let rows: String = mapping
         .requirements
         .iter()
@@ -228,7 +245,7 @@ pub(super) fn regulatory(journal: &Journal) -> String {
             tr(
                 false,
                 &[
-                    text(&requirement.id),
+                    text(&requirement_name(&mapping.frameworks, &requirement.id)),
                     text(&requirement.description),
                     text(&requirement.evidence),
                 ],
@@ -239,6 +256,6 @@ pub(super) fn regulatory(journal: &Journal) -> String {
     section(
         "regulatory",
         "Regulatory mapping",
-        &[named, requirements].concat(),
+        &[named, tester, requirements].concat(),
     )
 }

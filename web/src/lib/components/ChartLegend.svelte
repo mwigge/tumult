@@ -12,7 +12,7 @@
     {#each items as item (item.label)}
         <span class="item">
             {#if item.glyph}
-                <b>{item.glyph}</b>
+                <b style:color={item.color}>{item.glyph}</b>
             {:else if item.mark === 'hatch'}
                 <i class="swatch hatch"></i>
             {:else if item.color}

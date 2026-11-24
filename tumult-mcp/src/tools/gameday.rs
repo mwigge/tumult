@@ -328,8 +328,8 @@ pub fn gameday_analyze(gameday_path: &str) -> Result<String, ToolError> {
     .ok();
     writeln!(
         output,
-        "  Recovery: {:.2}",
-        journal.resilience_score.recovery_compliance
+        "  Recovery: {}",
+        journal.resilience_score.recovery_text()
     )
     .ok();
     writeln!(
@@ -702,7 +702,11 @@ mod tests {
         let analysis = gameday_analyze(out.to_str().unwrap()).unwrap();
         assert!(analysis.contains("GameDay: unit-gd"), "{analysis}");
         assert!(analysis.contains("Pass rate:"), "{analysis}");
-        assert!(analysis.contains("Recovery:"), "{analysis}");
+        // The experiment watches nothing come back: no recovery to score.
+        assert!(
+            analysis.contains("  Recovery: not measured\n"),
+            "{analysis}"
+        );
         assert!(analysis.contains("Load impact:"), "{analysis}");
         assert!(analysis.contains("Compliance:"), "{analysis}");
         assert!(

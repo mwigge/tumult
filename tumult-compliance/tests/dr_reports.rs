@@ -304,9 +304,14 @@ fn drill(plan_id: &str) -> NewManualExperiment {
                 owner: "dave".into(),
                 due_at_ns: Some(AS_OF + 30 * DAY),
                 ticket: Some("OPS-1234".into()),
+                severity: None,
+                retest: None,
             }],
             links: vec![],
             plan_id: Some(plan_id.into()),
+            findings_severity: None,
+            tester: None,
+            tlpt: None,
         },
     }
 }

@@ -51,6 +51,12 @@ tumult-test-utils = { path = "../tumult-test-utils", default-features = false }
 tempfile = { workspace = true }
 # Reads back the Arrow and CSV files `tumult export` writes, in tests.
 arrow = { workspace = true }
+# A real daemon API on loopback for the tests of `tumult manual`.
+tumult-api = { workspace = true }
+tumult-ingest = { workspace = true }
+tumult-compliance = { workspace = true }
+tumult-auth = { path = "../tumult-auth" }
+axum = { workspace = true }
 
 [lints]
 workspace = true

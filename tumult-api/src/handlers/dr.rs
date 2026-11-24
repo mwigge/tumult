@@ -11,6 +11,11 @@
 //! * `summary`: the targets per state, and the tests of the period per
 //!   origin and verdict.
 //!
+//! A run that did not recover measured no RTO. Its test, and a target
+//! whose last test it is, say the least its RTO was in `rto_at_least_s`:
+//! the time from the outage seen to the end of the watch, as its verdict
+//! on the RTO holds it.
+//!
 //! The period is `from` to `to` in unix nanoseconds, both ends included:
 //! by default the 365 days up to now, or up to `to`. It selects the tests;
 //! the targets stay as they are now. `target` keeps one target system.
@@ -19,13 +24,15 @@
 //! is refused, and every value of a request reaches the store as a bound
 //! parameter.
 
+use std::collections::HashMap;
+
 use axum::extract::rejection::QueryRejection;
 use axum::extract::{Query, State};
 use axum::{Extension, Json};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use tumult_lake::{DrScope, DrTestFilter, DrTestPosition, Reader};
+use tumult_lake::{DrScope, DrTestFilter, DrTestPosition, Reader, SqlParam};
 
 use crate::auth::Principal;
 use crate::error::{bad_request, ApiError};
@@ -108,6 +115,9 @@ pub(crate) struct DrTarget {
     rpo_measured_s: Option<f64>,
     /// Whether the target recovered in the last test.
     recovered: Option<bool>,
+    /// The least the RTO was, when the last test is a run that did not
+    /// recover.
+    rto_at_least_s: Option<f64>,
 }
 
 /// The last DR test of a target.
@@ -142,6 +152,10 @@ pub(crate) struct DrTest {
     outcome: Option<String>,
     rto_target_s: Option<f64>,
     rto_measured_s: Option<f64>,
+    /// The least the RTO was, for a run that did not recover. Not a
+    /// column of the view.
+    #[serde(default)]
+    rto_at_least_s: Option<f64>,
     recovered: Option<bool>,
     no_outage: Option<bool>,
     rpo_target_s: Option<f64>,
@@ -241,6 +255,7 @@ impl From<TargetRow> for DrTarget {
             rto_measured_s: row.rto_measured_s,
             rpo_measured_s: row.rpo_measured_s,
             recovered: row.recovered,
+            rto_at_least_s: None,
         }
     }
 }
@@ -331,6 +346,73 @@ fn test_counts(rows: &[Value]) -> Result<TestCounts, String> {
     Ok(counts)
 }
 
+/// The RTO verdict of each run of `$1`, a JSON list of experiment ids,
+/// that did not recover: its observed value is the time from the outage
+/// seen to the end of the watch, the least its RTO was.
+const RTO_AT_LEAST_SQL: &str = "SELECT experiment_id, max(observed) AS rto_at_least_s \
+     FROM nfr_verdicts \
+     WHERE kind = 'rto' AND nfr_id = 'rto' AND NOT recovered AND observed IS NOT NULL \
+     AND list_contains(from_json(CAST($1 AS VARCHAR), '[\"VARCHAR\"]'), experiment_id) \
+     GROUP BY experiment_id";
+
+/// A row of [`RTO_AT_LEAST_SQL`].
+#[derive(Debug, Deserialize)]
+struct AtLeastRow {
+    experiment_id: String,
+    rto_at_least_s: f64,
+}
+
+/// The experiment id of a run in the `test_id` of `dr_tests`, which is
+/// the origin and the evidence id: none for a manual record.
+fn run_id(test_id: &str) -> Option<&str> {
+    test_id.strip_prefix("automated:")
+}
+
+/// The least RTO of each run among `ids` that did not recover, by
+/// experiment id.
+fn rto_at_least(reader: &Reader, ids: &[String]) -> Result<HashMap<String, f64>, String> {
+    if ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let rows = reader
+        .query_json_rows_bound(RTO_AT_LEAST_SQL, &[SqlParam::text_list(ids)])
+        .map_err(|e| e.to_string())?;
+    Ok(rows_as::<AtLeastRow>(rows)?
+        .into_iter()
+        .map(|row| (row.experiment_id, row.rto_at_least_s))
+        .collect())
+}
+
+/// `targets` and `tests` with the least RTO of each run among them that
+/// did not recover. The runs are asked for, and the store keeps those
+/// that did not recover.
+fn with_rto_at_least(
+    reader: &Reader,
+    targets: &mut [DrTarget],
+    tests: &mut [DrTest],
+) -> Result<(), String> {
+    let mut ids: Vec<String> = tests
+        .iter()
+        .filter(|test| test.origin == "automated")
+        .map(|test| test.evidence_id.clone())
+        .collect();
+    ids.extend(
+        targets
+            .iter()
+            .filter_map(|target| run_id(&target.last_test.as_ref()?.id))
+            .map(str::to_string),
+    );
+    let found = rto_at_least(reader, &ids)?;
+    for test in tests.iter_mut().filter(|test| test.origin == "automated") {
+        test.rto_at_least_s = found.get(&test.evidence_id).copied();
+    }
+    for target in targets.iter_mut() {
+        let id = target.last_test.as_ref().and_then(|last| run_id(&last.id));
+        target.rto_at_least_s = id.and_then(|id| found.get(id)).copied();
+    }
+    Ok(())
+}
+
 /// One page of DR tests.
 struct TestPage {
     tests: Vec<DrTest>,
@@ -379,8 +461,9 @@ fn read_page(reader: &Reader, request: &DrRequest) -> Result<TestPage, String> {
 
 /// The DR view of `request`.
 fn read_view(reader: &Reader, request: &DrRequest) -> Result<DrView, String> {
-    let targets = read_targets(reader, request)?;
-    let page = read_page(reader, request)?;
+    let mut targets = read_targets(reader, request)?;
+    let mut page = read_page(reader, request)?;
+    with_rto_at_least(reader, &mut targets, &mut page.tests)?;
     let counts = reader
         .dr_test_counts(&request.scope, &request.filter())
         .map_err(|e| e.to_string())?;

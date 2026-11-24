@@ -42,9 +42,13 @@ fn all_tools_listed() {
         AutopilotRespondTool::tool(),
         AutopilotExportTool::tool(),
         AutopilotNotifyTool::tool(),
+        ManualListTool::tool(),
+        ManualGetTool::tool(),
+        ManualCreateDraftTool::tool(),
+        ManualPlansListTool::tool(),
         WhoamiTool::tool(),
     ];
-    assert_eq!(tools.len(), 40);
+    assert_eq!(tools.len(), 44);
 }
 
 #[test]
@@ -101,6 +105,10 @@ fn tool_names_follow_convention() {
         AutopilotRespondTool::tool(),
         AutopilotExportTool::tool(),
         AutopilotNotifyTool::tool(),
+        ManualListTool::tool(),
+        ManualGetTool::tool(),
+        ManualCreateDraftTool::tool(),
+        ManualPlansListTool::tool(),
         WhoamiTool::tool(),
     ];
     for tool in &tools {
@@ -215,6 +223,10 @@ async fn list_tools_round_trip_returns_all_registered_tools() {
         "tumult_autopilot_respond",
         "tumult_autopilot_export",
         "tumult_autopilot_notify",
+        "tumult_manual_list",
+        "tumult_manual_get",
+        "tumult_manual_create_draft",
+        "tumult_manual_plans_list",
         "tumult_whoami",
     ];
     let names: Vec<&str> = result.tools.iter().map(|t| t.name.as_str()).collect();

@@ -35,8 +35,9 @@ use serde_json::{json, Value};
 use tumult_ingest::Batch;
 use tumult_lake::{
     ActionItem, AttachmentKind, ExerciseDetail, ExerciseLink, ExerciseStep, ExerciseType, LinkKind,
-    ManualError, ManualOutcome, NewManualExperiment, Participant, PlanError, Reader, SignOff,
-    SignOffDecision, SignOffOutcome, StepResult, Store, Writer,
+    ManualError, ManualOutcome, NewManualExperiment, Participant, PlanError, Reader, Retest,
+    RetestKind, Severity, SignOff, SignOffDecision, SignOffOutcome, StepResult, Store, Tester,
+    TesterKind, TlptDetail, Writer,
 };
 
 use crate::auth::Principal;
@@ -60,7 +61,9 @@ pub(crate) fn actor_or(
 }
 
 /// Map a lifecycle error to an HTTP response. A record that names a plan
-/// it cannot fulfil is 422, and so is a sign-off the rules refuse.
+/// it cannot fulfil is 422, and so are a sign-off the rules refuse and a
+/// framework reference the requirement registry does not know (the error
+/// names the nearest registry id).
 pub(crate) fn manual_error(err: &ManualError) -> ApiError {
     let status = match err {
         ManualError::Invalid(_) | ManualError::Plan(PlanError::Invalid(_)) => {
@@ -74,7 +77,8 @@ pub(crate) fn manual_error(err: &ManualError) -> ApiError {
         }
         ManualError::Plan(PlanError::Unusable(_))
         | ManualError::SelfReview
-        | ManualError::AlreadySigned(_) => StatusCode::UNPROCESSABLE_ENTITY,
+        | ManualError::AlreadySigned(_)
+        | ManualError::UnknownRequirement(_) => StatusCode::UNPROCESSABLE_ENTITY,
         ManualError::Store(_) => StatusCode::INTERNAL_SERVER_ERROR,
     };
     (status, Json(json!({"error": err.to_string()})))
@@ -240,6 +244,10 @@ pub struct ManualRecordRequest {
     entered_by: Option<String>,
     attestation: String,
     renewal_due_ns: Option<i64>,
+    /// The requirements the record cites: a DORA requirement by its
+    /// registry id (`dora.art24.6`) or an older form the registry reads
+    /// (`DORA Art. 24(6)`), or a reference to another framework. A DORA
+    /// reference the registry does not know is refused with 422.
     #[serde(default)]
     framework_refs: Vec<String>,
     /// The planned RTO, in seconds.
@@ -269,6 +277,42 @@ pub struct ManualRecordRequest {
     /// The plan the exercise fulfils once the record is verified: a
     /// planned plan of the same exercise type.
     plan_id: Option<String>,
+    /// How much the findings matter: `low`, `medium`, `high` or `critical`.
+    findings_severity: Option<String>,
+    /// Who ran the test, internal or external (DORA Art. 24(4)).
+    tester: Option<TesterRequest>,
+    /// The TLPT facts of a record of type `tlpt`.
+    tlpt: Option<TlptRequest>,
+}
+
+/// Who ran the test.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TesterRequest {
+    name: String,
+    /// `internal` or `external`.
+    kind: String,
+}
+
+/// The TLPT facts of a record (RTS 2025/1190): the attestation of the TLPT
+/// authority and its date, and the test summary report. The remediation
+/// plan is the actions of the record.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TlptRequest {
+    attestation_ref: Option<String>,
+    attested_at_ns: Option<i64>,
+    summary_report_ref: Option<String>,
+}
+
+/// The run or the record that retested an action.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RetestRequest {
+    /// `run` (an automated run, by its experiment id) or `record` (a manual
+    /// record, by its id).
+    kind: String,
+    id: String,
 }
 
 /// One person who took part, and their role.
@@ -301,6 +345,9 @@ pub struct ActionRequest {
     due_at_ns: Option<i64>,
     /// A ticket key or URL that tracks the action.
     ticket: Option<String>,
+    /// `low`, `medium`, `high` or `critical`.
+    severity: Option<String>,
+    retest: Option<RetestRequest>,
 }
 
 /// One link to what the exercise tested.
@@ -345,13 +392,49 @@ impl From<ParticipantRequest> for Participant {
     }
 }
 
-impl From<ActionRequest> for ActionItem {
-    fn from(a: ActionRequest) -> Self {
+impl ActionRequest {
+    fn into_action(self) -> Result<ActionItem, ManualError> {
+        let retest = self
+            .retest
+            .map(|r| -> Result<Retest, ManualError> {
+                Ok(Retest {
+                    kind: RetestKind::parse(&r.kind)?,
+                    id: r.id,
+                })
+            })
+            .transpose()?;
+        Ok(ActionItem {
+            title: self.title,
+            owner: self.owner,
+            due_at_ns: self.due_at_ns,
+            ticket: self.ticket,
+            severity: self.severity.as_deref().map(Severity::parse).transpose()?,
+            retest,
+        })
+    }
+}
+
+impl TesterRequest {
+    fn into_tester(self) -> Result<Tester, ManualError> {
+        let kind = TesterKind::parse(&self.kind).ok_or_else(|| {
+            ManualError::Invalid(format!(
+                "unknown tester kind '{}' (internal|external)",
+                self.kind
+            ))
+        })?;
+        Ok(Tester {
+            name: self.name,
+            kind,
+        })
+    }
+}
+
+impl From<TlptRequest> for TlptDetail {
+    fn from(t: TlptRequest) -> Self {
         Self {
-            title: a.title,
-            owner: a.owner,
-            due_at_ns: a.due_at_ns,
-            ticket: a.ticket,
+            attestation_ref: t.attestation_ref,
+            attested_at_ns: t.attested_at_ns,
+            summary_report_ref: t.summary_report_ref,
         }
     }
 }
@@ -373,13 +456,24 @@ impl ManualRecordRequest {
                 .into_iter()
                 .map(StepRequest::into_step)
                 .collect::<Result<_, _>>()?,
-            actions: self.actions.into_iter().map(ActionItem::from).collect(),
+            actions: self
+                .actions
+                .into_iter()
+                .map(ActionRequest::into_action)
+                .collect::<Result<_, _>>()?,
             links: self
                 .links
                 .into_iter()
                 .map(LinkRequest::into_link)
                 .collect::<Result<_, _>>()?,
             plan_id: self.plan_id,
+            findings_severity: self
+                .findings_severity
+                .as_deref()
+                .map(Severity::parse)
+                .transpose()?,
+            tester: self.tester.map(TesterRequest::into_tester).transpose()?,
+            tlpt: self.tlpt.map(TlptDetail::from),
         };
         Ok(NewManualExperiment {
             experiment_name: self.experiment_name,

@@ -129,8 +129,9 @@
 //!   `overdue`, `never_tested`), last DR test, next due date and interval,
 //!   covering plan, and RTO and RPO. Then the DR tests of the period (by
 //!   default the last 365 days), newest first and paged as the entity list
-//!   is, and the counts per state, origin and verdict. A query field it
-//!   does not know is refused.
+//!   is, and the counts per state, origin and verdict. A run that did not
+//!   recover says the least its RTO was. A query field it does not know is
+//!   refused.
 //! * `GET /api/dora?lei=&profile=&by=entity|org&env=` — DORA coverage per
 //!   article and function of one legal entity, each number with its
 //!   unknown share, the expectation table (expected against actual

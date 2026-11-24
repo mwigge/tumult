@@ -727,7 +727,8 @@ async fn the_recovery_window_flag_overrides_the_window_of_the_file() {
     );
     let journal = journal.expect("a journal");
     let post = journal.post_result.as_ref().expect("the run watched");
-    assert!(post.duration_s <= 0.5, "{post:?}");
+    // The round of reads that runs when the window ends finishes.
+    assert!(post.duration_s <= 1.0, "{post:?}");
     let rto = rto_of(&journal);
     assert_eq!(rto.state, NfrState::Breached, "{rto:?}");
     assert_eq!(rto.recovered, Some(false));

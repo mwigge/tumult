@@ -134,6 +134,7 @@ mod tests {
                     description: "ICT resilience testing".into(),
                     evidence: "Recovery within RTO".into(),
                 }],
+                tester: None,
             }),
             guards: vec![],
             blast_radius: None,

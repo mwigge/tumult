@@ -21,6 +21,25 @@ pub(super) fn graph_node_summary_schema() -> Value {
     })
 }
 
+/// Schema for one row of a manual registry table, as the lake gives it:
+/// an object with at least the `required` columns.
+pub(super) fn manual_row_schema(required: &[&str]) -> Value {
+    json!({
+        "type": "object",
+        "description": "One row, every column of its table by name.",
+        "required": required,
+    })
+}
+
+/// Schema for the rows of one part of a manual record.
+pub(super) fn manual_rows_schema(description: &str) -> Value {
+    json!({
+        "type": "array",
+        "description": description,
+        "items": { "type": "object" },
+    })
+}
+
 /// Schema for one ranked injection recommendation
 /// (`tumult_graph::recommend::Recommendation`), shared by the topology
 /// map and `tumult_recommend_injection` schemas.

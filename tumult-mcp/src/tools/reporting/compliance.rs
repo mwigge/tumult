@@ -161,7 +161,7 @@ mod tests {
         assert!(
             result.text.contains(
                 "  Pass rate: 100.0%\n  \
-                 Recovery within 30s: not measured, no run watched for recovery. \
+                 Recovery within target: not measured, no run measured a recovery. \
                  The verdict rests on the pass rate only (reduced assurance).\n  \
                  Evidence verdict: COMPLIANT (pass-rate only)\n"
             ),
