@@ -324,3 +324,28 @@ async fn the_dr_reports_read_the_dr_types_of_the_house() {
         "{html}"
     );
 }
+
+/// The daemon could not read its manifests directory: the DORA score
+/// fails, and the evidence pack, scored with the workloads as the DORA
+/// score is, fails with it. A DR test report reads no workloads and is
+/// still made.
+#[tokio::test]
+async fn an_evidence_pack_fails_as_the_dora_score_does_when_the_manifests_cannot_be_read() {
+    let house = tempfile::TempDir::new().unwrap();
+    let srv = spawn_server_with_manifests_dir(house.path().join("no-such-manifests")).await;
+    seed(&srv).await;
+
+    let dora = reqwest::get(format!("{}/api/dora", srv.base))
+        .await
+        .unwrap();
+    assert_eq!(dora.status(), 500);
+    let (status, body) = generate(
+        &srv.base,
+        json!({"type": "evidence-pack", "framework": "dora"}),
+    )
+    .await;
+    assert_eq!(status, 500, "{body}");
+    assert_eq!(body["error"], "internal error");
+    let (status, meta) = generate(&srv.base, json!({"type": "dr-test", "target": "ledger"})).await;
+    assert_eq!(status, 200, "{meta}");
+}
