@@ -4,6 +4,7 @@
     "container-pause-recovery.toon": {"proof": "examples-proof", "expect": {"status": "completed", "hypothesis_before": true, "hypothesis_after": true, "rollbacks": 0, "objectives": {}}},
     "pumba-latency.toon": {"proof": "examples-proof", "expect": {"status": "completed", "hypothesis_before": true, "hypothesis_after": true, "rollbacks": 0, "objectives": {}}},
     "postgres-failover.toon": {"proof": "demo-check", "expect": {"status": "completed", "hypothesis_before": true, "hypothesis_after": true, "rollbacks": 0, "objectives": {"post-availability": "met", "rto": "met"}}},
+    "postgres-restore-rpo.toon": {"proof": "demo-check", "expect": {"status": "completed", "hypothesis_before": true, "hypothesis_after": true, "rollbacks": 0, "objectives": {"rpo": "met", "rto": "met"}, "rpo_measured_s": {"from": 3, "to": 10}}},
     "pg-under-load.toon": {"proof": "examples-proof", "expect": {"status": "completed", "hypothesis_before": true, "hypothesis_after": true, "rollbacks": 0, "objectives": {"pg-responds-p95": "met", "availability": "met"}}},
     "pg-load-chaos.toon": {"proof": "examples-proof", "expect": {"status": "completed", "hypothesis_before": true, "hypothesis_after": true, "rollbacks": 0, "load_result": true, "objectives": {}}},
     "kafka-broker-chaos.toon": {"proof": "examples-proof", "expect": {"status": "completed", "hypothesis_before": true, "hypothesis_after": true, "rollbacks": 0, "objectives": {}}},
