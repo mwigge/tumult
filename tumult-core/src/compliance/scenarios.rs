@@ -218,9 +218,9 @@ mod tests {
         EntityProfile::parse(profile, &flags).expect("valid profile")
     }
 
-    fn ids_required_by(row: &str, e: &EntityProfile) -> Vec<&'static str> {
+    fn ids_required_by(row: &str, e: EntityProfile) -> Vec<&'static str> {
         let req = requirement(row).unwrap_or_else(|| panic!("no row {row}"));
-        required_by(req, e).map(|s| s.id).collect()
+        required_by(req, &e).map(|s| s.id).collect()
     }
 
     /// The closed set: one id per scenario Art. 26(2) points (a) to (i)
@@ -287,8 +287,8 @@ mod tests {
     #[test]
     fn the_full_framework_row_needs_every_scenario_but_the_micro_carve_out() {
         let all: Vec<&str> = SCENARIOS.iter().map(|s| s.id).collect();
-        assert_eq!(ids_required_by("rts1774.art26", &entity("full", &[])), all);
-        let micro = ids_required_by("rts1774.art26", &entity("full", &["microenterprise"]));
+        assert_eq!(ids_required_by("rts1774.art26", entity("full", &[])), all);
+        let micro = ids_required_by("rts1774.art26", entity("full", &["microenterprise"]));
         assert_eq!(micro.len(), 10, "{micro:?}");
         for spared in ["switchover", "backup_restore", "redundant_facility"] {
             assert!(!micro.contains(&spared), "{spared}: {micro:?}");
@@ -311,7 +311,7 @@ mod tests {
     fn the_simplified_row_needs_a_cyber_attack_and_a_restore() {
         for flags in [&[][..], &["microenterprise"][..]] {
             assert_eq!(
-                ids_required_by("rts1774.art39", &entity("simplified", flags)),
+                ids_required_by("rts1774.art39", entity("simplified", flags)),
                 ["cyber_attack", "backup_restore"]
             );
         }
