@@ -19,12 +19,16 @@
 use std::collections::BTreeMap;
 
 use tumult_core::compliance::{
-    applicable, EvidenceStrength, Feed, Requirement, Selector, ARTICLES, REQUIREMENTS,
+    applicable, required_by, EvidenceStrength, Feed, Requirement, Scenario, Selector, ARTICLES,
+    REQUIREMENTS,
 };
 
 use super::model::{day_of, Evidence, Function, IncidentFeed, Inputs, Outcome, SloFeed, Source};
 use super::params::HouseParams;
 use super::status;
+
+/// The plan scenario a run counts for only when it ran a restore step.
+const BACKUP_RESTORE: &str = "backup_restore";
 
 /// Freshness `φ`: 1 inside the window `F`, then `2^(−(age − F) / (F · d))`
 /// with `d` the decay fraction.
@@ -128,6 +132,62 @@ impl<'a> Cell<'a> {
             best,
             ..Self::value(0.0)
         }
+    }
+}
+
+/// Where one plan scenario stands for a function.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ScenarioState {
+    /// A test of the scenario passed inside the row's window.
+    Passed,
+    /// Tested inside the window, and no test there passed.
+    Failed,
+    /// Every test of the scenario is older than the window.
+    Overdue,
+    /// No test of the scenario is stored: a gap, not a pass.
+    Missing,
+}
+
+impl ScenarioState {
+    /// Stable name used in API payloads.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Passed => "passed",
+            Self::Failed => "failed",
+            Self::Overdue => "overdue",
+            Self::Missing => "missing",
+        }
+    }
+}
+
+/// One test of a plan scenario, with the outcome it counts with: a run
+/// whose restore step failed is a failed test of a restore.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ScenarioTest<'a> {
+    pub evidence: &'a Evidence,
+    pub outcome: Outcome,
+}
+
+/// One plan scenario of one function: its state, the test that sets its
+/// value, the newest test of it and the newest pass.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ScenarioCell<'a> {
+    pub scenario: &'static Scenario,
+    pub state: ScenarioState,
+    /// The best test of the scenario, by `φ · o · s`.
+    pub best: Option<Scored<'a>>,
+    /// The newest test of the scenario.
+    pub latest: Option<ScenarioTest<'a>>,
+    /// The newest test of the scenario that passed, of any age.
+    pub last_pass: Option<&'a Evidence>,
+}
+
+impl ScenarioCell<'_> {
+    /// The value of the scenario: that of its best test, 0 untested.
+    #[must_use]
+    pub fn v(&self) -> f64 {
+        self.best.map_or(0.0, |b| b.v)
     }
 }
 
@@ -356,6 +416,152 @@ impl<'a> Ctx<'a> {
             .collect()
     }
 
+    /// The tests of one plan scenario for a function, each with the
+    /// outcome it counts with. A test counts for the scenarios it names. A
+    /// run counts for the backup and restore scenario only when it ran a
+    /// backup or restore step, and a run whose step failed is a failed
+    /// test of it, as for the restore rows; a record counts as written.
+    fn scenario_tests(
+        &self,
+        function: &str,
+        scenario: &str,
+        as_of_ns: i64,
+    ) -> Vec<ScenarioTest<'a>> {
+        let restore = scenario == BACKUP_RESTORE;
+        self.evidence_for(function, as_of_ns)
+            .filter(|e| e.scenarios.iter().any(|named| named == scenario))
+            .filter_map(|e| {
+                let outcome = match (restore, e.source, e.restore_step) {
+                    (true, Source::Run, None) => return None,
+                    (true, Source::Run, Some(false)) => Outcome::Failed,
+                    _ => e.outcome,
+                };
+                Some(ScenarioTest {
+                    evidence: e,
+                    outcome,
+                })
+            })
+            .collect()
+    }
+
+    /// Each plan scenario the row needs for a function, in display order:
+    /// passed when a test passed inside the row's window, failed when it
+    /// was tested there and none passed, overdue when every test is older,
+    /// and missing when it was never tested.
+    #[must_use]
+    pub fn scenario_cells(
+        &self,
+        req: &Requirement,
+        function: &str,
+        as_of_ns: i64,
+    ) -> Vec<ScenarioCell<'a>> {
+        let window = i64::from(req.window_days);
+        required_by(req, &self.inputs.entity)
+            .map(|scenario| {
+                let tests = self.scenario_tests(function, scenario.id, as_of_ns);
+                let fresh =
+                    |t: &ScenarioTest<'_>| day_of(as_of_ns) - day_of(t.evidence.at_ns) <= window;
+                let passed = |t: &ScenarioTest<'_>| t.outcome == Outcome::Passed;
+                let state = if tests.iter().any(|t| fresh(t) && passed(t)) {
+                    ScenarioState::Passed
+                } else if tests.iter().any(fresh) {
+                    ScenarioState::Failed
+                } else if tests.is_empty() {
+                    ScenarioState::Missing
+                } else {
+                    ScenarioState::Overdue
+                };
+                let newest = |t: &&ScenarioTest<'a>| (t.evidence.at_ns, t.evidence.id.as_str());
+                let rows = tests
+                    .iter()
+                    .map(|t| {
+                        let o = t.outcome.factor(self.params);
+                        let s = self.test_strength(req, t.evidence);
+                        self.score(t.evidence, as_of_ns, req.window_days, o, s)
+                    })
+                    .collect();
+                ScenarioCell {
+                    scenario,
+                    state,
+                    best: Cell::best_of(rows).best,
+                    latest: tests.iter().max_by_key(newest).copied(),
+                    last_pass: tests
+                        .iter()
+                        .filter(|t| passed(t))
+                        .max_by_key(newest)
+                        .map(|t| t.evidence),
+                }
+            })
+            .collect()
+    }
+
+    /// Every test of the plan scenarios the row needs for a function,
+    /// scored: a test that names two of them is one row.
+    fn scenario_rows(&self, req: &Requirement, function: &str, as_of_ns: i64) -> Vec<Scored<'a>> {
+        let mut rows: Vec<Scored<'a>> = Vec::new();
+        for scenario in required_by(req, &self.inputs.entity) {
+            for test in self.scenario_tests(function, scenario.id, as_of_ns) {
+                let o = test.outcome.factor(self.params);
+                let s = self.test_strength(req, test.evidence);
+                let row = self.score(test.evidence, as_of_ns, req.window_days, o, s);
+                match rows
+                    .iter_mut()
+                    .find(|held| held.evidence.id == row.evidence.id)
+                {
+                    Some(held) if better(&row, held) => *held = row,
+                    Some(_) => {}
+                    None => rows.push(row),
+                }
+            }
+        }
+        rows
+    }
+
+    /// The mean, over the plan scenarios the row needs, of the best test
+    /// of each; a scenario never tested counts 0. The reason says how many
+    /// passed inside the window and what holds the rest down.
+    fn scenarios(&self, req: &Requirement, function: &str, as_of_ns: i64) -> Cell<'a> {
+        let cells = self.scenario_cells(req, function, as_of_ns);
+        if cells.is_empty() {
+            return Cell::zero("the row needs no plan scenario for this entity");
+        }
+        let count = |state: ScenarioState| cells.iter().filter(|c| c.state == state).count();
+        let total: f64 = cells.iter().map(ScenarioCell::v).sum();
+        let passed = count(ScenarioState::Passed);
+        let short: Vec<String> = [
+            (ScenarioState::Failed, "failed"),
+            (ScenarioState::Overdue, "overdue"),
+            (ScenarioState::Missing, "never tested"),
+        ]
+        .into_iter()
+        .map(|(state, said)| (count(state), said))
+        .filter(|(n, _)| *n > 0)
+        .map(|(n, said)| format!("{n} {said}"))
+        .collect();
+        let reason = (!short.is_empty()).then(|| {
+            format!(
+                "{passed} of {} plan scenarios have a passing test in the last {} days; {}",
+                cells.len(),
+                req.window_days,
+                short.join(", ")
+            )
+        });
+        let best =
+            cells
+                .iter()
+                .filter_map(|c| c.best)
+                .fold(None, |held: Option<Scored<'a>>, row| match held {
+                    Some(h) if !better(&row, &h) => Some(h),
+                    _ => Some(row),
+                });
+        Cell {
+            state: CellState::Scored,
+            v: total / cells.len() as f64,
+            best,
+            reason,
+        }
+    }
+
     fn manual_row(&self, req: &Requirement, evidence: &'a Evidence, as_of_ns: i64) -> Scored<'a> {
         let o = evidence.outcome.factor(self.params);
         let s = strength_factor(req.strength, self.params);
@@ -390,6 +596,7 @@ impl<'a> Ctx<'a> {
                 self.attestation_rows(req, id, as_of_ns)
             }
             Selector::Programme => self.programme_rows(req, function, as_of_ns),
+            Selector::Scenarios => self.scenario_rows(req, id, as_of_ns),
             Selector::Telemetry | Selector::Topology | Selector::Feed(_) => Vec::new(),
         };
         rows.sort_by(|a, b| {
@@ -433,6 +640,7 @@ impl<'a> Ctx<'a> {
             Selector::Feed(Feed::Incident) => self.incident_feed(req, id, as_of_ns),
             Selector::Feed(Feed::Slo) => self.slo_feed(id),
             Selector::Feed(Feed::Register) => self.register_feed(req, as_of_ns),
+            Selector::Scenarios => self.scenarios(req, id, as_of_ns),
         }
     }
 
@@ -746,7 +954,8 @@ impl<'a> Ctx<'a> {
             | Selector::Attestation
             | Selector::Telemetry
             | Selector::Topology
-            | Selector::Feed(_) => false,
+            | Selector::Feed(_)
+            | Selector::Scenarios => false,
         }
     }
 }
@@ -1621,5 +1830,239 @@ mod tests {
             strongest([RowState::Na, RowState::NoEvents, RowState::Unknown].into_iter()),
             RowState::Unknown
         );
+    }
+
+    // ── Plan scenarios of RTS 2024/1774 (rows rts1774.art26 and .art39) ──
+
+    /// A run of `function` tagged with `scenarios`, `days` before the
+    /// as-of day of [`scenario_inputs`].
+    fn tagged(id: &str, function: &str, scenarios: &[&str], days: i64) -> Evidence {
+        let mut run = Evidence::run(id, function, "chaos", ns("2026-11-13") - days * DAY_NS);
+        run.scenarios = scenarios.iter().map(|s| (*s).to_string()).collect();
+        run
+    }
+
+    /// A critical and an `other` function of a full-framework entity, and
+    /// the tests of its plan scenarios: a power outage passed 10 days ago,
+    /// a site loss rehearsed by hand 20 days ago, an insider attack failed
+    /// 5 days ago, a provider failure passed 500 days ago, a run that names
+    /// no scenario, and a tagged run of the other function.
+    fn scenario_inputs(entity: EntityProfile) -> Inputs {
+        let mut inputs = Inputs::empty(ns("2026-11-13"), entity);
+        inputs.functions = vec![
+            Function::new("cif-0042", Tier::Critical),
+            Function::new("cif-0090", Tier::Other),
+        ];
+        let mut site = Evidence::manual("man-site", &["cif-0042"], "failover", ns("2026-10-24"));
+        site.scenarios = vec!["premises_loss".into()];
+        let mut insider = tagged("run-insider", "cif-0042", &["insider_attack"], 5);
+        insider.outcome = Outcome::Failed;
+        inputs.evidence = vec![
+            tagged("run-power", "cif-0042", &["power_outage"], 10),
+            site,
+            insider,
+            tagged("run-provider", "cif-0042", &["third_party_failure"], 500),
+            Evidence::run("run-plain", "cif-0042", "chaos", ns("2026-11-01")),
+            tagged("run-other", "cif-0090", &["cyber_attack"], 1),
+        ];
+        inputs
+    }
+
+    fn states(cells: &[ScenarioCell<'_>]) -> Vec<(&'static str, ScenarioState)> {
+        cells.iter().map(|c| (c.scenario.id, c.state)).collect()
+    }
+
+    #[test]
+    fn a_plan_scenario_row_is_the_mean_of_the_best_test_of_each_scenario_it_needs() {
+        let inputs = scenario_inputs(EntityProfile::full());
+        let params = HouseParams::default();
+        let matrix = Matrix::build(&inputs, &params);
+        let row = matrix.row("rts1774.art26").unwrap();
+        assert_eq!(
+            row.cells.len(),
+            1,
+            "the row binds critical and important only"
+        );
+        let cell = &row.cells[0].cell;
+
+        let req = requirement("rts1774.art26").unwrap();
+        let cells = matrix.ctx.scenario_cells(req, "cif-0042", inputs.as_of_ns);
+        assert_eq!(cells.len(), 13);
+        let shown: Vec<_> = states(&cells)
+            .into_iter()
+            .filter(|(_, state)| *state != ScenarioState::Missing)
+            .collect();
+        assert_eq!(
+            shown,
+            [
+                ("third_party_failure", ScenarioState::Overdue),
+                ("premises_loss", ScenarioState::Passed),
+                ("insider_attack", ScenarioState::Failed),
+                ("power_outage", ScenarioState::Passed),
+            ]
+        );
+        let missing = cells
+            .iter()
+            .filter(|c| c.state == ScenarioState::Missing)
+            .count();
+        assert_eq!(missing, 9);
+
+        // A run counts in full, a record standing in for one at the
+        // manual-test cap, a failed test at the failed outcome and an old
+        // one decayed. A scenario never tested counts 0.
+        let old = freshness(500, 365, &params);
+        let failed = params.outcome.failed;
+        let want = (1.0 + params.strength.manual_test + old + failed) / 13.0;
+        assert!((cell.v - want).abs() < 1e-12, "{} vs {want}", cell.v);
+        assert_eq!(cell.state, CellState::Scored);
+        assert_eq!(cell.best.unwrap().evidence.id, "run-power");
+        assert_eq!(
+            cell.reason.as_deref(),
+            Some(
+                "2 of 13 plan scenarios have a passing test in the last 365 days; \
+                 1 failed, 1 overdue, 9 never tested"
+            )
+        );
+        let ids: Vec<&str> = matrix
+            .ctx
+            .evidence_rows(req, &inputs.functions[0], inputs.as_of_ns)
+            .iter()
+            .map(|r| r.evidence.id.as_str())
+            .collect();
+        assert_eq!(
+            ids,
+            ["run-power", "man-site", "run-insider", "run-provider"]
+        );
+        assert!(!matrix.ctx.declared(req, &inputs.functions[0]));
+    }
+
+    /// The newest test of a scenario and the test that sets its value
+    /// are each named; a pass inside the window wins over a later failure.
+    #[test]
+    fn a_scenario_passed_in_the_window_stays_passed_after_a_later_failure() {
+        let mut inputs = scenario_inputs(EntityProfile::full());
+        let mut again = tagged("run-power-2", "cif-0042", &["power_outage"], 1);
+        again.outcome = Outcome::Failed;
+        let mut partial = tagged("run-insider-2", "cif-0042", &["insider_attack"], 2);
+        partial.outcome = Outcome::Partial;
+        inputs.evidence.extend([again, partial]);
+        let params = HouseParams::default();
+        let ctx = Ctx::new(&inputs, &params);
+        let req = requirement("rts1774.art26").unwrap();
+        let cells = ctx.scenario_cells(req, "cif-0042", inputs.as_of_ns);
+        let power = cells
+            .iter()
+            .find(|c| c.scenario.id == "power_outage")
+            .unwrap();
+        assert_eq!(power.state, ScenarioState::Passed);
+        assert_eq!(power.best.unwrap().evidence.id, "run-power");
+        assert_eq!(power.latest.unwrap().evidence.id, "run-power-2");
+        assert_eq!(power.latest.unwrap().outcome, Outcome::Failed);
+        assert_eq!(power.last_pass.unwrap().id, "run-power");
+        // A partial outcome is no pass.
+        let insider = cells
+            .iter()
+            .find(|c| c.scenario.id == "insider_attack")
+            .unwrap();
+        assert_eq!(insider.state, ScenarioState::Failed);
+        assert_eq!(insider.best.unwrap().evidence.id, "run-insider-2");
+        assert!((insider.v() - params.outcome.partial * params.strength.direct).abs() < 1e-12);
+        let missing = cells
+            .iter()
+            .find(|c| c.scenario.id == "cyber_attack")
+            .unwrap();
+        assert!(missing.best.is_none() && missing.latest.is_none() && missing.last_pass.is_none());
+        assert_eq!(missing.v(), 0.0);
+    }
+
+    /// A run counts for the backup and restore scenario only when it ran
+    /// a backup or restore step, as for Art. 12(2); a failed step is a
+    /// failed test. A record counts as written.
+    #[test]
+    fn a_restore_scenario_takes_a_run_only_when_it_ran_a_restore_step() {
+        let params = HouseParams::default();
+        let req = requirement("rts1774.art26").unwrap();
+        let state_of = |restore_step: Option<bool>, manual: bool| {
+            let mut inputs = scenario_inputs(EntityProfile::full());
+            let mut test = if manual {
+                Evidence::manual("man-restore", &["cif-0042"], "restore", ns("2026-11-03"))
+            } else {
+                tagged("run-restore", "cif-0042", &[], 10)
+            };
+            test.scenarios = vec!["backup_restore".into()];
+            test.restore_step = restore_step;
+            inputs.evidence = vec![test];
+            let ctx = Ctx::new(&inputs, &params);
+            let cells = ctx.scenario_cells(req, "cif-0042", inputs.as_of_ns);
+            cells
+                .iter()
+                .find(|c| c.scenario.id == "backup_restore")
+                .map(|c| c.state)
+                .unwrap()
+        };
+        assert_eq!(state_of(None, false), ScenarioState::Missing);
+        assert_eq!(state_of(Some(false), false), ScenarioState::Failed);
+        assert_eq!(state_of(Some(true), false), ScenarioState::Passed);
+        assert_eq!(state_of(None, true), ScenarioState::Passed);
+    }
+
+    #[test]
+    fn a_microenterprise_needs_ten_scenarios_and_the_simplified_plan_two() {
+        let params = HouseParams::default();
+        let micro = EntityProfile::parse("full", &["microenterprise".to_string()]).unwrap();
+        let inputs = scenario_inputs(micro);
+        let matrix = Matrix::build(&inputs, &params);
+        let cell = &matrix.row("rts1774.art26").unwrap().cells[0].cell;
+        let old = freshness(500, 365, &params);
+        let failed = params.outcome.failed;
+        let want = (1.0 + params.strength.manual_test + old + failed) / 10.0;
+        assert!((cell.v - want).abs() < 1e-12, "{}", cell.v);
+
+        let simplified = EntityProfile::parse("simplified", &[]).unwrap();
+        let mut inputs = scenario_inputs(simplified);
+        inputs
+            .evidence
+            .push(tagged("run-cyber", "cif-0042", &["cyber_attack"], 3));
+        let matrix = Matrix::build(&inputs, &params);
+        assert!(matrix.row("rts1774.art26").is_none());
+        let req = requirement("rts1774.art39").unwrap();
+        let cells = matrix.ctx.scenario_cells(req, "cif-0042", inputs.as_of_ns);
+        assert_eq!(
+            states(&cells),
+            [
+                ("cyber_attack", ScenarioState::Passed),
+                ("backup_restore", ScenarioState::Missing)
+            ]
+        );
+        let cell = &matrix.row("rts1774.art39").unwrap().cells[0].cell;
+        assert_eq!(cell.v, 0.5);
+        assert_eq!(
+            cell.reason.as_deref(),
+            Some("1 of 2 plan scenarios have a passing test in the last 365 days; 1 never tested")
+        );
+    }
+
+    #[test]
+    fn every_scenario_passed_in_the_window_covers_the_row_in_full() {
+        let simplified = EntityProfile::parse("simplified", &[]).unwrap();
+        let mut inputs = scenario_inputs(simplified);
+        let mut restore = tagged("run-restore", "cif-0042", &["backup_restore"], 30);
+        restore.restore_step = Some(true);
+        inputs.evidence = vec![
+            tagged("run-cyber", "cif-0042", &["cyber_attack"], 365),
+            restore,
+        ];
+        let params = HouseParams::default();
+        let matrix = Matrix::build(&inputs, &params);
+        let cell = &matrix.row("rts1774.art39").unwrap().cells[0].cell;
+        assert_eq!(cell.v, 1.0);
+        assert_eq!(cell.reason, None);
+        // One day older and the cyber attack test is overdue.
+        inputs.as_of_ns += DAY_NS;
+        let matrix = Matrix::build(&inputs, &params);
+        let req = requirement("rts1774.art39").unwrap();
+        let cells = matrix.ctx.scenario_cells(req, "cif-0042", inputs.as_of_ns);
+        assert_eq!(cells[0].state, ScenarioState::Overdue);
+        assert!(matrix.row("rts1774.art39").unwrap().cells[0].cell.v < 1.0);
     }
 }

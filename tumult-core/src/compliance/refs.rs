@@ -242,7 +242,7 @@ pub fn run_requirement_id(frameworks: &[String], id: &str) -> Option<String> {
 }
 
 /// The edit distance of two ids, in characters.
-fn distance(a: &str, b: &str) -> usize {
+pub(super) fn distance(a: &str, b: &str) -> usize {
     let b: Vec<char> = b.chars().collect();
     let mut row: Vec<usize> = (0..=b.len()).collect();
     for (i, ca) in a.chars().enumerate() {
@@ -275,7 +275,7 @@ fn as_registry_form(parsed: &Parsed) -> String {
 }
 
 /// The length of the text two ids start with.
-fn shared_start(a: &str, b: &str) -> usize {
+pub(super) fn shared_start(a: &str, b: &str) -> usize {
     a.chars().zip(b.chars()).take_while(|(x, y)| x == y).count()
 }
 

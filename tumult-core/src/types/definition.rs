@@ -357,6 +357,12 @@ pub struct RegulatoryMapping {
     /// copies it into its journal with the rest of the block.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tester: Option<Tester>,
+    /// The plan scenarios of RTS 2024/1774 the run tests, by id
+    /// (`power_outage`, `premises_loss`, …; see
+    /// [`crate::compliance::SCENARIOS`]). The lake keeps them with the run,
+    /// and the DORA score reads them for RTS Arts. 26 and 39.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub scenarios: Vec<String>,
 }
 
 // ── Non-functional objectives ──────────────────────────────────
@@ -750,6 +756,7 @@ mod tests {
                 name: "Red Team Ltd".into(),
                 kind: TesterKind::External,
             }),
+            scenarios: Vec::new(),
         };
         let decoded: RegulatoryMapping = toon_round_trip(&mapping);
         assert_eq!(decoded, mapping);
@@ -778,6 +785,23 @@ mod tests {
         assert_eq!(decoded.tester.map(|t| t.kind), Some(TesterKind::External));
         let bad = named.replace("external", "vendor");
         assert!(toon_format::decode_default::<RegulatoryMapping>(&bad).is_err());
+    }
+
+    /// The plan scenarios a run tests are a list of ids in the block; a
+    /// block without them reads as before and writes none.
+    #[test]
+    fn a_regulatory_block_names_the_plan_scenarios_it_tests() {
+        let text = "frameworks[1]: DORA\nrequirements[1]:\n  - id: Art. 25\n    \
+                    description: d\n    evidence: e\n";
+        let plain: RegulatoryMapping = toon_format::decode_default(text).unwrap();
+        assert!(plain.scenarios.is_empty());
+        let written = toon_format::encode_default(&plain).unwrap();
+        assert!(!written.contains("scenarios"), "{written}");
+
+        let tagged = format!("{text}scenarios[2]: power_outage,premises_loss\n");
+        let decoded: RegulatoryMapping = toon_format::decode_default(&tagged).unwrap();
+        assert_eq!(decoded.scenarios, ["power_outage", "premises_loss"]);
+        assert_eq!(toon_round_trip(&decoded), decoded);
     }
 
     #[test]

@@ -3,7 +3,8 @@
 //! Three documents are built from one scored [`Matrix`]:
 //!
 //! - [`dora`]: coverage per article and per function (or org unit), the
-//!   expectation table and the reporting-readiness facts;
+//!   expectation table, the plan scenarios of each critical or important
+//!   function and the reporting-readiness facts;
 //! - [`article`]: one article with every evidence row behind each cell;
 //! - [`maturity()`]: the internal level of the legal entity with its
 //!   pillars and gates, and the per-node roll-up with the cap chain.
@@ -16,11 +17,14 @@ use std::fmt;
 
 use serde_json::{json, Map, Value};
 use tumult_core::compliance::{
-    article_title, EvidenceClass, ARTICLES, EVIDENCE_DISCLAIMER, REQUIREMENTS_VERSION,
+    article_title, required_by, EvidenceClass, Selector, ARTICLES, EVIDENCE_DISCLAIMER,
+    REQUIREMENTS_VERSION, RTS_1774_ELI, SCENARIOS,
 };
 use tumult_lake::{MaturityDailyRow, Reader, RequirementStatusRow, StoreError, Writer};
 
-use super::coverage::{CellState, Matrix, MatrixCell, MatrixRow, RowState, Scored};
+use super::coverage::{
+    CellState, Matrix, MatrixCell, MatrixRow, RowState, ScenarioCell, ScenarioState, Scored,
+};
 use super::loader::{
     self, LoadError, Loaded, Request, PROOF_DAYS_NOTE, PROOF_SOURCE, SNAPSHOT_SOURCE,
 };
@@ -51,6 +55,14 @@ pub const SCOPE_NOTE: &str = "Partial view: only the functions with telemetry or
 /// Why a view other than the stored one has no past quarters.
 pub const HISTORY_NOT_STORED: &str = "Stored days are of every environment under the \
      registered profile; this view has none.";
+/// Said with the plan scenarios of every document.
+pub const SCENARIO_NOTE: &str = "A scenario with no test is a gap, not a pass. A test counts \
+     for the scenarios its run or record names. Reading RTS 2024/1774 Arts. 25 and 26 as one \
+     test per scenario is the house's reading. This shows which scenarios each function has \
+     tested; it is no compliance verdict.";
+/// The act the plan scenarios come from.
+const SCENARIO_SOURCE: &str =
+    "Commission Delegated Regulation (EU) 2024/1774, Arts. 25, 26, 39 and 40";
 /// Decimal places of a coverage value or share.
 const SHARE_PLACES: i32 = 4;
 /// Decimal places of an index or a pillar value.
@@ -420,6 +432,7 @@ fn requirement_json(
         "scope": req.scope.as_str(),
         "scope_basis": req.scope_basis.as_str(),
         "strength": req.strength.as_str(),
+        "source_url": req.source_url(),
         "coverage": opt_share(row_coverage(matrix, row)),
         "state": row.state(only).as_str(),
         "status": row_status.status.as_str(),
@@ -635,6 +648,83 @@ fn function_json(matrix: &Matrix<'_>, index: usize, function: &Function) -> Valu
     })
 }
 
+/// The states a plan scenario can be in, in the order they are counted.
+const SCENARIO_STATES: [ScenarioState; 4] = [
+    ScenarioState::Passed,
+    ScenarioState::Failed,
+    ScenarioState::Overdue,
+    ScenarioState::Missing,
+];
+
+/// One plan scenario of one function: its state, its newest test with
+/// the outcome it counts with, and the day it last passed.
+fn scenario_json(cell: &ScenarioCell<'_>) -> Value {
+    let day = |ns: i64| format_day(day_of(ns));
+    json!({
+        "id": cell.scenario.id,
+        "state": cell.state.as_str(),
+        "last_tested_at": cell.latest.map(|t| day(t.evidence.at_ns)),
+        "last_test": cell.latest.map(|t| json!({
+            "id": t.evidence.id,
+            "source": t.evidence.source.as_str(),
+            "outcome": t.outcome.as_str(),
+        })),
+        "last_passed_at": cell.last_pass.map(|e| day(e.at_ns)),
+    })
+}
+
+/// The plan scenarios of each critical or important function that a row
+/// scored from them binds, with the act they come from. Every scenario the
+/// row needs is listed, so one nothing tested shows as missing.
+fn scenarios(matrix: &Matrix<'_>) -> Value {
+    let ctx = &matrix.ctx;
+    let inputs = ctx.inputs;
+    let rows: Vec<&MatrixRow<'_>> = matrix
+        .rows
+        .iter()
+        .filter(|row| row.req.selector == Selector::Scenarios)
+        .collect();
+    let needed = |id: &str| {
+        rows.iter()
+            .any(|row| required_by(row.req, &inputs.entity).any(|s| s.id == id))
+    };
+    let catalogue: Vec<Value> = SCENARIOS
+        .iter()
+        .filter(|s| needed(s.id))
+        .map(|s| json!({"id": s.id, "title": s.title, "cite": format!("RTS 2024/1774 {}", s.cite)}))
+        .collect();
+    let mut functions = Vec::new();
+    for row in &rows {
+        for cell in &row.cells {
+            let function = &inputs.functions[cell.function];
+            let tracked = ctx.scenario_cells(row.req, &function.id, inputs.as_of_ns);
+            let mut counts = Map::new();
+            for state in SCENARIO_STATES {
+                let n = tracked.iter().filter(|c| c.state == state).count();
+                counts.insert(state.as_str().into(), json!(n));
+            }
+            functions.push(json!({
+                "entity_id": function.id,
+                "name": function.name,
+                "tier": function.tier.as_str(),
+                "row": row.req.id,
+                "coverage": share(cell.cell.v),
+                "counts": counts,
+                "scenarios": tracked.iter().map(scenario_json).collect::<Vec<_>>(),
+            }));
+        }
+    }
+    json!({
+        "source": SCENARIO_SOURCE,
+        "source_url": RTS_1774_ELI,
+        "rows": rows.iter().map(|row| row.req.id).collect::<Vec<_>>(),
+        "window_days": rows.first().map(|row| row.req.window_days),
+        "note": SCENARIO_NOTE,
+        "catalogue": catalogue,
+        "functions": functions,
+    })
+}
+
 /// Reporting readiness: how complete the function register is, and
 /// which services map to no function.
 fn readiness(loaded: &Loaded) -> Value {
@@ -796,6 +886,7 @@ pub fn dora(loaded: &Loaded, matrix: &Matrix<'_>, by: DoraBy) -> Value {
                 .collect::<Vec<_>>(),
         }),
     );
+    map.insert("scenarios".into(), scenarios(matrix));
     map.insert("readiness".into(), readiness(loaded));
     Value::Object(map)
 }
@@ -1720,7 +1811,7 @@ mod tests {
         assert_eq!(doc["disclaimer"], EVIDENCE_DISCLAIMER);
         assert_eq!(doc["portfolio"]["band"], "good");
         let coverage = doc["portfolio"]["coverage"].as_f64().unwrap();
-        assert_eq!(rounded(coverage, 2), 0.96);
+        assert_eq!(rounded(coverage, 2), 0.94);
 
         let art24 = list(&doc["articles"])
             .iter()
@@ -2241,5 +2332,162 @@ functions:
         assert_eq!(band(Some(0.8), &params), "good");
         assert_eq!(band(Some(0.5), &params), "fair");
         assert_eq!(band(Some(0.49), &params), "weak");
+    }
+
+    /// A full-framework entity with a critical, an important and an other
+    /// function: a power outage passed on the critical one 10 days ago, a
+    /// site loss failed there 3 days ago, and a cyber attack rehearsed by
+    /// hand on the important one 400 days ago.
+    fn scenario_entity() -> Inputs {
+        use super::super::model::{Evidence, Function, Outcome};
+        let as_of = ns("2026-11-13");
+        let day = super::super::model::DAY_NS;
+        let mut inputs = Inputs::empty(as_of, tumult_core::compliance::EntityProfile::full());
+        inputs.functions = vec![
+            Function::new("cif-0001", Tier::Critical),
+            Function::new("cif-0002", Tier::Important),
+            Function::new("cif-0003", Tier::Other),
+        ];
+        let mut power = Evidence::run("run-power", "cif-0001", "chaos", as_of - 10 * day);
+        power.scenarios = vec!["power_outage".into()];
+        let mut site = Evidence::run("run-site", "cif-0001", "dr", as_of - 3 * day);
+        site.scenarios = vec!["premises_loss".into()];
+        site.outcome = Outcome::Failed;
+        let mut cyber = Evidence::manual("man-cyber", &["cif-0002"], "tabletop", as_of - 400 * day);
+        cyber.scenarios = vec!["cyber_attack".into()];
+        let mut other = Evidence::run("run-other", "cif-0003", "chaos", as_of - day);
+        other.scenarios = vec!["power_outage".into()];
+        inputs.evidence = vec![power, site, cyber, other];
+        inputs
+    }
+
+    fn scenario_of<'v>(function: &'v Value, id: &str) -> &'v Value {
+        list(&function["scenarios"])
+            .iter()
+            .find(|s| s["id"] == id)
+            .unwrap_or_else(|| panic!("no scenario {id} in {function}"))
+    }
+
+    /// The plan scenarios of each critical or important function: which
+    /// passed, failed, are overdue and are missing, with the act they come
+    /// from. A missing scenario is a gap, never a pass.
+    #[test]
+    fn dora_lists_the_plan_scenarios_of_each_critical_or_important_function() {
+        let doc = dora_of(scenario_entity(), DoraBy::Entity);
+        let block = &doc["scenarios"];
+        assert_eq!(
+            block["source"],
+            "Commission Delegated Regulation (EU) 2024/1774, Arts. 25, 26, 39 and 40"
+        );
+        assert_eq!(
+            block["source_url"],
+            "https://eur-lex.europa.eu/eli/reg_del/2024/1774/oj"
+        );
+        assert_eq!(block["rows"], serde_json::json!(["rts1774.art26"]));
+        assert_eq!(block["window_days"], 365);
+        assert_eq!(block["note"], SCENARIO_NOTE);
+        let catalogue = list(&block["catalogue"]);
+        assert_eq!(catalogue.len(), 13);
+        assert_eq!(
+            catalogue[12],
+            serde_json::json!({
+                "id": "power_outage",
+                "title": "A widespread power outage",
+                "cite": "RTS 2024/1774 Art. 26(2)(i)",
+            })
+        );
+
+        let functions = list(&block["functions"]);
+        let ids: Vec<&str> = functions
+            .iter()
+            .map(|f| f["entity_id"].as_str().unwrap())
+            .collect();
+        assert_eq!(ids, ["cif-0001", "cif-0002"], "critical and important only");
+        let critical = &functions[0];
+        assert_eq!(critical["tier"], "critical");
+        assert_eq!(
+            critical["counts"],
+            serde_json::json!({"passed": 1, "failed": 1, "overdue": 0, "missing": 11})
+        );
+        assert_eq!(
+            scenario_of(critical, "power_outage"),
+            &serde_json::json!({
+                "id": "power_outage",
+                "state": "passed",
+                "last_tested_at": "2026-11-03",
+                "last_test": {"id": "run-power", "source": "run", "outcome": "passed"},
+                "last_passed_at": "2026-11-03",
+            })
+        );
+        assert_eq!(scenario_of(critical, "premises_loss")["state"], "failed");
+        assert_eq!(
+            scenario_of(critical, "premises_loss")["last_passed_at"],
+            Value::Null
+        );
+        assert_eq!(
+            scenario_of(critical, "switchover"),
+            &serde_json::json!({
+                "id": "switchover",
+                "state": "missing",
+                "last_tested_at": null,
+                "last_test": null,
+                "last_passed_at": null,
+            })
+        );
+        let important = &functions[1];
+        assert_eq!(scenario_of(important, "cyber_attack")["state"], "overdue");
+        assert_eq!(
+            scenario_of(important, "cyber_attack")["last_tested_at"],
+            "2025-10-09"
+        );
+        assert_eq!(
+            important["counts"],
+            serde_json::json!({"passed": 0, "failed": 0, "overdue": 1, "missing": 12})
+        );
+        // The value of the row for the function, as the matrix scores it:
+        // the pass, and the failed test at the failed outcome.
+        let failed = HouseParams::default().outcome.failed;
+        let share = critical["coverage"].as_f64().unwrap();
+        assert!((share - (1.0 + failed) / 13.0).abs() < 0.005, "{share}");
+    }
+
+    /// Each row of an article document links the act it comes from.
+    #[test]
+    fn an_article_row_links_the_eli_of_its_act() {
+        let doc = article_of(scenario_entity(), "rts1774");
+        let rows = list(&doc["requirements"]);
+        let ids: Vec<&str> = rows.iter().map(|r| r["id"].as_str().unwrap()).collect();
+        assert_eq!(ids, ["rts1774.art25", "rts1774.art26"]);
+        for row in rows {
+            assert_eq!(
+                row["source_url"],
+                "https://eur-lex.europa.eu/eli/reg_del/2024/1774/oj"
+            );
+        }
+        let doc = article_of(scenario_entity(), "24");
+        assert_eq!(
+            list(&doc["requirements"])[0]["source_url"],
+            "https://eur-lex.europa.eu/eli/reg/2022/2554/oj"
+        );
+    }
+
+    /// The simplified profile tracks the two scenarios of RTS Arts. 39 and
+    /// 40; an entity with no critical or important function lists none.
+    #[test]
+    fn the_simplified_plan_tracks_two_scenarios_and_no_function_tracks_none() {
+        let mut inputs = scenario_entity();
+        inputs.entity = tumult_core::compliance::EntityProfile::parse("simplified", &[]).unwrap();
+        let doc = dora_of(inputs.clone(), DoraBy::Entity);
+        let block = &doc["scenarios"];
+        assert_eq!(block["rows"], serde_json::json!(["rts1774.art39"]));
+        let ids: Vec<&str> = list(&block["catalogue"])
+            .iter()
+            .map(|s| s["id"].as_str().unwrap())
+            .collect();
+        assert_eq!(ids, ["cyber_attack", "backup_restore"]);
+
+        inputs.functions.truncate(0);
+        let doc = dora_of(inputs, DoraBy::Entity);
+        assert_eq!(doc["scenarios"]["functions"], serde_json::json!([]));
     }
 }

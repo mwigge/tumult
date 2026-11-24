@@ -1358,6 +1358,7 @@ fn mapped(frameworks: &[&str], ids: &[&str]) -> Experiment {
                 })
                 .collect(),
             tester: None,
+            scenarios: Vec::new(),
         }),
         ..Default::default()
     }
@@ -1418,4 +1419,30 @@ fn an_experiment_with_a_requirement_the_registry_does_not_know_still_runs() {
     let exp = mapped(&["DORA"], &["DORA-25"]);
     assert!(validate_regulatory(&exp).is_err());
     assert!(validate_experiment(&exp).is_ok());
+}
+
+/// `mapped` with the plan scenarios `ids` in its block.
+fn tagged(ids: &[&str]) -> Experiment {
+    let mut exp = mapped(&["DORA"], &["rts1774.art26"]);
+    if let Some(mapping) = exp.regulatory.as_mut() {
+        mapping.scenarios = ids.iter().map(|id| (*id).to_owned()).collect();
+    }
+    exp
+}
+
+#[test]
+fn validate_refuses_a_plan_scenario_the_rts_does_not_name_and_names_the_nearest() {
+    assert!(validate_regulatory(&tagged(&["power_outage", "premises_loss"])).is_ok());
+    let err = validate_regulatory(&tagged(&["cyber_attack", "power_outages"])).unwrap_err();
+    assert!(
+        matches!(&err, EngineError::UnknownScenario(e) if e.id == "power_outages"),
+        "{err:?}"
+    );
+    assert_eq!(
+        err.to_string(),
+        "regulatory scenario: 'power_outages' is not a scenario id of RTS 2024/1774 \
+         Arts. 25, 26 and 39; did you mean 'power_outage'?"
+    );
+    // A run of the file still runs, as with an unknown requirement.
+    assert!(validate_experiment(&tagged(&["power_outages"])).is_ok());
 }

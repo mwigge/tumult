@@ -60,6 +60,7 @@ fn seed_broken_store(dir: &std::path::Path) -> std::path::PathBuf {
                 evidence: "scenario-based fault injection".into(),
             }],
             tester: None,
+            scenarios: Vec::new(),
         }),
         ..Default::default()
     };
@@ -1347,6 +1348,7 @@ fn playbook_article_resolves_the_first_regulatory_citation() {
                 evidence: "scenario-based fault injection".into(),
             }],
             tester: None,
+            scenarios: Vec::new(),
         }),
         ..Default::default()
     };
@@ -1582,6 +1584,7 @@ fn change_event_yields_a_revalidation_candidate_for_the_changed_service() {
                 evidence: "scenario-based fault injection".into(),
             }],
             tester: None,
+            scenarios: Vec::new(),
         }),
         ..Default::default()
     };

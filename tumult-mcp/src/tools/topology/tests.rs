@@ -56,6 +56,7 @@ fn seed_broken_store(dir: &std::path::Path) -> std::path::PathBuf {
                 evidence: "scenario-based fault injection".into(),
             }],
             tester: None,
+            scenarios: Vec::new(),
         }),
         ..Default::default()
     };
@@ -258,6 +259,7 @@ fn seed_broken_thing_store(dir: &std::path::Path) -> String {
                 evidence: "scenario-based fault injection".into(),
             }],
             tester: None,
+            scenarios: Vec::new(),
         }),
         ..Default::default()
     };

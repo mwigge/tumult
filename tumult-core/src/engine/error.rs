@@ -112,6 +112,10 @@ pub enum EngineError {
     /// registry does not know.
     #[error("regulatory requirement: {0}")]
     UnknownRequirement(crate::compliance::UnknownRequirement),
+    /// A scenario of the regulatory block is not a plan scenario of
+    /// RTS 2024/1774.
+    #[error("regulatory scenario: {0}")]
+    UnknownScenario(crate::compliance::UnknownScenario),
     /// The regulatory block is malformed (see `reason`).
     #[error("regulatory.{reason}")]
     RegulatoryInvalid { reason: String },

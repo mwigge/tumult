@@ -121,6 +121,7 @@ async fn dry_run_renders_all_optional_sections_without_executing() {
             frameworks: vec!["dora".into()],
             requirements: vec![],
             tester: None,
+            scenarios: Vec::new(),
         }),
         guards: vec![],
         blast_radius: None,

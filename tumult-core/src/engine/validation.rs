@@ -431,15 +431,18 @@ fn validate_target_version(experiment: &Experiment) -> Result<(), EngineError> {
 
 /// Check the regulatory block of an experiment as it is written: every
 /// DORA requirement names a row or an article of the requirement registry
-/// (in its registry id or an older form of it), and a tester has a name.
-/// `tumult validate` runs it. A run does not: an experiment that names an
-/// id the registry does not know still runs, as it did before the check.
+/// (in its registry id or an older form of it), every plan scenario is one
+/// of RTS 2024/1774, and a tester has a name. `tumult validate` runs it. A
+/// run does not: an experiment that names an id the registry does not know
+/// still runs, as it did before the check.
 ///
 /// # Errors
 ///
 /// Returns [`EngineError::UnknownRequirement`] with the nearest registry id
-/// if a DORA requirement is not in the registry, and
-/// [`EngineError::RegulatoryInvalid`] if the tester has no name.
+/// if a DORA requirement is not in the registry,
+/// [`EngineError::UnknownScenario`] with the nearest scenario id if a
+/// scenario is not one of the set, and [`EngineError::RegulatoryInvalid`]
+/// if the tester has no name.
 pub fn validate_regulatory(experiment: &Experiment) -> Result<(), EngineError> {
     let Some(mapping) = experiment.regulatory.as_ref() else {
         return Ok(());
@@ -447,6 +450,9 @@ pub fn validate_regulatory(experiment: &Experiment) -> Result<(), EngineError> {
     for requirement in &mapping.requirements {
         crate::compliance::check_run_requirement(&mapping.frameworks, &requirement.id)
             .map_err(EngineError::UnknownRequirement)?;
+    }
+    for scenario in &mapping.scenarios {
+        crate::compliance::check_scenario(scenario).map_err(EngineError::UnknownScenario)?;
     }
     if mapping
         .tester

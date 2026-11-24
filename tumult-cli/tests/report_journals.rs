@@ -853,6 +853,7 @@ fn what_a_run_was_planned_with_is_shown_as_far_as_it_was_said() {
             frameworks: vec!["dora".into()],
             requirements: vec![],
             tester: None,
+            scenarios: Vec::new(),
         }),
         ..journal()
     });
@@ -939,6 +940,7 @@ fn an_analysis_and_a_mapping_that_say_nothing_are_no_sections() {
             frameworks: vec![],
             requirements: vec![],
             tester: None,
+            scenarios: Vec::new(),
         }),
         ..journal()
     });
@@ -958,6 +960,7 @@ fn requirements_without_a_framework_are_a_table_alone() {
                 evidence: "This run".into(),
             }],
             tester: None,
+            scenarios: Vec::new(),
         }),
         ..journal()
     });
@@ -992,6 +995,7 @@ fn a_dora_requirement_shows_the_registry_id_it_names_and_the_tester_is_named() {
                 name: "Red Team Ltd".into(),
                 kind: TesterKind::External,
             }),
+            scenarios: Vec::new(),
         }),
         ..journal()
     });
@@ -1123,6 +1127,7 @@ fn journal_of_markup() -> (Journal, u32) {
                 evidence: markup(&mut n),
             }],
             tester: None,
+            scenarios: Vec::new(),
         }),
         ..journal()
     };

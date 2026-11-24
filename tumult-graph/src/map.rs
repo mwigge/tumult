@@ -510,6 +510,7 @@ mod tests {
                 evidence: "scenario-based fault injection".into(),
             }],
             tester: None,
+            scenarios: Vec::new(),
         });
         exp
     }
@@ -560,6 +561,7 @@ mod tests {
                 evidence: "n/a".into(),
             }],
             tester: None,
+            scenarios: Vec::new(),
         });
         let journal = base_journal("run-x", ExperimentStatus::Completed);
         let delta = journal_to_graph(&journal, Some(&exp));
@@ -599,6 +601,7 @@ mod tests {
                 requirement("DORA Art. 12(1)"),
             ],
             tester: None,
+            scenarios: Vec::new(),
         });
         assert_eq!(
             mapped_articles(&exp),
@@ -622,6 +625,7 @@ mod tests {
                 evidence: "e".into(),
             }],
             tester: None,
+            scenarios: Vec::new(),
         });
         assert_eq!(mapped_articles(&exp), ["compliance:NIS2/Art.21(2)(c)"]);
     }

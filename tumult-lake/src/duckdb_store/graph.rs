@@ -173,6 +173,7 @@ mod tests {
                 evidence: "e".into(),
             }],
             tester: None,
+            scenarios: Vec::new(),
         });
         s.ingest_journal_with_experiment(
             &sample_journal("e1", ExperimentStatus::Completed),
