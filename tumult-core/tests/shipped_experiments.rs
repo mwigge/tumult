@@ -10,8 +10,8 @@ use std::path::{Path, PathBuf};
 
 use tumult_core::engine::{parse_experiment, validate_experiment, validate_placeholders};
 use tumult_core::types::{
-    Activity, ActivityType, Experiment, GameDay, GameDayJournal, LoadConfig, LoadTool, Provider,
-    TestKind,
+    Activity, ActivityType, Experiment, GameDay, GameDayJournal, LoadConfig, LoadTool, NfrKind,
+    Provider, TestKind,
 };
 
 /// Directories that hold experiment files, relative to the workspace root.
@@ -1213,4 +1213,134 @@ fn every_dr_file_without_a_fault_is_a_dr_file_and_breaks_nothing() {
             "{file} breaks something"
         );
     }
+}
+
+// ── RPO examples lose what their method wrote ───────────────────
+
+/// The plugin step that writes RPO markers, and the probe that reads back
+/// the seconds of them that were lost.
+const MARKER_WRITER: (&str, &str) = ("tumult-db-postgres", "write-markers");
+const MARKER_READER: (&str, &str) = ("tumult-db-postgres", "markers-lost");
+
+/// The arguments that say where markers go: the server, the database and
+/// the ledger. A reader reads back only what a writer of the same ones
+/// wrote.
+const MARKER_STORE: &[&str] = &["pg_host", "pg_port", "pg_database", "ledger_path"];
+
+/// The plugin and the function of a script step.
+fn script_of(step: &Activity) -> Option<(&str, &str)> {
+    let Provider::Script {
+        plugin, function, ..
+    } = &step.provider
+    else {
+        return None;
+    };
+    Some((plugin.as_str(), function.as_str()))
+}
+
+/// Where a marker step writes or reads: its [`MARKER_STORE`] arguments.
+fn marker_store(step: &Activity) -> Vec<Option<&serde_json::Value>> {
+    let Provider::Script { arguments, .. } = &step.provider else {
+        return Vec::new();
+    };
+    MARKER_STORE.iter().map(|key| arguments.get(*key)).collect()
+}
+
+/// Why an `rpo` objective of `experiment` that reads `markers-lost` cannot
+/// measure a loss, one line per objective. The method must write markers
+/// to the store the reader reads, and a step after the last such write
+/// must break something: else the RPO is 0 by construction.
+fn rpo_faults(experiment: &Experiment) -> Vec<String> {
+    let probes: Vec<&Activity> = experiment
+        .steady_state_hypothesis
+        .iter()
+        .flat_map(|hypothesis| &hypothesis.probes)
+        .collect();
+    let faults = experiment
+        .nfr
+        .iter()
+        .filter(|objective| objective.kind == NfrKind::Rpo)
+        .filter_map(|objective| {
+            let name = objective
+                .metric
+                .strip_prefix("probe.")?
+                .strip_suffix(".lost_s")?;
+            let reader = probes.iter().find(|probe| probe.name == name)?;
+            if script_of(reader) != Some(MARKER_READER) {
+                return None;
+            }
+            let store = marker_store(reader);
+            let Some(last_write) = experiment.method.iter().rposition(|step| {
+                script_of(step) == Some(MARKER_WRITER) && marker_store(step) == store
+            }) else {
+                return Some(format!("{name}: no step writes the markers it reads"));
+            };
+            let can_lose = experiment.method[last_write + 1..]
+                .iter()
+                .any(breaks_something);
+            (!can_lose).then(|| format!("{name}: no step after the last write can lose it"))
+        });
+    faults.collect()
+}
+
+/// A steady state that reads the markers of `orders.ledger`, and a method
+/// of `steps`.
+fn rpo_fixture(steps: &[(&str, &str, &str)]) -> Experiment {
+    let step = |(name, function, ledger): &(&str, &str, &str)| {
+        format!(
+            "  - name: {name}\n    activity_type: action\n    provider:\n      type: script\n      plugin: tumult-db-postgres\n      function: {function}\n      arguments:\n        pg_database: orders\n        ledger_path: {ledger}\n        backup_path: orders.dump\n"
+        )
+    };
+    let method: String = steps.iter().map(step).collect();
+    let text = format!(
+        "title: t\nkind: dr\nrpo_target_s: 5\nnfr[1]:\n  - id: rpo\n    kind: rpo\n    metric: probe.lost.lost_s\n    operator: lte\n    threshold: 5\nsteady_state_hypothesis:\n  title: s\n  probes[1]:\n    - name: lost\n      activity_type: probe\n      provider:\n        type: script\n        plugin: tumult-db-postgres\n        function: markers-lost\n        arguments:\n          pg_database: orders\n          ledger_path: orders.ledger\n      tolerance:\n        type: number\nmethod[{}]:\n{method}",
+        steps.len()
+    );
+    parse_experiment(&text).unwrap()
+}
+
+#[test]
+fn an_rpo_reader_needs_a_write_of_its_store_and_a_loss_after_it() {
+    let lost = [
+        ("before", "write-markers", "orders.ledger"),
+        ("back-up", "backup", ""),
+        ("after", "write-markers", "orders.ledger"),
+        ("restore", "restore", ""),
+    ];
+    assert_eq!(rpo_faults(&rpo_fixture(&lost)), Vec::<String>::new());
+
+    let elsewhere = [
+        ("write", "write-markers", "other.ledger"),
+        ("restore", "restore", ""),
+    ];
+    assert_eq!(
+        rpo_faults(&rpo_fixture(&elsewhere)),
+        ["lost: no step writes the markers it reads"]
+    );
+
+    let kept = [
+        ("back-up", "backup", ""),
+        ("restore", "restore", ""),
+        ("after", "write-markers", "orders.ledger"),
+    ];
+    assert_eq!(
+        rpo_faults(&rpo_fixture(&kept)),
+        ["lost: no step after the last write can lose it"]
+    );
+}
+
+#[test]
+fn every_shipped_rpo_reader_reads_back_writes_its_method_can_lose() {
+    let faults: Vec<String> = experiment_files()
+        .iter()
+        .filter_map(|p| {
+            let faults = rpo_faults(&load(p).ok()?);
+            (!faults.is_empty()).then(|| format!("{}: {}", shown(p), faults.join("; ")))
+        })
+        .collect();
+    assert!(
+        faults.is_empty(),
+        "an RPO that cannot measure a loss:\n{}",
+        faults.join("\n")
+    );
 }

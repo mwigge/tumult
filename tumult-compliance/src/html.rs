@@ -62,7 +62,7 @@ pub fn render_html(doc: &ReportDoc) -> String {
          <tr><th>Document</th><td>{doc_id}</td></tr>\
          <tr><th>Version</th><td>{version}</td></tr>\
          <tr><th>Generated</th><td>{generated}</td></tr>\
-         <tr><th>Data as of</th><td>{data_as_of}</td></tr>{period}{framework}{experiment}\
+         <tr><th>Data as of</th><td>{data_as_of}</td></tr>{period}{framework}{experiment}{subject}\
          </tbody></table></section>",
         class = esc(&m.classification),
         title = esc(&m.title),
@@ -88,6 +88,11 @@ pub fn render_html(doc: &ReportDoc) -> String {
             "<tr><th>Run id</th><td>{}</td></tr>",
             esc(e)
         )),
+        subject = m
+            .subject
+            .iter()
+            .map(|(k, v)| format!("<tr><th>{}</th><td>{}</td></tr>", esc(k), esc(v)))
+            .collect::<String>(),
     ));
 
     for block in &doc.blocks {
@@ -110,6 +115,8 @@ fn subtitle(m: &crate::model::DocMeta) -> String {
             "Compliance Evidence Pack — {}",
             m.framework.as_deref().unwrap_or("framework")
         ),
+        crate::model::TemplateKind::DrTest => "Disaster recovery test report".into(),
+        crate::model::TemplateKind::DrExercise => "Disaster recovery exercise report".into(),
     }
 }
 
@@ -334,6 +341,7 @@ mod tests {
                 period: None,
                 framework: None,
                 experiment_id: None,
+                subject: Vec::new(),
             },
             blocks: vec![Block::Paragraph("a < b".into())],
         };

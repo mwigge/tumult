@@ -92,9 +92,11 @@ gives the same hash. Now try more:
 | Add 200 ms network delay | `tumult run examples/pumba-latency.toon --journal-path pumba.journal.toon` |
 | Stress a host over SSH | `make ssh-key`, then `tumult run examples/ssh-remote.toon --journal-path ssh.journal.toon` |
 
-A PostgreSQL failover to a standby needs the demo stack:
-`make demo-check` runs `examples/postgres-failover.toon` there. See
-[the demo](https://github.com/mwigge/tumult/blob/main/demo/README.md#the-dr-example-and-the-demo-gameday).
+A PostgreSQL failover to a standby and a restore that measures its RPO
+need the demo stack: `make demo-check` runs
+`examples/postgres-failover.toon` and `examples/postgres-restore-rpo.toon`
+there. See
+[the demo](https://github.com/mwigge/tumult/blob/main/demo/README.md#the-dr-examples-and-the-demo-gameday).
 
 ## 4. Look at the results
 

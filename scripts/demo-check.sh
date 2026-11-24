@@ -11,8 +11,9 @@
 #                         failure. This is the dev smoke test
 #                         (`make demo-check`). It also runs the examples that
 #                         examples/expectations.json gives to the proof
-#                         `demo-check` (the PostgreSQL failover) and the demo
-#                         GameDay, and compares their journals too.
+#                         `demo-check` (the PostgreSQL failover and the
+#                         restore with its RPO) and the demo GameDay, and
+#                         compares their journals too.
 #   populate            — run the ten domains once, best-effort, to warm the
 #                         SigNoz dashboards. Never fails the caller
 #                         (`make demo`).
@@ -48,10 +49,11 @@
 # printed.
 #
 # The failover example stops demo-postgres and promotes
-# demo-postgres-standby. The check makes the pair again before and after it:
-# it removes the standby with its data, starts the primary, and starts a new
-# standby, which copies the primary. Do the same by hand to set the demo
-# back after a failover:
+# demo-postgres-standby, and the restore example drops the orders database
+# of demo-postgres and restores it from a backup. The check makes the pair
+# again before and after each example: it removes the standby with its
+# data, starts the primary, and starts a new standby, which copies the
+# primary. Do the same by hand to set the demo back after a failover:
 #   docker compose -f docker/docker-compose.demo.yml rm -sfv demo-postgres-standby
 #   docker compose -f docker/docker-compose.demo.yml up -d --wait demo-postgres demo-postgres-standby
 
@@ -306,14 +308,20 @@ reset_postgres_pair() {
   fi
 }
 
-# The RTO a DR run measured, against its target, for the log of the check.
-rto_line() {
-  local journal="$1" measured target
+# The RTO and the RPO a DR run measured, each against its target, for the
+# log of the check. A target the run does not declare is left out.
+recovery_line() {
+  local journal="$1" line="" pair kind measured target
   [[ -s "$journal" ]] || return 0
-  measured="$(sed -n 's/^  rto_measured_s: //p' "$journal" | head -1)"
-  target="$(sed -n 's/^  rto_target_s: //p' "$journal" | head -1)"
-  [[ -n "$target" ]] || return 0
-  info "$(basename "$journal" .journal.toon): RTO measured ${measured:-none} s, target ${target} s"
+  for pair in RTO:rto RPO:rpo; do
+    kind="${pair#*:}"
+    target="$(sed -n "s/^  ${kind}_target_s: //p" "$journal" | head -1)"
+    [[ -n "$target" ]] || continue
+    measured="$(sed -n "s/^  ${kind}_measured_s: //p" "$journal" | head -1)"
+    line+="${line:+; }${pair%%:*} measured ${measured:-none} s, target ${target} s"
+  done
+  [[ -n "$line" ]] || return 0
+  info "$(basename "$journal" .journal.toon): ${line}"
 }
 
 # Run the examples of the full check, each on a fresh PostgreSQL pair, and
@@ -334,7 +342,7 @@ sweep_examples() {
   for name in "${EXAMPLE_SWEEP[@]}"; do
     reset_postgres_pair || return 1
     run_experiment "$name" /demo/examples examples
-    rto_line "${WORK}/examples/${name}.journal.toon"
+    recovery_line "${WORK}/examples/${name}.journal.toon"
   done
   reset_postgres_pair
 }

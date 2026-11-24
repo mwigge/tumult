@@ -10,6 +10,10 @@ pub enum TemplateKind {
     GameDay,
     /// R2 — per-framework auditor evidence pack.
     EvidencePack,
+    /// R4: the DR tests of one target over a period, for an auditor.
+    DrTest,
+    /// R5: one manual DR exercise, for an auditor.
+    DrExercise,
 }
 
 impl TemplateKind {
@@ -20,6 +24,8 @@ impl TemplateKind {
             Self::ExecutiveDigest => "R1",
             Self::GameDay => "R3",
             Self::EvidencePack => "R2",
+            Self::DrTest => "R4",
+            Self::DrExercise => "R5",
         }
     }
 }
@@ -38,6 +44,10 @@ pub struct DocMeta {
     pub period: Option<(i64, i64)>,
     pub framework: Option<String>,
     pub experiment_id: Option<String>,
+    /// What else the report is of, as rows of its document control: the
+    /// target of a DR test report, the record of a DR exercise report.
+    #[serde(default)]
+    pub subject: Vec<(String, String)>,
 }
 
 /// A table/key-value cell: plain text or a status value rendered as
@@ -74,25 +84,34 @@ pub enum Tone {
 }
 
 /// The tone of each status word that is not a status a run ends with:
-/// manual outcomes, run states, severities, bands, hypothesis results and
-/// OTel status codes. Any other word is neutral.
-const WORD_TONES: [(&str, Tone); 17] = [
+/// manual outcomes, run states, severities, bands, hypothesis results,
+/// OTel status codes, DR verdicts, due states and sign-off decisions. Any
+/// other word is neutral, as a DR test that measured nothing is.
+const WORD_TONES: [(&str, Tone); 24] = [
     ("passed", Tone::Good),
     ("ok", Tone::Good),
     ("low", Tone::Good),
     ("good", Tone::Good),
     ("met", Tone::Good),
+    ("approved", Tone::Good),
     // A manual exercise that worked in part: between a pass and a failure.
     ("partial", Tone::Warn),
     ("stale", Tone::Warn),
     ("medium", Tone::Warn),
     ("warning", Tone::Warn),
     ("fair", Tone::Warn),
+    // A DR test due within 30 days.
+    ("due", Tone::Warn),
     ("error", Tone::Bad),
     ("high", Tone::Bad),
     ("critical", Tone::Bad),
     ("poor", Tone::Bad),
     ("not met", Tone::Bad),
+    ("breached", Tone::Bad),
+    ("not recovered", Tone::Bad),
+    ("overdue", Tone::Bad),
+    ("never tested", Tone::Bad),
+    ("rejected", Tone::Bad),
     // A manual exercise that showed nothing either way, and a clause no
     // evidence is mapped to: no judgement.
     ("inconclusive", Tone::Neutral),
@@ -210,17 +229,37 @@ mod tests {
             "low",
             "good",
             "met",
+            "approved",
             "Completed",
         ] {
             assert_eq!(Cell::glyph(good), ("●", "#009E73"), "{good}");
         }
-        for warn in ["partial", "stale", "medium", "warning", "fair"] {
+        for warn in ["partial", "stale", "medium", "warning", "fair", "due"] {
             assert_eq!(Cell::glyph(warn), ("▲", "#E69F00"), "{warn}");
         }
-        for bad in ["failed", "error", "high", "critical", "poor", "not met"] {
+        for bad in [
+            "failed",
+            "error",
+            "high",
+            "critical",
+            "poor",
+            "not met",
+            "breached",
+            "not recovered",
+            "overdue",
+            "never tested",
+            "rejected",
+        ] {
             assert_eq!(Cell::glyph(bad), ("×", "#D55E00"), "{bad}");
         }
-        for neutral in ["inconclusive", "Unmapped", "queued", "—"] {
+        for neutral in [
+            "inconclusive",
+            "Unmapped",
+            "queued",
+            "—",
+            "not measured",
+            "no outage observed",
+        ] {
             assert_eq!(Cell::glyph(neutral), ("○", "#6B7280"), "{neutral}");
         }
     }
@@ -258,5 +297,7 @@ mod tests {
         assert_eq!(TemplateKind::ExecutiveDigest.code(), "R1");
         assert_eq!(TemplateKind::GameDay.code(), "R3");
         assert_eq!(TemplateKind::EvidencePack.code(), "R2");
+        assert_eq!(TemplateKind::DrTest.code(), "R4");
+        assert_eq!(TemplateKind::DrExercise.code(), "R5");
     }
 }

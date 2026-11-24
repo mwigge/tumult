@@ -39,11 +39,18 @@ RUN cargo build --release -p tumult-cli -p tumult-mcp -p tumult-net && \
 
 FROM rust:1.92.0-bookworm AS runtime
 
-# Install Docker CLI + tools needed by script plugins (docker exec, curl, ssh)
-# The bookworm repos are already cached in this image — no network fetch needed
-# psql is for the PostgreSQL plugin: the demo fails a database over with it.
-RUN apt-get update -qq && apt-get install -y --no-install-recommends \
-    docker.io openssh-client curl wget psmisc procps tini postgresql-client && \
+# Install Docker CLI + tools needed by script plugins (docker exec, curl, ssh).
+# psql, pg_dump and pg_restore are for the PostgreSQL plugin: the demo fails
+# a database over and restores it from a backup with them. pg_dump refuses a
+# server of a newer major, and a newer pg_dump writes settings an older
+# server refuses on restore, so the client is the major of the demo server
+# (PostgreSQL 16). Debian bookworm has 15 only: the client comes from the
+# PostgreSQL apt repository, which postgresql-common adds with the key it
+# ships.
+RUN apt-get update -qq && apt-get install -y --no-install-recommends postgresql-common && \
+    /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y && \
+    apt-get install -y --no-install-recommends \
+    docker.io openssh-client curl wget psmisc procps tini postgresql-client-16 && \
     rm -rf /var/lib/apt/lists/* /usr/local/cargo /usr/local/rustup
 
 COPY --from=builder /build/target/release/tumult /usr/local/bin/

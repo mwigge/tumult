@@ -283,8 +283,13 @@ impl DrRequest {
 }
 
 /// The period of a request: `from` to `to`, by default the 365 days up
-/// to `to`, and `to` by default `now_ns`.
-fn period(from: Option<i64>, to: Option<i64>, now_ns: i64) -> Result<(i64, i64), String> {
+/// to `to`, and `to` by default `now_ns`. The DR test report reads its
+/// period by the same rule.
+pub(crate) fn period(
+    from: Option<i64>,
+    to: Option<i64>,
+    now_ns: i64,
+) -> Result<(i64, i64), String> {
     let to_ns = to.unwrap_or(now_ns);
     let from_ns = from.unwrap_or_else(|| to_ns.saturating_sub(PERIOD_DAYS * DAY_NS));
     if from_ns > to_ns {

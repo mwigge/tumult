@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 use serde::Deserialize;
 use serde_json::Value;
 use tumult_core::engine::parse_experiment;
-use tumult_core::types::{Experiment, ExperimentStatus, GameDay, NfrState};
+use tumult_core::types::{Experiment, ExperimentStatus, GameDay, NfrKind, NfrState};
 
 /// Directories that hold a set of experiments, relative to the workspace root.
 const SETS: &[&str] = &[
@@ -80,6 +80,16 @@ struct Expect {
     rollback_failures: u32,
     load_result: Option<bool>,
     objectives: BTreeMap<String, NfrState>,
+    /// The seconds of data the run must have lost: its RPO measured.
+    rpo_measured_s: Option<Between>,
+}
+
+/// A range of numbers, both ends in it.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Between {
+    from: f64,
+    to: f64,
 }
 
 #[derive(Deserialize)]
@@ -384,4 +394,62 @@ fn a_gameday_is_checked_by_a_proof_that_keeps_journals() {
     }
 
     assert_none(&faults);
+}
+
+/// The id of each `rpo` objective of an experiment.
+fn rpo_objectives(experiment: Experiment) -> BTreeSet<String> {
+    let rpo = experiment
+        .nfr
+        .into_iter()
+        .filter(|o| o.kind == NfrKind::Rpo);
+    rpo.map(|objective| objective.id).collect()
+}
+
+#[test]
+fn an_expected_rpo_is_a_range_of_a_run_that_judges_its_rpo() {
+    let mut faults = Vec::new();
+    for (set, manifest) in manifests() {
+        for (name, entry) in &manifest.experiments {
+            let Ok(Expect {
+                rpo_measured_s: Some(range),
+                objectives,
+                ..
+            }) = expect_of(entry)
+            else {
+                continue;
+            };
+            if !(0.0 <= range.from && range.from <= range.to) {
+                faults.push(format!(
+                    "{set}/{name}: rpo_measured_s is no range from 0 up"
+                ));
+            }
+            let judged = rpo_objectives(experiment(set, name));
+            if !judged.iter().any(|id| objectives.contains_key(id)) {
+                faults.push(format!("{set}/{name}: expects an RPO and no rpo verdict"));
+            }
+        }
+    }
+
+    assert_none(&faults);
+}
+
+/// The demo loses data for real: an example the demo check runs must
+/// have lost some, so a run that lost none fails the check.
+#[test]
+fn the_demo_check_runs_an_example_that_loses_data() {
+    let examples = manifest("examples");
+    let losing: Vec<&String> = examples
+        .experiments
+        .iter()
+        .filter(|(_, entry)| entry.proof == "demo-check")
+        .filter(|(_, entry)| {
+            expect_of(entry).is_ok_and(|expect| expect.rpo_measured_s.is_some_and(|r| r.from > 0.0))
+        })
+        .map(|(name, _)| name)
+        .collect();
+
+    assert!(
+        !losing.is_empty(),
+        "no example of the demo check expects an RPO above 0"
+    );
 }

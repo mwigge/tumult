@@ -1,6 +1,7 @@
 <script lang="ts">
     import { onMount } from 'svelte';
     import { api } from '#lib/api.js';
+    import { templateCode } from '#lib/report-codes.js';
     import type {
         ExperimentRow,
         MeResponse,
@@ -46,12 +47,6 @@
             hint: 'auditor traceability per framework',
         },
     ];
-
-    function templateCode(type: string): string {
-        if (type === 'executive-digest') return 'R1';
-        if (type === 'game-day') return 'R3';
-        return 'R2';
-    }
 
     async function loadReportsV2() {
         const r = await api.reportsV2();

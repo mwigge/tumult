@@ -11,8 +11,9 @@
 
 use std::path::{Path, PathBuf};
 
-use tumult_compliance::builders::{build_evidence_pack, build_executive, build_game_day};
-use tumult_compliance::html::{fmt_date, render};
+use tumult_compliance::builders::{build_evidence_pack, build_executive, build_game_day, House};
+use tumult_compliance::dora::HouseParams;
+use tumult_compliance::html::{fmt_date, fmt_datetime, render};
 use tumult_compliance::markup::doc_to_typst;
 use tumult_compliance::{Block, Cell, OrgTree, ReportDoc};
 use tumult_core::types::{ExperimentStatus, Journal};
@@ -142,15 +143,20 @@ fn name_cell(cell: &mut Cell, shown: &str, name: &str) {
 }
 
 /// The registry stamps a manual record with the time of the clock when it
-/// is entered and when it is verified, so those two dates differ from run
-/// to run. Each place that shows one must show the stored date; the kept
-/// text has `{entered}` and `{verified}` there.
+/// is entered, when it is verified and when it is signed off, so those
+/// times differ from run to run. Each place that shows one must show the
+/// stored time; the kept text has `{entered}`, `{verified}` and `{signed}`
+/// there.
 fn name_the_dates_of_the_drill(doc: &mut ReportDoc, reader: &Reader) {
     let stored = reader
         .query_json_rows("SELECT entered_at_ns, reviewed_at_ns FROM manual_experiments")
         .expect("the manual record");
     let date_of = |column: &str| fmt_date(stored[0][column].as_i64().expect("a time"));
     let (entered, verified) = (date_of("entered_at_ns"), date_of("reviewed_at_ns"));
+    let signoffs = reader
+        .query_json_rows("SELECT signed_at_ns FROM manual_signoffs")
+        .expect("the sign-off of the drill");
+    let signed = fmt_datetime(signoffs[0]["signed_at_ns"].as_i64().expect("a time"));
 
     let (headers, rows) = table_under(doc, "Test register");
     let column = headers
@@ -176,12 +182,16 @@ fn name_the_dates_of_the_drill(doc: &mut ReportDoc, reader: &Reader) {
                 "Verified by" => {
                     name_cell(cell, &format!("bob on {verified}"), "bob on {verified}");
                 }
+                "Sign-off" => {
+                    let shown = format!("bob, reviewer, approved on {signed}");
+                    name_cell(cell, &shown, "bob, reviewer, approved on {signed}");
+                }
                 _ => continue,
             }
             named += 1;
         }
     }
-    assert_eq!(named, 2, "the attestation of the drill");
+    assert_eq!(named, 3, "the attestation of the drill");
 }
 
 /// A report says which Tumult made it, and the next release is another one.
@@ -287,6 +297,7 @@ fn assert_evidence_pack_kept(framework: &str) {
         Some(30 * DAY_NS),
         recording.made_at(),
         &[],
+        &House::of(&HouseParams::default()),
     )
     .expect("the evidence pack");
 

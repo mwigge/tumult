@@ -868,6 +868,32 @@ class DemoCheckExamplesTests(unittest.TestCase):
         self.assertNotIn("FAIL", output)
         self.assertEqual(left, [])
 
+    def test_the_rto_and_the_rpo_of_an_example_are_printed_with_their_targets(self):
+        recovery = {
+            "rto_target_s: 30\n  rpo_target_s: 10\n": "RTO measured 3.5 s, target 30 s;"
+            " RPO measured 4.2 s, target 10 s",
+            "rto_target_s: 30\n": "RTO measured 3.5 s, target 30 s",
+            "rpo_target_s: 10\n": "RPO measured 4.2 s, target 10 s",
+        }
+        for targets, line in recovery.items():
+            with self.subTest(targets=targets):
+                with tempfile.TemporaryDirectory() as directory, FakeDaemon() as daemon:
+                    checkout = Checkout(directory)
+                    path = checkout.journal("sweep", "pg-failover.toon")
+                    measured = "  rto_measured_s: 3.5\n  rpo_measured_s: 4.2\n"
+                    objectives = f"objectives:\n  {targets}{measured}"
+                    path.write_text(path.read_text() + objectives)
+                    status, output = checkout.sweep(daemon)
+                self.assertEqual(status, 0, output)
+                self.assertRegex(output, rf"(?m)----  pg-failover: {line}$")
+
+    def test_a_run_without_a_recovery_target_prints_no_recovery(self):
+        with tempfile.TemporaryDirectory() as directory, FakeDaemon() as daemon:
+            checkout = Checkout(directory)
+            status, output = checkout.sweep(daemon)
+        self.assertEqual(status, 0, output)
+        self.assertNotIn("pg-failover: R", output)
+
     def test_an_example_journal_that_is_not_as_expected_fails_and_is_kept(self):
         with tempfile.TemporaryDirectory() as directory, FakeDaemon() as daemon:
             checkout = Checkout(directory)
