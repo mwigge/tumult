@@ -587,9 +587,7 @@ pub async fn break_glass(
         outcome: ManualOutcome::Inconclusive,
         hypothesis_met: None,
         findings: None,
-        action_items: vec![format!(
-            "Retrospective review of break-glass dispatch for run {id}"
-        )],
+        action_items: vec![],
         target_system: approval
             .as_ref()
             .and_then(|a| a["target"].as_str())
@@ -608,7 +606,18 @@ pub async fn break_glass(
         ),
         renewal_due_ns: None,
         framework_refs: vec![],
-        exercise: tumult_lake::ExerciseDetail::default(),
+        // The review is an action the admin who broke the glass owns.
+        exercise: tumult_lake::ExerciseDetail {
+            actions: vec![tumult_lake::ActionItem {
+                title: format!("Retrospective review of break-glass dispatch for run {id}"),
+                owner: principal.username.clone(),
+                due_at_ns: None,
+                ticket: None,
+                severity: None,
+                retest: None,
+            }],
+            ..tumult_lake::ExerciseDetail::default()
+        },
     };
     let result = exec_write(&state, move |writer| {
         writer.create_manual_draft(&new).map_err(|e| e.to_string())
