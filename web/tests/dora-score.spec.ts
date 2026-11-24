@@ -1054,6 +1054,77 @@ test('readiness lists the functions with their register codes', async ({ page })
     await expect(panel).toContainText('cro@demo.example');
 });
 
+const scenarioBlock = {
+    source: 'Commission Delegated Regulation (EU) 2024/1774, Arts. 25, 26, 39 and 40',
+    source_url: 'https://eur-lex.europa.eu/eli/reg_del/2024/1774/oj',
+    rows: ['rts1774.art39'],
+    window_days: 365,
+    note: 'A scenario with no test is a gap, not a pass.',
+    catalogue: [
+        {
+            id: 'cyber_attack',
+            title: 'A cyber attack',
+            cite: 'RTS 2024/1774 Art. 26(2)(a); Art. 39(1)',
+        },
+        {
+            id: 'backup_restore',
+            title: 'Restore from backups',
+            cite: 'RTS 2024/1774 Art. 25(2)(c); Art. 26(2)(a); Art. 39(2)(g); Art. 40(1)',
+        },
+    ],
+    functions: [
+        {
+            entity_id: 'cif-0001',
+            name: 'Payments',
+            tier: 'critical',
+            row: 'rts1774.art39',
+            coverage: 0.5,
+            counts: { passed: 1, failed: 0, overdue: 0, missing: 1 },
+            scenarios: [
+                {
+                    id: 'cyber_attack',
+                    state: 'passed',
+                    last_tested_at: '2026-11-03',
+                    last_test: { id: 'run-cyber', source: 'run', outcome: 'passed' },
+                    last_passed_at: '2026-11-03',
+                },
+                {
+                    id: 'backup_restore',
+                    state: 'missing',
+                    last_tested_at: null,
+                    last_test: null,
+                    last_passed_at: null,
+                },
+            ],
+        },
+    ],
+};
+
+test('the plan scenarios of each function show their state and their source', async ({ page }) => {
+    await mockApi(page, [], { dora: { scenarios: scenarioBlock } });
+    await page.goto('/scores?view=dora');
+    const panel = page.getByTestId('dora-scenarios');
+    await expect(panel.getByRole('table', { name: 'Plan scenarios by function' })).toBeVisible();
+    const cyber = panel.locator('tr[data-scenario="cyber_attack"]');
+    await expect(cyber.locator('.badge.ok')).toHaveText('passed');
+    await expect(cyber).toContainText('tested 2026-11-03');
+    const restore = panel.locator('tr[data-scenario="backup_restore"]');
+    await expect(restore.locator('.badge.neutral')).toHaveText('missing');
+    await expect(panel.locator('tr[data-counts]')).toContainText('1 of 2');
+    await expect(panel.getByRole('link', { name: /2024\/1774/ })).toHaveAttribute(
+        'href',
+        'https://eur-lex.europa.eu/eli/reg_del/2024/1774/oj',
+    );
+    await expect(panel).toContainText('A scenario with no test is a gap, not a pass.');
+});
+
+test('a daemon that sends no plan scenarios shows no scenario panel', async ({ page }) => {
+    await mockApi(page);
+    await page.goto('/scores?view=dora');
+    await expect(page.getByTestId('dora-readiness')).toBeVisible();
+    await expect(page.getByTestId('dora-scenarios')).toHaveCount(0);
+});
+
 test('the legal entity selector reloads the score for that LEI', async ({ page }) => {
     const requested: string[] = [];
     await mockApi(page, requested);

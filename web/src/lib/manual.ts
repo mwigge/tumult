@@ -108,6 +108,8 @@ export const emptyForm = () => ({
     recovery_time_s: '' as NumberField,
     duration_s: '' as NumberField,
     framework_refs: '',
+    /** The plan scenarios of RTS 2024/1774, comma-separated ids. */
+    scenarios: '',
     renewal: '',
     attestation: '',
     plan_id: '',
@@ -235,6 +237,13 @@ function tlptOf(form: ManualForm): ManualTlpt | null {
     return Object.values(tlpt).some((v) => v !== null) ? tlpt : null;
 }
 
+/** The ids of a comma-separated field, without blanks. */
+const idList = (field: string) =>
+    field
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+
 /** The body of a create or an edit. It sends `actions`, never the older
     `action_items` list. */
 export function formToRecord(form: ManualForm, actor: string): ManualRecordInput {
@@ -255,10 +264,8 @@ export function formToRecord(form: ManualForm, actor: string): ManualRecordInput
         entered_by: actor.trim(),
         attestation: form.attestation.trim(),
         renewal_due_ns: dayStartNs(form.renewal),
-        framework_refs: form.framework_refs
-            .split(',')
-            .map((s) => s.trim())
-            .filter(Boolean),
+        framework_refs: idList(form.framework_refs),
+        scenarios: idList(form.scenarios),
         rto_target_s: seconds(form.rto_target_s),
         rpo_target_s: seconds(form.rpo_target_s),
         rpo_measured_s: seconds(form.rpo_measured_s),
@@ -303,6 +310,7 @@ export function detailToForm(detail: ManualDetail): ManualForm {
         recovery_time_s: numberText(rec.recovery_time_s),
         duration_s: numberText(rec.duration_s),
         framework_refs: (rec.framework_refs ?? []).join(', '),
+        scenarios: (rec.scenarios ?? []).join(', '),
         renewal: localDay(rec.renewal_due_ns),
         attestation: rec.attestation,
         plan_id: rec.plan_id ?? '',

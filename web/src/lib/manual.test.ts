@@ -225,6 +225,12 @@ describe('the record the form sends', () => {
         const links = [{ kind: 'function', linked_id: 'payments', label: null }];
         expect(formToRecord({ ...filledForm(), links }, 'alice').links).toEqual(links);
     });
+
+    it('sends the plan scenarios as a list of ids, and none for a blank field', () => {
+        const form = { ...filledForm(), scenarios: ' premises_loss, power_outage ,' };
+        expect(formToRecord(form, 'alice').scenarios).toEqual(['premises_loss', 'power_outage']);
+        expect(formToRecord(filledForm(), 'alice').scenarios).toEqual([]);
+    });
 });
 
 describe('a draft read back into the form', () => {
@@ -355,6 +361,14 @@ describe('a draft read back into the form', () => {
                 retest_id: 'exp-1',
             },
         ]);
+    });
+
+    it('holds the plan scenarios, and none for a record stored before them', () => {
+        const tagged = { ...experiment, scenarios: ['premises_loss', 'power_outage'] };
+        expect(detailToForm({ experiment: tagged } as ManualDetail).scenarios).toBe(
+            'premises_loss, power_outage',
+        );
+        expect(detailToForm({ experiment } as ManualDetail).scenarios).toBe('');
     });
 
     it('reads a record stored before the steps existed', () => {
