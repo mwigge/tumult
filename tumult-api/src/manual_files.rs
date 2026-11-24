@@ -29,7 +29,7 @@ use serde_json::{json, Value};
 use tumult_lake::{FileError, FileUpload, ManualError, StagedFile, MAX_FILE_BYTES, MEDIA_TYPES};
 
 use crate::auth::Principal;
-use crate::error::{bad_request, conflict, not_found, ApiError};
+use crate::error::{bad_request, conflict, not_found, unprocessable, ApiError};
 use crate::manual::{actor_or, exec_manual, in_scopes, manual_error};
 use crate::sql_util::{internal, with_reader};
 use crate::ApiState;
@@ -219,8 +219,10 @@ async fn store(
     uri: &Uri,
     body: &mut Body,
 ) -> Result<(StatusCode, Json<Value>), ApiError> {
+    // The query is the fields of an upload: one it does not know is 422,
+    // as in a JSON body.
     let Query(query) = Query::<UploadQuery>::try_from_uri(uri)
-        .map_err(|e| bad_request(format!("invalid query: {e}")))?;
+        .map_err(|e| unprocessable(format!("invalid query: {e}")))?;
     let name = query
         .name
         .ok_or_else(|| bad_request("send the file name as ?name=<file name>"))?;
