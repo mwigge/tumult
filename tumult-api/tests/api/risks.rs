@@ -6,7 +6,7 @@ use std::collections::BTreeSet;
 use serde_json::{json, Value};
 use tumult_core::types::{
     Experiment, ExperimentStatus, ExperimentTarget, Journal, NfrCriticality, NfrKind, NfrOperator,
-    NfrState, NfrVerdict, ObjectiveOutcome, TestKind,
+    NfrState, NfrVerdict, ObjectiveOutcome, PostResult, TestKind,
 };
 use tumult_lake::{ExerciseDetail, ExerciseType, ManualOutcome, NewManualExperiment, SpanRow};
 
@@ -969,3 +969,190 @@ async fn an_overdue_dr_test_is_one_finding_with_or_without_a_plan() {
     );
 }
 
+/// A blocking verdict on `nfr_id` of kind `rto` against 30 s, with the
+/// margin and the `recovered` mark the journal gives it.
+fn rto_marked(
+    nfr_id: &str,
+    observed: f64,
+    state: NfrState,
+    margin: Option<f64>,
+    recovered: Option<bool>,
+) -> NfrVerdict {
+    NfrVerdict {
+        nfr_id: nfr_id.into(),
+        kind: NfrKind::Rto,
+        metric: "recovery.mttr_s".into(),
+        operator: NfrOperator::Lte,
+        threshold: 30.0,
+        observed: Some(observed),
+        state,
+        margin,
+        criticality: NfrCriticality::Blocking,
+        recovered,
+        reason: None,
+    }
+}
+
+/// The objectives of a run with an RTO of 30 s and `verdicts`.
+fn rto_of(rto_measured_s: Option<f64>, verdicts: Vec<NfrVerdict>) -> ObjectiveOutcome {
+    ObjectiveOutcome {
+        rto_target_s: Some(30.0),
+        rto_measured_s,
+        verdicts,
+        ..ObjectiveOutcome::default()
+    }
+}
+
+/// The recovery part of the resilience score of `target`.
+fn recovery_of(posture: &Value, target: &str) -> Value {
+    posture["posture"]["targets"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|t| t["target"] == target)
+        .unwrap_or_else(|| panic!("no posture of {target} in {posture}"))["components"]["recovery"]
+        .clone()
+}
+
+/// Whether a run recovered is the mark the lake keeps on its RTO verdict
+/// (`nfr_verdicts.recovered`), and nothing else: not a missing margin, and
+/// not an objective of kind `rto` of its own.
+#[tokio::test]
+async fn the_risk_view_reads_whether_a_run_recovered_from_the_lake_alone() {
+    let srv = spawn_server().await;
+    let marked = rto_of(
+        None,
+        vec![rto_marked(
+            "rto",
+            45.0,
+            NfrState::Breached,
+            Some(-15.0),
+            Some(false),
+        )],
+    );
+    let unmarked = rto_of(
+        None,
+        vec![rto_marked("rto", 45.0, NfrState::Breached, None, None)],
+    );
+    let own_kind = rto_of(
+        Some(3.0),
+        vec![
+            rto_marked("rto", 3.0, NfrState::Met, Some(27.0), Some(true)),
+            rto_marked("rto-spike", 45.0, NfrState::Breached, None, Some(false)),
+        ],
+    );
+    let runs = [
+        ("marked", marked),
+        ("unmarked", unmarked),
+        ("spike", own_kind),
+    ]
+    .into_iter()
+    .map(|(target, objectives)| {
+        let name = format!("{target}-failover");
+        dr_run(&name, target, ExperimentStatus::Deviated, objectives)
+    })
+    .collect();
+    store_runs(&srv, runs).await;
+    let recovery = ["recovery_target_missed", "recovery_not_measured"];
+
+    let (status, risks) = get(&srv.base, "/api/risks").await;
+
+    assert_eq!(status, 200, "{risks}");
+    assert_eq!(
+        findings_by(&risks, "marked", &recovery),
+        ["recovery_target_missed:marked-failover/rto"]
+    );
+    let missed = finding(&risks, "marked", "recovery_target_missed");
+    assert!(
+        text(missed, "title").contains("did not recover"),
+        "{missed}"
+    );
+    assert_eq!(
+        findings_by(&risks, "unmarked", &recovery),
+        ["recovery_not_measured:rto"]
+    );
+    let breached = finding(&risks, "unmarked", "objective_breached");
+    assert!(
+        text(breached, "detail").contains("observed 45"),
+        "{breached}"
+    );
+    assert_eq!(
+        findings_by(&risks, "spike", &recovery),
+        Vec::<String>::new()
+    );
+    let spike = finding(&risks, "spike", "objective_breached");
+    assert_eq!(spike["subject"], "spike-failover/rto-spike");
+    assert!(text(spike, "detail").contains("observed 45"), "{spike}");
+
+    let (status, posture) = get(&srv.base, "/api/posture").await;
+    assert_eq!(status, 200, "{posture}");
+    assert_eq!(recovery_of(&posture, "marked"), json!(0.0));
+    assert_eq!(recovery_of(&posture, "unmarked"), Value::Null);
+    assert_eq!(recovery_of(&posture, "spike"), json!(100.0));
+}
+
+/// A late DR test and the runs of the last 30 days that measured no
+/// recovery are one finding about the target, `dr_test_overdue`, in the
+/// risk view and in the posture, which read one list.
+#[tokio::test]
+async fn an_overdue_dr_test_takes_in_the_runs_that_measured_no_recovery() {
+    let srv = spawn_server().await;
+    let mut failover = manual_record(
+        "ledger-failover",
+        ExerciseType::Failover,
+        "ledger",
+        ManualOutcome::Passed,
+    );
+    failover.executed_at_ns = now_ns() - 400 * 86_400 * NS;
+    add_verified(&srv, failover).await;
+    let (mut journal, definition) = dr_run(
+        "ledger-switchover",
+        "ledger",
+        ExperimentStatus::Completed,
+        no_outage(30.0),
+    );
+    journal.post_result = Some(PostResult {
+        started_at_ns: journal.ended_at_ns - 30 * NS,
+        ended_at_ns: journal.ended_at_ns,
+        duration_s: 30.0,
+        samples: 30,
+        probes: vec![],
+        recovery_time_s: 0.0,
+        full_recovery: true,
+        mttr_s: None,
+        impact_observed: Some(false),
+        outage_started_at_ns: None,
+        recovered_at_ns: None,
+    });
+    store_runs(&srv, vec![(journal, definition)]).await;
+    let about_recovery = [
+        "dr_test_overdue",
+        "manual_exercise_overdue",
+        "recovery_not_measured",
+    ];
+
+    let (status, risks) = get(&srv.base, "/api/risks").await;
+
+    assert_eq!(status, 200, "{risks}");
+    assert_eq!(
+        findings_by(&risks, "ledger", &about_recovery),
+        ["dr_test_overdue:dr_test"]
+    );
+    let overdue = finding(&risks, "ledger", "dr_test_overdue");
+    assert_eq!(
+        overdue["evidence"].as_array().unwrap().last(),
+        Some(&json!("ledger-switchover")),
+        "{overdue}"
+    );
+    assert!(
+        text(overdue, "detail").contains("1 DR run(s) of the last 30 days"),
+        "{overdue}"
+    );
+
+    let (status, posture) = get(&srv.base, "/api/posture").await;
+    assert_eq!(status, 200, "{posture}");
+    assert_eq!(posture["summary"], risks["summary"]);
+    let first: Vec<&Value> = risks["risks"].as_array().unwrap().iter().take(5).collect();
+    let top: Vec<&Value> = posture["top_risks"].as_array().unwrap().iter().collect();
+    assert_eq!(top, first);
+}

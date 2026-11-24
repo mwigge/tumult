@@ -9,13 +9,13 @@
 //! | `stale_evidence` | a target's latest evidence in a discipline is older than 30 days (90: high) |
 //! | `objective_breached` | the latest run of an experiment breached an objective |
 //! | `recovery_target_missed` | the latest dr run or a verified manual record measured an RTO above its target, or the run did not recover |
-//! | `recovery_not_measured` | a target declares an RTO and its dr runs of the last 30 days all measured no recovery |
+//! | `recovery_not_measured` | a target declares an RTO and its dr runs of the last 30 days all measured no recovery (none when a finding says its DR test is late: that finding names the runs) |
 //! | `rpo_missed` | the latest dr run or a verified manual record lost more data than its RPO allows |
 //! | `latest_run_failed` | the latest run of an experiment did not pass (and no breached objective already explains it) |
 //! | `untested_dependency` | a service other services call has no experiments at all |
 //! | `never_run_definition` | a registered definition has never run |
-//! | `manual_exercise_overdue` | a planned manual exercise is past its due date (more than 30 days: high) |
-//! | `dr_test_overdue` | a target with no planned DR exercise is past the interval of its DR tests (more than 30 days: high; one step more on a critical target) |
+//! | `manual_exercise_overdue` | a planned manual exercise is past its due date (more than 30 days: high); a planned DR exercise names the runs `recovery_not_measured` would |
+//! | `dr_test_overdue` | a target with no planned DR exercise is past the interval of its DR tests (more than 30 days: high; one step more on a critical target); it names the runs `recovery_not_measured` would |
 //! | `single_replica` | a `Deployment` or `StatefulSet` manifest runs one replica |
 //! | `no_resource_limits` | a container has no resource limits |
 //! | `no_pod_disruption_budget` | no `PodDisruptionBudget` selects the workload |
@@ -25,8 +25,8 @@ use sha2::{Digest, Sha256};
 use std::fmt::Write as _;
 
 use crate::model::{
-    ExperimentLatest, Inputs, Risk, Severity, TargetEvidence, Verdict, Workload, DAY_NS,
-    STALE_AFTER_NS, VERY_STALE_AFTER_NS,
+    DrTestDue, ExperimentLatest, Inputs, PlannedExercise, Risk, Severity, TargetEvidence, Verdict,
+    Workload, DAY_NS, STALE_AFTER_NS, VERY_STALE_AFTER_NS,
 };
 
 /// Disciplines whose absence is a risk in itself. The other four only show
@@ -230,7 +230,7 @@ fn breach_detail(e: &ExperimentLatest, v: &Verdict) -> String {
         "against a threshold of {} ({} objective)",
         v.threshold, v.criticality
     );
-    if v.recovered == Some(false) {
+    if v.not_recovered() {
         let watched = v
             .observed
             .map_or_else(String::new, |o| format!(", at least {o}s after the outage"));
@@ -264,12 +264,13 @@ fn source(e: &ExperimentLatest) -> String {
     format!("The latest disaster-recovery run of {}", e.name)
 }
 
-/// A missed recovery target weighs high, and critical on a critical target.
-fn recovery_severity(t: &TargetEvidence) -> Severity {
-    if is_critical(t) {
-        return Severity::Critical;
+/// `severity`, one step more on a critical target: the scale of every
+/// finding about recovery.
+fn on_target(severity: Severity, t: Option<&TargetEvidence>) -> Severity {
+    if t.is_some_and(is_critical) {
+        return raised(severity);
     }
-    Severity::High
+    severity
 }
 
 /// `recovery_target_missed`: a recovery time above the RTO, or a run that
@@ -308,7 +309,7 @@ fn recovery_target_missed(t: &TargetEvidence, e: &ExperimentLatest) -> Option<Ri
     };
     Some(build(Draft {
         rule: "recovery_target_missed",
-        severity: recovery_severity(t),
+        severity: on_target(Severity::High, Some(t)),
         title,
         detail,
         target: Some(&t.target),
@@ -327,7 +328,7 @@ fn rpo_missed(t: &TargetEvidence, e: &ExperimentLatest) -> Option<Risk> {
     }
     Some(build(Draft {
         rule: "rpo_missed",
-        severity: recovery_severity(t),
+        severity: on_target(Severity::High, Some(t)),
         title: format!(
             "{} lost {measured_s:.1}s of data against an RPO of {target_s:.1}s",
             named(e)
@@ -360,10 +361,11 @@ fn within_targets(e: &ExperimentLatest) -> bool {
     rto && rpo
 }
 
-/// `recovery_not_measured`: the target declares an RTO, and each of its dr
-/// runs of the last 30 days measured no recovery. A verified manual record
-/// of that time that recovered within its targets proves the RTO too.
-fn recovery_not_measured(t: &TargetEvidence, as_of_ns: i64, out: &mut Vec<Risk>) {
+/// The dr runs of `t` of the last 30 days that declare an RTO, when each
+/// of them measured no recovery: the RTO of `t` is not proved. Empty when
+/// one measured a recovery, or when a verified manual record of that time
+/// recovered within its targets, which proves the RTO too.
+fn unproved_runs(t: &TargetEvidence, as_of_ns: i64) -> Vec<&ExperimentLatest> {
     let recent = |e: &&ExperimentLatest| {
         e.rto_target_s.is_some() && as_of_ns - e.last_run_ns <= STALE_AFTER_NS
     };
@@ -379,17 +381,22 @@ fn recovery_not_measured(t: &TargetEvidence, as_of_ns: i64, out: &mut Vec<Risk>)
             .filter(|e| e.manual)
             .filter(recent)
             .any(within_targets);
-    if runs.is_empty() || proved {
-        return;
+    if proved {
+        return Vec::new();
     }
-    let severity = if is_critical(t) {
-        Severity::Medium
-    } else {
-        Severity::Low
-    };
-    out.push(build(Draft {
+    runs
+}
+
+/// `recovery_not_measured`: the target declares an RTO, and each of its dr
+/// runs of the last 30 days measured no recovery.
+fn recovery_not_measured(t: &TargetEvidence, as_of_ns: i64) -> Option<Risk> {
+    let runs = unproved_runs(t, as_of_ns);
+    if runs.is_empty() {
+        return None;
+    }
+    Some(build(Draft {
         rule: "recovery_not_measured",
-        severity,
+        severity: on_target(Severity::Low, Some(t)),
         title: format!("{} has no measured recovery in 30 days", t.target),
         detail: format!(
             "{} run(s) against {} in the last 30 days declare an RTO, and none measured a \
@@ -404,7 +411,71 @@ fn recovery_not_measured(t: &TargetEvidence, as_of_ns: i64, out: &mut Vec<Risk>)
         subject: "rto".to_string(),
         recommended_kind: Some("dr"),
         evidence: runs.iter().filter_map(|e| e.evidence_id.clone()).collect(),
-    }));
+    }))
+}
+
+/// Whether the row `d` of the DR register is that of `t`: its name in its
+/// environment.
+fn same_target(d: &DrTestDue, t: &TargetEvidence) -> bool {
+    t.target == d.target && t.environment == d.environment
+}
+
+/// The target of a row of the DR register.
+fn register_target<'a>(inputs: &'a Inputs, d: &DrTestDue) -> Option<&'a TargetEvidence> {
+    inputs.targets.iter().find(|t| same_target(d, t))
+}
+
+/// The last DR test of `d` and when the next was due, once that is past.
+fn past_due(d: &DrTestDue, as_of_ns: i64) -> Option<(i64, i64)> {
+    let (Some(last), Some(due)) = (d.last_test_at_ns, d.next_due_at_ns) else {
+        return None;
+    };
+    (due < as_of_ns).then_some((last, due))
+}
+
+/// Whether a finding says that the DR test of `t` is late: the
+/// `dr_test_overdue` of its row in the register, or the
+/// `manual_exercise_overdue` of the planned DR exercise that covers it.
+fn late_test_reported(inputs: &Inputs, t: &TargetEvidence) -> bool {
+    inputs
+        .dr_register
+        .iter()
+        .filter(|d| same_target(d, t))
+        .any(|d| match &d.plan_id {
+            None => past_due(d, inputs.as_of_ns).is_some(),
+            Some(plan) => inputs
+                .plans
+                .iter()
+                .any(|p| p.id == *plan && p.due_at_ns < inputs.as_of_ns),
+        })
+}
+
+/// One late DR test is one finding about its target: the finding that
+/// says so takes in the runs `recovery_not_measured` would name.
+fn take_in(risk: &mut Risk, runs: &[&ExperimentLatest]) {
+    if runs.is_empty() {
+        return;
+    }
+    write!(
+        risk.detail,
+        " {} DR run(s) of the last 30 days declare an RTO and measured no recovery.",
+        runs.len()
+    )
+    .expect("writing to a String cannot fail");
+    risk.evidence
+        .extend(runs.iter().filter_map(|e| e.evidence_id.clone()));
+}
+
+/// The runs that measured no recovery of the targets whose DR test the
+/// plan `p` covers.
+fn unproved_in_plan<'a>(inputs: &'a Inputs, p: &PlannedExercise) -> Vec<&'a ExperimentLatest> {
+    inputs
+        .dr_register
+        .iter()
+        .filter(|d| d.plan_id.as_deref() == Some(p.id.as_str()))
+        .filter_map(|d| register_target(inputs, d))
+        .flat_map(|t| unproved_runs(t, inputs.as_of_ns))
+        .collect()
 }
 
 fn kind_const(kind: &str) -> Option<&'static str> {
@@ -498,6 +569,7 @@ fn overdue_exercises(inputs: &Inputs, out: &mut Vec<Risk>) {
                 format!("due_at_ns={}", p.due_at_ns),
             ],
         });
+        take_in(&mut risk, &unproved_in_plan(inputs, p));
         // Longer overdue ranks higher, up to five points, as stale evidence.
         #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
         let bump = (days(late) / 30).clamp(0, 5) as u32;
@@ -521,28 +593,19 @@ fn raised(severity: Severity) -> Severity {
 /// one finding.
 fn overdue_dr_tests(inputs: &Inputs, out: &mut Vec<Risk>) {
     for d in inputs.dr_register.iter().filter(|d| d.plan_id.is_none()) {
-        let (Some(last), Some(due)) = (d.last_test_at_ns, d.next_due_at_ns) else {
+        let Some((last, due)) = past_due(d, inputs.as_of_ns) else {
             continue;
         };
-        if due >= inputs.as_of_ns {
-            continue;
-        }
         let late = inputs.as_of_ns - due;
-        let mut severity = if late > STALE_AFTER_NS {
+        let severity = if late > STALE_AFTER_NS {
             Severity::High
         } else {
             Severity::Medium
         };
-        let critical = inputs
-            .targets
-            .iter()
-            .any(|t| t.target == d.target && t.environment == d.environment && is_critical(t));
-        if critical {
-            severity = raised(severity);
-        }
+        let t = register_target(inputs, d);
         let mut risk = build(Draft {
             rule: "dr_test_overdue",
-            severity,
+            severity: on_target(severity, t),
             title: format!("{} DR test is overdue", d.target),
             detail: format!(
                 "The last DR test of {} in {} ran {} day(s) ago. One is due every {} days ({}), \
@@ -567,6 +630,8 @@ fn overdue_dr_tests(inputs: &Inputs, out: &mut Vec<Risk>) {
                 format!("interval_days={} ({})", d.interval_days, d.interval_source),
             ],
         });
+        let unproved = t.map_or_else(Vec::new, |t| unproved_runs(t, inputs.as_of_ns));
+        take_in(&mut risk, &unproved);
         // Longer overdue ranks higher, up to five points, as an overdue plan.
         #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
         let bump = (days(late) / 30).clamp(0, 5) as u32;
@@ -729,7 +794,9 @@ pub fn evaluate(inputs: &Inputs) -> Vec<Risk> {
         discipline_gaps(t, &mut out);
         stale_evidence(t, inputs.as_of_ns, &mut out);
         experiment_rules(t, &mut out);
-        recovery_not_measured(t, inputs.as_of_ns, &mut out);
+        if !late_test_reported(inputs, t) {
+            out.extend(recovery_not_measured(t, inputs.as_of_ns));
+        }
     }
     untested_dependencies(inputs, &mut out);
     never_run(inputs, &mut out);
@@ -1791,5 +1858,235 @@ mod tests {
             overdue["cache"].rank,
             Severity::Critical.base_rank() + 1 + 5
         );
+    }
+
+    /// A verdict of the objective `nfr_id` of kind `kind`, breached, with
+    /// `recovered` as the lake keeps it in `nfr_verdicts.recovered`.
+    fn marked(nfr_id: &str, kind: &str, recovered: Option<bool>) -> Verdict {
+        Verdict {
+            nfr_id: nfr_id.into(),
+            kind: kind.into(),
+            state: "breached".into(),
+            criticality: "blocking".into(),
+            threshold: 30.0,
+            observed: Some(45.0),
+            margin: None,
+            recovered,
+        }
+    }
+
+    /// A run did not recover when the runner marked the verdict on its
+    /// RTO (`rto` of kind `rto`) as not recovered, as the lake keeps it.
+    /// A spike objective that was not back, an objective of kind `rto` of
+    /// its own, and a breach the runner did not mark are no such run.
+    #[test]
+    fn only_the_rto_verdict_marked_not_recovered_is_a_run_that_did_not_recover() {
+        let cases = [
+            (
+                "the RTO marked not recovered",
+                marked("rto", "rto", Some(false)),
+                true,
+            ),
+            (
+                "the RTO marked recovered",
+                marked("rto", "rto", Some(true)),
+                false,
+            ),
+            ("the RTO not marked", marked("rto", "rto", None), false),
+            (
+                "a spike that was not back",
+                marked("back", "recovery", Some(false)),
+                false,
+            ),
+            (
+                "an objective of kind rto",
+                marked("rto-spike", "rto", Some(false)),
+                false,
+            ),
+            (
+                "a verdict named rto of another kind",
+                marked("rto", "latency", Some(false)),
+                false,
+            ),
+        ];
+        for (case, verdict, want) in cases {
+            let run = dr_run("failover", 30.0, 1, vec![verdict]);
+            assert_eq!(run.unrecovered().is_some(), want, "{case}");
+            assert_eq!(run.measured_recovery(), want, "{case}");
+            let mut t = target("db", None, vec![evidence("robustness", 1)]);
+            t.experiments.push(run);
+            let risks = scan_one(t);
+            let rules = rules_of(&risks);
+            assert_eq!(
+                rules.contains(&"recovery_target_missed"),
+                want,
+                "{case}: {risks:?}"
+            );
+            assert_eq!(
+                rules.contains(&"recovery_not_measured"),
+                !want,
+                "{case}: {risks:?}"
+            );
+            let breached = one_of(&risks, "objective_breached");
+            assert_eq!(
+                breached.detail.contains("not recovered"),
+                want,
+                "{case}: {}",
+                breached.detail
+            );
+            assert_eq!(
+                breached.detail.contains("observed 45"),
+                !want,
+                "{case}: {}",
+                breached.detail
+            );
+        }
+    }
+
+    /// The findings about the recovery of `target`, as `rule:subject`.
+    fn recovery_findings_of(risks: &[Risk], target: &str) -> Vec<String> {
+        let about = [
+            "recovery_target_missed",
+            "rpo_missed",
+            "recovery_not_measured",
+            "dr_test_overdue",
+            "manual_exercise_overdue",
+        ];
+        let mut found: Vec<String> = risks
+            .iter()
+            .filter(|r| r.target.as_deref() == Some(target) && about.contains(&r.rule.as_str()))
+            .map(|r| format!("{}:{}", r.rule, r.subject))
+            .collect();
+        found.sort();
+        found
+    }
+
+    /// `db` in prod: its last DR test ran 400 days ago, and its one DR run
+    /// of the last 30 days saw no outage.
+    fn late_and_unmeasured(register: Vec<DrTestDue>, plans: Vec<PlannedExercise>) -> Vec<Risk> {
+        let mut t = target("db", None, vec![evidence("robustness", 1)]);
+        t.experiments.push(dr_run(
+            "failover",
+            30.0,
+            1,
+            vec![no_recovery_measured(30.0)],
+        ));
+        evaluate(&Inputs {
+            as_of_ns: NOW,
+            targets: vec![t],
+            dr_register: register,
+            plans,
+            ..Default::default()
+        })
+    }
+
+    /// A late DR test is one finding about the recovery of its target:
+    /// `dr_test_overdue` takes in the runs of the last 30 days that
+    /// measured no recovery, which `recovery_not_measured` would name.
+    #[test]
+    fn an_overdue_dr_test_takes_in_the_runs_that_measured_no_recovery() {
+        let risks = late_and_unmeasured(vec![dr_due("db", 400, None)], vec![]);
+
+        assert_eq!(
+            recovery_findings_of(&risks, "db"),
+            ["dr_test_overdue:dr_test"]
+        );
+        let overdue = one_of(&risks, "dr_test_overdue");
+        assert_eq!(overdue.severity, Severity::High);
+        assert_eq!(
+            overdue.evidence,
+            [
+                "last_test=manual:rec-1".to_string(),
+                format!("next_due_at_ns={}", NOW - 35 * DAY_NS),
+                "interval_days=365 (default)".to_string(),
+                "run-failover".to_string(),
+            ]
+        );
+        assert!(
+            overdue.detail.contains("1 DR run(s) of the last 30 days")
+                && overdue.detail.contains("measured no recovery"),
+            "{}",
+            overdue.detail
+        );
+    }
+
+    /// The plan that covers a late DR test is its one finding, and it
+    /// takes in the runs too. While the plan is not yet past due, the runs
+    /// that measured no recovery are a finding of their own.
+    #[test]
+    fn an_overdue_plan_takes_in_the_runs_that_measured_no_recovery() {
+        let covered = vec![dr_due("db", 400, Some("plan-1"))];
+        let risks = late_and_unmeasured(covered.clone(), vec![plan("plan-1", 1)]);
+
+        assert_eq!(
+            recovery_findings_of(&risks, "db"),
+            ["manual_exercise_overdue:plan-1"]
+        );
+        let overdue = one_of(&risks, "manual_exercise_overdue");
+        assert_eq!(
+            overdue.evidence.last().map(String::as_str),
+            Some("run-failover")
+        );
+        assert!(
+            overdue.detail.contains("1 DR run(s) of the last 30 days"),
+            "{}",
+            overdue.detail
+        );
+
+        for days_ago in [0, -10] {
+            let risks = late_and_unmeasured(covered.clone(), vec![plan("plan-1", days_ago)]);
+            assert_eq!(
+                recovery_findings_of(&risks, "db"),
+                ["recovery_not_measured:rto"],
+                "a plan due in {} day(s)",
+                -days_ago
+            );
+        }
+    }
+
+    /// A late DR test of the target in another environment, or of
+    /// another target, leaves the runs that measured no recovery a finding
+    /// of their own, and takes none of them in.
+    #[test]
+    fn a_late_dr_test_elsewhere_takes_in_no_run() {
+        let in_staging = |plan: Option<&str>| DrTestDue {
+            environment: Some("staging".into()),
+            ..dr_due("db", 400, plan)
+        };
+        let staging_plan = PlannedExercise {
+            environment: Some("staging".into()),
+            ..plan("plan-1", 1)
+        };
+        let unplanned =
+            late_and_unmeasured(vec![in_staging(None), dr_due("cache", 400, None)], vec![]);
+        let planned = late_and_unmeasured(vec![in_staging(Some("plan-1"))], vec![staging_plan]);
+
+        assert_eq!(
+            recovery_findings_of(&unplanned, "db"),
+            ["dr_test_overdue:dr_test", "recovery_not_measured:rto"]
+        );
+        assert_eq!(
+            recovery_findings_of(&unplanned, "cache"),
+            ["dr_test_overdue:dr_test"]
+        );
+        assert_eq!(
+            recovery_findings_of(&planned, "db"),
+            [
+                "manual_exercise_overdue:plan-1",
+                "recovery_not_measured:rto"
+            ]
+        );
+        let late = ["dr_test_overdue", "manual_exercise_overdue"];
+        for r in unplanned
+            .iter()
+            .chain(&planned)
+            .filter(|r| late.contains(&r.rule.as_str()))
+        {
+            assert!(
+                !r.evidence.contains(&"run-failover".to_string())
+                    && !r.detail.contains("measured no recovery"),
+                "{r:?}"
+            );
+        }
     }
 }

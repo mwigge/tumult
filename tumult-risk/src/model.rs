@@ -44,11 +44,23 @@ pub struct Verdict {
     pub threshold: f64,
     pub observed: Option<f64>,
     pub margin: Option<f64>,
-    /// `Some(false)` on the `rto` verdict of a run that watched for
-    /// recovery and did not recover: `observed` is then a lower bound and
-    /// there is no margin.
+    /// Whether the run recovered, as the runner marked the verdict and the
+    /// lake keeps it (`nfr_verdicts.recovered`). `Some(false)` on the RTO
+    /// verdict of a run that did not recover: `observed` is then a lower
+    /// bound. `None` when the runner marked nothing.
     #[serde(default)]
     pub recovered: Option<bool>,
+}
+
+impl Verdict {
+    /// Whether this is the verdict on the RTO of a run that did not
+    /// recover: the objective `rto` of kind `rto` the runner marked not
+    /// recovered, the verdict the lake's DR view reads. A spike objective
+    /// that was not back, or an objective of kind `rto` of its own, is not.
+    #[must_use]
+    pub fn not_recovered(&self) -> bool {
+        self.nfr_id == "rto" && self.kind == "rto" && self.recovered == Some(false)
+    }
 }
 
 /// The latest run of one experiment against a target.
@@ -77,9 +89,7 @@ impl ExperimentLatest {
     /// The `rto` verdict of a run that did not recover, when it is one.
     #[must_use]
     pub fn unrecovered(&self) -> Option<&Verdict> {
-        self.verdicts
-            .iter()
-            .find(|v| v.kind == "rto" && v.recovered == Some(false))
+        self.verdicts.iter().find(|v| v.not_recovered())
     }
 
     /// Whether the run measured its recovery: a recovery time, or a

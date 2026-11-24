@@ -170,15 +170,8 @@ fn kinds_by_evidence(
     Ok(out)
 }
 
-/// Whether a stored verdict is that of a run that did not recover. The
-/// lake keeps no flag for it: the `rto` verdict of such a run is breached
-/// with no margin, as its observed time is only a lower bound. Every other
-/// breach has a margin.
-fn not_recovered(kind: &str, state: &str, margin: Option<f64>) -> bool {
-    kind == "rto" && state == "breached" && margin.is_none()
-}
-
-/// `experiment_id` → objective verdicts of that run.
+/// `experiment_id` → objective verdicts of that run, with whether the run
+/// recovered as the lake keeps it (`nfr_verdicts.recovered`).
 fn verdicts_by_evidence(
     reader: &Reader,
     experiments: &[ExperimentScore],
@@ -192,26 +185,23 @@ fn verdicts_by_evidence(
         return Ok(out);
     }
     let sql = format!(
-        "SELECT experiment_id, nfr_id, kind, state, criticality, threshold, observed, margin \
-         FROM nfr_verdicts WHERE experiment_id IN ({}) ORDER BY nfr_id",
+        "SELECT experiment_id, nfr_id, kind, state, criticality, threshold, observed, margin, \
+         recovered FROM nfr_verdicts WHERE experiment_id IN ({}) ORDER BY nfr_id",
         in_list(&ids)
     );
     for row in reader.query_json_rows(&sql).map_err(|e| e.to_string())? {
         let Some(id) = str_of(&row, "experiment_id") else {
             continue;
         };
-        let kind = str_of(&row, "kind").unwrap_or_default();
-        let state = str_of(&row, "state").unwrap_or_default();
-        let margin = num_of(&row, "margin");
         out.entry(id).or_default().push(Verdict {
             nfr_id: str_of(&row, "nfr_id").unwrap_or_default(),
-            recovered: not_recovered(&kind, &state, margin).then_some(false),
-            kind,
-            state,
+            kind: str_of(&row, "kind").unwrap_or_default(),
+            state: str_of(&row, "state").unwrap_or_default(),
             criticality: str_of(&row, "criticality").unwrap_or_default(),
             threshold: num_of(&row, "threshold").unwrap_or(0.0),
             observed: num_of(&row, "observed"),
-            margin,
+            margin: num_of(&row, "margin"),
+            recovered: row.get("recovered").and_then(Value::as_bool),
         });
     }
     Ok(out)
