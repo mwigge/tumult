@@ -22,7 +22,7 @@ libc = { workspace = true }
 [dev-dependencies]
 opentelemetry_sdk = { workspace = true }
 tempfile = { workspace = true }
-tokio = { workspace = true, features = ["rt-multi-thread"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "test-util"] }
 tumult-test-utils = { path = "../tumult-test-utils", default-features = false, features = ["otel"] }
 
 [lints]
