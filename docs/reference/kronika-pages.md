@@ -195,8 +195,8 @@ default `failover`, `drill`, `restore` and `backup`.
   3 years. The URL keeps them, so a link opens the same view. The period
   selects the tests. The register shows the targets as they are now.
 
-A lake with no DR test says so, and links to the guide and to the Manual
-page.
+A lake with no DR test says so, and links to the
+[DR guide](../guides/disaster-recovery.md) and to the Manual page.
 
 `GET /api/dr` answers with `targets` (the register), `tests` (one page of
 the DR tests of the period, with the columns of `dr_tests`) and `summary`
@@ -252,6 +252,10 @@ metric points.
 
 ![Experiment detail: steady state, objectives and steps](../images/3.0/screenshots/run-detail.png)
 
+- **Recovery:** the RTO and the RPO the run declares, against what it
+  measured. A run that did not recover shows `at least N s, not recovered`,
+  and a run that measured no RTO shows the reason, such as
+  `no outage observed`.
 - **Evidence:** the journal of the run as the lake keeps it, and the spans
   and metric points of the run.
 - **API:** `GET /api/experiments/{id}`, `GET /api/experiments/windows`.
@@ -336,7 +340,7 @@ Route `/manual`. Manual evidence: DR exercises and other tests run by hand.
 You plan them, record them, attach evidence, sign them off and verify their
 audit trail. A record is a draft, submitted, verified or rejected.
 
-![Manual evidence](../images/3.0/screenshots/manual.png)
+![Manual evidence: a failover drill open, with the plan it fulfils, its recovery, steps, actions, file and sign-off](../images/3.0/screenshots/manual.png)
 
 The page has five tabs:
 
@@ -761,7 +765,8 @@ HTML preview and a PDF download, and quick metric digests.
   `GET /api/metrics`.
 
 The page makes R1, R2 and R3. The two DR reports, R4 and R5, are made
-through the API or with `tumultd report`. Each report states the SHA-256
+through the API or with `tumultd report`, and the list shows them as R4
+and R5. Each report states the SHA-256
 of its PDF and the time it was built.
 
 #### DR test report (R4)
@@ -823,7 +828,7 @@ external tester. It reads the tester of each manual record. A run names
 its tester only in its journal, and the lake does not keep it, so no run
 is counted.
 
-![The DORA matrix of an evidence pack](../images/3.0/screenshots/report-evidence-pack.png)
+![The scope of an evidence pack and its independence line](../images/3.0/screenshots/report-evidence-pack.png)
 
 ### Events
 
