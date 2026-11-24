@@ -234,8 +234,20 @@ class FactsTests(unittest.TestCase):
     def test_the_facts_of_a_journal(self):
         self.assertEqual(
             checker.facts(checker.read_toon(JOURNAL)),
-            {**EXPECT, "rollback_failures": 0, "load_result": True},
+            {
+                **EXPECT,
+                "rollback_failures": 0,
+                "load_result": True,
+                "rpo_measured_s": None,
+            },
         )
+
+    def test_the_rpo_a_run_measured_is_a_fact(self):
+        journal = JOURNAL.replace(
+            "  rto_measured_s: 0\n", "  rto_measured_s: 0\n  rpo_measured_s: 4.2\n"
+        )
+        seen = checker.facts(checker.read_toon(journal))
+        self.assertEqual(seen["rpo_measured_s"], 4.2)
 
     def test_a_hypothesis_that_did_not_run_is_none(self):
         journal = checker.read_toon(
@@ -315,6 +327,27 @@ class DifferencesTests(unittest.TestCase):
             checker.differences({**EXPECT, "load_result": False}, with_load),
             ["load_result: expected none, journal has one"],
         )
+
+    def test_an_rpo_inside_the_expected_range_has_no_difference(self):
+        expect = {**EXPECT, "rpo_measured_s": {"from": 3, "to": 10}}
+        for rpo in (3, 4.2, 10):
+            with self.subTest(rpo=rpo):
+                seen = {**self.seen(), "rpo_measured_s": rpo}
+                self.assertEqual(checker.differences(expect, seen), [])
+
+    def test_an_rpo_outside_the_range_or_not_measured_is_named(self):
+        expect = {**EXPECT, "rpo_measured_s": {"from": 3, "to": 10}}
+        for rpo, shown in ((2.9, "2.9"), (10.5, "10.5"), (None, "none")):
+            with self.subTest(rpo=rpo):
+                seen = {**self.seen(), "rpo_measured_s": rpo}
+                self.assertEqual(
+                    checker.differences(expect, seen),
+                    [f"rpo_measured_s: expected 3 to 10, journal has {shown}"],
+                )
+
+    def test_an_rpo_is_compared_only_when_the_expectation_names_it(self):
+        seen = {**self.seen(), "rpo_measured_s": 99}
+        self.assertEqual(checker.differences(EXPECT, seen), [])
 
     def test_an_expectation_must_name_every_fact(self):
         incomplete = {"status": "completed"}
@@ -771,7 +804,12 @@ class CommandLineTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
         self.assertEqual(
             json.loads(result.stdout),
-            {**EXPECT, "rollback_failures": 0, "load_result": True},
+            {
+                **EXPECT,
+                "rollback_failures": 0,
+                "load_result": True,
+                "rpo_measured_s": None,
+            },
         )
 
     def test_list_prints_what_the_proof_runs_on_its_own_in_file_order(self):

@@ -76,14 +76,25 @@ class DistributionTests(unittest.TestCase):
         command = json.loads(re.search(r"^CMD (.+)$", image, re.M)[1])
         self.assertEqual(command, ["--help"])
 
-    def test_cli_image_has_the_postgres_client_of_the_postgres_plugin(self):
-        # The demo runs examples/postgres-failover.toon in the MCP image,
-        # which is built on this one: the DR actions of tumult-db-postgres
-        # call psql.
+    def test_cli_image_has_the_postgres_client_of_the_demo_server(self):
+        # The demo runs the DR examples in the MCP image, which is built on
+        # this one: the DR actions of tumult-db-postgres call psql, pg_dump
+        # and pg_restore. pg_dump refuses a server of a newer major, and a
+        # newer pg_dump writes settings an older server refuses on restore.
+        # So the image installs the client of the major the demo servers
+        # run, from the PostgreSQL apt repository: Debian has one major.
+        compose = (ROOT / "docker/docker-compose.demo.yml").read_text()
+        majors = set(re.findall(r"^\s+image: postgres:(\d+)\b", compose, re.M))
+        self.assertEqual(len(majors), 1, majors)
         image = (ROOT / "docker/Dockerfile.tumult").read_text()
-        self.assertRegex(
-            image, r"apt-get install[^\n]*(\\\n[^\n]*)*\bpostgresql-client\b"
-        )
+        runtime = image.split(" AS runtime", 1)[1]
+        installs = re.findall(r"apt-get install((?:[^\n]*\\\n)*[^\n]*)", runtime)
+        packages = " ".join(installs).replace("\\", " ").split()
+        clients = [name for name in packages if name.startswith("postgresql-client")]
+        self.assertEqual(clients, [f"postgresql-client-{majors.pop()}"])
+        repository = "/usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y"
+        self.assertIn(repository, runtime)
+        self.assertLess(runtime.index(repository), runtime.index(clients[0]))
 
     def test_demo_app_follows_the_server_of_the_demo_pair_that_takes_writes(self):
         # The failover example promotes the standby: the app names both

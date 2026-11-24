@@ -20,7 +20,7 @@ value here without updating every component that references it.
 - Project name: `tumult-demo` (COMPOSE_PROJECT_NAME)
 
 ## Services (name → purpose → host port)
-- `demo-postgres` — Postgres 16 the app depends on → 5433:5432
+- `demo-postgres`: Postgres 16 the app depends on → 5433:5432. `examples/postgres-restore-rpo.toon` drops its `orders` database and restores it from a backup
 - `demo-postgres-standby`: a streaming standby of demo-postgres, the target of `examples/postgres-failover.toon`, with no host port
 - `demo-app` — purpose-built axum order service, OTel-instrumented → 8080:8080
 - `demo-sshd` — sshd container as the ssh fault target (reuse docker/Dockerfile.sshd) → 2222:22
@@ -50,8 +50,9 @@ value here without updating every component that references it.
 `expectations.json` in that directory says what the journal of each must hold.
 `make demo-check` runs all 13, runs the first once more in the same stack, and
 compares each journal with it. It then runs `examples/postgres-failover.toon`
-(its entry in `examples/expectations.json` names the proof `demo-check`) on a
-fresh Postgres pair, and the demo GameDay
+and `examples/postgres-restore-rpo.toon` (their entries in
+`examples/expectations.json` name the proof `demo-check`), each on a fresh
+Postgres pair, and the demo GameDay
 `demo/kronika/gamedays/platform-resilience.gameday.toon` with the CLI, and
 compares their journals with their expectations. `tumult-mcp` mounts
 `examples/` at `/demo/examples` and `demo/kronika/` at `/demo/kronika` for

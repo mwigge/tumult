@@ -39,7 +39,10 @@ temporary `.pgpass` file, not to the command line).
 
 These functions back up and restore a database, fail over to a standby,
 and measure the data a run lost. They need `pg_dump`, `pg_restore` and
-`psql` of PostgreSQL 13 or later on the machine that runs Tumult.
+`psql` of PostgreSQL 13 or later on the machine that runs Tumult, of the
+same major version as the server: `pg_dump` refuses a newer server, and a
+newer `pg_dump` writes settings an older server refuses on restore. The
+Tumult image has the client of PostgreSQL 16, the version of the demo.
 `stop-primary` and `start-primary` also need `docker` or `podman`. Each
 action prints one line of JSON with its times in epoch seconds.
 
@@ -112,8 +115,52 @@ What a run proves:
 
 The run ends with a promoted standby and a stopped primary.
 `make demo-check` makes the pair again before and after it. The
-[demo README](https://github.com/mwigge/tumult/blob/main/demo/README.md#the-dr-example-and-the-demo-gameday)
+[demo README](https://github.com/mwigge/tumult/blob/main/demo/README.md#the-dr-examples-and-the-demo-gameday)
 says how to do that by hand.
+
+### The RPO example of the demo
+
+`examples/postgres-restore-rpo.toon` loses the demo database and restores
+it from a backup that is a few seconds old. It measures the RTO and the
+RPO of the restore. `make demo-check` runs it in the demo.
+
+```mermaid
+sequenceDiagram
+    accTitle: The RTO and the RPO of the restore example
+    accDescr: write-markers writes markers to the orders database, backup writes it to a file, and write-markers writes for 4 more seconds. The database is dropped, the probes fail, and the RTO clock starts. restore makes the database again from the file. The app reads its orders again, the probes pass, and the clock stops. markers-lost prints the seconds of markers the backup did not hold: the RPO.
+    participant probe as Probes of the steady state
+    participant app as demo-app
+    participant pg as demo-postgres
+    participant file as Backup file
+    Note over pg: write-markers, 3 markers
+    pg->>file: backup
+    Note over pg: write-markers, 4 more seconds
+    Note over pg: the database is dropped
+    probe->>app: no orders, and no markers to read: the RTO clock starts
+    file->>pg: restore
+    probe->>app: the orders, and the markers are read: the clock stops
+    probe->>pg: markers-lost prints the seconds lost: the RPO
+```
+
+What a run proves:
+
+- **The data is lost for real.** The writes after the backup are gone,
+  and so are the orders the demo traffic placed after it.
+- **The backup brings the database back.** `restore` makes the database
+  again from the file, and the app reads its orders again without a
+  restart.
+- **The RPO is measured.** `markers-lost` prints the newest time in the
+  ledger minus the newest marker left: the 4 seconds of writes after the
+  backup and the time the backup took. In the demo that is 4 to 7 s. The
+  run expects at most 10 s, its `rpo_target_s`.
+- **The RTO is measured.** It runs from the first read that saw the
+  outage to the read where the app read its orders and the markers again.
+  The app reads no orders until the restore has ended. The run expects it
+  within 30 s.
+
+The journal holds the RPO in `objectives.rpo_measured_s` and the verdict
+`rpo`. The lake has the run in the view `dr_tests`, and `GET /api/dr`
+shows it under `demo-postgres`.
 
 ### Example: restore an older backup
 

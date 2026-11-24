@@ -1,0 +1,134 @@
+title: PostgreSQL restore from the last backup
+description: Disaster recovery test of the demo database, with its RPO. Write markers, back up the database, and write markers for 4 more seconds. Then the database is lost, and the Postgres plugin restores the backup, so the writes after the backup are lost. The steady state reads the orders of the demo app and the markers left in the database. The RTO runs from the first read that saw the outage to the read where both were back: the app reads no orders until the restore has ended. The RPO is the seconds of confirmed writes the restore lost: the 4 seconds of writes after the backup and the time the backup took. It runs in the demo stack, and make demo-check sets the pair back after it.
+
+tags[5]: postgres, dr, backup, rpo, demo
+kind: dr
+target:
+  system: demo-postgres
+  technology: postgresql
+  environment: demo
+rto_target_s: 30
+rpo_target_s: 10
+nfr[1]:
+  - id: rpo
+    kind: rpo
+    metric: probe.orders-lost.lost_s
+    operator: lte
+    threshold: 10
+    criticality: blocking
+
+steady_state_hypothesis:
+  title: The demo app reads its orders and the markers of the orders database can be read
+  probes[2]:
+    - name: app-orders
+      activity_type: probe
+      provider:
+        type: process
+        path: sh
+        arguments[2]: "-c", "curl -s -o /dev/null -w '%{http_code}' --max-time 3 http://demo-app:8080/orders"
+        timeout_s: 5.0
+      tolerance:
+        type: regex
+        pattern: "^200$"
+    - name: orders-lost
+      activity_type: probe
+      provider:
+        type: script
+        plugin: tumult-db-postgres
+        function: markers-lost
+        arguments:
+          pg_host: demo-postgres
+          pg_user: demo
+          pg_password: demo
+          pg_database: orders
+          ledger_path: /tmp/postgres-restore-rpo.ledger
+        timeout_s: 30.0
+      tolerance:
+        type: number
+
+method[7]:
+  - name: start-a-new-ledger
+    activity_type: action
+    provider:
+      type: process
+      path: rm
+      arguments[2]: "-f", /tmp/postgres-restore-rpo.ledger
+      timeout_s: 5.0
+  - name: write-before-the-backup
+    activity_type: action
+    provider:
+      type: script
+      plugin: tumult-db-postgres
+      function: write-markers
+      arguments:
+        pg_host: demo-postgres
+        pg_user: demo
+        pg_password: demo
+        pg_database: orders
+        ledger_path: /tmp/postgres-restore-rpo.ledger
+        marker_count: 3
+        interval_ms: 200
+      timeout_s: 30.0
+  - name: back-up-the-database
+    activity_type: action
+    provider:
+      type: script
+      plugin: tumult-db-postgres
+      function: backup
+      arguments:
+        pg_host: demo-postgres
+        pg_user: demo
+        pg_password: demo
+        pg_database: orders
+        backup_path: /tmp/postgres-restore-rpo.dump
+      timeout_s: 60.0
+  - name: write-after-the-backup
+    activity_type: action
+    provider:
+      type: script
+      plugin: tumult-db-postgres
+      function: write-markers
+      arguments:
+        pg_host: demo-postgres
+        pg_user: demo
+        pg_password: demo
+        pg_database: orders
+        ledger_path: /tmp/postgres-restore-rpo.ledger
+        duration: 4
+        interval_ms: 500
+      timeout_s: 30.0
+  - name: lose-the-database
+    activity_type: action
+    provider:
+      type: process
+      path: psql
+      arguments[10]: "-h", demo-postgres, "-U", demo, "-d", postgres, "-v", "ON_ERROR_STOP=1", "-c", "DROP DATABASE orders WITH (FORCE)"
+      env:
+        PGPASSWORD: demo
+      timeout_s: 30.0
+  - name: clients-lost-the-database
+    activity_type: probe
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "i=0; until [ \"$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 http://demo-app:8080/health)\" = 503 ]; do i=$((i+1)); [ $i -ge 20 ] && echo still-up && exit 0; sleep 0.5; done; echo lost"
+      timeout_s: 30.0
+    tolerance:
+      type: regex
+      pattern: "^lost$"
+    pause_after_s: 2.0
+  - name: restore-the-backup
+    activity_type: action
+    provider:
+      type: script
+      plugin: tumult-db-postgres
+      function: restore
+      arguments:
+        pg_host: demo-postgres
+        pg_user: demo
+        pg_password: demo
+        pg_database: orders
+        backup_path: /tmp/postgres-restore-rpo.dump
+      timeout_s: 120.0
+
+rollbacks[0]:
