@@ -13,7 +13,11 @@
 #                         examples/expectations.json gives to the proof
 #                         `demo-check` (the PostgreSQL failover and the
 #                         restore with its RPO) and the demo GameDay, and
-#                         compares their journals too.
+#                         compares their journals too. The examples report
+#                         to the daemon of the Krönika stack of the check,
+#                         and scripts/dr-check.py then asks that daemon for
+#                         the DR view, the DR page, the DR reports and the
+#                         plan scenarios they count for.
 #   populate            — run the ten domains once, best-effort, to warm the
 #                         SigNoz dashboards. Never fails the caller
 #                         (`make demo`).
@@ -30,6 +34,10 @@
 # each seed journal with demo/kronika/experiments/expectations.json, checks the
 # map (suppressing one risk to show a suppressed one) and removes the project
 # again, also when it is interrupted; the image stays as a build cache.
+# In the full check the stack comes up before the examples: its daemon
+# joins the network of the demo, and each example sends its journal and its
+# definition there, as `tumult run` does with TUMULT_DAEMON_URL. With
+# STARMAP_URL the examples report to no daemon, and the DR check is skipped.
 # The project, its names and its ports are the same for every run, so one
 # check at a time has the stack: a second one waits for the first (up to
 # STARMAP_LOCK_WAIT seconds, 900 by default) on a lock file,
@@ -82,6 +90,14 @@ EXAMPLE_SWEEP=()
 # the demo, so that it gets a GameDay score. Its expectations name the score.
 GAMEDAY_EXPECTATIONS="${REPO_ROOT}/demo/kronika/gamedays/expectations.json"
 GAMEDAY_NAME="platform-resilience"
+# What the DR examples left in the daemon they reported to. The function is
+# the one of the Krönika demo (demo/kronika/org.yaml) that binds their
+# target, demo-postgres.
+DR_CHECK="${REPO_ROOT}/scripts/dr-check.py"
+DR_FUNCTION="cif-0001"
+DR_WAIT="${DR_WAIT:-30}"
+# The network of the demo, which the daemon of the Krönika stack joins.
+DEMO_NETWORK="${DEMO_NETWORK:-tumult-demo}"
 
 # Journals and run logs of this check. See the header.
 WORK=""
@@ -111,6 +127,15 @@ KRONIKA_LOCKED=0
 KRONIKA_WAITER=""
 STARMAP_LOCK_WAIT="${STARMAP_LOCK_WAIT:-900}"
 STARMAP_URL="${STARMAP_URL:-}"
+# The Krönika stack is the check's own unless STARMAP_URL names a daemon.
+OWN_DAEMON=1
+[[ -n "$STARMAP_URL" ]] && OWN_DAEMON=0
+# Whether the stack came up: empty until it is tried, then up or failed.
+KRONIKA_STATE=""
+# What `exec` gives an example run: the daemon to report to, by name, so
+# the token is on no command line. Empty while no daemon of the check is in
+# the demo network.
+DAEMON_ENV=()
 STARMAP_WAIT="${STARMAP_WAIT:-90}"
 STARMAP_ONLY=0
 # What the journal of each experiment of the Krönika seed must hold.
@@ -245,14 +270,16 @@ wait_for_health() {
 # Run one experiment in the demo and bring its journal out. The journal of
 # an earlier run is removed first, so a run that writes none leaves none.
 # $2 is the directory of the experiment in the container, $3 the directory
-# of this check that takes its journal.
+# of this check that takes its journal, and the rest goes to the `exec` of
+# the run.
 # -T: no TTY (safe under make / CI); stdin is not the caller's.
 run_experiment() {
   local name="$1" from="${2:-/demo/experiments}" into="${3:-sweep}" rc=0 status
+  local -a env=("${@:4}")
   local journal="/journals/${name}.journal.toon"
   local out="${WORK}/${into}/${name}"
   $COMPOSE exec -T tumult-mcp rm -f "$journal" </dev/null >/dev/null 2>&1 || true
-  $COMPOSE exec -T tumult-mcp \
+  $COMPOSE exec -T ${env[@]+"${env[@]}"} tumult-mcp \
     tumult run "${from}/${name}.toon" --journal-path "$journal" --force \
     </dev/null >"${out}.log" 2>&1 || rc=$?
   if ! $COMPOSE exec -T tumult-mcp cat "$journal" </dev/null >"${out}.journal.toon" 2>/dev/null; then
@@ -325,7 +352,8 @@ recovery_line() {
 }
 
 # Run the examples of the full check, each on a fresh PostgreSQL pair, and
-# make the pair again after the last one.
+# make the pair again after the last one. Each reports to the daemon of
+# DAEMON_ENV, when there is one.
 sweep_examples() {
   local listed name
   if ! listed="$(python3 "$JOURNAL_CHECK" --proof demo-check --list "$EXAMPLES" 2>&1)"; then
@@ -341,7 +369,7 @@ sweep_examples() {
   echo "Running the examples in the demo (${#EXAMPLE_SWEEP[@]})..."
   for name in "${EXAMPLE_SWEEP[@]}"; do
     reset_postgres_pair || return 1
-    run_experiment "$name" /demo/examples examples
+    run_experiment "$name" /demo/examples examples ${DAEMON_ENV[@]+"${DAEMON_ENV[@]}"}
     recovery_line "${WORK}/examples/${name}.journal.toon"
   done
   reset_postgres_pair
@@ -528,9 +556,9 @@ kronika_up() {
   STARMAP_TOKEN="$KRONIKA_BOOTSTRAP_TOKEN"
 }
 
-# Print each line of the check as a PASS, a FAIL or a skipped line of this
-# script. Fails if any line is not an `ok` or a `skip`.
-report_starmap() {
+# Print each line of a check script as a PASS, a FAIL or a skipped line of
+# this script. Fails if any line is not an `ok` or a `skip`.
+report_lines() {
   local line failed=0
   while IFS= read -r line; do
     case "$line" in
@@ -542,24 +570,79 @@ report_starmap() {
   return $failed
 }
 
+# Bring the check's own Krönika stack up, or find it up already: one stack
+# serves the examples, the DR check and the Star Map.
+own_daemon() {
+  [[ "$KRONIKA_STATE" == up ]] && return 0
+  if kronika_up; then
+    KRONIKA_STATE=up
+    return 0
+  fi
+  KRONIKA_STATE=failed
+  kronika_cleanup
+  return 1
+}
+
+# Let the examples reach the daemon of the stack: it joins the network of
+# the demo, and DAEMON_ENV gives each example run its URL there and the
+# token of the stack.
+join_demo_network() {
+  local daemon="${KRONIKA_PROJECT}-tumultd" log
+  if ! log="$(docker network connect "$DEMO_NETWORK" "$daemon" 2>&1)"; then
+    fail "krönika stack: its daemon did not join the network ${DEMO_NETWORK}: ${log}"
+    return 1
+  fi
+  export TUMULT_DAEMON_URL="http://${daemon}:4318"
+  export TUMULT_DAEMON_TOKEN="$STARMAP_TOKEN"
+  DAEMON_ENV=(-e TUMULT_DAEMON_URL -e TUMULT_DAEMON_TOKEN)
+  pass "krönika stack: its daemon joined the network ${DEMO_NETWORK}, and the examples report to it"
+}
+
+# Ask the daemon the DR examples reported to what they left there. A daemon
+# named by STARMAP_URL got no run of the examples, so nothing is asked.
+assert_dr() {
+  local rc=0 out
+  if [[ $OWN_DAEMON -eq 0 ]]; then
+    warn "dr: not checked: the DR examples report only to the Krönika stack of this check, and STARMAP_URL names another daemon"
+    return 0
+  fi
+  if [[ ${#DAEMON_ENV[@]} -eq 0 ]]; then
+    fail "dr: not checked: the DR examples reported to no daemon"
+    return 1
+  fi
+  out="$(TUMULT_DAEMON_TOKEN="$STARMAP_TOKEN" python3 "$DR_CHECK" "$STARMAP_URL" \
+    --expectations "$EXAMPLES" --journals "${WORK}/examples" \
+    --function "$DR_FUNCTION" --wait "$DR_WAIT" 2>&1)" || rc=1
+  if [[ -z "$out" ]]; then
+    fail "dr: the check printed nothing"
+    rc=1
+  elif ! report_lines <<<"$out"; then
+    rc=1
+  fi
+  [[ $rc -eq 0 ]] || KEEP_WORK=1
+  return $rc
+}
+
 # The check writes (it suppresses a risk) only to the stack this script
 # started and removes; a daemon named by STARMAP_URL is read, never written.
 assert_starmap() {
   local rc=0 out
   local -a write=()
-  if [[ -z "$STARMAP_URL" ]]; then
+  if [[ $OWN_DAEMON -eq 1 ]]; then
     write=(--write)
-    if ! kronika_up; then
-      kronika_cleanup
+    # A stack that did not come up is not tried again.
+    if [[ "$KRONIKA_STATE" == failed ]]; then
+      fail "star map: not checked: the Krönika daemon did not come up"
       return 1
     fi
+    own_daemon || return 1
   fi
   out="$(STARMAP_TOKEN="${STARMAP_TOKEN:-}" python3 "${REPO_ROOT}/scripts/starmap-check.py" \
     "$STARMAP_URL" --wait "$STARMAP_WAIT" ${write[@]+"${write[@]}"} 2>&1)" || rc=1
   if [[ -z "$out" ]]; then
     fail "star map — the check printed nothing"
     rc=1
-  elif ! report_starmap <<<"$out"; then
+  elif ! report_lines <<<"$out"; then
     rc=1
   fi
   kronika_cleanup
@@ -625,11 +708,22 @@ else
   record_fail
 fi
 
+if [[ $OWN_DAEMON -eq 1 ]]; then
+  echo ""
+  echo "Bringing up the Krönika demo the DR examples report to..."
+  if ! own_daemon || ! join_demo_network; then
+    record_fail
+  fi
+fi
+
 echo ""
 if sweep_examples; then
   echo "Checking the journal of each example against examples/expectations.json..."
   check_journals demo-check "$EXAMPLES" "${WORK}/examples" "example: " \
     || FAILURES=$((FAILURES + JOURNAL_FAILS))
+  echo ""
+  echo "Asking the Krönika daemon what the DR examples left there..."
+  assert_dr || record_fail
 else
   record_fail
 fi

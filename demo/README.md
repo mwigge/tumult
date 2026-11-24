@@ -119,7 +119,7 @@ The new standby copies the primary when it starts.
 ## make demo-check
 
 The smoke test of the demo. It starts the stack, waits for health, runs
-the sweep, the DR examples and the demo GameDay, and checks three
+the sweep, the DR examples and the demo GameDay, and checks four
 things. It exits with a code other than 0 on any failure.
 
 1. **Each journal is as expected**: `scripts/check-proof-journals.py`
@@ -129,10 +129,25 @@ things. It exits with a code other than 0 on any failure.
    the RPO the restore must measure, and the GameDay with
    `demo/kronika/gamedays/expectations.json`, which also names its score.
    The check prints the RTO and the RPO each DR example measured.
-2. **Telemetry arrived**: the collector counts accepted spans on `:18888`.
-3. **The Star Map holds**: it starts a Krönika demo from
-   `docker/docker-compose.kronika.yml`, seeds it, checks the seed journals
-   and the Star Map, and removes it.
+2. **The DR examples are DR evidence**: before the examples, the check
+   starts a Krönika demo from `docker/docker-compose.kronika.yml` and seeds
+   it. Its daemon joins the `tumult-demo` network, and each DR example sends
+   its journal there. `scripts/dr-check.py` then asks that daemon:
+   - `GET /api/dr` holds each DR example as a DR test that is met and
+     recovered, and the restore with its RPO in the range of
+     `examples/expectations.json`;
+   - `GET /dr` serves the DR page. It is the app shell, built in the
+     browser, so the check also reads the route module of the page. This
+     proves the page is in the build, not what it shows;
+   - the DR test report of `demo-postgres` names the restore with its RPO
+     and its verdict, and the DORA evidence pack holds the row of RTS
+     2024/1774 Art. 26;
+   - `GET /api/dora` shows the plan scenario `backup_restore` as passed by
+     the restore, for `cif-0001`, the function `demo/kronika/org.yaml`
+     binds `demo-postgres` to.
+3. **Telemetry arrived**: the collector counts accepted spans on `:18888`.
+4. **The Star Map holds**: on the same Krönika demo, it checks the Star
+   Map, and then removes the demo.
 
 `make demo` uses the same script to warm the dashboards, without failing.
 

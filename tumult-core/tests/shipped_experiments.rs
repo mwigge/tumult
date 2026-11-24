@@ -8,7 +8,9 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use tumult_core::engine::{parse_experiment, validate_experiment, validate_placeholders};
+use tumult_core::engine::{
+    parse_experiment, validate_experiment, validate_placeholders, validate_regulatory,
+};
 use tumult_core::types::{
     Activity, ActivityType, Experiment, GameDay, GameDayJournal, LoadConfig, LoadTool, NfrKind,
     Provider, TestKind,
@@ -109,11 +111,12 @@ fn vars_of(path: &Path) -> HashMap<String, String> {
         .collect()
 }
 
-/// What `tumult validate` checks: the file, then its placeholders with
-/// the values the file is run with.
+/// What `tumult validate` checks: the file, its regulatory block, then its
+/// placeholders with the values the file is run with.
 fn load(path: &Path) -> Result<Experiment, String> {
     let experiment = parse_experiment(&read(path)).map_err(|e| e.to_string())?;
     validate_experiment(&experiment).map_err(|e| e.to_string())?;
+    validate_regulatory(&experiment).map_err(|e| e.to_string())?;
     validate_placeholders(&experiment, &vars_of(path)).map_err(|e| e.to_string())?;
     Ok(experiment)
 }

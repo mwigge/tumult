@@ -338,6 +338,7 @@ jobs:
       - run: bash -n scripts/demo-check.sh
       - run: python3 scripts/test-starmap-check.py
       - run: python3 scripts/test-check-proof-journals.py
+      - run: python3 scripts/test-dr-check.py
       - run: bash -n scripts/demo-topology.sh
       - run: python3 scripts/test-demo-topology.py
       - run: bash -n scripts/signoz-bulk-import.sh
