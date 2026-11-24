@@ -176,9 +176,12 @@
 //!   validates. The same code paths as the MCP authoring tools; both are
 //!   Viewer-level and persist nothing (registration stays behind
 //!   `POST /api/runs/validate`).
-//! * `POST /api/reports/v2/generate {type,period?,experiment_id?,framework?}`
+//! * `POST /api/reports/v2/generate {type,period?,experiment_id?,framework?,
+//!   target?,environment?,from?,to?,record_id?}`
 //!   — build a compliance-grade report (R1 executive digest, R3 game-day,
-//!   R2 evidence pack) as PDF + print-HTML + JSON meta under
+//!   R2 evidence pack, R4 DR test report of a `target` from `from` to `to`,
+//!   R5 DR exercise report of the manual record `record_id`) as PDF +
+//!   print-HTML + JSON meta under
 //!   `reports/v2/`; `GET /api/reports/v2` lists metas and
 //!   `GET /api/reports/v2/{id}/pdf|html` serves the artifacts. A scoped
 //!   principal's build is confined to its environments; the meta records

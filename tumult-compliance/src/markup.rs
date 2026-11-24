@@ -30,6 +30,8 @@ fn template_label(kind: TemplateKind) -> &'static str {
         TemplateKind::ExecutiveDigest => "R1 \\u{2014} Executive resilience digest",
         TemplateKind::GameDay => "R3 \\u{2014} Game-day report",
         TemplateKind::EvidencePack => "R2 \\u{2014} Compliance evidence pack",
+        TemplateKind::DrTest => "R4 · Disaster recovery test report",
+        TemplateKind::DrExercise => "R5 · Disaster recovery exercise report",
     }
 }
 
@@ -187,6 +189,7 @@ fn cover(out: &mut String, meta: &DocMeta) {
     if let Some(e) = &meta.experiment_id {
         rows.push(("Run id".into(), e.clone()));
     }
+    rows.extend(meta.subject.iter().cloned());
     out.push_str(
         "#table(\n  columns: (30%, 70%),\n  stroke: none,\n  inset: (x: 0pt, y: 5.5pt),\n",
     );
@@ -363,6 +366,7 @@ mod tests {
             )),
             framework: None,
             experiment_id: None,
+            subject: Vec::new(),
         }
     }
 

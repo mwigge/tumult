@@ -58,7 +58,13 @@ This pack summarises the resilience testing evidence Tumult recorded for the ISO
 == Independence
 
 
-Independence has not been verified by this report. Organizational separation of test design\/execution from service operation requires a reviewed attestation. Manual evidence review records identify the enterer and verifier; those identities alone do not prove organizational independence.
+Independence verified: 0 of 5 tests name an external tester.
+
+
+The count reads the tester each manual record names. A run names its tester only in its journal, which the lake does not keep, so no run counts as naming one.
+
+
+Organizational separation of test design\/execution from service operation requires a reviewed attestation. Manual evidence review records identify the enterer and verifier; those identities alone do not prove organizational independence.
 
 
 == Traceability matrix
@@ -176,6 +182,61 @@ Independence has not been verified by this report. Organizational separation of 
 )
 ]
 
+The kind of each test, and the RTO and the RPO it planned and measured, in the order of the register:
+
+
+#[
+#set par(justify: false)
+#set text(hyphenate: false)
+#table(
+  columns: (2.4fr, 1fr, 1fr, 1.2fr, 1fr, 1.1fr),
+  stroke: none,
+  inset: (x: 6pt, y: 4.5pt),
+  align: (left, left, left, left, left, left),
+  table.hline(stroke: 0.8pt + luma(140)),
+  table.header(
+    [#text(size: 8.5pt, fill: luma(90))[#smallcaps[Experiment]]],
+    [#text(size: 8.5pt, fill: luma(90))[#smallcaps[Kind]]],
+    [#text(size: 8.5pt, fill: luma(90))[#smallcaps[RTO planned]]],
+    [#text(size: 8.5pt, fill: luma(90))[#smallcaps[RTO actual]]],
+    [#text(size: 8.5pt, fill: luma(90))[#smallcaps[RPO planned]]],
+    [#text(size: 8.5pt, fill: luma(90))[#smallcaps[RPO actual]]],
+  ),
+  table.hline(stroke: 0.5pt + luma(200)),
+  [Payments tolerate a slow ledger],
+  [chaos],
+  [2.0 s],
+  [not measured],
+  [not set],
+  [not measured],
+  [Regional failover drill],
+  [failover],
+  [not set],
+  [540.0 s],
+  [not set],
+  [not measured],
+  [Billing export resumes after a restart],
+  [chaos],
+  [2.0 s],
+  [0.0 s],
+  [not set],
+  [not measured],
+  [Checkout survives a cache restart],
+  [chaos],
+  [2.0 s],
+  [0.0 s],
+  [not set],
+  [not measured],
+  [Search answers after the loss of a node],
+  [chaos],
+  [2.0 s],
+  [0.0 s],
+  [not set],
+  [not measured],
+  table.hline(stroke: 0.8pt + luma(140)),
+)
+]
+
 == Approval chain (change management)
 
 
@@ -206,8 +267,13 @@ Each manually executed test below was entered under the quoted attestation and v
   [#text(size: 9pt, fill: luma(100))[#smallcaps[Executed]]], [2026\-11\-19],
   [#text(size: 9pt, fill: luma(100))[#smallcaps[Entered by]]], [alice on \{entered\}],
   [#text(size: 9pt, fill: luma(100))[#smallcaps[Verified by]]], [bob on \{verified\}],
-  [#text(size: 9pt, fill: luma(100))[#smallcaps[Frameworks]]], [DORA Art. 24(6), ISO 27001 A.5.29],
+  [#text(size: 9pt, fill: luma(100))[#smallcaps[Frameworks]]], [dora.art24.6, ISO 27001 A.5.29],
   [#text(size: 9pt, fill: luma(100))[#smallcaps[Attestation]]], [I attest that this record reflects the exercise.],
+  [#text(size: 9pt, fill: luma(100))[#smallcaps[RTO planned \/ actual]]], [not set \/ 540.0 s],
+  [#text(size: 9pt, fill: luma(100))[#smallcaps[RPO planned \/ actual]]], [not set \/ not measured],
+  [#text(size: 9pt, fill: luma(100))[#smallcaps[Data verified]]], [not checked],
+  [#text(size: 9pt, fill: luma(100))[#smallcaps[Plan]]], [none],
+  [#text(size: 9pt, fill: luma(100))[#smallcaps[Sign\-off]]], [bob, reviewer, approved on \{signed\}],
 )
 
 == Findings log

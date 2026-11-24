@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use axum::extract::{Query, State};
@@ -7,6 +7,11 @@ use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::get;
 use axum::Router;
+use sha2::{Digest, Sha256};
+use tumult_compliance::builders::{build_dr_exercise, build_dr_test, DrTestRequest, House};
+use tumult_compliance::dora::model::{end_of_day, parse_day, DAY_NS};
+use tumult_compliance::html::fmt_datetime;
+use tumult_compliance::ReportDoc;
 use tumult_ingest::Config;
 use tumult_lake::Store;
 use tumult_otel::logging::err;
@@ -29,6 +34,149 @@ pub(crate) fn report(metric: String, out: Option<PathBuf>) -> Result<()> {
         },
         ReportLookup::UnknownMetric(msg) => anyhow::bail!(msg),
     }
+    Ok(())
+}
+
+/// A DR report of the lake.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub(crate) enum DrTemplate {
+    /// The DR tests of one target over a period (R4).
+    DrTest,
+    /// One manual DR exercise (R5).
+    DrExercise,
+}
+
+/// The file a DR report is written as.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub(crate) enum DrFormat {
+    Pdf,
+    Html,
+}
+
+/// What `tumultd report --template` reads. The house parameters come from
+/// the org file the daemon reads (`KRONIKA_ORG_FILE`, else `org.yaml`
+/// next to the lake).
+#[derive(Debug, clap::Args)]
+pub(crate) struct DrReport {
+    /// Write a DR report of the lake instead of a metric report:
+    /// `dr-test` (the DR tests of --target) or `dr-exercise` (the manual
+    /// record --record).
+    #[arg(long, value_enum)]
+    template: Option<DrTemplate>,
+    /// The target system of a DR test report.
+    #[arg(long, required_if_eq("template", "dr-test"))]
+    target: Option<String>,
+    /// The id of the manual record of a DR exercise report.
+    #[arg(long, required_if_eq("template", "dr-exercise"))]
+    record: Option<String>,
+    /// Read this environment only.
+    #[arg(long, requires = "template")]
+    environment: Option<String>,
+    /// The first day of the period of a DR test report, as YYYY-MM-DD
+    /// (default: 365 days before --to).
+    #[arg(long, requires = "target")]
+    from: Option<String>,
+    /// The last day of the period of a DR test report, as YYYY-MM-DD
+    /// (default: now).
+    #[arg(long, requires = "target")]
+    to: Option<String>,
+    /// The file format of a DR report.
+    #[arg(long, value_enum, default_value_t = DrFormat::Pdf)]
+    format: DrFormat,
+}
+
+/// The days of the period of a DR test report when `--from` is not given,
+/// as `GET /api/dr` reads it.
+const DR_PERIOD_DAYS: i64 = 365;
+
+/// The period of a DR test report: from the start of the day `from` to the
+/// end of the day `to`, both in. By default it ends `now_ns` and starts
+/// [`DR_PERIOD_DAYS`] before its end.
+fn dr_period(from: Option<&str>, to: Option<&str>, now_ns: i64) -> Result<(i64, i64)> {
+    let day = |text: &str| {
+        parse_day(text).with_context(|| format!("{text:?} is not a day: write it as YYYY-MM-DD"))
+    };
+    let to_ns = match to {
+        Some(text) => end_of_day(day(text)?),
+        None => now_ns,
+    };
+    let from_ns = match from {
+        Some(text) => day(text)? * DAY_NS,
+        None => to_ns.saturating_sub(DR_PERIOD_DAYS * DAY_NS),
+    };
+    if from_ns > to_ns {
+        anyhow::bail!("--from must not be later than --to");
+    }
+    Ok((from_ns, to_ns))
+}
+
+/// The DR report `args` asks for, of the lake at `db_path`, as of `now_ns`.
+fn build_dr_report(args: &DrReport, db_path: &Path, now_ns: i64) -> Result<ReportDoc> {
+    let template = args.template.context("a DR report needs --template")?;
+    let runtime = tumult_api::score::ScoreRuntime::open(
+        tumult_api::org_file_path(db_path),
+        None,
+        std::time::Duration::ZERO,
+        now_ns,
+    );
+    let params = runtime.params();
+    let house = House::of(&params);
+    let envs: Vec<String> = args.environment.iter().cloned().collect();
+    let store = Store::at(db_path);
+    let reader = store.read_only().context("open store read-only")?;
+    match template {
+        DrTemplate::DrTest => {
+            let target = args.target.as_deref().context("dr-test needs --target")?;
+            let (from_ns, to_ns) = dr_period(args.from.as_deref(), args.to.as_deref(), now_ns)?;
+            let request = DrTestRequest {
+                target,
+                from_ns,
+                to_ns,
+            };
+            build_dr_test(&reader, &house, &request, now_ns, &envs).map_err(anyhow::Error::msg)
+        }
+        DrTemplate::DrExercise => {
+            let record = args
+                .record
+                .as_deref()
+                .context("dr-exercise needs --record")?;
+            build_dr_exercise(&reader, &house, record, now_ns, &envs)
+                .map_err(anyhow::Error::msg)?
+                .with_context(|| {
+                    format!("no submitted or verified DR exercise {record:?} in the lake")
+                })
+        }
+    }
+}
+
+/// Write the DR report `args` asks for to `out`, then print its document
+/// id, the SHA-256 of the file and the time it was built. Opens the store
+/// read-only, as the metric report does: stop the daemon first.
+///
+/// # Errors
+/// Returns an error when the store cannot be read, the record is not
+/// there, the report does not render or the file cannot be written.
+#[allow(clippy::print_stdout)] // the id, the hash and the time are this subcommand's output, not log events
+pub(crate) fn dr_report(args: &DrReport, out: &Path) -> Result<()> {
+    let config = Config::from_env().map_err(anyhow::Error::msg)?;
+    let doc = build_dr_report(args, &config.db_path, crate::score_jobs::now_ns())?;
+    let bytes = match args.format {
+        DrFormat::Pdf => tumult_compliance::typst_pdf::render_pdf(&doc)?,
+        DrFormat::Html => tumult_compliance::html::render(&doc).into_bytes(),
+    };
+    std::fs::write(out, &bytes).with_context(|| format!("write report to {}", out.display()))?;
+    let sha256: String = Sha256::digest(&bytes)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    tracing::info!(
+        name: "report.file.written",
+        { file.path = %out.display(), report.id = %doc.meta.doc_id },
+        "report written"
+    );
+    println!("Report {} written to {}", doc.meta.doc_id, out.display());
+    println!("SHA-256: {sha256}");
+    println!("Generated: {}", fmt_datetime(doc.meta.generated_at_ns));
     Ok(())
 }
 
@@ -526,6 +674,45 @@ condition: { column: span_name, equals: "resilience.experiment" }
         assert!(body_string(resp)
             .await
             .contains("Tumult — experiment_count"));
+    }
+
+    // -- dr_period ---------------------------------------------------------------
+
+    #[test]
+    fn a_dr_period_is_from_the_start_of_its_first_day_to_the_end_of_its_last() {
+        let day = parse_day("2026-01-01").unwrap();
+        let now = (day + 40) * DAY_NS + 5;
+
+        assert_eq!(
+            dr_period(Some("2026-01-01"), Some("2026-01-31"), now).unwrap(),
+            (day * DAY_NS, end_of_day(day + 30))
+        );
+        assert_eq!(
+            dr_period(None, None, now).unwrap(),
+            (now - 365 * DAY_NS, now),
+            "by default the 365 days up to now"
+        );
+        assert_eq!(
+            dr_period(None, Some("2026-01-31"), now).unwrap(),
+            (end_of_day(day + 30) - 365 * DAY_NS, end_of_day(day + 30))
+        );
+        // A period of one instant is a period.
+        assert_eq!(
+            dr_period(Some("2026-01-01"), None, day * DAY_NS).unwrap(),
+            (day * DAY_NS, day * DAY_NS)
+        );
+    }
+
+    #[test]
+    fn a_dr_period_that_ends_before_it_starts_or_names_no_day_is_refused() {
+        let now = 20_000 * DAY_NS;
+        let err = dr_period(Some("2026-02-01"), Some("2026-01-31"), now).unwrap_err();
+        assert_eq!(err.to_string(), "--from must not be later than --to");
+        let err = dr_period(Some("2026-02-30"), None, now).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "\"2026-02-30\" is not a day: write it as YYYY-MM-DD"
+        );
     }
 
     // -- report subcommand -----------------------------------------------------
