@@ -634,6 +634,132 @@ async fn a_house_that_counts_a_tabletop_as_chaos_moves_every_view_alike() {
     );
 }
 
+/// Where a manual record counts as a test: its review status on the
+/// experiments list, whether the compliance score scores it, the cell of
+/// its target in the robustness column of the risk view (none while the
+/// target has no row), whether DORA Art. 24 lists it
+/// as evidence and the manual records the Star Map counts for its system.
+#[derive(Debug, PartialEq)]
+struct Counted {
+    listed: Option<String>,
+    scored: bool,
+    robustness: Option<String>,
+    in_dora: bool,
+    on_the_map: u64,
+}
+
+/// Where the record named `name` of `payments-api` counts as a test.
+async fn counted(base: &str, name: &str) -> Counted {
+    let (status, runs) = get(base, "/api/experiments").await;
+    assert_eq!(status, 200, "{runs}");
+    let listed = runs["experiments"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["name"] == name)
+        .map(|r| r["review_status"].as_str().unwrap().to_string());
+    let (status, scores) = get(base, "/api/scores").await;
+    assert_eq!(status, 200, "{scores}");
+    let scored = scores["experiments"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|e| e["name"] == name);
+    let (status, risks) = get(base, "/api/risks").await;
+    assert_eq!(status, 200, "{risks}");
+    let has_row = risks["coverage"]["targets"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|t| t["target"] == "payments-api");
+    let robustness = has_row
+        .then(|| coverage_of(&risks, "payments-api"))
+        .and_then(|cells| cells.into_iter().find(|c| c.starts_with("robustness:")));
+    let (status, dora) = get(base, "/api/dora/24?entity=cif-0001").await;
+    assert_eq!(status, 200, "{dora}");
+    let in_dora = !evidence_kinds(&dora, name).is_empty();
+    let (status, map) = get(base, "/api/starmap").await;
+    assert_eq!(status, 200, "{map}");
+    // A system with no evidence is not on the map at all.
+    let on_the_map = crate::starmap::node(&map, "sys:demo/payments-api")
+        .map_or(0, |system| system["evidence"]["manual"].as_u64().unwrap());
+    Counted {
+        listed,
+        scored,
+        robustness,
+        in_dora,
+        on_the_map,
+    }
+}
+
+/// A draft is a record still being written: no list that counts evidence
+/// shows it as a test, not the experiments list, the compliance score, the
+/// risk view, the DORA score nor the Star Map. A submitted record is on
+/// the experiments list as waiting for review, and a verified one counts
+/// everywhere.
+#[tokio::test]
+async fn a_draft_manual_record_is_no_test_on_any_list_that_counts_evidence() {
+    let house = tempfile::TempDir::new().unwrap();
+    let org_file = house.path().join("org.yaml");
+    std::fs::write(&org_file, crate::dora::REGISTER).unwrap();
+    let srv = spawn_server_with_score_file(org_file).await;
+    crate::dora::register(&srv).await;
+    let base = srv.base.as_str();
+    let name = "payments-api restore";
+    let record = json!({
+        "experiment_name": name,
+        "exercise_type": "restore",
+        "executed_at_ns": now_ns() - 3600 * NS,
+        "hypothesis": "The ledger is back from the nightly backup within the hour",
+        "method": "Restore the nightly backup to a fresh host",
+        "outcome_status": "passed",
+        "hypothesis_met": true,
+        "target_system": "payments-api",
+        "target_environment": "demo",
+        "recovery_time_s": 600.0,
+        "rto_target_s": 3600.0,
+        "entered_by": "alice",
+        "attestation": "I attest this record is the exercise as it was run."
+    });
+    let (status, made) = post(base, "/api/manual/experiments", record).await;
+    assert_eq!(status, 201, "{made}");
+    let id = made["id"].as_str().unwrap();
+    let nowhere = Counted {
+        listed: None,
+        scored: false,
+        robustness: None,
+        in_dora: false,
+        on_the_map: 0,
+    };
+    assert_eq!(counted(base, name).await, nowhere, "a draft");
+
+    let path = format!("/api/manual/experiments/{id}");
+    let (status, body) = post(base, &format!("{path}/submit"), json!({"by": "alice"})).await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(
+        counted(base, name).await,
+        Counted {
+            listed: Some("submitted".into()),
+            ..nowhere
+        },
+        "a submitted record"
+    );
+
+    let (status, body) = post(base, &format!("{path}/verify"), json!({"reviewer": "bob"})).await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(
+        counted(base, name).await,
+        Counted {
+            listed: Some("verified".into()),
+            scored: true,
+            robustness: Some("robustness:covered".into()),
+            in_dora: true,
+            on_the_map: 1,
+        },
+        "a verified record"
+    );
+}
+
 /// The `rule:subject` of each finding about `target` whose rule is one of
 /// `rules`.
 fn findings_by(report: &Value, target: &str, rules: &[&str]) -> Vec<String> {

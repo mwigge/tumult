@@ -577,6 +577,19 @@ async fn every_manual_body_refuses_a_field_it_does_not_know() {
             "{path}: {text}"
         );
     }
+    // An edit of a draft takes the same body as a create.
+    let mut edit = manual_body("alice");
+    edit["reviewed_by"] = json!("bob");
+    let resp = reqwest::Client::new()
+        .put(format!("{base}/api/manual/experiments/{draft}"))
+        .json(&edit)
+        .send()
+        .await
+        .unwrap();
+    let status = resp.status().as_u16();
+    let text = resp.text().await.unwrap();
+    assert_eq!(status, 422, "edit: {text}");
+    assert!(text.contains("unknown field `reviewed_by`"), "edit: {text}");
 
     // Nothing of the refused bodies was stored or changed.
     let (_, all) = get(&base, "/api/manual/experiments").await;

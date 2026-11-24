@@ -4,14 +4,31 @@
     // opens to the audit trail of the plan and its audit verify, or to the
     // cancel of a planned plan.
     import { api } from '#lib/api.js';
-    import { emptyPlanForm, errorText, planPatch, planRequest, planToForm } from '#lib/manual.js';
+    import {
+        emptyPlanForm,
+        errorText,
+        ofTarget,
+        planPatch,
+        planRequest,
+        planToForm,
+        type TargetFilter,
+    } from '#lib/manual.js';
     import type { ManualPlan, ManualPlanDetail } from '#lib/types.js';
     import ManualAuditList from './ManualAuditList.svelte';
     import ManualPlanForm from './ManualPlanForm.svelte';
     import ManualPlanTable from './ManualPlanTable.svelte';
     import ManualVerify from './ManualVerify.svelte';
 
-    let { actor, canWrite }: { actor: string; canWrite: boolean } = $props();
+    let {
+        actor,
+        canWrite,
+        filter = { target: '', environment: '' },
+    }: {
+        actor: string;
+        canWrite: boolean;
+        /** The target whose plans the table shows; empty fields show all. */
+        filter?: TargetFilter;
+    } = $props();
 
     let plans: ManualPlan[] | null = $state(null);
     let loadError: string | null = $state(null);
@@ -108,7 +125,7 @@
             <div class="skeleton" style="height: 120px"></div>
         {:else}
             <ManualPlanTable
-                {plans}
+                plans={ofTarget(plans, filter)}
                 {nowNs}
                 {canWrite}
                 {openId}
