@@ -2,10 +2,7 @@
 
 use std::sync::Arc;
 
-use arrow::array::{
-    ArrayRef, BooleanArray, Float64Array, Int64Array, ListArray, ListBuilder, StringArray,
-    StringBuilder, UInt64Array,
-};
+use arrow::array::{ArrayRef, BooleanArray, Float64Array, Int64Array, StringArray, UInt64Array};
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
 
@@ -45,12 +42,8 @@ pub fn experiments_schema() -> Schema {
         Field::new("outage_started_at_ns", DataType::Int64, true),
         Field::new("recovered_at_ns", DataType::Int64, true),
         Field::new("mttr_s", DataType::Float64, true),
-        // v26: the plan scenarios the regulatory block names.
-        Field::new(
-            "dora_scenarios",
-            DataType::List(Arc::new(Field::new("item", DataType::Utf8, true))),
-            true,
-        ),
+        // v26: the plan scenarios the regulatory block names, a JSON list.
+        Field::new("dora_scenarios", DataType::Utf8, true),
     ])
 }
 
@@ -136,30 +129,26 @@ pub fn journal_to_experiment_batch(journal: &Journal) -> Result<RecordBatch, Ana
             ])),
             Arc::new(Int64Array::from(vec![post.and_then(|p| p.recovered_at_ns)])),
             Arc::new(Float64Array::from(vec![post.and_then(|p| p.mttr_s)])),
-            Arc::new(scenarios_array(journal)),
+            Arc::new(StringArray::from(vec![scenarios_json(journal)?])),
         ],
     )?)
 }
 
-/// The plan scenarios the regulatory block of `journal` names, as one list
-/// cell: NULL when it names none.
-fn scenarios_array(journal: &Journal) -> ListArray {
-    let named = journal
+/// The plan scenarios the regulatory block of `journal` names, as a JSON
+/// list: `None` when it names none.
+///
+/// # Errors
+///
+/// Returns an error if the list cannot be written as JSON.
+fn scenarios_json(journal: &Journal) -> Result<Option<String>, AnalyticsError> {
+    journal
         .regulatory
         .as_ref()
         .map(|mapping| mapping.scenarios.as_slice())
-        .filter(|scenarios| !scenarios.is_empty());
-    let mut builder = ListBuilder::new(StringBuilder::new());
-    match named {
-        Some(scenarios) => {
-            for scenario in scenarios {
-                builder.values().append_value(scenario);
-            }
-            builder.append(true);
-        }
-        None => builder.append_null(),
-    }
-    builder.finish()
+        .filter(|scenarios| !scenarios.is_empty())
+        .map(serde_json::to_string)
+        .transpose()
+        .map_err(|e| AnalyticsError::Internal(format!("plan scenarios: {e}")))
 }
 
 /// # Errors

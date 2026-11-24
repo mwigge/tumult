@@ -105,9 +105,10 @@ fn a_run_keeps_the_scenarios_of_its_regulatory_block() {
         assert!(writer.ingest_journal(&journal, None).unwrap());
     }
 
+    // A JSON list, as `version_shares` holds one.
     assert_eq!(
         scenarios_of_run(&store, "site-loss"),
-        json!(["premises_loss", "power_outage"])
+        json!(r#"["premises_loss","power_outage"]"#)
     );
     // A block that names none, and a run with no block, keep nothing.
     assert_eq!(scenarios_of_run(&store, "mapped-only"), Value::Null);
@@ -248,7 +249,10 @@ fn a_v25_lake_gains_the_scenario_columns_and_keeps_its_runs_and_records() {
     assert!(writer
         .ingest_journal(&tagged_run("new-run", &["cyber_attack"]), None)
         .unwrap());
-    assert_eq!(scenarios_of_run(&store, "new-run"), json!(["cyber_attack"]));
+    assert_eq!(
+        scenarios_of_run(&store, "new-run"),
+        json!(r#"["cyber_attack"]"#)
+    );
     let id = writer
         .create_manual_draft(&record(&["third_party_failure"]))
         .unwrap();

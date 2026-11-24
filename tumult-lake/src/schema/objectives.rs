@@ -53,9 +53,10 @@ ALTER TABLE nfr_verdicts ADD COLUMN IF NOT EXISTS reason VARCHAR;
 ";
 
 /// v26: the plan scenarios of RTS 2024/1774 a run names, from the
-/// `scenarios` of its regulatory block. Added last, as the appender writes
-/// by position, and NULL on the rows stored before and on a run that names
-/// none.
+/// `scenarios` of its regulatory block, as a JSON list of ids, the way
+/// `version_shares` holds a list: the CSV export of a journal writes no
+/// list column. Added last, as the appender writes by position, and NULL on
+/// the rows stored before and on a run that names none.
 pub(super) const SCENARIOS_COLUMN: &str = "
-ALTER TABLE experiments ADD COLUMN IF NOT EXISTS dora_scenarios VARCHAR[];
+ALTER TABLE experiments ADD COLUMN IF NOT EXISTS dora_scenarios VARCHAR;
 ";

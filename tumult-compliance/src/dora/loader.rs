@@ -16,8 +16,8 @@
 //!   Its recovery time is the measured RTO, and the RTO and RPO it planned
 //!   are its targets before those of its function.
 //! - **Plan scenarios**: a run carries the scenarios of RTS 2024/1774 its
-//!   regulatory block names (`experiments.dora_scenarios`), a record those
-//!   it was written with (`manual_experiments.scenarios`).
+//!   regulatory block names (the JSON list `experiments.dora_scenarios`), a
+//!   record those it was written with (`manual_experiments.scenarios`).
 //! - **Services**: every `service.name` that emitted spans, with the
 //!   conformance level its telemetry reached inside the conformance
 //!   window. A service glob of the register that matches nothing becomes a
@@ -443,7 +443,7 @@ fn runs_sql(as_of_ns: i64, envs: &[String]) -> String {
          e.rto_target_s AS rto_target_s, e.rpo_target_s AS rpo_target_s, \
          COALESCE(e.rto_measured_s, s.recovery_time_s) AS rto_measured_s, \
          e.rpo_measured_s AS rpo_measured_s, {UNRECOVERED_SQL} AS unrecovered, \
-         e.dora_scenarios AS scenarios \
+         from_json(e.dora_scenarios, '[\"VARCHAR\"]') AS scenarios \
          FROM run_roots s \
          LEFT JOIN run_completions l ON s.experiment_id = l.experiment_id \
          LEFT JOIN experiments e ON e.experiment_id = s.experiment_id \

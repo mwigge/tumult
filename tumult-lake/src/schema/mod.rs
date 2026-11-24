@@ -127,10 +127,10 @@
 //! the lake.
 //!
 //! v26 adds the plan scenarios of RTS 2024/1774 a test names:
-//! `experiments.dora_scenarios` (`objectives.rs`), from the regulatory
-//! block of a run, and `manual_experiments.scenarios` (`manual.rs`), each a
-//! `VARCHAR[]` NULL on the rows stored before. Additive ALTERs; a database
-//! at v25 migrates on open.
+//! `experiments.dora_scenarios` (`objectives.rs`), the JSON list of the
+//! regulatory block of a run, and `manual_experiments.scenarios`
+//! (`manual.rs`), a `VARCHAR[]` like `framework_refs`, both NULL on the rows
+//! stored before. Additive ALTERs; a database at v25 migrates on open.
 //!
 //! The DDL is split by feature area: [`telemetry`] (v1), [`manual`] (v2/v8
 //! shape), [`analytics`] (v3), [`runs`] (v4–v7), [`auth`] (v6/v9),
