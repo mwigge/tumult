@@ -2,6 +2,7 @@
 #
 # A single, self-contained docker network (`tumult-demo`) that stands up:
 #   demo-postgres  →  demo-app (axum, OTel)  ←  demo-traffic (load)
+#   demo-postgres-standby (streams from demo-postgres; the failover target)
 #   tumult-collector → signoz (traces + metrics + dashboards)
 #   tumult-mcp (the platform, MCP/HTTP)  ←  demo-control-panel (web UI)
 #   demo-sshd (ssh fault target)
@@ -30,14 +31,53 @@ services:
       # LOCAL TESTING ONLY — do not expose. Hardcoded demo credential for the
       # throwaway demo container; never reuse outside this compose stack.
       POSTGRES_PASSWORD: demo
+    # The rules of who may connect, with replication for the standby. They
+    # live outside the data dir, so a primary that is already set up gets
+    # them too.
+    command: ["postgres", "-c", "hba_file=/etc/postgresql/demo-hba.conf"]
     volumes:
       - ./init-postgres.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ./demo-postgres-hba.conf:/etc/postgresql/demo-hba.conf:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U demo -d orders"]
       interval: 5s
       timeout: 3s
       retries: 10
       start_period: 10s
+    restart: unless-stopped
+    networks:
+      - tumult-demo
+
+  # ── demo-postgres-standby — a streaming standby of demo-postgres ──
+  # Copies the primary with pg_basebackup -R on its first start, then
+  # streams from it. examples/postgres-failover.toon stops the primary and
+  # promotes this one; `make demo-check` makes the pair again after it.
+  demo-postgres-standby:
+    image: postgres:16-alpine
+    container_name: demo-postgres-standby
+    user: postgres
+    environment:
+      # LOCAL TESTING ONLY: the demo credential of demo-postgres.
+      PGPASSWORD: demo
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        set -e
+        if [ ! -s "$$PGDATA/PG_VERSION" ]; then
+          until pg_isready -h demo-postgres -U demo -d orders -q; do sleep 1; done
+          pg_basebackup -h demo-postgres -U demo -D "$$PGDATA" -R -X stream -c fast
+          chmod 700 "$$PGDATA"
+        fi
+        exec postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U demo -d orders"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    depends_on:
+      demo-postgres:
+        condition: service_healthy
     restart: unless-stopped
     networks:
       - tumult-demo
@@ -54,7 +94,11 @@ services:
       # App → collector (contract pins OTLP HTTP on 4318)
       OTEL_EXPORTER_OTLP_ENDPOINT: http://tumult-collector:4318
       OTEL_SERVICE_NAME: demo-app
-      DATABASE_URL: postgres://demo:demo@demo-postgres:5432/orders
+      # Both servers of the pair, and the one that takes writes: after a
+      # failover the app follows the standby that was promoted. The standby
+      # comes first, so the app finds it without a lookup of the name of the
+      # stopped primary, which can take seconds.
+      DATABASE_URL: postgres://demo:demo@demo-postgres-standby:5432,demo-postgres:5432/orders?target_session_attrs=read-write
       PGHOST: demo-postgres
       PGPORT: "5432"
       PGUSER: demo
@@ -62,6 +106,10 @@ services:
       PGDATABASE: orders
     depends_on:
       demo-postgres:
+        condition: service_healthy
+      # A name of the address that is not there would cost every new
+      # connection a lookup of seconds.
+      demo-postgres-standby:
         condition: service_healthy
     healthcheck:
       # Best-effort; the app image should ship wget or curl. Readiness is
@@ -162,7 +210,9 @@ services:
   # Built from the full tumult image (BASE=tumult) so it is self-contained:
   # ships both binaries, all plugins, docker CLI, ssh + curl. Mounts the
   # docker socket so container/pumba faults can reach sibling containers,
-  # the demo experiments (read-only), and a writable journals volume.
+  # the demo experiments, the examples and the Krönika demo (read-only: the
+  # demo check runs the failover example and the demo GameDay from them),
+  # and a writable journals volume.
   tumult-mcp:
     image: tumult-mcp:demo
     build:
@@ -182,6 +232,8 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ../demo/experiments:/demo/experiments:ro
+      - ../examples:/demo/examples:ro
+      - ../demo/kronika:/demo/kronika:ro
       - demo-journals:/journals
       - demo-ssh-key:/demo/ssh-key:ro
     environment:

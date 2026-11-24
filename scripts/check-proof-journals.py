@@ -6,6 +6,8 @@ the proof that runs it and what its journal must say: status, hypothesis met
 before and after, the number of rollbacks and the state of each objective.
 A load result that is expected must hold requests and a p99 above zero, and
 the load must have run the seconds the definition next to the file plans.
+A GameDay entry can also name the score its journal must hold: the status
+and the recovery part, to two decimals.
 
     check-proof-journals.py --proof NAME EXPECTATIONS JOURNAL_DIR
     check-proof-journals.py --proof NAME --list EXPECTATIONS
@@ -38,6 +40,7 @@ COMPARED = (
     "rollbacks",
     "rollback_failures",
 )
+SCORE = ("status", "recovery_compliance")
 
 
 class Lines:
@@ -296,7 +299,36 @@ def gameday_differences(entry, journal, records, experiments):
     found = load_difference(wants_load, journal.get("load_result") is not None)
     if records > experiments:
         found.append(f"{records} records, the GameDay has {experiments} experiments")
-    return found
+    return found + score_differences(entry.get("expect", {}).get("score"), journal)
+
+
+def two_decimals(value):
+    """A number rounded to two decimals; anything else as it is."""
+    if isinstance(value, (int, float)) and value is not True and value is not False:
+        return round(value, 2)
+    return value
+
+
+def score_differences(wanted, journal):
+    """One line per part of the GameDay score that is not the one expected.
+
+    A recovery that was not measured has no key in the journal: null.
+    """
+    if wanted is None:
+        return []
+    missing = [name for name in SCORE if name not in wanted]
+    if missing:
+        return [f"score expectation has no {', '.join(missing)}"]
+    score = journal.get("resilience_score") or {}
+    seen = {
+        "status": journal.get("compliance_status"),
+        "recovery_compliance": two_decimals(score.get("recovery_compliance")),
+    }
+    return [
+        f"score {name}: expected {shown(wanted[name])}, journal has {shown(seen[name])}"
+        for name in SCORE
+        if two_decimals(wanted[name]) != seen[name]
+    ]
 
 
 def record_differences(gameday, entry, records, index):

@@ -26,9 +26,10 @@ environment are fixed in [`CONTRACT.md`](./CONTRACT.md).
 ```mermaid
 flowchart TD
     accTitle: The demo stack
-    accDescr: demo-traffic sends load to demo-app, which uses demo-postgres. The control panel calls tumult-mcp over MCP. tumult-mcp runs the experiments and reaches the targets through the Docker socket, the tumult-net proxy and SSH to demo-sshd. demo-app and the runs send telemetry to the collector, which forwards it to SigNoz.
+    accDescr: demo-traffic sends load to demo-app, which uses demo-postgres. demo-postgres streams to its standby, demo-postgres-standby. The control panel calls tumult-mcp over MCP. tumult-mcp runs the experiments and reaches the targets through the Docker socket, the tumult-net proxy and SSH to demo-sshd. demo-app and the runs send telemetry to the collector, which forwards it to SigNoz.
     traffic[demo-traffic] -->|HTTP| app[demo-app :8080]
     app -->|SQL| pg[(demo-postgres :5433)]
+    pg -->|streams to| standby[(demo-postgres-standby)]
     panel[demo-control-panel :8088] -->|MCP over HTTP| mcp[tumult-mcp :3100]
     mcp -->|Docker socket, net proxy| app
     mcp -->|SSH| sshd[demo-sshd :2222]
@@ -87,15 +88,43 @@ Outside the sweep: `demo-guard-halt.toon` (the guardrail card), and
 [`scripts/demo-topology.sh`](../scripts/demo-topology.sh).
 `make demo-check` runs all of them.
 
+## The DR example and the demo GameDay
+
+`make demo-check` also runs a disaster recovery example and a GameDay.
+Each one says what it proves:
+
+| Run | What it proves |
+|---|---|
+| [`examples/postgres-failover.toon`](../examples/postgres-failover.toon) | The primary stops, the standby is promoted and takes writes, and the app follows it. The RTO runs from the first read that saw the outage to the read where the app was back, within 30 s. |
+| [`kronika/gamedays/platform-resilience.gameday.toon`](./kronika/gamedays/platform-resilience.gameday.toon) | Four steps, each with a fault its steady-state probe sees. Three recover. The queue loss step fails by design, and the GameDay requires a recovery of each step, so its score is `PARTIAL` with a recovery of 0.75. |
+
+The steady-state probes of these runs only read. A probe that wrote, such
+as one that made the directory it checks, would heal the fault it is
+there to see: the runner reads it again while the fault is on. A control
+or a step of the method sets the stage instead.
+
+The failover leaves a promoted standby and a stopped primary. The check
+makes the pair again before and after it. To do it by hand:
+
+```bash
+docker compose -f docker/docker-compose.demo.yml rm -sfv demo-postgres-standby
+docker compose -f docker/docker-compose.demo.yml up -d --wait demo-postgres demo-postgres-standby
+```
+
+The new standby copies the primary when it starts.
+
 ## make demo-check
 
 The smoke test of the demo. It starts the stack, waits for health, runs
-the sweep and checks three things. It exits with a code other than 0 on
-any failure.
+the sweep, the failover example and the demo GameDay, and checks three
+things. It exits with a code other than 0 on any failure.
 
 1. **Each journal is as expected**: `scripts/check-proof-journals.py`
    compares each journal with `demo/experiments/expectations.json`
-   (status, steady state before and after, rollbacks, objective verdicts).
+   (status, steady state before and after, rollbacks, objective verdicts),
+   the failover with `examples/expectations.json`, and the GameDay with
+   `demo/kronika/gamedays/expectations.json`, which also names its score.
+   The check prints the RTO the failover measured.
 2. **Telemetry arrived**: the collector counts accepted spans on `:18888`.
 3. **The Star Map holds**: it starts a Krönika demo from
    `docker/docker-compose.kronika.yml`, seeds it, checks the seed journals
@@ -125,8 +154,9 @@ socket.
   works against a real cluster.
 - **net**: the proxy sits in front of demo-app, not between demo-app and
   Postgres, because the database URL of the app is fixed at start.
-- **postgres**: the runner image has no `psql`, so the step uses the one in
-  the Postgres container. Same SQL as `tumult-db-postgres`.
+- **postgres**: `demo-postgres.toon` runs the `psql` of the Postgres
+  container. Same SQL as `tumult-db-postgres`. The failover example runs
+  the actions of `tumult-db-postgres` with the `psql` of the runner image.
 - **stress**: `tumult-stress` loads its own machine, so the demo uses Pumba
   to load demo-app.
 - **ssh**: the host key of demo-sshd changes with each build, so the step

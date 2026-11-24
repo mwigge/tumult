@@ -3,16 +3,19 @@ version: 0.1.0
 description: Redis chaos actions and probes
 author: tumult
 
-actions[3]:
+actions[4]:
   - name: flush-all
     script: actions/flush-all.sh
     description: Flush all data from Redis (FLUSHALL)
   - name: block-clients
     script: actions/block-clients.sh
     description: Block client connections using CLIENT PAUSE
+  - name: simulate-hang
+    script: actions/simulate-hang.sh
+    description: Make Redis hang with DEBUG SLEEP
   - name: simulate-failover
     script: actions/simulate-failover.sh
-    description: Trigger DEBUG SLEEP to simulate a hung Redis
+    description: Deprecated name of simulate-hang (it makes Redis hang, it fails nothing over)
 
 probes[2]:
   - name: redis-ping

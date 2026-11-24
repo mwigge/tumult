@@ -10,7 +10,8 @@ use std::path::{Path, PathBuf};
 
 use tumult_core::engine::{parse_experiment, validate_experiment, validate_placeholders};
 use tumult_core::types::{
-    Activity, Experiment, GameDay, GameDayJournal, LoadConfig, LoadTool, Provider,
+    Activity, ActivityType, Experiment, GameDay, GameDayJournal, LoadConfig, LoadTool, Provider,
+    TestKind,
 };
 
 /// Directories that hold experiment files, relative to the workspace root.
@@ -939,4 +940,277 @@ fn every_pumba_stress_step_of_the_lab_uses_the_stress_ng_of_the_lab() {
         .collect();
 
     assert!(default_image.is_empty(), "{}", default_image.join("\n"));
+}
+
+// ── Probes that read, DR examples that break something ─────────
+
+/// Words of a shell command that write or repair. The runner reads the
+/// probes of the steady state again while the method runs and after it,
+/// so a probe that writes can heal the fault it is there to see. A `>`
+/// writes too, unless it goes to `/dev/null` or to another descriptor.
+const WRITE_WORDS: &[&str] = &[
+    "mkdir",
+    "rm",
+    "touch",
+    "mv",
+    "cp",
+    "tee",
+    "sed -i",
+    "setsid",
+    "nohup",
+    "systemctl start",
+    "systemctl restart",
+    "docker start",
+    "docker restart",
+    "docker unpause",
+];
+
+/// Words of a shell command that stop something, beside the
+/// [`WRITE_WORDS`]. A fault of a process step holds one of the two.
+const STOP_WORDS: &[&str] = &[
+    "kill",
+    "pkill",
+    "docker stop",
+    "docker kill",
+    "docker pause",
+    "systemctl stop",
+];
+
+/// Plugin actions that break nothing: a fault of a DR example is none of
+/// them.
+const ACTIONS_THAT_BREAK_NOTHING: &[(&str, &str)] = &[
+    ("tumult-db-postgres", "backup"),
+    ("tumult-db-postgres", "write-markers"),
+];
+
+/// Files of `kind: dr` with no fault, each with the reason. A file here
+/// is no DR example.
+const DR_WITHOUT_A_FAULT: &[(&str, &str)] = &[
+    (
+        "scripts/proof/rip-phase2/dr-objectives.toon",
+        "a fixture of the objective verdicts of the posture proof: its method waits and changes nothing on purpose",
+    ),
+    (
+        "scripts/proof/rip-phase2/dr-breach.toon",
+        "a fixture of a blocking breach of the posture proof: its method waits and changes nothing on purpose",
+    ),
+];
+
+/// The command of a process step: its program and its arguments.
+fn command_of(step: &Activity) -> Option<String> {
+    let Provider::Process {
+        path, arguments, ..
+    } = &step.provider
+    else {
+        return None;
+    };
+    Some(format!("{path} {}", arguments.join(" ")))
+}
+
+/// The words of a command, split at blanks and at the characters that
+/// join or group commands.
+fn words_of(command: &str) -> Vec<&str> {
+    command
+        .split(|c: char| c.is_whitespace() || ";&|()`".contains(c))
+        .filter(|word| !word.is_empty())
+        .collect()
+}
+
+/// The first of `listed` that is in `words`: one word, or two words one
+/// after the other.
+fn first_of<'a>(words: &[&str], listed: &[&'a str]) -> Option<&'a str> {
+    listed.iter().copied().find(|entry| {
+        let wanted: Vec<&str> = entry.split(' ').collect();
+        words
+            .windows(wanted.len())
+            .any(|seen| seen == wanted.as_slice())
+    })
+}
+
+/// Whether a command writes a file with `>`.
+fn redirects_to_a_file(command: &str) -> bool {
+    command.match_indices('>').any(|(at, _)| {
+        let target = command[at + 1..].trim_start_matches('>').trim_start();
+        !(target.starts_with('&') || target.starts_with("/dev/null"))
+    })
+}
+
+/// What in a command writes: a write word, or a redirect to a file.
+fn write_in(command: &str) -> Option<&'static str> {
+    first_of(&words_of(command), WRITE_WORDS)
+        .or_else(|| redirects_to_a_file(command).then_some(">"))
+}
+
+/// Each probe of the steady state whose command writes, with what writes.
+fn probes_that_write(experiment: &Experiment) -> Vec<String> {
+    let probes = experiment
+        .steady_state_hypothesis
+        .iter()
+        .flat_map(|hypothesis| &hypothesis.probes);
+    probes
+        .filter_map(|probe| {
+            let found = write_in(&command_of(probe)?)?;
+            Some(format!("{} ({found})", probe.name))
+        })
+        .collect()
+}
+
+/// Whether a step of a method takes something away: a plugin action that
+/// breaks something, or a process action that writes or stops.
+fn breaks_something(step: &Activity) -> bool {
+    if step.activity_type != ActivityType::Action {
+        return false;
+    }
+    match &step.provider {
+        Provider::Native { .. } => true,
+        Provider::Script {
+            plugin, function, ..
+        } => !ACTIONS_THAT_BREAK_NOTHING.contains(&(plugin.as_str(), function.as_str())),
+        Provider::Process { .. } => command_of(step).is_some_and(|command| {
+            write_in(&command).is_some() || first_of(&words_of(&command), STOP_WORDS).is_some()
+        }),
+    }
+}
+
+fn is_dr_without_a_fault_on_purpose(path: &Path) -> bool {
+    let file = shown(path);
+    DR_WITHOUT_A_FAULT.iter().any(|(listed, _)| *listed == file)
+}
+
+#[test]
+fn a_write_is_found_by_its_word_or_its_redirect() {
+    assert_eq!(write_in("sh -c mkdir -p /tmp/d && echo ok"), Some("mkdir"));
+    assert_eq!(write_in("sh -c [ -f x ] || (rm x)"), Some("rm"));
+    assert_eq!(write_in("sh -c sed -i s/a/b/ f"), Some("sed -i"));
+    assert_eq!(write_in("sh -c echo up > /tmp/state"), Some(">"));
+    assert_eq!(write_in("sh -c date >>/tmp/log"), Some(">"));
+    assert_eq!(write_in("sh -c docker start db"), Some("docker start"));
+}
+
+#[test]
+fn a_read_is_not_a_write() {
+    assert_eq!(write_in("sh -c cat /tmp/x 2>/dev/null || echo gone"), None);
+    assert_eq!(
+        write_in("sh -c kill -0 $(cat /tmp/pid) 2>&1 >/dev/null"),
+        None
+    );
+    assert_eq!(write_in("sh -c ls /tmp/rmdir-me >&2"), None);
+    assert_eq!(write_in("sh -c docker exec db pg_isready"), None);
+}
+
+#[test]
+fn a_dr_fault_is_a_plugin_action_or_a_process_that_writes_or_stops() {
+    let experiment = parse_experiment(
+        r#"title: t
+method[5]:
+  - name: read
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "psql -c 'SELECT pg_terminate_backend(1)'"
+  - name: probe-that-removes
+    activity_type: probe
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "rm -f /tmp/x"
+  - name: back-up
+    activity_type: action
+    provider:
+      type: script
+      plugin: tumult-db-postgres
+      function: backup
+  - name: kill
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "kill $(cat /tmp/pid)"
+  - name: stop-primary
+    activity_type: action
+    provider:
+      type: script
+      plugin: tumult-db-postgres
+      function: stop-primary
+"#,
+    )
+    .unwrap();
+    let breaking: Vec<&str> = experiment
+        .method
+        .iter()
+        .filter(|step| breaks_something(step))
+        .map(|step| step.name.as_str())
+        .collect();
+    assert_eq!(breaking, ["kill", "stop-primary"]);
+}
+
+#[test]
+fn every_steady_state_probe_only_reads() {
+    let writing: Vec<String> = experiment_files()
+        .iter()
+        .filter_map(|p| {
+            let probes = probes_that_write(&load(p).ok()?);
+            (!probes.is_empty()).then(|| format!("{}: {}", shown(p), probes.join(", ")))
+        })
+        .collect();
+    assert!(
+        writing.is_empty(),
+        "a steady-state probe writes; set the stage in a control or in the method:\n{}",
+        writing.join("\n")
+    );
+}
+
+#[test]
+fn every_dr_example_has_a_fault_that_changes_state() {
+    let blank: Vec<String> = experiment_files()
+        .iter()
+        .filter(|p| !is_dr_without_a_fault_on_purpose(p))
+        .filter_map(|p| {
+            let experiment = load(p).ok()?;
+            let dr = experiment.kind == TestKind::Dr;
+            (dr && !experiment.method.iter().any(breaks_something)).then(|| shown(p))
+        })
+        .collect();
+    assert!(
+        blank.is_empty(),
+        "a DR example whose method breaks nothing:\n{}",
+        blank.join("\n")
+    );
+}
+
+/// A run that comes back after its recovery window breaches its RTO,
+/// however long the RTO is, and `tumult validate` warns of it. No shipped
+/// file gets that warning.
+#[test]
+fn every_shipped_rto_fits_its_recovery_window() {
+    let short: Vec<String> = experiment_files()
+        .iter()
+        .filter_map(|p| {
+            let experiment = load(p).ok()?;
+            let rto_target_s = experiment.rto_target_s?;
+            let window_s = experiment.recovery.unwrap_or_default().window_s;
+            (rto_target_s > window_s)
+                .then(|| format!("{}: RTO {rto_target_s} s, window {window_s} s", shown(p)))
+        })
+        .collect();
+    assert!(
+        short.is_empty(),
+        "the recovery window is shorter than the RTO:\n{}",
+        short.join("\n")
+    );
+}
+
+#[test]
+fn every_dr_file_without_a_fault_is_a_dr_file_and_breaks_nothing() {
+    let root = workspace_root();
+    for (file, reason) in DR_WITHOUT_A_FAULT {
+        assert!(!reason.is_empty(), "{file} needs a reason");
+        let experiment = load(&root.join(file)).expect("a listed file loads");
+        assert_eq!(experiment.kind, TestKind::Dr, "{file}");
+        assert!(
+            !experiment.method.iter().any(breaks_something),
+            "{file} breaks something"
+        );
+    }
 }
