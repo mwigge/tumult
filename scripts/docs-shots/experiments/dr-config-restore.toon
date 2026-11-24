@@ -1,0 +1,91 @@
+title: config-service restore from backup after a wipe
+description: Disaster recovery test of the config store of the docs pictures, with its RTO and RPO. Write markers, back the store up and write for 2 more seconds. Then the store is lost, as a cyber attack would wipe it, and the backup is restored. The steady state reads the store and the markers it kept. The RTO runs from the first read that saw the outage to the read where the store was back. The RPO is the seconds of confirmed markers the restore lost. The lab is a folder of files that data.py makes.
+
+tags[3]: dr, restore, rpo
+kind: dr
+target:
+  system: config-service
+  technology: configuration
+  environment: demo
+rto_target_s: 30
+rpo_target_s: 5
+recovery:
+  window_s: 40
+  interval_s: 1
+nfr[1]:
+  - id: rpo
+    kind: rpo
+    metric: probe.markers-lost.lost_s
+    operator: lte
+    threshold: 5
+    criticality: blocking
+regulatory:
+  frameworks[1]: DORA
+  requirements[1]:
+    - id: rts1774.art39
+      description: The response and recovery plan tested against a cyber attack
+      evidence: The journal of the run, with its RTO and RPO
+  scenarios[1]: cyber_attack
+
+steady_state_hypothesis:
+  title: The config store answers and its markers can be read
+  probes[2]:
+    - name: store-answers
+      activity_type: probe
+      provider:
+        type: process
+        path: sh
+        arguments[3]: "${lab}/lab.sh", "${lab}", up
+        timeout_s: 5.0
+      tolerance:
+        type: regex
+        pattern: "^up$"
+    - name: markers-lost
+      activity_type: probe
+      provider:
+        type: process
+        path: sh
+        arguments[3]: "${lab}/lab.sh", "${lab}", lost
+        timeout_s: 5.0
+      tolerance:
+        type: number
+
+method[5]:
+  - name: write-before-the-backup
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[4]: "${lab}/lab.sh", "${lab}", write, "3"
+      timeout_s: 10.0
+  - name: back-up-the-store
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[3]: "${lab}/lab.sh", "${lab}", backup
+      timeout_s: 5.0
+  - name: write-after-the-backup
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[4]: "${lab}/lab.sh", "${lab}", write, "2"
+      timeout_s: 10.0
+  - name: lose-the-store
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "rm -f '${lab}/up' '${lab}/store' && echo the store is gone"
+      timeout_s: 5.0
+    pause_after_s: 3.0
+  - name: restore-the-backup
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[3]: "${lab}/lab.sh", "${lab}", restore
+      timeout_s: 5.0
+
+rollbacks[0]:

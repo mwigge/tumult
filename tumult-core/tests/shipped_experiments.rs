@@ -997,6 +997,10 @@ const DR_WITHOUT_A_FAULT: &[(&str, &str)] = &[
         "scripts/proof/rip-phase2/dr-breach.toon",
         "a fixture of a blocking breach of the posture proof: its method waits and changes nothing on purpose",
     ),
+    (
+        "scripts/docs-shots/experiments/dr-config-replica-kill.toon",
+        "a fixture of the docs pictures: its step changes nothing on purpose, so the DR page shows a run with no outage observed",
+    ),
 ];
 
 /// The command of a process step: its program and its arguments.

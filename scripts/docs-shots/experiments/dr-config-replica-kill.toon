@@ -1,0 +1,35 @@
+title: config-service replica stop, no outage
+description: Disaster recovery test of the config store of the docs pictures whose fault has no visible effect. One replica of three stops and the store keeps answering, so the probes see no outage and the RTO is inconclusive. The run is no evidence of recovery. The lab is a folder of files that data.py makes.
+
+tags[2]: dr, replica
+kind: dr
+target:
+  system: config-service
+  technology: configuration
+  environment: demo
+rto_target_s: 30
+
+steady_state_hypothesis:
+  title: The config store answers
+  probes[1]:
+    - name: store-answers
+      activity_type: probe
+      provider:
+        type: process
+        path: sh
+        arguments[3]: "${lab}/lab.sh", "${lab}", up
+        timeout_s: 5.0
+      tolerance:
+        type: regex
+        pattern: "^up$"
+
+method[1]:
+  - name: stop-one-replica
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[3]: "${lab}/lab.sh", "${lab}", replica
+      timeout_s: 5.0
+
+rollbacks[0]:

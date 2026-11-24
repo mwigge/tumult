@@ -165,7 +165,8 @@ flowchart LR
   method from the definition the run was stored with.
 - A `process` step names no plugin function, so it does not count.
 - A verified manual record counts as before: an exercise whose type
-  `manual_kinds` maps to `dr` (`failover` and `drill` by default).
+  `manual_kinds` maps to `dr` (`failover`, `drill`, `restore` and
+  `backup` by default).
 
 ## Plan scenarios
 
@@ -205,6 +206,11 @@ Name the scenarios a test covers:
 - A run counts for `backup_restore` only when it ran a backup or restore
   step, as in [What counts as a restore test](#what-counts-as-a-restore-test).
   A record counts as written.
+
+The DORA view has a table of the plan scenarios of each critical or
+important function.
+
+![Plan scenarios per function on the DORA view](../images/3.0/screenshots/scores-dora-scenarios.png)
 
 Each scenario of a function has one state:
 

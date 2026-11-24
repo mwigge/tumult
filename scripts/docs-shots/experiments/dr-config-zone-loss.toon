@@ -1,0 +1,45 @@
+title: config-service zone loss, no failover
+description: Disaster recovery test of the config store of the docs pictures that does not recover. The store is lost and nothing brings it back while the run watches, so the run breaches its RTO with the time it watched as a lower bound. The rollback restores the backup. The lab is a folder of files that data.py makes.
+
+tags[2]: dr, zone-loss
+kind: dr
+target:
+  system: config-service
+  technology: configuration
+  environment: demo
+rto_target_s: 10
+recovery:
+  window_s: 12
+  interval_s: 1
+
+steady_state_hypothesis:
+  title: The config store answers
+  probes[1]:
+    - name: store-answers
+      activity_type: probe
+      provider:
+        type: process
+        path: sh
+        arguments[3]: "${lab}/lab.sh", "${lab}", up
+        timeout_s: 5.0
+      tolerance:
+        type: regex
+        pattern: "^up$"
+
+method[1]:
+  - name: lose-the-zone
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[2]: "-c", "rm -f '${lab}/up' '${lab}/store' && echo the store is gone"
+      timeout_s: 5.0
+
+rollbacks[1]:
+  - name: restore-the-backup
+    activity_type: action
+    provider:
+      type: process
+      path: sh
+      arguments[3]: "${lab}/lab.sh", "${lab}", restore
+      timeout_s: 5.0
