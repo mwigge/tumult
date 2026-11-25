@@ -119,6 +119,19 @@ describe('resolveTokens', () => {
             'z: $type is number, but the value is not a number',
         );
     });
+
+    it('takes a percent on a number only, through the Tumult extension', () => {
+        const round = ($type: string, $value: unknown, unit: string) => () =>
+            resolve({ round: { $type, $value, $extensions: { 'rs.tumult': { unit } } } });
+
+        expect(round('number', 50, '%')().get('round')).toMatchObject({ value: 50, unit: '%' });
+        expect(round('dimension', { value: 50, unit: 'px' }, '%')).toThrow(
+            'round: only a number takes a unit from the extension rs.tumult',
+        );
+        expect(round('number', 50, 'em')).toThrow(
+            'round: the extension rs.tumult gives a unit other than %',
+        );
+    });
 });
 
 describe('build', () => {
