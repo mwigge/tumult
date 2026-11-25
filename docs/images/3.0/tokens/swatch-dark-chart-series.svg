@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="168" height="24" viewBox="0 0 168 24" role="img">
+<title>chart.series, dark: #5eb1ef, #E69F00, #009E73, #CC79A7, #56B4E9, #D55E00, #F0E442</title>
+<rect x="0" y="0" width="24" height="24" fill="#5eb1ef"/>
+<rect x="24" y="0" width="24" height="24" fill="#E69F00"/>
+<rect x="48" y="0" width="24" height="24" fill="#009E73"/>
+<rect x="72" y="0" width="24" height="24" fill="#CC79A7"/>
+<rect x="96" y="0" width="24" height="24" fill="#56B4E9"/>
+<rect x="120" y="0" width="24" height="24" fill="#D55E00"/>
+<rect x="144" y="0" width="24" height="24" fill="#F0E442"/>
+<rect x="0.5" y="0.5" width="167" height="23" fill="none" stroke="#8d959d"/>
+</svg>

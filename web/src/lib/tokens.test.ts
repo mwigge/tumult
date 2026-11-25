@@ -1,4 +1,4 @@
-import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 import { build, resolveTokens } from '../../scripts/build-tokens.mjs';
+import { tokens } from './tokens.gen';
 
 const WEB = fileURLToPath(new URL('../..', import.meta.url));
 const TOKENS = join(WEB, 'tokens');
@@ -15,6 +16,20 @@ const REPORT = '../tumult-cli/src/commands/report/html/tokens.css';
 const DOCS_SCHEME = '../docs/_sass/color_schemes/_tumult-tokens.scss';
 /** The colours of the landing page of the docs site, as a path under web/. */
 const LANDING = '../docs/assets/css/tokens.css';
+/** The folder of the pictures of the tokens on the docs site, as a path under web/. */
+const PICTURES = '../docs/images/3.0/tokens';
+/** The themes of Krönika. */
+const THEMES = ['light', 'dark'] as const;
+
+/** The colour roles of a theme that pages use: the top-level colours of its tokens. */
+const roles = (theme: (typeof THEMES)[number]) =>
+    Object.entries(tokens[theme]).filter(
+        (entry): entry is [string, string] =>
+            typeof entry[1] === 'string' && entry[1].startsWith('#'),
+    );
+
+/** The fill colours of an SVG, in order. */
+const fills = (svg: string) => [...svg.matchAll(/ fill="(#[0-9a-fA-F]{6})"/g)].map((m) => m[1]);
 
 /** An srgb colour as the DTCG format writes it. */
 const colour = (hex: string) => ({
@@ -278,6 +293,52 @@ describe('build', () => {
             expect(outputs[file], file).not.toMatch(/docs|copper|--term-|--page|--band/i);
     });
 
+    it('draws a swatch of each colour role in each theme for the docs site', () => {
+        const outputs = build(TOKENS);
+
+        for (const theme of THEMES) {
+            expect(roles(theme).length, theme).toBeGreaterThan(10);
+            for (const [role, hex] of roles(theme)) {
+                const swatch = outputs[`${PICTURES}/swatch-${theme}-${role}.svg`];
+                expect(swatch, `${theme} ${role}`).toBeDefined();
+                expect(fills(swatch), `${theme} ${role}`).toEqual([hex]);
+                expect(swatch).toContain(`<title>${role}, ${theme}: ${hex}</title>`);
+            }
+        }
+    });
+
+    it('draws the series of the charts of each theme as one strip, in order', () => {
+        const outputs = build(TOKENS);
+
+        for (const theme of THEMES)
+            expect(fills(outputs[`${PICTURES}/swatch-${theme}-chart-series.svg`])).toEqual(
+                tokens[theme].chart.series,
+            );
+    });
+
+    it('draws the type, spacing and radius scale with the value of each step', () => {
+        const scale = build(TOKENS)[`${PICTURES}/scale.svg`];
+        const page = JSON.parse(readFileSync(join(TOKENS, 'page.tokens.json'), 'utf8'));
+        const steps = Object.entries(page).filter(([name]) =>
+            /^(?:font-size|space|radius)-/.test(name),
+        ) as [string, { $value: { value: number; unit: string } }][];
+
+        expect(steps.length).toBeGreaterThan(10);
+        for (const [name, { $value }] of steps)
+            expect(scale).toContain(`>${name} ${$value.value}${$value.unit}</text>`);
+        // A size of the type scale draws its sample text at that size.
+        for (const [name, { $value }] of steps.filter(([name]) => name.startsWith('font-size-')))
+            expect(scale, name).toContain(`font-size="${$value.value}">Krönika`);
+    });
+
+    it('keeps in the folder of the token pictures only the pictures it draws', () => {
+        const drawn = Object.keys(build(TOKENS))
+            .filter((file) => file.startsWith(`${PICTURES}/`))
+            .map((file) => file.slice(PICTURES.length + 1));
+
+        expect(readdirSync(join(WEB, PICTURES)).sort()).toEqual(drawn.sort());
+    });
+
     it('writes the committed outputs from the committed token files', () => {
         for (const [file, text] of Object.entries(build(TOKENS))) {
             expect(
@@ -322,6 +383,28 @@ describe('the docs site', () => {
 
         expect(tokens).toBeGreaterThan(-1);
         expect(tokens).toBeLessThan(page.indexOf('/assets/css/landing.css'));
+    });
+
+    it('shows each colour role on the UI standard page with its two swatches', () => {
+        const page = docs('reference/ui-standard.md').split('\n');
+        // A role and the name of its swatches; the series of the charts share one strip.
+        const rows = [
+            ...roles('light').map(([role]) => [role, role]),
+            ['chart.series', 'chart-series'],
+        ];
+
+        for (const [role, file] of rows) {
+            const row = page.find((line) => line.startsWith(`| \`${role}\` |`));
+            expect(row, role).toBeDefined();
+            for (const theme of THEMES)
+                expect(row, `${theme} ${role}`).toContain(
+                    `(../images/3.0/tokens/swatch-${theme}-${file}.svg)`,
+                );
+        }
+    });
+
+    it('shows the scale of the pages on the UI standard page', () => {
+        expect(docs('reference/ui-standard.md')).toContain('(../images/3.0/tokens/scale.svg)');
     });
 
     it('takes the colour variables of the docs theme from the generated partial', () => {
