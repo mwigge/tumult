@@ -753,19 +753,6 @@
         font-size: var(--font-size-3xl);
         font-weight: var(--font-weight-strong);
     }
-    table.data th[scope='row'] {
-        text-align: left;
-        font-weight: var(--font-weight-strong);
-        padding: 7px var(--space-2-5);
-        border-bottom: var(--border-width-sm) solid var(--border);
-        text-transform: none;
-        letter-spacing: 0;
-        font-size: var(--font-size-md);
-        color: var(--text);
-    }
-    table.data tr:last-child th[scope='row'] {
-        border-bottom: none;
-    }
     .unattributed {
         margin-top: var(--space-2-5);
         padding-top: var(--space-2);

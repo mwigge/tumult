@@ -85,6 +85,8 @@ lint fails on a line that matches nothing, so the list only shrinks.
   `.sr-only` (for a screen reader only).
 - Parts: the meta tile (`.panel.meta`), filter chips (`.chip`), the open
   row of a table (`.detail-row`) and `.actions`.
+- Tables: a row header (`th scope="row"` in `table.data`) reads as a cell.
+  It wraps, as a cell does.
 - Forms: `.form`, `.row2` and the list editor `.grid-rows`.
 
 A page uses the class and keeps no copy of the rule in its own style

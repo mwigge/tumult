@@ -102,19 +102,6 @@
 </table>
 
 <style>
-    /* A row header reads as a cell, not as a column header. */
-    th[scope='row'] {
-        color: var(--text);
-        font-size: var(--font-size-md);
-        font-weight: var(--font-weight-strong);
-        text-transform: none;
-        letter-spacing: normal;
-        border-bottom: var(--border-width-sm) solid var(--border);
-        padding: 7px var(--space-2-5);
-    }
-    tr:last-child th[scope='row'] {
-        border-bottom: none;
-    }
     /* Not the size of the global .dim: the size around it. */
     .dim {
         color: var(--text-faint);
@@ -124,9 +111,11 @@
     .line {
         display: block;
     }
+    /* The row header keeps the target on one line, which the global row
+       header does not. */
     .last,
     .nowrap,
-    th[scope='row'] {
+    table.data th[scope='row'] {
         white-space: nowrap;
     }
 </style>

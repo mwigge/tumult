@@ -74,6 +74,13 @@ const FIELD = [
     'font-size: var(--font-size-md)',
     'font-family: inherit',
 ];
+const ROW_HEADER = [
+    'color: var(--text)',
+    'font-size: var(--font-size-md)',
+    'text-transform: none',
+    'padding: 7px var(--space-2-5)',
+    'border-bottom: var(--border-width-sm) solid var(--border)',
+];
 
 /** The rules that pages share, as theme.css writes them. */
 const SHARED: Shared[] = [
@@ -180,6 +187,12 @@ const SHARED: Shared[] = [
         copies: ["input[type='datetime-local']"],
     },
     { selector: "input[type='file']", body: FIELD, copies: ["input[type='file']"] },
+    { selector: "table.data th[scope='row']", body: ROW_HEADER, copies: ["th[scope='row']"] },
+    {
+        selector: "table.data tr:last-child th[scope='row']",
+        body: ['border-bottom: none'],
+        copies: ["tr:last-child th[scope='row']"],
+    },
 ];
 
 /** `text` split at each comma that is outside brackets. */

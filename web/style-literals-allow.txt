@@ -15,7 +15,6 @@ src/lib/components/DrEmpty.svelte font-size 15px
 src/lib/components/DrEmpty.svelte spacing 20px
 src/lib/components/DrRecoveryChart.svelte spacing 20px
 src/lib/components/DrRegister.svelte font-weight 400
-src/lib/components/DrRegister.svelte spacing 7px
 src/lib/components/EvidencePanels.svelte spacing 28px
 src/lib/components/KpiCard.svelte font-size 26px
 src/lib/components/ManualAuditList.svelte spacing 3px
@@ -49,6 +48,7 @@ src/lib/theme.css spacing 5px
 src/lib/theme.css spacing 60px
 src/lib/theme.css spacing 7px
 src/lib/theme.css spacing 7px
+src/lib/theme.css spacing 7px
 src/lib/theme.css spacing 9px
 src/lib/theme.css spacing 9px
 src/lib/theme.css spacing 9px
@@ -70,7 +70,6 @@ src/routes/login/+page.svelte spacing 5px
 src/routes/login/+page.svelte spacing 9px
 src/routes/logs/+page.svelte spacing -6px
 src/routes/performance/+page.svelte spacing 3px
-src/routes/performance/+page.svelte spacing 7px
 src/routes/reports/+page.svelte colour #fff
 src/routes/resilience/+page.svelte font-size 34px
 src/routes/resilience/+page.svelte spacing 3px
