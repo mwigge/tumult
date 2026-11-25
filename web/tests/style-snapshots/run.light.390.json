@@ -11,6 +11,8 @@
       "font-size": "14px",
       "font-weight": "400",
       "line-height": "1.5",
+      "letter-spacing": "normal",
+      "text-transform": "none",
       "visibility": "visible",
       "display": "block",
       "background-color": "rgb(244, 246, 248)"
@@ -38,6 +40,7 @@
     "div.shell > aside[complementary].side > div.brand > div.name": {
       "font-size": "17px",
       "font-weight": "700",
+      "letter-spacing": "0.4px",
       "display": "block"
     },
     "div.shell > aside[complementary].side > div.brand > div.tag": {
@@ -326,6 +329,7 @@
       "color": "rgb(15, 138, 95)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.3px",
       "display": "block",
       "background-color": "color(srgb 0.0588235 0.541176 0.372549 / 0.14)",
       "border-radius": "10px",
@@ -356,6 +360,8 @@
     "div.shell > main[main].main > div.grid > div.panel.meta > span": {
       "color": "rgb(91, 103, 114)",
       "font-size": "11px",
+      "letter-spacing": "0.6px",
+      "text-transform": "uppercase",
       "display": "block",
       "margin": "0px 0px 4px"
     },
@@ -377,6 +383,8 @@
     "div.shell > main[main].main > div.grid > div.panel.meta #2 > span": {
       "color": "rgb(91, 103, 114)",
       "font-size": "11px",
+      "letter-spacing": "0.6px",
+      "text-transform": "uppercase",
       "display": "block",
       "margin": "0px 0px 4px"
     },
@@ -398,6 +406,8 @@
     "div.shell > main[main].main > div.grid > div.panel.meta #3 > span": {
       "color": "rgb(91, 103, 114)",
       "font-size": "11px",
+      "letter-spacing": "0.6px",
+      "text-transform": "uppercase",
       "display": "block",
       "margin": "0px 0px 4px"
     },
@@ -419,6 +429,8 @@
     "div.shell > main[main].main > div.grid > div.panel.meta #4 > span": {
       "color": "rgb(91, 103, 114)",
       "font-size": "11px",
+      "letter-spacing": "0.6px",
+      "text-transform": "uppercase",
       "display": "block",
       "margin": "0px 0px 4px"
     },
@@ -441,6 +453,8 @@
     "div.shell > main[main].main > div.grid > div.panel.meta #5 > span": {
       "color": "rgb(91, 103, 114)",
       "font-size": "11px",
+      "letter-spacing": "0.6px",
+      "text-transform": "uppercase",
       "display": "block",
       "margin": "0px 0px 4px"
     },
@@ -463,6 +477,8 @@
     "div.shell > main[main].main > div.grid > div.panel.meta #6 > span": {
       "color": "rgb(91, 103, 114)",
       "font-size": "11px",
+      "letter-spacing": "0.6px",
+      "text-transform": "uppercase",
       "display": "block",
       "margin": "0px 0px 4px"
     },
@@ -484,6 +500,8 @@
     "div.shell > main[main].main > div.grid > div.panel.meta #7 > span": {
       "color": "rgb(91, 103, 114)",
       "font-size": "11px",
+      "letter-spacing": "0.6px",
+      "text-transform": "uppercase",
       "display": "block",
       "margin": "0px 0px 4px"
     },
@@ -505,6 +523,8 @@
     "div.shell > main[main].main > div.grid > div.panel.meta #8 > span": {
       "color": "rgb(91, 103, 114)",
       "font-size": "11px",
+      "letter-spacing": "0.6px",
+      "text-transform": "uppercase",
       "display": "block",
       "margin": "0px 0px 4px"
     },
@@ -531,6 +551,8 @@
     "div.shell > main[main].main > div.grid > div.panel.meta #9 > span": {
       "color": "rgb(91, 103, 114)",
       "font-size": "11px",
+      "letter-spacing": "0.6px",
+      "text-transform": "uppercase",
       "display": "block",
       "margin": "0px 0px 4px"
     },
@@ -555,6 +577,8 @@
       "color": "rgb(91, 103, 114)",
       "font-size": "12px",
       "font-weight": "600",
+      "letter-spacing": "0.7px",
+      "text-transform": "uppercase",
       "display": "block",
       "margin": "0px 0px 10px"
     },
@@ -625,6 +649,8 @@
       "color": "rgb(91, 103, 114)",
       "font-size": "12px",
       "font-weight": "600",
+      "letter-spacing": "0.7px",
+      "text-transform": "uppercase",
       "display": "block",
       "margin": "0px 0px 10px"
     },
@@ -649,6 +675,8 @@
       "color": "rgb(91, 103, 114)",
       "font-size": "12px",
       "font-weight": "600",
+      "letter-spacing": "0.7px",
+      "text-transform": "uppercase",
       "display": "block",
       "margin": "0px 0px 10px"
     },
@@ -672,6 +700,8 @@
       "color": "rgb(91, 103, 114)",
       "font-size": "12px",
       "font-weight": "600",
+      "letter-spacing": "0.7px",
+      "text-transform": "uppercase",
       "display": "block",
       "margin": "0px 0px 10px"
     },

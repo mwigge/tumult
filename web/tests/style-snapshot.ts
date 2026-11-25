@@ -48,6 +48,8 @@ export const INHERITED = [
     'font-size',
     'font-weight',
     'line-height',
+    'letter-spacing',
+    'text-transform',
     'visibility',
 ];
 
@@ -165,6 +167,8 @@ export async function readStyles(page: Page): Promise<Elements | null> {
                 put('opacity', get('opacity'), '1');
                 put('background-color', get('background-color'), 'rgba(0, 0, 0, 0)');
                 put('background-image', get('background-image'), 'none');
+                put('box-shadow', get('box-shadow'), 'none');
+                put('z-index', get('z-index'), 'auto');
                 for (const side of SIDES) {
                     const style = get(`border-${side}-style`);
                     if (style === 'none') continue;

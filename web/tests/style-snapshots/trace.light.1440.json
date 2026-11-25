@@ -11,6 +11,8 @@
       "font-size": "14px",
       "font-weight": "400",
       "line-height": "1.5",
+      "letter-spacing": "normal",
+      "text-transform": "none",
       "visibility": "visible",
       "display": "block",
       "background-color": "rgb(244, 246, 248)"
@@ -38,6 +40,7 @@
     "div.shell > aside[complementary].side > div.brand > div.name": {
       "font-size": "17px",
       "font-weight": "700",
+      "letter-spacing": "0.4px",
       "display": "block"
     },
     "div.shell > aside[complementary].side > div.brand > div.tag": {
@@ -342,6 +345,8 @@
     "div.shell > main[main].main > div.grid > div.panel.meta > span": {
       "color": "rgb(91, 103, 114)",
       "font-size": "11px",
+      "letter-spacing": "0.6px",
+      "text-transform": "uppercase",
       "display": "block",
       "margin": "0px 0px 4px"
     },
@@ -363,6 +368,8 @@
     "div.shell > main[main].main > div.grid > div.panel.meta #2 > span": {
       "color": "rgb(91, 103, 114)",
       "font-size": "11px",
+      "letter-spacing": "0.6px",
+      "text-transform": "uppercase",
       "display": "block",
       "margin": "0px 0px 4px"
     },
@@ -385,6 +392,8 @@
     "div.shell > main[main].main > div.grid > div.panel.meta #3 > span": {
       "color": "rgb(91, 103, 114)",
       "font-size": "11px",
+      "letter-spacing": "0.6px",
+      "text-transform": "uppercase",
       "display": "block",
       "margin": "0px 0px 4px"
     },
@@ -407,6 +416,8 @@
     "div.shell > main[main].main > div.grid > div.panel.meta #4 > span": {
       "color": "rgb(91, 103, 114)",
       "font-size": "11px",
+      "letter-spacing": "0.6px",
+      "text-transform": "uppercase",
       "display": "block",
       "margin": "0px 0px 4px"
     },
@@ -432,6 +443,8 @@
       "color": "rgb(91, 103, 114)",
       "font-size": "12px",
       "font-weight": "600",
+      "letter-spacing": "0.7px",
+      "text-transform": "uppercase",
       "display": "block",
       "margin": "0px 0px 10px"
     },
@@ -441,6 +454,7 @@
     },
     "div.shell > main[main].main > div.panel > div.wf > div.grid": {
       "display": "grid",
+      "z-index": "1",
       "gap": "14px"
     },
     "div.shell > main[main].main > div.panel > div.wf > div.grid > i": {
@@ -476,6 +490,7 @@
     "div.shell > main[main].main > div.panel > div.wf > div.ruler": {
       "display": "block",
       "background-color": "rgb(255, 255, 255)",
+      "z-index": "2",
       "border-bottom": "1px solid rgb(197, 206, 214)",
       "padding": "3px 0px"
     },
@@ -637,6 +652,8 @@
       "color": "rgb(91, 103, 114)",
       "font-size": "12px",
       "font-weight": "600",
+      "letter-spacing": "0.7px",
+      "text-transform": "uppercase",
       "display": "block",
       "margin": "0px 0px 10px"
     },

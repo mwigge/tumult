@@ -11,6 +11,8 @@
       "font-size": "14px",
       "font-weight": "400",
       "line-height": "1.5",
+      "letter-spacing": "normal",
+      "text-transform": "none",
       "visibility": "visible",
       "display": "block",
       "background-color": "rgb(11, 14, 17)"
@@ -38,6 +40,7 @@
     "div.shell > aside[complementary].side > div.brand > div.name": {
       "font-size": "17px",
       "font-weight": "700",
+      "letter-spacing": "0.4px",
       "display": "block"
     },
     "div.shell > aside[complementary].side > div.brand > div.tag": {
@@ -345,6 +348,8 @@
     "div.shell > main[main].main > div.controls > div.field > label[LabelText]": {
       "color": "rgb(139, 152, 165)",
       "font-size": "11.5px",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
       "display": "block"
     },
     "div.shell > main[main].main > div.controls > div.field > select[combobox] \"TARGET\"": {
@@ -367,6 +372,8 @@
     "div.shell > main[main].main > div.controls > div.field #2 > label[LabelText]": {
       "color": "rgb(139, 152, 165)",
       "font-size": "11.5px",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
       "display": "block"
     },
     "div.shell > main[main].main > div.controls > div.field #2 > select[combobox] \"ENVIRONMENT\"": {
@@ -389,6 +396,8 @@
     "div.shell > main[main].main > div.controls > div.field #3 > label[LabelText]": {
       "color": "rgb(139, 152, 165)",
       "font-size": "11.5px",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
       "display": "block"
     },
     "div.shell > main[main].main > div.controls > div.field #3 > select[combobox] \"QUANTILE\"": {
@@ -411,6 +420,8 @@
     "div.shell > main[main].main > div.controls > div.field #4 > label[LabelText]": {
       "color": "rgb(139, 152, 165)",
       "font-size": "11.5px",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
       "display": "block"
     },
     "div.shell > main[main].main > div.controls > div.field #4 > select[combobox] \"RANGE\"": {
@@ -433,6 +444,8 @@
     "div.shell > main[main].main > div.controls > div.field #5 > label[LabelText]": {
       "color": "rgb(139, 152, 165)",
       "font-size": "11.5px",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
       "display": "block"
     },
     "div.shell > main[main].main > div.controls > div.field #5 > select[combobox] \"BASELINE VERSION\"": {
@@ -455,6 +468,8 @@
     "div.shell > main[main].main > div.controls > div.field #6 > label[LabelText]": {
       "color": "rgb(139, 152, 165)",
       "font-size": "11.5px",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
       "display": "block"
     },
     "div.shell > main[main].main > div.controls > div.field #6 > select[combobox] \"CANDIDATE VERSION\"": {
@@ -506,6 +521,8 @@
       "color": "rgb(139, 152, 165)",
       "font-size": "12px",
       "font-weight": "600",
+      "letter-spacing": "0.7px",
+      "text-transform": "uppercase",
       "display": "block",
       "margin": "0px 0px 10px"
     },
@@ -518,6 +535,7 @@
       "color": "rgb(239, 68, 68)",
       "font-size": "15px",
       "font-weight": "600",
+      "letter-spacing": "0.3px",
       "display": "block",
       "background-color": "color(srgb 0.937255 0.266667 0.266667 / 0.14)",
       "border-top": "1px solid rgb(239, 68, 68)",
@@ -531,6 +549,7 @@
       "color": "rgb(245, 158, 11)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.3px",
       "display": "block",
       "background-color": "color(srgb 0.960784 0.619608 0.0431373 / 0.14)",
       "border-radius": "10px",
@@ -614,6 +633,8 @@
       "color": "rgb(139, 152, 165)",
       "font-size": "12px",
       "font-weight": "600",
+      "letter-spacing": "0.7px",
+      "text-transform": "uppercase",
       "display": "block",
       "margin": "0px 0px 10px"
     },
@@ -667,6 +688,8 @@
       "color": "rgb(139, 152, 165)",
       "font-size": "12px",
       "font-weight": "600",
+      "letter-spacing": "0.7px",
+      "text-transform": "uppercase",
       "display": "block",
       "margin": "0px 0px 10px"
     },
@@ -699,6 +722,8 @@
       "color": "rgb(139, 152, 165)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
       "padding": "6px 10px"
@@ -707,6 +732,8 @@
       "color": "rgb(139, 152, 165)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
       "padding": "6px 10px"
@@ -715,6 +742,8 @@
       "color": "rgb(139, 152, 165)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
       "padding": "6px 10px"
@@ -723,6 +752,8 @@
       "color": "rgb(139, 152, 165)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
       "padding": "6px 10px"
@@ -731,6 +762,8 @@
       "color": "rgb(139, 152, 165)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
       "padding": "6px 10px"
@@ -739,6 +772,8 @@
       "color": "rgb(139, 152, 165)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
       "padding": "6px 10px"
@@ -747,6 +782,8 @@
       "color": "rgb(139, 152, 165)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
       "padding": "6px 10px"
@@ -755,6 +792,8 @@
       "color": "rgb(139, 152, 165)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
       "padding": "6px 10px"
@@ -885,6 +924,8 @@
       "color": "rgb(139, 152, 165)",
       "font-size": "12px",
       "font-weight": "600",
+      "letter-spacing": "0.7px",
+      "text-transform": "uppercase",
       "display": "block",
       "margin": "0px 0px 10px"
     },
@@ -902,6 +943,8 @@
       "color": "rgb(139, 152, 165)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
       "padding": "6px 10px"
@@ -910,6 +953,8 @@
       "color": "rgb(139, 152, 165)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
       "padding": "6px 10px"
@@ -918,6 +963,8 @@
       "color": "rgb(139, 152, 165)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
       "padding": "6px 10px"
@@ -926,6 +973,8 @@
       "color": "rgb(139, 152, 165)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
       "padding": "6px 10px"
@@ -934,6 +983,8 @@
       "color": "rgb(139, 152, 165)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
       "padding": "6px 10px"
@@ -942,6 +993,8 @@
       "color": "rgb(139, 152, 165)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
       "padding": "6px 10px"
@@ -950,6 +1003,8 @@
       "color": "rgb(139, 152, 165)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
       "padding": "6px 10px"
@@ -958,6 +1013,8 @@
       "color": "rgb(139, 152, 165)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
       "padding": "6px 10px"
@@ -966,6 +1023,8 @@
       "color": "rgb(139, 152, 165)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
       "padding": "6px 10px"
@@ -974,6 +1033,8 @@
       "color": "rgb(139, 152, 165)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
       "padding": "6px 10px"
@@ -982,6 +1043,8 @@
       "color": "rgb(139, 152, 165)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
       "padding": "6px 10px"
@@ -990,6 +1053,8 @@
       "color": "rgb(139, 152, 165)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
       "padding": "6px 10px"
@@ -1177,6 +1242,8 @@
       "color": "rgb(139, 152, 165)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
       "padding": "6px 10px"
@@ -1185,6 +1252,8 @@
       "color": "rgb(139, 152, 165)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
       "padding": "6px 10px"
@@ -1193,6 +1262,8 @@
       "color": "rgb(139, 152, 165)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
       "padding": "6px 10px"
@@ -1201,6 +1272,8 @@
       "color": "rgb(139, 152, 165)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
       "padding": "6px 10px"
@@ -1209,6 +1282,8 @@
       "color": "rgb(139, 152, 165)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
       "padding": "6px 10px"
@@ -1217,6 +1292,8 @@
       "color": "rgb(139, 152, 165)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
       "padding": "6px 10px"
@@ -1330,6 +1407,8 @@
       "color": "rgb(139, 152, 165)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
       "padding": "6px 10px"
@@ -1338,6 +1417,8 @@
       "color": "rgb(139, 152, 165)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
       "padding": "6px 10px"
@@ -1346,6 +1427,8 @@
       "color": "rgb(139, 152, 165)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
       "padding": "6px 10px"
@@ -1354,6 +1437,8 @@
       "color": "rgb(139, 152, 165)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
       "padding": "6px 10px"
@@ -1362,6 +1447,8 @@
       "color": "rgb(139, 152, 165)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
       "padding": "6px 10px"
@@ -1370,6 +1457,8 @@
       "color": "rgb(139, 152, 165)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
       "padding": "6px 10px"
@@ -1474,6 +1563,8 @@
       "color": "rgb(139, 152, 165)",
       "font-size": "12px",
       "font-weight": "600",
+      "letter-spacing": "0.7px",
+      "text-transform": "uppercase",
       "display": "block",
       "margin": "0px 0px 10px"
     },

@@ -11,6 +11,8 @@
       "font-size": "14px",
       "font-weight": "400",
       "line-height": "1.5",
+      "letter-spacing": "normal",
+      "text-transform": "none",
       "visibility": "visible",
       "display": "block",
       "background-color": "rgb(11, 14, 17)"
@@ -38,6 +40,7 @@
     "div.shell > aside[complementary].side > div.brand > div.name": {
       "font-size": "17px",
       "font-weight": "700",
+      "letter-spacing": "0.4px",
       "display": "block"
     },
     "div.shell > aside[complementary].side > div.brand > div.tag": {
@@ -387,6 +390,8 @@
       "color": "rgb(139, 152, 165)",
       "font-size": "12px",
       "font-weight": "600",
+      "letter-spacing": "0.7px",
+      "text-transform": "uppercase",
       "display": "block",
       "margin": "0px 0px 10px"
     },
@@ -416,6 +421,8 @@
       "color": "rgb(139, 152, 165)",
       "font-size": "12px",
       "font-weight": "600",
+      "letter-spacing": "0.7px",
+      "text-transform": "uppercase",
       "display": "block",
       "margin": "0px 0px 10px"
     },
@@ -446,6 +453,8 @@
       "color": "rgb(139, 152, 165)",
       "font-size": "12px",
       "font-weight": "600",
+      "letter-spacing": "0.7px",
+      "text-transform": "uppercase",
       "display": "block",
       "margin": "0px 0px 10px"
     },

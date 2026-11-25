@@ -11,6 +11,8 @@
       "font-size": "14px",
       "font-weight": "400",
       "line-height": "1.5",
+      "letter-spacing": "normal",
+      "text-transform": "none",
       "visibility": "visible",
       "display": "block",
       "background-color": "rgb(244, 246, 248)"
@@ -38,6 +40,7 @@
     "div.shell > aside[complementary].side > div.brand > div.name": {
       "font-size": "17px",
       "font-weight": "700",
+      "letter-spacing": "0.4px",
       "display": "block"
     },
     "div.shell > aside[complementary].side > div.brand > div.tag": {
@@ -347,6 +350,8 @@
       "color": "rgb(91, 103, 114)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(197, 206, 214)",
       "padding": "6px 10px"
@@ -355,6 +360,8 @@
       "color": "rgb(91, 103, 114)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(197, 206, 214)",
       "padding": "6px 10px"
@@ -363,6 +370,8 @@
       "color": "rgb(91, 103, 114)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(197, 206, 214)",
       "padding": "6px 10px"
@@ -371,6 +380,8 @@
       "color": "rgb(91, 103, 114)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(197, 206, 214)",
       "padding": "6px 10px"
@@ -379,6 +390,8 @@
       "color": "rgb(91, 103, 114)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(197, 206, 214)",
       "padding": "6px 10px"
@@ -387,6 +400,8 @@
       "color": "rgb(91, 103, 114)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(197, 206, 214)",
       "padding": "6px 10px"
@@ -395,6 +410,8 @@
       "color": "rgb(91, 103, 114)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(197, 206, 214)",
       "padding": "6px 10px"
@@ -403,6 +420,8 @@
       "color": "rgb(91, 103, 114)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(197, 206, 214)",
       "padding": "6px 10px"
@@ -411,6 +430,8 @@
       "color": "rgb(91, 103, 114)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(197, 206, 214)",
       "padding": "6px 10px"
@@ -419,6 +440,8 @@
       "color": "rgb(91, 103, 114)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(197, 206, 214)",
       "padding": "6px 10px"
@@ -457,6 +480,7 @@
       "color": "rgb(180, 83, 9)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.3px",
       "display": "inline-block",
       "background-color": "color(srgb 0.705882 0.32549 0.0352941 / 0.14)",
       "border-radius": "10px",

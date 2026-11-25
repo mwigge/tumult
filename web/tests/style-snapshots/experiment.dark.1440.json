@@ -11,6 +11,8 @@
       "font-size": "14px",
       "font-weight": "400",
       "line-height": "1.5",
+      "letter-spacing": "normal",
+      "text-transform": "none",
       "visibility": "visible",
       "display": "block",
       "background-color": "rgb(11, 14, 17)"
@@ -38,6 +40,7 @@
     "div.shell > aside[complementary].side > div.brand > div.name": {
       "font-size": "17px",
       "font-weight": "700",
+      "letter-spacing": "0.4px",
       "display": "block"
     },
     "div.shell > aside[complementary].side > div.brand > div.tag": {
@@ -326,6 +329,7 @@
       "color": "rgb(239, 68, 68)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.3px",
       "display": "block",
       "background-color": "color(srgb 0.937255 0.266667 0.266667 / 0.14)",
       "border-radius": "10px",
@@ -335,6 +339,7 @@
       "color": "rgb(139, 152, 165)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.3px",
       "display": "block",
       "background-color": "rgb(28, 36, 44)",
       "border-radius": "10px",
@@ -365,6 +370,8 @@
     "div.shell > main[main].main > div.grid > div.panel.meta > span": {
       "color": "rgb(139, 152, 165)",
       "font-size": "11px",
+      "letter-spacing": "0.6px",
+      "text-transform": "uppercase",
       "display": "block",
       "margin": "0px 0px 4px"
     },
@@ -386,6 +393,8 @@
     "div.shell > main[main].main > div.grid > div.panel.meta #2 > span": {
       "color": "rgb(139, 152, 165)",
       "font-size": "11px",
+      "letter-spacing": "0.6px",
+      "text-transform": "uppercase",
       "display": "block",
       "margin": "0px 0px 4px"
     },
@@ -408,6 +417,8 @@
     "div.shell > main[main].main > div.grid > div.panel.meta #3 > span": {
       "color": "rgb(139, 152, 165)",
       "font-size": "11px",
+      "letter-spacing": "0.6px",
+      "text-transform": "uppercase",
       "display": "block",
       "margin": "0px 0px 4px"
     },
@@ -430,6 +441,8 @@
     "div.shell > main[main].main > div.grid > div.panel.meta #4 > span": {
       "color": "rgb(139, 152, 165)",
       "font-size": "11px",
+      "letter-spacing": "0.6px",
+      "text-transform": "uppercase",
       "display": "block",
       "margin": "0px 0px 4px"
     },
@@ -459,6 +472,8 @@
       "color": "rgb(139, 152, 165)",
       "font-size": "12px",
       "font-weight": "600",
+      "letter-spacing": "0.7px",
+      "text-transform": "uppercase",
       "display": "block",
       "margin": "0px 0px 10px"
     },
@@ -473,6 +488,8 @@
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel > dl[DescriptionList].facts > dt[term] \"KIND OF TEST\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "11px",
+      "letter-spacing": "0.6px",
+      "text-transform": "uppercase",
       "display": "block",
       "margin": "0px 0px 4px"
     },
@@ -484,6 +501,7 @@
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel > dl[DescriptionList].facts > dd[definition] > span.badge.neutral": {
       "color": "rgb(139, 152, 165)",
       "font-size": "11.5px",
+      "letter-spacing": "0.3px",
       "display": "inline-block",
       "background-color": "rgb(28, 36, 44)",
       "border-radius": "10px",
@@ -495,6 +513,8 @@
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel > dl[DescriptionList].facts > dt[term] \"BEFORE THE METHOD\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "11px",
+      "letter-spacing": "0.6px",
+      "text-transform": "uppercase",
       "display": "block",
       "margin": "0px 0px 4px"
     },
@@ -506,6 +526,7 @@
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel > dl[DescriptionList].facts > dd[definition] #2 > span.badge.ok": {
       "color": "rgb(52, 211, 153)",
       "font-size": "11.5px",
+      "letter-spacing": "0.3px",
       "display": "inline-block",
       "background-color": "color(srgb 0.203922 0.827451 0.6 / 0.14)",
       "border-radius": "10px",
@@ -517,6 +538,8 @@
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel > dl[DescriptionList].facts > dt[term] \"AFTER THE METHOD\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "11px",
+      "letter-spacing": "0.6px",
+      "text-transform": "uppercase",
       "display": "block",
       "margin": "0px 0px 4px"
     },
@@ -528,6 +551,7 @@
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel > dl[DescriptionList].facts > dd[definition] #3 > span.badge.fail": {
       "color": "rgb(239, 68, 68)",
       "font-size": "11.5px",
+      "letter-spacing": "0.3px",
       "display": "inline-block",
       "background-color": "color(srgb 0.937255 0.266667 0.266667 / 0.14)",
       "border-radius": "10px",
@@ -547,6 +571,8 @@
       "color": "rgb(139, 152, 165)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
       "padding": "6px 10px"
@@ -555,6 +581,8 @@
       "color": "rgb(139, 152, 165)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
       "padding": "6px 10px"
@@ -563,6 +591,8 @@
       "color": "rgb(139, 152, 165)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
       "padding": "6px 10px"
@@ -625,6 +655,8 @@
       "color": "rgb(139, 152, 165)",
       "font-size": "12px",
       "font-weight": "600",
+      "letter-spacing": "0.7px",
+      "text-transform": "uppercase",
       "display": "block",
       "margin": "0px 0px 10px"
     },
@@ -642,6 +674,8 @@
       "color": "rgb(139, 152, 165)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
       "padding": "6px 10px"
@@ -650,6 +684,8 @@
       "color": "rgb(139, 152, 165)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
       "padding": "6px 10px"
@@ -658,6 +694,8 @@
       "color": "rgb(139, 152, 165)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
       "padding": "6px 10px"
@@ -666,6 +704,8 @@
       "color": "rgb(139, 152, 165)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
       "padding": "6px 10px"
@@ -674,6 +714,8 @@
       "color": "rgb(139, 152, 165)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
       "padding": "6px 10px"
@@ -682,6 +724,8 @@
       "color": "rgb(139, 152, 165)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
       "padding": "6px 10px"
@@ -690,6 +734,8 @@
       "color": "rgb(139, 152, 165)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
       "padding": "6px 10px"
@@ -744,6 +790,7 @@
       "color": "rgb(52, 211, 153)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.3px",
       "display": "inline-block",
       "background-color": "color(srgb 0.203922 0.827451 0.6 / 0.14)",
       "border-radius": "10px",
@@ -801,6 +848,7 @@
       "color": "rgb(239, 68, 68)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.3px",
       "display": "inline-block",
       "background-color": "color(srgb 0.937255 0.266667 0.266667 / 0.14)",
       "border-radius": "10px",
@@ -852,6 +900,7 @@
       "color": "rgb(245, 158, 11)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.3px",
       "display": "inline-block",
       "background-color": "color(srgb 0.960784 0.619608 0.0431373 / 0.14)",
       "border-radius": "10px",
@@ -876,6 +925,8 @@
       "color": "rgb(139, 152, 165)",
       "font-size": "12px",
       "font-weight": "600",
+      "letter-spacing": "0.7px",
+      "text-transform": "uppercase",
       "display": "block",
       "margin": "0px 0px 10px"
     },
@@ -893,6 +944,8 @@
       "color": "rgb(139, 152, 165)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
       "padding": "6px 10px"
@@ -901,6 +954,8 @@
       "color": "rgb(139, 152, 165)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
       "padding": "6px 10px"
@@ -909,6 +964,8 @@
       "color": "rgb(139, 152, 165)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
       "padding": "6px 10px"
@@ -917,6 +974,8 @@
       "color": "rgb(139, 152, 165)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
       "padding": "6px 10px"
@@ -925,6 +984,8 @@
       "color": "rgb(139, 152, 165)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
       "padding": "6px 10px"
@@ -933,6 +994,8 @@
       "color": "rgb(139, 152, 165)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
       "padding": "6px 10px"
@@ -941,6 +1004,8 @@
       "color": "rgb(139, 152, 165)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
       "padding": "6px 10px"
@@ -977,6 +1042,7 @@
       "color": "rgb(52, 211, 153)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.3px",
       "display": "inline-block",
       "background-color": "color(srgb 0.203922 0.827451 0.6 / 0.14)",
       "border-radius": "10px",
@@ -1032,6 +1098,7 @@
       "color": "rgb(52, 211, 153)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.3px",
       "display": "inline-block",
       "background-color": "color(srgb 0.203922 0.827451 0.6 / 0.14)",
       "border-radius": "10px",
@@ -1087,6 +1154,7 @@
       "color": "rgb(239, 68, 68)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.3px",
       "display": "inline-block",
       "background-color": "color(srgb 0.937255 0.266667 0.266667 / 0.14)",
       "border-radius": "10px",
@@ -1142,6 +1210,7 @@
       "color": "rgb(239, 68, 68)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.3px",
       "display": "inline-block",
       "background-color": "color(srgb 0.937255 0.266667 0.266667 / 0.14)",
       "border-radius": "10px",
@@ -1193,6 +1262,7 @@
       "color": "rgb(52, 211, 153)",
       "font-size": "11.5px",
       "font-weight": "600",
+      "letter-spacing": "0.3px",
       "display": "inline-block",
       "background-color": "color(srgb 0.203922 0.827451 0.6 / 0.14)",
       "border-radius": "10px",
@@ -1231,6 +1301,8 @@
       "color": "rgb(139, 152, 165)",
       "font-size": "12px",
       "font-weight": "600",
+      "letter-spacing": "0.7px",
+      "text-transform": "uppercase",
       "display": "block",
       "margin": "0px 0px 10px"
     },
@@ -1245,6 +1317,8 @@
     "div.shell > main[main].main > div.panel.block #2 > dl[DescriptionList].facts > dt[term] \"TOOL\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "11px",
+      "letter-spacing": "0.6px",
+      "text-transform": "uppercase",
       "display": "block",
       "margin": "0px 0px 4px"
     },
@@ -1260,6 +1334,8 @@
     "div.shell > main[main].main > div.panel.block #2 > dl[DescriptionList].facts > dt[term] \"VIRTUAL USERS\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "11px",
+      "letter-spacing": "0.6px",
+      "text-transform": "uppercase",
       "display": "block",
       "margin": "0px 0px 4px"
     },
@@ -1275,6 +1351,8 @@
     "div.shell > main[main].main > div.panel.block #2 > dl[DescriptionList].facts > dt[term] \"REQUESTS\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "11px",
+      "letter-spacing": "0.6px",
+      "text-transform": "uppercase",
       "display": "block",
       "margin": "0px 0px 4px"
     },
@@ -1290,6 +1368,8 @@
     "div.shell > main[main].main > div.panel.block #2 > dl[DescriptionList].facts > dt[term] \"THROUGHPUT\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "11px",
+      "letter-spacing": "0.6px",
+      "text-transform": "uppercase",
       "display": "block",
       "margin": "0px 0px 4px"
     },
@@ -1305,6 +1385,8 @@
     "div.shell > main[main].main > div.panel.block #2 > dl[DescriptionList].facts > dt[term] \"LATENCY P50\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "11px",
+      "letter-spacing": "0.6px",
+      "text-transform": "uppercase",
       "display": "block",
       "margin": "0px 0px 4px"
     },
@@ -1320,6 +1402,8 @@
     "div.shell > main[main].main > div.panel.block #2 > dl[DescriptionList].facts > dt[term] \"LATENCY P95\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "11px",
+      "letter-spacing": "0.6px",
+      "text-transform": "uppercase",
       "display": "block",
       "margin": "0px 0px 4px"
     },
@@ -1335,6 +1419,8 @@
     "div.shell > main[main].main > div.panel.block #2 > dl[DescriptionList].facts > dt[term] \"LATENCY P99\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "11px",
+      "letter-spacing": "0.6px",
+      "text-transform": "uppercase",
       "display": "block",
       "margin": "0px 0px 4px"
     },
@@ -1350,6 +1436,8 @@
     "div.shell > main[main].main > div.panel.block #2 > dl[DescriptionList].facts > dt[term] \"ERROR RATE\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "11px",
+      "letter-spacing": "0.6px",
+      "text-transform": "uppercase",
       "display": "block",
       "margin": "0px 0px 4px"
     },
@@ -1365,6 +1453,8 @@
     "div.shell > main[main].main > div.panel.block #2 > dl[DescriptionList].facts > dt[term] \"THRESHOLDS\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "11px",
+      "letter-spacing": "0.6px",
+      "text-transform": "uppercase",
       "display": "block",
       "margin": "0px 0px 4px"
     },
@@ -1418,6 +1508,8 @@
       "color": "rgb(139, 152, 165)",
       "font-size": "12px",
       "font-weight": "600",
+      "letter-spacing": "0.7px",
+      "text-transform": "uppercase",
       "display": "block",
       "margin": "0px 0px 10px"
     },
@@ -1448,6 +1540,8 @@
       "color": "rgb(139, 152, 165)",
       "font-size": "12px",
       "font-weight": "600",
+      "letter-spacing": "0.7px",
+      "text-transform": "uppercase",
       "display": "block",
       "margin": "0px 0px 10px"
     },
@@ -1476,6 +1570,8 @@
       "color": "rgb(139, 152, 165)",
       "font-size": "12px",
       "font-weight": "600",
+      "letter-spacing": "0.7px",
+      "text-transform": "uppercase",
       "display": "block",
       "margin": "0px 0px 10px"
     },
@@ -1499,6 +1595,8 @@
       "color": "rgb(139, 152, 165)",
       "font-size": "12px",
       "font-weight": "600",
+      "letter-spacing": "0.7px",
+      "text-transform": "uppercase",
       "display": "block",
       "margin": "0px 0px 10px"
     },
