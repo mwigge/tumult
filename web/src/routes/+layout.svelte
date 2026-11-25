@@ -5,24 +5,32 @@
     import { api } from '#lib/api.js';
     import { TAGLINE } from '#lib/brand.js';
     import type { MeResponse } from '#lib/types.js';
+    import Badge from '#lib/components/Badge.svelte';
 
     let { children } = $props();
 
     // Theme: dark is the default; `light` forces light, `auto` follows the
     // OS preference. Persisted per browser; applied as data-theme on <html>
-    // so lib/theme.css and the ECharts themes pick it up.
+    // so lib/theme.css and the ECharts themes pick it up. Before the first
+    // paint, static/early-theme.js puts the saved theme there: the layout
+    // starts from it, and reads the storage itself only when the script did
+    // not run, so that the saved choice is never lost.
     type Theme = 'dark' | 'light' | 'auto';
     const THEMES: Theme[] = ['dark', 'light', 'auto'];
     const THEME_GLYPH: Record<Theme, string> = { dark: '◐', light: '○', auto: '◑' };
-    let theme = $state<Theme>('dark');
-    $effect(() => {
+    let theme = $state<Theme>(startTheme());
+    function asTheme(value: string | null | undefined): Theme | undefined {
+        return THEMES.find((t) => t === value);
+    }
+    function startTheme(): Theme {
+        const set = asTheme(document.documentElement.dataset.theme);
+        if (set) return set;
         try {
-            const saved = localStorage.getItem('tumult.theme');
-            if (saved === 'light' || saved === 'auto' || saved === 'dark') theme = saved;
+            return asTheme(localStorage.getItem('tumult.theme')) ?? 'dark';
         } catch {
-            /* storage unavailable: stay dark */
+            return 'dark'; // storage unavailable: stay dark
         }
-    });
+    }
     $effect(() => {
         document.documentElement.dataset.theme = theme;
         try {
@@ -145,7 +153,7 @@
                     <div class="who">
                         <span class="username">{me.username}</span>
                         {#if me.role}
-                            <span class="badge neutral">{me.role}</span>
+                            <Badge tone="neutral" label={me.role} />
                         {/if}
                     </div>
                     <button class="logout" onclick={logout} disabled={loggingOut}>

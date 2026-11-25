@@ -8,7 +8,6 @@ import {
     loadFacts,
     loadLatencyOption,
     loadThroughputOption,
-    objectiveClass,
     objectiveTarget,
     phaseLabel,
     probeSamplesOption,
@@ -17,7 +16,6 @@ import {
     samplesNote,
     seriesTip,
     steadyState,
-    stepClass,
     stepOffset,
 } from './evidence';
 import type {
@@ -169,25 +167,10 @@ describe('the words of a run', () => {
         expect(phaseLabel('cleanup')).toBe('cleanup');
     });
 
-    it('gives a step the hue of how it ended', () => {
-        expect(stepClass('succeeded')).toBe('ok');
-        expect(stepClass('failed')).toBe('fail');
-        expect(stepClass('timeout')).toBe('fail');
-        expect(stepClass('skipped')).toBe('neutral');
-        expect(stepClass('later')).toBe('neutral');
-    });
-
-    it('gives an objective the hue of its verdict', () => {
-        expect(objectiveClass('met')).toBe('ok');
-        expect(objectiveClass('breached')).toBe('fail');
-        expect(objectiveClass('inconclusive')).toBe('warn');
-        expect(objectiveClass('later')).toBe('neutral');
-    });
-
     it('says whether a steady state was met, not met or not checked', () => {
-        expect(steadyState(true)).toEqual({ label: 'met', cls: 'ok' });
-        expect(steadyState(false)).toEqual({ label: 'not met', cls: 'fail' });
-        expect(steadyState(null)).toEqual({ label: 'not checked', cls: 'neutral' });
+        expect(steadyState(true)).toBe('met');
+        expect(steadyState(false)).toBe('not met');
+        expect(steadyState(null)).toBe('not checked');
     });
 
     it('writes the target of an objective with its sign', () => {
@@ -391,7 +374,9 @@ describe('probeSamplesOption', () => {
             min: 0,
         });
         expect(option.yAxis).toMatchObject({ name: 'Probe time (ms)' });
-        expect(option.tooltip).toMatchObject({ ...TOKENS.tooltip, trigger: 'axis' });
+        // The colours of the tooltip are the ones the theme registers: the option sets none.
+        expect(option.tooltip).toMatchObject({ trigger: 'axis' });
+        expect(option.tooltip).not.toHaveProperty('backgroundColor');
     });
 
     it('shows a probe name in its tooltip as text', () => {

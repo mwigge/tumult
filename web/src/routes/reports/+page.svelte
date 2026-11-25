@@ -2,6 +2,7 @@
     import { onMount } from 'svelte';
     import { api } from '#lib/api.js';
     import { templateCode } from '#lib/report-codes.js';
+    import Badge from '#lib/components/Badge.svelte';
     import type {
         ExperimentRow,
         MeResponse,
@@ -10,6 +11,8 @@
         ReportMetaV2,
         ReportTemplate,
     } from '#lib/types.js';
+    import PageHeader from '#lib/components/PageHeader.svelte';
+    import Panel from '#lib/components/Panel.svelte';
 
     let me = $state<MeResponse | null>(null);
     const canGenerate = $derived(
@@ -134,13 +137,12 @@
     }
 </script>
 
-<div class="page-head">
-    <h1>Reports</h1>
-    <span class="sub">compliance-grade reports (PDF + print preview) and quick metric digests</span>
-</div>
+<PageHeader
+    title="Reports"
+    sub="compliance-grade reports (PDF + print preview) and quick metric digests"
+/>
 
-<div class="panel" style="margin-bottom: var(--space-3-5)">
-    <h2>Compliance reports</h2>
+<Panel title="Compliance reports" style="margin-bottom: var(--space-3-5)">
     {#if me && !canGenerate}<p>Generating reports requires the operator role or above.</p>{/if}
     <div class="genbar">
         <select bind:value={template} aria-label="template">
@@ -212,7 +214,7 @@
                 {#each reportsV2 as r (r.doc_id)}
                     <tr class="clickable" onclick={() => (preview = r.doc_id)}>
                         <td class="mono">{r.doc_id}</td>
-                        <td><span class="badge neutral">{templateCode(r.type)}</span></td>
+                        <td><Badge tone="neutral" label={templateCode(r.type)} /></td>
                         <td>{fmtNs(r.created_ns)}</td>
                         <td class="mono">{fmtSize(r.bytes)}</td>
                         <td class="mono hash" title={r.sha256}>{r.sha256.slice(0, 10)}…</td>
@@ -244,10 +246,9 @@
             <iframe src="/api/reports/v2/{preview}/html" title="report preview" sandbox=""></iframe>
         </div>
     {/if}
-</div>
+</Panel>
 
-<div class="panel">
-    <h2>Quick digests</h2>
+<Panel title="Quick digests">
     <div class="genbar">
         <select bind:value={selected} disabled={metrics.length === 0} aria-label="metric">
             {#each metrics as m (m.name)}
@@ -291,9 +292,10 @@
                     <tr class="clickable" onclick={() => (generated = r.name)}>
                         <td class="mono">{r.name}</td>
                         <td>
-                            <span class="badge {r.name.startsWith('manual_') ? 'warn' : 'neutral'}">
-                                {r.name.startsWith('manual_') ? 'manual' : 'scheduled'}
-                            </span>
+                            <Badge
+                                kind="report"
+                                value={r.name.startsWith('manual_') ? 'manual' : 'scheduled'}
+                            />
                         </td>
                         <td>{new Date(r.modified_s * 1000).toLocaleString()}</td>
                         <td class="mono">{fmtSize(r.bytes)}</td>
@@ -306,7 +308,7 @@
             </tbody>
         </table>
     {/if}
-</div>
+</Panel>
 
 <style>
     .genbar {
@@ -335,6 +337,6 @@
         height: 560px;
         border: var(--border-width-sm) solid var(--border-strong);
         border-radius: var(--radius-lg);
-        background: #fff;
+        background: var(--bg-panel);
     }
 </style>

@@ -10,6 +10,8 @@
     import { chartTheme, chartTokens, followTheme } from '#lib/echarts.js';
     import { strong, tip, tipFormatter } from '#lib/tooltip.js';
     import type { EChartsCoreOption } from '#lib/echarts.js';
+    import PageHeader from '#lib/components/PageHeader.svelte';
+    import Panel from '#lib/components/Panel.svelte';
 
     const filters = $derived({
         range: page.url.searchParams.get('range') ?? '24h',
@@ -80,7 +82,6 @@
         return {
             grid: { left: 64, right: 24, top: 20, bottom: 24 },
             tooltip: {
-                ...tokens.tooltip,
                 formatter: tipFormatter((p: { data?: [number, number, string] }) => {
                     const d = p.data;
                     if (!d) return null;
@@ -91,17 +92,11 @@
                     );
                 }),
             },
-            xAxis: {
-                type: 'time',
-                axisLine: { lineStyle: { color: tokens.axis } },
-                axisLabel: { color: tokens.text },
-            },
+            xAxis: { type: 'time' },
             yAxis: {
                 type: 'log',
                 name: 'duration ms',
                 nameTextStyle: { color: tokens.text },
-                axisLabel: { color: tokens.text },
-                splitLine: { lineStyle: { color: tokens.split } },
             },
             series: [
                 {
@@ -131,11 +126,10 @@
     }
 </script>
 
-<div class="page-head">
-    <h1>Traces</h1>
-    <span class="sub"
-        >{rows ? `${rows.length} trace${rows.length === 1 ? '' : 's'}` : 'slowest first'}</span
-    >
+<PageHeader
+    title="Traces"
+    sub={rows ? `${rows.length} trace${rows.length === 1 ? '' : 's'}` : 'slowest first'}
+>
     <div class="controls">
         <select
             value={filters.outcome}
@@ -166,7 +160,7 @@
         />
         <RangeSwitch value={filters.range} onchange={(r) => setFilter('range', r)} />
     </div>
-</div>
+</PageHeader>
 
 {#if filters.attr || filters.attr_not}
     <div class="facet-chips">
@@ -183,7 +177,7 @@
     </div>
 {/if}
 
-<div class="panel">
+<Panel>
     {#if durations && durations.points.length > 0}
         <EChart
             id="trace-durations"
@@ -197,9 +191,9 @@
     {:else}
         <div class="skeleton" style="height: 220px"></div>
     {/if}
-</div>
+</Panel>
 
-<div class="panel">
+<Panel>
     {#if error}
         <div class="state error">Failed to load traces: {error}</div>
     {:else if !rows}
@@ -258,7 +252,7 @@
             </tbody>
         </table>
     {/if}
-</div>
+</Panel>
 
 <style>
     .controls {
@@ -271,23 +265,6 @@
         display: flex;
         gap: var(--space-2);
         margin: -6px 0 var(--space-2-5);
-    }
-    .chip {
-        background: var(--bg-raised);
-        border: var(--border-width-sm) solid var(--border-strong);
-        border-radius: var(--radius-2xl);
-        color: var(--text);
-        cursor: pointer;
-        font-size: var(--font-size-2xs);
-        font-family: var(--mono, monospace);
-        padding: var(--space-0-5) var(--space-2-5);
-    }
-    .chip .x {
-        color: var(--text-dim);
-        margin-left: var(--space-1);
-    }
-    .chip:hover .x {
-        color: var(--fail);
     }
     .dur {
         display: flex;

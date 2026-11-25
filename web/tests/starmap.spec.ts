@@ -805,6 +805,29 @@ test('the map can be read and driven from the keyboard', async ({ page }) => {
     await expect(first).toBeFocused();
 });
 
+test('the drawer is a dialog its node names, beside the map and not modal', async ({ page }) => {
+    await mock(page, []);
+    await page.goto('/starmap');
+    await drawn(page);
+    const list = page.getByRole('region', { name: 'nodes' });
+    const queue = list.getByRole('button', { name: 'system message-queue' });
+    await queue.focus();
+    await page.keyboard.press('Enter');
+
+    const drawer = page.getByRole('dialog', { name: 'message-queue' });
+    await expect(drawer).toBeVisible();
+    await expect(drawer.getByRole('heading', { name: 'message-queue' })).toBeFocused();
+
+    // Not modal: the list beside it still takes a click, and the drawer follows.
+    const worker = list.getByRole('button', { name: 'system api-worker' });
+    await worker.click();
+    await expect(page.getByRole('dialog', { name: 'api-worker' })).toBeVisible();
+
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('starmap-drawer')).toHaveCount(0);
+    await expect(worker).toBeFocused();
+});
+
 test('the drawer names disciplines as the Resilience page does', async ({ page }) => {
     await mock(page, []);
     await page.goto('/starmap?sel=sys%3Ademo%2Fmessage-queue');
@@ -967,14 +990,14 @@ test('the drawer opens the Manual page and the DR page on its system', async ({ 
     );
 
     // The plans keep to the same target, as the filter stays in the URL.
-    await page.getByRole('button', { name: 'Plans', exact: true }).click();
+    await page.getByRole('tab', { name: 'Plans', exact: true }).click();
     await expect(page).toHaveURL(/\/manual\?tab=plans&target=message-queue&environment=demo$/);
     const plans = page.locator('tr[data-plan]');
     await expect(plans).toHaveCount(1);
     await expect(plans).toHaveAttribute('data-plan', 'p-1');
 
     // Without the filter every record is listed.
-    await page.getByRole('button', { name: 'All records', exact: true }).click();
+    await page.getByRole('tab', { name: 'All records', exact: true }).click();
     await page.getByRole('link', { name: 'Show every target', exact: true }).click();
     await expect(page).toHaveURL(/\/manual\?tab=records$/);
     await expect(rows).toHaveCount(3);

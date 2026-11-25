@@ -5,6 +5,7 @@
 // double-encoded (ring colour plus ring width, dash or mark) so it
 // survives greyscale.
 
+import { STARMAP } from '../chart-theme.js';
 import type { chartTokens } from '../echarts.js';
 import type { StarEdge, StarKind, StarNode, StarRel } from '../types.js';
 import type { Point } from './layout.js';
@@ -64,21 +65,7 @@ const SIZE: Record<StarKind, number> = {
  * Fill per kind: one colour each, the same under every lens. None is a
  * status colour of either theme, and none is the yellow lost on white.
  */
-export const KIND_COLOR: Record<StarKind, string> = {
-    org: '#4C8EDA',
-    entity: '#C990C0',
-    system: '#7B6CD9',
-    component: '#57C7E3',
-    service: '#2A9D8F',
-    workload: '#B08D57',
-    ext: '#6E7B8B',
-    def: '#B8A038',
-    run: '#9AA5B1',
-    slo: '#3B5BA9',
-    article: '#A45EBF',
-    gap: '#D9B8A0',
-    cluster: '#2F7F9E',
-};
+export const KIND_COLOR: Record<StarKind, string> = STARMAP.kind;
 
 /** What the legend calls a kind. */
 export const KIND_NAME: Record<StarKind, string> = {
@@ -134,14 +121,14 @@ export interface Stroke {
  * out on the dark and on the light panel, and none is a status colour.
  */
 const REL_LINE: Record<Exclude<RelKey, 'broke' | 'part_of'>, [string, Stroke['type']]> = {
-    owns: ['#8B6CE0', [12, 4]],
-    implements: ['#0E9488', [10, 3, 2, 3]],
-    calls: ['#2F80D0', 'solid'],
-    runs_on: ['#A8752A', [2, 3]],
-    depends_on: ['#C0408F', [12, 3, 5, 3]],
-    tested_by: ['#6B8E23', [5, 4]],
-    covers: ['#1A9BBD', [10, 3, 2, 3, 2, 3]],
-    measures: ['#8A7FA8', [2, 7]],
+    owns: [STARMAP.relation.owns, [12, 4]],
+    implements: [STARMAP.relation.implements, [10, 3, 2, 3]],
+    calls: [STARMAP.relation.calls, 'solid'],
+    runs_on: [STARMAP.relation.runs_on, [2, 3]],
+    depends_on: [STARMAP.relation.depends_on, [12, 3, 5, 3]],
+    tested_by: [STARMAP.relation.tested_by, [5, 4]],
+    covers: [STARMAP.relation.covers, [10, 3, 2, 3, 2, 3]],
+    measures: [STARMAP.relation.measures, [2, 7]],
 };
 
 const LINE_WIDTH = 1.6;

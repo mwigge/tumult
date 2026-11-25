@@ -2,9 +2,11 @@
     // Evidence drawer of the Star Map: what is known about the selected
     // node. The map response only carries counts; the rows are loaded here,
     // lazily, from the endpoints the other pages already use. Each section
-    // loads and fails on its own. Opening the drawer moves the focus to its
-    // heading; Escape closes it and the page hands the focus back.
-    import { api, fmtAgo, fmtDuration, statusClass } from '#lib/api.js';
+    // loads and fails on its own. It is a Drawer in the page, not modal, so
+    // the map and the list beside it still work. Opening the drawer moves
+    // the focus to its heading; Escape closes it and the page hands the
+    // focus back to the button of the node.
+    import { api, fmtAgo, fmtDuration } from '#lib/api.js';
     import type {
         ExperimentRow,
         GateVerdict,
@@ -18,6 +20,8 @@
     import { COMPLIANCE_SCORE, COMPLIANCE_SCORE_LINE } from '#lib/score-names.js';
     import { flagText, rollupLines } from '#lib/starmap/style.js';
     import { targetQuery } from '#lib/manual.js';
+    import Badge from './Badge.svelte';
+    import Drawer from './Drawer.svelte';
 
     let {
         node,
@@ -43,6 +47,7 @@
     let manual: Section<ManualExperiment[]> = $state(empty());
     let risks: Section<Risk[]> = $state(empty());
 
+    const title = $props.id();
     let heading: HTMLElement | undefined = $state();
     const nodeId = $derived(node.id);
     const rollup = $derived(rollupLines(node));
@@ -53,17 +58,6 @@
         heading?.focus();
     });
 
-    /** Escape in a field belongs to the field: it clears a search box. */
-    const typing = (target: EventTarget | null) =>
-        target instanceof Element &&
-        target.closest('input, textarea, select, [contenteditable]') !== null;
-
-    function onKey(event: KeyboardEvent) {
-        if (event.key !== 'Escape' || event.defaultPrevented) return;
-        if (typing(event.target)) return;
-        event.preventDefault();
-        onclose();
-    }
     const isSystem = $derived(node.kind === 'system');
     // The Manual page and the DR page read the target of their URL as their filter.
     const query = $derived(targetQuery(node.label, node.env));
@@ -144,21 +138,13 @@
         };
     });
 
-    const reviewClass = (status: string) =>
-        status === 'verified' ? 'ok' : status === 'rejected' ? 'fail' : 'neutral';
-    const verdictClass = (v: string) => (v === 'pass' ? 'ok' : v === 'warn' ? 'warn' : 'fail');
-    const coverClass = (s: string) => (s === 'covered' ? 'ok' : s === 'stale' ? 'warn' : 'neutral');
-    const severityClass = (s: string) => (s === 'critical' || s === 'high' ? 'fail' : 'warn');
-    const nfrClass = (s: string) => (s === 'met' ? 'ok' : s === 'breached' ? 'fail' : 'neutral');
     const day = (ns: number) => new Date(ns / 1_000_000).toISOString().slice(0, 10);
 </script>
 
-<svelte:window onkeydown={onKey} />
-
-<aside class="drawer" data-testid="starmap-drawer" aria-label="evidence">
+<Drawer labelledby={title} {onclose} modal={false} focus="heading" data-testid="starmap-drawer">
     <header>
         <div>
-            <h2 class="title" tabindex="-1" bind:this={heading}>{node.label}</h2>
+            <h2 class="title" id={title} tabindex="-1" bind:this={heading}>{node.label}</h2>
             <div class="sub mono">{node.id}</div>
         </div>
         <button class="close" onclick={onclose} aria-label="Close">×</button>
@@ -246,9 +232,11 @@
             <h3>Coverage by discipline</h3>
             <div class="chips">
                 {#each disciplines as [discipline, status] (discipline)}
-                    <span class="badge {coverClass(status)}"
-                        >{disciplineLabel(discipline)}: {status}</span
-                    >
+                    <Badge
+                        kind="cover"
+                        value={status}
+                        label="{disciplineLabel(discipline)}: {status}"
+                    />
                 {/each}
             </div>
             {#if node.risks.recommended.length > 0}
@@ -272,7 +260,7 @@
                 <ul class="rows">
                     {#each runs.rows as r (r.id)}
                         <li>
-                            <span class="badge {statusClass(r.status)}">{r.status ?? '–'}</span>
+                            <Badge kind="status" value={r.status} label={r.status ?? '–'} />
                             <a href="/experiments/{encodeURIComponent(r.id)}">{r.name ?? r.id}</a>
                             <span class="meta">
                                 {fmtAgo(r.started_ns)} · {fmtDuration(experimentDurationNs(r))}
@@ -295,7 +283,7 @@
                 <div class="skeleton" style="height: 30px"></div>
             {:else}
                 <p>
-                    <span class="badge {verdictClass(gate.rows.verdict)}">{gate.rows.verdict}</span>
+                    <Badge kind="verdict" value={gate.rows.verdict} />
                     {COMPLIANCE_SCORE}
                     {gate.rows.score.toFixed(1)} ({gate.rows.band})
                 </p>
@@ -318,7 +306,7 @@
                 <ul class="rows">
                     {#each nfrs.rows as n (n.experiment + n.nfr_id)}
                         <li>
-                            <span class="badge {nfrClass(n.state)}">{n.state}</span>
+                            <Badge kind="verdict" value={n.state} />
                             <span>{n.nfr_id}</span>
                             <span class="meta">
                                 threshold {n.threshold} · observed {n.observed ?? '–'} · margin
@@ -342,7 +330,7 @@
                 <ul class="rows">
                     {#each manual.rows as m (m.id)}
                         <li>
-                            <span class="badge {reviewClass(m.status)}">{m.status}</span>
+                            <Badge kind="review" value={m.status} />
                             <a href={manualHref}>{m.experiment_name}</a>
                             <span class="meta">
                                 {m.outcome_status} · {fmtAgo(m.executed_at_ns)}
@@ -365,7 +353,7 @@
                 <ul class="rows">
                     {#each risks.rows as r (r.id)}
                         <li class:dim={r.suppression !== null}>
-                            <span class="badge {severityClass(r.severity)}">{r.severity}</span>
+                            <Badge kind="finding" value={r.severity} />
                             <span>{r.title}</span>
                             <span class="meta">
                                 {r.detail}
@@ -383,19 +371,9 @@
             {/if}
         </section>
     {/if}
-</aside>
+</Drawer>
 
 <style>
-    .drawer {
-        flex: 0 0 360px;
-        max-width: 100%;
-        background: var(--bg-raised);
-        border: var(--border-width-sm) solid var(--border-strong);
-        border-radius: var(--radius-xl);
-        padding: var(--space-3-5) var(--space-4);
-        overflow-y: auto;
-        max-height: 640px;
-    }
     header {
         display: flex;
         justify-content: space-between;
@@ -422,23 +400,8 @@
     .mono {
         font-family: var(--mono);
     }
-    .close {
-        background: transparent;
-        border: none;
-        color: var(--text-dim);
-        font-size: var(--font-size-2xl);
-        cursor: pointer;
-        line-height: 1;
-    }
     section {
         margin-bottom: var(--space-4);
-    }
-    h3 {
-        font-size: var(--font-size-3xs);
-        text-transform: uppercase;
-        letter-spacing: var(--letter-spacing-md);
-        color: var(--text-dim);
-        margin-bottom: var(--space-2);
     }
     dl {
         display: grid;
@@ -446,9 +409,6 @@
         gap: 5px var(--space-2-5);
         margin: 0;
         font-size: var(--font-size-sm);
-    }
-    dt {
-        color: var(--text-dim);
     }
     dd {
         margin: 0;
@@ -491,8 +451,11 @@
         padding: var(--space-1-5) 0;
         border-top: var(--border-width-sm) solid var(--border);
     }
+    /* A faded row, not the colour and size of the global .dim. */
     .rows li.dim {
         opacity: 0.55;
+        color: inherit;
+        font-size: inherit;
     }
     .meta {
         display: block;

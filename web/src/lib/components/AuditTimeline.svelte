@@ -3,12 +3,12 @@
     // entry, oldest first as returned by the API.
     import { fmtTs } from '#lib/api.js';
     import type { RunAuditEntry } from '#lib/types.js';
+    import Panel from './Panel.svelte';
 
     let { audit }: { audit: RunAuditEntry[] } = $props();
 </script>
 
-<div class="panel">
-    <h2>Audit trail ({audit.length})</h2>
+<Panel title={`Audit trail (${audit.length})`}>
     {#if audit.length === 0}
         <div class="state">No audit events yet.</div>
     {:else}
@@ -23,7 +23,7 @@
             {/each}
         </div>
     {/if}
-</div>
+</Panel>
 
 <style>
     .audit {
@@ -38,10 +38,6 @@
         border-bottom: var(--border-width-sm) solid
             color-mix(in srgb, var(--border) 50%, transparent);
         align-items: baseline;
-    }
-    .ts {
-        color: var(--text-faint);
-        flex: 0 0 128px;
     }
     .event {
         flex: 0 0 150px;

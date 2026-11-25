@@ -58,7 +58,8 @@ describe('swatch', () => {
     });
 
     it('gives a neutral dot for what is not a plain colour', () => {
-        expect(NEUTRAL_DOT).toBe('#888');
+        // #888, written with six digits as a colour token is.
+        expect(NEUTRAL_DOT).toBe('#888888');
         for (const color of [
             EVIL,
             'red"><img src=x>',

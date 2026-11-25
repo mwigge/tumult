@@ -3,21 +3,13 @@
 
 import type { chartTokens, EChartsCoreOption } from './echarts';
 import { swatch, tip, tipFormatter, type Tip, type TipLine } from './tooltip';
-import type { PerfQuantile, PerfSide, PerfVerdict, PerfVerdictKind } from './types';
+import type { PerfQuantile, PerfSide, PerfVerdict } from './types';
 
 export const PERF_QUANTILES: readonly PerfQuantile[] = ['p50', 'p95', 'p99'];
 export const PERF_RANGES: readonly string[] = ['24h', '7d', '30d', '90d'];
 export const UNTAGGED = 'untagged';
 
 const DASH = '–';
-
-/** Badge class per verdict; the word is always shown next to the hue. */
-export const VERDICT_CLASS: Record<PerfVerdictKind, 'ok' | 'neutral' | 'fail' | 'warn'> = {
-    improved: 'ok',
-    unchanged: 'neutral',
-    regressed: 'fail',
-    inconclusive: 'warn',
-};
 
 /** A latency in milliseconds with one decimal, without the unit. */
 export function fmtMs(value: number | null): string {
@@ -178,7 +170,6 @@ export function perfDistributionOption(
         grid: { left: 52, right: 20, top: 34, bottom: 44 },
         legend: { top: 0 },
         tooltip: {
-            ...tokens.tooltip,
             trigger: 'axis',
             className: 'perf-tooltip',
             formatter: tipFormatter(perfTooltip),

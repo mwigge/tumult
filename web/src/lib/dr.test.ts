@@ -17,12 +17,10 @@ import {
     rtoText,
     seconds,
     stateLabel,
-    stateTone,
     targetText,
     testHref,
     testsSummary,
     verdictLabel,
-    verdictTone,
     viewQuery,
 } from './dr';
 import { chartTokens } from './echarts';
@@ -165,13 +163,12 @@ describe('the summary of the view', () => {
 });
 
 describe('states and verdicts', () => {
-    it('reads each state of the register in words and in its tone', () => {
+    it('reads each state of the register in words', () => {
         const states = ['ok', 'due', 'overdue', 'never_tested'] as const;
         expect(states.map(stateLabel)).toEqual(['ok', 'due', 'overdue', 'never tested']);
-        expect(states.map(stateTone)).toEqual(['ok', 'warn', 'fail', 'neutral']);
     });
 
-    it('reads each verdict in words and in its tone', () => {
+    it('reads each verdict in words', () => {
         const verdicts = ['met', 'breached', 'not_recovered', 'not_measured'] as const;
         expect(verdicts.map(verdictLabel)).toEqual([
             'met',
@@ -179,7 +176,6 @@ describe('states and verdicts', () => {
             'not recovered',
             'not measured',
         ]);
-        expect(verdicts.map(verdictTone)).toEqual(['ok', 'fail', 'fail', 'neutral']);
     });
 });
 

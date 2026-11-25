@@ -6,6 +6,7 @@
     import { api, fmtTs } from '#lib/api.js';
     import { errorText, signoffSummary } from '#lib/manual.js';
     import type { ManualSignOffRow } from '#lib/types.js';
+    import Badge from './Badge.svelte';
 
     let {
         experimentId,
@@ -60,7 +61,7 @@
     <ol class="signoffs">
         {#each signoffs as s (s.id)}
             <li>
-                <span class="badge {s.decision === 'approved' ? 'ok' : 'fail'}">{s.decision}</span>
+                <Badge kind="decision" value={s.decision} />
                 by {s.signed_by} <span class="dim">· {fmtTs(s.signed_at_ns)}</span>
                 {#if s.note}<span class="dim">: {s.note}</span>{/if}
             </li>
@@ -108,9 +109,5 @@
     }
     .grow {
         flex: 1;
-    }
-    .dim {
-        color: var(--text-faint);
-        font-size: var(--font-size-xs);
     }
 </style>

@@ -7,6 +7,7 @@
         emptyForm,
         type AuthorForm,
     } from '#lib/components/ActionParamForm.svelte';
+    import Badge from '#lib/components/Badge.svelte';
     import ToonEditor from '#lib/components/ToonEditor.svelte';
     import type {
         CatalogAction,
@@ -14,6 +15,8 @@
         ScaffoldResponse,
         ValidateToonResponse,
     } from '#lib/types.js';
+    import PageHeader from '#lib/components/PageHeader.svelte';
+    import Panel from '#lib/components/Panel.svelte';
 
     const plugin = $derived(page.url.searchParams.get('plugin') ?? '');
     const actionName = $derived(page.url.searchParams.get('action') ?? '');
@@ -81,35 +84,29 @@
     }
 </script>
 
-<div class="page-head">
-    <a href="/author" style="color: var(--text-dim)">← catalog</a>
-    <h1>Author an experiment</h1>
-</div>
+<PageHeader title="Author an experiment" back={{ href: '/author', label: 'catalog' }} />
 
 {#if loadError}
     <div class="state error">Failed to load the action: {loadError}</div>
 {:else if !action}
     <div class="skeleton" style="height: 160px"></div>
 {:else}
-    <div class="panel" style="margin-bottom: var(--space-3-5)">
-        <h2>1 · Action</h2>
+    <Panel title="1 · Action" style="margin-bottom: var(--space-3-5)">
         <div class="action-line">
             <span class="mono">{action.plugin}::{action.name}</span>
-            <span class="badge {action.kind === 'action' ? 'warn' : 'neutral'}">{action.kind}</span>
+            <Badge kind="catalog" value={action.kind} />
         </div>
         <p class="desc">{action.description}</p>
-    </div>
+    </Panel>
 
-    <div class="panel" style="margin-bottom: var(--space-3-5)">
-        <h2>2 · Parameters</h2>
+    <Panel title="2 · Parameters" style="margin-bottom: var(--space-3-5)">
         <ActionParamForm {action} bind:form />
         {#if missingRequired}
             <div class="hint">Target and all required arguments are needed before generating.</div>
         {/if}
-    </div>
+    </Panel>
 
-    <div class="panel" style="margin-bottom: var(--space-3-5)">
-        <h2>3 · Experiment TOON</h2>
+    <Panel title="3 · Experiment TOON" style="margin-bottom: var(--space-3-5)">
         <button class="primary" onclick={generate} disabled={missingRequired || scaffolding}>
             {scaffolding ? 'Generating…' : toon ? 'Regenerate TOON' : 'Generate TOON'}
         </button>
@@ -127,11 +124,10 @@
                 <ToonEditor bind:toon bind:result={registered} />
             </div>
         {/if}
-    </div>
+    </Panel>
 
     {#if registered && registered.valid}
-        <div class="panel">
-            <h2>4 · Launch</h2>
+        <Panel title="4 · Launch">
             <p class="desc">
                 <span class="mono">{registered.registry_id}</span> is registered — dry-run the resolved
                 plan and start the run from the launcher.
@@ -145,7 +141,7 @@
             >
                 Dry run & launch →
             </button>
-        </div>
+        </Panel>
     {/if}
 {/if}
 
@@ -159,10 +155,5 @@
         color: var(--text-dim);
         font-size: var(--font-size-md);
         margin: var(--space-1-5) 0;
-    }
-    .hint {
-        color: var(--text-dim);
-        font-size: var(--font-size-sm);
-        margin-top: var(--space-2);
     }
 </style>

@@ -176,7 +176,7 @@ test('the evidence of a row opens in a drawer, not as raw JSON', async ({ page }
     // Nothing in the view links to an API document.
     await expect(page.locator('[data-testid="dora-view"] a[href^="/api/"]')).toHaveCount(0);
     await table.getByRole('button', { name: 'ev-dora.art24.1' }).click();
-    const drawer = page.getByRole('dialog', { name: 'Evidence behind Art. 24(1)' });
+    const drawer = page.getByRole('dialog', { name: 'Requirement dora.art24.1' });
     await expect(drawer).toBeVisible();
     await expect(drawer).toContainText('Requirement dora.art24.1');
     await expect(drawer).toContainText('payments-api restore');
@@ -189,6 +189,27 @@ test('the evidence of a row opens in a drawer, not as raw JSON', async ({ page }
     );
     await drawer.getByRole('button', { name: 'Close' }).click();
     await expect(drawer).toHaveCount(0);
+});
+
+test('the evidence drawer opens from the keyboard, and Escape gives the focus back', async ({
+    page,
+}) => {
+    await mockApi(page);
+    await page.goto('/scores?view=dora');
+    const opener = page
+        .getByTestId('dora-expectations')
+        .getByRole('button', { name: 'ev-dora.art24.1' });
+    await opener.focus();
+    await page.keyboard.press('Enter');
+
+    // The drawer is a dialog that its requirement names, with the focus on Close.
+    const drawer = page.getByRole('dialog', { name: 'Requirement dora.art24.1' });
+    await expect(drawer).toContainText('payments-api restore');
+    await expect(drawer.getByRole('button', { name: 'Close' })).toBeFocused();
+
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('evidence-drawer')).toHaveCount(0);
+    await expect(opener).toBeFocused();
 });
 
 test('a label with markup is shown as text in the heatmap tooltip', async ({ page }) => {
@@ -418,16 +439,16 @@ test('a quarter with no stored day is drawn as a gap and named', async ({ page }
     await expect(rows.nth(3)).toContainText('today');
 });
 
-test('the toggles say which view is on and every chart has a name', async ({ page }) => {
+test('the tabs and toggles say which view is on and every chart has a name', async ({ page }) => {
     await mockApi(page);
     await page.goto('/scores?view=dora');
     await expect(page.getByTestId('dora-view')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'DORA and maturity' })).toHaveAttribute(
-        'aria-pressed',
+    await expect(page.getByRole('tab', { name: 'DORA and maturity' })).toHaveAttribute(
+        'aria-selected',
         'true',
     );
-    await expect(page.getByRole('button', { name: 'Org scores' })).toHaveAttribute(
-        'aria-pressed',
+    await expect(page.getByRole('tab', { name: 'Org scores' })).toHaveAttribute(
+        'aria-selected',
         'false',
     );
     const coverage = page.getByRole('button', { name: 'Coverage', exact: true });
@@ -790,6 +811,6 @@ test('the navigation reaches the DORA view and the org scores stay', async ({ pa
     await expect(page).toHaveURL(/view=dora/);
     await expect(page.getByTestId('dora-view')).toBeVisible();
     await expect(meaning).toHaveCount(0);
-    await page.getByRole('button', { name: 'Org scores' }).click();
+    await page.getByRole('tab', { name: 'Org scores' }).click();
     await expect(page.getByText('Score — company')).toBeVisible();
 });

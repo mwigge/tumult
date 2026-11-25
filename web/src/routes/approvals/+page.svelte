@@ -2,7 +2,10 @@
     import { onMount } from 'svelte';
     import { api, fmtAgo, fmtTs, shortId } from '#lib/api.js';
     import { paramsText } from '#lib/run-params.js';
-    import type { ApprovalQueueRow, ApprovalTier, MeResponse } from '#lib/types.js';
+    import type { ApprovalQueueRow, MeResponse } from '#lib/types.js';
+    import Badge from '#lib/components/Badge.svelte';
+    import PageHeader from '#lib/components/PageHeader.svelte';
+    import Panel from '#lib/components/Panel.svelte';
 
     let rows = $state<ApprovalQueueRow[] | null>(null);
     let error = $state<string | null>(null);
@@ -98,8 +101,6 @@
         openId = openId === runId ? null : runId;
     }
 
-    const tierClass = (t: ApprovalTier) => (t === 'T3' ? 'fail' : t === 'T2' ? 'warn' : 'neutral');
-
     /** Remaining TTL; `soon` (under 1h left, or lapsed) gets the warn tone. */
     function remaining(ns: number): { text: string; soon: boolean } {
         const ms = ns / 1_000_000 - Date.now();
@@ -110,14 +111,12 @@
     }
 </script>
 
-<div class="page-head">
-    <h1>Approvals</h1>
-    <span class="sub">
-        {rows ? `${rows.length} pending` : 'gated runs waiting on quorum'}
-    </span>
-</div>
+<PageHeader
+    title="Approvals"
+    sub={rows ? `${rows.length} pending` : 'gated runs waiting on quorum'}
+/>
 
-<div class="panel">
+<Panel>
     {#if error}
         <div class="state error">Failed to load the approvals queue: {error}</div>
     {:else if !rows}
@@ -151,15 +150,14 @@
                         <td>
                             {row.definition_name ?? '—'}
                             {#if row.break_glass}
-                                <span
-                                    class="badge warn"
+                                <Badge
+                                    tone="warn"
                                     title="break-glass override by {row.break_glass_by ??
                                         '?'}{row.break_glass_justification
                                         ? `: ${row.break_glass_justification}`
                                         : ''}"
-                                >
-                                    break-glass
-                                </span>
+                                    label="break-glass"
+                                />
                             {/if}
                         </td>
                         <td class="mono" style="color: var(--text-dim)">
@@ -167,7 +165,7 @@
                                 {shortId(row.run_id)}
                             </a>
                         </td>
-                        <td><span class="badge {tierClass(row.tier)}">{row.tier}</span></td>
+                        <td><Badge kind="tier" value={row.tier} /></td>
                         <td>{row.env}</td>
                         <td title={fmtTs(row.requested_at_ns)}>
                             {row.requested_by} · {fmtAgo(row.requested_at_ns)}
@@ -242,33 +240,9 @@
             </tbody>
         </table>
     {/if}
-</div>
+</Panel>
 
 <style>
-    .actions {
-        display: flex;
-        gap: var(--space-2);
-    }
-    .btn {
-        background: var(--bg-hover);
-        border: var(--border-width-sm) solid var(--border-strong);
-        color: var(--text);
-        border-radius: var(--radius-xl);
-        padding: var(--space-1-5) var(--space-3-5);
-        cursor: pointer;
-        font-size: var(--font-size-md);
-    }
-    .btn:hover {
-        border-color: var(--accent-dim);
-    }
-    .btn.danger {
-        border-color: var(--fail);
-        color: var(--fail);
-    }
-    .btn:disabled {
-        opacity: 0.5;
-        cursor: default;
-    }
     .warn-text {
         color: var(--warn);
     }
@@ -285,9 +259,6 @@
     .hint-text {
         color: var(--ok);
         font-size: var(--font-size-sm);
-    }
-    .detail-row td {
-        background: var(--bg-raised);
     }
     .detail {
         display: grid;

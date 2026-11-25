@@ -1,0 +1,208 @@
+{
+  "$description": "The colour roles of the docs site and its landing page. Jekyll builds the site and cannot run the generator, so the generator writes their values into docs/. They reach no output of Krönika.",
+  "docs": {
+    "$type": "color",
+    "$description": "The docs site, tumult.rs. It is light only, so the generator writes the light theme, except for the terminal.",
+    "scheme": {
+      "$description": "The colour variables of the docs theme, just-the-docs, by their names there. The generator writes them to docs/_sass/color_schemes/_tumult-tokens.scss. Each text colour is 4.5:1 or more on the page and on the code panel.",
+      "body-background-color": {
+        "$value": "{bg-panel}",
+        "$description": "The page: white, as a panel is. Krönika has a grey page and white panels; the docs have a white page and grey panels."
+      },
+      "sidebar-color": {
+        "$value": "{bg}",
+        "$description": "The sidebar: the grey of the light page."
+      },
+      "border-color": {
+        "$value": "{border}",
+        "$description": "Thin lines: tables, code panels and pictures."
+      },
+      "feedback-color": {
+        "$value": "{bg-hover}",
+        "$description": "The fill of a sidebar link under the pointer and of the chosen search result."
+      },
+      "body-heading-color": {
+        "$value": "{text}",
+        "$description": "Headings."
+      },
+      "body-text-color": {
+        "$value": "{text}",
+        "$description": "Body text."
+      },
+      "nav-child-link-color": {
+        "$value": "{text-dim}",
+        "$description": "The links of the lower levels of the sidebar."
+      },
+      "search-result-preview-color": {
+        "$value": "{text-dim}",
+        "$description": "The preview text of a search result."
+      },
+      "link-color": {
+        "$value": "{accent}",
+        "$description": "Links: 5.3:1 on white and 4.9:1 on the sidebar."
+      },
+      "btn-primary-color": {
+        "$value": "{accent}",
+        "$description": "The primary button."
+      },
+      "code-background-color": {
+        "$value": "{bg}",
+        "$description": "The code panel."
+      },
+      "grey-dk-000": {
+        "$value": "{text-dim}",
+        "$description": "The dim grey of the theme: the numbers of lists, the sidebar footer and the search. The value of the theme is 3.0:1 on white; dim text passes."
+      },
+      "tumult-code-comment": {
+        "$value": "{text-dim}",
+        "$description": "Comments and prompts in code: 5.3:1 on the code panel."
+      },
+      "tumult-code-keyword": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.7098, 0.2078, 0.1647],
+          "hex": "#b5352a"
+        },
+        "$description": "Keywords in code: the fail red, darker, so that it is 5.5:1 on the code panel."
+      },
+      "tumult-code-string": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.0392, 0.4588, 0.3137],
+          "hex": "#0a7550"
+        },
+        "$description": "Strings in code: the ok green, darker, so that it is 5.3:1 on the code panel. The ok green is 4.0:1 there."
+      },
+      "tumult-code-number": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.6549, 0.298, 0.0314],
+          "hex": "#a74c08"
+        },
+        "$description": "Numbers and constants in code: the warn amber, darker, so that it is 5.3:1 on the code panel."
+      },
+      "tumult-code-name": {
+        "$value": "{accent}",
+        "$description": "Names in code: 4.9:1 on the code panel."
+      }
+    },
+    "landing": {
+      "$description": "The landing page, docs/index.html. The generator writes them to docs/assets/css/tokens.css as custom properties of the same name.",
+      "page": {
+        "$value": "{bg-panel}",
+        "$description": "The page: white, as the page of the docs is."
+      },
+      "band": {
+        "$value": "{bg}",
+        "$description": "The grey bands across the page, and the install box."
+      },
+      "bg-panel": {
+        "$value": "{bg-panel}",
+        "$description": "The steps, cards and screenshots."
+      },
+      "border": {
+        "$value": "{border}",
+        "$description": "Thin lines: the edges of the cards."
+      },
+      "border-strong": {
+        "$value": "{border-strong}",
+        "$description": "The edge of the second button."
+      },
+      "text": {
+        "$value": "{text}",
+        "$description": "Body text and headings: 15.9:1 on white."
+      },
+      "text-dim": {
+        "$value": "{text-dim}",
+        "$description": "Text that matters less: 5.8:1 on white and 5.3:1 on a band."
+      },
+      "copper": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.6039, 0.3255, 0.1255],
+          "hex": "#9a5320"
+        },
+        "$description": "The copper of the logo, darker for text: 5.8:1 on white and 5.3:1 on a band."
+      },
+      "copper-hover": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.498, 0.2667, 0.098],
+          "hex": "#7f4419"
+        },
+        "$description": "The primary button under the pointer."
+      },
+      "copper-bright": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.7843, 0.4588, 0.2],
+          "hex": "#c87533"
+        },
+        "$description": "The copper of the logo. It is 3.5:1 on white, so it draws arrows, marks and edges only."
+      },
+      "on-copper": {
+        "$value": "{grey.100}",
+        "$description": "Text on the primary button: white."
+      }
+    },
+    "terminal": {
+      "$description": "The GameDay terminal of the landing page. It is dark on purpose, as the terminal player above it is, so the generator writes the dark theme. Each is a custom property named term- and its name.",
+      "bg": {
+        "$value": "{bg}",
+        "$description": "The inside of the terminal."
+      },
+      "bar": {
+        "$value": "{bg-raised}",
+        "$description": "The title bar."
+      },
+      "border": {
+        "$value": "{border}",
+        "$description": "The edges and the line under the title bar."
+      },
+      "text": {
+        "$value": "{text}",
+        "$description": "The text of the terminal."
+      },
+      "dim": {
+        "$value": "{text-dim}",
+        "$description": "The output of a command."
+      },
+      "ok": {
+        "$value": "{ok}",
+        "$description": "A step that went well."
+      },
+      "accent": {
+        "$value": "{accent}",
+        "$description": "Information."
+      },
+      "command": {
+        "$value": "{grey.100}",
+        "$description": "A command: white, brighter than its output."
+      },
+      "dot-red": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [1.0, 0.3725, 0.3412],
+          "hex": "#ff5f57"
+        },
+        "$description": "The first window button of the title bar."
+      },
+      "dot-yellow": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.9961, 0.7373, 0.1804],
+          "hex": "#febc2e"
+        },
+        "$description": "The second window button of the title bar."
+      },
+      "dot-green": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.1569, 0.7843, 0.251],
+          "hex": "#28c840"
+        },
+        "$description": "The third window button of the title bar."
+      }
+    }
+  }
+}

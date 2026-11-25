@@ -25,8 +25,8 @@ search:
   rel_url: true
   button: false
 
-# Colour scheme: the light tokens of the product UI (web/src/lib/theme.css),
-# defined in _sass/color_schemes/tumult.scss
+# Colour scheme: the light tokens of the product UI (web/tokens/), defined in
+# _sass/color_schemes/tumult.scss
 color_scheme: tumult
 
 # Draw the mermaid blocks. The theme loads this version from jsDelivr.

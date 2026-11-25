@@ -127,6 +127,25 @@ test('the charts have the colours the browser asks for', async ({ page }) => {
     expect(await drawn(page, 'chart-load-throughput')).toContain(DARK.fail);
 });
 
+test('the lines of a chart take the series colours of the scheme the browser asks for', async ({
+    page,
+}) => {
+    await page.emulateMedia({ colorScheme: 'light' });
+    await page.goto(reportOf(RECORDED));
+
+    // p50, p95 and p99 are the first three series: each is 3:1 or more on white.
+    const light = (await drawn(page, 'chart-load-latency')).toLowerCase();
+    for (const colour of LIGHT.series.slice(0, 3)) expect(light).toContain(colour.toLowerCase());
+    expect(light).not.toContain(DARK.series[0].toLowerCase());
+
+    await page.emulateMedia({ colorScheme: 'dark' });
+    await expect
+        .poll(async () => (await drawn(page, 'chart-load-latency')).toLowerCase())
+        .toContain(DARK.series[0].toLowerCase());
+    const dark = (await drawn(page, 'chart-load-latency')).toLowerCase();
+    for (const colour of DARK.series.slice(0, 3)) expect(dark).toContain(colour.toLowerCase());
+});
+
 test('a bar of the timeline says what it shows when the reader points at it', async ({ page }) => {
     await page.emulateMedia({ colorScheme: 'light' });
     await page.goto(reportOf(RECORDED));

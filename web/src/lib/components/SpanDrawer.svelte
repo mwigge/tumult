@@ -3,13 +3,17 @@
     // events and correlated logs (by span_id, else overlapping the span's
     // time window on the same trace). Attribute values offer click-to-filter
     // (⊕/⊖) onto the traces list; a run overlapping the span's window links
-    // to its experiment page.
+    // to its experiment page. It is a modal Drawer over a shade.
     import { goto } from '$app/navigation';
     import type { ExperimentWindow, LogRow, Span } from '#lib/types.js';
     import { api, fmtDuration, fmtTs } from '#lib/api.js';
+    import { toneOf } from '#lib/tone.js';
+    import Drawer from './Drawer.svelte';
     import StatusBadge from './StatusBadge.svelte';
 
     let { span, logs, onclose }: { span: Span; logs: LogRow[]; onclose: () => void } = $props();
+
+    const title = $props.id();
 
     const correlated = $derived.by(() => {
         const direct = logs.filter((l) => l.span_id === span.span_id);
@@ -54,21 +58,12 @@
     function filterOut(k: string, v: string) {
         goto(`/traces?attr_not=${encodeURIComponent(`${k}=${v}`)}`);
     }
-
-    function sevClass(sev: string | null): string {
-        const s = (sev ?? '').toUpperCase();
-        if (s.startsWith('ERR') || s.startsWith('FATAL')) return 'fail';
-        if (s.startsWith('WARN')) return 'warn';
-        return '';
-    }
 </script>
 
-<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-<div class="backdrop" onclick={onclose}></div>
-<aside class="drawer">
+<Drawer labelledby={title} {onclose} backdrop>
     <header>
         <div>
-            <div class="title mono">{span.span_name}</div>
+            <div class="title mono" id={title}>{span.span_name}</div>
             <StatusBadge
                 status={span.status_code === 'Error'
                     ? 'failed'
@@ -153,7 +148,7 @@
         {:else}
             {#each correlated as log, i (i)}
                 <div class="log">
-                    <span class="mono sev {sevClass(log.severity_text)}"
+                    <span class="mono sev {toneOf('severity', log.severity_text)}"
                         >{log.severity_text ?? 'LOG'}</span
                     >
                     <span class="body">{log.body}</span>
@@ -168,27 +163,9 @@
             {/each}
         {/if}
     </section>
-</aside>
+</Drawer>
 
 <style>
-    .backdrop {
-        position: fixed;
-        inset: 0;
-        background: rgba(0, 0, 0, 0.45);
-        z-index: var(--z-overlay);
-    }
-    .drawer {
-        position: fixed;
-        top: 0;
-        right: 0;
-        bottom: 0;
-        width: min(480px, 92vw);
-        background: var(--bg-raised);
-        border-left: var(--border-width-sm) solid var(--border-strong);
-        z-index: var(--z-overlay-top);
-        overflow-y: auto;
-        padding: var(--space-4-5);
-    }
     header {
         display: flex;
         justify-content: space-between;
@@ -200,23 +177,8 @@
         margin-bottom: var(--space-1-5);
         word-break: break-all;
     }
-    .close {
-        background: transparent;
-        border: none;
-        color: var(--text-dim);
-        font-size: var(--font-size-2xl);
-        cursor: pointer;
-        line-height: 1;
-    }
     section {
         margin-bottom: var(--space-4-5);
-    }
-    h3 {
-        font-size: var(--font-size-3xs);
-        text-transform: uppercase;
-        letter-spacing: var(--letter-spacing-md);
-        color: var(--text-dim);
-        margin-bottom: var(--space-2);
     }
     dl {
         display: grid;
@@ -224,9 +186,6 @@
         gap: 5px var(--space-2-5);
         margin: 0;
         font-size: var(--font-size-sm);
-    }
-    dt {
-        color: var(--text-dim);
     }
     dd {
         margin: 0;
@@ -260,6 +219,10 @@
     }
     .dim {
         color: var(--text-dim);
+    }
+    /* Not the size of the global .dim: the size around it, or of .mono. */
+    .dim:not(.mono) {
+        font-size: inherit;
     }
     .facets {
         visibility: hidden;

@@ -14,6 +14,10 @@
     import ManualImport from '#lib/components/ManualImport.svelte';
     import ManualPlansTab from '#lib/components/ManualPlansTab.svelte';
     import ManualReviewTab from '#lib/components/ManualReviewTab.svelte';
+    import PageHeader from '#lib/components/PageHeader.svelte';
+    import TabPanel from '#lib/components/TabPanel.svelte';
+    import Tabs from '#lib/components/Tabs.svelte';
+    import { withParam } from '#lib/tabs.js';
 
     const TABS = ['entry', 'plans', 'queue', 'records', 'import'] as const;
     const TAB_LABEL: Record<string, string> = {
@@ -38,6 +42,12 @@
     let actor = $state('');
     let me = $state<MeResponse | null>(null);
     let editingId = $state<string | null>(null);
+    const tabs = $derived(
+        TABS.map((t) => ({
+            value: t,
+            label: t === 'entry' ? (editingId ? 'Draft editor' : 'New entry') : TAB_LABEL[t],
+        })),
+    );
     const canWrite = $derived(
         !!me && (!me.auth_required || (me.authenticated && !!me.role && me.role !== 'viewer')),
     );
@@ -64,10 +74,7 @@
     }
 
     function setTab(t: string) {
-        // eslint-disable-next-line svelte/prefer-svelte-reactivity -- Local calculation; no retained reactive state.
-        const params = new URLSearchParams(page.url.searchParams.toString());
-        params.set('tab', t);
-        goto(`?${params}`, { replace: true, reset: false });
+        goto(withParam(page.url.searchParams, 'tab', t), { replace: true, reset: false });
     }
 
     // Entry-tab state lives here so a half-filled draft (and its result
@@ -91,11 +98,10 @@
 </script>
 
 <div class="manual">
-    <div class="page-head">
-        <h1>Manual evidence</h1>
-        <span class="sub"
-            >DR exercises and other hand-executed tests, entered under attestation</span
-        >
+    <PageHeader
+        title="Manual evidence"
+        sub="DR exercises and other hand-executed tests, entered under attestation"
+    >
         <div class="controls">
             <label class="actor">
                 {me?.auth_required ? 'Signed in as' : 'Acting as'}
@@ -107,57 +113,68 @@
                     oninput={(e) => setActor(e.currentTarget.value)}
                 />
             </label>
-            <div class="seg" role="group" aria-label="manual sections">
-                {#each TABS as t (t)}
-                    <button class:active={tab === t} onclick={() => setTab(t)}>
-                        {t === 'entry' ? (editingId ? 'Draft editor' : 'New entry') : TAB_LABEL[t]}
-                    </button>
-                {/each}
-            </div>
-        </div>
-    </div>
-
-    {#if filtered && listsTab}
-        <p class="target" data-testid="manual-target">
-            Records and plans of {targetLine}.
-            <a href="?tab={tab}">Show every target</a>
-        </p>
-    {/if}
-
-    {#if entryMsg && !entryMsg.ok && (tab !== 'entry' || !canWrite)}<div class="state error">
-            {entryMsg.text}
-        </div>{/if}
-
-    {#if tab === 'entry'}
-        {#if canWrite}
-            {#if editingId}<p>
-                    Editing draft <code>{editingId}</code>.
-                    <button
-                        class="btn"
-                        disabled={busy}
-                        onclick={() => {
-                            editingId = null;
-                            form = emptyForm();
-                            entryMsg = null;
-                        }}>New entry</button
-                    >
-                </p>{/if}
-            <ManualEntryTab
-                {actor}
-                allowedEnvironments={me?.env_scopes ?? []}
-                bind:editingId
-                bind:form
-                bind:entryMsg
-                bind:busy
+            <Tabs
+                id="manual"
+                label="manual sections"
+                options={tabs}
+                value={tab}
+                onchange={setTab}
             />
-        {:else}<p>Your role can read manual evidence. An operator can create or edit it.</p>{/if}
-    {:else if tab === 'plans'}
-        <ManualPlansTab {actor} {canWrite} {filter} />
-    {:else if tab === 'import'}
-        <ManualImport {actor} {canWrite} />
-    {:else}
-        <ManualReviewTab {tab} {actor} {canReview} canEdit={canWrite} {filter} onedit={editDraft} />
-    {/if}
+        </div>
+    </PageHeader>
+
+    <TabPanel id="manual" value={tab}>
+        {#if filtered && listsTab}
+            <p class="target" data-testid="manual-target">
+                Records and plans of {targetLine}.
+                <a href="?tab={tab}">Show every target</a>
+            </p>
+        {/if}
+
+        {#if entryMsg && !entryMsg.ok && (tab !== 'entry' || !canWrite)}<div class="state error">
+                {entryMsg.text}
+            </div>{/if}
+
+        {#if tab === 'entry'}
+            {#if canWrite}
+                {#if editingId}<p>
+                        Editing draft <code>{editingId}</code>.
+                        <button
+                            class="btn"
+                            disabled={busy}
+                            onclick={() => {
+                                editingId = null;
+                                form = emptyForm();
+                                entryMsg = null;
+                            }}>New entry</button
+                        >
+                    </p>{/if}
+                <ManualEntryTab
+                    {actor}
+                    allowedEnvironments={me?.env_scopes ?? []}
+                    bind:editingId
+                    bind:form
+                    bind:entryMsg
+                    bind:busy
+                />
+            {:else}<p>
+                    Your role can read manual evidence. An operator can create or edit it.
+                </p>{/if}
+        {:else if tab === 'plans'}
+            <ManualPlansTab {actor} {canWrite} {filter} />
+        {:else if tab === 'import'}
+            <ManualImport {actor} {canWrite} />
+        {:else}
+            <ManualReviewTab
+                {tab}
+                {actor}
+                {canReview}
+                canEdit={canWrite}
+                {filter}
+                onedit={editDraft}
+            />
+        {/if}
+    </TabPanel>
 </div>
 
 <style>
@@ -178,93 +195,5 @@
         gap: var(--space-1-5);
         color: var(--text-dim);
         font-size: var(--font-size-xs);
-    }
-    /* The parts of the manual components share one look: their forms, rows
-       of fields, list editors and buttons. */
-    .manual :global(.form) {
-        display: flex;
-        flex-direction: column;
-        gap: var(--space-2-5);
-    }
-    .manual :global(.form label) {
-        display: flex;
-        flex-direction: column;
-        gap: var(--space-1);
-        font-size: var(--font-size-xs);
-        color: var(--text-dim);
-    }
-    .manual :global(.row2),
-    .manual :global(.row3) {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: var(--space-2-5);
-    }
-    .manual :global(.row3) {
-        grid-template-columns: 1fr 1fr 1fr;
-    }
-    .manual :global(.grid-rows) {
-        display: grid;
-        gap: var(--space-1-5);
-        align-items: center;
-        margin-bottom: var(--space-1-5);
-        font-size: var(--font-size-2xs);
-        color: var(--text-dim);
-    }
-    .manual :global(.grid-rows input),
-    .manual :global(.grid-rows select) {
-        min-width: 0;
-        width: 100%;
-    }
-    .manual :global(.grid-rows .n) {
-        color: var(--text-faint);
-        text-align: right;
-    }
-    .manual :global(.note),
-    .manual :global(.dim) {
-        color: var(--text-faint);
-        font-size: var(--font-size-xs);
-        line-height: var(--line-height-body);
-    }
-    .manual :global(.actions) {
-        display: flex;
-        gap: var(--space-2);
-    }
-    .manual :global(input[type='date']),
-    .manual :global(input[type='datetime-local']),
-    .manual :global(input[type='file']) {
-        background: var(--bg-raised);
-        border: var(--border-width-sm) solid var(--border-strong);
-        color: var(--text);
-        border-radius: var(--radius-lg);
-        padding: 5px var(--space-2);
-        font-size: var(--font-size-md);
-        font-family: inherit;
-    }
-    .manual :global(.btn) {
-        background: var(--bg-hover);
-        border: var(--border-width-sm) solid var(--border-strong);
-        color: var(--text);
-        border-radius: var(--radius-xl);
-        padding: var(--space-1-5) var(--space-3-5);
-        cursor: pointer;
-        font-size: var(--font-size-md);
-    }
-    .manual :global(.btn:hover) {
-        border-color: var(--accent-dim);
-    }
-    .manual :global(.btn.primary) {
-        background: var(--accent-dim);
-        border-color: var(--accent-dim);
-    }
-    .manual :global(.btn.danger) {
-        border-color: var(--fail);
-        color: var(--fail);
-    }
-    .manual :global(.btn.add) {
-        margin-top: var(--space-1);
-    }
-    .manual :global(.btn:disabled) {
-        opacity: 0.5;
-        cursor: default;
     }
 </style>

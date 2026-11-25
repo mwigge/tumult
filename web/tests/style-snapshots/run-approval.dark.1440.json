@@ -1,0 +1,989 @@
+{
+  "page": "run-approval",
+  "path": "/runs/run-1",
+  "theme": "dark",
+  "width": 1440,
+  "height": 900,
+  "elements": {
+    "html": {
+      "color": "rgb(216, 222, 228)",
+      "font-family": "-apple-system, \"Segoe UI\", Inter, Roboto, sans-serif",
+      "font-size": "14px",
+      "font-weight": "400",
+      "line-height": "1.5",
+      "letter-spacing": "normal",
+      "text-transform": "none",
+      "visibility": "visible",
+      "display": "block",
+      "background-color": "rgb(11, 14, 17)"
+    },
+    "body": {
+      "display": "block",
+      "background-color": "rgb(11, 14, 17)"
+    },
+    "div.shell": {
+      "display": "grid",
+      "grid-template-columns": "208px 1fr"
+    },
+    "div.shell > aside[complementary].side": {
+      "display": "flex",
+      "background-color": "rgb(17, 22, 27)",
+      "border-right": "1px solid rgb(36, 45, 54)",
+      "padding": "16px 0px"
+    },
+    "div.shell > aside[complementary].side > div.brand": {
+      "display": "block",
+      "border-bottom": "1px solid rgb(36, 45, 54)",
+      "padding": "0px 18px 14px",
+      "margin": "0px 0px 10px"
+    },
+    "div.shell > aside[complementary].side > div.brand > div.name": {
+      "font-size": "17px",
+      "font-weight": "700",
+      "letter-spacing": "0.4px",
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > div.brand > div.tag": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11px",
+      "display": "block",
+      "margin": "2px 0px 0px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav": {
+      "display": "block",
+      "padding": "0px 0px 1px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◧ Overview\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◧ Overview\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◎ Resilience\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◎ Resilience\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◭ Performance\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◭ Performance\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"▦ Scores\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"▦ Scores\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⚖ DORA\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⚖ DORA\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⟲ Disaster recovery\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⟲ Disaster recovery\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⚗ Experiments\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⚗ Experiments\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link].active \"▶ Runs\"": {
+      "font-size": "13.5px",
+      "display": "flex",
+      "background-color": "rgb(28, 36, 44)",
+      "border-left": "2px solid rgb(94, 177, 239)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link].active \"▶ Runs\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✚ Author\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✚ Author\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"☷ GameDays\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"☷ GameDays\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✓ Approvals\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✓ Approvals\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✎ Manual\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✎ Manual\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"≣ Logs\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"≣ Logs\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⌁ Traces\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⌁ Traces\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"∿ Metrics\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"∿ Metrics\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✳ Star Map\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✳ Star Map\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✦ Ask\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✦ Ask\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"▤ Reports\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"▤ Reports\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◔ Events\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◔ Events\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⚿ Users\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⚿ Users\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"➤ Webhooks\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"➤ Webhooks\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"↻ Schedules\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"↻ Schedules\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > button[button].theme \"◐ dark\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11.5px",
+      "display": "block",
+      "border-top": "1px solid rgb(36, 45, 54)",
+      "border-right": "1px solid rgb(36, 45, 54)",
+      "border-bottom": "1px solid rgb(36, 45, 54)",
+      "border-left": "1px solid rgb(36, 45, 54)",
+      "border-radius": "4px",
+      "padding": "2px 8px",
+      "margin": "8px 18px 0px"
+    },
+    "div.shell > main[main].main": {
+      "display": "block",
+      "padding": "22px 26px 60px"
+    },
+    "div.shell > main[main].main > div.page-head": {
+      "display": "flex",
+      "margin": "0px 0px 18px",
+      "gap": "14px"
+    },
+    "div.shell > main[main].main > div.page-head > a[link].back \"← runs\"": {
+      "color": "rgb(139, 152, 165)",
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.page-head > h1[heading] \"pg-failover\"": {
+      "font-size": "19px",
+      "font-weight": "600",
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.page-head > span.badge.neutral": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "letter-spacing": "0.3px",
+      "display": "block",
+      "background-color": "rgb(28, 36, 44)",
+      "border-radius": "10px",
+      "padding": "1px 9px"
+    },
+    "div.shell > main[main].main > div.page-head > span.sub.mono": {
+      "color": "rgb(139, 152, 165)",
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "12.5px",
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.page-head > button[button].estop \"Stop run\"": {
+      "color": "rgb(239, 68, 68)",
+      "font-family": "Arial",
+      "font-size": "13px",
+      "font-weight": "600",
+      "line-height": "normal",
+      "display": "block",
+      "background-color": "color(srgb 0.937255 0.266667 0.266667 / 0.16)",
+      "border-top": "1px solid rgb(239, 68, 68)",
+      "border-right": "1px solid rgb(239, 68, 68)",
+      "border-bottom": "1px solid rgb(239, 68, 68)",
+      "border-left": "1px solid rgb(239, 68, 68)",
+      "border-radius": "5px",
+      "padding": "6px 14px"
+    },
+    "div.shell > main[main].main > div.grid": {
+      "display": "grid",
+      "grid-template-columns": "repeat(4, 1fr)",
+      "margin": "0px 0px 14px",
+      "gap": "14px"
+    },
+    "div.shell > main[main].main > div.grid > div.panel.meta": {
+      "display": "block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(36, 45, 54)",
+      "border-right": "1px solid rgb(36, 45, 54)",
+      "border-bottom": "1px solid rgb(36, 45, 54)",
+      "border-left": "1px solid rgb(36, 45, 54)",
+      "border-radius": "6px",
+      "padding": "14px 16px"
+    },
+    "div.shell > main[main].main > div.grid > div.panel.meta > span": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "letter-spacing": "0.6px",
+      "text-transform": "uppercase",
+      "display": "block",
+      "margin": "0px 0px 4px"
+    },
+    "div.shell > main[main].main > div.grid > div.panel.meta > b": {
+      "font-size": "13.5px",
+      "font-weight": "600",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > div.grid > div.panel.meta #2": {
+      "display": "block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(36, 45, 54)",
+      "border-right": "1px solid rgb(36, 45, 54)",
+      "border-bottom": "1px solid rgb(36, 45, 54)",
+      "border-left": "1px solid rgb(36, 45, 54)",
+      "border-radius": "6px",
+      "padding": "14px 16px"
+    },
+    "div.shell > main[main].main > div.grid > div.panel.meta #2 > span": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "letter-spacing": "0.6px",
+      "text-transform": "uppercase",
+      "display": "block",
+      "margin": "0px 0px 4px"
+    },
+    "div.shell > main[main].main > div.grid > div.panel.meta #2 > b": {
+      "font-size": "13.5px",
+      "font-weight": "600",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > div.grid > div.panel.meta #3": {
+      "display": "block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(36, 45, 54)",
+      "border-right": "1px solid rgb(36, 45, 54)",
+      "border-bottom": "1px solid rgb(36, 45, 54)",
+      "border-left": "1px solid rgb(36, 45, 54)",
+      "border-radius": "6px",
+      "padding": "14px 16px"
+    },
+    "div.shell > main[main].main > div.grid > div.panel.meta #3 > span": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "letter-spacing": "0.6px",
+      "text-transform": "uppercase",
+      "display": "block",
+      "margin": "0px 0px 4px"
+    },
+    "div.shell > main[main].main > div.grid > div.panel.meta #3 > b": {
+      "font-size": "13.5px",
+      "font-weight": "600",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > div.grid > div.panel.meta #4": {
+      "display": "block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(36, 45, 54)",
+      "border-right": "1px solid rgb(36, 45, 54)",
+      "border-bottom": "1px solid rgb(36, 45, 54)",
+      "border-left": "1px solid rgb(36, 45, 54)",
+      "border-radius": "6px",
+      "padding": "14px 16px"
+    },
+    "div.shell > main[main].main > div.grid > div.panel.meta #4 > span": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "letter-spacing": "0.6px",
+      "text-transform": "uppercase",
+      "display": "block",
+      "margin": "0px 0px 4px"
+    },
+    "div.shell > main[main].main > div.grid > div.panel.meta #4 > b.mono": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "13.5px",
+      "font-weight": "600",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > div.grid > div.panel.meta #5": {
+      "display": "block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(36, 45, 54)",
+      "border-right": "1px solid rgb(36, 45, 54)",
+      "border-bottom": "1px solid rgb(36, 45, 54)",
+      "border-left": "1px solid rgb(36, 45, 54)",
+      "border-radius": "6px",
+      "padding": "14px 16px"
+    },
+    "div.shell > main[main].main > div.grid > div.panel.meta #5 > span": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "letter-spacing": "0.6px",
+      "text-transform": "uppercase",
+      "display": "block",
+      "margin": "0px 0px 4px"
+    },
+    "div.shell > main[main].main > div.grid > div.panel.meta #5 > b.mono": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "13.5px",
+      "font-weight": "600",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > div.grid > div.panel.meta #6": {
+      "display": "block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(36, 45, 54)",
+      "border-right": "1px solid rgb(36, 45, 54)",
+      "border-bottom": "1px solid rgb(36, 45, 54)",
+      "border-left": "1px solid rgb(36, 45, 54)",
+      "border-radius": "6px",
+      "padding": "14px 16px"
+    },
+    "div.shell > main[main].main > div.grid > div.panel.meta #6 > span": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "letter-spacing": "0.6px",
+      "text-transform": "uppercase",
+      "display": "block",
+      "margin": "0px 0px 4px"
+    },
+    "div.shell > main[main].main > div.grid > div.panel.meta #6 > b": {
+      "font-size": "13.5px",
+      "font-weight": "600",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > div.grid > div.panel.meta #7": {
+      "display": "block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(36, 45, 54)",
+      "border-right": "1px solid rgb(36, 45, 54)",
+      "border-bottom": "1px solid rgb(36, 45, 54)",
+      "border-left": "1px solid rgb(36, 45, 54)",
+      "border-radius": "6px",
+      "padding": "14px 16px"
+    },
+    "div.shell > main[main].main > div.grid > div.panel.meta #7 > span": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "letter-spacing": "0.6px",
+      "text-transform": "uppercase",
+      "display": "block",
+      "margin": "0px 0px 4px"
+    },
+    "div.shell > main[main].main > div.grid > div.panel.meta #7 > b": {
+      "font-size": "13.5px",
+      "font-weight": "600",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > div.grid > div.panel.meta #7 > span.badge.fail": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "letter-spacing": "0.6px",
+      "text-transform": "uppercase",
+      "display": "block",
+      "background-color": "color(srgb 0.937255 0.266667 0.266667 / 0.14)",
+      "border-radius": "10px",
+      "padding": "1px 9px",
+      "margin": "0px 0px 4px"
+    },
+    "div.shell > main[main].main > div.grid > div.panel.meta #8": {
+      "display": "block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(36, 45, 54)",
+      "border-right": "1px solid rgb(36, 45, 54)",
+      "border-bottom": "1px solid rgb(36, 45, 54)",
+      "border-left": "1px solid rgb(36, 45, 54)",
+      "border-radius": "6px",
+      "padding": "14px 16px"
+    },
+    "div.shell > main[main].main > div.grid > div.panel.meta #8 > span": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "letter-spacing": "0.6px",
+      "text-transform": "uppercase",
+      "display": "block",
+      "margin": "0px 0px 4px"
+    },
+    "div.shell > main[main].main > div.grid > div.panel.meta #8 > b.mono": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "13.5px",
+      "font-weight": "600",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > div.grid > div.panel.meta #8 > b.mono > a[link] \"exp-1\"": {
+      "color": "rgb(94, 177, 239)",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > div.grid > div.panel.meta #9": {
+      "display": "block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(36, 45, 54)",
+      "border-right": "1px solid rgb(36, 45, 54)",
+      "border-bottom": "1px solid rgb(36, 45, 54)",
+      "border-left": "1px solid rgb(36, 45, 54)",
+      "border-radius": "6px",
+      "padding": "14px 16px"
+    },
+    "div.shell > main[main].main > div.grid > div.panel.meta #9 > span": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "letter-spacing": "0.6px",
+      "text-transform": "uppercase",
+      "display": "block",
+      "margin": "0px 0px 4px"
+    },
+    "div.shell > main[main].main > div.grid > div.panel.meta #9 > b.mono": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "13.5px",
+      "font-weight": "600",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > div.panel": {
+      "display": "block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(36, 45, 54)",
+      "border-right": "1px solid rgb(36, 45, 54)",
+      "border-bottom": "1px solid rgb(36, 45, 54)",
+      "border-left": "1px solid rgb(36, 45, 54)",
+      "border-radius": "6px",
+      "padding": "14px 16px",
+      "margin": "0px 0px 14px"
+    },
+    "div.shell > main[main].main > div.panel > h2[heading] \"PLANNED BLAST RADIUS\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "12px",
+      "font-weight": "600",
+      "letter-spacing": "0.7px",
+      "text-transform": "uppercase",
+      "display": "block",
+      "margin": "0px 0px 10px"
+    },
+    "div.shell > main[main].main > div.panel > div.scope": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.panel > div.scope > div.note": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13px",
+      "display": "block",
+      "border-left": "2px solid rgb(245, 158, 11)",
+      "padding": "2px 10px",
+      "margin": "0px 0px 8px"
+    },
+    "div.shell > main[main].main > div.panel > div.scope > ul[list]": {
+      "display": "block",
+      "padding": "0px 0px 0px 22px",
+      "margin": "4px 0px"
+    },
+    "div.shell > main[main].main > div.panel > div.scope > ul[list] > li[listitem]": {
+      "font-size": "13px",
+      "display": "list-item",
+      "padding": "2px 0px"
+    },
+    "div.shell > main[main].main > div.panel > div.scope > ul[list] > li[listitem] > span.mono": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > div.panel > div.scope > ul[list] > li[listitem] > span.meta.mono": {
+      "color": "rgb(91, 103, 114)",
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "12px",
+      "display": "inline",
+      "margin": "0px 0px 0px 8px"
+    },
+    "div.shell > main[main].main > div.panel > div.scope > ul[list] > li[listitem] > span.targets.mono": {
+      "color": "rgb(245, 158, 11)",
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "12px",
+      "display": "inline",
+      "margin": "0px 0px 0px 8px"
+    },
+    "div.shell > main[main].main > div.panel > div.scope > div.hint": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "12.5px",
+      "display": "block",
+      "margin": "6px 0px 0px"
+    },
+    "div.shell > main[main].main > div.panel > div.plan-note": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "12.5px",
+      "display": "block",
+      "margin": "8px 0px 0px"
+    },
+    "div.shell > main[main].main > div.panel #2": {
+      "display": "block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(36, 45, 54)",
+      "border-right": "1px solid rgb(36, 45, 54)",
+      "border-bottom": "1px solid rgb(36, 45, 54)",
+      "border-left": "1px solid rgb(36, 45, 54)",
+      "border-radius": "6px",
+      "padding": "14px 16px",
+      "margin": "0px 0px 14px"
+    },
+    "div.shell > main[main].main > div.panel #2 > h2[heading] \"TELEMETRY\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "12px",
+      "font-weight": "600",
+      "letter-spacing": "0.7px",
+      "text-transform": "uppercase",
+      "display": "block",
+      "margin": "0px 0px 10px"
+    },
+    "div.shell > main[main].main > div.panel #2 > div.state": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "13px",
+      "display": "block",
+      "padding": "28px"
+    },
+    "div.shell > main[main].main > div.panel #3": {
+      "display": "block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(36, 45, 54)",
+      "border-right": "1px solid rgb(36, 45, 54)",
+      "border-bottom": "1px solid rgb(36, 45, 54)",
+      "border-left": "1px solid rgb(36, 45, 54)",
+      "border-radius": "6px",
+      "padding": "14px 16px",
+      "margin": "0px 0px 14px"
+    },
+    "div.shell > main[main].main > div.panel #3 > h2[heading] \"APPROVAL CHAIN T2\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "12px",
+      "font-weight": "600",
+      "letter-spacing": "0.7px",
+      "text-transform": "uppercase",
+      "display": "block",
+      "margin": "0px 0px 10px"
+    },
+    "div.shell > main[main].main > div.panel #3 > h2[heading] \"APPROVAL CHAIN T2\" > span.badge.warn": {
+      "color": "rgb(245, 158, 11)",
+      "font-size": "11.5px",
+      "letter-spacing": "0.3px",
+      "display": "inline-block",
+      "background-color": "color(srgb 0.960784 0.619608 0.0431373 / 0.14)",
+      "border-radius": "10px",
+      "padding": "1px 9px"
+    },
+    "div.shell > main[main].main > div.panel #3 > div.ap-meta": {
+      "display": "grid",
+      "grid-template-columns": "repeat(3, 1fr)",
+      "margin": "0px 0px 12px",
+      "gap": "10px 18px"
+    },
+    "div.shell > main[main].main > div.panel #3 > div.ap-meta > div": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.panel #3 > div.ap-meta > span.label-caps": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "letter-spacing": "0.6px",
+      "text-transform": "uppercase",
+      "display": "block",
+      "margin": "0px 0px 4px"
+    },
+    "div.shell > main[main].main > div.panel #3 > div.ap-meta > b": {
+      "font-size": "13.5px",
+      "font-weight": "600",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > div.panel #3 > div.ap-meta > div #2": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.panel #3 > div.ap-meta > span.label-caps #2": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "letter-spacing": "0.6px",
+      "text-transform": "uppercase",
+      "display": "block",
+      "margin": "0px 0px 4px"
+    },
+    "div.shell > main[main].main > div.panel #3 > div.ap-meta > b #2": {
+      "font-size": "13.5px",
+      "font-weight": "600",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > div.panel #3 > div.ap-meta > div #3": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.panel #3 > div.ap-meta > span.label-caps #3": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "letter-spacing": "0.6px",
+      "text-transform": "uppercase",
+      "display": "block",
+      "margin": "0px 0px 4px"
+    },
+    "div.shell > main[main].main > div.panel #3 > div.ap-meta > b #3": {
+      "font-size": "13.5px",
+      "font-weight": "600",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > div.panel #3 > div.ap-meta > div #4": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.panel #3 > div.ap-meta > span.label-caps #4": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "letter-spacing": "0.6px",
+      "text-transform": "uppercase",
+      "display": "block",
+      "margin": "0px 0px 4px"
+    },
+    "div.shell > main[main].main > div.panel #3 > div.ap-meta > b.mono": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "13.5px",
+      "font-weight": "600",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > div.panel #3 > div.ap-meta > div #5": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.panel #3 > div.ap-meta > span.label-caps #5": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "letter-spacing": "0.6px",
+      "text-transform": "uppercase",
+      "display": "block",
+      "margin": "0px 0px 4px"
+    },
+    "div.shell > main[main].main > div.panel #3 > div.ap-meta > b.mono #2": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "13.5px",
+      "font-weight": "600",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > div.panel #3 > div.ap-meta > div #6": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.panel #3 > div.ap-meta > span.label-caps #6": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "letter-spacing": "0.6px",
+      "text-transform": "uppercase",
+      "display": "block",
+      "margin": "0px 0px 4px"
+    },
+    "div.shell > main[main].main > div.panel #3 > div.ap-meta > b.mono #3": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "13.5px",
+      "font-weight": "600",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > div.panel #3 > div.audit.decisions": {
+      "display": "block",
+      "margin": "0px 0px 12px"
+    },
+    "div.shell > main[main].main > div.panel #3 > div.audit.decisions > div.entry": {
+      "font-size": "12px",
+      "display": "flex",
+      "border-bottom": "1px solid color(srgb 0.141176 0.176471 0.211765 / 0.5)",
+      "padding": "3px 0px",
+      "gap": "10px"
+    },
+    "div.shell > main[main].main > div.panel #3 > div.audit.decisions > div.entry > span.mono.ts": {
+      "color": "rgb(91, 103, 114)",
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.04px",
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.panel #3 > div.audit.decisions > div.entry > span.event.ok-text": {
+      "color": "rgb(52, 211, 153)",
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.panel #3 > div.audit.decisions > div.entry > span.actor": {
+      "color": "rgb(139, 152, 165)",
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.panel #3 > div.audit.decisions > div.entry > span.detail": {
+      "color": "rgb(139, 152, 165)",
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.panel #3 > div.ap-actions": {
+      "display": "flex",
+      "margin": "10px 0px 0px",
+      "gap": "8px"
+    },
+    "div.shell > main[main].main > div.panel #3 > div.ap-actions > input[textbox] \"decision note…\"": {
+      "font-family": "Arial",
+      "font-size": "13px",
+      "line-height": "normal",
+      "display": "block",
+      "background-color": "rgb(17, 22, 27)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "5px",
+      "padding": "6px 9px"
+    },
+    "div.shell > main[main].main > div.panel #3 > div.ap-actions > button[button].btn \"Approve\"": {
+      "font-family": "Arial",
+      "font-size": "13px",
+      "line-height": "normal",
+      "display": "block",
+      "background-color": "rgb(28, 36, 44)",
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "6px",
+      "padding": "6px 14px"
+    },
+    "div.shell > main[main].main > div.panel #3 > div.ap-actions > button[button].btn.danger \"Reject\"": {
+      "color": "rgb(239, 68, 68)",
+      "font-family": "Arial",
+      "font-size": "13px",
+      "line-height": "normal",
+      "display": "block",
+      "background-color": "rgb(28, 36, 44)",
+      "border-top": "1px solid rgb(239, 68, 68)",
+      "border-right": "1px solid rgb(239, 68, 68)",
+      "border-bottom": "1px solid rgb(239, 68, 68)",
+      "border-left": "1px solid rgb(239, 68, 68)",
+      "border-radius": "6px",
+      "padding": "6px 14px"
+    },
+    "div.shell > main[main].main > div.panel #3 > div.ap-actions > button[button].btn.glass \"Break glass\"": {
+      "color": "rgb(245, 158, 11)",
+      "font-family": "Arial",
+      "font-size": "13px",
+      "line-height": "normal",
+      "display": "block",
+      "background-color": "rgb(28, 36, 44)",
+      "border-top": "1px solid rgb(245, 158, 11)",
+      "border-right": "1px solid rgb(245, 158, 11)",
+      "border-bottom": "1px solid rgb(245, 158, 11)",
+      "border-left": "1px solid rgb(245, 158, 11)",
+      "border-radius": "6px",
+      "padding": "6px 14px"
+    },
+    "div.shell > main[main].main > div.panel #4": {
+      "display": "block",
+      "background-color": "rgb(21, 27, 33)",
+      "border-top": "1px solid rgb(36, 45, 54)",
+      "border-right": "1px solid rgb(36, 45, 54)",
+      "border-bottom": "1px solid rgb(36, 45, 54)",
+      "border-left": "1px solid rgb(36, 45, 54)",
+      "border-radius": "6px",
+      "padding": "14px 16px"
+    },
+    "div.shell > main[main].main > div.panel #4 > h2[heading] \"AUDIT TRAIL (2)\"": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "12px",
+      "font-weight": "600",
+      "letter-spacing": "0.7px",
+      "text-transform": "uppercase",
+      "display": "block",
+      "margin": "0px 0px 10px"
+    },
+    "div.shell > main[main].main > div.panel #4 > div.audit": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.panel #4 > div.audit > div.entry": {
+      "font-size": "12px",
+      "display": "flex",
+      "border-bottom": "1px solid color(srgb 0.141176 0.176471 0.211765 / 0.5)",
+      "padding": "3px 0px",
+      "gap": "10px"
+    },
+    "div.shell > main[main].main > div.panel #4 > div.audit > div.entry > span.mono.ts": {
+      "color": "rgb(91, 103, 114)",
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.04px",
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.panel #4 > div.audit > div.entry > span.mono.event": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.04px",
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.panel #4 > div.audit > div.entry > span.actor": {
+      "color": "rgb(139, 152, 165)",
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.panel #4 > div.audit > div.entry > span.detail": {
+      "color": "rgb(139, 152, 165)",
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.panel #4 > div.audit > div.entry #2": {
+      "font-size": "12px",
+      "display": "flex",
+      "border-bottom": "1px solid color(srgb 0.141176 0.176471 0.211765 / 0.5)",
+      "padding": "3px 0px",
+      "gap": "10px"
+    },
+    "div.shell > main[main].main > div.panel #4 > div.audit > div.entry #2 > span.mono.ts": {
+      "color": "rgb(91, 103, 114)",
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.04px",
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.panel #4 > div.audit > div.entry #2 > span.mono.event": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.04px",
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.panel #4 > div.audit > div.entry #2 > span.actor": {
+      "color": "rgb(139, 152, 165)",
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.panel #4 > div.audit > div.entry #2 > span.detail": {
+      "color": "rgb(139, 152, 165)",
+      "display": "block"
+    },
+    "div": {
+      "display": "block"
+    }
+  }
+}

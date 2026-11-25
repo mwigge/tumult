@@ -87,7 +87,7 @@ test('a TLPT is recorded with its remediation plan and a retest, and signed off'
     });
 
     await test.step('the opened record shows what was recorded', async () => {
-        await page.getByRole('button', { name: 'Verification queue', exact: true }).click();
+        await page.getByRole('tab', { name: 'Verification queue', exact: true }).click();
         await page.getByRole('cell', { name: NAME, exact: true }).click();
         await expect(page.getByTestId('signoff-summary')).toBeVisible();
         await expect(page.getByText('Tester: Red Team Ltd')).toBeVisible();

@@ -3,7 +3,10 @@
     import { onMount } from 'svelte';
     import { ACTIVE_RUN_STATES, ApiError, api } from '#lib/api.js';
     import type { GameDayDetail, MeResponse, RunRow } from '#lib/types.js';
+    import Badge from '#lib/components/Badge.svelte';
     import StatusBadge from '#lib/components/StatusBadge.svelte';
+    import PageHeader from '#lib/components/PageHeader.svelte';
+    import Panel from '#lib/components/Panel.svelte';
 
     const id = $derived(page.params.id ?? '');
 
@@ -106,39 +109,28 @@
     }
 </script>
 
+<PageHeader
+    title={day ? day.title : 'GameDay'}
+    back={{ href: '/gamedays', label: 'gamedays' }}
+    sub={day
+        ? `${day.experiments.length} experiments · pass threshold ${day.scoring.pass_threshold} · MTTR target ${day.scoring.mttr_target_s}s`
+        : undefined}
+/>
 {#if error && !day}
-    <div class="page-head">
-        <a href="/gamedays" style="color: var(--text-dim)">← gamedays</a>
-        <h1>GameDay</h1>
-    </div>
     <div class="state error panel">{error}</div>
 {:else if !day}
-    <div class="page-head">
-        <a href="/gamedays" style="color: var(--text-dim)">← gamedays</a>
-        <h1>GameDay</h1>
-    </div>
     <div class="skeleton" style="height: 200px"></div>
 {:else}
-    <div class="page-head">
-        <a href="/gamedays" style="color: var(--text-dim)">← gamedays</a>
-        <h1>{day.title}</h1>
-        <span class="sub">
-            {day.experiments.length} experiments · pass threshold {day.scoring.pass_threshold} · MTTR
-            target {day.scoring.mttr_target_s}s
-        </span>
-    </div>
-
     {#if day.description}
         <p class="desc">{day.description}</p>
     {/if}
     {#if day.tags.length > 0}
         <p class="tags">
-            {#each day.tags as tag (tag)}<span class="badge neutral">{tag}</span>{/each}
+            {#each day.tags as tag (tag)}<Badge tone="neutral" label={tag} />{/each}
         </p>
     {/if}
 
-    <div class="panel" style="margin-bottom: var(--space-3-5)">
-        <h2>Campaign steps</h2>
+    <Panel title="Campaign steps" style="margin-bottom: var(--space-3-5)">
         <table class="data">
             <thead>
                 <tr
@@ -174,11 +166,13 @@
                 {/each}
             </tbody>
         </table>
-    </div>
+    </Panel>
 
     {#if day.regulatory}
-        <div class="panel" style="margin-bottom: var(--space-3-5)">
-            <h2>Regulatory mapping — {day.regulatory.frameworks.join(', ')}</h2>
+        <Panel
+            title={`Regulatory mapping — ${day.regulatory.frameworks.join(', ')}`}
+            style="margin-bottom: var(--space-3-5)"
+        >
             <table class="data">
                 <thead>
                     <tr><th>Requirement</th><th>Description</th><th>Evidence</th></tr>
@@ -189,11 +183,10 @@
                     {/each}
                 </tbody>
             </table>
-        </div>
+        </Panel>
     {/if}
 
-    <div class="panel">
-        <h2>Run GameDay</h2>
+    <Panel title="Run GameDay">
         {#if campaign}
             <div class="campaign">
                 Campaign <a href="/runs/{campaign.id}" class="mono">{campaign.id.slice(0, 8)}</a>
@@ -233,7 +226,7 @@
                     {launchError}
                 </div>{/if}
         {/if}
-    </div>
+    </Panel>
 {/if}
 
 <style>
@@ -261,10 +254,5 @@
     }
     .params input {
         width: 100%;
-    }
-    .hint {
-        color: var(--text-dim);
-        font-size: var(--font-size-sm);
-        margin-top: var(--space-2);
     }
 </style>

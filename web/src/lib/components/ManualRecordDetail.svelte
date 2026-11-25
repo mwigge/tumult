@@ -94,10 +94,6 @@
         color: var(--text-dim);
         margin: var(--space-2-5) 0 var(--space-1-5);
     }
-    .dim {
-        color: var(--text-faint);
-        font-size: var(--font-size-xs);
-    }
     .hash {
         margin: var(--space-1-5) 0;
         font-family: var(--mono);

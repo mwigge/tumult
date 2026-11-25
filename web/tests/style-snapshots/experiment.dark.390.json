@@ -316,7 +316,7 @@
       "margin": "0px 0px 18px",
       "gap": "14px"
     },
-    "div.shell > main[main].main > div.page-head > a[link] \"← experiments\"": {
+    "div.shell > main[main].main > div.page-head > a[link].back \"← experiments\"": {
       "color": "rgb(139, 152, 165)",
       "display": "block"
     },

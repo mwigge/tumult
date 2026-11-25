@@ -316,7 +316,7 @@
       "margin": "0px 0px 18px",
       "gap": "14px"
     },
-    "div.shell > main[main].main > div.page-head > a[link] \"← runs\"": {
+    "div.shell > main[main].main > div.page-head > a[link].back \"← runs\"": {
       "color": "rgb(91, 103, 114)",
       "display": "block"
     },
@@ -529,7 +529,7 @@
     "div.shell > main[main].main > div.panel #2 > div.params #2 > label[LabelText]": {
       "display": "block"
     },
-    "div.shell > main[main].main > div.panel #2 > div.params #2 > label[LabelText] > span.mono": {
+    "div.shell > main[main].main > div.panel #2 > div.params #2 > label[LabelText] > span.mono.label-caps": {
       "color": "rgb(91, 103, 114)",
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11px",

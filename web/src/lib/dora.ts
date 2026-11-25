@@ -2,6 +2,7 @@
 // the API documents and the theme, so the page stays markup and the
 // options can be asserted through `window.__tumultCharts`.
 
+import { BAND, INK_ON_FILL, STATUS } from './chart-theme';
 import type { ChartTheme, EChartsCoreOption } from './echarts';
 import { chartTokens } from './echarts';
 import type { LegendItem } from './legend';
@@ -20,9 +21,9 @@ import type {
 export type HeatmapMode = 'coverage' | 'status';
 
 /** Coverage hues (Okabe-Ito, colour-blind safe), low to high. */
-const COVERAGE_HUES = ['#D55E00', '#E69F00', '#009E73'] as const;
+const COVERAGE_HUES = [BAND.poor, BAND.fair, BAND.good] as const;
 /** Evidence status hues by rank: none, designed, existing, operating. */
-const STATUS_HUES = ['#D55E00', '#E69F00', '#56B4E9', '#009E73'] as const;
+const STATUS_HUES = [STATUS.none, STATUS.designed, STATUS.existing, STATUS.operating] as const;
 export const STATUS_NAMES = ['none', 'designed', 'existing', 'operating'] as const;
 /** Coverage at or above which a cell takes the high hue, and the middle one. */
 const COVERAGE_STOPS = [0.5, 0.8] as const;
@@ -189,7 +190,6 @@ export function heatmapOption(
         .filter((d) => d.value[0] >= 0 && d.value[1] >= 0);
     return {
         tooltip: {
-            ...t.tooltip,
             className: 'dora-tooltip',
             formatter: tipFormatter((p: { data?: DoraCell & { row: string } }) =>
                 p.data ? cellTooltip(p.data) : null,
@@ -247,9 +247,9 @@ export function heatmapOption(
                                     y: cy,
                                     align: 'center',
                                     verticalAlign: 'middle',
-                                    fill: d.fill ? '#0b0e11' : t.text,
-                                    fontSize: 11,
-                                    fontWeight: 600,
+                                    fill: d.fill ? INK_ON_FILL : t.text,
+                                    fontSize: t.font.size.sm,
+                                    fontWeight: t.font.weight,
                                 },
                             },
                         ],
@@ -290,7 +290,7 @@ export function componentsOption(m: MaturityReport, theme: ChartTheme): EChartsC
         };
     });
     return {
-        tooltip: { ...t.tooltip, trigger: 'item' },
+        tooltip: { trigger: 'item' },
         // The grid holds the labels, not the axis name: room for it below.
         grid: { left: 8, right: 48, top: 8, bottom: 32, containLabel: true },
         xAxis: {
@@ -352,12 +352,12 @@ export function gaugeOption(m: MaturityReport, theme: ChartTheme): EChartsCoreOp
                 anchor: { show: true, size: 8, itemStyle: { color } },
                 axisTick: { show: false },
                 splitLine: { length: 12, lineStyle: { color: t.axis } },
-                axisLabel: { color: t.text, distance: 18, fontSize: 11 },
+                axisLabel: { color: t.text, distance: 18, fontSize: t.font.size.sm },
                 title: { show: false },
                 detail: {
                     valueAnimation: false,
                     offsetCenter: [0, '38%'],
-                    fontSize: 15,
+                    fontSize: t.font.size.lg,
                     color: m.capped ? t.text : t.accent,
                     formatter: (v: number) => `index ${v.toFixed(2)}`,
                 },
@@ -374,7 +374,7 @@ const HISTORY_LINES = { level: 'Level', index: 'Index' } as const;
 export function historyOption(m: MaturityReport, theme: ChartTheme): EChartsCoreOption {
     const t = chartTokens(theme);
     return {
-        tooltip: { ...t.tooltip, trigger: 'axis' },
+        tooltip: { trigger: 'axis' },
         // The grid holds the labels, not the axis name: room for it above.
         grid: { left: 8, right: 12, top: 28, bottom: 8, containLabel: true },
         xAxis: { type: 'category', data: m.history.map((h) => h.quarter) },

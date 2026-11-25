@@ -3,6 +3,7 @@
     import { goto } from '$app/navigation';
     import { page } from '$app/state';
     import { api, fmtAgo, fmtTs, shortId } from '#lib/api.js';
+    import Badge from '#lib/components/Badge.svelte';
     import ScopeSummary, { targetedActions } from '#lib/components/ScopeSummary.svelte';
     import type {
         DryRunResponse,
@@ -11,6 +12,8 @@
         RegistryDefinition,
         RegistryEntry,
     } from '#lib/types.js';
+    import PageHeader from '#lib/components/PageHeader.svelte';
+    import Panel from '#lib/components/Panel.svelte';
 
     let me = $state<MeResponse | null>(null);
     let entries = $state<RegistryEntry[] | null>(null);
@@ -178,16 +181,13 @@
     }
 </script>
 
-<div class="page-head">
-    <a href="/runs" style="color: var(--text-dim)">← runs</a>
-    <h1>New run</h1>
+<PageHeader title="New run" back={{ href: '/runs', label: 'runs' }}>
     {#if readOnlyNote}
         <span class="sub">your role ({me?.role ?? 'viewer'}) is read-only here</span>
     {/if}
-</div>
+</PageHeader>
 
-<div class="panel" style="margin-bottom: var(--space-3-5)">
-    <h2>1 · Definition</h2>
+<Panel title="1 · Definition" style="margin-bottom: var(--space-3-5)">
     {#if listError}
         <div class="state error">Failed to load the registry: {listError}</div>
     {:else if !entries}
@@ -227,11 +227,10 @@
             </tbody>
         </table>
     {/if}
-</div>
+</Panel>
 
 {#if selectedId}
-    <div class="panel" style="margin-bottom: var(--space-3-5)">
-        <h2>2 · Execution context and parameters</h2>
+    <Panel title="2 · Execution context and parameters" style="margin-bottom: var(--space-3-5)">
         <div class="params">
             <label
                 >Environment<input
@@ -262,7 +261,7 @@
             <div class="params">
                 {#each placeholders as p (p)}
                     <label>
-                        <span class="mono">{p}</span>
+                        <span class="mono label-caps">{p}</span>
                         <input
                             type="text"
                             value={vars[p] ?? ''}
@@ -276,10 +275,9 @@
                 <div class="hint">All parameters are required before the plan can be dry-run.</div>
             {/if}
         {/if}
-    </div>
+    </Panel>
 
-    <div class="panel" style="margin-bottom: var(--space-3-5)">
-        <h2>3 · Dry-run preview</h2>
+    <Panel title="3 · Dry-run preview" style="margin-bottom: var(--space-3-5)">
         <button
             class="primary"
             onclick={runDry}
@@ -314,7 +312,7 @@
                 <div class="plan-head">
                     <b>{plan.title || def?.name}</b>
                     {#each plan.tags ?? [] as tag (tag)}
-                        <span class="badge neutral">{tag}</span>
+                        <Badge tone="neutral" label={tag} />
                     {/each}
                 </div>
                 {#if plan.description}
@@ -380,10 +378,9 @@
                 {/if}
             </div>
         {/if}
-    </div>
+    </Panel>
 
-    <div class="panel">
-        <h2>4 · Execute</h2>
+    <Panel title="4 · Execute">
         {#if !canRun}
             <div class="hint">Starting runs requires the operator role or above.</div>
         {:else if dry && dry.valid && !dryValidForCurrent}
@@ -409,7 +406,7 @@
         {#if startError}
             <div class="state error">Failed to start the run: {startError}</div>
         {/if}
-    </div>
+    </Panel>
 {/if}
 
 <style>
@@ -421,21 +418,8 @@
         grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
         gap: var(--space-2-5) var(--space-4-5);
     }
-    .params label span {
-        display: block;
-        color: var(--text-dim);
-        font-size: var(--font-size-3xs);
-        text-transform: uppercase;
-        letter-spacing: var(--letter-spacing-md);
-        margin-bottom: var(--space-1);
-    }
     .params input {
         width: 100%;
-    }
-    .hint {
-        color: var(--text-dim);
-        font-size: var(--font-size-sm);
-        margin-top: var(--space-2);
     }
     .plan {
         margin-top: var(--space-3);

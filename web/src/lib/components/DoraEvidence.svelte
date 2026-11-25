@@ -1,16 +1,19 @@
 <script lang="ts">
     // The evidence behind one requirement row, as a drawer: every function
-    // of the row with its status and the records that scored it.
+    // of the row with its status and the records that scored it. It is a
+    // wide modal Drawer, with no shade, that its requirement names.
     import { api } from '#lib/api.js';
     import { pct } from '#lib/dora.js';
     import type { DoraArticleReport, DoraExpectation, DoraRequirement } from '#lib/types.js';
+    import Badge from './Badge.svelte';
+    import Drawer from './Drawer.svelte';
 
     let { row, lei, onclose }: { row: DoraExpectation; lei: string; onclose: () => void } =
         $props();
 
+    const title = $props.id();
     let doc = $state<DoraArticleReport | null>(null);
     let error = $state<string | null>(null);
-    let closer = $state<HTMLButtonElement | null>(null);
 
     $effect(() => {
         const wanted = row;
@@ -25,37 +28,21 @@
         };
     });
 
-    $effect(() => {
-        closer?.focus();
-    });
-
     const requirement = $derived<DoraRequirement | null>(
         doc?.requirements.find((r) => r.id === row.id) ?? null,
     );
 
     const day = (ns: number) => new Date(ns / 1e6).toISOString().slice(0, 10);
-
-    function onkeydown(event: KeyboardEvent) {
-        if (event.key === 'Escape') onclose();
-    }
 </script>
 
-<svelte:window {onkeydown} />
-
-<div
-    class="drawer"
-    role="dialog"
-    aria-modal="false"
-    aria-label="Evidence behind {row.cite}"
-    data-testid="evidence-drawer"
->
+<Drawer labelledby={title} {onclose} width="wide" data-testid="evidence-drawer">
     <div class="top">
         <div>
             <div class="mono">{row.cite}</div>
-            <div class="title">{row.title}</div>
+            <div class="title" id={title}>{row.title}</div>
             <div class="dim mono">{row.id}</div>
         </div>
-        <button bind:this={closer} onclick={onclose}>Close</button>
+        <button onclick={onclose}>Close</button>
     </div>
     {#if error}
         <div class="state error">Failed to load the evidence: {error}</div>
@@ -73,10 +60,10 @@
         </div>
         {#each requirement.entities as cell (cell.entity_id)}
             <section>
-                <h3>
+                <h3 class="function">
                     <span class="mono">{cell.entity_id}</span>
                     <span class="dim">{cell.tier}</span>
-                    <span class="badge neutral">{cell.status.replace('_', ' ')}</span>
+                    <Badge tone="neutral" label={cell.status.replace('_', ' ')} />
                 </h3>
                 <div class="dim">
                     {cell.streak_days} stored day{cell.streak_days === 1 ? '' : 's'} in a row
@@ -119,22 +106,9 @@
         {/each}
         {#if doc.disclaimer}<div class="dim foot">{doc.disclaimer}</div>{/if}
     {/if}
-</div>
+</Drawer>
 
 <style>
-    .drawer {
-        position: fixed;
-        top: 0;
-        right: 0;
-        bottom: 0;
-        width: min(620px, 100vw);
-        overflow-y: auto;
-        background: var(--bg-raised);
-        border-left: var(--border-width-sm) solid var(--border-strong);
-        padding: var(--space-4) var(--space-4-5);
-        z-index: var(--z-overlay);
-        box-shadow: -8px 0 24px rgb(0 0 0 / 25%);
-    }
     .top {
         display: flex;
         justify-content: space-between;
@@ -158,9 +132,14 @@
     section {
         margin-top: var(--space-3-5);
     }
-    h3 {
+    /* The line of one function, not the small capital label that a
+       drawer gives the heading of a section: this selector outranks it. */
+    section h3.function {
         margin: 0 0 var(--space-0-5);
         font-size: var(--font-size-md);
+        text-transform: none;
+        letter-spacing: normal;
+        color: inherit;
         display: flex;
         gap: var(--space-2);
         align-items: baseline;

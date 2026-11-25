@@ -175,7 +175,7 @@
             : [];
         return {
             grid: { left: 48, right: 16, top: 24, bottom: 28 },
-            tooltip: { trigger: 'axis', ...t.tooltip, formatter: tipFormatter(pointTip) },
+            tooltip: { trigger: 'axis', formatter: tipFormatter(pointTip) },
             xAxis: { type: 'time' },
             yAxis: { type: 'value', name: unit, scale: true },
             series: [...bandSeries, observed, ...median],

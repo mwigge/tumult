@@ -5,7 +5,7 @@
     // writes. A run the lake has no journal of has no evidence.
     import { onMount } from 'svelte';
     import { fmtDuration } from '#lib/api.js';
-    import { chartTheme, chartTokens } from '#lib/echarts.js';
+    import { chartTheme, chartTokens, followTheme } from '#lib/echarts.js';
     import type { ChartTheme } from '#lib/echarts.js';
     import {
         fmtMargin,
@@ -13,33 +13,23 @@
         loadFacts,
         loadLatencyOption,
         loadThroughputOption,
-        objectiveClass,
         objectiveTarget,
         phaseLabel,
         probeSamplesOption,
         recoveryRows,
         samplesNote,
         steadyState,
-        stepClass,
         stepOffset,
     } from '#lib/evidence.js';
     import type { RunEvidence } from '#lib/types.js';
+    import Badge from './Badge.svelte';
     import EChart from './EChart.svelte';
+    import Panel from './Panel.svelte';
 
     let { evidence }: { evidence: RunEvidence | null } = $props();
 
     let theme = $state<ChartTheme>(chartTheme());
-    onMount(() => {
-        const retheme = () => (theme = chartTheme());
-        const mo = new MutationObserver(retheme);
-        mo.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
-        const mq = window.matchMedia?.('(prefers-color-scheme: light)');
-        mq?.addEventListener?.('change', retheme);
-        return () => {
-            mo.disconnect();
-            mq?.removeEventListener?.('change', retheme);
-        };
-    });
+    onMount(() => followTheme((next) => (theme = next)));
     const tokens = $derived(chartTokens(theme));
 </script>
 
@@ -54,13 +44,12 @@
     {@const recovery = recoveryRows(evidence.recovery, evidence.objectives)}
     {@const note = samplesNote(evidence)}
     <div class="grid cols-2 block">
-        <div class="panel" data-testid="evidence-steady">
-            <h2>Steady state</h2>
+        <Panel title="Steady state" data-testid="evidence-steady">
             <dl class="facts">
                 <div>
                     <dt>Kind of test</dt>
                     <dd>
-                        <span class="badge neutral" data-testid="run-kind">{evidence.kind}</span>
+                        <Badge tone="neutral" data-testid="run-kind" label={evidence.kind} />
                     </dd>
                 </div>
                 {#if before !== null || after !== null}
@@ -69,17 +58,13 @@
                     <div>
                         <dt>Before the method</dt>
                         <dd>
-                            <span class="badge {first.cls}" data-testid="steady-before"
-                                >{first.label}</span
-                            >
+                            <Badge kind="verdict" value={first} data-testid="steady-before" />
                         </dd>
                     </div>
                     <div>
                         <dt>After the method</dt>
                         <dd>
-                            <span class="badge {last.cls}" data-testid="steady-after"
-                                >{last.label}</span
-                            >
+                            <Badge kind="verdict" value={last} data-testid="steady-after" />
                         </dd>
                     </div>
                 {/if}
@@ -103,10 +88,12 @@
                     </tbody>
                 </table>
             {/if}
-        </div>
+        </Panel>
 
-        <div class="panel" data-testid="evidence-objectives">
-            <h2>Objectives ({evidence.objectives.length})</h2>
+        <Panel
+            title={`Objectives (${evidence.objectives.length})`}
+            data-testid="evidence-objectives"
+        >
             {#if evidence.objectives.length === 0}
                 <div class="state">This run had no objective.</div>
             {:else}
@@ -126,9 +113,7 @@
                                 <td class="mono">{fmtValue(objective.observed)}</td>
                                 <td class="mono">{fmtMargin(objective.margin)}</td>
                                 <td>
-                                    <span class="badge {objectiveClass(objective.state)}"
-                                        >{objective.state}</span
-                                    >
+                                    <Badge kind="verdict" value={objective.state} />
                                 </td>
                                 <td>{objective.criticality}</td>
                             </tr>
@@ -136,7 +121,7 @@
                     </tbody>
                 </table>
             {/if}
-        </div>
+        </Panel>
     </div>
 
     <div class="panel block" data-testid="evidence-steps">
@@ -158,10 +143,7 @@
                             <td>{phaseLabel(step.phase)}</td>
                             <td class="mono">{step.name}</td>
                             <td>{step.activity_type}</td>
-                            <td
-                                ><span class="badge {stepClass(step.status)}">{step.status}</span
-                                ></td
-                            >
+                            <td><Badge kind="step" value={step.status} /></td>
                             <td class="mono">{stepOffset(evidence, step.started_at_ns)}</td>
                             <td class="mono">{fmtDuration(step.duration_ms * 1_000_000)}</td>
                             <td class="mono result" title={result}>{result}</td>

@@ -2,6 +2,9 @@
     import { onMount } from 'svelte';
     import { api, fmtAgo, fmtTs } from '#lib/api.js';
     import type { MeResponse, Webhook } from '#lib/types.js';
+    import Badge from '#lib/components/Badge.svelte';
+    import PageHeader from '#lib/components/PageHeader.svelte';
+    import Panel from '#lib/components/Panel.svelte';
 
     let me = $state<MeResponse | null>(null);
     let hooks = $state<Webhook[] | null>(null);
@@ -98,23 +101,21 @@
     }
 </script>
 
-<div class="page-head">
-    <h1>Webhooks</h1>
-    <span class="sub">
-        {hooks
-            ? `${hooks.length} sink${hooks.length === 1 ? '' : 's'}`
-            : 'signed run-event notifications'}
-    </span>
-</div>
+<PageHeader
+    title="Webhooks"
+    sub={hooks
+        ? `${hooks.length} sink${hooks.length === 1 ? '' : 's'}`
+        : 'signed run-event notifications'}
+/>
 
 {#if me && !isAdmin}
-    <div class="panel">
+    <Panel>
         <div class="state">
             Webhook management requires the admin role{me.role ? ` (you are ${me.role})` : ''}.
         </div>
-    </div>
+    </Panel>
 {:else}
-    <div class="panel" style="margin-bottom: var(--space-3-5)">
+    <Panel style="margin-bottom: var(--space-3-5)">
         {#if error}
             <div class="state error">Failed to load webhooks: {error}</div>
         {:else if !hooks}
@@ -136,9 +137,10 @@
                             <td class="mono dim">{w.url}</td>
                             <td>{w.events.length === 0 ? 'all' : w.events.join(', ')}</td>
                             <td
-                                ><span class="badge {w.enabled ? 'ok' : 'neutral'}"
-                                    >{w.enabled ? 'enabled' : 'disabled'}</span
-                                ></td
+                                ><Badge
+                                    kind="switch"
+                                    value={w.enabled ? 'enabled' : 'disabled'}
+                                /></td
                             >
                             <td title={fmtTs(w.created_at_ns)}>{fmtAgo(w.created_at_ns)}</td>
                             <td class="actions">
@@ -165,10 +167,9 @@
                     {rowError}
                 </div>{/if}
         {/if}
-    </div>
+    </Panel>
 
-    <div class="panel">
-        <h2>New webhook</h2>
+    <Panel title="New webhook">
         <form
             class="create"
             onsubmit={(e) => {
@@ -226,34 +227,12 @@
                 <div class="mono pw">{oneTime.secret}</div>
             </div>
         {/if}
-    </div>
+    </Panel>
 {/if}
 
 <style>
-    .actions {
-        display: flex;
-        gap: var(--space-2);
-    }
     .btn {
-        background: var(--bg-hover);
-        border: var(--border-width-sm) solid var(--border-strong);
-        color: var(--text);
-        border-radius: var(--radius-xl);
-        padding: var(--space-1-5) var(--space-3-5);
-        cursor: pointer;
-        font-size: var(--font-size-md);
         white-space: nowrap;
-    }
-    .btn:hover {
-        border-color: var(--accent-dim);
-    }
-    .btn.danger {
-        border-color: var(--fail);
-        color: var(--fail);
-    }
-    .btn:disabled {
-        opacity: 0.5;
-        cursor: default;
     }
     .dim {
         max-width: 300px;

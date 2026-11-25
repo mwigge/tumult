@@ -6,37 +6,286 @@
     "$description": "The font of code, ids and numbers that line up in columns."
   },
   "chart": {
-    "$description": "Charts draw on a canvas and cannot read CSS, so they take these from tokens.gen.ts.",
-    "series": {
+    "$description": "Charts draw on a canvas and cannot read CSS, so they take these from tokens.gen.ts. The series of each theme are in dark.tokens.json and light.tokens.json.",
+    "font": {
+      "$description": "The type of chart text. The canvas cannot read a custom property, so the chart takes the values.",
+      "family": {
+        "$type": "fontFamily",
+        "$value": "{font-body}",
+        "$description": "The font of chart text: the font of the page."
+      },
+      "weight": {
+        "$type": "fontWeight",
+        "$value": "{font-weight-strong}",
+        "$description": "600, semi-bold. Text on a filled heatmap cell or treemap tile."
+      },
+      "size": {
+        "$type": "dimension",
+        "$description": "The sizes of chart text, smallest first.",
+        "2xs": {
+          "$value": {
+            "value": 9,
+            "unit": "px"
+          },
+          "$description": "9px. The kind under a caption of the Star Map, and the caption of an edge."
+        },
+        "xs": {
+          "$value": {
+            "value": 10,
+            "unit": "px"
+          },
+          "$description": "10px. The name of a run over a chart of time."
+        },
+        "sm": {
+          "$value": {
+            "value": 11,
+            "unit": "px"
+          },
+          "$description": "11px. Labels in a chart: a caption of the Star Map, a heatmap cell, the scale of a gauge."
+        },
+        "md": {
+          "$value": {
+            "value": 12,
+            "unit": "px"
+          },
+          "$description": "12px. Tooltips and the labels of treemap tiles."
+        },
+        "lg": {
+          "$value": {
+            "value": 15,
+            "unit": "px"
+          },
+          "$description": "15px. A value a chart shows large: the index of the maturity gauge."
+        }
+      }
+    },
+    "ink-on-fill": {
       "$type": "color",
-      "$description": "The colours of chart series, in order. Okabe-Ito, so that readers with colour blindness can tell them apart. The status colours are not among them.",
-      "1": {
-        "$value": "{blue.70}",
-        "$description": "The first series: the blue of the dark accent."
-      },
-      "2": {
-        "$value": "{okabe-ito.orange}",
-        "$description": "The second series."
-      },
-      "3": {
+      "$value": "{grey.4}",
+      "$description": "Text on a bright fill, such as a heatmap cell or a treemap tile, in every theme."
+    },
+    "neutral-dot": {
+      "$type": "color",
+      "$value": "{grey.57}",
+      "$description": "The dot of a tooltip row whose colour is not one CSS can write, such as a gradient."
+    },
+    "band": {
+      "$type": "color",
+      "$description": "The bands of a score, and the coverage of a DORA heatmap cell from low to high. Okabe-Ito, so that readers with colour blindness can tell them apart.",
+      "good": {
         "$value": "{okabe-ito.bluish-green}",
-        "$description": "The third series."
+        "$description": "Good, or high coverage."
       },
-      "4": {
-        "$value": "{okabe-ito.reddish-purple}",
-        "$description": "The fourth series."
+      "fair": {
+        "$value": "{okabe-ito.orange}",
+        "$description": "Fair, or middle coverage."
       },
-      "5": {
-        "$value": "{okabe-ito.sky-blue}",
-        "$description": "The fifth series."
-      },
-      "6": {
+      "poor": {
         "$value": "{okabe-ito.vermillion}",
-        "$description": "The sixth series."
+        "$description": "Poor, or low coverage."
+      }
+    },
+    "unscored": {
+      "$type": "color",
+      "$value": "{grey.43}",
+      "$description": "A band with no score: neither good nor bad."
+    },
+    "status": {
+      "$type": "color",
+      "$description": "The evidence status of a DORA heatmap cell, by rank. Okabe-Ito.",
+      "none": {
+        "$value": "{okabe-ito.vermillion}",
+        "$description": "Rank 0: no evidence."
       },
-      "7": {
-        "$value": "{okabe-ito.yellow}",
-        "$description": "The seventh series."
+      "designed": {
+        "$value": "{okabe-ito.orange}",
+        "$description": "Rank 1: the control is designed."
+      },
+      "existing": {
+        "$value": "{okabe-ito.sky-blue}",
+        "$description": "Rank 2: the control exists."
+      },
+      "operating": {
+        "$value": "{okabe-ito.bluish-green}",
+        "$description": "Rank 3: the control operates."
+      }
+    },
+    "starmap": {
+      "$type": "color",
+      "$description": "The Star Map, the same in every theme on purpose.",
+      "kind": {
+        "$description": "The fill of each kind of node, the same under every lens. None is a status colour of either theme, and none is the yellow lost on white. They hold their own values: no other role uses them.",
+        "org": {
+          "$value": {
+            "colorSpace": "srgb",
+            "components": [0.298, 0.5569, 0.8549],
+            "hex": "#4C8EDA"
+          },
+          "$description": "The fill of an org unit."
+        },
+        "entity": {
+          "$value": {
+            "colorSpace": "srgb",
+            "components": [0.7882, 0.5647, 0.7529],
+            "hex": "#C990C0"
+          },
+          "$description": "The fill of an ICT entity."
+        },
+        "system": {
+          "$value": {
+            "colorSpace": "srgb",
+            "components": [0.4824, 0.4235, 0.851],
+            "hex": "#7B6CD9"
+          },
+          "$description": "The fill of a system."
+        },
+        "component": {
+          "$value": {
+            "colorSpace": "srgb",
+            "components": [0.3412, 0.7804, 0.8902],
+            "hex": "#57C7E3"
+          },
+          "$description": "The fill of a component."
+        },
+        "service": {
+          "$value": {
+            "colorSpace": "srgb",
+            "components": [0.1647, 0.6157, 0.5608],
+            "hex": "#2A9D8F"
+          },
+          "$description": "The fill of a service."
+        },
+        "workload": {
+          "$value": {
+            "colorSpace": "srgb",
+            "components": [0.6902, 0.5529, 0.3412],
+            "hex": "#B08D57"
+          },
+          "$description": "The fill of a workload."
+        },
+        "ext": {
+          "$value": {
+            "colorSpace": "srgb",
+            "components": [0.4314, 0.4824, 0.5451],
+            "hex": "#6E7B8B"
+          },
+          "$description": "The fill of an external system."
+        },
+        "def": {
+          "$value": {
+            "colorSpace": "srgb",
+            "components": [0.7216, 0.6275, 0.2196],
+            "hex": "#B8A038"
+          },
+          "$description": "The fill of an experiment."
+        },
+        "run": {
+          "$value": {
+            "colorSpace": "srgb",
+            "components": [0.6039, 0.6471, 0.6941],
+            "hex": "#9AA5B1"
+          },
+          "$description": "The fill of a run."
+        },
+        "slo": {
+          "$value": {
+            "colorSpace": "srgb",
+            "components": [0.2314, 0.3569, 0.6627],
+            "hex": "#3B5BA9"
+          },
+          "$description": "The fill of an SLO."
+        },
+        "article": {
+          "$value": {
+            "colorSpace": "srgb",
+            "components": [0.6431, 0.3686, 0.749],
+            "hex": "#A45EBF"
+          },
+          "$description": "The fill of an article."
+        },
+        "gap": {
+          "$value": {
+            "colorSpace": "srgb",
+            "components": [0.851, 0.7216, 0.6275],
+            "hex": "#D9B8A0"
+          },
+          "$description": "The fill of a gap."
+        },
+        "cluster": {
+          "$value": {
+            "colorSpace": "srgb",
+            "components": [0.1843, 0.498, 0.6196],
+            "hex": "#2F7F9E"
+          },
+          "$description": "The fill of a cluster."
+        }
+      },
+      "relation": {
+        "$description": "The line of each relation: a mid tone that stands out on the dark and on the light panel, and no status colour. They hold their own values: no other role uses them.",
+        "owns": {
+          "$value": {
+            "colorSpace": "srgb",
+            "components": [0.5451, 0.4235, 0.8784],
+            "hex": "#8B6CE0"
+          },
+          "$description": "The line of OWNS."
+        },
+        "implements": {
+          "$value": {
+            "colorSpace": "srgb",
+            "components": [0.0549, 0.5804, 0.5333],
+            "hex": "#0E9488"
+          },
+          "$description": "The line of IMPLEMENTS."
+        },
+        "calls": {
+          "$value": {
+            "colorSpace": "srgb",
+            "components": [0.1843, 0.502, 0.8157],
+            "hex": "#2F80D0"
+          },
+          "$description": "The line of CALLS."
+        },
+        "runs_on": {
+          "$value": {
+            "colorSpace": "srgb",
+            "components": [0.6588, 0.4588, 0.1647],
+            "hex": "#A8752A"
+          },
+          "$description": "The line of RUNS_ON."
+        },
+        "depends_on": {
+          "$value": {
+            "colorSpace": "srgb",
+            "components": [0.7529, 0.251, 0.5608],
+            "hex": "#C0408F"
+          },
+          "$description": "The line of DEPENDS_ON."
+        },
+        "tested_by": {
+          "$value": {
+            "colorSpace": "srgb",
+            "components": [0.4196, 0.5569, 0.1373],
+            "hex": "#6B8E23"
+          },
+          "$description": "The line of TESTED_BY."
+        },
+        "covers": {
+          "$value": {
+            "colorSpace": "srgb",
+            "components": [0.102, 0.6078, 0.7412],
+            "hex": "#1A9BBD"
+          },
+          "$description": "The line of COVERS."
+        },
+        "measures": {
+          "$value": {
+            "colorSpace": "srgb",
+            "components": [0.5412, 0.498, 0.6588],
+            "hex": "#8A7FA8"
+          },
+          "$description": "The line of MEASURES."
+        }
       }
     }
   }

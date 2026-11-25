@@ -67,6 +67,14 @@
       },
       "$description": "Middle grey, on the dark side."
     },
+    "57": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.5333, 0.5333, 0.5333],
+        "hex": "#888888"
+      },
+      "$description": "Middle grey, with no blue."
+    },
     "62": {
       "$value": {
         "colorSpace": "srgb",
@@ -270,6 +278,70 @@
         "hex": "#CC79A7"
       },
       "$description": "Reddish purple."
+    },
+    "orange-deep": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.7608, 0.5255, 0.0],
+        "hex": "#c28600"
+      },
+      "$description": "Orange, darker: a line of it stands out on white."
+    },
+    "sky-blue-deep": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.1137, 0.6039, 0.8784],
+        "hex": "#1d9ae0"
+      },
+      "$description": "Sky blue, darker: a line of it stands out on white."
+    },
+    "yellow-deep": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.6196, 0.5804, 0.051],
+        "hex": "#9e940d"
+      },
+      "$description": "Yellow, darker: a line of it stands out on white."
+    }
+  },
+  "violet": {
+    "$type": "color",
+    "$description": "Violets, numbered by lightness like the greys.",
+    "60": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.6157, 0.4902, 0.9765],
+        "hex": "#9d7df9"
+      },
+      "$description": "Violet."
+    },
+    "65": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.6549, 0.5451, 0.9804],
+        "hex": "#a78bfa"
+      },
+      "$description": "Light violet."
+    }
+  },
+  "pink": {
+    "$type": "color",
+    "$description": "Pinks, numbered by lightness like the greys.",
+    "60": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.949, 0.3451, 0.6627],
+        "hex": "#f258a9"
+      },
+      "$description": "Pink."
+    },
+    "66": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.9569, 0.4471, 0.7137],
+        "hex": "#f472b6"
+      },
+      "$description": "Light pink."
     }
   },
   "font": {

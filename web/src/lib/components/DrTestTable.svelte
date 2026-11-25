@@ -10,9 +10,9 @@
         rtoText,
         testHref,
         verdictLabel,
-        verdictTone,
     } from '#lib/dr.js';
     import type { DrTest } from '#lib/types.js';
+    import Badge from './Badge.svelte';
     import DrObjectiveCell from './DrObjectiveCell.svelte';
 
     let {
@@ -71,7 +71,7 @@
                         {localDay(test.executed_at_ns)}
                     </td>
                     <td><a href={testHref(test)}>{test.experiment_name ?? test.evidence_id}</a></td>
-                    <td><span class="badge neutral">{origin(test)}</span></td>
+                    <td><Badge tone="neutral" label={origin(test)} /></td>
                     <td class="nowrap">
                         {test.target_system ?? 'no target'}
                         {#if test.target_environment}<span class="dim">
@@ -79,9 +79,11 @@
                             >{/if}
                     </td>
                     <td>
-                        <span class="badge {verdictTone(test.verdict)}"
-                            >{verdictLabel(test.verdict)}</span
-                        >
+                        <Badge
+                            kind="verdict"
+                            value={test.verdict}
+                            label={verdictLabel(test.verdict)}
+                        />
                     </td>
                     <td>
                         <DrObjectiveCell
@@ -111,16 +113,10 @@
 {/if}
 
 <style>
-    .sr-only {
-        position: absolute;
-        width: 1px;
-        height: 1px;
-        overflow: hidden;
-        clip-path: inset(50%);
-        white-space: nowrap;
-    }
+    /* Not the size of the global .dim: the size around it. */
     .dim {
         color: var(--text-faint);
+        font-size: inherit;
     }
     .nowrap {
         white-space: nowrap;

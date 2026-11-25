@@ -4,11 +4,14 @@
     import { onMount } from 'svelte';
     import { api, fmtAgo, fmtTs } from '#lib/api.js';
     import type { LogEntry, LogVolume } from '#lib/types.js';
+    import Badge from '#lib/components/Badge.svelte';
     import RangeSwitch from '#lib/components/RangeSwitch.svelte';
     import EChart from '#lib/components/EChart.svelte';
     import { chartTheme, chartTokens, followTheme } from '#lib/echarts.js';
     import type { EChartsCoreOption } from '#lib/echarts.js';
     import { bucketAxis } from '#lib/ranges.js';
+    import PageHeader from '#lib/components/PageHeader.svelte';
+    import Panel from '#lib/components/Panel.svelte';
 
     const SEVERITIES = ['ERROR', 'WARN', 'INFO', 'DEBUG', 'TRACE'];
 
@@ -80,21 +83,6 @@
         setFilter('attr_not', `${k}=${v}`);
     }
 
-    function sevClass(sev: string | null): 'ok' | 'warn' | 'fail' | 'neutral' {
-        switch ((sev ?? '').toUpperCase()) {
-            case 'ERROR':
-            case 'FATAL':
-                return 'fail';
-            case 'WARN':
-            case 'WARNING':
-                return 'warn';
-            case 'INFO':
-                return 'ok';
-            default:
-                return 'neutral';
-        }
-    }
-
     // Pivot the (bucket, severity) rows into one stacked bar series per
     // severity, aligned across the full bucket set so gaps render as zero.
     const volumeOption: EChartsCoreOption = $derived.by(() => {
@@ -111,8 +99,8 @@
         const byKey = new Map(volume.rows.map((r) => [`${r.ts}|${r.severity}`, r.count]));
         return {
             grid: { left: 48, right: 16, top: 28, bottom: 24 },
-            tooltip: { trigger: 'axis', ...tokens.tooltip },
-            legend: { textStyle: { color: tokens.text }, top: 0 },
+            tooltip: { trigger: 'axis' },
+            legend: { top: 0 },
             xAxis: {
                 type: 'time',
                 // Bars would otherwise widen the axis by half a bucket,
@@ -124,14 +112,10 @@
                     buckets.map((ts) => ts * 1000),
                 ),
                 containShape: false,
-                axisLine: { lineStyle: { color: tokens.axis } },
-                axisLabel: { color: tokens.text },
             },
             yAxis: {
                 type: 'value',
                 minInterval: 1,
-                axisLabel: { color: tokens.text },
-                splitLine: { lineStyle: { color: tokens.split } },
             },
             series: sevs.map((sev) => ({
                 name: sev,
@@ -145,11 +129,10 @@
     });
 </script>
 
-<div class="page-head">
-    <h1>Logs</h1>
-    <span class="sub"
-        >{rows ? `${rows.length} row${rows.length === 1 ? '' : 's'}` : 'newest first'}</span
-    >
+<PageHeader
+    title="Logs"
+    sub={rows ? `${rows.length} row${rows.length === 1 ? '' : 's'}` : 'newest first'}
+>
     <div class="controls">
         <input
             type="search"
@@ -174,7 +157,7 @@
         />
         <RangeSwitch value={filters.range} onchange={(r) => setFilter('range', r)} />
     </div>
-</div>
+</PageHeader>
 
 {#if filters.attr || filters.attr_not}
     <div class="facet-chips">
@@ -191,7 +174,7 @@
     </div>
 {/if}
 
-<div class="panel">
+<Panel>
     {#if volume && volume.rows.length > 0}
         <EChart id="log-volume" option={volumeOption} height={180} label="Log volume by severity" />
     {:else if rows}
@@ -199,9 +182,9 @@
     {:else}
         <div class="skeleton" style="height: 180px"></div>
     {/if}
-</div>
+</Panel>
 
-<div class="panel">
+<Panel>
     {#if error}
         <div class="state error">Failed to load logs: {error}</div>
     {:else if !rows}
@@ -223,11 +206,13 @@
                         onclick={() => (expanded = expanded === i ? null : i)}
                     >
                         <td class="mono" title={fmtTs(row.ts_ns)}>{fmtAgo(row.ts_ns)}</td>
-                        <td
-                            ><span class="badge {sevClass(row.severity_text)}"
-                                >{row.severity_text ?? '—'}</span
-                            ></td
-                        >
+                        <td>
+                            <Badge
+                                kind="severity"
+                                value={row.severity_text}
+                                label={row.severity_text ?? '—'}
+                            />
+                        </td>
                         <td class="mono">{row.service_name ?? '—'}</td>
                         <td class="body-cell">{row.body}</td>
                     </tr>
@@ -281,7 +266,7 @@
             </tbody>
         </table>
     {/if}
-</div>
+</Panel>
 
 <style>
     .controls {
@@ -299,8 +284,10 @@
     tr.expanded td {
         border-bottom: none;
     }
+    /* An open log row has no background of its own. */
     .detail-row td {
         padding-top: 0;
+        background: none;
     }
     .detail {
         padding: var(--space-1) 0 var(--space-2);
@@ -344,22 +331,5 @@
         display: flex;
         gap: var(--space-2);
         margin: -6px 0 var(--space-2-5);
-    }
-    .chip {
-        background: var(--bg-raised);
-        border: var(--border-width-sm) solid var(--border-strong);
-        border-radius: var(--radius-2xl);
-        color: var(--text);
-        cursor: pointer;
-        font-size: var(--font-size-2xs);
-        font-family: var(--mono, monospace);
-        padding: var(--space-0-5) var(--space-2-5);
-    }
-    .chip .x {
-        color: var(--text-dim);
-        margin-left: var(--space-1);
-    }
-    .chip:hover .x {
-        color: var(--fail);
     }
 </style>

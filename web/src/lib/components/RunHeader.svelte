@@ -6,7 +6,10 @@
     import { api, fmtAgo, fmtDuration, fmtTs } from '#lib/api.js';
     import { runTimeNs, runWaitNs } from '#lib/duration.js';
     import type { RunRow } from '#lib/types.js';
+    import Badge from './Badge.svelte';
     import StatusBadge from './StatusBadge.svelte';
+    import PageHeader from './PageHeader.svelte';
+    import Panel from './Panel.svelte';
 
     let {
         run,
@@ -44,15 +47,13 @@
     }
 </script>
 
-<div class="page-head">
-    <a href="/runs" style="color: var(--text-dim)">← runs</a>
-    <h1>{run.definition_name ?? run.registry_id}</h1>
+<PageHeader title={run.definition_name ?? run.registry_id} back={{ href: '/runs', label: 'runs' }}>
     <StatusBadge status={run.state} />
     <span class="sub mono">{run.id}</span>
     {#if active && canStop && !confirmingStop}
         <button class="estop" onclick={() => (confirmingStop = true)}>Stop run</button>
     {/if}
-</div>
+</PageHeader>
 
 {#if run.error}
     <div class="state error panel" style="margin-bottom: var(--space-3-5)">{run.error}</div>
@@ -88,50 +89,46 @@
 {/if}
 
 <div class="grid" style="grid-template-columns: repeat(4, 1fr); margin-bottom: var(--space-3-5)">
-    <div class="panel meta">
-        <span>Queued</span><b>{fmtTs(run.queued_at_ns)} ({fmtAgo(run.queued_at_ns)})</b>
-    </div>
-    <div class="panel meta">
-        <span>Started</span>
+    <Panel variant="meta" title="Queued">
+        <b>{fmtTs(run.queued_at_ns)} ({fmtAgo(run.queued_at_ns)})</b>
+    </Panel>
+    <Panel variant="meta" title="Started">
         <b
             >{run.started_at_ns !== null
                 ? `${fmtTs(run.started_at_ns)} (${fmtAgo(run.started_at_ns)})`
                 : '—'}</b
         >
-    </div>
-    <div class="panel meta">
-        <span>Ended</span>
+    </Panel>
+    <Panel variant="meta" title="Ended">
         <b
             >{run.ended_at_ns !== null
                 ? `${fmtTs(run.ended_at_ns)} (${fmtAgo(run.ended_at_ns)})`
                 : '—'}</b
         >
-    </div>
-    <div class="panel meta">
-        <span>Waited</span>
+    </Panel>
+    <Panel variant="meta" title="Waited">
         <b class="mono">{fmtDuration(runWaitNs(run, Date.now() * 1e6))}</b>
-    </div>
-    <div class="panel meta">
-        <span>Run time</span>
+    </Panel>
+    <Panel variant="meta" title="Run time">
         <b class="mono">{fmtDuration(runTimeNs(run, Date.now() * 1e6))}</b>
-    </div>
-    <div class="panel meta"><span>Run by</span><b>{triggerActor ?? 'system'}</b></div>
-    <div class="panel meta">
-        <span>Rollback</span>
+    </Panel>
+    <Panel variant="meta" title="Run by"><b>{triggerActor ?? 'system'}</b></Panel>
+    <Panel variant="meta" title="Rollback">
         {#if run.state === 'rollback_pending'}
-            <b><span class="badge warn">rollback pending</span></b>
+            <b><Badge tone="warn" label="rollback pending" /></b>
         {:else if run.rollback_status && run.rollback_status !== 'not_needed'}
             <b>
-                <span class="badge {run.rollback_status === 'failed' ? 'fail' : 'ok'}">
-                    rollback {run.rollback_status}
-                </span>
+                <Badge
+                    kind="rollback"
+                    value={run.rollback_status}
+                    label="rollback {run.rollback_status}"
+                />
             </b>
         {:else}
             <b>—</b>
         {/if}
-    </div>
-    <div class="panel meta">
-        <span>Experiment</span>
+    </Panel>
+    <Panel variant="meta" title="Experiment">
         <b class="mono">
             {#if run.experiment_id}
                 <a href="/experiments/{run.experiment_id}">{run.experiment_id}</a>
@@ -139,23 +136,11 @@
                 —
             {/if}
         </b>
-    </div>
-    <div class="panel meta"><span>Registry</span><b class="mono">{run.registry_id}</b></div>
+    </Panel>
+    <Panel variant="meta" title="Registry"><b class="mono">{run.registry_id}</b></Panel>
 </div>
 
 <style>
-    .meta span {
-        display: block;
-        color: var(--text-dim);
-        font-size: var(--font-size-3xs);
-        text-transform: uppercase;
-        letter-spacing: var(--letter-spacing-md);
-        margin-bottom: var(--space-1);
-    }
-    .meta b {
-        font-weight: var(--font-weight-strong);
-        font-size: var(--font-size-lg);
-    }
     button.estop {
         background: color-mix(in srgb, var(--fail) 16%, transparent);
         border: var(--border-width-sm) solid var(--fail);

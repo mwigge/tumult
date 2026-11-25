@@ -135,7 +135,7 @@ fn a_bar_of_the_timeline_has_the_colour_of_how_its_step_ended() {
             "token:ok",
             "token:fail",
             "token:fail",
-            "token:axis",
+            "token:border-strong",
             "token:fail",
             "token:ok"
         ])

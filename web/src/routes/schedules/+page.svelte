@@ -2,6 +2,9 @@
     import { onMount } from 'svelte';
     import { api, fmtAgo, fmtIn, fmtInterval, fmtTs } from '#lib/api.js';
     import type { MeResponse, RegistryEntry, Schedule } from '#lib/types.js';
+    import Badge from '#lib/components/Badge.svelte';
+    import PageHeader from '#lib/components/PageHeader.svelte';
+    import Panel from '#lib/components/Panel.svelte';
 
     const PRESETS: { label: string; seconds: number }[] = [
         { label: 'every 15m', seconds: 900 },
@@ -126,16 +129,14 @@
     }
 </script>
 
-<div class="page-head">
-    <h1>Schedules</h1>
-    <span class="sub">
-        {schedules
-            ? `${schedules.length} recurring run${schedules.length === 1 ? '' : 's'}`
-            : 'interval-based recurring runs'}
-    </span>
-</div>
+<PageHeader
+    title="Schedules"
+    sub={schedules
+        ? `${schedules.length} recurring run${schedules.length === 1 ? '' : 's'}`
+        : 'interval-based recurring runs'}
+/>
 
-<div class="panel" style="margin-bottom: var(--space-3-5)">
+<Panel style="margin-bottom: var(--space-3-5)">
     {#if error}
         <div class="state error">Failed to load schedules: {error}</div>
     {:else if !schedules}
@@ -172,11 +173,7 @@
                             {/if}
                         </td>
                         <td>{s.env}</td>
-                        <td
-                            ><span class="badge {s.enabled ? 'ok' : 'neutral'}"
-                                >{s.enabled ? 'enabled' : 'disabled'}</span
-                            ></td
-                        >
+                        <td><Badge kind="switch" value={s.enabled ? 'enabled' : 'disabled'} /></td>
                         <td>{s.created_by ?? '—'}</td>
                         {#if canMutate}
                             <td class="actions">
@@ -204,11 +201,10 @@
                 {rowError}
             </div>{/if}
     {/if}
-</div>
+</Panel>
 
 {#if canMutate}
-    <div class="panel">
-        <h2>New schedule</h2>
+    <Panel title="New schedule">
         {#if registry && registry.length === 0}
             <div class="state">
                 No validated definitions yet — validate an experiment TOON first (Runs → New run).
@@ -274,34 +270,12 @@
                     {createError}
                 </div>{/if}
         {/if}
-    </div>
+    </Panel>
 {/if}
 
 <style>
-    .actions {
-        display: flex;
-        gap: var(--space-2);
-    }
     .btn {
-        background: var(--bg-hover);
-        border: var(--border-width-sm) solid var(--border-strong);
-        color: var(--text);
-        border-radius: var(--radius-xl);
-        padding: var(--space-1-5) var(--space-3-5);
-        cursor: pointer;
-        font-size: var(--font-size-md);
         white-space: nowrap;
-    }
-    .btn:hover {
-        border-color: var(--accent-dim);
-    }
-    .btn.danger {
-        border-color: var(--fail);
-        color: var(--fail);
-    }
-    .btn:disabled {
-        opacity: 0.5;
-        cursor: default;
     }
     .create {
         display: grid;

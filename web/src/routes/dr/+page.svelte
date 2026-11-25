@@ -25,6 +25,7 @@
     import DrRecovery from '#lib/components/DrRecovery.svelte';
     import DrRegister from '#lib/components/DrRegister.svelte';
     import DrTestTable from '#lib/components/DrTestTable.svelte';
+    import PageHeader from '#lib/components/PageHeader.svelte';
 
     const filters = $derived(filtersOf(page.url.searchParams));
     const filtered = $derived(filters.target !== '' || filters.environment !== '');
@@ -106,11 +107,10 @@
     }
 </script>
 
-<div class="page-head">
-    <h1>Disaster recovery</h1>
-    <span class="sub"
-        >The DR tests of each target, automated and manual, and when the next is due</span
-    >
+<PageHeader
+    title="Disaster recovery"
+    sub="The DR tests of each target, automated and manual, and when the next is due"
+>
     <div class="controls">
         <Filters
             {filters}
@@ -119,7 +119,7 @@
             onchange={setFilter}
         />
     </div>
-</div>
+</PageHeader>
 
 {#if error}
     <div class="state error">Failed to load the DR view: {error}</div>

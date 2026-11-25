@@ -11,6 +11,8 @@
     import KpiCard from '#lib/components/KpiCard.svelte';
     import RangeSwitch from '#lib/components/RangeSwitch.svelte';
     import EChart from '#lib/components/EChart.svelte';
+    import PageHeader from '#lib/components/PageHeader.svelte';
+    import Panel from '#lib/components/Panel.svelte';
 
     const range = $derived(page.url.searchParams.get('range') ?? '24h');
 
@@ -78,7 +80,7 @@
             // on the calendar coordinate system, so overlays are 24h-only here.)
             const overlay = experimentOverlay(runs, tokens, (ms) => dayStr(ms / 1000));
             return {
-                ...tooltip(),
+                tooltip: {},
                 grid: { left: 40, right: 12, top: 26, bottom: 26 },
                 xAxis: axisCat(points.map((p) => dayStr(p.ts))),
                 yAxis: axisVal('runs'),
@@ -96,7 +98,7 @@
         const from = dayStr(data.from_ns / 1_000_000_000);
         const to = dayStr(data.to_ns / 1_000_000_000);
         return {
-            tooltip: { ...tokens.tooltip },
+            tooltip: {},
             visualMap: {
                 min: 0,
                 max: busiest,
@@ -128,8 +130,8 @@
     const faultsOption = $derived.by(() => {
         if (!data) return {};
         return {
-            tooltip: { ...tokens.tooltip, trigger: 'item' },
-            legend: { bottom: 0, textStyle: { color: tokens.text } },
+            tooltip: { trigger: 'item' },
+            legend: { bottom: 0 },
             series: [
                 {
                     type: 'pie',
@@ -149,9 +151,6 @@
         };
     });
 
-    function tooltip() {
-        return { tooltip: { ...tokens.tooltip } };
-    }
     function onOverlayClick(params: { componentType?: string; data?: unknown }) {
         const id = overlayRunId(params);
         if (id) goto(`/experiments/${encodeURIComponent(id)}`);
@@ -160,8 +159,6 @@
         return {
             type: 'category',
             data,
-            axisLine: { lineStyle: { color: tokens.axis } },
-            axisLabel: { color: tokens.text },
             axisTick: { show: false },
         };
     }
@@ -171,19 +168,15 @@
             name,
             nameTextStyle: { color: tokens.text },
             minInterval: 1,
-            splitLine: { lineStyle: { color: tokens.split } },
-            axisLabel: { color: tokens.text },
         };
     }
 </script>
 
-<div class="page-head">
-    <h1>Overview</h1>
-    <span class="sub">resilience for the selected window</span>
+<PageHeader title="Overview" sub="resilience for the selected window">
     <div style="margin-left: auto">
         <RangeSwitch value={range} onchange={setRange} />
     </div>
-</div>
+</PageHeader>
 
 {#if error}
     <div class="state error panel">Failed to load overview: {error}</div>
@@ -205,8 +198,7 @@
     </div>
 
     <div class="grid cols-2" style="margin-top: var(--space-3-5)">
-        <div class="panel">
-            <h2>Runs per day</h2>
+        <Panel title="Runs per day">
             {#if data.experiments_per_day.length === 0}
                 <div class="state">No runs in this window.</div>
             {:else}
@@ -223,9 +215,8 @@
                     <ChartLegend id="per-day" items={perDayLegend} />
                 {/if}
             {/if}
-        </div>
-        <div class="panel">
-            <h2>Fault injections</h2>
+        </Panel>
+        <Panel title="Fault injections">
             {#if data.faults.length === 0}
                 <div class="state">No fault injection step was recorded in this window.</div>
             {:else}
@@ -236,11 +227,10 @@
                     label="Fault injection steps per kind and plugin"
                 />
             {/if}
-        </div>
+        </Panel>
     </div>
 
-    <div class="panel" style="margin-top: var(--space-3-5)">
-        <h2>Target systems</h2>
+    <Panel title="Target systems" style="margin-top: var(--space-3-5)">
         {#if data.targets.length === 0}
             <div class="state">
                 No target-system metadata in this window — tumult runs don't tag target systems yet,
@@ -275,7 +265,7 @@
                 </tbody>
             </table>
         {/if}
-    </div>
+    </Panel>
 {/if}
 
 <style>

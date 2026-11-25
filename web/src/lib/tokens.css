@@ -41,8 +41,8 @@
     --border-width-lg: 4px;
     --z-raised: 1;
     --z-sticky: 2;
-    --z-overlay: 20;
-    --z-overlay-top: 21;
+    --drawer-narrow: 480px;
+    --drawer-wide: 620px;
     --bg: #0b0e11;
     --bg-raised: #11161b;
     --bg-panel: #151b21;

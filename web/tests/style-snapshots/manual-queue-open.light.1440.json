@@ -1,0 +1,1643 @@
+{
+  "page": "manual-queue-open",
+  "path": "/manual?tab=queue",
+  "theme": "light",
+  "width": 1440,
+  "height": 900,
+  "elements": {
+    "html": {
+      "color": "rgb(27, 35, 41)",
+      "font-family": "-apple-system, \"Segoe UI\", Inter, Roboto, sans-serif",
+      "font-size": "14px",
+      "font-weight": "400",
+      "line-height": "1.5",
+      "letter-spacing": "normal",
+      "text-transform": "none",
+      "visibility": "visible",
+      "display": "block",
+      "background-color": "rgb(244, 246, 248)"
+    },
+    "body": {
+      "display": "block",
+      "background-color": "rgb(244, 246, 248)"
+    },
+    "div.shell": {
+      "display": "grid",
+      "grid-template-columns": "208px 1fr"
+    },
+    "div.shell > aside[complementary].side": {
+      "display": "flex",
+      "background-color": "rgb(255, 255, 255)",
+      "border-right": "1px solid rgb(227, 232, 237)",
+      "padding": "16px 0px"
+    },
+    "div.shell > aside[complementary].side > div.brand": {
+      "display": "block",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "0px 18px 14px",
+      "margin": "0px 0px 10px"
+    },
+    "div.shell > aside[complementary].side > div.brand > div.name": {
+      "font-size": "17px",
+      "font-weight": "700",
+      "letter-spacing": "0.4px",
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > div.brand > div.tag": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "11px",
+      "display": "block",
+      "margin": "2px 0px 0px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav": {
+      "display": "block",
+      "padding": "0px 0px 1px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◧ Overview\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◧ Overview\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◎ Resilience\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◎ Resilience\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◭ Performance\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◭ Performance\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"▦ Scores\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"▦ Scores\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⚖ DORA\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⚖ DORA\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⟲ Disaster recovery\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⟲ Disaster recovery\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⚗ Experiments\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⚗ Experiments\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"▶ Runs\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"▶ Runs\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✚ Author\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✚ Author\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"☷ GameDays\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"☷ GameDays\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✓ Approvals\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✓ Approvals\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link].active \"✎ Manual\"": {
+      "font-size": "13.5px",
+      "display": "flex",
+      "background-color": "rgb(233, 238, 242)",
+      "border-left": "2px solid rgb(31, 111, 178)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link].active \"✎ Manual\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"≣ Logs\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"≣ Logs\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⌁ Traces\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⌁ Traces\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"∿ Metrics\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"∿ Metrics\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✳ Star Map\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✳ Star Map\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✦ Ask\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✦ Ask\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"▤ Reports\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"▤ Reports\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◔ Events\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◔ Events\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⚿ Users\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⚿ Users\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"➤ Webhooks\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"➤ Webhooks\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"↻ Schedules\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "13.5px",
+      "display": "flex",
+      "border-left": "2px solid rgba(0, 0, 0, 0)",
+      "padding": "8px 18px",
+      "gap": "9px"
+    },
+    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"↻ Schedules\" > span": {
+      "display": "block"
+    },
+    "div.shell > aside[complementary].side > button[button].theme \"○ light\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "display": "block",
+      "border-top": "1px solid rgb(227, 232, 237)",
+      "border-right": "1px solid rgb(227, 232, 237)",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "border-left": "1px solid rgb(227, 232, 237)",
+      "border-radius": "4px",
+      "padding": "2px 8px",
+      "margin": "8px 18px 0px"
+    },
+    "div.shell > main[main].main": {
+      "display": "block",
+      "padding": "22px 26px 60px"
+    },
+    "div.shell > main[main].main > div.manual": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.manual > div.page-head": {
+      "display": "flex",
+      "margin": "0px 0px 18px",
+      "gap": "14px"
+    },
+    "div.shell > main[main].main > div.manual > div.page-head > h1[heading] \"Manual evidence\"": {
+      "font-size": "19px",
+      "font-weight": "600",
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.manual > div.page-head > span.sub": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "12.5px",
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.manual > div.page-head > div.controls": {
+      "display": "flex",
+      "margin": "0px 0px 0px auto",
+      "gap": "12px"
+    },
+    "div.shell > main[main].main > div.manual > div.page-head > div.controls > label[LabelText].actor": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "12px",
+      "display": "flex",
+      "gap": "6px"
+    },
+    "div.shell > main[main].main > div.manual > div.page-head > div.controls > label[LabelText].actor > input[textbox] \"Acting as\"": {
+      "color": "rgb(27, 35, 41)",
+      "font-family": "Arial",
+      "font-size": "13px",
+      "line-height": "normal",
+      "display": "block",
+      "background-color": "rgb(255, 255, 255)",
+      "border-top": "1px solid rgb(197, 206, 214)",
+      "border-right": "1px solid rgb(197, 206, 214)",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "border-left": "1px solid rgb(197, 206, 214)",
+      "border-radius": "5px",
+      "padding": "6px 9px"
+    },
+    "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[tablist].seg \"manual sections\"": {
+      "display": "flex",
+      "border-top": "1px solid rgb(197, 206, 214)",
+      "border-right": "1px solid rgb(197, 206, 214)",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "border-left": "1px solid rgb(197, 206, 214)",
+      "border-radius": "5px"
+    },
+    "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[tablist].seg \"manual sections\" > button[tab] \"New entry\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-family": "Arial",
+      "font-size": "12.5px",
+      "line-height": "normal",
+      "display": "block",
+      "padding": "5px 12px"
+    },
+    "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[tablist].seg \"manual sections\" > button[tab] \"Plans\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-family": "Arial",
+      "font-size": "12.5px",
+      "line-height": "normal",
+      "display": "block",
+      "border-left": "1px solid rgb(197, 206, 214)",
+      "padding": "5px 12px"
+    },
+    "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[tablist].seg \"manual sections\" > button[tab].active \"Verification queue\"": {
+      "color": "rgb(255, 255, 255)",
+      "font-family": "Arial",
+      "font-size": "12.5px",
+      "line-height": "normal",
+      "display": "block",
+      "background-color": "rgb(156, 196, 228)",
+      "border-left": "1px solid rgb(197, 206, 214)",
+      "padding": "5px 12px"
+    },
+    "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[tablist].seg \"manual sections\" > button[tab] \"All records\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-family": "Arial",
+      "font-size": "12.5px",
+      "line-height": "normal",
+      "display": "block",
+      "border-left": "1px solid rgb(197, 206, 214)",
+      "padding": "5px 12px"
+    },
+    "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[tablist].seg \"manual sections\" > button[tab] \"Import\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-family": "Arial",
+      "font-size": "12.5px",
+      "line-height": "normal",
+      "display": "block",
+      "border-left": "1px solid rgb(197, 206, 214)",
+      "padding": "5px 12px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\"": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel": {
+      "display": "block",
+      "background-color": "rgb(255, 255, 255)",
+      "border-top": "1px solid rgb(227, 232, 237)",
+      "border-right": "1px solid rgb(227, 232, 237)",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "border-left": "1px solid rgb(227, 232, 237)",
+      "border-radius": "6px",
+      "padding": "14px 16px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > div.records-head": {
+      "display": "flex"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > div.records-head > h2[heading] \"SUBMITTED RECORDS AWAITING SIGN-OFF\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "12px",
+      "font-weight": "600",
+      "letter-spacing": "0.7px",
+      "text-transform": "uppercase",
+      "display": "block",
+      "margin": "0px 0px 10px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data": {
+      "font-size": "13px",
+      "display": "table"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > thead[rowgroup]": {
+      "display": "table-header-group"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > thead[rowgroup] > tr[row]": {
+      "display": "table-row"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"STATUS\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "padding": "6px 10px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"EXPERIMENT\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "padding": "6px 10px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"TYPE\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "padding": "6px 10px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"OUTCOME\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "padding": "6px 10px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"EXECUTED\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "padding": "6px 10px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"ENTERED\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "padding": "6px 10px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"VERIFIER\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "padding": "6px 10px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tbody": {
+      "display": "table-row-group"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].clickable": {
+      "display": "table-row"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].clickable > td[cell] \"submitted\"": {
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].clickable > td[cell] \"submitted\" > span.badge.warn": {
+      "color": "rgb(180, 83, 9)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "letter-spacing": "0.3px",
+      "display": "inline-block",
+      "background-color": "color(srgb 0.705882 0.32549 0.0352941 / 0.14)",
+      "border-radius": "10px",
+      "padding": "1px 9px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].clickable > td[cell] \"exercise rec-1\"": {
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].clickable > td[cell] \"failover\"": {
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].clickable > td[cell] \"failover\" > span.badge.neutral": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "letter-spacing": "0.3px",
+      "display": "inline-block",
+      "background-color": "rgb(233, 238, 242)",
+      "border-radius": "10px",
+      "padding": "1px 9px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].clickable > td[cell] \"passed\"": {
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].clickable > td[cell] \"passed\" > span.badge.ok": {
+      "color": "rgb(15, 138, 95)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "letter-spacing": "0.3px",
+      "display": "inline-block",
+      "background-color": "color(srgb 0.0588235 0.541176 0.372549 / 0.14)",
+      "border-radius": "10px",
+      "padding": "1px 9px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].clickable > td[cell].mono \"Nov 13, 06:00:00 AM\"": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].clickable > td[cell] \"alice\"": {
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].clickable > td[cell] \"—\"": {
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row": {
+      "display": "table-row"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\"": {
+      "display": "table-cell",
+      "background-color": "rgb(255, 255, 255)",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise": {
+      "display": "grid",
+      "grid-template-columns": "1fr 1fr",
+      "margin": "0px 0px 12px",
+      "gap": "16px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > div": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > h3[heading] \"RECOVERY\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "12px",
+      "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
+      "display": "block",
+      "margin": "10px 0px 6px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > table[table].data.compact": {
+      "display": "table"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > table[table].data.compact > thead[rowgroup]": {
+      "display": "table-header-group"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > table[table].data.compact > thead[rowgroup] > tr[row]": {
+      "display": "table-row"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > table[table].data.compact > thead[rowgroup] > tr[row] > th[columnheader]": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "padding": "4px 8px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > table[table].data.compact > thead[rowgroup] > tr[row] > th[columnheader] \"PLANNED\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "padding": "4px 8px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > table[table].data.compact > thead[rowgroup] > tr[row] > th[columnheader] \"ACTUAL\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "padding": "4px 8px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > table[table].data.compact > thead[rowgroup] > tr[row] > th[columnheader] #2": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "padding": "4px 8px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > table[table].data.compact > tbody": {
+      "display": "table-row-group"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > table[table].data.compact > tr[row]": {
+      "display": "table-row"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > table[table].data.compact > tr[row] > td[cell] \"RTO\"": {
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "4px 8px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > table[table].data.compact > tr[row] > td[cell].mono \"600 s\"": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "4px 8px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > table[table].data.compact > tr[row] > td[cell].mono \"420 s\"": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "4px 8px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > table[table].data.compact > tr[row] > td[cell] \"met\"": {
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "4px 8px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > table[table].data.compact > tr[row] > td[cell] \"met\" > span.badge.ok": {
+      "color": "rgb(15, 138, 95)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "letter-spacing": "0.3px",
+      "display": "inline-block",
+      "background-color": "color(srgb 0.0588235 0.541176 0.372549 / 0.14)",
+      "border-radius": "10px",
+      "padding": "1px 9px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > table[table].data.compact > tr[row] #2": {
+      "display": "table-row"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > table[table].data.compact > tr[row] #2 > td[cell] \"RPO\"": {
+      "display": "table-cell",
+      "padding": "4px 8px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > table[table].data.compact > tr[row] #2 > td[cell].mono \"60 s\"": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "table-cell",
+      "padding": "4px 8px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > table[table].data.compact > tr[row] #2 > td[cell].mono \"30 s\"": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "table-cell",
+      "padding": "4px 8px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > table[table].data.compact > tr[row] #2 > td[cell] \"met\"": {
+      "display": "table-cell",
+      "padding": "4px 8px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > table[table].data.compact > tr[row] #2 > td[cell] \"met\" > span.badge.ok": {
+      "color": "rgb(15, 138, 95)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "letter-spacing": "0.3px",
+      "display": "inline-block",
+      "background-color": "color(srgb 0.0588235 0.541176 0.372549 / 0.14)",
+      "border-radius": "10px",
+      "padding": "1px 9px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > p[paragraph].line": {
+      "display": "block",
+      "margin": "6px 0px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > p[paragraph].line > b": {
+      "font-weight": "700",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > p[paragraph].line #2": {
+      "display": "block",
+      "margin": "6px 0px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > p[paragraph].line #2 > span.badge.neutral": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "letter-spacing": "0.3px",
+      "display": "inline-block",
+      "background-color": "rgb(233, 238, 242)",
+      "border-radius": "10px",
+      "padding": "1px 9px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > p[paragraph].line #3": {
+      "display": "block",
+      "margin": "6px 0px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > p[paragraph].line #3 > b": {
+      "font-weight": "700",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > p[paragraph].line #3 > span.dim": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "12px",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > p[paragraph].line #4": {
+      "display": "block",
+      "margin": "6px 0px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > p[paragraph].line #4 > b": {
+      "font-weight": "700",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > h3[heading] \"PARTICIPANTS\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "12px",
+      "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
+      "display": "block",
+      "margin": "10px 0px 6px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > ul[list].plain": {
+      "display": "block",
+      "padding": "0px 0px 0px 18px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > ul[list].plain > li[listitem]": {
+      "display": "list-item",
+      "margin": "0px 0px 4px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > ul[list].plain > li[listitem] > span.dim": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "12px",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > h3[heading] \"TESTED\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "12px",
+      "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
+      "display": "block",
+      "margin": "10px 0px 6px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > ul[list].plain #2": {
+      "display": "block",
+      "padding": "0px 0px 0px 18px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > ul[list].plain #2 > li[listitem]": {
+      "display": "list-item",
+      "margin": "0px 0px 4px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > ul[list].plain #2 > li[listitem] > span.badge.neutral": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "letter-spacing": "0.3px",
+      "display": "inline-block",
+      "background-color": "rgb(233, 238, 242)",
+      "border-radius": "10px",
+      "padding": "1px 9px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > ul[list].plain #2 > li[listitem] > span.mono": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > ul[list].plain #2 > li[listitem] > span.dim": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "12px",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > div #2": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > h3[heading] \"STEPS\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "12px",
+      "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
+      "display": "block",
+      "margin": "10px 0px 6px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > ol[list].steps": {
+      "display": "block",
+      "padding": "0px 0px 0px 18px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > ol[list].steps > li[listitem]": {
+      "display": "list-item",
+      "margin": "0px 0px 4px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > ol[list].steps > li[listitem] > span.badge.ok": {
+      "color": "rgb(15, 138, 95)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "letter-spacing": "0.3px",
+      "display": "inline-block",
+      "background-color": "color(srgb 0.0588235 0.541176 0.372549 / 0.14)",
+      "border-radius": "10px",
+      "padding": "1px 9px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > ol[list].steps > li[listitem] > span.dim": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "12px",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > ol[list].steps > li[listitem] > div.dim.mono": {
+      "color": "rgb(139, 152, 165)",
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "12px",
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > ol[list].steps > li[listitem] > div.dim": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "12px",
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > ol[list].steps > li[listitem] #2": {
+      "display": "list-item",
+      "margin": "0px 0px 4px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > ol[list].steps > li[listitem] #2 > span.badge.fail": {
+      "color": "rgb(192, 57, 43)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "letter-spacing": "0.3px",
+      "display": "inline-block",
+      "background-color": "color(srgb 0.752941 0.223529 0.168627 / 0.14)",
+      "border-radius": "10px",
+      "padding": "1px 9px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > ol[list].steps > li[listitem] #2 > div.dim.mono": {
+      "color": "rgb(139, 152, 165)",
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "12px",
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > h3[heading] \"ACTIONS\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "12px",
+      "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
+      "display": "block",
+      "margin": "10px 0px 6px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > ul[list].plain #3": {
+      "display": "block",
+      "padding": "0px 0px 0px 18px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > ul[list].plain #3 > li[listitem]": {
+      "display": "list-item",
+      "margin": "0px 0px 4px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > ul[list].plain #3 > li[listitem] > span.dim": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "12px",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > ul[list].plain #3 > li[listitem] > span.dim #2": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "12px",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > ul[list].plain #3 > li[listitem] > span.dim #3": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "12px",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > ul[list].plain #3 > li[listitem] > span.badge.neutral": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "letter-spacing": "0.3px",
+      "display": "inline-block",
+      "background-color": "rgb(233, 238, 242)",
+      "border-radius": "10px",
+      "padding": "1px 9px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > ul[list].plain #3 > li[listitem] > span.badge.neutral #2": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "letter-spacing": "0.3px",
+      "display": "inline-block",
+      "background-color": "rgb(233, 238, 242)",
+      "border-radius": "10px",
+      "padding": "1px 9px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > ul[list].plain #3 > li[listitem] > div.dim": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "12px",
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > ul[list].plain #3 > li[listitem] > div.dim > span.mono": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.04px",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail": {
+      "display": "grid",
+      "grid-template-columns": "1fr 1fr",
+      "padding": "8px 4px",
+      "gap": "16px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > div": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > h3[heading] \"SIGN-OFF\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "12px",
+      "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
+      "display": "block",
+      "margin": "10px 0px 6px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > p[paragraph].summary": {
+      "display": "block",
+      "margin": "0px 0px 6px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > ol[list].signoffs": {
+      "display": "block",
+      "padding": "0px 0px 0px 18px",
+      "margin": "0px 0px 8px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > ol[list].signoffs > li[listitem]": {
+      "display": "list-item"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > ol[list].signoffs > li[listitem] > span.badge.ok": {
+      "color": "rgb(15, 138, 95)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "letter-spacing": "0.3px",
+      "display": "inline-block",
+      "background-color": "color(srgb 0.0588235 0.541176 0.372549 / 0.14)",
+      "border-radius": "10px",
+      "padding": "1px 9px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > ol[list].signoffs > li[listitem] > span.dim": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "12px",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > ol[list].signoffs > li[listitem] > span.dim #2": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "12px",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > div.sign": {
+      "display": "flex",
+      "gap": "8px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > div.sign > label[LabelText].grow": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "12px",
+      "display": "flex",
+      "gap": "4px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > div.sign > label[LabelText].grow > input[textbox] \"Sign-off note\"": {
+      "color": "rgb(27, 35, 41)",
+      "font-family": "Arial",
+      "font-size": "13px",
+      "line-height": "normal",
+      "display": "block",
+      "background-color": "rgb(255, 255, 255)",
+      "border-top": "1px solid rgb(197, 206, 214)",
+      "border-right": "1px solid rgb(197, 206, 214)",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "border-left": "1px solid rgb(197, 206, 214)",
+      "border-radius": "5px",
+      "padding": "6px 9px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > div.sign > button[button].btn.primary \"Approve\"": {
+      "font-family": "Arial",
+      "line-height": "normal",
+      "display": "block",
+      "background-color": "rgb(156, 196, 228)",
+      "border-top": "1px solid rgb(156, 196, 228)",
+      "border-right": "1px solid rgb(156, 196, 228)",
+      "border-bottom": "1px solid rgb(156, 196, 228)",
+      "border-left": "1px solid rgb(156, 196, 228)",
+      "border-radius": "6px",
+      "padding": "6px 14px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > div.sign > button[button].btn.danger \"Reject\"": {
+      "color": "rgb(192, 57, 43)",
+      "font-family": "Arial",
+      "line-height": "normal",
+      "display": "block",
+      "background-color": "rgb(233, 238, 242)",
+      "border-top": "1px solid rgb(192, 57, 43)",
+      "border-right": "1px solid rgb(192, 57, 43)",
+      "border-bottom": "1px solid rgb(192, 57, 43)",
+      "border-left": "1px solid rgb(192, 57, 43)",
+      "border-radius": "6px",
+      "padding": "6px 14px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > p[paragraph].dim": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "12px",
+      "display": "block",
+      "margin": "12px 0px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > h3[heading] \"AUDIT TRAIL\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "12px",
+      "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
+      "display": "block",
+      "margin": "10px 0px 6px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > ol[list].audit": {
+      "display": "block",
+      "padding": "0px 0px 0px 18px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > ol[list].audit > li[listitem]": {
+      "display": "list-item",
+      "margin": "0px 0px 3px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > ol[list].audit > li[listitem] > span.mono": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > ol[list].audit > li[listitem] > span.dim": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "12px",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > ol[list].audit > li[listitem] #2": {
+      "display": "list-item",
+      "margin": "0px 0px 3px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > ol[list].audit > li[listitem] #2 > span.mono": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > ol[list].audit > li[listitem] #2 > span.dim": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "12px",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > div.dim.hash": {
+      "color": "rgb(139, 152, 165)",
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "12px",
+      "display": "block",
+      "margin": "6px 0px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > div.verify": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > div.verify > button[button].btn \"Verify audit trail\"": {
+      "font-family": "Arial",
+      "line-height": "normal",
+      "display": "inline-block",
+      "background-color": "rgb(233, 238, 242)",
+      "border-top": "1px solid rgb(156, 196, 228)",
+      "border-right": "1px solid rgb(156, 196, 228)",
+      "border-bottom": "1px solid rgb(156, 196, 228)",
+      "border-left": "1px solid rgb(156, 196, 228)",
+      "border-radius": "6px",
+      "padding": "6px 14px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > div.verify > div[status].verdict.bad": {
+      "display": "block",
+      "background-color": "color(srgb 0.752941 0.223529 0.168627 / 0.08)",
+      "border-top": "1px solid rgb(192, 57, 43)",
+      "border-right": "1px solid rgb(192, 57, 43)",
+      "border-bottom": "1px solid rgb(192, 57, 43)",
+      "border-left": "1px solid rgb(192, 57, 43)",
+      "border-radius": "6px",
+      "padding": "8px 10px",
+      "margin": "8px 0px 0px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > div.verify > div[status].verdict.bad > p[paragraph]": {
+      "display": "block",
+      "margin": "0px 0px 4px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > div.verify > div[status].verdict.bad > p[paragraph] > span.dim": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "12px",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > div.verify > div[status].verdict.bad > ul[list].problems": {
+      "display": "block",
+      "padding": "0px 0px 0px 18px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > div.verify > div[status].verdict.bad > ul[list].problems > li[listitem]": {
+      "display": "list-item"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > div.verify > div[status].verdict.bad > ul[list].problems > li[listitem] > code[code]": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > div.verify > div[status].verdict.bad > ul[list].problems > li[listitem] > code[code] #2": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > div.verify > div[status].verdict.bad > ul[list].problems > li[listitem] > code[code] #3": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > div #2": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > h3[heading] \"EVIDENCE\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "12px",
+      "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
+      "display": "block",
+      "margin": "10px 0px 6px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > table[table].data.evidence": {
+      "display": "table"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > table[table].data.evidence > thead[rowgroup]": {
+      "display": "table-header-group"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > table[table].data.evidence > thead[rowgroup] > tr[row]": {
+      "display": "table-row"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > table[table].data.evidence > thead[rowgroup] > tr[row] > th[columnheader] \"EVIDENCE\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "padding": "6px 10px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > table[table].data.evidence > thead[rowgroup] > tr[row] > th[columnheader] \"TYPE\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "padding": "6px 10px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > table[table].data.evidence > thead[rowgroup] > tr[row] > th[columnheader] \"SIZE\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "padding": "6px 10px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > table[table].data.evidence > thead[rowgroup] > tr[row] > th[columnheader] \"SHA-256\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "padding": "6px 10px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > table[table].data.evidence > thead[rowgroup] > tr[row] > th[columnheader]": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "padding": "6px 10px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > table[table].data.evidence > tbody": {
+      "display": "table-row-group"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > table[table].data.evidence > tr[row]": {
+      "display": "table-row"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > table[table].data.evidence > tr[row] > td[cell] \"file report added by alice · Nov 13, 08:…\"": {
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > table[table].data.evidence > tr[row] > td[cell] \"file report added by alice · Nov 13, 08:…\" > span.badge.neutral": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "letter-spacing": "0.3px",
+      "display": "inline-block",
+      "background-color": "rgb(233, 238, 242)",
+      "border-radius": "10px",
+      "padding": "1px 9px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > table[table].data.evidence > tr[row] > td[cell] \"file report added by alice · Nov 13, 08:…\" > div.dim": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "12px",
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > table[table].data.evidence > tr[row] > td[cell].mono.nowrap \"application/pdf\"": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > table[table].data.evidence > tr[row] > td[cell].mono.nowrap \"2.0 KB\"": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > table[table].data.evidence > tr[row] > td[cell].mono.nowrap \"ff00…\"": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > table[table].data.evidence > tr[row] > td[cell] \"Download report\"": {
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > table[table].data.evidence > tr[row] > td[cell] \"Download report\" > button[button].btn \"Download report\"": {
+      "font-family": "Arial",
+      "line-height": "normal",
+      "display": "inline-block",
+      "background-color": "rgb(233, 238, 242)",
+      "border-top": "1px solid rgb(197, 206, 214)",
+      "border-right": "1px solid rgb(197, 206, 214)",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "border-left": "1px solid rgb(197, 206, 214)",
+      "border-radius": "6px",
+      "padding": "6px 14px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > table[table].data.evidence > tr[row] #2": {
+      "display": "table-row"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > table[table].data.evidence > tr[row] #2 > td[cell] \"link ticket added by bob · Nov 13, 09:00…\"": {
+      "display": "table-cell",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > table[table].data.evidence > tr[row] #2 > td[cell] \"link ticket added by bob · Nov 13, 09:00…\" > span.badge.neutral": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "letter-spacing": "0.3px",
+      "display": "inline-block",
+      "background-color": "rgb(233, 238, 242)",
+      "border-radius": "10px",
+      "padding": "1px 9px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > table[table].data.evidence > tr[row] #2 > td[cell] \"link ticket added by bob · Nov 13, 09:00…\" > a[link] \"ticket\"": {
+      "color": "rgb(31, 111, 178)",
+      "display": "inline"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > table[table].data.evidence > tr[row] #2 > td[cell] \"link ticket added by bob · Nov 13, 09:00…\" > div.dim": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "12px",
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > table[table].data.evidence > tr[row] #2 > td[cell].mono.nowrap": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "table-cell",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > table[table].data.evidence > tr[row] #2 > td[cell].mono.nowrap #2": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "table-cell",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > table[table].data.evidence > tr[row] #2 > td[cell].mono.nowrap #3": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "table-cell",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > table[table].data.evidence > tr[row] #2 > td[cell]": {
+      "display": "table-cell",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > div.attach": {
+      "display": "flex",
+      "margin": "10px 0px 0px",
+      "gap": "10px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > div.attach > label[LabelText]": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "12px",
+      "display": "flex",
+      "gap": "4px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > div.attach > label[LabelText] > input[button] \"File to attach\"": {
+      "color": "rgb(27, 35, 41)",
+      "font-size": "13px",
+      "line-height": "normal",
+      "display": "block",
+      "background-color": "rgb(255, 255, 255)",
+      "border-top": "1px solid rgb(197, 206, 214)",
+      "border-right": "1px solid rgb(197, 206, 214)",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "border-left": "1px solid rgb(197, 206, 214)",
+      "border-radius": "5px",
+      "padding": "5px 8px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > div.attach > button[button].btn \"Upload file\"": {
+      "font-family": "Arial",
+      "line-height": "normal",
+      "display": "block",
+      "opacity": "0.5",
+      "background-color": "rgb(233, 238, 242)",
+      "border-top": "1px solid rgb(197, 206, 214)",
+      "border-right": "1px solid rgb(197, 206, 214)",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "border-left": "1px solid rgb(197, 206, 214)",
+      "border-radius": "6px",
+      "padding": "6px 14px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > div.attach > span.dim": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "12px",
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > div.attach #2": {
+      "display": "flex",
+      "margin": "10px 0px 0px",
+      "gap": "10px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > div.attach #2 > label[LabelText]": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "12px",
+      "display": "flex",
+      "gap": "4px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > div.attach #2 > label[LabelText] > select[combobox] \"Link kind\"": {
+      "color": "rgb(27, 35, 41)",
+      "font-family": "Arial",
+      "font-size": "13px",
+      "line-height": "normal",
+      "display": "block",
+      "background-color": "rgb(255, 255, 255)",
+      "border-top": "1px solid rgb(197, 206, 214)",
+      "border-right": "1px solid rgb(197, 206, 214)",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "border-left": "1px solid rgb(197, 206, 214)",
+      "border-radius": "5px",
+      "padding": "6px 9px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > div.attach #2 > label[LabelText].grow": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "12px",
+      "display": "flex",
+      "gap": "4px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > div.attach #2 > label[LabelText].grow > input[textbox] \"Link address\"": {
+      "color": "rgb(27, 35, 41)",
+      "font-family": "Arial",
+      "font-size": "13px",
+      "line-height": "normal",
+      "display": "block",
+      "background-color": "rgb(255, 255, 255)",
+      "border-top": "1px solid rgb(197, 206, 214)",
+      "border-right": "1px solid rgb(197, 206, 214)",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "border-left": "1px solid rgb(197, 206, 214)",
+      "border-radius": "5px",
+      "padding": "6px 9px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > div.attach #2 > label[LabelText] #2": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "12px",
+      "display": "flex",
+      "gap": "4px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > div.attach #2 > label[LabelText] #2 > input[textbox] \"Link label\"": {
+      "color": "rgb(27, 35, 41)",
+      "font-family": "Arial",
+      "font-size": "13px",
+      "line-height": "normal",
+      "display": "block",
+      "background-color": "rgb(255, 255, 255)",
+      "border-top": "1px solid rgb(197, 206, 214)",
+      "border-right": "1px solid rgb(197, 206, 214)",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "border-left": "1px solid rgb(197, 206, 214)",
+      "border-radius": "5px",
+      "padding": "6px 9px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > div.attach #2 > button[button].btn \"Add link\"": {
+      "font-family": "Arial",
+      "line-height": "normal",
+      "display": "block",
+      "background-color": "rgb(233, 238, 242)",
+      "border-top": "1px solid rgb(197, 206, 214)",
+      "border-right": "1px solid rgb(197, 206, 214)",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "border-left": "1px solid rgb(197, 206, 214)",
+      "border-radius": "6px",
+      "padding": "6px 14px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > h3[heading] \"ATTESTATION\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "12px",
+      "font-weight": "600",
+      "letter-spacing": "0.5px",
+      "text-transform": "uppercase",
+      "display": "block",
+      "margin": "10px 0px 6px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > p[paragraph].dim #2": {
+      "color": "rgb(139, 152, 165)",
+      "font-size": "12px",
+      "display": "block",
+      "margin": "12px 0px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].clickable #2": {
+      "display": "table-row"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"draft\"": {
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"draft\" > span.badge.neutral": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "letter-spacing": "0.3px",
+      "display": "inline-block",
+      "background-color": "rgb(233, 238, 242)",
+      "border-radius": "10px",
+      "padding": "1px 9px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"exercise rec-2\"": {
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"failover\"": {
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"failover\" > span.badge.neutral": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "letter-spacing": "0.3px",
+      "display": "inline-block",
+      "background-color": "rgb(233, 238, 242)",
+      "border-radius": "10px",
+      "padding": "1px 9px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"partial\"": {
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"partial\" > span.badge.warn": {
+      "color": "rgb(180, 83, 9)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "letter-spacing": "0.3px",
+      "display": "inline-block",
+      "background-color": "color(srgb 0.705882 0.32549 0.0352941 / 0.14)",
+      "border-radius": "10px",
+      "padding": "1px 9px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].clickable #2 > td[cell].mono \"Nov 13, 06:00:00 AM\"": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"alice\"": {
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"— Edit draft\"": {
+      "display": "table-cell",
+      "border-bottom": "1px solid rgb(227, 232, 237)",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"— Edit draft\" > button[button].btn \"Edit draft\"": {
+      "font-family": "Arial",
+      "line-height": "normal",
+      "display": "inline-block",
+      "background-color": "rgb(233, 238, 242)",
+      "border-top": "1px solid rgb(197, 206, 214)",
+      "border-right": "1px solid rgb(197, 206, 214)",
+      "border-bottom": "1px solid rgb(197, 206, 214)",
+      "border-left": "1px solid rgb(197, 206, 214)",
+      "border-radius": "6px",
+      "padding": "6px 14px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].clickable #3": {
+      "display": "table-row"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].clickable #3 > td[cell] \"verified\"": {
+      "display": "table-cell",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].clickable #3 > td[cell] \"verified\" > span.badge.ok": {
+      "color": "rgb(15, 138, 95)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "letter-spacing": "0.3px",
+      "display": "inline-block",
+      "background-color": "color(srgb 0.0588235 0.541176 0.372549 / 0.14)",
+      "border-radius": "10px",
+      "padding": "1px 9px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].clickable #3 > td[cell] \"exercise rec-3\"": {
+      "display": "table-cell",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].clickable #3 > td[cell] \"failover\"": {
+      "display": "table-cell",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].clickable #3 > td[cell] \"failover\" > span.badge.neutral": {
+      "color": "rgb(91, 103, 114)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "letter-spacing": "0.3px",
+      "display": "inline-block",
+      "background-color": "rgb(233, 238, 242)",
+      "border-radius": "10px",
+      "padding": "1px 9px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].clickable #3 > td[cell] \"failed\"": {
+      "display": "table-cell",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].clickable #3 > td[cell] \"failed\" > span.badge.fail": {
+      "color": "rgb(192, 57, 43)",
+      "font-size": "11.5px",
+      "font-weight": "600",
+      "letter-spacing": "0.3px",
+      "display": "inline-block",
+      "background-color": "color(srgb 0.752941 0.223529 0.168627 / 0.14)",
+      "border-radius": "10px",
+      "padding": "1px 9px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].clickable #3 > td[cell].mono \"Nov 13, 06:00:00 AM\"": {
+      "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "font-size": "11.96px",
+      "display": "table-cell",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].clickable #3 > td[cell] \"alice\"": {
+      "display": "table-cell",
+      "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].clickable #3 > td[cell] \"bob\"": {
+      "display": "table-cell",
+      "padding": "7px 10px"
+    },
+    "div": {
+      "display": "block"
+    }
+  }
+}

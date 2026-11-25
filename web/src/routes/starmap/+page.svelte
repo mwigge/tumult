@@ -12,9 +12,10 @@
     import { api } from '#lib/api.js';
     import type { StarEdge, StarKind, StarMap, StarNode } from '#lib/types.js';
     import RangeSwitch from '#lib/components/RangeSwitch.svelte';
+    import Segmented from '#lib/components/Segmented.svelte';
     import EChart from '#lib/components/EChart.svelte';
     import StarDrawer from '#lib/components/StarDrawer.svelte';
-    import { chartTheme, chartTokens } from '#lib/echarts.js';
+    import { chartTheme, chartTokens, followTheme } from '#lib/echarts.js';
     import type { ChartTheme, EChartsCoreOption } from '#lib/echarts.js';
     import { spread } from '#lib/starmap/force.js';
     import { layoutStar } from '#lib/starmap/layout.js';
@@ -34,6 +35,7 @@
     import type { Tip } from '#lib/tooltip.js';
     import { LENSES, edgeTooltipHtml, spineTooltipHtml, tooltipHtml } from '#lib/starmap/style.js';
     import type { Lens, RelKey, StyleContext } from '#lib/starmap/style.js';
+    import PageHeader from '#lib/components/PageHeader.svelte';
 
     const CLUSTER = 'cluster:';
     /** Most buttons the node list renders at once; the filter narrows it. */
@@ -68,17 +70,7 @@
     let listEl: HTMLElement | undefined = $state();
     let filterEl: HTMLInputElement | undefined = $state();
 
-    onMount(() => {
-        const retheme = () => (theme = chartTheme());
-        const mo = new MutationObserver(retheme);
-        mo.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
-        const mq = window.matchMedia?.('(prefers-color-scheme: light)');
-        mq?.addEventListener?.('change', retheme);
-        return () => {
-            mo.disconnect();
-            mq?.removeEventListener?.('change', retheme);
-        };
-    });
+    onMount(() => followTheme((next) => (theme = next)));
 
     function place(m: StarMap): Map<string, Point> {
         const nodes = m.nodes.map((n) => ({ id: n.id, kind: n.kind, parent: n.parent }));
@@ -176,10 +168,8 @@
             focused: Boolean(focus),
             light: theme === 'tumult-light',
         });
-        const t = context.tokens;
         return {
             tooltip: {
-                ...t.tooltip,
                 confine: true,
                 position: placeTip,
                 formatter: tipFormatter(tipOf),
@@ -285,20 +275,18 @@
     const kindOf = (n: StarNode) => (n.kind === 'org' && n.org_kind ? n.org_kind : n.kind);
 </script>
 
-<div class="page-head">
-    <h1>Star Map</h1>
+<PageHeader title="Star Map">
     <span class="sub">
         {map ? `${plural(map.counts.nodes, 'node')} · ${plural(map.counts.edges, 'edge')}` : ''}
         {loading && map ? '· loading' : ''}
     </span>
     <div class="controls">
-        <div class="seg" role="group" aria-label="lens">
-            {#each LENSES as l (l)}
-                <button class:active={lens === l} onclick={() => setParams({ lens: l })}>
-                    {l}
-                </button>
-            {/each}
-        </div>
+        <Segmented
+            label="lens"
+            options={LENSES}
+            value={lens}
+            onchange={(l) => setParams({ lens: l })}
+        />
         <select
             aria-label="environment"
             value={env}
@@ -311,7 +299,7 @@
         </select>
         <RangeSwitch value={range} ranges={RANGES} onchange={(r) => setParams({ range: r })} />
     </div>
-</div>
+</PageHeader>
 
 {#if focus}
     <p class="focus">
@@ -513,6 +501,8 @@
         cursor: pointer;
         font-size: var(--font-size-xs);
         padding: var(--space-0-5) var(--space-2-5) var(--space-0-5) var(--space-1-5);
+        /* The font of a button, not the mono font of the global .chip. */
+        font-family: revert;
     }
     .chip[aria-pressed='false'] {
         opacity: 0.45;

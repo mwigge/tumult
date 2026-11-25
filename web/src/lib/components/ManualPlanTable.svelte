@@ -5,6 +5,7 @@
     import type { Snippet } from 'svelte';
     import { isOverdue, localDay } from '#lib/manual.js';
     import type { ManualPlan } from '#lib/types.js';
+    import Badge from './Badge.svelte';
 
     let {
         plans,
@@ -26,8 +27,6 @@
         detail?: Snippet<[ManualPlan]>;
     } = $props();
 
-    const statusClass = (s: string) =>
-        s === 'fulfilled' ? 'ok' : s === 'cancelled' ? 'neutral' : 'warn';
     const secondsText = (s: number | null) => (s === null ? '—' : `${s} s`);
 </script>
 
@@ -45,7 +44,7 @@
             {#each plans as plan (plan.id)}
                 <tr class="clickable" data-plan={plan.id} onclick={() => onopen?.(plan)}>
                     <td>{plan.name}</td>
-                    <td><span class="badge neutral">{plan.exercise_type}</span></td>
+                    <td><Badge tone="neutral" label={plan.exercise_type} /></td>
                     <td>
                         {plan.target_system ?? '—'}
                         {#if plan.target_environment}<span class="dim">
@@ -55,9 +54,9 @@
                     <td>{plan.owner}</td>
                     <td class="nowrap">
                         <span class="mono">{localDay(plan.due_at_ns)}</span>
-                        {#if isOverdue(plan, nowNs)}<span class="badge fail">overdue</span>{/if}
+                        {#if isOverdue(plan, nowNs)}<Badge tone="fail" label="overdue" />{/if}
                     </td>
-                    <td><span class="badge {statusClass(plan.status)}">{plan.status}</span></td>
+                    <td><Badge kind="plan" value={plan.status} /></td>
                     <td>{plan.interval_days ? `every ${plan.interval_days} days` : 'once'}</td>
                     <td class="mono">
                         {secondsText(plan.rto_target_s)} / {secondsText(plan.rpo_target_s)}
@@ -101,16 +100,12 @@
         gap: var(--space-1-5);
         justify-content: flex-end;
     }
-    .detail-row td {
-        background: var(--bg-raised);
-    }
     .dim {
         color: var(--text-faint);
     }
-    .badge.fail {
-        margin-left: var(--space-1-5);
-    }
     .nowrap {
         white-space: nowrap;
+        /* The overdue badge after the day keeps a gap. */
+        --badge-gap: var(--space-1-5);
     }
 </style>

@@ -3,8 +3,12 @@
     import { goto } from '$app/navigation';
     import { ACTIVE_RUN_STATES, api, fmtAgo, fmtDuration, fmtTs, shortId } from '#lib/api.js';
     import type { MeResponse, RunRow } from '#lib/types.js';
+    import Badge from '#lib/components/Badge.svelte';
+    import Segmented from '#lib/components/Segmented.svelte';
     import StatusBadge from '#lib/components/StatusBadge.svelte';
     import { runTimeNs, runWaitNs } from '#lib/duration.js';
+    import PageHeader from '#lib/components/PageHeader.svelte';
+    import Panel from '#lib/components/Panel.svelte';
 
     // Client-side state filter: '' = all, 'active' = anything in
     // ACTIVE_RUN_STATES, otherwise one terminal state.
@@ -106,22 +110,20 @@
     }
 </script>
 
-<div class="page-head">
-    <h1>Runs</h1>
-    <span class="sub"
-        >{shown ? `${shown.length} run${shown.length === 1 ? '' : 's'}` : 'newest first'}</span
-    >
+<PageHeader
+    title="Runs"
+    sub={shown ? `${shown.length} run${shown.length === 1 ? '' : 's'}` : 'newest first'}
+>
     <div class="controls">
-        <div class="seg">
-            {#each FILTERS as f (f)}
-                <button class:active={filter === f} onclick={() => (filter = f)}>
-                    {f === '' ? 'all' : f}
-                </button>
-            {/each}
-        </div>
+        <Segmented
+            label="run state"
+            options={FILTERS.map((f) => ({ value: f, label: f === '' ? 'all' : f }))}
+            value={filter}
+            onchange={(f) => (filter = f)}
+        />
         {#if canRun}
             {#if activeCount > 0}
-                <button class:danger={haltArmed} class="halt" onclick={halt} disabled={halting}>
+                <button class:danger={haltArmed} class="btn halt" onclick={halt} disabled={halting}>
                     {halting
                         ? 'Halting…'
                         : haltArmed
@@ -132,13 +134,13 @@
             <button class="primary" onclick={() => goto('/runs/new')}>New run</button>
         {/if}
     </div>
-</div>
+</PageHeader>
 
 {#if haltNote}
     <div class="panel halt-note">{haltNote}</div>
 {/if}
 
-<div class="panel">
+<Panel>
     {#if error}
         <div class="state error">Failed to load runs: {error}</div>
     {:else if !shown}
@@ -164,13 +166,13 @@
                         <td class="mono">{fmtDuration(runTimeNs(row, nowNs()))}</td>
                         <td>
                             {#if row.state === 'rollback_pending'}
-                                <span class="badge warn">rollback pending</span>
+                                <Badge tone="warn" label="rollback pending" />
                             {:else if row.rollback_status && row.rollback_status !== 'not_needed'}
-                                <span
-                                    class="badge {row.rollback_status === 'failed' ? 'fail' : 'ok'}"
-                                >
-                                    rollback {row.rollback_status}
-                                </span>
+                                <Badge
+                                    kind="rollback"
+                                    value={row.rollback_status}
+                                    label="rollback {row.rollback_status}"
+                                />
                             {:else}
                                 <span style="color: var(--text-faint)">—</span>
                             {/if}
@@ -181,7 +183,7 @@
             </tbody>
         </table>
     {/if}
-</div>
+</Panel>
 
 <style>
     .controls {
@@ -191,26 +193,11 @@
         flex-wrap: wrap;
         align-items: center;
     }
-    .halt {
-        background: var(--bg-hover);
-        border: var(--border-width-sm) solid var(--border-strong);
-        color: var(--text);
-        border-radius: var(--radius-xl);
-        padding: var(--space-1-5) var(--space-3-5);
-        cursor: pointer;
-        font-size: var(--font-size-md);
-    }
     .halt:hover {
         border-color: var(--fail);
     }
     .halt.danger {
-        border-color: var(--fail);
-        color: var(--fail);
         font-weight: var(--font-weight-strong);
-    }
-    .halt:disabled {
-        opacity: 0.5;
-        cursor: default;
     }
     .halt-note {
         margin-bottom: var(--space-3-5);

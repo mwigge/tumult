@@ -110,7 +110,7 @@ test('a saved draft can be reopened, edited, and submitted without duplication',
     await page.getByLabel('Attestation text', { exact: true }).fill('I attest this is accurate');
     await page.getByRole('button', { name: 'Save draft', exact: true }).click();
     await expect(page.getByText(/draft manual-1 saved/)).toBeVisible();
-    await page.getByRole('button', { name: 'All records', exact: true }).click();
+    await page.getByRole('tab', { name: 'All records', exact: true }).click();
     await page.getByRole('button', { name: 'Edit draft', exact: true }).click();
     await expect(page.getByLabel('Method', { exact: true })).toHaveValue('Original method');
     await page.getByLabel('Method', { exact: true }).fill('Reviewed method');

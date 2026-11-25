@@ -12,8 +12,6 @@ import type {
     RunEvidence,
 } from './types';
 
-type Hue = 'ok' | 'warn' | 'fail' | 'neutral';
-
 /** The chart tokens the charts of a run read. */
 export type EvidenceTokens = Pick<ReturnType<typeof chartTokens>, 'fail' | 'tooltip'>;
 
@@ -52,22 +50,10 @@ export function phaseLabel(phase: string): string {
     return PHASES[phase] ?? phase;
 }
 
-const STEP_HUES: Record<string, Hue> = { succeeded: 'ok', failed: 'fail', timeout: 'fail' };
-
-export function stepClass(status: string): Hue {
-    return STEP_HUES[status] ?? 'neutral';
-}
-
-const OBJECTIVE_HUES: Record<string, Hue> = { met: 'ok', breached: 'fail', inconclusive: 'warn' };
-
-export function objectiveClass(state: string): Hue {
-    return OBJECTIVE_HUES[state] ?? 'neutral';
-}
-
 /** What a check of the steady state said. `null`: it was not checked. */
-export function steadyState(met: boolean | null): { label: string; cls: Hue } {
-    if (met === null) return { label: 'not checked', cls: 'neutral' };
-    return met ? { label: 'met', cls: 'ok' } : { label: 'not met', cls: 'fail' };
+export function steadyState(met: boolean | null): string {
+    if (met === null) return 'not checked';
+    return met ? 'met' : 'not met';
 }
 
 const SIGNS: Record<string, string> = { lte: '≤', gte: '≥', eq: '=' };
@@ -261,7 +247,6 @@ function lines(
         grid: { left: 56, right: 56, top: 40, bottom: 44 },
         legend: { top: 0 },
         tooltip: {
-            ...tokens.tooltip,
             trigger: 'axis',
             formatter: tipFormatter(seriesTip(axis.unit, unitOf)),
         },

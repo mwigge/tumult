@@ -8,7 +8,8 @@ import { bodies, overview, NOW_MS, NOW_NS, HOUR_NS, DAY_S } from './chart-theme-
 // and Performance pages draw their grid lines, axes, borders, lines and
 // tooltips in the colours of the theme in force, and take the colours of
 // a new theme when it changes. The fan chart is the score trend of the
-// Resilience page.
+// Resilience page. Most of these colours are set by the theme alone, not
+// by the option: what a chart reads back is the theme merged in.
 
 type Theme = 'dark' | 'light';
 
@@ -23,6 +24,9 @@ async function mockApi(page: Page, theme: Theme, answers: Record<string, unknown
     });
 }
 
+/** The font of the page (--font-body), which chart text is written in. */
+const FONT = "-apple-system, 'Segoe UI', Inter, Roboto, sans-serif";
+
 /** The colours of the tokens of each theme (lib/theme.css). */
 const COLOURS = {
     dark: {
@@ -35,6 +39,7 @@ const COLOURS = {
         scale: ['#1c242c', '#2d5d84', '#5eb1ef'],
         accent: '#5eb1ef',
         status: ['#ef4444', '#f59e0b', '#34d399'],
+        series: ['#5eb1ef', '#E69F00', '#009E73', '#CC79A7', '#56B4E9', '#D55E00', '#F0E442'],
     },
     light: {
         grid: '#e3e8ed',
@@ -46,6 +51,8 @@ const COLOURS = {
         scale: ['#e9eef2', '#9cc4e4', '#1f6fb2'],
         accent: '#1f6fb2',
         status: ['#c0392b', '#b45309', '#0f8a5f'],
+        // The Okabe-Ito hues that are below 3:1 on white are darker in light.
+        series: ['#1f6fb2', '#c28600', '#009E73', '#CC79A7', '#1d9ae0', '#D55E00', '#9e940d'],
     },
 };
 
@@ -62,6 +69,8 @@ type Frame = {
     line?: string;
     mark?: string;
     markLabel?: string;
+    series?: string[];
+    font?: string;
 };
 
 /** The colours of the frame of chart `id` as the page drew it, or null before it is drawn. */
@@ -89,6 +98,8 @@ const frameOf = (page: Page, id: string) =>
             calendar?: { itemStyle?: { borderColor?: string } }[];
             visualMap?: { inRange?: { color?: string[] } }[];
             tooltip?: { backgroundColor?: string }[];
+            color?: string[];
+            textStyle?: { fontFamily?: string };
         }
         const charts = (window as Window & { __tumultCharts?: Record<string, unknown> })
             .__tumultCharts;
@@ -109,6 +120,8 @@ const frameOf = (page: Page, id: string) =>
             line: o.series.find((s) => s.lineStyle?.color)?.lineStyle?.color,
             mark: marked?.lineStyle?.color,
             markLabel: marked?.label?.color,
+            series: o.color,
+            font: o.textStyle?.fontFamily,
         };
         return Object.fromEntries(Object.entries(frame).filter(([, v]) => v !== undefined));
     }, id);
@@ -128,14 +141,14 @@ function framesIn(theme: Theme): Record<string, Frame> {
         'coverage-radar': { ...axes, line: c.accent },
         nfr: { ...axes, scale: c.status },
         trend: { ...axes, line: c.text },
-        perf: { ...axes, legend: c.text, mark: c.axis, markLabel: c.text },
+        perf: { ...axes, legend: c.text, mark: c.axis, markLabel: c.text, series: c.series },
     };
 }
 
 async function expectFrame(page: Page, id: string, theme: Theme) {
     await expect
         .poll(() => frameOf(page, id), { message: `chart ${id} is drawn in the ${theme} theme` })
-        .toMatchObject(framesIn(theme)[id] ?? {});
+        .toMatchObject({ font: FONT, ...framesIn(theme)[id] });
 }
 
 // The coverage heatmap and radar and the objectives of the Resilience page.

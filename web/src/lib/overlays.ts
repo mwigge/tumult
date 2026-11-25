@@ -15,7 +15,10 @@ import type { ExperimentWindow } from '#lib/types.js';
 type Series = EChartsCoreOption['series'] extends Array<infer S> ? S : Record<string, unknown>;
 
 /** The tokens an overlay is drawn with. */
-export type OverlayTokens = Pick<ReturnType<typeof chartTokens>, 'ok' | 'warn' | 'fail' | 'text'>;
+export type OverlayTokens = Pick<
+    ReturnType<typeof chartTokens>,
+    'ok' | 'warn' | 'fail' | 'text' | 'font'
+>;
 
 function toneColor(tone: Tone, t: OverlayTokens): string {
     return tone === 'neutral' ? t.text : t[tone];
@@ -172,7 +175,7 @@ export function experimentOverlay(
             label: {
                 show: true,
                 position: 'end',
-                fontSize: 10,
+                fontSize: t.font.size.xs,
                 color: t.text,
                 width: 160,
                 overflow: 'truncate',

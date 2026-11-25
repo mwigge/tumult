@@ -4,12 +4,16 @@
     import { onMount } from 'svelte';
     import { api } from '#lib/api.js';
     import type { ExperimentWindow, MetricCatalogEntry, MetricQueryResult } from '#lib/types.js';
+    import Badge from '#lib/components/Badge.svelte';
     import RangeSwitch from '#lib/components/RangeSwitch.svelte';
+    import Segmented from '#lib/components/Segmented.svelte';
     import EChart from '#lib/components/EChart.svelte';
     import { chartTheme, chartTokens, followTheme } from '#lib/echarts.js';
     import type { EChartsCoreOption } from '#lib/echarts.js';
     import { experimentOverlay, labelGap, overlayRunId } from '#lib/overlays.js';
     import { RANGE_SECONDS, rangeAxis } from '#lib/ranges.js';
+    import PageHeader from '#lib/components/PageHeader.svelte';
+    import Panel from '#lib/components/Panel.svelte';
 
     const INTERVALS = ['5m', '1h', '1d'];
     const CHART_TYPES = ['line', 'area', 'bar'] as const;
@@ -23,8 +27,7 @@
         tokens.ok,
         tokens.warn,
         tokens.fail,
-        '#a78bfa',
-        '#f472b6',
+        ...tokens.extraSeries,
     ]);
 
     const filters = $derived({
@@ -135,19 +138,10 @@
         return {
             // Room under the legend for the upright run labels.
             grid: { left: 56, right: 20, top: 48, bottom: 24 },
-            tooltip: { trigger: 'axis', ...tokens.tooltip },
-            legend: { textStyle: { color: tokens.text }, top: 0 },
-            xAxis: {
-                type: 'time',
-                ...axis,
-                axisLine: { lineStyle: { color: tokens.axis } },
-                axisLabel: { color: tokens.text },
-            },
-            yAxis: {
-                type: 'value',
-                axisLabel: { color: tokens.text },
-                splitLine: { lineStyle: { color: tokens.split } },
-            },
+            tooltip: { trigger: 'axis' },
+            legend: { top: 0 },
+            xAxis: { type: 'time', ...axis },
+            yAxis: { type: 'value' },
             series: [
                 ...series.map((s, i) => ({
                     name: s.name,
@@ -173,10 +167,9 @@
     }
 </script>
 
-<div class="page-head">
-    <h1>Metrics</h1>
+<PageHeader title="Metrics">
     {#if selected}
-        <span class="badge neutral">{selected.types[0]}</span>
+        <Badge tone="neutral" label={selected.types[0]} />
     {/if}
     <div class="controls">
         <select value={filters.name} onchange={(e) => setFilter('name', e.currentTarget.value)}>
@@ -201,13 +194,12 @@
                 <option value={d}>group by {d}</option>
             {/each}
         </select>
-        <div class="seg" role="group" aria-label="chart type">
-            {#each CHART_TYPES as t (t)}
-                <button class:active={filters.chart === t} onclick={() => setFilter('chart', t)}
-                    >{t}</button
-                >
-            {/each}
-        </div>
+        <Segmented
+            label="chart type"
+            options={CHART_TYPES}
+            value={filters.chart}
+            onchange={(t) => setFilter('chart', t)}
+        />
         <select
             value={filters.interval}
             onchange={(e) => setFilter('interval', e.currentTarget.value)}
@@ -218,9 +210,9 @@
         </select>
         <RangeSwitch value={filters.range} onchange={(r) => setFilter('range', r)} />
     </div>
-</div>
+</PageHeader>
 
-<div class="panel">
+<Panel>
     {#if error}
         <div class="state error">Failed to load metric: {error}</div>
     {:else if catalog === null || (filters.name && result === null)}
@@ -238,7 +230,7 @@
             label="Metric values over time"
         />
     {/if}
-</div>
+</Panel>
 
 {#if result && result.type === 'histogram'}
     <p class="sub" style="margin-top: var(--space-2)">
