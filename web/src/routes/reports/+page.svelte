@@ -335,6 +335,6 @@
         height: 560px;
         border: var(--border-width-sm) solid var(--border-strong);
         border-radius: var(--radius-lg);
-        background: #fff;
+        background: var(--bg-panel);
     }
 </style>

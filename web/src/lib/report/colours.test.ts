@@ -1,6 +1,14 @@
+import { readFileSync } from 'node:fs';
+
 import { describe, expect, it } from 'vitest';
 import { DARK, LIGHT } from '../chart-theme';
-import { withColours } from './colours';
+import { COLOURS, withColours } from './colours';
+
+/** The colours of the CLI report, which `npm run build:tokens` writes. */
+const REPORT_CSS = new URL(
+    '../../../../tumult-cli/src/commands/report/html/tokens.css',
+    import.meta.url,
+);
 
 describe('withColours', () => {
     it('gives a named colour the colour of the theme', () => {
@@ -73,5 +81,26 @@ describe('withColours', () => {
         withColours(option, DARK);
 
         expect(option).toEqual({ itemStyle: { color: 'token:warn' } });
+    });
+
+    it('knows each colour of the CSS of the report by its name, in light and in dark', () => {
+        // Rust names a colour of a chart by the name the CSS of the report
+        // gives it, so the script must give it the same colour.
+        const [light, rest] = readFileSync(REPORT_CSS, 'utf8').split(
+            '@media (prefers-color-scheme: dark)',
+        );
+        const dark = rest.split('@media print')[0];
+
+        for (const [theme, block] of [
+            ['light', light],
+            ['dark', dark],
+        ] as const) {
+            const declared = [...block.matchAll(/--([a-z-]+): (#[0-9a-f]{6});/g)];
+            expect(declared.length, theme).toBeGreaterThanOrEqual(9);
+            for (const [, name, value] of declared)
+                expect(withColours({ color: `token:${name}` }, COLOURS[theme]), name).toEqual({
+                    color: value,
+                });
+        }
     });
 });
