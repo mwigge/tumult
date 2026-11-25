@@ -7,6 +7,7 @@
     import type { ManualPlan } from '#lib/types.js';
     import Badge from './Badge.svelte';
     import State from './State.svelte';
+    import { onRow } from '#lib/rows.js';
 
     let {
         plans,
@@ -43,8 +44,14 @@
         </thead>
         <tbody>
             {#each plans as plan (plan.id)}
-                <tr class="clickable" data-plan={plan.id} onclick={() => onopen?.(plan)}>
-                    <td>{plan.name}</td>
+                <tr class="clickable" data-plan={plan.id} onclick={onRow(() => onopen?.(plan))}>
+                    <td>
+                        <button
+                            class="row-button"
+                            aria-expanded={openId === plan.id}
+                            onclick={() => onopen?.(plan)}>{plan.name}</button
+                        >
+                    </td>
                     <td><Badge tone="neutral" label={plan.exercise_type} /></td>
                     <td>
                         {plan.target_system ?? '—'}

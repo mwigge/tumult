@@ -129,16 +129,22 @@
 {#if page.url.pathname === '/login'}
     {@render children?.()}
 {:else}
+    <a class="sr-only skip-link" href="#main">Skip to main content</a>
     <div class="shell">
         <aside class="side">
             <div class="brand">
                 <div class="name">Tumult</div>
                 <div class="tag">{TAGLINE}</div>
             </div>
-            <nav class="nav">
+            <nav class="nav" aria-label="Main">
                 {#each NAV as item (item.href)}
                     {#if (!item.admin || isAdmin) && (!item.operator || isOperator)}
-                        <a href={item.href} class:active={active(page.url, item.href)}>
+                        {@const current = active(page.url, item.href)}
+                        <a
+                            href={item.href}
+                            class:active={current}
+                            aria-current={current ? 'page' : undefined}
+                        >
                             <span>{item.icon}</span>{item.label}
                         </a>
                     {/if}
@@ -162,7 +168,7 @@
                 </div>
             {/if}
         </aside>
-        <main class="main">
+        <main class="main" id="main" tabindex="-1">
             {@render children?.()}
         </main>
     </div>

@@ -40,7 +40,7 @@
       "padding": "0px 0px 12px",
       "margin": "0px 0px 16px"
     },
-    "div.login-wrap > div.panel.login-panel > div.brand > div.name": {
+    "div.login-wrap > div.panel.login-panel > div.brand > h1[heading].name \"Tumult\"": {
       "font-size": "17px",
       "font-weight": "700",
       "letter-spacing": "0.4px",

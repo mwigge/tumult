@@ -716,12 +716,6 @@
         font-size: var(--font-size-md);
         color: var(--text);
     }
-    select:focus-visible,
-    input:focus-visible,
-    button:focus-visible {
-        outline: var(--border-width-md) solid var(--accent);
-        outline-offset: 2px;
-    }
     .below {
         margin-top: var(--space-3-5);
     }

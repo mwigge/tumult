@@ -6,6 +6,7 @@
     import PageHeader from '#lib/components/PageHeader.svelte';
     import Panel from '#lib/components/Panel.svelte';
     import State from '#lib/components/State.svelte';
+    import { onRow } from '#lib/rows.js';
 
     const ROLES: Role[] = ['viewer', 'operator', 'approver', 'admin'];
 
@@ -247,11 +248,15 @@
                         <tr
                             class="clickable"
                             class:selected={openId === u.id}
-                            onclick={() => toggle(u)}
+                            onclick={onRow(() => toggle(u))}
                         >
                             <td style="color: var(--text-faint)">{openId === u.id ? '▾' : '▸'}</td>
                             <td>
-                                {u.username}
+                                <button
+                                    class="row-button"
+                                    aria-expanded={openId === u.id}
+                                    onclick={() => toggle(u)}>{u.username}</button
+                                >
                                 {#if me?.username === u.username}<Badge
                                         tone="neutral"
                                         label="you"
@@ -281,7 +286,7 @@
                                 <td colspan={6}>
                                     <div class="detail">
                                         <div>
-                                            <h3>Role</h3>
+                                            <h2>Role</h2>
                                             {#if me?.username === u.username}
                                                 <div class="hint">
                                                     You cannot change your own role — ask another
@@ -289,7 +294,7 @@
                                                 </div>
                                             {:else}
                                                 <div class="row">
-                                                    <select bind:value={roleEdit}>
+                                                    <select aria-label="Role" bind:value={roleEdit}>
                                                         {#each ROLES as r (r)}<option value={r}
                                                                 >{r}</option
                                                             >{/each}
@@ -302,10 +307,11 @@
                                                     >
                                                 </div>
                                             {/if}
-                                            <h3>Environment scopes</h3>
+                                            <h2>Environment scopes</h2>
                                             <div class="row">
                                                 <input
                                                     type="text"
+                                                    aria-label="Environment scopes"
                                                     placeholder="comma-separated; empty = all"
                                                     bind:value={scopeEdit}
                                                 />
@@ -317,10 +323,11 @@
                                             </div>
                                         </div>
                                         <div>
-                                            <h3>Reset password</h3>
+                                            <h2>Reset password</h2>
                                             <div class="row">
                                                 <input
                                                     type="password"
+                                                    aria-label="New one-time password"
                                                     placeholder="new one-time password (min 12 chars)"
                                                     autocomplete="new-password"
                                                     bind:value={passwordEdit}
@@ -335,7 +342,7 @@
                                             <div class="hint">
                                                 The user must change it at next login.
                                             </div>
-                                            <h3>Account</h3>
+                                            <h2>Account</h2>
                                             {#if me?.username === u.username}
                                                 <div class="hint">
                                                     You cannot disable your own account.
@@ -538,14 +545,14 @@
         padding: var(--space-2) var(--space-1);
         cursor: default;
     }
-    .detail h3 {
+    .detail h2 {
         font-size: var(--font-size-xs);
         text-transform: uppercase;
         letter-spacing: var(--letter-spacing-sm);
         color: var(--text-dim);
         margin: 0 0 var(--space-1-5);
     }
-    .detail h3:not(:first-child) {
+    .detail h2:not(:first-child) {
         margin-top: var(--space-3);
     }
     .row {

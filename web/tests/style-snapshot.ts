@@ -70,7 +70,7 @@ export const fileOf = (page: string, theme: Theme, width: number) =>
 const ELEMENT_NODE = 1;
 
 /** The tag, role and accessible name of one element, in document order. */
-interface Label {
+export interface Label {
     tag: string;
     role: string;
     name: string;
@@ -81,7 +81,7 @@ interface Label {
  * from one read of the accessibility tree of the browser. An element the
  * tree ignores, or gives no role but `generic` or `none`, has no role.
  */
-async function labels(page: Page): Promise<Label[]> {
+export async function labels(page: Page): Promise<Label[]> {
     const cdp = await page.context().newCDPSession(page);
     try {
         const { nodes } = await cdp.send('Accessibility.getFullAXTree');

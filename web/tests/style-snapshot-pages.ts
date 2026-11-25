@@ -606,7 +606,7 @@ export const PAGES: SnapshotPage[] = [
             '/api/registry': { count: 1, definitions: [definition] },
         },
     },
-    { name: 'login', path: '/login', heading: null, api: {} },
+    { name: 'login', path: '/login', heading: 'Tumult', api: {} },
 ];
 
 const pageOf = (name: string) => PAGES.find((target) => target.name === name) as SnapshotPage;

@@ -7,6 +7,7 @@
     import PageHeader from '#lib/components/PageHeader.svelte';
     import Panel from '#lib/components/Panel.svelte';
     import State from '#lib/components/State.svelte';
+    import { onRow } from '#lib/rows.js';
 
     let rows = $state<ApprovalQueueRow[] | null>(null);
     let error = $state<string | null>(null);
@@ -102,13 +103,13 @@
         openId = openId === runId ? null : runId;
     }
 
-    /** Remaining TTL; `soon` (under 1h left, or lapsed) gets the warn tone. */
+    /** Remaining TTL; `soon` (under 1h left, or lapsed) gets the warn tone, and says so. */
     function remaining(ns: number): { text: string; soon: boolean } {
         const ms = ns / 1_000_000 - Date.now();
         if (ms <= 0) return { text: 'expired', soon: true };
         const m = Math.floor(ms / 60_000);
         if (m >= 60) return { text: `${Math.floor(m / 60)}h ${m % 60}m`, soon: false };
-        return { text: `${m}m ${Math.floor((ms % 60_000) / 1000)}s`, soon: true };
+        return { text: `${m}m ${Math.floor((ms % 60_000) / 1000)}s, soon`, soon: true };
     }
 </script>
 
@@ -145,11 +146,16 @@
             <tbody>
                 {#each rows as row (row.run_id)}
                     {@const ttl = remaining(row.expires_at_ns)}
-                    <tr class="clickable" onclick={() => toggle(row.run_id)}>
+                    <tr class="clickable" onclick={onRow(() => toggle(row.run_id))}>
                         <td style="color: var(--text-faint)">{openId === row.run_id ? '▾' : '▸'}</td
                         >
                         <td>
-                            {row.definition_name ?? '—'}
+                            <button
+                                class="row-button"
+                                aria-expanded={openId === row.run_id}
+                                onclick={() => toggle(row.run_id)}
+                                >{row.definition_name ?? '—'}</button
+                            >
                             {#if row.break_glass}
                                 <Badge
                                     tone="warn"
@@ -183,6 +189,7 @@
                             <td onclick={(e) => e.stopPropagation()}>
                                 <input
                                     type="text"
+                                    aria-label="Decision note"
                                     placeholder="decision note…"
                                     bind:value={notes[row.run_id]}
                                 />
@@ -222,14 +229,14 @@
                             <td colspan={canDecide ? 10 : 8}>
                                 <div class="detail">
                                     <div>
-                                        <h3>Parameters</h3>
+                                        <h2>Parameters</h2>
                                         <pre class="mono params">{paramsText(row.params_json)}</pre>
                                     </div>
                                     <div>
-                                        <h3>Pin hash</h3>
+                                        <h2>Pin hash</h2>
                                         <div class="mono dim hash">{row.pin_hash}</div>
                                         {#if row.target}
-                                            <h3>Target</h3>
+                                            <h2>Target</h2>
                                             <div class="dim">{row.target}</div>
                                         {/if}
                                     </div>
@@ -267,7 +274,7 @@
         gap: var(--space-4);
         padding: var(--space-2) var(--space-1);
     }
-    .detail h3 {
+    .detail h2 {
         font-size: var(--font-size-xs);
         text-transform: uppercase;
         letter-spacing: var(--letter-spacing-sm);
