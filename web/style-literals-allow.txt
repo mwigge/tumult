@@ -1,0 +1,90 @@
+# The raw style values that Krönika keeps today, one `path kind value`
+# per line, with paths from web/. A value used twice in a file is on two
+# lines. The style lint (npm run lint:styles) fails on a raw value that
+# is not here, and on a line that matches no raw value. Do not add lines:
+# use a token. Delete a line when its value moves to a token.
+
+src/lib/components/ApprovalActions.svelte spacing 3px
+src/lib/components/AuditTimeline.svelte spacing 3px
+src/lib/components/DoraEvidence.svelte spacing 3px
+src/lib/components/DoraEvidence.svelte colour rgb(0 0 0 / 25%)
+src/lib/components/DoraNotices.svelte border-width 3px
+src/lib/components/DoraScore.svelte spacing 3px
+src/lib/components/DoraScore.svelte spacing 3px
+src/lib/components/DrEmpty.svelte font-size 15px
+src/lib/components/DrEmpty.svelte spacing 20px
+src/lib/components/DrRecoveryChart.svelte spacing 20px
+src/lib/components/DrRegister.svelte font-weight 400
+src/lib/components/DrRegister.svelte spacing 7px
+src/lib/components/EvidencePanels.svelte spacing 28px
+src/lib/components/KpiCard.svelte font-size 26px
+src/lib/components/ManualAuditList.svelte spacing 3px
+src/lib/components/ScoreNumber.svelte spacing 1px
+src/lib/components/SpanDrawer.svelte line-height 1
+src/lib/components/SpanDrawer.svelte spacing 3px
+src/lib/components/SpanDrawer.svelte spacing 5px
+src/lib/components/SpanDrawer.svelte colour rgba(0, 0, 0, 0.45)
+src/lib/components/StarDrawer.svelte line-height 1
+src/lib/components/StarDrawer.svelte spacing 3px
+src/lib/components/StarDrawer.svelte spacing 5px
+src/lib/components/Waterfall.svelte font-size 10.5px
+src/lib/components/Waterfall.svelte spacing 3px
+src/lib/components/Waterfall.svelte spacing 3px
+src/lib/theme.css font-size 0.92em
+src/lib/theme.css font-size 17px
+src/lib/theme.css font-size 19px
+src/lib/theme.css font-weight 700
+src/lib/theme.css letter-spacing 0.3px
+src/lib/theme.css letter-spacing 0.4px
+src/lib/theme.css letter-spacing 0.7px
+src/lib/theme.css spacing 1px
+src/lib/theme.css spacing 1px
+src/lib/theme.css spacing 26px
+src/lib/theme.css spacing 28px
+src/lib/theme.css spacing 5px
+src/lib/theme.css spacing 60px
+src/lib/theme.css spacing 7px
+src/lib/theme.css spacing 7px
+src/lib/theme.css spacing 9px
+src/lib/theme.css spacing 9px
+src/lib/theme.css spacing 9px
+src/lib/theme.css colour #fff
+src/lib/theme.css colour #fff
+src/routes/+layout.svelte spacing 3px
+src/routes/ask/+page.svelte spacing 11px
+src/routes/ask/+page.svelte spacing 3px
+src/routes/ask/+page.svelte radius 12px
+src/routes/dr/+page.svelte spacing -4px
+src/routes/experiments/+page.svelte font-size 10px
+src/routes/experiments/[id]/+page.svelte spacing 3px
+src/routes/gamedays/+page.svelte spacing 5px
+src/routes/login/+page.svelte font-size 17px
+src/routes/login/+page.svelte font-weight 700
+src/routes/login/+page.svelte letter-spacing 0.4px
+src/routes/login/+page.svelte spacing -4px
+src/routes/login/+page.svelte spacing 5px
+src/routes/login/+page.svelte spacing 9px
+src/routes/logs/+page.svelte spacing -6px
+src/routes/manual/+page.svelte spacing 5px
+src/routes/performance/+page.svelte font-size 15px
+src/routes/performance/+page.svelte spacing 3px
+src/routes/performance/+page.svelte spacing 3px
+src/routes/performance/+page.svelte spacing 7px
+src/routes/performance/+page.svelte radius 14px
+src/routes/reports/+page.svelte colour #fff
+src/routes/resilience/+page.svelte font-size 34px
+src/routes/resilience/+page.svelte spacing 3px
+src/routes/resilience/+page.svelte spacing 9px
+src/routes/schedules/+page.svelte spacing 5px
+src/routes/scores/+page.svelte font-size 18px
+src/routes/scores/+page.svelte font-weight 500
+src/routes/scores/+page.svelte spacing 3px
+src/routes/starmap/+page.svelte spacing 3px
+src/routes/starmap/+page.svelte radius 50%
+src/routes/starmap/+page.svelte radius 50%
+src/routes/starmap/+page.svelte radius 999px
+src/routes/starmap/+page.svelte border-width 3px
+src/routes/traces/+page.svelte spacing -6px
+src/routes/traces/[id]/+page.svelte spacing 3px
+src/routes/users/+page.svelte spacing 5px
+src/routes/webhooks/+page.svelte spacing 5px
