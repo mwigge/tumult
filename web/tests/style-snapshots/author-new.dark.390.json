@@ -26,294 +26,37 @@
       "display": "block"
     },
     "div.shell": {
-      "display": "grid",
+      "display": "block",
       "grid-template-columns": "208px 1fr"
     },
-    "div.shell > aside[complementary].side": {
+    "div.shell > header[banner].topbar": {
       "display": "flex",
       "background-color": "rgb(17, 22, 27)",
-      "border-right": "1px solid rgb(36, 45, 54)",
-      "padding": "16px 0px"
-    },
-    "div.shell > aside[complementary].side > div.brand": {
-      "display": "block",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "0px 18px 14px",
-      "margin": "0px 0px 10px"
+      "padding": "8px 16px"
     },
-    "div.shell > aside[complementary].side > div.brand > div.name": {
+    "div.shell > header[banner].topbar > span.name": {
       "font-size": "17px",
       "font-weight": "700",
       "letter-spacing": "0.4px",
       "display": "block"
     },
-    "div.shell > aside[complementary].side > div.brand > div.tag": {
-      "color": "rgb(91, 103, 114)",
-      "font-size": "11px",
+    "div.shell > header[banner].topbar > button[button].btn \"Menu\"": {
+      "font-family": "Arial",
+      "font-size": "13px",
+      "line-height": "normal",
       "display": "block",
-      "margin": "2px 0px 0px"
-    },
-    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\"": {
-      "display": "block",
-      "padding": "0px 0px 1px"
-    },
-    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◧ Overview\"": {
-      "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
-      "display": "flex",
-      "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
-    },
-    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◧ Overview\" > span": {
-      "display": "block"
-    },
-    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◎ Resilience\"": {
-      "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
-      "display": "flex",
-      "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
-    },
-    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◎ Resilience\" > span": {
-      "display": "block"
-    },
-    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◭ Performance\"": {
-      "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
-      "display": "flex",
-      "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
-    },
-    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◭ Performance\" > span": {
-      "display": "block"
-    },
-    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▦ Scores\"": {
-      "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
-      "display": "flex",
-      "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
-    },
-    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▦ Scores\" > span": {
-      "display": "block"
-    },
-    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚖ DORA\"": {
-      "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
-      "display": "flex",
-      "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
-    },
-    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚖ DORA\" > span": {
-      "display": "block"
-    },
-    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⟲ Disaster recovery\"": {
-      "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
-      "display": "flex",
-      "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
-    },
-    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⟲ Disaster recovery\" > span": {
-      "display": "block"
-    },
-    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚗ Experiments\"": {
-      "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
-      "display": "flex",
-      "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
-    },
-    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚗ Experiments\" > span": {
-      "display": "block"
-    },
-    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▶ Runs\"": {
-      "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
-      "display": "flex",
-      "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
-    },
-    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▶ Runs\" > span": {
-      "display": "block"
-    },
-    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link].active \"✚ Author\"": {
-      "font-size": "13.5px",
-      "display": "flex",
       "background-color": "rgb(28, 36, 44)",
-      "border-left": "2px solid rgb(94, 177, 239)",
-      "padding": "8px 18px",
-      "gap": "9px"
-    },
-    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link].active \"✚ Author\" > span": {
-      "display": "block"
-    },
-    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"☷ GameDays\"": {
-      "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
-      "display": "flex",
-      "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
-    },
-    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"☷ GameDays\" > span": {
-      "display": "block"
-    },
-    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✓ Approvals\"": {
-      "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
-      "display": "flex",
-      "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
-    },
-    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✓ Approvals\" > span": {
-      "display": "block"
-    },
-    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✎ Manual\"": {
-      "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
-      "display": "flex",
-      "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
-    },
-    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✎ Manual\" > span": {
-      "display": "block"
-    },
-    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"≣ Logs\"": {
-      "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
-      "display": "flex",
-      "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
-    },
-    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"≣ Logs\" > span": {
-      "display": "block"
-    },
-    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⌁ Traces\"": {
-      "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
-      "display": "flex",
-      "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
-    },
-    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⌁ Traces\" > span": {
-      "display": "block"
-    },
-    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"∿ Metrics\"": {
-      "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
-      "display": "flex",
-      "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
-    },
-    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"∿ Metrics\" > span": {
-      "display": "block"
-    },
-    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✳ Star Map\"": {
-      "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
-      "display": "flex",
-      "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
-    },
-    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✳ Star Map\" > span": {
-      "display": "block"
-    },
-    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✦ Ask\"": {
-      "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
-      "display": "flex",
-      "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
-    },
-    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✦ Ask\" > span": {
-      "display": "block"
-    },
-    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▤ Reports\"": {
-      "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
-      "display": "flex",
-      "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
-    },
-    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▤ Reports\" > span": {
-      "display": "block"
-    },
-    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◔ Events\"": {
-      "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
-      "display": "flex",
-      "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
-    },
-    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◔ Events\" > span": {
-      "display": "block"
-    },
-    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚿ Users\"": {
-      "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
-      "display": "flex",
-      "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
-    },
-    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚿ Users\" > span": {
-      "display": "block"
-    },
-    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"➤ Webhooks\"": {
-      "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
-      "display": "flex",
-      "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
-    },
-    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"➤ Webhooks\" > span": {
-      "display": "block"
-    },
-    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"↻ Schedules\"": {
-      "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
-      "display": "flex",
-      "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
-    },
-    "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"↻ Schedules\" > span": {
-      "display": "block"
-    },
-    "div.shell > aside[complementary].side > button[button].theme \"◐ dark\"": {
-      "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
-      "display": "block",
-      "border-top": "1px solid rgb(36, 45, 54)",
-      "border-right": "1px solid rgb(36, 45, 54)",
-      "border-bottom": "1px solid rgb(36, 45, 54)",
-      "border-left": "1px solid rgb(36, 45, 54)",
-      "border-radius": "4px",
-      "padding": "2px 8px",
-      "margin": "8px 18px 0px"
+      "border-top": "1px solid rgb(51, 64, 76)",
+      "border-right": "1px solid rgb(51, 64, 76)",
+      "border-bottom": "1px solid rgb(51, 64, 76)",
+      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-radius": "6px",
+      "padding": "6px 14px"
     },
     "div.shell > main[main].main": {
       "display": "block",
-      "padding": "22px 26px 60px"
+      "padding": "22px 16px 60px"
     },
     "div.shell > main[main].main > div.page-head": {
       "display": "flex",

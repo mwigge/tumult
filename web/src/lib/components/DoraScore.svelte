@@ -181,7 +181,7 @@
             />
         </div>
 
-        <section class="panel" data-testid="dora-heatmap">
+        <section class="panel" data-testid="dora-heatmap" data-scroll>
             <div class="panel-head">
                 <h2>Articles × {report.by === 'org' ? 'org units' : 'functions'}</h2>
                 <Segmented
@@ -266,7 +266,7 @@
             </div>
         </section>
 
-        <section class="panel" data-testid="dora-expectations">
+        <section class="panel" data-testid="dora-expectations" data-scroll>
             <h2>Expected and actual evidence status, largest gap first</h2>
             {#if expectations.length === 0}
                 <State kind="empty">No requirement applies to this profile.</State>
@@ -333,7 +333,7 @@
             <DoraScenarios scenarios={report.scenarios} />
         {/if}
 
-        <section class="panel" data-testid="dora-maturity">
+        <section class="panel" data-testid="dora-maturity" data-scroll>
             <h2>Maturity — {maturity.headline}</h2>
             <div class="maturity">
                 <div class="gauge">
@@ -441,7 +441,7 @@
             </div>
         </section>
 
-        <section class="panel" data-testid="dora-rollup">
+        <section class="panel" data-testid="dora-rollup" data-scroll>
             <h2>Maturity per node{rollupSuffix}</h2>
             {#if tree.length === 0}
                 <State kind="empty">No nodes to roll up.</State>
@@ -479,7 +479,7 @@
             </div>
         </section>
 
-        <section class="panel" data-testid="dora-readiness">
+        <section class="panel" data-testid="dora-readiness" data-scroll>
             <h2>Reporting readiness — function register</h2>
             <div class="tiles">
                 <ScoreNumber

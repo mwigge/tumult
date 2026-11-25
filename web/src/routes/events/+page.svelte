@@ -61,7 +61,7 @@
     </div>
 </PageHeader>
 
-<Panel>
+<Panel scroll>
     {#if error}
         <State kind="error">Failed to load events: {error}</State>
     {:else if !rows}

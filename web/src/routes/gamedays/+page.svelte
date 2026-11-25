@@ -73,7 +73,7 @@
         : 'coordinated experiment campaigns'}
 />
 
-<Panel style="margin-bottom: var(--space-3-5)">
+<Panel style="margin-bottom: var(--space-3-5)" scroll>
     {#if error}
         <State kind="error">Failed to load gamedays: {error}</State>
     {:else if !days}

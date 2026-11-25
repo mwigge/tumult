@@ -264,6 +264,7 @@
         {:else}
             <Panel
                 title={`${tree.name} — ${tree.children.length} direct member${tree.children.length === 1 ? '' : 's'}, weakest first`}
+                scroll
             >
                 {#if tree.children.length === 0}
                     <State kind="empty">No members below this node.</State>
@@ -366,6 +367,11 @@
         grid-template-columns: repeat(4, 1fr);
         gap: var(--space-3);
         margin-bottom: var(--space-3);
+    }
+    @media (max-width: 800px) {
+        .cards {
+            grid-template-columns: repeat(2, 1fr);
+        }
     }
     .card .label {
         color: var(--text-dim);

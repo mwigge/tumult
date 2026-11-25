@@ -118,7 +118,7 @@
     sub={rows ? `${rows.length} pending` : 'gated runs waiting on quorum'}
 />
 
-<Panel>
+<Panel scroll>
     {#if error}
         <State kind="error">Failed to load the approvals queue: {error}</State>
     {:else if !rows}

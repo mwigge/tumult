@@ -189,7 +189,7 @@
     {/if}
 </PageHeader>
 
-<Panel title="1 · Definition" style="margin-bottom: var(--space-3-5)">
+<Panel title="1 · Definition" style="margin-bottom: var(--space-3-5)" scroll>
     {#if listError}
         <State kind="error">Failed to load the registry: {listError}</State>
     {:else if !entries}

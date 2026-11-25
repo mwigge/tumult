@@ -32,6 +32,16 @@ describe('a panel', () => {
         expect(markup(html)).toBe('<div class="panel meta"><span>Queued</span><b>12:00</b></div>');
     });
 
+    it('lets a table wider than it scroll sideways inside it', () => {
+        const html = render(Panel, {
+            props: { title: 'Runs', scroll: true, children: body('<table></table>') },
+        }).body;
+
+        expect(markup(html)).toBe(
+            '<div class="panel" data-scroll=""><h2>Runs</h2><table></table></div>',
+        );
+    });
+
     it('passes its attributes on to the box', () => {
         const html = render(Panel, {
             props: {

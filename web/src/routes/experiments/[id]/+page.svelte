@@ -10,6 +10,7 @@
     import Waterfall from '#lib/components/Waterfall.svelte';
     import SpanDrawer from '#lib/components/SpanDrawer.svelte';
     import PageHeader from '#lib/components/PageHeader.svelte';
+    import MetaRow from '#lib/components/MetaRow.svelte';
     import Panel from '#lib/components/Panel.svelte';
     import State from '#lib/components/State.svelte';
 
@@ -60,10 +61,7 @@
     {@const exp = detail.experiment}
     {@const ranNs = experimentDurationNs(exp)}
 
-    <div
-        class="grid"
-        style="grid-template-columns: repeat(4, 1fr); margin-bottom: var(--space-3-5)"
-    >
+    <MetaRow>
         <Panel variant="meta" title="Started">
             <b>{fmtTs(exp.started_ns)} ({fmtAgo(exp.started_ns)})</b>
         </Panel>
@@ -85,7 +83,7 @@
                     : ''}{exp.target_environment ? ` · ${exp.target_environment}` : ''}
             </b>
         </Panel>
-    </div>
+    </MetaRow>
 
     <EvidencePanels evidence={detail.evidence ?? null} />
 
@@ -122,7 +120,7 @@
                 </div>
             {/if}
         </Panel>
-        <Panel title={`Metric points (${detail.metrics.length})`}>
+        <Panel title={`Metric points (${detail.metrics.length})`} scroll>
             {#if detail.metrics.length === 0}
                 <State kind="empty">
                     No metric points with the name of this experiment in the time of this run.

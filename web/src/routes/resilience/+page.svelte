@@ -474,7 +474,7 @@
     {/if}
 
     {#if conformance && conformance.services.length > 0}
-        <section class="panel below" data-testid="conformance">
+        <section class="panel below" data-testid="conformance" data-scroll>
             <h2>Telemetry contract, {conformance.range}</h2>
             <div class="counts">
                 <Badge tone="ok" label="{conformance.summary.spine} spine" />
@@ -540,7 +540,7 @@
         </section>
     {/if}
 
-    <section class="panel score" data-testid="posture">
+    <section class="panel score" data-testid="posture" data-scroll>
         <h2>{RESILIENCE_SCORE}</h2>
         <p class="muted meaning">{RESILIENCE_SCORE_LINE}</p>
         <div class="headline">

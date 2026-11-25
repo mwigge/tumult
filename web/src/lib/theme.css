@@ -4,6 +4,16 @@
    tokens.css holds them, and scripts/build-tokens.mjs writes it from
    web/tokens/. */
 
+/* --- breakpoints -----------------------------------------------------------
+   The widths where the layout changes, each with a name. A media query
+   cannot read a custom property, so each query writes its width, and
+   src/lib/breakpoints.test.ts fails on a query at any other width.
+     xl  1200px  the key numbers of the Overview go three in a row
+     lg  1100px  two panels side by side go one under the other
+     md   900px  the side bar folds behind the menu button of a top bar
+     sm   800px  the key numbers and the meta tiles go two in a row
+*/
+
 * {
     box-sizing: border-box;
 }
@@ -81,7 +91,8 @@ code,
     border-bottom: var(--border-width-sm) solid var(--border);
     margin-bottom: var(--space-2-5);
 }
-.brand .name {
+.brand .name,
+.topbar .name {
     font-size: 17px;
     font-weight: 700;
     letter-spacing: 0.4px;
@@ -115,6 +126,42 @@ code,
     max-width: 1460px;
     min-width: 0;
 }
+/* Below md the side bar folds behind the menu button of a top bar. The
+   open menu shows under the top bar, in the flow of the page. Above md
+   the top bar is not shown and nothing here applies. */
+.topbar {
+    display: none;
+}
+@media (max-width: 900px) {
+    .shell {
+        display: block;
+    }
+    .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: var(--space-2) var(--space-4);
+        background: var(--bg-raised);
+        border-bottom: var(--border-width-sm) solid var(--border);
+    }
+    .side {
+        display: none;
+    }
+    .side.open {
+        display: flex;
+        position: static;
+        height: auto;
+        border-right: none;
+        border-bottom: var(--border-width-sm) solid var(--border);
+    }
+    /* The top bar names the app. */
+    .side .brand {
+        display: none;
+    }
+    .main {
+        padding-inline: var(--space-4);
+    }
+}
 .page-head {
     display: flex;
     align-items: baseline;
@@ -141,6 +188,12 @@ code,
     border-radius: var(--radius-xl);
     padding: var(--space-3-5) var(--space-4);
 }
+/* A panel whose table may be wider than it: the table scrolls sideways
+   inside the panel, and the page does not. Panel.svelte sets it with
+   `scroll`. */
+.panel[data-scroll] {
+    overflow-x: auto;
+}
 .panel h2 {
     font-size: var(--font-size-xs);
     text-transform: uppercase;
@@ -156,9 +209,18 @@ code,
 .grid.cols-2 {
     grid-template-columns: 1fr 1fr;
 }
+/* Side by side, a panel that scrolls is as wide as its content, as any
+   panel is, and the other column gives way. One under the other, it
+   scrolls. */
+.grid.cols-2 > .panel[data-scroll] {
+    min-width: min-content;
+}
 @media (max-width: 1100px) {
     .grid.cols-2 {
         grid-template-columns: 1fr;
+    }
+    .grid.cols-2 > .panel[data-scroll] {
+        min-width: 0;
     }
 }
 
@@ -244,6 +306,12 @@ table.data tr.clickable:hover {
 .seg button.active {
     background: var(--accent-dim);
     color: #fff;
+}
+/* On a small screen the buttons of a long group wrap to a second row. */
+@media (max-width: 900px) {
+    .seg {
+        flex-wrap: wrap;
+    }
 }
 /* The small look of Segmented.svelte and Tabs.svelte: the views of the
    Scores page and the value of the DORA heatmap. */
@@ -540,6 +608,12 @@ button.primary:disabled,
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: var(--space-2-5);
+}
+/* On a small screen each field of a row has the width of the form. */
+@media (max-width: 800px) {
+    .row2 {
+        grid-template-columns: 1fr;
+    }
 }
 /* A list editor: one grid row of fields for each entry. */
 .grid-rows {

@@ -142,7 +142,7 @@
     <div class="panel halt-note">{haltNote}</div>
 {/if}
 
-<Panel>
+<Panel scroll>
     {#if error}
         <State kind="error">Failed to load runs: {error}</State>
     {:else if !shown}
