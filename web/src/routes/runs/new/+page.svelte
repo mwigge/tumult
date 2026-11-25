@@ -3,6 +3,7 @@
     import { goto } from '$app/navigation';
     import { page } from '$app/state';
     import { api, fmtAgo, fmtTs, shortId } from '#lib/api.js';
+    import Badge from '#lib/components/Badge.svelte';
     import ScopeSummary, { targetedActions } from '#lib/components/ScopeSummary.svelte';
     import type {
         DryRunResponse,
@@ -314,7 +315,7 @@
                 <div class="plan-head">
                     <b>{plan.title || def?.name}</b>
                     {#each plan.tags ?? [] as tag (tag)}
-                        <span class="badge neutral">{tag}</span>
+                        <Badge tone="neutral" label={tag} />
                     {/each}
                 </div>
                 {#if plan.description}

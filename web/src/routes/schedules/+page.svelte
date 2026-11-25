@@ -2,6 +2,7 @@
     import { onMount } from 'svelte';
     import { api, fmtAgo, fmtIn, fmtInterval, fmtTs } from '#lib/api.js';
     import type { MeResponse, RegistryEntry, Schedule } from '#lib/types.js';
+    import Badge from '#lib/components/Badge.svelte';
 
     const PRESETS: { label: string; seconds: number }[] = [
         { label: 'every 15m', seconds: 900 },
@@ -172,11 +173,7 @@
                             {/if}
                         </td>
                         <td>{s.env}</td>
-                        <td
-                            ><span class="badge {s.enabled ? 'ok' : 'neutral'}"
-                                >{s.enabled ? 'enabled' : 'disabled'}</span
-                            ></td
-                        >
+                        <td><Badge kind="switch" value={s.enabled ? 'enabled' : 'disabled'} /></td>
                         <td>{s.created_by ?? '—'}</td>
                         {#if canMutate}
                             <td class="actions">

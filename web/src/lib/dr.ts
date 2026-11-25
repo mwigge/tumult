@@ -6,7 +6,6 @@ import type { EChartsCoreOption } from './echarts';
 import { chartTokens, PALETTE } from './echarts';
 import type { ChartTheme } from './chart-theme';
 import { strong, tip, tipFormatter } from './tooltip';
-import type { Tone } from './tone';
 import type { DrLastTest, DrQuery, DrState, DrTarget, DrTest, DrVerdict, DrView } from './types';
 
 const DAY_MS = 86_400_000;
@@ -35,24 +34,22 @@ export const PERIOD_DAYS: Readonly<Record<string, number>> = {
 
 export const DEFAULT_PERIOD = '1y';
 
-const STATES: Record<DrState, [string, Tone]> = {
-    ok: ['ok', 'ok'],
-    due: ['due', 'warn'],
-    overdue: ['overdue', 'fail'],
-    never_tested: ['never tested', 'neutral'],
+const STATES: Record<DrState, string> = {
+    ok: 'ok',
+    due: 'due',
+    overdue: 'overdue',
+    never_tested: 'never tested',
 };
 
-const VERDICTS: Record<DrVerdict, [string, Tone]> = {
-    met: ['met', 'ok'],
-    breached: ['breached', 'fail'],
-    not_recovered: ['not recovered', 'fail'],
-    not_measured: ['not measured', 'neutral'],
+const VERDICTS: Record<DrVerdict, string> = {
+    met: 'met',
+    breached: 'breached',
+    not_recovered: 'not recovered',
+    not_measured: 'not measured',
 };
 
-export const stateLabel = (state: DrState): string => STATES[state][0];
-export const stateTone = (state: DrState): Tone => STATES[state][1];
-export const verdictLabel = (verdict: DrVerdict): string => VERDICTS[verdict][0];
-export const verdictTone = (verdict: DrVerdict): Tone => VERDICTS[verdict][1];
+export const stateLabel = (state: DrState): string => STATES[state];
+export const verdictLabel = (verdict: DrVerdict): string => VERDICTS[verdict];
 
 const tenths = (value: number) => String(Math.round(value * 10) / 10);
 

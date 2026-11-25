@@ -25,6 +25,7 @@
         RiskReport,
         ScoreTree,
     } from '#lib/types.js';
+    import Badge from '#lib/components/Badge.svelte';
     import ChartLegend from '#lib/components/ChartLegend.svelte';
     import EChart from '#lib/components/EChart.svelte';
     import FanChart from '#lib/components/FanChart.svelte';
@@ -102,14 +103,6 @@
             submitting = false;
         }
     }
-
-    const SEVERITY_CLASS: Record<string, string> = {
-        critical: 'fail',
-        high: 'fail',
-        medium: 'warn',
-        low: 'neutral',
-    };
-    const bandClass = (b: string) => (b === 'good' ? 'ok' : b === 'fair' ? 'warn' : 'fail');
 
     // The charts are drawn in the colours of the theme in force.
     let theme = $state(chartTheme());
@@ -205,7 +198,6 @@
     });
 
     const pct = (v: number | null) => (v == null ? '–' : `${Math.round(v)}`);
-    const LEVEL_CLASS: Record<string, string> = { spine: 'ok', target: 'warn', none: 'fail' };
 
     // What the cell of an objective with no margin counts as.
     const NO_MARGIN = { met: 0.5, breached: -0.5, other: 0 } as const;
@@ -325,10 +317,9 @@
         <section class="panel" data-testid="risks">
             <h2>Top risks</h2>
             <div class="counts">
-                <span class="badge fail">{report.summary.critical + report.summary.high} high+</span
-                >
-                <span class="badge warn">{report.summary.medium} medium</span>
-                <span class="badge neutral">{report.summary.low} low</span>
+                <Badge tone="fail" label="{report.summary.critical + report.summary.high} high+" />
+                <Badge tone="warn" label="{report.summary.medium} medium" />
+                <Badge tone="neutral" label="{report.summary.low} low" />
                 {#if report.summary.suppressed > 0}
                     <button class="link" onclick={() => (showSuppressed = !showSuppressed)}>
                         {report.summary.suppressed} suppressed
@@ -342,9 +333,7 @@
                 {#each report.risks as r (r.id)}
                     <li>
                         <div class="row">
-                            <span class="badge {SEVERITY_CLASS[r.severity] ?? 'neutral'}"
-                                >{r.severity}</span
-                            >
+                            <Badge kind="finding" value={r.severity} />
                             <span class="title">{r.title}</span>
                             {#if r.target}
                                 <span class="mono target">{r.target}</span>
@@ -403,7 +392,7 @@
                     {#each report.suppressed as r (r.id)}
                         <li>
                             <div class="row">
-                                <span class="badge neutral">{r.severity}</span>
+                                <Badge tone="neutral" label={r.severity} />
                                 <span class="title">{r.title}</span>
                                 {#if r.target}<span class="mono target">{r.target}</span>{/if}
                             </div>
@@ -485,9 +474,9 @@
         <section class="panel below" data-testid="conformance">
             <h2>Telemetry contract, {conformance.range}</h2>
             <div class="counts">
-                <span class="badge ok">{conformance.summary.spine} spine</span>
-                <span class="badge warn">{conformance.summary.target} target</span>
-                <span class="badge fail">{conformance.summary.none} none</span>
+                <Badge tone="ok" label="{conformance.summary.spine} spine" />
+                <Badge tone="warn" label="{conformance.summary.target} target" />
+                <Badge tone="fail" label="{conformance.summary.none} none" />
                 <span class="muted">
                     services whose every span carried the target, the ICT spine, or neither
                 </span>
@@ -506,11 +495,7 @@
                         <tr>
                             <td class="mono">{svc.service}</td>
                             <td class="mono">{svc.spans}</td>
-                            <td
-                                ><span class="badge {LEVEL_CLASS[svc.level] ?? 'neutral'}"
-                                    >{svc.level}</span
-                                ></td
-                            >
+                            <td><Badge kind="level" value={svc.level} /></td>
                             <td class="mono missing">{svc.missing.join(', ') || '–'}</td>
                         </tr>
                     {/each}
@@ -518,7 +503,7 @@
             </table>
             <div class="malformed" data-testid="malformed-ids">
                 {#if (conformance.malformed_entity_ids ?? []).length === 0}
-                    <span class="badge ok">0 malformed ict.entity.id</span>
+                    <Badge tone="ok" label="0 malformed ict.entity.id" />
                     <span class="muted">
                         every id received matches
                         <span class="mono"
@@ -526,11 +511,13 @@
                         >
                     </span>
                 {:else}
-                    <span class="badge fail">
-                        {conformance.malformed_entity_ids
-                            .length}{conformance.malformed_entity_ids_truncated ? '+' : ''} malformed
-                        ict.entity.id
-                    </span>
+                    <Badge
+                        tone="fail"
+                        label="{conformance.malformed_entity_ids
+                            .length}{conformance.malformed_entity_ids_truncated
+                            ? '+'
+                            : ''} malformed ict.entity.id"
+                    />
                     <span class="muted">
                         stored as received; fix them at the sender (expected
                         <span class="mono">{conformance.entity_id_pattern}</span>, e.g. cif-0042)
@@ -555,7 +542,7 @@
         <p class="muted meaning">{RESILIENCE_SCORE_LINE}</p>
         <div class="headline">
             <span class="value mono">{posture.posture.score.toFixed(1)}</span>
-            <span class="badge {bandClass(posture.posture.band)}">{posture.posture.band}</span>
+            <Badge kind="band" value={posture.posture.band} />
         </div>
         {#if posture.posture.targets.length > 0}
             <table>
@@ -575,11 +562,9 @@
                         <tr>
                             <td class="mono">{tp.target}</td>
                             <td class="mono">{tp.environment ?? '–'}</td>
-                            <td
-                                ><span class="badge {bandClass(tp.band)}"
-                                    >{tp.score.toFixed(1)}</span
-                                ></td
-                            >
+                            <td>
+                                <Badge kind="band" value={tp.band} label={tp.score.toFixed(1)} />
+                            </td>
                             <td class="mono">{pct(tp.components.nfr)}</td>
                             <td class="mono">{pct(tp.components.coverage)}</td>
                             <td class="mono">{pct(tp.components.freshness)}</td>

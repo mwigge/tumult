@@ -2,7 +2,9 @@
     import { page } from '$app/state';
     import { api, fmtAgo, fmtDuration, fmtTs } from '#lib/api.js';
     import { experimentDurationNs } from '#lib/duration.js';
+    import { toneOf } from '#lib/tone.js';
     import type { ExperimentDetail, Span } from '#lib/types.js';
+    import Badge from '#lib/components/Badge.svelte';
     import EvidencePanels from '#lib/components/EvidencePanels.svelte';
     import StatusBadge from '#lib/components/StatusBadge.svelte';
     import Waterfall from '#lib/components/Waterfall.svelte';
@@ -25,13 +27,6 @@
             cancelled = true;
         };
     });
-
-    function sevClass(sev: string | null): string {
-        const s = (sev ?? '').toUpperCase();
-        if (s.startsWith('ERR') || s.startsWith('FATAL')) return 'fail';
-        if (s.startsWith('WARN')) return 'warn';
-        return '';
-    }
 </script>
 
 {#if error}
@@ -49,9 +44,11 @@
         <h1>{exp.name ?? exp.id}</h1>
         <StatusBadge status={exp.status} />
         {#if exp.journal_only}
-            <span class="badge neutral" title="This run sent no trace. The lake holds its journal."
-                >journal only</span
-            >
+            <Badge
+                tone="neutral"
+                title="This run sent no trace. The lake holds its journal."
+                label="journal only"
+            />
         {/if}
         <span class="sub mono">{exp.id}</span>
     </div>
@@ -109,7 +106,7 @@
                     {#each detail.logs as log, i (i)}
                         <div class="log">
                             <span class="mono ts">{fmtTs(log.ts_ns)}</span>
-                            <span class="mono sev {sevClass(log.severity_text)}"
+                            <span class="mono sev {toneOf('severity', log.severity_text)}"
                                 >{log.severity_text ?? 'LOG'}</span
                             >
                             <span>{log.body}</span>

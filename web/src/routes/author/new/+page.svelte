@@ -7,6 +7,7 @@
         emptyForm,
         type AuthorForm,
     } from '#lib/components/ActionParamForm.svelte';
+    import Badge from '#lib/components/Badge.svelte';
     import ToonEditor from '#lib/components/ToonEditor.svelte';
     import type {
         CatalogAction,
@@ -95,7 +96,7 @@
         <h2>1 · Action</h2>
         <div class="action-line">
             <span class="mono">{action.plugin}::{action.name}</span>
-            <span class="badge {action.kind === 'action' ? 'warn' : 'neutral'}">{action.kind}</span>
+            <Badge kind="catalog" value={action.kind} />
         </div>
         <p class="desc">{action.description}</p>
     </div>

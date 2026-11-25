@@ -13,17 +13,16 @@
         loadFacts,
         loadLatencyOption,
         loadThroughputOption,
-        objectiveClass,
         objectiveTarget,
         phaseLabel,
         probeSamplesOption,
         recoveryRows,
         samplesNote,
         steadyState,
-        stepClass,
         stepOffset,
     } from '#lib/evidence.js';
     import type { RunEvidence } from '#lib/types.js';
+    import Badge from './Badge.svelte';
     import EChart from './EChart.svelte';
 
     let { evidence }: { evidence: RunEvidence | null } = $props();
@@ -60,7 +59,7 @@
                 <div>
                     <dt>Kind of test</dt>
                     <dd>
-                        <span class="badge neutral" data-testid="run-kind">{evidence.kind}</span>
+                        <Badge tone="neutral" data-testid="run-kind" label={evidence.kind} />
                     </dd>
                 </div>
                 {#if before !== null || after !== null}
@@ -69,17 +68,13 @@
                     <div>
                         <dt>Before the method</dt>
                         <dd>
-                            <span class="badge {first.cls}" data-testid="steady-before"
-                                >{first.label}</span
-                            >
+                            <Badge kind="verdict" value={first} data-testid="steady-before" />
                         </dd>
                     </div>
                     <div>
                         <dt>After the method</dt>
                         <dd>
-                            <span class="badge {last.cls}" data-testid="steady-after"
-                                >{last.label}</span
-                            >
+                            <Badge kind="verdict" value={last} data-testid="steady-after" />
                         </dd>
                     </div>
                 {/if}
@@ -126,9 +121,7 @@
                                 <td class="mono">{fmtValue(objective.observed)}</td>
                                 <td class="mono">{fmtMargin(objective.margin)}</td>
                                 <td>
-                                    <span class="badge {objectiveClass(objective.state)}"
-                                        >{objective.state}</span
-                                    >
+                                    <Badge kind="verdict" value={objective.state} />
                                 </td>
                                 <td>{objective.criticality}</td>
                             </tr>
@@ -158,10 +151,7 @@
                             <td>{phaseLabel(step.phase)}</td>
                             <td class="mono">{step.name}</td>
                             <td>{step.activity_type}</td>
-                            <td
-                                ><span class="badge {stepClass(step.status)}">{step.status}</span
-                                ></td
-                            >
+                            <td><Badge kind="step" value={step.status} /></td>
                             <td class="mono">{stepOffset(evidence, step.started_at_ns)}</td>
                             <td class="mono">{fmtDuration(step.duration_ms * 1_000_000)}</td>
                             <td class="mono result" title={result}>{result}</td>

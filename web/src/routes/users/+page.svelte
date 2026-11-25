@@ -2,6 +2,7 @@
     import { onMount } from 'svelte';
     import { api, fmtAgo, fmtTs } from '#lib/api.js';
     import type { AdminUser, ApiToken, MeResponse, Role } from '#lib/types.js';
+    import Badge from '#lib/components/Badge.svelte';
 
     const ROLES: Role[] = ['viewer', 'operator', 'approver', 'admin'];
 
@@ -146,13 +147,11 @@
         }
     }
 
-    /** Token status badge: revoked and expired are terminal; else active. */
-    function tokenStatus(t: ApiToken): { label: string; cls: string } {
-        if (t.revoked) return { label: 'revoked', cls: 'fail' };
-        if (t.expires_at_ns !== null && t.expires_at_ns / 1_000_000 <= Date.now()) {
-            return { label: 'expired', cls: 'warn' };
-        }
-        return { label: 'active', cls: 'ok' };
+    /** The state of a token: revoked and expired are terminal; else active. */
+    function tokenStatus(t: ApiToken): string {
+        if (t.revoked) return 'revoked';
+        if (t.expires_at_ns !== null && t.expires_at_ns / 1_000_000 <= Date.now()) return 'expired';
+        return 'active';
     }
 
     async function mint() {
@@ -252,24 +251,27 @@
                             <td style="color: var(--text-faint)">{openId === u.id ? '▾' : '▸'}</td>
                             <td>
                                 {u.username}
-                                {#if me?.username === u.username}<span class="badge neutral"
-                                        >you</span
-                                    >{/if}
+                                {#if me?.username === u.username}<Badge
+                                        tone="neutral"
+                                        label="you"
+                                    />{/if}
                             </td>
-                            <td><span class="badge neutral">{u.role}</span></td>
+                            <td><Badge tone="neutral" label={u.role} /></td>
                             <td
                                 >{u.env_scopes.length === 0
                                     ? 'all environments'
                                     : u.env_scopes.join(', ')}</td
                             >
                             <td>
-                                {#if u.disabled}<span class="badge fail">disabled</span>{/if}
-                                {#if u.must_change}<span class="badge warn"
-                                        >must change password</span
-                                    >{/if}
-                                {#if !u.disabled && !u.must_change}<span class="badge ok"
-                                        >active</span
-                                    >{/if}
+                                {#if u.disabled}<Badge tone="fail" label="disabled" />{/if}
+                                {#if u.must_change}<Badge
+                                        tone="warn"
+                                        label="must change password"
+                                    />{/if}
+                                {#if !u.disabled && !u.must_change}<Badge
+                                        tone="ok"
+                                        label="active"
+                                    />{/if}
                             </td>
                             <td title={fmtTs(u.created_at_ns)}>{fmtAgo(u.created_at_ns)}</td>
                         </tr>
@@ -459,7 +461,7 @@
                                 <td title={t.expires_at_ns !== null ? fmtTs(t.expires_at_ns) : ''}>
                                     {t.expires_at_ns !== null ? fmtTs(t.expires_at_ns) : 'never'}
                                 </td>
-                                <td><span class="badge {st.cls}">{st.label}</span></td>
+                                <td><Badge kind="token" value={st} /></td>
                                 <td>
                                     {#if !t.revoked}
                                         <button

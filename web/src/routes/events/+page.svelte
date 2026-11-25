@@ -1,6 +1,7 @@
 <script lang="ts">
     import { api, fmtAgo, fmtTs, shortId } from '#lib/api.js';
     import type { RunEvent } from '#lib/types.js';
+    import Badge from '#lib/components/Badge.svelte';
 
     // Event-type filter: '' = everything, otherwise one audit event name.
     const FILTERS: { value: string; label: string }[] = [
@@ -43,27 +44,6 @@
             if (timer) clearTimeout(timer);
         };
     });
-
-    /** Badge tone per event: failures red, stops/rejections amber, wins green. */
-    function eventClass(event: string): string {
-        switch (event) {
-            case 'passed':
-            case 'completed':
-            case 'approved':
-                return 'ok';
-            case 'stop_requested':
-            case 'requested':
-            case 'rejected':
-            case 'expired':
-                return 'warn';
-            case 'failed':
-            case 'aborted':
-            case 'orphaned':
-                return 'fail';
-            default:
-                return 'neutral';
-        }
-    }
 </script>
 
 <div class="page-head">
@@ -100,7 +80,7 @@
                 {#each rows as e (e.run_id + e.at_ns)}
                     <tr>
                         <td title={fmtTs(e.at_ns)}>{fmtAgo(e.at_ns)}</td>
-                        <td><span class="badge {eventClass(e.event)}">{e.event}</span></td>
+                        <td><Badge kind="event" value={e.event} /></td>
                         <td>{e.definition_name ?? '—'}</td>
                         <td class="mono" style="color: var(--text-dim)">
                             <a href="/runs/{e.run_id}">{shortId(e.run_id)}</a>

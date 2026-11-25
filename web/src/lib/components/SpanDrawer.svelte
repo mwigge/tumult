@@ -7,6 +7,7 @@
     import { goto } from '$app/navigation';
     import type { ExperimentWindow, LogRow, Span } from '#lib/types.js';
     import { api, fmtDuration, fmtTs } from '#lib/api.js';
+    import { toneOf } from '#lib/tone.js';
     import StatusBadge from './StatusBadge.svelte';
 
     let { span, logs, onclose }: { span: Span; logs: LogRow[]; onclose: () => void } = $props();
@@ -53,13 +54,6 @@
     }
     function filterOut(k: string, v: string) {
         goto(`/traces?attr_not=${encodeURIComponent(`${k}=${v}`)}`);
-    }
-
-    function sevClass(sev: string | null): string {
-        const s = (sev ?? '').toUpperCase();
-        if (s.startsWith('ERR') || s.startsWith('FATAL')) return 'fail';
-        if (s.startsWith('WARN')) return 'warn';
-        return '';
     }
 </script>
 
@@ -153,7 +147,7 @@
         {:else}
             {#each correlated as log, i (i)}
                 <div class="log">
-                    <span class="mono sev {sevClass(log.severity_text)}"
+                    <span class="mono sev {toneOf('severity', log.severity_text)}"
                         >{log.severity_text ?? 'LOG'}</span
                     >
                     <span class="body">{log.body}</span>

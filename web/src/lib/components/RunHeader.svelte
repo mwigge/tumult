@@ -6,6 +6,7 @@
     import { api, fmtAgo, fmtDuration, fmtTs } from '#lib/api.js';
     import { runTimeNs, runWaitNs } from '#lib/duration.js';
     import type { RunRow } from '#lib/types.js';
+    import Badge from './Badge.svelte';
     import StatusBadge from './StatusBadge.svelte';
 
     let {
@@ -119,12 +120,14 @@
     <div class="panel meta">
         <span>Rollback</span>
         {#if run.state === 'rollback_pending'}
-            <b><span class="badge warn">rollback pending</span></b>
+            <b><Badge tone="warn" label="rollback pending" /></b>
         {:else if run.rollback_status && run.rollback_status !== 'not_needed'}
             <b>
-                <span class="badge {run.rollback_status === 'failed' ? 'fail' : 'ok'}">
-                    rollback {run.rollback_status}
-                </span>
+                <Badge
+                    kind="rollback"
+                    value={run.rollback_status}
+                    label="rollback {run.rollback_status}"
+                />
             </b>
         {:else}
             <b>—</b>

@@ -2,16 +2,10 @@
     // The plan scenarios of RTS 2024/1774 for each critical or important
     // function: passed, failed, overdue or missing. A missing scenario is
     // a gap, not a pass, so it is said as such and never left blank.
-    import type { DoraScenarioFunction, DoraScenarios, ScenarioState } from '#lib/types.js';
+    import type { DoraScenarioFunction, DoraScenarios } from '#lib/types.js';
+    import Badge from './Badge.svelte';
 
     let { scenarios }: { scenarios: DoraScenarios } = $props();
-
-    const TONE: Record<ScenarioState, string> = {
-        passed: 'ok',
-        failed: 'fail',
-        overdue: 'warn',
-        missing: 'neutral',
-    };
 
     const cellOf = (f: DoraScenarioFunction, id: string) => f.scenarios.find((s) => s.id === id);
 </script>
@@ -54,7 +48,7 @@
                                 {@const cell = cellOf(f, s.id)}
                                 <td>
                                     {#if cell}
-                                        <span class="badge {TONE[cell.state]}">{cell.state}</span>
+                                        <Badge kind="scenario" value={cell.state} />
                                         {#if cell.last_tested_at}
                                             <div class="mono">tested {cell.last_tested_at}</div>
                                         {/if}
