@@ -120,6 +120,13 @@ can allow it. `tests/first-paint.spec.ts` checks the first paint.
   row of a table (`.detail-row`) and `.actions`.
 - Tables: a row header (`th scope="row"` in `table.data`) reads as a cell.
   It wraps, as a cell does.
+- Rows that open: a row that opens on a click (`tr.clickable`) has a
+  link (`.row-link`) or a button (`.row-button`) in the cell that names
+  it, so that the keyboard opens it too. Both look as the text of the
+  cell. A button that opens a row in place says so with `aria-expanded`.
+  `onRow` in `src/lib/rows.ts` is the click handler of the row.
+  `src/lib/keyboard-scan.test.ts` fails on a row with a click handler and
+  no link or button.
 - Forms: `.form`, `.row2` and the list editor `.grid-rows`.
 
 A page uses the class and keeps no copy of the rule in its own style

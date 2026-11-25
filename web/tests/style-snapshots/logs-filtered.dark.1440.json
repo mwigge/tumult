@@ -541,6 +541,9 @@
       "display": "table-cell",
       "padding": "7px 10px"
     },
+    "div.shell > main[main].main > div.panel #2 > table[table].data > tr[row].clickable.expanded > td[cell].mono \"1h ago\" > button[button].row-button \"1h ago\"": {
+      "display": "inline-block"
+    },
     "div.shell > main[main].main > div.panel #2 > table[table].data > tr[row].clickable.expanded > td[cell] \"ERROR\"": {
       "display": "table-cell",
       "padding": "7px 10px"
@@ -700,6 +703,9 @@
       "font-size": "11.96px",
       "display": "table-cell",
       "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > div.panel #2 > table[table].data > tr[row].clickable > td[cell].mono \"2h ago\" > button[button].row-button \"2h ago\"": {
+      "display": "inline-block"
     },
     "div.shell > main[main].main > div.panel #2 > table[table].data > tr[row].clickable > td[cell] \"INFO\"": {
       "display": "table-cell",

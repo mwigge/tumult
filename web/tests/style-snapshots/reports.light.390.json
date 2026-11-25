@@ -473,6 +473,9 @@
       "display": "table-cell",
       "padding": "7px 10px"
     },
+    "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable > td[cell].mono \"doc-1\" > button[button].row-button \"doc-1\"": {
+      "display": "inline-block"
+    },
     "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable > td[cell] \"R1\"": {
       "display": "table-cell",
       "padding": "7px 10px"

@@ -13,6 +13,7 @@
     import PageHeader from '#lib/components/PageHeader.svelte';
     import Panel from '#lib/components/Panel.svelte';
     import State from '#lib/components/State.svelte';
+    import { onRow } from '#lib/rows.js';
 
     const SEVERITIES = ['ERROR', 'WARN', 'INFO', 'DEBUG', 'TRACE'];
 
@@ -43,6 +44,11 @@
     let volume: LogVolume | null = $state(null);
     let error: string | null = $state(null);
     let expanded: number | null = $state(null);
+
+    /** Open the row `i` under it, or close it when it is open. */
+    function toggle(i: number) {
+        expanded = expanded === i ? null : i;
+    }
 
     $effect(() => {
         // Touch every filter so the effect re-runs on any change; debounce for
@@ -204,9 +210,15 @@
                     <tr
                         class="clickable"
                         class:expanded={expanded === i}
-                        onclick={() => (expanded = expanded === i ? null : i)}
+                        onclick={onRow(() => toggle(i))}
                     >
-                        <td class="mono" title={fmtTs(row.ts_ns)}>{fmtAgo(row.ts_ns)}</td>
+                        <td class="mono" title={fmtTs(row.ts_ns)}>
+                            <button
+                                class="row-button"
+                                aria-expanded={expanded === i}
+                                onclick={() => toggle(i)}>{fmtAgo(row.ts_ns)}</button
+                            >
+                        </td>
                         <td>
                             <Badge
                                 kind="severity"

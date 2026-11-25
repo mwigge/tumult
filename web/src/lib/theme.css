@@ -205,6 +205,23 @@ table.data tr.clickable {
 table.data tr.clickable:hover {
     background: var(--bg-hover);
 }
+/* The link or the button in the cell that names a row that opens, so that
+   the keyboard opens the row too (see rows.ts). It looks as the text of
+   the cell: the row already shows that it opens. */
+.row-link,
+.row-link:hover {
+    color: inherit;
+    text-decoration: none;
+}
+.row-button {
+    background: none;
+    border: none;
+    padding: 0;
+    color: inherit;
+    font: inherit;
+    text-align: inherit;
+    cursor: pointer;
+}
 
 /* --- controls -------------------------------------------------------------*/
 .seg {

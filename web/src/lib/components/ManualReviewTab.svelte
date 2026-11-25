@@ -10,6 +10,7 @@
     import ManualRecordDetail from './ManualRecordDetail.svelte';
     import Panel from './Panel.svelte';
     import State from './State.svelte';
+    import { onRow } from '#lib/rows.js';
 
     let {
         tab,
@@ -132,9 +133,19 @@
             </thead>
             <tbody>
                 {#each shown as rec (rec.id)}
-                    <tr class="clickable" data-record={rec.id} onclick={() => toggle(rec.id)}>
+                    <tr
+                        class="clickable"
+                        data-record={rec.id}
+                        onclick={onRow(() => toggle(rec.id))}
+                    >
                         <td><Badge kind="review" value={rec.status} /></td>
-                        <td>{rec.experiment_name}</td>
+                        <td>
+                            <button
+                                class="row-button"
+                                aria-expanded={openId === rec.id}
+                                onclick={() => toggle(rec.id)}>{rec.experiment_name}</button
+                            >
+                        </td>
                         <td><Badge tone="neutral" label={rec.exercise_type} /></td>
                         <td><Badge kind="status" value={rec.outcome_status} /></td>
                         <td class="mono">{fmtTs(rec.executed_at_ns)}</td>

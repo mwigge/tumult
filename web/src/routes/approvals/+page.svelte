@@ -7,6 +7,7 @@
     import PageHeader from '#lib/components/PageHeader.svelte';
     import Panel from '#lib/components/Panel.svelte';
     import State from '#lib/components/State.svelte';
+    import { onRow } from '#lib/rows.js';
 
     let rows = $state<ApprovalQueueRow[] | null>(null);
     let error = $state<string | null>(null);
@@ -145,11 +146,16 @@
             <tbody>
                 {#each rows as row (row.run_id)}
                     {@const ttl = remaining(row.expires_at_ns)}
-                    <tr class="clickable" onclick={() => toggle(row.run_id)}>
+                    <tr class="clickable" onclick={onRow(() => toggle(row.run_id))}>
                         <td style="color: var(--text-faint)">{openId === row.run_id ? '▾' : '▸'}</td
                         >
                         <td>
-                            {row.definition_name ?? '—'}
+                            <button
+                                class="row-button"
+                                aria-expanded={openId === row.run_id}
+                                onclick={() => toggle(row.run_id)}
+                                >{row.definition_name ?? '—'}</button
+                            >
                             {#if row.break_glass}
                                 <Badge
                                     tone="warn"

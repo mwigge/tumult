@@ -6,6 +6,7 @@
     import PageHeader from '#lib/components/PageHeader.svelte';
     import Panel from '#lib/components/Panel.svelte';
     import State from '#lib/components/State.svelte';
+    import { onRow } from '#lib/rows.js';
 
     const ROLES: Role[] = ['viewer', 'operator', 'approver', 'admin'];
 
@@ -247,11 +248,15 @@
                         <tr
                             class="clickable"
                             class:selected={openId === u.id}
-                            onclick={() => toggle(u)}
+                            onclick={onRow(() => toggle(u))}
                         >
                             <td style="color: var(--text-faint)">{openId === u.id ? '▾' : '▸'}</td>
                             <td>
-                                {u.username}
+                                <button
+                                    class="row-button"
+                                    aria-expanded={openId === u.id}
+                                    onclick={() => toggle(u)}>{u.username}</button
+                                >
                                 {#if me?.username === u.username}<Badge
                                         tone="neutral"
                                         label="you"

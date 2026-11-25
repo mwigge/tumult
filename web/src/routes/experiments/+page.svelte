@@ -11,6 +11,7 @@
     import PageHeader from '#lib/components/PageHeader.svelte';
     import Panel from '#lib/components/Panel.svelte';
     import State from '#lib/components/State.svelte';
+    import { onRow } from '#lib/rows.js';
 
     const filters = $derived({
         range: page.url.searchParams.get('range') ?? '24h',
@@ -139,10 +140,12 @@
                             <td class="mono">{row.target_system ?? '—'}</td>
                         </tr>
                     {:else}
-                        <tr class="clickable" onclick={() => goto(`/experiments/${row.id}`)}>
+                        <tr class="clickable" onclick={onRow(() => goto(`/experiments/${row.id}`))}>
                             <td><StatusBadge status={row.status} /></td>
                             <td>
-                                {row.name ?? '—'}
+                                <a class="row-link" href="/experiments/{row.id}"
+                                    >{row.name ?? '—'}</a
+                                >
                                 {#if row.journal_only}
                                     <Badge
                                         tone="neutral"

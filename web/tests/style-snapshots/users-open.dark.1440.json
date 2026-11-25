@@ -427,6 +427,9 @@
       "border-bottom": "1px solid rgb(36, 45, 54)",
       "padding": "7px 10px"
     },
+    "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable.selected > td[cell] \"admin\" > button[button].row-button \"admin\"": {
+      "display": "inline-block"
+    },
     "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable.selected > td[cell] \"admin\" #2": {
       "display": "table-cell",
       "background-color": "rgb(28, 36, 44)",
@@ -645,6 +648,9 @@
     "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable > td[cell] \"operator\"": {
       "display": "table-cell",
       "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable > td[cell] \"operator\" > button[button].row-button \"operator\"": {
+      "display": "inline-block"
     },
     "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable > td[cell] \"operator\" #2": {
       "display": "table-cell",

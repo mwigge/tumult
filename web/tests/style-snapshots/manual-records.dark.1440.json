@@ -551,6 +551,9 @@
       "border-bottom": "1px solid rgb(36, 45, 54)",
       "padding": "7px 10px"
     },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"All records\" > div.panel > table[table].data > tr[row].clickable > td[cell] \"exercise rec-1\" > button[button].row-button \"exercise rec-1\"": {
+      "display": "inline-block"
+    },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"All records\" > div.panel > table[table].data > tr[row].clickable > td[cell] \"failover\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
@@ -620,6 +623,9 @@
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
       "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"All records\" > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"exercise rec-2\" > button[button].row-button \"exercise rec-2\"": {
+      "display": "inline-block"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"All records\" > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"failover\"": {
       "display": "table-cell",
@@ -700,6 +706,9 @@
     "div.shell > main[main].main > div.manual > div[tabpanel] \"All records\" > div.panel > table[table].data > tr[row].clickable #3 > td[cell] \"exercise rec-3\"": {
       "display": "table-cell",
       "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"All records\" > div.panel > table[table].data > tr[row].clickable #3 > td[cell] \"exercise rec-3\" > button[button].row-button \"exercise rec-3\"": {
+      "display": "inline-block"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"All records\" > div.panel > table[table].data > tr[row].clickable #3 > td[cell] \"failover\"": {
       "display": "table-cell",

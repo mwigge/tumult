@@ -397,6 +397,9 @@
       "display": "table-cell",
       "padding": "7px 10px"
     },
+    "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable > td[cell] \"smoke campaign\" > a[link].row-link \"smoke campaign\"": {
+      "display": "inline"
+    },
     "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable > td[cell].mono \"gd-1\"": {
       "color": "rgb(91, 103, 114)",
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",

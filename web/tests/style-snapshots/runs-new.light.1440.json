@@ -432,6 +432,9 @@
       "background-color": "rgb(233, 238, 242)",
       "padding": "7px 10px"
     },
+    "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable.selected > td[cell] \"demo\" > button[button].row-button \"demo\"": {
+      "display": "inline-block"
+    },
     "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable.selected > td[cell].mono \"reg-demo\"": {
       "color": "rgb(91, 103, 114)",
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",

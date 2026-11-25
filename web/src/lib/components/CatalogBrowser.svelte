@@ -4,6 +4,7 @@
     import Badge from './Badge.svelte';
     import Panel from './Panel.svelte';
     import State from './State.svelte';
+    import { onRow } from '#lib/rows.js';
 
     let { domains }: { domains: CatalogDomain[] } = $props();
 
@@ -27,11 +28,9 @@
             .filter((d) => d.actions.length > 0);
     });
 
-    function use(a: CatalogAction) {
-        void goto(
-            `/author/new?plugin=${encodeURIComponent(a.plugin)}&action=${encodeURIComponent(a.name)}`,
-        );
-    }
+    /** The form that authors an experiment with the action `a`. */
+    const formHref = (a: CatalogAction) =>
+        `/author/new?plugin=${encodeURIComponent(a.plugin)}&action=${encodeURIComponent(a.name)}`;
 </script>
 
 <div class="filters">
@@ -56,8 +55,9 @@
                 </thead>
                 <tbody>
                     {#each d.actions as a (`${a.plugin}::${a.name}`)}
-                        <tr class="clickable" onclick={() => use(a)}>
-                            <td class="mono">{a.name}</td>
+                        <tr class="clickable" onclick={onRow(() => void goto(formHref(a)))}>
+                            <td class="mono"><a class="row-link" href={formHref(a)}>{a.name}</a></td
+                            >
                             <td><Badge kind="catalog" value={a.kind} /></td>
                             <td style="color: var(--text-dim)">{a.description}</td>
                             <td style="color: var(--accent)">Use →</td>

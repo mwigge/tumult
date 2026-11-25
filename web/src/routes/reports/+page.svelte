@@ -17,6 +17,7 @@
     import PageHeader from '#lib/components/PageHeader.svelte';
     import Panel from '#lib/components/Panel.svelte';
     import State from '#lib/components/State.svelte';
+    import { onRow } from '#lib/rows.js';
 
     let me = $state<MeResponse | null>(null);
     const canGenerate = $derived(
@@ -311,8 +312,12 @@
             </thead>
             <tbody>
                 {#each reportsV2 as r (r.doc_id)}
-                    <tr class="clickable" onclick={() => (preview = r.doc_id)}>
-                        <td class="mono">{r.doc_id}</td>
+                    <tr class="clickable" onclick={onRow(() => (preview = r.doc_id))}>
+                        <td class="mono">
+                            <button class="row-button" onclick={() => (preview = r.doc_id)}
+                                >{r.doc_id}</button
+                            >
+                        </td>
                         <td><Badge tone="neutral" label={templateCode(r.type)} /></td>
                         <td>{fmtNs(r.created_ns)}</td>
                         <td class="mono">{fmtSize(r.bytes)}</td>
@@ -388,8 +393,12 @@
             </thead>
             <tbody>
                 {#each reports as r (r.name)}
-                    <tr class="clickable" onclick={() => (generated = r.name)}>
-                        <td class="mono">{r.name}</td>
+                    <tr class="clickable" onclick={onRow(() => (generated = r.name))}>
+                        <td class="mono">
+                            <button class="row-button" onclick={() => (generated = r.name)}
+                                >{r.name}</button
+                            >
+                        </td>
                         <td>
                             <Badge
                                 kind="report"

@@ -544,6 +544,9 @@
       "border-bottom": "1px solid rgb(36, 45, 54)",
       "padding": "7px 10px"
     },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > tr[row].clickable > td[cell] \"payments failover\" > button[button].row-button \"payments failover\"": {
+      "display": "inline-block"
+    },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > tr[row].clickable > td[cell] \"failover\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
@@ -752,6 +755,9 @@
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"ledger restore\"": {
       "display": "table-cell",
       "padding": "7px 10px"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"ledger restore\" > button[button].row-button \"ledger restore\"": {
+      "display": "inline-block"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"failover\"": {
       "display": "table-cell",

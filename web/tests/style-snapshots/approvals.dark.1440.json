@@ -461,6 +461,9 @@
       "display": "table-cell",
       "padding": "7px 10px"
     },
+    "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable > td[cell] \"pg-failover\" > button[button].row-button \"pg-failover\"": {
+      "display": "inline-block"
+    },
     "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable > td[cell].mono \"run-9\"": {
       "color": "rgb(139, 152, 165)",
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
