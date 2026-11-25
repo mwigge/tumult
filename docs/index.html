@@ -52,9 +52,9 @@ image: /images/tumult-banner.png
 <!-- ════════════════════════════════════════════════════ -->
 <section class="stats">
   <div class="stat"><div class="num">5,000+</div><div class="label">Rust tests</div></div>
-  <div class="stat"><div class="num">40</div><div class="label">MCP tools</div></div>
+  <div class="stat"><div class="num">44</div><div class="label">MCP tools</div></div>
   <div class="stat"><div class="num">16</div><div class="label">Plugins</div></div>
-  <div class="stat"><div class="num">92</div><div class="label">Chaos actions</div></div>
+  <div class="stat"><div class="num">99</div><div class="label">Chaos actions</div></div>
   <div class="stat"><div class="num">4</div><div class="label">Risk tiers, T0 to T3</div></div>
   <div class="stat"><div class="num">6</div><div class="label">Unsafe blocks, all for child processes</div></div>
   <div class="stat"><div class="num">7</div><div class="label">Compliance frameworks</div></div>
@@ -69,26 +69,39 @@ image: /images/tumult-banner.png
   <p class="lead">
     Evidence goes in. Answers come out. Each answer points to the next test.
   </p>
-  <div class="flow">
-    <div class="flow-step"><div class="step-name">Test</div><div class="step-desc">Chaos, load, performance and recovery runs</div></div>
-    <div class="flow-arrow">→</div>
-    <div class="flow-step"><div class="step-name">Observe</div><div class="step-desc">Telemetry from your services</div></div>
-    <div class="flow-arrow">→</div>
-    <div class="flow-step"><div class="step-name">Store</div><div class="step-desc">One database, the lake</div></div>
-    <div class="flow-arrow">→</div>
-    <div class="flow-step"><div class="step-name">Score</div><div class="step-desc">Resilience, team scores, DORA</div></div>
-    <div class="flow-arrow">→</div>
-    <div class="flow-step"><div class="step-name">Judge</div><div class="step-desc">Verdicts and a CI gate</div></div>
-    <div class="flow-arrow">→</div>
-    <div class="flow-step"><div class="step-name">Forecast</div><div class="step-desc">What is normal, and what a fault changed</div></div>
-    <div class="flow-arrow">→</div>
-    <div class="flow-step"><div class="step-name">Decide</div><div class="step-desc">Star Map, risks, reports</div></div>
-  </div>
-  <p class="flow-loop"><span class="loop-arrow">↺</span> A risk becomes the next experiment. Its run becomes new evidence.</p>
 </section>
 
 <section class="arch-section">
   <img src="/images/3.0/diagrams/flow-evidence-loop.svg" alt="The evidence loop: plan, run, observe, store, score, find risks, pick the next test">
+</section>
+
+<!-- ════════════════════════════════════════════════════ -->
+<!-- Disaster recovery                                    -->
+<!-- ════════════════════════════════════════════════════ -->
+<section class="arch-section" style="padding-bottom: 1rem;">
+  <h2>Disaster recovery, tested for real</h2>
+  <p style="color: var(--text-dim); max-width: 720px; margin: 0 auto 1.5rem;">
+    New in 3.0.4. Read the
+    <a href="/guides/disaster-recovery.html" style="color: var(--copper);">disaster recovery guide</a>.
+  </p>
+</section>
+<section class="shots">
+  <div class="shot-card">
+    <img src="/images/3.0/screenshots/run-dr.png" alt="A DR run: its RTO and RPO against their targets, its objectives and its steps">
+    <div class="caption"><b>A DR run</b>How long the target was down (RTO) and how much data it lost (RPO).</div>
+  </div>
+  <div class="shot-card">
+    <img src="/images/3.0/screenshots/dr.png" alt="The Disaster recovery page: the due register of each target, and its RTO and RPO over time">
+    <div class="caption"><b>DR page</b>When each target is due, and its RTO and RPO over time.</div>
+  </div>
+  <div class="shot-card">
+    <img src="/images/3.0/screenshots/manual.png" alt="A manual failover drill: its recovery, steps, actions, file and sign-off">
+    <div class="caption"><b>Drills by hand</b>Steps, files and a sign-off by another person.</div>
+  </div>
+  <div class="shot-card">
+    <img src="/images/3.0/screenshots/report-dr-test.png" alt="A DR test report: the DR tests of one target against their RTO and RPO">
+    <div class="caption"><b>Reports for an auditor</b>Each DR test against its RTO and RPO.</div>
+  </div>
 </section>
 
 <!-- ════════════════════════════════════════════════════ -->
@@ -102,12 +115,12 @@ image: /images/tumult-banner.png
   <div class="feature-card">
     <span class="piece">Collect</span>
     <h3>Many kinds of evidence</h3>
-    <p>Chaos experiments, <a href="/guides/load-testing-guide.html" style="color: var(--copper);">load tests</a>, <a href="/guides/otel-autoinstrumentation.html" style="color: var(--copper);">telemetry from your services</a>, <a href="/guides/entity-events.html" style="color: var(--copper);">entity events</a> and manual records of exercises.</p>
+    <p>Chaos experiments, <a href="/guides/load-testing-guide.html" style="color: var(--copper);">load tests</a>, <a href="/guides/disaster-recovery.html" style="color: var(--copper);">DR tests</a>, <a href="/guides/otel-autoinstrumentation.html" style="color: var(--copper);">telemetry from your services</a>, <a href="/guides/entity-events.html" style="color: var(--copper);">entity events</a> and exercises run by hand.</p>
   </div>
   <div class="feature-card">
     <span class="piece">Author &amp; run</span>
     <h3>Pick a fault, run it</h3>
-    <p>Choose from 92 actions in 16 plugins, for databases, Kafka, containers, Kubernetes, clouds, networks, hosts and clocks. A wizard writes the experiment file.</p>
+    <p>Choose from 99 actions in 16 plugins, for databases, Kafka, containers, Kubernetes, clouds, networks, hosts and clocks. A wizard writes the experiment file.</p>
   </div>
   <div class="feature-card">
     <span class="piece">Govern</span>
@@ -142,7 +155,7 @@ image: /images/tumult-banner.png
   <div class="feature-card">
     <span class="piece">Prove it</span>
     <h3>Reports</h3>
-    <p>PDF reports for management, audit and the team. Evidence mapped to DORA, NIS2, ISO 27001, SOC 2 and more. Reports summarise evidence; they do not certify compliance.</p>
+    <p>PDF reports for management and audit, and an HTML page of each run with <code>tumult report</code>. Evidence mapped to DORA, NIS2, ISO 27001, SOC 2 and more. Reports summarise evidence; they do not certify compliance.</p>
   </div>
   <div class="feature-card">
     <span class="piece">Close the loop</span>
@@ -163,20 +176,8 @@ image: /images/tumult-banner.png
     <p>The daemon holds the lake, the schedulers and the web UI in one file. The CLI is another. Built for macOS and Linux.</p>
   </div>
   <div class="feature-card">
-    <h3>Native OpenTelemetry</h3>
-    <p>Every step of a run is a span. Send it to SigNoz, Jaeger or any OTLP backend. <a href="/guides/logging.html" style="color: var(--copper);">Logs</a> are structured JSON.</p>
-  </div>
-  <div class="feature-card">
     <h3>Memory safe</h3>
     <p>Safe Rust, with six small <code>unsafe</code> blocks, all for child processes. Strict lints and a dependency audit on every commit.</p>
-  </div>
-  <div class="feature-card">
-    <h3>GameDays</h3>
-    <p>Run a group of experiments as one scored campaign, with one command.</p>
-  </div>
-  <div class="feature-card">
-    <h3>Docker images</h3>
-    <p>Ready on GHCR. No Rust needed: <code>docker pull ghcr.io/mwigge/tumult</code>.</p>
   </div>
   <div class="feature-card">
     <h3>Works with your stack</h3>
@@ -192,7 +193,7 @@ image: /images/tumult-banner.png
 <section class="demo-section">
   <h2>See it in action</h2>
   <div id="demo-player" style="max-width: 800px; margin: 0 auto; border-radius: 10px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.3);"></div>
-  <p style="text-align:center; margin-top: 0.8rem;"><a href="/watch/" style="color: var(--copper);">↗ share this demo: tumult.rs/watch</a></p>
+  <p style="text-align:center; margin-top: 0.8rem;"><a href="/watch/" style="color: var(--copper);">Share this demo: tumult.rs/watch</a></p>
 </section>
 
 <script src="/demo/asciinema-player.min.js"></script>
@@ -234,7 +235,7 @@ Targets:
 
 ── Discovering chaos capabilities ──
   Plugins: 16
-  Actions: 92
+  Actions: 99
 
 ── Running Q2 PostgreSQL Resilience GameDay ──
   Experiments: connection kill, container pause, CPU stress, memory stress
@@ -279,8 +280,8 @@ Targets:
     <div class="caption"><b>Evidence drawer</b>One system: coverage, runs and gate verdict.</div>
   </div>
   <div class="shot-card">
-    <img src="/images/3.0/screenshots/run-detail.png" alt="Run detail: the span waterfall of one run">
-    <div class="caption"><b>Run detail</b>One run, the whole story.</div>
+    <img src="/images/3.0/screenshots/experiment-evidence.png" alt="The evidence of a run: objectives, steps, load and probe samples">
+    <div class="caption"><b>Run evidence</b>Objectives, steps, load and probes of one run.</div>
   </div>
   <div class="shot-card">
     <img src="/images/3.0/screenshots/approvals.png" alt="Approvals queue: an approver reviews a pending run">
