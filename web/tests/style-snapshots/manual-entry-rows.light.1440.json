@@ -8,7 +8,7 @@
     "html": {
       "color": "rgb(27, 35, 41)",
       "font-family": "-apple-system, \"Segoe UI\", Inter, Roboto, sans-serif",
-      "font-size": "14px",
+      "font-size": "13px",
       "font-weight": "400",
       "line-height": "1.5",
       "letter-spacing": "normal",
@@ -38,20 +38,20 @@
     "div.shell > aside[complementary].side > div.brand": {
       "display": "block",
       "border-bottom": "1px solid rgb(227, 232, 237)",
-      "padding": "0px 18px 14px",
-      "margin": "0px 0px 10px"
+      "padding": "0px 20px 16px",
+      "margin": "0px 0px 12px"
     },
     "div.shell > aside[complementary].side > div.brand > div.name": {
-      "font-size": "17px",
+      "font-size": "18px",
       "font-weight": "700",
-      "letter-spacing": "0.4px",
+      "letter-spacing": "0.5px",
       "display": "block"
     },
     "div.shell > aside[complementary].side > div.brand > div.tag": {
       "color": "rgb(97, 109, 121)",
       "font-size": "11px",
       "display": "block",
-      "margin": "2px 0px 0px"
+      "margin": "4px 0px 0px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\"": {
       "display": "block",
@@ -59,278 +59,256 @@
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◧ Overview\"": {
       "color": "rgb(59, 71, 81)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◧ Overview\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◎ Resilience\"": {
       "color": "rgb(59, 71, 81)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◎ Resilience\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◭ Performance\"": {
       "color": "rgb(59, 71, 81)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◭ Performance\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▦ Scores\"": {
       "color": "rgb(59, 71, 81)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▦ Scores\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚖ DORA\"": {
       "color": "rgb(59, 71, 81)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚖ DORA\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⟲ Disaster recovery\"": {
       "color": "rgb(59, 71, 81)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⟲ Disaster recovery\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚗ Experiments\"": {
       "color": "rgb(59, 71, 81)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚗ Experiments\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▶ Runs\"": {
       "color": "rgb(59, 71, 81)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▶ Runs\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✚ Author\"": {
       "color": "rgb(59, 71, 81)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✚ Author\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"☷ GameDays\"": {
       "color": "rgb(59, 71, 81)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"☷ GameDays\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✓ Approvals\"": {
       "color": "rgb(59, 71, 81)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✓ Approvals\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link].active \"✎ Manual\"": {
-      "font-size": "13.5px",
       "display": "flex",
       "background-color": "rgb(233, 238, 242)",
       "border-left": "2px solid rgb(31, 111, 178)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link].active \"✎ Manual\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"≣ Logs\"": {
       "color": "rgb(59, 71, 81)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"≣ Logs\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⌁ Traces\"": {
       "color": "rgb(59, 71, 81)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⌁ Traces\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"∿ Metrics\"": {
       "color": "rgb(59, 71, 81)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"∿ Metrics\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✳ Star Map\"": {
       "color": "rgb(59, 71, 81)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✳ Star Map\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✦ Ask\"": {
       "color": "rgb(59, 71, 81)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✦ Ask\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▤ Reports\"": {
       "color": "rgb(59, 71, 81)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▤ Reports\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◔ Events\"": {
       "color": "rgb(59, 71, 81)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◔ Events\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚿ Users\"": {
       "color": "rgb(59, 71, 81)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚿ Users\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"➤ Webhooks\"": {
       "color": "rgb(59, 71, 81)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"➤ Webhooks\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"↻ Schedules\"": {
       "color": "rgb(59, 71, 81)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"↻ Schedules\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > button[button].theme \"○ light\"": {
       "color": "rgb(59, 71, 81)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "display": "block",
       "border-top": "1px solid rgb(227, 232, 237)",
       "border-right": "1px solid rgb(227, 232, 237)",
       "border-bottom": "1px solid rgb(227, 232, 237)",
       "border-left": "1px solid rgb(227, 232, 237)",
       "border-radius": "4px",
-      "padding": "2px 8px",
-      "margin": "8px 18px 0px"
+      "padding": "4px 8px",
+      "margin": "8px 20px 0px"
     },
     "div.shell > main[main].main": {
       "display": "block",
-      "padding": "22px 26px 60px"
+      "padding": "24px 28px 60px"
     },
     "div.shell > main[main].main > div.manual": {
       "display": "block"
     },
     "div.shell > main[main].main > div.manual > div.page-head": {
       "display": "flex",
-      "margin": "0px 0px 18px",
-      "gap": "14px"
+      "margin": "0px 0px 20px",
+      "gap": "16px"
     },
     "div.shell > main[main].main > div.manual > div.page-head > h1[heading] \"Manual evidence\"": {
-      "font-size": "19px",
+      "font-size": "18px",
       "font-weight": "600",
       "display": "block"
     },
     "div.shell > main[main].main > div.manual > div.page-head > span.sub": {
       "color": "rgb(59, 71, 81)",
-      "font-size": "12.5px",
+      "font-size": "12px",
       "display": "block"
     },
     "div.shell > main[main].main > div.manual > div.page-head > div.controls": {
@@ -342,7 +320,7 @@
       "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "display": "flex",
-      "gap": "6px"
+      "gap": "8px"
     },
     "div.shell > main[main].main > div.manual > div.page-head > div.controls > label[LabelText].actor > input[textbox] \"Acting as\"": {
       "color": "rgb(27, 35, 41)",
@@ -355,8 +333,8 @@
       "border-right": "1px solid rgb(141, 149, 157)",
       "border-bottom": "1px solid rgb(141, 149, 157)",
       "border-left": "1px solid rgb(141, 149, 157)",
-      "border-radius": "5px",
-      "padding": "6px 9px"
+      "border-radius": "6px",
+      "padding": "8px"
     },
     "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[tablist].seg \"manual sections\"": {
       "display": "flex",
@@ -364,64 +342,64 @@
       "border-right": "1px solid rgb(197, 206, 214)",
       "border-bottom": "1px solid rgb(197, 206, 214)",
       "border-left": "1px solid rgb(197, 206, 214)",
-      "border-radius": "5px"
+      "border-radius": "6px"
     },
     "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[tablist].seg \"manual sections\" > button[tab].active \"New entry\"": {
       "color": "rgb(255, 255, 255)",
       "font-family": "Arial",
-      "font-size": "12.5px",
+      "font-size": "12px",
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(74, 123, 164)",
-      "padding": "5px 12px"
+      "padding": "4px 12px"
     },
     "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[tablist].seg \"manual sections\" > button[tab] \"Plans\"": {
       "color": "rgb(59, 71, 81)",
       "font-family": "Arial",
-      "font-size": "12.5px",
+      "font-size": "12px",
       "line-height": "normal",
       "display": "block",
       "border-left": "1px solid rgb(197, 206, 214)",
-      "padding": "5px 12px"
+      "padding": "4px 12px"
     },
     "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[tablist].seg \"manual sections\" > button[tab] \"Verification queue\"": {
       "color": "rgb(59, 71, 81)",
       "font-family": "Arial",
-      "font-size": "12.5px",
+      "font-size": "12px",
       "line-height": "normal",
       "display": "block",
       "border-left": "1px solid rgb(197, 206, 214)",
-      "padding": "5px 12px"
+      "padding": "4px 12px"
     },
     "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[tablist].seg \"manual sections\" > button[tab] \"All records\"": {
       "color": "rgb(59, 71, 81)",
       "font-family": "Arial",
-      "font-size": "12.5px",
+      "font-size": "12px",
       "line-height": "normal",
       "display": "block",
       "border-left": "1px solid rgb(197, 206, 214)",
-      "padding": "5px 12px"
+      "padding": "4px 12px"
     },
     "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[tablist].seg \"manual sections\" > button[tab] \"Import\"": {
       "color": "rgb(59, 71, 81)",
       "font-family": "Arial",
-      "font-size": "12.5px",
+      "font-size": "12px",
       "line-height": "normal",
       "display": "block",
       "border-left": "1px solid rgb(197, 206, 214)",
-      "padding": "5px 12px"
+      "padding": "4px 12px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\"": {
       "display": "block"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry": {
       "display": "flex",
-      "gap": "14px"
+      "gap": "16px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2": {
       "display": "grid",
       "grid-template-columns": "1fr 1fr",
-      "gap": "14px"
+      "gap": "16px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel": {
       "display": "block",
@@ -431,20 +409,20 @@
       "border-bottom": "1px solid rgb(227, 232, 237)",
       "border-left": "1px solid rgb(227, 232, 237)",
       "border-radius": "6px",
-      "padding": "14px 16px"
+      "padding": "16px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > h2[heading] \"EXERCISE\"": {
       "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.7px",
+      "letter-spacing": "0.6px",
       "text-transform": "uppercase",
       "display": "block",
-      "margin": "0px 0px 10px"
+      "margin": "0px 0px 12px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form": {
       "display": "flex",
-      "gap": "10px"
+      "gap": "12px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > label[LabelText]": {
       "color": "rgb(59, 71, 81)",
@@ -463,13 +441,13 @@
       "border-right": "1px solid rgb(141, 149, 157)",
       "border-bottom": "1px solid rgb(141, 149, 157)",
       "border-left": "1px solid rgb(141, 149, 157)",
-      "border-radius": "5px",
-      "padding": "6px 9px"
+      "border-radius": "6px",
+      "padding": "8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2": {
       "display": "grid",
       "grid-template-columns": "1fr 1fr",
-      "gap": "10px"
+      "gap": "12px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 > label[LabelText]": {
       "color": "rgb(59, 71, 81)",
@@ -488,8 +466,8 @@
       "border-right": "1px solid rgb(141, 149, 157)",
       "border-bottom": "1px solid rgb(141, 149, 157)",
       "border-left": "1px solid rgb(141, 149, 157)",
-      "border-radius": "5px",
-      "padding": "6px 9px"
+      "border-radius": "6px",
+      "padding": "8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 > label[LabelText] #2": {
       "color": "rgb(59, 71, 81)",
@@ -507,13 +485,13 @@
       "border-right": "1px solid rgb(141, 149, 157)",
       "border-bottom": "1px solid rgb(141, 149, 157)",
       "border-left": "1px solid rgb(141, 149, 157)",
-      "border-radius": "5px",
-      "padding": "5px 8px"
+      "border-radius": "6px",
+      "padding": "4px 8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 #2": {
       "display": "grid",
       "grid-template-columns": "1fr 1fr",
-      "gap": "10px"
+      "gap": "12px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 #2 > label[LabelText]": {
       "color": "rgb(59, 71, 81)",
@@ -532,8 +510,8 @@
       "border-right": "1px solid rgb(141, 149, 157)",
       "border-bottom": "1px solid rgb(141, 149, 157)",
       "border-left": "1px solid rgb(141, 149, 157)",
-      "border-radius": "5px",
-      "padding": "6px 9px"
+      "border-radius": "6px",
+      "padding": "8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 #2 > label[LabelText] #2": {
       "color": "rgb(59, 71, 81)",
@@ -552,8 +530,8 @@
       "border-right": "1px solid rgb(141, 149, 157)",
       "border-bottom": "1px solid rgb(141, 149, 157)",
       "border-left": "1px solid rgb(141, 149, 157)",
-      "border-radius": "5px",
-      "padding": "6px 9px"
+      "border-radius": "6px",
+      "padding": "8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > label[LabelText] #2": {
       "color": "rgb(59, 71, 81)",
@@ -572,8 +550,8 @@
       "border-right": "1px solid rgb(141, 149, 157)",
       "border-bottom": "1px solid rgb(141, 149, 157)",
       "border-left": "1px solid rgb(141, 149, 157)",
-      "border-radius": "5px",
-      "padding": "6px 9px"
+      "border-radius": "6px",
+      "padding": "8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > label[LabelText] #3": {
       "color": "rgb(59, 71, 81)",
@@ -592,8 +570,8 @@
       "border-right": "1px solid rgb(141, 149, 157)",
       "border-bottom": "1px solid rgb(141, 149, 157)",
       "border-left": "1px solid rgb(141, 149, 157)",
-      "border-radius": "5px",
-      "padding": "6px 9px"
+      "border-radius": "6px",
+      "padding": "8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > label[LabelText] #4": {
       "color": "rgb(59, 71, 81)",
@@ -612,13 +590,13 @@
       "border-right": "1px solid rgb(141, 149, 157)",
       "border-bottom": "1px solid rgb(141, 149, 157)",
       "border-left": "1px solid rgb(141, 149, 157)",
-      "border-radius": "5px",
-      "padding": "6px 9px"
+      "border-radius": "6px",
+      "padding": "8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 #3": {
       "display": "grid",
       "grid-template-columns": "1fr 1fr",
-      "gap": "10px"
+      "gap": "12px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 #3 > label[LabelText]": {
       "color": "rgb(59, 71, 81)",
@@ -637,8 +615,8 @@
       "border-right": "1px solid rgb(141, 149, 157)",
       "border-bottom": "1px solid rgb(141, 149, 157)",
       "border-left": "1px solid rgb(141, 149, 157)",
-      "border-radius": "5px",
-      "padding": "6px 9px"
+      "border-radius": "6px",
+      "padding": "8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 #3 > label[LabelText] #2": {
       "color": "rgb(59, 71, 81)",
@@ -657,8 +635,8 @@
       "border-right": "1px solid rgb(141, 149, 157)",
       "border-bottom": "1px solid rgb(141, 149, 157)",
       "border-left": "1px solid rgb(141, 149, 157)",
-      "border-radius": "5px",
-      "padding": "6px 9px"
+      "border-radius": "6px",
+      "padding": "8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > label[LabelText] #5": {
       "color": "rgb(59, 71, 81)",
@@ -677,8 +655,8 @@
       "border-right": "1px solid rgb(141, 149, 157)",
       "border-bottom": "1px solid rgb(141, 149, 157)",
       "border-left": "1px solid rgb(141, 149, 157)",
-      "border-radius": "5px",
-      "padding": "6px 9px"
+      "border-radius": "6px",
+      "padding": "8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > label[LabelText] #6": {
       "color": "rgb(59, 71, 81)",
@@ -697,13 +675,13 @@
       "border-right": "1px solid rgb(141, 149, 157)",
       "border-bottom": "1px solid rgb(141, 149, 157)",
       "border-left": "1px solid rgb(141, 149, 157)",
-      "border-radius": "5px",
-      "padding": "6px 9px"
+      "border-radius": "6px",
+      "padding": "8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 #4": {
       "display": "grid",
       "grid-template-columns": "1fr 1fr",
-      "gap": "10px"
+      "gap": "12px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 #4 > label[LabelText]": {
       "color": "rgb(59, 71, 81)",
@@ -722,8 +700,8 @@
       "border-right": "1px solid rgb(141, 149, 157)",
       "border-bottom": "1px solid rgb(141, 149, 157)",
       "border-left": "1px solid rgb(141, 149, 157)",
-      "border-radius": "5px",
-      "padding": "6px 9px"
+      "border-radius": "6px",
+      "padding": "8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 #4 > label[LabelText] #2": {
       "color": "rgb(59, 71, 81)",
@@ -742,8 +720,8 @@
       "border-right": "1px solid rgb(141, 149, 157)",
       "border-bottom": "1px solid rgb(141, 149, 157)",
       "border-left": "1px solid rgb(141, 149, 157)",
-      "border-radius": "5px",
-      "padding": "6px 9px"
+      "border-radius": "6px",
+      "padding": "8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > label[LabelText] #7": {
       "color": "rgb(59, 71, 81)",
@@ -762,8 +740,8 @@
       "border-right": "1px solid rgb(141, 149, 157)",
       "border-bottom": "1px solid rgb(141, 149, 157)",
       "border-left": "1px solid rgb(141, 149, 157)",
-      "border-radius": "5px",
-      "padding": "6px 9px"
+      "border-radius": "6px",
+      "padding": "8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > label[LabelText] #8": {
       "color": "rgb(59, 71, 81)",
@@ -782,12 +760,12 @@
       "border-right": "1px solid rgb(141, 149, 157)",
       "border-bottom": "1px solid rgb(141, 149, 157)",
       "border-left": "1px solid rgb(141, 149, 157)",
-      "border-radius": "5px",
-      "padding": "6px 9px"
+      "border-radius": "6px",
+      "padding": "8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.stack": {
       "display": "flex",
-      "gap": "14px"
+      "gap": "16px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.stack > div.panel": {
       "display": "block",
@@ -797,25 +775,25 @@
       "border-bottom": "1px solid rgb(227, 232, 237)",
       "border-left": "1px solid rgb(227, 232, 237)",
       "border-radius": "6px",
-      "padding": "14px 16px"
+      "padding": "16px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.stack > div.panel > h2[heading] \"RECOVERY\"": {
       "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.7px",
+      "letter-spacing": "0.6px",
       "text-transform": "uppercase",
       "display": "block",
-      "margin": "0px 0px 10px"
+      "margin": "0px 0px 12px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.stack > div.panel > div.form": {
       "display": "flex",
-      "gap": "10px"
+      "gap": "12px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.stack > div.panel > div.form > div.row2": {
       "display": "grid",
       "grid-template-columns": "1fr 1fr",
-      "gap": "10px"
+      "gap": "12px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.stack > div.panel > div.form > div.row2 > label[LabelText]": {
       "color": "rgb(59, 71, 81)",
@@ -834,8 +812,8 @@
       "border-right": "1px solid rgb(141, 149, 157)",
       "border-bottom": "1px solid rgb(141, 149, 157)",
       "border-left": "1px solid rgb(141, 149, 157)",
-      "border-radius": "5px",
-      "padding": "6px 9px"
+      "border-radius": "6px",
+      "padding": "8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.stack > div.panel > div.form > div.row2 > label[LabelText] #2": {
       "color": "rgb(59, 71, 81)",
@@ -854,13 +832,13 @@
       "border-right": "1px solid rgb(141, 149, 157)",
       "border-bottom": "1px solid rgb(141, 149, 157)",
       "border-left": "1px solid rgb(141, 149, 157)",
-      "border-radius": "5px",
-      "padding": "6px 9px"
+      "border-radius": "6px",
+      "padding": "8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.stack > div.panel > div.form > div.row2 #2": {
       "display": "grid",
       "grid-template-columns": "1fr 1fr",
-      "gap": "10px"
+      "gap": "12px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.stack > div.panel > div.form > div.row2 #2 > label[LabelText]": {
       "color": "rgb(59, 71, 81)",
@@ -879,8 +857,8 @@
       "border-right": "1px solid rgb(141, 149, 157)",
       "border-bottom": "1px solid rgb(141, 149, 157)",
       "border-left": "1px solid rgb(141, 149, 157)",
-      "border-radius": "5px",
-      "padding": "6px 9px"
+      "border-radius": "6px",
+      "padding": "8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.stack > div.panel > div.form > div.row2 #2 > label[LabelText] #2": {
       "color": "rgb(59, 71, 81)",
@@ -899,8 +877,8 @@
       "border-right": "1px solid rgb(141, 149, 157)",
       "border-bottom": "1px solid rgb(141, 149, 157)",
       "border-left": "1px solid rgb(141, 149, 157)",
-      "border-radius": "5px",
-      "padding": "6px 9px"
+      "border-radius": "6px",
+      "padding": "8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.stack > div.panel > div.form > label[LabelText]": {
       "color": "rgb(59, 71, 81)",
@@ -919,8 +897,8 @@
       "border-right": "1px solid rgb(141, 149, 157)",
       "border-bottom": "1px solid rgb(141, 149, 157)",
       "border-left": "1px solid rgb(141, 149, 157)",
-      "border-radius": "5px",
-      "padding": "6px 9px"
+      "border-radius": "6px",
+      "padding": "8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.stack > div.panel > div.form > p[paragraph].note": {
       "color": "rgb(97, 109, 121)",
@@ -936,24 +914,24 @@
       "border-bottom": "1px solid rgb(227, 232, 237)",
       "border-left": "1px solid rgb(227, 232, 237)",
       "border-radius": "6px",
-      "padding": "14px 16px"
+      "padding": "16px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.stack > div.panel #2 > h2[heading] \"PARTICIPANTS\"": {
       "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.7px",
+      "letter-spacing": "0.6px",
       "text-transform": "uppercase",
       "display": "block",
-      "margin": "0px 0px 10px"
+      "margin": "0px 0px 12px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.stack > div.panel #2 > div.grid-rows.people": {
       "color": "rgb(59, 71, 81)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "display": "grid",
       "grid-template-columns": "22px 1.3fr 1fr 34px",
-      "margin": "0px 0px 6px",
-      "gap": "6px"
+      "margin": "0px 0px 8px",
+      "gap": "8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.stack > div.panel #2 > div.grid-rows.people > span.n": {
       "color": "rgb(97, 109, 121)",
@@ -970,8 +948,8 @@
       "border-right": "1px solid rgb(141, 149, 157)",
       "border-bottom": "1px solid rgb(141, 149, 157)",
       "border-left": "1px solid rgb(141, 149, 157)",
-      "border-radius": "5px",
-      "padding": "6px 9px"
+      "border-radius": "6px",
+      "padding": "8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.stack > div.panel #2 > div.grid-rows.people > input[textbox] \"Participant 1 role\"": {
       "color": "rgb(27, 35, 41)",
@@ -984,8 +962,8 @@
       "border-right": "1px solid rgb(141, 149, 157)",
       "border-bottom": "1px solid rgb(141, 149, 157)",
       "border-left": "1px solid rgb(141, 149, 157)",
-      "border-radius": "5px",
-      "padding": "6px 9px"
+      "border-radius": "6px",
+      "padding": "8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.stack > div.panel #2 > div.grid-rows.people > button[button].btn \"Remove participant 1\"": {
       "color": "rgb(27, 35, 41)",
@@ -999,11 +977,10 @@
       "border-bottom": "1px solid rgb(197, 206, 214)",
       "border-left": "1px solid rgb(197, 206, 214)",
       "border-radius": "6px",
-      "padding": "6px 14px"
+      "padding": "8px 16px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.stack > div.panel #2 > button[button].btn.add \"Add participant\"": {
       "font-family": "Arial",
-      "font-size": "13px",
       "line-height": "normal",
       "display": "inline-block",
       "background-color": "rgb(233, 238, 242)",
@@ -1012,7 +989,7 @@
       "border-bottom": "1px solid rgb(197, 206, 214)",
       "border-left": "1px solid rgb(197, 206, 214)",
       "border-radius": "6px",
-      "padding": "6px 14px",
+      "padding": "8px 16px",
       "margin": "4px 0px 0px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.stack > div.panel #3": {
@@ -1023,25 +1000,25 @@
       "border-bottom": "1px solid rgb(227, 232, 237)",
       "border-left": "1px solid rgb(227, 232, 237)",
       "border-radius": "6px",
-      "padding": "14px 16px"
+      "padding": "16px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.stack > div.panel #3 > h2[heading] \"TESTER\"": {
       "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.7px",
+      "letter-spacing": "0.6px",
       "text-transform": "uppercase",
       "display": "block",
-      "margin": "0px 0px 10px"
+      "margin": "0px 0px 12px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.stack > div.panel #3 > div.form": {
       "display": "flex",
-      "gap": "10px"
+      "gap": "12px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.stack > div.panel #3 > div.form > div.row2": {
       "display": "grid",
       "grid-template-columns": "1fr 1fr",
-      "gap": "10px"
+      "gap": "12px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.stack > div.panel #3 > div.form > div.row2 > label[LabelText]": {
       "color": "rgb(59, 71, 81)",
@@ -1060,8 +1037,8 @@
       "border-right": "1px solid rgb(141, 149, 157)",
       "border-bottom": "1px solid rgb(141, 149, 157)",
       "border-left": "1px solid rgb(141, 149, 157)",
-      "border-radius": "5px",
-      "padding": "6px 9px"
+      "border-radius": "6px",
+      "padding": "8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.stack > div.panel #3 > div.form > div.row2 > label[LabelText] #2": {
       "color": "rgb(59, 71, 81)",
@@ -1080,8 +1057,8 @@
       "border-right": "1px solid rgb(141, 149, 157)",
       "border-bottom": "1px solid rgb(141, 149, 157)",
       "border-left": "1px solid rgb(141, 149, 157)",
-      "border-radius": "5px",
-      "padding": "6px 9px"
+      "border-radius": "6px",
+      "padding": "8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.stack > div.panel #3 > div.form > p[paragraph].note": {
       "color": "rgb(97, 109, 121)",
@@ -1097,24 +1074,24 @@
       "border-bottom": "1px solid rgb(227, 232, 237)",
       "border-left": "1px solid rgb(227, 232, 237)",
       "border-radius": "6px",
-      "padding": "14px 16px"
+      "padding": "16px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.panel > h2[heading] \"STEPS\"": {
       "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.7px",
+      "letter-spacing": "0.6px",
       "text-transform": "uppercase",
       "display": "block",
-      "margin": "0px 0px 10px"
+      "margin": "0px 0px 12px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.panel > div.grid-rows.steps": {
       "color": "rgb(59, 71, 81)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "display": "grid",
       "grid-template-columns": "22px 2fr 1fr 1.5fr 1.5fr 0.9fr 1.6fr 34px",
-      "margin": "0px 0px 6px",
-      "gap": "6px"
+      "margin": "0px 0px 8px",
+      "gap": "8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.panel > div.grid-rows.steps > span": {
       "display": "block"
@@ -1142,11 +1119,11 @@
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.panel > div.grid-rows.steps #2": {
       "color": "rgb(59, 71, 81)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "display": "grid",
       "grid-template-columns": "22px 2fr 1fr 1.5fr 1.5fr 0.9fr 1.6fr 34px",
-      "margin": "0px 0px 6px",
-      "gap": "6px"
+      "margin": "0px 0px 8px",
+      "gap": "8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.panel > div.grid-rows.steps #2 > span.n": {
       "color": "rgb(97, 109, 121)",
@@ -1163,8 +1140,8 @@
       "border-right": "1px solid rgb(141, 149, 157)",
       "border-bottom": "1px solid rgb(141, 149, 157)",
       "border-left": "1px solid rgb(141, 149, 157)",
-      "border-radius": "5px",
-      "padding": "6px 9px"
+      "border-radius": "6px",
+      "padding": "8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.panel > div.grid-rows.steps #2 > input[textbox] \"Step 1 actor\"": {
       "color": "rgb(27, 35, 41)",
@@ -1177,8 +1154,8 @@
       "border-right": "1px solid rgb(141, 149, 157)",
       "border-bottom": "1px solid rgb(141, 149, 157)",
       "border-left": "1px solid rgb(141, 149, 157)",
-      "border-radius": "5px",
-      "padding": "6px 9px"
+      "border-radius": "6px",
+      "padding": "8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.panel > div.grid-rows.steps #2 > input[DateTime] \"Step 1 start\"": {
       "color": "rgb(27, 35, 41)",
@@ -1190,8 +1167,8 @@
       "border-right": "1px solid rgb(141, 149, 157)",
       "border-bottom": "1px solid rgb(141, 149, 157)",
       "border-left": "1px solid rgb(141, 149, 157)",
-      "border-radius": "5px",
-      "padding": "5px 8px"
+      "border-radius": "6px",
+      "padding": "4px 8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.panel > div.grid-rows.steps #2 > input[DateTime] \"Step 1 end\"": {
       "color": "rgb(27, 35, 41)",
@@ -1203,8 +1180,8 @@
       "border-right": "1px solid rgb(141, 149, 157)",
       "border-bottom": "1px solid rgb(141, 149, 157)",
       "border-left": "1px solid rgb(141, 149, 157)",
-      "border-radius": "5px",
-      "padding": "5px 8px"
+      "border-radius": "6px",
+      "padding": "4px 8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.panel > div.grid-rows.steps #2 > select[combobox] \"Step 1 result\"": {
       "color": "rgb(27, 35, 41)",
@@ -1217,8 +1194,8 @@
       "border-right": "1px solid rgb(141, 149, 157)",
       "border-bottom": "1px solid rgb(141, 149, 157)",
       "border-left": "1px solid rgb(141, 149, 157)",
-      "border-radius": "5px",
-      "padding": "6px 9px"
+      "border-radius": "6px",
+      "padding": "8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.panel > div.grid-rows.steps #2 > input[textbox] \"Step 1 note\"": {
       "color": "rgb(27, 35, 41)",
@@ -1231,8 +1208,8 @@
       "border-right": "1px solid rgb(141, 149, 157)",
       "border-bottom": "1px solid rgb(141, 149, 157)",
       "border-left": "1px solid rgb(141, 149, 157)",
-      "border-radius": "5px",
-      "padding": "6px 9px"
+      "border-radius": "6px",
+      "padding": "8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.panel > div.grid-rows.steps #2 > button[button].btn \"Remove step 1\"": {
       "color": "rgb(27, 35, 41)",
@@ -1246,11 +1223,10 @@
       "border-bottom": "1px solid rgb(197, 206, 214)",
       "border-left": "1px solid rgb(197, 206, 214)",
       "border-radius": "6px",
-      "padding": "6px 14px"
+      "padding": "8px 16px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.panel > button[button].btn.add \"Add step\"": {
       "font-family": "Arial",
-      "font-size": "13px",
       "line-height": "normal",
       "display": "inline-block",
       "background-color": "rgb(233, 238, 242)",
@@ -1259,7 +1235,7 @@
       "border-bottom": "1px solid rgb(197, 206, 214)",
       "border-left": "1px solid rgb(197, 206, 214)",
       "border-radius": "6px",
-      "padding": "6px 14px",
+      "padding": "8px 16px",
       "margin": "4px 0px 0px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.panel #2": {
@@ -1270,24 +1246,24 @@
       "border-bottom": "1px solid rgb(227, 232, 237)",
       "border-left": "1px solid rgb(227, 232, 237)",
       "border-radius": "6px",
-      "padding": "14px 16px"
+      "padding": "16px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.panel #2 > h2[heading] \"ACTIONS\"": {
       "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.7px",
+      "letter-spacing": "0.6px",
       "text-transform": "uppercase",
       "display": "block",
-      "margin": "0px 0px 10px"
+      "margin": "0px 0px 12px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.panel #2 > div.grid-rows.actions-grid": {
       "color": "rgb(59, 71, 81)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "display": "grid",
       "grid-template-columns": "22px 2fr 1fr 1fr 0.9fr 1fr 1fr 1.1fr 34px",
-      "margin": "0px 0px 6px",
-      "gap": "6px"
+      "margin": "0px 0px 8px",
+      "gap": "8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.panel #2 > div.grid-rows.actions-grid > span": {
       "display": "block"
@@ -1318,11 +1294,11 @@
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.panel #2 > div.grid-rows.actions-grid #2": {
       "color": "rgb(59, 71, 81)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "display": "grid",
       "grid-template-columns": "22px 2fr 1fr 1fr 0.9fr 1fr 1fr 1.1fr 34px",
-      "margin": "0px 0px 6px",
-      "gap": "6px"
+      "margin": "0px 0px 8px",
+      "gap": "8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.panel #2 > div.grid-rows.actions-grid #2 > span.n": {
       "color": "rgb(97, 109, 121)",
@@ -1339,8 +1315,8 @@
       "border-right": "1px solid rgb(141, 149, 157)",
       "border-bottom": "1px solid rgb(141, 149, 157)",
       "border-left": "1px solid rgb(141, 149, 157)",
-      "border-radius": "5px",
-      "padding": "6px 9px"
+      "border-radius": "6px",
+      "padding": "8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.panel #2 > div.grid-rows.actions-grid #2 > input[textbox] \"Action 1 owner\"": {
       "color": "rgb(27, 35, 41)",
@@ -1353,8 +1329,8 @@
       "border-right": "1px solid rgb(141, 149, 157)",
       "border-bottom": "1px solid rgb(141, 149, 157)",
       "border-left": "1px solid rgb(141, 149, 157)",
-      "border-radius": "5px",
-      "padding": "6px 9px"
+      "border-radius": "6px",
+      "padding": "8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.panel #2 > div.grid-rows.actions-grid #2 > input[Date] \"Action 1 due date\"": {
       "color": "rgb(27, 35, 41)",
@@ -1366,8 +1342,8 @@
       "border-right": "1px solid rgb(141, 149, 157)",
       "border-bottom": "1px solid rgb(141, 149, 157)",
       "border-left": "1px solid rgb(141, 149, 157)",
-      "border-radius": "5px",
-      "padding": "5px 8px"
+      "border-radius": "6px",
+      "padding": "4px 8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.panel #2 > div.grid-rows.actions-grid #2 > select[combobox] \"Action 1 severity\"": {
       "color": "rgb(27, 35, 41)",
@@ -1380,8 +1356,8 @@
       "border-right": "1px solid rgb(141, 149, 157)",
       "border-bottom": "1px solid rgb(141, 149, 157)",
       "border-left": "1px solid rgb(141, 149, 157)",
-      "border-radius": "5px",
-      "padding": "6px 9px"
+      "border-radius": "6px",
+      "padding": "8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.panel #2 > div.grid-rows.actions-grid #2 > input[textbox] \"Action 1 ticket\"": {
       "color": "rgb(27, 35, 41)",
@@ -1394,8 +1370,8 @@
       "border-right": "1px solid rgb(141, 149, 157)",
       "border-bottom": "1px solid rgb(141, 149, 157)",
       "border-left": "1px solid rgb(141, 149, 157)",
-      "border-radius": "5px",
-      "padding": "6px 9px"
+      "border-radius": "6px",
+      "padding": "8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.panel #2 > div.grid-rows.actions-grid #2 > select[combobox] \"Action 1 retest kind\"": {
       "color": "rgb(27, 35, 41)",
@@ -1408,8 +1384,8 @@
       "border-right": "1px solid rgb(141, 149, 157)",
       "border-bottom": "1px solid rgb(141, 149, 157)",
       "border-left": "1px solid rgb(141, 149, 157)",
-      "border-radius": "5px",
-      "padding": "6px 9px"
+      "border-radius": "6px",
+      "padding": "8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.panel #2 > div.grid-rows.actions-grid #2 > input[textbox] \"Action 1 retest id\"": {
       "color": "rgb(27, 35, 41)",
@@ -1422,8 +1398,8 @@
       "border-right": "1px solid rgb(141, 149, 157)",
       "border-bottom": "1px solid rgb(141, 149, 157)",
       "border-left": "1px solid rgb(141, 149, 157)",
-      "border-radius": "5px",
-      "padding": "6px 9px"
+      "border-radius": "6px",
+      "padding": "8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.panel #2 > div.grid-rows.actions-grid #2 > button[button].btn \"Remove action 1\"": {
       "color": "rgb(27, 35, 41)",
@@ -1437,11 +1413,10 @@
       "border-bottom": "1px solid rgb(197, 206, 214)",
       "border-left": "1px solid rgb(197, 206, 214)",
       "border-radius": "6px",
-      "padding": "6px 14px"
+      "padding": "8px 16px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.panel #2 > button[button].btn.add \"Add action\"": {
       "font-family": "Arial",
-      "font-size": "13px",
       "line-height": "normal",
       "display": "inline-block",
       "background-color": "rgb(233, 238, 242)",
@@ -1450,13 +1425,13 @@
       "border-bottom": "1px solid rgb(197, 206, 214)",
       "border-left": "1px solid rgb(197, 206, 214)",
       "border-radius": "6px",
-      "padding": "6px 14px",
+      "padding": "8px 16px",
       "margin": "4px 0px 0px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 #2": {
       "display": "grid",
       "grid-template-columns": "1fr 1fr",
-      "gap": "14px"
+      "gap": "16px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 #2 > div.panel": {
       "display": "block",
@@ -1466,20 +1441,20 @@
       "border-bottom": "1px solid rgb(227, 232, 237)",
       "border-left": "1px solid rgb(227, 232, 237)",
       "border-radius": "6px",
-      "padding": "14px 16px"
+      "padding": "16px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 #2 > div.panel > h2[heading] \"ATTESTATION\"": {
       "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.7px",
+      "letter-spacing": "0.6px",
       "text-transform": "uppercase",
       "display": "block",
-      "margin": "0px 0px 10px"
+      "margin": "0px 0px 12px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 #2 > div.panel > div.form": {
       "display": "flex",
-      "gap": "10px"
+      "gap": "12px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 #2 > div.panel > div.form > label[LabelText]": {
       "color": "rgb(59, 71, 81)",
@@ -1497,8 +1472,8 @@
       "border-right": "1px solid rgb(141, 149, 157)",
       "border-bottom": "1px solid rgb(141, 149, 157)",
       "border-left": "1px solid rgb(141, 149, 157)",
-      "border-radius": "5px",
-      "padding": "5px 8px"
+      "border-radius": "6px",
+      "padding": "4px 8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 #2 > div.panel > div.form > label[LabelText] #2": {
       "color": "rgb(59, 71, 81)",
@@ -1517,8 +1492,8 @@
       "border-right": "1px solid rgb(141, 149, 157)",
       "border-bottom": "1px solid rgb(141, 149, 157)",
       "border-left": "1px solid rgb(141, 149, 157)",
-      "border-radius": "5px",
-      "padding": "6px 9px"
+      "border-radius": "6px",
+      "padding": "8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 #2 > div.panel > div.form > p[paragraph].note": {
       "color": "rgb(97, 109, 121)",
@@ -1536,7 +1511,6 @@
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 #2 > div.panel > div.form > div.actions > button[button].btn \"Save draft\"": {
       "font-family": "Arial",
-      "font-size": "13px",
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(233, 238, 242)",
@@ -1545,12 +1519,11 @@
       "border-bottom": "1px solid rgb(197, 206, 214)",
       "border-left": "1px solid rgb(197, 206, 214)",
       "border-radius": "6px",
-      "padding": "6px 14px"
+      "padding": "8px 16px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 #2 > div.panel > div.form > div.actions > button[button].btn.primary \"Save & submit\"": {
       "color": "rgb(255, 255, 255)",
       "font-family": "Arial",
-      "font-size": "13px",
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(74, 123, 164)",
@@ -1559,7 +1532,7 @@
       "border-bottom": "1px solid rgb(74, 123, 164)",
       "border-left": "1px solid rgb(74, 123, 164)",
       "border-radius": "6px",
-      "padding": "6px 14px"
+      "padding": "8px 16px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 #2 > div.panel #2": {
       "display": "block",
@@ -1569,16 +1542,16 @@
       "border-bottom": "1px solid rgb(227, 232, 237)",
       "border-left": "1px solid rgb(227, 232, 237)",
       "border-radius": "6px",
-      "padding": "14px 16px"
+      "padding": "16px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 #2 > div.panel #2 > h2[heading] \"EVIDENCE\"": {
       "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.7px",
+      "letter-spacing": "0.6px",
       "text-transform": "uppercase",
       "display": "block",
-      "margin": "0px 0px 10px"
+      "margin": "0px 0px 12px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 #2 > div.panel #2 > p[paragraph].note": {
       "color": "rgb(97, 109, 121)",

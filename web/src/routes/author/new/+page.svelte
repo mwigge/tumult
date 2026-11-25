@@ -92,7 +92,7 @@
 {:else if !action}
     <State kind="loading" height={160} />
 {:else}
-    <Panel title="1 · Action" style="margin-bottom: var(--space-3-5)">
+    <Panel title="1 · Action" style="margin-bottom: var(--space-4)">
         <div class="action-line">
             <span class="mono">{action.plugin}::{action.name}</span>
             <Badge kind="catalog" value={action.kind} />
@@ -100,14 +100,14 @@
         <p class="desc">{action.description}</p>
     </Panel>
 
-    <Panel title="2 · Parameters" style="margin-bottom: var(--space-3-5)">
+    <Panel title="2 · Parameters" style="margin-bottom: var(--space-4)">
         <ActionParamForm {action} bind:form />
         {#if missingRequired}
             <div class="hint">Target and all required arguments are needed before generating.</div>
         {/if}
     </Panel>
 
-    <Panel title="3 · Experiment TOON" style="margin-bottom: var(--space-3-5)">
+    <Panel title="3 · Experiment TOON" style="margin-bottom: var(--space-4)">
         <button class="primary" onclick={generate} disabled={missingRequired || scaffolding}>
             {scaffolding ? 'Generating…' : toon ? 'Regenerate TOON' : 'Generate TOON'}
         </button>
@@ -150,11 +150,11 @@
     .action-line {
         display: flex;
         align-items: center;
-        gap: var(--space-2-5);
+        gap: var(--space-3);
     }
     .desc {
         color: var(--text-dim);
         font-size: var(--font-size-md);
-        margin: var(--space-1-5) 0;
+        margin: var(--space-2) 0;
     }
 </style>

@@ -468,11 +468,11 @@
         border: var(--border-width-sm) solid var(--border-input);
         border-radius: var(--radius-md);
         padding: var(--space-1) var(--space-2);
-        font-size: var(--font-size-sm);
+        font-size: var(--font-size-xs);
     }
     .layout {
         display: flex;
-        gap: var(--space-3-5);
+        gap: var(--space-4);
         align-items: flex-start;
         flex-wrap: wrap;
     }
@@ -482,26 +482,26 @@
     }
     .sub {
         color: var(--text-dim);
-        font-size: var(--font-size-sm);
+        font-size: var(--font-size-xs);
         margin: var(--space-2) 0 0;
     }
     .kinds {
         display: flex;
         flex-wrap: wrap;
-        gap: var(--space-1-5);
+        gap: var(--space-2);
         margin-top: var(--space-2);
     }
     .chip {
         display: inline-flex;
         align-items: center;
-        gap: var(--space-1-5);
+        gap: var(--space-2);
         background: var(--bg-panel);
         border: var(--border-width-sm) solid var(--border-strong);
-        border-radius: 999px;
+        border-radius: var(--radius-pill);
         color: var(--text);
         cursor: pointer;
         font-size: var(--font-size-xs);
-        padding: var(--space-0-5) var(--space-2-5) var(--space-0-5) var(--space-1-5);
+        padding: var(--space-0-5) var(--space-3) var(--space-0-5) var(--space-2);
         /* The font of a button, not the mono font of the global .chip. */
         font-family: revert;
     }
@@ -512,7 +512,7 @@
     .chip .dot {
         width: 12px;
         height: 12px;
-        border-radius: 50%;
+        border-radius: var(--radius-round);
     }
     .chip .count {
         color: var(--text-dim);
@@ -531,13 +531,13 @@
     .key li {
         display: inline-flex;
         align-items: center;
-        gap: var(--space-1-5);
+        gap: var(--space-2);
     }
     .ring {
         box-sizing: border-box;
         width: 14px;
         height: 14px;
-        border-radius: 50%;
+        border-radius: var(--radius-round);
         background: var(--border-strong);
         border: var(--border-width-md) solid var(--ok);
     }
@@ -566,33 +566,33 @@
     }
     .focus {
         color: var(--text-dim);
-        font-size: var(--font-size-sm);
-        margin: 0 0 var(--space-2-5);
+        font-size: var(--font-size-xs);
+        margin: 0 0 var(--space-3);
     }
     .focus button {
         background: transparent;
         border: none;
         color: var(--accent);
         cursor: pointer;
-        font-size: var(--font-size-sm);
+        font-size: var(--font-size-xs);
         padding: 0 0 0 var(--space-2);
     }
     .mono {
         font-family: var(--mono);
     }
     .nodes {
-        margin-top: var(--space-3-5);
+        margin-top: var(--space-4);
         border-top: var(--border-width-sm) solid var(--border);
-        padding-top: var(--space-2-5);
+        padding-top: var(--space-3);
     }
     .nodes-head {
         display: flex;
-        gap: var(--space-2-5);
+        gap: var(--space-3);
         align-items: center;
         flex-wrap: wrap;
     }
     .nodes-head h2 {
-        font-size: var(--font-size-sm);
+        font-size: var(--font-size-xs);
     }
     .nodes-head .sub {
         margin: 0;
@@ -603,7 +603,7 @@
         padding: 0;
         display: flex;
         flex-wrap: wrap;
-        gap: var(--space-1-5);
+        gap: var(--space-2);
         max-height: 180px;
         overflow-y: auto;
     }
@@ -614,7 +614,7 @@
         color: var(--text);
         cursor: pointer;
         font-size: var(--font-size-xs);
-        padding: 3px var(--space-2);
+        padding: var(--space-1) var(--space-2);
     }
     .nodes button[aria-pressed='true'] {
         border-color: var(--accent);

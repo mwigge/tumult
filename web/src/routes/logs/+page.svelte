@@ -315,7 +315,7 @@
         font-size: var(--font-size-md);
     }
     table.attrs td {
-        padding: var(--space-0-5) var(--space-2) var(--space-0-5) 0;
+        padding: var(--space-1) var(--space-2) var(--space-1) 0;
         border: none;
         font-size: var(--font-size-xs);
     }
@@ -332,7 +332,7 @@
     .facets button {
         background: transparent;
         border: var(--border-width-sm) solid var(--border);
-        border-radius: var(--radius-sm);
+        border-radius: var(--radius-md);
         color: var(--text-dim);
         cursor: pointer;
         font-size: var(--font-size-3xs);
@@ -346,6 +346,6 @@
     .facet-chips {
         display: flex;
         gap: var(--space-2);
-        margin: -6px 0 var(--space-2-5);
+        margin: -6px 0 var(--space-3);
     }
 </style>

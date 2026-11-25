@@ -270,16 +270,16 @@
     .facet-chips {
         display: flex;
         gap: var(--space-2);
-        margin: -6px 0 var(--space-2-5);
+        margin: -6px 0 var(--space-3);
     }
     .dur {
         display: flex;
         align-items: center;
-        gap: var(--space-2-5);
+        gap: var(--space-3);
     }
     .bar {
         height: 6px;
-        border-radius: var(--radius-sm);
+        border-radius: var(--radius-md);
         background: var(--accent-dim);
         flex: 0 1 auto;
         min-width: 2px;

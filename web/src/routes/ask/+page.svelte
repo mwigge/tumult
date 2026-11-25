@@ -55,7 +55,7 @@
     sub="natural-language analytics over the telemetry store — guarded SQL, read-only"
 />
 
-<Panel style="margin-bottom: var(--space-3-5)">
+<Panel style="margin-bottom: var(--space-4)">
     <form
         class="askbar"
         onsubmit={(e) => {
@@ -100,7 +100,7 @@
     {:else}
         <Panel
             title={`Generated SQL ${result.source === 'golden' ? '(curated answer)' : '(LLM)'}`}
-            style="margin-bottom: var(--space-3-5)"
+            style="margin-bottom: var(--space-4)"
         >
             <pre class="mono sql">{result.sql}</pre>
             {#if result.error}
@@ -139,10 +139,10 @@
 <style>
     .askbar {
         display: flex;
-        gap: var(--space-2-5);
+        gap: var(--space-3);
     }
     .examples {
-        margin-top: var(--space-2-5);
+        margin-top: var(--space-3);
         display: flex;
         gap: var(--space-2);
         flex-wrap: wrap;
@@ -151,8 +151,8 @@
         background: var(--bg-hover);
         border: var(--border-width-sm) solid var(--border-strong);
         color: var(--text-dim);
-        border-radius: 12px;
-        padding: 3px 11px;
+        border-radius: var(--radius-pill);
+        padding: var(--space-1) var(--space-3);
         font-size: var(--font-size-xs);
         cursor: pointer;
     }
@@ -164,7 +164,7 @@
         background: var(--bg-raised);
         border: var(--border-width-sm) solid var(--border);
         border-radius: var(--radius-md);
-        padding: var(--space-2-5) var(--space-3);
+        padding: var(--space-3);
         font-size: var(--font-size-xs);
         white-space: pre-wrap;
         word-break: break-word;

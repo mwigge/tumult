@@ -58,11 +58,11 @@
 </PageHeader>
 
 {#if run.error}
-    <State kind="error" panel style="margin-bottom: var(--space-3-5)">{run.error}</State>
+    <State kind="error" panel style="margin-bottom: var(--space-4)">{run.error}</State>
 {/if}
 
 {#if confirmingStop && active}
-    <div class="panel confirm" style="margin-bottom: var(--space-3-5)">
+    <div class="panel confirm" style="margin-bottom: var(--space-4)">
         <span>
             Confirm stop? This ends a running process or script step, starts no further step and
             runs the rollbacks.
@@ -78,11 +78,11 @@
         {/if}
     </div>
 {:else if stopError}
-    <State kind="error" panel style="margin-bottom: var(--space-3-5)">{stopError}</State>
+    <State kind="error" panel style="margin-bottom: var(--space-4)">{stopError}</State>
 {/if}
 
 {#if awaitingTier && run.state === 'pending_approval'}
-    <div class="panel notice" style="margin-bottom: var(--space-3-5)">
+    <div class="panel notice" style="margin-bottom: var(--space-4)">
         <span>
             Awaiting approval (tier {awaitingTier}) — the run starts once the quorum is met.
         </span>
@@ -147,8 +147,8 @@
         background: color-mix(in srgb, var(--fail) 16%, transparent);
         border: var(--border-width-sm) solid var(--fail);
         color: var(--fail);
-        border-radius: var(--radius-lg);
-        padding: var(--space-1-5) var(--space-3-5);
+        border-radius: var(--radius-xl);
+        padding: var(--space-2) var(--space-4);
         font-size: var(--font-size-md);
         font-weight: var(--font-weight-strong);
         cursor: pointer;
@@ -171,8 +171,8 @@
         background: transparent;
         border: var(--border-width-sm) solid var(--border-strong);
         color: var(--text-dim);
-        border-radius: var(--radius-lg);
-        padding: var(--space-1-5) var(--space-3-5);
+        border-radius: var(--radius-xl);
+        padding: var(--space-2) var(--space-4);
         font-size: var(--font-size-md);
         cursor: pointer;
     }
@@ -182,7 +182,7 @@
     }
     .stop-error {
         color: var(--fail);
-        font-size: var(--font-size-sm);
+        font-size: var(--font-size-xs);
     }
     .notice {
         display: flex;

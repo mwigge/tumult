@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="556" viewBox="0 0 640 556" role="img">
+<title>The type, spacing and radius scale of Krönika</title>
+<rect x="0" y="0" width="640" height="556" fill="#ffffff"/>
+<text x="24" y="40" font-family="-apple-system, 'Segoe UI', Inter, Roboto, sans-serif" font-size="15" font-weight="600" fill="#1b2329">Type</text>
+<text x="24" y="68" font-family="'SF Mono', 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace" font-size="12" fill="#3b4751">font-size-3xs 11px</text>
+<text x="224" y="68" font-family="-apple-system, 'Segoe UI', Inter, Roboto, sans-serif" fill="#1b2329" font-size="11">Krönika shows a run</text>
+<text x="24" y="92" font-family="'SF Mono', 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace" font-size="12" fill="#3b4751">font-size-xs 12px</text>
+<text x="224" y="92" font-family="-apple-system, 'Segoe UI', Inter, Roboto, sans-serif" fill="#1b2329" font-size="12">Krönika shows a run</text>
+<text x="24" y="116" font-family="'SF Mono', 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace" font-size="12" fill="#3b4751">font-size-md 13px</text>
+<text x="224" y="116" font-family="-apple-system, 'Segoe UI', Inter, Roboto, sans-serif" fill="#1b2329" font-size="13">Krönika shows a run</text>
+<text x="24" y="140" font-family="'SF Mono', 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace" font-size="12" fill="#3b4751">font-size-xl 14px</text>
+<text x="224" y="140" font-family="-apple-system, 'Segoe UI', Inter, Roboto, sans-serif" fill="#1b2329" font-size="14">Krönika shows a run</text>
+<text x="24" y="167" font-family="'SF Mono', 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace" font-size="12" fill="#3b4751">font-size-2xl 18px</text>
+<text x="224" y="167" font-family="-apple-system, 'Segoe UI', Inter, Roboto, sans-serif" fill="#1b2329" font-size="18">Krönika shows a run</text>
+<text x="24" y="201" font-family="'SF Mono', 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace" font-size="12" fill="#3b4751">font-size-3xl 24px</text>
+<text x="224" y="201" font-family="-apple-system, 'Segoe UI', Inter, Roboto, sans-serif" fill="#1b2329" font-size="24">Krönika shows a run</text>
+<text x="24" y="246" font-family="'SF Mono', 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace" font-size="12" fill="#3b4751">font-size-4xl 32px</text>
+<text x="224" y="246" font-family="-apple-system, 'Segoe UI', Inter, Roboto, sans-serif" fill="#1b2329" font-size="32">Krönika shows a run</text>
+<text x="24" y="300" font-family="-apple-system, 'Segoe UI', Inter, Roboto, sans-serif" font-size="15" font-weight="600" fill="#1b2329">Spacing</text>
+<text x="24" y="326" font-family="'SF Mono', 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace" font-size="12" fill="#3b4751">space-0-5 2px</text>
+<rect x="154" y="316" width="2" height="12" fill="#4a7ba4"/>
+<text x="24" y="346" font-family="'SF Mono', 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace" font-size="12" fill="#3b4751">space-1 4px</text>
+<rect x="154" y="336" width="4" height="12" fill="#4a7ba4"/>
+<text x="24" y="366" font-family="'SF Mono', 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace" font-size="12" fill="#3b4751">space-2 8px</text>
+<rect x="154" y="356" width="8" height="12" fill="#4a7ba4"/>
+<text x="24" y="386" font-family="'SF Mono', 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace" font-size="12" fill="#3b4751">space-3 12px</text>
+<rect x="154" y="376" width="12" height="12" fill="#4a7ba4"/>
+<text x="24" y="406" font-family="'SF Mono', 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace" font-size="12" fill="#3b4751">space-4 16px</text>
+<rect x="154" y="396" width="16" height="12" fill="#4a7ba4"/>
+<text x="24" y="426" font-family="'SF Mono', 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace" font-size="12" fill="#3b4751">space-5 20px</text>
+<rect x="154" y="416" width="20" height="12" fill="#4a7ba4"/>
+<text x="24" y="446" font-family="'SF Mono', 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace" font-size="12" fill="#3b4751">space-6 24px</text>
+<rect x="154" y="436" width="24" height="12" fill="#4a7ba4"/>
+<text x="24" y="466" font-family="'SF Mono', 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace" font-size="12" fill="#3b4751">space-7 28px</text>
+<rect x="154" y="456" width="28" height="12" fill="#4a7ba4"/>
+<text x="24" y="486" font-family="'SF Mono', 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace" font-size="12" fill="#3b4751">space-15 60px</text>
+<rect x="154" y="476" width="60" height="12" fill="#4a7ba4"/>
+<text x="344" y="300" font-family="-apple-system, 'Segoe UI', Inter, Roboto, sans-serif" font-size="15" font-weight="600" fill="#1b2329">Radius</text>
+<text x="344" y="338" font-family="'SF Mono', 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace" font-size="12" fill="#3b4751">radius-xs 2px</text>
+<rect x="494.5" y="316.5" width="35" height="35" rx="2" fill="none" stroke="#8d959d"/>
+<text x="344" y="382" font-family="'SF Mono', 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace" font-size="12" fill="#3b4751">radius-md 4px</text>
+<rect x="494.5" y="360.5" width="35" height="35" rx="4" fill="none" stroke="#8d959d"/>
+<text x="344" y="426" font-family="'SF Mono', 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace" font-size="12" fill="#3b4751">radius-xl 6px</text>
+<rect x="494.5" y="404.5" width="35" height="35" rx="6" fill="none" stroke="#8d959d"/>
+<text x="344" y="470" font-family="'SF Mono', 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace" font-size="12" fill="#3b4751">radius-pill 999px</text>
+<rect x="494.5" y="448.5" width="35" height="35" rx="999" fill="none" stroke="#8d959d"/>
+<text x="344" y="514" font-family="'SF Mono', 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace" font-size="12" fill="#3b4751">radius-round undefinedundefined</text>
+<rect x="494.5" y="492.5" width="35" height="35" rx="undefined" fill="none" stroke="#8d959d"/>
+</svg>

@@ -391,7 +391,7 @@
     }
     .sub {
         color: var(--text-dim);
-        font-size: var(--font-size-2xs);
+        font-size: var(--font-size-xs);
         word-break: break-all;
     }
     .mono {
@@ -403,9 +403,9 @@
     dl {
         display: grid;
         grid-template-columns: 96px 1fr;
-        gap: 5px var(--space-2-5);
+        gap: var(--space-1) var(--space-3);
         margin: 0;
-        font-size: var(--font-size-sm);
+        font-size: var(--font-size-xs);
     }
     dd {
         margin: 0;
@@ -414,38 +414,38 @@
     .note {
         color: var(--text-dim);
         font-size: var(--font-size-xs);
-        margin: var(--space-1-5) 0 0;
+        margin: var(--space-2) 0 0;
     }
     .actions {
         display: flex;
         flex-wrap: wrap;
         gap: var(--space-2) var(--space-3);
         align-items: center;
-        margin-top: var(--space-2-5);
-        font-size: var(--font-size-sm);
+        margin-top: var(--space-3);
+        font-size: var(--font-size-xs);
     }
     .actions button {
         background: var(--bg-hover);
         border: var(--border-width-sm) solid var(--border-strong);
         color: var(--text);
         border-radius: var(--radius-md);
-        padding: 3px var(--space-2-5);
+        padding: var(--space-1) var(--space-3);
         cursor: pointer;
         font-size: var(--font-size-xs);
     }
     .chips {
         display: flex;
         flex-wrap: wrap;
-        gap: var(--space-1-5);
+        gap: var(--space-2);
     }
     .rows {
         list-style: none;
         margin: 0;
         padding: 0;
-        font-size: var(--font-size-sm);
+        font-size: var(--font-size-xs);
     }
     .rows li {
-        padding: var(--space-1-5) 0;
+        padding: var(--space-2) 0;
         border-top: var(--border-width-sm) solid var(--border);
     }
     /* A faded row, not the colour and size of the global .dim. */
@@ -457,7 +457,7 @@
     .meta {
         display: block;
         color: var(--text-dim);
-        font-size: var(--font-size-2xs);
-        margin-top: var(--space-0-5);
+        font-size: var(--font-size-xs);
+        margin-top: var(--space-1);
     }
 </style>

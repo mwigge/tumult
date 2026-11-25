@@ -88,7 +88,7 @@
 {#if approval.request}
     {@const req = approval.request}
     {@const ttl = expiry(req.expires_at_ns)}
-    <Panel style="margin-bottom: var(--space-3-5)">
+    <Panel style="margin-bottom: var(--space-4)">
         <h2>
             Approval chain
             <Badge kind="tier" value={req.tier} />
@@ -218,8 +218,8 @@
     }
     .entry {
         display: flex;
-        gap: var(--space-2-5);
-        padding: 3px 0;
+        gap: var(--space-3);
+        padding: var(--space-1) 0;
         font-size: var(--font-size-xs);
         border-bottom: var(--border-width-sm) solid
             color-mix(in srgb, var(--border) 50%, transparent);
@@ -242,12 +242,12 @@
     .ap-meta {
         display: grid;
         grid-template-columns: repeat(3, 1fr);
-        gap: var(--space-2-5) var(--space-4-5);
+        gap: var(--space-3) var(--space-5);
         margin-bottom: var(--space-3);
     }
     .ap-meta b {
         font-weight: var(--font-weight-strong);
-        font-size: var(--font-size-lg);
+        font-size: var(--font-size-xl);
     }
     .decisions {
         max-height: 200px;
@@ -267,7 +267,7 @@
         gap: var(--space-2);
         align-items: center;
         flex-wrap: wrap;
-        margin-top: var(--space-2-5);
+        margin-top: var(--space-3);
     }
     .ap-actions input {
         flex: 1;
@@ -285,9 +285,9 @@
     }
     .warn-copy {
         color: var(--warn);
-        font-size: var(--font-size-sm);
+        font-size: var(--font-size-xs);
         line-height: var(--line-height-body);
-        margin: 0 0 var(--space-2-5);
+        margin: 0 0 var(--space-3);
     }
     .glass-form textarea {
         width: 100%;
@@ -295,12 +295,12 @@
     }
     .err-line {
         color: var(--fail);
-        font-size: var(--font-size-sm);
+        font-size: var(--font-size-xs);
         margin-top: var(--space-2);
     }
     .ok-line {
         color: var(--ok);
-        font-size: var(--font-size-sm);
+        font-size: var(--font-size-xs);
         margin-top: var(--space-2);
     }
 </style>

@@ -168,10 +168,10 @@
 <style>
     .attach {
         display: flex;
-        gap: var(--space-2-5);
+        gap: var(--space-3);
         align-items: flex-end;
         flex-wrap: wrap;
-        margin-top: var(--space-2-5);
+        margin-top: var(--space-3);
     }
     .attach label {
         display: flex;

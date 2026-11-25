@@ -8,7 +8,7 @@
     "html": {
       "color": "rgb(27, 35, 41)",
       "font-family": "-apple-system, \"Segoe UI\", Inter, Roboto, sans-serif",
-      "font-size": "14px",
+      "font-size": "13px",
       "font-weight": "400",
       "line-height": "1.5",
       "letter-spacing": "normal",
@@ -36,14 +36,13 @@
       "padding": "8px 16px"
     },
     "div.shell > header[banner].topbar > span.name": {
-      "font-size": "17px",
+      "font-size": "18px",
       "font-weight": "700",
-      "letter-spacing": "0.4px",
+      "letter-spacing": "0.5px",
       "display": "block"
     },
     "div.shell > header[banner].topbar > button[button].btn \"Menu\"": {
       "font-family": "Arial",
-      "font-size": "13px",
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(233, 238, 242)",
@@ -52,31 +51,31 @@
       "border-bottom": "1px solid rgb(197, 206, 214)",
       "border-left": "1px solid rgb(197, 206, 214)",
       "border-radius": "6px",
-      "padding": "6px 14px"
+      "padding": "8px 16px"
     },
     "div.shell > main[main].main": {
       "display": "block",
-      "padding": "22px 16px 60px"
+      "padding": "24px 16px 60px"
     },
     "div.shell > main[main].main > div.page-head": {
       "display": "flex",
-      "margin": "0px 0px 18px",
-      "gap": "14px"
+      "margin": "0px 0px 20px",
+      "gap": "16px"
     },
     "div.shell > main[main].main > div.page-head > h1[heading] \"Metrics\"": {
-      "font-size": "19px",
+      "font-size": "18px",
       "font-weight": "600",
       "display": "block"
     },
     "div.shell > main[main].main > div.page-head > span.badge.neutral": {
       "color": "rgb(59, 71, 81)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.3px",
+      "letter-spacing": "0.5px",
       "display": "block",
       "background-color": "rgb(233, 238, 242)",
-      "border-radius": "10px",
-      "padding": "1px 9px"
+      "border-radius": "999px",
+      "padding": "2px 8px"
     },
     "div.shell > main[main].main > div.page-head > div.controls": {
       "display": "flex",
@@ -85,7 +84,6 @@
     },
     "div.shell > main[main].main > div.page-head > div.controls > select[combobox] \"Metric\"": {
       "font-family": "Arial",
-      "font-size": "13px",
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(255, 255, 255)",
@@ -93,12 +91,11 @@
       "border-right": "1px solid rgb(141, 149, 157)",
       "border-bottom": "1px solid rgb(141, 149, 157)",
       "border-left": "1px solid rgb(141, 149, 157)",
-      "border-radius": "5px",
-      "padding": "6px 9px"
+      "border-radius": "6px",
+      "padding": "8px"
     },
     "div.shell > main[main].main > div.page-head > div.controls > select[combobox] \"Group by\"": {
       "font-family": "Arial",
-      "font-size": "13px",
       "line-height": "normal",
       "display": "block",
       "opacity": "0.7",
@@ -107,8 +104,8 @@
       "border-right": "1px solid rgb(141, 149, 157)",
       "border-bottom": "1px solid rgb(141, 149, 157)",
       "border-left": "1px solid rgb(141, 149, 157)",
-      "border-radius": "5px",
-      "padding": "6px 9px"
+      "border-radius": "6px",
+      "padding": "8px"
     },
     "div.shell > main[main].main > div.page-head > div.controls > div[group].seg \"chart type\"": {
       "display": "flex",
@@ -116,39 +113,38 @@
       "border-right": "1px solid rgb(197, 206, 214)",
       "border-bottom": "1px solid rgb(197, 206, 214)",
       "border-left": "1px solid rgb(197, 206, 214)",
-      "border-radius": "5px",
+      "border-radius": "6px",
       "gap": "normal 1px"
     },
     "div.shell > main[main].main > div.page-head > div.controls > div[group].seg \"chart type\" > button[button].active \"line\"": {
       "color": "rgb(255, 255, 255)",
       "font-family": "Arial",
-      "font-size": "12.5px",
+      "font-size": "12px",
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(74, 123, 164)",
-      "padding": "5px 12px"
+      "padding": "4px 12px"
     },
     "div.shell > main[main].main > div.page-head > div.controls > div[group].seg \"chart type\" > button[button] \"area\"": {
       "color": "rgb(59, 71, 81)",
       "font-family": "Arial",
-      "font-size": "12.5px",
+      "font-size": "12px",
       "line-height": "normal",
       "display": "block",
       "box-shadow": "rgb(197, 206, 214) -1px 0px 0px 0px",
-      "padding": "5px 12px"
+      "padding": "4px 12px"
     },
     "div.shell > main[main].main > div.page-head > div.controls > div[group].seg \"chart type\" > button[button] \"bar\"": {
       "color": "rgb(59, 71, 81)",
       "font-family": "Arial",
-      "font-size": "12.5px",
+      "font-size": "12px",
       "line-height": "normal",
       "display": "block",
       "box-shadow": "rgb(197, 206, 214) -1px 0px 0px 0px",
-      "padding": "5px 12px"
+      "padding": "4px 12px"
     },
     "div.shell > main[main].main > div.page-head > div.controls > select[combobox] \"Interval\"": {
       "font-family": "Arial",
-      "font-size": "13px",
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(255, 255, 255)",
@@ -156,8 +152,8 @@
       "border-right": "1px solid rgb(141, 149, 157)",
       "border-bottom": "1px solid rgb(141, 149, 157)",
       "border-left": "1px solid rgb(141, 149, 157)",
-      "border-radius": "5px",
-      "padding": "6px 9px"
+      "border-radius": "6px",
+      "padding": "8px"
     },
     "div.shell > main[main].main > div.page-head > div.controls > div[group].seg \"time range\"": {
       "display": "flex",
@@ -165,35 +161,35 @@
       "border-right": "1px solid rgb(197, 206, 214)",
       "border-bottom": "1px solid rgb(197, 206, 214)",
       "border-left": "1px solid rgb(197, 206, 214)",
-      "border-radius": "5px",
+      "border-radius": "6px",
       "gap": "normal 1px"
     },
     "div.shell > main[main].main > div.page-head > div.controls > div[group].seg \"time range\" > button[button].active \"24h\"": {
       "color": "rgb(255, 255, 255)",
       "font-family": "Arial",
-      "font-size": "12.5px",
+      "font-size": "12px",
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(74, 123, 164)",
-      "padding": "5px 12px"
+      "padding": "4px 12px"
     },
     "div.shell > main[main].main > div.page-head > div.controls > div[group].seg \"time range\" > button[button] \"7d\"": {
       "color": "rgb(59, 71, 81)",
       "font-family": "Arial",
-      "font-size": "12.5px",
+      "font-size": "12px",
       "line-height": "normal",
       "display": "block",
       "box-shadow": "rgb(197, 206, 214) -1px 0px 0px 0px",
-      "padding": "5px 12px"
+      "padding": "4px 12px"
     },
     "div.shell > main[main].main > div.page-head > div.controls > div[group].seg \"time range\" > button[button] \"14d\"": {
       "color": "rgb(59, 71, 81)",
       "font-family": "Arial",
-      "font-size": "12.5px",
+      "font-size": "12px",
       "line-height": "normal",
       "display": "block",
       "box-shadow": "rgb(197, 206, 214) -1px 0px 0px 0px",
-      "padding": "5px 12px"
+      "padding": "4px 12px"
     },
     "div.shell > main[main].main > div.panel": {
       "display": "block",
@@ -203,7 +199,7 @@
       "border-bottom": "1px solid rgb(227, 232, 237)",
       "border-left": "1px solid rgb(227, 232, 237)",
       "border-radius": "6px",
-      "padding": "14px 16px"
+      "padding": "16px"
     },
     "div.shell > main[main].main > div.panel > div[image] \"Metric values over time\"": {
       "display": "block"

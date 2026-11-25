@@ -8,7 +8,7 @@
     "html": {
       "color": "rgb(216, 222, 228)",
       "font-family": "-apple-system, \"Segoe UI\", Inter, Roboto, sans-serif",
-      "font-size": "14px",
+      "font-size": "13px",
       "font-weight": "400",
       "line-height": "1.5",
       "letter-spacing": "normal",
@@ -32,7 +32,7 @@
       "border-bottom": "1px solid rgb(36, 45, 54)",
       "border-left": "1px solid rgb(36, 45, 54)",
       "border-radius": "6px",
-      "padding": "14px 16px"
+      "padding": "16px"
     },
     "div.login-wrap > div.panel.login-panel > div.brand": {
       "display": "block",
@@ -41,16 +41,16 @@
       "margin": "0px 0px 16px"
     },
     "div.login-wrap > div.panel.login-panel > div.brand > h1[heading].name \"Tumult\"": {
-      "font-size": "17px",
+      "font-size": "18px",
       "font-weight": "700",
-      "letter-spacing": "0.4px",
+      "letter-spacing": "0.5px",
       "display": "block"
     },
     "div.login-wrap > div.panel.login-panel > div.brand > div.tag": {
       "color": "rgb(127, 140, 151)",
       "font-size": "11px",
       "display": "block",
-      "margin": "2px 0px 0px"
+      "margin": "4px 0px 0px"
     },
     "div.login-wrap > div.panel.login-panel > form[form]": {
       "display": "flex",
@@ -58,9 +58,9 @@
     },
     "div.login-wrap > div.panel.login-panel > form[form] > label[LabelText]": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "12.5px",
+      "font-size": "12px",
       "display": "flex",
-      "gap": "5px"
+      "gap": "4px"
     },
     "div.login-wrap > div.panel.login-panel > form[form] > label[LabelText] > input[textbox] \"Username\"": {
       "color": "rgb(216, 222, 228)",
@@ -73,14 +73,14 @@
       "border-right": "1px solid rgb(97, 109, 121)",
       "border-bottom": "1px solid rgb(97, 109, 121)",
       "border-left": "1px solid rgb(97, 109, 121)",
-      "border-radius": "5px",
-      "padding": "6px 9px"
+      "border-radius": "6px",
+      "padding": "8px"
     },
     "div.login-wrap > div.panel.login-panel > form[form] > label[LabelText] #2": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "12.5px",
+      "font-size": "12px",
       "display": "flex",
-      "gap": "5px"
+      "gap": "4px"
     },
     "div.login-wrap > div.panel.login-panel > form[form] > label[LabelText] #2 > input[textbox] \"Password\"": {
       "color": "rgb(216, 222, 228)",
@@ -93,13 +93,12 @@
       "border-right": "1px solid rgb(97, 109, 121)",
       "border-bottom": "1px solid rgb(97, 109, 121)",
       "border-left": "1px solid rgb(97, 109, 121)",
-      "border-radius": "5px",
-      "padding": "6px 9px"
+      "border-radius": "6px",
+      "padding": "8px"
     },
     "div.login-wrap > div.panel.login-panel > form[form] > button[button].primary \"Sign in\"": {
       "color": "rgb(255, 255, 255)",
       "font-family": "Arial",
-      "font-size": "13px",
       "line-height": "normal",
       "display": "block",
       "opacity": "0.5",
@@ -108,8 +107,8 @@
       "border-right": "1px solid rgb(94, 177, 239)",
       "border-bottom": "1px solid rgb(94, 177, 239)",
       "border-left": "1px solid rgb(94, 177, 239)",
-      "border-radius": "5px",
-      "padding": "7px 16px"
+      "border-radius": "6px",
+      "padding": "8px 16px"
     },
     "div": {
       "display": "block"

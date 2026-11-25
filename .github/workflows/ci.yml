@@ -47,15 +47,17 @@ jobs:
       - run: npm run build
       # The colours of Krönika are design tokens in web/tokens/. The files
       # the generator writes from them are committed: they must be what it
-      # writes now. The colours of the CLI HTML report and of the docs site
-      # are among them.
+      # writes now. The colours of the CLI HTML report and of the docs site,
+      # and the pictures of the tokens on the UI standard page, are among
+      # them.
       - name: The token outputs are in sync with the token files
         run: |
           npm run build:tokens
           git diff --exit-code -- src/lib/tokens.css src/lib/tokens.gen.ts \
             ../tumult-cli/src/commands/report/html/tokens.css \
             ../docs/_sass/color_schemes/_tumult-tokens.scss \
-            ../docs/assets/css/tokens.css
+            ../docs/assets/css/tokens.css \
+            ../docs/images/3.0/tokens
       # tumult-cli embeds the script that draws the charts of its HTML
       # report, so the built file is committed. It must be what its source
       # builds.

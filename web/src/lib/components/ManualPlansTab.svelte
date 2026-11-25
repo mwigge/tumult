@@ -187,7 +187,7 @@
     .plans {
         display: flex;
         flex-direction: column;
-        gap: var(--space-3-5);
+        gap: var(--space-4);
     }
     .form-panel {
         max-width: 760px;
@@ -197,7 +197,7 @@
         display: flex;
         gap: var(--space-3);
         align-items: flex-end;
-        padding: var(--space-1-5) var(--space-0-5);
+        padding: var(--space-2) var(--space-1);
     }
     .plan-detail {
         justify-content: space-between;

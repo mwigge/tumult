@@ -198,8 +198,8 @@
 <style>
     .warn-text {
         color: var(--warn);
-        font-size: var(--font-size-2xs);
-        margin-left: var(--space-1-5);
+        font-size: var(--font-size-xs);
+        margin-left: var(--space-2);
     }
     .records-head {
         display: flex;

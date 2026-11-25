@@ -63,17 +63,17 @@
 <style>
     .note {
         border-left: var(--border-width-md) solid var(--warn);
-        padding: var(--space-0-5) var(--space-2-5);
+        padding: var(--space-1) var(--space-3);
         color: var(--text-dim);
         font-size: var(--font-size-md);
         margin-bottom: var(--space-2);
     }
     .scope ul {
         margin: var(--space-1) 0;
-        padding-left: var(--space-5-5);
+        padding-left: var(--space-6);
     }
     .scope li {
-        padding: var(--space-0-5) 0;
+        padding: var(--space-1) 0;
         font-size: var(--font-size-md);
     }
     .scope li .meta {
@@ -85,11 +85,6 @@
         color: var(--warn);
         font-size: var(--font-size-xs);
         margin-left: var(--space-2);
-    }
-    .hint {
-        color: var(--text-dim);
-        font-size: var(--font-size-sm);
-        margin-top: var(--space-1-5);
     }
     h3 {
         font-size: var(--font-size-xs);

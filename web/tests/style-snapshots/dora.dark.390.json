@@ -8,7 +8,7 @@
     "html": {
       "color": "rgb(216, 222, 228)",
       "font-family": "-apple-system, \"Segoe UI\", Inter, Roboto, sans-serif",
-      "font-size": "14px",
+      "font-size": "13px",
       "font-weight": "400",
       "line-height": "1.5",
       "letter-spacing": "normal",
@@ -36,14 +36,13 @@
       "padding": "8px 16px"
     },
     "div.shell > header[banner].topbar > span.name": {
-      "font-size": "17px",
+      "font-size": "18px",
       "font-weight": "700",
-      "letter-spacing": "0.4px",
+      "letter-spacing": "0.5px",
       "display": "block"
     },
     "div.shell > header[banner].topbar > button[button].btn \"Menu\"": {
       "font-family": "Arial",
-      "font-size": "13px",
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(28, 36, 44)",
@@ -52,19 +51,19 @@
       "border-bottom": "1px solid rgb(51, 64, 76)",
       "border-left": "1px solid rgb(51, 64, 76)",
       "border-radius": "6px",
-      "padding": "6px 14px"
+      "padding": "8px 16px"
     },
     "div.shell > main[main].main": {
       "display": "block",
-      "padding": "22px 16px 60px"
+      "padding": "24px 16px 60px"
     },
     "div.shell > main[main].main > div.page-head": {
       "display": "flex",
-      "margin": "0px 0px 18px",
-      "gap": "14px"
+      "margin": "0px 0px 20px",
+      "gap": "16px"
     },
     "div.shell > main[main].main > div.page-head > h1[heading] \"Scores\"": {
-      "font-size": "19px",
+      "font-size": "18px",
       "font-weight": "600",
       "display": "block"
     },
@@ -82,7 +81,7 @@
       "border-bottom": "1px solid rgb(51, 64, 76)",
       "border-left": "1px solid rgb(51, 64, 76)",
       "border-radius": "4px 0px 0px 4px",
-      "padding": "3px 10px"
+      "padding": "4px 12px"
     },
     "div.shell > main[main].main > div.page-head > div[tablist].views \"score view\" > button[tab].on \"DORA and maturity\"": {
       "font-size": "12px",
@@ -92,7 +91,7 @@
       "border-right": "1px solid rgb(94, 177, 239)",
       "border-bottom": "1px solid rgb(94, 177, 239)",
       "border-radius": "0px 4px 4px 0px",
-      "padding": "3px 10px"
+      "padding": "4px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\"": {
       "display": "block"
@@ -108,26 +107,26 @@
       "border-bottom": "1px solid rgb(36, 45, 54)",
       "border-left": "1px solid rgb(36, 45, 54)",
       "border-radius": "6px",
-      "padding": "14px 16px",
+      "padding": "16px",
       "margin": "0px 0px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel.head > div.who": {
       "display": "flex",
-      "gap": "10px"
+      "gap": "12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel.head > div.who > label[LabelText]": {
       "display": "block"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel.head > div.who > label[LabelText] > span.lbl": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "letter-spacing": "0.6px",
       "text-transform": "uppercase",
       "display": "inline",
-      "margin": "0px 6px 0px 0px"
+      "margin": "0px 8px 0px 0px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel.head > div.who > label[LabelText] > select[combobox] \"Legal entity\"": {
-      "font-size": "12.5px",
+      "font-size": "12px",
       "line-height": "normal",
       "display": "inline-block",
       "background-color": "rgb(17, 22, 27)",
@@ -136,7 +135,7 @@
       "border-bottom": "1px solid rgb(97, 109, 121)",
       "border-left": "1px solid rgb(97, 109, 121)",
       "border-radius": "4px",
-      "padding": "3px 6px"
+      "padding": "4px 8px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel.head > div.who > span.name": {
       "font-weight": "600",
@@ -144,20 +143,20 @@
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel.head > div.who > span.badge.neutral": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.3px",
+      "letter-spacing": "0.5px",
       "display": "block",
       "background-color": "rgb(28, 36, 44)",
-      "border-radius": "10px",
-      "padding": "1px 9px"
+      "border-radius": "999px",
+      "padding": "2px 8px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel.head > div.headline.capped": {
       "color": "rgb(245, 158, 11)",
-      "font-size": "22px",
+      "font-size": "18px",
       "font-weight": "600",
       "display": "block",
-      "margin": "10px 0px 0px"
+      "margin": "12px 0px 0px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel.head > div.cap": {
       "display": "block",
@@ -165,15 +164,15 @@
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel.head > div.note": {
       "color": "rgb(127, 140, 151)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "display": "block",
       "margin": "8px 0px 0px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel.head > dl[DescriptionList].facts": {
-      "font-size": "12.5px",
+      "font-size": "12px",
       "display": "grid",
       "grid-template-columns": "max-content 1fr",
-      "margin": "10px 0px 0px",
+      "margin": "12px 0px 0px",
       "gap": "4px 16px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel.head > dl[DescriptionList].facts > dt[term] \"House parameters\"": {
@@ -194,13 +193,12 @@
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel.head > dl[DescriptionList].facts > dd[definition] #2 > span.badge.ok": {
       "color": "rgb(52, 211, 153)",
-      "font-size": "11.5px",
       "font-weight": "600",
-      "letter-spacing": "0.3px",
+      "letter-spacing": "0.5px",
       "display": "block",
       "background-color": "color(srgb 0.0993726 0.206902 0.195294)",
-      "border-radius": "10px",
-      "padding": "1px 9px"
+      "border-radius": "999px",
+      "padding": "2px 8px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel.head > dl[DescriptionList].facts > dt[term] \"Feeds\"": {
       "color": "rgb(139, 152, 165)",
@@ -215,40 +213,37 @@
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel.head > dl[DescriptionList].facts > dd[definition] #3 > span.feed > span.mono": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
-      "font-size": "11.5px",
+      "font-size": "11.04px",
       "display": "inline"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel.head > dl[DescriptionList].facts > dd[definition] #3 > span.feed > span.badge.ok": {
       "color": "rgb(52, 211, 153)",
-      "font-size": "11.5px",
       "font-weight": "600",
-      "letter-spacing": "0.3px",
+      "letter-spacing": "0.5px",
       "display": "inline-block",
       "background-color": "color(srgb 0.0993726 0.206902 0.195294)",
-      "border-radius": "10px",
-      "padding": "1px 9px"
+      "border-radius": "999px",
+      "padding": "2px 8px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel.head > dl[DescriptionList].facts > dd[definition] #3 > span.feed #2": {
       "display": "block"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel.head > dl[DescriptionList].facts > dd[definition] #3 > span.feed #2 > span.mono": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
-      "font-size": "11.5px",
+      "font-size": "11.04px",
       "display": "inline"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel.head > dl[DescriptionList].facts > dd[definition] #3 > span.feed #2 > span.badge.neutral": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
       "font-weight": "600",
-      "letter-spacing": "0.3px",
+      "letter-spacing": "0.5px",
       "display": "inline-block",
       "background-color": "rgb(28, 36, 44)",
-      "border-radius": "10px",
-      "padding": "1px 9px"
+      "border-radius": "999px",
+      "padding": "2px 8px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel.head > dl[DescriptionList].facts > dd[definition] #3 > span.feed #2 > span.dim": {
       "color": "rgb(127, 140, 151)",
-      "font-size": "11.5px",
       "display": "inline"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > div.tiles": {
@@ -265,19 +260,19 @@
       "border-bottom": "1px solid rgb(36, 45, 54)",
       "border-left": "1px solid rgb(36, 45, 54)",
       "border-radius": "6px",
-      "padding": "14px 16px"
+      "padding": "16px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > div.tiles > div.panel.num > div.label": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "letter-spacing": "0.6px",
       "text-transform": "uppercase",
       "display": "block",
-      "margin": "0px 0px 6px"
+      "margin": "0px 0px 8px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > div.tiles > div.panel.num > div.row": {
       "display": "flex",
-      "gap": "10px"
+      "gap": "12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > div.tiles > div.panel.num > div.row > span.value.mono": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
@@ -287,18 +282,18 @@
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > div.tiles > div.panel.num > div.row > span.unknown.some": {
       "color": "rgb(245, 158, 11)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "display": "block",
       "border-top": "1px dashed rgb(245, 158, 11)",
       "border-right": "1px dashed rgb(245, 158, 11)",
       "border-bottom": "1px dashed rgb(245, 158, 11)",
       "border-left": "1px dashed rgb(245, 158, 11)",
       "border-radius": "4px",
-      "padding": "1px 6px"
+      "padding": "2px 8px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > div.tiles > div.panel.num > div.hint": {
       "color": "rgb(127, 140, 151)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "display": "block",
       "margin": "4px 0px 0px"
     },
@@ -310,19 +305,19 @@
       "border-bottom": "1px solid rgb(36, 45, 54)",
       "border-left": "1px solid rgb(36, 45, 54)",
       "border-radius": "6px",
-      "padding": "14px 16px"
+      "padding": "16px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > div.tiles > div.panel.num #2 > div.label": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "letter-spacing": "0.6px",
       "text-transform": "uppercase",
       "display": "block",
-      "margin": "0px 0px 6px"
+      "margin": "0px 0px 8px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > div.tiles > div.panel.num #2 > div.row": {
       "display": "flex",
-      "gap": "10px"
+      "gap": "12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > div.tiles > div.panel.num #2 > div.row > span.value.mono.muted": {
       "color": "rgb(127, 140, 151)",
@@ -333,18 +328,18 @@
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > div.tiles > div.panel.num #2 > div.row > span.unknown.some": {
       "color": "rgb(245, 158, 11)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "display": "block",
       "border-top": "1px dashed rgb(245, 158, 11)",
       "border-right": "1px dashed rgb(245, 158, 11)",
       "border-bottom": "1px dashed rgb(245, 158, 11)",
       "border-left": "1px dashed rgb(245, 158, 11)",
       "border-radius": "4px",
-      "padding": "1px 6px"
+      "padding": "2px 8px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > div.tiles > div.panel.num #2 > div.hint": {
       "color": "rgb(127, 140, 151)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "display": "block",
       "margin": "4px 0px 0px"
     },
@@ -356,19 +351,19 @@
       "border-bottom": "1px solid rgb(36, 45, 54)",
       "border-left": "1px solid rgb(36, 45, 54)",
       "border-radius": "6px",
-      "padding": "14px 16px"
+      "padding": "16px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > div.tiles > div.panel.num #3 > div.label": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "letter-spacing": "0.6px",
       "text-transform": "uppercase",
       "display": "block",
-      "margin": "0px 0px 6px"
+      "margin": "0px 0px 8px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > div.tiles > div.panel.num #3 > div.row": {
       "display": "flex",
-      "gap": "10px"
+      "gap": "12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > div.tiles > div.panel.num #3 > div.row > span.value.mono": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
@@ -378,18 +373,18 @@
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > div.tiles > div.panel.num #3 > div.row > span.unknown.some": {
       "color": "rgb(245, 158, 11)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "display": "block",
       "border-top": "1px dashed rgb(245, 158, 11)",
       "border-right": "1px dashed rgb(245, 158, 11)",
       "border-bottom": "1px dashed rgb(245, 158, 11)",
       "border-left": "1px dashed rgb(245, 158, 11)",
       "border-radius": "4px",
-      "padding": "1px 6px"
+      "padding": "2px 8px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > div.tiles > div.panel.num #3 > div.hint": {
       "color": "rgb(127, 140, 151)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "display": "block",
       "margin": "4px 0px 0px"
     },
@@ -401,19 +396,19 @@
       "border-bottom": "1px solid rgb(36, 45, 54)",
       "border-left": "1px solid rgb(36, 45, 54)",
       "border-radius": "6px",
-      "padding": "14px 16px"
+      "padding": "16px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > div.tiles > div.panel.num #4 > div.label": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "letter-spacing": "0.6px",
       "text-transform": "uppercase",
       "display": "block",
-      "margin": "0px 0px 6px"
+      "margin": "0px 0px 8px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > div.tiles > div.panel.num #4 > div.row": {
       "display": "flex",
-      "gap": "10px"
+      "gap": "12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > div.tiles > div.panel.num #4 > div.row > span.value.mono": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
@@ -423,18 +418,18 @@
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > div.tiles > div.panel.num #4 > div.row > span.unknown.some": {
       "color": "rgb(245, 158, 11)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "display": "block",
       "border-top": "1px dashed rgb(245, 158, 11)",
       "border-right": "1px dashed rgb(245, 158, 11)",
       "border-bottom": "1px dashed rgb(245, 158, 11)",
       "border-left": "1px dashed rgb(245, 158, 11)",
       "border-radius": "4px",
-      "padding": "1px 6px"
+      "padding": "2px 8px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > div.tiles > div.panel.num #4 > div.hint": {
       "color": "rgb(127, 140, 151)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "display": "block",
       "margin": "4px 0px 0px"
     },
@@ -446,7 +441,7 @@
       "border-bottom": "1px solid rgb(36, 45, 54)",
       "border-left": "1px solid rgb(36, 45, 54)",
       "border-radius": "6px",
-      "padding": "14px 16px",
+      "padding": "16px",
       "margin": "0px 0px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel > div.panel-head": {
@@ -457,10 +452,10 @@
       "color": "rgb(139, 152, 165)",
       "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.7px",
+      "letter-spacing": "0.6px",
       "text-transform": "uppercase",
       "display": "block",
-      "margin": "0px 0px 10px"
+      "margin": "0px 0px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel > div.panel-head > div[group].toggle \"heatmap value\"": {
       "display": "block"
@@ -474,7 +469,7 @@
       "border-bottom": "1px solid rgb(94, 177, 239)",
       "border-left": "1px solid rgb(94, 177, 239)",
       "border-radius": "4px 0px 0px 4px",
-      "padding": "3px 10px"
+      "padding": "4px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel > div.panel-head > div[group].toggle \"heatmap value\" > button[button] \"Evidence status\"": {
       "color": "rgb(139, 152, 165)",
@@ -485,7 +480,7 @@
       "border-right": "1px solid rgb(51, 64, 76)",
       "border-bottom": "1px solid rgb(51, 64, 76)",
       "border-radius": "0px 4px 4px 0px",
-      "padding": "3px 10px"
+      "padding": "4px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel > div[image] \"Heatmap of coverage per article and func…\"": {
       "display": "block"
@@ -500,9 +495,9 @@
       "display": "block"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel > details[group].alt": {
-      "font-size": "12.5px",
+      "font-size": "12px",
       "display": "block",
-      "margin": "4px 0px 10px"
+      "margin": "4px 0px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel > details[group].alt > summary[DisclosureTriangle] \"Show the heatmap as a table\"": {
       "color": "rgb(139, 152, 165)",
@@ -510,10 +505,10 @@
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel > div.legend": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "display": "flex",
-      "margin": "6px 0px 10px",
-      "gap": "6px 16px"
+      "margin": "8px 0px 12px",
+      "gap": "8px 16px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel > div.legend > span.item": {
       "display": "block"
@@ -529,7 +524,7 @@
       "border-bottom": "1px solid rgb(51, 64, 76)",
       "border-left": "1px solid rgb(51, 64, 76)",
       "border-radius": "2px",
-      "margin": "0px 2px 0px 0px"
+      "margin": "0px 4px 0px 0px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel > div.legend > span.item #3": {
       "display": "block"
@@ -542,7 +537,7 @@
       "border-bottom": "1px solid rgb(51, 64, 76)",
       "border-left": "1px solid rgb(51, 64, 76)",
       "border-radius": "2px",
-      "margin": "0px 2px 0px 0px"
+      "margin": "0px 4px 0px 0px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel > div.legend > span.item #4": {
       "display": "block"
@@ -555,7 +550,7 @@
       "border-bottom": "1px solid rgb(51, 64, 76)",
       "border-left": "1px solid rgb(51, 64, 76)",
       "border-radius": "2px",
-      "margin": "0px 2px 0px 0px"
+      "margin": "0px 4px 0px 0px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel > div.legend > span.item #5": {
       "display": "block"
@@ -567,7 +562,7 @@
       "border-right": "1px solid rgb(51, 64, 76)",
       "border-bottom": "1px solid rgb(51, 64, 76)",
       "border-left": "1px solid rgb(51, 64, 76)",
-      "margin": "0px 2px 0px 0px"
+      "margin": "0px 4px 0px 0px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel > div.legend > span.item #6": {
       "display": "block"
@@ -584,7 +579,6 @@
       "display": "inline"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel > table[table].data.articles": {
-      "font-size": "13px",
       "display": "table"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel > table[table].data.articles > thead[rowgroup]": {
@@ -595,43 +589,43 @@
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel > table[table].data.articles > thead[rowgroup] > tr[row] > th[columnheader] \"ARTICLE\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel > table[table].data.articles > thead[rowgroup] > tr[row] > th[columnheader] \"COVERAGE\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel > table[table].data.articles > thead[rowgroup] > tr[row] > th[columnheader] \"MEETS\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel > table[table].data.articles > thead[rowgroup] > tr[row] > th[columnheader] \"GAP\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel > table[table].data.articles > tbody": {
       "display": "table-row-group"
@@ -642,17 +636,17 @@
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel > table[table].data.articles > tr[row] > td[cell] \"Art. 16 Simplified ICT risk management f…\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel > table[table].data.articles > tr[row] > td[cell] \"Art. 16 Simplified ICT risk management f…\" > span.dim": {
       "color": "rgb(127, 140, 151)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "display": "inline"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel > table[table].data.articles > tr[row] > td[cell] \"70 % unknown 5 %\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel > table[table].data.articles > tr[row] > td[cell] \"70 % unknown 5 %\" > span.mono": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
@@ -663,21 +657,21 @@
       "color": "rgb(127, 140, 151)",
       "font-size": "11px",
       "display": "inline",
-      "margin": "0px 0px 0px 6px"
+      "margin": "0px 0px 0px 8px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel > table[table].data.articles > tr[row] > td[cell].mono \"1\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel > table[table].data.articles > tr[row] > td[cell].mono \"1\" #2": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel > table[table].data.articles > tr[row] #2": {
       "display": "table-row"
@@ -685,17 +679,17 @@
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel > table[table].data.articles > tr[row] #2 > td[cell] \"Art. 19 Reporting of major ICT-related i…\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel > table[table].data.articles > tr[row] #2 > td[cell] \"Art. 19 Reporting of major ICT-related i…\" > span.dim": {
       "color": "rgb(127, 140, 151)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "display": "inline"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel > table[table].data.articles > tr[row] #2 > td[cell] \"unknown unknown 100 %\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel > table[table].data.articles > tr[row] #2 > td[cell] \"unknown unknown 100 %\" > span.mono": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
@@ -706,37 +700,37 @@
       "color": "rgb(127, 140, 151)",
       "font-size": "11px",
       "display": "inline",
-      "margin": "0px 0px 0px 6px"
+      "margin": "0px 0px 0px 8px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel > table[table].data.articles > tr[row] #2 > td[cell].mono \"1\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel > table[table].data.articles > tr[row] #2 > td[cell].mono \"1\" #2": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel > table[table].data.articles > tr[row] #3": {
       "display": "table-row"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel > table[table].data.articles > tr[row] #3 > td[cell] \"Art. 24 General requirements for testing\"": {
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel > table[table].data.articles > tr[row] #3 > td[cell] \"Art. 24 General requirements for testing\" > span.dim": {
       "color": "rgb(127, 140, 151)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "display": "inline"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel > table[table].data.articles > tr[row] #3 > td[cell] \"55 % unknown 20 %\"": {
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel > table[table].data.articles > tr[row] #3 > td[cell] \"55 % unknown 20 %\" > span.mono": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
@@ -747,23 +741,23 @@
       "color": "rgb(127, 140, 151)",
       "font-size": "11px",
       "display": "inline",
-      "margin": "0px 0px 0px 6px"
+      "margin": "0px 0px 0px 8px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel > table[table].data.articles > tr[row] #3 > td[cell].mono \"1\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel > table[table].data.articles > tr[row] #3 > td[cell].mono \"1\" #2": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel > div.foot": {
       "color": "rgb(127, 140, 151)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "display": "block",
       "margin": "8px 0px 0px"
     },
@@ -775,20 +769,19 @@
       "border-bottom": "1px solid rgb(36, 45, 54)",
       "border-left": "1px solid rgb(36, 45, 54)",
       "border-radius": "6px",
-      "padding": "14px 16px",
+      "padding": "16px",
       "margin": "0px 0px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #2 > h2[heading] \"EXPECTED AND ACTUAL EVIDENCE STATUS, LAR…\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.7px",
+      "letter-spacing": "0.6px",
       "text-transform": "uppercase",
       "display": "block",
-      "margin": "0px 0px 10px"
+      "margin": "0px 0px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #2 > table[table].data": {
-      "font-size": "13px",
       "display": "table"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #2 > table[table].data > thead[rowgroup]": {
@@ -799,73 +792,73 @@
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #2 > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"REQUIREMENT\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #2 > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"EXPECTED\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #2 > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"ACTUAL\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #2 > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"GAP\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #2 > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"OLDEST EVIDENCE\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #2 > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"DAYS UNTIL OPERATING\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #2 > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"EVIDENCE\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #2 > table[table].data > tbody": {
       "display": "table-row-group"
@@ -876,7 +869,7 @@
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #2 > table[table].data > tr[row] > td[cell] \"Art. 24(1) Requirement dora.art24.1 hous…\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #2 > table[table].data > tr[row] > td[cell] \"Art. 24(1) Requirement dora.art24.1 hous…\" > span.mono": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
@@ -885,49 +878,49 @@
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #2 > table[table].data > tr[row] > td[cell] \"Art. 24(1) Requirement dora.art24.1 hous…\" > span.badge.neutral": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.3px",
+      "letter-spacing": "0.5px",
       "display": "inline-block",
       "background-color": "rgb(28, 36, 44)",
-      "border-radius": "10px",
-      "padding": "1px 9px"
+      "border-radius": "999px",
+      "padding": "2px 8px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #2 > table[table].data > tr[row] > td[cell] \"Art. 24(1) Requirement dora.art24.1 hous…\" > div.dim.mono": {
       "color": "rgb(127, 140, 151)",
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
-      "font-size": "11.5px",
+      "font-size": "11.96px",
       "display": "block"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #2 > table[table].data > tr[row] > td[cell] \"operating\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #2 > table[table].data > tr[row] > td[cell] \"designed\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #2 > table[table].data > tr[row] > td[cell] \"−2 cif-0001\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #2 > table[table].data > tr[row] > td[cell] \"−2 cif-0001\" > span.badge.fail": {
       "color": "rgb(251, 80, 78)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.3px",
+      "letter-spacing": "0.5px",
       "display": "inline-block",
       "background-color": "color(srgb 0.208627 0.13498 0.154118)",
-      "border-radius": "10px",
-      "padding": "1px 9px"
+      "border-radius": "999px",
+      "padding": "2px 8px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #2 > table[table].data > tr[row] > td[cell] \"−2 cif-0001\" > div.dim.mono": {
       "color": "rgb(127, 140, 151)",
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
-      "font-size": "11.5px",
+      "font-size": "11.96px",
       "display": "block"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #2 > table[table].data > tr[row] > td[cell].mono \"2026-09-21\"": {
@@ -935,19 +928,19 @@
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #2 > table[table].data > tr[row] > td[cell].mono \"–\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #2 > table[table].data > tr[row] > td[cell] \"ev-dora.art24.1\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #2 > table[table].data > tr[row] > td[cell] \"ev-dora.art24.1\" > button[button].link.mono \"ev-dora.art24.1\"": {
       "color": "rgb(94, 177, 239)",
@@ -961,7 +954,7 @@
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #2 > table[table].data > tr[row] #2 > td[cell] \"Art. 16(1) Requirement dora.art16.1.c do…\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #2 > table[table].data > tr[row] #2 > td[cell] \"Art. 16(1) Requirement dora.art16.1.c do…\" > span.mono": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
@@ -971,38 +964,38 @@
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #2 > table[table].data > tr[row] #2 > td[cell] \"Art. 16(1) Requirement dora.art16.1.c do…\" > div.dim.mono": {
       "color": "rgb(127, 140, 151)",
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
-      "font-size": "11.5px",
+      "font-size": "11.96px",
       "display": "block"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #2 > table[table].data > tr[row] #2 > td[cell] \"existing\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #2 > table[table].data > tr[row] #2 > td[cell] \"designed\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #2 > table[table].data > tr[row] #2 > td[cell] \"−1 cif-0001\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #2 > table[table].data > tr[row] #2 > td[cell] \"−1 cif-0001\" > span.badge.fail": {
       "color": "rgb(251, 80, 78)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.3px",
+      "letter-spacing": "0.5px",
       "display": "inline-block",
       "background-color": "color(srgb 0.208627 0.13498 0.154118)",
-      "border-radius": "10px",
-      "padding": "1px 9px"
+      "border-radius": "999px",
+      "padding": "2px 8px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #2 > table[table].data > tr[row] #2 > td[cell] \"−1 cif-0001\" > div.dim.mono": {
       "color": "rgb(127, 140, 151)",
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
-      "font-size": "11.5px",
+      "font-size": "11.96px",
       "display": "block"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #2 > table[table].data > tr[row] #2 > td[cell].mono \"2026-09-21\"": {
@@ -1010,19 +1003,19 @@
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #2 > table[table].data > tr[row] #2 > td[cell].mono \"–\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #2 > table[table].data > tr[row] #2 > td[cell] \"ev-dora.art16.1.c\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #2 > table[table].data > tr[row] #2 > td[cell] \"ev-dora.art16.1.c\" > button[button].link.mono \"ev-dora.art16.1.c\"": {
       "color": "rgb(94, 177, 239)",
@@ -1035,7 +1028,7 @@
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #2 > table[table].data > tr[row] #3 > td[cell] \"Art. 16(1) Requirement dora.art16.1.a do…\"": {
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #2 > table[table].data > tr[row] #3 > td[cell] \"Art. 16(1) Requirement dora.art16.1.a do…\" > span.mono": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
@@ -1045,46 +1038,46 @@
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #2 > table[table].data > tr[row] #3 > td[cell] \"Art. 16(1) Requirement dora.art16.1.a do…\" > div.dim.mono": {
       "color": "rgb(127, 140, 151)",
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
-      "font-size": "11.5px",
+      "font-size": "11.96px",
       "display": "block"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #2 > table[table].data > tr[row] #3 > td[cell] \"existing\"": {
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #2 > table[table].data > tr[row] #3 > td[cell] \"existing\" #2": {
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #2 > table[table].data > tr[row] #3 > td[cell] \"meets\"": {
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #2 > table[table].data > tr[row] #3 > td[cell] \"meets\" > span.badge.ok": {
       "color": "rgb(52, 211, 153)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.3px",
+      "letter-spacing": "0.5px",
       "display": "inline-block",
       "background-color": "color(srgb 0.0993726 0.206902 0.195294)",
-      "border-radius": "10px",
-      "padding": "1px 9px"
+      "border-radius": "999px",
+      "padding": "2px 8px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #2 > table[table].data > tr[row] #3 > td[cell].mono \"2026-09-21\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #2 > table[table].data > tr[row] #3 > td[cell].mono \"42\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #2 > table[table].data > tr[row] #3 > td[cell] \"ev-dora.art16.1.a\"": {
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #2 > table[table].data > tr[row] #3 > td[cell] \"ev-dora.art16.1.a\" > button[button].link.mono \"ev-dora.art16.1.a\"": {
       "color": "rgb(94, 177, 239)",
@@ -1094,7 +1087,7 @@
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #2 > div.foot": {
       "color": "rgb(127, 140, 151)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "display": "block",
       "margin": "8px 0px 0px"
     },
@@ -1106,17 +1099,17 @@
       "border-bottom": "1px solid rgb(36, 45, 54)",
       "border-left": "1px solid rgb(36, 45, 54)",
       "border-radius": "6px",
-      "padding": "14px 16px",
+      "padding": "16px",
       "margin": "0px 0px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > h2[heading] \"MATURITY — LEVEL 2 OF TARGET 3 (SIMPLIFI…\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.7px",
+      "letter-spacing": "0.6px",
       "text-transform": "uppercase",
       "display": "block",
-      "margin": "0px 0px 10px"
+      "margin": "0px 0px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity": {
       "display": "grid",
@@ -1138,12 +1131,12 @@
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity > div.gauge > div.dim.center": {
       "color": "rgb(127, 140, 151)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "display": "block"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity > div.gauge > div.dim.center #2": {
       "color": "rgb(127, 140, 151)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "display": "block"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity > div.bars": {
@@ -1163,10 +1156,10 @@
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity > div.bars > div.legend": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "display": "flex",
-      "margin": "6px 0px 10px",
-      "gap": "6px 16px"
+      "margin": "8px 0px 12px",
+      "gap": "8px 16px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity > div.bars > div.legend > span.item": {
       "display": "block"
@@ -1179,7 +1172,7 @@
       "border-bottom": "1px solid rgb(51, 64, 76)",
       "border-left": "1px solid rgb(51, 64, 76)",
       "border-radius": "2px",
-      "margin": "0px 2px 0px 0px"
+      "margin": "0px 4px 0px 0px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity > div.bars > div.legend > span.item #2": {
       "display": "block"
@@ -1192,13 +1185,13 @@
       "border-bottom": "1px solid rgb(51, 64, 76)",
       "border-left": "1px solid rgb(51, 64, 76)",
       "border-radius": "2px",
-      "margin": "0px 2px 0px 0px"
+      "margin": "0px 4px 0px 0px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity > div.bars > ul[list].reasons": {
       "color": "rgb(139, 152, 165)",
       "font-size": "12px",
       "display": "block",
-      "padding": "0px 0px 0px 18px",
+      "padding": "0px 0px 0px 20px",
       "margin": "4px 0px 0px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity > div.bars > ul[list].reasons > li[listitem]": {
@@ -1231,10 +1224,10 @@
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > div.history > div.legend": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "display": "flex",
-      "margin": "6px 0px 10px",
-      "gap": "6px 16px"
+      "margin": "8px 0px 12px",
+      "gap": "8px 16px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > div.history > div.legend > span.item": {
       "display": "block"
@@ -1242,7 +1235,7 @@
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > div.history > div.legend > span.item > i.swatch.line": {
       "display": "inline-block",
       "border-top": "2px solid rgb(94, 177, 239)",
-      "margin": "0px 2px 0px 0px"
+      "margin": "0px 4px 0px 0px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > div.history > div.legend > span.item #2": {
       "display": "block"
@@ -1250,15 +1243,14 @@
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > div.history > div.legend > span.item #2 > i.swatch.dashed": {
       "display": "inline-block",
       "border-top": "2px dashed rgb(139, 152, 165)",
-      "margin": "0px 2px 0px 0px"
+      "margin": "0px 4px 0px 0px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > div.history > div.dim.center": {
       "color": "rgb(127, 140, 151)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "display": "block"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > div.history > table[table].data": {
-      "font-size": "13px",
       "display": "table"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > div.history > table[table].data > thead[rowgroup]": {
@@ -1269,43 +1261,43 @@
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > div.history > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"QUARTER\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > div.history > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"FROM\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > div.history > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"LEVEL\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > div.history > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"INDEX\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > div.history > table[table].data > tbody": {
       "display": "table-row-group"
@@ -1318,26 +1310,26 @@
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > div.history > table[table].data > tr[row] > td[cell] \"no data\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > div.history > table[table].data > tr[row] > td[cell].mono \"–\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > div.history > table[table].data > tr[row] > td[cell].mono \"–\" #2": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > div.history > table[table].data > tr[row] #2": {
       "display": "table-row"
@@ -1347,24 +1339,24 @@
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > div.history > table[table].data > tr[row] #2 > td[cell] \"stored 2026-06-30\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > div.history > table[table].data > tr[row] #2 > td[cell].mono \"1\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > div.history > table[table].data > tr[row] #2 > td[cell] \"2.10 unknown 50 %\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > div.history > table[table].data > tr[row] #2 > td[cell] \"2.10 unknown 50 %\" > span.mono": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
@@ -1375,7 +1367,7 @@
       "color": "rgb(127, 140, 151)",
       "font-size": "11px",
       "display": "inline",
-      "margin": "0px 0px 0px 6px"
+      "margin": "0px 0px 0px 8px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > div.history > table[table].data > tr[row] #3": {
       "display": "table-row"
@@ -1385,26 +1377,26 @@
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > div.history > table[table].data > tr[row] #3 > td[cell] \"no data\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > div.history > table[table].data > tr[row] #3 > td[cell].mono \"–\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > div.history > table[table].data > tr[row] #3 > td[cell].mono \"–\" #2": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > div.history > table[table].data > tr[row] #4": {
       "display": "table-row"
@@ -1413,21 +1405,21 @@
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > div.history > table[table].data > tr[row] #4 > td[cell] \"today\"": {
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > div.history > table[table].data > tr[row] #4 > td[cell].mono \"2\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > div.history > table[table].data > tr[row] #4 > td[cell] \"3.60 unknown 25 %\"": {
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > div.history > table[table].data > tr[row] #4 > td[cell] \"3.60 unknown 25 %\" > span.mono": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
@@ -1438,10 +1430,9 @@
       "color": "rgb(127, 140, 151)",
       "font-size": "11px",
       "display": "inline",
-      "margin": "0px 0px 0px 6px"
+      "margin": "0px 0px 0px 8px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > table[table].data.gates": {
-      "font-size": "13px",
       "display": "table"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > table[table].data.gates > thead[rowgroup]": {
@@ -1452,33 +1443,33 @@
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > table[table].data.gates > thead[rowgroup] > tr[row] > th[columnheader] \"GATE\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > table[table].data.gates > thead[rowgroup] > tr[row] > th[columnheader] \"STATE\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > table[table].data.gates > thead[rowgroup] > tr[row] > th[columnheader] \"FAILING CONDITIONS\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > table[table].data.gates > tbody": {
       "display": "table-row-group"
@@ -1489,32 +1480,32 @@
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > table[table].data.gates > tr[row] > td[cell] \"Level 2 Repeatable\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > table[table].data.gates > tr[row] > td[cell] \"Level 2 Repeatable\" > span.dim": {
       "color": "rgb(127, 140, 151)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "display": "inline"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > table[table].data.gates > tr[row] > td[cell] \"passed\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > table[table].data.gates > tr[row] > td[cell] \"passed\" > span.badge.ok": {
       "color": "rgb(52, 211, 153)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.3px",
+      "letter-spacing": "0.5px",
       "display": "inline-block",
       "background-color": "color(srgb 0.0993726 0.206902 0.195294)",
-      "border-radius": "10px",
-      "padding": "1px 9px"
+      "border-radius": "999px",
+      "padding": "2px 8px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > table[table].data.gates > tr[row] > td[cell] \"–\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > table[table].data.gates > tr[row] #2": {
       "display": "table-row"
@@ -1522,32 +1513,32 @@
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > table[table].data.gates > tr[row] #2 > td[cell] \"Level 3 Defined\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > table[table].data.gates > tr[row] #2 > td[cell] \"Level 3 Defined\" > span.dim": {
       "color": "rgb(127, 140, 151)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "display": "inline"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > table[table].data.gates > tr[row] #2 > td[cell] \"blocked\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > table[table].data.gates > tr[row] #2 > td[cell] \"blocked\" > span.badge.fail": {
       "color": "rgb(251, 80, 78)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.3px",
+      "letter-spacing": "0.5px",
       "display": "inline-block",
       "background-color": "color(srgb 0.208627 0.13498 0.154118)",
-      "border-radius": "10px",
-      "padding": "1px 9px"
+      "border-radius": "999px",
+      "padding": "2px 8px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > table[table].data.gates > tr[row] #2 > td[cell] \"restore-test evidence is 150 days old\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > table[table].data.gates > tr[row] #3": {
       "display": "table-row"
@@ -1555,62 +1546,62 @@
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > table[table].data.gates > tr[row] #3 > td[cell] \"Level 4 Measured\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > table[table].data.gates > tr[row] #3 > td[cell] \"Level 4 Measured\" > span.dim": {
       "color": "rgb(127, 140, 151)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "display": "inline"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > table[table].data.gates > tr[row] #3 > td[cell] \"blocked\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > table[table].data.gates > tr[row] #3 > td[cell] \"blocked\" > span.badge.fail": {
       "color": "rgb(251, 80, 78)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.3px",
+      "letter-spacing": "0.5px",
       "display": "inline-block",
       "background-color": "color(srgb 0.208627 0.13498 0.154118)",
-      "border-radius": "10px",
-      "padding": "1px 9px"
+      "border-radius": "999px",
+      "padding": "2px 8px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > table[table].data.gates > tr[row] #3 > td[cell] \"SLO attainment (S) is unknown\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > table[table].data.gates > tr[row] #4": {
       "display": "table-row"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > table[table].data.gates > tr[row] #4 > td[cell] \"Level 5 Improving\"": {
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > table[table].data.gates > tr[row] #4 > td[cell] \"Level 5 Improving\" > span.dim": {
       "color": "rgb(127, 140, 151)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "display": "inline"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > table[table].data.gates > tr[row] #4 > td[cell] \"blocked\"": {
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > table[table].data.gates > tr[row] #4 > td[cell] \"blocked\" > span.badge.fail": {
       "color": "rgb(251, 80, 78)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.3px",
+      "letter-spacing": "0.5px",
       "display": "inline-block",
       "background-color": "color(srgb 0.208627 0.13498 0.154118)",
-      "border-radius": "10px",
-      "padding": "1px 9px"
+      "border-radius": "999px",
+      "padding": "2px 8px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > table[table].data.gates > tr[row] #4 > td[cell] \"learning loop (L) below 80\"": {
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4": {
       "display": "block",
@@ -1620,20 +1611,19 @@
       "border-bottom": "1px solid rgb(36, 45, 54)",
       "border-left": "1px solid rgb(36, 45, 54)",
       "border-radius": "6px",
-      "padding": "14px 16px",
+      "padding": "16px",
       "margin": "0px 0px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > h2[heading] \"MATURITY PER NODE — LEVEL 1, CAPPED BY S…\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.7px",
+      "letter-spacing": "0.6px",
       "text-transform": "uppercase",
       "display": "block",
-      "margin": "0px 0px 10px"
+      "margin": "0px 0px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data": {
-      "font-size": "13px",
       "display": "table"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > thead[rowgroup]": {
@@ -1644,43 +1634,43 @@
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"NODE\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"LEVEL\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"INDEX\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"CAP\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > tbody": {
       "display": "table-row-group"
@@ -1691,7 +1681,7 @@
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > tr[row] > td[cell] \"org: organisation\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px 8px 10px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > tr[row] > td[cell] \"org: organisation\" > span.mono": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
@@ -1700,7 +1690,7 @@
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > tr[row] > td[cell] \"org: organisation\" > span.dim": {
       "color": "rgb(127, 140, 151)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "display": "inline"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > tr[row] > td[cell].mono \"1 / 3\"": {
@@ -1708,12 +1698,12 @@
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > tr[row] > td[cell] \"2.90 unknown 20 %\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > tr[row] > td[cell] \"2.90 unknown 20 %\" > span.mono": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
@@ -1724,12 +1714,12 @@
       "color": "rgb(127, 140, 151)",
       "font-size": "11px",
       "display": "inline",
-      "margin": "0px 0px 0px 6px"
+      "margin": "0px 0px 0px 8px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > tr[row] > td[cell] \"level 1, capped by svc:ledger-archive\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > tr[row] #2": {
       "display": "table-row"
@@ -1737,7 +1727,7 @@
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > tr[row] #2 > td[cell] \"org:platform org\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px 7px 28px"
+      "padding": "8px 12px 8px 28px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > tr[row] #2 > td[cell] \"org:platform org\" > span.mono": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
@@ -1746,7 +1736,7 @@
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > tr[row] #2 > td[cell] \"org:platform org\" > span.dim": {
       "color": "rgb(127, 140, 151)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "display": "inline"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > tr[row] #2 > td[cell].mono \"1 / 3\"": {
@@ -1754,12 +1744,12 @@
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > tr[row] #2 > td[cell] \"2.90 unknown 20 %\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > tr[row] #2 > td[cell] \"2.90 unknown 20 %\" > span.mono": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
@@ -1770,12 +1760,12 @@
       "color": "rgb(127, 140, 151)",
       "font-size": "11px",
       "display": "inline",
-      "margin": "0px 0px 0px 6px"
+      "margin": "0px 0px 0px 8px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > tr[row] #2 > td[cell] \"level 1, capped by svc:ledger-archive\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > tr[row] #3": {
       "display": "table-row"
@@ -1783,7 +1773,7 @@
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > tr[row] #3 > td[cell] \"ent:cif-0001 entity critical\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px 7px 46px"
+      "padding": "8px 12px 8px 46px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > tr[row] #3 > td[cell] \"ent:cif-0001 entity critical\" > span.mono": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
@@ -1792,30 +1782,30 @@
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > tr[row] #3 > td[cell] \"ent:cif-0001 entity critical\" > span.dim": {
       "color": "rgb(127, 140, 151)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "display": "inline"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > tr[row] #3 > td[cell] \"ent:cif-0001 entity critical\" > span.badge.warn": {
       "color": "rgb(245, 158, 11)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.3px",
+      "letter-spacing": "0.5px",
       "display": "inline-block",
       "background-color": "color(srgb 0.205333 0.177804 0.117333)",
-      "border-radius": "10px",
-      "padding": "1px 9px"
+      "border-radius": "999px",
+      "padding": "2px 8px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > tr[row] #3 > td[cell].mono \"1 / 3\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > tr[row] #3 > td[cell] \"2.60 unknown 50 %\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > tr[row] #3 > td[cell] \"2.60 unknown 50 %\" > span.mono": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
@@ -1826,12 +1816,12 @@
       "color": "rgb(127, 140, 151)",
       "font-size": "11px",
       "display": "inline",
-      "margin": "0px 0px 0px 6px"
+      "margin": "0px 0px 0px 8px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > tr[row] #3 > td[cell] \"level 1, capped by svc:ledger-archive\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > tr[row] #4": {
       "display": "table-row"
@@ -1839,7 +1829,7 @@
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > tr[row] #4 > td[cell] \"svc:payments-api service critical\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px 7px 64px"
+      "padding": "8px 12px 8px 64px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > tr[row] #4 > td[cell] \"svc:payments-api service critical\" > span.mono": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
@@ -1848,30 +1838,30 @@
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > tr[row] #4 > td[cell] \"svc:payments-api service critical\" > span.dim": {
       "color": "rgb(127, 140, 151)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "display": "inline"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > tr[row] #4 > td[cell] \"svc:payments-api service critical\" > span.badge.warn": {
       "color": "rgb(245, 158, 11)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.3px",
+      "letter-spacing": "0.5px",
       "display": "inline-block",
       "background-color": "color(srgb 0.205333 0.177804 0.117333)",
-      "border-radius": "10px",
-      "padding": "1px 9px"
+      "border-radius": "999px",
+      "padding": "2px 8px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > tr[row] #4 > td[cell].mono \"4 / 3\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > tr[row] #4 > td[cell] \"4.20 unknown 0 %\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > tr[row] #4 > td[cell] \"4.20 unknown 0 %\" > span.mono": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
@@ -1882,12 +1872,12 @@
       "color": "rgb(127, 140, 151)",
       "font-size": "11px",
       "display": "inline",
-      "margin": "0px 0px 0px 6px"
+      "margin": "0px 0px 0px 8px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > tr[row] #4 > td[cell] \"–\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > tr[row] #5": {
       "display": "table-row"
@@ -1895,7 +1885,7 @@
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > tr[row] #5 > td[cell] \"svc:ledger-archive service critical not …\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px 7px 64px"
+      "padding": "8px 12px 8px 64px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > tr[row] #5 > td[cell] \"svc:ledger-archive service critical not …\" > span.mono": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
@@ -1904,32 +1894,32 @@
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > tr[row] #5 > td[cell] \"svc:ledger-archive service critical not …\" > span.dim": {
       "color": "rgb(127, 140, 151)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "display": "inline"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > tr[row] #5 > td[cell] \"svc:ledger-archive service critical not …\" > span.badge.warn": {
       "color": "rgb(245, 158, 11)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.3px",
+      "letter-spacing": "0.5px",
       "display": "inline-block",
       "background-color": "color(srgb 0.205333 0.177804 0.117333)",
-      "border-radius": "10px",
-      "padding": "1px 9px"
+      "border-radius": "999px",
+      "padding": "2px 8px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > tr[row] #5 > td[cell] \"svc:ledger-archive service critical not …\" > span.badge.neutral": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.3px",
+      "letter-spacing": "0.5px",
       "display": "inline-block",
       "background-color": "rgb(28, 36, 44)",
-      "border-radius": "10px",
-      "padding": "1px 9px"
+      "border-radius": "999px",
+      "padding": "2px 8px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > tr[row] #5 > td[cell] \"svc:ledger-archive service critical not …\" > div.dim": {
       "color": "rgb(127, 140, 151)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "display": "block"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > tr[row] #5 > td[cell].mono \"1 / 3\"": {
@@ -1937,12 +1927,12 @@
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > tr[row] #5 > td[cell] \"1.00 unknown 100 %\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > tr[row] #5 > td[cell] \"1.00 unknown 100 %\" > span.mono": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
@@ -1953,19 +1943,19 @@
       "color": "rgb(127, 140, 151)",
       "font-size": "11px",
       "display": "inline",
-      "margin": "0px 0px 0px 6px"
+      "margin": "0px 0px 0px 8px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > tr[row] #5 > td[cell] \"–\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > tr[row] #6": {
       "display": "table-row"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > tr[row] #6 > td[cell] \"ent:cif-0002 entity\"": {
       "display": "table-cell",
-      "padding": "7px 10px 7px 46px"
+      "padding": "8px 12px 8px 46px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > tr[row] #6 > td[cell] \"ent:cif-0002 entity\" > span.mono": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
@@ -1974,18 +1964,18 @@
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > tr[row] #6 > td[cell] \"ent:cif-0002 entity\" > span.dim": {
       "color": "rgb(127, 140, 151)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "display": "inline"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > tr[row] #6 > td[cell].mono \"3 / 3\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > tr[row] #6 > td[cell] \"3.40 unknown 0 %\"": {
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > tr[row] #6 > td[cell] \"3.40 unknown 0 %\" > span.mono": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
@@ -1996,15 +1986,15 @@
       "color": "rgb(127, 140, 151)",
       "font-size": "11px",
       "display": "inline",
-      "margin": "0px 0px 0px 6px"
+      "margin": "0px 0px 0px 8px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > tr[row] #6 > td[cell] \"–\"": {
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > div.foot": {
       "color": "rgb(127, 140, 151)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "display": "block",
       "margin": "8px 0px 0px"
     },
@@ -2016,17 +2006,17 @@
       "border-bottom": "1px solid rgb(36, 45, 54)",
       "border-left": "1px solid rgb(36, 45, 54)",
       "border-radius": "6px",
-      "padding": "14px 16px",
+      "padding": "16px",
       "margin": "0px 0px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > h2[heading] \"REPORTING READINESS — FUNCTION REGISTER\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.7px",
+      "letter-spacing": "0.6px",
       "text-transform": "uppercase",
       "display": "block",
-      "margin": "0px 0px 10px"
+      "margin": "0px 0px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > div.tiles": {
       "display": "grid",
@@ -2042,19 +2032,19 @@
       "border-bottom": "1px solid rgb(36, 45, 54)",
       "border-left": "1px solid rgb(36, 45, 54)",
       "border-radius": "6px",
-      "padding": "14px 16px"
+      "padding": "16px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > div.tiles > div.panel.num > div.label": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "letter-spacing": "0.6px",
       "text-transform": "uppercase",
       "display": "block",
-      "margin": "0px 0px 6px"
+      "margin": "0px 0px 8px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > div.tiles > div.panel.num > div.row": {
       "display": "flex",
-      "gap": "10px"
+      "gap": "12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > div.tiles > div.panel.num > div.row > span.value.mono": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
@@ -2064,14 +2054,14 @@
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > div.tiles > div.panel.num > div.row > span.unknown": {
       "color": "rgb(127, 140, 151)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "display": "block",
       "border-top": "1px dashed rgb(51, 64, 76)",
       "border-right": "1px dashed rgb(51, 64, 76)",
       "border-bottom": "1px dashed rgb(51, 64, 76)",
       "border-left": "1px dashed rgb(51, 64, 76)",
       "border-radius": "4px",
-      "padding": "1px 6px"
+      "padding": "2px 8px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > div.tiles > div.panel.num #2": {
       "display": "block",
@@ -2081,19 +2071,19 @@
       "border-bottom": "1px solid rgb(36, 45, 54)",
       "border-left": "1px solid rgb(36, 45, 54)",
       "border-radius": "6px",
-      "padding": "14px 16px"
+      "padding": "16px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > div.tiles > div.panel.num #2 > div.label": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "letter-spacing": "0.6px",
       "text-transform": "uppercase",
       "display": "block",
-      "margin": "0px 0px 6px"
+      "margin": "0px 0px 8px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > div.tiles > div.panel.num #2 > div.row": {
       "display": "flex",
-      "gap": "10px"
+      "gap": "12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > div.tiles > div.panel.num #2 > div.row > span.value.mono": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
@@ -2103,14 +2093,14 @@
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > div.tiles > div.panel.num #2 > div.row > span.unknown": {
       "color": "rgb(127, 140, 151)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "display": "block",
       "border-top": "1px dashed rgb(51, 64, 76)",
       "border-right": "1px dashed rgb(51, 64, 76)",
       "border-bottom": "1px dashed rgb(51, 64, 76)",
       "border-left": "1px dashed rgb(51, 64, 76)",
       "border-radius": "4px",
-      "padding": "1px 6px"
+      "padding": "2px 8px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > div.tiles > div.panel.num #3": {
       "display": "block",
@@ -2120,19 +2110,19 @@
       "border-bottom": "1px solid rgb(36, 45, 54)",
       "border-left": "1px solid rgb(36, 45, 54)",
       "border-radius": "6px",
-      "padding": "14px 16px"
+      "padding": "16px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > div.tiles > div.panel.num #3 > div.label": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "letter-spacing": "0.6px",
       "text-transform": "uppercase",
       "display": "block",
-      "margin": "0px 0px 6px"
+      "margin": "0px 0px 8px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > div.tiles > div.panel.num #3 > div.row": {
       "display": "flex",
-      "gap": "10px"
+      "gap": "12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > div.tiles > div.panel.num #3 > div.row > span.value.mono": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
@@ -2142,14 +2132,14 @@
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > div.tiles > div.panel.num #3 > div.row > span.unknown": {
       "color": "rgb(127, 140, 151)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "display": "block",
       "border-top": "1px dashed rgb(51, 64, 76)",
       "border-right": "1px dashed rgb(51, 64, 76)",
       "border-bottom": "1px dashed rgb(51, 64, 76)",
       "border-left": "1px dashed rgb(51, 64, 76)",
       "border-radius": "4px",
-      "padding": "1px 6px"
+      "padding": "2px 8px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > div.tiles > div.panel.num #4": {
       "display": "block",
@@ -2159,19 +2149,19 @@
       "border-bottom": "1px solid rgb(36, 45, 54)",
       "border-left": "1px solid rgb(36, 45, 54)",
       "border-radius": "6px",
-      "padding": "14px 16px"
+      "padding": "16px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > div.tiles > div.panel.num #4 > div.label": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "letter-spacing": "0.6px",
       "text-transform": "uppercase",
       "display": "block",
-      "margin": "0px 0px 6px"
+      "margin": "0px 0px 8px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > div.tiles > div.panel.num #4 > div.row": {
       "display": "flex",
-      "gap": "10px"
+      "gap": "12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > div.tiles > div.panel.num #4 > div.row > span.value.mono": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
@@ -2181,23 +2171,22 @@
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > div.tiles > div.panel.num #4 > div.row > span.unknown": {
       "color": "rgb(127, 140, 151)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "display": "block",
       "border-top": "1px dashed rgb(51, 64, 76)",
       "border-right": "1px dashed rgb(51, 64, 76)",
       "border-bottom": "1px dashed rgb(51, 64, 76)",
       "border-left": "1px dashed rgb(51, 64, 76)",
       "border-radius": "4px",
-      "padding": "1px 6px"
+      "padding": "2px 8px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > div.tiles > div.panel.num #4 > div.hint": {
       "color": "rgb(127, 140, 151)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "display": "block",
       "margin": "4px 0px 0px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > table[table].data.functions": {
-      "font-size": "13px",
       "display": "table"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > table[table].data.functions > thead[rowgroup]": {
@@ -2208,73 +2197,73 @@
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > table[table].data.functions > thead[rowgroup] > tr[row] > th[columnheader] \"FUNCTION\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > table[table].data.functions > thead[rowgroup] > tr[row] > th[columnheader] \"CODE\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > table[table].data.functions > thead[rowgroup] > tr[row] > th[columnheader] \"TIER\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > table[table].data.functions > thead[rowgroup] > tr[row] > th[columnheader] \"RTO\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > table[table].data.functions > thead[rowgroup] > tr[row] > th[columnheader] \"RPO\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > table[table].data.functions > thead[rowgroup] > tr[row] > th[columnheader] \"ASSESSED\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > table[table].data.functions > thead[rowgroup] > tr[row] > th[columnheader] \"COVERAGE\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > table[table].data.functions > tbody": {
       "display": "table-row-group"
@@ -2285,7 +2274,7 @@
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > table[table].data.functions > tr[row] > td[cell] \"cif-0001 Payments\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > table[table].data.functions > tr[row] > td[cell] \"cif-0001 Payments\" > span.mono": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
@@ -2297,38 +2286,38 @@
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > table[table].data.functions > tr[row] > td[cell] \"critical\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > table[table].data.functions > tr[row] > td[cell].mono \"1 h\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > table[table].data.functions > tr[row] > td[cell].mono \"5 min\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > table[table].data.functions > tr[row] > td[cell].mono \"2026-10-01\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > table[table].data.functions > tr[row] > td[cell] \"70 % unknown 10 %\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > table[table].data.functions > tr[row] > td[cell] \"70 % unknown 10 %\" > span.mono": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
@@ -2339,14 +2328,14 @@
       "color": "rgb(127, 140, 151)",
       "font-size": "11px",
       "display": "inline",
-      "margin": "0px 0px 0px 6px"
+      "margin": "0px 0px 0px 8px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > table[table].data.functions > tr[row] #2": {
       "display": "table-row"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > table[table].data.functions > tr[row] #2 > td[cell] \"cif-0002 Reporting\"": {
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > table[table].data.functions > tr[row] #2 > td[cell] \"cif-0002 Reporting\" > span.mono": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
@@ -2357,33 +2346,33 @@
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > table[table].data.functions > tr[row] #2 > td[cell] \"important\"": {
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > table[table].data.functions > tr[row] #2 > td[cell].mono \"–\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > table[table].data.functions > tr[row] #2 > td[cell].mono \"–\" #2": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > table[table].data.functions > tr[row] #2 > td[cell].mono \"–\" #3": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > table[table].data.functions > tr[row] #2 > td[cell] \"unknown unknown 100 %\"": {
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > table[table].data.functions > tr[row] #2 > td[cell] \"unknown unknown 100 %\" > span.mono": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
@@ -2394,10 +2383,10 @@
       "color": "rgb(127, 140, 151)",
       "font-size": "11px",
       "display": "inline",
-      "margin": "0px 0px 0px 6px"
+      "margin": "0px 0px 0px 8px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > dl[DescriptionList].register": {
-      "font-size": "12.5px",
+      "font-size": "12px",
       "display": "grid",
       "grid-template-columns": "max-content 1fr",
       "margin": "12px 0px 0px",
@@ -2423,12 +2412,12 @@
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > dl[DescriptionList].register > dd[definition].mono": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
-      "font-size": "11.5px",
+      "font-size": "11.04px",
       "display": "block"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > div.foot": {
       "color": "rgb(127, 140, 151)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "display": "block",
       "margin": "8px 0px 0px"
     },

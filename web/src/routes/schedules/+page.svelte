@@ -137,7 +137,7 @@
         : 'interval-based recurring runs'}
 />
 
-<Panel style="margin-bottom: var(--space-3-5)" scroll>
+<Panel style="margin-bottom: var(--space-4)" scroll>
     {#if error}
         <State kind="error">Failed to load schedules: {error}</State>
     {:else if !schedules}
@@ -267,7 +267,7 @@
                 Scheduled runs go through the normal run path — production-classified environments
                 still park for approval.
             </div>
-            {#if createError}<State kind="error" style="margin-top: var(--space-2-5)">
+            {#if createError}<State kind="error" style="margin-top: var(--space-3)">
                     {createError}
                 </State>{/if}
         {/if}
@@ -281,19 +281,19 @@
     .create {
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-        gap: var(--space-3) var(--space-4-5);
+        gap: var(--space-3) var(--space-5);
         align-items: end;
     }
     .create label {
         display: flex;
         flex-direction: column;
-        gap: 5px;
-        font-size: var(--font-size-sm);
+        gap: var(--space-1);
+        font-size: var(--font-size-xs);
         color: var(--text-dim);
     }
     .hint {
         color: var(--text-faint);
         font-size: var(--font-size-xs);
-        margin-top: var(--space-2-5);
+        margin-top: var(--space-3);
     }
 </style>

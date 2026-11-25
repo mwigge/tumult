@@ -8,7 +8,7 @@
     "html": {
       "color": "rgb(216, 222, 228)",
       "font-family": "-apple-system, \"Segoe UI\", Inter, Roboto, sans-serif",
-      "font-size": "14px",
+      "font-size": "13px",
       "font-weight": "400",
       "line-height": "1.5",
       "letter-spacing": "normal",
@@ -38,20 +38,20 @@
     "div.shell > aside[complementary].side > div.brand": {
       "display": "block",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "0px 18px 14px",
-      "margin": "0px 0px 10px"
+      "padding": "0px 20px 16px",
+      "margin": "0px 0px 12px"
     },
     "div.shell > aside[complementary].side > div.brand > div.name": {
-      "font-size": "17px",
+      "font-size": "18px",
       "font-weight": "700",
-      "letter-spacing": "0.4px",
+      "letter-spacing": "0.5px",
       "display": "block"
     },
     "div.shell > aside[complementary].side > div.brand > div.tag": {
       "color": "rgb(127, 140, 151)",
       "font-size": "11px",
       "display": "block",
-      "margin": "2px 0px 0px"
+      "margin": "4px 0px 0px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\"": {
       "display": "block",
@@ -59,278 +59,256 @@
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◧ Overview\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◧ Overview\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◎ Resilience\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◎ Resilience\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◭ Performance\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◭ Performance\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▦ Scores\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▦ Scores\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚖ DORA\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚖ DORA\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⟲ Disaster recovery\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⟲ Disaster recovery\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚗ Experiments\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚗ Experiments\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▶ Runs\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▶ Runs\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✚ Author\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✚ Author\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"☷ GameDays\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"☷ GameDays\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✓ Approvals\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✓ Approvals\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link].active \"✎ Manual\"": {
-      "font-size": "13.5px",
       "display": "flex",
       "background-color": "rgb(28, 36, 44)",
       "border-left": "2px solid rgb(94, 177, 239)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link].active \"✎ Manual\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"≣ Logs\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"≣ Logs\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⌁ Traces\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⌁ Traces\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"∿ Metrics\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"∿ Metrics\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✳ Star Map\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✳ Star Map\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✦ Ask\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✦ Ask\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▤ Reports\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▤ Reports\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◔ Events\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◔ Events\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚿ Users\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚿ Users\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"➤ Webhooks\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"➤ Webhooks\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"↻ Schedules\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"↻ Schedules\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > button[button].theme \"◐ dark\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "display": "block",
       "border-top": "1px solid rgb(36, 45, 54)",
       "border-right": "1px solid rgb(36, 45, 54)",
       "border-bottom": "1px solid rgb(36, 45, 54)",
       "border-left": "1px solid rgb(36, 45, 54)",
       "border-radius": "4px",
-      "padding": "2px 8px",
-      "margin": "8px 18px 0px"
+      "padding": "4px 8px",
+      "margin": "8px 20px 0px"
     },
     "div.shell > main[main].main": {
       "display": "block",
-      "padding": "22px 26px 60px"
+      "padding": "24px 28px 60px"
     },
     "div.shell > main[main].main > div.manual": {
       "display": "block"
     },
     "div.shell > main[main].main > div.manual > div.page-head": {
       "display": "flex",
-      "margin": "0px 0px 18px",
-      "gap": "14px"
+      "margin": "0px 0px 20px",
+      "gap": "16px"
     },
     "div.shell > main[main].main > div.manual > div.page-head > h1[heading] \"Manual evidence\"": {
-      "font-size": "19px",
+      "font-size": "18px",
       "font-weight": "600",
       "display": "block"
     },
     "div.shell > main[main].main > div.manual > div.page-head > span.sub": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "12.5px",
+      "font-size": "12px",
       "display": "block"
     },
     "div.shell > main[main].main > div.manual > div.page-head > div.controls": {
@@ -342,7 +320,7 @@
       "color": "rgb(139, 152, 165)",
       "font-size": "12px",
       "display": "flex",
-      "gap": "6px"
+      "gap": "8px"
     },
     "div.shell > main[main].main > div.manual > div.page-head > div.controls > label[LabelText].actor > input[textbox] \"Acting as\"": {
       "color": "rgb(216, 222, 228)",
@@ -355,8 +333,8 @@
       "border-right": "1px solid rgb(97, 109, 121)",
       "border-bottom": "1px solid rgb(97, 109, 121)",
       "border-left": "1px solid rgb(97, 109, 121)",
-      "border-radius": "5px",
-      "padding": "6px 9px"
+      "border-radius": "6px",
+      "padding": "8px"
     },
     "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[tablist].seg \"manual sections\"": {
       "display": "flex",
@@ -364,59 +342,59 @@
       "border-right": "1px solid rgb(51, 64, 76)",
       "border-bottom": "1px solid rgb(51, 64, 76)",
       "border-left": "1px solid rgb(51, 64, 76)",
-      "border-radius": "5px"
+      "border-radius": "6px"
     },
     "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[tablist].seg \"manual sections\" > button[tab] \"New entry\"": {
       "color": "rgb(139, 152, 165)",
       "font-family": "Arial",
-      "font-size": "12.5px",
+      "font-size": "12px",
       "line-height": "normal",
       "display": "block",
-      "padding": "5px 12px"
+      "padding": "4px 12px"
     },
     "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[tablist].seg \"manual sections\" > button[tab].active \"Plans\"": {
       "color": "rgb(255, 255, 255)",
       "font-family": "Arial",
-      "font-size": "12.5px",
+      "font-size": "12px",
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(58, 106, 145)",
       "border-left": "1px solid rgb(51, 64, 76)",
-      "padding": "5px 12px"
+      "padding": "4px 12px"
     },
     "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[tablist].seg \"manual sections\" > button[tab] \"Verification queue\"": {
       "color": "rgb(139, 152, 165)",
       "font-family": "Arial",
-      "font-size": "12.5px",
+      "font-size": "12px",
       "line-height": "normal",
       "display": "block",
       "border-left": "1px solid rgb(51, 64, 76)",
-      "padding": "5px 12px"
+      "padding": "4px 12px"
     },
     "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[tablist].seg \"manual sections\" > button[tab] \"All records\"": {
       "color": "rgb(139, 152, 165)",
       "font-family": "Arial",
-      "font-size": "12.5px",
+      "font-size": "12px",
       "line-height": "normal",
       "display": "block",
       "border-left": "1px solid rgb(51, 64, 76)",
-      "padding": "5px 12px"
+      "padding": "4px 12px"
     },
     "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[tablist].seg \"manual sections\" > button[tab] \"Import\"": {
       "color": "rgb(139, 152, 165)",
       "font-family": "Arial",
-      "font-size": "12.5px",
+      "font-size": "12px",
       "line-height": "normal",
       "display": "block",
       "border-left": "1px solid rgb(51, 64, 76)",
-      "padding": "5px 12px"
+      "padding": "4px 12px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\"": {
       "display": "block"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans": {
       "display": "flex",
-      "gap": "14px"
+      "gap": "16px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel": {
       "display": "block",
@@ -426,19 +404,18 @@
       "border-bottom": "1px solid rgb(36, 45, 54)",
       "border-left": "1px solid rgb(36, 45, 54)",
       "border-radius": "6px",
-      "padding": "14px 16px"
+      "padding": "16px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > h2[heading] \"PLANS\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.7px",
+      "letter-spacing": "0.6px",
       "text-transform": "uppercase",
       "display": "block",
-      "margin": "0px 0px 10px"
+      "margin": "0px 0px 12px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data": {
-      "font-size": "13px",
       "display": "table"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > thead[rowgroup]": {
@@ -449,93 +426,93 @@
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"PLAN\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"TYPE\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"TARGET\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"OWNER\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"DUE\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"STATUS\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"REPEATS\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"RTO / RPO\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader]": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(51, 64, 76)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > tbody": {
       "display": "table-row-group"
@@ -546,7 +523,7 @@
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > tr[row].clickable > td[cell] \"payments failover\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > tr[row].clickable > td[cell] \"payments failover\" > button[button].row-button \"payments failover\"": {
       "display": "inline-block"
@@ -554,22 +531,22 @@
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > tr[row].clickable > td[cell] \"failover\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > tr[row].clickable > td[cell] \"failover\" > span.badge.neutral": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.3px",
+      "letter-spacing": "0.5px",
       "display": "inline-block",
       "background-color": "rgb(28, 36, 44)",
-      "border-radius": "10px",
-      "padding": "1px 9px"
+      "border-radius": "999px",
+      "padding": "2px 8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > tr[row].clickable > td[cell] \"payments-api · prod\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > tr[row].clickable > td[cell] \"payments-api · prod\" > span.dim": {
       "color": "rgb(127, 140, 151)",
@@ -579,12 +556,12 @@
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > tr[row].clickable > td[cell] \"alice\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > tr[row].clickable > td[cell].nowrap \"2026-11-13 overdue\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > tr[row].clickable > td[cell].nowrap \"2026-11-13 overdue\" > span.mono": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
@@ -593,50 +570,50 @@
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > tr[row].clickable > td[cell].nowrap \"2026-11-13 overdue\" > span.badge.fail": {
       "color": "rgb(251, 80, 78)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.3px",
+      "letter-spacing": "0.5px",
       "display": "inline-block",
       "background-color": "color(srgb 0.208627 0.13498 0.154118)",
-      "border-radius": "10px",
-      "padding": "1px 9px",
-      "margin": "0px 0px 0px 6px"
+      "border-radius": "999px",
+      "padding": "2px 8px",
+      "margin": "0px 0px 0px 8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > tr[row].clickable > td[cell] \"planned\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > tr[row].clickable > td[cell] \"planned\" > span.badge.warn": {
       "color": "rgb(245, 158, 11)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.3px",
+      "letter-spacing": "0.5px",
       "display": "inline-block",
       "background-color": "color(srgb 0.205333 0.177804 0.117333)",
-      "border-radius": "10px",
-      "padding": "1px 9px"
+      "border-radius": "999px",
+      "padding": "2px 8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > tr[row].clickable > td[cell] \"every 90 days\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > tr[row].clickable > td[cell].mono \"600 s / 60 s\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > tr[row].clickable > td[cell] \"Edit plan payments failover Cancel plan …\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > tr[row].clickable > td[cell] \"Edit plan payments failover Cancel plan …\" > div.row-actions": {
       "display": "flex",
-      "gap": "6px"
+      "gap": "8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > tr[row].clickable > td[cell] \"Edit plan payments failover Cancel plan …\" > div.row-actions > button[button].btn \"Edit plan payments failover\"": {
       "font-family": "Arial",
@@ -648,7 +625,7 @@
       "border-bottom": "1px solid rgb(51, 64, 76)",
       "border-left": "1px solid rgb(51, 64, 76)",
       "border-radius": "6px",
-      "padding": "6px 14px"
+      "padding": "8px 16px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > tr[row].clickable > td[cell] \"Edit plan payments failover Cancel plan …\" > div.row-actions > button[button].btn.danger \"Cancel plan payments failover\"": {
       "color": "rgb(251, 80, 78)",
@@ -661,7 +638,7 @@
       "border-bottom": "1px solid rgb(251, 80, 78)",
       "border-left": "1px solid rgb(251, 80, 78)",
       "border-radius": "6px",
-      "padding": "6px 14px"
+      "padding": "8px 16px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > tr[row].clickable #2": {
       "display": "table-row",
@@ -670,7 +647,7 @@
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"ledger restore\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"ledger restore\" > button[button].row-button \"ledger restore\"": {
       "display": "inline-block"
@@ -678,22 +655,22 @@
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"failover\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"failover\" > span.badge.neutral": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.3px",
+      "letter-spacing": "0.5px",
       "display": "inline-block",
       "background-color": "rgb(28, 36, 44)",
-      "border-radius": "10px",
-      "padding": "1px 9px"
+      "border-radius": "999px",
+      "padding": "2px 8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"payments-api · prod\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"payments-api · prod\" > span.dim": {
       "color": "rgb(127, 140, 151)",
@@ -703,12 +680,12 @@
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"alice\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > tr[row].clickable #2 > td[cell].nowrap \"2026-11-24\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > tr[row].clickable #2 > td[cell].nowrap \"2026-11-24\" > span.mono": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
@@ -718,38 +695,38 @@
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"planned\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"planned\" > span.badge.warn": {
       "color": "rgb(245, 158, 11)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.3px",
+      "letter-spacing": "0.5px",
       "display": "inline-block",
       "background-color": "color(srgb 0.205333 0.177804 0.117333)",
-      "border-radius": "10px",
-      "padding": "1px 9px"
+      "border-radius": "999px",
+      "padding": "2px 8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"every 90 days\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > tr[row].clickable #2 > td[cell].mono \"600 s / 60 s\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"Edit plan ledger restore Cancel plan led…\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"Edit plan ledger restore Cancel plan led…\" > div.row-actions": {
       "display": "flex",
-      "gap": "6px"
+      "gap": "8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"Edit plan ledger restore Cancel plan led…\" > div.row-actions > button[button].btn \"Edit plan ledger restore\"": {
       "font-family": "Arial",
@@ -761,7 +738,7 @@
       "border-bottom": "1px solid rgb(51, 64, 76)",
       "border-left": "1px solid rgb(51, 64, 76)",
       "border-radius": "6px",
-      "padding": "6px 14px"
+      "padding": "8px 16px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"Edit plan ledger restore Cancel plan led…\" > div.row-actions > button[button].btn.danger \"Cancel plan ledger restore\"": {
       "color": "rgb(251, 80, 78)",
@@ -774,7 +751,7 @@
       "border-bottom": "1px solid rgb(251, 80, 78)",
       "border-left": "1px solid rgb(251, 80, 78)",
       "border-radius": "6px",
-      "padding": "6px 14px"
+      "padding": "8px 16px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > tr[row].detail-row": {
       "display": "table-row"
@@ -782,11 +759,11 @@
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > tr[row].detail-row > td[cell] \"Reason to cancel Cancel this plan Keep i…\"": {
       "display": "table-cell",
       "background-color": "rgb(17, 22, 27)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > tr[row].detail-row > td[cell] \"Reason to cancel Cancel this plan Keep i…\" > div.cancel": {
       "display": "flex",
-      "padding": "6px 2px",
+      "padding": "8px 4px",
       "gap": "12px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > tr[row].detail-row > td[cell] \"Reason to cancel Cancel this plan Keep i…\" > div.cancel > label[LabelText].grow": {
@@ -806,8 +783,8 @@
       "border-right": "1px solid rgb(97, 109, 121)",
       "border-bottom": "1px solid rgb(97, 109, 121)",
       "border-left": "1px solid rgb(97, 109, 121)",
-      "border-radius": "5px",
-      "padding": "6px 9px"
+      "border-radius": "6px",
+      "padding": "8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > tr[row].detail-row > td[cell] \"Reason to cancel Cancel this plan Keep i…\" > div.cancel > button[button].btn.danger \"Cancel this plan\"": {
       "color": "rgb(251, 80, 78)",
@@ -820,7 +797,7 @@
       "border-bottom": "1px solid rgb(251, 80, 78)",
       "border-left": "1px solid rgb(251, 80, 78)",
       "border-radius": "6px",
-      "padding": "6px 14px"
+      "padding": "8px 16px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > tr[row].detail-row > td[cell] \"Reason to cancel Cancel this plan Keep i…\" > div.cancel > button[button].btn \"Keep it\"": {
       "font-family": "Arial",
@@ -832,7 +809,7 @@
       "border-bottom": "1px solid rgb(51, 64, 76)",
       "border-left": "1px solid rgb(51, 64, 76)",
       "border-radius": "6px",
-      "padding": "6px 14px"
+      "padding": "8px 16px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel.form-panel": {
       "display": "block",
@@ -842,20 +819,20 @@
       "border-bottom": "1px solid rgb(36, 45, 54)",
       "border-left": "1px solid rgb(36, 45, 54)",
       "border-radius": "6px",
-      "padding": "14px 16px"
+      "padding": "16px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel.form-panel > h2[heading] \"PLAN AN EXERCISE\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.7px",
+      "letter-spacing": "0.6px",
       "text-transform": "uppercase",
       "display": "block",
-      "margin": "0px 0px 10px"
+      "margin": "0px 0px 12px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel.form-panel > div.form": {
       "display": "flex",
-      "gap": "10px"
+      "gap": "12px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel.form-panel > div.form > label[LabelText]": {
       "color": "rgb(139, 152, 165)",
@@ -874,13 +851,13 @@
       "border-right": "1px solid rgb(97, 109, 121)",
       "border-bottom": "1px solid rgb(97, 109, 121)",
       "border-left": "1px solid rgb(97, 109, 121)",
-      "border-radius": "5px",
-      "padding": "6px 9px"
+      "border-radius": "6px",
+      "padding": "8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel.form-panel > div.form > div.row2": {
       "display": "grid",
       "grid-template-columns": "1fr 1fr",
-      "gap": "10px"
+      "gap": "12px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel.form-panel > div.form > div.row2 > label[LabelText]": {
       "color": "rgb(139, 152, 165)",
@@ -899,8 +876,8 @@
       "border-right": "1px solid rgb(97, 109, 121)",
       "border-bottom": "1px solid rgb(97, 109, 121)",
       "border-left": "1px solid rgb(97, 109, 121)",
-      "border-radius": "5px",
-      "padding": "6px 9px"
+      "border-radius": "6px",
+      "padding": "8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel.form-panel > div.form > div.row2 > label[LabelText] #2": {
       "color": "rgb(139, 152, 165)",
@@ -919,13 +896,13 @@
       "border-right": "1px solid rgb(97, 109, 121)",
       "border-bottom": "1px solid rgb(97, 109, 121)",
       "border-left": "1px solid rgb(97, 109, 121)",
-      "border-radius": "5px",
-      "padding": "6px 9px"
+      "border-radius": "6px",
+      "padding": "8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel.form-panel > div.form > div.row2 #2": {
       "display": "grid",
       "grid-template-columns": "1fr 1fr",
-      "gap": "10px"
+      "gap": "12px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel.form-panel > div.form > div.row2 #2 > label[LabelText]": {
       "color": "rgb(139, 152, 165)",
@@ -944,8 +921,8 @@
       "border-right": "1px solid rgb(97, 109, 121)",
       "border-bottom": "1px solid rgb(97, 109, 121)",
       "border-left": "1px solid rgb(97, 109, 121)",
-      "border-radius": "5px",
-      "padding": "6px 9px"
+      "border-radius": "6px",
+      "padding": "8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel.form-panel > div.form > div.row2 #2 > label[LabelText] #2": {
       "color": "rgb(139, 152, 165)",
@@ -964,13 +941,13 @@
       "border-right": "1px solid rgb(97, 109, 121)",
       "border-bottom": "1px solid rgb(97, 109, 121)",
       "border-left": "1px solid rgb(97, 109, 121)",
-      "border-radius": "5px",
-      "padding": "6px 9px"
+      "border-radius": "6px",
+      "padding": "8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel.form-panel > div.form > div.row2 #3": {
       "display": "grid",
       "grid-template-columns": "1fr 1fr",
-      "gap": "10px"
+      "gap": "12px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel.form-panel > div.form > div.row2 #3 > label[LabelText]": {
       "color": "rgb(139, 152, 165)",
@@ -989,8 +966,8 @@
       "border-right": "1px solid rgb(97, 109, 121)",
       "border-bottom": "1px solid rgb(97, 109, 121)",
       "border-left": "1px solid rgb(97, 109, 121)",
-      "border-radius": "5px",
-      "padding": "6px 9px"
+      "border-radius": "6px",
+      "padding": "8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel.form-panel > div.form > div.row2 #3 > label[LabelText] #2": {
       "color": "rgb(139, 152, 165)",
@@ -1009,13 +986,13 @@
       "border-right": "1px solid rgb(97, 109, 121)",
       "border-bottom": "1px solid rgb(97, 109, 121)",
       "border-left": "1px solid rgb(97, 109, 121)",
-      "border-radius": "5px",
-      "padding": "6px 9px"
+      "border-radius": "6px",
+      "padding": "8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel.form-panel > div.form > div.row2 #4": {
       "display": "grid",
       "grid-template-columns": "1fr 1fr",
-      "gap": "10px"
+      "gap": "12px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel.form-panel > div.form > div.row2 #4 > label[LabelText]": {
       "color": "rgb(139, 152, 165)",
@@ -1033,8 +1010,8 @@
       "border-right": "1px solid rgb(97, 109, 121)",
       "border-bottom": "1px solid rgb(97, 109, 121)",
       "border-left": "1px solid rgb(97, 109, 121)",
-      "border-radius": "5px",
-      "padding": "5px 8px"
+      "border-radius": "6px",
+      "padding": "4px 8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel.form-panel > div.form > div.row2 #4 > label[LabelText] #2": {
       "color": "rgb(139, 152, 165)",
@@ -1052,13 +1029,13 @@
       "border-right": "1px solid rgb(97, 109, 121)",
       "border-bottom": "1px solid rgb(97, 109, 121)",
       "border-left": "1px solid rgb(97, 109, 121)",
-      "border-radius": "5px",
-      "padding": "5px 8px"
+      "border-radius": "6px",
+      "padding": "4px 8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel.form-panel > div.form > div.row3": {
       "display": "grid",
       "grid-template-columns": "1fr 1fr 1fr",
-      "gap": "10px"
+      "gap": "12px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel.form-panel > div.form > div.row3 > label[LabelText]": {
       "color": "rgb(139, 152, 165)",
@@ -1077,8 +1054,8 @@
       "border-right": "1px solid rgb(97, 109, 121)",
       "border-bottom": "1px solid rgb(97, 109, 121)",
       "border-left": "1px solid rgb(97, 109, 121)",
-      "border-radius": "5px",
-      "padding": "6px 9px"
+      "border-radius": "6px",
+      "padding": "8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel.form-panel > div.form > div.row3 > label[LabelText] #2": {
       "color": "rgb(139, 152, 165)",
@@ -1097,8 +1074,8 @@
       "border-right": "1px solid rgb(97, 109, 121)",
       "border-bottom": "1px solid rgb(97, 109, 121)",
       "border-left": "1px solid rgb(97, 109, 121)",
-      "border-radius": "5px",
-      "padding": "6px 9px"
+      "border-radius": "6px",
+      "padding": "8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel.form-panel > div.form > div.row3 > label[LabelText] #3": {
       "color": "rgb(139, 152, 165)",
@@ -1117,8 +1094,8 @@
       "border-right": "1px solid rgb(97, 109, 121)",
       "border-bottom": "1px solid rgb(97, 109, 121)",
       "border-left": "1px solid rgb(97, 109, 121)",
-      "border-radius": "5px",
-      "padding": "6px 9px"
+      "border-radius": "6px",
+      "padding": "8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel.form-panel > div.form > p[paragraph].note": {
       "color": "rgb(127, 140, 151)",
@@ -1133,7 +1110,6 @@
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel.form-panel > div.form > div.actions > button[button].btn.primary \"Save plan\"": {
       "color": "rgb(255, 255, 255)",
       "font-family": "Arial",
-      "font-size": "13px",
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(58, 106, 145)",
@@ -1142,7 +1118,7 @@
       "border-bottom": "1px solid rgb(58, 106, 145)",
       "border-left": "1px solid rgb(58, 106, 145)",
       "border-radius": "6px",
-      "padding": "6px 14px"
+      "padding": "8px 16px"
     },
     "div": {
       "display": "block"

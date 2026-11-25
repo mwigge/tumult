@@ -65,7 +65,7 @@
 <style>
     .verdict {
         margin-top: var(--space-2);
-        padding: var(--space-2) var(--space-2-5);
+        padding: var(--space-2) var(--space-3);
         border-radius: var(--radius-xl);
         border: var(--border-width-sm) solid var(--ok);
         background: color-mix(in srgb, var(--ok) 8%, transparent);
@@ -79,6 +79,6 @@
     }
     .problems {
         margin: 0;
-        padding-left: var(--space-4-5);
+        padding-left: var(--space-5);
     }
 </style>

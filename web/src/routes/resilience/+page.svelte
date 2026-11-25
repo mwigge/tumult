@@ -583,16 +583,16 @@
 <style>
     .muted {
         color: var(--text-dim);
-        font-size: var(--font-size-sm);
+        font-size: var(--font-size-xs);
     }
     .meaning {
-        margin: 0 0 var(--space-2-5);
+        margin: 0 0 var(--space-3);
     }
     .counts {
         display: flex;
         gap: var(--space-2);
         align-items: center;
-        margin-bottom: var(--space-2-5);
+        margin-bottom: var(--space-3);
     }
     .risks {
         list-style: none;
@@ -600,7 +600,7 @@
         padding: 0;
     }
     .risks li {
-        padding: 9px 0;
+        padding: var(--space-2) 0;
         border-top: var(--border-width-sm) solid var(--border);
     }
     .risks .row {
@@ -624,13 +624,13 @@
     }
     .risks .detail {
         color: var(--text-dim);
-        font-size: var(--font-size-sm);
-        margin-top: 3px;
+        font-size: var(--font-size-xs);
+        margin-top: var(--space-1);
     }
     .risks .hint {
         color: var(--text-faint);
         font-size: var(--font-size-xs);
-        margin-top: var(--space-0-5);
+        margin-top: var(--space-1);
     }
     .link {
         background: none;
@@ -639,7 +639,7 @@
         cursor: pointer;
         padding: 0;
         font: inherit;
-        font-size: var(--font-size-sm);
+        font-size: var(--font-size-xs);
     }
     .suppress {
         display: flex;
@@ -661,10 +661,10 @@
     }
     .suppress label {
         display: flex;
-        gap: var(--space-1-5);
+        gap: var(--space-2);
         align-items: center;
         color: var(--text-dim);
-        font-size: var(--font-size-sm);
+        font-size: var(--font-size-xs);
     }
     .suppress button[type='submit'] {
         background: var(--accent-dim);
@@ -680,11 +680,11 @@
     }
     .form-error {
         color: var(--fail);
-        font-size: var(--font-size-sm);
+        font-size: var(--font-size-xs);
     }
     .score,
     .below {
-        margin-top: var(--space-3-5);
+        margin-top: var(--space-4);
     }
     .headline {
         display: flex;
@@ -693,7 +693,7 @@
         margin-bottom: var(--space-3);
     }
     .headline .value {
-        font-size: 34px;
+        font-size: var(--font-size-4xl);
         font-weight: var(--font-weight-strong);
     }
     table {
@@ -705,22 +705,22 @@
         text-align: left;
         color: var(--text-dim);
         font-weight: var(--font-weight-strong);
-        font-size: var(--font-size-2xs);
+        font-size: var(--font-size-3xs);
         text-transform: uppercase;
         letter-spacing: var(--letter-spacing-sm);
-        padding: var(--space-1-5) var(--space-2);
+        padding: var(--space-2);
         border-bottom: var(--border-width-sm) solid var(--border);
     }
     td {
-        padding: var(--space-1-5) var(--space-2);
+        padding: var(--space-2);
         border-bottom: var(--border-width-sm) solid var(--border);
     }
     .malformed {
-        margin-top: var(--space-2-5);
-        font-size: var(--font-size-sm);
+        margin-top: var(--space-3);
+        font-size: var(--font-size-xs);
     }
     .malformed ul {
-        margin: var(--space-1-5) 0 0;
-        padding-left: var(--space-4-5);
+        margin: var(--space-2) 0 0;
+        padding-left: var(--space-5);
     }
 </style>

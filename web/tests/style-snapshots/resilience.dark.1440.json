@@ -8,7 +8,7 @@
     "html": {
       "color": "rgb(216, 222, 228)",
       "font-family": "-apple-system, \"Segoe UI\", Inter, Roboto, sans-serif",
-      "font-size": "14px",
+      "font-size": "13px",
       "font-weight": "400",
       "line-height": "1.5",
       "letter-spacing": "normal",
@@ -38,20 +38,20 @@
     "div.shell > aside[complementary].side > div.brand": {
       "display": "block",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "0px 18px 14px",
-      "margin": "0px 0px 10px"
+      "padding": "0px 20px 16px",
+      "margin": "0px 0px 12px"
     },
     "div.shell > aside[complementary].side > div.brand > div.name": {
-      "font-size": "17px",
+      "font-size": "18px",
       "font-weight": "700",
-      "letter-spacing": "0.4px",
+      "letter-spacing": "0.5px",
       "display": "block"
     },
     "div.shell > aside[complementary].side > div.brand > div.tag": {
       "color": "rgb(127, 140, 151)",
       "font-size": "11px",
       "display": "block",
-      "margin": "2px 0px 0px"
+      "margin": "4px 0px 0px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\"": {
       "display": "block",
@@ -59,281 +59,259 @@
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◧ Overview\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◧ Overview\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link].active \"◎ Resilience\"": {
-      "font-size": "13.5px",
       "display": "flex",
       "background-color": "rgb(28, 36, 44)",
       "border-left": "2px solid rgb(94, 177, 239)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link].active \"◎ Resilience\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◭ Performance\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◭ Performance\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▦ Scores\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▦ Scores\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚖ DORA\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚖ DORA\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⟲ Disaster recovery\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⟲ Disaster recovery\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚗ Experiments\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚗ Experiments\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▶ Runs\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▶ Runs\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✚ Author\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✚ Author\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"☷ GameDays\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"☷ GameDays\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✓ Approvals\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✓ Approvals\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✎ Manual\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✎ Manual\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"≣ Logs\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"≣ Logs\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⌁ Traces\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⌁ Traces\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"∿ Metrics\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"∿ Metrics\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✳ Star Map\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✳ Star Map\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✦ Ask\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✦ Ask\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▤ Reports\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▤ Reports\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◔ Events\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◔ Events\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚿ Users\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚿ Users\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"➤ Webhooks\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"➤ Webhooks\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"↻ Schedules\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"↻ Schedules\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > button[button].theme \"◐ dark\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "display": "block",
       "border-top": "1px solid rgb(36, 45, 54)",
       "border-right": "1px solid rgb(36, 45, 54)",
       "border-bottom": "1px solid rgb(36, 45, 54)",
       "border-left": "1px solid rgb(36, 45, 54)",
       "border-radius": "4px",
-      "padding": "2px 8px",
-      "margin": "8px 18px 0px"
+      "padding": "4px 8px",
+      "margin": "8px 20px 0px"
     },
     "div.shell > main[main].main": {
       "display": "block",
-      "padding": "22px 26px 60px"
+      "padding": "24px 28px 60px"
     },
     "div.shell > main[main].main > div.page-head": {
       "display": "flex",
-      "margin": "0px 0px 18px",
-      "gap": "14px"
+      "margin": "0px 0px 20px",
+      "gap": "16px"
     },
     "div.shell > main[main].main > div.page-head > h1[heading] \"Resilience\"": {
-      "font-size": "19px",
+      "font-size": "18px",
       "font-weight": "600",
       "display": "block"
     },
     "div.shell > main[main].main > div.page-head > span.muted": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "12.5px",
+      "font-size": "12px",
       "display": "block"
     },
     "div.shell > main[main].main > div.grid.cols-2": {
       "display": "grid",
       "grid-template-columns": "1fr 1fr",
-      "gap": "14px"
+      "gap": "16px"
     },
     "div.shell > main[main].main > div.grid.cols-2 > section.panel": {
       "display": "block",
@@ -343,55 +321,54 @@
       "border-bottom": "1px solid rgb(36, 45, 54)",
       "border-left": "1px solid rgb(36, 45, 54)",
       "border-radius": "6px",
-      "padding": "14px 16px"
+      "padding": "16px"
     },
     "div.shell > main[main].main > div.grid.cols-2 > section.panel > h2[heading] \"TOP RISKS\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.7px",
+      "letter-spacing": "0.6px",
       "text-transform": "uppercase",
       "display": "block",
-      "margin": "0px 0px 10px"
+      "margin": "0px 0px 12px"
     },
     "div.shell > main[main].main > div.grid.cols-2 > section.panel > div.counts": {
       "display": "flex",
-      "margin": "0px 0px 10px",
+      "margin": "0px 0px 12px",
       "gap": "8px"
     },
     "div.shell > main[main].main > div.grid.cols-2 > section.panel > div.counts > span.badge.fail": {
       "color": "rgb(251, 80, 78)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.3px",
+      "letter-spacing": "0.5px",
       "display": "block",
       "background-color": "color(srgb 0.208627 0.13498 0.154118)",
-      "border-radius": "10px",
-      "padding": "1px 9px"
+      "border-radius": "999px",
+      "padding": "2px 8px"
     },
     "div.shell > main[main].main > div.grid.cols-2 > section.panel > div.counts > span.badge.warn": {
       "color": "rgb(245, 158, 11)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.3px",
+      "letter-spacing": "0.5px",
       "display": "block",
       "background-color": "color(srgb 0.205333 0.177804 0.117333)",
-      "border-radius": "10px",
-      "padding": "1px 9px"
+      "border-radius": "999px",
+      "padding": "2px 8px"
     },
     "div.shell > main[main].main > div.grid.cols-2 > section.panel > div.counts > span.badge.neutral": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.3px",
+      "letter-spacing": "0.5px",
       "display": "block",
       "background-color": "rgb(28, 36, 44)",
-      "border-radius": "10px",
-      "padding": "1px 9px"
+      "border-radius": "999px",
+      "padding": "2px 8px"
     },
     "div.shell > main[main].main > div.grid.cols-2 > section.panel > div.state": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "13px",
       "display": "block",
       "padding": "28px"
     },
@@ -406,16 +383,16 @@
       "border-bottom": "1px solid rgb(36, 45, 54)",
       "border-left": "1px solid rgb(36, 45, 54)",
       "border-radius": "6px",
-      "padding": "14px 16px"
+      "padding": "16px"
     },
     "div.shell > main[main].main > div.grid.cols-2 > section.panel #2 > h2[heading] \"COVERAGE GAPS\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.7px",
+      "letter-spacing": "0.6px",
       "text-transform": "uppercase",
       "display": "block",
-      "margin": "0px 0px 10px"
+      "margin": "0px 0px 12px"
     },
     "div.shell > main[main].main > div.grid.cols-2 > section.panel #2 > div[image] \"Evidence coverage per target and discipl…\"": {
       "display": "block"
@@ -434,10 +411,10 @@
     },
     "div.shell > main[main].main > div.grid.cols-2 > section.panel #2 > div.legend": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "display": "flex",
-      "margin": "6px 0px 10px",
-      "gap": "6px 16px"
+      "margin": "8px 0px 12px",
+      "gap": "8px 16px"
     },
     "div.shell > main[main].main > div.grid.cols-2 > section.panel #2 > div.legend > span.item": {
       "display": "block"
@@ -450,7 +427,7 @@
       "border-bottom": "1px solid rgb(51, 64, 76)",
       "border-left": "1px solid rgb(51, 64, 76)",
       "border-radius": "2px",
-      "margin": "0px 2px 0px 0px"
+      "margin": "0px 4px 0px 0px"
     },
     "div.shell > main[main].main > div.grid.cols-2 > section.panel #2 > div.legend > span.item #2": {
       "display": "block"
@@ -463,7 +440,7 @@
       "border-bottom": "1px solid rgb(51, 64, 76)",
       "border-left": "1px solid rgb(51, 64, 76)",
       "border-radius": "2px",
-      "margin": "0px 2px 0px 0px"
+      "margin": "0px 4px 0px 0px"
     },
     "div.shell > main[main].main > div.grid.cols-2 > section.panel #2 > div.legend > span.item #3": {
       "display": "block"
@@ -476,7 +453,7 @@
       "border-bottom": "1px solid rgb(51, 64, 76)",
       "border-left": "1px solid rgb(51, 64, 76)",
       "border-radius": "2px",
-      "margin": "0px 2px 0px 0px"
+      "margin": "0px 4px 0px 0px"
     },
     "div.shell > main[main].main > div.grid.cols-2 > section.panel #2 > div[image] \"Evidence coverage per discipline: the sh…\"": {
       "display": "block"
@@ -493,8 +470,8 @@
     "div.shell > main[main].main > div.grid.cols-2.below": {
       "display": "grid",
       "grid-template-columns": "1fr 1fr",
-      "margin": "14px 0px 0px",
-      "gap": "14px"
+      "margin": "16px 0px 0px",
+      "gap": "16px"
     },
     "div.shell > main[main].main > div.grid.cols-2.below > section.panel": {
       "display": "block",
@@ -504,16 +481,16 @@
       "border-bottom": "1px solid rgb(36, 45, 54)",
       "border-left": "1px solid rgb(36, 45, 54)",
       "border-radius": "6px",
-      "padding": "14px 16px"
+      "padding": "16px"
     },
     "div.shell > main[main].main > div.grid.cols-2.below > section.panel > h2[heading] \"OBJECTIVES\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.7px",
+      "letter-spacing": "0.6px",
       "text-transform": "uppercase",
       "display": "block",
-      "margin": "0px 0px 10px"
+      "margin": "0px 0px 12px"
     },
     "div.shell > main[main].main > div.grid.cols-2.below > section.panel > div[image] \"Objective verdicts per target\"": {
       "display": "block"
@@ -532,10 +509,10 @@
     },
     "div.shell > main[main].main > div.grid.cols-2.below > section.panel > div.legend": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "display": "flex",
-      "margin": "6px 0px 10px",
-      "gap": "6px 16px"
+      "margin": "8px 0px 12px",
+      "gap": "8px 16px"
     },
     "div.shell > main[main].main > div.grid.cols-2.below > section.panel > div.legend > span.item": {
       "display": "block"
@@ -548,7 +525,7 @@
       "border-bottom": "1px solid rgb(51, 64, 76)",
       "border-left": "1px solid rgb(51, 64, 76)",
       "border-radius": "2px",
-      "margin": "0px 2px 0px 0px"
+      "margin": "0px 4px 0px 0px"
     },
     "div.shell > main[main].main > div.grid.cols-2.below > section.panel > div.legend > span.item #2": {
       "display": "block"
@@ -561,7 +538,7 @@
       "border-bottom": "1px solid rgb(51, 64, 76)",
       "border-left": "1px solid rgb(51, 64, 76)",
       "border-radius": "2px",
-      "margin": "0px 2px 0px 0px"
+      "margin": "0px 4px 0px 0px"
     },
     "div.shell > main[main].main > div.grid.cols-2.below > section.panel > div.legend > span.item #3": {
       "display": "block"
@@ -574,7 +551,7 @@
       "border-bottom": "1px solid rgb(51, 64, 76)",
       "border-left": "1px solid rgb(51, 64, 76)",
       "border-radius": "2px",
-      "margin": "0px 2px 0px 0px"
+      "margin": "0px 4px 0px 0px"
     },
     "div.shell > main[main].main > div.grid.cols-2.below > section.panel > div.legend > span.item #4": {
       "display": "block"
@@ -587,22 +564,22 @@
       "border-bottom": "1px solid rgb(36, 45, 54)",
       "border-left": "1px solid rgb(36, 45, 54)",
       "border-radius": "6px",
-      "padding": "14px 16px"
+      "padding": "16px"
     },
     "div.shell > main[main].main > div.grid.cols-2.below > section.panel #2 > h2[heading] \"COMPLIANCE SCORE, 14D\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.7px",
+      "letter-spacing": "0.6px",
       "text-transform": "uppercase",
       "display": "block",
-      "margin": "0px 0px 10px"
+      "margin": "0px 0px 12px"
     },
     "div.shell > main[main].main > div.grid.cols-2.below > section.panel #2 > p[paragraph].muted.meaning": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "12.5px",
+      "font-size": "12px",
       "display": "block",
-      "margin": "0px 0px 10px"
+      "margin": "0px 0px 12px"
     },
     "div.shell > main[main].main > div.grid.cols-2.below > section.panel #2 > div[image] \"Compliance score over 14d\"": {
       "display": "block"
@@ -624,60 +601,59 @@
       "border-bottom": "1px solid rgb(36, 45, 54)",
       "border-left": "1px solid rgb(36, 45, 54)",
       "border-radius": "6px",
-      "padding": "14px 16px",
-      "margin": "14px 0px 0px"
+      "padding": "16px",
+      "margin": "16px 0px 0px"
     },
     "div.shell > main[main].main > section.panel.below > h2[heading] \"TELEMETRY CONTRACT, 24H\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.7px",
+      "letter-spacing": "0.6px",
       "text-transform": "uppercase",
       "display": "block",
-      "margin": "0px 0px 10px"
+      "margin": "0px 0px 12px"
     },
     "div.shell > main[main].main > section.panel.below > div.counts": {
       "display": "flex",
-      "margin": "0px 0px 10px",
+      "margin": "0px 0px 12px",
       "gap": "8px"
     },
     "div.shell > main[main].main > section.panel.below > div.counts > span.badge.ok": {
       "color": "rgb(52, 211, 153)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.3px",
+      "letter-spacing": "0.5px",
       "display": "block",
       "background-color": "color(srgb 0.0993726 0.206902 0.195294)",
-      "border-radius": "10px",
-      "padding": "1px 9px"
+      "border-radius": "999px",
+      "padding": "2px 8px"
     },
     "div.shell > main[main].main > section.panel.below > div.counts > span.badge.warn": {
       "color": "rgb(245, 158, 11)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.3px",
+      "letter-spacing": "0.5px",
       "display": "block",
       "background-color": "color(srgb 0.205333 0.177804 0.117333)",
-      "border-radius": "10px",
-      "padding": "1px 9px"
+      "border-radius": "999px",
+      "padding": "2px 8px"
     },
     "div.shell > main[main].main > section.panel.below > div.counts > span.badge.fail": {
       "color": "rgb(251, 80, 78)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.3px",
+      "letter-spacing": "0.5px",
       "display": "block",
       "background-color": "color(srgb 0.208627 0.13498 0.154118)",
-      "border-radius": "10px",
-      "padding": "1px 9px"
+      "border-radius": "999px",
+      "padding": "2px 8px"
     },
     "div.shell > main[main].main > section.panel.below > div.counts > span.muted": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "12.5px",
+      "font-size": "12px",
       "display": "block"
     },
     "div.shell > main[main].main > section.panel.below > table[table]": {
-      "font-size": "13px",
       "display": "table"
     },
     "div.shell > main[main].main > section.panel.below > table[table] > thead[rowgroup]": {
@@ -688,43 +664,43 @@
     },
     "div.shell > main[main].main > section.panel.below > table[table] > thead[rowgroup] > tr[row] > th[columnheader] \"SERVICE\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "6px 8px"
+      "padding": "8px"
     },
     "div.shell > main[main].main > section.panel.below > table[table] > thead[rowgroup] > tr[row] > th[columnheader] \"SPANS\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "6px 8px"
+      "padding": "8px"
     },
     "div.shell > main[main].main > section.panel.below > table[table] > thead[rowgroup] > tr[row] > th[columnheader] \"LEVEL\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "6px 8px"
+      "padding": "8px"
     },
     "div.shell > main[main].main > section.panel.below > table[table] > thead[rowgroup] > tr[row] > th[columnheader] \"MISSING\"": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "6px 8px"
+      "padding": "8px"
     },
     "div.shell > main[main].main > section.panel.below > table[table] > tbody": {
       "display": "table-row-group"
@@ -737,29 +713,29 @@
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "6px 8px"
+      "padding": "8px"
     },
     "div.shell > main[main].main > section.panel.below > table[table] > tr[row] > td[cell].mono \"120\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "6px 8px"
+      "padding": "8px"
     },
     "div.shell > main[main].main > section.panel.below > table[table] > tr[row] > td[cell] \"spine\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "6px 8px"
+      "padding": "8px"
     },
     "div.shell > main[main].main > section.panel.below > table[table] > tr[row] > td[cell] \"spine\" > span.badge.ok": {
       "color": "rgb(52, 211, 153)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.3px",
+      "letter-spacing": "0.5px",
       "display": "inline-block",
       "background-color": "color(srgb 0.0993726 0.206902 0.195294)",
-      "border-radius": "10px",
-      "padding": "1px 9px"
+      "border-radius": "999px",
+      "padding": "2px 8px"
     },
     "div.shell > main[main].main > section.panel.below > table[table] > tr[row] > td[cell].mono.missing \"–\"": {
       "color": "rgb(139, 152, 165)",
@@ -767,22 +743,21 @@
       "font-size": "12px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(36, 45, 54)",
-      "padding": "6px 8px"
+      "padding": "8px"
     },
     "div.shell > main[main].main > section.panel.below > div.malformed": {
-      "font-size": "12.5px",
+      "font-size": "12px",
       "display": "block",
-      "margin": "10px 0px 0px"
+      "margin": "12px 0px 0px"
     },
     "div.shell > main[main].main > section.panel.below > div.malformed > span.badge.ok": {
       "color": "rgb(52, 211, 153)",
-      "font-size": "11.5px",
       "font-weight": "600",
-      "letter-spacing": "0.3px",
+      "letter-spacing": "0.5px",
       "display": "inline-block",
       "background-color": "color(srgb 0.0993726 0.206902 0.195294)",
-      "border-radius": "10px",
-      "padding": "1px 9px"
+      "border-radius": "999px",
+      "padding": "2px 8px"
     },
     "div.shell > main[main].main > section.panel.below > div.malformed > span.muted": {
       "color": "rgb(139, 152, 165)",
@@ -790,7 +765,7 @@
     },
     "div.shell > main[main].main > section.panel.below > div.malformed > span.muted > span.mono": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
-      "font-size": "11.5px",
+      "font-size": "11.04px",
       "display": "inline"
     },
     "div.shell > main[main].main > section.panel.score": {
@@ -801,23 +776,23 @@
       "border-bottom": "1px solid rgb(36, 45, 54)",
       "border-left": "1px solid rgb(36, 45, 54)",
       "border-radius": "6px",
-      "padding": "14px 16px",
-      "margin": "14px 0px 0px"
+      "padding": "16px",
+      "margin": "16px 0px 0px"
     },
     "div.shell > main[main].main > section.panel.score > h2[heading] \"RESILIENCE SCORE\"": {
       "color": "rgb(139, 152, 165)",
       "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.7px",
+      "letter-spacing": "0.6px",
       "text-transform": "uppercase",
       "display": "block",
-      "margin": "0px 0px 10px"
+      "margin": "0px 0px 12px"
     },
     "div.shell > main[main].main > section.panel.score > p[paragraph].muted.meaning": {
       "color": "rgb(139, 152, 165)",
-      "font-size": "12.5px",
+      "font-size": "12px",
       "display": "block",
-      "margin": "0px 0px 10px"
+      "margin": "0px 0px 12px"
     },
     "div.shell > main[main].main > section.panel.score > div.headline": {
       "display": "flex",
@@ -826,19 +801,19 @@
     },
     "div.shell > main[main].main > section.panel.score > div.headline > span.value.mono": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
-      "font-size": "34px",
+      "font-size": "32px",
       "font-weight": "600",
       "display": "block"
     },
     "div.shell > main[main].main > section.panel.score > div.headline > span.badge.warn": {
       "color": "rgb(245, 158, 11)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.3px",
+      "letter-spacing": "0.5px",
       "display": "block",
       "background-color": "color(srgb 0.205333 0.177804 0.117333)",
-      "border-radius": "10px",
-      "padding": "1px 9px"
+      "border-radius": "999px",
+      "padding": "2px 8px"
     },
     "div": {
       "display": "block"

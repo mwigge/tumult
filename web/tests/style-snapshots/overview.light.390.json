@@ -8,7 +8,7 @@
     "html": {
       "color": "rgb(27, 35, 41)",
       "font-family": "-apple-system, \"Segoe UI\", Inter, Roboto, sans-serif",
-      "font-size": "14px",
+      "font-size": "13px",
       "font-weight": "400",
       "line-height": "1.5",
       "letter-spacing": "normal",
@@ -36,14 +36,13 @@
       "padding": "8px 16px"
     },
     "div.shell > header[banner].topbar > span.name": {
-      "font-size": "17px",
+      "font-size": "18px",
       "font-weight": "700",
-      "letter-spacing": "0.4px",
+      "letter-spacing": "0.5px",
       "display": "block"
     },
     "div.shell > header[banner].topbar > button[button].btn \"Menu\"": {
       "font-family": "Arial",
-      "font-size": "13px",
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(233, 238, 242)",
@@ -52,25 +51,25 @@
       "border-bottom": "1px solid rgb(197, 206, 214)",
       "border-left": "1px solid rgb(197, 206, 214)",
       "border-radius": "6px",
-      "padding": "6px 14px"
+      "padding": "8px 16px"
     },
     "div.shell > main[main].main": {
       "display": "block",
-      "padding": "22px 16px 60px"
+      "padding": "24px 16px 60px"
     },
     "div.shell > main[main].main > div.page-head": {
       "display": "flex",
-      "margin": "0px 0px 18px",
-      "gap": "14px"
+      "margin": "0px 0px 20px",
+      "gap": "16px"
     },
     "div.shell > main[main].main > div.page-head > h1[heading] \"Overview\"": {
-      "font-size": "19px",
+      "font-size": "18px",
       "font-weight": "600",
       "display": "block"
     },
     "div.shell > main[main].main > div.page-head > span.sub": {
       "color": "rgb(59, 71, 81)",
-      "font-size": "12.5px",
+      "font-size": "12px",
       "display": "block"
     },
     "div.shell > main[main].main > div.page-head > div": {
@@ -83,46 +82,46 @@
       "border-right": "1px solid rgb(197, 206, 214)",
       "border-bottom": "1px solid rgb(197, 206, 214)",
       "border-left": "1px solid rgb(197, 206, 214)",
-      "border-radius": "5px",
+      "border-radius": "6px",
       "gap": "normal 1px"
     },
     "div.shell > main[main].main > div.page-head > div[group].seg \"time range\" > button[button].active \"24h\"": {
       "color": "rgb(255, 255, 255)",
       "font-family": "Arial",
-      "font-size": "12.5px",
+      "font-size": "12px",
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(74, 123, 164)",
-      "padding": "5px 12px"
+      "padding": "4px 12px"
     },
     "div.shell > main[main].main > div.page-head > div[group].seg \"time range\" > button[button] \"7d\"": {
       "color": "rgb(59, 71, 81)",
       "font-family": "Arial",
-      "font-size": "12.5px",
+      "font-size": "12px",
       "line-height": "normal",
       "display": "block",
       "box-shadow": "rgb(197, 206, 214) -1px 0px 0px 0px",
-      "padding": "5px 12px"
+      "padding": "4px 12px"
     },
     "div.shell > main[main].main > div.page-head > div[group].seg \"time range\" > button[button] \"14d\"": {
       "color": "rgb(59, 71, 81)",
       "font-family": "Arial",
-      "font-size": "12.5px",
+      "font-size": "12px",
       "line-height": "normal",
       "display": "block",
       "box-shadow": "rgb(197, 206, 214) -1px 0px 0px 0px",
-      "padding": "5px 12px"
+      "padding": "4px 12px"
     },
     "div.shell > main[main].main > div.grid.kpis": {
       "display": "grid",
       "grid-template-columns": "repeat(2, 1fr)",
-      "gap": "14px"
+      "gap": "16px"
     },
     "div.shell > main[main].main > div.grid.cols-2": {
       "display": "grid",
       "grid-template-columns": "1fr",
-      "margin": "14px 0px 0px",
-      "gap": "14px"
+      "margin": "16px 0px 0px",
+      "gap": "16px"
     },
     "div.shell > main[main].main > div.grid.cols-2 > div.panel": {
       "display": "block",
@@ -132,16 +131,16 @@
       "border-bottom": "1px solid rgb(227, 232, 237)",
       "border-left": "1px solid rgb(227, 232, 237)",
       "border-radius": "6px",
-      "padding": "14px 16px"
+      "padding": "16px"
     },
     "div.shell > main[main].main > div.grid.cols-2 > div.panel > h2[heading] \"RUNS PER DAY\"": {
       "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.7px",
+      "letter-spacing": "0.6px",
       "text-transform": "uppercase",
       "display": "block",
-      "margin": "0px 0px 10px"
+      "margin": "0px 0px 12px"
     },
     "div.shell > main[main].main > div.grid.cols-2 > div.panel > div[image] \"Count of runs per day. The bands and lin…\"": {
       "display": "block"
@@ -163,16 +162,16 @@
       "border-bottom": "1px solid rgb(227, 232, 237)",
       "border-left": "1px solid rgb(227, 232, 237)",
       "border-radius": "6px",
-      "padding": "14px 16px"
+      "padding": "16px"
     },
     "div.shell > main[main].main > div.grid.cols-2 > div.panel #2 > h2[heading] \"FAULT INJECTIONS\"": {
       "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.7px",
+      "letter-spacing": "0.6px",
       "text-transform": "uppercase",
       "display": "block",
-      "margin": "0px 0px 10px"
+      "margin": "0px 0px 12px"
     },
     "div.shell > main[main].main > div.grid.cols-2 > div.panel #2 > div[image] \"Fault injection steps per kind and plugi…\"": {
       "display": "block"
@@ -194,21 +193,20 @@
       "border-bottom": "1px solid rgb(227, 232, 237)",
       "border-left": "1px solid rgb(227, 232, 237)",
       "border-radius": "6px",
-      "padding": "14px 16px",
-      "margin": "14px 0px 0px"
+      "padding": "16px",
+      "margin": "16px 0px 0px"
     },
     "div.shell > main[main].main > div.panel > h2[heading] \"TARGET SYSTEMS\"": {
       "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.7px",
+      "letter-spacing": "0.6px",
       "text-transform": "uppercase",
       "display": "block",
-      "margin": "0px 0px 10px"
+      "margin": "0px 0px 12px"
     },
     "div.shell > main[main].main > div.panel > div.state": {
       "color": "rgb(59, 71, 81)",
-      "font-size": "13px",
       "display": "block",
       "padding": "28px"
     },
