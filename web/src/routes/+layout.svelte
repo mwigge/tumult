@@ -258,13 +258,18 @@
         text-overflow: ellipsis;
         white-space: nowrap;
     }
+    /* The padding of the theme button above it. A wider one left no room in
+       the 208 px side bar at the sizes of 3.0.5: the name lost its end and
+       Log out took two lines. */
     .user-chip .logout {
+        flex-shrink: 0;
         background: transparent;
         border: var(--border-width-sm) solid var(--border-strong);
         color: var(--text-dim);
         border-radius: var(--radius-xl);
-        padding: var(--space-1) var(--space-3);
+        padding: var(--space-1) var(--space-2);
         font-size: var(--font-size-xs);
+        white-space: nowrap;
         cursor: pointer;
     }
     .user-chip .logout:hover {
