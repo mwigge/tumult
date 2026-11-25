@@ -45,7 +45,7 @@
     {@const recovery = recoveryRows(evidence.recovery, evidence.objectives)}
     {@const note = samplesNote(evidence)}
     <div class="grid cols-2 block">
-        <Panel title="Steady state" data-testid="evidence-steady">
+        <Panel title="Steady state" data-testid="evidence-steady" scroll>
             <dl class="facts">
                 <div>
                     <dt>Kind of test</dt>
@@ -94,6 +94,7 @@
         <Panel
             title={`Objectives (${evidence.objectives.length})`}
             data-testid="evidence-objectives"
+            scroll
         >
             {#if evidence.objectives.length === 0}
                 <State kind="empty">This run had no objective.</State>
@@ -125,7 +126,7 @@
         </Panel>
     </div>
 
-    <div class="panel block" data-testid="evidence-steps">
+    <div class="panel block" data-testid="evidence-steps" data-scroll>
         <h2>Steps ({evidence.steps.length})</h2>
         {#if evidence.steps.length === 0}
             <State kind="empty">This run took no step.</State>

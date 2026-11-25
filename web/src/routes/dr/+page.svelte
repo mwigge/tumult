@@ -136,14 +136,14 @@
     </div>
 {:else}
     <div class="sections">
-        <section class="panel" aria-labelledby="dr-register">
+        <section class="panel" aria-labelledby="dr-register" data-scroll>
             <h2 id="dr-register">Due register</h2>
             <p class="summary" data-testid="dr-register-summary">
                 {registerSummary(view.summary.states)}
             </p>
             <DrRegister targets={view.targets} />
         </section>
-        <section class="panel" aria-labelledby="dr-recovery">
+        <section class="panel" aria-labelledby="dr-recovery" data-scroll>
             <h2 id="dr-recovery">RTO and RPO over time</h2>
             <DrRecovery
                 groups={recoveryGroups(view.tests, view.targets)}
@@ -151,7 +151,7 @@
                 truncated={view.truncated}
             />
         </section>
-        <section class="panel" aria-labelledby="dr-tests">
+        <section class="panel" aria-labelledby="dr-tests" data-scroll>
             <h2 id="dr-tests">DR tests in the period</h2>
             <p class="summary" data-testid="dr-tests-summary">
                 {testsSummary(view.summary.tests)}, {localDay(view.from_ns)} to {localDay(
@@ -180,9 +180,6 @@
     .sections {
         display: grid;
         gap: var(--space-3-5);
-    }
-    .panel {
-        overflow-x: auto;
     }
     .summary {
         color: var(--text-dim);

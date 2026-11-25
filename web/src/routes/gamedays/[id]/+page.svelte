@@ -131,7 +131,7 @@
         </p>
     {/if}
 
-    <Panel title="Campaign steps" style="margin-bottom: var(--space-3-5)">
+    <Panel title="Campaign steps" style="margin-bottom: var(--space-3-5)" scroll>
         <table class="data">
             <thead>
                 <tr
@@ -173,6 +173,7 @@
         <Panel
             title={`Regulatory mapping — ${day.regulatory.frameworks.join(', ')}`}
             style="margin-bottom: var(--space-3-5)"
+            scroll
         >
             <table class="data">
                 <thead>

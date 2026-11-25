@@ -215,7 +215,7 @@
         </State>
     </Panel>
 {:else}
-    <Panel style="margin-bottom: var(--space-3-5)">
+    <Panel style="margin-bottom: var(--space-3-5)" scroll>
         {#if !users}
             {#if error}
                 <State kind="error">Failed to load users: {error}</State>
@@ -424,7 +424,7 @@
         {/if}
     </Panel>
 
-    <Panel title="API tokens">
+    <Panel title="API tokens" scroll>
         {#if tokens === null}
             {#if tokenError}
                 <State kind="error">Failed to load tokens: {tokenError}</State>

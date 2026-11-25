@@ -137,7 +137,7 @@
         : 'interval-based recurring runs'}
 />
 
-<Panel style="margin-bottom: var(--space-3-5)">
+<Panel style="margin-bottom: var(--space-3-5)" scroll>
     {#if error}
         <State kind="error">Failed to load schedules: {error}</State>
     {:else if !schedules}

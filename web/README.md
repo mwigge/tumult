@@ -150,7 +150,9 @@ head written by hand.
 
 `src/lib/components/Panel.svelte` is the box of one part of a page, with
 its title in an `h2`. With `variant="meta"` it is the stat tile: the title
-is the small capital name above the value.
+is the small capital name above the value. With `scroll`, a table wider
+than the panel scrolls sideways inside it, and the page does not. A panel
+that a page writes itself as `.panel` takes `data-scroll` for the same.
 
 `src/lib/components/State.svelte` is a part of a page with no data to show:
 

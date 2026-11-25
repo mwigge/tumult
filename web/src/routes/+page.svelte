@@ -231,7 +231,7 @@
         </Panel>
     </div>
 
-    <Panel title="Target systems" style="margin-top: var(--space-3-5)">
+    <Panel title="Target systems" style="margin-top: var(--space-3-5)" scroll>
         {#if data.targets.length === 0}
             <State kind="empty">
                 No target-system metadata in this window — tumult runs don't tag target systems yet,

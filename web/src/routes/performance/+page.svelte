@@ -453,7 +453,7 @@
         </Panel>
     </div>
 
-    <section class="panel below" aria-labelledby="perf-dist-h" aria-busy={loading}>
+    <section class="panel below" aria-labelledby="perf-dist-h" aria-busy={loading} data-scroll>
         <h2 id="perf-dist-h">Latency distribution</h2>
         {#if chartOption && hasSamples}
             <div role="img" aria-label={perfChartLabel(answer)}>
@@ -492,7 +492,7 @@
         </table>
     </section>
 
-    <section class="panel below" aria-labelledby="perf-partial-h">
+    <section class="panel below" aria-labelledby="perf-partial-h" data-scroll>
         <h2 id="perf-partial-h">Partial runs and windows</h2>
         <table class="data" aria-label="Partial runs and windows by version">
             <thead>
@@ -621,7 +621,7 @@
         {/if}
     </section>
 
-    <section class="panel below" aria-labelledby="perf-history-h">
+    <section class="panel below" aria-labelledby="perf-history-h" data-scroll>
         <h2 id="perf-history-h">Stored verdicts</h2>
         <div class="store">
             <button

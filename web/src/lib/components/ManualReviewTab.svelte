@@ -99,7 +99,7 @@
         plans.find((p) => p.id === id)?.name ?? id ?? '';
 </script>
 
-<Panel>
+<Panel scroll>
     <div class="records-head">
         <h2>{queue ? 'Submitted records awaiting sign-off' : 'All manual records'}</h2>
         {#if !queue}

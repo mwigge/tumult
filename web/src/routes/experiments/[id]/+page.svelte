@@ -122,7 +122,7 @@
                 </div>
             {/if}
         </Panel>
-        <Panel title={`Metric points (${detail.metrics.length})`}>
+        <Panel title={`Metric points (${detail.metrics.length})`} scroll>
             {#if detail.metrics.length === 0}
                 <State kind="empty">
                     No metric points with the name of this experiment in the time of this run.

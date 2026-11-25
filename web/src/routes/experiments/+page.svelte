@@ -100,7 +100,7 @@
     </div>
 </PageHeader>
 
-<Panel>
+<Panel scroll>
     {#if error}
         <State kind="error">Failed to load experiments: {error}</State>
     {:else if !rows}

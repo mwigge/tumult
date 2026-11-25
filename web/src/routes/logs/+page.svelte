@@ -185,7 +185,7 @@
     {/if}
 </Panel>
 
-<Panel>
+<Panel scroll>
     {#if error}
         <State kind="error">Failed to load logs: {error}</State>
     {:else if !rows}

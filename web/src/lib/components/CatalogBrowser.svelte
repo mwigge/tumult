@@ -48,7 +48,7 @@
     <State kind="empty">No catalog actions match.</State>
 {:else}
     {#each filtered as d (d.domain)}
-        <Panel style="margin-bottom: var(--space-3-5)">
+        <Panel style="margin-bottom: var(--space-3-5)" scroll>
             <h2>{d.label} <span class="count">({d.actions.length})</span></h2>
             <table class="data">
                 <thead>

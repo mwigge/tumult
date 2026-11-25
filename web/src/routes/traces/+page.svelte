@@ -194,7 +194,7 @@
     {/if}
 </Panel>
 
-<Panel>
+<Panel scroll>
     {#if error}
         <State kind="error">Failed to load traces: {error}</State>
     {:else if !rows}

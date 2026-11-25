@@ -743,7 +743,7 @@ test('the plan scenario table of three functions fits a wide screen', async ({ p
     await page.goto('/scores?view=dora');
     const panel = page.getByTestId('dora-scenarios');
     await expect(panel.getByRole('columnheader', { name: /Batch settlement/ })).toBeVisible();
-    const fit = await panel.locator('.scroll').evaluate((box) => {
+    const fit = await panel.evaluate((box) => {
         const edge = box.getBoundingClientRect();
         return {
             overflow: box.scrollWidth - box.clientWidth,

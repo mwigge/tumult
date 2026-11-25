@@ -151,6 +151,12 @@ code,
     border-radius: var(--radius-xl);
     padding: var(--space-3-5) var(--space-4);
 }
+/* A panel whose table may be wider than it: the table scrolls sideways
+   inside the panel, and the page does not. Panel.svelte sets it with
+   `scroll`. */
+.panel[data-scroll] {
+    overflow-x: auto;
+}
 .panel h2 {
     font-size: var(--font-size-xs);
     text-transform: uppercase;
@@ -166,9 +172,18 @@ code,
 .grid.cols-2 {
     grid-template-columns: 1fr 1fr;
 }
+/* Side by side, a panel that scrolls is as wide as its content, as any
+   panel is, and the other column gives way. One under the other, it
+   scrolls. */
+.grid.cols-2 > .panel[data-scroll] {
+    min-width: min-content;
+}
 @media (max-width: 1100px) {
     .grid.cols-2 {
         grid-template-columns: 1fr;
+    }
+    .grid.cols-2 > .panel[data-scroll] {
+        min-width: 0;
     }
 }
 
