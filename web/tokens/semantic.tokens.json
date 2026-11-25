@@ -71,13 +71,13 @@
     },
     "band": {
       "$type": "color",
-      "$description": "The bands of a score, and the coverage of a DORA heatmap cell from low to high. Okabe-Ito, so that readers with colour blindness can tell them apart.",
+      "$description": "The bands of a score, and the coverage of a DORA heatmap cell from low to high. Okabe-Ito, so that readers with colour blindness can tell them apart. Each is 3:1 or more on the panel of each theme, and the ink on it 4.5:1.",
       "good": {
         "$value": "{okabe-ito.bluish-green}",
         "$description": "Good, or high coverage."
       },
       "fair": {
-        "$value": "{okabe-ito.orange}",
+        "$value": "{okabe-ito.orange-deep}",
         "$description": "Fair, or middle coverage."
       },
       "poor": {
@@ -87,22 +87,22 @@
     },
     "unscored": {
       "$type": "color",
-      "$value": "{grey.43}",
+      "$value": "{grey.51}",
       "$description": "A band with no score: neither good nor bad."
     },
     "status": {
       "$type": "color",
-      "$description": "The evidence status of a DORA heatmap cell, by rank. Okabe-Ito.",
+      "$description": "The evidence status of a DORA heatmap cell, by rank. Okabe-Ito. Each is 3:1 or more on the panel of each theme, and the ink on it 4.5:1.",
       "none": {
         "$value": "{okabe-ito.vermillion}",
         "$description": "Rank 0: no evidence."
       },
       "designed": {
-        "$value": "{okabe-ito.orange}",
+        "$value": "{okabe-ito.orange-deep}",
         "$description": "Rank 1: the control is designed."
       },
       "existing": {
-        "$value": "{okabe-ito.sky-blue}",
+        "$value": "{okabe-ito.sky-blue-deep}",
         "$description": "Rank 2: the control exists."
       },
       "operating": {
@@ -114,7 +114,7 @@
       "$type": "color",
       "$description": "The Star Map, the same in every theme on purpose.",
       "kind": {
-        "$description": "The fill of each kind of node, the same under every lens. None is a status colour of either theme, and none is the yellow lost on white. They hold their own values: no other role uses them.",
+        "$description": "The fill of each kind of node, the same under every lens. Each is 3:1 or more on the dark and on the light panel. None is a status colour of either theme, and none is the yellow lost on white. They hold their own values: no other role uses them.",
         "org": {
           "$value": {
             "colorSpace": "srgb",
@@ -126,8 +126,8 @@
         "entity": {
           "$value": {
             "colorSpace": "srgb",
-            "components": [0.7882, 0.5647, 0.7529],
-            "hex": "#C990C0"
+            "components": [0.7294, 0.5098, 0.698],
+            "hex": "#BA82B2"
           },
           "$description": "The fill of an ICT entity."
         },
@@ -142,8 +142,8 @@
         "component": {
           "$value": {
             "colorSpace": "srgb",
-            "components": [0.3412, 0.7804, 0.8902],
-            "hex": "#57C7E3"
+            "components": [0.1529, 0.6314, 0.7373],
+            "hex": "#27A1BC"
           },
           "$description": "The fill of a component."
         },
@@ -174,24 +174,24 @@
         "def": {
           "$value": {
             "colorSpace": "srgb",
-            "components": [0.7216, 0.6275, 0.2196],
-            "hex": "#B8A038"
+            "components": [0.6706, 0.5765, 0.1569],
+            "hex": "#AB9328"
           },
           "$description": "The fill of an experiment."
         },
         "run": {
           "$value": {
             "colorSpace": "srgb",
-            "components": [0.6039, 0.6471, 0.6941],
-            "hex": "#9AA5B1"
+            "components": [0.5451, 0.5882, 0.6353],
+            "hex": "#8B96A2"
           },
           "$description": "The fill of a run."
         },
         "slo": {
           "$value": {
             "colorSpace": "srgb",
-            "components": [0.2314, 0.3569, 0.6627],
-            "hex": "#3B5BA9"
+            "components": [0.2588, 0.3882, 0.6941],
+            "hex": "#4263B1"
           },
           "$description": "The fill of an SLO."
         },
@@ -206,8 +206,8 @@
         "gap": {
           "$value": {
             "colorSpace": "srgb",
-            "components": [0.851, 0.7216, 0.6275],
-            "hex": "#D9B8A0"
+            "components": [0.6824, 0.5569, 0.4667],
+            "hex": "#AE8E77"
           },
           "$description": "The fill of a gap."
         },

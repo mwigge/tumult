@@ -44,7 +44,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > div.brand > div.tag": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "11px",
       "display": "block",
       "margin": "2px 0px 0px"
@@ -347,10 +347,10 @@
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(255, 255, 255)",
-      "border-top": "1px solid rgb(197, 206, 214)",
-      "border-right": "1px solid rgb(197, 206, 214)",
-      "border-bottom": "1px solid rgb(197, 206, 214)",
-      "border-left": "1px solid rgb(197, 206, 214)",
+      "border-top": "1px solid rgb(141, 149, 157)",
+      "border-right": "1px solid rgb(141, 149, 157)",
+      "border-bottom": "1px solid rgb(141, 149, 157)",
+      "border-left": "1px solid rgb(141, 149, 157)",
       "border-radius": "5px",
       "padding": "6px 9px"
     },
@@ -385,7 +385,7 @@
       "font-size": "12.5px",
       "line-height": "normal",
       "display": "block",
-      "background-color": "rgb(156, 196, 228)",
+      "background-color": "rgb(74, 123, 164)",
       "border-left": "1px solid rgb(197, 206, 214)",
       "padding": "5px 12px"
     },
@@ -524,12 +524,12 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].clickable > td[cell] \"submitted\" > span.badge.warn": {
-      "color": "rgb(180, 83, 9)",
+      "color": "rgb(171, 77, 4)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.705882 0.32549 0.0352941 / 0.14)",
+      "background-color": "color(srgb 0.953882 0.902274 0.862196)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
@@ -559,12 +559,12 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].clickable > td[cell] \"passed\" > span.badge.ok": {
-      "color": "rgb(15, 138, 95)",
+      "color": "rgb(9, 120, 82)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.0588235 0.541176 0.372549 / 0.14)",
+      "background-color": "color(srgb 0.864941 0.925882 0.90502)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
@@ -692,12 +692,12 @@
       "padding": "4px 8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > table[table].data.compact > tr[row] > td[cell] \"met\" > span.badge.ok": {
-      "color": "rgb(15, 138, 95)",
+      "color": "rgb(9, 120, 82)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.0588235 0.541176 0.372549 / 0.14)",
+      "background-color": "color(srgb 0.864941 0.925882 0.90502)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
@@ -725,12 +725,12 @@
       "padding": "4px 8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > table[table].data.compact > tr[row] #2 > td[cell] \"met\" > span.badge.ok": {
-      "color": "rgb(15, 138, 95)",
+      "color": "rgb(9, 120, 82)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.0588235 0.541176 0.372549 / 0.14)",
+      "background-color": "color(srgb 0.864941 0.925882 0.90502)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
@@ -765,7 +765,7 @@
       "display": "inline"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > p[paragraph].line #3 > span.dim": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "12px",
       "display": "inline"
     },
@@ -795,7 +795,7 @@
       "margin": "0px 0px 4px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > ul[list].plain > li[listitem] > span.dim": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "12px",
       "display": "inline"
     },
@@ -832,7 +832,7 @@
       "display": "inline"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > ul[list].plain #2 > li[listitem] > span.dim": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "12px",
       "display": "inline"
     },
@@ -857,28 +857,28 @@
       "margin": "0px 0px 4px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > ol[list].steps > li[listitem] > span.badge.ok": {
-      "color": "rgb(15, 138, 95)",
+      "color": "rgb(9, 120, 82)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.0588235 0.541176 0.372549 / 0.14)",
+      "background-color": "color(srgb 0.864941 0.925882 0.90502)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > ol[list].steps > li[listitem] > span.dim": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "12px",
       "display": "inline"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > ol[list].steps > li[listitem] > div.dim.mono": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "12px",
       "display": "block"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > ol[list].steps > li[listitem] > div.dim": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "12px",
       "display": "block"
     },
@@ -887,17 +887,17 @@
       "margin": "0px 0px 4px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > ol[list].steps > li[listitem] #2 > span.badge.fail": {
-      "color": "rgb(192, 57, 43)",
+      "color": "rgb(190, 55, 41)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.752941 0.223529 0.168627 / 0.14)",
+      "background-color": "color(srgb 0.964314 0.890196 0.88251)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > ol[list].steps > li[listitem] #2 > div.dim.mono": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "12px",
       "display": "block"
@@ -920,17 +920,17 @@
       "margin": "0px 0px 4px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > ul[list].plain #3 > li[listitem] > span.dim": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "12px",
       "display": "inline"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > ul[list].plain #3 > li[listitem] > span.dim #2": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "12px",
       "display": "inline"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > ul[list].plain #3 > li[listitem] > span.dim #3": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "12px",
       "display": "inline"
     },
@@ -955,7 +955,7 @@
       "padding": "1px 9px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > ul[list].plain #3 > li[listitem] > div.dim": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "12px",
       "display": "block"
     },
@@ -995,22 +995,22 @@
       "display": "list-item"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > ol[list].signoffs > li[listitem] > span.badge.ok": {
-      "color": "rgb(15, 138, 95)",
+      "color": "rgb(9, 120, 82)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.0588235 0.541176 0.372549 / 0.14)",
+      "background-color": "color(srgb 0.864941 0.925882 0.90502)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > ol[list].signoffs > li[listitem] > span.dim": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "12px",
       "display": "inline"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > ol[list].signoffs > li[listitem] > span.dim #2": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "12px",
       "display": "inline"
     },
@@ -1031,40 +1031,41 @@
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(255, 255, 255)",
-      "border-top": "1px solid rgb(197, 206, 214)",
-      "border-right": "1px solid rgb(197, 206, 214)",
-      "border-bottom": "1px solid rgb(197, 206, 214)",
-      "border-left": "1px solid rgb(197, 206, 214)",
+      "border-top": "1px solid rgb(141, 149, 157)",
+      "border-right": "1px solid rgb(141, 149, 157)",
+      "border-bottom": "1px solid rgb(141, 149, 157)",
+      "border-left": "1px solid rgb(141, 149, 157)",
       "border-radius": "5px",
       "padding": "6px 9px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > div.sign > button[button].btn.primary \"Approve\"": {
+      "color": "rgb(255, 255, 255)",
       "font-family": "Arial",
       "line-height": "normal",
       "display": "block",
-      "background-color": "rgb(156, 196, 228)",
-      "border-top": "1px solid rgb(156, 196, 228)",
-      "border-right": "1px solid rgb(156, 196, 228)",
-      "border-bottom": "1px solid rgb(156, 196, 228)",
-      "border-left": "1px solid rgb(156, 196, 228)",
+      "background-color": "rgb(74, 123, 164)",
+      "border-top": "1px solid rgb(74, 123, 164)",
+      "border-right": "1px solid rgb(74, 123, 164)",
+      "border-bottom": "1px solid rgb(74, 123, 164)",
+      "border-left": "1px solid rgb(74, 123, 164)",
       "border-radius": "6px",
       "padding": "6px 14px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > div.sign > button[button].btn.danger \"Reject\"": {
-      "color": "rgb(192, 57, 43)",
+      "color": "rgb(190, 55, 41)",
       "font-family": "Arial",
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(233, 238, 242)",
-      "border-top": "1px solid rgb(192, 57, 43)",
-      "border-right": "1px solid rgb(192, 57, 43)",
-      "border-bottom": "1px solid rgb(192, 57, 43)",
-      "border-left": "1px solid rgb(192, 57, 43)",
+      "border-top": "1px solid rgb(190, 55, 41)",
+      "border-right": "1px solid rgb(190, 55, 41)",
+      "border-bottom": "1px solid rgb(190, 55, 41)",
+      "border-left": "1px solid rgb(190, 55, 41)",
       "border-radius": "6px",
       "padding": "6px 14px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > p[paragraph].dim": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "12px",
       "display": "block",
       "margin": "12px 0px"
@@ -1092,7 +1093,7 @@
       "display": "inline"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > ol[list].audit > li[listitem] > span.dim": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "12px",
       "display": "inline"
     },
@@ -1106,12 +1107,12 @@
       "display": "inline"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > ol[list].audit > li[listitem] #2 > span.dim": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "12px",
       "display": "inline"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > div.dim.hash": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "12px",
       "display": "block",
@@ -1125,20 +1126,20 @@
       "line-height": "normal",
       "display": "inline-block",
       "background-color": "rgb(233, 238, 242)",
-      "border-top": "1px solid rgb(156, 196, 228)",
-      "border-right": "1px solid rgb(156, 196, 228)",
-      "border-bottom": "1px solid rgb(156, 196, 228)",
-      "border-left": "1px solid rgb(156, 196, 228)",
+      "border-top": "1px solid rgb(74, 123, 164)",
+      "border-right": "1px solid rgb(74, 123, 164)",
+      "border-bottom": "1px solid rgb(74, 123, 164)",
+      "border-left": "1px solid rgb(74, 123, 164)",
       "border-radius": "6px",
       "padding": "6px 14px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > div.verify > div[status].verdict.bad": {
       "display": "block",
-      "background-color": "color(srgb 0.752941 0.223529 0.168627 / 0.08)",
-      "border-top": "1px solid rgb(192, 57, 43)",
-      "border-right": "1px solid rgb(192, 57, 43)",
-      "border-bottom": "1px solid rgb(192, 57, 43)",
-      "border-left": "1px solid rgb(192, 57, 43)",
+      "background-color": "color(srgb 0.745098 0.215686 0.160784 / 0.08)",
+      "border-top": "1px solid rgb(190, 55, 41)",
+      "border-right": "1px solid rgb(190, 55, 41)",
+      "border-bottom": "1px solid rgb(190, 55, 41)",
+      "border-left": "1px solid rgb(190, 55, 41)",
       "border-radius": "6px",
       "padding": "8px 10px",
       "margin": "8px 0px 0px"
@@ -1148,7 +1149,7 @@
       "margin": "0px 0px 4px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > div.verify > div[status].verdict.bad > p[paragraph] > span.dim": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "12px",
       "display": "inline"
     },
@@ -1267,7 +1268,7 @@
       "padding": "1px 9px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > table[table].data.evidence > tr[row] > td[cell] \"file report added by alice · Nov 13, 08:…\" > div.dim": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "12px",
       "display": "block"
     },
@@ -1331,7 +1332,7 @@
       "display": "inline"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > table[table].data.evidence > tr[row] #2 > td[cell] \"link ticket added by bob · Nov 13, 09:00…\" > div.dim": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "12px",
       "display": "block"
     },
@@ -1374,10 +1375,10 @@
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(255, 255, 255)",
-      "border-top": "1px solid rgb(197, 206, 214)",
-      "border-right": "1px solid rgb(197, 206, 214)",
-      "border-bottom": "1px solid rgb(197, 206, 214)",
-      "border-left": "1px solid rgb(197, 206, 214)",
+      "border-top": "1px solid rgb(141, 149, 157)",
+      "border-right": "1px solid rgb(141, 149, 157)",
+      "border-bottom": "1px solid rgb(141, 149, 157)",
+      "border-left": "1px solid rgb(141, 149, 157)",
       "border-radius": "5px",
       "padding": "5px 8px"
     },
@@ -1395,7 +1396,7 @@
       "padding": "6px 14px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > div.attach > span.dim": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "12px",
       "display": "block"
     },
@@ -1417,10 +1418,10 @@
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(255, 255, 255)",
-      "border-top": "1px solid rgb(197, 206, 214)",
-      "border-right": "1px solid rgb(197, 206, 214)",
-      "border-bottom": "1px solid rgb(197, 206, 214)",
-      "border-left": "1px solid rgb(197, 206, 214)",
+      "border-top": "1px solid rgb(141, 149, 157)",
+      "border-right": "1px solid rgb(141, 149, 157)",
+      "border-bottom": "1px solid rgb(141, 149, 157)",
+      "border-left": "1px solid rgb(141, 149, 157)",
       "border-radius": "5px",
       "padding": "6px 9px"
     },
@@ -1437,10 +1438,10 @@
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(255, 255, 255)",
-      "border-top": "1px solid rgb(197, 206, 214)",
-      "border-right": "1px solid rgb(197, 206, 214)",
-      "border-bottom": "1px solid rgb(197, 206, 214)",
-      "border-left": "1px solid rgb(197, 206, 214)",
+      "border-top": "1px solid rgb(141, 149, 157)",
+      "border-right": "1px solid rgb(141, 149, 157)",
+      "border-bottom": "1px solid rgb(141, 149, 157)",
+      "border-left": "1px solid rgb(141, 149, 157)",
       "border-radius": "5px",
       "padding": "6px 9px"
     },
@@ -1457,10 +1458,10 @@
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(255, 255, 255)",
-      "border-top": "1px solid rgb(197, 206, 214)",
-      "border-right": "1px solid rgb(197, 206, 214)",
-      "border-bottom": "1px solid rgb(197, 206, 214)",
-      "border-left": "1px solid rgb(197, 206, 214)",
+      "border-top": "1px solid rgb(141, 149, 157)",
+      "border-right": "1px solid rgb(141, 149, 157)",
+      "border-bottom": "1px solid rgb(141, 149, 157)",
+      "border-left": "1px solid rgb(141, 149, 157)",
       "border-radius": "5px",
       "padding": "6px 9px"
     },
@@ -1486,7 +1487,7 @@
       "margin": "10px 0px 6px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > p[paragraph].dim #2": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "12px",
       "display": "block",
       "margin": "12px 0px"
@@ -1535,12 +1536,12 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"partial\" > span.badge.warn": {
-      "color": "rgb(180, 83, 9)",
+      "color": "rgb(171, 77, 4)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.705882 0.32549 0.0352941 / 0.14)",
+      "background-color": "color(srgb 0.953882 0.902274 0.862196)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
@@ -1581,12 +1582,12 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].clickable #3 > td[cell] \"verified\" > span.badge.ok": {
-      "color": "rgb(15, 138, 95)",
+      "color": "rgb(9, 120, 82)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.0588235 0.541176 0.372549 / 0.14)",
+      "background-color": "color(srgb 0.864941 0.925882 0.90502)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
@@ -1613,12 +1614,12 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].clickable #3 > td[cell] \"failed\" > span.badge.fail": {
-      "color": "rgb(192, 57, 43)",
+      "color": "rgb(190, 55, 41)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.752941 0.223529 0.168627 / 0.14)",
+      "background-color": "color(srgb 0.964314 0.890196 0.88251)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },

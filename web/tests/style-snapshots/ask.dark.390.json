@@ -44,7 +44,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > div.brand > div.tag": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "11px",
       "display": "block",
       "margin": "2px 0px 0px"
@@ -347,10 +347,10 @@
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(17, 22, 27)",
-      "border-top": "1px solid rgb(51, 64, 76)",
-      "border-right": "1px solid rgb(51, 64, 76)",
-      "border-bottom": "1px solid rgb(51, 64, 76)",
-      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-top": "1px solid rgb(97, 109, 121)",
+      "border-right": "1px solid rgb(97, 109, 121)",
+      "border-bottom": "1px solid rgb(97, 109, 121)",
+      "border-left": "1px solid rgb(97, 109, 121)",
       "border-radius": "5px",
       "padding": "6px 9px"
     },
@@ -361,7 +361,7 @@
       "line-height": "normal",
       "display": "block",
       "opacity": "0.5",
-      "background-color": "rgb(45, 93, 132)",
+      "background-color": "rgb(58, 106, 145)",
       "border-top": "1px solid rgb(94, 177, 239)",
       "border-right": "1px solid rgb(94, 177, 239)",
       "border-bottom": "1px solid rgb(94, 177, 239)",

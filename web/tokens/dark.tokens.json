@@ -28,7 +28,12 @@
   "border-strong": {
     "$type": "color",
     "$value": "{grey.26}",
-    "$description": "Strong lines: input edges, table heads and chart axes."
+    "$description": "Strong lines: table heads, chart axes, and the edges of buttons, chips and drawers."
+  },
+  "border-input": {
+    "$type": "color",
+    "$value": "{grey.45}",
+    "$description": "The edge of a field: an input, a select or a text area."
   },
   "text": {
     "$type": "color",
@@ -42,7 +47,7 @@
   },
   "text-faint": {
     "$type": "color",
-    "$value": "{grey.43}",
+    "$value": "{grey.58}",
     "$description": "Text that matters least, such as hints and time stamps."
   },
   "ok": {
@@ -57,7 +62,7 @@
   },
   "fail": {
     "$type": "color",
-    "$value": "{red.55}",
+    "$value": "{red.59}",
     "$description": "Status: it failed."
   },
   "accent": {
@@ -67,8 +72,13 @@
   },
   "accent-dim": {
     "$type": "color",
-    "$value": "{blue.38}",
+    "$value": "{blue.43}",
     "$description": "A quiet accent fill: the active segment and the primary button."
+  },
+  "on-accent": {
+    "$type": "color",
+    "$value": "{grey.100}",
+    "$description": "Text on the accent fill: the active segment and the primary button."
   },
   "chart": {
     "$description": "The chart roles of the dark theme. Charts draw on a canvas and take these from tokens.gen.ts.",

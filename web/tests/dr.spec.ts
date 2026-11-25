@@ -183,14 +183,14 @@ test('the charts follow the theme', async ({ page }) => {
     await serveDr(page, fullLake(NOW), NOW);
     await page.goto('/dr');
     const light = await chartOf(page, 'ledger/prod', 'rto');
-    expect(light.series[2].itemStyle?.color).toBe('#c0392b');
+    expect(light.series[2].itemStyle?.color).toBe('#be3729');
     // The theme goes from light to auto, which is light here, and then to dark.
     await page.getByRole('button', { name: /light/ }).click();
     await page.getByRole('button', { name: /auto/ }).click();
     await expect(page.getByRole('button', { name: /dark/ })).toBeVisible();
     await expect
         .poll(async () => (await chartOf(page, 'ledger/prod', 'rto')).series[2].itemStyle?.color)
-        .toBe('#ef4444');
+        .toBe('#fb504e');
 });
 
 test('the tests of the period come newest first and page with the cursor of the API', async ({

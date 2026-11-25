@@ -59,7 +59,7 @@ describe('the recovery of each target over time', () => {
             /^measured ◆ manual test ▲ did not recover: the RTO was at least this target/,
         );
         expect(legend).toMatch(/<b style="color: #CC79A7;">◆<\/b>/);
-        expect(legend).toMatch(/<b style="color: #ef4444;">▲<\/b>/);
+        expect(legend).toMatch(/<b style="color: #fb504e;">▲<\/b>/);
     });
 
     it('says when the charts show only the newest tests of the period', () => {

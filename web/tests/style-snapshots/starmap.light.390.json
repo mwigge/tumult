@@ -44,7 +44,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > div.brand > div.tag": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "11px",
       "display": "block",
       "margin": "2px 0px 0px"
@@ -346,7 +346,7 @@
       "font-size": "12.5px",
       "line-height": "normal",
       "display": "block",
-      "background-color": "rgb(156, 196, 228)",
+      "background-color": "rgb(74, 123, 164)",
       "padding": "5px 12px"
     },
     "div.shell > main[main].main > div.page-head > div.controls > div[group].seg \"lens\" > button[button] \"risk\"": {
@@ -373,10 +373,10 @@
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(255, 255, 255)",
-      "border-top": "1px solid rgb(197, 206, 214)",
-      "border-right": "1px solid rgb(197, 206, 214)",
-      "border-bottom": "1px solid rgb(197, 206, 214)",
-      "border-left": "1px solid rgb(197, 206, 214)",
+      "border-top": "1px solid rgb(141, 149, 157)",
+      "border-right": "1px solid rgb(141, 149, 157)",
+      "border-bottom": "1px solid rgb(141, 149, 157)",
+      "border-left": "1px solid rgb(141, 149, 157)",
       "border-radius": "4px",
       "padding": "4px 8px"
     },
@@ -402,7 +402,7 @@
       "font-size": "12.5px",
       "line-height": "normal",
       "display": "block",
-      "background-color": "rgb(156, 196, 228)",
+      "background-color": "rgb(74, 123, 164)",
       "border-left": "1px solid rgb(197, 206, 214)",
       "padding": "5px 12px"
     },
@@ -510,7 +510,7 @@
     },
     "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"node kinds\" > button[button].chip \"ICT entity 6\" > span.dot": {
       "display": "block",
-      "background-color": "rgb(201, 144, 192)",
+      "background-color": "rgb(186, 130, 178)",
       "border-radius": "50%"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"node kinds\" > button[button].chip \"ICT entity 6\" > span.count": {
@@ -558,7 +558,7 @@
     },
     "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"node kinds\" > button[button].chip \"component 6\" > span.dot": {
       "display": "block",
-      "background-color": "rgb(87, 199, 227)",
+      "background-color": "rgb(39, 161, 188)",
       "border-radius": "50%"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"node kinds\" > button[button].chip \"component 6\" > span.count": {
@@ -606,7 +606,7 @@
     },
     "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"node kinds\" > button[button].chip \"experiment 12\" > span.dot": {
       "display": "block",
-      "background-color": "rgb(184, 160, 56)",
+      "background-color": "rgb(171, 147, 40)",
       "border-radius": "50%"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"node kinds\" > button[button].chip \"experiment 12\" > span.count": {
@@ -864,10 +864,10 @@
     "div.shell > main[main].main > div.layout > div.panel.map > ul[list].key \"how to read the map\" > li[listitem] > span.ring.ok": {
       "display": "block",
       "background-color": "rgb(197, 206, 214)",
-      "border-top": "2px solid rgb(15, 138, 95)",
-      "border-right": "2px solid rgb(15, 138, 95)",
-      "border-bottom": "2px solid rgb(15, 138, 95)",
-      "border-left": "2px solid rgb(15, 138, 95)",
+      "border-top": "2px solid rgb(9, 120, 82)",
+      "border-right": "2px solid rgb(9, 120, 82)",
+      "border-bottom": "2px solid rgb(9, 120, 82)",
+      "border-left": "2px solid rgb(9, 120, 82)",
       "border-radius": "50%"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > ul[list].key \"how to read the map\" > li[listitem] #2": {
@@ -877,10 +877,10 @@
     "div.shell > main[main].main > div.layout > div.panel.map > ul[list].key \"how to read the map\" > li[listitem] #2 > span.ring.fail": {
       "display": "block",
       "background-color": "rgb(197, 206, 214)",
-      "border-top": "4px solid rgb(192, 57, 43)",
-      "border-right": "4px solid rgb(192, 57, 43)",
-      "border-bottom": "4px solid rgb(192, 57, 43)",
-      "border-left": "4px solid rgb(192, 57, 43)",
+      "border-top": "4px solid rgb(190, 55, 41)",
+      "border-right": "4px solid rgb(190, 55, 41)",
+      "border-bottom": "4px solid rgb(190, 55, 41)",
+      "border-left": "4px solid rgb(190, 55, 41)",
       "border-radius": "50%"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > ul[list].key \"how to read the map\" > li[listitem] #3": {
@@ -902,10 +902,10 @@
     "div.shell > main[main].main > div.layout > div.panel.map > ul[list].key \"how to read the map\" > li[listitem] #4 > span.ring.stale": {
       "display": "block",
       "background-color": "rgb(197, 206, 214)",
-      "border-top": "2px dashed rgb(180, 83, 9)",
-      "border-right": "2px dashed rgb(180, 83, 9)",
-      "border-bottom": "2px dashed rgb(180, 83, 9)",
-      "border-left": "2px dashed rgb(180, 83, 9)",
+      "border-top": "2px dashed rgb(171, 77, 4)",
+      "border-right": "2px dashed rgb(171, 77, 4)",
+      "border-bottom": "2px dashed rgb(171, 77, 4)",
+      "border-left": "2px dashed rgb(171, 77, 4)",
       "border-radius": "50%"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > ul[list].key \"how to read the map\" > li[listitem] #5": {
@@ -953,10 +953,10 @@
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(255, 255, 255)",
-      "border-top": "1px solid rgb(197, 206, 214)",
-      "border-right": "1px solid rgb(197, 206, 214)",
-      "border-bottom": "1px solid rgb(197, 206, 214)",
-      "border-left": "1px solid rgb(197, 206, 214)",
+      "border-top": "1px solid rgb(141, 149, 157)",
+      "border-right": "1px solid rgb(141, 149, 157)",
+      "border-bottom": "1px solid rgb(141, 149, 157)",
+      "border-left": "1px solid rgb(141, 149, 157)",
       "border-radius": "5px",
       "padding": "6px 9px"
     },

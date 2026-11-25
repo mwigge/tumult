@@ -44,7 +44,7 @@
       "display": "block"
     },
     "div.shell > aside.side > div.brand > div.tag": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "11px",
       "display": "block",
       "margin": "2px 0px 0px"
@@ -422,7 +422,7 @@
       "margin": "0px 0px 4px"
     },
     "div.shell > main.main > div.grid > div.panel.meta #4 > b.mono": {
-      "color": "rgb(192, 57, 43)",
+      "color": "rgb(190, 55, 41)",
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "13.5px",
       "font-weight": "600",
@@ -495,7 +495,7 @@
       "padding": "3px 0px"
     },
     "div.shell > main.main > div.panel > div.wf > div.ruler > div.labels": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "10.5px",
       "display": "block",
@@ -599,7 +599,7 @@
     },
     "div.shell > main.main > div.panel > div.wf > button.row #3 > span.lane > span.bar": {
       "display": "block",
-      "background-color": "rgb(192, 57, 43)",
+      "background-color": "rgb(190, 55, 41)",
       "border-radius": "2px"
     },
     "div.shell > main.main > div.panel > div.wf > button.row #3 > span.dur.mono": {

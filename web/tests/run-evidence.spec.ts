@@ -291,7 +291,7 @@ test('the charts of the run follow the theme', async ({ page }) => {
         const chart = await drawn(page, 'run-probe-samples');
         return (chart.series[0].data[2] as { itemStyle: { color: string } }).itemStyle.color;
     };
-    expect(await colour()).toBe('#ef4444');
+    expect(await colour()).toBe('#fb504e');
 
     const toggle = page.locator('button.theme');
     for (let i = 0; i < 3; i += 1) {
@@ -299,7 +299,7 @@ test('the charts of the run follow the theme', async ({ page }) => {
         await toggle.click();
     }
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
-    await expect.poll(colour).toBe('#c0392b');
+    await expect.poll(colour).toBe('#be3729');
 });
 
 test('the charts of the run are drawn in the colours of the light theme on a direct load', async ({
@@ -328,7 +328,7 @@ test('the charts of the run are drawn in the colours of the light theme on a dir
         latency: '#ffffff',
         throughput: '#ffffff',
         samples: '#ffffff',
-        failed: '#c0392b',
+        failed: '#be3729',
     });
 });
 

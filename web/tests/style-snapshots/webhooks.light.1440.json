@@ -44,7 +44,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > div.brand > div.tag": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "11px",
       "display": "block",
       "margin": "2px 0px 0px"
@@ -433,12 +433,12 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > tr[row] > td[cell] \"enabled\" > span.badge.ok": {
-      "color": "rgb(15, 138, 95)",
+      "color": "rgb(9, 120, 82)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.0588235 0.541176 0.372549 / 0.14)",
+      "background-color": "color(srgb 0.864941 0.925882 0.90502)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
@@ -464,15 +464,15 @@
       "padding": "6px 14px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > tr[row] > td[cell].actions \"Disable Delete\" > button[button].btn.danger \"Delete\"": {
-      "color": "rgb(192, 57, 43)",
+      "color": "rgb(190, 55, 41)",
       "font-family": "Arial",
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(233, 238, 242)",
-      "border-top": "1px solid rgb(192, 57, 43)",
-      "border-right": "1px solid rgb(192, 57, 43)",
-      "border-bottom": "1px solid rgb(192, 57, 43)",
-      "border-left": "1px solid rgb(192, 57, 43)",
+      "border-top": "1px solid rgb(190, 55, 41)",
+      "border-right": "1px solid rgb(190, 55, 41)",
+      "border-bottom": "1px solid rgb(190, 55, 41)",
+      "border-left": "1px solid rgb(190, 55, 41)",
       "border-radius": "6px",
       "padding": "6px 14px"
     },
@@ -513,10 +513,10 @@
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(255, 255, 255)",
-      "border-top": "1px solid rgb(197, 206, 214)",
-      "border-right": "1px solid rgb(197, 206, 214)",
-      "border-bottom": "1px solid rgb(197, 206, 214)",
-      "border-left": "1px solid rgb(197, 206, 214)",
+      "border-top": "1px solid rgb(141, 149, 157)",
+      "border-right": "1px solid rgb(141, 149, 157)",
+      "border-bottom": "1px solid rgb(141, 149, 157)",
+      "border-left": "1px solid rgb(141, 149, 157)",
       "border-radius": "5px",
       "padding": "6px 9px"
     },
@@ -533,10 +533,10 @@
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(255, 255, 255)",
-      "border-top": "1px solid rgb(197, 206, 214)",
-      "border-right": "1px solid rgb(197, 206, 214)",
-      "border-bottom": "1px solid rgb(197, 206, 214)",
-      "border-left": "1px solid rgb(197, 206, 214)",
+      "border-top": "1px solid rgb(141, 149, 157)",
+      "border-right": "1px solid rgb(141, 149, 157)",
+      "border-bottom": "1px solid rgb(141, 149, 157)",
+      "border-left": "1px solid rgb(141, 149, 157)",
       "border-radius": "5px",
       "padding": "6px 9px"
     },
@@ -553,10 +553,10 @@
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(255, 255, 255)",
-      "border-top": "1px solid rgb(197, 206, 214)",
-      "border-right": "1px solid rgb(197, 206, 214)",
-      "border-bottom": "1px solid rgb(197, 206, 214)",
-      "border-left": "1px solid rgb(197, 206, 214)",
+      "border-top": "1px solid rgb(141, 149, 157)",
+      "border-right": "1px solid rgb(141, 149, 157)",
+      "border-bottom": "1px solid rgb(141, 149, 157)",
+      "border-left": "1px solid rgb(141, 149, 157)",
       "border-radius": "5px",
       "padding": "6px 9px"
     },
@@ -570,7 +570,7 @@
       "line-height": "normal",
       "display": "inline-block",
       "opacity": "0.5",
-      "background-color": "rgb(156, 196, 228)",
+      "background-color": "rgb(74, 123, 164)",
       "border-top": "1px solid rgb(31, 111, 178)",
       "border-right": "1px solid rgb(31, 111, 178)",
       "border-bottom": "1px solid rgb(31, 111, 178)",
@@ -579,7 +579,7 @@
       "padding": "7px 16px"
     },
     "div.shell > main[main].main > div.panel #2 > div.hint": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "12px",
       "display": "block",
       "margin": "10px 0px 0px"

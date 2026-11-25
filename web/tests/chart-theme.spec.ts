@@ -36,9 +36,9 @@ const COLOURS = {
         tooltip: '#151b21',
         panel: '#151b21',
         bg: '#0b0e11',
-        scale: ['#1c242c', '#2d5d84', '#5eb1ef'],
+        scale: ['#1c242c', '#3a6a91', '#5eb1ef'],
         accent: '#5eb1ef',
-        status: ['#ef4444', '#f59e0b', '#34d399'],
+        status: ['#fb504e', '#f59e0b', '#34d399'],
         series: ['#5eb1ef', '#E69F00', '#009E73', '#CC79A7', '#56B4E9', '#D55E00', '#F0E442'],
     },
     light: {
@@ -48,9 +48,9 @@ const COLOURS = {
         tooltip: '#ffffff',
         panel: '#ffffff',
         bg: '#f4f6f8',
-        scale: ['#e9eef2', '#9cc4e4', '#1f6fb2'],
+        scale: ['#e9eef2', '#4a7ba4', '#1f6fb2'],
         accent: '#1f6fb2',
-        status: ['#c0392b', '#b45309', '#0f8a5f'],
+        status: ['#be3729', '#ab4d04', '#097852'],
         // The Okabe-Ito hues that are below 3:1 on white are darker in light.
         series: ['#1f6fb2', '#c28600', '#009E73', '#CC79A7', '#1d9ae0', '#D55E00', '#9e940d'],
     },
