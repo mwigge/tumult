@@ -6,6 +6,7 @@
     import { isOverdue, localDay } from '#lib/manual.js';
     import type { ManualPlan } from '#lib/types.js';
     import Badge from './Badge.svelte';
+    import State from './State.svelte';
 
     let {
         plans,
@@ -31,7 +32,7 @@
 </script>
 
 {#if plans.length === 0}
-    <div class="state">No plans yet.</div>
+    <State kind="empty">No plans yet.</State>
 {:else}
     <table class="data">
         <thead>

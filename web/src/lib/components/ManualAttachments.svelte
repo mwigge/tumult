@@ -7,6 +7,7 @@
     import { errorText, fmtBytes } from '#lib/manual.js';
     import type { EvidenceAttachment } from '#lib/types.js';
     import Badge from './Badge.svelte';
+    import State from './State.svelte';
 
     let {
         experimentId,
@@ -161,7 +162,7 @@
     {/if}
 {/if}
 {#if message}
-    <div class="state" class:error={!message.ok} role="status">{message.text}</div>
+    <State kind={message.ok ? 'empty' : 'error'} role="status">{message.text}</State>
 {/if}
 
 <style>

@@ -10,6 +10,7 @@
     import StatusBadge from './StatusBadge.svelte';
     import PageHeader from './PageHeader.svelte';
     import Panel from './Panel.svelte';
+    import State from './State.svelte';
 
     let {
         run,
@@ -56,7 +57,7 @@
 </PageHeader>
 
 {#if run.error}
-    <div class="state error panel" style="margin-bottom: var(--space-3-5)">{run.error}</div>
+    <State kind="error" panel style="margin-bottom: var(--space-3-5)">{run.error}</State>
 {/if}
 
 {#if confirmingStop && active}
@@ -76,7 +77,7 @@
         {/if}
     </div>
 {:else if stopError}
-    <div class="state error panel" style="margin-bottom: var(--space-3-5)">{stopError}</div>
+    <State kind="error" panel style="margin-bottom: var(--space-3-5)">{stopError}</State>
 {/if}
 
 {#if awaitingTier && run.state === 'pending_approval'}

@@ -4,6 +4,7 @@
     import type { GameDayEntry, MeResponse } from '#lib/types.js';
     import PageHeader from '#lib/components/PageHeader.svelte';
     import Panel from '#lib/components/Panel.svelte';
+    import State from '#lib/components/State.svelte';
 
     let me = $state<MeResponse | null>(null);
     let days = $state<GameDayEntry[] | null>(null);
@@ -73,11 +74,11 @@
 
 <Panel style="margin-bottom: var(--space-3-5)">
     {#if error}
-        <div class="state error">Failed to load gamedays: {error}</div>
+        <State kind="error">Failed to load gamedays: {error}</State>
     {:else if !days}
-        <div class="skeleton" style="height: 140px"></div>
+        <State kind="loading" height={140} />
     {:else if days.length === 0}
-        <div class="state">No gamedays registered yet — register one below.</div>
+        <State kind="empty">No gamedays registered yet — register one below.</State>
     {:else}
         <table class="data">
             <thead>
@@ -130,9 +131,9 @@
                 </button>
             </div>
         </form>
-        {#if registerError}<div class="state error" style="margin-top: var(--space-2-5)">
+        {#if registerError}<State kind="error" style="margin-top: var(--space-2-5)">
                 {registerError}
-            </div>{/if}
+            </State>{/if}
     </Panel>
 {/if}
 

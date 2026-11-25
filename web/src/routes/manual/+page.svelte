@@ -18,6 +18,7 @@
     import TabPanel from '#lib/components/TabPanel.svelte';
     import Tabs from '#lib/components/Tabs.svelte';
     import { withParam } from '#lib/tabs.js';
+    import State from '#lib/components/State.svelte';
 
     const TABS = ['entry', 'plans', 'queue', 'records', 'import'] as const;
     const TAB_LABEL: Record<string, string> = {
@@ -131,9 +132,9 @@
             </p>
         {/if}
 
-        {#if entryMsg && !entryMsg.ok && (tab !== 'entry' || !canWrite)}<div class="state error">
+        {#if entryMsg && !entryMsg.ok && (tab !== 'entry' || !canWrite)}<State kind="error">
                 {entryMsg.text}
-            </div>{/if}
+            </State>{/if}
 
         {#if tab === 'entry'}
             {#if canWrite}

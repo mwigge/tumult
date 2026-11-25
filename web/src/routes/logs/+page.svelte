@@ -12,6 +12,7 @@
     import { bucketAxis } from '#lib/ranges.js';
     import PageHeader from '#lib/components/PageHeader.svelte';
     import Panel from '#lib/components/Panel.svelte';
+    import State from '#lib/components/State.svelte';
 
     const SEVERITIES = ['ERROR', 'WARN', 'INFO', 'DEBUG', 'TRACE'];
 
@@ -178,19 +179,19 @@
     {#if volume && volume.rows.length > 0}
         <EChart id="log-volume" option={volumeOption} height={180} label="Log volume by severity" />
     {:else if rows}
-        <div class="state">No log volume in this window.</div>
+        <State kind="empty">No log volume in this window.</State>
     {:else}
-        <div class="skeleton" style="height: 180px"></div>
+        <State kind="loading" height={180} />
     {/if}
 </Panel>
 
 <Panel>
     {#if error}
-        <div class="state error">Failed to load logs: {error}</div>
+        <State kind="error">Failed to load logs: {error}</State>
     {:else if !rows}
-        <div class="skeleton" style="height: 240px"></div>
+        <State kind="loading" height={240} />
     {:else if rows.length === 0}
-        <div class="state">No logs match these filters.</div>
+        <State kind="empty">No logs match these filters.</State>
     {:else}
         <table class="data">
             <thead>

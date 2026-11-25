@@ -7,6 +7,7 @@
     import type { RunDetail, RunExecState } from '#lib/types.js';
     import Badge from './Badge.svelte';
     import Panel from './Panel.svelte';
+    import State from './State.svelte';
 
     let {
         runId,
@@ -143,7 +144,7 @@
                 {/each}
             </div>
         {:else}
-            <div class="state" style="padding: var(--space-2) 0">No decisions yet.</div>
+            <State kind="empty" style="padding: var(--space-2) 0">No decisions yet.</State>
         {/if}
 
         {#if runState === 'pending_approval' && canDecide}

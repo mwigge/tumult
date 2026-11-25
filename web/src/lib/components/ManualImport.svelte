@@ -5,6 +5,7 @@
     import { api } from '#lib/api.js';
     import { errorText, importBody } from '#lib/manual.js';
     import Panel from './Panel.svelte';
+    import State from './State.svelte';
 
     let { actor, canWrite }: { actor: string; canWrite: boolean } = $props();
 
@@ -69,7 +70,7 @@
                 <button class="btn primary" disabled={busy} onclick={send}>Import as drafts</button>
             </div>
             {#if message}
-                <div class="state" class:error={!message.ok} role="status">{message.text}</div>
+                <State kind={message.ok ? 'empty' : 'error'} role="status">{message.text}</State>
             {/if}
             {#if ids.length > 0}
                 <ul class="mono">

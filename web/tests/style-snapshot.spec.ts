@@ -12,7 +12,7 @@ import {
     writeBaseline,
 } from './style-snapshot';
 import type { Theme } from './style-snapshot';
-import { NOW_MS, PAGES, serve, STATES } from './style-snapshot-pages';
+import { holds, NOW_MS, PAGES, serve, STATES } from './style-snapshot-pages';
 import type { SnapshotPage } from './style-snapshot-pages';
 
 // Every page looks as it does on main: the computed styles of each visible
@@ -87,7 +87,8 @@ for (const target of [...PAGES, ...STATES]) {
                     await expect(
                         page.getByRole('heading', { level: 1, name: target.heading, exact: true }),
                     ).toBeVisible();
-                await page.waitForLoadState('networkidle');
+                // A page that waits for an answer never goes idle.
+                if (!holds(target)) await page.waitForLoadState('networkidle');
                 if (target.open) {
                     await target.open(page);
                     await page.waitForLoadState('networkidle');

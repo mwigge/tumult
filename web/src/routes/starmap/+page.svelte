@@ -36,6 +36,7 @@
     import { LENSES, edgeTooltipHtml, spineTooltipHtml, tooltipHtml } from '#lib/starmap/style.js';
     import type { Lens, RelKey, StyleContext } from '#lib/starmap/style.js';
     import PageHeader from '#lib/components/PageHeader.svelte';
+    import State from '#lib/components/State.svelte';
 
     const CLUSTER = 'cluster:';
     /** Most buttons the node list renders at once; the filter narrows it. */
@@ -313,11 +314,11 @@
 <div class="layout">
     <div class="panel map">
         {#if error}
-            <div class="state error">Failed to load the star map: {error}</div>
+            <State kind="error">Failed to load the star map: {error}</State>
         {:else if !map}
-            <div class="skeleton" style="height: {CANVAS.height}px"></div>
+            <State kind="loading" height={CANVAS.height} />
         {:else if map.nodes.length === 0}
-            <div class="state">
+            <State kind="empty">
                 {#if map.focus_found === false}
                     <span class="mono">{focus}</span> is unknown or out of scope.
                 {:else if focus}
@@ -325,7 +326,7 @@
                 {:else}
                     Nothing was seen in this window.
                 {/if}
-            </div>
+            </State>
         {:else}
             <div bind:clientWidth={width}>
                 <EChart

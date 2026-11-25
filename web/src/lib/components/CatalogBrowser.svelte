@@ -3,6 +3,7 @@
     import type { CatalogAction, CatalogDomain } from '#lib/types.js';
     import Badge from './Badge.svelte';
     import Panel from './Panel.svelte';
+    import State from './State.svelte';
 
     let { domains }: { domains: CatalogDomain[] } = $props();
 
@@ -44,7 +45,7 @@
 </div>
 
 {#if filtered.length === 0}
-    <div class="state">No catalog actions match.</div>
+    <State kind="empty">No catalog actions match.</State>
 {:else}
     {#each filtered as d (d.domain)}
         <Panel style="margin-bottom: var(--space-3-5)">

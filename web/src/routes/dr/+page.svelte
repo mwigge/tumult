@@ -26,6 +26,7 @@
     import DrRegister from '#lib/components/DrRegister.svelte';
     import DrTestTable from '#lib/components/DrTestTable.svelte';
     import PageHeader from '#lib/components/PageHeader.svelte';
+    import State from '#lib/components/State.svelte';
 
     const filters = $derived(filtersOf(page.url.searchParams));
     const filtered = $derived(filters.target !== '' || filters.environment !== '');
@@ -122,16 +123,16 @@
 </PageHeader>
 
 {#if error}
-    <div class="state error">Failed to load the DR view: {error}</div>
+    <State kind="error">Failed to load the DR view: {error}</State>
 {:else if !view || !shown}
-    <div class="skeleton" style="height: 320px"></div>
+    <State kind="loading" height={320} />
 {:else if view.targets.length === 0 && view.total === 0 && !filtered}
     <DrEmpty />
 {:else if view.targets.length === 0 && view.total === 0}
     <div class="panel">
-        <div class="state">
-            No target and no DR test match these filters. <a href="/dr">Show every target</a>.
-        </div>
+        <State kind="empty" action={{ href: '/dr', label: 'Show every target' }}>
+            No target and no DR test match these filters.
+        </State>
     </div>
 {:else}
     <div class="sections">

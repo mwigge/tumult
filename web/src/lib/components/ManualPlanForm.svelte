@@ -2,6 +2,7 @@
     // The form of a plan: a new one, or the planned plan being edited. The
     // tab owns the form and sends it; the API checks every value.
     import { EXERCISE_TYPES, type PlanForm } from '#lib/manual.js';
+    import State from './State.svelte';
 
     let {
         form = $bindable(),
@@ -88,7 +89,7 @@
         {/if}
     </div>
     {#if message}
-        <div class="state" class:error={!message.ok} role="status">{message.text}</div>
+        <State kind={message.ok ? 'empty' : 'error'} role="status">{message.text}</State>
     {/if}
 </div>
 

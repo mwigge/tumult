@@ -32,6 +32,7 @@
     import type { FanSeries } from '#lib/components/FanChart.svelte';
     import PageHeader from '#lib/components/PageHeader.svelte';
     import Panel from '#lib/components/Panel.svelte';
+    import State from '#lib/components/State.svelte';
 
     let posture: PostureResponse | null = $state(null);
     let report: RiskReport | null = $state(null);
@@ -305,9 +306,9 @@
 </PageHeader>
 
 {#if error}
-    <div class="state error">{error}</div>
+    <State kind="error">{error}</State>
 {:else if !report || !posture}
-    <div class="state">Scanning…</div>
+    <State kind="loading">Scanning…</State>
 {:else}
     <div class="grid cols-2">
         <Panel tag="section" title="Top risks" data-testid="risks">
@@ -322,7 +323,7 @@
                 {/if}
             </div>
             {#if report.risks.length === 0}
-                <div class="state">No open findings.</div>
+                <State kind="empty">No open findings.</State>
             {/if}
             <ol class="risks">
                 {#each report.risks as r (r.id)}
@@ -407,7 +408,7 @@
 
         <Panel tag="section" title="Coverage gaps">
             {#if report.coverage.targets.length === 0}
-                <div class="state">No targets with evidence yet.</div>
+                <State kind="empty">No targets with evidence yet.</State>
             {:else}
                 {#if heatmapOption}
                     <EChart

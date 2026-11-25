@@ -26,6 +26,7 @@
     import ManualTesterFields from './ManualTesterFields.svelte';
     import ManualTlptFields from './ManualTlptFields.svelte';
     import Panel from './Panel.svelte';
+    import State from './State.svelte';
 
     let {
         actor,
@@ -257,9 +258,9 @@
                     >
                 </div>
                 {#if entryMsg}
-                    <div class="state" class:error={!entryMsg.ok} role="status">
+                    <State kind={entryMsg.ok ? 'empty' : 'error'} role="status">
                         {entryMsg.text}
-                    </div>
+                    </State>
                 {/if}
             </div>
         </Panel>

@@ -38,6 +38,9 @@ export class Refusal {
     ) {}
 }
 
+/** An answer that never comes: the page shows that it is loading. */
+export const PENDING = Symbol('pending');
+
 /** The answer to one call: a body, or a function of the URL and the method. */
 type Answer = unknown | ((url: URL, method: string) => unknown);
 
@@ -608,10 +611,16 @@ export const PAGES: SnapshotPage[] = [
 
 const pageOf = (name: string) => PAGES.find((target) => target.name === name) as SnapshotPage;
 
-/** A state of the page `name`: its answers and `api`, at `path`. */
+/** Whether the page waits for an answer that never comes. */
+export const holds = (target: SnapshotPage) => Object.values(target.api).includes(PENDING);
+
+/** A state of the page `name`: its answers and `api`, at `path`, and its own heading if given. */
 const stateOf = (
     name: string,
-    state: Omit<SnapshotPage, 'heading' | 'api'> & { api?: Record<string, Answer> },
+    state: Omit<SnapshotPage, 'heading' | 'api'> & {
+        api?: Record<string, Answer>;
+        heading?: string | null;
+    },
 ): SnapshotPage => {
     const target = pageOf(name);
     return { ...target, ...state, api: { ...target.api, ...state.api } };
@@ -648,10 +657,14 @@ const logs: LogRow[] = [
     },
 ];
 
+/** The answer of a read that failed. */
+const failed = new Refusal(500, { error: 'lake query failed' });
+
 /**
  * The states of pages that a click or the data opens: the Manual tabs with
- * data, open rows, the span drawer, the approval panel and filter chips.
- * Each has baselines of its own.
+ * data, open rows, the span drawer, the approval panel and filter chips,
+ * and a page whose data failed or is on its way. Each has baselines of its
+ * own.
  */
 export const STATES: SnapshotPage[] = [
     stateOf('manual', {
@@ -786,6 +799,26 @@ export const STATES: SnapshotPage[] = [
         shows: 'an open row',
         open: opens('tr.clickable', 'tr.detail-row'),
     }),
+    stateOf('runs', {
+        name: 'runs-error',
+        path: '/runs',
+        shows: 'a failed read',
+        api: { '/api/runs': failed },
+    }),
+    stateOf('run', {
+        name: 'run-error',
+        path: '/runs/run-1',
+        heading: 'Run',
+        shows: 'a failed read',
+        api: { '/api/runs/run-1': failed },
+    }),
+    stateOf('trace', {
+        name: 'trace-loading',
+        path: '/traces/t-1',
+        heading: 'Trace',
+        shows: 'its data on the way',
+        api: { '/api/traces/t-1': PENDING },
+    }),
 ];
 
 /**
@@ -807,6 +840,7 @@ export async function serve(
             return;
         }
         const body = typeof answer === 'function' ? answer(url, route.request().method()) : answer;
+        if (body === PENDING) return;
         if (body instanceof Refusal) await route.fulfill({ status: body.status, json: body.body });
         else await route.fulfill({ json: body });
     });
