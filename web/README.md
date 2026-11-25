@@ -106,6 +106,23 @@ and `verdict`, so a word of a kind has one tone on every page. A word that
 its table does not hold is neutral. `src/lib/badge-scan.test.ts` fails on a badge
 class or a tone that is worked out anywhere else.
 
+## Segmented controls and tabs
+
+A group of buttons where one is chosen, such as a time range or a
+filter, is `src/lib/components/Segmented.svelte`. It is a named group,
+and each button says whether it is pressed (`aria-pressed`):
+
+```svelte
+<Segmented label="Period" options={PERIODS} value={period} onchange={setPeriod} />
+```
+
+A switch between the panels of a page is `Tabs.svelte`, with its panel
+in `TabPanel.svelte` of the same `id`. The arrow keys, Home and End move
+to a tab and select it. The page keeps the tab in its URL: `?tab=` on
+the Manual page and `?view=` on the Scores page. `src/lib/segmented-scan.test.ts`
+fails on a page that draws a group of buttons itself, and on a group with
+a button that does not say whether it is pressed.
+
 ## Stack
 
 | Choice                                           | Why                                                                                                                               |
