@@ -4,6 +4,16 @@
    tokens.css holds them, and scripts/build-tokens.mjs writes it from
    web/tokens/. */
 
+/* --- breakpoints -----------------------------------------------------------
+   The widths where the layout changes, each with a name. A media query
+   cannot read a custom property, so each query writes its width, and
+   src/lib/breakpoints.test.ts fails on a query at any other width.
+     xl  1200px  the key numbers of the Overview go three in a row
+     lg  1100px  two panels side by side go one under the other
+     md   900px  the side bar folds behind the menu button of a top bar
+     sm   800px  the key numbers and the meta tiles go two in a row
+*/
+
 * {
     box-sizing: border-box;
 }
