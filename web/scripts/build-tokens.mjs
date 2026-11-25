@@ -9,6 +9,8 @@
 // are not what this writes. It reads only the part of the format that
 // Tumult uses: srgb colours with a hex, font families, dimensions in px or
 // rem, font weights and numbers as numbers, aliases, sets and one modifier.
+// The format has no percent, so a number may take the unit % from the
+// extension of Tumult: `"$extensions": { "rs.tumult": { "unit": "%" } }`.
 //
 // Usage: node scripts/build-tokens.mjs
 
@@ -25,6 +27,9 @@ const PRIMITIVE = 'primitive';
 const PAGE_ONLY = 'page';
 // The units of a dimension in the format. CSS writes them the same way.
 const UNITS = ['px', 'rem'];
+// The extension of Tumult in a token, and the one unit it may give a number.
+const EXTENSION = 'rs.tumult';
+const PERCENT = '%';
 // Charts draw on a canvas and cannot read CSS, so this group is only in the TS.
 const CANVAS_ONLY = 'chart.';
 // The colours of the HTML report of `tumult report`, as a path under web/.
@@ -37,7 +42,7 @@ const DOCS_ONLY = 'docs';
 const DOCS_SCHEME = '../docs/_sass/color_schemes/_tumult-tokens.scss';
 const LANDING_CSS = '../docs/assets/css/tokens.css';
 
-/** @typedef {{ value: unknown, type?: string, set: string }} Token */
+/** @typedef {{ value: unknown, type?: string, set: string, unit?: string }} Token */
 /** @typedef {{ set: string, tokens: Record<string, unknown> }} Source */
 /** @typedef {{ $ref: string }} Ref */
 /**
@@ -66,13 +71,32 @@ const message = (error) => (error instanceof Error ? error.message : String(erro
 function flatten(tree, set, into, path = [], type = undefined) {
     const own = typeof tree.$type === 'string' ? tree.$type : type;
     if ('$value' in tree) {
-        into.set(path.join('.'), { value: tree.$value, type: own, set });
+        const unit = unitOf(tree.$extensions);
+        into.set(path.join('.'), {
+            value: tree.$value,
+            type: own,
+            set,
+            ...(unit === undefined ? {} : { unit }),
+        });
         return;
     }
     for (const [name, child] of Object.entries(tree)) {
         if (name.startsWith('$') || child === null || typeof child !== 'object') continue;
         flatten(/** @type {Record<string, unknown>} */ (child), set, into, [...path, name], own);
     }
+}
+
+/**
+ * The unit that the extension of Tumult gives a token, or undefined.
+ * @param {unknown} extensions
+ * @returns {string | undefined}
+ */
+function unitOf(extensions) {
+    if (extensions === null || typeof extensions !== 'object') return undefined;
+    const own = /** @type {Record<string, unknown>} */ (extensions)[EXTENSION];
+    if (own === null || typeof own !== 'object') return undefined;
+    const { unit } = /** @type {Record<string, unknown>} */ (own);
+    return unit === undefined ? undefined : String(unit);
 }
 
 /**
@@ -107,6 +131,18 @@ function notDimension(value) {
     if (unit === undefined) return 'it has no unit';
     if (typeof unit !== 'string' || !UNITS.includes(unit)) return 'its unit is not px or rem';
     return '';
+}
+
+/**
+ * Fails when the extension of Tumult gives a unit other than % or gives
+ * it to a token that is not a number.
+ * @type {(path: string, type: string, unit: string | undefined) => void}
+ */
+function checkUnit(path, type, unit) {
+    if (unit === undefined) return;
+    if (type !== 'number') fail(path, `only a number takes a unit from the extension ${EXTENSION}`);
+    if (unit !== PERCENT)
+        fail(path, `the extension ${EXTENSION} gives a unit other than ${PERCENT}`);
 }
 
 /** @type {(path: string, type: string, value: unknown) => void} */
@@ -154,7 +190,7 @@ export function resolveTokens(sources) {
         if (known) return known;
         const token = /** @type {Token} */ (raw.get(path));
         const alias = typeof token.value === 'string' ? ALIAS.exec(token.value)?.[1] : undefined;
-        let { value, type } = token;
+        let { value, type, unit } = token;
         if (alias !== undefined) {
             const at = [...trail, path];
             const loop = [...at.slice(at.indexOf(alias)), alias].join(' -> ');
@@ -163,11 +199,13 @@ export function resolveTokens(sources) {
             const target = resolve(alias, at);
             value = target.value;
             type ??= target.type;
+            unit ??= target.unit;
         }
         if (type === undefined)
             fail(path, 'no $type on the token, on a group above it or on the token it names');
         check(path, type, value);
-        const resolved = { value, type, set: token.set };
+        checkUnit(path, type, unit);
+        const resolved = { value, type, set: token.set, ...(unit === undefined ? {} : { unit }) };
         done.set(path, resolved);
         return resolved;
     };
@@ -216,9 +254,10 @@ function readThemes(dir) {
 }
 
 /**
- * A value as CSS writes it: a hex, a length, a number or a list of font
- * names. A font name of more than one word, such as Segoe UI, is quoted.
- * One word may start with a dash, as -apple-system does.
+ * A value as CSS writes it: a hex, a length, a number, a number with the
+ * unit of the extension of Tumult or a list of font names. A font name of
+ * more than one word, such as Segoe UI, is quoted. One word may start with
+ * a dash, as -apple-system does.
  * @param {Token} token
  */
 function cssValue(token) {
@@ -227,7 +266,8 @@ function cssValue(token) {
         const { value, unit } = /** @type {{ value: number, unit: string }} */ (token.value);
         return `${value}${unit}`;
     }
-    if (token.type === 'fontWeight' || token.type === 'number') return String(token.value);
+    if (token.type === 'number') return `${token.value}${token.unit ?? ''}`;
+    if (token.type === 'fontWeight') return String(token.value);
     const names = /** @type {string[]} */ ([token.value].flat());
     return names.map((name) => (/^-?[A-Za-z][\w-]*$/.test(name) ? name : `'${name}'`)).join(', ');
 }

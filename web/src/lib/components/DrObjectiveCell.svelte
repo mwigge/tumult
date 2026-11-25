@@ -28,6 +28,6 @@
     }
     .target {
         color: var(--text-faint);
-        font-size: var(--font-size-2xs);
+        font-size: var(--font-size-xs);
     }
 </style>

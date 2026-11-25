@@ -183,20 +183,20 @@
         text-transform: uppercase;
         letter-spacing: var(--letter-spacing-sm);
         color: var(--text-dim);
-        margin: var(--space-2-5) 0 var(--space-1-5);
+        margin: var(--space-3) 0 var(--space-2);
     }
     .compact td,
     .compact th {
         padding: var(--space-1) var(--space-2);
     }
     .line {
-        margin: var(--space-1-5) 0;
+        margin: var(--space-2) 0;
         font-size: var(--font-size-md);
     }
     .plain,
     .steps {
         margin: 0;
-        padding-left: var(--space-4-5);
+        padding-left: var(--space-5);
     }
     .plain li,
     .steps li {

@@ -119,6 +119,19 @@ describe('resolveTokens', () => {
             'z: $type is number, but the value is not a number',
         );
     });
+
+    it('takes a percent on a number only, through the Tumult extension', () => {
+        const round = ($type: string, $value: unknown, unit: string) => () =>
+            resolve({ round: { $type, $value, $extensions: { 'rs.tumult': { unit } } } });
+
+        expect(round('number', 50, '%')().get('round')).toMatchObject({ value: 50, unit: '%' });
+        expect(round('dimension', { value: 50, unit: 'px' }, '%')).toThrow(
+            'round: only a number takes a unit from the extension rs.tumult',
+        );
+        expect(round('number', 50, 'em')).toThrow(
+            'round: the extension rs.tumult gives a unit other than %',
+        );
+    });
 });
 
 describe('build', () => {
@@ -145,13 +158,15 @@ describe('build', () => {
             // A fontFamily. A name of one word has no quotes, also when it starts with a dash.
             "--font-body: -apple-system, 'Segoe UI', Inter, Roboto, sans-serif;",
             // Dimensions, a fontWeight and numbers.
-            '--font-size-sm: 12.5px;',
+            '--font-size-xs: 12px;',
             '--font-weight-strong: 600;',
             '--line-height-body: 1.5;',
             '--letter-spacing-md: 0.6px;',
-            '--space-1-5: 6px;',
+            '--space-0-5: 2px;',
             '--space-2: 8px;',
-            '--radius-lg: 5px;',
+            '--radius-xl: 6px;',
+            // A number with the percent of the Tumult extension.
+            '--radius-round: 50%;',
             '--border-width-sm: 1px;',
             '--z-sticky: 2;',
             '--drawer-narrow: 480px;',
@@ -174,7 +189,7 @@ describe('build', () => {
         const ts = build(TOKENS)['src/lib/tokens.gen.ts'];
 
         expect(ts).toMatch(
-            /"size": \{\s*"2xs": 9,\s*"xs": 10,\s*"sm": 11,\s*"md": 12,\s*"lg": 15\s*\}/,
+            /"size": \{\s*"2xs": 9,\s*"xs": 10,\s*"sm": 11,\s*"md": 12,\s*"lg": 14\s*\}/,
         );
         expect(ts).toContain('"weight": 600');
     });

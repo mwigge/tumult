@@ -8,7 +8,7 @@
     "html": {
       "color": "rgb(27, 35, 41)",
       "font-family": "-apple-system, \"Segoe UI\", Inter, Roboto, sans-serif",
-      "font-size": "14px",
+      "font-size": "13px",
       "font-weight": "400",
       "line-height": "1.5",
       "letter-spacing": "normal",
@@ -38,20 +38,20 @@
     "div.shell > aside[complementary].side > div.brand": {
       "display": "block",
       "border-bottom": "1px solid rgb(227, 232, 237)",
-      "padding": "0px 18px 14px",
-      "margin": "0px 0px 10px"
+      "padding": "0px 20px 16px",
+      "margin": "0px 0px 12px"
     },
     "div.shell > aside[complementary].side > div.brand > div.name": {
-      "font-size": "17px",
+      "font-size": "18px",
       "font-weight": "700",
-      "letter-spacing": "0.4px",
+      "letter-spacing": "0.5px",
       "display": "block"
     },
     "div.shell > aside[complementary].side > div.brand > div.tag": {
       "color": "rgb(97, 109, 121)",
       "font-size": "11px",
       "display": "block",
-      "margin": "2px 0px 0px"
+      "margin": "4px 0px 0px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\"": {
       "display": "block",
@@ -59,266 +59,244 @@
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◧ Overview\"": {
       "color": "rgb(59, 71, 81)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◧ Overview\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◎ Resilience\"": {
       "color": "rgb(59, 71, 81)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◎ Resilience\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◭ Performance\"": {
       "color": "rgb(59, 71, 81)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◭ Performance\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▦ Scores\"": {
       "color": "rgb(59, 71, 81)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▦ Scores\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚖ DORA\"": {
       "color": "rgb(59, 71, 81)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚖ DORA\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⟲ Disaster recovery\"": {
       "color": "rgb(59, 71, 81)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⟲ Disaster recovery\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚗ Experiments\"": {
       "color": "rgb(59, 71, 81)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚗ Experiments\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▶ Runs\"": {
       "color": "rgb(59, 71, 81)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▶ Runs\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✚ Author\"": {
       "color": "rgb(59, 71, 81)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✚ Author\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"☷ GameDays\"": {
       "color": "rgb(59, 71, 81)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"☷ GameDays\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✓ Approvals\"": {
       "color": "rgb(59, 71, 81)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✓ Approvals\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✎ Manual\"": {
       "color": "rgb(59, 71, 81)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✎ Manual\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"≣ Logs\"": {
       "color": "rgb(59, 71, 81)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"≣ Logs\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link].active \"⌁ Traces\"": {
-      "font-size": "13.5px",
       "display": "flex",
       "background-color": "rgb(233, 238, 242)",
       "border-left": "2px solid rgb(31, 111, 178)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link].active \"⌁ Traces\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"∿ Metrics\"": {
       "color": "rgb(59, 71, 81)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"∿ Metrics\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✳ Star Map\"": {
       "color": "rgb(59, 71, 81)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✳ Star Map\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✦ Ask\"": {
       "color": "rgb(59, 71, 81)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✦ Ask\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▤ Reports\"": {
       "color": "rgb(59, 71, 81)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▤ Reports\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◔ Events\"": {
       "color": "rgb(59, 71, 81)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◔ Events\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚿ Users\"": {
       "color": "rgb(59, 71, 81)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚿ Users\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"➤ Webhooks\"": {
       "color": "rgb(59, 71, 81)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"➤ Webhooks\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"↻ Schedules\"": {
       "color": "rgb(59, 71, 81)",
-      "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
-      "padding": "8px 18px",
-      "gap": "9px"
+      "padding": "8px 20px",
+      "gap": "8px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"↻ Schedules\" > span": {
       "display": "block"
     },
     "div.shell > aside[complementary].side > button[button].theme \"○ light\"": {
       "color": "rgb(59, 71, 81)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "display": "block",
       "border-top": "1px solid rgb(227, 232, 237)",
       "border-right": "1px solid rgb(227, 232, 237)",
       "border-bottom": "1px solid rgb(227, 232, 237)",
       "border-left": "1px solid rgb(227, 232, 237)",
       "border-radius": "4px",
-      "padding": "2px 8px",
-      "margin": "8px 18px 0px"
+      "padding": "4px 8px",
+      "margin": "8px 20px 0px"
     },
     "div.shell > main[main].main": {
       "display": "block",
-      "padding": "22px 26px 60px"
+      "padding": "24px 28px 60px"
     },
     "div.shell > main[main].main > div.page-head": {
       "display": "flex",
-      "margin": "0px 0px 18px",
-      "gap": "14px"
+      "margin": "0px 0px 20px",
+      "gap": "16px"
     },
     "div.shell > main[main].main > div.page-head > a[link].back \"← traces\"": {
       "color": "rgb(59, 71, 81)",
@@ -326,15 +304,15 @@
     },
     "div.shell > main[main].main > div.page-head > h1[heading].mono \"t-1\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
-      "font-size": "19px",
+      "font-size": "18px",
       "font-weight": "600",
       "display": "block"
     },
     "div.shell > main[main].main > div.grid": {
       "display": "grid",
       "grid-template-columns": "repeat(4, 1fr)",
-      "margin": "0px 0px 14px",
-      "gap": "14px"
+      "margin": "0px 0px 16px",
+      "gap": "16px"
     },
     "div.shell > main[main].main > div.grid > div.panel.meta": {
       "display": "block",
@@ -344,7 +322,7 @@
       "border-bottom": "1px solid rgb(227, 232, 237)",
       "border-left": "1px solid rgb(227, 232, 237)",
       "border-radius": "6px",
-      "padding": "14px 16px"
+      "padding": "16px"
     },
     "div.shell > main[main].main > div.grid > div.panel.meta > span": {
       "color": "rgb(59, 71, 81)",
@@ -355,7 +333,7 @@
       "margin": "0px 0px 4px"
     },
     "div.shell > main[main].main > div.grid > div.panel.meta > b": {
-      "font-size": "13.5px",
+      "font-size": "14px",
       "font-weight": "600",
       "display": "inline"
     },
@@ -367,7 +345,7 @@
       "border-bottom": "1px solid rgb(227, 232, 237)",
       "border-left": "1px solid rgb(227, 232, 237)",
       "border-radius": "6px",
-      "padding": "14px 16px"
+      "padding": "16px"
     },
     "div.shell > main[main].main > div.grid > div.panel.meta #2 > span": {
       "color": "rgb(59, 71, 81)",
@@ -379,7 +357,7 @@
     },
     "div.shell > main[main].main > div.grid > div.panel.meta #2 > b.mono": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
-      "font-size": "13.5px",
+      "font-size": "14px",
       "font-weight": "600",
       "display": "inline"
     },
@@ -391,7 +369,7 @@
       "border-bottom": "1px solid rgb(227, 232, 237)",
       "border-left": "1px solid rgb(227, 232, 237)",
       "border-radius": "6px",
-      "padding": "14px 16px"
+      "padding": "16px"
     },
     "div.shell > main[main].main > div.grid > div.panel.meta #3 > span": {
       "color": "rgb(59, 71, 81)",
@@ -403,7 +381,7 @@
     },
     "div.shell > main[main].main > div.grid > div.panel.meta #3 > b.mono": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
-      "font-size": "13.5px",
+      "font-size": "14px",
       "font-weight": "600",
       "display": "inline"
     },
@@ -415,7 +393,7 @@
       "border-bottom": "1px solid rgb(227, 232, 237)",
       "border-left": "1px solid rgb(227, 232, 237)",
       "border-radius": "6px",
-      "padding": "14px 16px"
+      "padding": "16px"
     },
     "div.shell > main[main].main > div.grid > div.panel.meta #4 > span": {
       "color": "rgb(59, 71, 81)",
@@ -428,7 +406,7 @@
     "div.shell > main[main].main > div.grid > div.panel.meta #4 > b.mono": {
       "color": "rgb(190, 55, 41)",
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
-      "font-size": "13.5px",
+      "font-size": "14px",
       "font-weight": "600",
       "display": "inline"
     },
@@ -440,26 +418,26 @@
       "border-bottom": "1px solid rgb(227, 232, 237)",
       "border-left": "1px solid rgb(227, 232, 237)",
       "border-radius": "6px",
-      "padding": "14px 16px",
-      "margin": "0px 0px 14px"
+      "padding": "16px",
+      "margin": "0px 0px 16px"
     },
     "div.shell > main[main].main > div.panel > h2[heading] \"WATERFALL — 4 SPANS\"": {
       "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.7px",
+      "letter-spacing": "0.6px",
       "text-transform": "uppercase",
       "display": "block",
-      "margin": "0px 0px 10px"
+      "margin": "0px 0px 12px"
     },
     "div.shell > main[main].main > div.panel > div.wf": {
-      "font-size": "12.5px",
+      "font-size": "12px",
       "display": "block"
     },
     "div.shell > main[main].main > div.panel > div.wf > div.grid": {
       "display": "grid",
       "z-index": "1",
-      "gap": "14px"
+      "gap": "16px"
     },
     "div.shell > main[main].main > div.panel > div.wf > div.grid > i": {
       "display": "block",
@@ -496,12 +474,12 @@
       "background-color": "rgb(255, 255, 255)",
       "z-index": "2",
       "border-bottom": "1px solid rgb(197, 206, 214)",
-      "padding": "3px 0px"
+      "padding": "4px 0px"
     },
     "div.shell > main[main].main > div.panel > div.wf > div.ruler > div.labels": {
       "color": "rgb(97, 109, 121)",
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
-      "font-size": "10.5px",
+      "font-size": "11px",
       "display": "block",
       "margin": "0px 76px 0px 250px"
     },
@@ -527,7 +505,7 @@
       "display": "grid",
       "grid-template-columns": "240px 1fr 66px",
       "border-bottom": "1px solid color(srgb 0.890196 0.909804 0.929412 / 0.55)",
-      "padding": "3px 0px",
+      "padding": "4px 0px",
       "gap": "10px"
     },
     "div.shell > main[main].main > div.panel > div.wf > button[button].row \"experiment 5.3s\" > span.name": {
@@ -549,14 +527,13 @@
     "div.shell > main[main].main > div.panel > div.wf > button[button].row \"experiment 5.3s\" > span.dur.mono": {
       "color": "rgb(59, 71, 81)",
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
-      "font-size": "11.5px",
       "display": "block"
     },
     "div.shell > main[main].main > div.panel > div.wf > button[button].row \"hypothesis.before 1ms\"": {
       "display": "grid",
       "grid-template-columns": "240px 1fr 66px",
       "border-bottom": "1px solid color(srgb 0.890196 0.909804 0.929412 / 0.55)",
-      "padding": "3px 0px",
+      "padding": "4px 0px",
       "gap": "10px"
     },
     "div.shell > main[main].main > div.panel > div.wf > button[button].row \"hypothesis.before 1ms\" > span.name": {
@@ -579,14 +556,13 @@
     "div.shell > main[main].main > div.panel > div.wf > button[button].row \"hypothesis.before 1ms\" > span.dur.mono": {
       "color": "rgb(59, 71, 81)",
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
-      "font-size": "11.5px",
       "display": "block"
     },
     "div.shell > main[main].main > div.panel > div.wf > button[button].row \"action error 3.0s\"": {
       "display": "grid",
       "grid-template-columns": "240px 1fr 66px",
       "border-bottom": "1px solid color(srgb 0.890196 0.909804 0.929412 / 0.55)",
-      "padding": "3px 0px",
+      "padding": "4px 0px",
       "gap": "10px"
     },
     "div.shell > main[main].main > div.panel > div.wf > button[button].row \"action error 3.0s\" > span.name": {
@@ -609,7 +585,6 @@
     "div.shell > main[main].main > div.panel > div.wf > button[button].row \"action error 3.0s\" > span.dur.mono": {
       "color": "rgb(59, 71, 81)",
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
-      "font-size": "11.5px",
       "display": "block"
     },
     "div.shell > main[main].main > div.panel > div.wf > button[button].row \"action error 3.0s\" > span.dur.mono > span.mark.fail": {
@@ -623,7 +598,7 @@
       "display": "grid",
       "grid-template-columns": "240px 1fr 66px",
       "border-bottom": "1px solid color(srgb 0.890196 0.909804 0.929412 / 0.55)",
-      "padding": "3px 0px",
+      "padding": "4px 0px",
       "gap": "10px"
     },
     "div.shell > main[main].main > div.panel > div.wf > button[button].row \"hypothesis.after 1ms\" > span.name": {
@@ -646,7 +621,6 @@
     "div.shell > main[main].main > div.panel > div.wf > button[button].row \"hypothesis.after 1ms\" > span.dur.mono": {
       "color": "rgb(59, 71, 81)",
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
-      "font-size": "11.5px",
       "display": "block"
     },
     "div.shell > main[main].main > div.panel #2": {
@@ -657,20 +631,19 @@
       "border-bottom": "1px solid rgb(227, 232, 237)",
       "border-left": "1px solid rgb(227, 232, 237)",
       "border-radius": "6px",
-      "padding": "14px 16px"
+      "padding": "16px"
     },
     "div.shell > main[main].main > div.panel #2 > h2[heading] \"LOGS (0)\"": {
       "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.7px",
+      "letter-spacing": "0.6px",
       "text-transform": "uppercase",
       "display": "block",
-      "margin": "0px 0px 10px"
+      "margin": "0px 0px 12px"
     },
     "div.shell > main[main].main > div.panel #2 > div.state": {
       "color": "rgb(59, 71, 81)",
-      "font-size": "13px",
       "display": "block",
       "padding": "28px"
     },

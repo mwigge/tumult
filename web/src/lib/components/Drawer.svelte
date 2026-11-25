@@ -73,12 +73,12 @@
     }
     .narrow {
         width: min(var(--drawer-narrow), 92vw);
-        padding: var(--space-4-5);
+        padding: var(--space-5);
     }
     /* The wide drawer leaves the page unshaded, so a shadow marks its edge. */
     .wide {
         width: min(var(--drawer-wide), 100vw);
-        padding: var(--space-4) var(--space-4-5);
+        padding: var(--space-4) var(--space-5);
         box-shadow: -8px 0 24px rgb(0 0 0 / 25%);
     }
     .drawer::backdrop {
@@ -97,7 +97,7 @@
         max-height: 640px;
         border: var(--border-width-sm) solid var(--border-strong);
         border-radius: var(--radius-xl);
-        padding: var(--space-3-5) var(--space-4);
+        padding: var(--space-4);
     }
 
     /* The parts that the drawers share. */
@@ -107,7 +107,7 @@
         color: var(--text-dim);
         font-size: var(--font-size-2xl);
         cursor: pointer;
-        line-height: 1;
+        line-height: var(--line-height-tight);
     }
     .drawer :global(h3) {
         font-size: var(--font-size-3xs);

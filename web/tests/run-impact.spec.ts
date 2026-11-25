@@ -167,6 +167,8 @@ test('markup in a probe name is shown as text in the chart tooltip', async ({ pa
     await page.goto('/runs/run-1');
     await chartOption(page);
     const chart = page.locator('[data-chart="impact-0"]');
+    // The pointer reaches only what the window shows.
+    await chart.scrollIntoViewIfNeeded();
     const box = await chart.boundingBox();
     if (!box) throw new Error('the chart has no box');
     // The tooltip follows the pointer along the time axis.

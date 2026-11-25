@@ -131,7 +131,7 @@
         </p>
     {/if}
 
-    <Panel title="Campaign steps" style="margin-bottom: var(--space-3-5)" scroll>
+    <Panel title="Campaign steps" style="margin-bottom: var(--space-4)" scroll>
         <table class="data">
             <thead>
                 <tr
@@ -172,7 +172,7 @@
     {#if day.regulatory}
         <Panel
             title={`Regulatory mapping — ${day.regulatory.frameworks.join(', ')}`}
-            style="margin-bottom: var(--space-3-5)"
+            style="margin-bottom: var(--space-4)"
             scroll
         >
             <table class="data">
@@ -224,7 +224,7 @@
                     ? `The campaign runs in ${environment.trim()}.`
                     : 'Enter the environment the campaign runs in.'}
             </div>
-            {#if launchError}<State kind="error" style="margin-top: var(--space-2-5)">
+            {#if launchError}<State kind="error" style="margin-top: var(--space-3)">
                     {launchError}
                 </State>{/if}
         {/if}
@@ -235,15 +235,15 @@
     .desc {
         color: var(--text-dim);
         font-size: var(--font-size-md);
-        margin: 0 0 var(--space-2-5);
+        margin: 0 0 var(--space-3);
     }
     .tags {
         display: flex;
-        gap: var(--space-1-5);
-        margin: 0 0 var(--space-3-5);
+        gap: var(--space-2);
+        margin: 0 0 var(--space-4);
     }
     .campaign {
-        margin-bottom: var(--space-2-5);
+        margin-bottom: var(--space-3);
         font-size: var(--font-size-md);
         display: flex;
         align-items: center;
@@ -252,7 +252,7 @@
     .params {
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-        gap: var(--space-2-5) var(--space-4-5);
+        gap: var(--space-3) var(--space-5);
     }
     .params input {
         width: 100%;

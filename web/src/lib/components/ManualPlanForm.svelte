@@ -97,7 +97,7 @@
     .row3 {
         display: grid;
         grid-template-columns: 1fr 1fr 1fr;
-        gap: var(--space-2-5);
+        gap: var(--space-3);
     }
     @media (max-width: 800px) {
         .row3 {

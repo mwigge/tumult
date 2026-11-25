@@ -52,10 +52,10 @@
         },
         "lg": {
           "$value": {
-            "value": 15,
+            "value": 14,
             "unit": "px"
           },
-          "$description": "15px. A value a chart shows large: the index of the maturity gauge."
+          "$description": "14px. A value a chart shows large: the index of the maturity gauge. The size of a value on a page."
         }
       }
     },

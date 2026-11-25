@@ -66,7 +66,7 @@
     }
     h3 {
         font-size: var(--font-size-md);
-        margin-bottom: var(--space-1-5);
+        margin-bottom: var(--space-2);
     }
     .note {
         color: var(--text-dim);

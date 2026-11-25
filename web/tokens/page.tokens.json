@@ -1,5 +1,5 @@
 {
-  "$description": "The roles that only pages use: the type scale, spacing, radii, border widths, layers and the widths of drawers. One tier: each token holds its value, the same in every theme, and the pages use it as a CSS custom property of the same name. The values are the ones the pages used before they had tokens. Spacing is on a 4px scale: space-2 is step 2, 8px. A half step ends in -5, as CSS allows no dot in a name: space-1-5 is step 1.5, 6px. A value the pages use fewer than 3 times, an odd spacing and a negative margin have no token yet.",
+  "$description": "The roles that only pages use: the type scale, spacing, radii, border widths, layers and the widths of drawers. One tier: each token holds its value, the same in every theme, and the pages use it as a CSS custom property of the same name. Type has four body sizes, 11, 12, 13 and 14px, and three display sizes, 18, 24 and 32px. Spacing is on a 4px scale: space-2 is step 2, 8px. Its one half step is space-0-5, 2px, for the padding of badges and chips; CSS allows no dot in a name, so a half step ends in -5. Radius has three steps, a pill and a round. src/lib/scale.test.ts holds the scales.",
   "font-body": {
     "$type": "fontFamily",
     "$value": ["-apple-system", "Segoe UI", "Inter", "Roboto", "sans-serif"],
@@ -8,147 +8,148 @@
   "font-size-3xs": {
     "$type": "dimension",
     "$value": { "value": 11, "unit": "px" },
-    "$description": "11px. The smallest text: uppercase labels and captions."
-  },
-  "font-size-2xs": {
-    "$type": "dimension",
-    "$value": { "value": 11.5, "unit": "px" },
-    "$description": "11.5px. Table heads and badges."
+    "$description": "11px. Uppercase labels, captions and table heads."
   },
   "font-size-xs": {
     "$type": "dimension",
     "$value": { "value": 12, "unit": "px" },
-    "$description": "12px. Panel titles and small notes."
-  },
-  "font-size-sm": {
-    "$type": "dimension",
-    "$value": { "value": 12.5, "unit": "px" },
-    "$description": "12.5px. Sub titles, hints, and the labels of fields and segments."
+    "$description": "12px. Small and meta text: notes, hints, badges, chips, legends and the labels of fields and segments."
   },
   "font-size-md": {
     "$type": "dimension",
     "$value": { "value": 13, "unit": "px" },
-    "$description": "13px. Tables, inputs and buttons."
-  },
-  "font-size-lg": {
-    "$type": "dimension",
-    "$value": { "value": 13.5, "unit": "px" },
-    "$description": "13.5px. The links of the navigation and the values of a meta row."
+    "$description": "13px. The body text: the page, tables, inputs, buttons and the links of the navigation."
   },
   "font-size-xl": {
     "$type": "dimension",
     "$value": { "value": 14, "unit": "px" },
-    "$description": "14px. The body text of the page."
+    "$description": "14px. Emphasis and values: the values of a meta row, the title of a drawer and a large badge."
   },
   "font-size-2xl": {
     "$type": "dimension",
-    "$value": { "value": 22, "unit": "px" },
-    "$description": "22px. A headline, and the close sign of a drawer."
+    "$value": { "value": 18, "unit": "px" },
+    "$description": "18px. A title: the title of a page, the name of the app, a headline and the close sign of a drawer."
   },
   "font-size-3xl": {
     "$type": "dimension",
     "$value": { "value": 24, "unit": "px" },
-    "$description": "24px. A score."
+    "$description": "24px. A score and a key number. It is large text, so a colour with 3:1 may draw it: the band of a score."
+  },
+  "font-size-4xl": {
+    "$type": "dimension",
+    "$value": { "value": 32, "unit": "px" },
+    "$description": "32px. The one hero number of a page, such as the posture score of the Resilience page."
+  },
+  "font-weight-normal": {
+    "$type": "fontWeight",
+    "$value": 400,
+    "$description": "400, regular. Text that keeps the regular weight inside bold text."
+  },
+  "font-weight-medium": {
+    "$type": "fontWeight",
+    "$value": 500,
+    "$description": "500, medium. A value that stands out a little, such as the name of the weakest score."
   },
   "font-weight-strong": {
     "$type": "fontWeight",
     "$value": 600,
     "$description": "600, semi-bold. Headings, table heads, badges and numbers that stand out."
   },
+  "font-weight-bold": {
+    "$type": "fontWeight",
+    "$value": 700,
+    "$description": "700, bold. The name of the app."
+  },
   "line-height-body": {
     "$type": "number",
     "$value": 1.5,
     "$description": "1.5 times the font size. The body text and text areas."
   },
+  "line-height-tight": {
+    "$type": "number",
+    "$value": 1,
+    "$description": "1 times the font size. A line as tall as its text: a sign, such as the close sign of a drawer."
+  },
   "letter-spacing-sm": {
     "$type": "dimension",
     "$value": { "value": 0.5, "unit": "px" },
-    "$description": "0.5px. Uppercase table heads and labels."
+    "$description": "0.5px. Uppercase table heads and labels, badges and the name of the app."
   },
   "letter-spacing-md": {
     "$type": "dimension",
     "$value": { "value": 0.6, "unit": "px" },
-    "$description": "0.6px. Small uppercase labels, such as the labels of a meta row."
+    "$description": "0.6px. Small uppercase labels, such as the labels of a meta row and the titles of panels."
   },
   "space-0-5": {
     "$type": "dimension",
     "$value": { "value": 2, "unit": "px" },
-    "$description": "2px. Step 0.5 of the spacing scale."
+    "$description": "2px. The half step of the spacing scale: only the padding of badges and chips."
   },
   "space-1": {
     "$type": "dimension",
     "$value": { "value": 4, "unit": "px" },
     "$description": "4px. Step 1 of the spacing scale."
   },
-  "space-1-5": {
-    "$type": "dimension",
-    "$value": { "value": 6, "unit": "px" },
-    "$description": "6px. Step 1.5 of the spacing scale."
-  },
   "space-2": {
     "$type": "dimension",
     "$value": { "value": 8, "unit": "px" },
     "$description": "8px. Step 2 of the spacing scale."
-  },
-  "space-2-5": {
-    "$type": "dimension",
-    "$value": { "value": 10, "unit": "px" },
-    "$description": "10px. Step 2.5 of the spacing scale."
   },
   "space-3": {
     "$type": "dimension",
     "$value": { "value": 12, "unit": "px" },
     "$description": "12px. Step 3 of the spacing scale."
   },
-  "space-3-5": {
-    "$type": "dimension",
-    "$value": { "value": 14, "unit": "px" },
-    "$description": "14px. Step 3.5 of the spacing scale."
-  },
   "space-4": {
     "$type": "dimension",
     "$value": { "value": 16, "unit": "px" },
     "$description": "16px. Step 4 of the spacing scale."
   },
-  "space-4-5": {
+  "space-5": {
     "$type": "dimension",
-    "$value": { "value": 18, "unit": "px" },
-    "$description": "18px. Step 4.5 of the spacing scale."
+    "$value": { "value": 20, "unit": "px" },
+    "$description": "20px. Step 5 of the spacing scale."
   },
-  "space-5-5": {
+  "space-6": {
     "$type": "dimension",
-    "$value": { "value": 22, "unit": "px" },
-    "$description": "22px. Step 5.5 of the spacing scale."
+    "$value": { "value": 24, "unit": "px" },
+    "$description": "24px. Step 6 of the spacing scale."
+  },
+  "space-7": {
+    "$type": "dimension",
+    "$value": { "value": 28, "unit": "px" },
+    "$description": "28px. Step 7 of the spacing scale."
+  },
+  "space-15": {
+    "$type": "dimension",
+    "$value": { "value": 60, "unit": "px" },
+    "$description": "60px. Step 15 of the spacing scale: the room under the content of a page."
   },
   "radius-xs": {
     "$type": "dimension",
     "$value": { "value": 2, "unit": "px" },
     "$description": "2px. Bars and swatches."
   },
-  "radius-sm": {
-    "$type": "dimension",
-    "$value": { "value": 3, "unit": "px" },
-    "$description": "3px. Small buttons and thin bars."
-  },
   "radius-md": {
     "$type": "dimension",
     "$value": { "value": 4, "unit": "px" },
-    "$description": "4px. Small boxes, such as chips and skeletons."
-  },
-  "radius-lg": {
-    "$type": "dimension",
-    "$value": { "value": 5, "unit": "px" },
-    "$description": "5px. Inputs, segmented controls and the primary button."
+    "$description": "4px. Small boxes and small buttons, such as skeletons, notices and the buttons of a toggle."
   },
   "radius-xl": {
     "$type": "dimension",
     "$value": { "value": 6, "unit": "px" },
-    "$description": "6px. Panels, cards and buttons."
+    "$description": "6px. Panels, cards, buttons and inputs."
   },
-  "radius-2xl": {
+  "radius-pill": {
     "$type": "dimension",
-    "$value": { "value": 10, "unit": "px" },
-    "$description": "10px. Badges and pills."
+    "$value": { "value": 999, "unit": "px" },
+    "$description": "999px. A pill: badges and chips. A box less than 1998px high has round ends."
+  },
+  "radius-round": {
+    "$type": "number",
+    "$value": 50,
+    "$description": "50%. A circle: a dot or a ring. The format has no percent, so the value is a number, and the extension of Tumult gives it the unit %.",
+    "$extensions": { "rs.tumult": { "unit": "%" } }
   },
   "border-width-sm": {
     "$type": "dimension",

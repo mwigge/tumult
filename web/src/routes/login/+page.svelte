@@ -163,14 +163,14 @@
         margin-bottom: var(--space-4);
     }
     .login-panel .brand .name {
-        font-size: 17px;
-        font-weight: 700;
-        letter-spacing: 0.4px;
+        font-size: var(--font-size-2xl);
+        font-weight: var(--font-weight-bold);
+        letter-spacing: var(--letter-spacing-sm);
     }
     .login-panel .brand .tag {
         color: var(--text-faint);
         font-size: var(--font-size-3xs);
-        margin-top: var(--space-0-5);
+        margin-top: var(--space-1);
     }
     form {
         display: flex;
@@ -180,16 +180,16 @@
     label {
         display: flex;
         flex-direction: column;
-        gap: 5px;
-        font-size: var(--font-size-sm);
+        gap: var(--space-1);
+        font-size: var(--font-size-xs);
         color: var(--text-dim);
     }
     input[type='password'] {
         background: var(--bg-raised);
         border: var(--border-width-sm) solid var(--border-input);
         color: var(--text);
-        border-radius: var(--radius-lg);
-        padding: var(--space-1-5) 9px;
+        border-radius: var(--radius-xl);
+        padding: var(--space-2);
         font-size: var(--font-size-md);
         outline: none;
     }

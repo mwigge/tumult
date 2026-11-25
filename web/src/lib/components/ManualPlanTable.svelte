@@ -105,7 +105,7 @@
 <style>
     .row-actions {
         display: flex;
-        gap: var(--space-1-5);
+        gap: var(--space-2);
         justify-content: flex-end;
     }
     .dim {
@@ -114,6 +114,6 @@
     .nowrap {
         white-space: nowrap;
         /* The overdue badge after the day keeps a gap. */
-        --badge-gap: var(--space-1-5);
+        --badge-gap: var(--space-2);
     }
 </style>

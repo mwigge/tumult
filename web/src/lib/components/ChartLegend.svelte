@@ -27,17 +27,17 @@
     .legend {
         display: flex;
         flex-wrap: wrap;
-        gap: var(--space-1-5) var(--space-4);
+        gap: var(--space-2) var(--space-4);
         color: var(--text-dim);
-        font-size: var(--font-size-2xs);
-        margin: var(--space-1-5) 0 var(--space-2-5);
+        font-size: var(--font-size-xs);
+        margin: var(--space-2) 0 var(--space-3);
     }
     .swatch {
         display: inline-block;
         width: 14px;
         height: 10px;
         vertical-align: middle;
-        margin-right: var(--space-0-5);
+        margin-right: var(--space-1);
     }
     .swatch.box {
         background: var(--swatch);

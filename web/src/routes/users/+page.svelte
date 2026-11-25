@@ -216,7 +216,7 @@
         </State>
     </Panel>
 {:else}
-    <Panel style="margin-bottom: var(--space-3-5)" scroll>
+    <Panel style="margin-bottom: var(--space-4)" scroll>
         {#if !users}
             {#if error}
                 <State kind="error">Failed to load users: {error}</State>
@@ -419,7 +419,7 @@
                 </button>
             </div>
         </form>
-        {#if createError}<State kind="error" style="margin-top: var(--space-2-5)">
+        {#if createError}<State kind="error" style="margin-top: var(--space-3)">
                 {createError}
             </State>{/if}
         {#if oneTime}
@@ -440,7 +440,7 @@
             {/if}
         {:else}
             {#if tokens.length > 0}
-                <table class="data" style="margin-bottom: var(--space-3-5)">
+                <table class="data" style="margin-bottom: var(--space-4)">
                     <thead>
                         <tr
                             ><th>Name</th><th>Owner</th><th>Created</th><th>Last used</th><th
@@ -520,7 +520,7 @@
             </form>
             {#if tokenError && tokens !== null}<State
                     kind="error"
-                    style="margin-top: var(--space-2-5)"
+                    style="margin-top: var(--space-3)"
                 >
                     {tokenError}
                 </State>{/if}
@@ -550,7 +550,7 @@
         text-transform: uppercase;
         letter-spacing: var(--letter-spacing-sm);
         color: var(--text-dim);
-        margin: 0 0 var(--space-1-5);
+        margin: 0 0 var(--space-2);
     }
     .detail h2:not(:first-child) {
         margin-top: var(--space-3);
@@ -575,32 +575,32 @@
     }
     .err-text {
         color: var(--fail);
-        font-size: var(--font-size-sm);
-        padding: 0 var(--space-1) var(--space-1-5);
+        font-size: var(--font-size-xs);
+        padding: 0 var(--space-1) var(--space-2);
     }
     .create {
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-        gap: var(--space-3) var(--space-4-5);
+        gap: var(--space-3) var(--space-5);
         align-items: end;
     }
     .create label {
         display: flex;
         flex-direction: column;
-        gap: 5px;
-        font-size: var(--font-size-sm);
+        gap: var(--space-1);
+        font-size: var(--font-size-xs);
         color: var(--text-dim);
     }
     .onetime {
-        margin-top: var(--space-3-5);
+        margin-top: var(--space-4);
         border: var(--border-width-sm) solid var(--warn);
         border-radius: var(--radius-xl);
-        padding: var(--space-2-5) var(--space-3);
+        padding: var(--space-3);
         font-size: var(--font-size-md);
     }
     .pw {
         font-size: var(--font-size-xl);
         user-select: all;
-        margin-top: var(--space-1-5);
+        margin-top: var(--space-2);
     }
 </style>

@@ -37,10 +37,10 @@
     }
     .label {
         color: var(--text-dim);
-        font-size: var(--font-size-2xs);
+        font-size: var(--font-size-3xs);
         text-transform: uppercase;
         letter-spacing: var(--letter-spacing-md);
-        margin-bottom: var(--space-1-5);
+        margin-bottom: var(--space-2);
     }
     .row {
         display: flex;
@@ -49,7 +49,7 @@
         gap: var(--space-2);
     }
     .value {
-        font-size: 26px;
+        font-size: var(--font-size-3xl);
         font-weight: var(--font-weight-strong);
     }
     .delta {

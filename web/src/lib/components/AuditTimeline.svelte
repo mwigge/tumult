@@ -33,8 +33,8 @@
     }
     .entry {
         display: flex;
-        gap: var(--space-2-5);
-        padding: 3px 0;
+        gap: var(--space-3);
+        padding: var(--space-1) 0;
         font-size: var(--font-size-xs);
         border-bottom: var(--border-width-sm) solid
             color-mix(in srgb, var(--border) 50%, transparent);

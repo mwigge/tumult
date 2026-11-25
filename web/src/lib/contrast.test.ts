@@ -148,6 +148,7 @@ function svelteFiles(dir: string): string[] {
 
 const read = (path: string) => readFileSync(join(SRC, path), 'utf8');
 const THEME_CSS = join('lib', 'theme.css');
+const SCORES = join('routes', 'scores', '+page.svelte');
 /** Every style rule of theme.css and of the <style> blocks of the Svelte files. */
 const RULES = [
     ...rulesOf(THEME_CSS, read(THEME_CSS)),
@@ -341,6 +342,21 @@ describe('the text colours of the light theme', () => {
 });
 
 describe('the styles that draw on a colour role', () => {
+    it('write the large score of the Scores page, the one text in a band colour, 24 px or more', () => {
+        // A band is 3:1 on the panel. WCAG lets large text have 3:1: 24 px,
+        // or 18.66 px when it is bold.
+        const score = RULES.find(
+            (rule) => rule.file === SCORES && rule.selectors.includes('.card .value'),
+        );
+        const token = /^var\(--([a-z0-9-]+)\)$/.exec(valueOf(score ?? RULES[0], 'font-size') ?? '');
+        const size = new RegExp(`--${token?.[1]}: (\\d+(?:\\.\\d+)?)px;`).exec(
+            read(join('lib', 'tokens.css')),
+        );
+
+        expect(score).toBeDefined();
+        expect(Number(size?.[1])).toBeGreaterThanOrEqual(24);
+    });
+
     it('write the text on the accent fill in --on-accent', () => {
         const filled = RULES.filter((rule) =>
             ['background', 'background-color'].some(

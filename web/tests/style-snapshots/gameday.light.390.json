@@ -8,7 +8,7 @@
     "html": {
       "color": "rgb(27, 35, 41)",
       "font-family": "-apple-system, \"Segoe UI\", Inter, Roboto, sans-serif",
-      "font-size": "14px",
+      "font-size": "13px",
       "font-weight": "400",
       "line-height": "1.5",
       "letter-spacing": "normal",
@@ -36,14 +36,13 @@
       "padding": "8px 16px"
     },
     "div.shell > header[banner].topbar > span.name": {
-      "font-size": "17px",
+      "font-size": "18px",
       "font-weight": "700",
-      "letter-spacing": "0.4px",
+      "letter-spacing": "0.5px",
       "display": "block"
     },
     "div.shell > header[banner].topbar > button[button].btn \"Menu\"": {
       "font-family": "Arial",
-      "font-size": "13px",
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(233, 238, 242)",
@@ -52,29 +51,29 @@
       "border-bottom": "1px solid rgb(197, 206, 214)",
       "border-left": "1px solid rgb(197, 206, 214)",
       "border-radius": "6px",
-      "padding": "6px 14px"
+      "padding": "8px 16px"
     },
     "div.shell > main[main].main": {
       "display": "block",
-      "padding": "22px 16px 60px"
+      "padding": "24px 16px 60px"
     },
     "div.shell > main[main].main > div.page-head": {
       "display": "flex",
-      "margin": "0px 0px 18px",
-      "gap": "14px"
+      "margin": "0px 0px 20px",
+      "gap": "16px"
     },
     "div.shell > main[main].main > div.page-head > a[link].back \"← gamedays\"": {
       "color": "rgb(59, 71, 81)",
       "display": "block"
     },
     "div.shell > main[main].main > div.page-head > h1[heading] \"smoke campaign\"": {
-      "font-size": "19px",
+      "font-size": "18px",
       "font-weight": "600",
       "display": "block"
     },
     "div.shell > main[main].main > div.page-head > span.sub": {
       "color": "rgb(59, 71, 81)",
-      "font-size": "12.5px",
+      "font-size": "12px",
       "display": "block"
     },
     "div.shell > main[main].main > div.panel": {
@@ -85,20 +84,19 @@
       "border-bottom": "1px solid rgb(227, 232, 237)",
       "border-left": "1px solid rgb(227, 232, 237)",
       "border-radius": "6px",
-      "padding": "14px 16px",
-      "margin": "0px 0px 14px"
+      "padding": "16px",
+      "margin": "0px 0px 16px"
     },
     "div.shell > main[main].main > div.panel > h2[heading] \"CAMPAIGN STEPS\"": {
       "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.7px",
+      "letter-spacing": "0.6px",
       "text-transform": "uppercase",
       "display": "block",
-      "margin": "0px 0px 10px"
+      "margin": "0px 0px 12px"
     },
     "div.shell > main[main].main > div.panel > table[table].data": {
-      "font-size": "13px",
       "display": "table"
     },
     "div.shell > main[main].main > div.panel > table[table].data > thead[rowgroup]": {
@@ -109,43 +107,43 @@
     },
     "div.shell > main[main].main > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"#\"": {
       "color": "rgb(59, 71, 81)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(197, 206, 214)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"EXPERIMENT\"": {
       "color": "rgb(59, 71, 81)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(197, 206, 214)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"COMPLIANCE MAPS\"": {
       "color": "rgb(59, 71, 81)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(197, 206, 214)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"RUN\"": {
       "color": "rgb(59, 71, 81)",
-      "font-size": "11.5px",
+      "font-size": "11px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(197, 206, 214)",
-      "padding": "6px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > tbody": {
       "display": "table-row-group"
@@ -159,17 +157,17 @@
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(227, 232, 237)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > tr[row] > td[cell] \"step A\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(227, 232, 237)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > tr[row] > td[cell] \"—\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(227, 232, 237)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > tr[row] > td[cell] \"—\" > span": {
       "color": "rgb(97, 109, 121)",
@@ -178,7 +176,7 @@
     "div.shell > main[main].main > div.panel > table[table].data > tr[row] > td[cell] \"passed\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(227, 232, 237)",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > tr[row] > td[cell] \"passed\" > a[link] \"passed\"": {
       "color": "rgb(31, 111, 178)",
@@ -186,13 +184,13 @@
     },
     "div.shell > main[main].main > div.panel > table[table].data > tr[row] > td[cell] \"passed\" > a[link] \"passed\" > span.badge.ok": {
       "color": "rgb(9, 120, 82)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.3px",
+      "letter-spacing": "0.5px",
       "display": "inline-block",
       "background-color": "color(srgb 0.864941 0.925882 0.90502)",
-      "border-radius": "10px",
-      "padding": "1px 9px"
+      "border-radius": "999px",
+      "padding": "2px 8px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > tr[row] #2": {
       "display": "table-row"
@@ -202,15 +200,15 @@
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > tr[row] #2 > td[cell] \"step B\"": {
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > tr[row] #2 > td[cell] \"—\"": {
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > tr[row] #2 > td[cell] \"—\" > span": {
       "color": "rgb(97, 109, 121)",
@@ -218,7 +216,7 @@
     },
     "div.shell > main[main].main > div.panel > table[table].data > tr[row] #2 > td[cell] \"waiting\"": {
       "display": "table-cell",
-      "padding": "7px 10px"
+      "padding": "8px 12px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > tr[row] #2 > td[cell] \"waiting\" > span": {
       "color": "rgb(97, 109, 121)",
@@ -232,21 +230,20 @@
       "border-bottom": "1px solid rgb(227, 232, 237)",
       "border-left": "1px solid rgb(227, 232, 237)",
       "border-radius": "6px",
-      "padding": "14px 16px"
+      "padding": "16px"
     },
     "div.shell > main[main].main > div.panel #2 > h2[heading] \"RUN GAMEDAY\"": {
       "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.7px",
+      "letter-spacing": "0.6px",
       "text-transform": "uppercase",
       "display": "block",
-      "margin": "0px 0px 10px"
+      "margin": "0px 0px 12px"
     },
     "div.shell > main[main].main > div.panel #2 > div.campaign": {
-      "font-size": "13px",
       "display": "flex",
-      "margin": "0px 0px 10px",
+      "margin": "0px 0px 12px",
       "gap": "8px"
     },
     "div.shell > main[main].main > div.panel #2 > div.campaign > a[link].mono \"camp-1\"": {
@@ -257,25 +254,24 @@
     },
     "div.shell > main[main].main > div.panel #2 > div.campaign > span.badge.neutral": {
       "color": "rgb(59, 71, 81)",
-      "font-size": "11.5px",
+      "font-size": "12px",
       "font-weight": "600",
-      "letter-spacing": "0.3px",
+      "letter-spacing": "0.5px",
       "display": "block",
       "background-color": "rgb(233, 238, 242)",
-      "border-radius": "10px",
-      "padding": "1px 9px"
+      "border-radius": "999px",
+      "padding": "2px 8px"
     },
     "div.shell > main[main].main > div.panel #2 > div.params": {
       "display": "grid",
       "grid-template-columns": "repeat(auto-fill, minmax(260px, 1fr))",
-      "gap": "10px 18px"
+      "gap": "12px 20px"
     },
     "div.shell > main[main].main > div.panel #2 > div.params > label[LabelText]": {
       "display": "block"
     },
     "div.shell > main[main].main > div.panel #2 > div.params > label[LabelText] > input[textbox] \"Environment\"": {
       "font-family": "Arial",
-      "font-size": "13px",
       "line-height": "normal",
       "display": "inline-block",
       "background-color": "rgb(255, 255, 255)",
@@ -283,19 +279,18 @@
       "border-right": "1px solid rgb(141, 149, 157)",
       "border-bottom": "1px solid rgb(141, 149, 157)",
       "border-left": "1px solid rgb(141, 149, 157)",
-      "border-radius": "5px",
-      "padding": "6px 9px"
+      "border-radius": "6px",
+      "padding": "8px"
     },
     "div.shell > main[main].main > div.panel #2 > p[paragraph].hint": {
       "color": "rgb(59, 71, 81)",
-      "font-size": "12.5px",
+      "font-size": "12px",
       "display": "block",
-      "margin": "8px 0px 12.5px"
+      "margin": "8px 0px 12px"
     },
     "div.shell > main[main].main > div.panel #2 > button[button].primary \"Campaign running\"": {
       "color": "rgb(255, 255, 255)",
       "font-family": "Arial",
-      "font-size": "13px",
       "line-height": "normal",
       "display": "inline-block",
       "opacity": "0.5",
@@ -304,12 +299,12 @@
       "border-right": "1px solid rgb(31, 111, 178)",
       "border-bottom": "1px solid rgb(31, 111, 178)",
       "border-left": "1px solid rgb(31, 111, 178)",
-      "border-radius": "5px",
-      "padding": "7px 16px"
+      "border-radius": "6px",
+      "padding": "8px 16px"
     },
     "div.shell > main[main].main > div.panel #2 > div.hint": {
       "color": "rgb(59, 71, 81)",
-      "font-size": "12.5px",
+      "font-size": "12px",
       "display": "block",
       "margin": "8px 0px 0px"
     },

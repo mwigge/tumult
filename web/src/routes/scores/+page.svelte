@@ -350,7 +350,7 @@
         color: var(--accent);
         cursor: pointer;
         font-size: var(--font-size-md);
-        padding: var(--space-0-5) var(--space-1);
+        padding: var(--space-1);
     }
     .crumbs button.current {
         color: var(--text);
@@ -375,10 +375,10 @@
     }
     .card .label {
         color: var(--text-dim);
-        font-size: var(--font-size-2xs);
+        font-size: var(--font-size-3xs);
         text-transform: uppercase;
         letter-spacing: var(--letter-spacing-md);
-        margin-bottom: var(--space-1-5);
+        margin-bottom: var(--space-2);
     }
     .card .value {
         font-size: var(--font-size-3xl);
@@ -386,26 +386,26 @@
     }
     .card .value.weakest {
         font-size: var(--font-size-xl);
-        font-weight: 500;
+        font-weight: var(--font-weight-medium);
         word-break: break-word;
     }
     .card .glyph {
-        margin-right: var(--space-1-5);
-        font-size: 18px;
+        margin-right: var(--space-2);
+        font-size: var(--font-size-2xl);
     }
     .card .hint {
         color: var(--text-faint);
-        font-size: var(--font-size-2xs);
+        font-size: var(--font-size-xs);
         margin-top: var(--space-1);
     }
     .meaning {
         color: var(--text-dim);
-        font-size: var(--font-size-sm);
+        font-size: var(--font-size-xs);
         margin: 0 0 var(--space-3);
     }
     .kind {
         color: var(--text-faint);
-        font-size: var(--font-size-2xs);
+        font-size: var(--font-size-xs);
     }
     .indent {
         color: var(--text-faint);

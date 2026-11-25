@@ -98,19 +98,19 @@
 
 <style>
     .notice {
-        margin-top: var(--space-2-5);
-        padding: var(--space-1-5) var(--space-2-5);
+        margin-top: var(--space-3);
+        padding: var(--space-2) var(--space-3);
         border: var(--border-width-sm) solid var(--border-strong);
-        border-left: 3px solid var(--warn);
+        border-left: var(--border-width-lg) solid var(--warn);
         border-radius: var(--radius-md);
-        font-size: var(--font-size-sm);
+        font-size: var(--font-size-xs);
     }
     .facts {
         display: grid;
         grid-template-columns: max-content 1fr;
         gap: var(--space-1) var(--space-4);
-        margin: var(--space-2-5) 0 0;
-        font-size: var(--font-size-sm);
+        margin: var(--space-3) 0 0;
+        font-size: var(--font-size-xs);
     }
     .facts dt {
         color: var(--text-dim);
@@ -121,9 +121,5 @@
         flex-wrap: wrap;
         gap: var(--space-1) var(--space-3);
         align-items: baseline;
-    }
-    .dim {
-        color: var(--text-faint);
-        font-size: var(--font-size-2xs);
     }
 </style>

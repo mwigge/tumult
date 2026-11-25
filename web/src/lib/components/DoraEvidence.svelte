@@ -122,7 +122,7 @@
         color: var(--text);
         border: var(--border-width-sm) solid var(--border-strong);
         border-radius: var(--radius-md);
-        padding: 3px var(--space-2-5);
+        padding: var(--space-1) var(--space-3);
         font: inherit;
         font-size: var(--font-size-xs);
         cursor: pointer;
@@ -131,12 +131,12 @@
         font-weight: var(--font-weight-strong);
     }
     section {
-        margin-top: var(--space-3-5);
+        margin-top: var(--space-4);
     }
     /* The line of one function, not the small capital label that a
        drawer gives the heading of a section: this selector outranks it. */
     section h3.function {
-        margin: 0 0 var(--space-0-5);
+        margin: 0 0 var(--space-1);
         font-size: var(--font-size-md);
         text-transform: none;
         letter-spacing: normal;
@@ -145,11 +145,7 @@
         gap: var(--space-2);
         align-items: baseline;
     }
-    .dim {
-        color: var(--text-faint);
-        font-size: var(--font-size-2xs);
-    }
     .foot {
-        margin-top: var(--space-3-5);
+        margin-top: var(--space-4);
     }
 </style>

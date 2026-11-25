@@ -90,11 +90,11 @@
 
 <style>
     .summary {
-        margin: 0 0 var(--space-1-5);
+        margin: 0 0 var(--space-2);
     }
     .signoffs {
         margin: 0 0 var(--space-2);
-        padding-left: var(--space-4-5);
+        padding-left: var(--space-5);
     }
     .sign {
         display: flex;

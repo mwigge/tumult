@@ -61,7 +61,7 @@
 {#if error}
     <State kind="error" panel>{error}</State>
 {:else if !detail}
-    <State kind="loading" height={120} style="margin-bottom: var(--space-3-5)" />
+    <State kind="loading" height={120} style="margin-bottom: var(--space-4)" />
     <State kind="loading" height={320} />
 {:else}
     <MetaRow>
@@ -77,10 +77,7 @@
         </Panel>
     </MetaRow>
 
-    <Panel
-        title={`Waterfall — ${detail.spans.length} spans`}
-        style="margin-bottom: var(--space-3-5)"
-    >
+    <Panel title={`Waterfall — ${detail.spans.length} spans`} style="margin-bottom: var(--space-4)">
         {#if detail.spans.length === 0}
             <State kind="empty">No spans recorded for this trace.</State>
         {:else}
@@ -118,8 +115,8 @@
     }
     .log {
         display: flex;
-        gap: var(--space-2-5);
-        padding: 3px 0;
+        gap: var(--space-3);
+        padding: var(--space-1) 0;
         font-size: var(--font-size-xs);
         border-bottom: var(--border-width-sm) solid
             color-mix(in srgb, var(--border) 50%, transparent);

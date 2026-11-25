@@ -27,13 +27,13 @@
     }
     .lead {
         color: var(--text);
-        font-size: 15px;
+        font-size: var(--font-size-xl);
         font-weight: var(--font-weight-strong);
         margin-top: 0;
     }
     ul {
         margin: 0;
-        padding-left: 20px;
+        padding-left: var(--space-5);
     }
     li + li {
         margin-top: var(--space-1);

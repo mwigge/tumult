@@ -132,7 +132,7 @@
         --dur-w: 66px;
         --gap: 10px;
         position: relative;
-        font-size: var(--font-size-sm);
+        font-size: var(--font-size-xs);
     }
     .ruler {
         position: sticky;
@@ -140,14 +140,14 @@
         background: var(--bg-panel);
         z-index: var(--z-sticky);
         border-bottom: var(--border-width-sm) solid var(--border-strong);
-        padding: 3px 0;
+        padding: var(--space-1) 0;
     }
     .ruler .labels {
         position: relative;
         height: 1.4em;
         margin: 0 calc(var(--dur-w) + var(--gap)) 0 calc(var(--name-w) + var(--gap));
         color: var(--text-faint);
-        font-size: 10.5px;
+        font-size: var(--font-size-3xs);
         font-family: var(--mono);
     }
     .ruler .labels span {
@@ -185,7 +185,7 @@
         border-bottom: var(--border-width-sm) solid
             color-mix(in srgb, var(--border) 55%, transparent);
         color: var(--text);
-        padding: 3px 0;
+        padding: var(--space-1) 0;
         cursor: pointer;
         text-align: left;
         font: inherit;
@@ -217,7 +217,7 @@
     .dur {
         color: var(--text-dim);
         text-align: right;
-        font-size: var(--font-size-2xs);
+        font-size: var(--font-size-xs);
     }
     .mark.ok {
         color: var(--ok);

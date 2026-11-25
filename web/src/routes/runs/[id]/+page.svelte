@@ -147,7 +147,7 @@
 {#if error && !detail}
     <State kind="error" panel>{error}</State>
 {:else if !detail}
-    <State kind="loading" height={120} style="margin-bottom: var(--space-3-5)" />
+    <State kind="loading" height={120} style="margin-bottom: var(--space-4)" />
     <State kind="loading" height={320} />
 {:else}
     {@const run = detail.run}
@@ -156,7 +156,7 @@
     {#if scope}
         <Panel
             title="Planned blast radius"
-            style="margin-bottom: var(--space-3-5)"
+            style="margin-bottom: var(--space-4)"
             data-testid="run-scope"
         >
             <ScopeSummary {scope} />
@@ -167,7 +167,7 @@
         </Panel>
     {/if}
 
-    <Panel title="Telemetry" style="margin-bottom: var(--space-3-5)">
+    <Panel title="Telemetry" style="margin-bottom: var(--space-4)">
         {#if !run.experiment_id}
             <State kind="empty">Telemetry appears once the run starts executing.</State>
         {:else if !telemetry}
@@ -203,12 +203,12 @@
 
 <style>
     .exp-link {
-        margin-top: var(--space-2-5);
-        font-size: var(--font-size-sm);
+        margin-top: var(--space-3);
+        font-size: var(--font-size-xs);
     }
     .plan-note {
         color: var(--text-faint);
-        font-size: var(--font-size-sm);
+        font-size: var(--font-size-xs);
         margin-top: var(--space-2);
     }
 </style>

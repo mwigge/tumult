@@ -170,22 +170,22 @@
         display: flex;
         justify-content: space-between;
         align-items: flex-start;
-        margin-bottom: var(--space-3-5);
+        margin-bottom: var(--space-4);
     }
     .title {
         font-size: var(--font-size-xl);
-        margin-bottom: var(--space-1-5);
+        margin-bottom: var(--space-2);
         word-break: break-all;
     }
     section {
-        margin-bottom: var(--space-4-5);
+        margin-bottom: var(--space-5);
     }
     dl {
         display: grid;
         grid-template-columns: 88px 1fr;
-        gap: 5px var(--space-2-5);
+        gap: var(--space-1) var(--space-3);
         margin: 0;
-        font-size: var(--font-size-sm);
+        font-size: var(--font-size-xs);
     }
     dd {
         margin: 0;
@@ -202,7 +202,7 @@
     .log {
         display: flex;
         gap: var(--space-2);
-        padding: 3px 0;
+        padding: var(--space-1) 0;
         font-size: var(--font-size-xs);
         border-bottom: var(--border-width-sm) solid
             color-mix(in srgb, var(--border) 50%, transparent);
@@ -235,7 +235,7 @@
     .facets button {
         background: transparent;
         border: var(--border-width-sm) solid var(--border);
-        border-radius: var(--radius-sm);
+        border-radius: var(--radius-md);
         color: var(--text-dim);
         cursor: pointer;
         font-size: var(--font-size-3xs);

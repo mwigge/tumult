@@ -45,14 +45,14 @@ describe('a panel', () => {
     it('passes its attributes on to the box', () => {
         const html = render(Panel, {
             props: {
-                style: 'margin-bottom: var(--space-3-5)',
+                style: 'margin-bottom: var(--space-4)',
                 'data-testid': 'impact',
                 children: body('<p>x</p>'),
             },
         }).body;
 
         expect(markup(html)).toMatch(/^<div [^>]*class="panel"[^>]*>/);
-        expect(markup(html)).toContain('style="margin-bottom: var(--space-3-5)"');
+        expect(markup(html)).toContain('style="margin-bottom: var(--space-4)"');
         expect(markup(html)).toContain('data-testid="impact"');
     });
 
