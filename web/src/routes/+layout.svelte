@@ -46,13 +46,20 @@
     // On a small screen the side bar folds behind the menu button of the
     // top bar (theme.css). Escape closes the open menu and gives the focus
     // back to the button; a click on a link in it closes it, as the page
-    // the link opens takes its place.
+    // the link opens takes its place. A tap outside the menu and its button
+    // closes it as well, and leaves the focus where the tap put it.
     let menuOpen = $state(false);
     let menuButton = $state<HTMLButtonElement>();
+    let sideBar = $state<HTMLElement>();
     function closeOnEscape(event: KeyboardEvent) {
         if (!menuOpen || event.key !== 'Escape') return;
         menuOpen = false;
         menuButton?.focus();
+    }
+    function closeOnTapOutside(event: MouseEvent) {
+        if (!menuOpen || !(event.target instanceof Node)) return;
+        if (sideBar?.contains(event.target) || menuButton?.contains(event.target)) return;
+        menuOpen = false;
     }
     function closesOnLink(side: HTMLElement) {
         const onClick = (event: MouseEvent) => {
@@ -145,7 +152,7 @@
     }
 </script>
 
-<svelte:window onkeydown={closeOnEscape} />
+<svelte:window onkeydown={closeOnEscape} onclickcapture={closeOnTapOutside} />
 
 {#if page.url.pathname === '/login'}
     {@render children?.()}
@@ -164,7 +171,13 @@
                 Menu
             </button>
         </header>
-        <aside class="side" class:open={menuOpen} id="side" {@attach closesOnLink}>
+        <aside
+            class="side"
+            class:open={menuOpen}
+            id="side"
+            bind:this={sideBar}
+            {@attach closesOnLink}
+        >
             <div class="brand">
                 <div class="name">Tumult</div>
                 <div class="tag">{TAGLINE}</div>

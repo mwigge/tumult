@@ -124,6 +124,44 @@ test('choosing an entry of the menu opens its page and closes the menu', async (
     await expect(menu).toHaveAttribute('aria-expanded', 'false');
 });
 
+test.describe('on a touch screen', () => {
+    test.use({ hasTouch: true });
+
+    test('a tap outside the open menu closes it, and a tap in it does not', async ({ page }) => {
+        const target = pageOf('overview');
+        await open(page, target);
+        const menu = page.getByRole('button', { name: 'Menu' });
+        const nav = page.getByRole('navigation');
+        const side = page.locator('#side');
+        const focusIn = (selector: string) =>
+            page.evaluate(
+                (s) => document.querySelector(s)?.contains(document.activeElement) ?? false,
+                selector,
+            );
+
+        await menu.tap();
+        await expect(nav).toBeVisible();
+        await side.tap({ position: { x: 4, y: 4 } });
+        await expect(nav).toBeVisible();
+        await expect(menu).toHaveAttribute('aria-expanded', 'true');
+
+        await nav.getByRole('link', { name: /Runs/ }).focus();
+        await page.getByRole('heading', { level: 1, name: target.heading, exact: true }).tap();
+        await expect(nav).toBeHidden();
+        await expect(menu).toHaveAttribute('aria-expanded', 'false');
+        // The focus goes where the tap went: not into the hidden menu, and
+        // not back up to the menu button.
+        expect(await focusIn('#side')).toBe(false);
+        await expect(menu).not.toBeFocused();
+
+        // The menu button is not outside the menu: it still opens and closes it.
+        await menu.tap();
+        await expect(nav).toBeVisible();
+        await menu.tap();
+        await expect(nav).toBeHidden();
+    });
+});
+
 test('on a wide screen the side bar shows and the menu button does not', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await open(page, pageOf('overview'));
