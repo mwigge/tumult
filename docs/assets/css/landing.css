@@ -1,33 +1,13 @@
 /* Landing page styles for docs/index.html.
-   Palette: the light tokens of the product UI (web/src/lib/theme.css), with
-   the copper brand accent of the logo. The GameDay terminal stays dark, like
-   the terminal player above it.
-   Contrast (WCAG AA, 4.5 : 1 for text): text 15.9, dim 5.8 and copper 5.8 on
-   white; dim 5.3 and copper 5.3 on the raised bands, #f4f6f8. The bright
-   copper is 3.5 on white, so it draws arrows and marks only. */
+   The colours are in tokens.css, which web/scripts/build-tokens.mjs writes
+   from the design tokens (web/tokens/docs.tokens.json): the light theme of
+   the product UI, the copper of the logo, and the GameDay terminal, which
+   stays dark like the terminal player above it. The contrast of each colour
+   is in its token. Change a token, not a colour here. */
 
 :root {
-  /* brand */
-  --copper: #9a5320;
-  --copper-hover: #7f4419;
-  --copper-bright: #c87533;
-  /* light chrome (web/src/lib/theme.css) */
-  --bg: #ffffff;
-  --bg-raised: #f4f6f8;
-  --bg-panel: #ffffff;
-  --border: #e3e8ed;
-  --border-strong: #c5ced6;
-  --text: #1b2329;
-  --text-dim: #5b6772;
+  /* A soft shadow in the text colour */
   --shadow: 0 1px 2px rgba(27, 35, 41, 0.04), 0 8px 24px rgba(27, 35, 41, 0.06);
-  /* the dark terminal */
-  --term-bg: #0b0e11;
-  --term-bar: #11161b;
-  --term-border: #242d36;
-  --term-text: #d8dee4;
-  --term-dim: #8b98a5;
-  --term-ok: #34d399;
-  --term-accent: #5eb1ef;
 }
 
 /* The page has no sidebar (nav_enabled: false in index.html), so it can use
@@ -53,7 +33,7 @@
 .hero {
   background:
     radial-gradient(900px 420px at 50% -160px, rgba(200, 117, 51, 0.10), rgba(200, 117, 51, 0) 70%),
-    var(--bg);
+    var(--page);
   padding: 4.5rem 1.25rem 3.5rem;
   text-align: center;
 }
@@ -74,7 +54,7 @@
 
 /* ── Install box ──────────────────────────────────── */
 .install-box {
-  background: var(--bg-raised); border: 1px solid var(--border);
+  background: var(--band); border: 1px solid var(--border);
   border-radius: 8px; padding: 0.9rem 1.25rem;
   max-width: 840px; margin: 0 auto 1rem;
   font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
@@ -102,9 +82,9 @@
   transition: all 0.2s;
 }
 .btn-primary-custom {
-  background: var(--copper); color: #fff;
+  background: var(--copper); color: var(--on-copper);
 }
-.btn-primary-custom:hover { background: var(--copper-hover); color: #fff; }
+.btn-primary-custom:hover { background: var(--copper-hover); color: var(--on-copper); }
 .btn-secondary-custom {
   background: var(--bg-panel); color: var(--text);
   border: 1px solid var(--border-strong);
@@ -114,7 +94,7 @@
 /* ── Stats bar ────────────────────────────────────── */
 .stats {
   display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 2.5rem 2rem;
-  padding: 3rem max(2rem, calc((100% - 1000px) / 2)); background: var(--bg-raised);
+  padding: 3rem max(2rem, calc((100% - 1000px) / 2)); background: var(--band);
 }
 @media (max-width: 700px) {
   .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -208,9 +188,9 @@
   display: flex; align-items: center; gap: 6px;
 }
 .terminal-dot { width: 12px; height: 12px; border-radius: 50%; }
-.terminal-dot.red { background: #ff5f57; }
-.terminal-dot.yellow { background: #febc2e; }
-.terminal-dot.green { background: #28c840; }
+.terminal-dot.red { background: var(--term-dot-red); }
+.terminal-dot.yellow { background: var(--term-dot-yellow); }
+.terminal-dot.green { background: var(--term-dot-green); }
 /* A <pre>, so the lines of the run keep their breaks. */
 .terminal .terminal-body {
   margin: 0; padding: 1.25rem; font-family: 'SF Mono', 'Fira Code', monospace;
@@ -218,7 +198,7 @@
   background: none; border: 0; white-space: pre; overflow-x: auto;
 }
 .terminal-body .prompt-sign { color: var(--copper-bright); }
-.terminal-body .cmd { color: #fff; }
+.terminal-body .cmd { color: var(--term-command); }
 .terminal-body .output { color: var(--term-dim); }
 .terminal-body .success { color: var(--term-ok); }
 .terminal-body .info { color: var(--term-accent); }
@@ -263,7 +243,7 @@
 /* ── CTA ──────────────────────────────────────────── */
 .cta {
   text-align: center; padding: 4rem 2rem;
-  background: var(--bg-raised);
+  background: var(--band);
 }
 .cta h2 { color: var(--text); margin-bottom: 1rem; }
 .cta p { color: var(--text-dim); margin-bottom: 1.5rem; max-width: 520px; margin-left: auto; margin-right: auto; }
