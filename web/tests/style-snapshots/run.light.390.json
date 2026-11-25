@@ -64,7 +64,7 @@
       "gap": "14px"
     },
     "div.shell > main[main].main > div.page-head > a[link].back \"← runs\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "display": "block"
     },
     "div.shell > main[main].main > div.page-head > h1[heading] \"pg-failover\"": {
@@ -83,7 +83,7 @@
       "padding": "1px 9px"
     },
     "div.shell > main[main].main > div.page-head > span.sub.mono": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "12.5px",
       "display": "block"
@@ -105,7 +105,7 @@
       "padding": "14px 16px"
     },
     "div.shell > main[main].main > div.grid > div.panel.meta > span": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "letter-spacing": "0.6px",
       "text-transform": "uppercase",
@@ -128,7 +128,7 @@
       "padding": "14px 16px"
     },
     "div.shell > main[main].main > div.grid > div.panel.meta #2 > span": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "letter-spacing": "0.6px",
       "text-transform": "uppercase",
@@ -151,7 +151,7 @@
       "padding": "14px 16px"
     },
     "div.shell > main[main].main > div.grid > div.panel.meta #3 > span": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "letter-spacing": "0.6px",
       "text-transform": "uppercase",
@@ -174,7 +174,7 @@
       "padding": "14px 16px"
     },
     "div.shell > main[main].main > div.grid > div.panel.meta #4 > span": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "letter-spacing": "0.6px",
       "text-transform": "uppercase",
@@ -198,7 +198,7 @@
       "padding": "14px 16px"
     },
     "div.shell > main[main].main > div.grid > div.panel.meta #5 > span": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "letter-spacing": "0.6px",
       "text-transform": "uppercase",
@@ -222,7 +222,7 @@
       "padding": "14px 16px"
     },
     "div.shell > main[main].main > div.grid > div.panel.meta #6 > span": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "letter-spacing": "0.6px",
       "text-transform": "uppercase",
@@ -245,7 +245,7 @@
       "padding": "14px 16px"
     },
     "div.shell > main[main].main > div.grid > div.panel.meta #7 > span": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "letter-spacing": "0.6px",
       "text-transform": "uppercase",
@@ -268,7 +268,7 @@
       "padding": "14px 16px"
     },
     "div.shell > main[main].main > div.grid > div.panel.meta #8 > span": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "letter-spacing": "0.6px",
       "text-transform": "uppercase",
@@ -296,7 +296,7 @@
       "padding": "14px 16px"
     },
     "div.shell > main[main].main > div.grid > div.panel.meta #9 > span": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "letter-spacing": "0.6px",
       "text-transform": "uppercase",
@@ -321,7 +321,7 @@
       "margin": "0px 0px 14px"
     },
     "div.shell > main[main].main > div.panel > h2[heading] \"PLANNED BLAST RADIUS\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
       "letter-spacing": "0.7px",
@@ -333,7 +333,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.panel > div.scope > div.note": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13px",
       "display": "block",
       "border-left": "2px solid rgb(171, 77, 4)",
@@ -370,7 +370,7 @@
       "margin": "0px 0px 0px 8px"
     },
     "div.shell > main[main].main > div.panel > div.scope > div.hint": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12.5px",
       "display": "block",
       "margin": "6px 0px 0px"
@@ -393,7 +393,7 @@
       "margin": "0px 0px 14px"
     },
     "div.shell > main[main].main > div.panel #2 > h2[heading] \"TELEMETRY\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
       "letter-spacing": "0.7px",
@@ -402,7 +402,7 @@
       "margin": "0px 0px 10px"
     },
     "div.shell > main[main].main > div.panel #2 > div.state": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13px",
       "display": "block",
       "padding": "28px"
@@ -419,7 +419,7 @@
       "margin": "0px 0px 14px"
     },
     "div.shell > main[main].main > div.panel #3 > h2[heading] \"IMPACT\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
       "letter-spacing": "0.7px",
@@ -428,7 +428,7 @@
       "margin": "0px 0px 10px"
     },
     "div.shell > main[main].main > div.panel #3 > div.state": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13px",
       "display": "block",
       "padding": "28px"
@@ -444,7 +444,7 @@
       "padding": "14px 16px"
     },
     "div.shell > main[main].main > div.panel #4 > h2[heading] \"AUDIT TRAIL (0)\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
       "letter-spacing": "0.7px",
@@ -453,7 +453,7 @@
       "margin": "0px 0px 10px"
     },
     "div.shell > main[main].main > div.panel #4 > div.state": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13px",
       "display": "block",
       "padding": "28px"

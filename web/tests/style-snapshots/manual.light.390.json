@@ -72,7 +72,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.manual > div.page-head > span.sub": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12.5px",
       "display": "block"
     },
@@ -82,7 +82,7 @@
       "gap": "12px"
     },
     "div.shell > main[main].main > div.manual > div.page-head > div.controls > label[LabelText].actor": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "display": "flex",
       "gap": "6px"
@@ -120,7 +120,7 @@
       "padding": "5px 12px"
     },
     "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[tablist].seg \"manual sections\" > button[tab] \"Plans\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-family": "Arial",
       "font-size": "12.5px",
       "line-height": "normal",
@@ -129,7 +129,7 @@
       "padding": "5px 12px"
     },
     "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[tablist].seg \"manual sections\" > button[tab] \"Verification queue\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-family": "Arial",
       "font-size": "12.5px",
       "line-height": "normal",
@@ -138,7 +138,7 @@
       "padding": "5px 12px"
     },
     "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[tablist].seg \"manual sections\" > button[tab] \"All records\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-family": "Arial",
       "font-size": "12.5px",
       "line-height": "normal",
@@ -147,7 +147,7 @@
       "padding": "5px 12px"
     },
     "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[tablist].seg \"manual sections\" > button[tab] \"Import\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-family": "Arial",
       "font-size": "12.5px",
       "line-height": "normal",
@@ -178,7 +178,7 @@
       "padding": "14px 16px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > h2[heading] \"EXERCISE\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
       "letter-spacing": "0.7px",
@@ -191,7 +191,7 @@
       "gap": "10px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > label[LabelText]": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "display": "flex",
       "gap": "4px"
@@ -216,7 +216,7 @@
       "gap": "10px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 > label[LabelText]": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "display": "flex",
       "gap": "4px"
@@ -236,7 +236,7 @@
       "padding": "6px 9px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 > label[LabelText] #2": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "display": "flex",
       "gap": "4px"
@@ -260,7 +260,7 @@
       "gap": "10px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 #2 > label[LabelText]": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "display": "flex",
       "gap": "4px"
@@ -280,7 +280,7 @@
       "padding": "6px 9px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 #2 > label[LabelText] #2": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "display": "flex",
       "gap": "4px"
@@ -300,7 +300,7 @@
       "padding": "6px 9px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > label[LabelText] #2": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "display": "flex",
       "gap": "4px"
@@ -320,7 +320,7 @@
       "padding": "6px 9px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > label[LabelText] #3": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "display": "flex",
       "gap": "4px"
@@ -340,7 +340,7 @@
       "padding": "6px 9px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > label[LabelText] #4": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "display": "flex",
       "gap": "4px"
@@ -365,7 +365,7 @@
       "gap": "10px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 #3 > label[LabelText]": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "display": "flex",
       "gap": "4px"
@@ -385,7 +385,7 @@
       "padding": "6px 9px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 #3 > label[LabelText] #2": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "display": "flex",
       "gap": "4px"
@@ -405,7 +405,7 @@
       "padding": "6px 9px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > label[LabelText] #5": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "display": "flex",
       "gap": "4px"
@@ -425,7 +425,7 @@
       "padding": "6px 9px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > label[LabelText] #6": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "display": "flex",
       "gap": "4px"
@@ -450,7 +450,7 @@
       "gap": "10px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 #4 > label[LabelText]": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "display": "flex",
       "gap": "4px"
@@ -470,7 +470,7 @@
       "padding": "6px 9px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 #4 > label[LabelText] #2": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "display": "flex",
       "gap": "4px"
@@ -490,7 +490,7 @@
       "padding": "6px 9px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > label[LabelText] #7": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "display": "flex",
       "gap": "4px"
@@ -510,7 +510,7 @@
       "padding": "6px 9px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > label[LabelText] #8": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "display": "flex",
       "gap": "4px"
@@ -544,7 +544,7 @@
       "padding": "14px 16px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.stack > div.panel > h2[heading] \"RECOVERY\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
       "letter-spacing": "0.7px",
@@ -562,7 +562,7 @@
       "gap": "10px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.stack > div.panel > div.form > div.row2 > label[LabelText]": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "display": "flex",
       "gap": "4px"
@@ -582,7 +582,7 @@
       "padding": "6px 9px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.stack > div.panel > div.form > div.row2 > label[LabelText] #2": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "display": "flex",
       "gap": "4px"
@@ -607,7 +607,7 @@
       "gap": "10px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.stack > div.panel > div.form > div.row2 #2 > label[LabelText]": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "display": "flex",
       "gap": "4px"
@@ -627,7 +627,7 @@
       "padding": "6px 9px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.stack > div.panel > div.form > div.row2 #2 > label[LabelText] #2": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "display": "flex",
       "gap": "4px"
@@ -647,7 +647,7 @@
       "padding": "6px 9px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.stack > div.panel > div.form > label[LabelText]": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "display": "flex",
       "gap": "4px"
@@ -683,7 +683,7 @@
       "padding": "14px 16px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.stack > div.panel #2 > h2[heading] \"PARTICIPANTS\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
       "letter-spacing": "0.7px",
@@ -721,7 +721,7 @@
       "padding": "14px 16px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.stack > div.panel #3 > h2[heading] \"TESTER\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
       "letter-spacing": "0.7px",
@@ -739,7 +739,7 @@
       "gap": "10px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.stack > div.panel #3 > div.form > div.row2 > label[LabelText]": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "display": "flex",
       "gap": "4px"
@@ -759,7 +759,7 @@
       "padding": "6px 9px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.stack > div.panel #3 > div.form > div.row2 > label[LabelText] #2": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "display": "flex",
       "gap": "4px"
@@ -795,7 +795,7 @@
       "padding": "14px 16px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.panel > h2[heading] \"STEPS\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
       "letter-spacing": "0.7px",
@@ -833,7 +833,7 @@
       "padding": "14px 16px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.panel #2 > h2[heading] \"ACTIONS\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
       "letter-spacing": "0.7px",
@@ -876,7 +876,7 @@
       "padding": "14px 16px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 #2 > div.panel > h2[heading] \"ATTESTATION\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
       "letter-spacing": "0.7px",
@@ -889,7 +889,7 @@
       "gap": "10px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 #2 > div.panel > div.form > label[LabelText]": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "display": "flex",
       "gap": "4px"
@@ -908,7 +908,7 @@
       "padding": "5px 8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 #2 > div.panel > div.form > label[LabelText] #2": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "display": "flex",
       "gap": "4px"
@@ -979,7 +979,7 @@
       "padding": "14px 16px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 #2 > div.panel #2 > h2[heading] \"EVIDENCE\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
       "letter-spacing": "0.7px",

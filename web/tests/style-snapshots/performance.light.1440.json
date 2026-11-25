@@ -58,7 +58,7 @@
       "padding": "0px 0px 1px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◧ Overview\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -69,7 +69,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◎ Resilience\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -91,7 +91,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▦ Scores\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -102,7 +102,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚖ DORA\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -113,7 +113,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⟲ Disaster recovery\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -124,7 +124,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚗ Experiments\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -135,7 +135,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▶ Runs\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -146,7 +146,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✚ Author\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -157,7 +157,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"☷ GameDays\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -168,7 +168,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✓ Approvals\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -179,7 +179,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✎ Manual\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -190,7 +190,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"≣ Logs\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -201,7 +201,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⌁ Traces\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -212,7 +212,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"∿ Metrics\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -223,7 +223,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✳ Star Map\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -234,7 +234,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✦ Ask\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -245,7 +245,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▤ Reports\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -256,7 +256,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◔ Events\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -267,7 +267,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚿ Users\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -278,7 +278,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"➤ Webhooks\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -289,7 +289,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"↻ Schedules\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -300,7 +300,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > button[button].theme \"○ light\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "display": "block",
       "border-top": "1px solid rgb(227, 232, 237)",
@@ -326,17 +326,17 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.page-head > span.sub": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12.5px",
       "display": "block"
     },
     "div.shell > main[main].main > div.page-head > span.sub #2": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12.5px",
       "display": "block"
     },
     "div.shell > main[main].main > div.page-head > span[status].sub": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12.5px",
       "display": "block"
     },
@@ -350,7 +350,7 @@
       "gap": "4px"
     },
     "div.shell > main[main].main > div.controls > div.field > label[LabelText]": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
@@ -374,7 +374,7 @@
       "gap": "4px"
     },
     "div.shell > main[main].main > div.controls > div.field #2 > label[LabelText]": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
@@ -398,7 +398,7 @@
       "gap": "4px"
     },
     "div.shell > main[main].main > div.controls > div.field #3 > label[LabelText]": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
@@ -422,7 +422,7 @@
       "gap": "4px"
     },
     "div.shell > main[main].main > div.controls > div.field #4 > label[LabelText]": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
@@ -446,7 +446,7 @@
       "gap": "4px"
     },
     "div.shell > main[main].main > div.controls > div.field #5 > label[LabelText]": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
@@ -470,7 +470,7 @@
       "gap": "4px"
     },
     "div.shell > main[main].main > div.controls > div.field #6 > label[LabelText]": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "letter-spacing": "0.5px",
       "text-transform": "uppercase",
@@ -522,7 +522,7 @@
       "padding": "14px 16px"
     },
     "div.shell > main[main].main > div.grid.cols-2 > section[region].panel \"VERDICT\" > h2[heading] \"VERDICT\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
       "letter-spacing": "0.7px",
@@ -565,7 +565,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.grid.cols-2 > section[region].panel \"VERDICT\" > div.headline > span.muted.mono": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "12.5px",
       "display": "block"
@@ -579,7 +579,7 @@
       "display": "list-item"
     },
     "div.shell > main[main].main > div.grid.cols-2 > section[region].panel \"VERDICT\" > ul[list].notes": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12.5px",
       "display": "block"
     },
@@ -634,7 +634,7 @@
       "padding": "14px 16px"
     },
     "div.shell > main[main].main > div.grid.cols-2 > section[region].panel \"DIFFERENCE AT P95\" > h2[heading] \"DIFFERENCE AT P95\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
       "letter-spacing": "0.7px",
@@ -652,7 +652,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.grid.cols-2 > section[region].panel \"DIFFERENCE AT P95\" > div.muted": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12.5px",
       "display": "block"
     },
@@ -668,12 +668,12 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.grid.cols-2 > section[region].panel \"DIFFERENCE AT P95\" > div.muted #2": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12.5px",
       "display": "block"
     },
     "div.shell > main[main].main > div.grid.cols-2 > section[region].panel \"DIFFERENCE AT P95\" > div.muted #3": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12.5px",
       "display": "block"
     },
@@ -689,7 +689,7 @@
       "margin": "14px 0px 0px"
     },
     "div.shell > main[main].main > section[region].panel.below \"LATENCY DISTRIBUTION\" > h2[heading] \"LATENCY DISTRIBUTION\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
       "letter-spacing": "0.7px",
@@ -723,7 +723,7 @@
       "display": "table-row"
     },
     "div.shell > main[main].main > section[region].panel.below \"LATENCY DISTRIBUTION\" > table[table].data \"Latency by version\" > thead[rowgroup] > tr[row] > th[columnheader] \"SIDE\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -733,7 +733,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > section[region].panel.below \"LATENCY DISTRIBUTION\" > table[table].data \"Latency by version\" > thead[rowgroup] > tr[row] > th[columnheader] \"VERSION\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -743,7 +743,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > section[region].panel.below \"LATENCY DISTRIBUTION\" > table[table].data \"Latency by version\" > thead[rowgroup] > tr[row] > th[columnheader] \"RUNS\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -753,7 +753,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > section[region].panel.below \"LATENCY DISTRIBUTION\" > table[table].data \"Latency by version\" > thead[rowgroup] > tr[row] > th[columnheader] \"SAMPLES\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -763,7 +763,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > section[region].panel.below \"LATENCY DISTRIBUTION\" > table[table].data \"Latency by version\" > thead[rowgroup] > tr[row] > th[columnheader] \"DROPPED\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -773,7 +773,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > section[region].panel.below \"LATENCY DISTRIBUTION\" > table[table].data \"Latency by version\" > thead[rowgroup] > tr[row] > th[columnheader] \"P50 MS\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -783,7 +783,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > section[region].panel.below \"LATENCY DISTRIBUTION\" > table[table].data \"Latency by version\" > thead[rowgroup] > tr[row] > th[columnheader] \"P95 MS\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -793,7 +793,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > section[region].panel.below \"LATENCY DISTRIBUTION\" > table[table].data \"Latency by version\" > thead[rowgroup] > tr[row] > th[columnheader] \"P99 MS\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -925,7 +925,7 @@
       "margin": "14px 0px 0px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > h2[heading] \"PARTIAL RUNS AND WINDOWS\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
       "letter-spacing": "0.7px",
@@ -944,7 +944,7 @@
       "display": "table-row"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Partial runs and windows by version\" > thead[rowgroup] > tr[row] > th[columnheader] \"SIDE\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -954,7 +954,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Partial runs and windows by version\" > thead[rowgroup] > tr[row] > th[columnheader] \"VERSION\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -964,7 +964,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Partial runs and windows by version\" > thead[rowgroup] > tr[row] > th[columnheader] \"TRUNCATED\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -974,7 +974,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Partial runs and windows by version\" > thead[rowgroup] > tr[row] > th[columnheader] \"ABORTED\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -984,7 +984,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Partial runs and windows by version\" > thead[rowgroup] > tr[row] > th[columnheader] \"HALTED\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -994,7 +994,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Partial runs and windows by version\" > thead[rowgroup] > tr[row] > th[columnheader] \"DEVIATED\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -1004,7 +1004,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Partial runs and windows by version\" > thead[rowgroup] > tr[row] > th[columnheader] \"EXCLUDED\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -1014,7 +1014,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Partial runs and windows by version\" > thead[rowgroup] > tr[row] > th[columnheader] \"WINDOWS PLANNED\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -1024,7 +1024,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Partial runs and windows by version\" > thead[rowgroup] > tr[row] > th[columnheader] \"COMPLETED\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -1034,7 +1034,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Partial runs and windows by version\" > thead[rowgroup] > tr[row] > th[columnheader] \"UNANSWERED\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -1044,7 +1044,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Partial runs and windows by version\" > thead[rowgroup] > tr[row] > th[columnheader] \"LOST\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -1054,7 +1054,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Partial runs and windows by version\" > thead[rowgroup] > tr[row] > th[columnheader] \"CENSORED\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -1227,7 +1227,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > p[paragraph].muted": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12.5px",
       "display": "block",
       "margin": "12.5px 0px"
@@ -1243,7 +1243,7 @@
       "display": "table-row"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Requests by version\" > thead[rowgroup] > tr[row] > th[columnheader] \"SIDE\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -1253,7 +1253,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Requests by version\" > thead[rowgroup] > tr[row] > th[columnheader] \"VERSION\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -1263,7 +1263,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Requests by version\" > thead[rowgroup] > tr[row] > th[columnheader] \"REQUESTS SENT\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -1273,7 +1273,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Requests by version\" > thead[rowgroup] > tr[row] > th[columnheader] \"FAILED\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -1283,7 +1283,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Requests by version\" > thead[rowgroup] > tr[row] > th[columnheader] \"FAILURE SHARE\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -1293,7 +1293,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Requests by version\" > thead[rowgroup] > tr[row] > th[columnheader] \"RUNS WITHOUT COUNTS\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -1392,7 +1392,7 @@
       "margin": "14px 0px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > p[paragraph].muted #2": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12.5px",
       "display": "block",
       "margin": "12.5px 0px"
@@ -1408,7 +1408,7 @@
       "display": "table-row"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Runs by version\" > thead[rowgroup] > tr[row] > th[columnheader] \"SIDE\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -1418,7 +1418,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Runs by version\" > thead[rowgroup] > tr[row] > th[columnheader] \"RUN\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -1428,7 +1428,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Runs by version\" > thead[rowgroup] > tr[row] > th[columnheader] \"VERSION KNOWN\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -1438,7 +1438,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Runs by version\" > thead[rowgroup] > tr[row] > th[columnheader] \"STATUS\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -1448,7 +1448,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Runs by version\" > thead[rowgroup] > tr[row] > th[columnheader] \"PLAN\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -1458,7 +1458,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > section[region].panel.below \"PARTIAL RUNS AND WINDOWS\" > table[table].data \"Runs by version\" > thead[rowgroup] > tr[row] > th[columnheader] \"IN THE SAMPLES\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -1564,7 +1564,7 @@
       "margin": "14px 0px 0px"
     },
     "div.shell > main[main].main > section[region].panel.below \"STORED VERDICTS\" > h2[heading] \"STORED VERDICTS\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
       "letter-spacing": "0.7px",
@@ -1597,7 +1597,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > section[region].panel.below \"STORED VERDICTS\" > div.state": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13px",
       "display": "block",
       "padding": "28px"

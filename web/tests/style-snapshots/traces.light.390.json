@@ -69,7 +69,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.page-head > span.sub": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12.5px",
       "display": "block"
     },
@@ -136,7 +136,7 @@
       "padding": "5px 12px"
     },
     "div.shell > main[main].main > div.page-head > div.controls > div[group].seg \"time range\" > button[button] \"7d\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-family": "Arial",
       "font-size": "12.5px",
       "line-height": "normal",
@@ -145,7 +145,7 @@
       "padding": "5px 12px"
     },
     "div.shell > main[main].main > div.page-head > div.controls > div[group].seg \"time range\" > button[button] \"14d\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-family": "Arial",
       "font-size": "12.5px",
       "line-height": "normal",
@@ -186,7 +186,7 @@
       "padding": "14px 16px"
     },
     "div.shell > main[main].main > div.panel #2 > div.state": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13px",
       "display": "block",
       "padding": "28px"

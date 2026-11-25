@@ -58,7 +58,7 @@
       "padding": "0px 0px 1px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◧ Overview\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -69,7 +69,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◎ Resilience\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -80,7 +80,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◭ Performance\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -91,7 +91,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▦ Scores\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -102,7 +102,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚖ DORA\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -113,7 +113,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⟲ Disaster recovery\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -124,7 +124,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚗ Experiments\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -135,7 +135,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▶ Runs\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -146,7 +146,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✚ Author\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -157,7 +157,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"☷ GameDays\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -168,7 +168,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✓ Approvals\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -190,7 +190,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"≣ Logs\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -201,7 +201,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⌁ Traces\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -212,7 +212,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"∿ Metrics\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -223,7 +223,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✳ Star Map\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -234,7 +234,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✦ Ask\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -245,7 +245,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▤ Reports\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -256,7 +256,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◔ Events\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -267,7 +267,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚿ Users\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -278,7 +278,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"➤ Webhooks\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -289,7 +289,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"↻ Schedules\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -300,7 +300,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > button[button].theme \"○ light\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "display": "block",
       "border-top": "1px solid rgb(227, 232, 237)",
@@ -329,7 +329,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.manual > div.page-head > span.sub": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12.5px",
       "display": "block"
     },
@@ -339,7 +339,7 @@
       "gap": "12px"
     },
     "div.shell > main[main].main > div.manual > div.page-head > div.controls > label[LabelText].actor": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "display": "flex",
       "gap": "6px"
@@ -367,7 +367,7 @@
       "border-radius": "5px"
     },
     "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[tablist].seg \"manual sections\" > button[tab] \"New entry\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-family": "Arial",
       "font-size": "12.5px",
       "line-height": "normal",
@@ -375,7 +375,7 @@
       "padding": "5px 12px"
     },
     "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[tablist].seg \"manual sections\" > button[tab] \"Plans\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-family": "Arial",
       "font-size": "12.5px",
       "line-height": "normal",
@@ -394,7 +394,7 @@
       "padding": "5px 12px"
     },
     "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[tablist].seg \"manual sections\" > button[tab] \"All records\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-family": "Arial",
       "font-size": "12.5px",
       "line-height": "normal",
@@ -403,7 +403,7 @@
       "padding": "5px 12px"
     },
     "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[tablist].seg \"manual sections\" > button[tab] \"Import\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-family": "Arial",
       "font-size": "12.5px",
       "line-height": "normal",
@@ -428,7 +428,7 @@
       "display": "flex"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > div.records-head > h2[heading] \"SUBMITTED RECORDS AWAITING SIGN-OFF\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
       "letter-spacing": "0.7px",
@@ -447,7 +447,7 @@
       "display": "table-row"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"STATUS\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -457,7 +457,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"EXPERIMENT\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -467,7 +467,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"TYPE\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -477,7 +477,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"OUTCOME\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -487,7 +487,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"EXECUTED\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -497,7 +497,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"ENTERED\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -507,7 +507,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"VERIFIER\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -551,7 +551,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].clickable > td[cell] \"failover\" > span.badge.neutral": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
@@ -611,7 +611,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > h3[heading] \"RECOVERY\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -629,7 +629,7 @@
       "display": "table-row"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > table[table].data.compact > thead[rowgroup] > tr[row] > th[columnheader]": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -639,7 +639,7 @@
       "padding": "4px 8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > table[table].data.compact > thead[rowgroup] > tr[row] > th[columnheader] \"PLANNED\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -649,7 +649,7 @@
       "padding": "4px 8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > table[table].data.compact > thead[rowgroup] > tr[row] > th[columnheader] \"ACTUAL\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -659,7 +659,7 @@
       "padding": "4px 8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > table[table].data.compact > thead[rowgroup] > tr[row] > th[columnheader] #2": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -754,7 +754,7 @@
       "margin": "6px 0px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > p[paragraph].line #2 > span.badge.neutral": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
@@ -794,7 +794,7 @@
       "display": "inline"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > h3[heading] \"PARTICIPANTS\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -816,7 +816,7 @@
       "display": "inline"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > h3[heading] \"TESTED\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -833,7 +833,7 @@
       "margin": "0px 0px 4px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > ul[list].plain #2 > li[listitem] > span.badge.neutral": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
@@ -856,7 +856,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > h3[heading] \"STEPS\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -919,7 +919,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > h3[heading] \"ACTIONS\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -951,7 +951,7 @@
       "display": "inline"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > ul[list].plain #3 > li[listitem] > span.badge.neutral": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
@@ -961,7 +961,7 @@
       "padding": "1px 9px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.exercise > ul[list].plain #3 > li[listitem] > span.badge.neutral #2": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
@@ -990,7 +990,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > h3[heading] \"SIGN-OFF\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -1035,7 +1035,7 @@
       "gap": "8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > div.sign > label[LabelText].grow": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "display": "flex",
       "gap": "4px"
@@ -1087,7 +1087,7 @@
       "margin": "12px 0px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > h3[heading] \"AUDIT TRAIL\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -1195,7 +1195,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > h3[heading] \"EVIDENCE\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -1213,7 +1213,7 @@
       "display": "table-row"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > table[table].data.evidence > thead[rowgroup] > tr[row] > th[columnheader] \"EVIDENCE\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -1223,7 +1223,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > table[table].data.evidence > thead[rowgroup] > tr[row] > th[columnheader] \"TYPE\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -1233,7 +1233,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > table[table].data.evidence > thead[rowgroup] > tr[row] > th[columnheader] \"SIZE\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -1243,7 +1243,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > table[table].data.evidence > thead[rowgroup] > tr[row] > th[columnheader] \"SHA-256\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -1253,7 +1253,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > table[table].data.evidence > thead[rowgroup] > tr[row] > th[columnheader]": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -1274,7 +1274,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > table[table].data.evidence > tr[row] > td[cell] \"file report added by alice · Nov 13, 08:…\" > span.badge.neutral": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
@@ -1334,7 +1334,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > table[table].data.evidence > tr[row] #2 > td[cell] \"link ticket added by bob · Nov 13, 09:00…\" > span.badge.neutral": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
@@ -1380,7 +1380,7 @@
       "gap": "10px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > div.attach > label[LabelText]": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "display": "flex",
       "gap": "4px"
@@ -1422,7 +1422,7 @@
       "gap": "10px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > div.attach #2 > label[LabelText]": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "display": "flex",
       "gap": "4px"
@@ -1442,7 +1442,7 @@
       "padding": "6px 9px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > div.attach #2 > label[LabelText].grow": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "display": "flex",
       "gap": "4px"
@@ -1462,7 +1462,7 @@
       "padding": "6px 9px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > div.attach #2 > label[LabelText] #2": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "display": "flex",
       "gap": "4px"
@@ -1494,7 +1494,7 @@
       "padding": "6px 14px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].detail-row > td[cell] \"RECOVERY Data verified: complete Finding…\" > div.detail > h3[heading] \"ATTESTATION\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -1517,7 +1517,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"draft\" > span.badge.neutral": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
@@ -1540,7 +1540,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"failover\" > span.badge.neutral": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
@@ -1622,7 +1622,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Verification queue\" > div.panel > table[table].data > tr[row].clickable #3 > td[cell] \"failover\" > span.badge.neutral": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",

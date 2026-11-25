@@ -186,7 +186,7 @@ describe('build', () => {
         // A report is read on its own, so light comes first, at :root.
         expect(light).toMatch(/\n:root \{\n {4}color-scheme: light dark;\n {4}--bg: #f4f6f8;\n/);
         expect(light).toContain('\n    --bg-panel: #ffffff;\n');
-        expect(light).toContain('\n    --text-dim: #5b6772;\n');
+        expect(light).toContain('\n    --text-dim: #3b4751;\n');
         expect(dark).toMatch(
             /^\(prefers-color-scheme: dark\) \{\n {4}:root \{\n {8}--bg: #0b0e11;\n/,
         );

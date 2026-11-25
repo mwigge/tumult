@@ -69,7 +69,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.page-head > span.sub": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12.5px",
       "display": "block"
     },
@@ -97,7 +97,7 @@
       "padding": "5px 12px"
     },
     "div.shell > main[main].main > div.page-head > div.controls > div[group].seg \"run state\" > button[button] \"active\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-family": "Arial",
       "font-size": "12.5px",
       "line-height": "normal",
@@ -106,7 +106,7 @@
       "padding": "5px 12px"
     },
     "div.shell > main[main].main > div.page-head > div.controls > div[group].seg \"run state\" > button[button] \"passed\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-family": "Arial",
       "font-size": "12.5px",
       "line-height": "normal",
@@ -115,7 +115,7 @@
       "padding": "5px 12px"
     },
     "div.shell > main[main].main > div.page-head > div.controls > div[group].seg \"run state\" > button[button] \"deviated\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-family": "Arial",
       "font-size": "12.5px",
       "line-height": "normal",
@@ -124,7 +124,7 @@
       "padding": "5px 12px"
     },
     "div.shell > main[main].main > div.page-head > div.controls > div[group].seg \"run state\" > button[button] \"failed\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-family": "Arial",
       "font-size": "12.5px",
       "line-height": "normal",
@@ -133,7 +133,7 @@
       "padding": "5px 12px"
     },
     "div.shell > main[main].main > div.page-head > div.controls > div[group].seg \"run state\" > button[button] \"aborted\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-family": "Arial",
       "font-size": "12.5px",
       "line-height": "normal",
@@ -142,7 +142,7 @@
       "padding": "5px 12px"
     },
     "div.shell > main[main].main > div.page-head > div.controls > div[group].seg \"run state\" > button[button] \"orphaned\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-family": "Arial",
       "font-size": "12.5px",
       "line-height": "normal",
@@ -151,7 +151,7 @@
       "padding": "5px 12px"
     },
     "div.shell > main[main].main > div.page-head > div.controls > div[group].seg \"run state\" > button[button] \"rollback_pending\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-family": "Arial",
       "font-size": "12.5px",
       "line-height": "normal",
@@ -207,7 +207,7 @@
       "display": "table-row"
     },
     "div.shell > main[main].main > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"STATE\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -217,7 +217,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"DEFINITION\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -227,7 +227,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"ID\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -237,7 +237,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"QUEUED\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -247,7 +247,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"WAITED\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -257,7 +257,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"RUN TIME\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -267,7 +267,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"ROLLBACK\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -277,7 +277,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"ERROR\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -316,7 +316,7 @@
       "display": "inline"
     },
     "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable > td[cell].mono \"run-1\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
@@ -352,7 +352,7 @@
       "display": "inline"
     },
     "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable > td[cell].err": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(227, 232, 237)",
@@ -367,7 +367,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"running\" > span.badge.neutral": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
@@ -385,7 +385,7 @@
       "display": "inline"
     },
     "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable #2 > td[cell].mono \"run-2\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
@@ -421,7 +421,7 @@
       "display": "inline"
     },
     "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable #2 > td[cell].err": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(227, 232, 237)",
@@ -452,7 +452,7 @@
       "display": "inline"
     },
     "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable #3 > td[cell].mono \"run-3\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
@@ -483,7 +483,7 @@
       "display": "inline"
     },
     "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable #3 > td[cell].err \"the target did not answer\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "display": "table-cell",
       "padding": "7px 10px"

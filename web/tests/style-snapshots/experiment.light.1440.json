@@ -58,7 +58,7 @@
       "padding": "0px 0px 1px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◧ Overview\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -69,7 +69,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◎ Resilience\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -80,7 +80,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◭ Performance\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -91,7 +91,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▦ Scores\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -102,7 +102,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚖ DORA\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -113,7 +113,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⟲ Disaster recovery\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -135,7 +135,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▶ Runs\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -146,7 +146,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✚ Author\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -157,7 +157,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"☷ GameDays\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -168,7 +168,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✓ Approvals\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -179,7 +179,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✎ Manual\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -190,7 +190,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"≣ Logs\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -201,7 +201,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⌁ Traces\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -212,7 +212,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"∿ Metrics\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -223,7 +223,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✳ Star Map\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -234,7 +234,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✦ Ask\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -245,7 +245,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▤ Reports\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -256,7 +256,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◔ Events\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -267,7 +267,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚿ Users\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -278,7 +278,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"➤ Webhooks\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -289,7 +289,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"↻ Schedules\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -300,7 +300,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > button[button].theme \"○ light\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "display": "block",
       "border-top": "1px solid rgb(227, 232, 237)",
@@ -321,7 +321,7 @@
       "gap": "14px"
     },
     "div.shell > main[main].main > div.page-head > a[link].back \"← experiments\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "display": "block"
     },
     "div.shell > main[main].main > div.page-head > h1[heading] \"checkout-saturation\"": {
@@ -340,7 +340,7 @@
       "padding": "1px 9px"
     },
     "div.shell > main[main].main > div.page-head > span.badge.neutral": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
@@ -350,7 +350,7 @@
       "padding": "1px 9px"
     },
     "div.shell > main[main].main > div.page-head > span.sub.mono": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "12.5px",
       "display": "block"
@@ -372,7 +372,7 @@
       "padding": "14px 16px"
     },
     "div.shell > main[main].main > div.grid > div.panel.meta > span": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "letter-spacing": "0.6px",
       "text-transform": "uppercase",
@@ -395,7 +395,7 @@
       "padding": "14px 16px"
     },
     "div.shell > main[main].main > div.grid > div.panel.meta #2 > span": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "letter-spacing": "0.6px",
       "text-transform": "uppercase",
@@ -419,7 +419,7 @@
       "padding": "14px 16px"
     },
     "div.shell > main[main].main > div.grid > div.panel.meta #3 > span": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "letter-spacing": "0.6px",
       "text-transform": "uppercase",
@@ -443,7 +443,7 @@
       "padding": "14px 16px"
     },
     "div.shell > main[main].main > div.grid > div.panel.meta #4 > span": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "letter-spacing": "0.6px",
       "text-transform": "uppercase",
@@ -473,7 +473,7 @@
       "padding": "14px 16px"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel > h2[heading] \"STEADY STATE\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
       "letter-spacing": "0.7px",
@@ -490,7 +490,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel > dl[DescriptionList].facts > dt[term] \"KIND OF TEST\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "letter-spacing": "0.6px",
       "text-transform": "uppercase",
@@ -503,7 +503,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel > dl[DescriptionList].facts > dd[definition] > span.badge.neutral": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "letter-spacing": "0.3px",
       "display": "inline-block",
@@ -515,7 +515,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel > dl[DescriptionList].facts > dt[term] \"BEFORE THE METHOD\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "letter-spacing": "0.6px",
       "text-transform": "uppercase",
@@ -540,7 +540,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel > dl[DescriptionList].facts > dt[term] \"AFTER THE METHOD\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "letter-spacing": "0.6px",
       "text-transform": "uppercase",
@@ -572,7 +572,7 @@
       "display": "table-row"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel > table[table].data \"Recovery\" > thead[rowgroup] > tr[row] > th[columnheader] \"RECOVERY\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -582,7 +582,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel > table[table].data \"Recovery\" > thead[rowgroup] > tr[row] > th[columnheader] \"TARGET\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -592,7 +592,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel > table[table].data \"Recovery\" > thead[rowgroup] > tr[row] > th[columnheader] \"MEASURED\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -656,7 +656,7 @@
       "padding": "14px 16px"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel #2 > h2[heading] \"OBJECTIVES (3)\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
       "letter-spacing": "0.7px",
@@ -675,7 +675,7 @@
       "display": "table-row"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel #2 > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"OBJECTIVE\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -685,7 +685,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel #2 > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"METRIC\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -695,7 +695,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel #2 > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"TARGET\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -705,7 +705,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel #2 > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"OBSERVED\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -715,7 +715,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel #2 > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"MARGIN\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -725,7 +725,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel #2 > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"VERDICT\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -735,7 +735,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel #2 > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"CRITICALITY\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -926,7 +926,7 @@
       "margin": "0px 0px 14px"
     },
     "div.shell > main[main].main > div.panel.block > h2[heading] \"STEPS (5)\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
       "letter-spacing": "0.7px",
@@ -945,7 +945,7 @@
       "display": "table-row"
     },
     "div.shell > main[main].main > div.panel.block > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"PHASE\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -955,7 +955,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div.panel.block > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"STEP\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -965,7 +965,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div.panel.block > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"TYPE\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -975,7 +975,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div.panel.block > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"STATUS\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -985,7 +985,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div.panel.block > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"STARTED\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -995,7 +995,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div.panel.block > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"TOOK\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -1005,7 +1005,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div.panel.block > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"RESULT\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -1302,7 +1302,7 @@
       "margin": "0px 0px 14px"
     },
     "div.shell > main[main].main > div.panel.block #2 > h2[heading] \"LOAD\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
       "letter-spacing": "0.7px",
@@ -1319,7 +1319,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.panel.block #2 > dl[DescriptionList].facts > dt[term] \"TOOL\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "letter-spacing": "0.6px",
       "text-transform": "uppercase",
@@ -1336,7 +1336,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.panel.block #2 > dl[DescriptionList].facts > dt[term] \"VIRTUAL USERS\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "letter-spacing": "0.6px",
       "text-transform": "uppercase",
@@ -1353,7 +1353,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.panel.block #2 > dl[DescriptionList].facts > dt[term] \"REQUESTS\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "letter-spacing": "0.6px",
       "text-transform": "uppercase",
@@ -1370,7 +1370,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.panel.block #2 > dl[DescriptionList].facts > dt[term] \"THROUGHPUT\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "letter-spacing": "0.6px",
       "text-transform": "uppercase",
@@ -1387,7 +1387,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.panel.block #2 > dl[DescriptionList].facts > dt[term] \"LATENCY P50\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "letter-spacing": "0.6px",
       "text-transform": "uppercase",
@@ -1404,7 +1404,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.panel.block #2 > dl[DescriptionList].facts > dt[term] \"LATENCY P95\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "letter-spacing": "0.6px",
       "text-transform": "uppercase",
@@ -1421,7 +1421,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.panel.block #2 > dl[DescriptionList].facts > dt[term] \"LATENCY P99\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "letter-spacing": "0.6px",
       "text-transform": "uppercase",
@@ -1438,7 +1438,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.panel.block #2 > dl[DescriptionList].facts > dt[term] \"ERROR RATE\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "letter-spacing": "0.6px",
       "text-transform": "uppercase",
@@ -1455,7 +1455,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.panel.block #2 > dl[DescriptionList].facts > dt[term] \"THRESHOLDS\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "letter-spacing": "0.6px",
       "text-transform": "uppercase",
@@ -1509,7 +1509,7 @@
       "margin": "0px 0px 14px"
     },
     "div.shell > main[main].main > div.panel.block #3 > h2[heading] \"PROBE SAMPLES (5)\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
       "letter-spacing": "0.7px",
@@ -1541,7 +1541,7 @@
       "margin": "0px 0px 14px"
     },
     "div.shell > main[main].main > div.panel > h2[heading] \"TRACE WATERFALL — 0 SPANS\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
       "letter-spacing": "0.7px",
@@ -1550,7 +1550,7 @@
       "margin": "0px 0px 10px"
     },
     "div.shell > main[main].main > div.panel > div.state": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13px",
       "display": "block",
       "padding": "28px"
@@ -1571,7 +1571,7 @@
       "padding": "14px 16px"
     },
     "div.shell > main[main].main > div.grid.cols-2 > div.panel > h2[heading] \"LOGS (0)\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
       "letter-spacing": "0.7px",
@@ -1580,7 +1580,7 @@
       "margin": "0px 0px 10px"
     },
     "div.shell > main[main].main > div.grid.cols-2 > div.panel > div.state": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13px",
       "display": "block",
       "padding": "28px"
@@ -1596,7 +1596,7 @@
       "padding": "14px 16px"
     },
     "div.shell > main[main].main > div.grid.cols-2 > div.panel #2 > h2[heading] \"METRIC POINTS (0)\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
       "letter-spacing": "0.7px",
@@ -1605,7 +1605,7 @@
       "margin": "0px 0px 10px"
     },
     "div.shell > main[main].main > div.grid.cols-2 > div.panel #2 > div.state": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13px",
       "display": "block",
       "padding": "28px"

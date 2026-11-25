@@ -42,7 +42,7 @@
   },
   "text-dim": {
     "$type": "color",
-    "$value": "{grey.43}",
+    "$value": "{grey.29}",
     "$description": "Text that matters less: labels, and the text of chart axes."
   },
   "text-faint": {

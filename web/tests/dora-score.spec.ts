@@ -856,7 +856,7 @@ test('the charts are drawn in the colours of the light theme on a direct load', 
         });
     await expect
         .poll(colours)
-        .toEqual({ heatmap: '#ffffff', bar: '#1f6fb2', gauge: '#5b6772', history: '#1f6fb2' });
+        .toEqual({ heatmap: '#ffffff', bar: '#1f6fb2', gauge: '#3b4751', history: '#1f6fb2' });
 });
 
 test('the navigation reaches the DORA view and the org scores stay', async ({ page }) => {

@@ -69,7 +69,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.page-head > span.sub": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12.5px",
       "display": "block"
     },
@@ -122,7 +122,7 @@
       "gap": "8px"
     },
     "div.shell > main[main].main > div.panel > div.examples > button[button] \"How many experiments ran?\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-family": "Arial",
       "font-size": "12px",
       "line-height": "normal",
@@ -136,7 +136,7 @@
       "padding": "3px 11px"
     },
     "div.shell > main[main].main > div.panel > div.examples > button[button] \"What is the pass rate?\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-family": "Arial",
       "font-size": "12px",
       "line-height": "normal",
@@ -150,7 +150,7 @@
       "padding": "3px 11px"
     },
     "div.shell > main[main].main > div.panel > div.examples > button[button] \"Which experiments failed?\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-family": "Arial",
       "font-size": "12px",
       "line-height": "normal",
@@ -164,7 +164,7 @@
       "padding": "3px 11px"
     },
     "div.shell > main[main].main > div.panel > div.examples > button[button] \"What faults were injected?\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-family": "Arial",
       "font-size": "12px",
       "line-height": "normal",
@@ -178,7 +178,7 @@
       "padding": "3px 11px"
     },
     "div.shell > main[main].main > div.panel > div.examples > button[button] \"Experiments per day\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-family": "Arial",
       "font-size": "12px",
       "line-height": "normal",
@@ -192,7 +192,7 @@
       "padding": "3px 11px"
     },
     "div.shell > main[main].main > div.panel > div.examples > button[button] \"Show recent experiments\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-family": "Arial",
       "font-size": "12px",
       "line-height": "normal",

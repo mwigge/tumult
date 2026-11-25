@@ -58,7 +58,7 @@
       "padding": "0px 0px 1px"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◧ Overview\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -69,7 +69,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◎ Resilience\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -80,7 +80,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◭ Performance\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -91,7 +91,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▦ Scores\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -102,7 +102,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚖ DORA\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -113,7 +113,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⟲ Disaster recovery\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -124,7 +124,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚗ Experiments\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -135,7 +135,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▶ Runs\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -146,7 +146,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✚ Author\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -157,7 +157,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"☷ GameDays\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -168,7 +168,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✓ Approvals\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -190,7 +190,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"≣ Logs\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -201,7 +201,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⌁ Traces\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -212,7 +212,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"∿ Metrics\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -223,7 +223,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✳ Star Map\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -234,7 +234,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"✦ Ask\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -245,7 +245,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"▤ Reports\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -256,7 +256,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"◔ Events\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -267,7 +267,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"⚿ Users\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -278,7 +278,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"➤ Webhooks\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -289,7 +289,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > nav[navigation].nav \"Main\" > a[link] \"↻ Schedules\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "13.5px",
       "display": "flex",
       "border-left": "2px solid rgba(0, 0, 0, 0)",
@@ -300,7 +300,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > button[button].theme \"○ light\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "display": "block",
       "border-top": "1px solid rgb(227, 232, 237)",
@@ -329,7 +329,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.manual > div.page-head > span.sub": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12.5px",
       "display": "block"
     },
@@ -339,7 +339,7 @@
       "gap": "12px"
     },
     "div.shell > main[main].main > div.manual > div.page-head > div.controls > label[LabelText].actor": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "display": "flex",
       "gap": "6px"
@@ -367,7 +367,7 @@
       "border-radius": "5px"
     },
     "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[tablist].seg \"manual sections\" > button[tab] \"New entry\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-family": "Arial",
       "font-size": "12.5px",
       "line-height": "normal",
@@ -385,7 +385,7 @@
       "padding": "5px 12px"
     },
     "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[tablist].seg \"manual sections\" > button[tab] \"Verification queue\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-family": "Arial",
       "font-size": "12.5px",
       "line-height": "normal",
@@ -394,7 +394,7 @@
       "padding": "5px 12px"
     },
     "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[tablist].seg \"manual sections\" > button[tab] \"All records\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-family": "Arial",
       "font-size": "12.5px",
       "line-height": "normal",
@@ -403,7 +403,7 @@
       "padding": "5px 12px"
     },
     "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[tablist].seg \"manual sections\" > button[tab] \"Import\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-family": "Arial",
       "font-size": "12.5px",
       "line-height": "normal",
@@ -429,7 +429,7 @@
       "padding": "14px 16px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > h2[heading] \"PLANS\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
       "letter-spacing": "0.7px",
@@ -448,7 +448,7 @@
       "display": "table-row"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"PLAN\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -458,7 +458,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"TYPE\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -468,7 +468,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"TARGET\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -478,7 +478,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"OWNER\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -488,7 +488,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"DUE\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -498,7 +498,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"STATUS\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -508,7 +508,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"REPEATS\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -518,7 +518,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"RTO / RPO\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -528,7 +528,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader]": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -557,7 +557,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > tr[row].clickable > td[cell] \"failover\" > span.badge.neutral": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
@@ -768,7 +768,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"failover\" > span.badge.neutral": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
@@ -867,7 +867,7 @@
       "padding": "14px 16px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel.form-panel > h2[heading] \"PLAN AN EXERCISE\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
       "letter-spacing": "0.7px",
@@ -880,7 +880,7 @@
       "gap": "10px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel.form-panel > div.form > label[LabelText]": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "display": "flex",
       "gap": "4px"
@@ -905,7 +905,7 @@
       "gap": "10px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel.form-panel > div.form > div.row2 > label[LabelText]": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "display": "flex",
       "gap": "4px"
@@ -925,7 +925,7 @@
       "padding": "6px 9px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel.form-panel > div.form > div.row2 > label[LabelText] #2": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "display": "flex",
       "gap": "4px"
@@ -950,7 +950,7 @@
       "gap": "10px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel.form-panel > div.form > div.row2 #2 > label[LabelText]": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "display": "flex",
       "gap": "4px"
@@ -970,7 +970,7 @@
       "padding": "6px 9px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel.form-panel > div.form > div.row2 #2 > label[LabelText] #2": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "display": "flex",
       "gap": "4px"
@@ -995,7 +995,7 @@
       "gap": "10px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel.form-panel > div.form > div.row2 #3 > label[LabelText]": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "display": "flex",
       "gap": "4px"
@@ -1015,7 +1015,7 @@
       "padding": "6px 9px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel.form-panel > div.form > div.row2 #3 > label[LabelText] #2": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "display": "flex",
       "gap": "4px"
@@ -1040,7 +1040,7 @@
       "gap": "10px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel.form-panel > div.form > div.row2 #4 > label[LabelText]": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "display": "flex",
       "gap": "4px"
@@ -1059,7 +1059,7 @@
       "padding": "5px 8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel.form-panel > div.form > div.row2 #4 > label[LabelText] #2": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "display": "flex",
       "gap": "4px"
@@ -1083,7 +1083,7 @@
       "gap": "10px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel.form-panel > div.form > div.row3 > label[LabelText]": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "display": "flex",
       "gap": "4px"
@@ -1103,7 +1103,7 @@
       "padding": "6px 9px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel.form-panel > div.form > div.row3 > label[LabelText] #2": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "display": "flex",
       "gap": "4px"
@@ -1123,7 +1123,7 @@
       "padding": "6px 9px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Plans\" > div.plans > div.panel.form-panel > div.form > div.row3 > label[LabelText] #3": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "display": "flex",
       "gap": "4px"

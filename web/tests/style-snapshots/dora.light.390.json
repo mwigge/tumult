@@ -73,7 +73,7 @@
       "margin": "0px 0px 0px 12px"
     },
     "div.shell > main[main].main > div.page-head > div[tablist].views \"score view\" > button[tab] \"Org scores\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "display": "block",
       "background-color": "rgb(255, 255, 255)",
@@ -119,7 +119,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel.head > div.who > label[LabelText] > span.lbl": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "letter-spacing": "0.6px",
       "text-transform": "uppercase",
@@ -143,7 +143,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel.head > div.who > span.badge.neutral": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
@@ -177,7 +177,7 @@
       "gap": "4px 16px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel.head > dl[DescriptionList].facts > dt[term] \"House parameters\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "display": "block"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel.head > dl[DescriptionList].facts > dd[definition]": {
@@ -185,7 +185,7 @@
       "gap": "4px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel.head > dl[DescriptionList].facts > dt[term] \"Function register\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "display": "block"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel.head > dl[DescriptionList].facts > dd[definition] #2": {
@@ -203,7 +203,7 @@
       "padding": "1px 9px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel.head > dl[DescriptionList].facts > dt[term] \"Feeds\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "display": "block"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel.head > dl[DescriptionList].facts > dd[definition] #3": {
@@ -237,7 +237,7 @@
       "display": "inline"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel.head > dl[DescriptionList].facts > dd[definition] #3 > span.feed #2 > span.badge.neutral": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
@@ -268,7 +268,7 @@
       "padding": "14px 16px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > div.tiles > div.panel.num > div.label": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "letter-spacing": "0.6px",
       "text-transform": "uppercase",
@@ -313,7 +313,7 @@
       "padding": "14px 16px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > div.tiles > div.panel.num #2 > div.label": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "letter-spacing": "0.6px",
       "text-transform": "uppercase",
@@ -359,7 +359,7 @@
       "padding": "14px 16px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > div.tiles > div.panel.num #3 > div.label": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "letter-spacing": "0.6px",
       "text-transform": "uppercase",
@@ -404,7 +404,7 @@
       "padding": "14px 16px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > div.tiles > div.panel.num #4 > div.label": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "letter-spacing": "0.6px",
       "text-transform": "uppercase",
@@ -454,7 +454,7 @@
       "gap": "12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel > div.panel-head > h2[heading] \"ARTICLES × FUNCTIONS\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
       "letter-spacing": "0.7px",
@@ -477,7 +477,7 @@
       "padding": "3px 10px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel > div.panel-head > div[group].toggle \"heatmap value\" > button[button] \"Evidence status\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "display": "inline-block",
       "background-color": "rgb(255, 255, 255)",
@@ -505,11 +505,11 @@
       "margin": "4px 0px 10px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel > details[group].alt > summary[DisclosureTriangle] \"Show the heatmap as a table\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "display": "list-item"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel > div.legend": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "display": "flex",
       "margin": "6px 0px 10px",
@@ -562,7 +562,7 @@
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel > div.legend > span.item #5 > i.swatch.hatch": {
       "display": "inline-block",
-      "background-image": "repeating-linear-gradient(135deg, rgb(91, 103, 114) 0px, rgb(91, 103, 114) 1px, rgba(0, 0, 0, 0) 1px, rgba(0, 0, 0, 0) 4px)",
+      "background-image": "repeating-linear-gradient(135deg, rgb(59, 71, 81) 0px, rgb(59, 71, 81) 1px, rgba(0, 0, 0, 0) 1px, rgba(0, 0, 0, 0) 4px)",
       "border-top": "1px solid rgb(197, 206, 214)",
       "border-right": "1px solid rgb(197, 206, 214)",
       "border-bottom": "1px solid rgb(197, 206, 214)",
@@ -594,7 +594,7 @@
       "display": "table-row"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel > table[table].data.articles > thead[rowgroup] > tr[row] > th[columnheader] \"ARTICLE\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -604,7 +604,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel > table[table].data.articles > thead[rowgroup] > tr[row] > th[columnheader] \"COVERAGE\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -614,7 +614,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel > table[table].data.articles > thead[rowgroup] > tr[row] > th[columnheader] \"MEETS\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -624,7 +624,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel > table[table].data.articles > thead[rowgroup] > tr[row] > th[columnheader] \"GAP\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -779,7 +779,7 @@
       "margin": "0px 0px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #2 > h2[heading] \"EXPECTED AND ACTUAL EVIDENCE STATUS, LAR…\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
       "letter-spacing": "0.7px",
@@ -798,7 +798,7 @@
       "display": "table-row"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #2 > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"REQUIREMENT\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -808,7 +808,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #2 > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"EXPECTED\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -818,7 +818,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #2 > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"ACTUAL\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -828,7 +828,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #2 > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"GAP\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -838,7 +838,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #2 > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"OLDEST EVIDENCE\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -848,7 +848,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #2 > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"DAYS UNTIL OPERATING\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -858,7 +858,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #2 > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"EVIDENCE\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -884,7 +884,7 @@
       "display": "inline"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #2 > table[table].data > tr[row] > td[cell] \"Art. 24(1) Requirement dora.art24.1 hous…\" > span.badge.neutral": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
@@ -1110,7 +1110,7 @@
       "margin": "0px 0px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > h2[heading] \"MATURITY — LEVEL 2 OF TARGET 3 (SIMPLIFI…\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
       "letter-spacing": "0.7px",
@@ -1162,7 +1162,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity > div.bars > div.legend": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "display": "flex",
       "margin": "6px 0px 10px",
@@ -1195,7 +1195,7 @@
       "margin": "0px 2px 0px 0px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity > div.bars > ul[list].reasons": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "display": "block",
       "padding": "0px 0px 0px 18px",
@@ -1230,7 +1230,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > div.history > div.legend": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "display": "flex",
       "margin": "6px 0px 10px",
@@ -1249,7 +1249,7 @@
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > div.history > div.legend > span.item #2 > i.swatch.dashed": {
       "display": "inline-block",
-      "border-top": "2px dashed rgb(91, 103, 114)",
+      "border-top": "2px dashed rgb(59, 71, 81)",
       "margin": "0px 2px 0px 0px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > div.history > div.dim.center": {
@@ -1268,7 +1268,7 @@
       "display": "table-row"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > div.history > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"QUARTER\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -1278,7 +1278,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > div.history > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"FROM\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -1288,7 +1288,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > div.history > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"LEVEL\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -1298,7 +1298,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > div.history > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"INDEX\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -1451,7 +1451,7 @@
       "display": "table-row"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > table[table].data.gates > thead[rowgroup] > tr[row] > th[columnheader] \"GATE\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -1461,7 +1461,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > table[table].data.gates > thead[rowgroup] > tr[row] > th[columnheader] \"STATE\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -1471,7 +1471,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > table[table].data.gates > thead[rowgroup] > tr[row] > th[columnheader] \"FAILING CONDITIONS\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -1624,7 +1624,7 @@
       "margin": "0px 0px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > h2[heading] \"MATURITY PER NODE — LEVEL 1, CAPPED BY S…\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
       "letter-spacing": "0.7px",
@@ -1643,7 +1643,7 @@
       "display": "table-row"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"NODE\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -1653,7 +1653,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"LEVEL\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -1663,7 +1663,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"INDEX\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -1673,7 +1673,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"CAP\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -1918,7 +1918,7 @@
       "padding": "1px 9px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > tr[row] #5 > td[cell] \"svc:ledger-archive service critical not …\" > span.badge.neutral": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
@@ -2020,7 +2020,7 @@
       "margin": "0px 0px 12px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > h2[heading] \"REPORTING READINESS — FUNCTION REGISTER\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "font-weight": "600",
       "letter-spacing": "0.7px",
@@ -2045,7 +2045,7 @@
       "padding": "14px 16px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > div.tiles > div.panel.num > div.label": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "letter-spacing": "0.6px",
       "text-transform": "uppercase",
@@ -2084,7 +2084,7 @@
       "padding": "14px 16px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > div.tiles > div.panel.num #2 > div.label": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "letter-spacing": "0.6px",
       "text-transform": "uppercase",
@@ -2123,7 +2123,7 @@
       "padding": "14px 16px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > div.tiles > div.panel.num #3 > div.label": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "letter-spacing": "0.6px",
       "text-transform": "uppercase",
@@ -2162,7 +2162,7 @@
       "padding": "14px 16px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > div.tiles > div.panel.num #4 > div.label": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "letter-spacing": "0.6px",
       "text-transform": "uppercase",
@@ -2207,7 +2207,7 @@
       "display": "table-row"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > table[table].data.functions > thead[rowgroup] > tr[row] > th[columnheader] \"FUNCTION\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -2217,7 +2217,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > table[table].data.functions > thead[rowgroup] > tr[row] > th[columnheader] \"CODE\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -2227,7 +2227,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > table[table].data.functions > thead[rowgroup] > tr[row] > th[columnheader] \"TIER\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -2237,7 +2237,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > table[table].data.functions > thead[rowgroup] > tr[row] > th[columnheader] \"RTO\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -2247,7 +2247,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > table[table].data.functions > thead[rowgroup] > tr[row] > th[columnheader] \"RPO\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -2257,7 +2257,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > table[table].data.functions > thead[rowgroup] > tr[row] > th[columnheader] \"ASSESSED\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -2267,7 +2267,7 @@
       "padding": "6px 10px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > table[table].data.functions > thead[rowgroup] > tr[row] > th[columnheader] \"COVERAGE\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.5px",
@@ -2404,21 +2404,21 @@
       "gap": "4px 16px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > dl[DescriptionList].register > dt[term] \"Register of information\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "display": "block"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > dl[DescriptionList].register > dd[definition]": {
       "display": "block"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > dl[DescriptionList].register > dt[term] \"Signed off\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "display": "block"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > dl[DescriptionList].register > dd[definition] #2": {
       "display": "block"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > dl[DescriptionList].register > dt[term] \"Services mapped to no function\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "display": "block"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > dl[DescriptionList].register > dd[definition].mono": {

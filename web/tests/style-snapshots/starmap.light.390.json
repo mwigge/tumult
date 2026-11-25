@@ -69,7 +69,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.page-head > span.sub": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12.5px",
       "display": "block",
       "margin": "8px 0px 0px"
@@ -98,7 +98,7 @@
       "padding": "5px 12px"
     },
     "div.shell > main[main].main > div.page-head > div.controls > div[group].seg \"lens\" > button[button] \"risk\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-family": "Arial",
       "font-size": "12.5px",
       "line-height": "normal",
@@ -107,7 +107,7 @@
       "padding": "5px 12px"
     },
     "div.shell > main[main].main > div.page-head > div.controls > div[group].seg \"lens\" > button[button] \"conformance\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-family": "Arial",
       "font-size": "12.5px",
       "line-height": "normal",
@@ -138,7 +138,7 @@
       "gap": "normal 1px"
     },
     "div.shell > main[main].main > div.page-head > div.controls > div[group].seg \"time range\" > button[button] \"24h\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-family": "Arial",
       "font-size": "12.5px",
       "line-height": "normal",
@@ -156,7 +156,7 @@
       "padding": "5px 12px"
     },
     "div.shell > main[main].main > div.page-head > div.controls > div[group].seg \"time range\" > button[button] \"14d\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-family": "Arial",
       "font-size": "12.5px",
       "line-height": "normal",
@@ -165,7 +165,7 @@
       "padding": "5px 12px"
     },
     "div.shell > main[main].main > div.page-head > div.controls > div[group].seg \"time range\" > button[button] \"30d\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-family": "Arial",
       "font-size": "12.5px",
       "line-height": "normal",
@@ -203,13 +203,13 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > p[paragraph].sub": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12.5px",
       "display": "block",
       "margin": "8px 0px 0px"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > p[paragraph].sub.legend": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12.5px",
       "display": "block",
       "margin": "8px 0px 0px"
@@ -239,7 +239,7 @@
       "border-radius": "50%"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"node kinds\" > button[button].chip \"org unit 9\" > span.count": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "display": "block"
     },
@@ -263,7 +263,7 @@
       "border-radius": "50%"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"node kinds\" > button[button].chip \"ICT entity 6\" > span.count": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "display": "block"
     },
@@ -287,7 +287,7 @@
       "border-radius": "50%"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"node kinds\" > button[button].chip \"system 11\" > span.count": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "display": "block"
     },
@@ -311,7 +311,7 @@
       "border-radius": "50%"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"node kinds\" > button[button].chip \"component 6\" > span.count": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "display": "block"
     },
@@ -335,7 +335,7 @@
       "border-radius": "50%"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"node kinds\" > button[button].chip \"workload 7\" > span.count": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "display": "block"
     },
@@ -359,7 +359,7 @@
       "border-radius": "50%"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"node kinds\" > button[button].chip \"experiment 12\" > span.count": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "display": "block"
     },
@@ -397,7 +397,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"relations\" > button[button].chip \"OWNS 8\" > span.count": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "display": "block"
     },
@@ -430,7 +430,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"relations\" > button[button].chip \"IMPLEMENTS 8\" > span.count": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "display": "block"
     },
@@ -463,7 +463,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"relations\" > button[button].chip \"RUNS_ON 7\" > span.count": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "display": "block"
     },
@@ -496,7 +496,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"relations\" > button[button].chip \"DEPENDS_ON 1\" > span.count": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "display": "block"
     },
@@ -529,7 +529,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"relations\" > button[button].chip \"TESTED_BY 12\" > span.count": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "display": "block"
     },
@@ -562,7 +562,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"relations\" > button[button].chip \"BROKE 2\" > span.count": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "display": "block"
     },
@@ -595,12 +595,12 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > div[group].kinds \"relations\" > button[button].chip \"PART_OF 15\" > span.count": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "display": "block"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > ul[list].key \"how to read the map\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12px",
       "display": "flex",
       "margin": "8px 0px 0px",
@@ -638,10 +638,10 @@
     },
     "div.shell > main[main].main > div.layout > div.panel.map > ul[list].key \"how to read the map\" > li[listitem] #3 > span.ring.missing": {
       "display": "block",
-      "border-top": "2px dashed rgb(91, 103, 114)",
-      "border-right": "2px dashed rgb(91, 103, 114)",
-      "border-bottom": "2px dashed rgb(91, 103, 114)",
-      "border-left": "2px dashed rgb(91, 103, 114)",
+      "border-top": "2px dashed rgb(59, 71, 81)",
+      "border-right": "2px dashed rgb(59, 71, 81)",
+      "border-bottom": "2px dashed rgb(59, 71, 81)",
+      "border-left": "2px dashed rgb(59, 71, 81)",
       "border-radius": "50%"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > ul[list].key \"how to read the map\" > li[listitem] #4": {
@@ -665,14 +665,14 @@
       "display": "block",
       "opacity": "0.45",
       "background-color": "rgb(197, 206, 214)",
-      "border-top": "2px dotted rgb(91, 103, 114)",
-      "border-right": "2px dotted rgb(91, 103, 114)",
-      "border-bottom": "2px dotted rgb(91, 103, 114)",
-      "border-left": "2px dotted rgb(91, 103, 114)",
+      "border-top": "2px dotted rgb(59, 71, 81)",
+      "border-right": "2px dotted rgb(59, 71, 81)",
+      "border-bottom": "2px dotted rgb(59, 71, 81)",
+      "border-left": "2px dotted rgb(59, 71, 81)",
       "border-radius": "50%"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > p[paragraph].sub #2": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12.5px",
       "display": "block",
       "margin": "8px 0px 0px"
@@ -688,7 +688,7 @@
       "gap": "10px"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > div.nodes-head > h2[heading] \"NODES\"": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12.5px",
       "font-weight": "600",
       "letter-spacing": "0.7px",
@@ -710,7 +710,7 @@
       "padding": "6px 9px"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > div.nodes-head > span.sub": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "12.5px",
       "display": "block"
     },
@@ -736,7 +736,7 @@
       "padding": "3px 8px"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] > button[button] \"company (company)\" > span.kind": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "display": "inline",
       "margin": "0px 4px 0px 0px"
@@ -758,7 +758,7 @@
       "padding": "3px 8px"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #2 > button[button] \"unassigned (unassigned)\" > span.kind": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "display": "inline",
       "margin": "0px 4px 0px 0px"
@@ -780,7 +780,7 @@
       "padding": "3px 8px"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #3 > button[button] \"unit compute\" > span.kind": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "display": "inline",
       "margin": "0px 4px 0px 0px"
@@ -802,7 +802,7 @@
       "padding": "3px 8px"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #4 > button[button] \"unit data\" > span.kind": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "display": "inline",
       "margin": "0px 4px 0px 0px"
@@ -824,7 +824,7 @@
       "padding": "3px 8px"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #5 > button[button] \"team data-team\" > span.kind": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "display": "inline",
       "margin": "0px 4px 0px 0px"
@@ -846,7 +846,7 @@
       "padding": "3px 8px"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #6 > button[button] \"unit edge\" > span.kind": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "display": "inline",
       "margin": "0px 4px 0px 0px"
@@ -868,7 +868,7 @@
       "padding": "3px 8px"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #7 > button[button] \"team edge-team\" > span.kind": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "display": "inline",
       "margin": "0px 4px 0px 0px"
@@ -890,7 +890,7 @@
       "padding": "3px 8px"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #8 > button[button] \"domain platform\" > span.kind": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "display": "inline",
       "margin": "0px 4px 0px 0px"
@@ -912,7 +912,7 @@
       "padding": "3px 8px"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #9 > button[button] \"team runtime-team\" > span.kind": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "display": "inline",
       "margin": "0px 4px 0px 0px"
@@ -934,7 +934,7 @@
       "padding": "3px 8px"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #10 > button[button] \"entity cif-0001\" > span.kind": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "display": "inline",
       "margin": "0px 4px 0px 0px"
@@ -956,7 +956,7 @@
       "padding": "3px 8px"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #11 > button[button] \"entity cif-0002\" > span.kind": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "display": "inline",
       "margin": "0px 4px 0px 0px"
@@ -978,7 +978,7 @@
       "padding": "3px 8px"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #12 > button[button] \"entity cif-0003\" > span.kind": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "display": "inline",
       "margin": "0px 4px 0px 0px"
@@ -1000,7 +1000,7 @@
       "padding": "3px 8px"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #13 > button[button] \"entity cif-0004\" > span.kind": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "display": "inline",
       "margin": "0px 4px 0px 0px"
@@ -1022,7 +1022,7 @@
       "padding": "3px 8px"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #14 > button[button] \"entity cif-0005\" > span.kind": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "display": "inline",
       "margin": "0px 4px 0px 0px"
@@ -1044,7 +1044,7 @@
       "padding": "3px 8px"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #15 > button[button] \"entity cif-0006\" > span.kind": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "display": "inline",
       "margin": "0px 4px 0px 0px"
@@ -1066,7 +1066,7 @@
       "padding": "3px 8px"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #16 > button[button] \"system api-worker\" > span.kind": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "display": "inline",
       "margin": "0px 4px 0px 0px"
@@ -1088,7 +1088,7 @@
       "padding": "3px 8px"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #17 > button[button] \"system batch-worker\" > span.kind": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "display": "inline",
       "margin": "0px 4px 0px 0px"
@@ -1110,7 +1110,7 @@
       "padding": "3px 8px"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #18 > button[button] \"system cdn\" > span.kind": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "display": "inline",
       "margin": "0px 4px 0px 0px"
@@ -1132,7 +1132,7 @@
       "padding": "3px 8px"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #19 > button[button] \"system checkout\" > span.kind": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "display": "inline",
       "margin": "0px 4px 0px 0px"
@@ -1154,7 +1154,7 @@
       "padding": "3px 8px"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #20 > button[button] \"system config-service\" > span.kind": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "display": "inline",
       "margin": "0px 4px 0px 0px"
@@ -1176,7 +1176,7 @@
       "padding": "3px 8px"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #21 > button[button] \"system host\" > span.kind": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "display": "inline",
       "margin": "0px 4px 0px 0px"
@@ -1198,7 +1198,7 @@
       "padding": "3px 8px"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #22 > button[button] \"system message-queue\" > span.kind": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "display": "inline",
       "margin": "0px 4px 0px 0px"
@@ -1220,7 +1220,7 @@
       "padding": "3px 8px"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #23 > button[button] \"system service\" > span.kind": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "display": "inline",
       "margin": "0px 4px 0px 0px"
@@ -1242,7 +1242,7 @@
       "padding": "3px 8px"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #24 > button[button] \"system session-cache\" > span.kind": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "display": "inline",
       "margin": "0px 4px 0px 0px"
@@ -1264,7 +1264,7 @@
       "padding": "3px 8px"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #25 > button[button] \"system storage\" > span.kind": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "display": "inline",
       "margin": "0px 4px 0px 0px"
@@ -1286,7 +1286,7 @@
       "padding": "3px 8px"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #26 > button[button] \"system worker\" > span.kind": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "display": "inline",
       "margin": "0px 4px 0px 0px"
@@ -1308,7 +1308,7 @@
       "padding": "3px 8px"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #27 > button[button] \"component broker\" > span.kind": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "display": "inline",
       "margin": "0px 4px 0px 0px"
@@ -1330,7 +1330,7 @@
       "padding": "3px 8px"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #28 > button[button] \"component edge-cache\" > span.kind": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "display": "inline",
       "margin": "0px 4px 0px 0px"
@@ -1352,7 +1352,7 @@
       "padding": "3px 8px"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #29 > button[button] \"component http\" > span.kind": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "display": "inline",
       "margin": "0px 4px 0px 0px"
@@ -1374,7 +1374,7 @@
       "padding": "3px 8px"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #30 > button[button] \"component redis\" > span.kind": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "display": "inline",
       "margin": "0px 4px 0px 0px"
@@ -1396,7 +1396,7 @@
       "padding": "3px 8px"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #31 > button[button] \"component scheduler\" > span.kind": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "display": "inline",
       "margin": "0px 4px 0px 0px"
@@ -1418,7 +1418,7 @@
       "padding": "3px 8px"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #32 > button[button] \"component store\" > span.kind": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "display": "inline",
       "margin": "0px 4px 0px 0px"
@@ -1440,7 +1440,7 @@
       "padding": "3px 8px"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #33 > button[button] \"workload api-worker\" > span.kind": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "display": "inline",
       "margin": "0px 4px 0px 0px"
@@ -1462,7 +1462,7 @@
       "padding": "3px 8px"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #34 > button[button] \"workload batch-worker\" > span.kind": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "display": "inline",
       "margin": "0px 4px 0px 0px"
@@ -1484,7 +1484,7 @@
       "padding": "3px 8px"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #35 > button[button] \"workload cdn\" > span.kind": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "display": "inline",
       "margin": "0px 4px 0px 0px"
@@ -1506,7 +1506,7 @@
       "padding": "3px 8px"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #36 > button[button] \"workload checkout\" > span.kind": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "display": "inline",
       "margin": "0px 4px 0px 0px"
@@ -1528,7 +1528,7 @@
       "padding": "3px 8px"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #37 > button[button] \"workload config-service\" > span.kind": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "display": "inline",
       "margin": "0px 4px 0px 0px"
@@ -1550,7 +1550,7 @@
       "padding": "3px 8px"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #38 > button[button] \"workload message-queue\" > span.kind": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "display": "inline",
       "margin": "0px 4px 0px 0px"
@@ -1572,7 +1572,7 @@
       "padding": "3px 8px"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #39 > button[button] \"workload session-cache\" > span.kind": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "display": "inline",
       "margin": "0px 4px 0px 0px"
@@ -1594,7 +1594,7 @@
       "padding": "3px 8px"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #40 > button[button] \"def api-worker cpu stress\" > span.kind": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "display": "inline",
       "margin": "0px 4px 0px 0px"
@@ -1616,7 +1616,7 @@
       "padding": "3px 8px"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #41 > button[button] \"def batch-worker node drain\" > span.kind": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "display": "inline",
       "margin": "0px 4px 0px 0px"
@@ -1638,7 +1638,7 @@
       "padding": "3px 8px"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #42 > button[button] \"def cdn origin latency\" > span.kind": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "display": "inline",
       "margin": "0px 4px 0px 0px"
@@ -1660,7 +1660,7 @@
       "padding": "3px 8px"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #43 > button[button] \"def checkout load ramp\" > span.kind": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "display": "inline",
       "margin": "0px 4px 0px 0px"
@@ -1682,7 +1682,7 @@
       "padding": "3px 8px"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #44 > button[button] \"def checkout zone failover\" > span.kind": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "display": "inline",
       "margin": "0px 4px 0px 0px"
@@ -1704,7 +1704,7 @@
       "padding": "3px 8px"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #45 > button[button] \"def config-service pod kill\" > span.kind": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "display": "inline",
       "margin": "0px 4px 0px 0px"
@@ -1726,7 +1726,7 @@
       "padding": "3px 8px"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #46 > button[button] \"def host reboot\" > span.kind": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "display": "inline",
       "margin": "0px 4px 0px 0px"
@@ -1748,7 +1748,7 @@
       "padding": "3px 8px"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #47 > button[button] \"def message-queue dependency loss with r…\" > span.kind": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "display": "inline",
       "margin": "0px 4px 0px 0px"
@@ -1770,7 +1770,7 @@
       "padding": "3px 8px"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #48 > button[button] \"def never-ran dns outage\" > span.kind": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "display": "inline",
       "margin": "0px 4px 0px 0px"
@@ -1792,7 +1792,7 @@
       "padding": "3px 8px"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #49 > button[button] \"def service network delay\" > span.kind": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "display": "inline",
       "margin": "0px 4px 0px 0px"
@@ -1814,7 +1814,7 @@
       "padding": "3px 8px"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #50 > button[button] \"def storage disk fill\" > span.kind": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "display": "inline",
       "margin": "0px 4px 0px 0px"
@@ -1836,7 +1836,7 @@
       "padding": "3px 8px"
     },
     "div.shell > main[main].main > div.layout > div.panel.map > section[region].nodes \"nodes\" > ul[list] > li[listitem] #51 > button[button] \"def worker memory pressure\" > span.kind": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(59, 71, 81)",
       "font-size": "11px",
       "display": "inline",
       "margin": "0px 4px 0px 0px"
