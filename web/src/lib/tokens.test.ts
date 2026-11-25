@@ -111,3 +111,12 @@ describe('build', () => {
         }
     });
 });
+
+describe('theme.css', () => {
+    it('takes its colours from tokens.css and defines none of its own', () => {
+        const theme = readFileSync(join(WEB, 'src/lib/theme.css'), 'utf8');
+
+        expect(theme.startsWith("@import './tokens.css';\n")).toBe(true);
+        expect(theme).not.toMatch(/--[a-z-]+:/);
+    });
+});
