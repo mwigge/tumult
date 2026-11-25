@@ -32,6 +32,13 @@ export const PERIOD_DAYS: Readonly<Record<string, number>> = {
     '3y': 3 * 365,
 };
 
+/** The name of each period. */
+export const PERIOD_LABEL: Readonly<Record<string, string>> = {
+    '90d': '90 days',
+    '1y': '1 year',
+    '3y': '3 years',
+};
+
 export const DEFAULT_PERIOD = '1y';
 
 const STATES: Record<DrState, string> = {

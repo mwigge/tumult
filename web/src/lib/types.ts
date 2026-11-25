@@ -639,7 +639,8 @@ export interface PerfVerdict {
     as_of_ns: number;
 }
 
-export type ReportTemplate = 'executive-digest' | 'game-day' | 'evidence-pack';
+export type ReportTemplate =
+    'executive-digest' | 'game-day' | 'evidence-pack' | 'dr-test' | 'dr-exercise';
 
 export interface ReportMetaV2 {
     doc_id: string;
