@@ -134,19 +134,10 @@
         return {
             // Room under the legend for the upright run labels.
             grid: { left: 56, right: 20, top: 48, bottom: 24 },
-            tooltip: { trigger: 'axis', ...tokens.tooltip },
-            legend: { textStyle: { color: tokens.text }, top: 0 },
-            xAxis: {
-                type: 'time',
-                ...axis,
-                axisLine: { lineStyle: { color: tokens.axis } },
-                axisLabel: { color: tokens.text },
-            },
-            yAxis: {
-                type: 'value',
-                axisLabel: { color: tokens.text },
-                splitLine: { lineStyle: { color: tokens.split } },
-            },
+            tooltip: { trigger: 'axis' },
+            legend: { top: 0 },
+            xAxis: { type: 'time', ...axis },
+            yAxis: { type: 'value' },
             series: [
                 ...series.map((s, i) => ({
                     name: s.name,

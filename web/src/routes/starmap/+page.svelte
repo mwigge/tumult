@@ -176,10 +176,8 @@
             focused: Boolean(focus),
             light: theme === 'tumult-light',
         });
-        const t = context.tokens;
         return {
             tooltip: {
-                ...t.tooltip,
                 confine: true,
                 position: placeTip,
                 formatter: tipFormatter(tipOf),

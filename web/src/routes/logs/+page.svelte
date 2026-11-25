@@ -111,8 +111,8 @@
         const byKey = new Map(volume.rows.map((r) => [`${r.ts}|${r.severity}`, r.count]));
         return {
             grid: { left: 48, right: 16, top: 28, bottom: 24 },
-            tooltip: { trigger: 'axis', ...tokens.tooltip },
-            legend: { textStyle: { color: tokens.text }, top: 0 },
+            tooltip: { trigger: 'axis' },
+            legend: { top: 0 },
             xAxis: {
                 type: 'time',
                 // Bars would otherwise widen the axis by half a bucket,
@@ -124,14 +124,10 @@
                     buckets.map((ts) => ts * 1000),
                 ),
                 containShape: false,
-                axisLine: { lineStyle: { color: tokens.axis } },
-                axisLabel: { color: tokens.text },
             },
             yAxis: {
                 type: 'value',
                 minInterval: 1,
-                axisLabel: { color: tokens.text },
-                splitLine: { lineStyle: { color: tokens.split } },
             },
             series: sevs.map((sev) => ({
                 name: sev,

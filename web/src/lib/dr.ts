@@ -364,7 +364,6 @@ export function recoveryOption(
         grid: { left: 52, right: 16, top: 16, bottom: 28 },
         tooltip: {
             trigger: 'item',
-            ...t.tooltip,
             formatter: tipFormatter((p: { data?: { id?: string } }) => {
                 const test = byId.get(p.data?.id ?? '');
                 return test ? pointTip(test, objective) : null;

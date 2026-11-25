@@ -190,7 +190,6 @@ export function heatmapOption(
         .filter((d) => d.value[0] >= 0 && d.value[1] >= 0);
     return {
         tooltip: {
-            ...t.tooltip,
             className: 'dora-tooltip',
             formatter: tipFormatter((p: { data?: DoraCell & { row: string } }) =>
                 p.data ? cellTooltip(p.data) : null,
@@ -291,7 +290,7 @@ export function componentsOption(m: MaturityReport, theme: ChartTheme): EChartsC
         };
     });
     return {
-        tooltip: { ...t.tooltip, trigger: 'item' },
+        tooltip: { trigger: 'item' },
         // The grid holds the labels, not the axis name: room for it below.
         grid: { left: 8, right: 48, top: 8, bottom: 32, containLabel: true },
         xAxis: {
@@ -375,7 +374,7 @@ const HISTORY_LINES = { level: 'Level', index: 'Index' } as const;
 export function historyOption(m: MaturityReport, theme: ChartTheme): EChartsCoreOption {
     const t = chartTokens(theme);
     return {
-        tooltip: { ...t.tooltip, trigger: 'axis' },
+        tooltip: { trigger: 'axis' },
         // The grid holds the labels, not the axis name: room for it above.
         grid: { left: 8, right: 12, top: 28, bottom: 8, containLabel: true },
         xAxis: { type: 'category', data: m.history.map((h) => h.quarter) },

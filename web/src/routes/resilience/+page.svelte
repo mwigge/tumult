@@ -138,7 +138,6 @@
         return {
             grid: { left: 150, right: 16, top: 26, bottom: 58 },
             tooltip: {
-                ...t.tooltip,
                 formatter: tipFormatter((p: { data?: number[] }) => {
                     const [x, y, v] = p.data ?? [0, 0, 0];
                     const status = coverageStates[v]?.label ?? '';
@@ -154,14 +153,13 @@
                 nameTextStyle: axisName,
                 // Name every column; a bundled name goes on two lines
                 // instead of being skipped or running into its neighbour.
-                axisLabel: { color: t.text, interval: 0, formatter: stackedLabel },
+                axisLabel: { interval: 0, formatter: stackedLabel },
             },
             yAxis: {
                 type: 'category',
                 data: targets,
                 name: 'target',
                 nameTextStyle: { ...axisName, align: 'right' },
-                axisLabel: { color: t.text },
             },
             visualMap: {
                 show: false,
@@ -184,7 +182,7 @@
         if (!report) return null;
         const kinds = report.coverage.portfolio;
         return {
-            tooltip: { ...t.tooltip },
+            tooltip: {},
             radar: {
                 indicator: kinds.map((k) => ({ name: disciplineLabel(k.kind), max: 1 })),
                 axisName: { color: t.text },
@@ -240,7 +238,6 @@
         return {
             grid: { left: 110, right: 16, top: 26, bottom: 96 },
             tooltip: {
-                ...t.tooltip,
                 formatter: tipFormatter((p: { data?: (number | string)[] }) => {
                     const i = Number(p.data?.[3] ?? -1);
                     const n = cells[i];
@@ -265,7 +262,6 @@
                 // no place to break at, so the ids are written at a slant,
                 // and a very long one is cut (the tooltip has all of it).
                 axisLabel: {
-                    color: t.text,
                     interval: 0,
                     rotate: 40,
                     width: 96,
@@ -277,7 +273,6 @@
                 data: targets,
                 name: 'target',
                 nameTextStyle: { ...axisName, align: 'right' },
-                axisLabel: { color: t.text },
             },
             visualMap: {
                 show: false,

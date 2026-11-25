@@ -80,7 +80,6 @@
         return {
             grid: { left: 64, right: 24, top: 20, bottom: 24 },
             tooltip: {
-                ...tokens.tooltip,
                 formatter: tipFormatter((p: { data?: [number, number, string] }) => {
                     const d = p.data;
                     if (!d) return null;
@@ -91,17 +90,11 @@
                     );
                 }),
             },
-            xAxis: {
-                type: 'time',
-                axisLine: { lineStyle: { color: tokens.axis } },
-                axisLabel: { color: tokens.text },
-            },
+            xAxis: { type: 'time' },
             yAxis: {
                 type: 'log',
                 name: 'duration ms',
                 nameTextStyle: { color: tokens.text },
-                axisLabel: { color: tokens.text },
-                splitLine: { lineStyle: { color: tokens.split } },
             },
             series: [
                 {

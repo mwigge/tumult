@@ -8,7 +8,8 @@ import { bodies, overview, NOW_MS, NOW_NS, HOUR_NS, DAY_S } from './chart-theme-
 // and Performance pages draw their grid lines, axes, borders, lines and
 // tooltips in the colours of the theme in force, and take the colours of
 // a new theme when it changes. The fan chart is the score trend of the
-// Resilience page.
+// Resilience page. Most of these colours are set by the theme alone, not
+// by the option: what a chart reads back is the theme merged in.
 
 type Theme = 'dark' | 'light';
 

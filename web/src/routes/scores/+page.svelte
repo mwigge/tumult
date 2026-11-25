@@ -108,7 +108,6 @@
         const children: OrgNodeScore[] = tree.children;
         treemapOption = {
             tooltip: {
-                ...tokens.tooltip,
                 formatter: tipFormatter((p: { data?: TreeTip }) => {
                     const d = p.data ?? {};
                     return tip(

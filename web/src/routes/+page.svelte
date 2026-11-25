@@ -78,7 +78,7 @@
             // on the calendar coordinate system, so overlays are 24h-only here.)
             const overlay = experimentOverlay(runs, tokens, (ms) => dayStr(ms / 1000));
             return {
-                ...tooltip(),
+                tooltip: {},
                 grid: { left: 40, right: 12, top: 26, bottom: 26 },
                 xAxis: axisCat(points.map((p) => dayStr(p.ts))),
                 yAxis: axisVal('runs'),
@@ -96,7 +96,7 @@
         const from = dayStr(data.from_ns / 1_000_000_000);
         const to = dayStr(data.to_ns / 1_000_000_000);
         return {
-            tooltip: { ...tokens.tooltip },
+            tooltip: {},
             visualMap: {
                 min: 0,
                 max: busiest,
@@ -128,8 +128,8 @@
     const faultsOption = $derived.by(() => {
         if (!data) return {};
         return {
-            tooltip: { ...tokens.tooltip, trigger: 'item' },
-            legend: { bottom: 0, textStyle: { color: tokens.text } },
+            tooltip: { trigger: 'item' },
+            legend: { bottom: 0 },
             series: [
                 {
                     type: 'pie',
@@ -149,9 +149,6 @@
         };
     });
 
-    function tooltip() {
-        return { tooltip: { ...tokens.tooltip } };
-    }
     function onOverlayClick(params: { componentType?: string; data?: unknown }) {
         const id = overlayRunId(params);
         if (id) goto(`/experiments/${encodeURIComponent(id)}`);
@@ -160,8 +157,6 @@
         return {
             type: 'category',
             data,
-            axisLine: { lineStyle: { color: tokens.axis } },
-            axisLabel: { color: tokens.text },
             axisTick: { show: false },
         };
     }
@@ -171,8 +166,6 @@
             name,
             nameTextStyle: { color: tokens.text },
             minInterval: 1,
-            splitLine: { lineStyle: { color: tokens.split } },
-            axisLabel: { color: tokens.text },
         };
     }
 </script>

@@ -178,7 +178,6 @@ export function perfDistributionOption(
         grid: { left: 52, right: 20, top: 34, bottom: 44 },
         legend: { top: 0 },
         tooltip: {
-            ...tokens.tooltip,
             trigger: 'axis',
             className: 'perf-tooltip',
             formatter: tipFormatter(perfTooltip),

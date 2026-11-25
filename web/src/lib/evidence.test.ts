@@ -391,7 +391,9 @@ describe('probeSamplesOption', () => {
             min: 0,
         });
         expect(option.yAxis).toMatchObject({ name: 'Probe time (ms)' });
-        expect(option.tooltip).toMatchObject({ ...TOKENS.tooltip, trigger: 'axis' });
+        // The colours of the tooltip are the ones the theme registers: the option sets none.
+        expect(option.tooltip).toMatchObject({ trigger: 'axis' });
+        expect(option.tooltip).not.toHaveProperty('backgroundColor');
     });
 
     it('shows a probe name in its tooltip as text', () => {

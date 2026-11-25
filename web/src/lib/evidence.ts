@@ -261,7 +261,6 @@ function lines(
         grid: { left: 56, right: 56, top: 40, bottom: 44 },
         legend: { top: 0 },
         tooltip: {
-            ...tokens.tooltip,
             trigger: 'axis',
             formatter: tipFormatter(seriesTip(axis.unit, unitOf)),
         },
