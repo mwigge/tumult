@@ -144,7 +144,8 @@ for how a verdict is made.
 ### Scores
 
 Route `/scores`. The company score with a trend, a treemap of domains that
-drills down to members, and a member table.
+drills down to members, and a member table. Two tabs at the top switch
+between **Org scores** and **DORA and maturity**.
 
 ![Scores: one unit and its members](../images/3.0/screenshots/scores-teams.png)
 
