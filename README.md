@@ -18,8 +18,7 @@ curl -sSL https://raw.githubusercontent.com/mwigge/tumult/main/install.sh | sh
 ```
 
 It builds the `tumult` CLI, starts test targets in Docker and runs a check.
-You need Git, Make, Docker and Rust 1.92.0 or newer. Then follow
-[Get started](https://tumult.rs/get-started/).
+It needs Git, Make, Docker and Rust 1.92.0 or newer.
 
 ## Try it
 
@@ -46,43 +45,51 @@ cd chaos-lab && docker compose up -d --build --wait
 
 ![The evidence loop: plan, run, observe, store, score, find risks, pick the next test](docs/images/3.0/diagrams/flow-evidence-loop.svg)
 
-- **Collect:** chaos, load, performance and disaster recovery (DR) runs,
-  exercises run by hand, and telemetry from your services.
-- **Store:** one daemon, `tumultd`, keeps it all in one DuckDB database, the
-  lake.
-- **Show:** risks, scores, verdicts and forecasts, in the web UI Krönika, a CI
-  gate (`tumult gate`) and PDF reports.
+Tumult collects [chaos, load, performance and disaster recovery (DR)
+tests](https://tumult.rs/concepts/kinds-of-testing.html), drills by hand and
+telemetry. One daemon, `tumultd`, keeps it all in a DuckDB lake. The web UI
+Krönika, a CI gate (`tumult gate`) and PDF reports show what it means.
 
 | | |
 |---|---|
 | ![The DR page](docs/images/3.0/screenshots/dr.png) | ![A DR run](docs/images/3.0/screenshots/run-dr.png) |
-| **DR page.** When each target is due, and its RTO and RPO. | **A DR run.** The time down (RTO) and the data lost (RPO). |
-| ![A failover drill by hand](docs/images/3.0/screenshots/manual.png) | ![A DR test report](docs/images/3.0/screenshots/report-dr-test.png) |
-| **Drills by hand.** Signed off by another person. | **Reports for an auditor.** Each DR test against its targets. |
+| **[DR page](https://tumult.rs/guides/disaster-recovery.html).** What is due, with RTO and RPO. | **A DR run.** The time down (RTO) and the data lost (RPO). |
 | ![The Resilience page](docs/images/3.0/screenshots/posture.png) | ![The DORA view](docs/images/3.0/screenshots/scores-dora.png) |
-| **Resilience.** Ranked risks and the gaps in your testing. | **DORA.** Coverage per article and a maturity level. |
+| **Resilience.** Ranked risks and test gaps. | **DORA.** Coverage per article. See [Regulations](https://tumult.rs/concepts/regulations.html). |
 | ![The Performance page](docs/images/3.0/screenshots/performance.png) | ![A run report](docs/images/3.0/screenshots/report-html.png) |
 | **Performance.** Did the new version get slower? | **Run report.** `tumult report` makes one HTML page. |
 
 More pictures: [platform walkthrough](https://tumult.rs/guides/platform-walkthrough.html).
 
+## One look, light or dark, on any screen
+
+Krönika takes every colour and size from one set of [design
+tokens](https://tumult.rs/reference/ui-standard.html), with WCAG 2.2 AA
+contrast.
+
+| Light | Dark |
+|---|---|
+| ![accent](docs/images/3.0/tokens/swatch-light-accent.svg) ![ok](docs/images/3.0/tokens/swatch-light-ok.svg) ![warn](docs/images/3.0/tokens/swatch-light-warn.svg) ![fail](docs/images/3.0/tokens/swatch-light-fail.svg) ![charts](docs/images/3.0/tokens/swatch-light-chart-series.svg) | ![accent](docs/images/3.0/tokens/swatch-dark-accent.svg) ![ok](docs/images/3.0/tokens/swatch-dark-ok.svg) ![warn](docs/images/3.0/tokens/swatch-dark-warn.svg) ![fail](docs/images/3.0/tokens/swatch-dark-fail.svg) ![charts](docs/images/3.0/tokens/swatch-dark-chart-series.svg) |
+| ![Overview, light](docs/images/3.0/screenshots/overview.png) | ![Overview, dark](docs/images/3.0/screenshots/overview-dark.png) |
+| ![Runs on a phone, menu closed and open](docs/images/3.0/ui-standard/phone-menu.png) | **On a phone.** The sidebar folds into a menu.<br><br>**By keyboard.** A key opens every row a click opens. |
+
 ## Safe by design
 
 - Every run gets a risk tier, T0 to T3. Risky runs wait for a second
   person.
-- Two clicks stop all running experiments and roll them back.
-- Every action goes into an audit trail that shows any change.
+- Two clicks stop all runs and roll them back.
+- An audit trail shows any change.
 - Roles: `viewer`, `operator`, `approver`, `admin`.
 
-Chaos actions break things on purpose. Check every experiment, target and
-rollback before you use Tumult outside a test environment. Journals keep
-command output, so keep secrets out of experiment arguments. Reports
-summarise evidence; they are not legal or audit statements.
+Chaos actions break things on purpose. Check each experiment, target and
+rollback in a test environment first. Journals keep command output, so keep
+secrets out of arguments. Reports summarise evidence; they are not legal or
+audit statements.
 
 ## AI agents
 
 Tumult exposes 44 tools over MCP, on stdio or HTTP. Read-only tools need the
-`viewer` role. Tools that change or break things need `operator`.
+`viewer` role, the others `operator`.
 
 ```bash
 tumult mcp serve                                                   # stdio
@@ -105,10 +112,9 @@ tumult mcp serve --transport http --port 3100 --token "$MCP_TOKEN"
 | Manual registry | `tumult_manual_list`, `tumult_manual_get`, `tumult_manual_create_draft`, `tumult_manual_plans_list` |
 | Access | `tumult_whoami` |
 
-Thirty-four tools return structured content with an output schema. Four tools can
-break things: `tumult_run_experiment`, `tumult_gameday_run`,
-`tumult_autopilot_run` (with `execute=true`) and `tumult_autopilot_respond`
-(with `approve=true`).
+Thirty-four tools return structured content. Four tools can break things:
+`tumult_run_experiment`, `tumult_gameday_run`, `tumult_autopilot_run` (with
+`execute=true`) and `tumult_autopilot_respond` (with `approve=true`).
 
 </details>
 
@@ -125,21 +131,13 @@ daemon and back up with `tumult store backup --output <dir>`.
 | I want to | Go to |
 |---|---|
 | Start | [Get started](https://tumult.rs/get-started/) |
-| Learn the ideas | [Concepts](https://tumult.rs/concepts/) |
+| Learn the ideas | [Concepts](https://tumult.rs/concepts/): [kinds of testing](https://tumult.rs/concepts/kinds-of-testing.html), [regulations](https://tumult.rs/concepts/regulations.html) |
 | Find a guide | [Guides](https://tumult.rs/guides/) |
-| Test disaster recovery | [Disaster recovery](https://tumult.rs/guides/disaster-recovery.html) |
 | Look up a command | [CLI reference](https://tumult.rs/guides/cli-reference.html) |
 | Run it for real | [Operate](https://tumult.rs/operate/) |
 | See what changed | [Release notes](https://tumult.rs/releases/) |
-
-Report a security issue through
-[GitHub private vulnerability reporting](https://github.com/mwigge/tumult/security/advisories/new).
-See [SECURITY.md](SECURITY.md).
-
-## Contributing
-
-Read [CONTRIBUTING.md](CONTRIBUTING.md) and run its checks before you send
-a change.
+| Report a security issue | [SECURITY.md](SECURITY.md) |
+| Send a change | [CONTRIBUTING.md](CONTRIBUTING.md) |
 
 ## License
 
