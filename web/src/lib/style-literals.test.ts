@@ -2,26 +2,44 @@ import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vitest';
 
-import { KINDS, literalsIn, scan } from '../../scripts/style-literals.mjs';
+import { FIX, lint, lintStyles, literalsIn, scan } from '../../scripts/style-literals.mjs';
 
 const WEB = fileURLToPath(new URL('../..', import.meta.url));
 
-/**
- * The raw values that the pages keep, by kind: values used fewer than 3
- * times, odd and negative spacing. They have no token yet. A later change
- * moves them onto the scale, so a count may only go down.
- */
-const LEFT: Record<string, number> = {
-    'font-size': 11,
-    'font-weight': 4,
-    'line-height': 2,
-    'letter-spacing': 4,
-    'font-family': 0,
-    spacing: 51,
-    radius: 5,
-    'border-width': 2,
-    'z-index': 0,
-};
+/** A small tokens.css: a spacing and a radius token, and a colour per theme. */
+const TOKENS = [
+    ':root {',
+    '    --space-2: 8px;',
+    '    --radius-2xl: 10px;',
+    '    --bg: #0b0e11;',
+    '}',
+    ":root[data-theme='light'] {",
+    '    --bg: #f4f6f8;',
+    '}',
+].join('\n');
+
+/** A page that uses spacing 3px twice, spacing 10px and radius 10px. */
+const PAGE = [
+    '<p style="margin: 3px">x</p>',
+    '<style>',
+    '    p { padding: 3px; gap: 10px; }',
+    '    b { border-radius: 10px; }',
+    '</style>',
+].join('\n');
+
+/** The allow list that holds each raw value of PAGE. */
+const ALLOWED = [
+    '# The raw values left.',
+    '',
+    'src/x.svelte spacing 3px',
+    'src/x.svelte spacing 3px',
+    'src/x.svelte spacing 10px',
+    'src/x.svelte radius 10px',
+];
+
+/** The problems that the lint finds in `page`, with `allow` as the allow list. */
+const problems = (allow: string[], page = PAGE) =>
+    lint(literalsIn('src/x.svelte', page), allow.join('\n'), TOKENS);
 
 /** [kind, value, line] of each raw value of a file. */
 const found = (file: string, text: string) =>
@@ -111,12 +129,65 @@ describe('the styles of the pages', () => {
         expect(files).not.toContain('src/lib/tokens.css');
     });
 
-    for (const kind of KINDS) {
-        it(`keep only the raw ${kind} values that have no token`, () => {
-            const mine = literals.filter((literal) => literal.kind === kind);
-            const where = mine.map((l) => `${l.file}:${l.line} ${l.property}: ${l.value}`);
+    it('keep only the raw values on the allow list, and the list has no stale line', () => {
+        expect(lintStyles(WEB), FIX).toEqual([]);
+    });
+});
 
-            expect(mine.length, `the raw ${kind} values:\n${where.join('\n')}`).toBe(LEFT[kind]);
-        });
-    }
+describe('the style lint', () => {
+    it('passes when the allow list holds each raw value as often as it is used', () => {
+        expect(problems(ALLOWED)).toEqual([]);
+    });
+
+    it('fails on a raw value that is not on the list, and names its file, line, kind and value', () => {
+        const allow = ALLOWED.filter((line) => line !== 'src/x.svelte spacing 10px');
+
+        expect(problems(allow)).toEqual([
+            'src/x.svelte:3: raw spacing 10px is not on the allow list',
+        ]);
+    });
+
+    it('names the token of the same kind that has the exact value', () => {
+        const page = '<style>\n    p { gap: 8px; border-radius: 8px; margin: 10px; }\n</style>';
+
+        expect(problems([], page)).toEqual([
+            'src/x.svelte:2: raw spacing 8px is not on the allow list; use var(--space-2)',
+            'src/x.svelte:2: raw radius 8px is not on the allow list',
+            'src/x.svelte:2: raw spacing 10px is not on the allow list',
+        ]);
+    });
+
+    it('counts repeats, so one more use of an allowed value fails', () => {
+        const allow = ALLOWED.filter(
+            (line, at) => at !== ALLOWED.indexOf('src/x.svelte spacing 3px'),
+        );
+
+        expect(problems(allow)).toEqual([
+            'src/x.svelte:3: raw spacing 3px is used 2 times and the allow list holds 1 (lines 1, 3)',
+        ]);
+    });
+
+    it('fails on a line that matches no raw value, so the list only shrinks', () => {
+        const allow = [...ALLOWED, 'src/x.svelte spacing 7px', 'src/x.svelte spacing 3px'];
+
+        expect(problems(allow)).toEqual([
+            'style-literals-allow.txt:7: src/x.svelte spacing 7px matches no raw value; delete the line',
+            'style-literals-allow.txt:8: src/x.svelte spacing 3px matches no raw value; delete the line',
+        ]);
+    });
+
+    it('fails on a line that is not a path, a known kind and a value', () => {
+        const allow = [...ALLOWED, 'src/x.svelte 3px', 'src/x.svelte spaces 3px'];
+
+        expect(problems(allow)).toEqual([
+            'style-literals-allow.txt:7: "src/x.svelte 3px" is not a path, a kind and a value',
+            'style-literals-allow.txt:8: "src/x.svelte spaces 3px" is not a path, a kind and a value',
+        ]);
+    });
+
+    it('says how to fix a failure in one line', () => {
+        expect(FIX).not.toContain('\n');
+        expect(FIX).toContain('tokens.css');
+        expect(FIX).toContain('style-literals-allow.txt');
+    });
 });
