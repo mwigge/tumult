@@ -6,6 +6,8 @@
 // `tipFormatter` makes of it. `tooltip.test.ts` fails when a tooltip
 // formatter anywhere under `src` is anything else.
 
+import { NEUTRAL_DOT } from './chart-theme';
+
 const HTML_ESCAPES: Record<string, string> = {
     '&': '&amp;',
     '<': '&lt;',
@@ -62,7 +64,7 @@ export function swatch(color: unknown): Swatch {
 }
 
 /** The colour of a dot whose own colour cannot be written as one. */
-export const NEUTRAL_DOT = '#888';
+export { NEUTRAL_DOT };
 
 // A hex colour, an rgb()/hsl() call of numbers, or a colour name.
 const PLAIN_COLOR = /^(#[0-9a-f]{3,8}|(rgb|hsl)a?\([\d\s.,%/]+\)|[a-z]+)$/i;

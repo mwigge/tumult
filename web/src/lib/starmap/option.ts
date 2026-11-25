@@ -719,7 +719,7 @@ export function starSeries(raw: StarView) {
             position: 'bottom' as const,
             distance: 4,
             color: t.text,
-            fontSize: 11,
+            fontSize: t.font.size.sm,
             ...halo,
             // A pill in the panel colour: a line under the caption stays out of it,
             // also when the node itself is faded.
@@ -727,14 +727,16 @@ export function starSeries(raw: StarView) {
             backgroundColor: t.tooltip.backgroundColor,
             padding: [1, 4],
             borderRadius: 3,
-            rich: { kind: { fontSize: 9, color: t.text, align: 'center' as const } },
+            rich: {
+                kind: { fontSize: t.font.size['2xs'], color: t.text, align: 'center' as const },
+            },
             formatter: (p: LabelParams): string => (p.data?.raw ? nameOf(p.data.raw) : ''),
         },
         edgeLabel: {
             show: false,
             color: t.text,
-            fontSize: 9,
-            fontFamily: 'monospace',
+            fontSize: t.font.size['2xs'],
+            fontFamily: t.font.mono,
             align: 'center' as const,
             ...halo,
         },

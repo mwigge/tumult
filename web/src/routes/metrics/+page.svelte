@@ -23,8 +23,7 @@
         tokens.ok,
         tokens.warn,
         tokens.fail,
-        '#a78bfa',
-        '#f472b6',
+        ...tokens.extraSeries,
     ]);
 
     const filters = $derived({

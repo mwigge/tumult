@@ -3,20 +3,18 @@
 // no scored leaf has no score (`null`) and the band `unknown`; each place
 // then shows a dash in the neutral colour, never 0 or the red of a failure.
 
+import { BAND, UNSCORED } from './chart-theme';
+
 /** What a missing value shows. */
 const DASH = '—';
 /** What a treemap tile with no score says. */
 const NO_SCORE = 'no score yet';
 
 /** Band hues from the Okabe-Ito palette (colour-blind safe). */
-const BAND_COLOR: Readonly<Record<string, string>> = {
-    good: '#009E73',
-    fair: '#E69F00',
-    poor: '#D55E00',
-};
+const BAND_COLOR: Readonly<Record<string, string>> = BAND;
 const BAND_GLYPH: Readonly<Record<string, string>> = { good: '●', fair: '▲', poor: '×' };
 /** The colour of a band with no score. */
-const NEUTRAL = '#5b6772';
+const NEUTRAL = UNSCORED;
 
 /** The colour of a band; neutral for `unknown`, the band of no score. */
 export const bandColor = (band: string) => BAND_COLOR[band] ?? NEUTRAL;

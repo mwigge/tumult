@@ -7,6 +7,7 @@
     import { onMount } from 'svelte';
     import { api } from '#lib/api.js';
     import type { EChartsCoreOption } from '#lib/echarts.js';
+    import { INK_ON_FILL } from '#lib/chart-theme.js';
     import { chartTheme, chartTokens, followTheme } from '#lib/echarts.js';
     import {
         bandColor,
@@ -129,12 +130,12 @@
                         show: true,
                         formatter: (p: { name?: string; data?: { score?: number | null } }) =>
                             tileLabel(p.name ?? '', p.data?.score ?? null),
-                        color: '#0b0e11',
-                        fontWeight: 600,
-                        fontSize: 12,
+                        color: INK_ON_FILL,
+                        fontWeight: tokens.font.weight,
+                        fontSize: tokens.font.size.md,
                     },
                     itemStyle: { borderColor: tokens.bg, borderWidth: 2, gapWidth: 3 },
-                    emphasis: { label: { color: '#0b0e11' } },
+                    emphasis: { label: { color: INK_ON_FILL } },
                     data: children.map((c: OrgNodeScore) => ({
                         name: c.name,
                         // Area ∝ Σ criticality weights of the subtree's leaves; a tiny

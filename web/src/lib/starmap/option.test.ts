@@ -583,7 +583,9 @@ describe('starSeries', () => {
             `spine|${CMP}`,
             `spine|${TEAM}`,
         ]);
-        expect(series.edgeLabel.fontFamily).toBe('monospace');
+        // The mono font of the pages, ending in the generic monospace.
+        expect(series.edgeLabel.fontFamily).toBe(chartTokens('tumult-dark').font.mono);
+        expect(series.edgeLabel.fontFamily).toMatch(/, monospace$/);
         // A caption is centred on the place it is measured to.
         expect(series.edgeLabel.align).toBe('center');
         const part = linkOf(series, `spine|${CMP}`);
