@@ -100,6 +100,10 @@ scale of today.
 
 ## Components
 
+<!-- The pictures of the components, the states, the keyboard and the phone
+layout come from web/docs-shots/ui-standard.spec.ts, on the mocked pages of
+the style snapshot. To take them again, run npm run shots:ui-standard in web/. -->
+
 Each part is a component in `web/src/lib/components/`. A page uses the
 component and does not build the part by hand: scan tests fail on a badge,
 a page head, a group of buttons, a drawer or a state built by hand.

@@ -20,17 +20,18 @@ npm run build   # writes build/, which tumultd embeds
 fails until the UI is built once. The Dockerfile builds the UI in its own
 node stage first.
 
-| Command                | What it does                                                                               |
-| ---------------------- | ------------------------------------------------------------------------------------------ |
-| `npm run dev`          | Starts vite, with `/api` sent to a `tumultd` on `http://127.0.0.1:4318`                    |
-| `npm run check`        | svelte-check; the bar is 0 errors                                                          |
-| `npm run lint`         | ESLint with no warnings allowed, then `npm run lint:styles`                                |
-| `npm test`             | The unit tests (Vitest)                                                                    |
-| `npm run test:e2e`     | The Playwright tests, on pages with a mocked API                                           |
-| `npm run test:live`    | The Playwright tests on a real `tumultd`; `TUMULTD_BIN` and `TUMULT_BIN` name the binaries |
-| `npm run test:report`  | The HTML report of `tumult report` in a browser; `TUMULT_BIN` names the binary             |
-| `npm run build:tokens` | Writes the token outputs from `tokens/`                                                    |
-| `npm run build:report` | Builds the chart script of the HTML report, which `tumult-cli` embeds                      |
+| Command                     | What it does                                                                               |
+| --------------------------- | ------------------------------------------------------------------------------------------ |
+| `npm run dev`               | Starts vite, with `/api` sent to a `tumultd` on `http://127.0.0.1:4318`                    |
+| `npm run check`             | svelte-check; the bar is 0 errors                                                          |
+| `npm run lint`              | ESLint with no warnings allowed, then `npm run lint:styles`                                |
+| `npm test`                  | The unit tests (Vitest)                                                                    |
+| `npm run test:e2e`          | The Playwright tests, on pages with a mocked API                                           |
+| `npm run test:live`         | The Playwright tests on a real `tumultd`; `TUMULTD_BIN` and `TUMULT_BIN` name the binaries |
+| `npm run test:report`       | The HTML report of `tumult report` in a browser; `TUMULT_BIN` names the binary             |
+| `npm run build:tokens`      | Writes the token outputs from `tokens/`                                                    |
+| `npm run build:report`      | Builds the chart script of the HTML report, which `tumult-cli` embeds                      |
+| `npm run shots:ui-standard` | Takes the pictures of the UI standard page again, from the mocked pages                    |
 
 ## Where things are
 
@@ -44,6 +45,7 @@ node stage first.
 | `src/lib/chart-theme.ts`       | The theme of the charts, from the tokens                         |
 | `tests/`                       | The Playwright tests on mocked pages, and the style snapshot     |
 | `live-tests/`, `report-tests/` | The Playwright tests on a real daemon and on the HTML report     |
+| `docs-shots/`                  | The pictures of the UI standard page                             |
 
 ## Design tokens
 
