@@ -316,22 +316,22 @@
 <style>
     .views {
         display: flex;
-        margin-left: 12px;
+        margin-left: var(--space-3);
     }
     .views button {
         background: var(--bg-raised);
         color: var(--text-dim);
-        border: 1px solid var(--border-strong);
-        padding: 3px 10px;
+        border: var(--border-width-sm) solid var(--border-strong);
+        padding: 3px var(--space-2-5);
         font: inherit;
-        font-size: 12px;
+        font-size: var(--font-size-xs);
         cursor: pointer;
     }
     .views button:first-child {
-        border-radius: 4px 0 0 4px;
+        border-radius: var(--radius-md) 0 0 var(--radius-md);
     }
     .views button:last-child {
-        border-radius: 0 4px 4px 0;
+        border-radius: 0 var(--radius-md) var(--radius-md) 0;
         border-left: none;
     }
     .views button.on {
@@ -342,20 +342,20 @@
     .crumbs {
         display: flex;
         align-items: center;
-        gap: 4px;
-        margin-left: 12px;
+        gap: var(--space-1);
+        margin-left: var(--space-3);
     }
     .crumbs button {
         background: none;
         border: none;
         color: var(--accent);
         cursor: pointer;
-        font-size: 13px;
-        padding: 2px 4px;
+        font-size: var(--font-size-md);
+        padding: var(--space-0-5) var(--space-1);
     }
     .crumbs button.current {
         color: var(--text);
-        font-weight: 600;
+        font-weight: var(--font-weight-strong);
     }
     .crumbs .sep {
         color: var(--text-faint);
@@ -366,51 +366,51 @@
     .cards {
         display: grid;
         grid-template-columns: repeat(4, 1fr);
-        gap: 12px;
-        margin-bottom: 12px;
+        gap: var(--space-3);
+        margin-bottom: var(--space-3);
     }
     .card .label {
         color: var(--text-dim);
-        font-size: 11.5px;
+        font-size: var(--font-size-2xs);
         text-transform: uppercase;
-        letter-spacing: 0.6px;
-        margin-bottom: 6px;
+        letter-spacing: var(--letter-spacing-md);
+        margin-bottom: var(--space-1-5);
     }
     .card .value {
-        font-size: 24px;
-        font-weight: 600;
+        font-size: var(--font-size-3xl);
+        font-weight: var(--font-weight-strong);
     }
     .card .value.weakest {
-        font-size: 14px;
+        font-size: var(--font-size-xl);
         font-weight: 500;
         word-break: break-word;
     }
     .card .glyph {
-        margin-right: 6px;
+        margin-right: var(--space-1-5);
         font-size: 18px;
     }
     .card .hint {
         color: var(--text-faint);
-        font-size: 11.5px;
-        margin-top: 4px;
+        font-size: var(--font-size-2xs);
+        margin-top: var(--space-1);
     }
     .meaning {
         color: var(--text-dim);
-        font-size: 12.5px;
-        margin: 0 0 12px;
+        font-size: var(--font-size-sm);
+        margin: 0 0 var(--space-3);
     }
     .kind {
         color: var(--text-faint);
-        font-size: 11.5px;
+        font-size: var(--font-size-2xs);
     }
     .indent {
         color: var(--text-faint);
-        margin-right: 4px;
+        margin-right: var(--space-1);
     }
     tr.self {
         background: var(--bg-raised);
     }
     .bandg {
-        font-size: 12px;
+        font-size: var(--font-size-xs);
     }
 </style>

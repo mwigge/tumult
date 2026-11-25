@@ -1,0 +1,188 @@
+{
+  "$description": "The roles that only pages use: the type scale, spacing, radii, border widths and layers. One tier: each token holds its value, the same in every theme, and the pages use it as a CSS custom property of the same name. The values are the ones the pages used before they had tokens. Spacing is on a 4px scale: space-2 is step 2, 8px. A half step ends in -5, as CSS allows no dot in a name: space-1-5 is step 1.5, 6px. A value the pages use fewer than 3 times, an odd spacing and a negative margin have no token yet.",
+  "font-body": {
+    "$type": "fontFamily",
+    "$value": ["-apple-system", "Segoe UI", "Inter", "Roboto", "sans-serif"],
+    "$description": "The font of the page: the system font, the first one the system has."
+  },
+  "font-size-3xs": {
+    "$type": "dimension",
+    "$value": { "value": 11, "unit": "px" },
+    "$description": "11px. The smallest text: uppercase labels and captions."
+  },
+  "font-size-2xs": {
+    "$type": "dimension",
+    "$value": { "value": 11.5, "unit": "px" },
+    "$description": "11.5px. Table heads and badges."
+  },
+  "font-size-xs": {
+    "$type": "dimension",
+    "$value": { "value": 12, "unit": "px" },
+    "$description": "12px. Panel titles and small notes."
+  },
+  "font-size-sm": {
+    "$type": "dimension",
+    "$value": { "value": 12.5, "unit": "px" },
+    "$description": "12.5px. Sub titles, hints, and the labels of fields and segments."
+  },
+  "font-size-md": {
+    "$type": "dimension",
+    "$value": { "value": 13, "unit": "px" },
+    "$description": "13px. Tables, inputs and buttons."
+  },
+  "font-size-lg": {
+    "$type": "dimension",
+    "$value": { "value": 13.5, "unit": "px" },
+    "$description": "13.5px. The links of the navigation and the values of a meta row."
+  },
+  "font-size-xl": {
+    "$type": "dimension",
+    "$value": { "value": 14, "unit": "px" },
+    "$description": "14px. The body text of the page."
+  },
+  "font-size-2xl": {
+    "$type": "dimension",
+    "$value": { "value": 22, "unit": "px" },
+    "$description": "22px. A headline, and the close sign of a drawer."
+  },
+  "font-size-3xl": {
+    "$type": "dimension",
+    "$value": { "value": 24, "unit": "px" },
+    "$description": "24px. A score."
+  },
+  "font-weight-strong": {
+    "$type": "fontWeight",
+    "$value": 600,
+    "$description": "600, semi-bold. Headings, table heads, badges and numbers that stand out."
+  },
+  "line-height-body": {
+    "$type": "number",
+    "$value": 1.5,
+    "$description": "1.5 times the font size. The body text and text areas."
+  },
+  "letter-spacing-sm": {
+    "$type": "dimension",
+    "$value": { "value": 0.5, "unit": "px" },
+    "$description": "0.5px. Uppercase table heads and labels."
+  },
+  "letter-spacing-md": {
+    "$type": "dimension",
+    "$value": { "value": 0.6, "unit": "px" },
+    "$description": "0.6px. Small uppercase labels, such as the labels of a meta row."
+  },
+  "space-0-5": {
+    "$type": "dimension",
+    "$value": { "value": 2, "unit": "px" },
+    "$description": "2px. Step 0.5 of the spacing scale."
+  },
+  "space-1": {
+    "$type": "dimension",
+    "$value": { "value": 4, "unit": "px" },
+    "$description": "4px. Step 1 of the spacing scale."
+  },
+  "space-1-5": {
+    "$type": "dimension",
+    "$value": { "value": 6, "unit": "px" },
+    "$description": "6px. Step 1.5 of the spacing scale."
+  },
+  "space-2": {
+    "$type": "dimension",
+    "$value": { "value": 8, "unit": "px" },
+    "$description": "8px. Step 2 of the spacing scale."
+  },
+  "space-2-5": {
+    "$type": "dimension",
+    "$value": { "value": 10, "unit": "px" },
+    "$description": "10px. Step 2.5 of the spacing scale."
+  },
+  "space-3": {
+    "$type": "dimension",
+    "$value": { "value": 12, "unit": "px" },
+    "$description": "12px. Step 3 of the spacing scale."
+  },
+  "space-3-5": {
+    "$type": "dimension",
+    "$value": { "value": 14, "unit": "px" },
+    "$description": "14px. Step 3.5 of the spacing scale."
+  },
+  "space-4": {
+    "$type": "dimension",
+    "$value": { "value": 16, "unit": "px" },
+    "$description": "16px. Step 4 of the spacing scale."
+  },
+  "space-4-5": {
+    "$type": "dimension",
+    "$value": { "value": 18, "unit": "px" },
+    "$description": "18px. Step 4.5 of the spacing scale."
+  },
+  "space-5-5": {
+    "$type": "dimension",
+    "$value": { "value": 22, "unit": "px" },
+    "$description": "22px. Step 5.5 of the spacing scale."
+  },
+  "radius-xs": {
+    "$type": "dimension",
+    "$value": { "value": 2, "unit": "px" },
+    "$description": "2px. Bars and swatches."
+  },
+  "radius-sm": {
+    "$type": "dimension",
+    "$value": { "value": 3, "unit": "px" },
+    "$description": "3px. Small buttons and thin bars."
+  },
+  "radius-md": {
+    "$type": "dimension",
+    "$value": { "value": 4, "unit": "px" },
+    "$description": "4px. Small boxes, such as chips and skeletons."
+  },
+  "radius-lg": {
+    "$type": "dimension",
+    "$value": { "value": 5, "unit": "px" },
+    "$description": "5px. Inputs, segmented controls and the primary button."
+  },
+  "radius-xl": {
+    "$type": "dimension",
+    "$value": { "value": 6, "unit": "px" },
+    "$description": "6px. Panels, cards and buttons."
+  },
+  "radius-2xl": {
+    "$type": "dimension",
+    "$value": { "value": 10, "unit": "px" },
+    "$description": "10px. Badges and pills."
+  },
+  "border-width-sm": {
+    "$type": "dimension",
+    "$value": { "value": 1, "unit": "px" },
+    "$description": "1px. The lines of panels, tables, inputs and buttons."
+  },
+  "border-width-md": {
+    "$type": "dimension",
+    "$value": { "value": 2, "unit": "px" },
+    "$description": "2px. An edge that stands out: the active link, a focus ring, a marked node."
+  },
+  "border-width-lg": {
+    "$type": "dimension",
+    "$value": { "value": 4, "unit": "px" },
+    "$description": "4px. A thick edge that marks a state."
+  },
+  "z-raised": {
+    "$type": "number",
+    "$value": 1,
+    "$description": "1. Above the rest of its box: the grid lines of the span waterfall."
+  },
+  "z-sticky": {
+    "$type": "number",
+    "$value": 2,
+    "$description": "2. A sticky head above the raised layer: the time ruler of the span waterfall."
+  },
+  "z-overlay": {
+    "$type": "number",
+    "$value": 20,
+    "$description": "20. A drawer, or the shade behind one, above the page."
+  },
+  "z-overlay-top": {
+    "$type": "number",
+    "$value": 21,
+    "$description": "21. A drawer above its own shade."
+  }
+}

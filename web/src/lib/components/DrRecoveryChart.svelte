@@ -40,10 +40,10 @@
 
 <style>
     h4 {
-        margin: 0 0 4px;
-        font-size: 11.5px;
-        font-weight: 600;
-        letter-spacing: 0.5px;
+        margin: 0 0 var(--space-1);
+        font-size: var(--font-size-2xs);
+        font-weight: var(--font-weight-strong);
+        letter-spacing: var(--letter-spacing-sm);
         color: var(--text-dim);
     }
     .state {

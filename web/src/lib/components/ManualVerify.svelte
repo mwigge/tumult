@@ -63,10 +63,10 @@
 
 <style>
     .verdict {
-        margin-top: 8px;
-        padding: 8px 10px;
-        border-radius: 6px;
-        border: 1px solid var(--ok);
+        margin-top: var(--space-2);
+        padding: var(--space-2) var(--space-2-5);
+        border-radius: var(--radius-xl);
+        border: var(--border-width-sm) solid var(--ok);
         background: color-mix(in srgb, var(--ok) 8%, transparent);
     }
     .verdict.bad {
@@ -74,14 +74,14 @@
         background: color-mix(in srgb, var(--fail) 8%, transparent);
     }
     .verdict p {
-        margin: 0 0 4px;
+        margin: 0 0 var(--space-1);
     }
     .problems {
         margin: 0;
-        padding-left: 18px;
+        padding-left: var(--space-4-5);
     }
     .dim {
         color: var(--text-faint);
-        font-size: 12px;
+        font-size: var(--font-size-xs);
     }
 </style>

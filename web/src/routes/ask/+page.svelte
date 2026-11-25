@@ -54,7 +54,7 @@
     >
 </div>
 
-<div class="panel" style="margin-bottom: 14px">
+<div class="panel" style="margin-bottom: var(--space-3-5)">
     <form
         class="askbar"
         onsubmit={(e) => {
@@ -96,7 +96,7 @@
             — try one.
         </div>
     {:else}
-        <div class="panel" style="margin-bottom: 14px">
+        <div class="panel" style="margin-bottom: var(--space-3-5)">
             <h2>Generated SQL {result.source === 'golden' ? '(curated answer)' : '(LLM)'}</h2>
             <pre class="mono sql">{result.sql}</pre>
             {#if result.error}
@@ -135,21 +135,21 @@
 <style>
     .askbar {
         display: flex;
-        gap: 10px;
+        gap: var(--space-2-5);
     }
     .examples {
-        margin-top: 10px;
+        margin-top: var(--space-2-5);
         display: flex;
-        gap: 8px;
+        gap: var(--space-2);
         flex-wrap: wrap;
     }
     .examples button {
         background: var(--bg-hover);
-        border: 1px solid var(--border-strong);
+        border: var(--border-width-sm) solid var(--border-strong);
         color: var(--text-dim);
         border-radius: 12px;
         padding: 3px 11px;
-        font-size: 12px;
+        font-size: var(--font-size-xs);
         cursor: pointer;
     }
     .examples button:hover {
@@ -158,10 +158,10 @@
     }
     .sql {
         background: var(--bg-raised);
-        border: 1px solid var(--border);
-        border-radius: 4px;
-        padding: 10px 12px;
-        font-size: 12px;
+        border: var(--border-width-sm) solid var(--border);
+        border-radius: var(--radius-md);
+        padding: var(--space-2-5) var(--space-3);
+        font-size: var(--font-size-xs);
         white-space: pre-wrap;
         word-break: break-word;
         color: var(--accent);

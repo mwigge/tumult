@@ -19,6 +19,14 @@
           "$ref": "semantic.tokens.json"
         }
       ]
+    },
+    "page": {
+      "description": "Type, spacing, radii, border widths and layers, the same in every theme. Only tokens.css has them.",
+      "sources": [
+        {
+          "$ref": "page.tokens.json"
+        }
+      ]
     }
   },
   "modifiers": {
@@ -45,6 +53,9 @@
     },
     {
       "$ref": "#/sets/semantic"
+    },
+    {
+      "$ref": "#/sets/page"
     },
     {
       "$ref": "#/modifiers/theme"

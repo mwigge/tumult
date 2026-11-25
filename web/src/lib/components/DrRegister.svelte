@@ -112,12 +112,12 @@
     /* A row header reads as a cell, not as a column header. */
     th[scope='row'] {
         color: var(--text);
-        font-size: 13px;
-        font-weight: 600;
+        font-size: var(--font-size-md);
+        font-weight: var(--font-weight-strong);
         text-transform: none;
         letter-spacing: normal;
-        border-bottom: 1px solid var(--border);
-        padding: 7px 10px;
+        border-bottom: var(--border-width-sm) solid var(--border);
+        padding: 7px var(--space-2-5);
     }
     tr:last-child th[scope='row'] {
         border-bottom: none;

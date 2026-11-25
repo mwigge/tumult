@@ -287,7 +287,7 @@
     .controls {
         margin-left: auto;
         display: flex;
-        gap: 8px;
+        gap: var(--space-2);
         flex-wrap: wrap;
     }
     .body-cell {
@@ -303,18 +303,18 @@
         padding-top: 0;
     }
     .detail {
-        padding: 4px 0 8px;
+        padding: var(--space-1) 0 var(--space-2);
     }
     .links {
         display: flex;
-        gap: 16px;
-        margin-bottom: 8px;
-        font-size: 13px;
+        gap: var(--space-4);
+        margin-bottom: var(--space-2);
+        font-size: var(--font-size-md);
     }
     table.attrs td {
-        padding: 2px 8px 2px 0;
+        padding: var(--space-0-5) var(--space-2) var(--space-0-5) 0;
         border: none;
-        font-size: 12px;
+        font-size: var(--font-size-xs);
     }
     table.attrs .key {
         color: var(--text-dim);
@@ -328,13 +328,13 @@
     }
     .facets button {
         background: transparent;
-        border: 1px solid var(--border);
-        border-radius: 3px;
+        border: var(--border-width-sm) solid var(--border);
+        border-radius: var(--radius-sm);
         color: var(--text-dim);
         cursor: pointer;
-        font-size: 11px;
-        padding: 0 4px;
-        margin-left: 4px;
+        font-size: var(--font-size-3xs);
+        padding: 0 var(--space-1);
+        margin-left: var(--space-1);
     }
     .facets button:hover {
         color: var(--accent);
@@ -342,22 +342,22 @@
     }
     .facet-chips {
         display: flex;
-        gap: 8px;
-        margin: -6px 0 10px;
+        gap: var(--space-2);
+        margin: -6px 0 var(--space-2-5);
     }
     .chip {
         background: var(--bg-raised);
-        border: 1px solid var(--border-strong);
-        border-radius: 10px;
+        border: var(--border-width-sm) solid var(--border-strong);
+        border-radius: var(--radius-2xl);
         color: var(--text);
         cursor: pointer;
-        font-size: 11.5px;
+        font-size: var(--font-size-2xs);
         font-family: var(--mono, monospace);
-        padding: 2px 10px;
+        padding: var(--space-0-5) var(--space-2-5);
     }
     .chip .x {
         color: var(--text-dim);
-        margin-left: 4px;
+        margin-left: var(--space-1);
     }
     .chip:hover .x {
         color: var(--fail);

@@ -124,6 +124,6 @@
         text-overflow: ellipsis;
         white-space: nowrap;
         color: var(--text-dim);
-        font-size: 12px;
+        font-size: var(--font-size-xs);
     }
 </style>

@@ -689,114 +689,114 @@
 <style>
     .muted {
         color: var(--text-dim);
-        font-size: 12.5px;
+        font-size: var(--font-size-sm);
     }
     .controls {
         display: flex;
         flex-wrap: wrap;
-        gap: 12px 16px;
+        gap: var(--space-3) var(--space-4);
         align-items: flex-end;
-        margin-bottom: 14px;
+        margin-bottom: var(--space-3-5);
     }
     .field {
         display: flex;
         flex-direction: column;
-        gap: 4px;
+        gap: var(--space-1);
     }
     .field label {
         color: var(--text-dim);
-        font-size: 11.5px;
+        font-size: var(--font-size-2xs);
         text-transform: uppercase;
-        letter-spacing: 0.5px;
+        letter-spacing: var(--letter-spacing-sm);
     }
     .field.check {
         flex-direction: row;
         align-items: center;
-        gap: 6px;
-        padding-bottom: 6px;
+        gap: var(--space-1-5);
+        padding-bottom: var(--space-1-5);
     }
     .field.check label {
         text-transform: none;
         letter-spacing: 0;
-        font-size: 13px;
+        font-size: var(--font-size-md);
         color: var(--text);
     }
     select:focus-visible,
     input:focus-visible,
     button:focus-visible {
-        outline: 2px solid var(--accent);
+        outline: var(--border-width-md) solid var(--accent);
         outline-offset: 2px;
     }
     .below {
-        margin-top: 14px;
+        margin-top: var(--space-3-5);
     }
     .headline {
         display: flex;
         align-items: baseline;
-        gap: 12px;
-        margin-bottom: 10px;
+        gap: var(--space-3);
+        margin-bottom: var(--space-2-5);
         flex-wrap: wrap;
     }
     .badge.big {
         font-size: 15px;
-        padding: 3px 14px;
+        padding: 3px var(--space-3-5);
         border-radius: 14px;
-        border: 1px solid currentColor;
+        border: var(--border-width-sm) solid currentColor;
     }
     .reasons {
-        margin: 0 0 10px;
-        padding-left: 18px;
+        margin: 0 0 var(--space-2-5);
+        padding-left: var(--space-4-5);
     }
     .notes {
         list-style: none;
         margin: 0;
         padding: 0;
         color: var(--text-dim);
-        font-size: 12.5px;
+        font-size: var(--font-size-sm);
     }
     .notes li {
         padding: 3px 0;
-        border-top: 1px solid var(--border);
+        border-top: var(--border-width-sm) solid var(--border);
     }
     .notes .caution {
         color: var(--warn);
     }
     .delta-value {
-        font-size: 24px;
-        font-weight: 600;
+        font-size: var(--font-size-3xl);
+        font-weight: var(--font-weight-strong);
     }
     table.data th[scope='row'] {
         text-align: left;
-        font-weight: 600;
-        padding: 7px 10px;
-        border-bottom: 1px solid var(--border);
+        font-weight: var(--font-weight-strong);
+        padding: 7px var(--space-2-5);
+        border-bottom: var(--border-width-sm) solid var(--border);
         text-transform: none;
         letter-spacing: 0;
-        font-size: 13px;
+        font-size: var(--font-size-md);
         color: var(--text);
     }
     table.data tr:last-child th[scope='row'] {
         border-bottom: none;
     }
     .unattributed {
-        margin-top: 10px;
-        padding-top: 8px;
-        border-top: 1px solid var(--border);
-        font-size: 13px;
+        margin-top: var(--space-2-5);
+        padding-top: var(--space-2);
+        border-top: var(--border-width-sm) solid var(--border);
+        font-size: var(--font-size-md);
     }
     .unattributed p {
-        margin: 0 0 4px;
+        margin: 0 0 var(--space-1);
     }
     .unattributed ul {
-        margin: 0 0 6px;
-        padding-left: 18px;
+        margin: 0 0 var(--space-1-5);
+        padding-left: var(--space-4-5);
     }
     .store {
         display: flex;
         flex-wrap: wrap;
-        gap: 10px;
+        gap: var(--space-2-5);
         align-items: center;
-        margin-bottom: 12px;
+        margin-bottom: var(--space-3);
     }
     .store button[aria-disabled='true'] {
         opacity: 0.6;
@@ -804,22 +804,22 @@
     }
     .ok-line {
         color: var(--ok);
-        font-size: 12.5px;
+        font-size: var(--font-size-sm);
     }
     .err-line {
         color: var(--fail);
-        font-size: 12.5px;
+        font-size: var(--font-size-sm);
     }
     /* The four non-result states differ in frame, hue and wording. */
     .alert {
         display: flex;
         flex-wrap: wrap;
-        gap: 10px;
+        gap: var(--space-2-5);
         align-items: center;
-        padding: 14px 16px;
-        border: 1px solid var(--fail);
-        border-left-width: 4px;
-        border-radius: 6px;
+        padding: var(--space-3-5) var(--space-4);
+        border: var(--border-width-sm) solid var(--fail);
+        border-left-width: var(--border-width-lg);
+        border-radius: var(--radius-xl);
         background: color-mix(in srgb, var(--fail) 10%, transparent);
         color: var(--text);
     }
@@ -828,12 +828,12 @@
     }
     .btn {
         background: var(--bg-hover);
-        border: 1px solid var(--border-strong);
+        border: var(--border-width-sm) solid var(--border-strong);
         color: var(--text);
-        border-radius: 6px;
-        padding: 6px 14px;
+        border-radius: var(--radius-xl);
+        padding: var(--space-1-5) var(--space-3-5);
         cursor: pointer;
-        font-size: 13px;
+        font-size: var(--font-size-md);
     }
     .btn:hover {
         border-color: var(--accent-dim);
@@ -841,23 +841,23 @@
     .empty,
     .none,
     .needs {
-        padding: 22px;
+        padding: var(--space-5-5);
     }
     .empty {
         border-style: dashed;
         text-align: center;
     }
     .none {
-        border-left: 4px solid var(--border-strong);
+        border-left: var(--border-width-lg) solid var(--border-strong);
     }
     .needs {
-        border-left: 4px solid var(--warn);
+        border-left: var(--border-width-lg) solid var(--warn);
     }
     .empty p,
     .none p,
     .needs p {
-        margin: 6px 0 0;
+        margin: var(--space-1-5) 0 0;
         color: var(--text-dim);
-        font-size: 13px;
+        font-size: var(--font-size-md);
     }
 </style>

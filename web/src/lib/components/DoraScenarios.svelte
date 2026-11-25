@@ -86,7 +86,7 @@
     }
     caption {
         text-align: left;
-        font-weight: 600;
+        font-weight: var(--font-weight-strong);
         padding-bottom: var(--space-2, 8px);
     }
 </style>

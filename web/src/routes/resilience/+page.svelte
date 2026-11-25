@@ -595,16 +595,16 @@
 <style>
     .muted {
         color: var(--text-dim);
-        font-size: 12.5px;
+        font-size: var(--font-size-sm);
     }
     .meaning {
-        margin: 0 0 10px;
+        margin: 0 0 var(--space-2-5);
     }
     .counts {
         display: flex;
-        gap: 8px;
+        gap: var(--space-2);
         align-items: center;
-        margin-bottom: 10px;
+        margin-bottom: var(--space-2-5);
     }
     .risks {
         list-style: none;
@@ -613,16 +613,16 @@
     }
     .risks li {
         padding: 9px 0;
-        border-top: 1px solid var(--border);
+        border-top: var(--border-width-sm) solid var(--border);
     }
     .risks .row {
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: var(--space-2);
         min-width: 0;
     }
     .risks .title {
-        font-weight: 600;
+        font-weight: var(--font-weight-strong);
         flex: 1;
         min-width: 0;
         overflow: hidden;
@@ -632,17 +632,17 @@
     .risks .target,
     .risks .rank {
         color: var(--text-dim);
-        font-size: 12px;
+        font-size: var(--font-size-xs);
     }
     .risks .detail {
         color: var(--text-dim);
-        font-size: 12.5px;
+        font-size: var(--font-size-sm);
         margin-top: 3px;
     }
     .risks .hint {
         color: var(--text-faint);
-        font-size: 12px;
-        margin-top: 2px;
+        font-size: var(--font-size-xs);
+        margin-top: var(--space-0-5);
     }
     .link {
         background: none;
@@ -651,21 +651,21 @@
         cursor: pointer;
         padding: 0;
         font: inherit;
-        font-size: 12.5px;
+        font-size: var(--font-size-sm);
     }
     .suppress {
         display: flex;
         flex-wrap: wrap;
-        gap: 8px;
+        gap: var(--space-2);
         align-items: center;
-        margin-top: 8px;
+        margin-top: var(--space-2);
     }
     .suppress input {
         background: var(--bg-raised);
         color: var(--text);
-        border: 1px solid var(--border-strong);
-        border-radius: 4px;
-        padding: 4px 8px;
+        border: var(--border-width-sm) solid var(--border-strong);
+        border-radius: var(--radius-md);
+        padding: var(--space-1) var(--space-2);
         font: inherit;
     }
     .suppress input[type='number'] {
@@ -673,66 +673,66 @@
     }
     .suppress label {
         display: flex;
-        gap: 6px;
+        gap: var(--space-1-5);
         align-items: center;
         color: var(--text-dim);
-        font-size: 12.5px;
+        font-size: var(--font-size-sm);
     }
     .suppress button[type='submit'] {
         background: var(--accent-dim);
         color: var(--text);
         border: none;
-        border-radius: 4px;
-        padding: 4px 12px;
+        border-radius: var(--radius-md);
+        padding: var(--space-1) var(--space-3);
         cursor: pointer;
     }
     .missing {
         color: var(--text-dim);
-        font-size: 12px;
+        font-size: var(--font-size-xs);
     }
     .form-error {
         color: var(--fail);
-        font-size: 12.5px;
+        font-size: var(--font-size-sm);
     }
     .score,
     .below {
-        margin-top: 14px;
+        margin-top: var(--space-3-5);
     }
     .headline {
         display: flex;
         align-items: baseline;
-        gap: 12px;
-        margin-bottom: 12px;
+        gap: var(--space-3);
+        margin-bottom: var(--space-3);
     }
     .headline .value {
         font-size: 34px;
-        font-weight: 600;
+        font-weight: var(--font-weight-strong);
     }
     table {
         width: 100%;
         border-collapse: collapse;
-        font-size: 13px;
+        font-size: var(--font-size-md);
     }
     th {
         text-align: left;
         color: var(--text-dim);
-        font-weight: 600;
-        font-size: 11.5px;
+        font-weight: var(--font-weight-strong);
+        font-size: var(--font-size-2xs);
         text-transform: uppercase;
-        letter-spacing: 0.5px;
-        padding: 6px 8px;
-        border-bottom: 1px solid var(--border);
+        letter-spacing: var(--letter-spacing-sm);
+        padding: var(--space-1-5) var(--space-2);
+        border-bottom: var(--border-width-sm) solid var(--border);
     }
     td {
-        padding: 6px 8px;
-        border-bottom: 1px solid var(--border);
+        padding: var(--space-1-5) var(--space-2);
+        border-bottom: var(--border-width-sm) solid var(--border);
     }
     .malformed {
-        margin-top: 10px;
-        font-size: 12.5px;
+        margin-top: var(--space-2-5);
+        font-size: var(--font-size-sm);
     }
     .malformed ul {
-        margin: 6px 0 0;
-        padding-left: 18px;
+        margin: var(--space-1-5) 0 0;
+        padding-left: var(--space-4-5);
     }
 </style>

@@ -18,13 +18,13 @@
 <style>
     .audit {
         margin: 0;
-        padding-left: 18px;
+        padding-left: var(--space-4-5);
     }
     .audit li {
         margin-bottom: 3px;
     }
     .dim {
         color: var(--text-faint);
-        font-size: 12px;
+        font-size: var(--font-size-xs);
     }
 </style>

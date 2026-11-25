@@ -32,10 +32,11 @@
     }
     .entry {
         display: flex;
-        gap: 10px;
+        gap: var(--space-2-5);
         padding: 3px 0;
-        font-size: 12px;
-        border-bottom: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+        font-size: var(--font-size-xs);
+        border-bottom: var(--border-width-sm) solid
+            color-mix(in srgb, var(--border) 50%, transparent);
         align-items: baseline;
     }
     .ts {

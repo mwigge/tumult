@@ -37,23 +37,23 @@
     }
     .label {
         color: var(--text-dim);
-        font-size: 11.5px;
+        font-size: var(--font-size-2xs);
         text-transform: uppercase;
-        letter-spacing: 0.6px;
-        margin-bottom: 6px;
+        letter-spacing: var(--letter-spacing-md);
+        margin-bottom: var(--space-1-5);
     }
     .row {
         display: flex;
         justify-content: space-between;
         align-items: flex-end;
-        gap: 8px;
+        gap: var(--space-2);
     }
     .value {
         font-size: 26px;
-        font-weight: 600;
+        font-weight: var(--font-weight-strong);
     }
     .delta {
-        font-size: 12px;
-        margin-left: 8px;
+        font-size: var(--font-size-xs);
+        margin-left: var(--space-2);
     }
 </style>

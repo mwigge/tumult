@@ -27,33 +27,33 @@
     .legend {
         display: flex;
         flex-wrap: wrap;
-        gap: 6px 16px;
+        gap: var(--space-1-5) var(--space-4);
         color: var(--text-dim);
-        font-size: 11.5px;
-        margin: 6px 0 10px;
+        font-size: var(--font-size-2xs);
+        margin: var(--space-1-5) 0 var(--space-2-5);
     }
     .swatch {
         display: inline-block;
         width: 14px;
         height: 10px;
         vertical-align: middle;
-        margin-right: 2px;
+        margin-right: var(--space-0-5);
     }
     .swatch.box {
         background: var(--swatch);
-        border: 1px solid var(--border-strong);
-        border-radius: 2px;
+        border: var(--border-width-sm) solid var(--border-strong);
+        border-radius: var(--radius-xs);
     }
     .swatch.line,
     .swatch.dashed {
         height: 0;
-        border-top: 2px solid var(--swatch);
+        border-top: var(--border-width-md) solid var(--swatch);
     }
     .swatch.dashed {
         border-top-style: dashed;
     }
     .swatch.hatch {
-        border: 1px solid var(--border-strong);
+        border: var(--border-width-sm) solid var(--border-strong);
         background: repeating-linear-gradient(135deg, var(--text-dim) 0 1px, transparent 1px 4px);
     }
 </style>

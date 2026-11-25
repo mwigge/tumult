@@ -117,14 +117,14 @@
         --dur-w: 66px;
         --gap: 10px;
         position: relative;
-        font-size: 12.5px;
+        font-size: var(--font-size-sm);
     }
     .ruler {
         position: sticky;
         top: 0;
         background: var(--bg-panel);
-        z-index: 2;
-        border-bottom: 1px solid var(--border-strong);
+        z-index: var(--z-sticky);
+        border-bottom: var(--border-width-sm) solid var(--border-strong);
         padding: 3px 0;
     }
     .ruler .labels {
@@ -147,7 +147,7 @@
         bottom: 0;
         left: calc(var(--name-w) + var(--gap));
         right: calc(var(--dur-w) + var(--gap));
-        z-index: 1;
+        z-index: var(--z-raised);
         pointer-events: none;
     }
     .grid i {
@@ -167,7 +167,8 @@
         gap: var(--gap);
         background: transparent;
         border: none;
-        border-bottom: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+        border-bottom: var(--border-width-sm) solid
+            color-mix(in srgb, var(--border) 55%, transparent);
         color: var(--text);
         padding: 3px 0;
         cursor: pointer;
@@ -195,12 +196,12 @@
         position: absolute;
         top: 2px;
         height: 9px;
-        border-radius: 2px;
+        border-radius: var(--radius-xs);
         min-width: 2px;
     }
     .dur {
         color: var(--text-dim);
         text-align: right;
-        font-size: 11.5px;
+        font-size: var(--font-size-2xs);
     }
 </style>

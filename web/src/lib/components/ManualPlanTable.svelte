@@ -98,7 +98,7 @@
 <style>
     .row-actions {
         display: flex;
-        gap: 6px;
+        gap: var(--space-1-5);
         justify-content: flex-end;
     }
     .detail-row td {
@@ -108,7 +108,7 @@
         color: var(--text-faint);
     }
     .badge.fail {
-        margin-left: 6px;
+        margin-left: var(--space-1-5);
     }
     .nowrap {
         white-space: nowrap;

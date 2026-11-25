@@ -46,21 +46,30 @@ STYLE_SNAPSHOT_UPDATE=1 npx playwright test tests/style-snapshot.spec.ts
 
 ## Design tokens
 
-The colours of Krönika are design tokens in `tokens/`, in the DTCG 2025.10
-format:
+The colours, type, spacing, radii, border widths and layers of Krönika are
+design tokens in `tokens/`, in the DTCG 2025.10 format:
 
 - `primitive.tokens.json`: the raw colours and fonts.
 - `dark.tokens.json` and `light.tokens.json`: the colour roles of each
   theme, such as `bg` and `text-dim`. Each names a raw colour.
 - `semantic.tokens.json`: the roles that are the same in each theme, such
   as `mono` and the colours of chart series.
+- `page.tokens.json`: the roles only pages use, each with its own value:
+  the body font, font sizes (`font-size-sm`), weight, line height, letter
+  spacing, spacing, radii, border widths and layers (`z-overlay`).
+  Spacing is on a 4 px scale: `space-2` is 8 px, and the half step
+  `space-1-5` is 6 px.
 - `tumult.resolver.json`: the sets and the two themes. Dark is the default.
 
 `npm run build:tokens` writes `src/lib/tokens.css`, the custom properties
-the pages use (`--bg`, `--text-dim`), and `src/lib/tokens.gen.ts`, the same
-values for the charts. Both are committed. A unit test and CI fail when
+the pages use (`--bg`, `--space-2`), and `src/lib/tokens.gen.ts`, the
+colours for the charts. Both are committed. A unit test and CI fail when
 they are not what the token files give, so change a token file and run
 the command, never the outputs.
+
+`node scripts/style-literals.mjs` lists the raw values left in the styles
+of `src/`, by kind. A unit test pins how many there are, so a new raw
+value fails it.
 
 ## Stack
 
@@ -69,7 +78,7 @@ the command, never the outputs.
 | SvelteKit 3 and Svelte 5 (runes), static adapter | A small runtime, and routes that follow the drill-down from a list to one run. A `200.html` fallback serves the client routes.    |
 | ECharts, tree-shaken (`src/lib/echarts.ts`)      | Time series, heatmaps and donuts with zoom and tooltips; only the chart types in use ship                                         |
 | An own span waterfall (`Waterfall.svelte`)       | The span tree with status colours and a drawer with attributes, events and logs. It reads the `resilience.*` attributes directly. |
-| Plain CSS (`src/lib/theme.css`)                  | The base styles, on the colour tokens of a dark theme and a light theme. No UI framework in the embedded build.                   |
+| Plain CSS (`src/lib/theme.css`)                  | The base styles, on the design tokens of a dark theme and a light theme. No UI framework in the embedded build.                   |
 
 ## Design rules
 

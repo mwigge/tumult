@@ -63,23 +63,23 @@
         width: 100%;
         min-height: 22rem;
         font-family: var(--mono);
-        font-size: 12.5px;
-        line-height: 1.5;
+        font-size: var(--font-size-sm);
+        line-height: var(--line-height-body);
         white-space: pre;
     }
     .actions {
         display: flex;
         align-items: center;
-        gap: 12px;
-        margin: 10px 0;
+        gap: var(--space-3);
+        margin: var(--space-2-5) 0;
     }
     .hint {
         color: var(--text-dim);
-        font-size: 12.5px;
+        font-size: var(--font-size-sm);
     }
     .ok {
         color: var(--ok);
-        font-size: 13px;
-        margin-bottom: 6px;
+        font-size: var(--font-size-md);
+        margin-bottom: var(--space-1-5);
     }
 </style>

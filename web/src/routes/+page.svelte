@@ -188,7 +188,10 @@
 {#if error}
     <div class="state error panel">Failed to load overview: {error}</div>
 {:else if !data}
-    <div class="grid" style="grid-template-columns: repeat(5, 1fr); margin-bottom: 14px">
+    <div
+        class="grid"
+        style="grid-template-columns: repeat(5, 1fr); margin-bottom: var(--space-3-5)"
+    >
         {#each [0, 1, 2, 3, 4] as i (i)}
             <div class="skeleton" style="height: 92px"></div>
         {/each}
@@ -201,7 +204,7 @@
         {/each}
     </div>
 
-    <div class="grid cols-2" style="margin-top: 14px">
+    <div class="grid cols-2" style="margin-top: var(--space-3-5)">
         <div class="panel">
             <h2>Runs per day</h2>
             {#if data.experiments_per_day.length === 0}
@@ -236,7 +239,7 @@
         </div>
     </div>
 
-    <div class="panel" style="margin-top: 14px">
+    <div class="panel" style="margin-top: var(--space-3-5)">
         <h2>Target systems</h2>
         {#if data.targets.length === 0}
             <div class="state">
@@ -291,7 +294,7 @@
     }
     .tbar {
         height: 8px;
-        border-radius: 2px;
+        border-radius: var(--radius-xs);
         background: var(--accent-dim);
         min-width: 2px;
     }

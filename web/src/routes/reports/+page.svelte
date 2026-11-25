@@ -139,7 +139,7 @@
     <span class="sub">compliance-grade reports (PDF + print preview) and quick metric digests</span>
 </div>
 
-<div class="panel" style="margin-bottom: 14px">
+<div class="panel" style="margin-bottom: var(--space-3-5)">
     <h2>Compliance reports</h2>
     {#if me && !canGenerate}<p>Generating reports requires the operator role or above.</p>{/if}
     <div class="genbar">
@@ -193,15 +193,15 @@
     {#if errorV2}
         <div class="state error">Failed to load reports: {errorV2}</div>
     {:else if !reportsV2}
-        <div class="skeleton" style="height: 120px; margin-top: 12px"></div>
+        <div class="skeleton" style="height: 120px; margin-top: var(--space-3)"></div>
     {:else if reportsV2.length === 0}
-        <div class="state" style="text-align: left; margin-top: 12px">
+        <div class="state" style="text-align: left; margin-top: var(--space-3)">
             <b>No compliance reports yet.</b><br />
             Pick a template above and generate one — PDF and print-HTML artifacts land in
             <code>&lt;db dir&gt;/reports/v2/</code>.
         </div>
     {:else}
-        <table class="data" style="margin-top: 12px">
+        <table class="data" style="margin-top: var(--space-3)">
             <thead>
                 <tr
                     ><th>Document</th><th>Type</th><th>Created</th><th>Size</th><th>SHA-256</th><th
@@ -280,9 +280,9 @@
     {#if error}
         <div class="state error">Failed to load reports: {error}</div>
     {:else if !reports}
-        <div class="skeleton" style="height: 120px; margin-top: 12px"></div>
+        <div class="skeleton" style="height: 120px; margin-top: var(--space-3)"></div>
     {:else if reports.length > 0}
-        <table class="data" style="margin-top: 12px">
+        <table class="data" style="margin-top: var(--space-3)">
             <thead>
                 <tr><th>Digest</th><th>Origin</th><th>Rendered</th><th>Size</th><th></th></tr>
             </thead>
@@ -311,30 +311,30 @@
 <style>
     .genbar {
         display: flex;
-        gap: 10px;
+        gap: var(--space-2-5);
         align-items: center;
         flex-wrap: wrap;
     }
     .result {
-        margin-top: 14px;
+        margin-top: var(--space-3-5);
     }
     .result-head {
         display: flex;
         justify-content: space-between;
         align-items: baseline;
-        margin-bottom: 8px;
-        font-size: 12.5px;
+        margin-bottom: var(--space-2);
+        font-size: var(--font-size-sm);
         color: var(--text-dim);
     }
     .hash {
-        font-size: 11.5px;
+        font-size: var(--font-size-2xs);
         color: var(--text-dim);
     }
     iframe {
         width: 100%;
         height: 560px;
-        border: 1px solid var(--border-strong);
-        border-radius: 5px;
+        border: var(--border-width-sm) solid var(--border-strong);
+        border-radius: var(--radius-lg);
         background: #fff;
     }
 </style>

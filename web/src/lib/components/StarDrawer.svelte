@@ -390,9 +390,9 @@
         flex: 0 0 360px;
         max-width: 100%;
         background: var(--bg-raised);
-        border: 1px solid var(--border-strong);
-        border-radius: 6px;
-        padding: 14px 16px;
+        border: var(--border-width-sm) solid var(--border-strong);
+        border-radius: var(--radius-xl);
+        padding: var(--space-3-5) var(--space-4);
         overflow-y: auto;
         max-height: 640px;
     }
@@ -400,15 +400,15 @@
         display: flex;
         justify-content: space-between;
         align-items: flex-start;
-        margin-bottom: 12px;
+        margin-bottom: var(--space-3);
     }
     .title {
-        font-size: 14px;
-        font-weight: 600;
+        font-size: var(--font-size-xl);
+        font-weight: var(--font-weight-strong);
         word-break: break-all;
     }
     .title:focus-visible {
-        outline: 2px solid var(--accent);
+        outline: var(--border-width-md) solid var(--accent);
         outline-offset: 2px;
     }
     .flag {
@@ -416,7 +416,7 @@
     }
     .sub {
         color: var(--text-dim);
-        font-size: 11.5px;
+        font-size: var(--font-size-2xs);
         word-break: break-all;
     }
     .mono {
@@ -426,26 +426,26 @@
         background: transparent;
         border: none;
         color: var(--text-dim);
-        font-size: 22px;
+        font-size: var(--font-size-2xl);
         cursor: pointer;
         line-height: 1;
     }
     section {
-        margin-bottom: 16px;
+        margin-bottom: var(--space-4);
     }
     h3 {
-        font-size: 11px;
+        font-size: var(--font-size-3xs);
         text-transform: uppercase;
-        letter-spacing: 0.6px;
+        letter-spacing: var(--letter-spacing-md);
         color: var(--text-dim);
-        margin-bottom: 8px;
+        margin-bottom: var(--space-2);
     }
     dl {
         display: grid;
         grid-template-columns: 96px 1fr;
-        gap: 5px 10px;
+        gap: 5px var(--space-2-5);
         margin: 0;
-        font-size: 12.5px;
+        font-size: var(--font-size-sm);
     }
     dt {
         color: var(--text-dim);
@@ -456,40 +456,40 @@
     }
     .note {
         color: var(--text-dim);
-        font-size: 12px;
-        margin: 6px 0 0;
+        font-size: var(--font-size-xs);
+        margin: var(--space-1-5) 0 0;
     }
     .actions {
         display: flex;
         flex-wrap: wrap;
-        gap: 8px 12px;
+        gap: var(--space-2) var(--space-3);
         align-items: center;
-        margin-top: 10px;
-        font-size: 12.5px;
+        margin-top: var(--space-2-5);
+        font-size: var(--font-size-sm);
     }
     .actions button {
         background: var(--bg-hover);
-        border: 1px solid var(--border-strong);
+        border: var(--border-width-sm) solid var(--border-strong);
         color: var(--text);
-        border-radius: 4px;
-        padding: 3px 10px;
+        border-radius: var(--radius-md);
+        padding: 3px var(--space-2-5);
         cursor: pointer;
-        font-size: 12px;
+        font-size: var(--font-size-xs);
     }
     .chips {
         display: flex;
         flex-wrap: wrap;
-        gap: 6px;
+        gap: var(--space-1-5);
     }
     .rows {
         list-style: none;
         margin: 0;
         padding: 0;
-        font-size: 12.5px;
+        font-size: var(--font-size-sm);
     }
     .rows li {
-        padding: 6px 0;
-        border-top: 1px solid var(--border);
+        padding: var(--space-1-5) 0;
+        border-top: var(--border-width-sm) solid var(--border);
     }
     .rows li.dim {
         opacity: 0.55;
@@ -497,7 +497,7 @@
     .meta {
         display: block;
         color: var(--text-dim);
-        font-size: 11.5px;
-        margin-top: 2px;
+        font-size: var(--font-size-2xs);
+        margin-top: var(--space-0-5);
     }
 </style>

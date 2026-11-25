@@ -164,50 +164,50 @@
     .controls {
         margin-left: auto;
         display: flex;
-        gap: 12px;
+        gap: var(--space-3);
         align-items: center;
     }
     .target {
         color: var(--text-dim);
-        font-size: 12.5px;
-        margin: 0 0 10px;
+        font-size: var(--font-size-sm);
+        margin: 0 0 var(--space-2-5);
     }
     .actor {
         display: flex;
         align-items: center;
-        gap: 6px;
+        gap: var(--space-1-5);
         color: var(--text-dim);
-        font-size: 12px;
+        font-size: var(--font-size-xs);
     }
     /* The parts of the manual components share one look: their forms, rows
        of fields, list editors and buttons. */
     .manual :global(.form) {
         display: flex;
         flex-direction: column;
-        gap: 10px;
+        gap: var(--space-2-5);
     }
     .manual :global(.form label) {
         display: flex;
         flex-direction: column;
-        gap: 4px;
-        font-size: 12px;
+        gap: var(--space-1);
+        font-size: var(--font-size-xs);
         color: var(--text-dim);
     }
     .manual :global(.row2),
     .manual :global(.row3) {
         display: grid;
         grid-template-columns: 1fr 1fr;
-        gap: 10px;
+        gap: var(--space-2-5);
     }
     .manual :global(.row3) {
         grid-template-columns: 1fr 1fr 1fr;
     }
     .manual :global(.grid-rows) {
         display: grid;
-        gap: 6px;
+        gap: var(--space-1-5);
         align-items: center;
-        margin-bottom: 6px;
-        font-size: 11.5px;
+        margin-bottom: var(--space-1-5);
+        font-size: var(--font-size-2xs);
         color: var(--text-dim);
     }
     .manual :global(.grid-rows input),
@@ -222,32 +222,32 @@
     .manual :global(.note),
     .manual :global(.dim) {
         color: var(--text-faint);
-        font-size: 12px;
-        line-height: 1.5;
+        font-size: var(--font-size-xs);
+        line-height: var(--line-height-body);
     }
     .manual :global(.actions) {
         display: flex;
-        gap: 8px;
+        gap: var(--space-2);
     }
     .manual :global(input[type='date']),
     .manual :global(input[type='datetime-local']),
     .manual :global(input[type='file']) {
         background: var(--bg-raised);
-        border: 1px solid var(--border-strong);
+        border: var(--border-width-sm) solid var(--border-strong);
         color: var(--text);
-        border-radius: 5px;
-        padding: 5px 8px;
-        font-size: 13px;
+        border-radius: var(--radius-lg);
+        padding: 5px var(--space-2);
+        font-size: var(--font-size-md);
         font-family: inherit;
     }
     .manual :global(.btn) {
         background: var(--bg-hover);
-        border: 1px solid var(--border-strong);
+        border: var(--border-width-sm) solid var(--border-strong);
         color: var(--text);
-        border-radius: 6px;
-        padding: 6px 14px;
+        border-radius: var(--radius-xl);
+        padding: var(--space-1-5) var(--space-3-5);
         cursor: pointer;
-        font-size: 13px;
+        font-size: var(--font-size-md);
     }
     .manual :global(.btn:hover) {
         border-color: var(--accent-dim);
@@ -261,7 +261,7 @@
         color: var(--fail);
     }
     .manual :global(.btn.add) {
-        margin-top: 4px;
+        margin-top: var(--space-1);
     }
     .manual :global(.btn:disabled) {
         opacity: 0.5;
