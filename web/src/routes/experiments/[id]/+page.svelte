@@ -2,17 +2,23 @@
     import { page } from '$app/state';
     import { api, fmtAgo, fmtDuration, fmtTs } from '#lib/api.js';
     import { experimentDurationNs } from '#lib/duration.js';
+    import { toneOf } from '#lib/tone.js';
     import type { ExperimentDetail, Span } from '#lib/types.js';
+    import Badge from '#lib/components/Badge.svelte';
     import EvidencePanels from '#lib/components/EvidencePanels.svelte';
     import StatusBadge from '#lib/components/StatusBadge.svelte';
     import Waterfall from '#lib/components/Waterfall.svelte';
     import SpanDrawer from '#lib/components/SpanDrawer.svelte';
+    import PageHeader from '#lib/components/PageHeader.svelte';
+    import Panel from '#lib/components/Panel.svelte';
 
     const id = $derived(page.params.id ?? '');
 
     let detail: ExperimentDetail | null = $state(null);
     let error: string | null = $state(null);
     let selected: Span | null = $state(null);
+    // The experiment once it is shown: null while it loads and after an error.
+    const shown = $derived.by(() => (error ? null : (detail?.experiment ?? null)));
 
     $effect(() => {
         let cancelled = false;
@@ -25,44 +31,41 @@
             cancelled = true;
         };
     });
-
-    function sevClass(sev: string | null): string {
-        const s = (sev ?? '').toUpperCase();
-        if (s.startsWith('ERR') || s.startsWith('FATAL')) return 'fail';
-        if (s.startsWith('WARN')) return 'warn';
-        return '';
-    }
 </script>
 
+<PageHeader
+    title={shown ? (shown.name ?? shown.id) : 'Experiment'}
+    back={shown ? { href: '/experiments', label: 'experiments' } : undefined}
+>
+    {#if shown}
+        {@const exp = shown}
+        <StatusBadge status={exp.status} />
+        {#if exp.journal_only}
+            <Badge
+                tone="neutral"
+                title="This run sent no trace. The lake holds its journal."
+                label="journal only"
+            />
+        {/if}
+        <span class="sub mono">{exp.id}</span>
+    {/if}
+</PageHeader>
 {#if error}
-    <div class="page-head"><h1>Experiment</h1></div>
     <div class="state error panel">{error}</div>
 {:else if !detail}
-    <div class="page-head"><h1>Experiment</h1></div>
     <div class="skeleton" style="height: 120px; margin-bottom: var(--space-3-5)"></div>
     <div class="skeleton" style="height: 320px"></div>
 {:else}
     {@const exp = detail.experiment}
     {@const ranNs = experimentDurationNs(exp)}
-    <div class="page-head">
-        <a href="/experiments" style="color: var(--text-dim)">← experiments</a>
-        <h1>{exp.name ?? exp.id}</h1>
-        <StatusBadge status={exp.status} />
-        {#if exp.journal_only}
-            <span class="badge neutral" title="This run sent no trace. The lake holds its journal."
-                >journal only</span
-            >
-        {/if}
-        <span class="sub mono">{exp.id}</span>
-    </div>
 
     <div
         class="grid"
         style="grid-template-columns: repeat(4, 1fr); margin-bottom: var(--space-3-5)"
     >
-        <div class="panel meta">
-            <span>Started</span><b>{fmtTs(exp.started_ns)} ({fmtAgo(exp.started_ns)})</b>
-        </div>
+        <Panel variant="meta" title="Started">
+            <b>{fmtTs(exp.started_ns)} ({fmtAgo(exp.started_ns)})</b>
+        </Panel>
         <div class="panel meta">
             <span>Duration</span><b class="mono">{fmtDuration(ranNs)}</b>
             {#if exp.duration_ns !== null && exp.duration_ns !== ranNs}
@@ -71,23 +74,24 @@
                 >
             {/if}
         </div>
-        <div class="panel meta">
-            <span>Deviations</span><b class="mono">{exp.deviations ?? '—'}</b>
-        </div>
-        <div class="panel meta">
-            <span>Target</span>
+        <Panel variant="meta" title="Deviations">
+            <b class="mono">{exp.deviations ?? '—'}</b>
+        </Panel>
+        <Panel variant="meta" title="Target">
             <b class="mono">
                 {exp.target_system ?? '—'}{exp.target_technology
                     ? ` · ${exp.target_technology}`
                     : ''}{exp.target_environment ? ` · ${exp.target_environment}` : ''}
             </b>
-        </div>
+        </Panel>
     </div>
 
     <EvidencePanels evidence={detail.evidence ?? null} />
 
-    <div class="panel" style="margin-bottom: var(--space-3-5)">
-        <h2>Trace waterfall — {detail.spans.length} spans</h2>
+    <Panel
+        title={`Trace waterfall — ${detail.spans.length} spans`}
+        style="margin-bottom: var(--space-3-5)"
+    >
         {#if exp.journal_only}
             <div class="state" data-testid="no-trace">
                 This run sent no trace. What you see here comes from its journal.
@@ -97,11 +101,10 @@
         {:else}
             <Waterfall spans={detail.spans} onselect={(s) => (selected = s)} />
         {/if}
-    </div>
+    </Panel>
 
     <div class="grid cols-2">
-        <div class="panel">
-            <h2>Logs ({detail.logs.length})</h2>
+        <Panel title={`Logs (${detail.logs.length})`}>
             {#if detail.logs.length === 0}
                 <div class="state">No logs correlated to this experiment.</div>
             {:else}
@@ -109,7 +112,7 @@
                     {#each detail.logs as log, i (i)}
                         <div class="log">
                             <span class="mono ts">{fmtTs(log.ts_ns)}</span>
-                            <span class="mono sev {sevClass(log.severity_text)}"
+                            <span class="mono sev {toneOf('severity', log.severity_text)}"
                                 >{log.severity_text ?? 'LOG'}</span
                             >
                             <span>{log.body}</span>
@@ -117,9 +120,8 @@
                     {/each}
                 </div>
             {/if}
-        </div>
-        <div class="panel">
-            <h2>Metric points ({detail.metrics.length})</h2>
+        </Panel>
+        <Panel title={`Metric points (${detail.metrics.length})`}>
             {#if detail.metrics.length === 0}
                 <div class="state">
                     No metric points with the name of this experiment in the time of this run.
@@ -141,7 +143,7 @@
                     </tbody>
                 </table>
             {/if}
-        </div>
+        </Panel>
     </div>
 
     {#if selected}

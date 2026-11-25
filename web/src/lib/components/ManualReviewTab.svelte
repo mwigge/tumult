@@ -6,7 +6,9 @@
     import { api, fmtTs } from '#lib/api.js';
     import { errorText, ofTarget, type TargetFilter } from '#lib/manual.js';
     import type { ManualDetail, ManualExperiment, ManualPlan } from '#lib/types.js';
+    import Badge from './Badge.svelte';
     import ManualRecordDetail from './ManualRecordDetail.svelte';
+    import Panel from './Panel.svelte';
 
     let {
         tab,
@@ -85,20 +87,9 @@
 
     const planName = (id: string | null | undefined) =>
         plans.find((p) => p.id === id)?.name ?? id ?? '';
-
-    const lifecycleClass = (s: string) =>
-        s === 'verified'
-            ? 'ok'
-            : s === 'submitted'
-              ? 'warn'
-              : s === 'rejected'
-                ? 'fail'
-                : 'neutral';
-    const outcomeClass = (s: string) =>
-        s === 'passed' ? 'ok' : s === 'partial' ? 'warn' : s === 'failed' ? 'fail' : 'neutral';
 </script>
 
-<div class="panel">
+<Panel>
     <div class="records-head">
         <h2>{queue ? 'Submitted records awaiting sign-off' : 'All manual records'}</h2>
         {#if !queue}
@@ -132,15 +123,10 @@
             <tbody>
                 {#each shown as rec (rec.id)}
                     <tr class="clickable" data-record={rec.id} onclick={() => toggle(rec.id)}>
-                        <td><span class="badge {lifecycleClass(rec.status)}">{rec.status}</span></td
-                        >
+                        <td><Badge kind="review" value={rec.status} /></td>
                         <td>{rec.experiment_name}</td>
-                        <td><span class="badge neutral">{rec.exercise_type}</span></td>
-                        <td
-                            ><span class="badge {outcomeClass(rec.outcome_status)}"
-                                >{rec.outcome_status}</span
-                            ></td
-                        >
+                        <td><Badge tone="neutral" label={rec.exercise_type} /></td>
+                        <td><Badge kind="status" value={rec.outcome_status} /></td>
                         <td class="mono">{fmtTs(rec.executed_at_ns)}</td>
                         <td>
                             {rec.entered_by}
@@ -186,7 +172,7 @@
             </tbody>
         </table>
     {/if}
-</div>
+</Panel>
 
 <style>
     .warn-text {

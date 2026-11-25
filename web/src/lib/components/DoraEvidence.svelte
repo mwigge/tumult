@@ -4,6 +4,7 @@
     import { api } from '#lib/api.js';
     import { pct } from '#lib/dora.js';
     import type { DoraArticleReport, DoraExpectation, DoraRequirement } from '#lib/types.js';
+    import Badge from './Badge.svelte';
 
     let { row, lei, onclose }: { row: DoraExpectation; lei: string; onclose: () => void } =
         $props();
@@ -76,7 +77,7 @@
                 <h3>
                     <span class="mono">{cell.entity_id}</span>
                     <span class="dim">{cell.tier}</span>
-                    <span class="badge neutral">{cell.status.replace('_', ' ')}</span>
+                    <Badge tone="neutral" label={cell.status.replace('_', ' ')} />
                 </h3>
                 <div class="dim">
                     {cell.streak_days} stored day{cell.streak_days === 1 ? '' : 's'} in a row

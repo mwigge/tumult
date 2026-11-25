@@ -30,12 +30,14 @@
     } from '#lib/dora.js';
     import type { HeatmapMode } from '#lib/dora.js';
     import type { DoraExpectation, DoraReport, MaturityReport } from '#lib/types.js';
+    import Badge from './Badge.svelte';
     import ChartLegend from './ChartLegend.svelte';
     import DoraEvidence from './DoraEvidence.svelte';
     import DoraNotices from './DoraNotices.svelte';
     import DoraScenarios from './DoraScenarios.svelte';
     import EChart from './EChart.svelte';
     import ScoreNumber from './ScoreNumber.svelte';
+    import Panel from './Panel.svelte';
 
     let { lei, onlei }: { lei: string; onlei: (lei: string) => void } = $props();
 
@@ -96,20 +98,12 @@
         const { functions, registered } = r.readiness;
         return functions === 0 ? 1 : (functions - registered) / functions;
     }
-
-    const STANDING_CLASS: Record<string, string> = {
-        meets: 'ok',
-        gap: 'fail',
-        unknown: 'neutral',
-        no_events: 'neutral',
-        na: 'neutral',
-    };
 </script>
 
 {#if error}
-    <div class="panel"><div class="state error">Failed to load the DORA score: {error}</div></div>
+    <Panel><div class="state error">Failed to load the DORA score: {error}</div></Panel>
 {:else if !report || !maturity}
-    <div class="panel"><div class="skeleton" style="height: 320px"></div></div>
+    <Panel><div class="skeleton" style="height: 320px"></div></Panel>
 {:else}
     <div data-testid="dora-view">
         <section class="panel head" data-testid="dora-header">
@@ -131,9 +125,9 @@
                     </select>
                 </label>
                 <span class="name">{report.entity_name ?? 'unregistered entity'}</span>
-                <span class="badge neutral" data-testid="profile">{report.profile_label}</span>
+                <Badge tone="neutral" data-testid="profile" label={report.profile_label} />
                 {#each report.profile_flags as flag (flag)}
-                    <span class="badge neutral">{flag}</span>
+                    <Badge tone="neutral" label={flag} />
                 {/each}
             </div>
             <div class="headline" class:capped={maturity.capped}>{maturity.headline}</div>
@@ -289,12 +283,12 @@
                                     <span class="mono">{e.cite}</span>
                                     {e.title}
                                     {#if e.scope_basis === 'house'}
-                                        <span
-                                            class="badge neutral"
+                                        <Badge
+                                            tone="neutral"
                                             data-testid="house-scope"
                                             title="The regulation does not limit this row to these functions; the house does."
-                                            >house scope</span
-                                        >
+                                            label="house scope"
+                                        />
                                     {/if}
                                     <div class="dim mono">{e.id}</div>
                                     {#if e.reason}<div class="dim">{e.reason}</div>{/if}
@@ -302,11 +296,13 @@
                                 <td>{e.expected}</td>
                                 <td>{e.actual.replace('_', ' ')}</td>
                                 <td>
-                                    <span class="badge {STANDING_CLASS[e.standing] ?? 'neutral'}"
-                                        >{e.standing === 'gap'
+                                    <Badge
+                                        kind="standing"
+                                        value={e.standing}
+                                        label={e.standing === 'gap'
                                             ? `−${e.gap}`
-                                            : e.standing.replace('_', ' ')}</span
-                                    >
+                                            : e.standing.replace('_', ' ')}
+                                    />
                                     {#if e.short.length > 0}
                                         <div class="dim mono">{e.short.join(', ')}</div>
                                     {/if}
@@ -432,11 +428,9 @@
                                         >{maturity.scale.levels[g.level - 1] ?? ''}</span
                                     ></td
                                 >
-                                <td
-                                    ><span class="badge {g.passed ? 'ok' : 'fail'}"
-                                        >{g.passed ? 'passed' : 'blocked'}</span
-                                    ></td
-                                >
+                                <td>
+                                    <Badge kind="verdict" value={g.passed ? 'passed' : 'blocked'} />
+                                </td>
                                 <td>{g.failing.join('; ') || '–'}</td>
                             </tr>
                         {/each}
@@ -460,9 +454,9 @@
                                 <td style="padding-left: {10 + depth * 18}px">
                                     <span class="mono">{node.id}</span>
                                     <span class="dim">{node.kind}</span>
-                                    {#if node.critical}<span class="badge warn">critical</span>{/if}
+                                    {#if node.critical}<Badge tone="warn" label="critical" />{/if}
                                     {#if node.unknown}
-                                        <span class="badge neutral">not instrumented</span>
+                                        <Badge tone="neutral" label="not instrumented" />
                                     {/if}
                                     {#if node.note}<div class="dim">{node.note}</div>{/if}
                                 </td>
@@ -522,7 +516,7 @@
                                 <span class="mono">{f.entity_id}</span>
                                 {f.name}
                                 {#if !f.registered}
-                                    <span class="badge warn">not in register</span>
+                                    <Badge tone="warn" label="not in register" />
                                 {/if}
                             </td>
                             <td class="mono">{f.register_codes.join(', ') || '–'}</td>

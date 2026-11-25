@@ -115,6 +115,32 @@ A page uses the class and keeps no copy of the rule in its own style
 block. `src/lib/theme-rules.test.ts` fails on a copy, and on a `:global()`
 rule in the Manual page or its components.
 
+## Badges
+
+A badge is `src/lib/components/Badge.svelte`. Give it a `tone` and a
+`label`, or a `kind` and a `value`:
+
+```svelte
+<Badge tone="warn" label="rollback pending" />
+<Badge kind="finding" value={risk.severity} />
+```
+
+`src/lib/tone.ts` holds one table per kind, such as `status`, `finding`
+and `verdict`, so a word of a kind has one tone on every page. A word that
+its table does not hold is neutral. `src/lib/badge-scan.test.ts` fails on a badge
+class or a tone that is worked out anywhere else.
+
+## Page parts
+
+`src/lib/components/PageHeader.svelte` writes the head of every page: a
+link back (`.back`), the title, a sub line, and then the badges and the
+controls the page puts in it. `src/lib/page-head.test.ts` fails on a page
+head written by hand.
+
+`src/lib/components/Panel.svelte` is the box of one part of a page, with
+its title in an `h2`. With `variant="meta"` it is the stat tile: the title
+is the small capital name above the value.
+
 ## Stack
 
 | Choice                                           | Why                                                                                                                               |

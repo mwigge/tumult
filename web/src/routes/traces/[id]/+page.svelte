@@ -1,9 +1,12 @@
 <script lang="ts">
     import { page } from '$app/state';
     import { api, fmtAgo, fmtDuration, fmtTs, shortId } from '#lib/api.js';
+    import { toneOf } from '#lib/tone.js';
     import type { Span, TraceDetail } from '#lib/types.js';
     import Waterfall from '#lib/components/Waterfall.svelte';
     import SpanDrawer from '#lib/components/SpanDrawer.svelte';
+    import PageHeader from '#lib/components/PageHeader.svelte';
+    import Panel from '#lib/components/Panel.svelte';
 
     const id = $derived(page.params.id ?? '');
 
@@ -16,6 +19,8 @@
     let ended = $state(0);
     let errors = $state(0);
     let experiment: Span | null = $state(null);
+    // The trace is shown: it loaded and no error came.
+    const shown = $derived(!error && detail !== null);
 
     $effect(() => {
         let cancelled = false;
@@ -38,63 +43,53 @@
             cancelled = true;
         };
     });
-
-    function sevClass(sev: string | null): string {
-        const s = (sev ?? '').toUpperCase();
-        if (s.startsWith('ERR') || s.startsWith('FATAL')) return 'fail';
-        if (s.startsWith('WARN')) return 'warn';
-        return '';
-    }
 </script>
 
+<PageHeader
+    title={shown ? shortId(id) : 'Trace'}
+    mono={shown}
+    back={shown ? { href: '/traces', label: 'traces' } : undefined}
+>
+    {#if shown && experiment?.experiment_id}
+        <a href="/experiments/{experiment.experiment_id}"
+            >experiment {experiment.experiment_name ?? experiment.experiment_id}</a
+        >
+    {/if}
+</PageHeader>
 {#if error}
-    <div class="page-head"><h1>Trace</h1></div>
     <div class="state error panel">{error}</div>
 {:else if !detail}
-    <div class="page-head"><h1>Trace</h1></div>
     <div class="skeleton" style="height: 120px; margin-bottom: var(--space-3-5)"></div>
     <div class="skeleton" style="height: 320px"></div>
 {:else}
-    <div class="page-head">
-        <a href="/traces" style="color: var(--text-dim)">← traces</a>
-        <h1 class="mono">{shortId(id)}</h1>
-        {#if experiment?.experiment_id}
-            <a href="/experiments/{experiment.experiment_id}"
-                >experiment {experiment.experiment_name ?? experiment.experiment_id}</a
-            >
-        {/if}
-    </div>
-
     <div
         class="grid"
         style="grid-template-columns: repeat(4, 1fr); margin-bottom: var(--space-3-5)"
     >
-        <div class="panel meta">
-            <span>Started</span><b>{fmtTs(started)} ({fmtAgo(started)})</b>
-        </div>
-        <div class="panel meta">
-            <span>Duration</span><b class="mono">{fmtDuration(ended - started)}</b>
-        </div>
-        <div class="panel meta"><span>Spans</span><b class="mono">{detail.spans.length}</b></div>
-        <div class="panel meta">
-            <span>Errors</span><b
-                class="mono"
-                style="color: {errors > 0 ? 'var(--fail)' : 'inherit'}">{errors}</b
-            >
-        </div>
+        <Panel variant="meta" title="Started">
+            <b>{fmtTs(started)} ({fmtAgo(started)})</b>
+        </Panel>
+        <Panel variant="meta" title="Duration">
+            <b class="mono">{fmtDuration(ended - started)}</b>
+        </Panel>
+        <Panel variant="meta" title="Spans"><b class="mono">{detail.spans.length}</b></Panel>
+        <Panel variant="meta" title="Errors">
+            <b class="mono" style="color: {errors > 0 ? 'var(--fail)' : 'inherit'}">{errors}</b>
+        </Panel>
     </div>
 
-    <div class="panel" style="margin-bottom: var(--space-3-5)">
-        <h2>Waterfall — {detail.spans.length} spans</h2>
+    <Panel
+        title={`Waterfall — ${detail.spans.length} spans`}
+        style="margin-bottom: var(--space-3-5)"
+    >
         {#if detail.spans.length === 0}
             <div class="state">No spans recorded for this trace.</div>
         {:else}
             <Waterfall spans={detail.spans} onselect={(s) => (selected = s)} />
         {/if}
-    </div>
+    </Panel>
 
-    <div class="panel">
-        <h2>Logs ({detail.logs.length})</h2>
+    <Panel title={`Logs (${detail.logs.length})`}>
         {#if detail.logs.length === 0}
             <div class="state">No logs correlated to this trace.</div>
         {:else}
@@ -102,7 +97,7 @@
                 {#each detail.logs as log, i (i)}
                     <div class="log">
                         <span class="mono ts">{fmtTs(log.ts_ns)}</span>
-                        <span class="mono sev {sevClass(log.severity_text)}"
+                        <span class="mono sev {toneOf('severity', log.severity_text)}"
                             >{log.severity_text ?? 'LOG'}</span
                         >
                         <span>{log.body}</span>
@@ -110,7 +105,7 @@
                 {/each}
             </div>
         {/if}
-    </div>
+    </Panel>
 
     {#if selected}
         <SpanDrawer span={selected} logs={detail.logs} onclose={() => (selected = null)} />

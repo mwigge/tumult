@@ -8,6 +8,7 @@
     import { ApiError, api } from '#lib/api.js';
     import type { ProbeImpact, RunImpact } from '#lib/types.js';
     import FanChart from './FanChart.svelte';
+    import Panel from './Panel.svelte';
 
     let { runId }: { runId: string } = $props();
 
@@ -134,8 +135,7 @@
     }
 </script>
 
-<div class="panel" style="margin-bottom: var(--space-3-5)" data-testid="impact">
-    <h2>Impact</h2>
+<Panel title="Impact" style="margin-bottom: var(--space-3-5)" data-testid="impact">
     {#if failure}
         <div class="state error" role="alert" data-testid="impact-error">
             The impact could not be loaded: {failure}
@@ -224,7 +224,7 @@
             </div>
         {/each}
     {/if}
-</div>
+</Panel>
 
 <style>
     .summary,

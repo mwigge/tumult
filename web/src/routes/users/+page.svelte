@@ -2,6 +2,9 @@
     import { onMount } from 'svelte';
     import { api, fmtAgo, fmtTs } from '#lib/api.js';
     import type { AdminUser, ApiToken, MeResponse, Role } from '#lib/types.js';
+    import Badge from '#lib/components/Badge.svelte';
+    import PageHeader from '#lib/components/PageHeader.svelte';
+    import Panel from '#lib/components/Panel.svelte';
 
     const ROLES: Role[] = ['viewer', 'operator', 'approver', 'admin'];
 
@@ -146,13 +149,11 @@
         }
     }
 
-    /** Token status badge: revoked and expired are terminal; else active. */
-    function tokenStatus(t: ApiToken): { label: string; cls: string } {
-        if (t.revoked) return { label: 'revoked', cls: 'fail' };
-        if (t.expires_at_ns !== null && t.expires_at_ns / 1_000_000 <= Date.now()) {
-            return { label: 'expired', cls: 'warn' };
-        }
-        return { label: 'active', cls: 'ok' };
+    /** The state of a token: revoked and expired are terminal; else active. */
+    function tokenStatus(t: ApiToken): string {
+        if (t.revoked) return 'revoked';
+        if (t.expires_at_ns !== null && t.expires_at_ns / 1_000_000 <= Date.now()) return 'expired';
+        return 'active';
     }
 
     async function mint() {
@@ -195,27 +196,25 @@
     }
 </script>
 
-<div class="page-head">
-    <h1>Users</h1>
-    <span class="sub">
-        {users
-            ? `${users.length} account${users.length === 1 ? '' : 's'}`
-            : 'accounts, roles and scopes'}
-    </span>
-</div>
+<PageHeader
+    title="Users"
+    sub={users
+        ? `${users.length} account${users.length === 1 ? '' : 's'}`
+        : 'accounts, roles and scopes'}
+/>
 
 {#if meError}
-    <div class="panel">
+    <Panel>
         <div class="state error">Failed to load the session: {meError}</div>
-    </div>
+    </Panel>
 {:else if me && !isAdmin}
-    <div class="panel">
+    <Panel>
         <div class="state">
             User management requires the admin role{me.role ? ` (you are ${me.role})` : ''}.
         </div>
-    </div>
+    </Panel>
 {:else}
-    <div class="panel" style="margin-bottom: var(--space-3-5)">
+    <Panel style="margin-bottom: var(--space-3-5)">
         {#if !users}
             {#if error}
                 <div class="state error">Failed to load users: {error}</div>
@@ -252,24 +251,27 @@
                             <td style="color: var(--text-faint)">{openId === u.id ? '▾' : '▸'}</td>
                             <td>
                                 {u.username}
-                                {#if me?.username === u.username}<span class="badge neutral"
-                                        >you</span
-                                    >{/if}
+                                {#if me?.username === u.username}<Badge
+                                        tone="neutral"
+                                        label="you"
+                                    />{/if}
                             </td>
-                            <td><span class="badge neutral">{u.role}</span></td>
+                            <td><Badge tone="neutral" label={u.role} /></td>
                             <td
                                 >{u.env_scopes.length === 0
                                     ? 'all environments'
                                     : u.env_scopes.join(', ')}</td
                             >
                             <td>
-                                {#if u.disabled}<span class="badge fail">disabled</span>{/if}
-                                {#if u.must_change}<span class="badge warn"
-                                        >must change password</span
-                                    >{/if}
-                                {#if !u.disabled && !u.must_change}<span class="badge ok"
-                                        >active</span
-                                    >{/if}
+                                {#if u.disabled}<Badge tone="fail" label="disabled" />{/if}
+                                {#if u.must_change}<Badge
+                                        tone="warn"
+                                        label="must change password"
+                                    />{/if}
+                                {#if !u.disabled && !u.must_change}<Badge
+                                        tone="ok"
+                                        label="active"
+                                    />{/if}
                             </td>
                             <td title={fmtTs(u.created_at_ns)}>{fmtAgo(u.created_at_ns)}</td>
                         </tr>
@@ -358,10 +360,9 @@
                 </tbody>
             </table>
         {/if}
-    </div>
+    </Panel>
 
-    <div class="panel">
-        <h2>Create user</h2>
+    <Panel title="Create user">
         <form
             class="create"
             onsubmit={(e) => {
@@ -420,10 +421,9 @@
                 <div class="mono pw">{oneTime.password}</div>
             </div>
         {/if}
-    </div>
+    </Panel>
 
-    <div class="panel">
-        <h2>API tokens</h2>
+    <Panel title="API tokens">
         {#if tokens === null}
             {#if tokenError}
                 <div class="state error">Failed to load tokens: {tokenError}</div>
@@ -459,7 +459,7 @@
                                 <td title={t.expires_at_ns !== null ? fmtTs(t.expires_at_ns) : ''}>
                                     {t.expires_at_ns !== null ? fmtTs(t.expires_at_ns) : 'never'}
                                 </td>
-                                <td><span class="badge {st.cls}">{st.label}</span></td>
+                                <td><Badge kind="token" value={st} /></td>
                                 <td>
                                     {#if !t.revoked}
                                         <button
@@ -523,7 +523,7 @@
                 </div>
             {/if}
         {/if}
-    </div>
+    </Panel>
 {/if}
 
 <style>

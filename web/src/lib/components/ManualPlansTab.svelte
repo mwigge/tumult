@@ -18,6 +18,7 @@
     import ManualPlanForm from './ManualPlanForm.svelte';
     import ManualPlanTable from './ManualPlanTable.svelte';
     import ManualVerify from './ManualVerify.svelte';
+    import Panel from './Panel.svelte';
 
     let {
         actor,
@@ -117,8 +118,7 @@
 </script>
 
 <div class="plans">
-    <div class="panel">
-        <h2>Plans</h2>
+    <Panel title="Plans">
         {#if loadError}
             <div class="state error">{loadError}</div>
         {:else if !plans}
@@ -164,7 +164,7 @@
                 {/snippet}
             </ManualPlanTable>
         {/if}
-    </div>
+    </Panel>
     <div class="panel form-panel">
         <h2>{editingId ? 'Edit plan' : 'Plan an exercise'}</h2>
         {#if canWrite}

@@ -25,6 +25,7 @@
     import ManualStepsEditor from './ManualStepsEditor.svelte';
     import ManualTesterFields from './ManualTesterFields.svelte';
     import ManualTlptFields from './ManualTlptFields.svelte';
+    import Panel from './Panel.svelte';
 
     let {
         actor,
@@ -102,8 +103,7 @@
 
 <div class="entry">
     <div class="grid cols-2">
-        <div class="panel">
-            <h2>Exercise</h2>
+        <Panel title="Exercise">
             <div class="form">
                 <label
                     >Experiment name
@@ -203,39 +203,32 @@
                     /></label
                 >
             </div>
-        </div>
+        </Panel>
         <div class="stack">
-            <div class="panel">
-                <h2>Recovery</h2>
+            <Panel title="Recovery">
                 <ManualRecoveryFields bind:form />
-            </div>
-            <div class="panel">
-                <h2>Participants</h2>
+            </Panel>
+            <Panel title="Participants">
                 <ManualParticipantsEditor bind:rows={form.participants} />
-            </div>
-            <div class="panel">
-                <h2>Tester</h2>
+            </Panel>
+            <Panel title="Tester">
                 <ManualTesterFields bind:form />
-            </div>
+            </Panel>
             {#if form.exercise_type === 'tlpt'}
-                <div class="panel">
-                    <h2>TLPT</h2>
+                <Panel title="TLPT">
                     <ManualTlptFields bind:form />
-                </div>
+                </Panel>
             {/if}
         </div>
     </div>
-    <div class="panel">
-        <h2>Steps</h2>
+    <Panel title="Steps">
         <ManualStepsEditor bind:rows={form.steps} />
-    </div>
-    <div class="panel">
-        <h2>{form.exercise_type === 'tlpt' ? 'Remediation plan' : 'Actions'}</h2>
+    </Panel>
+    <Panel title={form.exercise_type === 'tlpt' ? 'Remediation plan' : 'Actions'}>
         <ManualActionsEditor bind:rows={form.actions} />
-    </div>
+    </Panel>
     <div class="grid cols-2">
-        <div class="panel">
-            <h2>Attestation</h2>
+        <Panel title="Attestation">
             <div class="form">
                 <label
                     >Renewal due (optional)
@@ -269,9 +262,8 @@
                     </div>
                 {/if}
             </div>
-        </div>
-        <div class="panel">
-            <h2>Evidence</h2>
+        </Panel>
+        <Panel title="Evidence">
             {#if draft?.experiment}
                 <ManualAttachments
                     experimentId={draft.experiment.id}
@@ -284,7 +276,7 @@
             {:else}
                 <p class="note">Save the draft to attach files and links to it.</p>
             {/if}
-        </div>
+        </Panel>
     </div>
 </div>
 

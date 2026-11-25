@@ -14,6 +14,7 @@
     import ManualImport from '#lib/components/ManualImport.svelte';
     import ManualPlansTab from '#lib/components/ManualPlansTab.svelte';
     import ManualReviewTab from '#lib/components/ManualReviewTab.svelte';
+    import PageHeader from '#lib/components/PageHeader.svelte';
 
     const TABS = ['entry', 'plans', 'queue', 'records', 'import'] as const;
     const TAB_LABEL: Record<string, string> = {
@@ -91,11 +92,10 @@
 </script>
 
 <div class="manual">
-    <div class="page-head">
-        <h1>Manual evidence</h1>
-        <span class="sub"
-            >DR exercises and other hand-executed tests, entered under attestation</span
-        >
+    <PageHeader
+        title="Manual evidence"
+        sub="DR exercises and other hand-executed tests, entered under attestation"
+    >
         <div class="controls">
             <label class="actor">
                 {me?.auth_required ? 'Signed in as' : 'Acting as'}
@@ -115,7 +115,7 @@
                 {/each}
             </div>
         </div>
-    </div>
+    </PageHeader>
 
     {#if filtered && listsTab}
         <p class="target" data-testid="manual-target">

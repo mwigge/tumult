@@ -4,6 +4,7 @@
     // still needs a submit and its sign-offs to count.
     import { api } from '#lib/api.js';
     import { errorText, importBody } from '#lib/manual.js';
+    import Panel from './Panel.svelte';
 
     let { actor, canWrite }: { actor: string; canWrite: boolean } = $props();
 
@@ -44,8 +45,7 @@
     }
 </script>
 
-<div class="panel">
-    <h2>Import records</h2>
+<Panel title="Import records">
     {#if !canWrite}
         <p>An operator can import records.</p>
     {:else}
@@ -78,4 +78,4 @@
             {/if}
         </div>
     {/if}
-</div>
+</Panel>

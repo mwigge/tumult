@@ -5,6 +5,7 @@
     import { api } from '#lib/api.js';
     import { TAGLINE } from '#lib/brand.js';
     import type { MeResponse } from '#lib/types.js';
+    import Badge from '#lib/components/Badge.svelte';
 
     let { children } = $props();
 
@@ -152,7 +153,7 @@
                     <div class="who">
                         <span class="username">{me.username}</span>
                         {#if me.role}
-                            <span class="badge neutral">{me.role}</span>
+                            <Badge tone="neutral" label={me.role} />
                         {/if}
                     </div>
                     <button class="logout" onclick={logout} disabled={loggingOut}>

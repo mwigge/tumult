@@ -71,7 +71,6 @@ import type {
     ValidateToonResponse,
     Webhook,
 } from './types';
-import { runTone, type Tone } from './tone';
 
 // A 401 on any non-auth endpoint means the session is gone (or absent) — send
 // the user to /login, unless we are already there. Auth endpoints themselves
@@ -704,30 +703,6 @@ export function fmtDuration(ns: number | null): string {
 
 export function shortId(id: string): string {
     return id.length > 8 ? id.slice(0, 8) : id;
-}
-
-/** The badge class of a status: the end of a run has the tone of its verdict. */
-export function statusClass(status: string | null): Tone {
-    const ending = runTone(status);
-    if (ending !== undefined) return ending;
-    switch ((status ?? '').toLowerCase()) {
-        case 'success':
-        case 'passed':
-            return 'ok';
-        // A manual exercise that worked in part; rejected and expired
-        // requests never started execution.
-        case 'partial':
-        case 'rollback_pending':
-        case 'rejected':
-        case 'expired':
-            return 'warn';
-        case 'failure':
-        case 'orphaned':
-            return 'fail';
-        // queued / validating / running / stopping / pending_approval → neutral.
-        default:
-            return 'neutral';
-    }
 }
 
 /**

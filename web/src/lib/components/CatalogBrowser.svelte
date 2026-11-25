@@ -1,6 +1,8 @@
 <script lang="ts">
     import { goto } from '$app/navigation';
     import type { CatalogAction, CatalogDomain } from '#lib/types.js';
+    import Badge from './Badge.svelte';
+    import Panel from './Panel.svelte';
 
     let { domains }: { domains: CatalogDomain[] } = $props();
 
@@ -45,7 +47,7 @@
     <div class="state">No catalog actions match.</div>
 {:else}
     {#each filtered as d (d.domain)}
-        <div class="panel" style="margin-bottom: var(--space-3-5)">
+        <Panel style="margin-bottom: var(--space-3-5)">
             <h2>{d.label} <span class="count">({d.actions.length})</span></h2>
             <table class="data">
                 <thead>
@@ -55,18 +57,14 @@
                     {#each d.actions as a (`${a.plugin}::${a.name}`)}
                         <tr class="clickable" onclick={() => use(a)}>
                             <td class="mono">{a.name}</td>
-                            <td
-                                ><span class="badge {a.kind === 'action' ? 'warn' : 'neutral'}"
-                                    >{a.kind}</span
-                                ></td
-                            >
+                            <td><Badge kind="catalog" value={a.kind} /></td>
                             <td style="color: var(--text-dim)">{a.description}</td>
                             <td style="color: var(--accent)">Use →</td>
                         </tr>
                     {/each}
                 </tbody>
             </table>
-        </div>
+        </Panel>
     {/each}
 {/if}
 

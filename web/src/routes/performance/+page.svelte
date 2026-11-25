@@ -14,7 +14,6 @@
         PERF_QUANTILES,
         PERF_RANGES,
         UNTAGGED,
-        VERDICT_CLASS,
         attributionLabel,
         envLabel,
         fmtConfidence,
@@ -40,7 +39,10 @@
         PerfTargets,
         PerfVerdict,
     } from '#lib/types.js';
+    import Badge from '#lib/components/Badge.svelte';
     import EChart from '#lib/components/EChart.svelte';
+    import PageHeader from '#lib/components/PageHeader.svelte';
+    import Panel from '#lib/components/Panel.svelte';
 
     // Why the read has no answer: `none` = 404 (no evidence in scope),
     // `input` = 400 (the query must be narrowed), `fail` = anything else.
@@ -229,14 +231,12 @@
     }
 </script>
 
-<div class="page-head">
-    <h1>Performance</h1>
-    <span class="sub">baseline versus candidate latency per target</span>
+<PageHeader title="Performance" sub="baseline versus candidate latency per target">
     {#if answer}
         <span class="sub">as of {fmtAgo(answer.as_of_ns)}</span>
     {/if}
     <span class="sub" role="status" aria-live="polite">{loading ? 'Loading…' : ''}</span>
-</div>
+</PageHeader>
 
 <div class="controls">
     {#if targetOptions.length > 0}
@@ -357,14 +357,12 @@
 {:else}
     {@const cmp = answer.comparison}
     <div class="grid cols-2" aria-busy={loading}>
-        <section class="panel" data-testid="verdict" aria-labelledby="perf-verdict-h">
+        <Panel tag="section" data-testid="verdict" aria-labelledby="perf-verdict-h">
             <h2 id="perf-verdict-h">Verdict</h2>
             <div class="headline">
-                <span class="badge big {VERDICT_CLASS[answer.verdict]}" data-testid="verdict-badge"
-                    >{answer.verdict}</span
-                >
+                <Badge big kind="verdict" value={answer.verdict} data-testid="verdict-badge" />
                 {#if cmp.low_run_count}
-                    <span class="badge warn" data-testid="few-runs">fewer than 5 runs</span>
+                    <Badge tone="warn" data-testid="few-runs" label="fewer than 5 runs" />
                 {/if}
                 <span class="mono">{answer.target}</span>
                 <span class="muted mono">{answer.probe}</span>
@@ -422,9 +420,9 @@
                     </li>
                 {/if}
             </ul>
-        </section>
+        </Panel>
 
-        <section class="panel" aria-labelledby="perf-delta-h">
+        <Panel tag="section" aria-labelledby="perf-delta-h">
             <h2 id="perf-delta-h">Difference at {cmp.quantile}</h2>
             <div data-testid="delta">
                 {#if cmp.delta === null}
@@ -451,7 +449,7 @@
                     </div>
                 {/if}
             </div>
-        </section>
+        </Panel>
     </div>
 
     <section class="panel below" aria-labelledby="perf-dist-h" aria-busy={loading}>
@@ -670,11 +668,7 @@
                             <td class="mono">{fmtTs(row.computed_at_ns)}</td>
                             <td class="mono">{row.baseline_version} → {row.candidate_version}</td>
                             <td class="mono">{row.quantile}</td>
-                            <td
-                                ><span class="badge {VERDICT_CLASS[row.verdict] ?? 'neutral'}"
-                                    >{row.verdict}</span
-                                ></td
-                            >
+                            <td><Badge kind="verdict" value={row.verdict} /></td>
                             <td class="mono">{fmtDeltaMs(row.delta, row.delta_pct)}</td>
                             <td class="mono">{fmtInterval(row.ci_low, row.ci_high)}</td>
                             <td class="mono">{row.envs?.join(', ') || '–'}</td>
@@ -736,12 +730,6 @@
         gap: var(--space-3);
         margin-bottom: var(--space-2-5);
         flex-wrap: wrap;
-    }
-    .badge.big {
-        font-size: 15px;
-        padding: 3px var(--space-3-5);
-        border-radius: 14px;
-        border: var(--border-width-sm) solid currentColor;
     }
     .reasons {
         margin: 0 0 var(--space-2-5);

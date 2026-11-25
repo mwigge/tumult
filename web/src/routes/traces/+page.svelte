@@ -10,6 +10,8 @@
     import { chartTheme, chartTokens, followTheme } from '#lib/echarts.js';
     import { strong, tip, tipFormatter } from '#lib/tooltip.js';
     import type { EChartsCoreOption } from '#lib/echarts.js';
+    import PageHeader from '#lib/components/PageHeader.svelte';
+    import Panel from '#lib/components/Panel.svelte';
 
     const filters = $derived({
         range: page.url.searchParams.get('range') ?? '24h',
@@ -124,11 +126,10 @@
     }
 </script>
 
-<div class="page-head">
-    <h1>Traces</h1>
-    <span class="sub"
-        >{rows ? `${rows.length} trace${rows.length === 1 ? '' : 's'}` : 'slowest first'}</span
-    >
+<PageHeader
+    title="Traces"
+    sub={rows ? `${rows.length} trace${rows.length === 1 ? '' : 's'}` : 'slowest first'}
+>
     <div class="controls">
         <select
             value={filters.outcome}
@@ -159,7 +160,7 @@
         />
         <RangeSwitch value={filters.range} onchange={(r) => setFilter('range', r)} />
     </div>
-</div>
+</PageHeader>
 
 {#if filters.attr || filters.attr_not}
     <div class="facet-chips">
@@ -176,7 +177,7 @@
     </div>
 {/if}
 
-<div class="panel">
+<Panel>
     {#if durations && durations.points.length > 0}
         <EChart
             id="trace-durations"
@@ -190,9 +191,9 @@
     {:else}
         <div class="skeleton" style="height: 220px"></div>
     {/if}
-</div>
+</Panel>
 
-<div class="panel">
+<Panel>
     {#if error}
         <div class="state error">Failed to load traces: {error}</div>
     {:else if !rows}
@@ -251,7 +252,7 @@
             </tbody>
         </table>
     {/if}
-</div>
+</Panel>
 
 <style>
     .controls {

@@ -129,6 +129,10 @@ code,
     color: var(--text-dim);
     font-size: var(--font-size-sm);
 }
+/* The link back to the page above. */
+.page-head .back {
+    color: var(--text-dim);
+}
 
 /* --- panels & tables ------------------------------------------------------*/
 .panel {
@@ -288,8 +292,11 @@ button.primary:disabled,
 }
 
 /* --- status badges --------------------------------------------------------*/
+/* Badge.svelte draws every badge; src/lib/tone.ts chooses its tone. */
 .badge {
     display: inline-block;
+    /* A part that wants a gap before its badges sets --badge-gap. */
+    margin-left: var(--badge-gap, 0);
     padding: 1px 9px;
     border-radius: var(--radius-2xl);
     font-size: var(--font-size-2xs);
@@ -311,6 +318,18 @@ button.primary:disabled,
 .badge.neutral {
     color: var(--text-dim);
     background: var(--bg-hover);
+}
+/* The large badge of a headline, as the verdict of the Performance page. */
+.badge.big {
+    font-size: 15px;
+    padding: 3px var(--space-3-5);
+    border-radius: 14px;
+    border: var(--border-width-sm) solid currentColor;
+}
+/* A small badge after the name of a row, as the origin of an experiment. */
+.badge.origin {
+    margin-left: var(--space-1-5);
+    font-size: 10px;
 }
 
 /* --- states ----------------------------------------------------------------*/
