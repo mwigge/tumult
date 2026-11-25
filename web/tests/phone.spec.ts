@@ -146,8 +146,7 @@ test.describe('on a touch screen', () => {
     test.use({ hasTouch: true });
 
     test('a tap outside the open menu closes it, and a tap in it does not', async ({ page }) => {
-        const target = pageOf('overview');
-        await open(page, target);
+        await open(page, pageOf('overview'));
         const menu = page.getByRole('button', { name: 'Menu' });
         const nav = page.getByRole('navigation');
         const side = page.locator('#side');
@@ -164,7 +163,7 @@ test.describe('on a touch screen', () => {
         await expect(menu).toHaveAttribute('aria-expanded', 'true');
 
         await nav.getByRole('link', { name: /Runs/ }).focus();
-        await page.getByRole('heading', { level: 1, name: target.heading, exact: true }).tap();
+        await page.getByRole('heading', { level: 1, name: 'Overview', exact: true }).tap();
         await expect(nav).toBeHidden();
         await expect(menu).toHaveAttribute('aria-expanded', 'false');
         // The focus goes where the tap went: not into the hidden menu, and
