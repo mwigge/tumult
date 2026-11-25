@@ -1,0 +1,30 @@
+/* Written by web/scripts/build-tokens.mjs from web/tokens/. Do not edit:
+   change a token file and run `npm run build:tokens` in web/. */
+
+/* The colours of the landing page, docs/index.html: the light theme of
+   Krönika and the copper of the logo. The GameDay terminal (--term-)
+   is dark on purpose, like the terminal player above it. */
+:root {
+    --page: #ffffff;
+    --band: #f4f6f8;
+    --bg-panel: #ffffff;
+    --border: #e3e8ed;
+    --border-strong: #c5ced6;
+    --text: #1b2329;
+    --text-dim: #5b6772;
+    --copper: #9a5320;
+    --copper-hover: #7f4419;
+    --copper-bright: #c87533;
+    --on-copper: #ffffff;
+    --term-bg: #0b0e11;
+    --term-bar: #11161b;
+    --term-border: #242d36;
+    --term-text: #d8dee4;
+    --term-dim: #8b98a5;
+    --term-ok: #34d399;
+    --term-accent: #5eb1ef;
+    --term-command: #ffffff;
+    --term-dot-red: #ff5f57;
+    --term-dot-yellow: #febc2e;
+    --term-dot-green: #28c840;
+}

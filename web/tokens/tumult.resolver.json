@@ -2,7 +2,7 @@
   "$schema": "https://www.designtokens.org/schemas/2025.10/resolver.json",
   "version": "2025.10",
   "name": "Tumult",
-  "description": "The design tokens of Krönika. scripts/build-tokens.mjs reads this file and writes src/lib/tokens.css, src/lib/tokens.gen.ts and the colours of the CLI HTML report.",
+  "description": "The design tokens of Krönika. scripts/build-tokens.mjs reads this file and writes src/lib/tokens.css, src/lib/tokens.gen.ts, the colours of the CLI HTML report and the colours of the docs site.",
   "sets": {
     "primitive": {
       "description": "Raw colours and fonts. They reach no output.",
@@ -25,6 +25,14 @@
       "sources": [
         {
           "$ref": "page.tokens.json"
+        }
+      ]
+    },
+    "docs": {
+      "description": "The colour roles of the docs site and its landing page. Only the files in docs/ have them.",
+      "sources": [
+        {
+          "$ref": "docs.tokens.json"
         }
       ]
     }
@@ -56,6 +64,9 @@
     },
     {
       "$ref": "#/sets/page"
+    },
+    {
+      "$ref": "#/sets/docs"
     },
     {
       "$ref": "#/modifiers/theme"

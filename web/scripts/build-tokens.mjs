@@ -4,11 +4,11 @@
 // modifier. For each theme this merges the sets in order, resolves every
 // alias and checks every value. It writes src/lib/tokens.css (the custom
 // properties of each theme), src/lib/tokens.gen.ts (the same values for
-// ECharts, which cannot read CSS) and the colours of the CLI HTML report.
-// All are committed, and CI fails when they are not what this writes. It
-// reads only the part of the format that Tumult uses: srgb colours with a
-// hex, font families, dimensions in px or rem, font weights and numbers as
-// numbers, aliases, sets and one modifier.
+// ECharts, which cannot read CSS), the colours of the CLI HTML report and
+// the colours of the docs site. All are committed, and CI fails when they
+// are not what this writes. It reads only the part of the format that
+// Tumult uses: srgb colours with a hex, font families, dimensions in px or
+// rem, font weights and numbers as numbers, aliases, sets and one modifier.
 //
 // Usage: node scripts/build-tokens.mjs
 
@@ -29,6 +29,13 @@ const UNITS = ['px', 'rem'];
 const CANVAS_ONLY = 'chart.';
 // The colours of the HTML report of `tumult report`, as a path under web/.
 const REPORT_CSS = '../tumult-cli/src/commands/report/html/tokens.css';
+// The set of the colours of the docs site. Jekyll builds the site and cannot
+// run this script, so only the files below have them.
+const DOCS_ONLY = 'docs';
+// The colour variables of the docs theme and the colours of the landing
+// page, as paths under web/.
+const DOCS_SCHEME = '../docs/_sass/color_schemes/_tumult-tokens.scss';
+const LANDING_CSS = '../docs/assets/css/tokens.css';
 
 /** @typedef {{ value: unknown, type?: string, set: string }} Token */
 /** @typedef {{ set: string, tokens: Record<string, unknown> }} Source */
@@ -232,7 +239,12 @@ function cssValue(token) {
 function properties(tokens) {
     return new Map(
         [...tokens]
-            .filter(([path, token]) => token.set !== PRIMITIVE && !path.startsWith(CANVAS_ONLY))
+            .filter(
+                ([path, token]) =>
+                    token.set !== PRIMITIVE &&
+                    token.set !== DOCS_ONLY &&
+                    !path.startsWith(CANVAS_ONLY),
+            )
             .map(([path, token]) => [`--${path.replaceAll('.', '-')}`, cssValue(token)]),
     );
 }
@@ -323,6 +335,60 @@ function reportCss(themes) {
 }
 
 /**
+ * The colours of the group `docs.<group>` of a theme: name in the group to hex.
+ * @param {Map<string, Token>} tokens
+ * @param {string} group
+ */
+function docsColours(tokens, group) {
+    const prefix = `docs.${group}.`;
+    return [...tokens]
+        .filter(([path]) => path.startsWith(prefix))
+        .map(([path, token]) => {
+            if (token.type !== 'color') fail(path, 'a token of the docs set must be a colour');
+            return [path.slice(prefix.length), /** @type {{ hex: string }} */ (token.value).hex];
+        });
+}
+
+/**
+ * The colour variables of the docs theme. The site is light only. GitHub
+ * Pages compiles them with Ruby Sass 3, so they are plain variables.
+ * @param {Record<string, Map<string, Token>>} themes
+ */
+function docsScheme(themes) {
+    return [
+        '// Written by web/scripts/build-tokens.mjs from web/tokens/. Do not edit:',
+        '// change a token file and run `npm run build:tokens` in web/.',
+        '//',
+        '// The colour variables of the docs theme, from the light theme of',
+        '// Krönika. tumult.scss imports them.',
+        '',
+        ...docsColours(themes.light, 'scheme').map(([name, hex]) => `$${name}: ${hex};`),
+        '',
+    ].join('\n');
+}
+
+/**
+ * The colours of the landing page: light, and a terminal that is dark on
+ * purpose, in the dark theme.
+ * @param {Record<string, Map<string, Token>>} themes
+ */
+function landingCss(themes) {
+    return [
+        '/* Written by web/scripts/build-tokens.mjs from web/tokens/. Do not edit:',
+        '   change a token file and run `npm run build:tokens` in web/. */',
+        '',
+        '/* The colours of the landing page, docs/index.html: the light theme of',
+        '   Krönika and the copper of the logo. The GameDay terminal (--term-)',
+        '   is dark on purpose, like the terminal player above it. */',
+        ':root {',
+        ...docsColours(themes.light, 'landing').map(([name, hex]) => `    --${name}: ${hex};`),
+        ...docsColours(themes.dark, 'terminal').map(([name, hex]) => `    --term-${name}: ${hex};`),
+        '}',
+        '',
+    ].join('\n');
+}
+
+/**
  * A value as the TS writes it: a px dimension, a font weight and a number
  * as a number, as ECharts takes them, and anything else as CSS writes it.
  * @param {Token} token
@@ -343,7 +409,7 @@ function nest(tokens) {
     /** @type {Record<string, any>} */
     const tree = {};
     for (const [path, token] of tokens) {
-        if (token.set === PRIMITIVE || token.set === PAGE_ONLY) continue;
+        if (token.set === PRIMITIVE || token.set === PAGE_ONLY || token.set === DOCS_ONLY) continue;
         const parts = path.split('.');
         const leaf = /** @type {string} */ (parts.pop());
         parts.reduce((at, part) => (at[part] ??= {}), tree)[leaf] = tsValue(token);
@@ -383,6 +449,8 @@ export function build(dir) {
         'src/lib/tokens.css': css(fallback, themes),
         'src/lib/tokens.gen.ts': ts(themes),
         [REPORT_CSS]: reportCss(themes),
+        [DOCS_SCHEME]: docsScheme(themes),
+        [LANDING_CSS]: landingCss(themes),
     };
 }
 
