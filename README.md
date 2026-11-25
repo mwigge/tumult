@@ -9,7 +9,7 @@
 Tumult is a resilience intelligence platform, written in Rust. You test your
 systems. Tumult keeps the evidence and tells you what it means.
 
-![Krönika, the web UI of Tumult, shows the Star Map: organisation, systems, services and workloads as one graph](docs/images/3.0/screenshots/starmap.png)
+![The Star Map in Krönika, the web UI of Tumult](docs/images/3.0/screenshots/starmap.png)
 
 ## Install
 
@@ -17,9 +17,9 @@ systems. Tumult keeps the evidence and tells you what it means.
 curl -sSL https://raw.githubusercontent.com/mwigge/tumult/main/install.sh | sh
 ```
 
-It clones this repository, builds the `tumult` CLI, starts test targets in
-Docker and runs a check. You need Git, Make, Docker and Rust 1.92.0 or
-newer. Then follow [Get started](https://tumult.rs/get-started/).
+It builds the `tumult` CLI, starts test targets in Docker and runs a check.
+You need Git, Make, Docker and Rust 1.92.0 or newer. Then follow
+[Get started](https://tumult.rs/get-started/).
 
 ## Try it
 
@@ -46,27 +46,30 @@ cd chaos-lab && docker compose up -d --build --wait
 
 ![The evidence loop: plan, run, observe, store, score, find risks, pick the next test](docs/images/3.0/diagrams/flow-evidence-loop.svg)
 
-- **Collect:** chaos experiments, load and performance runs, telemetry from
-  your services, and manual records of exercises.
+- **Collect:** chaos, load, performance and disaster recovery (DR) runs,
+  exercises run by hand, and telemetry from your services.
 - **Store:** one daemon, `tumultd`, keeps it all in one DuckDB database, the
   lake.
-- **Understand:** ranked risks, scores, version verdicts and forecasts.
-- **Show:** the web UI, Krönika. A CI gate (`tumult gate`) and PDF reports
-  use the same data.
+- **Show:** risks, scores, verdicts and forecasts, in the web UI Krönika, a CI
+  gate (`tumult gate`) and PDF reports.
 
 | | |
 |---|---|
-| ![Resilience: ranked risks and coverage per discipline](docs/images/3.0/screenshots/posture.png) | ![Scores: DORA coverage and maturity level](docs/images/3.0/screenshots/scores-dora.png) |
-| **Resilience.** Ranked risks and the gaps in your testing, without running a fault. | **Scores.** DORA coverage per article and function, and a maturity level from 1 to 5. |
-| ![Performance: version against version with a verdict](docs/images/3.0/screenshots/performance.png) | ![Run detail with the span waterfall](docs/images/3.0/screenshots/run-detail.png) |
-| **Performance.** Did the new version get slower? A verdict per version. | **Run detail.** Every step of a run on a timeline, with its approvals. |
+| ![The DR page](docs/images/3.0/screenshots/dr.png) | ![A DR run](docs/images/3.0/screenshots/run-dr.png) |
+| **DR page.** When each target is due, and its RTO and RPO. | **A DR run.** The time down (RTO) and the data lost (RPO). |
+| ![A failover drill by hand](docs/images/3.0/screenshots/manual.png) | ![A DR test report](docs/images/3.0/screenshots/report-dr-test.png) |
+| **Drills by hand.** Signed off by another person. | **Reports for an auditor.** Each DR test against its targets. |
+| ![The Resilience page](docs/images/3.0/screenshots/posture.png) | ![The DORA view](docs/images/3.0/screenshots/scores-dora.png) |
+| **Resilience.** Ranked risks and the gaps in your testing. | **DORA.** Coverage per article and a maturity level. |
+| ![The Performance page](docs/images/3.0/screenshots/performance.png) | ![A run report](docs/images/3.0/screenshots/report-html.png) |
+| **Performance.** Did the new version get slower? | **Run report.** `tumult report` makes one HTML page. |
 
 More pictures: [platform walkthrough](https://tumult.rs/guides/platform-walkthrough.html).
 
 ## Safe by design
 
 - Every run gets a risk tier, T0 to T3. Risky runs wait for a second
-  person, and nobody can approve their own run.
+  person.
 - Two clicks stop all running experiments and roll them back.
 - Every action goes into an audit trail that shows any change.
 - Roles: `viewer`, `operator`, `approver`, `admin`.
@@ -111,23 +114,20 @@ break things: `tumult_run_experiment`, `tumult_gameday_run`,
 
 More in the [MCP guide](https://tumult.rs/guides/mcp-guide.html).
 
-## Upgrading from 2.x
+## Upgrading
 
-Read the [3.0.0 release notes](https://tumult.rs/releases/3.0.0.html) first.
-The lake moves to schema v21 and DuckDB 2.0, and an older Tumult cannot
-open it afterwards. Stop the daemon and back up first with
-`tumult store backup --output <dir>`.
+Read the [3.0.4 notes](https://tumult.rs/releases/3.0.4.html) first. The
+lake moves to schema v26, which an older Tumult cannot open. Stop the
+daemon and back up with `tumult store backup --output <dir>`.
 
 ## Documentation
-
-All of it is on [tumult.rs](https://tumult.rs/).
 
 | I want to | Go to |
 |---|---|
 | Start | [Get started](https://tumult.rs/get-started/) |
-| Click through the web UI | [Platform walkthrough](https://tumult.rs/guides/platform-walkthrough.html) |
 | Learn the ideas | [Concepts](https://tumult.rs/concepts/) |
 | Find a guide | [Guides](https://tumult.rs/guides/) |
+| Test disaster recovery | [Disaster recovery](https://tumult.rs/guides/disaster-recovery.html) |
 | Look up a command | [CLI reference](https://tumult.rs/guides/cli-reference.html) |
 | Run it for real | [Operate](https://tumult.rs/operate/) |
 | See what changed | [Release notes](https://tumult.rs/releases/) |
