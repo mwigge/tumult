@@ -1,6 +1,7 @@
 <script lang="ts">
     import { api, fmtAgo, fmtTs, shortId } from '#lib/api.js';
     import type { RunEvent } from '#lib/types.js';
+    import PageHeader from '#lib/components/PageHeader.svelte';
 
     // Event-type filter: '' = everything, otherwise one audit event name.
     const FILTERS: { value: string; label: string }[] = [
@@ -66,9 +67,7 @@
     }
 </script>
 
-<div class="page-head">
-    <h1>Events</h1>
-    <span class="sub">{rows ? `${rows.length} recent` : 'run audit trail across all runs'}</span>
+<PageHeader title="Events" sub={rows ? `${rows.length} recent` : 'run audit trail across all runs'}>
     <div class="controls">
         <div class="seg">
             {#each FILTERS as f (f.value)}
@@ -78,7 +77,7 @@
             {/each}
         </div>
     </div>
-</div>
+</PageHeader>
 
 <div class="panel">
     {#if error}

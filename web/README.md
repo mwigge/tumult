@@ -91,6 +91,13 @@ A page uses the class and keeps no copy of the rule in its own style
 block. `src/lib/theme-rules.test.ts` fails on a copy, and on a `:global()`
 rule in the Manual page or its components.
 
+## Page parts
+
+`src/lib/components/PageHeader.svelte` writes the head of every page: a
+link back (`.back`), the title, a sub line, and then the badges and the
+controls the page puts in it. `src/lib/page-head.test.ts` fails on a page
+head written by hand.
+
 ## Stack
 
 | Choice                                           | Why                                                                                                                               |

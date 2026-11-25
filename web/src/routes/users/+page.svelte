@@ -2,6 +2,7 @@
     import { onMount } from 'svelte';
     import { api, fmtAgo, fmtTs } from '#lib/api.js';
     import type { AdminUser, ApiToken, MeResponse, Role } from '#lib/types.js';
+    import PageHeader from '#lib/components/PageHeader.svelte';
 
     const ROLES: Role[] = ['viewer', 'operator', 'approver', 'admin'];
 
@@ -195,14 +196,12 @@
     }
 </script>
 
-<div class="page-head">
-    <h1>Users</h1>
-    <span class="sub">
-        {users
-            ? `${users.length} account${users.length === 1 ? '' : 's'}`
-            : 'accounts, roles and scopes'}
-    </span>
-</div>
+<PageHeader
+    title="Users"
+    sub={users
+        ? `${users.length} account${users.length === 1 ? '' : 's'}`
+        : 'accounts, roles and scopes'}
+/>
 
 {#if meError}
     <div class="panel">

@@ -3,6 +3,7 @@
     import { api, fmtAgo, fmtTs, shortId } from '#lib/api.js';
     import { paramsText } from '#lib/run-params.js';
     import type { ApprovalQueueRow, ApprovalTier, MeResponse } from '#lib/types.js';
+    import PageHeader from '#lib/components/PageHeader.svelte';
 
     let rows = $state<ApprovalQueueRow[] | null>(null);
     let error = $state<string | null>(null);
@@ -110,12 +111,10 @@
     }
 </script>
 
-<div class="page-head">
-    <h1>Approvals</h1>
-    <span class="sub">
-        {rows ? `${rows.length} pending` : 'gated runs waiting on quorum'}
-    </span>
-</div>
+<PageHeader
+    title="Approvals"
+    sub={rows ? `${rows.length} pending` : 'gated runs waiting on quorum'}
+/>
 
 <div class="panel">
     {#if error}

@@ -3,6 +3,7 @@
     import { api } from '#lib/api.js';
     import CatalogBrowser from '#lib/components/CatalogBrowser.svelte';
     import type { CatalogResponse } from '#lib/types.js';
+    import PageHeader from '#lib/components/PageHeader.svelte';
 
     let catalog = $state<CatalogResponse | null>(null);
     let loadError = $state<string | null>(null);
@@ -14,10 +15,7 @@
     });
 </script>
 
-<div class="page-head">
-    <h1>Author an experiment</h1>
-    <span class="sub">pick a fault from the live plugin catalog</span>
-</div>
+<PageHeader title="Author an experiment" sub="pick a fault from the live plugin catalog" />
 
 {#if loadError}
     <div class="state error">Failed to load the fault catalog: {loadError}</div>

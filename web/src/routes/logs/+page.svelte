@@ -9,6 +9,7 @@
     import { chartTheme, chartTokens, followTheme } from '#lib/echarts.js';
     import type { EChartsCoreOption } from '#lib/echarts.js';
     import { bucketAxis } from '#lib/ranges.js';
+    import PageHeader from '#lib/components/PageHeader.svelte';
 
     const SEVERITIES = ['ERROR', 'WARN', 'INFO', 'DEBUG', 'TRACE'];
 
@@ -145,11 +146,10 @@
     });
 </script>
 
-<div class="page-head">
-    <h1>Logs</h1>
-    <span class="sub"
-        >{rows ? `${rows.length} row${rows.length === 1 ? '' : 's'}` : 'newest first'}</span
-    >
+<PageHeader
+    title="Logs"
+    sub={rows ? `${rows.length} row${rows.length === 1 ? '' : 's'}` : 'newest first'}
+>
     <div class="controls">
         <input
             type="search"
@@ -174,7 +174,7 @@
         />
         <RangeSwitch value={filters.range} onchange={(r) => setFilter('range', r)} />
     </div>
-</div>
+</PageHeader>
 
 {#if filters.attr || filters.attr_not}
     <div class="facet-chips">

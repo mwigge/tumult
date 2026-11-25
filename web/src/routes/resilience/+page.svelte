@@ -29,6 +29,7 @@
     import EChart from '#lib/components/EChart.svelte';
     import FanChart from '#lib/components/FanChart.svelte';
     import type { FanSeries } from '#lib/components/FanChart.svelte';
+    import PageHeader from '#lib/components/PageHeader.svelte';
 
     let posture: PostureResponse | null = $state(null);
     let report: RiskReport | null = $state(null);
@@ -309,12 +310,11 @@
     );
 </script>
 
-<div class="page-head">
-    <h1>Resilience</h1>
+<PageHeader title="Resilience">
     {#if report}
         <span class="muted">scanned {fmtAgo(report.as_of_ns)}</span>
     {/if}
-</div>
+</PageHeader>
 
 {#if error}
     <div class="state error">{error}</div>

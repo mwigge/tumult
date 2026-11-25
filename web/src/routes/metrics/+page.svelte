@@ -10,6 +10,7 @@
     import type { EChartsCoreOption } from '#lib/echarts.js';
     import { experimentOverlay, labelGap, overlayRunId } from '#lib/overlays.js';
     import { RANGE_SECONDS, rangeAxis } from '#lib/ranges.js';
+    import PageHeader from '#lib/components/PageHeader.svelte';
 
     const INTERVALS = ['5m', '1h', '1d'];
     const CHART_TYPES = ['line', 'area', 'bar'] as const;
@@ -173,8 +174,7 @@
     }
 </script>
 
-<div class="page-head">
-    <h1>Metrics</h1>
+<PageHeader title="Metrics">
     {#if selected}
         <span class="badge neutral">{selected.types[0]}</span>
     {/if}
@@ -218,7 +218,7 @@
         </select>
         <RangeSwitch value={filters.range} onchange={(r) => setFilter('range', r)} />
     </div>
-</div>
+</PageHeader>
 
 <div class="panel">
     {#if error}

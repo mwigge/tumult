@@ -4,6 +4,7 @@
     import { ACTIVE_RUN_STATES, ApiError, api } from '#lib/api.js';
     import type { GameDayDetail, MeResponse, RunRow } from '#lib/types.js';
     import StatusBadge from '#lib/components/StatusBadge.svelte';
+    import PageHeader from '#lib/components/PageHeader.svelte';
 
     const id = $derived(page.params.id ?? '');
 
@@ -106,28 +107,18 @@
     }
 </script>
 
+<PageHeader
+    title={day ? day.title : 'GameDay'}
+    back={{ href: '/gamedays', label: 'gamedays' }}
+    sub={day
+        ? `${day.experiments.length} experiments · pass threshold ${day.scoring.pass_threshold} · MTTR target ${day.scoring.mttr_target_s}s`
+        : undefined}
+/>
 {#if error && !day}
-    <div class="page-head">
-        <a href="/gamedays" style="color: var(--text-dim)">← gamedays</a>
-        <h1>GameDay</h1>
-    </div>
     <div class="state error panel">{error}</div>
 {:else if !day}
-    <div class="page-head">
-        <a href="/gamedays" style="color: var(--text-dim)">← gamedays</a>
-        <h1>GameDay</h1>
-    </div>
     <div class="skeleton" style="height: 200px"></div>
 {:else}
-    <div class="page-head">
-        <a href="/gamedays" style="color: var(--text-dim)">← gamedays</a>
-        <h1>{day.title}</h1>
-        <span class="sub">
-            {day.experiments.length} experiments · pass threshold {day.scoring.pass_threshold} · MTTR
-            target {day.scoring.mttr_target_s}s
-        </span>
-    </div>
-
     {#if day.description}
         <p class="desc">{day.description}</p>
     {/if}

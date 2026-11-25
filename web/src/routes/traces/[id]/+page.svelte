@@ -4,6 +4,7 @@
     import type { Span, TraceDetail } from '#lib/types.js';
     import Waterfall from '#lib/components/Waterfall.svelte';
     import SpanDrawer from '#lib/components/SpanDrawer.svelte';
+    import PageHeader from '#lib/components/PageHeader.svelte';
 
     const id = $derived(page.params.id ?? '');
 
@@ -16,6 +17,8 @@
     let ended = $state(0);
     let errors = $state(0);
     let experiment: Span | null = $state(null);
+    // The trace is shown: it loaded and no error came.
+    const shown = $derived(!error && detail !== null);
 
     $effect(() => {
         let cancelled = false;
@@ -47,24 +50,23 @@
     }
 </script>
 
+<PageHeader
+    title={shown ? shortId(id) : 'Trace'}
+    mono={shown}
+    back={shown ? { href: '/traces', label: 'traces' } : undefined}
+>
+    {#if shown && experiment?.experiment_id}
+        <a href="/experiments/{experiment.experiment_id}"
+            >experiment {experiment.experiment_name ?? experiment.experiment_id}</a
+        >
+    {/if}
+</PageHeader>
 {#if error}
-    <div class="page-head"><h1>Trace</h1></div>
     <div class="state error panel">{error}</div>
 {:else if !detail}
-    <div class="page-head"><h1>Trace</h1></div>
     <div class="skeleton" style="height: 120px; margin-bottom: var(--space-3-5)"></div>
     <div class="skeleton" style="height: 320px"></div>
 {:else}
-    <div class="page-head">
-        <a href="/traces" style="color: var(--text-dim)">← traces</a>
-        <h1 class="mono">{shortId(id)}</h1>
-        {#if experiment?.experiment_id}
-            <a href="/experiments/{experiment.experiment_id}"
-                >experiment {experiment.experiment_name ?? experiment.experiment_id}</a
-            >
-        {/if}
-    </div>
-
     <div
         class="grid"
         style="grid-template-columns: repeat(4, 1fr); margin-bottom: var(--space-3-5)"

@@ -7,12 +7,15 @@
     import StatusBadge from '#lib/components/StatusBadge.svelte';
     import Waterfall from '#lib/components/Waterfall.svelte';
     import SpanDrawer from '#lib/components/SpanDrawer.svelte';
+    import PageHeader from '#lib/components/PageHeader.svelte';
 
     const id = $derived(page.params.id ?? '');
 
     let detail: ExperimentDetail | null = $state(null);
     let error: string | null = $state(null);
     let selected: Span | null = $state(null);
+    // The experiment once it is shown: null while it loads and after an error.
+    const shown = $derived.by(() => (error ? null : (detail?.experiment ?? null)));
 
     $effect(() => {
         let cancelled = false;
@@ -34,19 +37,12 @@
     }
 </script>
 
-{#if error}
-    <div class="page-head"><h1>Experiment</h1></div>
-    <div class="state error panel">{error}</div>
-{:else if !detail}
-    <div class="page-head"><h1>Experiment</h1></div>
-    <div class="skeleton" style="height: 120px; margin-bottom: var(--space-3-5)"></div>
-    <div class="skeleton" style="height: 320px"></div>
-{:else}
-    {@const exp = detail.experiment}
-    {@const ranNs = experimentDurationNs(exp)}
-    <div class="page-head">
-        <a href="/experiments" style="color: var(--text-dim)">← experiments</a>
-        <h1>{exp.name ?? exp.id}</h1>
+<PageHeader
+    title={shown ? (shown.name ?? shown.id) : 'Experiment'}
+    back={shown ? { href: '/experiments', label: 'experiments' } : undefined}
+>
+    {#if shown}
+        {@const exp = shown}
         <StatusBadge status={exp.status} />
         {#if exp.journal_only}
             <span class="badge neutral" title="This run sent no trace. The lake holds its journal."
@@ -54,7 +50,16 @@
             >
         {/if}
         <span class="sub mono">{exp.id}</span>
-    </div>
+    {/if}
+</PageHeader>
+{#if error}
+    <div class="state error panel">{error}</div>
+{:else if !detail}
+    <div class="skeleton" style="height: 120px; margin-bottom: var(--space-3-5)"></div>
+    <div class="skeleton" style="height: 320px"></div>
+{:else}
+    {@const exp = detail.experiment}
+    {@const ranNs = experimentDurationNs(exp)}
 
     <div
         class="grid"

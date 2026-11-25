@@ -7,6 +7,7 @@
     import { runTimeNs, runWaitNs } from '#lib/duration.js';
     import type { RunRow } from '#lib/types.js';
     import StatusBadge from './StatusBadge.svelte';
+    import PageHeader from './PageHeader.svelte';
 
     let {
         run,
@@ -44,15 +45,13 @@
     }
 </script>
 
-<div class="page-head">
-    <a href="/runs" style="color: var(--text-dim)">← runs</a>
-    <h1>{run.definition_name ?? run.registry_id}</h1>
+<PageHeader title={run.definition_name ?? run.registry_id} back={{ href: '/runs', label: 'runs' }}>
     <StatusBadge status={run.state} />
     <span class="sub mono">{run.id}</span>
     {#if active && canStop && !confirmingStop}
         <button class="estop" onclick={() => (confirmingStop = true)}>Stop run</button>
     {/if}
-</div>
+</PageHeader>
 
 {#if run.error}
     <div class="state error panel" style="margin-bottom: var(--space-3-5)">{run.error}</div>

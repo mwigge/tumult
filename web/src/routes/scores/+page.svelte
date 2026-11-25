@@ -25,6 +25,7 @@
     import Sparkline from '#lib/components/Sparkline.svelte';
     import RangeSwitch from '#lib/components/RangeSwitch.svelte';
     import DoraScore from '#lib/components/DoraScore.svelte';
+    import PageHeader from '#lib/components/PageHeader.svelte';
 
     const node = $derived(page.url.searchParams.get('node') ?? '');
     const range = $derived(page.url.searchParams.get('range') ?? '7d');
@@ -164,8 +165,7 @@
     });
 </script>
 
-<div class="page-head">
-    <h1>Scores</h1>
+<PageHeader title="Scores">
     <div class="views" role="group" aria-label="score view">
         <button
             class:on={view === 'org'}
@@ -193,7 +193,7 @@
             <RangeSwitch value={range} onchange={setRange} />
         </div>
     {/if}
-</div>
+</PageHeader>
 
 {#if view === 'dora'}
     <DoraScore {lei} onlei={setLei} />

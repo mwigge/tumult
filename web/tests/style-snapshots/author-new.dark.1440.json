@@ -316,7 +316,7 @@
       "margin": "0px 0px 18px",
       "gap": "14px"
     },
-    "div.shell > main[main].main > div.page-head > a[link] \"← catalog\"": {
+    "div.shell > main[main].main > div.page-head > a[link].back \"← catalog\"": {
       "color": "rgb(139, 152, 165)",
       "display": "block"
     },

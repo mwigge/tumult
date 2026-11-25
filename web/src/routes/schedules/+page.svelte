@@ -2,6 +2,7 @@
     import { onMount } from 'svelte';
     import { api, fmtAgo, fmtIn, fmtInterval, fmtTs } from '#lib/api.js';
     import type { MeResponse, RegistryEntry, Schedule } from '#lib/types.js';
+    import PageHeader from '#lib/components/PageHeader.svelte';
 
     const PRESETS: { label: string; seconds: number }[] = [
         { label: 'every 15m', seconds: 900 },
@@ -126,14 +127,12 @@
     }
 </script>
 
-<div class="page-head">
-    <h1>Schedules</h1>
-    <span class="sub">
-        {schedules
-            ? `${schedules.length} recurring run${schedules.length === 1 ? '' : 's'}`
-            : 'interval-based recurring runs'}
-    </span>
-</div>
+<PageHeader
+    title="Schedules"
+    sub={schedules
+        ? `${schedules.length} recurring run${schedules.length === 1 ? '' : 's'}`
+        : 'interval-based recurring runs'}
+/>
 
 <div class="panel" style="margin-bottom: var(--space-3-5)">
     {#if error}

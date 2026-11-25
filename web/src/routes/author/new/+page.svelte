@@ -14,6 +14,7 @@
         ScaffoldResponse,
         ValidateToonResponse,
     } from '#lib/types.js';
+    import PageHeader from '#lib/components/PageHeader.svelte';
 
     const plugin = $derived(page.url.searchParams.get('plugin') ?? '');
     const actionName = $derived(page.url.searchParams.get('action') ?? '');
@@ -81,10 +82,7 @@
     }
 </script>
 
-<div class="page-head">
-    <a href="/author" style="color: var(--text-dim)">← catalog</a>
-    <h1>Author an experiment</h1>
-</div>
+<PageHeader title="Author an experiment" back={{ href: '/author', label: 'catalog' }} />
 
 {#if loadError}
     <div class="state error">Failed to load the action: {loadError}</div>

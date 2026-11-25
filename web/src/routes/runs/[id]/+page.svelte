@@ -11,6 +11,7 @@
     import AuditTimeline from '#lib/components/AuditTimeline.svelte';
     import ScopeSummary from '#lib/components/ScopeSummary.svelte';
     import RunImpactPanel from '#lib/components/RunImpactPanel.svelte';
+    import PageHeader from '#lib/components/PageHeader.svelte';
 
     const id = $derived(page.params.id ?? '');
 
@@ -138,17 +139,12 @@
     });
 </script>
 
+{#if !detail}
+    <PageHeader title="Run" back={{ href: '/runs', label: 'runs' }} />
+{/if}
 {#if error && !detail}
-    <div class="page-head">
-        <a href="/runs" style="color: var(--text-dim)">← runs</a>
-        <h1>Run</h1>
-    </div>
     <div class="state error panel">{error}</div>
 {:else if !detail}
-    <div class="page-head">
-        <a href="/runs" style="color: var(--text-dim)">← runs</a>
-        <h1>Run</h1>
-    </div>
     <div class="skeleton" style="height: 120px; margin-bottom: var(--space-3-5)"></div>
     <div class="skeleton" style="height: 320px"></div>
 {:else}

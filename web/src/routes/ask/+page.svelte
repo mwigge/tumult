@@ -1,6 +1,7 @@
 <script lang="ts">
     import { api } from '#lib/api.js';
     import type { AskResponse } from '#lib/types.js';
+    import PageHeader from '#lib/components/PageHeader.svelte';
 
     const EXAMPLES = [
         'How many experiments ran?',
@@ -47,12 +48,10 @@
     }
 </script>
 
-<div class="page-head">
-    <h1>Ask</h1>
-    <span class="sub"
-        >natural-language analytics over the telemetry store — guarded SQL, read-only</span
-    >
-</div>
+<PageHeader
+    title="Ask"
+    sub="natural-language analytics over the telemetry store — guarded SQL, read-only"
+/>
 
 <div class="panel" style="margin-bottom: var(--space-3-5)">
     <form

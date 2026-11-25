@@ -7,6 +7,7 @@
     import type { Dimensions, ExperimentRow } from '#lib/types.js';
     import StatusBadge from '#lib/components/StatusBadge.svelte';
     import RangeSwitch from '#lib/components/RangeSwitch.svelte';
+    import PageHeader from '#lib/components/PageHeader.svelte';
 
     const filters = $derived({
         range: page.url.searchParams.get('range') ?? '24h',
@@ -54,11 +55,10 @@
     }
 </script>
 
-<div class="page-head">
-    <h1>Experiments</h1>
-    <span class="sub"
-        >{rows ? `${rows.length} run${rows.length === 1 ? '' : 's'}` : 'newest first'}</span
-    >
+<PageHeader
+    title="Experiments"
+    sub={rows ? `${rows.length} run${rows.length === 1 ? '' : 's'}` : 'newest first'}
+>
     <div class="controls">
         <input
             type="search"
@@ -95,7 +95,7 @@
         </select>
         <RangeSwitch value={filters.range} onchange={(r) => setFilter('range', r)} />
     </div>
-</div>
+</PageHeader>
 
 <div class="panel">
     {#if error}

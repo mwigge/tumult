@@ -34,6 +34,7 @@
     import type { Tip } from '#lib/tooltip.js';
     import { LENSES, edgeTooltipHtml, spineTooltipHtml, tooltipHtml } from '#lib/starmap/style.js';
     import type { Lens, RelKey, StyleContext } from '#lib/starmap/style.js';
+    import PageHeader from '#lib/components/PageHeader.svelte';
 
     const CLUSTER = 'cluster:';
     /** Most buttons the node list renders at once; the filter narrows it. */
@@ -285,8 +286,7 @@
     const kindOf = (n: StarNode) => (n.kind === 'org' && n.org_kind ? n.org_kind : n.kind);
 </script>
 
-<div class="page-head">
-    <h1>Star Map</h1>
+<PageHeader title="Star Map">
     <span class="sub">
         {map ? `${plural(map.counts.nodes, 'node')} · ${plural(map.counts.edges, 'edge')}` : ''}
         {loading && map ? '· loading' : ''}
@@ -311,7 +311,7 @@
         </select>
         <RangeSwitch value={range} ranges={RANGES} onchange={(r) => setParams({ range: r })} />
     </div>
-</div>
+</PageHeader>
 
 {#if focus}
     <p class="focus">

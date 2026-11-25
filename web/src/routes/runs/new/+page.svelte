@@ -11,6 +11,7 @@
         RegistryDefinition,
         RegistryEntry,
     } from '#lib/types.js';
+    import PageHeader from '#lib/components/PageHeader.svelte';
 
     let me = $state<MeResponse | null>(null);
     let entries = $state<RegistryEntry[] | null>(null);
@@ -178,13 +179,11 @@
     }
 </script>
 
-<div class="page-head">
-    <a href="/runs" style="color: var(--text-dim)">← runs</a>
-    <h1>New run</h1>
+<PageHeader title="New run" back={{ href: '/runs', label: 'runs' }}>
     {#if readOnlyNote}
         <span class="sub">your role ({me?.role ?? 'viewer'}) is read-only here</span>
     {/if}
-</div>
+</PageHeader>
 
 <div class="panel" style="margin-bottom: var(--space-3-5)">
     <h2>1 · Definition</h2>

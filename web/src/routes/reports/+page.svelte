@@ -10,6 +10,7 @@
         ReportMetaV2,
         ReportTemplate,
     } from '#lib/types.js';
+    import PageHeader from '#lib/components/PageHeader.svelte';
 
     let me = $state<MeResponse | null>(null);
     const canGenerate = $derived(
@@ -134,10 +135,10 @@
     }
 </script>
 
-<div class="page-head">
-    <h1>Reports</h1>
-    <span class="sub">compliance-grade reports (PDF + print preview) and quick metric digests</span>
-</div>
+<PageHeader
+    title="Reports"
+    sub="compliance-grade reports (PDF + print preview) and quick metric digests"
+/>
 
 <div class="panel" style="margin-bottom: var(--space-3-5)">
     <h2>Compliance reports</h2>

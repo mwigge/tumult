@@ -129,6 +129,10 @@ code,
     color: var(--text-dim);
     font-size: var(--font-size-sm);
 }
+/* The link back to the page above. */
+.page-head .back {
+    color: var(--text-dim);
+}
 
 /* --- panels & tables ------------------------------------------------------*/
 .panel {

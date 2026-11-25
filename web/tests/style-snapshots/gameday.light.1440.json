@@ -316,7 +316,7 @@
       "margin": "0px 0px 18px",
       "gap": "14px"
     },
-    "div.shell > main[main].main > div.page-head > a[link] \"← gamedays\"": {
+    "div.shell > main[main].main > div.page-head > a[link].back \"← gamedays\"": {
       "color": "rgb(91, 103, 114)",
       "display": "block"
     },

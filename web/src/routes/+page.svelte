@@ -11,6 +11,7 @@
     import KpiCard from '#lib/components/KpiCard.svelte';
     import RangeSwitch from '#lib/components/RangeSwitch.svelte';
     import EChart from '#lib/components/EChart.svelte';
+    import PageHeader from '#lib/components/PageHeader.svelte';
 
     const range = $derived(page.url.searchParams.get('range') ?? '24h');
 
@@ -177,13 +178,11 @@
     }
 </script>
 
-<div class="page-head">
-    <h1>Overview</h1>
-    <span class="sub">resilience for the selected window</span>
+<PageHeader title="Overview" sub="resilience for the selected window">
     <div style="margin-left: auto">
         <RangeSwitch value={range} onchange={setRange} />
     </div>
-</div>
+</PageHeader>
 
 {#if error}
     <div class="state error panel">Failed to load overview: {error}</div>

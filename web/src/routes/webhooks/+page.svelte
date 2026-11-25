@@ -2,6 +2,7 @@
     import { onMount } from 'svelte';
     import { api, fmtAgo, fmtTs } from '#lib/api.js';
     import type { MeResponse, Webhook } from '#lib/types.js';
+    import PageHeader from '#lib/components/PageHeader.svelte';
 
     let me = $state<MeResponse | null>(null);
     let hooks = $state<Webhook[] | null>(null);
@@ -98,14 +99,12 @@
     }
 </script>
 
-<div class="page-head">
-    <h1>Webhooks</h1>
-    <span class="sub">
-        {hooks
-            ? `${hooks.length} sink${hooks.length === 1 ? '' : 's'}`
-            : 'signed run-event notifications'}
-    </span>
-</div>
+<PageHeader
+    title="Webhooks"
+    sub={hooks
+        ? `${hooks.length} sink${hooks.length === 1 ? '' : 's'}`
+        : 'signed run-event notifications'}
+/>
 
 {#if me && !isAdmin}
     <div class="panel">

@@ -5,6 +5,7 @@
     import type { MeResponse, RunRow } from '#lib/types.js';
     import StatusBadge from '#lib/components/StatusBadge.svelte';
     import { runTimeNs, runWaitNs } from '#lib/duration.js';
+    import PageHeader from '#lib/components/PageHeader.svelte';
 
     // Client-side state filter: '' = all, 'active' = anything in
     // ACTIVE_RUN_STATES, otherwise one terminal state.
@@ -106,11 +107,10 @@
     }
 </script>
 
-<div class="page-head">
-    <h1>Runs</h1>
-    <span class="sub"
-        >{shown ? `${shown.length} run${shown.length === 1 ? '' : 's'}` : 'newest first'}</span
-    >
+<PageHeader
+    title="Runs"
+    sub={shown ? `${shown.length} run${shown.length === 1 ? '' : 's'}` : 'newest first'}
+>
     <div class="controls">
         <div class="seg">
             {#each FILTERS as f (f)}
@@ -132,7 +132,7 @@
             <button class="primary" onclick={() => goto('/runs/new')}>New run</button>
         {/if}
     </div>
-</div>
+</PageHeader>
 
 {#if haltNote}
     <div class="panel halt-note">{haltNote}</div>

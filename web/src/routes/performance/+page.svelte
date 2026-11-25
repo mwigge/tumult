@@ -41,6 +41,7 @@
         PerfVerdict,
     } from '#lib/types.js';
     import EChart from '#lib/components/EChart.svelte';
+    import PageHeader from '#lib/components/PageHeader.svelte';
 
     // Why the read has no answer: `none` = 404 (no evidence in scope),
     // `input` = 400 (the query must be narrowed), `fail` = anything else.
@@ -229,14 +230,12 @@
     }
 </script>
 
-<div class="page-head">
-    <h1>Performance</h1>
-    <span class="sub">baseline versus candidate latency per target</span>
+<PageHeader title="Performance" sub="baseline versus candidate latency per target">
     {#if answer}
         <span class="sub">as of {fmtAgo(answer.as_of_ns)}</span>
     {/if}
     <span class="sub" role="status" aria-live="polite">{loading ? 'Loading…' : ''}</span>
-</div>
+</PageHeader>
 
 <div class="controls">
     {#if targetOptions.length > 0}
