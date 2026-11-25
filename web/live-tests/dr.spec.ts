@@ -255,7 +255,7 @@ test.describe('with DR runs, exercises and a plan', () => {
         ]);
         const row = page.locator('tr[data-target="ledger/prod"]');
         await expect(row.locator('td').nth(5)).toHaveText(
-            `at least ${seconds(rto(lost).observed ?? 0)}, not recovered target 5 s`,
+            `at least ${seconds(rto(lost).observed ?? 0)}, not recovered target 5 s, missed`,
         );
         await expect(row.locator('td').nth(1).getByRole('link')).toHaveAttribute(
             'href',
