@@ -69,5 +69,52 @@
     "$type": "color",
     "$value": "{blue.77}",
     "$description": "A quiet accent fill: the active segment and the primary button."
+  },
+  "chart": {
+    "$description": "The chart roles of the light theme. Charts draw on a canvas and take these from tokens.gen.ts.",
+    "series": {
+      "$type": "color",
+      "$description": "The colours of chart series, in order. Okabe-Ito, so that readers with colour blindness can tell them apart. Each is 3:1 or more on the light panel. The status colours are not among them.",
+      "1": {
+        "$value": "{accent}",
+        "$description": "The first series: the accent of the theme."
+      },
+      "2": {
+        "$value": "{okabe-ito.orange-deep}",
+        "$description": "The second series: orange, darker than on dark."
+      },
+      "3": {
+        "$value": "{okabe-ito.bluish-green}",
+        "$description": "The third series."
+      },
+      "4": {
+        "$value": "{okabe-ito.reddish-purple}",
+        "$description": "The fourth series."
+      },
+      "5": {
+        "$value": "{okabe-ito.sky-blue-deep}",
+        "$description": "The fifth series: sky blue, darker than on dark."
+      },
+      "6": {
+        "$value": "{okabe-ito.vermillion}",
+        "$description": "The sixth series."
+      },
+      "7": {
+        "$value": "{okabe-ito.yellow-deep}",
+        "$description": "The seventh series: yellow, darker than on dark."
+      }
+    },
+    "extra-series": {
+      "$type": "color",
+      "$description": "Two more series, for a chart that draws its first four in the accent and the status colours: the metrics chart. Each is 3:1 or more on the light panel.",
+      "1": {
+        "$value": "{violet.60}",
+        "$description": "The fifth series of the metrics chart: violet, darker than on dark."
+      },
+      "2": {
+        "$value": "{pink.60}",
+        "$description": "The sixth series of the metrics chart: pink, darker than on dark."
+      }
+    }
   }
 }

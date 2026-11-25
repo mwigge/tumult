@@ -275,6 +275,18 @@ function css(fallback, themes) {
 }
 
 /**
+ * A value as the TS writes it: a px dimension, a font weight and a number
+ * as a number, as ECharts takes them, and anything else as CSS writes it.
+ * @param {Token} token
+ */
+function tsValue(token) {
+    if (token.type === 'fontWeight' || token.type === 'number') return token.value;
+    if (token.type !== 'dimension') return cssValue(token);
+    const { value, unit } = /** @type {{ value: number, unit: string }} */ (token.value);
+    return unit === 'px' ? value : cssValue(token);
+}
+
+/**
  * The tokens a page or a chart may use, as nested objects. A group of tokens
  * named 1, 2, 3 and on is a list.
  * @param {Map<string, Token>} tokens
@@ -286,7 +298,7 @@ function nest(tokens) {
         if (token.set === PRIMITIVE || token.set === PAGE_ONLY) continue;
         const parts = path.split('.');
         const leaf = /** @type {string} */ (parts.pop());
-        parts.reduce((at, part) => (at[part] ??= {}), tree)[leaf] = cssValue(token);
+        parts.reduce((at, part) => (at[part] ??= {}), tree)[leaf] = tsValue(token);
     }
     /** @type {(node: any) => any} */
     const lists = (node) => {

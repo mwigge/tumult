@@ -162,6 +162,15 @@ describe('build', () => {
         );
     });
 
+    it('writes the chart sizes and the chart weight to the TS as numbers, as ECharts takes them', () => {
+        const ts = build(TOKENS)['src/lib/tokens.gen.ts'];
+
+        expect(ts).toMatch(
+            /"size": \{\s*"2xs": 9,\s*"xs": 10,\s*"sm": 11,\s*"md": 12,\s*"lg": 15\s*\}/,
+        );
+        expect(ts).toContain('"weight": 600');
+    });
+
     it('writes the committed outputs from the committed token files', () => {
         for (const [file, text] of Object.entries(build(TOKENS))) {
             expect(
