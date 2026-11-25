@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/mwigge/tumult/actions/workflows/ci.yml/badge.svg)](https://github.com/mwigge/tumult/actions/workflows/ci.yml)
 [![Coverage](https://github.com/mwigge/tumult/actions/workflows/coverage.yml/badge.svg)](https://github.com/mwigge/tumult/actions/workflows/coverage.yml)
-![Version](https://img.shields.io/badge/version-3.0.4-brightgreen)
+![Version](https://img.shields.io/badge/version-3.0.5-brightgreen)
 ![Rust](https://img.shields.io/badge/rust-1.92.0%2B-orange)
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue)
 
@@ -122,9 +122,10 @@ More in the [MCP guide](https://tumult.rs/guides/mcp-guide.html).
 
 ## Upgrading
 
-Read the [3.0.4 notes](https://tumult.rs/releases/3.0.4.html) first. The
-lake moves to schema v26, which an older Tumult cannot open. Stop the
-daemon and back up with `tumult store backup --output <dir>`.
+Read the [3.0.5 notes](https://tumult.rs/releases/3.0.5.html) first. The
+lake stays at schema v26, so 3.0.5 needs no migration. From 3.0.3 or
+older, the lake moves to v26, which an older Tumult cannot open: stop the
+daemon and back up with `tumult store backup --output <dir>` first.
 
 ## Documentation
 

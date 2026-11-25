@@ -90,6 +90,7 @@ releases/3.0.1.html
 releases/3.0.2.html
 releases/3.0.3.html
 releases/3.0.4.html
+releases/3.0.5.html
 releases/index.html
 resilience-metadata-standard.html
 security-assessment.html
