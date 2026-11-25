@@ -4,15 +4,16 @@
 // modifier. For each theme this merges the sets in order, resolves every
 // alias and checks every value. It writes src/lib/tokens.css (the custom
 // properties of each theme), src/lib/tokens.gen.ts (the same values for
-// ECharts, which cannot read CSS), the colours of the CLI HTML report and
-// the colours of the docs site. All are committed, and CI fails when they
+// ECharts, which cannot read CSS), the colours of the CLI HTML report, the
+// colours of the docs site and the pictures of the tokens that the UI
+// standard page of the docs shows. All are committed, and CI fails when they
 // are not what this writes. It reads only the part of the format that
 // Tumult uses: srgb colours with a hex, font families, dimensions in px or
 // rem, font weights and numbers as numbers, aliases, sets and one modifier.
 //
 // Usage: node scripts/build-tokens.mjs
 
-import { readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -36,6 +37,42 @@ const DOCS_ONLY = 'docs';
 // page, as paths under web/.
 const DOCS_SCHEME = '../docs/_sass/color_schemes/_tumult-tokens.scss';
 const LANDING_CSS = '../docs/assets/css/tokens.css';
+// The pictures of the tokens on docs/reference/ui-standard.md, as a path
+// under web/: a swatch of each colour role in each theme, a strip of the
+// series of the charts and the type, spacing and radius scale.
+const PICTURES = '../docs/images/3.0/tokens';
+/** @typedef {{ text: string, fill: string, edge: string, font: string }} Look */
+/**
+ * @typedef {{ title: string, prefix: string, row: (px: number) => number,
+ *   draw: (x: number, top: number, base: number, px: number, look: Look) => string }} Group
+ */
+// The groups of page tokens that the scale picture draws: the start of their
+// names, the height of a row, and the step drawn at its size at x, in a row
+// from `top` whose text stands on `base`.
+/** @type {Group[]} */
+const SCALE = [
+    {
+        title: 'Type',
+        prefix: 'font-size-',
+        row: (px) => Math.max(Math.ceil(px * 1.6), 24),
+        draw: (x, _top, base, px, { text, font }) =>
+            `<text x="${x + 200}" y="${base}" font-family="${font}" fill="${text}" font-size="${px}">Krönika shows a run</text>`,
+    },
+    {
+        title: 'Spacing',
+        prefix: 'space-',
+        row: () => 20,
+        draw: (x, _top, base, px, { fill }) =>
+            `<rect x="${x + 130}" y="${base - 10}" width="${px}" height="12" fill="${fill}"/>`,
+    },
+    {
+        title: 'Radius',
+        prefix: 'radius-',
+        row: () => 44,
+        draw: (x, top, _base, px, { edge }) =>
+            `<rect x="${x + 150.5}" y="${top + 4.5}" width="35" height="35" rx="${px}" fill="none" stroke="${edge}"/>`,
+    },
+];
 
 /** @typedef {{ value: unknown, type?: string, set: string }} Token */
 /** @typedef {{ set: string, tokens: Record<string, unknown> }} Source */
@@ -388,6 +425,138 @@ function landingCss(themes) {
     ].join('\n');
 }
 
+/** @type {(width: number, height: number, title: string, body: string[]) => string} */
+const svg = (width, height, title, body) =>
+    [
+        `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img">`,
+        `<title>${title}</title>`,
+        ...body,
+        '</svg>',
+        '',
+    ].join('\n');
+
+/**
+ * A swatch: a box of each colour side by side, with a thin edge, so that a
+ * white swatch shows on the white page of the docs.
+ * @param {string} title
+ * @param {string[]} hexes
+ * @param {string} edge
+ */
+function swatch(title, hexes, edge) {
+    const cell = hexes.length === 1 ? 48 : 24;
+    const width = cell * hexes.length;
+    return svg(width, 24, title, [
+        ...hexes.map(
+            (hex, at) => `<rect x="${at * cell}" y="0" width="${cell}" height="24" fill="${hex}"/>`,
+        ),
+        `<rect x="0.5" y="0.5" width="${width - 1}" height="23" fill="none" stroke="${edge}"/>`,
+    ]);
+}
+
+/** @type {(token: Token) => string} */
+const hexOf = (token) => /** @type {{ hex: string }} */ (token.value).hex;
+
+/**
+ * The colour roles of a theme that pages use, by name: the colours at the
+ * top level of the tokens, as tokens.gen.ts has them.
+ * @param {Map<string, Token>} tokens
+ */
+const roles = (tokens) =>
+    [...tokens].filter(
+        ([path, token]) =>
+            !path.includes('.') &&
+            token.type === 'color' &&
+            ![PRIMITIVE, PAGE_ONLY, DOCS_ONLY].includes(token.set),
+    );
+
+/**
+ * One group of the scale from `top`, at x: its title, then a row for each of
+ * its steps with the name and the value, and the step drawn at its size.
+ * The lines of the picture and the y below the group.
+ * @param {Map<string, Token>} light
+ * @param {Group} group
+ * @param {number} x
+ * @param {number} top
+ * @param {Look & { label: string }} look
+ */
+function scaleGroup(light, group, x, top, look) {
+    const lines = [
+        `<text x="${x}" y="${top + 24}" font-family="${look.font}" font-size="15" font-weight="600" fill="${look.text}">${group.title}</text>`,
+    ];
+    let y = top + 36;
+    for (const [path, token] of light) {
+        if (!path.startsWith(group.prefix)) continue;
+        const { value, unit } = /** @type {{ value: number, unit: string }} */ (token.value);
+        const px = unit === 'rem' ? value * 16 : value;
+        const row = group.row(px);
+        const base = y + Math.round(row / 2) + 4;
+        lines.push(`<text x="${x}" y="${base}" ${look.label}>${path} ${value}${unit}</text>`);
+        lines.push(group.draw(x, y, base, px, look));
+        y += row;
+    }
+    return { lines, bottom: y };
+}
+
+/**
+ * The type, spacing and radius scale of the pages, in the light theme: the
+ * type across the top, and spacing and radius side by side below it.
+ * @param {Map<string, Token>} light
+ */
+function scale(light) {
+    const css = properties(light);
+    /** @type {(name: string) => string} */
+    const prop = (name) => /** @type {string} */ (css.get(name));
+    const look = {
+        text: prop('--text'),
+        fill: prop('--accent-dim'),
+        edge: prop('--border-input'),
+        font: prop('--font-body'),
+        label: `font-family="${prop('--mono')}" font-size="12" fill="${prop('--text-dim')}"`,
+    };
+    const [type, spacing, radius] = SCALE;
+    const top = scaleGroup(light, type, 24, 16, look);
+    const left = scaleGroup(light, spacing, 24, top.bottom + 8, look);
+    const right = scaleGroup(light, radius, 344, top.bottom + 8, look);
+    const height = Math.max(left.bottom, right.bottom) + 24;
+    return svg(640, height, 'The type, spacing and radius scale of Krönika', [
+        `<rect x="0" y="0" width="640" height="${height}" fill="${prop('--bg-panel')}"/>`,
+        ...top.lines,
+        ...left.lines,
+        ...right.lines,
+    ]);
+}
+
+/**
+ * The pictures of the tokens on the UI standard page of the docs: a swatch
+ * of each colour role in each theme, a strip of the series of the charts of
+ * each theme, and the scale. Path under web/ to its text.
+ * @param {Record<string, Map<string, Token>>} themes
+ */
+function pictures(themes) {
+    const edge = /** @type {string} */ (colours(themes.light).get('--border-input'));
+    /** @type {Record<string, string>} */
+    const out = {};
+    for (const [theme, tokens] of Object.entries(themes)) {
+        for (const [role, token] of roles(tokens))
+            out[`${PICTURES}/swatch-${theme}-${role}.svg`] = swatch(
+                `${role}, ${theme}: ${hexOf(token)}`,
+                [hexOf(token)],
+                edge,
+            );
+        const series = [...tokens]
+            .filter(([path]) => /^chart\.series\.\d+$/.test(path))
+            .sort(([a], [b]) => Number(a.split('.')[2]) - Number(b.split('.')[2]))
+            .map(([, token]) => hexOf(token));
+        out[`${PICTURES}/swatch-${theme}-chart-series.svg`] = swatch(
+            `chart.series, ${theme}: ${series.join(', ')}`,
+            series,
+            edge,
+        );
+    }
+    out[`${PICTURES}/scale.svg`] = scale(themes.light);
+    return out;
+}
+
 /**
  * A value as the TS writes it: a px dimension, a font weight and a number
  * as a number, as ECharts takes them, and anything else as CSS writes it.
@@ -451,13 +620,17 @@ export function build(dir) {
         [REPORT_CSS]: reportCss(themes),
         [DOCS_SCHEME]: docsScheme(themes),
         [LANDING_CSS]: landingCss(themes),
+        ...pictures(themes),
     };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
     try {
         const outputs = build(join(WEB, 'tokens'));
-        for (const [file, text] of Object.entries(outputs)) writeFileSync(join(WEB, file), text);
+        for (const [file, text] of Object.entries(outputs)) {
+            mkdirSync(dirname(join(WEB, file)), { recursive: true });
+            writeFileSync(join(WEB, file), text);
+        }
     } catch (error) {
         console.error(`build-tokens: ${message(error)}`);
         process.exitCode = 1;
