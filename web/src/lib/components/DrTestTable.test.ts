@@ -70,13 +70,13 @@ describe('the table of DR tests', () => {
         }
     });
 
-    it('links a run to its page and a manual record to the manual records', () => {
+    it('links a run to its page and a manual record to that record', () => {
         const html = table();
         expect(rowOf(html, 'data-test="automated:orders-dr"')).toContain(
             'href="/experiments/orders-dr"',
         );
         const manual = rowOf(html, 'data-test="manual:01CAT"');
-        expect(manual).toContain('href="/manual?tab=records"');
+        expect(manual).toContain('href="/manual?tab=records&amp;record=01CAT"');
         expect(textOf(manual)).toContain('catalog restore');
         expect(textOf(manual)).toContain('manual restore');
         expect(textOf(rowOf(html, 'data-test="automated:search-dr"'))).toContain('search-dr');
