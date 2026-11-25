@@ -1,0 +1,53 @@
+{
+  "$schema": "https://www.designtokens.org/schemas/2025.10/resolver.json",
+  "version": "2025.10",
+  "name": "Tumult",
+  "description": "The design tokens of Krönika. scripts/build-tokens.mjs reads this file and writes src/lib/tokens.css and src/lib/tokens.gen.ts.",
+  "sets": {
+    "primitive": {
+      "description": "Raw colours and fonts. They reach no output.",
+      "sources": [
+        {
+          "$ref": "primitive.tokens.json"
+        }
+      ]
+    },
+    "semantic": {
+      "description": "Roles that are the same in every theme.",
+      "sources": [
+        {
+          "$ref": "semantic.tokens.json"
+        }
+      ]
+    }
+  },
+  "modifiers": {
+    "theme": {
+      "description": "Light or dark. Dark is the default.",
+      "contexts": {
+        "dark": [
+          {
+            "$ref": "dark.tokens.json"
+          }
+        ],
+        "light": [
+          {
+            "$ref": "light.tokens.json"
+          }
+        ]
+      },
+      "default": "dark"
+    }
+  },
+  "resolutionOrder": [
+    {
+      "$ref": "#/sets/primitive"
+    },
+    {
+      "$ref": "#/sets/semantic"
+    },
+    {
+      "$ref": "#/modifiers/theme"
+    }
+  ]
+}

@@ -1,0 +1,73 @@
+{
+  "$description": "The colour roles of the light theme. The pages use them as CSS custom properties of the same name.",
+  "bg": {
+    "$type": "color",
+    "$value": "{grey.97}",
+    "$description": "The page behind everything."
+  },
+  "bg-raised": {
+    "$type": "color",
+    "$value": "{grey.100}",
+    "$description": "The sidebar, inputs and other parts above the page."
+  },
+  "bg-panel": {
+    "$type": "color",
+    "$value": "{grey.100}",
+    "$description": "The inside of a panel, and the tooltip of a chart."
+  },
+  "bg-hover": {
+    "$type": "color",
+    "$value": "{grey.94}",
+    "$description": "A row or a link under the pointer, and a neutral badge."
+  },
+  "border": {
+    "$type": "color",
+    "$value": "{grey.92}",
+    "$description": "Thin lines: panel edges, table rows and chart grid lines."
+  },
+  "border-strong": {
+    "$type": "color",
+    "$value": "{grey.82}",
+    "$description": "Strong lines: input edges, table heads and chart axes."
+  },
+  "text": {
+    "$type": "color",
+    "$value": "{grey.13}",
+    "$description": "Body text."
+  },
+  "text-dim": {
+    "$type": "color",
+    "$value": "{grey.43}",
+    "$description": "Text that matters less: labels, and the text of chart axes."
+  },
+  "text-faint": {
+    "$type": "color",
+    "$value": "{grey.62}",
+    "$description": "Text that matters least, such as hints and time stamps."
+  },
+  "ok": {
+    "$type": "color",
+    "$value": "{green.51}",
+    "$description": "Status: it went well."
+  },
+  "warn": {
+    "$type": "color",
+    "$value": "{amber.47}",
+    "$description": "Status: it needs a look."
+  },
+  "fail": {
+    "$type": "color",
+    "$value": "{red.45}",
+    "$description": "Status: it failed."
+  },
+  "accent": {
+    "$type": "color",
+    "$value": "{blue.46}",
+    "$description": "Links, focus and the active item."
+  },
+  "accent-dim": {
+    "$type": "color",
+    "$value": "{blue.77}",
+    "$description": "A quiet accent fill: the active segment and the primary button."
+  }
+}

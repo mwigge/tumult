@@ -1,0 +1,43 @@
+{
+  "$description": "The semantic tier: roles that are the same in every theme. The colour roles of each theme are in dark.tokens.json and light.tokens.json.",
+  "mono": {
+    "$type": "fontFamily",
+    "$value": "{font.mono}",
+    "$description": "The font of code, ids and numbers that line up in columns."
+  },
+  "chart": {
+    "$description": "Charts draw on a canvas and cannot read CSS, so they take these from tokens.gen.ts.",
+    "series": {
+      "$type": "color",
+      "$description": "The colours of chart series, in order. Okabe-Ito, so that readers with colour blindness can tell them apart. The status colours are not among them.",
+      "1": {
+        "$value": "{blue.70}",
+        "$description": "The first series: the blue of the dark accent."
+      },
+      "2": {
+        "$value": "{okabe-ito.orange}",
+        "$description": "The second series."
+      },
+      "3": {
+        "$value": "{okabe-ito.bluish-green}",
+        "$description": "The third series."
+      },
+      "4": {
+        "$value": "{okabe-ito.reddish-purple}",
+        "$description": "The fourth series."
+      },
+      "5": {
+        "$value": "{okabe-ito.sky-blue}",
+        "$description": "The fifth series."
+      },
+      "6": {
+        "$value": "{okabe-ito.vermillion}",
+        "$description": "The sixth series."
+      },
+      "7": {
+        "$value": "{okabe-ito.yellow}",
+        "$description": "The seventh series."
+      }
+    }
+  }
+}

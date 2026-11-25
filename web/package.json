@@ -8,6 +8,7 @@
     "dev": "vite dev",
     "build": "vite build",
     "build:report": "vite build --config vite.report.config.ts",
+    "build:tokens": "node scripts/build-tokens.mjs",
     "preview": "vite preview",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "format": "prettier --write .",
