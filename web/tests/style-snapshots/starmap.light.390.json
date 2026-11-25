@@ -85,7 +85,8 @@
       "border-right": "1px solid rgb(197, 206, 214)",
       "border-bottom": "1px solid rgb(197, 206, 214)",
       "border-left": "1px solid rgb(197, 206, 214)",
-      "border-radius": "5px"
+      "border-radius": "5px",
+      "gap": "normal 1px"
     },
     "div.shell > main[main].main > div.page-head > div.controls > div[group].seg \"lens\" > button[button].active \"evidence\"": {
       "color": "rgb(255, 255, 255)",
@@ -102,7 +103,7 @@
       "font-size": "12.5px",
       "line-height": "normal",
       "display": "block",
-      "border-left": "1px solid rgb(197, 206, 214)",
+      "box-shadow": "rgb(197, 206, 214) -1px 0px 0px 0px",
       "padding": "5px 12px"
     },
     "div.shell > main[main].main > div.page-head > div.controls > div[group].seg \"lens\" > button[button] \"conformance\"": {
@@ -111,7 +112,7 @@
       "font-size": "12.5px",
       "line-height": "normal",
       "display": "block",
-      "border-left": "1px solid rgb(197, 206, 214)",
+      "box-shadow": "rgb(197, 206, 214) -1px 0px 0px 0px",
       "padding": "5px 12px"
     },
     "div.shell > main[main].main > div.page-head > div.controls > select[combobox] \"environment\"": {
@@ -133,7 +134,8 @@
       "border-right": "1px solid rgb(197, 206, 214)",
       "border-bottom": "1px solid rgb(197, 206, 214)",
       "border-left": "1px solid rgb(197, 206, 214)",
-      "border-radius": "5px"
+      "border-radius": "5px",
+      "gap": "normal 1px"
     },
     "div.shell > main[main].main > div.page-head > div.controls > div[group].seg \"time range\" > button[button] \"24h\"": {
       "color": "rgb(91, 103, 114)",
@@ -150,7 +152,7 @@
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(74, 123, 164)",
-      "border-left": "1px solid rgb(197, 206, 214)",
+      "box-shadow": "rgb(197, 206, 214) -1px 0px 0px 0px",
       "padding": "5px 12px"
     },
     "div.shell > main[main].main > div.page-head > div.controls > div[group].seg \"time range\" > button[button] \"14d\"": {
@@ -159,7 +161,7 @@
       "font-size": "12.5px",
       "line-height": "normal",
       "display": "block",
-      "border-left": "1px solid rgb(197, 206, 214)",
+      "box-shadow": "rgb(197, 206, 214) -1px 0px 0px 0px",
       "padding": "5px 12px"
     },
     "div.shell > main[main].main > div.page-head > div.controls > div[group].seg \"time range\" > button[button] \"30d\"": {
@@ -168,7 +170,7 @@
       "font-size": "12.5px",
       "line-height": "normal",
       "display": "block",
-      "border-left": "1px solid rgb(197, 206, 214)",
+      "box-shadow": "rgb(197, 206, 214) -1px 0px 0px 0px",
       "padding": "5px 12px"
     },
     "div.shell > main[main].main > div.layout": {

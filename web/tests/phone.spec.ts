@@ -64,6 +64,24 @@ const outside = (page: Page) =>
             .slice(0, 10);
     });
 
+/** The colour of each pixel of row `y` of a picture, as `rgb(r, g, b)`. The browser reads the PNG. */
+const pixelRow = (page: Page, png: Buffer, y: number) =>
+    page.evaluate(
+        async ({ bytes, y }) => {
+            const blob = new Blob([new Uint8Array(bytes)], { type: 'image/png' });
+            const bitmap = await createImageBitmap(blob);
+            const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+            const context = canvas.getContext('2d') as OffscreenCanvasRenderingContext2D;
+            context.drawImage(bitmap, 0, 0);
+            const { data } = context.getImageData(0, y, bitmap.width, 1);
+            return Array.from(
+                { length: bitmap.width },
+                (_, x) => `rgb(${data[4 * x]}, ${data[4 * x + 1]}, ${data[4 * x + 2]})`,
+            );
+        },
+        { bytes: [...png], y },
+    );
+
 for (const target of [...PAGES, ...STATES]) {
     const title = target.shows ? `${target.path} with ${target.shows}` : target.path;
     test(`${title} does not scroll sideways on a phone`, async ({ page }) => {
@@ -188,5 +206,48 @@ for (const name of ['runs', 'schedules']) {
         });
         expect(scrolls, 'the table is wider than its panel, and the panel scrolls').toBe(true);
         expect(await overflow(page)).toBeLessThanOrEqual(0);
+    });
+}
+
+for (const name of ['runs', 'events', 'manual']) {
+    const target = pageOf(name);
+    test(`each row of the wrapped group of ${target.path} starts with one line`, async ({
+        page,
+    }) => {
+        await open(page, target);
+        const group = page.locator('.seg').first();
+        // Each row of buttons: the middle of its height, and where its first
+        // and second buttons start, from the left edge of the group.
+        const { line, rows } = await group.evaluate((el) => {
+            const box = el.getBoundingClientRect();
+            const byRow = new Map<number, number[]>();
+            for (const button of el.querySelectorAll('button')) {
+                const at = button.getBoundingClientRect();
+                const top = Math.round(at.top - box.top);
+                byRow.set(top, [...(byRow.get(top) ?? []), at.left - box.left]);
+            }
+            const height = (el.querySelector('button') as Element).getBoundingClientRect().height;
+            return {
+                line: getComputedStyle(el).borderLeftColor,
+                rows: [...byRow].map(([top, lefts]) => ({
+                    y: Math.round(top + height / 2),
+                    second: lefts.length > 1 ? Math.round(lefts[1]) : null,
+                })),
+            };
+        });
+        expect(rows.length, 'the group wraps at phone width').toBeGreaterThan(1);
+
+        const png = await group.screenshot();
+        for (const [index, row] of rows.entries()) {
+            const pixels = await pixelRow(page, png, row.y);
+            const lines = (from: number, to: number) =>
+                pixels.slice(Math.max(0, from), to).filter((pixel) => pixel === line).length;
+            expect(lines(0, 4), `the left edge of row ${index + 1} is one line`).toBe(1);
+            if (row.second === null) continue;
+            expect(
+                lines(row.second - 3, row.second + 3),
+                `the line between the first two buttons of row ${index + 1} is one line`,
+            ).toBe(1);
+        }
     });
 }

@@ -83,7 +83,8 @@
       "border-right": "1px solid rgb(197, 206, 214)",
       "border-bottom": "1px solid rgb(197, 206, 214)",
       "border-left": "1px solid rgb(197, 206, 214)",
-      "border-radius": "5px"
+      "border-radius": "5px",
+      "gap": "normal 1px"
     },
     "div.shell > main[main].main > div.page-head > div[group].seg \"time range\" > button[button].active \"24h\"": {
       "color": "rgb(255, 255, 255)",
@@ -100,7 +101,7 @@
       "font-size": "12.5px",
       "line-height": "normal",
       "display": "block",
-      "border-left": "1px solid rgb(197, 206, 214)",
+      "box-shadow": "rgb(197, 206, 214) -1px 0px 0px 0px",
       "padding": "5px 12px"
     },
     "div.shell > main[main].main > div.page-head > div[group].seg \"time range\" > button[button] \"14d\"": {
@@ -109,7 +110,7 @@
       "font-size": "12.5px",
       "line-height": "normal",
       "display": "block",
-      "border-left": "1px solid rgb(197, 206, 214)",
+      "box-shadow": "rgb(197, 206, 214) -1px 0px 0px 0px",
       "padding": "5px 12px"
     },
     "div.shell > main[main].main > div.grid.kpis": {
