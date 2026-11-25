@@ -321,14 +321,27 @@ describe('build', () => {
         const page = JSON.parse(readFileSync(join(TOKENS, 'page.tokens.json'), 'utf8'));
         const steps = Object.entries(page).filter(([name]) =>
             /^(?:font-size|space|radius)-/.test(name),
-        ) as [string, { $value: { value: number; unit: string } }][];
+        ) as [
+            string,
+            {
+                $value: number | { value: number; unit: string };
+                $extensions?: { 'rs.tumult'?: { unit?: string } };
+            },
+        ][];
+        // A number with a unit from the extension of Tumult, as 50%, reads
+        // as its number and that unit.
+        const label = ({ $value, $extensions }: (typeof steps)[number][1]) =>
+            typeof $value === 'number'
+                ? `${$value}${$extensions?.['rs.tumult']?.unit ?? ''}`
+                : `${$value.value}${$value.unit}`;
 
         expect(steps.length).toBeGreaterThan(10);
-        for (const [name, { $value }] of steps)
-            expect(scale).toContain(`>${name} ${$value.value}${$value.unit}</text>`);
+        expect(scale).not.toContain('undefined');
+        for (const [name, token] of steps)
+            expect(scale).toContain(`>${name} ${label(token)}</text>`);
         // A size of the type scale draws its sample text at that size.
-        for (const [name, { $value }] of steps.filter(([name]) => name.startsWith('font-size-')))
-            expect(scale, name).toContain(`font-size="${$value.value}">Krönika`);
+        for (const [name, token] of steps.filter(([name]) => name.startsWith('font-size-')))
+            expect(scale, name).toContain(`font-size="${parseFloat(label(token))}">Krönika`);
     });
 
     it('keeps in the folder of the token pictures only the pictures it draws', () => {
