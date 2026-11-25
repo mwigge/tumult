@@ -1,14 +1,24 @@
 #!/usr/bin/env node
 // Find the raw CSS values of the kinds that have design tokens: font sizes,
 // font weights, line heights, letter spacing, font families, spacing,
-// radii, border widths and z-index. It reads the <style> blocks and the
-// style attributes of the Svelte files under src/, and the CSS files there
-// but tokens.css, which the token generator writes. A value inside var()
-// is not raw, and neither is 0, a keyword or a value that a script works
-// out. This is a text scan, not a CSS parser: a `;` or a brace in a string
+// radii, border widths, z-index and colours. It reads the <style> blocks
+// and the style attributes of the Svelte files under src/, and the CSS
+// files there but tokens.css, which the token generator writes. A value
+// inside var() is not raw, and neither is 0, a keyword or a value that a
+// script works out. A colour is a hex colour, a colour function such as
+// rgb() or hsl(), or a named colour; transparent and currentColor are not
+// raw. In a custom property only a colour counts, as the kind of its other
+// values is not known. This is a text scan, not a CSS parser: a `;` or a brace in a string
 // of a style would confuse it, and Krönika has none.
 //
-// Usage: node scripts/style-literals.mjs (prints each raw value by kind)
+// The lint fails on a raw value that the allow list does not hold, and on
+// a line of the allow list that matches no raw value, so the list only
+// shrinks. A line of the list is `path kind value`, with no line number,
+// so an edit above a value does not break it. A value used twice in a
+// file is on two lines.
+//
+// Usage: node scripts/style-literals.mjs (the lint)
+//        node scripts/style-literals.mjs --list (prints each raw value by kind)
 
 import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -17,6 +27,11 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const WEB = join(dirname(fileURLToPath(import.meta.url)), '..');
 // The CSS that the token generator writes: its values are the tokens.
 const TOKENS_CSS = 'src/lib/tokens.css';
+// The raw values that the styles keep today, in web/.
+const ALLOW_LIST = 'style-literals-allow.txt';
+
+/** How to fix a failure of the lint, in one line. */
+export const FIX = `Use a var() of a token in ${TOKENS_CSS} for a raw value, and delete each line of ${ALLOW_LIST} that matches nothing.`;
 
 /** The kinds of value that have tokens, in the order they are printed. */
 export const KINDS = [
@@ -29,9 +44,29 @@ export const KINDS = [
     'radius',
     'border-width',
     'z-index',
+    'colour',
 ];
 
+/**
+ * The names of the tokens of each kind in tokens.css.
+ * @type {Record<string, RegExp>}
+ */
+const TOKEN_NAMES = {
+    'font-size': /^font-size-/,
+    'font-weight': /^font-weight-/,
+    'line-height': /^line-height-/,
+    'letter-spacing': /^letter-spacing-/,
+    'font-family': /^(?:mono$|font-(?!size-|weight-))/,
+    spacing: /^space-/,
+    radius: /^radius-/,
+    'border-width': /^border-width-/,
+    'z-index': /^z-/,
+    // A colour token may have any name: its exact value tells.
+    colour: /^/,
+};
+
 /** @typedef {{ kind: string, value: string, property: string, file: string, line: number }} Literal */
+/** @typedef {{ path: string, kind: string, value: string, line: number }} Allowed */
 
 // A number and its unit, not part of a word, a hex colour or a longer number.
 const NUMBER = /(?<![\w#.-])-?(?:\d+\.?\d*|\.\d+)([a-z]+|%)?/gi;
@@ -40,6 +75,31 @@ const FONT_SIZE =
     /(?<![\w#.-])((?:\d+\.?\d*|\.\d+)(?:[a-z]+|%))(?:\s*\/\s*((?:\d+\.?\d*|\.\d+)(?:[a-z]+|%)?))?/i;
 const HEX = /#[0-9a-f]{3,8}\b/gi;
 const WIDE = /^(?:inherit|initial|unset|revert|revert-layer)$/;
+// A hex colour, the start of a colour function or a word, not part of a
+// longer name.
+const COLOUR =
+    /(?<![\w-])(?:#[0-9a-f]{3,8}\b|(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\(|[a-z]+(?![\w(-]))/gi;
+// The named colours of CSS. transparent and currentColor are not in it.
+const NAMED = new Set(
+    `aliceblue antiquewhite aqua aquamarine azure beige bisque black blanchedalmond blue
+    blueviolet brown burlywood cadetblue chartreuse chocolate coral cornflowerblue cornsilk
+    crimson cyan darkblue darkcyan darkgoldenrod darkgray darkgreen darkgrey darkkhaki
+    darkmagenta darkolivegreen darkorange darkorchid darkred darksalmon darkseagreen
+    darkslateblue darkslategray darkslategrey darkturquoise darkviolet deeppink deepskyblue
+    dimgray dimgrey dodgerblue firebrick floralwhite forestgreen fuchsia gainsboro ghostwhite
+    gold goldenrod gray green greenyellow grey honeydew hotpink indianred indigo ivory khaki
+    lavender lavenderblush lawngreen lemonchiffon lightblue lightcoral lightcyan
+    lightgoldenrodyellow lightgray lightgreen lightgrey lightpink lightsalmon lightseagreen
+    lightskyblue lightslategray lightslategrey lightsteelblue lightyellow lime limegreen linen
+    magenta maroon mediumaquamarine mediumblue mediumorchid mediumpurple mediumseagreen
+    mediumslateblue mediumspringgreen mediumturquoise mediumvioletred midnightblue mintcream
+    mistyrose moccasin navajowhite navy oldlace olive olivedrab orange orangered orchid
+    palegoldenrod palegreen paleturquoise palevioletred papayawhip peachpuff peru pink plum
+    powderblue purple rebeccapurple red rosybrown royalblue saddlebrown salmon sandybrown
+    seagreen seashell sienna silver skyblue slateblue slategray slategrey snow springgreen
+    steelblue tan teal thistle tomato turquoise violet wheat white whitesmoke yellow
+    yellowgreen`.split(/\s+/),
+);
 
 /** @type {(text: string) => string} */
 const blank = (text) => text.replace(/[^\n]/g, ' ');
@@ -120,12 +180,62 @@ function fontShorthand(text) {
 }
 
 /**
+ * The offset just after the bracket that closes the one at `open`.
+ * @param {string} text
+ * @param {number} open
+ */
+function closing(text, open) {
+    let depth = 0;
+    for (let at = open; at < text.length; at++) {
+        if (text[at] === '(') depth += 1;
+        if (text[at] === ')') depth -= 1;
+        if (depth === 0) return at + 1;
+    }
+    return text.length;
+}
+
+/**
+ * The raw colours of a value, as ['colour', colour]. A colour in var(),
+ * url() or a string is not raw.
+ * @param {string} value
+ * @returns {[string, string][]}
+ */
+function colours(value) {
+    const strings = /'[^']*'|"[^"]*"/g;
+    const text = without(without(value, 'var(', ')'), 'url(', ')').replace(strings, blank);
+    const pattern = new RegExp(COLOUR);
+    /** @type {[string, string][]} */
+    const found = [];
+    for (let match = pattern.exec(text); match; match = pattern.exec(text)) {
+        const [word] = match;
+        if (word.endsWith('(')) {
+            pattern.lastIndex = closing(text, pattern.lastIndex - 1);
+            const colour = value.slice(match.index, pattern.lastIndex);
+            found.push(['colour', colour.replace(/\s+/g, ' ')]);
+            continue;
+        }
+        if (word.startsWith('#') || NAMED.has(word.toLowerCase())) found.push(['colour', word]);
+    }
+    return found;
+}
+
+/**
  * The raw values of one declaration, as [kind, value].
  * @param {string} property
  * @param {string} value
  * @returns {[string, string][]}
  */
 function rawValues(property, value) {
+    return [...rawNumbers(property, value), ...colours(value)];
+}
+
+/**
+ * The raw values of one declaration but its colours, as [kind, value].
+ * @param {string} property
+ * @param {string} value
+ * @returns {[string, string][]}
+ */
+function rawNumbers(property, value) {
     const text = without(value, 'var(', ')').replace(HEX, blank).trim();
     if (property === 'font') return fontShorthand(text);
     const kind = kindOf(property);
@@ -142,7 +252,7 @@ function rawValues(property, value) {
 
 /**
  * The declarations of CSS text, as [property, value, offset of the
- * property]. Custom properties are left out.
+ * property]. Custom properties are kept: only their colours count.
  * @param {string} css
  * @returns {[string, string, number][]}
  */
@@ -154,7 +264,9 @@ function declarations(css) {
     for (let at = 0; at <= text.length; at++) {
         const end = at === text.length || ';{}'.includes(text[at]);
         if (!end) continue;
-        const declaration = /^(\s*)([a-z][a-z-]*)\s*:([\s\S]*)$/i.exec(text.slice(start, at));
+        const declaration = /^(\s*)(--[\w-]+|[a-z][a-z-]*)\s*:([\s\S]*)$/i.exec(
+            text.slice(start, at),
+        );
         if (declaration && text[at] !== '{')
             found.push([
                 declaration[2].toLowerCase(),
@@ -234,12 +346,184 @@ export function scan(web) {
         .flatMap((file) => literalsIn(file, readFileSync(join(web, file), 'utf8')));
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-    const found = scan(WEB);
+/**
+ * A value as the lint compares it with a token: in lower case, with one
+ * space for each run of white space, and a short hex colour in full.
+ * @param {string} value
+ */
+function normal(value) {
+    const text = value.trim().toLowerCase().replace(/\s+/g, ' ');
+    if (!/^#[0-9a-f]{3,4}$/.test(text)) return text;
+    return `#${[...text.slice(1)].map((digit) => digit + digit).join('')}`;
+}
+
+/**
+ * The tokens of tokens.css that have one value in every theme, as a map
+ * from `kind value` to the name of the token.
+ * @param {string} css
+ * @returns {Map<string, string>}
+ */
+function tokensByValue(css) {
+    /** @type {Map<string, Set<string>>} */
+    const values = new Map();
+    for (const [, name, value] of css.matchAll(/--([\w-]+)\s*:\s*([^;]+);/g))
+        values.set(name, (values.get(name) ?? new Set()).add(normal(value)));
+    /** @type {Map<string, string>} */
+    const byValue = new Map();
+    for (const [name, set] of values) {
+        if (set.size !== 1) continue;
+        const [value] = set;
+        for (const kind of KINDS) {
+            const key = `${kind} ${value}`;
+            if (TOKEN_NAMES[kind].test(name) && !byValue.has(key)) byValue.set(key, name);
+        }
+    }
+    return byValue;
+}
+
+/**
+ * The lines of an allow list, with their line numbers, and a problem for
+ * each line that is not `path kind value`. A line that starts with # is a
+ * comment.
+ * @param {string} text
+ * @returns {{ allowed: Allowed[], problems: string[] }}
+ */
+function readAllowList(text) {
+    /** @type {Allowed[]} */
+    const allowed = [];
+    /** @type {string[]} */
+    const problems = [];
+    for (const [at, raw] of text.split(/\r?\n/).entries()) {
+        const line = raw.trim();
+        if (line === '' || line.startsWith('#')) continue;
+        const entry = /^(\S+)\s+(\S+)\s+(.+)$/.exec(line);
+        if (!entry || !KINDS.includes(entry[2])) {
+            problems.push(`${ALLOW_LIST}:${at + 1}: "${line}" is not a path, a kind and a value`);
+            continue;
+        }
+        allowed.push({ path: entry[1], kind: entry[2], value: entry[3], line: at + 1 });
+    }
+    return { allowed, problems };
+}
+
+/** @type {(path: string, kind: string, value: string) => string} */
+const keyOf = (path, kind, value) => JSON.stringify([path, kind, value]);
+
+/**
+ * The problems of the uses of one raw value that the allow list holds
+ * `held` times: one per use when it holds none, else one for the file.
+ * @param {Literal[]} uses
+ * @param {number} held
+ * @param {string | undefined} token
+ * @returns {string[]}
+ */
+function notAllowed(uses, held, token) {
+    const hint = token ? `; use var(--${token})` : '';
+    const { file, kind, value } = uses[0];
+    if (held === 0)
+        return uses.map(
+            ({ line }) => `${file}:${line}: raw ${kind} ${value} is not on the allow list${hint}`,
+        );
+    const lines = uses.map(({ line }) => line).sort((a, b) => a - b);
+    const where = `${file}:${lines.at(-1)}: raw ${kind} ${value}`;
+    return [
+        `${where} is used ${uses.length} times and the allow list holds ${held} (lines ${lines.join(', ')})${hint}`,
+    ];
+}
+
+/**
+ * The problems of the raw values `literals`, given the text of the allow
+ * list and of tokens.css, one line each: a raw value used more often than
+ * the list holds it, with the token that has its exact value, and a line
+ * of the list that matches no raw value or is not `path kind value`.
+ * @param {Literal[]} literals
+ * @param {string} allowList
+ * @param {string} tokensCss
+ * @returns {string[]}
+ */
+export function lint(literals, allowList, tokensCss) {
+    const { allowed, problems: badLines } = readAllowList(allowList);
+    const tokens = tokensByValue(tokensCss);
+    /** @type {Map<string, Literal[]>} */
+    const uses = new Map();
+    for (const literal of literals) {
+        const key = keyOf(literal.file, literal.kind, literal.value);
+        uses.set(key, [...(uses.get(key) ?? []), literal]);
+    }
+    /** @type {Map<string, number>} */
+    const held = new Map();
+    for (const { path, kind, value } of allowed) {
+        const key = keyOf(path, kind, value);
+        held.set(key, (held.get(key) ?? 0) + 1);
+    }
+    const unlisted = [...uses].flatMap(([key, mine]) => {
+        const count = held.get(key) ?? 0;
+        if (mine.length <= count) return [];
+        return notAllowed(mine, count, tokens.get(`${mine[0].kind} ${normal(mine[0].value)}`));
+    });
+    return [...unlisted, ...badLines, ...stale(allowed, uses)];
+}
+
+/**
+ * A problem for each line of the allow list beyond the uses of its value.
+ * @param {Allowed[]} allowed
+ * @param {Map<string, Literal[]>} uses
+ * @returns {string[]}
+ */
+function stale(allowed, uses) {
+    /** @type {Map<string, number>} */
+    const left = new Map([...uses].map(([key, mine]) => [key, mine.length]));
+    return allowed.flatMap(({ path, kind, value, line }) => {
+        const key = keyOf(path, kind, value);
+        const count = left.get(key) ?? 0;
+        left.set(key, count - 1);
+        if (count > 0) return [];
+        return [
+            `${ALLOW_LIST}:${line}: ${path} ${kind} ${value} matches no raw value; delete the line`,
+        ];
+    });
+}
+
+/**
+ * The problems of the styles of src/ under `web`, with its allow list and
+ * tokens.css, as `lint` finds them.
+ * @param {string} web
+ * @returns {string[]}
+ */
+export function lintStyles(web) {
+    /** @type {(path: string) => string} */
+    const read = (path) => readFileSync(join(web, path), 'utf8');
+    return lint(scan(web), read(ALLOW_LIST), read(TOKENS_CSS));
+}
+
+/**
+ * Prints the problems of the lint and returns the exit code.
+ * @param {string[]} problems
+ */
+function report(problems) {
+    if (problems.length === 0) {
+        console.log(`The styles keep only the raw values of ${ALLOW_LIST}.`);
+        return 0;
+    }
+    for (const problem of problems) console.error(problem);
+    console.error(`${problems.length} style lint failure(s). ${FIX}`);
+    return 1;
+}
+
+/**
+ * Prints each raw value of `found`, by kind.
+ * @param {Literal[]} found
+ */
+function list(found) {
     for (const kind of KINDS) {
         const mine = found.filter((literal) => literal.kind === kind);
         console.log(`${kind}: ${mine.length}`);
         for (const { file, line, property, value } of mine)
             console.log(`    ${file}:${line} ${property} ${value}`);
     }
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+    if (process.argv.includes('--list')) list(scan(WEB));
+    else process.exitCode = report(lintStyles(WEB));
 }

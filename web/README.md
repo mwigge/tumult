@@ -22,7 +22,7 @@ node stage first.
 | ---------------------- | ----------------------------------------------------------------------- |
 | `npm run dev`          | Starts vite, with `/api` sent to a `tumultd` on `http://127.0.0.1:4318` |
 | `npm run check`        | svelte-check; the bar is 0 errors                                       |
-| `npm run lint`         | ESLint with no warnings allowed                                         |
+| `npm run lint`         | ESLint with no warnings allowed, then `npm run lint:styles`             |
 | `npm test`             | The unit tests (Vitest)                                                 |
 | `npm run test:e2e`     | The Playwright tests                                                    |
 | `npm run build:tokens` | Writes the token outputs from `tokens/` (see below)                     |
@@ -79,9 +79,10 @@ font, so an option leaves them out. `chart-code.test.ts` fails on a hex
 colour or a font size written in script code, and on a second observer
 of the theme: `followTheme` in `src/lib/echarts.ts` is the one.
 
-`node scripts/style-literals.mjs` lists the raw values left in the styles
-of `src/`, by kind. A unit test pins how many there are, so a new raw
-value fails it.
+`npm run lint:styles` fails on a raw colour, size or spacing in the styles
+of `src/` that `style-literals-allow.txt` does not hold; use a token instead.
+That list holds each raw value left today by file, kind and value, and the
+lint fails on a line that matches nothing, so the list only shrinks.
 
 ## Theme
 
