@@ -230,16 +230,16 @@ describe('the filters of the page', () => {
 });
 
 describe('links', () => {
-    it('open a run on its page and a manual record among the manual records', () => {
+    it('open a run on its page and a manual record open among the manual records', () => {
         expect(testHref(drTest({ evidence_id: 'run 1' }))).toBe('/experiments/run%201');
-        expect(testHref(drTest({ origin: 'manual', evidence_id: '01ABC' }))).toBe(
-            '/manual?tab=records',
-        );
+        expect
+            .soft(testHref(drTest({ origin: 'manual', evidence_id: '01 A&B' })))
+            .toBe('/manual?tab=records&record=01%20A%26B');
         const last = { id: 'automated:run-9', origin: 'automated', executed_at_ns: 1 } as const;
         expect(lastTestHref({ ...last, verdict: 'met' })).toBe('/experiments/run-9');
         expect(
             lastTestHref({ ...last, id: 'manual:01ABC', origin: 'manual', verdict: 'met' }),
-        ).toBe('/manual?tab=records');
+        ).toBe('/manual?tab=records&record=01ABC');
         expect(PLANS_HREF).toBe('/manual?tab=plans');
     });
 

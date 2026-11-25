@@ -16,6 +16,7 @@
         canReview,
         canEdit,
         filter = { target: '', environment: '' },
+        record = null,
         onedit,
     }: {
         tab: string;
@@ -24,6 +25,8 @@
         canEdit: boolean;
         /** The target whose records the lists show; empty fields show all. */
         filter?: TargetFilter;
+        /** The id of the record that is open when the list is shown. */
+        record?: string | null;
         onedit: (id: string) => Promise<void>;
     } = $props();
 
@@ -78,6 +81,12 @@
         void tab;
         openId = null;
         loadRecords();
+    });
+    // After the effect above, so the record of the URL stays open.
+    $effect(() => {
+        if (!record) return;
+        openId = record;
+        loadDetail(record);
     });
     $effect(() => {
         api.manualPlans()

@@ -4,6 +4,7 @@ import type { Page } from '@playwright/test';
 import { DR_GUIDE_URL } from '../src/lib/dr';
 import { EVIL, expectShownAsText, installChartHooks, showTip } from './charts';
 import { DAY_MS, emptyLake, fullLake, serveDr } from './dr-data';
+import { manualApi, records } from './manual-data';
 
 // The API is mocked by a stand-in that filters and pages the tests as
 // `GET /api/dr` does; the live test reads the real one. Charts render to
@@ -123,7 +124,7 @@ test('the register shows each target in its state with its last test, next due d
     await expect(catalog.locator('td').nth(3)).toHaveText('every 365 days by default');
     await expect(catalog.locator('td').nth(1).getByRole('link')).toHaveAttribute(
         'href',
-        '/manual?tab=records',
+        '/manual?tab=records&record=01CATALOGRESTORE',
     );
     await expect(catalog.locator('td').nth(5)).toHaveText('5 min target 15 min');
     const archive = page.locator('tr[data-target="archive/prod"]');
@@ -231,18 +232,45 @@ test('the tests of the period come newest first and page with the cursor of the 
     expect(seen.at(-1)?.searchParams.has('cursor')).toBe(false);
 });
 
-test('each test links to the page of its run or to the manual records', async ({ page }) => {
+test('each test links to the page of its run or to its manual record', async ({ page }) => {
     await serveDr(page, fullLake(NOW), NOW);
     await page.goto('/dr?target=ledger');
     const table = page.locator('section[aria-labelledby="dr-tests"]');
     await expect(table.getByRole('link', { name: 'ledger failover drill' })).toHaveAttribute(
         'href',
-        '/manual?tab=records',
+        '/manual?tab=records&record=01LEDGERDRILL',
     );
     const run = table.locator('tr[data-test="automated:ledger-dr-120"]');
     await expect(run).toContainText('at least 75 s, not recovered');
     await run.getByRole('link', { name: 'ledger failover' }).click();
     await expect(page).toHaveURL(/\/experiments\/ledger-dr-120$/);
+});
+
+test('the link of a manual test opens its record on the Manual page', async ({ page }) => {
+    await serveDr(page, fullLake(NOW), NOW);
+    const drill = { ...records[0], id: '01LEDGERDRILL', experiment_name: 'ledger failover drill' };
+    const detail = manualApi['/api/manual/experiments/rec-1'];
+    // The answers of the Manual page; a later route comes first.
+    await page.route('**/api/manual/**', async (route) => {
+        const path = new URL(route.request().url()).pathname;
+        let body: unknown = {};
+        if (path === '/api/manual/plans') body = { plans: [] };
+        else if (path === '/api/manual/experiments') body = { records: [records[0], drill] };
+        else if (path === '/api/manual/experiments/01LEDGERDRILL')
+            body = { ...detail, experiment: drill };
+        await route.fulfill({ json: body });
+    });
+    await page.goto('/dr?target=ledger');
+    await page
+        .locator('section[aria-labelledby="dr-tests"]')
+        .getByRole('link', { name: 'ledger failover drill' })
+        .click();
+
+    await expect(page).toHaveURL(/\/manual\?tab=records&record=01LEDGERDRILL$/);
+    const open = page.locator('tr.detail-row');
+    await expect(open).toHaveCount(1);
+    await expect(page.locator('tr[data-record="01LEDGERDRILL"] + tr.detail-row')).toBeVisible();
+    await expect(open.getByRole('heading', { name: 'Recovery' })).toBeVisible();
 });
 
 test('a filter goes in the URL and in the request, and a URL with filters opens with them', async ({

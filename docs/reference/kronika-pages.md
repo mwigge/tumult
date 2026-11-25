@@ -190,7 +190,7 @@ default `failover`, `drill`, `restore` and `backup`.
   drawn at the least its RTO was: the time from the outage seen to the end
   of the watch.
 - **DR tests in the period.** Newest first, 20 to a page. A run links to
-  its page, and a manual record to the records of the Manual page.
+  its page, and a manual record to that record, open on the Manual page.
 - **Filters.** A target, an environment and a period of 90 days, 1 year or
   3 years. The URL keeps them, so a link opens the same view. The period
   selects the tests. The register shows the targets as they are now.
@@ -354,6 +354,8 @@ The page has five tabs:
 **Plans**, **Verification queue** and **All records** keep to the target in
 the URL: `/manual?tab=records&target=payments-db&environment=production`.
 The Star Map drawer opens the page this way. **Show every target** clears it.
+A link can also open one record in the list: `/manual?tab=records&record=<id>`.
+The DR page links to a manual DR test this way.
 
 When the API refuses a change, the page shows the reason the API gives.
 
