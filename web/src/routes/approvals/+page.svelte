@@ -4,6 +4,7 @@
     import { paramsText } from '#lib/run-params.js';
     import type { ApprovalQueueRow, ApprovalTier, MeResponse } from '#lib/types.js';
     import PageHeader from '#lib/components/PageHeader.svelte';
+    import Panel from '#lib/components/Panel.svelte';
 
     let rows = $state<ApprovalQueueRow[] | null>(null);
     let error = $state<string | null>(null);
@@ -116,7 +117,7 @@
     sub={rows ? `${rows.length} pending` : 'gated runs waiting on quorum'}
 />
 
-<div class="panel">
+<Panel>
     {#if error}
         <div class="state error">Failed to load the approvals queue: {error}</div>
     {:else if !rows}
@@ -241,7 +242,7 @@
             </tbody>
         </table>
     {/if}
-</div>
+</Panel>
 
 <style>
     .warn-text {

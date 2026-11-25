@@ -12,6 +12,7 @@
     import ScopeSummary from '#lib/components/ScopeSummary.svelte';
     import RunImpactPanel from '#lib/components/RunImpactPanel.svelte';
     import PageHeader from '#lib/components/PageHeader.svelte';
+    import Panel from '#lib/components/Panel.svelte';
 
     const id = $derived(page.params.id ?? '');
 
@@ -152,18 +153,20 @@
     <RunHeader {run} runId={id} {active} {canStop} {awaitingTier} {triggerActor} />
 
     {#if scope}
-        <div class="panel" style="margin-bottom: var(--space-3-5)" data-testid="run-scope">
-            <h2>Planned blast radius</h2>
+        <Panel
+            title="Planned blast radius"
+            style="margin-bottom: var(--space-3-5)"
+            data-testid="run-scope"
+        >
             <ScopeSummary {scope} />
             <div class="plan-note" data-testid="run-scope-plan">
                 What the definition of this run plans to hit. It is a plan, not a measure of what
                 the run did.
             </div>
-        </div>
+        </Panel>
     {/if}
 
-    <div class="panel" style="margin-bottom: var(--space-3-5)">
-        <h2>Telemetry</h2>
+    <Panel title="Telemetry" style="margin-bottom: var(--space-3-5)">
         {#if !run.experiment_id}
             <div class="state">Telemetry appears once the run starts executing.</div>
         {:else if !telemetry}
@@ -176,7 +179,7 @@
                 <a href="/experiments/{run.experiment_id}">open the full experiment view →</a>
             </div>
         {/if}
-    </div>
+    </Panel>
 
     {#if run.experiment_id && !active}
         <RunImpactPanel runId={id} />

@@ -5,6 +5,7 @@
     import Waterfall from '#lib/components/Waterfall.svelte';
     import SpanDrawer from '#lib/components/SpanDrawer.svelte';
     import PageHeader from '#lib/components/PageHeader.svelte';
+    import Panel from '#lib/components/Panel.svelte';
 
     const id = $derived(page.params.id ?? '');
 
@@ -71,32 +72,30 @@
         class="grid"
         style="grid-template-columns: repeat(4, 1fr); margin-bottom: var(--space-3-5)"
     >
-        <div class="panel meta">
-            <span>Started</span><b>{fmtTs(started)} ({fmtAgo(started)})</b>
-        </div>
-        <div class="panel meta">
-            <span>Duration</span><b class="mono">{fmtDuration(ended - started)}</b>
-        </div>
-        <div class="panel meta"><span>Spans</span><b class="mono">{detail.spans.length}</b></div>
-        <div class="panel meta">
-            <span>Errors</span><b
-                class="mono"
-                style="color: {errors > 0 ? 'var(--fail)' : 'inherit'}">{errors}</b
-            >
-        </div>
+        <Panel variant="meta" title="Started">
+            <b>{fmtTs(started)} ({fmtAgo(started)})</b>
+        </Panel>
+        <Panel variant="meta" title="Duration">
+            <b class="mono">{fmtDuration(ended - started)}</b>
+        </Panel>
+        <Panel variant="meta" title="Spans"><b class="mono">{detail.spans.length}</b></Panel>
+        <Panel variant="meta" title="Errors">
+            <b class="mono" style="color: {errors > 0 ? 'var(--fail)' : 'inherit'}">{errors}</b>
+        </Panel>
     </div>
 
-    <div class="panel" style="margin-bottom: var(--space-3-5)">
-        <h2>Waterfall — {detail.spans.length} spans</h2>
+    <Panel
+        title={`Waterfall — ${detail.spans.length} spans`}
+        style="margin-bottom: var(--space-3-5)"
+    >
         {#if detail.spans.length === 0}
             <div class="state">No spans recorded for this trace.</div>
         {:else}
             <Waterfall spans={detail.spans} onselect={(s) => (selected = s)} />
         {/if}
-    </div>
+    </Panel>
 
-    <div class="panel">
-        <h2>Logs ({detail.logs.length})</h2>
+    <Panel title={`Logs (${detail.logs.length})`}>
         {#if detail.logs.length === 0}
             <div class="state">No logs correlated to this trace.</div>
         {:else}
@@ -112,7 +111,7 @@
                 {/each}
             </div>
         {/if}
-    </div>
+    </Panel>
 
     {#if selected}
         <SpanDrawer span={selected} logs={detail.logs} onclose={() => (selected = null)} />

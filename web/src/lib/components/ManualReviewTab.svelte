@@ -7,6 +7,7 @@
     import { errorText, ofTarget, type TargetFilter } from '#lib/manual.js';
     import type { ManualDetail, ManualExperiment, ManualPlan } from '#lib/types.js';
     import ManualRecordDetail from './ManualRecordDetail.svelte';
+    import Panel from './Panel.svelte';
 
     let {
         tab,
@@ -98,7 +99,7 @@
         s === 'passed' ? 'ok' : s === 'partial' ? 'warn' : s === 'failed' ? 'fail' : 'neutral';
 </script>
 
-<div class="panel">
+<Panel>
     <div class="records-head">
         <h2>{queue ? 'Submitted records awaiting sign-off' : 'All manual records'}</h2>
         {#if !queue}
@@ -186,7 +187,7 @@
             </tbody>
         </table>
     {/if}
-</div>
+</Panel>
 
 <style>
     .warn-text {

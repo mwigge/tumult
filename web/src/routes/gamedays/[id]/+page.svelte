@@ -5,6 +5,7 @@
     import type { GameDayDetail, MeResponse, RunRow } from '#lib/types.js';
     import StatusBadge from '#lib/components/StatusBadge.svelte';
     import PageHeader from '#lib/components/PageHeader.svelte';
+    import Panel from '#lib/components/Panel.svelte';
 
     const id = $derived(page.params.id ?? '');
 
@@ -128,8 +129,7 @@
         </p>
     {/if}
 
-    <div class="panel" style="margin-bottom: var(--space-3-5)">
-        <h2>Campaign steps</h2>
+    <Panel title="Campaign steps" style="margin-bottom: var(--space-3-5)">
         <table class="data">
             <thead>
                 <tr
@@ -165,11 +165,13 @@
                 {/each}
             </tbody>
         </table>
-    </div>
+    </Panel>
 
     {#if day.regulatory}
-        <div class="panel" style="margin-bottom: var(--space-3-5)">
-            <h2>Regulatory mapping — {day.regulatory.frameworks.join(', ')}</h2>
+        <Panel
+            title={`Regulatory mapping — ${day.regulatory.frameworks.join(', ')}`}
+            style="margin-bottom: var(--space-3-5)"
+        >
             <table class="data">
                 <thead>
                     <tr><th>Requirement</th><th>Description</th><th>Evidence</th></tr>
@@ -180,11 +182,10 @@
                     {/each}
                 </tbody>
             </table>
-        </div>
+        </Panel>
     {/if}
 
-    <div class="panel">
-        <h2>Run GameDay</h2>
+    <Panel title="Run GameDay">
         {#if campaign}
             <div class="campaign">
                 Campaign <a href="/runs/{campaign.id}" class="mono">{campaign.id.slice(0, 8)}</a>
@@ -224,7 +225,7 @@
                     {launchError}
                 </div>{/if}
         {/if}
-    </div>
+    </Panel>
 {/if}
 
 <style>

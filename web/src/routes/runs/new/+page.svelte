@@ -12,6 +12,7 @@
         RegistryEntry,
     } from '#lib/types.js';
     import PageHeader from '#lib/components/PageHeader.svelte';
+    import Panel from '#lib/components/Panel.svelte';
 
     let me = $state<MeResponse | null>(null);
     let entries = $state<RegistryEntry[] | null>(null);
@@ -185,8 +186,7 @@
     {/if}
 </PageHeader>
 
-<div class="panel" style="margin-bottom: var(--space-3-5)">
-    <h2>1 · Definition</h2>
+<Panel title="1 · Definition" style="margin-bottom: var(--space-3-5)">
     {#if listError}
         <div class="state error">Failed to load the registry: {listError}</div>
     {:else if !entries}
@@ -226,11 +226,10 @@
             </tbody>
         </table>
     {/if}
-</div>
+</Panel>
 
 {#if selectedId}
-    <div class="panel" style="margin-bottom: var(--space-3-5)">
-        <h2>2 · Execution context and parameters</h2>
+    <Panel title="2 · Execution context and parameters" style="margin-bottom: var(--space-3-5)">
         <div class="params">
             <label
                 >Environment<input
@@ -275,10 +274,9 @@
                 <div class="hint">All parameters are required before the plan can be dry-run.</div>
             {/if}
         {/if}
-    </div>
+    </Panel>
 
-    <div class="panel" style="margin-bottom: var(--space-3-5)">
-        <h2>3 · Dry-run preview</h2>
+    <Panel title="3 · Dry-run preview" style="margin-bottom: var(--space-3-5)">
         <button
             class="primary"
             onclick={runDry}
@@ -379,10 +377,9 @@
                 {/if}
             </div>
         {/if}
-    </div>
+    </Panel>
 
-    <div class="panel">
-        <h2>4 · Execute</h2>
+    <Panel title="4 · Execute">
         {#if !canRun}
             <div class="hint">Starting runs requires the operator role or above.</div>
         {:else if dry && dry.valid && !dryValidForCurrent}
@@ -408,7 +405,7 @@
         {#if startError}
             <div class="state error">Failed to start the run: {startError}</div>
         {/if}
-    </div>
+    </Panel>
 {/if}
 
 <style>

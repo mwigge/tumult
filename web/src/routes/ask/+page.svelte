@@ -2,6 +2,7 @@
     import { api } from '#lib/api.js';
     import type { AskResponse } from '#lib/types.js';
     import PageHeader from '#lib/components/PageHeader.svelte';
+    import Panel from '#lib/components/Panel.svelte';
 
     const EXAMPLES = [
         'How many experiments ran?',
@@ -53,7 +54,7 @@
     sub="natural-language analytics over the telemetry store — guarded SQL, read-only"
 />
 
-<div class="panel" style="margin-bottom: var(--space-3-5)">
+<Panel style="margin-bottom: var(--space-3-5)">
     <form
         class="askbar"
         onsubmit={(e) => {
@@ -76,7 +77,7 @@
             <button onclick={() => submit(ex)}>{ex}</button>
         {/each}
     </div>
-</div>
+</Panel>
 
 {#if error}
     <div class="state error panel">{error}</div>
@@ -95,16 +96,19 @@
             — try one.
         </div>
     {:else}
-        <div class="panel" style="margin-bottom: var(--space-3-5)">
-            <h2>Generated SQL {result.source === 'golden' ? '(curated answer)' : '(LLM)'}</h2>
+        <Panel
+            title={`Generated SQL ${result.source === 'golden' ? '(curated answer)' : '(LLM)'}`}
+            style="margin-bottom: var(--space-3-5)"
+        >
             <pre class="mono sql">{result.sql}</pre>
             {#if result.error}
                 <div class="state error">{result.error}</div>
             {/if}
-        </div>
+        </Panel>
         {#if result.rows}
-            <div class="panel">
-                <h2>Result — {result.rows.length} row{result.rows.length === 1 ? '' : 's'}</h2>
+            <Panel
+                title={`Result — ${result.rows.length} row${result.rows.length === 1 ? '' : 's'}`}
+            >
                 {#if result.rows.length === 0}
                     <div class="state">The query returned no rows.</div>
                 {:else}
@@ -126,7 +130,7 @@
                         </table>
                     </div>
                 {/if}
-            </div>
+            </Panel>
         {/if}
     {/if}
 {/if}

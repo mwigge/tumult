@@ -3,6 +3,7 @@
     import { api, fmtAgo, fmtTs } from '#lib/api.js';
     import type { GameDayEntry, MeResponse } from '#lib/types.js';
     import PageHeader from '#lib/components/PageHeader.svelte';
+    import Panel from '#lib/components/Panel.svelte';
 
     let me = $state<MeResponse | null>(null);
     let days = $state<GameDayEntry[] | null>(null);
@@ -70,7 +71,7 @@
         : 'coordinated experiment campaigns'}
 />
 
-<div class="panel" style="margin-bottom: var(--space-3-5)">
+<Panel style="margin-bottom: var(--space-3-5)">
     {#if error}
         <div class="state error">Failed to load gamedays: {error}</div>
     {:else if !days}
@@ -97,11 +98,10 @@
             </tbody>
         </table>
     {/if}
-</div>
+</Panel>
 
 {#if canMutate}
-    <div class="panel">
-        <h2>Register a gameday</h2>
+    <Panel title="Register a gameday">
         <form
             onsubmit={(e) => {
                 e.preventDefault();
@@ -133,7 +133,7 @@
         {#if registerError}<div class="state error" style="margin-top: var(--space-2-5)">
                 {registerError}
             </div>{/if}
-    </div>
+    </Panel>
 {/if}
 
 <style>

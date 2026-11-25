@@ -12,6 +12,7 @@
     import RangeSwitch from '#lib/components/RangeSwitch.svelte';
     import EChart from '#lib/components/EChart.svelte';
     import PageHeader from '#lib/components/PageHeader.svelte';
+    import Panel from '#lib/components/Panel.svelte';
 
     const range = $derived(page.url.searchParams.get('range') ?? '24h');
 
@@ -204,8 +205,7 @@
     </div>
 
     <div class="grid cols-2" style="margin-top: var(--space-3-5)">
-        <div class="panel">
-            <h2>Runs per day</h2>
+        <Panel title="Runs per day">
             {#if data.experiments_per_day.length === 0}
                 <div class="state">No runs in this window.</div>
             {:else}
@@ -222,9 +222,8 @@
                     <ChartLegend id="per-day" items={perDayLegend} />
                 {/if}
             {/if}
-        </div>
-        <div class="panel">
-            <h2>Fault injections</h2>
+        </Panel>
+        <Panel title="Fault injections">
             {#if data.faults.length === 0}
                 <div class="state">No fault injection step was recorded in this window.</div>
             {:else}
@@ -235,11 +234,10 @@
                     label="Fault injection steps per kind and plugin"
                 />
             {/if}
-        </div>
+        </Panel>
     </div>
 
-    <div class="panel" style="margin-top: var(--space-3-5)">
-        <h2>Target systems</h2>
+    <Panel title="Target systems" style="margin-top: var(--space-3-5)">
         {#if data.targets.length === 0}
             <div class="state">
                 No target-system metadata in this window — tumult runs don't tag target systems yet,
@@ -274,7 +272,7 @@
                 </tbody>
             </table>
         {/if}
-    </div>
+    </Panel>
 {/if}
 
 <style>

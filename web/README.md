@@ -98,6 +98,10 @@ link back (`.back`), the title, a sub line, and then the badges and the
 controls the page puts in it. `src/lib/page-head.test.ts` fails on a page
 head written by hand.
 
+`src/lib/components/Panel.svelte` is the box of one part of a page, with
+its title in an `h2`. With `variant="meta"` it is the stat tile: the title
+is the small capital name above the value.
+
 ## Stack
 
 | Choice                                           | Why                                                                                                                               |

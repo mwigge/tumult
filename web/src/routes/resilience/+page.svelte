@@ -30,6 +30,7 @@
     import FanChart from '#lib/components/FanChart.svelte';
     import type { FanSeries } from '#lib/components/FanChart.svelte';
     import PageHeader from '#lib/components/PageHeader.svelte';
+    import Panel from '#lib/components/Panel.svelte';
 
     let posture: PostureResponse | null = $state(null);
     let report: RiskReport | null = $state(null);
@@ -322,8 +323,7 @@
     <div class="state">Scanning…</div>
 {:else}
     <div class="grid cols-2">
-        <section class="panel" data-testid="risks">
-            <h2>Top risks</h2>
+        <Panel tag="section" title="Top risks" data-testid="risks">
             <div class="counts">
                 <span class="badge fail">{report.summary.critical + report.summary.high} high+</span
                 >
@@ -419,10 +419,9 @@
                     {/each}
                 </ol>
             {/if}
-        </section>
+        </Panel>
 
-        <section class="panel">
-            <h2>Coverage gaps</h2>
+        <Panel tag="section" title="Coverage gaps">
             {#if report.coverage.targets.length === 0}
                 <div class="state">No targets with evidence yet.</div>
             {:else}
@@ -444,14 +443,13 @@
                     />
                 {/if}
             {/if}
-        </section>
+        </Panel>
     </div>
 
     {#if nfrOption || trend}
         <div class="grid cols-2 below">
             {#if nfrOption}
-                <section class="panel" data-testid="nfrs">
-                    <h2>Objectives</h2>
+                <Panel tag="section" title="Objectives" data-testid="nfrs">
                     <EChart
                         option={nfrOption}
                         id="nfr"
@@ -462,11 +460,14 @@
                         )}
                     />
                     <ChartLegend id="nfr" items={nfrLegend} />
-                </section>
+                </Panel>
             {/if}
             {#if trend}
-                <section class="panel" data-testid="trend">
-                    <h2>{COMPLIANCE_SCORE}, {TREND_RANGE}</h2>
+                <Panel
+                    tag="section"
+                    title={`${COMPLIANCE_SCORE}, ${TREND_RANGE}`}
+                    data-testid="trend"
+                >
                     <p class="muted meaning">{COMPLIANCE_SCORE_LINE}</p>
                     <FanChart
                         series={trend}
@@ -476,7 +477,7 @@
                         height={220}
                         label="{COMPLIANCE_SCORE} over {TREND_RANGE}"
                     />
-                </section>
+                </Panel>
             {/if}
         </div>
     {/if}

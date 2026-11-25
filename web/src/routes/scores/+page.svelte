@@ -26,6 +26,7 @@
     import RangeSwitch from '#lib/components/RangeSwitch.svelte';
     import DoraScore from '#lib/components/DoraScore.svelte';
     import PageHeader from '#lib/components/PageHeader.svelte';
+    import Panel from '#lib/components/Panel.svelte';
 
     const node = $derived(page.url.searchParams.get('node') ?? '');
     const range = $derived(page.url.searchParams.get('range') ?? '7d');
@@ -198,9 +199,9 @@
 {#if view === 'dora'}
     <DoraScore {lei} onlei={setLei} />
 {:else if error}
-    <div class="panel"><div class="state error">Failed to load org scores: {error}</div></div>
+    <Panel><div class="state error">Failed to load org scores: {error}</div></Panel>
 {:else if !tree}
-    <div class="panel"><div class="skeleton" style="height: 320px"></div></div>
+    <Panel><div class="skeleton" style="height: 320px"></div></Panel>
 {:else}
     <div class="cards">
         <div class="panel card">
@@ -232,8 +233,7 @@
     </p>
 
     {#if node === ''}
-        <div class="panel">
-            <h2>Domains — area ∝ experiments × criticality, hue = band (click to drill)</h2>
+        <Panel title="Domains — area ∝ experiments × criticality, hue = band (click to drill)">
             {#if tree.children.length === 0}
                 <div class="state">No org structure on record — configure org.yaml.</div>
             {:else if treemapOption}
@@ -245,14 +245,11 @@
                     label="Scores of {tree.name} as a treemap"
                 />
             {/if}
-        </div>
+        </Panel>
     {:else}
-        <div class="panel">
-            <h2>
-                {tree.name} — {tree.children.length} direct member{tree.children.length === 1
-                    ? ''
-                    : 's'}, weakest first
-            </h2>
+        <Panel
+            title={`${tree.name} — ${tree.children.length} direct member${tree.children.length === 1 ? '' : 's'}, weakest first`}
+        >
             {#if tree.children.length === 0}
                 <div class="state">No members below this node.</div>
             {:else}
@@ -309,7 +306,7 @@
                     </tbody>
                 </table>
             {/if}
-        </div>
+        </Panel>
     {/if}
 {/if}
 

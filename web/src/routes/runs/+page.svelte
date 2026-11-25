@@ -6,6 +6,7 @@
     import StatusBadge from '#lib/components/StatusBadge.svelte';
     import { runTimeNs, runWaitNs } from '#lib/duration.js';
     import PageHeader from '#lib/components/PageHeader.svelte';
+    import Panel from '#lib/components/Panel.svelte';
 
     // Client-side state filter: '' = all, 'active' = anything in
     // ACTIVE_RUN_STATES, otherwise one terminal state.
@@ -138,7 +139,7 @@
     <div class="panel halt-note">{haltNote}</div>
 {/if}
 
-<div class="panel">
+<Panel>
     {#if error}
         <div class="state error">Failed to load runs: {error}</div>
     {:else if !shown}
@@ -181,7 +182,7 @@
             </tbody>
         </table>
     {/if}
-</div>
+</Panel>
 
 <style>
     .controls {

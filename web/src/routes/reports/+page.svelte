@@ -11,6 +11,7 @@
         ReportTemplate,
     } from '#lib/types.js';
     import PageHeader from '#lib/components/PageHeader.svelte';
+    import Panel from '#lib/components/Panel.svelte';
 
     let me = $state<MeResponse | null>(null);
     const canGenerate = $derived(
@@ -140,8 +141,7 @@
     sub="compliance-grade reports (PDF + print preview) and quick metric digests"
 />
 
-<div class="panel" style="margin-bottom: var(--space-3-5)">
-    <h2>Compliance reports</h2>
+<Panel title="Compliance reports" style="margin-bottom: var(--space-3-5)">
     {#if me && !canGenerate}<p>Generating reports requires the operator role or above.</p>{/if}
     <div class="genbar">
         <select bind:value={template} aria-label="template">
@@ -245,10 +245,9 @@
             <iframe src="/api/reports/v2/{preview}/html" title="report preview" sandbox=""></iframe>
         </div>
     {/if}
-</div>
+</Panel>
 
-<div class="panel">
-    <h2>Quick digests</h2>
+<Panel title="Quick digests">
     <div class="genbar">
         <select bind:value={selected} disabled={metrics.length === 0} aria-label="metric">
             {#each metrics as m (m.name)}
@@ -307,7 +306,7 @@
             </tbody>
         </table>
     {/if}
-</div>
+</Panel>
 
 <style>
     .genbar {

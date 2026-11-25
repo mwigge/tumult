@@ -36,6 +36,7 @@
     import DoraScenarios from './DoraScenarios.svelte';
     import EChart from './EChart.svelte';
     import ScoreNumber from './ScoreNumber.svelte';
+    import Panel from './Panel.svelte';
 
     let { lei, onlei }: { lei: string; onlei: (lei: string) => void } = $props();
 
@@ -117,9 +118,9 @@
 </script>
 
 {#if error}
-    <div class="panel"><div class="state error">Failed to load the DORA score: {error}</div></div>
+    <Panel><div class="state error">Failed to load the DORA score: {error}</div></Panel>
 {:else if !report || !maturity}
-    <div class="panel"><div class="skeleton" style="height: 320px"></div></div>
+    <Panel><div class="skeleton" style="height: 320px"></div></Panel>
 {:else}
     <div data-testid="dora-view">
         <section class="panel head" data-testid="dora-header">

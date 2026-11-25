@@ -3,6 +3,7 @@
     import { api, fmtAgo, fmtTs } from '#lib/api.js';
     import type { MeResponse, Webhook } from '#lib/types.js';
     import PageHeader from '#lib/components/PageHeader.svelte';
+    import Panel from '#lib/components/Panel.svelte';
 
     let me = $state<MeResponse | null>(null);
     let hooks = $state<Webhook[] | null>(null);
@@ -107,13 +108,13 @@
 />
 
 {#if me && !isAdmin}
-    <div class="panel">
+    <Panel>
         <div class="state">
             Webhook management requires the admin role{me.role ? ` (you are ${me.role})` : ''}.
         </div>
-    </div>
+    </Panel>
 {:else}
-    <div class="panel" style="margin-bottom: var(--space-3-5)">
+    <Panel style="margin-bottom: var(--space-3-5)">
         {#if error}
             <div class="state error">Failed to load webhooks: {error}</div>
         {:else if !hooks}
@@ -164,10 +165,9 @@
                     {rowError}
                 </div>{/if}
         {/if}
-    </div>
+    </Panel>
 
-    <div class="panel">
-        <h2>New webhook</h2>
+    <Panel title="New webhook">
         <form
             class="create"
             onsubmit={(e) => {
@@ -225,7 +225,7 @@
                 <div class="mono pw">{oneTime.secret}</div>
             </div>
         {/if}
-    </div>
+    </Panel>
 {/if}
 
 <style>

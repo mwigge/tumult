@@ -3,6 +3,7 @@
     import { api, fmtAgo, fmtTs } from '#lib/api.js';
     import type { AdminUser, ApiToken, MeResponse, Role } from '#lib/types.js';
     import PageHeader from '#lib/components/PageHeader.svelte';
+    import Panel from '#lib/components/Panel.svelte';
 
     const ROLES: Role[] = ['viewer', 'operator', 'approver', 'admin'];
 
@@ -204,17 +205,17 @@
 />
 
 {#if meError}
-    <div class="panel">
+    <Panel>
         <div class="state error">Failed to load the session: {meError}</div>
-    </div>
+    </Panel>
 {:else if me && !isAdmin}
-    <div class="panel">
+    <Panel>
         <div class="state">
             User management requires the admin role{me.role ? ` (you are ${me.role})` : ''}.
         </div>
-    </div>
+    </Panel>
 {:else}
-    <div class="panel" style="margin-bottom: var(--space-3-5)">
+    <Panel style="margin-bottom: var(--space-3-5)">
         {#if !users}
             {#if error}
                 <div class="state error">Failed to load users: {error}</div>
@@ -357,10 +358,9 @@
                 </tbody>
             </table>
         {/if}
-    </div>
+    </Panel>
 
-    <div class="panel">
-        <h2>Create user</h2>
+    <Panel title="Create user">
         <form
             class="create"
             onsubmit={(e) => {
@@ -419,10 +419,9 @@
                 <div class="mono pw">{oneTime.password}</div>
             </div>
         {/if}
-    </div>
+    </Panel>
 
-    <div class="panel">
-        <h2>API tokens</h2>
+    <Panel title="API tokens">
         {#if tokens === null}
             {#if tokenError}
                 <div class="state error">Failed to load tokens: {tokenError}</div>
@@ -522,7 +521,7 @@
                 </div>
             {/if}
         {/if}
-    </div>
+    </Panel>
 {/if}
 
 <style>

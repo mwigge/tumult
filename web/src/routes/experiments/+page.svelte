@@ -8,6 +8,7 @@
     import StatusBadge from '#lib/components/StatusBadge.svelte';
     import RangeSwitch from '#lib/components/RangeSwitch.svelte';
     import PageHeader from '#lib/components/PageHeader.svelte';
+    import Panel from '#lib/components/Panel.svelte';
 
     const filters = $derived({
         range: page.url.searchParams.get('range') ?? '24h',
@@ -97,7 +98,7 @@
     </div>
 </PageHeader>
 
-<div class="panel">
+<Panel>
     {#if error}
         <div class="state error">Failed to load experiments: {error}</div>
     {:else if !rows}
@@ -160,7 +161,7 @@
             </tbody>
         </table>
     {/if}
-</div>
+</Panel>
 
 <style>
     .controls {

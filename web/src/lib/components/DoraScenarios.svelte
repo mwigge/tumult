@@ -3,6 +3,7 @@
     // function: passed, failed, overdue or missing. A missing scenario is
     // a gap, not a pass, so it is said as such and never left blank.
     import type { DoraScenarioFunction, DoraScenarios, ScenarioState } from '#lib/types.js';
+    import Panel from './Panel.svelte';
 
     let { scenarios }: { scenarios: DoraScenarios } = $props();
 
@@ -16,8 +17,7 @@
     const cellOf = (f: DoraScenarioFunction, id: string) => f.scenarios.find((s) => s.id === id);
 </script>
 
-<section class="panel" data-testid="dora-scenarios">
-    <h2>Plan scenarios per function</h2>
+<Panel tag="section" title="Plan scenarios per function" data-testid="dora-scenarios">
     <p>
         The scenarios of
         <a href={scenarios.source_url} rel="external noopener noreferrer" target="_blank"
@@ -78,7 +78,7 @@
         </div>
     {/if}
     <div class="foot">{scenarios.note}</div>
-</section>
+</Panel>
 
 <style>
     .scroll {

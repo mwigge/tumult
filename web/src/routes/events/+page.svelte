@@ -2,6 +2,7 @@
     import { api, fmtAgo, fmtTs, shortId } from '#lib/api.js';
     import type { RunEvent } from '#lib/types.js';
     import PageHeader from '#lib/components/PageHeader.svelte';
+    import Panel from '#lib/components/Panel.svelte';
 
     // Event-type filter: '' = everything, otherwise one audit event name.
     const FILTERS: { value: string; label: string }[] = [
@@ -79,7 +80,7 @@
     </div>
 </PageHeader>
 
-<div class="panel">
+<Panel>
     {#if error}
         <div class="state error">Failed to load events: {error}</div>
     {:else if !rows}
@@ -111,7 +112,7 @@
             </tbody>
         </table>
     {/if}
-</div>
+</Panel>
 
 <style>
     .controls {

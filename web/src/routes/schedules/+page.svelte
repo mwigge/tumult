@@ -3,6 +3,7 @@
     import { api, fmtAgo, fmtIn, fmtInterval, fmtTs } from '#lib/api.js';
     import type { MeResponse, RegistryEntry, Schedule } from '#lib/types.js';
     import PageHeader from '#lib/components/PageHeader.svelte';
+    import Panel from '#lib/components/Panel.svelte';
 
     const PRESETS: { label: string; seconds: number }[] = [
         { label: 'every 15m', seconds: 900 },
@@ -134,7 +135,7 @@
         : 'interval-based recurring runs'}
 />
 
-<div class="panel" style="margin-bottom: var(--space-3-5)">
+<Panel style="margin-bottom: var(--space-3-5)">
     {#if error}
         <div class="state error">Failed to load schedules: {error}</div>
     {:else if !schedules}
@@ -203,11 +204,10 @@
                 {rowError}
             </div>{/if}
     {/if}
-</div>
+</Panel>
 
 {#if canMutate}
-    <div class="panel">
-        <h2>New schedule</h2>
+    <Panel title="New schedule">
         {#if registry && registry.length === 0}
             <div class="state">
                 No validated definitions yet — validate an experiment TOON first (Runs → New run).
@@ -273,7 +273,7 @@
                     {createError}
                 </div>{/if}
         {/if}
-    </div>
+    </Panel>
 {/if}
 
 <style>

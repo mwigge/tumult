@@ -5,6 +5,7 @@
     // confirm with a justification).
     import { api, fmtAgo, fmtTs } from '#lib/api.js';
     import type { RunDetail, RunExecState } from '#lib/types.js';
+    import Panel from './Panel.svelte';
 
     let {
         runId,
@@ -87,7 +88,7 @@
 {#if approval.request}
     {@const req = approval.request}
     {@const ttl = expiry(req.expires_at_ns)}
-    <div class="panel" style="margin-bottom: var(--space-3-5)">
+    <Panel style="margin-bottom: var(--space-3-5)">
         <h2>
             Approval chain
             <span class="badge {tierClass(req.tier)}">{req.tier}</span>
@@ -202,7 +203,7 @@
                 </div>
             </div>
         {/if}
-    </div>
+    </Panel>
 {/if}
 
 <style>

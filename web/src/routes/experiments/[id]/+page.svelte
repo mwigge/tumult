@@ -8,6 +8,7 @@
     import Waterfall from '#lib/components/Waterfall.svelte';
     import SpanDrawer from '#lib/components/SpanDrawer.svelte';
     import PageHeader from '#lib/components/PageHeader.svelte';
+    import Panel from '#lib/components/Panel.svelte';
 
     const id = $derived(page.params.id ?? '');
 
@@ -65,9 +66,9 @@
         class="grid"
         style="grid-template-columns: repeat(4, 1fr); margin-bottom: var(--space-3-5)"
     >
-        <div class="panel meta">
-            <span>Started</span><b>{fmtTs(exp.started_ns)} ({fmtAgo(exp.started_ns)})</b>
-        </div>
+        <Panel variant="meta" title="Started">
+            <b>{fmtTs(exp.started_ns)} ({fmtAgo(exp.started_ns)})</b>
+        </Panel>
         <div class="panel meta">
             <span>Duration</span><b class="mono">{fmtDuration(ranNs)}</b>
             {#if exp.duration_ns !== null && exp.duration_ns !== ranNs}
@@ -76,23 +77,24 @@
                 >
             {/if}
         </div>
-        <div class="panel meta">
-            <span>Deviations</span><b class="mono">{exp.deviations ?? '—'}</b>
-        </div>
-        <div class="panel meta">
-            <span>Target</span>
+        <Panel variant="meta" title="Deviations">
+            <b class="mono">{exp.deviations ?? '—'}</b>
+        </Panel>
+        <Panel variant="meta" title="Target">
             <b class="mono">
                 {exp.target_system ?? '—'}{exp.target_technology
                     ? ` · ${exp.target_technology}`
                     : ''}{exp.target_environment ? ` · ${exp.target_environment}` : ''}
             </b>
-        </div>
+        </Panel>
     </div>
 
     <EvidencePanels evidence={detail.evidence ?? null} />
 
-    <div class="panel" style="margin-bottom: var(--space-3-5)">
-        <h2>Trace waterfall — {detail.spans.length} spans</h2>
+    <Panel
+        title={`Trace waterfall — ${detail.spans.length} spans`}
+        style="margin-bottom: var(--space-3-5)"
+    >
         {#if exp.journal_only}
             <div class="state" data-testid="no-trace">
                 This run sent no trace. What you see here comes from its journal.
@@ -102,11 +104,10 @@
         {:else}
             <Waterfall spans={detail.spans} onselect={(s) => (selected = s)} />
         {/if}
-    </div>
+    </Panel>
 
     <div class="grid cols-2">
-        <div class="panel">
-            <h2>Logs ({detail.logs.length})</h2>
+        <Panel title={`Logs (${detail.logs.length})`}>
             {#if detail.logs.length === 0}
                 <div class="state">No logs correlated to this experiment.</div>
             {:else}
@@ -122,9 +123,8 @@
                     {/each}
                 </div>
             {/if}
-        </div>
-        <div class="panel">
-            <h2>Metric points ({detail.metrics.length})</h2>
+        </Panel>
+        <Panel title={`Metric points (${detail.metrics.length})`}>
             {#if detail.metrics.length === 0}
                 <div class="state">
                     No metric points with the name of this experiment in the time of this run.
@@ -146,7 +146,7 @@
                     </tbody>
                 </table>
             {/if}
-        </div>
+        </Panel>
     </div>
 
     {#if selected}

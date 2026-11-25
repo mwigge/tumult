@@ -42,6 +42,7 @@
     } from '#lib/types.js';
     import EChart from '#lib/components/EChart.svelte';
     import PageHeader from '#lib/components/PageHeader.svelte';
+    import Panel from '#lib/components/Panel.svelte';
 
     // Why the read has no answer: `none` = 404 (no evidence in scope),
     // `input` = 400 (the query must be narrowed), `fail` = anything else.
@@ -356,7 +357,7 @@
 {:else}
     {@const cmp = answer.comparison}
     <div class="grid cols-2" aria-busy={loading}>
-        <section class="panel" data-testid="verdict" aria-labelledby="perf-verdict-h">
+        <Panel tag="section" data-testid="verdict" aria-labelledby="perf-verdict-h">
             <h2 id="perf-verdict-h">Verdict</h2>
             <div class="headline">
                 <span class="badge big {VERDICT_CLASS[answer.verdict]}" data-testid="verdict-badge"
@@ -421,9 +422,9 @@
                     </li>
                 {/if}
             </ul>
-        </section>
+        </Panel>
 
-        <section class="panel" aria-labelledby="perf-delta-h">
+        <Panel tag="section" aria-labelledby="perf-delta-h">
             <h2 id="perf-delta-h">Difference at {cmp.quantile}</h2>
             <div data-testid="delta">
                 {#if cmp.delta === null}
@@ -450,7 +451,7 @@
                     </div>
                 {/if}
             </div>
-        </section>
+        </Panel>
     </div>
 
     <section class="panel below" aria-labelledby="perf-dist-h" aria-busy={loading}>

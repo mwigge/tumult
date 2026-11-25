@@ -11,6 +11,7 @@
     import { experimentOverlay, labelGap, overlayRunId } from '#lib/overlays.js';
     import { RANGE_SECONDS, rangeAxis } from '#lib/ranges.js';
     import PageHeader from '#lib/components/PageHeader.svelte';
+    import Panel from '#lib/components/Panel.svelte';
 
     const INTERVALS = ['5m', '1h', '1d'];
     const CHART_TYPES = ['line', 'area', 'bar'] as const;
@@ -220,7 +221,7 @@
     </div>
 </PageHeader>
 
-<div class="panel">
+<Panel>
     {#if error}
         <div class="state error">Failed to load metric: {error}</div>
     {:else if catalog === null || (filters.name && result === null)}
@@ -238,7 +239,7 @@
             label="Metric values over time"
         />
     {/if}
-</div>
+</Panel>
 
 {#if result && result.type === 'histogram'}
     <p class="sub" style="margin-top: var(--space-2)">

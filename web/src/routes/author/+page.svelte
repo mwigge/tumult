@@ -4,6 +4,7 @@
     import CatalogBrowser from '#lib/components/CatalogBrowser.svelte';
     import type { CatalogResponse } from '#lib/types.js';
     import PageHeader from '#lib/components/PageHeader.svelte';
+    import Panel from '#lib/components/Panel.svelte';
 
     let catalog = $state<CatalogResponse | null>(null);
     let loadError = $state<string | null>(null);
@@ -22,14 +23,14 @@
 {:else if !catalog}
     <div class="skeleton" style="height: 200px"></div>
 {:else if catalog.action_count === 0}
-    <div class="panel">
+    <Panel>
         <div class="state">
             The fault catalog is empty — the daemon found no plugins. Plugin discovery looks in
             <span class="mono">./plugins</span>, <span class="mono">~/.tumult/plugins</span>, and
             the
             <span class="mono">TUMULT_PLUGIN_PATH</span> environment variable.
         </div>
-    </div>
+    </Panel>
 {:else}
     <CatalogBrowser domains={catalog.domains} />
 {/if}

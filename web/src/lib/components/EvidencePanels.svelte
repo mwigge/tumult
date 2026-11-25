@@ -25,6 +25,7 @@
     } from '#lib/evidence.js';
     import type { RunEvidence } from '#lib/types.js';
     import EChart from './EChart.svelte';
+    import Panel from './Panel.svelte';
 
     let { evidence }: { evidence: RunEvidence | null } = $props();
 
@@ -54,8 +55,7 @@
     {@const recovery = recoveryRows(evidence.recovery, evidence.objectives)}
     {@const note = samplesNote(evidence)}
     <div class="grid cols-2 block">
-        <div class="panel" data-testid="evidence-steady">
-            <h2>Steady state</h2>
+        <Panel title="Steady state" data-testid="evidence-steady">
             <dl class="facts">
                 <div>
                     <dt>Kind of test</dt>
@@ -103,10 +103,12 @@
                     </tbody>
                 </table>
             {/if}
-        </div>
+        </Panel>
 
-        <div class="panel" data-testid="evidence-objectives">
-            <h2>Objectives ({evidence.objectives.length})</h2>
+        <Panel
+            title={`Objectives (${evidence.objectives.length})`}
+            data-testid="evidence-objectives"
+        >
             {#if evidence.objectives.length === 0}
                 <div class="state">This run had no objective.</div>
             {:else}
@@ -136,7 +138,7 @@
                     </tbody>
                 </table>
             {/if}
-        </div>
+        </Panel>
     </div>
 
     <div class="panel block" data-testid="evidence-steps">

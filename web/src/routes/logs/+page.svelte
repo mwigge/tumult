@@ -10,6 +10,7 @@
     import type { EChartsCoreOption } from '#lib/echarts.js';
     import { bucketAxis } from '#lib/ranges.js';
     import PageHeader from '#lib/components/PageHeader.svelte';
+    import Panel from '#lib/components/Panel.svelte';
 
     const SEVERITIES = ['ERROR', 'WARN', 'INFO', 'DEBUG', 'TRACE'];
 
@@ -191,7 +192,7 @@
     </div>
 {/if}
 
-<div class="panel">
+<Panel>
     {#if volume && volume.rows.length > 0}
         <EChart id="log-volume" option={volumeOption} height={180} label="Log volume by severity" />
     {:else if rows}
@@ -199,9 +200,9 @@
     {:else}
         <div class="skeleton" style="height: 180px"></div>
     {/if}
-</div>
+</Panel>
 
-<div class="panel">
+<Panel>
     {#if error}
         <div class="state error">Failed to load logs: {error}</div>
     {:else if !rows}
@@ -281,7 +282,7 @@
             </tbody>
         </table>
     {/if}
-</div>
+</Panel>
 
 <style>
     .controls {

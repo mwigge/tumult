@@ -11,6 +11,7 @@
     import { strong, tip, tipFormatter } from '#lib/tooltip.js';
     import type { EChartsCoreOption } from '#lib/echarts.js';
     import PageHeader from '#lib/components/PageHeader.svelte';
+    import Panel from '#lib/components/Panel.svelte';
 
     const filters = $derived({
         range: page.url.searchParams.get('range') ?? '24h',
@@ -183,7 +184,7 @@
     </div>
 {/if}
 
-<div class="panel">
+<Panel>
     {#if durations && durations.points.length > 0}
         <EChart
             id="trace-durations"
@@ -197,9 +198,9 @@
     {:else}
         <div class="skeleton" style="height: 220px"></div>
     {/if}
-</div>
+</Panel>
 
-<div class="panel">
+<Panel>
     {#if error}
         <div class="state error">Failed to load traces: {error}</div>
     {:else if !rows}
@@ -258,7 +259,7 @@
             </tbody>
         </table>
     {/if}
-</div>
+</Panel>
 
 <style>
     .controls {
