@@ -120,6 +120,16 @@ test('the launch runs the campaign in the environment typed into the field', asy
     }
 });
 
+test('the head says that the MTTR target holds for a run with no RTO target', async ({ page }) => {
+    await mockApi(page, { campaigns: [] });
+    await page.goto('/gamedays/gd-1');
+
+    // A run that sets its own rto_target_s is judged against that.
+    await expect(page.locator('.page-head .sub')).toHaveText(
+        '2 experiments · pass threshold 0.75 · MTTR target 30s for a run with no RTO target',
+    );
+});
+
 test('the page finds its campaign by asking for the runs of its GameDay', async ({ page }) => {
     const seen = await mockApi(page, { campaigns: [parent] });
     await page.goto('/gamedays/gd-1');
