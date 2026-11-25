@@ -5,30 +5,52 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Tumult report: Checkout API sheds load instead of collapsing at saturation</title>
 <style>
+/* Written by web/scripts/build-tokens.mjs from web/tokens/. Do not edit:
+   change a token file and run `npm run build:tokens` in web/. */
+
+/* The colour roles of Krönika. color-scheme makes native widgets, such
+   as scroll bars, follow the light or dark setting of the system. */
 :root {
-  color-scheme: light dark;
-  --bg: #f4f6f8;
-  --panel: #ffffff;
-  --border: #e3e8ed;
-  --text: #1b2329;
-  --muted: #5b6772;
-  --accent: #1f6fb2;
-  --ok: #0f8a5f;
-  --warn: #b45309;
-  --fail: #c0392b;
+    color-scheme: light dark;
+    --bg: #f4f6f8;
+    --bg-raised: #ffffff;
+    --bg-panel: #ffffff;
+    --bg-hover: #e9eef2;
+    --border: #e3e8ed;
+    --border-strong: #c5ced6;
+    --text: #1b2329;
+    --text-dim: #5b6772;
+    --text-faint: #8b98a5;
+    --ok: #0f8a5f;
+    --warn: #b45309;
+    --fail: #c0392b;
+    --accent: #1f6fb2;
+    --accent-dim: #9cc4e4;
 }
 @media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0b0e11;
-    --panel: #151b21;
-    --border: #242d36;
-    --text: #d8dee4;
-    --muted: #8b98a5;
-    --accent: #5eb1ef;
-    --ok: #34d399;
-    --warn: #f59e0b;
-    --fail: #ef4444;
-  }
+    :root {
+        --bg: #0b0e11;
+        --bg-raised: #11161b;
+        --bg-panel: #151b21;
+        --bg-hover: #1c242c;
+        --border: #242d36;
+        --border-strong: #33404c;
+        --text: #d8dee4;
+        --text-dim: #8b98a5;
+        --text-faint: #5b6772;
+        --ok: #34d399;
+        --warn: #f59e0b;
+        --fail: #ef4444;
+        --accent: #5eb1ef;
+        --accent-dim: #2d5d84;
+    }
+}
+
+/* In print the page is white, as paper is. */
+@media print {
+    :root {
+        --bg: #ffffff;
+    }
 }
 * { box-sizing: border-box; }
 body {
@@ -41,7 +63,7 @@ main { max-width: 1040px; margin: 0 auto; padding: 40px 24px 56px; }
 header { margin-bottom: 28px; }
 .eyebrow {
   margin: 0;
-  color: var(--muted);
+  color: var(--text-dim);
   font-size: 12px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -50,12 +72,12 @@ h1 { margin: 4px 0 10px; font-size: 28px; line-height: 1.25; }
 h2 { margin: 0 0 14px; font-size: 17px; }
 h3 { margin: 18px 0 8px; font-size: 14px; }
 h2 + h3 { margin-top: 0; }
-.lede { margin: 0; color: var(--muted); }
+.lede { margin: 0; color: var(--text-dim); }
 code { font: 13px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
 section, footer {
   margin-top: 20px;
   padding: 20px 22px;
-  background: var(--panel);
+  background: var(--bg-panel);
   border: 1px solid var(--border);
   border-radius: 10px;
 }
@@ -69,12 +91,12 @@ section.cards {
 }
 .card {
   padding: 14px 16px;
-  background: var(--panel);
+  background: var(--bg-panel);
   border: 1px solid var(--border);
   border-radius: 10px;
 }
 .label {
-  color: var(--muted);
+  color: var(--text-dim);
   font-size: 12px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -89,9 +111,9 @@ th, td {
   text-align: left;
   vertical-align: top;
 }
-thead th { color: var(--muted); font-size: 12px; font-weight: 600; }
+thead th { color: var(--text-dim); font-size: 12px; font-weight: 600; }
 tbody tr:last-child > * { border-bottom: 0; }
-table.facts th { width: 240px; color: var(--muted); font-weight: 500; }
+table.facts th { width: 240px; color: var(--text-dim); font-weight: 500; }
 tr.row-failed td:first-child { box-shadow: inset 3px 0 0 var(--fail); }
 .badge {
   display: inline-block;
@@ -105,7 +127,7 @@ tr.row-failed td:first-child { box-shadow: inset 3px 0 0 var(--fail); }
 .ok { color: var(--ok); }
 .warn { color: var(--warn); }
 .fail { color: var(--fail); }
-.muted { color: var(--muted); }
+.muted { color: var(--text-dim); }
 .detail-output, .detail-error {
   display: block;
   max-height: 12em;
@@ -117,12 +139,11 @@ tr.row-failed td:first-child { box-shadow: inset 3px 0 0 var(--fail); }
 .detail-error { color: var(--fail); }
 .trace-link { font: 13px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
 a { color: var(--accent); }
-footer { color: var(--muted); font-size: 13px; }
+footer { color: var(--text-dim); font-size: 13px; }
 footer p { margin: 0; }
 figure { margin: 0 0 16px; }
 .chart { width: 100%; }
 @media print {
-  body { background: #ffffff; }
   section, footer, .card { break-inside: avoid; }
 }
 </style>

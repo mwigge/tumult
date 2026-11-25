@@ -19,7 +19,7 @@ import {
 } from 'echarts/components';
 import { SVGRenderer } from 'echarts/renderers';
 import { DARK, LIGHT, themeSpec } from '../chart-theme';
-import { withColours } from './colours';
+import { COLOURS, withColours } from './colours';
 
 echarts.use([
     BarChart,
@@ -48,7 +48,10 @@ function draw(spec: HTMLScriptElement): void {
             renderer: 'svg',
         });
         chart.setOption(
-            withColours(option, dark.matches ? DARK : LIGHT) as echarts.EChartsCoreOption,
+            withColours(
+                option,
+                COLOURS[dark.matches ? 'dark' : 'light'],
+            ) as echarts.EChartsCoreOption,
         );
     };
     render();

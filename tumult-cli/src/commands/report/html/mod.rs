@@ -16,7 +16,12 @@ use fmt::{badge, text};
 #[cfg(test)]
 pub(crate) use steps::step_row;
 
-const STYLE: &str = include_str!("report.css");
+/// The colours of the report, light and dark: the colour roles of Krönika.
+/// Written by `npm run build:tokens` in `web/` from the design tokens.
+const TOKENS: &str = include_str!("tokens.css");
+
+/// The layout of the report. Its colours are the ones of `TOKENS`.
+const LAYOUT: &str = include_str!("report.css");
 
 /// The script that draws the charts: `ECharts` with what the report needs
 /// of it. Built from `web/src/lib/report/main.ts` by `npm run build:report`.
@@ -56,7 +61,7 @@ pub(crate) fn generate_html_report(journal: &Journal, frame: &ReportFrame<'_>) -
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Tumult report: {title}</title>
 <style>
-{STYLE}</style>
+{TOKENS}{LAYOUT}</style>
 </head>
 <body>
 <main>
@@ -130,4 +135,77 @@ Source journal SHA-256: <code>{hash}</code></p>
             .to_rfc3339_opts(SecondsFormat::Secs, true),
         hash = text(frame.source_hash),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{LAYOUT, TOKENS};
+
+    /// The names of the custom properties `css` sets, such as `bg-panel`.
+    fn properties(css: &str) -> Vec<&str> {
+        css.lines()
+            .filter_map(|line| line.trim_start().strip_prefix("--")?.split_once(':'))
+            .map(|(name, _)| name)
+            .collect()
+    }
+
+    /// The names a chart option gives its colours in `source`: `ok` for
+    /// `token:ok`.
+    fn token_names(source: &str) -> Vec<&str> {
+        source
+            .split("token:")
+            .skip(1)
+            .map(|rest| {
+                let end = rest
+                    .find(|c: char| !(c.is_ascii_alphanumeric() || c == '-'))
+                    .unwrap_or(rest.len());
+                &rest[..end]
+            })
+            .collect()
+    }
+
+    /// The hex colours in `css`, such as `#0b0e11`.
+    fn hex_colours(css: &str) -> Vec<&str> {
+        css.match_indices('#')
+            .map(|(at, _)| {
+                let rest = &css[at + 1..];
+                let digits = rest
+                    .find(|c: char| !c.is_ascii_hexdigit())
+                    .unwrap_or(rest.len());
+                &css[at..=at + digits]
+            })
+            .filter(|hex| hex.len() > 3)
+            .collect()
+    }
+
+    #[test]
+    fn every_colour_a_chart_names_is_a_colour_of_the_report() {
+        let mut colours = properties(TOKENS);
+        colours.sort_unstable();
+        colours.dedup();
+        let names: Vec<&str> = [
+            include_str!("charts.rs"),
+            include_str!("context.rs"),
+            include_str!("fmt.rs"),
+            include_str!("measures.rs"),
+            include_str!("steps.rs"),
+        ]
+        .into_iter()
+        .flat_map(token_names)
+        .collect();
+
+        assert!(names.len() >= 4, "the charts name {names:?}");
+        for name in names {
+            assert!(
+                colours.contains(&name),
+                "token:{name} is no colour of tokens.css, so the script of the report \
+                 has no colour for it; the colours are {colours:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_layout_of_the_report_takes_every_colour_from_the_tokens() {
+        assert_eq!(hex_colours(LAYOUT), Vec::<&str>::new());
+    }
 }

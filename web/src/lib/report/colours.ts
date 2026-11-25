@@ -1,7 +1,16 @@
 // A chart of the CLI report names its colours by token, because the report
 // is written before anyone knows whether it is read in light or in dark.
 
+import { tokens } from '../tokens.gen';
+
 const PREFIX = 'token:';
+
+/**
+ * The colours a chart of the report names, in each theme: the colour roles
+ * of Krönika, such as `ok` and `border-strong`. The CSS of the report has
+ * the same names, and a Rust test holds the names of the charts to them.
+ */
+export const COLOURS = { dark: tokens.dark, light: tokens.light } as const;
 
 /**
  * `option` with every `color: "token:<name>"` replaced by the colour of

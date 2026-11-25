@@ -3,8 +3,8 @@
 //!
 //! A chart is an element to draw in and, next to it, its `ECharts` option
 //! as JSON. The script of the report draws each option. A colour of the
-//! theme is named in an option (`token:ok`), and the script gives it the
-//! colour the browser asks for, light or dark.
+//! theme is named in an option by its name in `tokens.css` (`token:ok`),
+//! and the script gives it the colour the browser asks for, light or dark.
 
 use std::time::Duration;
 
@@ -23,7 +23,7 @@ pub(super) const OPTION: &str = r#"<script type="application/json" data-chart=""
 
 const OK: &str = "token:ok";
 const FAIL: &str = "token:fail";
-const MUTED: &str = "token:axis";
+const MUTED: &str = "token:border-strong";
 const ACCENT: &str = "token:accent";
 
 const LINE_CHART_PX: usize = 260;
