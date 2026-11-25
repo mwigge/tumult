@@ -1,38 +1,15 @@
-// Tumult colour scheme: the light tokens of the product UI
-// (web/src/lib/theme.css). The theme loads its light scheme before this file,
-// so only the values that differ are set here.
+// Tumult colour scheme: the light tokens of the product UI. The theme loads
+// its light scheme before this file, so only the values that differ are set.
 //
-// Every text colour is at least 4.5 : 1 on the background it sits on (WCAG
-// AA): text #1b2329 15.9, dim #5b6772 5.8 and link #1f6fb2 5.3 on white;
-// dim 5.3 and link 4.9 on the sidebar and the code panel, #f4f6f8.
-
-$body-background-color: #ffffff;
-$sidebar-color: #f4f6f8;
-$border-color: #e3e8ed;
-$feedback-color: #e9eef2;
-
-$body-heading-color: #1b2329;
-$body-text-color: #1b2329;
-$nav-child-link-color: #5b6772;
-$search-result-preview-color: #5b6772;
-
-$link-color: #1f6fb2;
-$btn-primary-color: #1f6fb2;
-
-$code-background-color: #f4f6f8;
-
-// The theme's dim grey colours list numbers, the sidebar footer and the
-// search. Its own value is 3.0 : 1 on white; the product's dim text passes.
-$grey-dk-000: #5b6772;
+// The colour variables are in _tumult-tokens.scss, which
+// web/scripts/build-tokens.mjs writes from the design tokens
+// (web/tokens/docs.tokens.json). Every text colour is at least 4.5 : 1 on
+// the background it sits on (WCAG AA); the ratio of each is in its token.
+@import "./color_schemes/tumult-tokens";
 
 // Code colours. The One Light colours of the light scheme are below 4.5 : 1
 // on the code panel (comments 2.5), so each group takes a product hue,
-// darkened where needed. Ratio on #f4f6f8 after each.
-$tumult-code-comment: #5b6772; // 5.3
-$tumult-code-keyword: #b5352a; // 5.5
-$tumult-code-string: #0a7550; // 5.3
-$tumult-code-number: #a74c08; // 5.3
-$tumult-code-name: #1f6fb2; // 4.9
+// darkened where needed: the $tumult-code- variables.
 
 .highlight .c,
 .highlight .ch,

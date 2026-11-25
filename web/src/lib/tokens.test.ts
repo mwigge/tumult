@@ -280,3 +280,38 @@ describe('theme.css', () => {
         expect(theme).not.toMatch(/--[a-z-]+:/);
     });
 });
+
+describe('the docs site', () => {
+    const docs = (file: string) => readFileSync(join(WEB, '../docs', file), 'utf8');
+    /** The names of the custom properties that a style sheet defines. */
+    const defined = (css: string) => [...css.matchAll(/(--[a-z0-9-]+):/g)].map((m) => m[1]);
+
+    it('names every colour of landing.css by a token, with no hex of its own', () => {
+        expect(docs('assets/css/landing.css').match(/#[0-9a-fA-F]{3,8}\b/g) ?? []).toEqual([]);
+    });
+
+    it('uses on the landing page only the custom properties that its style sheets define', () => {
+        const landing = docs('assets/css/landing.css');
+        const known = new Set([...defined(docs('assets/css/tokens.css')), ...defined(landing)]);
+        const used = [landing, docs('index.html')].flatMap((text) =>
+            [...text.matchAll(/var\((--[a-z0-9-]+)/g)].map((m) => m[1]),
+        );
+
+        expect([...new Set(used)].filter((name) => !known.has(name))).toEqual([]);
+    });
+
+    it('links the colours of the landing page before landing.css', () => {
+        const page = docs('index.html');
+        const tokens = page.indexOf('<link rel="stylesheet" href="/assets/css/tokens.css">');
+
+        expect(tokens).toBeGreaterThan(-1);
+        expect(tokens).toBeLessThan(page.indexOf('/assets/css/landing.css'));
+    });
+
+    it('takes the colour variables of the docs theme from the generated partial', () => {
+        const scheme = docs('_sass/color_schemes/tumult.scss');
+
+        expect(scheme).toContain('\n@import "./color_schemes/tumult-tokens";\n');
+        expect(scheme).not.toMatch(/^\$[a-z0-9-]+:/m);
+    });
+});
