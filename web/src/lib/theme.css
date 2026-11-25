@@ -305,7 +305,7 @@ table.data tr.clickable:hover {
 }
 .seg button.active {
     background: var(--accent-dim);
-    color: #fff;
+    color: var(--on-accent);
 }
 /* On a small screen the buttons of a long group wrap to a second row. */
 @media (max-width: 900px) {
@@ -350,7 +350,7 @@ input[type='text'],
 input[type='search'],
 input[type='number'] {
     background: var(--bg-raised);
-    border: var(--border-width-sm) solid var(--border-strong);
+    border: var(--border-width-sm) solid var(--border-input);
     color: var(--text);
     border-radius: var(--radius-lg);
     padding: var(--space-1-5) 9px;
@@ -377,7 +377,7 @@ input[type='date'],
 input[type='datetime-local'],
 input[type='file'] {
     background: var(--bg-raised);
-    border: var(--border-width-sm) solid var(--border-strong);
+    border: var(--border-width-sm) solid var(--border-input);
     color: var(--text);
     border-radius: var(--radius-lg);
     padding: 5px var(--space-2);
@@ -387,7 +387,7 @@ input[type='file'] {
 button.primary {
     background: var(--accent-dim);
     border: var(--border-width-sm) solid var(--accent);
-    color: #fff;
+    color: var(--on-accent);
     border-radius: var(--radius-lg);
     padding: 7px var(--space-4);
     font-size: var(--font-size-md);
@@ -406,12 +406,12 @@ button.primary {
 .btn:hover {
     border-color: var(--accent-dim);
 }
-/* A primary .btn keeps the text colour and the shape of .btn, which
-   button.primary would change. */
+/* A primary .btn keeps the shape of .btn, which button.primary would
+   change. */
 .btn.primary {
     background: var(--accent-dim);
     border-color: var(--accent-dim);
-    color: var(--text);
+    color: var(--on-accent);
     border-radius: var(--radius-xl);
     padding: var(--space-1-5) var(--space-3-5);
 }
@@ -429,7 +429,9 @@ button.primary:disabled,
 }
 
 /* --- status badges --------------------------------------------------------*/
-/* Badge.svelte draws every badge; src/lib/tone.ts chooses its tone. */
+/* Badge.svelte draws every badge; src/lib/tone.ts chooses its tone. The
+   tint is mixed with the panel, so it is one colour on every surface and
+   its text keeps 4.5:1 on a hovered row too (contrast.test.ts). */
 .badge {
     display: inline-block;
     /* A part that wants a gap before its badges sets --badge-gap. */
@@ -442,15 +444,15 @@ button.primary:disabled,
 }
 .badge.ok {
     color: var(--ok);
-    background: color-mix(in srgb, var(--ok) 14%, transparent);
+    background: color-mix(in srgb, var(--ok) 14%, var(--bg-panel));
 }
 .badge.warn {
     color: var(--warn);
-    background: color-mix(in srgb, var(--warn) 14%, transparent);
+    background: color-mix(in srgb, var(--warn) 14%, var(--bg-panel));
 }
 .badge.fail {
     color: var(--fail);
-    background: color-mix(in srgb, var(--fail) 14%, transparent);
+    background: color-mix(in srgb, var(--fail) 14%, var(--bg-panel));
 }
 .badge.neutral {
     color: var(--text-dim);

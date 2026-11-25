@@ -67,7 +67,7 @@ const SR_ONLY = [
 ];
 const FIELD = [
     'background: var(--bg-raised)',
-    'border: var(--border-width-sm) solid var(--border-strong)',
+    'border: var(--border-width-sm) solid var(--border-input)',
     'color: var(--text)',
     'border-radius: var(--radius-lg)',
     'padding: 5px var(--space-2)',

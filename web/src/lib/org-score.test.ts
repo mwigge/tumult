@@ -58,7 +58,7 @@ describe('the band of a node', () => {
             'good',
         ]);
         expect([bandColor('fair'), bandGlyph('fair'), bandLabel('fair')]).toEqual([
-            '#E69F00',
+            '#c28600',
             '▲',
             'fair',
         ]);
@@ -72,7 +72,7 @@ describe('the band of a node', () => {
     it('draws the band of a node with no score as a dash in the neutral colour', () => {
         expect(bandLabel('unknown')).toBe('—');
         expect(bandGlyph('unknown')).toBe('');
-        expect(bandColor('unknown')).toBe('#5b6772');
+        expect(bandColor('unknown')).toBe('#6f7c87');
         expect([bandColor('poor'), chartTokens('tumult-dark').fail]).not.toContain(
             bandColor('unknown'),
         );

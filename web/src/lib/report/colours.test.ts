@@ -15,7 +15,7 @@ describe('withColours', () => {
         const option = { series: [{ itemStyle: { color: 'token:ok' } }] };
 
         expect(withColours(option, LIGHT)).toEqual({
-            series: [{ itemStyle: { color: '#0f8a5f' } }],
+            series: [{ itemStyle: { color: '#097852' } }],
         });
         expect(withColours(option, DARK)).toEqual({
             series: [{ itemStyle: { color: '#34d399' } }],
@@ -28,7 +28,7 @@ describe('withColours', () => {
         };
 
         expect(withColours(option, LIGHT)).toEqual({
-            series: [{ data: [{ value: 1, itemStyle: { color: '#c0392b' } }, 2, null] }],
+            series: [{ data: [{ value: 1, itemStyle: { color: '#be3729' } }, 2, null] }],
         });
     });
 

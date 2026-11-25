@@ -48,7 +48,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > div.brand > div.tag": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "11px",
       "display": "block",
       "margin": "2px 0px 0px"
@@ -330,7 +330,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div[alert].state.error.panel": {
-      "color": "rgb(239, 68, 68)",
+      "color": "rgb(251, 80, 78)",
       "font-size": "13px",
       "display": "block",
       "background-color": "rgb(21, 27, 33)",

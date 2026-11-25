@@ -153,7 +153,7 @@
     }
     textarea {
         background: var(--bg-raised);
-        border: var(--border-width-sm) solid var(--border-strong);
+        border: var(--border-width-sm) solid var(--border-input);
         color: var(--text);
         border-radius: var(--radius-lg);
         padding: var(--space-2) var(--space-2-5);

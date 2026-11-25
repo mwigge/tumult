@@ -651,7 +651,7 @@
     .suppress input {
         background: var(--bg-raised);
         color: var(--text);
-        border: var(--border-width-sm) solid var(--border-strong);
+        border: var(--border-width-sm) solid var(--border-input);
         border-radius: var(--radius-md);
         padding: var(--space-1) var(--space-2);
         font: inherit;
@@ -668,7 +668,7 @@
     }
     .suppress button[type='submit'] {
         background: var(--accent-dim);
-        color: var(--text);
+        color: var(--on-accent);
         border: none;
         border-radius: var(--radius-md);
         padding: var(--space-1) var(--space-3);

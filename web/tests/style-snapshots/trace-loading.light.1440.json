@@ -48,7 +48,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > div.brand > div.tag": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "11px",
       "display": "block",
       "margin": "2px 0px 0px"

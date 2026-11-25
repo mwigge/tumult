@@ -48,7 +48,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > div.brand > div.tag": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "11px",
       "display": "block",
       "margin": "2px 0px 0px"
@@ -390,7 +390,7 @@
       "font-size": "12.5px",
       "line-height": "normal",
       "display": "block",
-      "background-color": "rgb(156, 196, 228)",
+      "background-color": "rgb(74, 123, 164)",
       "border-left": "1px solid rgb(197, 206, 214)",
       "padding": "5px 12px"
     },
@@ -431,7 +431,7 @@
       "margin": "0px 0px 6px"
     },
     "div.shell > main[main].main > div[tabpanel] \"Org scores\" > div.cards > div.panel.card > div.value.mono": {
-      "color": "rgb(230, 159, 0)",
+      "color": "rgb(194, 134, 0)",
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "24px",
       "font-weight": "600",
@@ -443,7 +443,7 @@
       "margin": "0px 6px 0px 0px"
     },
     "div.shell > main[main].main > div[tabpanel] \"Org scores\" > div.cards > div.panel.card > div.hint": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "11.5px",
       "display": "block",
       "margin": "4px 0px 0px"
@@ -467,14 +467,14 @@
       "margin": "0px 0px 6px"
     },
     "div.shell > main[main].main > div[tabpanel] \"Org scores\" > div.cards > div.panel.card #2 > div.value.mono.delta.flat": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "24px",
       "font-weight": "600",
       "display": "block"
     },
     "div.shell > main[main].main > div[tabpanel] \"Org scores\" > div.cards > div.panel.card #2 > div.hint": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "11.5px",
       "display": "block",
       "margin": "4px 0px 0px"
@@ -504,7 +504,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div[tabpanel] \"Org scores\" > div.cards > div.panel.card #3 > div.hint": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "11.5px",
       "display": "block",
       "margin": "4px 0px 0px"
@@ -532,7 +532,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div[tabpanel] \"Org scores\" > div.cards > div.panel.card #4 > div.hint": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "11.5px",
       "display": "block",
       "margin": "4px 0px 0px"

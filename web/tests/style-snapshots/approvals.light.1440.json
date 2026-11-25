@@ -48,7 +48,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > div.brand > div.tag": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "11px",
       "display": "block",
       "margin": "2px 0px 0px"
@@ -457,7 +457,7 @@
       "display": "table-row"
     },
     "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable > td[cell] \"▸\"": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "display": "table-cell",
       "padding": "7px 10px"
     },
@@ -484,12 +484,12 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable > td[cell] \"T2\" > span.badge.warn": {
-      "color": "rgb(180, 83, 9)",
+      "color": "rgb(171, 77, 4)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.705882 0.32549 0.0352941 / 0.14)",
+      "background-color": "color(srgb 0.953882 0.902274 0.862196)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
@@ -522,10 +522,10 @@
       "line-height": "normal",
       "display": "inline-block",
       "background-color": "rgb(255, 255, 255)",
-      "border-top": "1px solid rgb(197, 206, 214)",
-      "border-right": "1px solid rgb(197, 206, 214)",
-      "border-bottom": "1px solid rgb(197, 206, 214)",
-      "border-left": "1px solid rgb(197, 206, 214)",
+      "border-top": "1px solid rgb(141, 149, 157)",
+      "border-right": "1px solid rgb(141, 149, 157)",
+      "border-bottom": "1px solid rgb(141, 149, 157)",
+      "border-left": "1px solid rgb(141, 149, 157)",
       "border-radius": "5px",
       "padding": "6px 9px"
     },
@@ -547,15 +547,15 @@
       "padding": "6px 14px"
     },
     "div.shell > main[main].main > div.panel > table[table].data > tr[row].clickable > td[cell].actions \"Approve Reject\" > button[button].btn.danger \"Reject\"": {
-      "color": "rgb(192, 57, 43)",
+      "color": "rgb(190, 55, 41)",
       "font-family": "Arial",
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(233, 238, 242)",
-      "border-top": "1px solid rgb(192, 57, 43)",
-      "border-right": "1px solid rgb(192, 57, 43)",
-      "border-bottom": "1px solid rgb(192, 57, 43)",
-      "border-left": "1px solid rgb(192, 57, 43)",
+      "border-top": "1px solid rgb(190, 55, 41)",
+      "border-right": "1px solid rgb(190, 55, 41)",
+      "border-bottom": "1px solid rgb(190, 55, 41)",
+      "border-left": "1px solid rgb(190, 55, 41)",
       "border-radius": "6px",
       "padding": "6px 14px"
     },

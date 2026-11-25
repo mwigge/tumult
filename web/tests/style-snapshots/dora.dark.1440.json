@@ -48,7 +48,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > div.brand > div.tag": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "11px",
       "display": "block",
       "margin": "2px 0px 0px"
@@ -388,10 +388,10 @@
       "line-height": "normal",
       "display": "inline-block",
       "background-color": "rgb(17, 22, 27)",
-      "border-top": "1px solid rgb(51, 64, 76)",
-      "border-right": "1px solid rgb(51, 64, 76)",
-      "border-bottom": "1px solid rgb(51, 64, 76)",
-      "border-left": "1px solid rgb(51, 64, 76)",
+      "border-top": "1px solid rgb(97, 109, 121)",
+      "border-right": "1px solid rgb(97, 109, 121)",
+      "border-bottom": "1px solid rgb(97, 109, 121)",
+      "border-left": "1px solid rgb(97, 109, 121)",
       "border-radius": "4px",
       "padding": "3px 6px"
     },
@@ -421,7 +421,7 @@
       "margin": "4px 0px 0px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel.head > div.note": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "11.5px",
       "display": "block",
       "margin": "8px 0px 0px"
@@ -455,7 +455,7 @@
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "block",
-      "background-color": "color(srgb 0.203922 0.827451 0.6 / 0.14)",
+      "background-color": "color(srgb 0.0993726 0.206902 0.195294)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
@@ -481,7 +481,7 @@
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.203922 0.827451 0.6 / 0.14)",
+      "background-color": "color(srgb 0.0993726 0.206902 0.195294)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
@@ -504,7 +504,7 @@
       "padding": "1px 9px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel.head > dl[DescriptionList].facts > dd[definition] #3 > span.feed #2 > span.dim": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "11.5px",
       "display": "inline"
     },
@@ -554,7 +554,7 @@
       "padding": "1px 6px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > div.tiles > div.panel.num > div.hint": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "11.5px",
       "display": "block",
       "margin": "4px 0px 0px"
@@ -582,7 +582,7 @@
       "gap": "10px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > div.tiles > div.panel.num #2 > div.row > span.value.mono.muted": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "24px",
       "font-weight": "600",
@@ -600,7 +600,7 @@
       "padding": "1px 6px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > div.tiles > div.panel.num #2 > div.hint": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "11.5px",
       "display": "block",
       "margin": "4px 0px 0px"
@@ -645,7 +645,7 @@
       "padding": "1px 6px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > div.tiles > div.panel.num #3 > div.hint": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "11.5px",
       "display": "block",
       "margin": "4px 0px 0px"
@@ -690,7 +690,7 @@
       "padding": "1px 6px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > div.tiles > div.panel.num #4 > div.hint": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "11.5px",
       "display": "block",
       "margin": "4px 0px 0px"
@@ -793,7 +793,7 @@
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel > div.legend > span.item #3 > i.swatch.box": {
       "display": "inline-block",
-      "background-color": "rgb(230, 159, 0)",
+      "background-color": "rgb(194, 134, 0)",
       "border-top": "1px solid rgb(51, 64, 76)",
       "border-right": "1px solid rgb(51, 64, 76)",
       "border-bottom": "1px solid rgb(51, 64, 76)",
@@ -902,7 +902,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel > table[table].data.articles > tr[row] > td[cell] \"Art. 16 Simplified ICT risk management f…\" > span.dim": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "11.5px",
       "display": "inline"
     },
@@ -917,7 +917,7 @@
       "display": "inline"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel > table[table].data.articles > tr[row] > td[cell] \"70 % unknown 5 %\" > span.unk": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "11px",
       "display": "inline",
       "margin": "0px 0px 0px 6px"
@@ -945,7 +945,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel > table[table].data.articles > tr[row] #2 > td[cell] \"Art. 19 Reporting of major ICT-related i…\" > span.dim": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "11.5px",
       "display": "inline"
     },
@@ -960,7 +960,7 @@
       "display": "inline"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel > table[table].data.articles > tr[row] #2 > td[cell] \"unknown unknown 100 %\" > span.unk": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "11px",
       "display": "inline",
       "margin": "0px 0px 0px 6px"
@@ -987,7 +987,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel > table[table].data.articles > tr[row] #3 > td[cell] \"Art. 24 General requirements for testing\" > span.dim": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "11.5px",
       "display": "inline"
     },
@@ -1001,7 +1001,7 @@
       "display": "inline"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel > table[table].data.articles > tr[row] #3 > td[cell] \"55 % unknown 20 %\" > span.unk": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "11px",
       "display": "inline",
       "margin": "0px 0px 0px 6px"
@@ -1019,7 +1019,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel > div.foot": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "11.5px",
       "display": "block",
       "margin": "8px 0px 0px"
@@ -1151,7 +1151,7 @@
       "padding": "1px 9px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #2 > table[table].data > tr[row] > td[cell] \"Art. 24(1) Requirement dora.art24.1 hous…\" > div.dim.mono": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.5px",
       "display": "block"
@@ -1172,17 +1172,17 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #2 > table[table].data > tr[row] > td[cell] \"−2 cif-0001\" > span.badge.fail": {
-      "color": "rgb(239, 68, 68)",
+      "color": "rgb(251, 80, 78)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.937255 0.266667 0.266667 / 0.14)",
+      "background-color": "color(srgb 0.208627 0.13498 0.154118)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #2 > table[table].data > tr[row] > td[cell] \"−2 cif-0001\" > div.dim.mono": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.5px",
       "display": "block"
@@ -1226,7 +1226,7 @@
       "display": "inline"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #2 > table[table].data > tr[row] #2 > td[cell] \"Art. 16(1) Requirement dora.art16.1.c do…\" > div.dim.mono": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.5px",
       "display": "block"
@@ -1247,17 +1247,17 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #2 > table[table].data > tr[row] #2 > td[cell] \"−1 cif-0001\" > span.badge.fail": {
-      "color": "rgb(239, 68, 68)",
+      "color": "rgb(251, 80, 78)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.937255 0.266667 0.266667 / 0.14)",
+      "background-color": "color(srgb 0.208627 0.13498 0.154118)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #2 > table[table].data > tr[row] #2 > td[cell] \"−1 cif-0001\" > div.dim.mono": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.5px",
       "display": "block"
@@ -1300,7 +1300,7 @@
       "display": "inline"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #2 > table[table].data > tr[row] #3 > td[cell] \"Art. 16(1) Requirement dora.art16.1.a do…\" > div.dim.mono": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.5px",
       "display": "block"
@@ -1323,7 +1323,7 @@
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.203922 0.827451 0.6 / 0.14)",
+      "background-color": "color(srgb 0.0993726 0.206902 0.195294)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
@@ -1350,7 +1350,7 @@
       "display": "inline-block"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #2 > div.foot": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "11.5px",
       "display": "block",
       "margin": "8px 0px 0px"
@@ -1394,12 +1394,12 @@
       "display": "block"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity > div.gauge > div.dim.center": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "11.5px",
       "display": "block"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity > div.gauge > div.dim.center #2": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "11.5px",
       "display": "block"
     },
@@ -1510,7 +1510,7 @@
       "margin": "0px 2px 0px 0px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > div.history > div.dim.center": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "11.5px",
       "display": "block"
     },
@@ -1629,7 +1629,7 @@
       "display": "inline"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > div.history > table[table].data > tr[row] #2 > td[cell] \"2.10 unknown 50 %\" > span.unk": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "11px",
       "display": "inline",
       "margin": "0px 0px 0px 6px"
@@ -1692,7 +1692,7 @@
       "display": "inline"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > div.history > table[table].data > tr[row] #4 > td[cell] \"3.60 unknown 25 %\" > span.unk": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "11px",
       "display": "inline",
       "margin": "0px 0px 0px 6px"
@@ -1749,7 +1749,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > table[table].data.gates > tr[row] > td[cell] \"Level 2 Repeatable\" > span.dim": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "11.5px",
       "display": "inline"
     },
@@ -1764,7 +1764,7 @@
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.203922 0.827451 0.6 / 0.14)",
+      "background-color": "color(srgb 0.0993726 0.206902 0.195294)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
@@ -1782,7 +1782,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > table[table].data.gates > tr[row] #2 > td[cell] \"Level 3 Defined\" > span.dim": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "11.5px",
       "display": "inline"
     },
@@ -1792,12 +1792,12 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > table[table].data.gates > tr[row] #2 > td[cell] \"blocked\" > span.badge.fail": {
-      "color": "rgb(239, 68, 68)",
+      "color": "rgb(251, 80, 78)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.937255 0.266667 0.266667 / 0.14)",
+      "background-color": "color(srgb 0.208627 0.13498 0.154118)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
@@ -1815,7 +1815,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > table[table].data.gates > tr[row] #3 > td[cell] \"Level 4 Measured\" > span.dim": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "11.5px",
       "display": "inline"
     },
@@ -1825,12 +1825,12 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > table[table].data.gates > tr[row] #3 > td[cell] \"blocked\" > span.badge.fail": {
-      "color": "rgb(239, 68, 68)",
+      "color": "rgb(251, 80, 78)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.937255 0.266667 0.266667 / 0.14)",
+      "background-color": "color(srgb 0.208627 0.13498 0.154118)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
@@ -1847,7 +1847,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > table[table].data.gates > tr[row] #4 > td[cell] \"Level 5 Improving\" > span.dim": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "11.5px",
       "display": "inline"
     },
@@ -1856,12 +1856,12 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #3 > div.maturity #2 > table[table].data.gates > tr[row] #4 > td[cell] \"blocked\" > span.badge.fail": {
-      "color": "rgb(239, 68, 68)",
+      "color": "rgb(251, 80, 78)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.937255 0.266667 0.266667 / 0.14)",
+      "background-color": "color(srgb 0.208627 0.13498 0.154118)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
@@ -1956,7 +1956,7 @@
       "display": "inline"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > tr[row] > td[cell] \"org: organisation\" > span.dim": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "11.5px",
       "display": "inline"
     },
@@ -1978,7 +1978,7 @@
       "display": "inline"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > tr[row] > td[cell] \"2.90 unknown 20 %\" > span.unk": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "11px",
       "display": "inline",
       "margin": "0px 0px 0px 6px"
@@ -2002,7 +2002,7 @@
       "display": "inline"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > tr[row] #2 > td[cell] \"org:platform org\" > span.dim": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "11.5px",
       "display": "inline"
     },
@@ -2024,7 +2024,7 @@
       "display": "inline"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > tr[row] #2 > td[cell] \"2.90 unknown 20 %\" > span.unk": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "11px",
       "display": "inline",
       "margin": "0px 0px 0px 6px"
@@ -2048,7 +2048,7 @@
       "display": "inline"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > tr[row] #3 > td[cell] \"ent:cif-0001 entity critical\" > span.dim": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "11.5px",
       "display": "inline"
     },
@@ -2058,7 +2058,7 @@
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.960784 0.619608 0.0431373 / 0.14)",
+      "background-color": "color(srgb 0.205333 0.177804 0.117333)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
@@ -2080,7 +2080,7 @@
       "display": "inline"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > tr[row] #3 > td[cell] \"2.60 unknown 50 %\" > span.unk": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "11px",
       "display": "inline",
       "margin": "0px 0px 0px 6px"
@@ -2104,7 +2104,7 @@
       "display": "inline"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > tr[row] #4 > td[cell] \"svc:payments-api service critical\" > span.dim": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "11.5px",
       "display": "inline"
     },
@@ -2114,7 +2114,7 @@
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.960784 0.619608 0.0431373 / 0.14)",
+      "background-color": "color(srgb 0.205333 0.177804 0.117333)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
@@ -2136,7 +2136,7 @@
       "display": "inline"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > tr[row] #4 > td[cell] \"4.20 unknown 0 %\" > span.unk": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "11px",
       "display": "inline",
       "margin": "0px 0px 0px 6px"
@@ -2160,7 +2160,7 @@
       "display": "inline"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > tr[row] #5 > td[cell] \"svc:ledger-archive service critical not …\" > span.dim": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "11.5px",
       "display": "inline"
     },
@@ -2170,7 +2170,7 @@
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.960784 0.619608 0.0431373 / 0.14)",
+      "background-color": "color(srgb 0.205333 0.177804 0.117333)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
@@ -2185,7 +2185,7 @@
       "padding": "1px 9px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > tr[row] #5 > td[cell] \"svc:ledger-archive service critical not …\" > div.dim": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "11.5px",
       "display": "block"
     },
@@ -2207,7 +2207,7 @@
       "display": "inline"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > tr[row] #5 > td[cell] \"1.00 unknown 100 %\" > span.unk": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "11px",
       "display": "inline",
       "margin": "0px 0px 0px 6px"
@@ -2230,7 +2230,7 @@
       "display": "inline"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > tr[row] #6 > td[cell] \"ent:cif-0002 entity\" > span.dim": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "11.5px",
       "display": "inline"
     },
@@ -2250,7 +2250,7 @@
       "display": "inline"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > table[table].data > tr[row] #6 > td[cell] \"3.40 unknown 0 %\" > span.unk": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "11px",
       "display": "inline",
       "margin": "0px 0px 0px 6px"
@@ -2260,7 +2260,7 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #4 > div.foot": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "11.5px",
       "display": "block",
       "margin": "8px 0px 0px"
@@ -2320,7 +2320,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > div.tiles > div.panel.num > div.row > span.unknown": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "11.5px",
       "display": "block",
       "border-top": "1px dashed rgb(51, 64, 76)",
@@ -2359,7 +2359,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > div.tiles > div.panel.num #2 > div.row > span.unknown": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "11.5px",
       "display": "block",
       "border-top": "1px dashed rgb(51, 64, 76)",
@@ -2398,7 +2398,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > div.tiles > div.panel.num #3 > div.row > span.unknown": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "11.5px",
       "display": "block",
       "border-top": "1px dashed rgb(51, 64, 76)",
@@ -2437,7 +2437,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > div.tiles > div.panel.num #4 > div.row > span.unknown": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "11.5px",
       "display": "block",
       "border-top": "1px dashed rgb(51, 64, 76)",
@@ -2448,7 +2448,7 @@
       "padding": "1px 6px"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > div.tiles > div.panel.num #4 > div.hint": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "11.5px",
       "display": "block",
       "margin": "4px 0px 0px"
@@ -2593,7 +2593,7 @@
       "display": "inline"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > table[table].data.functions > tr[row] > td[cell] \"70 % unknown 10 %\" > span.unk": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "11px",
       "display": "inline",
       "margin": "0px 0px 0px 6px"
@@ -2648,7 +2648,7 @@
       "display": "inline"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > table[table].data.functions > tr[row] #2 > td[cell] \"unknown unknown 100 %\" > span.unk": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "11px",
       "display": "inline",
       "margin": "0px 0px 0px 6px"
@@ -2684,7 +2684,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div[tabpanel] \"DORA and maturity\" > section.panel #5 > div.foot": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-size": "11.5px",
       "display": "block",
       "margin": "8px 0px 0px"

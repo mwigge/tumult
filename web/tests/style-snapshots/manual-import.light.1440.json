@@ -48,7 +48,7 @@
       "display": "block"
     },
     "div.shell > aside[complementary].side > div.brand > div.tag": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "11px",
       "display": "block",
       "margin": "2px 0px 0px"
@@ -351,10 +351,10 @@
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(255, 255, 255)",
-      "border-top": "1px solid rgb(197, 206, 214)",
-      "border-right": "1px solid rgb(197, 206, 214)",
-      "border-bottom": "1px solid rgb(197, 206, 214)",
-      "border-left": "1px solid rgb(197, 206, 214)",
+      "border-top": "1px solid rgb(141, 149, 157)",
+      "border-right": "1px solid rgb(141, 149, 157)",
+      "border-bottom": "1px solid rgb(141, 149, 157)",
+      "border-left": "1px solid rgb(141, 149, 157)",
       "border-radius": "5px",
       "padding": "6px 9px"
     },
@@ -407,7 +407,7 @@
       "font-size": "12.5px",
       "line-height": "normal",
       "display": "block",
-      "background-color": "rgb(156, 196, 228)",
+      "background-color": "rgb(74, 123, 164)",
       "border-left": "1px solid rgb(197, 206, 214)",
       "padding": "5px 12px"
     },
@@ -438,7 +438,7 @@
       "gap": "10px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Import\" > div.panel > div.form > p[paragraph].note": {
-      "color": "rgb(139, 152, 165)",
+      "color": "rgb(97, 109, 121)",
       "font-size": "12px",
       "display": "block",
       "margin": "12px 0px"
@@ -465,10 +465,10 @@
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(255, 255, 255)",
-      "border-top": "1px solid rgb(197, 206, 214)",
-      "border-right": "1px solid rgb(197, 206, 214)",
-      "border-bottom": "1px solid rgb(197, 206, 214)",
-      "border-left": "1px solid rgb(197, 206, 214)",
+      "border-top": "1px solid rgb(141, 149, 157)",
+      "border-right": "1px solid rgb(141, 149, 157)",
+      "border-bottom": "1px solid rgb(141, 149, 157)",
+      "border-left": "1px solid rgb(141, 149, 157)",
       "border-radius": "5px",
       "padding": "5px 8px"
     },
@@ -485,10 +485,10 @@
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(255, 255, 255)",
-      "border-top": "1px solid rgb(197, 206, 214)",
-      "border-right": "1px solid rgb(197, 206, 214)",
-      "border-bottom": "1px solid rgb(197, 206, 214)",
-      "border-left": "1px solid rgb(197, 206, 214)",
+      "border-top": "1px solid rgb(141, 149, 157)",
+      "border-right": "1px solid rgb(141, 149, 157)",
+      "border-bottom": "1px solid rgb(141, 149, 157)",
+      "border-left": "1px solid rgb(141, 149, 157)",
       "border-radius": "5px",
       "padding": "6px 9px"
     },
@@ -505,10 +505,10 @@
       "line-height": "normal",
       "display": "block",
       "background-color": "rgb(255, 255, 255)",
-      "border-top": "1px solid rgb(197, 206, 214)",
-      "border-right": "1px solid rgb(197, 206, 214)",
-      "border-bottom": "1px solid rgb(197, 206, 214)",
-      "border-left": "1px solid rgb(197, 206, 214)",
+      "border-top": "1px solid rgb(141, 149, 157)",
+      "border-right": "1px solid rgb(141, 149, 157)",
+      "border-bottom": "1px solid rgb(141, 149, 157)",
+      "border-left": "1px solid rgb(141, 149, 157)",
       "border-radius": "5px",
       "padding": "6px 9px"
     },
@@ -517,15 +517,16 @@
       "gap": "8px"
     },
     "div.shell > main[main].main > div.manual > div[tabpanel] \"Import\" > div.panel > div.form > div.actions > button[button].btn.primary \"Import as drafts\"": {
+      "color": "rgb(255, 255, 255)",
       "font-family": "Arial",
       "font-size": "13px",
       "line-height": "normal",
       "display": "block",
-      "background-color": "rgb(156, 196, 228)",
-      "border-top": "1px solid rgb(156, 196, 228)",
-      "border-right": "1px solid rgb(156, 196, 228)",
-      "border-bottom": "1px solid rgb(156, 196, 228)",
-      "border-left": "1px solid rgb(156, 196, 228)",
+      "background-color": "rgb(74, 123, 164)",
+      "border-top": "1px solid rgb(74, 123, 164)",
+      "border-right": "1px solid rgb(74, 123, 164)",
+      "border-bottom": "1px solid rgb(74, 123, 164)",
+      "border-left": "1px solid rgb(74, 123, 164)",
       "border-radius": "6px",
       "padding": "6px 14px"
     },

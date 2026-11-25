@@ -586,7 +586,7 @@
     .head select {
         background: var(--bg-raised);
         color: var(--text);
-        border: var(--border-width-sm) solid var(--border-strong);
+        border: var(--border-width-sm) solid var(--border-input);
         border-radius: var(--radius-md);
         padding: 3px var(--space-1-5);
         font: inherit;

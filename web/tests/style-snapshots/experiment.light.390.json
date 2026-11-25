@@ -73,12 +73,12 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.page-head > span.badge.fail": {
-      "color": "rgb(192, 57, 43)",
+      "color": "rgb(190, 55, 41)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "block",
-      "background-color": "color(srgb 0.752941 0.223529 0.168627 / 0.14)",
+      "background-color": "color(srgb 0.964314 0.890196 0.88251)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
@@ -271,11 +271,11 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel > dl[DescriptionList].facts > dd[definition] #2 > span.badge.ok": {
-      "color": "rgb(15, 138, 95)",
+      "color": "rgb(9, 120, 82)",
       "font-size": "11.5px",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.0588235 0.541176 0.372549 / 0.14)",
+      "background-color": "color(srgb 0.864941 0.925882 0.90502)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
@@ -296,11 +296,11 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel > dl[DescriptionList].facts > dd[definition] #3 > span.badge.fail": {
-      "color": "rgb(192, 57, 43)",
+      "color": "rgb(190, 55, 41)",
       "font-size": "11.5px",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.752941 0.223529 0.168627 / 0.14)",
+      "background-color": "color(srgb 0.964314 0.890196 0.88251)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
@@ -534,12 +534,12 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel #2 > table[table].data > tr[row] > td[cell] \"met\" > span.badge.ok": {
-      "color": "rgb(15, 138, 95)",
+      "color": "rgb(9, 120, 82)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.0588235 0.541176 0.372549 / 0.14)",
+      "background-color": "color(srgb 0.864941 0.925882 0.90502)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
@@ -592,12 +592,12 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel #2 > table[table].data > tr[row] #2 > td[cell] \"breached\" > span.badge.fail": {
-      "color": "rgb(192, 57, 43)",
+      "color": "rgb(190, 55, 41)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.752941 0.223529 0.168627 / 0.14)",
+      "background-color": "color(srgb 0.964314 0.890196 0.88251)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
@@ -644,12 +644,12 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.grid.cols-2.block > div.panel #2 > table[table].data > tr[row] #3 > td[cell] \"inconclusive\" > span.badge.warn": {
-      "color": "rgb(180, 83, 9)",
+      "color": "rgb(171, 77, 4)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.705882 0.32549 0.0352941 / 0.14)",
+      "background-color": "color(srgb 0.953882 0.902274 0.862196)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
@@ -786,12 +786,12 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.panel.block > table[table].data > tr[row] > td[cell] \"succeeded\" > span.badge.ok": {
-      "color": "rgb(15, 138, 95)",
+      "color": "rgb(9, 120, 82)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.0588235 0.541176 0.372549 / 0.14)",
+      "background-color": "color(srgb 0.864941 0.925882 0.90502)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
@@ -842,12 +842,12 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.panel.block > table[table].data > tr[row] #2 > td[cell] \"succeeded\" > span.badge.ok": {
-      "color": "rgb(15, 138, 95)",
+      "color": "rgb(9, 120, 82)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.0588235 0.541176 0.372549 / 0.14)",
+      "background-color": "color(srgb 0.864941 0.925882 0.90502)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
@@ -898,12 +898,12 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.panel.block > table[table].data > tr[row] #3 > td[cell] \"failed\" > span.badge.fail": {
-      "color": "rgb(192, 57, 43)",
+      "color": "rgb(190, 55, 41)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.752941 0.223529 0.168627 / 0.14)",
+      "background-color": "color(srgb 0.964314 0.890196 0.88251)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
@@ -954,12 +954,12 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.panel.block > table[table].data > tr[row] #4 > td[cell] \"timeout\" > span.badge.fail": {
-      "color": "rgb(192, 57, 43)",
+      "color": "rgb(190, 55, 41)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.752941 0.223529 0.168627 / 0.14)",
+      "background-color": "color(srgb 0.964314 0.890196 0.88251)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },
@@ -1006,12 +1006,12 @@
       "padding": "7px 10px"
     },
     "div.shell > main[main].main > div.panel.block > table[table].data > tr[row] #5 > td[cell] \"succeeded\" > span.badge.ok": {
-      "color": "rgb(15, 138, 95)",
+      "color": "rgb(9, 120, 82)",
       "font-size": "11.5px",
       "font-weight": "600",
       "letter-spacing": "0.3px",
       "display": "inline-block",
-      "background-color": "color(srgb 0.0588235 0.541176 0.372549 / 0.14)",
+      "background-color": "color(srgb 0.864941 0.925882 0.90502)",
       "border-radius": "10px",
       "padding": "1px 9px"
     },

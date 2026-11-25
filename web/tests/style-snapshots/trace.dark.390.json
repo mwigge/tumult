@@ -169,7 +169,7 @@
       "margin": "0px 0px 4px"
     },
     "div.shell > main[main].main > div.grid > div.panel.meta #4 > b.mono": {
-      "color": "rgb(239, 68, 68)",
+      "color": "rgb(251, 80, 78)",
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "13.5px",
       "font-weight": "600",
@@ -242,7 +242,7 @@
       "padding": "3px 0px"
     },
     "div.shell > main[main].main > div.panel > div.wf > div.ruler > div.labels": {
-      "color": "rgb(91, 103, 114)",
+      "color": "rgb(127, 140, 151)",
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "10.5px",
       "display": "block",
@@ -346,7 +346,7 @@
     },
     "div.shell > main[main].main > div.panel > div.wf > button[button].row \"action error 3.0s\" > span.lane > span.bar": {
       "display": "block",
-      "background-color": "rgb(239, 68, 68)",
+      "background-color": "rgb(251, 80, 78)",
       "border-radius": "2px"
     },
     "div.shell > main[main].main > div.panel > div.wf > button[button].row \"action error 3.0s\" > span.dur.mono": {
@@ -356,7 +356,7 @@
       "display": "block"
     },
     "div.shell > main[main].main > div.panel > div.wf > button[button].row \"action error 3.0s\" > span.dur.mono > span.mark.fail": {
-      "color": "rgb(239, 68, 68)",
+      "color": "rgb(251, 80, 78)",
       "display": "inline"
     },
     "div.shell > main[main].main > div.panel > div.wf > button[button].row \"action error 3.0s\" > span.dur.mono > span.sr-only": {
