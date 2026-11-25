@@ -32,12 +32,13 @@ node stage first.
 `tests/style-snapshot.spec.ts` opens every page with a mocked API, in the
 light and the dark theme, 1440 and 390 px wide. It also opens states that a
 click or the data shows, such as the Manual tabs with data, an open row, the
-span drawer and filter chips, 1440 px wide only (`STATES` in
-`tests/style-snapshot-pages.ts`). It reads the computed styles of each
-visible element and compares them with the baseline in
-`tests/style-snapshots/`, one file per page or state, theme and width.
-It reads no size or position, so the fonts of a host do not change the
-result. A failing test names the element, the property and the value
+span drawer, filter chips and a page whose data failed or is on its way,
+1440 px wide only (`STATES` in `tests/style-snapshot-pages.ts`). It reads
+the computed styles of each visible element and compares them with the
+baseline in `tests/style-snapshots/`, one file per page or state, theme and
+width. It reads no size or position, so the fonts of a host do not change
+the result. The one size it reads is the height of a busy loading block,
+which the page sets. A failing test names the element, the property and the value
 before and after.
 
 A change that should look different writes the baselines again, in the
@@ -116,6 +117,24 @@ head written by hand.
 `src/lib/components/Panel.svelte` is the box of one part of a page, with
 its title in an `h2`. With `variant="meta"` it is the stat tile: the title
 is the small capital name above the value.
+
+`src/lib/components/State.svelte` is a part of a page with no data to show:
+
+- `kind="empty"`: a short message. An `action` adds a link to what the
+  reader can do next.
+- `kind="error"`: the failure, as an alert, so a screen reader says it at
+  once.
+- `kind="loading"`: with a `height` in px, a busy block with the hidden
+  word "Loading" for a screen reader. With no height, it is its message,
+  such as "Scanning…".
+
+```svelte
+<State kind="error">Failed to load runs: {error}</State>
+<State kind="loading" height={240} />
+```
+
+`src/lib/state-scan.test.ts` fails on a `.state` or `.skeleton` written by
+hand, and on a loading block with an inline height.
 
 ## Stack
 
