@@ -13,6 +13,7 @@ class Element extends EventTarget {
     isConnected = true;
     constructor(
         private readonly page: Page,
+        readonly name: string,
         readonly field = false,
     ) {
         super();
@@ -32,9 +33,9 @@ class Page {
         defaultView: this.window,
         getElementById: (id: string) => (id === 'heading' ? this.heading : null),
     };
-    readonly opener = new Element(this);
-    readonly heading = new Element(this);
-    readonly field = new Element(this, true);
+    readonly opener = new Element(this, 'opener');
+    readonly heading = new Element(this, 'heading');
+    readonly field = new Element(this, 'field', true);
     readonly dialog = Object.assign(new EventTarget(), {
         ownerDocument: this.document,
         opened: '',
@@ -47,6 +48,11 @@ class Page {
         getBoundingClientRect: () => ({ left: 960, right: 1440, top: 0, bottom: 900 }),
     });
     closed = 0;
+
+    /** The name of the element that has the focus. */
+    get focused() {
+        return this.document.activeElement?.name ?? 'nothing';
+    }
 
     constructor() {
         this.opener.focus();
@@ -95,12 +101,12 @@ describe('a drawer', () => {
     it('moves the focus to its heading on open when asked, else leaves it to the browser', () => {
         const page = new Page();
         page.open({ focus: 'heading' });
-        expect(page.document.activeElement).toBe(page.heading);
+        expect(page.focused).toBe('heading');
 
         // The browser gives the first control of a modal dialog the focus.
         const other = new Page();
         other.open();
-        expect(other.document.activeElement).toBe(other.opener);
+        expect(other.focused).toBe('opener');
     });
 
     it('closes through its caller on Escape when modal, and keeps the dialog open itself', () => {
@@ -159,9 +165,9 @@ describe('a drawer', () => {
     it('gives the focus back to the element that opened it when it is removed', () => {
         const page = new Page();
         const remove = page.open({ focus: 'heading' });
-        expect(page.document.activeElement).toBe(page.heading);
+        expect(page.focused).toBe('heading');
         remove();
-        expect(page.document.activeElement).toBe(page.opener);
+        expect(page.focused).toBe('opener');
     });
 
     it('keeps the focus where it is when its opener left the page', () => {
@@ -169,7 +175,7 @@ describe('a drawer', () => {
         const remove = page.open({ focus: 'heading' });
         page.opener.isConnected = false;
         remove();
-        expect(page.document.activeElement).toBe(page.heading);
+        expect(page.focused).toBe('heading');
     });
 
     it('hears no key and no click once it is removed', () => {
