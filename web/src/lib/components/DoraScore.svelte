@@ -6,7 +6,7 @@
     // Every number is shown with its unknown share.
     import { onMount } from 'svelte';
     import { api } from '#lib/api.js';
-    import { chartTheme } from '#lib/echarts.js';
+    import { chartTheme, followTheme } from '#lib/echarts.js';
     import type { ChartTheme } from '#lib/echarts.js';
     import {
         COMPONENTS,
@@ -47,17 +47,7 @@
     let opened = $state<DoraExpectation | null>(null);
 
     let theme = $state<ChartTheme>(chartTheme());
-    onMount(() => {
-        const retheme = () => (theme = chartTheme());
-        const mo = new MutationObserver(retheme);
-        mo.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
-        const mq = window.matchMedia?.('(prefers-color-scheme: light)');
-        mq?.addEventListener?.('change', retheme);
-        return () => {
-            mo.disconnect();
-            mq?.removeEventListener?.('change', retheme);
-        };
-    });
+    onMount(() => followTheme((next) => (theme = next)));
 
     $effect(() => {
         const selected = lei;

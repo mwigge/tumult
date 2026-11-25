@@ -14,7 +14,7 @@
     import RangeSwitch from '#lib/components/RangeSwitch.svelte';
     import EChart from '#lib/components/EChart.svelte';
     import StarDrawer from '#lib/components/StarDrawer.svelte';
-    import { chartTheme, chartTokens } from '#lib/echarts.js';
+    import { chartTheme, chartTokens, followTheme } from '#lib/echarts.js';
     import type { ChartTheme, EChartsCoreOption } from '#lib/echarts.js';
     import { spread } from '#lib/starmap/force.js';
     import { layoutStar } from '#lib/starmap/layout.js';
@@ -68,17 +68,7 @@
     let listEl: HTMLElement | undefined = $state();
     let filterEl: HTMLInputElement | undefined = $state();
 
-    onMount(() => {
-        const retheme = () => (theme = chartTheme());
-        const mo = new MutationObserver(retheme);
-        mo.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
-        const mq = window.matchMedia?.('(prefers-color-scheme: light)');
-        mq?.addEventListener?.('change', retheme);
-        return () => {
-            mo.disconnect();
-            mq?.removeEventListener?.('change', retheme);
-        };
-    });
+    onMount(() => followTheme((next) => (theme = next)));
 
     function place(m: StarMap): Map<string, Point> {
         const nodes = m.nodes.map((n) => ({ id: n.id, kind: n.kind, parent: n.parent }));

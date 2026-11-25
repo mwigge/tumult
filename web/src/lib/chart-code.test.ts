@@ -41,4 +41,14 @@ describe('the script code of src', () => {
         expect.soft(found(/['"`]#[0-9a-fA-F]{3,8}['"`]/g), 'hex colours').toEqual([]);
         expect(found(/\bfont(?:Size|Weight|Family)\s*:\s*['"`\d][^,}]*/g), 'fonts').toEqual([]);
     });
+
+    it('watches data-theme with a MutationObserver only in echarts.ts', () => {
+        const watchers = scripts()
+            .filter(
+                ({ code }) => code.includes('new MutationObserver') && code.includes('data-theme'),
+            )
+            .map(({ file }) => file);
+
+        expect(watchers).toEqual(['lib/echarts.ts']);
+    });
 });

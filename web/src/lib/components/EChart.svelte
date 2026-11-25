@@ -23,7 +23,7 @@
     // the edges to light up with it (by index), so that their labels are
     // written while the pointer is there. Under `<id>#lit` a test reads
     // which edges are lit. Without it a hover is left to the chart.
-    import echarts, { chartTheme } from '#lib/echarts.js';
+    import echarts, { chartTheme, followTheme } from '#lib/echarts.js';
     import type { EChartsCoreOption } from '#lib/echarts.js';
     import { onMount, untrack } from 'svelte';
 
@@ -184,20 +184,15 @@
         init();
         const ro = new ResizeObserver(() => chart?.resize());
         ro.observe(el);
-        const retheme = () => {
-            const next = chartTheme();
+        // The first call is the theme init() drew in: only a change draws again.
+        const stop = followTheme((next) => {
             if (next === theme) return;
             theme = next;
             init();
-        };
-        const mo = new MutationObserver(retheme);
-        mo.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
-        const mq = window.matchMedia?.('(prefers-color-scheme: light)');
-        mq?.addEventListener?.('change', retheme);
+        });
         return () => {
             ro.disconnect();
-            mo.disconnect();
-            mq?.removeEventListener?.('change', retheme);
+            stop();
             cancelRoam();
             chart?.dispose();
             chart = null;

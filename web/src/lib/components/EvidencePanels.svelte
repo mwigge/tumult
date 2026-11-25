@@ -5,7 +5,7 @@
     // writes. A run the lake has no journal of has no evidence.
     import { onMount } from 'svelte';
     import { fmtDuration } from '#lib/api.js';
-    import { chartTheme, chartTokens } from '#lib/echarts.js';
+    import { chartTheme, chartTokens, followTheme } from '#lib/echarts.js';
     import type { ChartTheme } from '#lib/echarts.js';
     import {
         fmtMargin,
@@ -29,17 +29,7 @@
     let { evidence }: { evidence: RunEvidence | null } = $props();
 
     let theme = $state<ChartTheme>(chartTheme());
-    onMount(() => {
-        const retheme = () => (theme = chartTheme());
-        const mo = new MutationObserver(retheme);
-        mo.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
-        const mq = window.matchMedia?.('(prefers-color-scheme: light)');
-        mq?.addEventListener?.('change', retheme);
-        return () => {
-            mo.disconnect();
-            mq?.removeEventListener?.('change', retheme);
-        };
-    });
+    onMount(() => followTheme((next) => (theme = next)));
     const tokens = $derived(chartTokens(theme));
 </script>
 
