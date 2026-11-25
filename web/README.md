@@ -95,6 +95,32 @@ of `src/` that `style-literals-allow.txt` does not hold; use a token instead.
 That list holds each raw value left today by file, kind and value, and the
 lint fails on a line that matches nothing, so the list only shrinks.
 
+## Contrast
+
+Krönika meets the contrast of WCAG 2.2 AA in both themes. Text needs
+4.5:1, and the parts a user needs to see need 3:1.
+`src/lib/contrast.test.ts` checks it from the tokens, and names each pair
+under its bar with its ratio:
+
+- `text`, `text-dim`, `text-faint`, `ok`, `warn`, `fail` and `accent` on
+  `bg`, `bg-raised`, `bg-panel` and `bg-hover`: 4.5:1.
+- Text on the accent fill `accent-dim`, such as a primary button or the
+  chosen segment, is `on-accent`: 4.5:1. The fill: 3:1 on the page and
+  the panel.
+- The edge of a field is `border-input`: 3:1 on its fill and the panel.
+  The focus ring, `accent`: 3:1 on every surface.
+- The text of a badge on its tint: 4.5:1. The tint is mixed with the
+  panel, so it is one colour on every surface.
+- Chart series, bands, DORA statuses and Star Map nodes and relations:
+  3:1 on the panel. The ink on a band, a tile or a cell: 4.5:1. A band
+  colour is text only in the large score of the Scores page.
+- `border` and `border-strong` need no 3:1 (WCAG 1.4.11): they draw panel
+  edges, row lines, chart axes and the edges of buttons that their text
+  names.
+
+The test also fails on text in another colour on the accent fill, and on
+a field edge in another role.
+
 ## Theme
 
 The theme button keeps the choice (`dark`, `light` or `auto`) in
