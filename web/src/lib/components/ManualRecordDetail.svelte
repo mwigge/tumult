@@ -79,8 +79,8 @@
     .detail {
         display: grid;
         grid-template-columns: 1fr 1fr;
-        gap: 16px;
-        padding: 8px 4px;
+        gap: var(--space-4);
+        padding: var(--space-2) var(--space-1);
     }
     @media (max-width: 900px) {
         .detail {
@@ -88,18 +88,18 @@
         }
     }
     h3 {
-        font-size: 12px;
+        font-size: var(--font-size-xs);
         text-transform: uppercase;
-        letter-spacing: 0.5px;
+        letter-spacing: var(--letter-spacing-sm);
         color: var(--text-dim);
-        margin: 10px 0 6px;
+        margin: var(--space-2-5) 0 var(--space-1-5);
     }
     .dim {
         color: var(--text-faint);
-        font-size: 12px;
+        font-size: var(--font-size-xs);
     }
     .hash {
-        margin: 6px 0;
+        margin: var(--space-1-5) 0;
         font-family: var(--mono);
     }
 </style>

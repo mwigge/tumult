@@ -178,14 +178,14 @@
     }
     .sections {
         display: grid;
-        gap: 14px;
+        gap: var(--space-3-5);
     }
     .panel {
         overflow-x: auto;
     }
     .summary {
         color: var(--text-dim);
-        font-size: 12.5px;
-        margin: -4px 0 10px;
+        font-size: var(--font-size-sm);
+        margin: -4px 0 var(--space-2-5);
     }
 </style>

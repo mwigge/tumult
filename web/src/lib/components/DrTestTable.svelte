@@ -129,17 +129,17 @@
         display: flex;
         align-items: center;
         justify-content: flex-end;
-        gap: 12px;
-        margin-top: 10px;
+        gap: var(--space-3);
+        margin-top: var(--space-2-5);
         color: var(--text-dim);
-        font-size: 12.5px;
+        font-size: var(--font-size-sm);
     }
     .pager button {
         background: transparent;
-        border: 1px solid var(--border-strong);
+        border: var(--border-width-sm) solid var(--border-strong);
         color: var(--text-dim);
-        border-radius: 5px;
-        padding: 4px 12px;
+        border-radius: var(--radius-lg);
+        padding: var(--space-1) var(--space-3);
         font: inherit;
         cursor: pointer;
     }

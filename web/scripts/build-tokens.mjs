@@ -6,8 +6,8 @@
 // properties of each theme) and src/lib/tokens.gen.ts (the same values for
 // ECharts, which cannot read CSS). Both are committed, and CI fails when
 // they are not what this writes. It reads only the part of the format that
-// Tumult uses: srgb colours with a hex, font families, aliases, sets and
-// one modifier.
+// Tumult uses: srgb colours with a hex, font families, dimensions in px or
+// rem, font weights and numbers as numbers, aliases, sets and one modifier.
 //
 // Usage: node scripts/build-tokens.mjs
 
@@ -19,6 +19,11 @@ const WEB = join(dirname(fileURLToPath(import.meta.url)), '..');
 const ALIAS = /^\{([^{}]+)\}$/;
 // The set of raw values. Pages and charts use roles, so no output has them.
 const PRIMITIVE = 'primitive';
+// The set of the type, spacing and layer roles. Only pages use them, so only
+// the CSS has them: the script of the CLI report bundles the TS.
+const PAGE_ONLY = 'page';
+// The units of a dimension in the format. CSS writes them the same way.
+const UNITS = ['px', 'rem'];
 // Charts draw on a canvas and cannot read CSS, so this group is only in the TS.
 const CANVAS_ONLY = 'chart.';
 
@@ -79,11 +84,41 @@ function notColour(value) {
     return '';
 }
 
+/**
+ * Why `value` is not a dimension in px or rem, or ''.
+ * @param {unknown} value
+ */
+function notDimension(value) {
+    if (typeof value === 'number') return 'it has no unit';
+    if (value === null || typeof value !== 'object')
+        return 'it is not an object with a value and a unit';
+    const { value: amount, unit } = /** @type {Record<string, unknown>} */ (value);
+    if (typeof amount !== 'number' || !Number.isFinite(amount)) return 'its value is not a number';
+    if (unit === undefined) return 'it has no unit';
+    if (typeof unit !== 'string' || !UNITS.includes(unit)) return 'its unit is not px or rem';
+    return '';
+}
+
 /** @type {(path: string, type: string, value: unknown) => void} */
 function check(path, type, value) {
     if (type === 'color') {
         const why = notColour(value);
         if (why) fail(path, `$type is color, but the value is not a colour: ${why}`);
+        return;
+    }
+    if (type === 'dimension') {
+        const why = notDimension(value);
+        if (why) fail(path, `$type is dimension, but the value is not a dimension: ${why}`);
+        return;
+    }
+    if (type === 'fontWeight') {
+        if (typeof value !== 'number' || !(value >= 1 && value <= 1000))
+            fail(path, '$type is fontWeight, but the value is not a number from 1 to 1000');
+        return;
+    }
+    if (type === 'number') {
+        if (typeof value !== 'number' || !Number.isFinite(value))
+            fail(path, '$type is number, but the value is not a number');
         return;
     }
     if (type !== 'fontFamily') fail(path, `build-tokens cannot write $type ${type}`);
@@ -171,13 +206,20 @@ function readThemes(dir) {
 }
 
 /**
- * A value as CSS writes it: a hex, or a list of font names.
+ * A value as CSS writes it: a hex, a length, a number or a list of font
+ * names. A font name of more than one word, such as Segoe UI, is quoted.
+ * One word may start with a dash, as -apple-system does.
  * @param {Token} token
  */
 function cssValue(token) {
     if (token.type === 'color') return /** @type {{ hex: string }} */ (token.value).hex;
+    if (token.type === 'dimension') {
+        const { value, unit } = /** @type {{ value: number, unit: string }} */ (token.value);
+        return `${value}${unit}`;
+    }
+    if (token.type === 'fontWeight' || token.type === 'number') return String(token.value);
     const names = /** @type {string[]} */ ([token.value].flat());
-    return names.map((name) => (/^[A-Za-z][\w-]*$/.test(name) ? name : `'${name}'`)).join(', ');
+    return names.map((name) => (/^-?[A-Za-z][\w-]*$/.test(name) ? name : `'${name}'`)).join(', ');
 }
 
 /**
@@ -241,7 +283,7 @@ function nest(tokens) {
     /** @type {Record<string, any>} */
     const tree = {};
     for (const [path, token] of tokens) {
-        if (token.set === PRIMITIVE) continue;
+        if (token.set === PRIMITIVE || token.set === PAGE_ONLY) continue;
         const parts = path.split('.');
         const leaf = /** @type {string} */ (parts.pop());
         parts.reduce((at, part) => (at[part] ??= {}), tree)[leaf] = cssValue(token);

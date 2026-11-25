@@ -166,11 +166,11 @@
     .controls {
         margin-left: auto;
         display: flex;
-        gap: 8px;
+        gap: var(--space-2);
         flex-wrap: wrap;
     }
     .origin {
-        margin-left: 6px;
+        margin-left: var(--space-1-5);
         font-size: 10px;
     }
 </style>

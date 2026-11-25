@@ -173,8 +173,8 @@
     .exercise {
         display: grid;
         grid-template-columns: 1fr 1fr;
-        gap: 16px;
-        margin-bottom: 12px;
+        gap: var(--space-4);
+        margin-bottom: var(--space-3);
     }
     @media (max-width: 900px) {
         .exercise {
@@ -182,31 +182,31 @@
         }
     }
     h3 {
-        font-size: 12px;
+        font-size: var(--font-size-xs);
         text-transform: uppercase;
-        letter-spacing: 0.5px;
+        letter-spacing: var(--letter-spacing-sm);
         color: var(--text-dim);
-        margin: 10px 0 6px;
+        margin: var(--space-2-5) 0 var(--space-1-5);
     }
     .compact td,
     .compact th {
-        padding: 4px 8px;
+        padding: var(--space-1) var(--space-2);
     }
     .line {
-        margin: 6px 0;
-        font-size: 13px;
+        margin: var(--space-1-5) 0;
+        font-size: var(--font-size-md);
     }
     .plain,
     .steps {
         margin: 0;
-        padding-left: 18px;
+        padding-left: var(--space-4-5);
     }
     .plain li,
     .steps li {
-        margin-bottom: 4px;
+        margin-bottom: var(--space-1);
     }
     .dim {
         color: var(--text-faint);
-        font-size: 12px;
+        font-size: var(--font-size-xs);
     }
 </style>

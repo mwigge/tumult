@@ -175,7 +175,7 @@
         position: fixed;
         inset: 0;
         background: rgba(0, 0, 0, 0.45);
-        z-index: 20;
+        z-index: var(--z-overlay);
     }
     .drawer {
         position: fixed;
@@ -184,46 +184,46 @@
         bottom: 0;
         width: min(480px, 92vw);
         background: var(--bg-raised);
-        border-left: 1px solid var(--border-strong);
-        z-index: 21;
+        border-left: var(--border-width-sm) solid var(--border-strong);
+        z-index: var(--z-overlay-top);
         overflow-y: auto;
-        padding: 18px;
+        padding: var(--space-4-5);
     }
     header {
         display: flex;
         justify-content: space-between;
         align-items: flex-start;
-        margin-bottom: 14px;
+        margin-bottom: var(--space-3-5);
     }
     .title {
-        font-size: 14px;
-        margin-bottom: 6px;
+        font-size: var(--font-size-xl);
+        margin-bottom: var(--space-1-5);
         word-break: break-all;
     }
     .close {
         background: transparent;
         border: none;
         color: var(--text-dim);
-        font-size: 22px;
+        font-size: var(--font-size-2xl);
         cursor: pointer;
         line-height: 1;
     }
     section {
-        margin-bottom: 18px;
+        margin-bottom: var(--space-4-5);
     }
     h3 {
-        font-size: 11px;
+        font-size: var(--font-size-3xs);
         text-transform: uppercase;
-        letter-spacing: 0.6px;
+        letter-spacing: var(--letter-spacing-md);
         color: var(--text-dim);
-        margin-bottom: 8px;
+        margin-bottom: var(--space-2);
     }
     dl {
         display: grid;
         grid-template-columns: 88px 1fr;
-        gap: 5px 10px;
+        gap: 5px var(--space-2-5);
         margin: 0;
-        font-size: 12.5px;
+        font-size: var(--font-size-sm);
     }
     dt {
         color: var(--text-dim);
@@ -234,18 +234,19 @@
     }
     pre {
         background: var(--bg-panel);
-        border: 1px solid var(--border);
-        border-radius: 4px;
-        padding: 8px;
-        font-size: 11px;
+        border: var(--border-width-sm) solid var(--border);
+        border-radius: var(--radius-md);
+        padding: var(--space-2);
+        font-size: var(--font-size-3xs);
         overflow-x: auto;
     }
     .log {
         display: flex;
-        gap: 8px;
+        gap: var(--space-2);
         padding: 3px 0;
-        font-size: 12px;
-        border-bottom: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+        font-size: var(--font-size-xs);
+        border-bottom: var(--border-width-sm) solid
+            color-mix(in srgb, var(--border) 50%, transparent);
     }
     .sev {
         flex: 0 0 44px;
@@ -270,13 +271,13 @@
     }
     .facets button {
         background: transparent;
-        border: 1px solid var(--border);
-        border-radius: 3px;
+        border: var(--border-width-sm) solid var(--border);
+        border-radius: var(--radius-sm);
         color: var(--text-dim);
         cursor: pointer;
-        font-size: 11px;
-        padding: 0 4px;
-        margin-left: 4px;
+        font-size: var(--font-size-3xs);
+        padding: 0 var(--space-1);
+        margin-left: var(--space-1);
     }
     .facets button:hover {
         color: var(--accent);

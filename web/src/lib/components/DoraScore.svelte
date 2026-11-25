@@ -587,49 +587,49 @@
     .head .who {
         display: flex;
         align-items: center;
-        gap: 10px;
+        gap: var(--space-2-5);
         flex-wrap: wrap;
     }
     .head .lbl {
         color: var(--text-dim);
-        font-size: 11.5px;
+        font-size: var(--font-size-2xs);
         text-transform: uppercase;
-        letter-spacing: 0.6px;
-        margin-right: 6px;
+        letter-spacing: var(--letter-spacing-md);
+        margin-right: var(--space-1-5);
     }
     .head select {
         background: var(--bg-raised);
         color: var(--text);
-        border: 1px solid var(--border-strong);
-        border-radius: 4px;
-        padding: 3px 6px;
+        border: var(--border-width-sm) solid var(--border-strong);
+        border-radius: var(--radius-md);
+        padding: 3px var(--space-1-5);
         font: inherit;
-        font-size: 12.5px;
+        font-size: var(--font-size-sm);
     }
     .head .name {
-        font-weight: 600;
+        font-weight: var(--font-weight-strong);
     }
     .headline {
-        font-size: 22px;
-        font-weight: 600;
-        margin-top: 10px;
+        font-size: var(--font-size-2xl);
+        font-weight: var(--font-weight-strong);
+        margin-top: var(--space-2-5);
     }
     .headline.capped {
         color: var(--warn);
     }
     .cap {
-        margin-top: 4px;
+        margin-top: var(--space-1);
         color: var(--text);
     }
     .note,
     .foot,
     .dim {
         color: var(--text-faint);
-        font-size: 11.5px;
+        font-size: var(--font-size-2xs);
     }
     .note,
     .foot {
-        margin-top: 8px;
+        margin-top: var(--space-2);
     }
     .center {
         text-align: center;
@@ -637,32 +637,32 @@
     .tiles {
         display: grid;
         grid-template-columns: repeat(4, 1fr);
-        gap: 12px;
-        margin: 12px 0;
+        gap: var(--space-3);
+        margin: var(--space-3) 0;
     }
     section.panel {
-        margin-bottom: 12px;
+        margin-bottom: var(--space-3);
     }
     .panel-head {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 12px;
+        gap: var(--space-3);
     }
     .toggle button {
         background: var(--bg-raised);
         color: var(--text-dim);
-        border: 1px solid var(--border-strong);
-        padding: 3px 10px;
+        border: var(--border-width-sm) solid var(--border-strong);
+        padding: 3px var(--space-2-5);
         font: inherit;
-        font-size: 12px;
+        font-size: var(--font-size-xs);
         cursor: pointer;
     }
     .toggle button:first-child {
-        border-radius: 4px 0 0 4px;
+        border-radius: var(--radius-md) 0 0 var(--radius-md);
     }
     .toggle button:last-child {
-        border-radius: 0 4px 4px 0;
+        border-radius: 0 var(--radius-md) var(--radius-md) 0;
         border-left: none;
     }
     .toggle button.on {
@@ -683,8 +683,8 @@
         text-decoration: underline;
     }
     .alt {
-        margin: 4px 0 10px;
-        font-size: 12.5px;
+        margin: var(--space-1) 0 var(--space-2-5);
+        font-size: var(--font-size-sm);
     }
     .alt summary {
         cursor: pointer;
@@ -692,29 +692,29 @@
     }
     .unk {
         color: var(--text-faint);
-        font-size: 11px;
-        margin-left: 6px;
+        font-size: var(--font-size-3xs);
+        margin-left: var(--space-1-5);
         white-space: nowrap;
     }
     .maturity {
         display: grid;
         grid-template-columns: minmax(220px, 1fr) 2fr;
-        gap: 16px;
+        gap: var(--space-4);
         align-items: start;
-        margin-bottom: 12px;
+        margin-bottom: var(--space-3);
     }
     .reasons {
-        margin: 4px 0 0;
-        padding-left: 18px;
+        margin: var(--space-1) 0 0;
+        padding-left: var(--space-4-5);
         color: var(--text-dim);
-        font-size: 12px;
+        font-size: var(--font-size-xs);
     }
     .register {
         display: grid;
         grid-template-columns: max-content 1fr;
-        gap: 4px 16px;
-        margin: 12px 0 0;
-        font-size: 12.5px;
+        gap: var(--space-1) var(--space-4);
+        margin: var(--space-3) 0 0;
+        font-size: var(--font-size-sm);
     }
     .register dt {
         color: var(--text-dim);

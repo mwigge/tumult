@@ -215,7 +215,7 @@
         </div>
     </div>
 {:else}
-    <div class="panel" style="margin-bottom: 14px">
+    <div class="panel" style="margin-bottom: var(--space-3-5)">
         {#if !users}
             {#if error}
                 <div class="state error">Failed to load users: {error}</div>
@@ -230,7 +230,7 @@
             </div>
         {:else}
             {#if error}
-                <div class="state error" style="margin-bottom: 8px">
+                <div class="state error" style="margin-bottom: var(--space-2)">
                     Refresh failed: {error} — showing the last loaded list.
                 </div>
             {/if}
@@ -410,7 +410,9 @@
                 </button>
             </div>
         </form>
-        {#if createError}<div class="state error" style="margin-top: 10px">{createError}</div>{/if}
+        {#if createError}<div class="state error" style="margin-top: var(--space-2-5)">
+                {createError}
+            </div>{/if}
         {#if oneTime}
             <div class="onetime">
                 One-time password for <b>{oneTime.username}</b> — shown once, never stored; the user
@@ -430,7 +432,7 @@
             {/if}
         {:else}
             {#if tokens.length > 0}
-                <table class="data" style="margin-bottom: 14px">
+                <table class="data" style="margin-bottom: var(--space-3-5)">
                     <thead>
                         <tr
                             ><th>Name</th><th>Owner</th><th>Created</th><th>Last used</th><th
@@ -508,7 +510,10 @@
                     </button>
                 </div>
             </form>
-            {#if tokenError && tokens !== null}<div class="state error" style="margin-top: 10px">
+            {#if tokenError && tokens !== null}<div
+                    class="state error"
+                    style="margin-top: var(--space-2-5)"
+                >
                     {tokenError}
                 </div>{/if}
             {#if minted}
@@ -531,23 +536,23 @@
     .detail {
         display: grid;
         grid-template-columns: 1fr 1fr;
-        gap: 16px;
-        padding: 8px 4px;
+        gap: var(--space-4);
+        padding: var(--space-2) var(--space-1);
         cursor: default;
     }
     .detail h3 {
-        font-size: 12px;
+        font-size: var(--font-size-xs);
         text-transform: uppercase;
-        letter-spacing: 0.5px;
+        letter-spacing: var(--letter-spacing-sm);
         color: var(--text-dim);
-        margin: 0 0 6px;
+        margin: 0 0 var(--space-1-5);
     }
     .detail h3:not(:first-child) {
-        margin-top: 12px;
+        margin-top: var(--space-3);
     }
     .row {
         display: flex;
-        gap: 8px;
+        gap: var(--space-2);
         align-items: center;
     }
     .row input,
@@ -557,12 +562,12 @@
     }
     .btn {
         background: var(--bg-hover);
-        border: 1px solid var(--border-strong);
+        border: var(--border-width-sm) solid var(--border-strong);
         color: var(--text);
-        border-radius: 6px;
-        padding: 6px 14px;
+        border-radius: var(--radius-xl);
+        padding: var(--space-1-5) var(--space-3-5);
         cursor: pointer;
-        font-size: 13px;
+        font-size: var(--font-size-md);
         white-space: nowrap;
     }
     .btn:hover {
@@ -578,37 +583,37 @@
     }
     .hint {
         color: var(--text-faint);
-        font-size: 12px;
-        margin-top: 4px;
+        font-size: var(--font-size-xs);
+        margin-top: var(--space-1);
     }
     .err-text {
         color: var(--fail);
-        font-size: 12.5px;
-        padding: 0 4px 6px;
+        font-size: var(--font-size-sm);
+        padding: 0 var(--space-1) var(--space-1-5);
     }
     .create {
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-        gap: 12px 18px;
+        gap: var(--space-3) var(--space-4-5);
         align-items: end;
     }
     .create label {
         display: flex;
         flex-direction: column;
         gap: 5px;
-        font-size: 12.5px;
+        font-size: var(--font-size-sm);
         color: var(--text-dim);
     }
     .onetime {
-        margin-top: 14px;
-        border: 1px solid var(--warn);
-        border-radius: 6px;
-        padding: 10px 12px;
-        font-size: 13px;
+        margin-top: var(--space-3-5);
+        border: var(--border-width-sm) solid var(--warn);
+        border-radius: var(--radius-xl);
+        padding: var(--space-2-5) var(--space-3);
+        font-size: var(--font-size-md);
     }
     .pw {
-        font-size: 14px;
+        font-size: var(--font-size-xl);
         user-select: all;
-        margin-top: 6px;
+        margin-top: var(--space-1-5);
     }
 </style>

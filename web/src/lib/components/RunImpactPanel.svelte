@@ -134,7 +134,7 @@
     }
 </script>
 
-<div class="panel" style="margin-bottom: 14px" data-testid="impact">
+<div class="panel" style="margin-bottom: var(--space-3-5)" data-testid="impact">
     <h2>Impact</h2>
     {#if failure}
         <div class="state error" role="alert" data-testid="impact-error">
@@ -231,12 +231,12 @@
     .facts {
         display: flex;
         flex-wrap: wrap;
-        gap: 6px 18px;
-        font-size: 12.5px;
+        gap: var(--space-1-5) var(--space-4-5);
+        font-size: var(--font-size-sm);
         color: var(--text-dim);
     }
     .summary {
-        margin-bottom: 10px;
+        margin-bottom: var(--space-2-5);
     }
     .summary strong {
         color: var(--text);
@@ -245,11 +245,11 @@
         font-family: var(--mono, monospace);
     }
     .probe + .probe {
-        margin-top: 16px;
+        margin-top: var(--space-4);
     }
     .probe h3 {
-        font-size: 13px;
-        margin: 0 0 4px;
+        font-size: var(--font-size-md);
+        margin: 0 0 var(--space-1);
     }
     .warn {
         color: var(--warn);

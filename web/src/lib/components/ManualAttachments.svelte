@@ -166,16 +166,16 @@
 <style>
     .attach {
         display: flex;
-        gap: 10px;
+        gap: var(--space-2-5);
         align-items: flex-end;
         flex-wrap: wrap;
-        margin-top: 10px;
+        margin-top: var(--space-2-5);
     }
     .attach label {
         display: flex;
         flex-direction: column;
-        gap: 4px;
-        font-size: 12px;
+        gap: var(--space-1);
+        font-size: var(--font-size-xs);
         color: var(--text-dim);
     }
     .attach .grow {
@@ -183,7 +183,7 @@
     }
     .dim {
         color: var(--text-faint);
-        font-size: 12px;
+        font-size: var(--font-size-xs);
     }
     .nowrap {
         white-space: nowrap;

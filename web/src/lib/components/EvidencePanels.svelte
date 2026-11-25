@@ -226,25 +226,25 @@
 
 <style>
     .block {
-        margin-bottom: 14px;
+        margin-bottom: var(--space-3-5);
     }
     .facts {
         display: flex;
         flex-wrap: wrap;
-        gap: 10px 28px;
-        margin: 0 0 10px;
+        gap: var(--space-2-5) 28px;
+        margin: 0 0 var(--space-2-5);
     }
     .facts dt {
         color: var(--text-dim);
-        font-size: 11px;
+        font-size: var(--font-size-3xs);
         text-transform: uppercase;
-        letter-spacing: 0.6px;
-        margin-bottom: 4px;
+        letter-spacing: var(--letter-spacing-md);
+        margin-bottom: var(--space-1);
     }
     .facts dd {
         margin: 0;
-        font-size: 13.5px;
-        font-weight: 600;
+        font-size: var(--font-size-lg);
+        font-weight: var(--font-weight-strong);
     }
     .result {
         max-width: 360px;
@@ -254,7 +254,7 @@
     }
     .note {
         color: var(--text-dim);
-        font-size: 12px;
-        margin: 8px 0 0;
+        font-size: var(--font-size-xs);
+        margin: var(--space-2) 0 0;
     }
 </style>

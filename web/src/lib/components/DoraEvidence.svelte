@@ -130,46 +130,46 @@
         width: min(620px, 100vw);
         overflow-y: auto;
         background: var(--bg-raised);
-        border-left: 1px solid var(--border-strong);
-        padding: 16px 18px;
-        z-index: 20;
+        border-left: var(--border-width-sm) solid var(--border-strong);
+        padding: var(--space-4) var(--space-4-5);
+        z-index: var(--z-overlay);
         box-shadow: -8px 0 24px rgb(0 0 0 / 25%);
     }
     .top {
         display: flex;
         justify-content: space-between;
         align-items: flex-start;
-        gap: 12px;
-        margin-bottom: 8px;
+        gap: var(--space-3);
+        margin-bottom: var(--space-2);
     }
     .top button {
         background: var(--bg-hover);
         color: var(--text);
-        border: 1px solid var(--border-strong);
-        border-radius: 4px;
-        padding: 3px 10px;
+        border: var(--border-width-sm) solid var(--border-strong);
+        border-radius: var(--radius-md);
+        padding: 3px var(--space-2-5);
         font: inherit;
-        font-size: 12px;
+        font-size: var(--font-size-xs);
         cursor: pointer;
     }
     .title {
-        font-weight: 600;
+        font-weight: var(--font-weight-strong);
     }
     section {
-        margin-top: 14px;
+        margin-top: var(--space-3-5);
     }
     h3 {
-        margin: 0 0 2px;
-        font-size: 13px;
+        margin: 0 0 var(--space-0-5);
+        font-size: var(--font-size-md);
         display: flex;
-        gap: 8px;
+        gap: var(--space-2);
         align-items: baseline;
     }
     .dim {
         color: var(--text-faint);
-        font-size: 11.5px;
+        font-size: var(--font-size-2xs);
     }
     .foot {
-        margin-top: 14px;
+        margin-top: var(--space-3-5);
     }
 </style>

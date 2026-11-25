@@ -114,7 +114,7 @@
         </div>
     </div>
 {:else}
-    <div class="panel" style="margin-bottom: 14px">
+    <div class="panel" style="margin-bottom: var(--space-3-5)">
         {#if error}
             <div class="state error">Failed to load webhooks: {error}</div>
         {:else if !hooks}
@@ -161,7 +161,9 @@
                     {/each}
                 </tbody>
             </table>
-            {#if rowError}<div class="state error" style="margin-top: 8px">{rowError}</div>{/if}
+            {#if rowError}<div class="state error" style="margin-top: var(--space-2)">
+                    {rowError}
+                </div>{/if}
         {/if}
     </div>
 
@@ -215,7 +217,9 @@
             Payloads are signed X-Tumult-Signature (HMAC-SHA256). Deliveries are fire-and-log: a
             down receiver misses events rather than blocking runs.
         </div>
-        {#if createError}<div class="state error" style="margin-top: 10px">{createError}</div>{/if}
+        {#if createError}<div class="state error" style="margin-top: var(--space-2-5)">
+                {createError}
+            </div>{/if}
         {#if oneTime}
             <div class="onetime">
                 Signing secret for <b>{oneTime.name}</b> — shown once, never stored in the UI:
@@ -228,16 +232,16 @@
 <style>
     .actions {
         display: flex;
-        gap: 8px;
+        gap: var(--space-2);
     }
     .btn {
         background: var(--bg-hover);
-        border: 1px solid var(--border-strong);
+        border: var(--border-width-sm) solid var(--border-strong);
         color: var(--text);
-        border-radius: 6px;
-        padding: 6px 14px;
+        border-radius: var(--radius-xl);
+        padding: var(--space-1-5) var(--space-3-5);
         cursor: pointer;
-        font-size: 13px;
+        font-size: var(--font-size-md);
         white-space: nowrap;
     }
     .btn:hover {
@@ -257,36 +261,36 @@
         text-overflow: ellipsis;
         white-space: nowrap;
         color: var(--text-dim);
-        font-size: 12px;
+        font-size: var(--font-size-xs);
     }
     .create {
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-        gap: 12px 18px;
+        gap: var(--space-3) var(--space-4-5);
         align-items: end;
     }
     .create label {
         display: flex;
         flex-direction: column;
         gap: 5px;
-        font-size: 12.5px;
+        font-size: var(--font-size-sm);
         color: var(--text-dim);
     }
     .hint {
         color: var(--text-faint);
-        font-size: 12px;
-        margin-top: 10px;
+        font-size: var(--font-size-xs);
+        margin-top: var(--space-2-5);
     }
     .onetime {
-        margin-top: 14px;
-        border: 1px solid var(--warn);
-        border-radius: 6px;
-        padding: 10px 12px;
-        font-size: 13px;
+        margin-top: var(--space-3-5);
+        border: var(--border-width-sm) solid var(--warn);
+        border-radius: var(--radius-xl);
+        padding: var(--space-2-5) var(--space-3);
+        font-size: var(--font-size-md);
     }
     .pw {
-        font-size: 14px;
+        font-size: var(--font-size-xl);
         user-select: all;
-        margin-top: 6px;
+        margin-top: var(--space-1-5);
     }
 </style>

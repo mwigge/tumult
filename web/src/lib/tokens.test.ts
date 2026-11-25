@@ -84,6 +84,34 @@ describe('resolveTokens', () => {
             }),
         ).toThrow(not);
     });
+
+    it('rejects a dimension with no unit, or with a unit other than px and rem', () => {
+        const not = 'space: $type is dimension, but the value is not a dimension';
+        const space = ($value: unknown) => () => resolve({ space: { $type: 'dimension', $value } });
+
+        expect(space({ value: 4 })).toThrow(`${not}: it has no unit`);
+        expect(space(4)).toThrow(`${not}: it has no unit`);
+        expect(space('4px')).toThrow(`${not}: it is not an object with a value and a unit`);
+        expect(space({ value: 4, unit: 'em' })).toThrow(`${not}: its unit is not px or rem`);
+        expect(space({ value: '4', unit: 'px' })).toThrow(`${not}: its value is not a number`);
+        expect(space({ value: 0.5, unit: 'rem' })()).toBeInstanceOf(Map);
+    });
+
+    it('rejects a font weight outside 1 to 1000', () => {
+        const not = 'weight: $type is fontWeight, but the value is not a number from 1 to 1000';
+        const weight = ($value: unknown) => () =>
+            resolve({ weight: { $type: 'fontWeight', $value } });
+
+        for (const value of [0, 1001, '600']) expect(weight(value), String(value)).toThrow(not);
+        for (const value of [1, 600, 1000])
+            expect(weight(value)(), String(value)).toBeInstanceOf(Map);
+    });
+
+    it('rejects a number token whose value is not a number', () => {
+        expect(() => resolve({ z: { $type: 'number', $value: '20' } })).toThrow(
+            'z: $type is number, but the value is not a number',
+        );
+    });
 });
 
 describe('build', () => {
@@ -100,6 +128,38 @@ describe('build', () => {
         );
         // A theme other than the default holds only what it changes.
         expect(css.split(":root[data-theme='light']")[1]).not.toContain('--mono');
+    });
+
+    it('writes the type, spacing, radius, border and layer tokens once, at :root', () => {
+        const css = build(TOKENS)['src/lib/tokens.css'];
+        const root = css.match(/^:root \{([^}]*)\}/m)?.[1] ?? '';
+
+        for (const property of [
+            // A fontFamily. A name of one word has no quotes, also when it starts with a dash.
+            "--font-body: -apple-system, 'Segoe UI', Inter, Roboto, sans-serif;",
+            // Dimensions, a fontWeight and numbers.
+            '--font-size-sm: 12.5px;',
+            '--font-weight-strong: 600;',
+            '--line-height-body: 1.5;',
+            '--letter-spacing-md: 0.6px;',
+            '--space-1-5: 6px;',
+            '--space-2: 8px;',
+            '--radius-lg: 5px;',
+            '--border-width-sm: 1px;',
+            '--z-overlay: 20;',
+        ])
+            expect(root).toContain(`\n    ${property}\n`);
+        // The same in each theme, so no other block holds them.
+        expect(css.split(":root[data-theme='light']")[1]).not.toMatch(
+            /--(?:font-|line-height|letter-spacing|space-|radius-|border-width|z-)/,
+        );
+    });
+
+    it('keeps the type, spacing and layer tokens out of the TS, which the charts read', () => {
+        // The script of the CLI report bundles tokens.gen.ts, and it draws no page.
+        expect(build(TOKENS)['src/lib/tokens.gen.ts']).not.toMatch(
+            /"(?:font-|line-height|letter-spacing|space-|radius-|border-width|z-)/,
+        );
     });
 
     it('writes the committed outputs from the committed token files', () => {

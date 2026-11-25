@@ -55,11 +55,11 @@
 </div>
 
 {#if run.error}
-    <div class="state error panel" style="margin-bottom: 14px">{run.error}</div>
+    <div class="state error panel" style="margin-bottom: var(--space-3-5)">{run.error}</div>
 {/if}
 
 {#if confirmingStop && active}
-    <div class="panel confirm" style="margin-bottom: 14px">
+    <div class="panel confirm" style="margin-bottom: var(--space-3-5)">
         <span>
             Confirm stop? This ends a running process or script step, starts no further step and
             runs the rollbacks.
@@ -75,11 +75,11 @@
         {/if}
     </div>
 {:else if stopError}
-    <div class="state error panel" style="margin-bottom: 14px">{stopError}</div>
+    <div class="state error panel" style="margin-bottom: var(--space-3-5)">{stopError}</div>
 {/if}
 
 {#if awaitingTier && run.state === 'pending_approval'}
-    <div class="panel notice" style="margin-bottom: 14px">
+    <div class="panel notice" style="margin-bottom: var(--space-3-5)">
         <span>
             Awaiting approval (tier {awaitingTier}) — the run starts once the quorum is met.
         </span>
@@ -87,7 +87,7 @@
     </div>
 {/if}
 
-<div class="grid" style="grid-template-columns: repeat(4, 1fr); margin-bottom: 14px">
+<div class="grid" style="grid-template-columns: repeat(4, 1fr); margin-bottom: var(--space-3-5)">
     <div class="panel meta">
         <span>Queued</span><b>{fmtTs(run.queued_at_ns)} ({fmtAgo(run.queued_at_ns)})</b>
     </div>
@@ -147,23 +147,23 @@
     .meta span {
         display: block;
         color: var(--text-dim);
-        font-size: 11px;
+        font-size: var(--font-size-3xs);
         text-transform: uppercase;
-        letter-spacing: 0.6px;
-        margin-bottom: 4px;
+        letter-spacing: var(--letter-spacing-md);
+        margin-bottom: var(--space-1);
     }
     .meta b {
-        font-weight: 600;
-        font-size: 13.5px;
+        font-weight: var(--font-weight-strong);
+        font-size: var(--font-size-lg);
     }
     button.estop {
         background: color-mix(in srgb, var(--fail) 16%, transparent);
-        border: 1px solid var(--fail);
+        border: var(--border-width-sm) solid var(--fail);
         color: var(--fail);
-        border-radius: 5px;
-        padding: 6px 14px;
-        font-size: 13px;
-        font-weight: 600;
+        border-radius: var(--radius-lg);
+        padding: var(--space-1-5) var(--space-3-5);
+        font-size: var(--font-size-md);
+        font-weight: var(--font-weight-strong);
         cursor: pointer;
     }
     button.estop:hover {
@@ -176,17 +176,17 @@
     .confirm {
         display: flex;
         align-items: center;
-        gap: 12px;
+        gap: var(--space-3);
         flex-wrap: wrap;
         border-color: color-mix(in srgb, var(--fail) 55%, var(--border));
     }
     .confirm .cancel {
         background: transparent;
-        border: 1px solid var(--border-strong);
+        border: var(--border-width-sm) solid var(--border-strong);
         color: var(--text-dim);
-        border-radius: 5px;
-        padding: 6px 14px;
-        font-size: 13px;
+        border-radius: var(--radius-lg);
+        padding: var(--space-1-5) var(--space-3-5);
+        font-size: var(--font-size-md);
         cursor: pointer;
     }
     .confirm .cancel:hover {
@@ -195,14 +195,14 @@
     }
     .stop-error {
         color: var(--fail);
-        font-size: 12.5px;
+        font-size: var(--font-size-sm);
     }
     .notice {
         display: flex;
         align-items: center;
-        gap: 12px;
+        gap: var(--space-3);
         flex-wrap: wrap;
         border-color: color-mix(in srgb, var(--warn) 55%, var(--border));
-        font-size: 13px;
+        font-size: var(--font-size-md);
     }
 </style>

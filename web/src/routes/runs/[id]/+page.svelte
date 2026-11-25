@@ -149,14 +149,14 @@
         <a href="/runs" style="color: var(--text-dim)">← runs</a>
         <h1>Run</h1>
     </div>
-    <div class="skeleton" style="height: 120px; margin-bottom: 14px"></div>
+    <div class="skeleton" style="height: 120px; margin-bottom: var(--space-3-5)"></div>
     <div class="skeleton" style="height: 320px"></div>
 {:else}
     {@const run = detail.run}
     <RunHeader {run} runId={id} {active} {canStop} {awaitingTier} {triggerActor} />
 
     {#if scope}
-        <div class="panel" style="margin-bottom: 14px" data-testid="run-scope">
+        <div class="panel" style="margin-bottom: var(--space-3-5)" data-testid="run-scope">
             <h2>Planned blast radius</h2>
             <ScopeSummary {scope} />
             <div class="plan-note" data-testid="run-scope-plan">
@@ -166,7 +166,7 @@
         </div>
     {/if}
 
-    <div class="panel" style="margin-bottom: 14px">
+    <div class="panel" style="margin-bottom: var(--space-3-5)">
         <h2>Telemetry</h2>
         {#if !run.experiment_id}
             <div class="state">Telemetry appears once the run starts executing.</div>
@@ -203,12 +203,12 @@
 
 <style>
     .exp-link {
-        margin-top: 10px;
-        font-size: 12.5px;
+        margin-top: var(--space-2-5);
+        font-size: var(--font-size-sm);
     }
     .plan-note {
         color: var(--text-faint);
-        font-size: 12.5px;
-        margin-top: 8px;
+        font-size: var(--font-size-sm);
+        margin-top: var(--space-2);
     }
 </style>
