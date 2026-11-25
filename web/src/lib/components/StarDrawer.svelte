@@ -2,8 +2,10 @@
     // Evidence drawer of the Star Map: what is known about the selected
     // node. The map response only carries counts; the rows are loaded here,
     // lazily, from the endpoints the other pages already use. Each section
-    // loads and fails on its own. Opening the drawer moves the focus to its
-    // heading; Escape closes it and the page hands the focus back.
+    // loads and fails on its own. It is a Drawer in the page, not modal, so
+    // the map and the list beside it still work. Opening the drawer moves
+    // the focus to its heading; Escape closes it and the page hands the
+    // focus back to the button of the node.
     import { api, fmtAgo, fmtDuration } from '#lib/api.js';
     import type {
         ExperimentRow,
@@ -19,6 +21,7 @@
     import { flagText, rollupLines } from '#lib/starmap/style.js';
     import { targetQuery } from '#lib/manual.js';
     import Badge from './Badge.svelte';
+    import Drawer from './Drawer.svelte';
 
     let {
         node,
@@ -44,6 +47,7 @@
     let manual: Section<ManualExperiment[]> = $state(empty());
     let risks: Section<Risk[]> = $state(empty());
 
+    const title = $props.id();
     let heading: HTMLElement | undefined = $state();
     const nodeId = $derived(node.id);
     const rollup = $derived(rollupLines(node));
@@ -54,17 +58,6 @@
         heading?.focus();
     });
 
-    /** Escape in a field belongs to the field: it clears a search box. */
-    const typing = (target: EventTarget | null) =>
-        target instanceof Element &&
-        target.closest('input, textarea, select, [contenteditable]') !== null;
-
-    function onKey(event: KeyboardEvent) {
-        if (event.key !== 'Escape' || event.defaultPrevented) return;
-        if (typing(event.target)) return;
-        event.preventDefault();
-        onclose();
-    }
     const isSystem = $derived(node.kind === 'system');
     // The Manual page and the DR page read the target of their URL as their filter.
     const query = $derived(targetQuery(node.label, node.env));
@@ -148,12 +141,10 @@
     const day = (ns: number) => new Date(ns / 1_000_000).toISOString().slice(0, 10);
 </script>
 
-<svelte:window onkeydown={onKey} />
-
-<aside class="drawer" data-testid="starmap-drawer" aria-label="evidence">
+<Drawer labelledby={title} {onclose} modal={false} focus="heading" data-testid="starmap-drawer">
     <header>
         <div>
-            <h2 class="title" tabindex="-1" bind:this={heading}>{node.label}</h2>
+            <h2 class="title" id={title} tabindex="-1" bind:this={heading}>{node.label}</h2>
             <div class="sub mono">{node.id}</div>
         </div>
         <button class="close" onclick={onclose} aria-label="Close">×</button>
@@ -380,19 +371,9 @@
             {/if}
         </section>
     {/if}
-</aside>
+</Drawer>
 
 <style>
-    .drawer {
-        flex: 0 0 360px;
-        max-width: 100%;
-        background: var(--bg-raised);
-        border: var(--border-width-sm) solid var(--border-strong);
-        border-radius: var(--radius-xl);
-        padding: var(--space-3-5) var(--space-4);
-        overflow-y: auto;
-        max-height: 640px;
-    }
     header {
         display: flex;
         justify-content: space-between;
@@ -419,23 +400,8 @@
     .mono {
         font-family: var(--mono);
     }
-    .close {
-        background: transparent;
-        border: none;
-        color: var(--text-dim);
-        font-size: var(--font-size-2xl);
-        cursor: pointer;
-        line-height: 1;
-    }
     section {
         margin-bottom: var(--space-4);
-    }
-    h3 {
-        font-size: var(--font-size-3xs);
-        text-transform: uppercase;
-        letter-spacing: var(--letter-spacing-md);
-        color: var(--text-dim);
-        margin-bottom: var(--space-2);
     }
     dl {
         display: grid;
@@ -443,9 +409,6 @@
         gap: 5px var(--space-2-5);
         margin: 0;
         font-size: var(--font-size-sm);
-    }
-    dt {
-        color: var(--text-dim);
     }
     dd {
         margin: 0;

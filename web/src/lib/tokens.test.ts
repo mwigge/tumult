@@ -146,7 +146,7 @@ describe('build', () => {
             '--space-2: 8px;',
             '--radius-lg: 5px;',
             '--border-width-sm: 1px;',
-            '--z-overlay: 20;',
+            '--z-sticky: 2;',
             '--drawer-narrow: 480px;',
         ])
             expect(root).toContain(`\n    ${property}\n`);

@@ -7,7 +7,6 @@
 src/lib/components/ApprovalActions.svelte spacing 3px
 src/lib/components/AuditTimeline.svelte spacing 3px
 src/lib/components/DoraEvidence.svelte spacing 3px
-src/lib/components/DoraEvidence.svelte colour rgb(0 0 0 / 25%)
 src/lib/components/DoraNotices.svelte border-width 3px
 src/lib/components/DoraScore.svelte spacing 3px
 src/lib/components/DoraScore.svelte spacing 3px
@@ -23,11 +22,8 @@ src/lib/components/EvidencePanels.svelte spacing 28px
 src/lib/components/KpiCard.svelte font-size 26px
 src/lib/components/ManualAuditList.svelte spacing 3px
 src/lib/components/ScoreNumber.svelte spacing 1px
-src/lib/components/SpanDrawer.svelte line-height 1
 src/lib/components/SpanDrawer.svelte spacing 3px
 src/lib/components/SpanDrawer.svelte spacing 5px
-src/lib/components/SpanDrawer.svelte colour rgba(0, 0, 0, 0.45)
-src/lib/components/StarDrawer.svelte line-height 1
 src/lib/components/StarDrawer.svelte spacing 3px
 src/lib/components/StarDrawer.svelte spacing 5px
 src/lib/components/Waterfall.svelte font-size 10.5px

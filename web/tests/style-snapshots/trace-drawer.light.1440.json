@@ -25,35 +25,35 @@
       "display": "grid",
       "grid-template-columns": "208px 1fr"
     },
-    "div.shell > aside[complementary].side": {
+    "div.shell > aside.side": {
       "display": "flex",
       "background-color": "rgb(255, 255, 255)",
       "border-right": "1px solid rgb(227, 232, 237)",
       "padding": "16px 0px"
     },
-    "div.shell > aside[complementary].side > div.brand": {
+    "div.shell > aside.side > div.brand": {
       "display": "block",
       "border-bottom": "1px solid rgb(227, 232, 237)",
       "padding": "0px 18px 14px",
       "margin": "0px 0px 10px"
     },
-    "div.shell > aside[complementary].side > div.brand > div.name": {
+    "div.shell > aside.side > div.brand > div.name": {
       "font-size": "17px",
       "font-weight": "700",
       "letter-spacing": "0.4px",
       "display": "block"
     },
-    "div.shell > aside[complementary].side > div.brand > div.tag": {
+    "div.shell > aside.side > div.brand > div.tag": {
       "color": "rgb(139, 152, 165)",
       "font-size": "11px",
       "display": "block",
       "margin": "2px 0px 0px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav": {
+    "div.shell > aside.side > nav.nav": {
       "display": "block",
       "padding": "0px 0px 1px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◧ Overview\"": {
+    "div.shell > aside.side > nav.nav > a": {
       "color": "rgb(91, 103, 114)",
       "font-size": "13.5px",
       "display": "flex",
@@ -61,10 +61,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◧ Overview\" > span": {
+    "div.shell > aside.side > nav.nav > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◎ Resilience\"": {
+    "div.shell > aside.side > nav.nav > a #2": {
       "color": "rgb(91, 103, 114)",
       "font-size": "13.5px",
       "display": "flex",
@@ -72,10 +72,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◎ Resilience\" > span": {
+    "div.shell > aside.side > nav.nav > span #2": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◭ Performance\"": {
+    "div.shell > aside.side > nav.nav > a #3": {
       "color": "rgb(91, 103, 114)",
       "font-size": "13.5px",
       "display": "flex",
@@ -83,10 +83,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◭ Performance\" > span": {
+    "div.shell > aside.side > nav.nav > span #3": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"▦ Scores\"": {
+    "div.shell > aside.side > nav.nav > a #4": {
       "color": "rgb(91, 103, 114)",
       "font-size": "13.5px",
       "display": "flex",
@@ -94,10 +94,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"▦ Scores\" > span": {
+    "div.shell > aside.side > nav.nav > span #4": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⚖ DORA\"": {
+    "div.shell > aside.side > nav.nav > a #5": {
       "color": "rgb(91, 103, 114)",
       "font-size": "13.5px",
       "display": "flex",
@@ -105,10 +105,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⚖ DORA\" > span": {
+    "div.shell > aside.side > nav.nav > span #5": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⟲ Disaster recovery\"": {
+    "div.shell > aside.side > nav.nav > a #6": {
       "color": "rgb(91, 103, 114)",
       "font-size": "13.5px",
       "display": "flex",
@@ -116,10 +116,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⟲ Disaster recovery\" > span": {
+    "div.shell > aside.side > nav.nav > span #6": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⚗ Experiments\"": {
+    "div.shell > aside.side > nav.nav > a #7": {
       "color": "rgb(91, 103, 114)",
       "font-size": "13.5px",
       "display": "flex",
@@ -127,10 +127,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⚗ Experiments\" > span": {
+    "div.shell > aside.side > nav.nav > span #7": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"▶ Runs\"": {
+    "div.shell > aside.side > nav.nav > a #8": {
       "color": "rgb(91, 103, 114)",
       "font-size": "13.5px",
       "display": "flex",
@@ -138,10 +138,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"▶ Runs\" > span": {
+    "div.shell > aside.side > nav.nav > span #8": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✚ Author\"": {
+    "div.shell > aside.side > nav.nav > a #9": {
       "color": "rgb(91, 103, 114)",
       "font-size": "13.5px",
       "display": "flex",
@@ -149,10 +149,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✚ Author\" > span": {
+    "div.shell > aside.side > nav.nav > span #9": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"☷ GameDays\"": {
+    "div.shell > aside.side > nav.nav > a #10": {
       "color": "rgb(91, 103, 114)",
       "font-size": "13.5px",
       "display": "flex",
@@ -160,10 +160,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"☷ GameDays\" > span": {
+    "div.shell > aside.side > nav.nav > span #10": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✓ Approvals\"": {
+    "div.shell > aside.side > nav.nav > a #11": {
       "color": "rgb(91, 103, 114)",
       "font-size": "13.5px",
       "display": "flex",
@@ -171,10 +171,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✓ Approvals\" > span": {
+    "div.shell > aside.side > nav.nav > span #11": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✎ Manual\"": {
+    "div.shell > aside.side > nav.nav > a #12": {
       "color": "rgb(91, 103, 114)",
       "font-size": "13.5px",
       "display": "flex",
@@ -182,10 +182,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✎ Manual\" > span": {
+    "div.shell > aside.side > nav.nav > span #12": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"≣ Logs\"": {
+    "div.shell > aside.side > nav.nav > a #13": {
       "color": "rgb(91, 103, 114)",
       "font-size": "13.5px",
       "display": "flex",
@@ -193,10 +193,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"≣ Logs\" > span": {
+    "div.shell > aside.side > nav.nav > span #13": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link].active \"⌁ Traces\"": {
+    "div.shell > aside.side > nav.nav > a.active": {
       "font-size": "13.5px",
       "display": "flex",
       "background-color": "rgb(233, 238, 242)",
@@ -204,10 +204,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link].active \"⌁ Traces\" > span": {
+    "div.shell > aside.side > nav.nav > a.active > span": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"∿ Metrics\"": {
+    "div.shell > aside.side > nav.nav > a #14": {
       "color": "rgb(91, 103, 114)",
       "font-size": "13.5px",
       "display": "flex",
@@ -215,10 +215,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"∿ Metrics\" > span": {
+    "div.shell > aside.side > nav.nav > span #14": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✳ Star Map\"": {
+    "div.shell > aside.side > nav.nav > a #15": {
       "color": "rgb(91, 103, 114)",
       "font-size": "13.5px",
       "display": "flex",
@@ -226,10 +226,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✳ Star Map\" > span": {
+    "div.shell > aside.side > nav.nav > span #15": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✦ Ask\"": {
+    "div.shell > aside.side > nav.nav > a #16": {
       "color": "rgb(91, 103, 114)",
       "font-size": "13.5px",
       "display": "flex",
@@ -237,10 +237,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"✦ Ask\" > span": {
+    "div.shell > aside.side > nav.nav > span #16": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"▤ Reports\"": {
+    "div.shell > aside.side > nav.nav > a #17": {
       "color": "rgb(91, 103, 114)",
       "font-size": "13.5px",
       "display": "flex",
@@ -248,10 +248,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"▤ Reports\" > span": {
+    "div.shell > aside.side > nav.nav > span #17": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◔ Events\"": {
+    "div.shell > aside.side > nav.nav > a #18": {
       "color": "rgb(91, 103, 114)",
       "font-size": "13.5px",
       "display": "flex",
@@ -259,10 +259,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"◔ Events\" > span": {
+    "div.shell > aside.side > nav.nav > span #18": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⚿ Users\"": {
+    "div.shell > aside.side > nav.nav > a #19": {
       "color": "rgb(91, 103, 114)",
       "font-size": "13.5px",
       "display": "flex",
@@ -270,10 +270,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"⚿ Users\" > span": {
+    "div.shell > aside.side > nav.nav > span #19": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"➤ Webhooks\"": {
+    "div.shell > aside.side > nav.nav > a #20": {
       "color": "rgb(91, 103, 114)",
       "font-size": "13.5px",
       "display": "flex",
@@ -281,10 +281,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"➤ Webhooks\" > span": {
+    "div.shell > aside.side > nav.nav > span #20": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"↻ Schedules\"": {
+    "div.shell > aside.side > nav.nav > a #21": {
       "color": "rgb(91, 103, 114)",
       "font-size": "13.5px",
       "display": "flex",
@@ -292,10 +292,10 @@
       "padding": "8px 18px",
       "gap": "9px"
     },
-    "div.shell > aside[complementary].side > nav[navigation].nav > a[link] \"↻ Schedules\" > span": {
+    "div.shell > aside.side > nav.nav > span #21": {
       "display": "block"
     },
-    "div.shell > aside[complementary].side > button[button].theme \"○ light\"": {
+    "div.shell > aside.side > button.theme": {
       "color": "rgb(91, 103, 114)",
       "font-size": "11.5px",
       "display": "block",
@@ -307,32 +307,32 @@
       "padding": "2px 8px",
       "margin": "8px 18px 0px"
     },
-    "div.shell > main[main].main": {
+    "div.shell > main.main": {
       "display": "block",
       "padding": "22px 26px 60px"
     },
-    "div.shell > main[main].main > div.page-head": {
+    "div.shell > main.main > div.page-head": {
       "display": "flex",
       "margin": "0px 0px 18px",
       "gap": "14px"
     },
-    "div.shell > main[main].main > div.page-head > a[link] \"← traces\"": {
+    "div.shell > main.main > div.page-head > a": {
       "color": "rgb(91, 103, 114)",
       "display": "block"
     },
-    "div.shell > main[main].main > div.page-head > h1[heading].mono \"t-1\"": {
+    "div.shell > main.main > div.page-head > h1.mono": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "19px",
       "font-weight": "600",
       "display": "block"
     },
-    "div.shell > main[main].main > div.grid": {
+    "div.shell > main.main > div.grid": {
       "display": "grid",
       "grid-template-columns": "repeat(4, 1fr)",
       "margin": "0px 0px 14px",
       "gap": "14px"
     },
-    "div.shell > main[main].main > div.grid > div.panel.meta": {
+    "div.shell > main.main > div.grid > div.panel.meta": {
       "display": "block",
       "background-color": "rgb(255, 255, 255)",
       "border-top": "1px solid rgb(227, 232, 237)",
@@ -342,7 +342,7 @@
       "border-radius": "6px",
       "padding": "14px 16px"
     },
-    "div.shell > main[main].main > div.grid > div.panel.meta > span": {
+    "div.shell > main.main > div.grid > div.panel.meta > span": {
       "color": "rgb(91, 103, 114)",
       "font-size": "11px",
       "letter-spacing": "0.6px",
@@ -350,12 +350,12 @@
       "display": "block",
       "margin": "0px 0px 4px"
     },
-    "div.shell > main[main].main > div.grid > div.panel.meta > b": {
+    "div.shell > main.main > div.grid > div.panel.meta > b": {
       "font-size": "13.5px",
       "font-weight": "600",
       "display": "inline"
     },
-    "div.shell > main[main].main > div.grid > div.panel.meta #2": {
+    "div.shell > main.main > div.grid > div.panel.meta #2": {
       "display": "block",
       "background-color": "rgb(255, 255, 255)",
       "border-top": "1px solid rgb(227, 232, 237)",
@@ -365,7 +365,7 @@
       "border-radius": "6px",
       "padding": "14px 16px"
     },
-    "div.shell > main[main].main > div.grid > div.panel.meta #2 > span": {
+    "div.shell > main.main > div.grid > div.panel.meta #2 > span": {
       "color": "rgb(91, 103, 114)",
       "font-size": "11px",
       "letter-spacing": "0.6px",
@@ -373,13 +373,13 @@
       "display": "block",
       "margin": "0px 0px 4px"
     },
-    "div.shell > main[main].main > div.grid > div.panel.meta #2 > b.mono": {
+    "div.shell > main.main > div.grid > div.panel.meta #2 > b.mono": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "13.5px",
       "font-weight": "600",
       "display": "inline"
     },
-    "div.shell > main[main].main > div.grid > div.panel.meta #3": {
+    "div.shell > main.main > div.grid > div.panel.meta #3": {
       "display": "block",
       "background-color": "rgb(255, 255, 255)",
       "border-top": "1px solid rgb(227, 232, 237)",
@@ -389,7 +389,7 @@
       "border-radius": "6px",
       "padding": "14px 16px"
     },
-    "div.shell > main[main].main > div.grid > div.panel.meta #3 > span": {
+    "div.shell > main.main > div.grid > div.panel.meta #3 > span": {
       "color": "rgb(91, 103, 114)",
       "font-size": "11px",
       "letter-spacing": "0.6px",
@@ -397,13 +397,13 @@
       "display": "block",
       "margin": "0px 0px 4px"
     },
-    "div.shell > main[main].main > div.grid > div.panel.meta #3 > b.mono": {
+    "div.shell > main.main > div.grid > div.panel.meta #3 > b.mono": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "13.5px",
       "font-weight": "600",
       "display": "inline"
     },
-    "div.shell > main[main].main > div.grid > div.panel.meta #4": {
+    "div.shell > main.main > div.grid > div.panel.meta #4": {
       "display": "block",
       "background-color": "rgb(255, 255, 255)",
       "border-top": "1px solid rgb(227, 232, 237)",
@@ -413,7 +413,7 @@
       "border-radius": "6px",
       "padding": "14px 16px"
     },
-    "div.shell > main[main].main > div.grid > div.panel.meta #4 > span": {
+    "div.shell > main.main > div.grid > div.panel.meta #4 > span": {
       "color": "rgb(91, 103, 114)",
       "font-size": "11px",
       "letter-spacing": "0.6px",
@@ -421,14 +421,14 @@
       "display": "block",
       "margin": "0px 0px 4px"
     },
-    "div.shell > main[main].main > div.grid > div.panel.meta #4 > b.mono": {
+    "div.shell > main.main > div.grid > div.panel.meta #4 > b.mono": {
       "color": "rgb(192, 57, 43)",
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "13.5px",
       "font-weight": "600",
       "display": "inline"
     },
-    "div.shell > main[main].main > div.panel": {
+    "div.shell > main.main > div.panel": {
       "display": "block",
       "background-color": "rgb(255, 255, 255)",
       "border-top": "1px solid rgb(227, 232, 237)",
@@ -439,7 +439,7 @@
       "padding": "14px 16px",
       "margin": "0px 0px 14px"
     },
-    "div.shell > main[main].main > div.panel > h2[heading] \"WATERFALL — 4 SPANS\"": {
+    "div.shell > main.main > div.panel > h2": {
       "color": "rgb(91, 103, 114)",
       "font-size": "12px",
       "font-weight": "600",
@@ -448,197 +448,197 @@
       "display": "block",
       "margin": "0px 0px 10px"
     },
-    "div.shell > main[main].main > div.panel > div.wf": {
+    "div.shell > main.main > div.panel > div.wf": {
       "font-size": "12.5px",
       "display": "block"
     },
-    "div.shell > main[main].main > div.panel > div.wf > div.grid": {
+    "div.shell > main.main > div.panel > div.wf > div.grid": {
       "display": "grid",
       "z-index": "1",
       "gap": "14px"
     },
-    "div.shell > main[main].main > div.panel > div.wf > div.grid > i": {
+    "div.shell > main.main > div.panel > div.wf > div.grid > i": {
       "display": "block",
       "opacity": "0.5",
       "background-color": "rgb(227, 232, 237)"
     },
-    "div.shell > main[main].main > div.panel > div.wf > div.grid > i #2": {
+    "div.shell > main.main > div.panel > div.wf > div.grid > i #2": {
       "display": "block",
       "opacity": "0.5",
       "background-color": "rgb(227, 232, 237)"
     },
-    "div.shell > main[main].main > div.panel > div.wf > div.grid > i #3": {
+    "div.shell > main.main > div.panel > div.wf > div.grid > i #3": {
       "display": "block",
       "opacity": "0.5",
       "background-color": "rgb(227, 232, 237)"
     },
-    "div.shell > main[main].main > div.panel > div.wf > div.grid > i #4": {
+    "div.shell > main.main > div.panel > div.wf > div.grid > i #4": {
       "display": "block",
       "opacity": "0.5",
       "background-color": "rgb(227, 232, 237)"
     },
-    "div.shell > main[main].main > div.panel > div.wf > div.grid > i #5": {
+    "div.shell > main.main > div.panel > div.wf > div.grid > i #5": {
       "display": "block",
       "opacity": "0.5",
       "background-color": "rgb(227, 232, 237)"
     },
-    "div.shell > main[main].main > div.panel > div.wf > div.grid > i #6": {
+    "div.shell > main.main > div.panel > div.wf > div.grid > i #6": {
       "display": "block",
       "opacity": "0.5",
       "background-color": "rgb(227, 232, 237)"
     },
-    "div.shell > main[main].main > div.panel > div.wf > div.ruler": {
+    "div.shell > main.main > div.panel > div.wf > div.ruler": {
       "display": "block",
       "background-color": "rgb(255, 255, 255)",
       "z-index": "2",
       "border-bottom": "1px solid rgb(197, 206, 214)",
       "padding": "3px 0px"
     },
-    "div.shell > main[main].main > div.panel > div.wf > div.ruler > div.labels": {
+    "div.shell > main.main > div.panel > div.wf > div.ruler > div.labels": {
       "color": "rgb(139, 152, 165)",
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "10.5px",
       "display": "block",
       "margin": "0px 76px 0px 250px"
     },
-    "div.shell > main[main].main > div.panel > div.wf > div.ruler > div.labels > span": {
+    "div.shell > main.main > div.panel > div.wf > div.ruler > div.labels > span": {
       "display": "block"
     },
-    "div.shell > main[main].main > div.panel > div.wf > div.ruler > div.labels > span #2": {
+    "div.shell > main.main > div.panel > div.wf > div.ruler > div.labels > span #2": {
       "display": "block"
     },
-    "div.shell > main[main].main > div.panel > div.wf > div.ruler > div.labels > span #3": {
+    "div.shell > main.main > div.panel > div.wf > div.ruler > div.labels > span #3": {
       "display": "block"
     },
-    "div.shell > main[main].main > div.panel > div.wf > div.ruler > div.labels > span #4": {
+    "div.shell > main.main > div.panel > div.wf > div.ruler > div.labels > span #4": {
       "display": "block"
     },
-    "div.shell > main[main].main > div.panel > div.wf > div.ruler > div.labels > span #5": {
+    "div.shell > main.main > div.panel > div.wf > div.ruler > div.labels > span #5": {
       "display": "block"
     },
-    "div.shell > main[main].main > div.panel > div.wf > div.ruler > div.labels > span #6": {
+    "div.shell > main.main > div.panel > div.wf > div.ruler > div.labels > span #6": {
       "display": "block"
     },
-    "div.shell > main[main].main > div.panel > div.wf > button[button].row \"experiment 5.3s\"": {
+    "div.shell > main.main > div.panel > div.wf > button.row": {
       "display": "grid",
       "grid-template-columns": "240px 1fr 66px",
       "border-bottom": "1px solid color(srgb 0.890196 0.909804 0.929412 / 0.55)",
       "padding": "3px 0px",
       "gap": "10px"
     },
-    "div.shell > main[main].main > div.panel > div.wf > button[button].row \"experiment 5.3s\" > span.name": {
+    "div.shell > main.main > div.panel > div.wf > button.row > span.name": {
       "color": "rgb(91, 103, 114)",
       "display": "block"
     },
-    "div.shell > main[main].main > div.panel > div.wf > button[button].row \"experiment 5.3s\" > span.name > em[emphasis]": {
+    "div.shell > main.main > div.panel > div.wf > button.row > span.name > em": {
       "color": "rgb(31, 111, 178)",
       "display": "inline"
     },
-    "div.shell > main[main].main > div.panel > div.wf > button[button].row \"experiment 5.3s\" > span.lane": {
+    "div.shell > main.main > div.panel > div.wf > button.row > span.lane": {
       "display": "block"
     },
-    "div.shell > main[main].main > div.panel > div.wf > button[button].row \"experiment 5.3s\" > span.lane > span.bar": {
+    "div.shell > main.main > div.panel > div.wf > button.row > span.lane > span.bar": {
       "display": "block",
       "background-color": "rgb(197, 206, 214)",
       "border-radius": "2px"
     },
-    "div.shell > main[main].main > div.panel > div.wf > button[button].row \"experiment 5.3s\" > span.dur.mono": {
+    "div.shell > main.main > div.panel > div.wf > button.row > span.dur.mono": {
       "color": "rgb(91, 103, 114)",
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.5px",
       "display": "block"
     },
-    "div.shell > main[main].main > div.panel > div.wf > button[button].row \"hypothesis.before 1ms\"": {
+    "div.shell > main.main > div.panel > div.wf > button.row #2": {
       "display": "grid",
       "grid-template-columns": "240px 1fr 66px",
       "border-bottom": "1px solid color(srgb 0.890196 0.909804 0.929412 / 0.55)",
       "padding": "3px 0px",
       "gap": "10px"
     },
-    "div.shell > main[main].main > div.panel > div.wf > button[button].row \"hypothesis.before 1ms\" > span.name": {
+    "div.shell > main.main > div.panel > div.wf > button.row #2 > span.name": {
       "color": "rgb(91, 103, 114)",
       "display": "block",
       "padding": "0px 0px 0px 16px"
     },
-    "div.shell > main[main].main > div.panel > div.wf > button[button].row \"hypothesis.before 1ms\" > span.name > em[emphasis]": {
+    "div.shell > main.main > div.panel > div.wf > button.row #2 > span.name > em": {
       "color": "rgb(31, 111, 178)",
       "display": "inline"
     },
-    "div.shell > main[main].main > div.panel > div.wf > button[button].row \"hypothesis.before 1ms\" > span.lane": {
+    "div.shell > main.main > div.panel > div.wf > button.row #2 > span.lane": {
       "display": "block"
     },
-    "div.shell > main[main].main > div.panel > div.wf > button[button].row \"hypothesis.before 1ms\" > span.lane > span.bar": {
+    "div.shell > main.main > div.panel > div.wf > button.row #2 > span.lane > span.bar": {
       "display": "block",
       "background-color": "rgb(197, 206, 214)",
       "border-radius": "2px"
     },
-    "div.shell > main[main].main > div.panel > div.wf > button[button].row \"hypothesis.before 1ms\" > span.dur.mono": {
+    "div.shell > main.main > div.panel > div.wf > button.row #2 > span.dur.mono": {
       "color": "rgb(91, 103, 114)",
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.5px",
       "display": "block"
     },
-    "div.shell > main[main].main > div.panel > div.wf > button[button].row \"action 3.0s\"": {
+    "div.shell > main.main > div.panel > div.wf > button.row #3": {
       "display": "grid",
       "grid-template-columns": "240px 1fr 66px",
       "border-bottom": "1px solid color(srgb 0.890196 0.909804 0.929412 / 0.55)",
       "padding": "3px 0px",
       "gap": "10px"
     },
-    "div.shell > main[main].main > div.panel > div.wf > button[button].row \"action 3.0s\" > span.name": {
+    "div.shell > main.main > div.panel > div.wf > button.row #3 > span.name": {
       "color": "rgb(91, 103, 114)",
       "display": "block",
       "padding": "0px 0px 0px 16px"
     },
-    "div.shell > main[main].main > div.panel > div.wf > button[button].row \"action 3.0s\" > span.name > em[emphasis]": {
+    "div.shell > main.main > div.panel > div.wf > button.row #3 > span.name > em": {
       "color": "rgb(31, 111, 178)",
       "display": "inline"
     },
-    "div.shell > main[main].main > div.panel > div.wf > button[button].row \"action 3.0s\" > span.lane": {
+    "div.shell > main.main > div.panel > div.wf > button.row #3 > span.lane": {
       "display": "block"
     },
-    "div.shell > main[main].main > div.panel > div.wf > button[button].row \"action 3.0s\" > span.lane > span.bar": {
+    "div.shell > main.main > div.panel > div.wf > button.row #3 > span.lane > span.bar": {
       "display": "block",
       "background-color": "rgb(192, 57, 43)",
       "border-radius": "2px"
     },
-    "div.shell > main[main].main > div.panel > div.wf > button[button].row \"action 3.0s\" > span.dur.mono": {
+    "div.shell > main.main > div.panel > div.wf > button.row #3 > span.dur.mono": {
       "color": "rgb(91, 103, 114)",
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.5px",
       "display": "block"
     },
-    "div.shell > main[main].main > div.panel > div.wf > button[button].row \"hypothesis.after 1ms\"": {
+    "div.shell > main.main > div.panel > div.wf > button.row #4": {
       "display": "grid",
       "grid-template-columns": "240px 1fr 66px",
       "border-bottom": "1px solid color(srgb 0.890196 0.909804 0.929412 / 0.55)",
       "padding": "3px 0px",
       "gap": "10px"
     },
-    "div.shell > main[main].main > div.panel > div.wf > button[button].row \"hypothesis.after 1ms\" > span.name": {
+    "div.shell > main.main > div.panel > div.wf > button.row #4 > span.name": {
       "color": "rgb(91, 103, 114)",
       "display": "block",
       "padding": "0px 0px 0px 16px"
     },
-    "div.shell > main[main].main > div.panel > div.wf > button[button].row \"hypothesis.after 1ms\" > span.name > em[emphasis]": {
+    "div.shell > main.main > div.panel > div.wf > button.row #4 > span.name > em": {
       "color": "rgb(31, 111, 178)",
       "display": "inline"
     },
-    "div.shell > main[main].main > div.panel > div.wf > button[button].row \"hypothesis.after 1ms\" > span.lane": {
+    "div.shell > main.main > div.panel > div.wf > button.row #4 > span.lane": {
       "display": "block"
     },
-    "div.shell > main[main].main > div.panel > div.wf > button[button].row \"hypothesis.after 1ms\" > span.lane > span.bar": {
+    "div.shell > main.main > div.panel > div.wf > button.row #4 > span.lane > span.bar": {
       "display": "block",
       "background-color": "rgb(197, 206, 214)",
       "border-radius": "2px"
     },
-    "div.shell > main[main].main > div.panel > div.wf > button[button].row \"hypothesis.after 1ms\" > span.dur.mono": {
+    "div.shell > main.main > div.panel > div.wf > button.row #4 > span.dur.mono": {
       "color": "rgb(91, 103, 114)",
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.5px",
       "display": "block"
     },
-    "div.shell > main[main].main > div.panel #2": {
+    "div.shell > main.main > div.panel #2": {
       "display": "block",
       "background-color": "rgb(255, 255, 255)",
       "border-top": "1px solid rgb(227, 232, 237)",
@@ -648,7 +648,7 @@
       "border-radius": "6px",
       "padding": "14px 16px"
     },
-    "div.shell > main[main].main > div.panel #2 > h2[heading] \"LOGS (0)\"": {
+    "div.shell > main.main > div.panel #2 > h2": {
       "color": "rgb(91, 103, 114)",
       "font-size": "12px",
       "font-weight": "600",
@@ -657,37 +657,31 @@
       "display": "block",
       "margin": "0px 0px 10px"
     },
-    "div.shell > main[main].main > div.panel #2 > div.state": {
+    "div.shell > main.main > div.panel #2 > div.state": {
       "color": "rgb(91, 103, 114)",
       "font-size": "13px",
       "display": "block",
       "padding": "28px"
     },
-    "div.shell > main[main].main > div.backdrop": {
-      "display": "block",
-      "background-color": "rgba(0, 0, 0, 0.45)",
-      "z-index": "20"
-    },
-    "div.shell > main[main].main > aside[complementary].drawer": {
+    "div.shell > main.main > dialog[dialog].drawer.narrow.shade \"resilience.experiment\"": {
       "display": "block",
       "background-color": "rgb(255, 255, 255)",
-      "z-index": "21",
       "border-left": "1px solid rgb(197, 206, 214)",
       "padding": "18px"
     },
-    "div.shell > main[main].main > aside[complementary].drawer > header[sectionheader]": {
+    "div.shell > main.main > dialog[dialog].drawer.narrow.shade \"resilience.experiment\" > header[banner]": {
       "display": "flex",
       "margin": "0px 0px 14px"
     },
-    "div.shell > main[main].main > aside[complementary].drawer > header[sectionheader] > div": {
+    "div.shell > main.main > dialog[dialog].drawer.narrow.shade \"resilience.experiment\" > header[banner] > div": {
       "display": "block"
     },
-    "div.shell > main[main].main > aside[complementary].drawer > header[sectionheader] > div.title.mono": {
+    "div.shell > main.main > dialog[dialog].drawer.narrow.shade \"resilience.experiment\" > header[banner] > div.title.mono": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "display": "block",
       "margin": "0px 0px 6px"
     },
-    "div.shell > main[main].main > aside[complementary].drawer > header[sectionheader] > span.badge.neutral": {
+    "div.shell > main.main > dialog[dialog].drawer.narrow.shade \"resilience.experiment\" > header[banner] > span.badge.neutral": {
       "color": "rgb(91, 103, 114)",
       "font-size": "11.5px",
       "font-weight": "600",
@@ -697,7 +691,7 @@
       "border-radius": "10px",
       "padding": "1px 9px"
     },
-    "div.shell > main[main].main > aside[complementary].drawer > header[sectionheader] > button[button].close \"close\"": {
+    "div.shell > main.main > dialog[dialog].drawer.narrow.shade \"resilience.experiment\" > header[banner] > button[button].close \"close\"": {
       "color": "rgb(91, 103, 114)",
       "font-family": "Arial",
       "font-size": "22px",
@@ -705,75 +699,75 @@
       "display": "block",
       "padding": "1px 6px"
     },
-    "div.shell > main[main].main > aside[complementary].drawer > section": {
+    "div.shell > main.main > dialog[dialog].drawer.narrow.shade \"resilience.experiment\" > section": {
       "display": "block",
       "margin": "0px 0px 18px"
     },
-    "div.shell > main[main].main > aside[complementary].drawer > dl[DescriptionList]": {
+    "div.shell > main.main > dialog[dialog].drawer.narrow.shade \"resilience.experiment\" > dl[DescriptionList]": {
       "font-size": "12.5px",
       "display": "grid",
       "grid-template-columns": "88px 1fr",
       "gap": "5px 10px"
     },
-    "div.shell > main[main].main > aside[complementary].drawer > dl[DescriptionList] > dt[term] \"Duration\"": {
+    "div.shell > main.main > dialog[dialog].drawer.narrow.shade \"resilience.experiment\" > dl[DescriptionList] > dt[term] \"Duration\"": {
       "color": "rgb(91, 103, 114)",
       "display": "block"
     },
-    "div.shell > main[main].main > aside[complementary].drawer > dl[DescriptionList] > dd[definition].mono": {
+    "div.shell > main.main > dialog[dialog].drawer.narrow.shade \"resilience.experiment\" > dl[DescriptionList] > dd[definition].mono": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.5px",
       "display": "block"
     },
-    "div.shell > main[main].main > aside[complementary].drawer > dl[DescriptionList] > dt[term] \"Started\"": {
+    "div.shell > main.main > dialog[dialog].drawer.narrow.shade \"resilience.experiment\" > dl[DescriptionList] > dt[term] \"Started\"": {
       "color": "rgb(91, 103, 114)",
       "display": "block"
     },
-    "div.shell > main[main].main > aside[complementary].drawer > dl[DescriptionList] > dd[definition].mono #2": {
+    "div.shell > main.main > dialog[dialog].drawer.narrow.shade \"resilience.experiment\" > dl[DescriptionList] > dd[definition].mono #2": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.5px",
       "display": "block"
     },
-    "div.shell > main[main].main > aside[complementary].drawer > dl[DescriptionList] > dt[term] \"Status\"": {
+    "div.shell > main.main > dialog[dialog].drawer.narrow.shade \"resilience.experiment\" > dl[DescriptionList] > dt[term] \"Status\"": {
       "color": "rgb(91, 103, 114)",
       "display": "block"
     },
-    "div.shell > main[main].main > aside[complementary].drawer > dl[DescriptionList] > dd[definition].mono #3": {
+    "div.shell > main.main > dialog[dialog].drawer.narrow.shade \"resilience.experiment\" > dl[DescriptionList] > dd[definition].mono #3": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.5px",
       "display": "block"
     },
-    "div.shell > main[main].main > aside[complementary].drawer > dl[DescriptionList] > dt[term] \"Span ID\"": {
+    "div.shell > main.main > dialog[dialog].drawer.narrow.shade \"resilience.experiment\" > dl[DescriptionList] > dt[term] \"Span ID\"": {
       "color": "rgb(91, 103, 114)",
       "display": "block"
     },
-    "div.shell > main[main].main > aside[complementary].drawer > dl[DescriptionList] > dd[definition].mono #4": {
+    "div.shell > main.main > dialog[dialog].drawer.narrow.shade \"resilience.experiment\" > dl[DescriptionList] > dd[definition].mono #4": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.5px",
       "display": "block"
     },
-    "div.shell > main[main].main > aside[complementary].drawer > dl[DescriptionList] > dt[term] \"Trace ID\"": {
+    "div.shell > main.main > dialog[dialog].drawer.narrow.shade \"resilience.experiment\" > dl[DescriptionList] > dt[term] \"Trace ID\"": {
       "color": "rgb(91, 103, 114)",
       "display": "block"
     },
-    "div.shell > main[main].main > aside[complementary].drawer > dl[DescriptionList] > dd[definition].mono #5": {
+    "div.shell > main.main > dialog[dialog].drawer.narrow.shade \"resilience.experiment\" > dl[DescriptionList] > dd[definition].mono #5": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.5px",
       "display": "block"
     },
-    "div.shell > main[main].main > aside[complementary].drawer > dl[DescriptionList] > dt[term] \"Service\"": {
+    "div.shell > main.main > dialog[dialog].drawer.narrow.shade \"resilience.experiment\" > dl[DescriptionList] > dt[term] \"Service\"": {
       "color": "rgb(91, 103, 114)",
       "display": "block"
     },
-    "div.shell > main[main].main > aside[complementary].drawer > dl[DescriptionList] > dd[definition].mono #6": {
+    "div.shell > main.main > dialog[dialog].drawer.narrow.shade \"resilience.experiment\" > dl[DescriptionList] > dd[definition].mono #6": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.5px",
       "display": "block"
     },
-    "div.shell > main[main].main > aside[complementary].drawer > section #2": {
+    "div.shell > main.main > dialog[dialog].drawer.narrow.shade \"resilience.experiment\" > section #2": {
       "display": "block",
       "margin": "0px 0px 18px"
     },
-    "div.shell > main[main].main > aside[complementary].drawer > h3[heading] \"ATTRIBUTES\"": {
+    "div.shell > main.main > dialog[dialog].drawer.narrow.shade \"resilience.experiment\" > h3[heading] \"ATTRIBUTES\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "11px",
       "font-weight": "600",
@@ -782,35 +776,35 @@
       "display": "block",
       "margin": "0px 0px 8px"
     },
-    "div.shell > main[main].main > aside[complementary].drawer > table[LayoutTable].data": {
+    "div.shell > main.main > dialog[dialog].drawer.narrow.shade \"resilience.experiment\" > table[LayoutTable].data": {
       "font-size": "13px",
       "display": "table"
     },
-    "div.shell > main[main].main > aside[complementary].drawer > table[LayoutTable].data > tbody": {
+    "div.shell > main.main > dialog[dialog].drawer.narrow.shade \"resilience.experiment\" > table[LayoutTable].data > tbody": {
       "display": "table-row-group"
     },
-    "div.shell > main[main].main > aside[complementary].drawer > table[LayoutTable].data > tr[LayoutTableRow].attr-row": {
+    "div.shell > main.main > dialog[dialog].drawer.narrow.shade \"resilience.experiment\" > table[LayoutTable].data > tr[LayoutTableRow].attr-row": {
       "display": "table-row"
     },
-    "div.shell > main[main].main > aside[complementary].drawer > table[LayoutTable].data > tr[LayoutTableRow].attr-row > td[LayoutTableCell].mono.dim \"db.system\"": {
+    "div.shell > main.main > dialog[dialog].drawer.narrow.shade \"resilience.experiment\" > table[LayoutTable].data > tr[LayoutTableRow].attr-row > td[LayoutTableCell].mono.dim \"db.system\"": {
       "color": "rgb(91, 103, 114)",
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "padding": "7px 10px"
     },
-    "div.shell > main[main].main > aside[complementary].drawer > table[LayoutTable].data > tr[LayoutTableRow].attr-row > td[LayoutTableCell].mono \"postgresql\"": {
+    "div.shell > main.main > dialog[dialog].drawer.narrow.shade \"resilience.experiment\" > table[LayoutTable].data > tr[LayoutTableRow].attr-row > td[LayoutTableCell].mono \"postgresql\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "padding": "7px 10px"
     },
-    "div.shell > main[main].main > aside[complementary].drawer > table[LayoutTable].data > tr[LayoutTableRow].attr-row > td.facets": {
+    "div.shell > main.main > dialog[dialog].drawer.narrow.shade \"resilience.experiment\" > table[LayoutTable].data > tr[LayoutTableRow].attr-row > td.facets": {
       "visibility": "hidden",
       "display": "table-cell",
       "padding": "7px 10px"
     },
-    "div.shell > main[main].main > aside[complementary].drawer > table[LayoutTable].data > tr[LayoutTableRow].attr-row > td.facets > button": {
+    "div.shell > main.main > dialog[dialog].drawer.narrow.shade \"resilience.experiment\" > table[LayoutTable].data > tr[LayoutTableRow].attr-row > td.facets > button": {
       "color": "rgb(91, 103, 114)",
       "font-family": "Arial",
       "font-size": "11px",
@@ -824,7 +818,7 @@
       "padding": "0px 4px",
       "margin": "0px 0px 0px 4px"
     },
-    "div.shell > main[main].main > aside[complementary].drawer > table[LayoutTable].data > tr[LayoutTableRow].attr-row > td.facets > button #2": {
+    "div.shell > main.main > dialog[dialog].drawer.narrow.shade \"resilience.experiment\" > table[LayoutTable].data > tr[LayoutTableRow].attr-row > td.facets > button #2": {
       "color": "rgb(91, 103, 114)",
       "font-family": "Arial",
       "font-size": "11px",
@@ -838,11 +832,11 @@
       "padding": "0px 4px",
       "margin": "0px 0px 0px 4px"
     },
-    "div.shell > main[main].main > aside[complementary].drawer > section #3": {
+    "div.shell > main.main > dialog[dialog].drawer.narrow.shade \"resilience.experiment\" > section #3": {
       "display": "block",
       "margin": "0px 0px 18px"
     },
-    "div.shell > main[main].main > aside[complementary].drawer > h3[heading] \"CORRELATED LOGS (0)\"": {
+    "div.shell > main.main > dialog[dialog].drawer.narrow.shade \"resilience.experiment\" > h3[heading] \"CORRELATED LOGS (0)\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "11px",
       "font-weight": "600",
@@ -851,7 +845,7 @@
       "display": "block",
       "margin": "0px 0px 8px"
     },
-    "div.shell > main[main].main > aside[complementary].drawer > div.dim": {
+    "div.shell > main.main > dialog[dialog].drawer.narrow.shade \"resilience.experiment\" > div.dim": {
       "color": "rgb(91, 103, 114)",
       "display": "block"
     },

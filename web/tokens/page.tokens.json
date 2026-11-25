@@ -175,16 +175,6 @@
     "$value": 2,
     "$description": "2. A sticky head above the raised layer: the time ruler of the span waterfall."
   },
-  "z-overlay": {
-    "$type": "number",
-    "$value": 20,
-    "$description": "20. A drawer, or the shade behind one, above the page."
-  },
-  "z-overlay-top": {
-    "$type": "number",
-    "$value": 21,
-    "$description": "21. A drawer above its own shade."
-  },
   "drawer-narrow": {
     "$type": "dimension",
     "$value": { "value": 480, "unit": "px" },
