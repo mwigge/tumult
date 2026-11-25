@@ -1,11 +1,14 @@
 #!/usr/bin/env node
 // Find the raw CSS values of the kinds that have design tokens: font sizes,
 // font weights, line heights, letter spacing, font families, spacing,
-// radii, border widths and z-index. It reads the <style> blocks and the
-// style attributes of the Svelte files under src/, and the CSS files there
-// but tokens.css, which the token generator writes. A value inside var()
-// is not raw, and neither is 0, a keyword or a value that a script works
-// out. This is a text scan, not a CSS parser: a `;` or a brace in a string
+// radii, border widths, z-index and colours. It reads the <style> blocks
+// and the style attributes of the Svelte files under src/, and the CSS
+// files there but tokens.css, which the token generator writes. A value
+// inside var() is not raw, and neither is 0, a keyword or a value that a
+// script works out. A colour is a hex colour, a colour function such as
+// rgb() or hsl(), or a named colour; transparent and currentColor are not
+// raw. In a custom property only a colour counts, as the kind of its other
+// values is not known. This is a text scan, not a CSS parser: a `;` or a brace in a string
 // of a style would confuse it, and Krönika has none.
 //
 // The lint fails on a raw value that the allow list does not hold, and on
@@ -41,6 +44,7 @@ export const KINDS = [
     'radius',
     'border-width',
     'z-index',
+    'colour',
 ];
 
 /**
@@ -57,6 +61,8 @@ const TOKEN_NAMES = {
     radius: /^radius-/,
     'border-width': /^border-width-/,
     'z-index': /^z-/,
+    // A colour token may have any name: its exact value tells.
+    colour: /^/,
 };
 
 /** @typedef {{ kind: string, value: string, property: string, file: string, line: number }} Literal */
@@ -69,6 +75,31 @@ const FONT_SIZE =
     /(?<![\w#.-])((?:\d+\.?\d*|\.\d+)(?:[a-z]+|%))(?:\s*\/\s*((?:\d+\.?\d*|\.\d+)(?:[a-z]+|%)?))?/i;
 const HEX = /#[0-9a-f]{3,8}\b/gi;
 const WIDE = /^(?:inherit|initial|unset|revert|revert-layer)$/;
+// A hex colour, the start of a colour function or a word, not part of a
+// longer name.
+const COLOUR =
+    /(?<![\w-])(?:#[0-9a-f]{3,8}\b|(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\(|[a-z]+(?![\w(-]))/gi;
+// The named colours of CSS. transparent and currentColor are not in it.
+const NAMED = new Set(
+    `aliceblue antiquewhite aqua aquamarine azure beige bisque black blanchedalmond blue
+    blueviolet brown burlywood cadetblue chartreuse chocolate coral cornflowerblue cornsilk
+    crimson cyan darkblue darkcyan darkgoldenrod darkgray darkgreen darkgrey darkkhaki
+    darkmagenta darkolivegreen darkorange darkorchid darkred darksalmon darkseagreen
+    darkslateblue darkslategray darkslategrey darkturquoise darkviolet deeppink deepskyblue
+    dimgray dimgrey dodgerblue firebrick floralwhite forestgreen fuchsia gainsboro ghostwhite
+    gold goldenrod gray green greenyellow grey honeydew hotpink indianred indigo ivory khaki
+    lavender lavenderblush lawngreen lemonchiffon lightblue lightcoral lightcyan
+    lightgoldenrodyellow lightgray lightgreen lightgrey lightpink lightsalmon lightseagreen
+    lightskyblue lightslategray lightslategrey lightsteelblue lightyellow lime limegreen linen
+    magenta maroon mediumaquamarine mediumblue mediumorchid mediumpurple mediumseagreen
+    mediumslateblue mediumspringgreen mediumturquoise mediumvioletred midnightblue mintcream
+    mistyrose moccasin navajowhite navy oldlace olive olivedrab orange orangered orchid
+    palegoldenrod palegreen paleturquoise palevioletred papayawhip peachpuff peru pink plum
+    powderblue purple rebeccapurple red rosybrown royalblue saddlebrown salmon sandybrown
+    seagreen seashell sienna silver skyblue slateblue slategray slategrey snow springgreen
+    steelblue tan teal thistle tomato turquoise violet wheat white whitesmoke yellow
+    yellowgreen`.split(/\s+/),
+);
 
 /** @type {(text: string) => string} */
 const blank = (text) => text.replace(/[^\n]/g, ' ');
@@ -149,12 +180,62 @@ function fontShorthand(text) {
 }
 
 /**
+ * The offset just after the bracket that closes the one at `open`.
+ * @param {string} text
+ * @param {number} open
+ */
+function closing(text, open) {
+    let depth = 0;
+    for (let at = open; at < text.length; at++) {
+        if (text[at] === '(') depth += 1;
+        if (text[at] === ')') depth -= 1;
+        if (depth === 0) return at + 1;
+    }
+    return text.length;
+}
+
+/**
+ * The raw colours of a value, as ['colour', colour]. A colour in var(),
+ * url() or a string is not raw.
+ * @param {string} value
+ * @returns {[string, string][]}
+ */
+function colours(value) {
+    const strings = /'[^']*'|"[^"]*"/g;
+    const text = without(without(value, 'var(', ')'), 'url(', ')').replace(strings, blank);
+    const pattern = new RegExp(COLOUR);
+    /** @type {[string, string][]} */
+    const found = [];
+    for (let match = pattern.exec(text); match; match = pattern.exec(text)) {
+        const [word] = match;
+        if (word.endsWith('(')) {
+            pattern.lastIndex = closing(text, pattern.lastIndex - 1);
+            const colour = value.slice(match.index, pattern.lastIndex);
+            found.push(['colour', colour.replace(/\s+/g, ' ')]);
+            continue;
+        }
+        if (word.startsWith('#') || NAMED.has(word.toLowerCase())) found.push(['colour', word]);
+    }
+    return found;
+}
+
+/**
  * The raw values of one declaration, as [kind, value].
  * @param {string} property
  * @param {string} value
  * @returns {[string, string][]}
  */
 function rawValues(property, value) {
+    return [...rawNumbers(property, value), ...colours(value)];
+}
+
+/**
+ * The raw values of one declaration but its colours, as [kind, value].
+ * @param {string} property
+ * @param {string} value
+ * @returns {[string, string][]}
+ */
+function rawNumbers(property, value) {
     const text = without(value, 'var(', ')').replace(HEX, blank).trim();
     if (property === 'font') return fontShorthand(text);
     const kind = kindOf(property);
@@ -171,7 +252,7 @@ function rawValues(property, value) {
 
 /**
  * The declarations of CSS text, as [property, value, offset of the
- * property]. Custom properties are left out.
+ * property]. Custom properties are kept: only their colours count.
  * @param {string} css
  * @returns {[string, string, number][]}
  */
@@ -183,7 +264,9 @@ function declarations(css) {
     for (let at = 0; at <= text.length; at++) {
         const end = at === text.length || ';{}'.includes(text[at]);
         if (!end) continue;
-        const declaration = /^(\s*)([a-z][a-z-]*)\s*:([\s\S]*)$/i.exec(text.slice(start, at));
+        const declaration = /^(\s*)(--[\w-]+|[a-z][a-z-]*)\s*:([\s\S]*)$/i.exec(
+            text.slice(start, at),
+        );
         if (declaration && text[at] !== '{')
             found.push([
                 declaration[2].toLowerCase(),
@@ -265,11 +348,13 @@ export function scan(web) {
 
 /**
  * A value as the lint compares it with a token: in lower case, with one
- * space for each run of white space.
+ * space for each run of white space, and a short hex colour in full.
  * @param {string} value
  */
 function normal(value) {
-    return value.trim().toLowerCase().replace(/\s+/g, ' ');
+    const text = value.trim().toLowerCase().replace(/\s+/g, ' ');
+    if (!/^#[0-9a-f]{3,4}$/.test(text)) return text;
+    return `#${[...text.slice(1)].map((digit) => digit + digit).join('')}`;
 }
 
 /**

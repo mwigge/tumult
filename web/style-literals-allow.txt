@@ -7,6 +7,7 @@
 src/lib/components/ApprovalActions.svelte spacing 3px
 src/lib/components/AuditTimeline.svelte spacing 3px
 src/lib/components/DoraEvidence.svelte spacing 3px
+src/lib/components/DoraEvidence.svelte colour rgb(0 0 0 / 25%)
 src/lib/components/DoraNotices.svelte border-width 3px
 src/lib/components/DoraScore.svelte spacing 3px
 src/lib/components/DoraScore.svelte spacing 3px
@@ -22,6 +23,7 @@ src/lib/components/ScoreNumber.svelte spacing 1px
 src/lib/components/SpanDrawer.svelte line-height 1
 src/lib/components/SpanDrawer.svelte spacing 3px
 src/lib/components/SpanDrawer.svelte spacing 5px
+src/lib/components/SpanDrawer.svelte colour rgba(0, 0, 0, 0.45)
 src/lib/components/StarDrawer.svelte line-height 1
 src/lib/components/StarDrawer.svelte spacing 3px
 src/lib/components/StarDrawer.svelte spacing 5px
@@ -46,6 +48,8 @@ src/lib/theme.css spacing 7px
 src/lib/theme.css spacing 9px
 src/lib/theme.css spacing 9px
 src/lib/theme.css spacing 9px
+src/lib/theme.css colour #fff
+src/lib/theme.css colour #fff
 src/routes/+layout.svelte spacing 3px
 src/routes/ask/+page.svelte spacing 11px
 src/routes/ask/+page.svelte spacing 3px
@@ -67,6 +71,7 @@ src/routes/performance/+page.svelte spacing 3px
 src/routes/performance/+page.svelte spacing 3px
 src/routes/performance/+page.svelte spacing 7px
 src/routes/performance/+page.svelte radius 14px
+src/routes/reports/+page.svelte colour #fff
 src/routes/resilience/+page.svelte font-size 34px
 src/routes/resilience/+page.svelte spacing 3px
 src/routes/resilience/+page.svelte spacing 9px

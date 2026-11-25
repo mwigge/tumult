@@ -6,11 +6,15 @@ import { FIX, lint, lintStyles, literalsIn, scan } from '../../scripts/style-lit
 
 const WEB = fileURLToPath(new URL('../..', import.meta.url));
 
-/** A small tokens.css: a spacing and a radius token, and a colour per theme. */
+/**
+ * A small tokens.css: a spacing and a radius token, a colour that is the
+ * same in each theme and a colour that is not.
+ */
 const TOKENS = [
     ':root {',
     '    --space-2: 8px;',
     '    --radius-2xl: 10px;',
+    '    --on-accent: #ffffff;',
     '    --bg: #0b0e11;',
     '}',
     ":root[data-theme='light'] {",
@@ -115,6 +119,46 @@ describe('the scan of raw style values', () => {
             ['border-width', '1px', 4],
         ]);
     });
+
+    it('finds raw colours: hex, rgb(), hsl() and named colours', () => {
+        const svelte = [
+            '<p style="color: red; background: {tone}">x</p>',
+            '<style>',
+            '    p { border: 1px solid #fff; box-shadow: 0 2px 4px rgb(0 0 0 / 25%); }',
+            '    b { background: hsl(210, 40%, 50%) url(#fade); color: RebeccaPurple; }',
+            '</style>',
+        ].join('\n');
+
+        expect(found('src/x.svelte', svelte)).toEqual([
+            ['border-width', '1px', 3],
+            ['colour', '#fff', 3],
+            ['colour', 'rgb(0 0 0 / 25%)', 3],
+            ['colour', 'hsl(210, 40%, 50%)', 4],
+            ['colour', 'RebeccaPurple', 4],
+            ['colour', 'red', 1],
+        ]);
+    });
+
+    it('leaves out transparent, currentColor, inherit and colours in var() or a string', () => {
+        const css = [
+            'p {',
+            '    color: currentColor;',
+            '    border-color: inherit;',
+            '    outline-color: var(--accent, #5eb1ef);',
+            '    background: color-mix(in srgb, var(--ok) 50%, transparent);',
+            "    content: 'red';",
+            '    transition: color 0.2s;',
+            '}',
+        ].join('\n');
+
+        expect(found('src/x.css', css)).toEqual([]);
+    });
+
+    it('finds a raw colour in a custom property, but no other raw value there', () => {
+        const css = 'p {\n    --tone: #f59e0b;\n    --gap: 10px;\n}\n';
+
+        expect(found('src/x.css', css)).toEqual([['colour', '#f59e0b', 2]]);
+    });
 });
 
 describe('the styles of the pages', () => {
@@ -182,6 +226,23 @@ describe('the style lint', () => {
         expect(problems(allow)).toEqual([
             'style-literals-allow.txt:7: "src/x.svelte 3px" is not a path, a kind and a value',
             'style-literals-allow.txt:8: "src/x.svelte spaces 3px" is not a path, a kind and a value',
+        ]);
+    });
+
+    it('fails on a raw colour that is not on the list', () => {
+        const page = '<style>\n    p { background: rgba(0, 0, 0, 0.45); }\n</style>';
+
+        expect(problems(ALLOWED, page)).toContain(
+            'src/x.svelte:2: raw colour rgba(0, 0, 0, 0.45) is not on the allow list',
+        );
+    });
+
+    it('names a colour token only when it has the colour in every theme', () => {
+        const page = '<style>\n    p { color: #FFF; background: #0b0e11; }\n</style>';
+
+        expect(problems([], page)).toEqual([
+            'src/x.svelte:2: raw colour #FFF is not on the allow list; use var(--on-accent)',
+            'src/x.svelte:2: raw colour #0b0e11 is not on the allow list',
         ]);
     });
 
