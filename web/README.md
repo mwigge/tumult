@@ -72,6 +72,22 @@ of `src/` that `style-literals-allow.txt` does not hold; use a token instead.
 That list holds each raw value left today by file, kind and value, and the
 lint fails on a line that matches nothing, so the list only shrinks.
 
+## Shared classes
+
+`src/lib/theme.css` holds, once, the rules that many pages use:
+
+- Buttons: `.btn`, with `primary`, `danger` and `add`.
+- Text: `.dim` and `.note` (faint and small), `.hint`, `.label-caps` (the
+  small capital name above a value), `.ts` (the time of an audit row) and
+  `.sr-only` (for a screen reader only).
+- Parts: the meta tile (`.panel.meta`), filter chips (`.chip`), the open
+  row of a table (`.detail-row`) and `.actions`.
+- Forms: `.form`, `.row2` and the list editor `.grid-rows`.
+
+A page uses the class and keeps no copy of the rule in its own style
+block. `src/lib/theme-rules.test.ts` fails on a copy, and on a `:global()`
+rule in the Manual page or its components.
+
 ## Stack
 
 | Choice                                           | Why                                                                                                                               |
