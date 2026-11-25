@@ -3,7 +3,8 @@
 // tests/style-snapshots/. Only values that do not depend on the fonts of
 // the host are read, so the baseline of one host holds on another: no
 // width, height or position, and the computed value (`auto`, `2%`), not
-// the value the layout used.
+// the value the layout used. The one height read is that of a busy
+// loading block, which the page sets.
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -169,6 +170,8 @@ export async function readStyles(page: Page): Promise<Elements | null> {
                 put('background-image', get('background-image'), 'none');
                 put('box-shadow', get('box-shadow'), 'none');
                 put('z-index', get('z-index'), 'auto');
+                // A loading block stands for the part that comes: its height is set.
+                if (el.getAttribute('aria-busy') === 'true') put('height', get('height'), 'auto');
                 for (const side of SIDES) {
                     const style = get(`border-${side}-style`);
                     if (style === 'none') continue;

@@ -7,6 +7,7 @@
     import { errorText, signoffSummary } from '#lib/manual.js';
     import type { ManualSignOffRow } from '#lib/types.js';
     import Badge from './Badge.svelte';
+    import State from './State.svelte';
 
     let {
         experimentId,
@@ -84,7 +85,7 @@
     </p>
 {/if}
 {#if message}
-    <div class="state" class:error={!message.ok} role="status">{message.text}</div>
+    <State kind={message.ok ? 'empty' : 'error'} role="status">{message.text}</State>
 {/if}
 
 <style>

@@ -43,6 +43,7 @@
     import EChart from '#lib/components/EChart.svelte';
     import PageHeader from '#lib/components/PageHeader.svelte';
     import Panel from '#lib/components/Panel.svelte';
+    import State from '#lib/components/State.svelte';
 
     // Why the read has no answer: `none` = 404 (no evidence in scope),
     // `input` = 400 (the query must be narrowed), `fail` = anything else.
@@ -325,7 +326,7 @@
         <button type="button" class="btn" onclick={loadTargets}>Retry</button>
     </div>
 {:else if !targets}
-    <div class="state">Loading targets…</div>
+    <State kind="loading">Loading targets…</State>
 {:else if targetOptions.length === 0}
     <div class="panel empty" data-testid="empty">
         <strong>No load-tested targets yet</strong>
@@ -353,7 +354,7 @@
         <p class="muted">Pick an environment or explicit versions above.</p>
     </div>
 {:else if !answer}
-    <div class="state">Loading evidence…</div>
+    <State kind="loading">Loading evidence…</State>
 {:else}
     {@const cmp = answer.comparison}
     <div class="grid cols-2" aria-busy={loading}>
@@ -459,7 +460,7 @@
                 <EChart option={chartOption} id="perf" height={280} />
             </div>
         {:else}
-            <div class="state">No samples to plot.</div>
+            <State kind="empty">No samples to plot.</State>
         {/if}
         <table class="data" aria-label="Latency by version">
             <thead>
@@ -648,7 +649,7 @@
             {/if}
         </div>
         {#if answer.history.length === 0}
-            <div class="state">No verdict has been stored for this target yet.</div>
+            <State kind="empty">No verdict has been stored for this target yet.</State>
         {:else}
             <table class="data" aria-label="Stored verdicts">
                 <thead>
@@ -752,19 +753,6 @@
     .delta-value {
         font-size: var(--font-size-3xl);
         font-weight: var(--font-weight-strong);
-    }
-    table.data th[scope='row'] {
-        text-align: left;
-        font-weight: var(--font-weight-strong);
-        padding: 7px var(--space-2-5);
-        border-bottom: var(--border-width-sm) solid var(--border);
-        text-transform: none;
-        letter-spacing: 0;
-        font-size: var(--font-size-md);
-        color: var(--text);
-    }
-    table.data tr:last-child th[scope='row'] {
-        border-bottom: none;
     }
     .unattributed {
         margin-top: var(--space-2-5);

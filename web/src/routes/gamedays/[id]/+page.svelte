@@ -7,6 +7,7 @@
     import StatusBadge from '#lib/components/StatusBadge.svelte';
     import PageHeader from '#lib/components/PageHeader.svelte';
     import Panel from '#lib/components/Panel.svelte';
+    import State from '#lib/components/State.svelte';
 
     const id = $derived(page.params.id ?? '');
 
@@ -113,13 +114,13 @@
     title={day ? day.title : 'GameDay'}
     back={{ href: '/gamedays', label: 'gamedays' }}
     sub={day
-        ? `${day.experiments.length} experiments · pass threshold ${day.scoring.pass_threshold} · MTTR target ${day.scoring.mttr_target_s}s`
+        ? `${day.experiments.length} experiments · pass threshold ${day.scoring.pass_threshold} · MTTR target ${day.scoring.mttr_target_s}s for a run with no RTO target`
         : undefined}
 />
 {#if error && !day}
-    <div class="state error panel">{error}</div>
+    <State kind="error" panel>{error}</State>
 {:else if !day}
-    <div class="skeleton" style="height: 200px"></div>
+    <State kind="loading" height={200} />
 {:else}
     {#if day.description}
         <p class="desc">{day.description}</p>
@@ -222,9 +223,9 @@
                     ? `The campaign runs in ${environment.trim()}.`
                     : 'Enter the environment the campaign runs in.'}
             </div>
-            {#if launchError}<div class="state error" style="margin-top: var(--space-2-5)">
+            {#if launchError}<State kind="error" style="margin-top: var(--space-2-5)">
                     {launchError}
-                </div>{/if}
+                </State>{/if}
         {/if}
     </Panel>
 {/if}

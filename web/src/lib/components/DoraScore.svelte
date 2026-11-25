@@ -39,6 +39,7 @@
     import ScoreNumber from './ScoreNumber.svelte';
     import Panel from './Panel.svelte';
     import Segmented from './Segmented.svelte';
+    import State from './State.svelte';
 
     let { lei, onlei }: { lei: string; onlei: (lei: string) => void } = $props();
 
@@ -106,9 +107,9 @@
 </script>
 
 {#if error}
-    <Panel><div class="state error">Failed to load the DORA score: {error}</div></Panel>
+    <Panel><State kind="error">Failed to load the DORA score: {error}</State></Panel>
 {:else if !report || !maturity}
-    <Panel><div class="skeleton" style="height: 320px"></div></Panel>
+    <Panel><State kind="loading" height={320} /></Panel>
 {:else}
     <div data-testid="dora-view">
         <section class="panel head" data-testid="dora-header">
@@ -193,10 +194,10 @@
                 />
             </div>
             {#if report.rows.length === 0 || report.articles.length === 0}
-                <div class="state">
+                <State kind="empty">
                     No functions on record. Declare them under <span class="mono">functions:</span> in
                     org.yaml.
-                </div>
+                </State>
             {:else if heatmap}
                 <EChart
                     option={heatmap}
@@ -268,7 +269,7 @@
         <section class="panel" data-testid="dora-expectations">
             <h2>Expected and actual evidence status, largest gap first</h2>
             {#if expectations.length === 0}
-                <div class="state">No requirement applies to this profile.</div>
+                <State kind="empty">No requirement applies to this profile.</State>
             {:else}
                 <table class="data">
                     <thead>
@@ -443,7 +444,7 @@
         <section class="panel" data-testid="dora-rollup">
             <h2>Maturity per node{rollupSuffix}</h2>
             {#if tree.length === 0}
-                <div class="state">No nodes to roll up.</div>
+                <State kind="empty">No nodes to roll up.</State>
             {:else}
                 <table class="data">
                     <thead>

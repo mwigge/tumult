@@ -19,6 +19,7 @@
     import ManualPlanTable from './ManualPlanTable.svelte';
     import ManualVerify from './ManualVerify.svelte';
     import Panel from './Panel.svelte';
+    import State from './State.svelte';
 
     let {
         actor,
@@ -120,9 +121,9 @@
 <div class="plans">
     <Panel title="Plans">
         {#if loadError}
-            <div class="state error">{loadError}</div>
+            <State kind="error">{loadError}</State>
         {:else if !plans}
-            <div class="skeleton" style="height: 120px"></div>
+            <State kind="loading" height={120} />
         {:else}
             <ManualPlanTable
                 plans={ofTarget(plans, filter)}
@@ -158,9 +159,9 @@
                             <ManualVerify run={() => api.manualPlanAuditVerify(plan.id)} />
                         </div>
                     {:else if !cancelMessage}
-                        <div class="skeleton" style="height: 40px"></div>
+                        <State kind="loading" height={40} />
                     {/if}
-                    {#if cancelMessage}<div class="state error">{cancelMessage}</div>{/if}
+                    {#if cancelMessage}<State kind="error">{cancelMessage}</State>{/if}
                 {/snippet}
             </ManualPlanTable>
         {/if}

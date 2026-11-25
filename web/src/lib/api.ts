@@ -276,6 +276,13 @@ export const api = {
         period?: string;
         experiment_id?: string;
         framework?: string;
+        /** `dr-test`: the target system, its environment and the period in unix nanoseconds. */
+        target?: string;
+        environment?: string;
+        from?: number;
+        to?: number;
+        /** `dr-exercise`: the id of the manual record. */
+        record_id?: string;
     }) => send<ReportMetaV2>('POST', '/api/reports/v2/generate', req),
 
     generateReport: (metric: string) =>

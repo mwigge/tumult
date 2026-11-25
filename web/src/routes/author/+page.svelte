@@ -5,6 +5,7 @@
     import type { CatalogResponse } from '#lib/types.js';
     import PageHeader from '#lib/components/PageHeader.svelte';
     import Panel from '#lib/components/Panel.svelte';
+    import State from '#lib/components/State.svelte';
 
     let catalog = $state<CatalogResponse | null>(null);
     let loadError = $state<string | null>(null);
@@ -19,17 +20,17 @@
 <PageHeader title="Author an experiment" sub="pick a fault from the live plugin catalog" />
 
 {#if loadError}
-    <div class="state error">Failed to load the fault catalog: {loadError}</div>
+    <State kind="error">Failed to load the fault catalog: {loadError}</State>
 {:else if !catalog}
-    <div class="skeleton" style="height: 200px"></div>
+    <State kind="loading" height={200} />
 {:else if catalog.action_count === 0}
     <Panel>
-        <div class="state">
+        <State kind="empty">
             The fault catalog is empty — the daemon found no plugins. Plugin discovery looks in
             <span class="mono">./plugins</span>, <span class="mono">~/.tumult/plugins</span>, and
             the
             <span class="mono">TUMULT_PLUGIN_PATH</span> environment variable.
-        </div>
+        </State>
     </Panel>
 {:else}
     <CatalogBrowser domains={catalog.domains} />

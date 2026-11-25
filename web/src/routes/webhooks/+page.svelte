@@ -5,6 +5,7 @@
     import Badge from '#lib/components/Badge.svelte';
     import PageHeader from '#lib/components/PageHeader.svelte';
     import Panel from '#lib/components/Panel.svelte';
+    import State from '#lib/components/State.svelte';
 
     let me = $state<MeResponse | null>(null);
     let hooks = $state<Webhook[] | null>(null);
@@ -110,18 +111,18 @@
 
 {#if me && !isAdmin}
     <Panel>
-        <div class="state">
+        <State kind="empty">
             Webhook management requires the admin role{me.role ? ` (you are ${me.role})` : ''}.
-        </div>
+        </State>
     </Panel>
 {:else}
     <Panel style="margin-bottom: var(--space-3-5)">
         {#if error}
-            <div class="state error">Failed to load webhooks: {error}</div>
+            <State kind="error">Failed to load webhooks: {error}</State>
         {:else if !hooks}
-            <div class="skeleton" style="height: 120px"></div>
+            <State kind="loading" height={120} />
         {:else if hooks.length === 0}
-            <div class="state">No webhooks — create one below to receive signed run events.</div>
+            <State kind="empty">No webhooks — create one below to receive signed run events.</State>
         {:else}
             <table class="data">
                 <thead>
@@ -163,9 +164,9 @@
                     {/each}
                 </tbody>
             </table>
-            {#if rowError}<div class="state error" style="margin-top: var(--space-2)">
+            {#if rowError}<State kind="error" style="margin-top: var(--space-2)">
                     {rowError}
-                </div>{/if}
+                </State>{/if}
         {/if}
     </Panel>
 
@@ -218,9 +219,9 @@
             Payloads are signed X-Tumult-Signature (HMAC-SHA256). Deliveries are fire-and-log: a
             down receiver misses events rather than blocking runs.
         </div>
-        {#if createError}<div class="state error" style="margin-top: var(--space-2-5)">
+        {#if createError}<State kind="error" style="margin-top: var(--space-2-5)">
                 {createError}
-            </div>{/if}
+            </State>{/if}
         {#if oneTime}
             <div class="onetime">
                 Signing secret for <b>{oneTime.name}</b> — shown once, never stored in the UI:

@@ -7,6 +7,7 @@
     import type { DoraArticleReport, DoraExpectation, DoraRequirement } from '#lib/types.js';
     import Badge from './Badge.svelte';
     import Drawer from './Drawer.svelte';
+    import State from './State.svelte';
 
     let { row, lei, onclose }: { row: DoraExpectation; lei: string; onclose: () => void } =
         $props();
@@ -45,11 +46,11 @@
         <button onclick={onclose}>Close</button>
     </div>
     {#if error}
-        <div class="state error">Failed to load the evidence: {error}</div>
+        <State kind="error">Failed to load the evidence: {error}</State>
     {:else if !doc}
-        <div class="skeleton" style="height: 120px"></div>
+        <State kind="loading" height={120} />
     {:else if !requirement}
-        <div class="state">This row is not part of Art. {row.article} for this profile.</div>
+        <State kind="empty">This row is not part of Art. {row.article} for this profile.</State>
     {:else}
         <div class="dim">
             expected {requirement.expected} · actual {requirement.status.replace('_', ' ')} ·
@@ -100,7 +101,7 @@
                         </tbody>
                     </table>
                 {:else}
-                    <div class="state">No record on file for this function.</div>
+                    <State kind="empty">No record on file for this function.</State>
                 {/if}
             </section>
         {/each}

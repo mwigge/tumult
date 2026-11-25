@@ -11,6 +11,7 @@
     import SpanDrawer from '#lib/components/SpanDrawer.svelte';
     import PageHeader from '#lib/components/PageHeader.svelte';
     import Panel from '#lib/components/Panel.svelte';
+    import State from '#lib/components/State.svelte';
 
     const id = $derived(page.params.id ?? '');
 
@@ -51,10 +52,10 @@
     {/if}
 </PageHeader>
 {#if error}
-    <div class="state error panel">{error}</div>
+    <State kind="error" panel>{error}</State>
 {:else if !detail}
-    <div class="skeleton" style="height: 120px; margin-bottom: var(--space-3-5)"></div>
-    <div class="skeleton" style="height: 320px"></div>
+    <State kind="loading" height={120} style="margin-bottom: var(--space-3-5)" />
+    <State kind="loading" height={320} />
 {:else}
     {@const exp = detail.experiment}
     {@const ranNs = experimentDurationNs(exp)}
@@ -93,11 +94,11 @@
         style="margin-bottom: var(--space-3-5)"
     >
         {#if exp.journal_only}
-            <div class="state" data-testid="no-trace">
+            <State kind="empty" data-testid="no-trace">
                 This run sent no trace. What you see here comes from its journal.
-            </div>
+            </State>
         {:else if detail.spans.length === 0}
-            <div class="state">No spans recorded for this experiment.</div>
+            <State kind="empty">No spans recorded for this experiment.</State>
         {:else}
             <Waterfall spans={detail.spans} onselect={(s) => (selected = s)} />
         {/if}
@@ -106,7 +107,7 @@
     <div class="grid cols-2">
         <Panel title={`Logs (${detail.logs.length})`}>
             {#if detail.logs.length === 0}
-                <div class="state">No logs correlated to this experiment.</div>
+                <State kind="empty">No logs correlated to this experiment.</State>
             {:else}
                 <div class="logs">
                     {#each detail.logs as log, i (i)}
@@ -123,9 +124,9 @@
         </Panel>
         <Panel title={`Metric points (${detail.metrics.length})`}>
             {#if detail.metrics.length === 0}
-                <div class="state">
+                <State kind="empty">
                     No metric points with the name of this experiment in the time of this run.
-                </div>
+                </State>
             {:else}
                 <table class="data">
                     <thead>

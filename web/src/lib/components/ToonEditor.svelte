@@ -1,6 +1,7 @@
 <script lang="ts">
     import { api } from '#lib/api.js';
     import type { ValidateToonResponse } from '#lib/types.js';
+    import State from './State.svelte';
 
     let {
         toon = $bindable(),
@@ -47,9 +48,9 @@
 </div>
 
 {#if validateError}
-    <div class="state error">{validateError}</div>
+    <State kind="error">{validateError}</State>
 {:else if result && !result.valid}
-    <div class="state error">Invalid experiment: {result.error}</div>
+    <State kind="error">Invalid experiment: {result.error}</State>
 {:else if result && result.valid}
     <div class="ok">
         Valid — registered as <span class="mono">{result.registry_id}</span>{result.registered

@@ -9,6 +9,7 @@
     import Badge from './Badge.svelte';
     import ManualRecordDetail from './ManualRecordDetail.svelte';
     import Panel from './Panel.svelte';
+    import State from './State.svelte';
 
     let {
         tab,
@@ -16,6 +17,7 @@
         canReview,
         canEdit,
         filter = { target: '', environment: '' },
+        record = null,
         onedit,
     }: {
         tab: string;
@@ -24,6 +26,8 @@
         canEdit: boolean;
         /** The target whose records the lists show; empty fields show all. */
         filter?: TargetFilter;
+        /** The id of the record that is open when the list is shown. */
+        record?: string | null;
         onedit: (id: string) => Promise<void>;
     } = $props();
 
@@ -79,6 +83,12 @@
         openId = null;
         loadRecords();
     });
+    // After the effect above, so the record of the URL stays open.
+    $effect(() => {
+        if (!record) return;
+        openId = record;
+        loadDetail(record);
+    });
     $effect(() => {
         api.manualPlans()
             .then((r) => (plans = r.plans ?? []))
@@ -102,16 +112,16 @@
         {/if}
     </div>
     {#if recordsError}
-        <div class="state error">{recordsError}</div>
+        <State kind="error">{recordsError}</State>
     {/if}
     {#if !shown}
-        {#if !recordsError}<div class="skeleton" style="height: 160px"></div>{/if}
+        {#if !recordsError}<State kind="loading" height={160} />{/if}
     {:else if shown.length === 0}
-        <div class="state">
+        <State kind="empty">
             {queue ? 'Nothing awaiting sign-off' : 'No manual records'}{ofOne
                 ? ' of this target'
                 : ''}.
-        </div>
+        </State>
     {:else}
         <table class="data">
             <thead>
@@ -154,7 +164,7 @@
                         <tr class="detail-row">
                             <td colspan="7">
                                 {#if !detail}
-                                    <div class="skeleton" style="height: 60px"></div>
+                                    <State kind="loading" height={60} />
                                 {:else}
                                     <ManualRecordDetail
                                         {detail}

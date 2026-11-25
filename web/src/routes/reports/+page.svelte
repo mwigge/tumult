@@ -1,10 +1,13 @@
 <script lang="ts">
     import { onMount } from 'svelte';
     import { api } from '#lib/api.js';
+    import { DEFAULT_PERIOD, PERIOD_DAYS, PERIOD_LABEL, localDay, viewQuery } from '#lib/dr.js';
     import { templateCode } from '#lib/report-codes.js';
     import Badge from '#lib/components/Badge.svelte';
     import type {
+        DrTarget,
         ExperimentRow,
+        ManualExperiment,
         MeResponse,
         MetricDefInfo,
         ReportFile,
@@ -13,6 +16,7 @@
     } from '#lib/types.js';
     import PageHeader from '#lib/components/PageHeader.svelte';
     import Panel from '#lib/components/Panel.svelte';
+    import State from '#lib/components/State.svelte';
 
     let me = $state<MeResponse | null>(null);
     const canGenerate = $derived(
@@ -49,7 +53,84 @@
             label: 'R2 · Evidence pack',
             hint: 'auditor traceability per framework',
         },
+        {
+            id: 'dr-test',
+            label: 'R4 · DR test report',
+            hint: 'the DR tests of one target over a period',
+        },
+        {
+            id: 'dr-exercise',
+            label: 'R5 · DR exercise report',
+            hint: 'one manual DR exercise',
+        },
     ];
+
+    // The DR reports: R4 is of a target of the DR register over a period,
+    // R5 of one submitted or verified manual record. Their choices load
+    // when their template is picked.
+    let drTargets: DrTarget[] | null = $state(null);
+    let targetIndex = $state(0);
+    let drPeriod = $state(DEFAULT_PERIOD);
+    let drRecords: ManualExperiment[] | null = $state(null);
+    let recordId = $state('');
+
+    const targetName = (t: DrTarget) =>
+        t.environment ? `${t.system} · ${t.environment}` : t.system;
+
+    $effect(() => {
+        if (template === 'dr-test' && drTargets === null) {
+            api.dr()
+                .then((view) => (drTargets = view.targets))
+                .catch((e) => (generateErrorV2 = String(e)));
+        }
+        if (template === 'dr-exercise' && drRecords === null) {
+            api.manualList('')
+                .then((r) => {
+                    drRecords = r.records.filter(
+                        (rec) => rec.status === 'submitted' || rec.status === 'verified',
+                    );
+                    recordId = drRecords[0]?.id ?? '';
+                })
+                .catch((e) => (generateErrorV2 = String(e)));
+        }
+    });
+
+    /** Whether the template in force has what its report needs. */
+    function hasChoices(): boolean {
+        if (template === 'game-day') return experimentId !== '';
+        if (template === 'dr-test') return !!drTargets?.[targetIndex];
+        if (template === 'dr-exercise') return recordId !== '';
+        return true;
+    }
+
+    /** The body of the report of the template in force, as the API takes it. */
+    function requestOf(): Parameters<typeof api.generateReportV2>[0] {
+        if (template === 'dr-exercise') return { type: template, record_id: recordId };
+        if (template === 'dr-test') {
+            const target = drTargets?.[targetIndex];
+            const query = viewQuery(
+                {
+                    target: target?.system ?? '',
+                    environment: target?.environment ?? '',
+                    period: drPeriod,
+                },
+                Date.now(),
+            );
+            return {
+                type: template,
+                target: query.target,
+                ...(query.environment ? { environment: query.environment } : {}),
+                from: query.from_ns,
+                to: query.to_ns,
+            };
+        }
+        return {
+            type: template,
+            period,
+            ...(template === 'game-day' ? { experiment_id: experimentId } : {}),
+            ...(template === 'evidence-pack' ? { framework } : {}),
+        };
+    }
 
     async function loadReportsV2() {
         const r = await api.reportsV2();
@@ -61,12 +142,7 @@
         generatingV2 = true;
         generateErrorV2 = null;
         try {
-            const meta = await api.generateReportV2({
-                type: template,
-                period,
-                ...(template === 'game-day' ? { experiment_id: experimentId } : {}),
-                ...(template === 'evidence-pack' ? { framework } : {}),
-            });
+            const meta = await api.generateReportV2(requestOf());
             preview = meta.doc_id;
             await loadReportsV2();
         } catch (e) {
@@ -173,35 +249,58 @@
                 <option value="soc2">SOC 2</option>
             </select>
         {/if}
-        {#if template !== 'game-day'}
+        {#if template === 'executive-digest' || template === 'evidence-pack'}
             <select bind:value={period} aria-label="period">
                 <option value="24h">last 24h</option>
                 <option value="7d">last 7d</option>
                 <option value="14d">last 14d</option>
             </select>
         {/if}
+        {#if template === 'dr-test'}
+            <select bind:value={targetIndex} disabled={!drTargets?.length} aria-label="target">
+                {#each drTargets ?? [] as t, i (i)}
+                    <option value={i}>{targetName(t)}</option>
+                {/each}
+            </select>
+            <select bind:value={drPeriod} aria-label="period">
+                {#each Object.keys(PERIOD_DAYS) as p (p)}
+                    <option value={p}>{PERIOD_LABEL[p]}</option>
+                {/each}
+            </select>
+        {/if}
+        {#if template === 'dr-exercise'}
+            <select bind:value={recordId} disabled={!drRecords?.length} aria-label="record">
+                {#each drRecords ?? [] as r (r.id)}
+                    <option value={r.id}
+                        >{r.experiment_name} · {r.exercise_type} · {localDay(
+                            r.executed_at_ns,
+                        )}</option
+                    >
+                {/each}
+            </select>
+        {/if}
         <button
             class="primary"
             onclick={generateV2}
-            disabled={!canGenerate || generatingV2 || (template === 'game-day' && !experimentId)}
+            disabled={!canGenerate || generatingV2 || !hasChoices()}
         >
             {generatingV2 ? 'Rendering…' : 'Generate'}
         </button>
         {#if generateErrorV2}
-            <span class="state error" style="padding: 0">{generateErrorV2}</span>
+            <State kind="error" tag="span" style="padding: 0">{generateErrorV2}</State>
         {/if}
     </div>
 
     {#if errorV2}
-        <div class="state error">Failed to load reports: {errorV2}</div>
+        <State kind="error">Failed to load reports: {errorV2}</State>
     {:else if !reportsV2}
-        <div class="skeleton" style="height: 120px; margin-top: var(--space-3)"></div>
+        <State kind="loading" height={120} style="margin-top: var(--space-3)" />
     {:else if reportsV2.length === 0}
-        <div class="state" style="text-align: left; margin-top: var(--space-3)">
+        <State kind="empty" style="text-align: left; margin-top: var(--space-3)">
             <b>No compliance reports yet.</b><br />
             Pick a template above and generate one — PDF and print-HTML artifacts land in
             <code>&lt;db dir&gt;/reports/v2/</code>.
-        </div>
+        </State>
     {:else}
         <table class="data" style="margin-top: var(--space-3)">
             <thead>
@@ -263,7 +362,7 @@
             {generating ? 'Rendering…' : 'Generate'}
         </button>
         {#if generateError}
-            <span class="state error" style="padding: 0">{generateError}</span>
+            <State kind="error" tag="span" style="padding: 0">{generateError}</State>
         {/if}
     </div>
     {#if generated}
@@ -279,9 +378,9 @@
     {/if}
 
     {#if error}
-        <div class="state error">Failed to load reports: {error}</div>
+        <State kind="error">Failed to load reports: {error}</State>
     {:else if !reports}
-        <div class="skeleton" style="height: 120px; margin-top: var(--space-3)"></div>
+        <State kind="loading" height={120} style="margin-top: var(--space-3)" />
     {:else if reports.length > 0}
         <table class="data" style="margin-top: var(--space-3)">
             <thead>

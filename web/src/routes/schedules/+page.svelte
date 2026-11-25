@@ -5,6 +5,7 @@
     import Badge from '#lib/components/Badge.svelte';
     import PageHeader from '#lib/components/PageHeader.svelte';
     import Panel from '#lib/components/Panel.svelte';
+    import State from '#lib/components/State.svelte';
 
     const PRESETS: { label: string; seconds: number }[] = [
         { label: 'every 15m', seconds: 900 },
@@ -138,13 +139,13 @@
 
 <Panel style="margin-bottom: var(--space-3-5)">
     {#if error}
-        <div class="state error">Failed to load schedules: {error}</div>
+        <State kind="error">Failed to load schedules: {error}</State>
     {:else if !schedules}
-        <div class="skeleton" style="height: 160px"></div>
+        <State kind="loading" height={160} />
     {:else if schedules.length === 0}
-        <div class="state">
+        <State kind="empty">
             No schedules yet — create one below to run a definition on an interval.
-        </div>
+        </State>
     {:else}
         <table class="data">
             <thead>
@@ -197,18 +198,18 @@
                 {/each}
             </tbody>
         </table>
-        {#if rowError}<div class="state error" style="margin-top: var(--space-2)">
+        {#if rowError}<State kind="error" style="margin-top: var(--space-2)">
                 {rowError}
-            </div>{/if}
+            </State>{/if}
     {/if}
 </Panel>
 
 {#if canMutate}
     <Panel title="New schedule">
         {#if registry && registry.length === 0}
-            <div class="state">
+            <State kind="empty">
                 No validated definitions yet — validate an experiment TOON first (Runs → New run).
-            </div>
+            </State>
         {:else}
             <form
                 class="create"
@@ -266,9 +267,9 @@
                 Scheduled runs go through the normal run path — production-classified environments
                 still park for approval.
             </div>
-            {#if createError}<div class="state error" style="margin-top: var(--space-2-5)">
+            {#if createError}<State kind="error" style="margin-top: var(--space-2-5)">
                     {createError}
-                </div>{/if}
+                </State>{/if}
         {/if}
     </Panel>
 {/if}

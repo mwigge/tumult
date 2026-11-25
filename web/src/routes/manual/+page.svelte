@@ -18,6 +18,7 @@
     import TabPanel from '#lib/components/TabPanel.svelte';
     import Tabs from '#lib/components/Tabs.svelte';
     import { withParam } from '#lib/tabs.js';
+    import State from '#lib/components/State.svelte';
 
     const TABS = ['entry', 'plans', 'queue', 'records', 'import'] as const;
     const TAB_LABEL: Record<string, string> = {
@@ -28,6 +29,8 @@
     };
 
     const tab = $derived(page.url.searchParams.get('tab') ?? 'entry');
+    // The record of the URL is open in the list; the DR page links here so.
+    const record = $derived(page.url.searchParams.get('record'));
     // The target of the URL filters the records and the plans; the Star Map
     // drawer links here with the target of its system.
     const filter = $derived(targetFilterOf(page.url.searchParams));
@@ -131,9 +134,9 @@
             </p>
         {/if}
 
-        {#if entryMsg && !entryMsg.ok && (tab !== 'entry' || !canWrite)}<div class="state error">
+        {#if entryMsg && !entryMsg.ok && (tab !== 'entry' || !canWrite)}<State kind="error">
                 {entryMsg.text}
-            </div>{/if}
+            </State>{/if}
 
         {#if tab === 'entry'}
             {#if canWrite}
@@ -171,6 +174,7 @@
                 {canReview}
                 canEdit={canWrite}
                 {filter}
+                {record}
                 onedit={editDraft}
             />
         {/if}

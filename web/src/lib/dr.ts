@@ -16,8 +16,8 @@ export const DR_GUIDE_URL = 'https://tumult.rs/guides/disaster-recovery.html';
 /** The plans of manual exercises on the Manual page. */
 export const PLANS_HREF = '/manual?tab=plans';
 
-/** The manual records on the Manual page. */
-export const RECORDS_HREF = '/manual?tab=records';
+/** One manual record, open among the records of the Manual page. */
+const recordHref = (id: string) => `/manual?tab=records&record=${encodeURIComponent(id)}`;
 
 /** The tests of one page of the table. */
 export const PAGE_SIZE = 20;
@@ -30,6 +30,13 @@ export const PERIOD_DAYS: Readonly<Record<string, number>> = {
     '90d': 90,
     '1y': 365,
     '3y': 3 * 365,
+};
+
+/** The name of each period. */
+export const PERIOD_LABEL: Readonly<Record<string, string>> = {
+    '90d': '90 days',
+    '1y': '1 year',
+    '3y': '3 years',
 };
 
 export const DEFAULT_PERIOD = '1y';
@@ -127,9 +134,9 @@ export function localDay(ns: number): string {
     return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
-/** Where a DR test is shown: the page of its run, or the manual records. */
+/** Where a DR test is shown: the page of its run, or its manual record. */
 export function testHref(test: Pick<DrTest, 'origin' | 'evidence_id'>): string {
-    if (test.origin === 'manual') return RECORDS_HREF;
+    if (test.origin === 'manual') return recordHref(test.evidence_id);
     return `/experiments/${encodeURIComponent(test.evidence_id)}`;
 }
 
