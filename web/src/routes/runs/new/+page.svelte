@@ -14,6 +14,7 @@
     } from '#lib/types.js';
     import PageHeader from '#lib/components/PageHeader.svelte';
     import Panel from '#lib/components/Panel.svelte';
+    import State from '#lib/components/State.svelte';
 
     let me = $state<MeResponse | null>(null);
     let entries = $state<RegistryEntry[] | null>(null);
@@ -189,15 +190,15 @@
 
 <Panel title="1 · Definition" style="margin-bottom: var(--space-3-5)">
     {#if listError}
-        <div class="state error">Failed to load the registry: {listError}</div>
+        <State kind="error">Failed to load the registry: {listError}</State>
     {:else if !entries}
-        <div class="skeleton" style="height: 120px"></div>
+        <State kind="loading" height={120} />
     {:else if entries.length === 0}
-        <div class="state">
+        <State kind="empty">
             No validated definitions yet — validate an experiment TOON first (POST
             /api/runs/validate). Use <a href="/author/new">New experiment</a> to author and register a
             definition, or POST its TOON to the validation API.
-        </div>
+        </State>
     {:else}
         <table class="data">
             <thead>
@@ -252,11 +253,11 @@
             target. Unbound executions require the highest approval tier.
         </p>
         {#if defError}
-            <div class="state error">Failed to load the definition: {defError}</div>
+            <State kind="error">Failed to load the definition: {defError}</State>
         {:else if !def}
-            <div class="skeleton" style="height: 60px"></div>
+            <State kind="loading" height={60} />
         {:else if placeholders.length === 0}
-            <div class="state">This definition has no parameters.</div>
+            <State kind="empty">This definition has no parameters.</State>
         {:else}
             <div class="params">
                 {#each placeholders as p (p)}
@@ -286,11 +287,11 @@
             {dryRunning ? 'Resolving…' : 'Dry run'}
         </button>
         {#if dryError}
-            <div class="state error">Dry run failed: {dryError}</div>
+            <State kind="error">Dry run failed: {dryError}</State>
         {:else if dry && !dry.valid}
-            <div class="state error">
+            <State kind="error">
                 Definition does not resolve with these parameters: {dry.error}
-            </div>
+            </State>
         {:else if dry && dry.valid}
             {@const plan = dry.plan}
             {#if dry.execution_context}
@@ -299,9 +300,9 @@
                         .target ?? 'unspecified'} · Approval tier: {dry.execution_context.tier ??
                         'binding required'}
                 </p>
-                {#if dry.execution_context.error}<div class="state error">
+                {#if dry.execution_context.error}<State kind="error">
                         {dry.execution_context.error}
-                    </div>{/if}
+                    </State>{/if}
             {/if}
             {#if dry.binding_hash}<details>
                     <summary>Execution fingerprint for administrator review</summary><code
@@ -404,7 +405,7 @@
                   : 'Start run'}
         </button>
         {#if startError}
-            <div class="state error">Failed to start the run: {startError}</div>
+            <State kind="error">Failed to start the run: {startError}</State>
         {/if}
     </Panel>
 {/if}

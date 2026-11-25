@@ -2,6 +2,7 @@
     import { goto } from '$app/navigation';
     import { api } from '#lib/api.js';
     import { TAGLINE } from '#lib/brand.js';
+    import State from '#lib/components/State.svelte';
 
     let username = $state('');
     let password = $state('');
@@ -79,9 +80,9 @@
                     />
                 </label>
                 {#if error}
-                    <div class="state error" style="padding: var(--space-1) 0; text-align: left">
+                    <State kind="error" style="padding: var(--space-1) 0; text-align: left">
                         {error}
-                    </div>
+                    </State>
                 {/if}
                 <button
                     class="primary"
@@ -127,9 +128,9 @@
                 </label>
                 <div class="hint">Minimum 12 characters.</div>
                 {#if error}
-                    <div class="state error" style="padding: var(--space-1) 0; text-align: left">
+                    <State kind="error" style="padding: var(--space-1) 0; text-align: left">
                         {error}
-                    </div>
+                    </State>
                 {/if}
                 <button
                     class="primary"

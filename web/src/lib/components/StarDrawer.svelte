@@ -19,6 +19,7 @@
     import { flagText, rollupLines } from '#lib/starmap/style.js';
     import { targetQuery } from '#lib/manual.js';
     import Badge from './Badge.svelte';
+    import State from './State.svelte';
 
     let {
         node,
@@ -260,9 +261,9 @@
         <section>
             <h3>Runs, last {range}</h3>
             {#if runs.error}
-                <div class="state error">Failed to load runs: {runs.error}</div>
+                <State kind="error">Failed to load runs: {runs.error}</State>
             {:else if runs.rows === null}
-                <div class="skeleton" style="height: 60px"></div>
+                <State kind="loading" height={60} />
             {:else if runs.rows.length === 0}
                 <p class="note">No runs in this window.</p>
             {:else}
@@ -289,7 +290,7 @@
             {#if gate.error}
                 <p class="note">No gate verdict: {gate.error}</p>
             {:else if gate.rows === null}
-                <div class="skeleton" style="height: 30px"></div>
+                <State kind="loading" height={30} />
             {:else}
                 <p>
                     <Badge kind="verdict" value={gate.rows.verdict} />
@@ -306,9 +307,9 @@
         <section>
             <h3>Objective verdicts</h3>
             {#if nfrs.error}
-                <div class="state error">Failed to load verdicts: {nfrs.error}</div>
+                <State kind="error">Failed to load verdicts: {nfrs.error}</State>
             {:else if nfrs.rows === null}
-                <div class="skeleton" style="height: 30px"></div>
+                <State kind="loading" height={30} />
             {:else if nfrs.rows.length === 0}
                 <p class="note">No objectives were evaluated for this system.</p>
             {:else}
@@ -330,9 +331,9 @@
         <section>
             <h3>Manual records</h3>
             {#if manual.error}
-                <div class="state error">Failed to load manual records: {manual.error}</div>
+                <State kind="error">Failed to load manual records: {manual.error}</State>
             {:else if manual.rows === null}
-                <div class="skeleton" style="height: 30px"></div>
+                <State kind="loading" height={30} />
             {:else if manual.rows.length === 0}
                 <p class="note">No manual records for this system.</p>
             {:else}
@@ -353,9 +354,9 @@
         <section>
             <h3>Risks</h3>
             {#if risks.error}
-                <div class="state error">Failed to load risks: {risks.error}</div>
+                <State kind="error">Failed to load risks: {risks.error}</State>
             {:else if risks.rows === null}
-                <div class="skeleton" style="height: 30px"></div>
+                <State kind="loading" height={30} />
             {:else if risks.rows.length === 0}
                 <p class="note">No findings for this system.</p>
             {:else}

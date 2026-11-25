@@ -4,6 +4,7 @@
     import Badge from '#lib/components/Badge.svelte';
     import PageHeader from '#lib/components/PageHeader.svelte';
     import Panel from '#lib/components/Panel.svelte';
+    import State from '#lib/components/State.svelte';
 
     // Event-type filter: '' = everything, otherwise one audit event name.
     const FILTERS: { value: string; label: string }[] = [
@@ -62,11 +63,11 @@
 
 <Panel>
     {#if error}
-        <div class="state error">Failed to load events: {error}</div>
+        <State kind="error">Failed to load events: {error}</State>
     {:else if !rows}
-        <div class="skeleton" style="height: 240px"></div>
+        <State kind="loading" height={240} />
     {:else if rows.length === 0}
-        <div class="state">No events yet — run something first.</div>
+        <State kind="empty">No events yet — run something first.</State>
     {:else}
         <table class="data">
             <thead>

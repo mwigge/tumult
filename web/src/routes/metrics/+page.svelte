@@ -13,6 +13,7 @@
     import { RANGE_SECONDS, rangeAxis } from '#lib/ranges.js';
     import PageHeader from '#lib/components/PageHeader.svelte';
     import Panel from '#lib/components/Panel.svelte';
+    import State from '#lib/components/State.svelte';
 
     const INTERVALS = ['5m', '1h', '1d'];
     const CHART_TYPES = ['line', 'area', 'bar'] as const;
@@ -224,13 +225,13 @@
 
 <Panel>
     {#if error}
-        <div class="state error">Failed to load metric: {error}</div>
+        <State kind="error">Failed to load metric: {error}</State>
     {:else if catalog === null || (filters.name && result === null)}
-        <div class="skeleton" style="height: 320px"></div>
+        <State kind="loading" height={320} />
     {:else if catalog.length === 0}
-        <div class="state">No raw metrics stored yet.</div>
+        <State kind="empty">No raw metrics stored yet.</State>
     {:else if series.length === 0}
-        <div class="state">No points for this metric in the selected window.</div>
+        <State kind="empty">No points for this metric in the selected window.</State>
     {:else}
         <EChart
             id="metric"

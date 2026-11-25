@@ -3,6 +3,7 @@
     import type { AskResponse } from '#lib/types.js';
     import PageHeader from '#lib/components/PageHeader.svelte';
     import Panel from '#lib/components/Panel.svelte';
+    import State from '#lib/components/State.svelte';
 
     const EXAMPLES = [
         'How many experiments ran?',
@@ -80,12 +81,12 @@
 </Panel>
 
 {#if error}
-    <div class="state error panel">{error}</div>
+    <State kind="error" panel>{error}</State>
 {:else if loading}
-    <div class="skeleton" style="height: 160px"></div>
+    <State kind="loading" height={160} />
 {:else if result}
     {#if !result.configured}
-        <div class="panel state" style="text-align: left">
+        <State kind="empty" panel style="text-align: left">
             <b>AI analytics is not configured.</b><br />
             Point tumultd at an OpenAI-compatible endpoint (Ollama works out of the box):<br /><br
             />
@@ -94,7 +95,7 @@
             ><br /><br />
             The example questions above are answered from a curated golden bank and work without an LLM
             — try one.
-        </div>
+        </State>
     {:else}
         <Panel
             title={`Generated SQL ${result.source === 'golden' ? '(curated answer)' : '(LLM)'}`}
@@ -102,7 +103,7 @@
         >
             <pre class="mono sql">{result.sql}</pre>
             {#if result.error}
-                <div class="state error">{result.error}</div>
+                <State kind="error">{result.error}</State>
             {/if}
         </Panel>
         {#if result.rows}
@@ -110,7 +111,7 @@
                 title={`Result — ${result.rows.length} row${result.rows.length === 1 ? '' : 's'}`}
             >
                 {#if result.rows.length === 0}
-                    <div class="state">The query returned no rows.</div>
+                    <State kind="empty">The query returned no rows.</State>
                 {:else}
                     <div style="overflow-x: auto">
                         <table class="data">

@@ -9,6 +9,7 @@
     import type { ProbeImpact, RunImpact } from '#lib/types.js';
     import FanChart from './FanChart.svelte';
     import Panel from './Panel.svelte';
+    import State from './State.svelte';
 
     let { runId }: { runId: string } = $props();
 
@@ -137,19 +138,13 @@
 
 <Panel title="Impact" style="margin-bottom: var(--space-3-5)" data-testid="impact">
     {#if failure}
-        <div class="state error" role="alert" data-testid="impact-error">
+        <State kind="error" data-testid="impact-error">
             The impact could not be loaded: {failure}
-        </div>
+        </State>
     {:else if empty}
-        <div class="state">No probe samples to compare for this run.</div>
+        <State kind="empty">No probe samples to compare for this run.</State>
     {:else if !impact}
-        <div
-            class="skeleton"
-            style="height: 200px"
-            role="status"
-            aria-busy="true"
-            aria-label="Loading the impact"
-        ></div>
+        <State kind="loading" height={200} role="status" aria-label="Loading the impact" />
     {:else}
         <div class="summary" data-testid="impact-summary">
             {#if impact.impact_peak == null}
@@ -194,7 +189,7 @@
             <div class="probe">
                 <h3>{p.probe}</h3>
                 {#if p.error || !p.series || !p.fault}
-                    <div class="state">{p.error ?? 'no comparable samples'}</div>
+                    <State kind="empty">{p.error ?? 'no comparable samples'}</State>
                 {:else}
                     <FanChart
                         id="impact-{i}"

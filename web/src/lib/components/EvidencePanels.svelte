@@ -25,6 +25,7 @@
     import Badge from './Badge.svelte';
     import EChart from './EChart.svelte';
     import Panel from './Panel.svelte';
+    import State from './State.svelte';
 
     let { evidence }: { evidence: RunEvidence | null } = $props();
 
@@ -44,10 +45,10 @@
 </script>
 
 {#if evidence === null}
-    <div class="panel state block" data-testid="no-evidence">
+    <State kind="empty" panel style="margin-bottom: var(--space-3-5)" data-testid="no-evidence">
         The lake has no journal of this run, so this page has no steps, objectives, load or probe
         samples to show.
-    </div>
+    </State>
 {:else}
     {@const before = evidence.hypothesis.before_met}
     {@const after = evidence.hypothesis.after_met}
@@ -80,7 +81,7 @@
                 {/if}
             </dl>
             {#if before === null && after === null}
-                <div class="state">This run checked no steady state.</div>
+                <State kind="empty">This run checked no steady state.</State>
             {/if}
             {#if recovery.length > 0}
                 <table class="data" aria-label="Recovery">
@@ -105,7 +106,7 @@
             data-testid="evidence-objectives"
         >
             {#if evidence.objectives.length === 0}
-                <div class="state">This run had no objective.</div>
+                <State kind="empty">This run had no objective.</State>
             {:else}
                 <table class="data">
                     <thead>
@@ -137,7 +138,7 @@
     <div class="panel block" data-testid="evidence-steps">
         <h2>Steps ({evidence.steps.length})</h2>
         {#if evidence.steps.length === 0}
-            <div class="state">This run took no step.</div>
+            <State kind="empty">This run took no step.</State>
         {:else}
             <table class="data">
                 <thead>
@@ -167,7 +168,7 @@
     <div class="panel block" data-testid="evidence-load">
         <h2>Load</h2>
         {#if evidence.load === null}
-            <div class="state">This run had no load.</div>
+            <State kind="empty">This run had no load.</State>
         {:else}
             {@const latency = loadLatencyOption(evidence, tokens)}
             {@const throughput = loadThroughputOption(evidence, tokens)}
@@ -201,7 +202,7 @@
     <div class="panel block" data-testid="evidence-samples">
         <h2>Probe samples ({evidence.probe_samples_total})</h2>
         {#if evidence.probe_samples.length === 0}
-            <div class="state">This run took no probe samples.</div>
+            <State kind="empty">This run took no probe samples.</State>
         {:else}
             <EChart
                 option={probeSamplesOption(evidence, tokens)}

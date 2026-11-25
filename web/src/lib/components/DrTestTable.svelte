@@ -14,6 +14,7 @@
     import type { DrTest } from '#lib/types.js';
     import Badge from './Badge.svelte';
     import DrObjectiveCell from './DrObjectiveCell.svelte';
+    import State from './State.svelte';
 
     let {
         tests,
@@ -47,7 +48,7 @@
 </script>
 
 {#if tests.length === 0}
-    <div class="state">No DR test in this period.</div>
+    <State kind="empty">No DR test in this period.</State>
 {:else}
     <table class="data">
         <caption class="sr-only">The DR tests of the period, newest first</caption>

@@ -5,6 +5,7 @@
     import type { DoraScenarioFunction, DoraScenarios } from '#lib/types.js';
     import Badge from './Badge.svelte';
     import Panel from './Panel.svelte';
+    import State from './State.svelte';
 
     let { scenarios }: { scenarios: DoraScenarios } = $props();
 
@@ -21,10 +22,10 @@
         <span class="mono">{scenarios.rows.join(', ')}</span> are scored from them.
     </p>
     {#if scenarios.functions.length === 0}
-        <div class="state">
+        <State kind="empty">
             No critical or important function on record. Give your functions a
             <span class="mono">tier</span> in org.yaml.
-        </div>
+        </State>
     {:else}
         <div class="scroll">
             <table class="data">

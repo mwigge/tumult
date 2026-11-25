@@ -5,6 +5,7 @@
     import type { Objective, RecoveryGroup } from '#lib/dr.js';
     import type { ChartTheme } from '#lib/echarts.js';
     import EChart from './EChart.svelte';
+    import State from './State.svelte';
 
     let {
         group,
@@ -34,7 +35,9 @@
     {#if hasPoints(group, objective)}
         <EChart {option} height={180} {id} {label} />
     {:else}
-        <div class="state">No {NAME[objective]} measured in this period.</div>
+        <State kind="empty" style="padding: 20px"
+            >No {NAME[objective]} measured in this period.</State
+        >
     {/if}
 </div>
 
@@ -45,8 +48,5 @@
         font-weight: var(--font-weight-strong);
         letter-spacing: var(--letter-spacing-sm);
         color: var(--text-dim);
-    }
-    .state {
-        padding: 20px;
     }
 </style>

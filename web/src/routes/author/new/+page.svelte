@@ -17,6 +17,7 @@
     } from '#lib/types.js';
     import PageHeader from '#lib/components/PageHeader.svelte';
     import Panel from '#lib/components/Panel.svelte';
+    import State from '#lib/components/State.svelte';
 
     const plugin = $derived(page.url.searchParams.get('plugin') ?? '');
     const actionName = $derived(page.url.searchParams.get('action') ?? '');
@@ -87,9 +88,9 @@
 <PageHeader title="Author an experiment" back={{ href: '/author', label: 'catalog' }} />
 
 {#if loadError}
-    <div class="state error">Failed to load the action: {loadError}</div>
+    <State kind="error">Failed to load the action: {loadError}</State>
 {:else if !action}
-    <div class="skeleton" style="height: 160px"></div>
+    <State kind="loading" height={160} />
 {:else}
     <Panel title="1 · Action" style="margin-bottom: var(--space-3-5)">
         <div class="action-line">
@@ -111,13 +112,13 @@
             {scaffolding ? 'Generating…' : toon ? 'Regenerate TOON' : 'Generate TOON'}
         </button>
         {#if scaffoldError}
-            <div class="state error">Scaffold failed: {scaffoldError}</div>
+            <State kind="error">Scaffold failed: {scaffoldError}</State>
         {:else if scaffoldResult && !scaffoldResult.valid}
-            <div class="state error">
+            <State kind="error">
                 The generated experiment does not validate: {scaffoldResult.validation_error ??
                     'unknown error'}
                 — edit the TOON below to fix it.
-            </div>
+            </State>
         {/if}
         {#if toon}
             <div style="margin-top: var(--space-3)">

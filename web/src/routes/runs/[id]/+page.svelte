@@ -13,6 +13,7 @@
     import RunImpactPanel from '#lib/components/RunImpactPanel.svelte';
     import PageHeader from '#lib/components/PageHeader.svelte';
     import Panel from '#lib/components/Panel.svelte';
+    import State from '#lib/components/State.svelte';
 
     const id = $derived(page.params.id ?? '');
 
@@ -144,10 +145,10 @@
     <PageHeader title="Run" back={{ href: '/runs', label: 'runs' }} />
 {/if}
 {#if error && !detail}
-    <div class="state error panel">{error}</div>
+    <State kind="error" panel>{error}</State>
 {:else if !detail}
-    <div class="skeleton" style="height: 120px; margin-bottom: var(--space-3-5)"></div>
-    <div class="skeleton" style="height: 320px"></div>
+    <State kind="loading" height={120} style="margin-bottom: var(--space-3-5)" />
+    <State kind="loading" height={320} />
 {:else}
     {@const run = detail.run}
     <RunHeader {run} runId={id} {active} {canStop} {awaitingTier} {triggerActor} />
@@ -168,11 +169,11 @@
 
     <Panel title="Telemetry" style="margin-bottom: var(--space-3-5)">
         {#if !run.experiment_id}
-            <div class="state">Telemetry appears once the run starts executing.</div>
+            <State kind="empty">Telemetry appears once the run starts executing.</State>
         {:else if !telemetry}
-            <div class="skeleton" style="height: 200px"></div>
+            <State kind="loading" height={200} />
         {:else if telemetry.spans.length === 0}
-            <div class="state">No spans recorded yet.</div>
+            <State kind="empty">No spans recorded yet.</State>
         {:else}
             <Waterfall spans={telemetry.spans} onselect={(s) => (selected = s)} />
             <div class="exp-link">

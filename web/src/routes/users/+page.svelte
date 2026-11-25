@@ -5,6 +5,7 @@
     import Badge from '#lib/components/Badge.svelte';
     import PageHeader from '#lib/components/PageHeader.svelte';
     import Panel from '#lib/components/Panel.svelte';
+    import State from '#lib/components/State.svelte';
 
     const ROLES: Role[] = ['viewer', 'operator', 'approver', 'admin'];
 
@@ -205,33 +206,33 @@
 
 {#if meError}
     <Panel>
-        <div class="state error">Failed to load the session: {meError}</div>
+        <State kind="error">Failed to load the session: {meError}</State>
     </Panel>
 {:else if me && !isAdmin}
     <Panel>
-        <div class="state">
+        <State kind="empty">
             User management requires the admin role{me.role ? ` (you are ${me.role})` : ''}.
-        </div>
+        </State>
     </Panel>
 {:else}
     <Panel style="margin-bottom: var(--space-3-5)">
         {#if !users}
             {#if error}
-                <div class="state error">Failed to load users: {error}</div>
+                <State kind="error">Failed to load users: {error}</State>
             {:else}
-                <div class="skeleton" style="height: 160px"></div>
+                <State kind="loading" height={160} />
             {/if}
         {:else if users.length === 0}
-            <div class="state">
+            <State kind="empty">
                 No users yet — the daemon is in open local mode. Create the first admin below (or
                 with
                 <span class="mono">tumultd create-admin</span>) to turn authentication on.
-            </div>
+            </State>
         {:else}
             {#if error}
-                <div class="state error" style="margin-bottom: var(--space-2)">
+                <State kind="error" style="margin-bottom: var(--space-2)">
                     Refresh failed: {error} — showing the last loaded list.
-                </div>
+                </State>
             {/if}
             <table class="data">
                 <thead>
@@ -411,9 +412,9 @@
                 </button>
             </div>
         </form>
-        {#if createError}<div class="state error" style="margin-top: var(--space-2-5)">
+        {#if createError}<State kind="error" style="margin-top: var(--space-2-5)">
                 {createError}
-            </div>{/if}
+            </State>{/if}
         {#if oneTime}
             <div class="onetime">
                 One-time password for <b>{oneTime.username}</b> — shown once, never stored; the user
@@ -426,9 +427,9 @@
     <Panel title="API tokens">
         {#if tokens === null}
             {#if tokenError}
-                <div class="state error">Failed to load tokens: {tokenError}</div>
+                <State kind="error">Failed to load tokens: {tokenError}</State>
             {:else}
-                <div class="skeleton" style="height: 80px"></div>
+                <State kind="loading" height={80} />
             {/if}
         {:else}
             {#if tokens.length > 0}
@@ -510,12 +511,12 @@
                     </button>
                 </div>
             </form>
-            {#if tokenError && tokens !== null}<div
-                    class="state error"
+            {#if tokenError && tokens !== null}<State
+                    kind="error"
                     style="margin-top: var(--space-2-5)"
                 >
                     {tokenError}
-                </div>{/if}
+                </State>{/if}
             {#if minted}
                 <div class="onetime">
                     Token <b>{minted.name}</b> — shown once, never stored:

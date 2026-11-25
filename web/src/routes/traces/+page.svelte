@@ -12,6 +12,7 @@
     import type { EChartsCoreOption } from '#lib/echarts.js';
     import PageHeader from '#lib/components/PageHeader.svelte';
     import Panel from '#lib/components/Panel.svelte';
+    import State from '#lib/components/State.svelte';
 
     const filters = $derived({
         range: page.url.searchParams.get('range') ?? '24h',
@@ -194,19 +195,19 @@
             label="Root-span durations over time"
         />
     {:else if rows}
-        <div class="state">No root-span durations in this window.</div>
+        <State kind="empty">No root-span durations in this window.</State>
     {:else}
-        <div class="skeleton" style="height: 220px"></div>
+        <State kind="loading" height={220} />
     {/if}
 </Panel>
 
 <Panel>
     {#if error}
-        <div class="state error">Failed to load traces: {error}</div>
+        <State kind="error">Failed to load traces: {error}</State>
     {:else if !rows}
-        <div class="skeleton" style="height: 240px"></div>
+        <State kind="loading" height={240} />
     {:else if rows.length === 0}
-        <div class="state">No traces match these filters.</div>
+        <State kind="empty">No traces match these filters.</State>
     {:else}
         <table class="data">
             <thead>

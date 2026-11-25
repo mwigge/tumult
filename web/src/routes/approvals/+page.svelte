@@ -6,6 +6,7 @@
     import Badge from '#lib/components/Badge.svelte';
     import PageHeader from '#lib/components/PageHeader.svelte';
     import Panel from '#lib/components/Panel.svelte';
+    import State from '#lib/components/State.svelte';
 
     let rows = $state<ApprovalQueueRow[] | null>(null);
     let error = $state<string | null>(null);
@@ -118,11 +119,11 @@
 
 <Panel>
     {#if error}
-        <div class="state error">Failed to load the approvals queue: {error}</div>
+        <State kind="error">Failed to load the approvals queue: {error}</State>
     {:else if !rows}
-        <div class="skeleton" style="height: 200px"></div>
+        <State kind="loading" height={200} />
     {:else if rows.length === 0}
-        <div class="state">Nothing awaiting approval.</div>
+        <State kind="empty">Nothing awaiting approval.</State>
     {:else}
         <table class="data">
             <thead>

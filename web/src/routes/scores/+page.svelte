@@ -27,6 +27,7 @@
     import DoraScore from '#lib/components/DoraScore.svelte';
     import PageHeader from '#lib/components/PageHeader.svelte';
     import Panel from '#lib/components/Panel.svelte';
+    import State from '#lib/components/State.svelte';
 
     const node = $derived(page.url.searchParams.get('node') ?? '');
     const range = $derived(page.url.searchParams.get('range') ?? '7d');
@@ -199,9 +200,9 @@
 {#if view === 'dora'}
     <DoraScore {lei} onlei={setLei} />
 {:else if error}
-    <Panel><div class="state error">Failed to load org scores: {error}</div></Panel>
+    <Panel><State kind="error">Failed to load org scores: {error}</State></Panel>
 {:else if !tree}
-    <Panel><div class="skeleton" style="height: 320px"></div></Panel>
+    <Panel><State kind="loading" height={320} /></Panel>
 {:else}
     <div class="cards">
         <div class="panel card">
@@ -235,7 +236,7 @@
     {#if node === ''}
         <Panel title="Domains — area ∝ experiments × criticality, hue = band (click to drill)">
             {#if tree.children.length === 0}
-                <div class="state">No org structure on record — configure org.yaml.</div>
+                <State kind="empty">No org structure on record — configure org.yaml.</State>
             {:else if treemapOption}
                 <EChart
                     id="score-treemap"
@@ -251,7 +252,7 @@
             title={`${tree.name} — ${tree.children.length} direct member${tree.children.length === 1 ? '' : 's'}, weakest first`}
         >
             {#if tree.children.length === 0}
-                <div class="state">No members below this node.</div>
+                <State kind="empty">No members below this node.</State>
             {:else}
                 <table class="data">
                     <thead>

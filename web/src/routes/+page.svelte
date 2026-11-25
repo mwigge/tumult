@@ -13,6 +13,7 @@
     import EChart from '#lib/components/EChart.svelte';
     import PageHeader from '#lib/components/PageHeader.svelte';
     import Panel from '#lib/components/Panel.svelte';
+    import State from '#lib/components/State.svelte';
 
     const range = $derived(page.url.searchParams.get('range') ?? '24h');
 
@@ -186,17 +187,17 @@
 </PageHeader>
 
 {#if error}
-    <div class="state error panel">Failed to load overview: {error}</div>
+    <State kind="error" panel>Failed to load overview: {error}</State>
 {:else if !data}
     <div
         class="grid"
         style="grid-template-columns: repeat(5, 1fr); margin-bottom: var(--space-3-5)"
     >
         {#each [0, 1, 2, 3, 4] as i (i)}
-            <div class="skeleton" style="height: 92px"></div>
+            <State kind="loading" height={92} />
         {/each}
     </div>
-    <div class="skeleton" style="height: 260px"></div>
+    <State kind="loading" height={260} />
 {:else}
     <div class="grid kpis">
         {#each data.kpis as kpi (kpi.name)}
@@ -207,7 +208,7 @@
     <div class="grid cols-2" style="margin-top: var(--space-3-5)">
         <Panel title="Runs per day">
             {#if data.experiments_per_day.length === 0}
-                <div class="state">No runs in this window.</div>
+                <State kind="empty">No runs in this window.</State>
             {:else}
                 <EChart
                     id="per-day"
@@ -225,7 +226,7 @@
         </Panel>
         <Panel title="Fault injections">
             {#if data.faults.length === 0}
-                <div class="state">No fault injection step was recorded in this window.</div>
+                <State kind="empty">No fault injection step was recorded in this window.</State>
             {:else}
                 <EChart
                     id="faults"
@@ -239,10 +240,10 @@
 
     <Panel title="Target systems" style="margin-top: var(--space-3-5)">
         {#if data.targets.length === 0}
-            <div class="state">
+            <State kind="empty">
                 No target-system metadata in this window — tumult runs don't tag target systems yet,
                 so this fills in once targets are annotated.
-            </div>
+            </State>
         {:else}
             {@const max = Math.max(...data.targets.map((t) => t.experiments))}
             <table class="data">

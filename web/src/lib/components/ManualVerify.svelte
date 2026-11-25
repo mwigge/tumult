@@ -4,6 +4,7 @@
     // lake, and says ok or lists each problem.
     import { errorText } from '#lib/manual.js';
     import type { ManualVerdict } from '#lib/types.js';
+    import State from './State.svelte';
 
     let {
         run,
@@ -58,7 +59,7 @@
             {/if}
         </div>
     {/if}
-    {#if error}<div class="state error" role="status">{error}</div>{/if}
+    {#if error}<State kind="error">{error}</State>{/if}
 </div>
 
 <style>

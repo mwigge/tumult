@@ -8,6 +8,7 @@
     import { runTimeNs, runWaitNs } from '#lib/duration.js';
     import PageHeader from '#lib/components/PageHeader.svelte';
     import Panel from '#lib/components/Panel.svelte';
+    import State from '#lib/components/State.svelte';
 
     // Client-side state filter: '' = all, 'active' = anything in
     // ACTIVE_RUN_STATES, otherwise one terminal state.
@@ -142,11 +143,11 @@
 
 <Panel>
     {#if error}
-        <div class="state error">Failed to load runs: {error}</div>
+        <State kind="error">Failed to load runs: {error}</State>
     {:else if !shown}
-        <div class="skeleton" style="height: 240px"></div>
+        <State kind="loading" height={240} />
     {:else if shown.length === 0}
-        <div class="state">No runs match this filter.</div>
+        <State kind="empty">No runs match this filter.</State>
     {:else}
         <table class="data">
             <thead>

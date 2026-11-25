@@ -13,6 +13,7 @@
     } from '#lib/types.js';
     import PageHeader from '#lib/components/PageHeader.svelte';
     import Panel from '#lib/components/Panel.svelte';
+    import State from '#lib/components/State.svelte';
 
     let me = $state<MeResponse | null>(null);
     const canGenerate = $derived(
@@ -188,20 +189,20 @@
             {generatingV2 ? 'Rendering…' : 'Generate'}
         </button>
         {#if generateErrorV2}
-            <span class="state error" style="padding: 0">{generateErrorV2}</span>
+            <State kind="error" tag="span" style="padding: 0">{generateErrorV2}</State>
         {/if}
     </div>
 
     {#if errorV2}
-        <div class="state error">Failed to load reports: {errorV2}</div>
+        <State kind="error">Failed to load reports: {errorV2}</State>
     {:else if !reportsV2}
-        <div class="skeleton" style="height: 120px; margin-top: var(--space-3)"></div>
+        <State kind="loading" height={120} style="margin-top: var(--space-3)" />
     {:else if reportsV2.length === 0}
-        <div class="state" style="text-align: left; margin-top: var(--space-3)">
+        <State kind="empty" style="text-align: left; margin-top: var(--space-3)">
             <b>No compliance reports yet.</b><br />
             Pick a template above and generate one — PDF and print-HTML artifacts land in
             <code>&lt;db dir&gt;/reports/v2/</code>.
-        </div>
+        </State>
     {:else}
         <table class="data" style="margin-top: var(--space-3)">
             <thead>
@@ -263,7 +264,7 @@
             {generating ? 'Rendering…' : 'Generate'}
         </button>
         {#if generateError}
-            <span class="state error" style="padding: 0">{generateError}</span>
+            <State kind="error" tag="span" style="padding: 0">{generateError}</State>
         {/if}
     </div>
     {#if generated}
@@ -279,9 +280,9 @@
     {/if}
 
     {#if error}
-        <div class="state error">Failed to load reports: {error}</div>
+        <State kind="error">Failed to load reports: {error}</State>
     {:else if !reports}
-        <div class="skeleton" style="height: 120px; margin-top: var(--space-3)"></div>
+        <State kind="loading" height={120} style="margin-top: var(--space-3)" />
     {:else if reports.length > 0}
         <table class="data" style="margin-top: var(--space-3)">
             <thead>

@@ -8,6 +8,7 @@
     import type { LegendItem } from '#lib/legend.js';
     import ChartLegend from './ChartLegend.svelte';
     import DrRecoveryChart from './DrRecoveryChart.svelte';
+    import State from './State.svelte';
 
     let {
         groups,
@@ -38,7 +39,7 @@
 </script>
 
 {#if groups.length === 0}
-    <div class="state">No DR test in this period to draw.</div>
+    <State kind="empty">No DR test in this period to draw.</State>
 {:else}
     <ChartLegend id="dr-recovery" items={legend} />
     {#if truncated}

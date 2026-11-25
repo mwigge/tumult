@@ -4,13 +4,14 @@
     import { fmtTs } from '#lib/api.js';
     import type { RunAuditEntry } from '#lib/types.js';
     import Panel from './Panel.svelte';
+    import State from './State.svelte';
 
     let { audit }: { audit: RunAuditEntry[] } = $props();
 </script>
 
 <Panel title={`Audit trail (${audit.length})`}>
     {#if audit.length === 0}
-        <div class="state">No audit events yet.</div>
+        <State kind="empty">No audit events yet.</State>
     {:else}
         <div class="audit">
             {#each audit as entry, i (i)}
