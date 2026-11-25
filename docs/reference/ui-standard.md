@@ -85,7 +85,7 @@ pair under its bar with its ratio:
 ## Type, spacing and radius
 
 The sizes are tokens in `web/tokens/page.tokens.json`. Use the token, such
-as `var(--font-size-sm)` or `var(--space-2)`, never a raw size.
+as `var(--font-size-md)` or `var(--space-2)`, never a raw size.
 `npm run build:tokens` draws this picture from that file, so it shows the
 scale of today.
 
@@ -213,7 +213,7 @@ table scrolls inside its panel, so the page never scrolls sideways.
 
 | Check | Fails on | Fix |
 |---|---|---|
-| Style lint, `npm run lint:styles` | A raw colour, size or spacing in a style of `web/src/`. | Use a token. The allow list `web/style-literals-allow.txt` holds the old ones and only shrinks. |
+| Style lint, `npm run lint:styles` | A raw colour, size or spacing in a style of `web/src/`. | Use a token. The allow list `web/style-literals-allow.txt` holds the few values a token cannot hold, each with its reason, and only shrinks. |
 | Token outputs, `web/src/lib/tokens.test.ts` | An output that is not what the token files give. | Run `npm run build:tokens` and commit the outputs. |
 | Contrast, `web/src/lib/contrast.test.ts` | A pair under its bar. | Change the token. |
 | Style snapshot, `web/tests/style-snapshot.spec.ts` | A computed style that moved on a mocked page, in either theme, wide or narrow. | A change on purpose writes the baselines again in the same commit, and lists what moved. |
