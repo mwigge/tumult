@@ -354,7 +354,7 @@
       "border-radius": "5px",
       "padding": "6px 9px"
     },
-    "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[group].seg \"manual sections\"": {
+    "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[tablist].seg \"manual sections\"": {
       "display": "flex",
       "border-top": "1px solid rgb(197, 206, 214)",
       "border-right": "1px solid rgb(197, 206, 214)",
@@ -362,7 +362,7 @@
       "border-left": "1px solid rgb(197, 206, 214)",
       "border-radius": "5px"
     },
-    "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[group].seg \"manual sections\" > button[button].active \"New entry\"": {
+    "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[tablist].seg \"manual sections\" > button[tab].active \"New entry\"": {
       "color": "rgb(255, 255, 255)",
       "font-family": "Arial",
       "font-size": "12.5px",
@@ -371,7 +371,7 @@
       "background-color": "rgb(156, 196, 228)",
       "padding": "5px 12px"
     },
-    "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[group].seg \"manual sections\" > button[button] \"Plans\"": {
+    "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[tablist].seg \"manual sections\" > button[tab] \"Plans\"": {
       "color": "rgb(91, 103, 114)",
       "font-family": "Arial",
       "font-size": "12.5px",
@@ -380,7 +380,7 @@
       "border-left": "1px solid rgb(197, 206, 214)",
       "padding": "5px 12px"
     },
-    "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[group].seg \"manual sections\" > button[button] \"Verification queue\"": {
+    "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[tablist].seg \"manual sections\" > button[tab] \"Verification queue\"": {
       "color": "rgb(91, 103, 114)",
       "font-family": "Arial",
       "font-size": "12.5px",
@@ -389,7 +389,7 @@
       "border-left": "1px solid rgb(197, 206, 214)",
       "padding": "5px 12px"
     },
-    "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[group].seg \"manual sections\" > button[button] \"All records\"": {
+    "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[tablist].seg \"manual sections\" > button[tab] \"All records\"": {
       "color": "rgb(91, 103, 114)",
       "font-family": "Arial",
       "font-size": "12.5px",
@@ -398,7 +398,7 @@
       "border-left": "1px solid rgb(197, 206, 214)",
       "padding": "5px 12px"
     },
-    "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[group].seg \"manual sections\" > button[button] \"Import\"": {
+    "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[tablist].seg \"manual sections\" > button[tab] \"Import\"": {
       "color": "rgb(91, 103, 114)",
       "font-family": "Arial",
       "font-size": "12.5px",
@@ -407,16 +407,19 @@
       "border-left": "1px solid rgb(197, 206, 214)",
       "padding": "5px 12px"
     },
-    "div.shell > main[main].main > div.manual > div.entry": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\"": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry": {
       "display": "flex",
       "gap": "14px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2": {
       "display": "grid",
       "grid-template-columns": "1fr 1fr",
       "gap": "14px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel": {
       "display": "block",
       "background-color": "rgb(255, 255, 255)",
       "border-top": "1px solid rgb(227, 232, 237)",
@@ -426,7 +429,7 @@
       "border-radius": "6px",
       "padding": "14px 16px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > h2[heading] \"EXERCISE\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > h2[heading] \"EXERCISE\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "12px",
       "font-weight": "600",
@@ -435,17 +438,17 @@
       "display": "block",
       "margin": "0px 0px 10px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form": {
       "display": "flex",
       "gap": "10px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > label[LabelText]": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > label[LabelText]": {
       "color": "rgb(91, 103, 114)",
       "font-size": "12px",
       "display": "flex",
       "gap": "4px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > label[LabelText] > input[textbox] \"Experiment name\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > label[LabelText] > input[textbox] \"Experiment name\"": {
       "color": "rgb(27, 35, 41)",
       "font-family": "Arial",
       "font-size": "13px",
@@ -459,18 +462,18 @@
       "border-radius": "5px",
       "padding": "6px 9px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2": {
       "display": "grid",
       "grid-template-columns": "1fr 1fr",
       "gap": "10px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 > label[LabelText]": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 > label[LabelText]": {
       "color": "rgb(91, 103, 114)",
       "font-size": "12px",
       "display": "flex",
       "gap": "4px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 > label[LabelText] > select[combobox] \"Exercise type\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 > label[LabelText] > select[combobox] \"Exercise type\"": {
       "color": "rgb(27, 35, 41)",
       "font-family": "Arial",
       "font-size": "13px",
@@ -484,13 +487,13 @@
       "border-radius": "5px",
       "padding": "6px 9px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 > label[LabelText] #2": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 > label[LabelText] #2": {
       "color": "rgb(91, 103, 114)",
       "font-size": "12px",
       "display": "flex",
       "gap": "4px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 > label[LabelText] #2 > input[DateTime] \"Executed at\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 > label[LabelText] #2 > input[DateTime] \"Executed at\"": {
       "color": "rgb(27, 35, 41)",
       "font-size": "13px",
       "line-height": "normal",
@@ -503,18 +506,18 @@
       "border-radius": "5px",
       "padding": "5px 8px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 #2": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 #2": {
       "display": "grid",
       "grid-template-columns": "1fr 1fr",
       "gap": "10px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 #2 > label[LabelText]": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 #2 > label[LabelText]": {
       "color": "rgb(91, 103, 114)",
       "font-size": "12px",
       "display": "flex",
       "gap": "4px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 #2 > label[LabelText] > input[textbox] \"Target system\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 #2 > label[LabelText] > input[textbox] \"Target system\"": {
       "color": "rgb(27, 35, 41)",
       "font-family": "Arial",
       "font-size": "13px",
@@ -528,13 +531,13 @@
       "border-radius": "5px",
       "padding": "6px 9px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 #2 > label[LabelText] #2": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 #2 > label[LabelText] #2": {
       "color": "rgb(91, 103, 114)",
       "font-size": "12px",
       "display": "flex",
       "gap": "4px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 #2 > label[LabelText] #2 > input[textbox] \"Target environment\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 #2 > label[LabelText] #2 > input[textbox] \"Target environment\"": {
       "color": "rgb(27, 35, 41)",
       "font-family": "Arial",
       "font-size": "13px",
@@ -548,13 +551,13 @@
       "border-radius": "5px",
       "padding": "6px 9px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > label[LabelText] #2": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > label[LabelText] #2": {
       "color": "rgb(91, 103, 114)",
       "font-size": "12px",
       "display": "flex",
       "gap": "4px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > label[LabelText] #2 > select[combobox] \"Plan it fulfils\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > label[LabelText] #2 > select[combobox] \"Plan it fulfils\"": {
       "color": "rgb(27, 35, 41)",
       "font-family": "Arial",
       "font-size": "13px",
@@ -568,13 +571,13 @@
       "border-radius": "5px",
       "padding": "6px 9px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > label[LabelText] #3": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > label[LabelText] #3": {
       "color": "rgb(91, 103, 114)",
       "font-size": "12px",
       "display": "flex",
       "gap": "4px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > label[LabelText] #3 > textarea[textbox] \"Hypothesis\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > label[LabelText] #3 > textarea[textbox] \"Hypothesis\"": {
       "color": "rgb(27, 35, 41)",
       "font-family": "monospace",
       "font-size": "13px",
@@ -588,13 +591,13 @@
       "border-radius": "5px",
       "padding": "6px 9px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > label[LabelText] #4": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > label[LabelText] #4": {
       "color": "rgb(91, 103, 114)",
       "font-size": "12px",
       "display": "flex",
       "gap": "4px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > label[LabelText] #4 > textarea[textbox] \"Method\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > label[LabelText] #4 > textarea[textbox] \"Method\"": {
       "color": "rgb(27, 35, 41)",
       "font-family": "monospace",
       "font-size": "13px",
@@ -608,18 +611,18 @@
       "border-radius": "5px",
       "padding": "6px 9px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 #3": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 #3": {
       "display": "grid",
       "grid-template-columns": "1fr 1fr",
       "gap": "10px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 #3 > label[LabelText]": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 #3 > label[LabelText]": {
       "color": "rgb(91, 103, 114)",
       "font-size": "12px",
       "display": "flex",
       "gap": "4px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 #3 > label[LabelText] > select[combobox] \"Outcome\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 #3 > label[LabelText] > select[combobox] \"Outcome\"": {
       "color": "rgb(27, 35, 41)",
       "font-family": "Arial",
       "font-size": "13px",
@@ -633,13 +636,13 @@
       "border-radius": "5px",
       "padding": "6px 9px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 #3 > label[LabelText] #2": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 #3 > label[LabelText] #2": {
       "color": "rgb(91, 103, 114)",
       "font-size": "12px",
       "display": "flex",
       "gap": "4px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 #3 > label[LabelText] #2 > select[combobox] \"Hypothesis held\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 #3 > label[LabelText] #2 > select[combobox] \"Hypothesis held\"": {
       "color": "rgb(27, 35, 41)",
       "font-family": "Arial",
       "font-size": "13px",
@@ -653,13 +656,13 @@
       "border-radius": "5px",
       "padding": "6px 9px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > label[LabelText] #5": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > label[LabelText] #5": {
       "color": "rgb(91, 103, 114)",
       "font-size": "12px",
       "display": "flex",
       "gap": "4px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > label[LabelText] #5 > textarea[textbox] \"Findings\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > label[LabelText] #5 > textarea[textbox] \"Findings\"": {
       "color": "rgb(27, 35, 41)",
       "font-family": "monospace",
       "font-size": "13px",
@@ -673,13 +676,13 @@
       "border-radius": "5px",
       "padding": "6px 9px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > label[LabelText] #6": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > label[LabelText] #6": {
       "color": "rgb(91, 103, 114)",
       "font-size": "12px",
       "display": "flex",
       "gap": "4px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > label[LabelText] #6 > select[combobox] \"Findings severity\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > label[LabelText] #6 > select[combobox] \"Findings severity\"": {
       "color": "rgb(27, 35, 41)",
       "font-family": "Arial",
       "font-size": "13px",
@@ -693,18 +696,18 @@
       "border-radius": "5px",
       "padding": "6px 9px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 #4": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 #4": {
       "display": "grid",
       "grid-template-columns": "1fr 1fr",
       "gap": "10px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 #4 > label[LabelText]": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 #4 > label[LabelText]": {
       "color": "rgb(91, 103, 114)",
       "font-size": "12px",
       "display": "flex",
       "gap": "4px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 #4 > label[LabelText] > input[textbox] \"Blast radius\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 #4 > label[LabelText] > input[textbox] \"Blast radius\"": {
       "color": "rgb(27, 35, 41)",
       "font-family": "Arial",
       "font-size": "13px",
@@ -718,13 +721,13 @@
       "border-radius": "5px",
       "padding": "6px 9px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 #4 > label[LabelText] #2": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 #4 > label[LabelText] #2": {
       "color": "rgb(91, 103, 114)",
       "font-size": "12px",
       "display": "flex",
       "gap": "4px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 #4 > label[LabelText] #2 > input[spinbutton] \"Duration (s)\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > div.row2 #4 > label[LabelText] #2 > input[spinbutton] \"Duration (s)\"": {
       "color": "rgb(27, 35, 41)",
       "font-family": "Arial",
       "font-size": "13px",
@@ -738,13 +741,13 @@
       "border-radius": "5px",
       "padding": "6px 9px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > label[LabelText] #7": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > label[LabelText] #7": {
       "color": "rgb(91, 103, 114)",
       "font-size": "12px",
       "display": "flex",
       "gap": "4px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > label[LabelText] #7 > input[textbox] \"Framework refs (comma-sep)\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > label[LabelText] #7 > input[textbox] \"Framework refs (comma-sep)\"": {
       "color": "rgb(27, 35, 41)",
       "font-family": "Arial",
       "font-size": "13px",
@@ -758,13 +761,13 @@
       "border-radius": "5px",
       "padding": "6px 9px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > label[LabelText] #8": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > label[LabelText] #8": {
       "color": "rgb(91, 103, 114)",
       "font-size": "12px",
       "display": "flex",
       "gap": "4px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.panel > div.form > label[LabelText] #8 > input[textbox] \"Plan scenarios (comma-sep)\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.panel > div.form > label[LabelText] #8 > input[textbox] \"Plan scenarios (comma-sep)\"": {
       "color": "rgb(27, 35, 41)",
       "font-family": "Arial",
       "font-size": "13px",
@@ -778,11 +781,11 @@
       "border-radius": "5px",
       "padding": "6px 9px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.stack": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.stack": {
       "display": "flex",
       "gap": "14px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.stack > div.panel": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.stack > div.panel": {
       "display": "block",
       "background-color": "rgb(255, 255, 255)",
       "border-top": "1px solid rgb(227, 232, 237)",
@@ -792,7 +795,7 @@
       "border-radius": "6px",
       "padding": "14px 16px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.stack > div.panel > h2[heading] \"RECOVERY\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.stack > div.panel > h2[heading] \"RECOVERY\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "12px",
       "font-weight": "600",
@@ -801,22 +804,22 @@
       "display": "block",
       "margin": "0px 0px 10px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.stack > div.panel > div.form": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.stack > div.panel > div.form": {
       "display": "flex",
       "gap": "10px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.stack > div.panel > div.form > div.row2": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.stack > div.panel > div.form > div.row2": {
       "display": "grid",
       "grid-template-columns": "1fr 1fr",
       "gap": "10px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.stack > div.panel > div.form > div.row2 > label[LabelText]": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.stack > div.panel > div.form > div.row2 > label[LabelText]": {
       "color": "rgb(91, 103, 114)",
       "font-size": "12px",
       "display": "flex",
       "gap": "4px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.stack > div.panel > div.form > div.row2 > label[LabelText] > input[spinbutton] \"Planned RTO (s)\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.stack > div.panel > div.form > div.row2 > label[LabelText] > input[spinbutton] \"Planned RTO (s)\"": {
       "color": "rgb(27, 35, 41)",
       "font-family": "Arial",
       "font-size": "13px",
@@ -830,13 +833,13 @@
       "border-radius": "5px",
       "padding": "6px 9px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.stack > div.panel > div.form > div.row2 > label[LabelText] #2": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.stack > div.panel > div.form > div.row2 > label[LabelText] #2": {
       "color": "rgb(91, 103, 114)",
       "font-size": "12px",
       "display": "flex",
       "gap": "4px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.stack > div.panel > div.form > div.row2 > label[LabelText] #2 > input[spinbutton] \"Actual recovery time (s)\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.stack > div.panel > div.form > div.row2 > label[LabelText] #2 > input[spinbutton] \"Actual recovery time (s)\"": {
       "color": "rgb(27, 35, 41)",
       "font-family": "Arial",
       "font-size": "13px",
@@ -850,18 +853,18 @@
       "border-radius": "5px",
       "padding": "6px 9px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.stack > div.panel > div.form > div.row2 #2": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.stack > div.panel > div.form > div.row2 #2": {
       "display": "grid",
       "grid-template-columns": "1fr 1fr",
       "gap": "10px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.stack > div.panel > div.form > div.row2 #2 > label[LabelText]": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.stack > div.panel > div.form > div.row2 #2 > label[LabelText]": {
       "color": "rgb(91, 103, 114)",
       "font-size": "12px",
       "display": "flex",
       "gap": "4px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.stack > div.panel > div.form > div.row2 #2 > label[LabelText] > input[spinbutton] \"Planned RPO (s)\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.stack > div.panel > div.form > div.row2 #2 > label[LabelText] > input[spinbutton] \"Planned RPO (s)\"": {
       "color": "rgb(27, 35, 41)",
       "font-family": "Arial",
       "font-size": "13px",
@@ -875,13 +878,13 @@
       "border-radius": "5px",
       "padding": "6px 9px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.stack > div.panel > div.form > div.row2 #2 > label[LabelText] #2": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.stack > div.panel > div.form > div.row2 #2 > label[LabelText] #2": {
       "color": "rgb(91, 103, 114)",
       "font-size": "12px",
       "display": "flex",
       "gap": "4px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.stack > div.panel > div.form > div.row2 #2 > label[LabelText] #2 > input[spinbutton] \"Actual RPO (s)\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.stack > div.panel > div.form > div.row2 #2 > label[LabelText] #2 > input[spinbutton] \"Actual RPO (s)\"": {
       "color": "rgb(27, 35, 41)",
       "font-family": "Arial",
       "font-size": "13px",
@@ -895,13 +898,13 @@
       "border-radius": "5px",
       "padding": "6px 9px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.stack > div.panel > div.form > label[LabelText]": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.stack > div.panel > div.form > label[LabelText]": {
       "color": "rgb(91, 103, 114)",
       "font-size": "12px",
       "display": "flex",
       "gap": "4px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.stack > div.panel > div.form > label[LabelText] > select[combobox] \"Data verified\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.stack > div.panel > div.form > label[LabelText] > select[combobox] \"Data verified\"": {
       "color": "rgb(27, 35, 41)",
       "font-family": "Arial",
       "font-size": "13px",
@@ -915,13 +918,13 @@
       "border-radius": "5px",
       "padding": "6px 9px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.stack > div.panel > div.form > p[paragraph].note": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.stack > div.panel > div.form > p[paragraph].note": {
       "color": "rgb(139, 152, 165)",
       "font-size": "12px",
       "display": "block",
       "margin": "12px 0px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.stack > div.panel #2": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.stack > div.panel #2": {
       "display": "block",
       "background-color": "rgb(255, 255, 255)",
       "border-top": "1px solid rgb(227, 232, 237)",
@@ -931,7 +934,7 @@
       "border-radius": "6px",
       "padding": "14px 16px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.stack > div.panel #2 > h2[heading] \"PARTICIPANTS\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.stack > div.panel #2 > h2[heading] \"PARTICIPANTS\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "12px",
       "font-weight": "600",
@@ -940,12 +943,12 @@
       "display": "block",
       "margin": "0px 0px 10px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.stack > div.panel #2 > div.dim": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.stack > div.panel #2 > div.dim": {
       "color": "rgb(139, 152, 165)",
       "font-size": "12px",
       "display": "block"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.stack > div.panel #2 > button[button].btn.add \"Add participant\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.stack > div.panel #2 > button[button].btn.add \"Add participant\"": {
       "font-family": "Arial",
       "font-size": "13px",
       "line-height": "normal",
@@ -959,7 +962,7 @@
       "padding": "6px 14px",
       "margin": "4px 0px 0px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.stack > div.panel #3": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.stack > div.panel #3": {
       "display": "block",
       "background-color": "rgb(255, 255, 255)",
       "border-top": "1px solid rgb(227, 232, 237)",
@@ -969,7 +972,7 @@
       "border-radius": "6px",
       "padding": "14px 16px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.stack > div.panel #3 > h2[heading] \"TESTER\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.stack > div.panel #3 > h2[heading] \"TESTER\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "12px",
       "font-weight": "600",
@@ -978,22 +981,22 @@
       "display": "block",
       "margin": "0px 0px 10px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.stack > div.panel #3 > div.form": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.stack > div.panel #3 > div.form": {
       "display": "flex",
       "gap": "10px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.stack > div.panel #3 > div.form > div.row2": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.stack > div.panel #3 > div.form > div.row2": {
       "display": "grid",
       "grid-template-columns": "1fr 1fr",
       "gap": "10px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.stack > div.panel #3 > div.form > div.row2 > label[LabelText]": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.stack > div.panel #3 > div.form > div.row2 > label[LabelText]": {
       "color": "rgb(91, 103, 114)",
       "font-size": "12px",
       "display": "flex",
       "gap": "4px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.stack > div.panel #3 > div.form > div.row2 > label[LabelText] > input[textbox] \"Tester\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.stack > div.panel #3 > div.form > div.row2 > label[LabelText] > input[textbox] \"Tester\"": {
       "color": "rgb(27, 35, 41)",
       "font-family": "Arial",
       "font-size": "13px",
@@ -1007,13 +1010,13 @@
       "border-radius": "5px",
       "padding": "6px 9px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.stack > div.panel #3 > div.form > div.row2 > label[LabelText] #2": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.stack > div.panel #3 > div.form > div.row2 > label[LabelText] #2": {
       "color": "rgb(91, 103, 114)",
       "font-size": "12px",
       "display": "flex",
       "gap": "4px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.stack > div.panel #3 > div.form > div.row2 > label[LabelText] #2 > select[combobox] \"Tester kind\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.stack > div.panel #3 > div.form > div.row2 > label[LabelText] #2 > select[combobox] \"Tester kind\"": {
       "color": "rgb(27, 35, 41)",
       "font-family": "Arial",
       "font-size": "13px",
@@ -1027,13 +1030,13 @@
       "border-radius": "5px",
       "padding": "6px 9px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 > div.stack > div.panel #3 > div.form > p[paragraph].note": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 > div.stack > div.panel #3 > div.form > p[paragraph].note": {
       "color": "rgb(139, 152, 165)",
       "font-size": "12px",
       "display": "block",
       "margin": "12px 0px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.panel": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.panel": {
       "display": "block",
       "background-color": "rgb(255, 255, 255)",
       "border-top": "1px solid rgb(227, 232, 237)",
@@ -1043,7 +1046,7 @@
       "border-radius": "6px",
       "padding": "14px 16px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.panel > h2[heading] \"STEPS\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.panel > h2[heading] \"STEPS\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "12px",
       "font-weight": "600",
@@ -1052,12 +1055,12 @@
       "display": "block",
       "margin": "0px 0px 10px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.panel > div.dim": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.panel > div.dim": {
       "color": "rgb(139, 152, 165)",
       "font-size": "12px",
       "display": "block"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.panel > button[button].btn.add \"Add step\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.panel > button[button].btn.add \"Add step\"": {
       "font-family": "Arial",
       "font-size": "13px",
       "line-height": "normal",
@@ -1071,7 +1074,7 @@
       "padding": "6px 14px",
       "margin": "4px 0px 0px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.panel #2": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.panel #2": {
       "display": "block",
       "background-color": "rgb(255, 255, 255)",
       "border-top": "1px solid rgb(227, 232, 237)",
@@ -1081,7 +1084,7 @@
       "border-radius": "6px",
       "padding": "14px 16px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.panel #2 > h2[heading] \"ACTIONS\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.panel #2 > h2[heading] \"ACTIONS\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "12px",
       "font-weight": "600",
@@ -1090,12 +1093,12 @@
       "display": "block",
       "margin": "0px 0px 10px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.panel #2 > div.dim": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.panel #2 > div.dim": {
       "color": "rgb(139, 152, 165)",
       "font-size": "12px",
       "display": "block"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.panel #2 > button[button].btn.add \"Add action\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.panel #2 > button[button].btn.add \"Add action\"": {
       "font-family": "Arial",
       "font-size": "13px",
       "line-height": "normal",
@@ -1109,12 +1112,12 @@
       "padding": "6px 14px",
       "margin": "4px 0px 0px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 #2": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 #2": {
       "display": "grid",
       "grid-template-columns": "1fr 1fr",
       "gap": "14px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 #2 > div.panel": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 #2 > div.panel": {
       "display": "block",
       "background-color": "rgb(255, 255, 255)",
       "border-top": "1px solid rgb(227, 232, 237)",
@@ -1124,7 +1127,7 @@
       "border-radius": "6px",
       "padding": "14px 16px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 #2 > div.panel > h2[heading] \"ATTESTATION\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 #2 > div.panel > h2[heading] \"ATTESTATION\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "12px",
       "font-weight": "600",
@@ -1133,17 +1136,17 @@
       "display": "block",
       "margin": "0px 0px 10px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 #2 > div.panel > div.form": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 #2 > div.panel > div.form": {
       "display": "flex",
       "gap": "10px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 #2 > div.panel > div.form > label[LabelText]": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 #2 > div.panel > div.form > label[LabelText]": {
       "color": "rgb(91, 103, 114)",
       "font-size": "12px",
       "display": "flex",
       "gap": "4px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 #2 > div.panel > div.form > label[LabelText] > input[Date] \"Renewal due (optional)\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 #2 > div.panel > div.form > label[LabelText] > input[Date] \"Renewal due (optional)\"": {
       "color": "rgb(27, 35, 41)",
       "font-size": "13px",
       "line-height": "normal",
@@ -1156,13 +1159,13 @@
       "border-radius": "5px",
       "padding": "5px 8px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 #2 > div.panel > div.form > label[LabelText] #2": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 #2 > div.panel > div.form > label[LabelText] #2": {
       "color": "rgb(91, 103, 114)",
       "font-size": "12px",
       "display": "flex",
       "gap": "4px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 #2 > div.panel > div.form > label[LabelText] #2 > textarea[textbox] \"Attestation text\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 #2 > div.panel > div.form > label[LabelText] #2 > textarea[textbox] \"Attestation text\"": {
       "color": "rgb(27, 35, 41)",
       "font-family": "monospace",
       "font-size": "13px",
@@ -1176,21 +1179,21 @@
       "border-radius": "5px",
       "padding": "6px 9px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 #2 > div.panel > div.form > p[paragraph].note": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 #2 > div.panel > div.form > p[paragraph].note": {
       "color": "rgb(139, 152, 165)",
       "font-size": "12px",
       "display": "block",
       "margin": "12px 0px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 #2 > div.panel > div.form > p[paragraph].note > b": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 #2 > div.panel > div.form > p[paragraph].note > b": {
       "font-weight": "700",
       "display": "inline"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 #2 > div.panel > div.form > div.actions": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 #2 > div.panel > div.form > div.actions": {
       "display": "flex",
       "gap": "8px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 #2 > div.panel > div.form > div.actions > button[button].btn \"Save draft\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 #2 > div.panel > div.form > div.actions > button[button].btn \"Save draft\"": {
       "font-family": "Arial",
       "font-size": "13px",
       "line-height": "normal",
@@ -1203,7 +1206,7 @@
       "border-radius": "6px",
       "padding": "6px 14px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 #2 > div.panel > div.form > div.actions > button[button].btn.primary \"Save & submit\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 #2 > div.panel > div.form > div.actions > button[button].btn.primary \"Save & submit\"": {
       "font-family": "Arial",
       "font-size": "13px",
       "line-height": "normal",
@@ -1216,7 +1219,7 @@
       "border-radius": "6px",
       "padding": "6px 14px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 #2 > div.panel #2": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 #2 > div.panel #2": {
       "display": "block",
       "background-color": "rgb(255, 255, 255)",
       "border-top": "1px solid rgb(227, 232, 237)",
@@ -1226,7 +1229,7 @@
       "border-radius": "6px",
       "padding": "14px 16px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 #2 > div.panel #2 > h2[heading] \"EVIDENCE\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 #2 > div.panel #2 > h2[heading] \"EVIDENCE\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "12px",
       "font-weight": "600",
@@ -1235,7 +1238,7 @@
       "display": "block",
       "margin": "0px 0px 10px"
     },
-    "div.shell > main[main].main > div.manual > div.entry > div.grid.cols-2 #2 > div.panel #2 > p[paragraph].note": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"New entry\" > div.entry > div.grid.cols-2 #2 > div.panel #2 > p[paragraph].note": {
       "color": "rgb(139, 152, 165)",
       "font-size": "12px",
       "display": "block",

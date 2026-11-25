@@ -321,11 +321,11 @@
       "font-weight": "600",
       "display": "block"
     },
-    "div.shell > main[main].main > div.page-head > div[group].views \"score view\"": {
+    "div.shell > main[main].main > div.page-head > div[tablist].views \"score view\"": {
       "display": "flex",
       "margin": "0px 0px 0px 12px"
     },
-    "div.shell > main[main].main > div.page-head > div[group].views \"score view\" > button[button].on \"Org scores\"": {
+    "div.shell > main[main].main > div.page-head > div[tablist].views \"score view\" > button[tab].on \"Org scores\"": {
       "font-size": "12px",
       "display": "block",
       "background-color": "rgb(233, 238, 242)",
@@ -336,7 +336,7 @@
       "border-radius": "4px 0px 0px 4px",
       "padding": "3px 10px"
     },
-    "div.shell > main[main].main > div.page-head > div[group].views \"score view\" > button[button] \"DORA and maturity\"": {
+    "div.shell > main[main].main > div.page-head > div[tablist].views \"score view\" > button[tab] \"DORA and maturity\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "12px",
       "display": "block",
@@ -399,13 +399,16 @@
       "border-left": "1px solid rgb(197, 206, 214)",
       "padding": "5px 12px"
     },
-    "div.shell > main[main].main > div.cards": {
+    "div.shell > main[main].main > div[tabpanel] \"Org scores\"": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > div[tabpanel] \"Org scores\" > div.cards": {
       "display": "grid",
       "grid-template-columns": "repeat(4, 1fr)",
       "margin": "0px 0px 12px",
       "gap": "12px"
     },
-    "div.shell > main[main].main > div.cards > div.panel.card": {
+    "div.shell > main[main].main > div[tabpanel] \"Org scores\" > div.cards > div.panel.card": {
       "display": "block",
       "background-color": "rgb(255, 255, 255)",
       "border-top": "1px solid rgb(227, 232, 237)",
@@ -415,7 +418,7 @@
       "border-radius": "6px",
       "padding": "14px 16px"
     },
-    "div.shell > main[main].main > div.cards > div.panel.card > div.label": {
+    "div.shell > main[main].main > div[tabpanel] \"Org scores\" > div.cards > div.panel.card > div.label": {
       "color": "rgb(91, 103, 114)",
       "font-size": "11.5px",
       "letter-spacing": "0.6px",
@@ -423,25 +426,25 @@
       "display": "block",
       "margin": "0px 0px 6px"
     },
-    "div.shell > main[main].main > div.cards > div.panel.card > div.value.mono": {
+    "div.shell > main[main].main > div[tabpanel] \"Org scores\" > div.cards > div.panel.card > div.value.mono": {
       "color": "rgb(230, 159, 0)",
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "24px",
       "font-weight": "600",
       "display": "block"
     },
-    "div.shell > main[main].main > div.cards > div.panel.card > div.value.mono > span.glyph": {
+    "div.shell > main[main].main > div[tabpanel] \"Org scores\" > div.cards > div.panel.card > div.value.mono > span.glyph": {
       "font-size": "18px",
       "display": "inline",
       "margin": "0px 6px 0px 0px"
     },
-    "div.shell > main[main].main > div.cards > div.panel.card > div.hint": {
+    "div.shell > main[main].main > div[tabpanel] \"Org scores\" > div.cards > div.panel.card > div.hint": {
       "color": "rgb(139, 152, 165)",
       "font-size": "11.5px",
       "display": "block",
       "margin": "4px 0px 0px"
     },
-    "div.shell > main[main].main > div.cards > div.panel.card #2": {
+    "div.shell > main[main].main > div[tabpanel] \"Org scores\" > div.cards > div.panel.card #2": {
       "display": "block",
       "background-color": "rgb(255, 255, 255)",
       "border-top": "1px solid rgb(227, 232, 237)",
@@ -451,7 +454,7 @@
       "border-radius": "6px",
       "padding": "14px 16px"
     },
-    "div.shell > main[main].main > div.cards > div.panel.card #2 > div.label": {
+    "div.shell > main[main].main > div[tabpanel] \"Org scores\" > div.cards > div.panel.card #2 > div.label": {
       "color": "rgb(91, 103, 114)",
       "font-size": "11.5px",
       "letter-spacing": "0.6px",
@@ -459,20 +462,20 @@
       "display": "block",
       "margin": "0px 0px 6px"
     },
-    "div.shell > main[main].main > div.cards > div.panel.card #2 > div.value.mono.delta.flat": {
+    "div.shell > main[main].main > div[tabpanel] \"Org scores\" > div.cards > div.panel.card #2 > div.value.mono.delta.flat": {
       "color": "rgb(139, 152, 165)",
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "24px",
       "font-weight": "600",
       "display": "block"
     },
-    "div.shell > main[main].main > div.cards > div.panel.card #2 > div.hint": {
+    "div.shell > main[main].main > div[tabpanel] \"Org scores\" > div.cards > div.panel.card #2 > div.hint": {
       "color": "rgb(139, 152, 165)",
       "font-size": "11.5px",
       "display": "block",
       "margin": "4px 0px 0px"
     },
-    "div.shell > main[main].main > div.cards > div.panel.card #3": {
+    "div.shell > main[main].main > div[tabpanel] \"Org scores\" > div.cards > div.panel.card #3": {
       "display": "block",
       "background-color": "rgb(255, 255, 255)",
       "border-top": "1px solid rgb(227, 232, 237)",
@@ -482,7 +485,7 @@
       "border-radius": "6px",
       "padding": "14px 16px"
     },
-    "div.shell > main[main].main > div.cards > div.panel.card #3 > div.label": {
+    "div.shell > main[main].main > div[tabpanel] \"Org scores\" > div.cards > div.panel.card #3 > div.label": {
       "color": "rgb(91, 103, 114)",
       "font-size": "11.5px",
       "letter-spacing": "0.6px",
@@ -490,19 +493,19 @@
       "display": "block",
       "margin": "0px 0px 6px"
     },
-    "div.shell > main[main].main > div.cards > div.panel.card #3 > div.value.mono": {
+    "div.shell > main[main].main > div[tabpanel] \"Org scores\" > div.cards > div.panel.card #3 > div.value.mono": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "24px",
       "font-weight": "600",
       "display": "block"
     },
-    "div.shell > main[main].main > div.cards > div.panel.card #3 > div.hint": {
+    "div.shell > main[main].main > div[tabpanel] \"Org scores\" > div.cards > div.panel.card #3 > div.hint": {
       "color": "rgb(139, 152, 165)",
       "font-size": "11.5px",
       "display": "block",
       "margin": "4px 0px 0px"
     },
-    "div.shell > main[main].main > div.cards > div.panel.card #4": {
+    "div.shell > main[main].main > div[tabpanel] \"Org scores\" > div.cards > div.panel.card #4": {
       "display": "block",
       "background-color": "rgb(255, 255, 255)",
       "border-top": "1px solid rgb(227, 232, 237)",
@@ -512,7 +515,7 @@
       "border-radius": "6px",
       "padding": "14px 16px"
     },
-    "div.shell > main[main].main > div.cards > div.panel.card #4 > div.label": {
+    "div.shell > main[main].main > div[tabpanel] \"Org scores\" > div.cards > div.panel.card #4 > div.label": {
       "color": "rgb(91, 103, 114)",
       "font-size": "11.5px",
       "letter-spacing": "0.6px",
@@ -520,37 +523,37 @@
       "display": "block",
       "margin": "0px 0px 6px"
     },
-    "div.shell > main[main].main > div.cards > div.panel.card #4 > div.value.weakest": {
+    "div.shell > main[main].main > div[tabpanel] \"Org scores\" > div.cards > div.panel.card #4 > div.value.weakest": {
       "font-weight": "500",
       "display": "block"
     },
-    "div.shell > main[main].main > div.cards > div.panel.card #4 > div.hint": {
+    "div.shell > main[main].main > div[tabpanel] \"Org scores\" > div.cards > div.panel.card #4 > div.hint": {
       "color": "rgb(139, 152, 165)",
       "font-size": "11.5px",
       "display": "block",
       "margin": "4px 0px 0px"
     },
-    "div.shell > main[main].main > div.cards > div.panel.card #4 > div.hint > svg": {
+    "div.shell > main[main].main > div[tabpanel] \"Org scores\" > div.cards > div.panel.card #4 > div.hint > svg": {
       "display": "inline"
     },
-    "div.shell > main[main].main > div.cards > div.panel.card #4 > div.hint > polygon": {
+    "div.shell > main[main].main > div[tabpanel] \"Org scores\" > div.cards > div.panel.card #4 > div.hint > polygon": {
       "display": "inline",
       "opacity": "0.12"
     },
-    "div.shell > main[main].main > div.cards > div.panel.card #4 > div.hint > polyline": {
+    "div.shell > main[main].main > div[tabpanel] \"Org scores\" > div.cards > div.panel.card #4 > div.hint > polyline": {
       "display": "inline"
     },
-    "div.shell > main[main].main > p[paragraph].meaning": {
+    "div.shell > main[main].main > div[tabpanel] \"Org scores\" > p[paragraph].meaning": {
       "color": "rgb(91, 103, 114)",
       "font-size": "12.5px",
       "display": "block",
       "margin": "0px 0px 12px"
     },
-    "div.shell > main[main].main > p[paragraph].meaning > strong[strong]": {
+    "div.shell > main[main].main > div[tabpanel] \"Org scores\" > p[paragraph].meaning > strong[strong]": {
       "font-weight": "700",
       "display": "inline"
     },
-    "div.shell > main[main].main > div.panel": {
+    "div.shell > main[main].main > div[tabpanel] \"Org scores\" > div.panel": {
       "display": "block",
       "background-color": "rgb(255, 255, 255)",
       "border-top": "1px solid rgb(227, 232, 237)",
@@ -560,7 +563,7 @@
       "border-radius": "6px",
       "padding": "14px 16px"
     },
-    "div.shell > main[main].main > div.panel > h2[heading] \"DOMAINS — AREA ∝ EXPERIMENTS × CRITICALI…\"": {
+    "div.shell > main[main].main > div[tabpanel] \"Org scores\" > div.panel > h2[heading] \"DOMAINS — AREA ∝ EXPERIMENTS × CRITICALI…\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "12px",
       "font-weight": "600",
@@ -569,16 +572,16 @@
       "display": "block",
       "margin": "0px 0px 10px"
     },
-    "div.shell > main[main].main > div.panel > div[image] \"Scores of Company as a treemap\"": {
+    "div.shell > main[main].main > div[tabpanel] \"Org scores\" > div.panel > div[image] \"Scores of Company as a treemap\"": {
       "display": "block"
     },
-    "div.shell > main[main].main > div.panel > div[image] \"Scores of Company as a treemap\" > div": {
+    "div.shell > main[main].main > div[tabpanel] \"Org scores\" > div.panel > div[image] \"Scores of Company as a treemap\" > div": {
       "display": "block"
     },
-    "div.shell > main[main].main > div.panel > div[image] \"Scores of Company as a treemap\" > canvas[Canvas]": {
+    "div.shell > main[main].main > div[tabpanel] \"Org scores\" > div.panel > div[image] \"Scores of Company as a treemap\" > canvas[Canvas]": {
       "display": "block"
     },
-    "div.shell > main[main].main > div.panel > div[image] \"Scores of Company as a treemap\" > div #2": {
+    "div.shell > main[main].main > div[tabpanel] \"Org scores\" > div.panel > div[image] \"Scores of Company as a treemap\" > div #2": {
       "display": "block"
     },
     "div": {

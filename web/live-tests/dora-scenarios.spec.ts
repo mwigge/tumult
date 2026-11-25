@@ -124,7 +124,7 @@ test('the Manual page shows why a mistyped scenario is refused and keeps a known
 }) => {
     await page.goto(`${daemon.base}/manual`);
     await page.getByPlaceholder('your name').fill('alice');
-    await page.getByRole('button', { name: 'New entry' }).click();
+    await page.getByRole('tab', { name: 'New entry' }).click();
     await fillTabletop(page, 'backup_restor');
     await page.getByRole('button', { name: 'Save draft' }).click();
     await expect(

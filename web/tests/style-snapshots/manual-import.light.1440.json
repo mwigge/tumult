@@ -354,7 +354,7 @@
       "border-radius": "5px",
       "padding": "6px 9px"
     },
-    "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[group].seg \"manual sections\"": {
+    "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[tablist].seg \"manual sections\"": {
       "display": "flex",
       "border-top": "1px solid rgb(197, 206, 214)",
       "border-right": "1px solid rgb(197, 206, 214)",
@@ -362,7 +362,7 @@
       "border-left": "1px solid rgb(197, 206, 214)",
       "border-radius": "5px"
     },
-    "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[group].seg \"manual sections\" > button[button] \"New entry\"": {
+    "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[tablist].seg \"manual sections\" > button[tab] \"New entry\"": {
       "color": "rgb(91, 103, 114)",
       "font-family": "Arial",
       "font-size": "12.5px",
@@ -370,16 +370,7 @@
       "display": "block",
       "padding": "5px 12px"
     },
-    "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[group].seg \"manual sections\" > button[button] \"Plans\"": {
-      "color": "rgb(91, 103, 114)",
-      "font-family": "Arial",
-      "font-size": "12.5px",
-      "line-height": "normal",
-      "display": "block",
-      "border-left": "1px solid rgb(197, 206, 214)",
-      "padding": "5px 12px"
-    },
-    "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[group].seg \"manual sections\" > button[button] \"Verification queue\"": {
+    "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[tablist].seg \"manual sections\" > button[tab] \"Plans\"": {
       "color": "rgb(91, 103, 114)",
       "font-family": "Arial",
       "font-size": "12.5px",
@@ -388,7 +379,7 @@
       "border-left": "1px solid rgb(197, 206, 214)",
       "padding": "5px 12px"
     },
-    "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[group].seg \"manual sections\" > button[button] \"All records\"": {
+    "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[tablist].seg \"manual sections\" > button[tab] \"Verification queue\"": {
       "color": "rgb(91, 103, 114)",
       "font-family": "Arial",
       "font-size": "12.5px",
@@ -397,7 +388,16 @@
       "border-left": "1px solid rgb(197, 206, 214)",
       "padding": "5px 12px"
     },
-    "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[group].seg \"manual sections\" > button[button].active \"Import\"": {
+    "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[tablist].seg \"manual sections\" > button[tab] \"All records\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-family": "Arial",
+      "font-size": "12.5px",
+      "line-height": "normal",
+      "display": "block",
+      "border-left": "1px solid rgb(197, 206, 214)",
+      "padding": "5px 12px"
+    },
+    "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[tablist].seg \"manual sections\" > button[tab].active \"Import\"": {
       "color": "rgb(255, 255, 255)",
       "font-family": "Arial",
       "font-size": "12.5px",
@@ -407,7 +407,10 @@
       "border-left": "1px solid rgb(197, 206, 214)",
       "padding": "5px 12px"
     },
-    "div.shell > main[main].main > div.manual > div.panel": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Import\"": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Import\" > div.panel": {
       "display": "block",
       "background-color": "rgb(255, 255, 255)",
       "border-top": "1px solid rgb(227, 232, 237)",
@@ -417,7 +420,7 @@
       "border-radius": "6px",
       "padding": "14px 16px"
     },
-    "div.shell > main[main].main > div.manual > div.panel > h2[heading] \"IMPORT RECORDS\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Import\" > div.panel > h2[heading] \"IMPORT RECORDS\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "12px",
       "font-weight": "600",
@@ -426,33 +429,33 @@
       "display": "block",
       "margin": "0px 0px 10px"
     },
-    "div.shell > main[main].main > div.manual > div.panel > div.form": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Import\" > div.panel > div.form": {
       "display": "flex",
       "gap": "10px"
     },
-    "div.shell > main[main].main > div.manual > div.panel > div.form > p[paragraph].note": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Import\" > div.panel > div.form > p[paragraph].note": {
       "color": "rgb(139, 152, 165)",
       "font-size": "12px",
       "display": "block",
       "margin": "12px 0px"
     },
-    "div.shell > main[main].main > div.manual > div.panel > div.form > p[paragraph].note > code[code]": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Import\" > div.panel > div.form > p[paragraph].note > code[code]": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.04px",
       "display": "inline"
     },
-    "div.shell > main[main].main > div.manual > div.panel > div.form > div.row2": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Import\" > div.panel > div.form > div.row2": {
       "display": "grid",
       "grid-template-columns": "1fr 1fr",
       "gap": "10px"
     },
-    "div.shell > main[main].main > div.manual > div.panel > div.form > div.row2 > label[LabelText]": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Import\" > div.panel > div.form > div.row2 > label[LabelText]": {
       "color": "rgb(91, 103, 114)",
       "font-size": "12px",
       "display": "flex",
       "gap": "4px"
     },
-    "div.shell > main[main].main > div.manual > div.panel > div.form > div.row2 > label[LabelText] > input[button] \"JSON file\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Import\" > div.panel > div.form > div.row2 > label[LabelText] > input[button] \"JSON file\"": {
       "color": "rgb(27, 35, 41)",
       "font-size": "13px",
       "line-height": "normal",
@@ -465,13 +468,13 @@
       "border-radius": "5px",
       "padding": "5px 8px"
     },
-    "div.shell > main[main].main > div.manual > div.panel > div.form > div.row2 > label[LabelText] #2": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Import\" > div.panel > div.form > div.row2 > label[LabelText] #2": {
       "color": "rgb(91, 103, 114)",
       "font-size": "12px",
       "display": "flex",
       "gap": "4px"
     },
-    "div.shell > main[main].main > div.manual > div.panel > div.form > div.row2 > label[LabelText] #2 > input[textbox] \"Batch label\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Import\" > div.panel > div.form > div.row2 > label[LabelText] #2 > input[textbox] \"Batch label\"": {
       "color": "rgb(27, 35, 41)",
       "font-family": "Arial",
       "font-size": "13px",
@@ -485,13 +488,13 @@
       "border-radius": "5px",
       "padding": "6px 9px"
     },
-    "div.shell > main[main].main > div.manual > div.panel > div.form > label[LabelText]": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Import\" > div.panel > div.form > label[LabelText]": {
       "color": "rgb(91, 103, 114)",
       "font-size": "12px",
       "display": "flex",
       "gap": "4px"
     },
-    "div.shell > main[main].main > div.manual > div.panel > div.form > label[LabelText] > textarea[textbox].mono \"Records as JSON\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Import\" > div.panel > div.form > label[LabelText] > textarea[textbox].mono \"Records as JSON\"": {
       "color": "rgb(27, 35, 41)",
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.04px",
@@ -505,11 +508,11 @@
       "border-radius": "5px",
       "padding": "6px 9px"
     },
-    "div.shell > main[main].main > div.manual > div.panel > div.form > div.actions": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Import\" > div.panel > div.form > div.actions": {
       "display": "flex",
       "gap": "8px"
     },
-    "div.shell > main[main].main > div.manual > div.panel > div.form > div.actions > button[button].btn.primary \"Import as drafts\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"Import\" > div.panel > div.form > div.actions > button[button].btn.primary \"Import as drafts\"": {
       "font-family": "Arial",
       "font-size": "13px",
       "line-height": "normal",

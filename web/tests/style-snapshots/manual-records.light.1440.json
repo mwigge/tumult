@@ -354,7 +354,7 @@
       "border-radius": "5px",
       "padding": "6px 9px"
     },
-    "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[group].seg \"manual sections\"": {
+    "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[tablist].seg \"manual sections\"": {
       "display": "flex",
       "border-top": "1px solid rgb(197, 206, 214)",
       "border-right": "1px solid rgb(197, 206, 214)",
@@ -362,7 +362,7 @@
       "border-left": "1px solid rgb(197, 206, 214)",
       "border-radius": "5px"
     },
-    "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[group].seg \"manual sections\" > button[button] \"New entry\"": {
+    "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[tablist].seg \"manual sections\" > button[tab] \"New entry\"": {
       "color": "rgb(91, 103, 114)",
       "font-family": "Arial",
       "font-size": "12.5px",
@@ -370,16 +370,7 @@
       "display": "block",
       "padding": "5px 12px"
     },
-    "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[group].seg \"manual sections\" > button[button] \"Plans\"": {
-      "color": "rgb(91, 103, 114)",
-      "font-family": "Arial",
-      "font-size": "12.5px",
-      "line-height": "normal",
-      "display": "block",
-      "border-left": "1px solid rgb(197, 206, 214)",
-      "padding": "5px 12px"
-    },
-    "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[group].seg \"manual sections\" > button[button] \"Verification queue\"": {
+    "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[tablist].seg \"manual sections\" > button[tab] \"Plans\"": {
       "color": "rgb(91, 103, 114)",
       "font-family": "Arial",
       "font-size": "12.5px",
@@ -388,7 +379,16 @@
       "border-left": "1px solid rgb(197, 206, 214)",
       "padding": "5px 12px"
     },
-    "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[group].seg \"manual sections\" > button[button].active \"All records\"": {
+    "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[tablist].seg \"manual sections\" > button[tab] \"Verification queue\"": {
+      "color": "rgb(91, 103, 114)",
+      "font-family": "Arial",
+      "font-size": "12.5px",
+      "line-height": "normal",
+      "display": "block",
+      "border-left": "1px solid rgb(197, 206, 214)",
+      "padding": "5px 12px"
+    },
+    "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[tablist].seg \"manual sections\" > button[tab].active \"All records\"": {
       "color": "rgb(255, 255, 255)",
       "font-family": "Arial",
       "font-size": "12.5px",
@@ -398,7 +398,7 @@
       "border-left": "1px solid rgb(197, 206, 214)",
       "padding": "5px 12px"
     },
-    "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[group].seg \"manual sections\" > button[button] \"Import\"": {
+    "div.shell > main[main].main > div.manual > div.page-head > div.controls > div[tablist].seg \"manual sections\" > button[tab] \"Import\"": {
       "color": "rgb(91, 103, 114)",
       "font-family": "Arial",
       "font-size": "12.5px",
@@ -407,7 +407,10 @@
       "border-left": "1px solid rgb(197, 206, 214)",
       "padding": "5px 12px"
     },
-    "div.shell > main[main].main > div.manual > div.panel": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"All records\"": {
+      "display": "block"
+    },
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"All records\" > div.panel": {
       "display": "block",
       "background-color": "rgb(255, 255, 255)",
       "border-top": "1px solid rgb(227, 232, 237)",
@@ -417,10 +420,10 @@
       "border-radius": "6px",
       "padding": "14px 16px"
     },
-    "div.shell > main[main].main > div.manual > div.panel > div.records-head": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"All records\" > div.panel > div.records-head": {
       "display": "flex"
     },
-    "div.shell > main[main].main > div.manual > div.panel > div.records-head > h2[heading] \"ALL MANUAL RECORDS\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"All records\" > div.panel > div.records-head > h2[heading] \"ALL MANUAL RECORDS\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "12px",
       "font-weight": "600",
@@ -429,7 +432,7 @@
       "display": "block",
       "margin": "0px 0px 10px"
     },
-    "div.shell > main[main].main > div.manual > div.panel > div.records-head > select[combobox] \"Status\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"All records\" > div.panel > div.records-head > select[combobox] \"Status\"": {
       "font-family": "Arial",
       "font-size": "13px",
       "line-height": "normal",
@@ -442,17 +445,17 @@
       "border-radius": "5px",
       "padding": "6px 9px"
     },
-    "div.shell > main[main].main > div.manual > div.panel > table[table].data": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"All records\" > div.panel > table[table].data": {
       "font-size": "13px",
       "display": "table"
     },
-    "div.shell > main[main].main > div.manual > div.panel > table[table].data > thead[rowgroup]": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"All records\" > div.panel > table[table].data > thead[rowgroup]": {
       "display": "table-header-group"
     },
-    "div.shell > main[main].main > div.manual > div.panel > table[table].data > thead[rowgroup] > tr[row]": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"All records\" > div.panel > table[table].data > thead[rowgroup] > tr[row]": {
       "display": "table-row"
     },
-    "div.shell > main[main].main > div.manual > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"STATUS\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"All records\" > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"STATUS\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "11.5px",
       "font-weight": "600",
@@ -462,7 +465,7 @@
       "border-bottom": "1px solid rgb(197, 206, 214)",
       "padding": "6px 10px"
     },
-    "div.shell > main[main].main > div.manual > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"EXPERIMENT\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"All records\" > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"EXPERIMENT\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "11.5px",
       "font-weight": "600",
@@ -472,7 +475,7 @@
       "border-bottom": "1px solid rgb(197, 206, 214)",
       "padding": "6px 10px"
     },
-    "div.shell > main[main].main > div.manual > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"TYPE\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"All records\" > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"TYPE\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "11.5px",
       "font-weight": "600",
@@ -482,7 +485,7 @@
       "border-bottom": "1px solid rgb(197, 206, 214)",
       "padding": "6px 10px"
     },
-    "div.shell > main[main].main > div.manual > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"OUTCOME\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"All records\" > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"OUTCOME\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "11.5px",
       "font-weight": "600",
@@ -492,7 +495,7 @@
       "border-bottom": "1px solid rgb(197, 206, 214)",
       "padding": "6px 10px"
     },
-    "div.shell > main[main].main > div.manual > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"EXECUTED\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"All records\" > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"EXECUTED\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "11.5px",
       "font-weight": "600",
@@ -502,7 +505,7 @@
       "border-bottom": "1px solid rgb(197, 206, 214)",
       "padding": "6px 10px"
     },
-    "div.shell > main[main].main > div.manual > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"ENTERED\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"All records\" > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"ENTERED\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "11.5px",
       "font-weight": "600",
@@ -512,7 +515,7 @@
       "border-bottom": "1px solid rgb(197, 206, 214)",
       "padding": "6px 10px"
     },
-    "div.shell > main[main].main > div.manual > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"VERIFIER\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"All records\" > div.panel > table[table].data > thead[rowgroup] > tr[row] > th[columnheader] \"VERIFIER\"": {
       "color": "rgb(91, 103, 114)",
       "font-size": "11.5px",
       "font-weight": "600",
@@ -522,18 +525,18 @@
       "border-bottom": "1px solid rgb(197, 206, 214)",
       "padding": "6px 10px"
     },
-    "div.shell > main[main].main > div.manual > div.panel > table[table].data > tbody": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"All records\" > div.panel > table[table].data > tbody": {
       "display": "table-row-group"
     },
-    "div.shell > main[main].main > div.manual > div.panel > table[table].data > tr[row].clickable": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"All records\" > div.panel > table[table].data > tr[row].clickable": {
       "display": "table-row"
     },
-    "div.shell > main[main].main > div.manual > div.panel > table[table].data > tr[row].clickable > td[cell] \"submitted\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"All records\" > div.panel > table[table].data > tr[row].clickable > td[cell] \"submitted\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(227, 232, 237)",
       "padding": "7px 10px"
     },
-    "div.shell > main[main].main > div.manual > div.panel > table[table].data > tr[row].clickable > td[cell] \"submitted\" > span.badge.warn": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"All records\" > div.panel > table[table].data > tr[row].clickable > td[cell] \"submitted\" > span.badge.warn": {
       "color": "rgb(180, 83, 9)",
       "font-size": "11.5px",
       "font-weight": "600",
@@ -543,17 +546,17 @@
       "border-radius": "10px",
       "padding": "1px 9px"
     },
-    "div.shell > main[main].main > div.manual > div.panel > table[table].data > tr[row].clickable > td[cell] \"exercise rec-1\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"All records\" > div.panel > table[table].data > tr[row].clickable > td[cell] \"exercise rec-1\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(227, 232, 237)",
       "padding": "7px 10px"
     },
-    "div.shell > main[main].main > div.manual > div.panel > table[table].data > tr[row].clickable > td[cell] \"failover\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"All records\" > div.panel > table[table].data > tr[row].clickable > td[cell] \"failover\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(227, 232, 237)",
       "padding": "7px 10px"
     },
-    "div.shell > main[main].main > div.manual > div.panel > table[table].data > tr[row].clickable > td[cell] \"failover\" > span.badge.neutral": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"All records\" > div.panel > table[table].data > tr[row].clickable > td[cell] \"failover\" > span.badge.neutral": {
       "color": "rgb(91, 103, 114)",
       "font-size": "11.5px",
       "font-weight": "600",
@@ -563,12 +566,12 @@
       "border-radius": "10px",
       "padding": "1px 9px"
     },
-    "div.shell > main[main].main > div.manual > div.panel > table[table].data > tr[row].clickable > td[cell] \"passed\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"All records\" > div.panel > table[table].data > tr[row].clickable > td[cell] \"passed\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(227, 232, 237)",
       "padding": "7px 10px"
     },
-    "div.shell > main[main].main > div.manual > div.panel > table[table].data > tr[row].clickable > td[cell] \"passed\" > span.badge.ok": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"All records\" > div.panel > table[table].data > tr[row].clickable > td[cell] \"passed\" > span.badge.ok": {
       "color": "rgb(15, 138, 95)",
       "font-size": "11.5px",
       "font-weight": "600",
@@ -578,32 +581,32 @@
       "border-radius": "10px",
       "padding": "1px 9px"
     },
-    "div.shell > main[main].main > div.manual > div.panel > table[table].data > tr[row].clickable > td[cell].mono \"Nov 13, 06:00:00 AM\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"All records\" > div.panel > table[table].data > tr[row].clickable > td[cell].mono \"Nov 13, 06:00:00 AM\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(227, 232, 237)",
       "padding": "7px 10px"
     },
-    "div.shell > main[main].main > div.manual > div.panel > table[table].data > tr[row].clickable > td[cell] \"alice\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"All records\" > div.panel > table[table].data > tr[row].clickable > td[cell] \"alice\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(227, 232, 237)",
       "padding": "7px 10px"
     },
-    "div.shell > main[main].main > div.manual > div.panel > table[table].data > tr[row].clickable > td[cell] \"—\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"All records\" > div.panel > table[table].data > tr[row].clickable > td[cell] \"—\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(227, 232, 237)",
       "padding": "7px 10px"
     },
-    "div.shell > main[main].main > div.manual > div.panel > table[table].data > tr[row].clickable #2": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"All records\" > div.panel > table[table].data > tr[row].clickable #2": {
       "display": "table-row"
     },
-    "div.shell > main[main].main > div.manual > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"draft\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"All records\" > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"draft\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(227, 232, 237)",
       "padding": "7px 10px"
     },
-    "div.shell > main[main].main > div.manual > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"draft\" > span.badge.neutral": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"All records\" > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"draft\" > span.badge.neutral": {
       "color": "rgb(91, 103, 114)",
       "font-size": "11.5px",
       "font-weight": "600",
@@ -613,17 +616,17 @@
       "border-radius": "10px",
       "padding": "1px 9px"
     },
-    "div.shell > main[main].main > div.manual > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"exercise rec-2\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"All records\" > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"exercise rec-2\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(227, 232, 237)",
       "padding": "7px 10px"
     },
-    "div.shell > main[main].main > div.manual > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"failover\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"All records\" > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"failover\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(227, 232, 237)",
       "padding": "7px 10px"
     },
-    "div.shell > main[main].main > div.manual > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"failover\" > span.badge.neutral": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"All records\" > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"failover\" > span.badge.neutral": {
       "color": "rgb(91, 103, 114)",
       "font-size": "11.5px",
       "font-weight": "600",
@@ -633,12 +636,12 @@
       "border-radius": "10px",
       "padding": "1px 9px"
     },
-    "div.shell > main[main].main > div.manual > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"partial\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"All records\" > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"partial\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(227, 232, 237)",
       "padding": "7px 10px"
     },
-    "div.shell > main[main].main > div.manual > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"partial\" > span.badge.warn": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"All records\" > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"partial\" > span.badge.warn": {
       "color": "rgb(180, 83, 9)",
       "font-size": "11.5px",
       "font-weight": "600",
@@ -648,24 +651,24 @@
       "border-radius": "10px",
       "padding": "1px 9px"
     },
-    "div.shell > main[main].main > div.manual > div.panel > table[table].data > tr[row].clickable #2 > td[cell].mono \"Nov 13, 06:00:00 AM\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"All records\" > div.panel > table[table].data > tr[row].clickable #2 > td[cell].mono \"Nov 13, 06:00:00 AM\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "border-bottom": "1px solid rgb(227, 232, 237)",
       "padding": "7px 10px"
     },
-    "div.shell > main[main].main > div.manual > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"alice\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"All records\" > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"alice\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(227, 232, 237)",
       "padding": "7px 10px"
     },
-    "div.shell > main[main].main > div.manual > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"— Edit draft\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"All records\" > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"— Edit draft\"": {
       "display": "table-cell",
       "border-bottom": "1px solid rgb(227, 232, 237)",
       "padding": "7px 10px"
     },
-    "div.shell > main[main].main > div.manual > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"— Edit draft\" > button[button].btn \"Edit draft\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"All records\" > div.panel > table[table].data > tr[row].clickable #2 > td[cell] \"— Edit draft\" > button[button].btn \"Edit draft\"": {
       "font-family": "Arial",
       "line-height": "normal",
       "display": "inline-block",
@@ -677,14 +680,14 @@
       "border-radius": "6px",
       "padding": "6px 14px"
     },
-    "div.shell > main[main].main > div.manual > div.panel > table[table].data > tr[row].clickable #3": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"All records\" > div.panel > table[table].data > tr[row].clickable #3": {
       "display": "table-row"
     },
-    "div.shell > main[main].main > div.manual > div.panel > table[table].data > tr[row].clickable #3 > td[cell] \"verified\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"All records\" > div.panel > table[table].data > tr[row].clickable #3 > td[cell] \"verified\"": {
       "display": "table-cell",
       "padding": "7px 10px"
     },
-    "div.shell > main[main].main > div.manual > div.panel > table[table].data > tr[row].clickable #3 > td[cell] \"verified\" > span.badge.ok": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"All records\" > div.panel > table[table].data > tr[row].clickable #3 > td[cell] \"verified\" > span.badge.ok": {
       "color": "rgb(15, 138, 95)",
       "font-size": "11.5px",
       "font-weight": "600",
@@ -694,15 +697,15 @@
       "border-radius": "10px",
       "padding": "1px 9px"
     },
-    "div.shell > main[main].main > div.manual > div.panel > table[table].data > tr[row].clickable #3 > td[cell] \"exercise rec-3\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"All records\" > div.panel > table[table].data > tr[row].clickable #3 > td[cell] \"exercise rec-3\"": {
       "display": "table-cell",
       "padding": "7px 10px"
     },
-    "div.shell > main[main].main > div.manual > div.panel > table[table].data > tr[row].clickable #3 > td[cell] \"failover\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"All records\" > div.panel > table[table].data > tr[row].clickable #3 > td[cell] \"failover\"": {
       "display": "table-cell",
       "padding": "7px 10px"
     },
-    "div.shell > main[main].main > div.manual > div.panel > table[table].data > tr[row].clickable #3 > td[cell] \"failover\" > span.badge.neutral": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"All records\" > div.panel > table[table].data > tr[row].clickable #3 > td[cell] \"failover\" > span.badge.neutral": {
       "color": "rgb(91, 103, 114)",
       "font-size": "11.5px",
       "font-weight": "600",
@@ -712,11 +715,11 @@
       "border-radius": "10px",
       "padding": "1px 9px"
     },
-    "div.shell > main[main].main > div.manual > div.panel > table[table].data > tr[row].clickable #3 > td[cell] \"failed\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"All records\" > div.panel > table[table].data > tr[row].clickable #3 > td[cell] \"failed\"": {
       "display": "table-cell",
       "padding": "7px 10px"
     },
-    "div.shell > main[main].main > div.manual > div.panel > table[table].data > tr[row].clickable #3 > td[cell] \"failed\" > span.badge.fail": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"All records\" > div.panel > table[table].data > tr[row].clickable #3 > td[cell] \"failed\" > span.badge.fail": {
       "color": "rgb(192, 57, 43)",
       "font-size": "11.5px",
       "font-weight": "600",
@@ -726,17 +729,17 @@
       "border-radius": "10px",
       "padding": "1px 9px"
     },
-    "div.shell > main[main].main > div.manual > div.panel > table[table].data > tr[row].clickable #3 > td[cell].mono \"Nov 13, 06:00:00 AM\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"All records\" > div.panel > table[table].data > tr[row].clickable #3 > td[cell].mono \"Nov 13, 06:00:00 AM\"": {
       "font-family": "\"SF Mono\", \"JetBrains Mono\", ui-monospace, Menlo, Consolas, monospace",
       "font-size": "11.96px",
       "display": "table-cell",
       "padding": "7px 10px"
     },
-    "div.shell > main[main].main > div.manual > div.panel > table[table].data > tr[row].clickable #3 > td[cell] \"alice\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"All records\" > div.panel > table[table].data > tr[row].clickable #3 > td[cell] \"alice\"": {
       "display": "table-cell",
       "padding": "7px 10px"
     },
-    "div.shell > main[main].main > div.manual > div.panel > table[table].data > tr[row].clickable #3 > td[cell] \"bob\"": {
+    "div.shell > main[main].main > div.manual > div[tabpanel] \"All records\" > div.panel > table[table].data > tr[row].clickable #3 > td[cell] \"bob\"": {
       "display": "table-cell",
       "padding": "7px 10px"
     },

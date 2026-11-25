@@ -47,7 +47,7 @@ async function actAs(page: Page, name: string) {
 }
 
 async function openRecord(page: Page, tab: 'Verification queue' | 'All records') {
-    await page.getByRole('button', { name: tab, exact: true }).click();
+    await page.getByRole('tab', { name: tab, exact: true }).click();
     await page.getByRole('cell', { name: NAME, exact: true }).click();
     await expect(page.getByTestId('signoff-summary')).toBeVisible();
 }
@@ -75,7 +75,7 @@ test('a failover is planned, recorded, signed off twice and fulfils its plan', a
     });
 
     await test.step('record it against the plan, with what the API refuses first', async () => {
-        await page.getByRole('button', { name: 'New entry' }).click();
+        await page.getByRole('tab', { name: 'New entry' }).click();
         await page.getByLabel('Experiment name').fill(NAME);
         await page.getByLabel('Exercise type').selectOption('failover');
         await page.getByLabel('Executed at').fill(local(executed, 16));
@@ -170,7 +170,7 @@ test('a failover is planned, recorded, signed off twice and fulfils its plan', a
     });
 
     await test.step('the plan is fulfilled, and the next one is planned', async () => {
-        await page.getByRole('button', { name: 'Plans' }).click();
+        await page.getByRole('tab', { name: 'Plans' }).click();
         const rows = page.locator('tr[data-plan]');
         await expect(rows).toHaveCount(2);
         await expect(rows.filter({ hasText: 'fulfilled' })).toHaveCount(1);

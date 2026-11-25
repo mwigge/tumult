@@ -25,6 +25,14 @@
     import Sparkline from '#lib/components/Sparkline.svelte';
     import RangeSwitch from '#lib/components/RangeSwitch.svelte';
     import DoraScore from '#lib/components/DoraScore.svelte';
+    import TabPanel from '#lib/components/TabPanel.svelte';
+    import Tabs from '#lib/components/Tabs.svelte';
+    import { withParam } from '#lib/tabs.js';
+
+    const VIEWS: { value: 'org' | 'dora'; label: string }[] = [
+        { value: 'org', label: 'Org scores' },
+        { value: 'dora', label: 'DORA and maturity' },
+    ];
 
     const node = $derived(page.url.searchParams.get('node') ?? '');
     const range = $derived(page.url.searchParams.get('range') ?? '7d');
@@ -36,11 +44,9 @@
     let error: string | null = $state(null);
 
     function setView(next: 'org' | 'dora') {
-        // eslint-disable-next-line svelte/prefer-svelte-reactivity -- Local calculation; no retained reactive state.
-        const params = new URLSearchParams(page.url.searchParams.toString());
-        if (next === 'dora') params.set('view', 'dora');
-        else params.delete('view');
-        goto(`?${params}`, { reset: false });
+        goto(withParam(page.url.searchParams, 'view', next === 'dora' ? 'dora' : null), {
+            reset: false,
+        });
     }
 
     function setLei(next: string) {
@@ -166,18 +172,15 @@
 
 <div class="page-head">
     <h1>Scores</h1>
-    <div class="views" role="group" aria-label="score view">
-        <button
-            class:on={view === 'org'}
-            aria-pressed={view === 'org'}
-            onclick={() => setView('org')}>Org scores</button
-        >
-        <button
-            class:on={view === 'dora'}
-            aria-pressed={view === 'dora'}
-            onclick={() => setView('dora')}>DORA and maturity</button
-        >
-    </div>
+    <Tabs
+        id="scores"
+        label="score view"
+        class="views"
+        selectedClass="on"
+        options={VIEWS}
+        value={view}
+        onchange={setView}
+    />
     {#if view === 'org'}
         <nav class="crumbs" aria-label="org breadcrumb">
             <button class:current={node === ''} onclick={() => drill('')}>company</button>
@@ -195,150 +198,136 @@
     {/if}
 </div>
 
-{#if view === 'dora'}
-    <DoraScore {lei} onlei={setLei} />
-{:else if error}
-    <div class="panel"><div class="state error">Failed to load org scores: {error}</div></div>
-{:else if !tree}
-    <div class="panel"><div class="skeleton" style="height: 320px"></div></div>
-{:else}
-    <div class="cards">
-        <div class="panel card">
-            <div class="label">Score — {tree.name}</div>
-            <div class="value mono" style="color: {bandColor(tree.band)}">
-                <span class="glyph">{bandGlyph(tree.band)}</span>{fmtScore(tree.score)}
-            </div>
-            <div class="hint">{bandLabel(tree.band)}</div>
-        </div>
-        <div class="panel card">
-            <div class="label">Δ vs previous {range}</div>
-            <div class="value mono delta {deltaClass(tree.delta)}">{fmtDelta(tree.delta)}</div>
-            <div class="hint">period-over-period</div>
-        </div>
-        <div class="panel card">
-            <div class="label">Coverage</div>
-            <div class="value mono">{tree.scored}/{tree.expected}</div>
-            <div class="hint">{(tree.coverage * 100).toFixed(0)}% of expected evidence scored</div>
-        </div>
-        <div class="panel card">
-            <div class="label">Weakest member</div>
-            <div class="value weakest">{tree.weakest ?? '—'}</div>
-            <div class="hint"><Sparkline points={sparkPoints} color={bandColor(tree.band)} /></div>
-        </div>
-    </div>
-    <p class="meaning" data-testid="score-meaning">
-        <strong>{COMPLIANCE_SCORE}.</strong>
-        {COMPLIANCE_SCORE_LINE}
-    </p>
-
-    {#if node === ''}
-        <div class="panel">
-            <h2>Domains — area ∝ experiments × criticality, hue = band (click to drill)</h2>
-            {#if tree.children.length === 0}
-                <div class="state">No org structure on record — configure org.yaml.</div>
-            {:else if treemapOption}
-                <EChart
-                    id="score-treemap"
-                    option={treemapOption}
-                    height={420}
-                    onclick={onTreemapClick}
-                    label="Scores of {tree.name} as a treemap"
-                />
-            {/if}
-        </div>
+<TabPanel id="scores" value={view}>
+    {#if view === 'dora'}
+        <DoraScore {lei} onlei={setLei} />
+    {:else if error}
+        <div class="panel"><div class="state error">Failed to load org scores: {error}</div></div>
+    {:else if !tree}
+        <div class="panel"><div class="skeleton" style="height: 320px"></div></div>
     {:else}
-        <div class="panel">
-            <h2>
-                {tree.name} — {tree.children.length} direct member{tree.children.length === 1
-                    ? ''
-                    : 's'}, weakest first
-            </h2>
-            {#if tree.children.length === 0}
-                <div class="state">No members below this node.</div>
-            {:else}
-                <table class="data">
-                    <thead>
-                        <tr>
-                            <th>Member</th><th>Score</th><th>Band</th><th>Δ</th><th>Sparkline</th>
-                            <th>Coverage</th><th>Weakest member</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr class="self">
-                            <td>{tree.name} <span class="kind">({tree.kind}, this node)</span></td>
-                            <td class="mono">{fmtScore(tree.score)}</td>
-                            <td
-                                ><span class="bandg" style="color: {bandColor(tree.band)}"
-                                    >{bandGlyph(tree.band)}</span
-                                >
-                                {bandLabel(tree.band)}</td
-                            >
-                            <td class="mono delta {deltaClass(tree.delta)}"
-                                >{fmtDelta(tree.delta)}</td
-                            >
-                            <td
-                                ><Sparkline
-                                    points={sparkPoints}
-                                    color={bandColor(tree.band)}
-                                    width={110}
-                                    height={26}
-                                /></td
-                            >
-                            <td class="mono">{tree.scored}/{tree.expected}</td>
-                            <td>{tree.weakest ?? '—'}</td>
-                        </tr>
-                        {#each tree.children as c (c.path)}
-                            <tr class="clickable" onclick={() => drill(c.path)}>
-                                <td
-                                    ><span class="indent">└</span>
-                                    {c.name} <span class="kind">({c.kind})</span></td
-                                >
-                                <td class="mono">{fmtScore(c.score)}</td>
-                                <td
-                                    ><span class="bandg" style="color: {bandColor(c.band)}"
-                                        >{bandGlyph(c.band)}</span
-                                    >
-                                    {bandLabel(c.band)}</td
-                                >
-                                <td class="mono" style="color: var(--text-faint)">—</td>
-                                <td style="color: var(--text-faint)">—</td>
-                                <td class="mono">{c.scored}/{c.expected}</td>
-                                <td>{c.weakest ?? '—'}</td>
-                            </tr>
-                        {/each}
-                    </tbody>
-                </table>
-            {/if}
+        <div class="cards">
+            <div class="panel card">
+                <div class="label">Score — {tree.name}</div>
+                <div class="value mono" style="color: {bandColor(tree.band)}">
+                    <span class="glyph">{bandGlyph(tree.band)}</span>{fmtScore(tree.score)}
+                </div>
+                <div class="hint">{bandLabel(tree.band)}</div>
+            </div>
+            <div class="panel card">
+                <div class="label">Δ vs previous {range}</div>
+                <div class="value mono delta {deltaClass(tree.delta)}">{fmtDelta(tree.delta)}</div>
+                <div class="hint">period-over-period</div>
+            </div>
+            <div class="panel card">
+                <div class="label">Coverage</div>
+                <div class="value mono">{tree.scored}/{tree.expected}</div>
+                <div class="hint">
+                    {(tree.coverage * 100).toFixed(0)}% of expected evidence scored
+                </div>
+            </div>
+            <div class="panel card">
+                <div class="label">Weakest member</div>
+                <div class="value weakest">{tree.weakest ?? '—'}</div>
+                <div class="hint">
+                    <Sparkline points={sparkPoints} color={bandColor(tree.band)} />
+                </div>
+            </div>
         </div>
+        <p class="meaning" data-testid="score-meaning">
+            <strong>{COMPLIANCE_SCORE}.</strong>
+            {COMPLIANCE_SCORE_LINE}
+        </p>
+
+        {#if node === ''}
+            <div class="panel">
+                <h2>Domains — area ∝ experiments × criticality, hue = band (click to drill)</h2>
+                {#if tree.children.length === 0}
+                    <div class="state">No org structure on record — configure org.yaml.</div>
+                {:else if treemapOption}
+                    <EChart
+                        id="score-treemap"
+                        option={treemapOption}
+                        height={420}
+                        onclick={onTreemapClick}
+                        label="Scores of {tree.name} as a treemap"
+                    />
+                {/if}
+            </div>
+        {:else}
+            <div class="panel">
+                <h2>
+                    {tree.name} — {tree.children.length} direct member{tree.children.length === 1
+                        ? ''
+                        : 's'}, weakest first
+                </h2>
+                {#if tree.children.length === 0}
+                    <div class="state">No members below this node.</div>
+                {:else}
+                    <table class="data">
+                        <thead>
+                            <tr>
+                                <th>Member</th><th>Score</th><th>Band</th><th>Δ</th><th
+                                    >Sparkline</th
+                                >
+                                <th>Coverage</th><th>Weakest member</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr class="self">
+                                <td
+                                    >{tree.name}
+                                    <span class="kind">({tree.kind}, this node)</span></td
+                                >
+                                <td class="mono">{fmtScore(tree.score)}</td>
+                                <td
+                                    ><span class="bandg" style="color: {bandColor(tree.band)}"
+                                        >{bandGlyph(tree.band)}</span
+                                    >
+                                    {bandLabel(tree.band)}</td
+                                >
+                                <td class="mono delta {deltaClass(tree.delta)}"
+                                    >{fmtDelta(tree.delta)}</td
+                                >
+                                <td
+                                    ><Sparkline
+                                        points={sparkPoints}
+                                        color={bandColor(tree.band)}
+                                        width={110}
+                                        height={26}
+                                    /></td
+                                >
+                                <td class="mono">{tree.scored}/{tree.expected}</td>
+                                <td>{tree.weakest ?? '—'}</td>
+                            </tr>
+                            {#each tree.children as c (c.path)}
+                                <tr class="clickable" onclick={() => drill(c.path)}>
+                                    <td
+                                        ><span class="indent">└</span>
+                                        {c.name} <span class="kind">({c.kind})</span></td
+                                    >
+                                    <td class="mono">{fmtScore(c.score)}</td>
+                                    <td
+                                        ><span class="bandg" style="color: {bandColor(c.band)}"
+                                            >{bandGlyph(c.band)}</span
+                                        >
+                                        {bandLabel(c.band)}</td
+                                    >
+                                    <td class="mono" style="color: var(--text-faint)">—</td>
+                                    <td style="color: var(--text-faint)">—</td>
+                                    <td class="mono">{c.scored}/{c.expected}</td>
+                                    <td>{c.weakest ?? '—'}</td>
+                                </tr>
+                            {/each}
+                        </tbody>
+                    </table>
+                {/if}
+            </div>
+        {/if}
     {/if}
-{/if}
+</TabPanel>
 
 <style>
-    .views {
-        display: flex;
-        margin-left: var(--space-3);
-    }
-    .views button {
-        background: var(--bg-raised);
-        color: var(--text-dim);
-        border: var(--border-width-sm) solid var(--border-strong);
-        padding: 3px var(--space-2-5);
-        font: inherit;
-        font-size: var(--font-size-xs);
-        cursor: pointer;
-    }
-    .views button:first-child {
-        border-radius: var(--radius-md) 0 0 var(--radius-md);
-    }
-    .views button:last-child {
-        border-radius: 0 var(--radius-md) var(--radius-md) 0;
-        border-left: none;
-    }
-    .views button.on {
-        color: var(--text);
-        background: var(--bg-hover);
-        border-color: var(--accent);
-    }
     .crumbs {
         display: flex;
         align-items: center;
